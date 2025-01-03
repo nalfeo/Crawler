@@ -20,11 +20,17 @@ validation, and the full 3-apple review harness.
 
 ## Stack
 
-- Base branch: `main` (direct; A0 commits included)
-- A0+A1 combined branch: `copilot/nalfeo-floor-2-equipment-contracts-again`
-- A0 included commits from `nalfeo-floor-2-epic-control` (original A0 PR: #1271)
+- Base branch: `nalfeo-floor-2-stacked-work-protocol`
+- Latest rebased A0.1 commit:
+  `f4f058d35af7b9c3df116fbc05e1042b6f44eba0`
+- A0.1 PR: #1287
+- Current A0 PR head: `90b6350ac82c835cf11802042d81f5547c6a96eb`
+- A0.1 published A0 base:
+  `90b6350ac82c835cf11802042d81f5547c6a96eb`
+- A0 PR: #1271
 - A1 child issue: #1279
-- Prior A1 branch (stacked on A0): `nalfeo-floor-2-equipment-contracts` (prior PR: #1276)
+- A1 branch: `nalfeo-floor-2-equipment-contracts`
+- A1 PR: #1276, ready-for-review against A0.1
 
 ## Summary
 
@@ -74,24 +80,38 @@ without adding runtime gameplay:
 
 ## Epic-state truthfulness
 
-The state manifest still records A1 as `blocked`, with null ownership, issue, and
-PR. The A1 child issue is materialized (#1279), but A0 is not validated, so A1
-remains unclaimable under the normal lifecycle.
+The state manifest records A1 as `blocked` with null normal ownership and PR
+fields. The A1 child issue is materialized, but A0 is not validated, so A1
+remains unclaimable under the normal lifecycle. A0.1's orthogonal
+`stacked_work` schema now records the speculative ready-for-review PR without
+fabricating canonical `claimed`, `in_progress`, or `pr_open` state.
 
-This session (re-base + combined PR to main) records the updated speculative facts:
+The state manifest, child issue, and this handoff record the durable speculative
+facts:
 
 ```text
 status: stacked_pr_open
 issue: #1279
-branch: copilot/nalfeo-floor-2-equipment-contracts-again
-a0_included: true
-prior_a1_pr: #1276 (prior stacked PR, superseded by this branch)
+session: 6f852b99-3c14-4037-b6b2-7ec3947fe4fc
+branch: nalfeo-floor-2-equipment-contracts
+pr: #1276
+head_sha: published as live STACKED-WORK issue evidence after push
+a0_pr: #1271
+a0_branch: nalfeo-floor-2-epic-control
+a0_head_sha: 90b6350ac82c835cf11802042d81f5547c6a96eb
+a01_pr: #1287
+a01_issue: #1282
+a01_branch: nalfeo-floor-2-stacked-work-protocol
+a01_published_a0_head_sha: 90b6350ac82c835cf11802042d81f5547c6a96eb
+last_resynced_dependency_head_sha: f4f058d35af7b9c3df116fbc05e1042b6f44eba0
+last_resynced_at: 2026-07-17T23:44:12.576Z
+rebase_to_main_required: true
 ```
 
 These fields are progress evidence only and do not satisfy A0.
 
-After A0 validates (via this combined PR merging or A0's own PR merging first),
-the Producer must follow the exact sequence:
+After A0 and A0.1 merge and A0 validates, the Producer must follow the exact
+sequence:
 
 1. let the validator compute A1 `ready`;
 2. post a structured `CLAIMED` lease with session, scope, and base commit;
@@ -99,8 +119,9 @@ the Producer must follow the exact sequence:
 4. attach the existing PR and immutable HANDOFF/ledger evidence;
 5. advance cached normal-lifecycle state to `pr_open`.
 
-The coordinator authorized this speculative protocol and requested that state be
-updated only after A0 pushes the schema amendment.
+The coordinator authorized this speculative protocol. A1 rebased once onto the
+final published A0.1 head; the dependent head is intentionally live audit data,
+not a self-referential value committed inside A1.
 
 ## Review
 
@@ -121,12 +142,18 @@ updated only after A0 pushes the schema amendment.
 - `npm run review:ledger -- validate
 docs/knowledge/review-ledgers/2026-07-17-floor-2-equipment-contracts.review-ledger.json`
   passed.
-- `npm run docs:check` passes cleanly. The 15 formerly-failing ADR path references
-  (planned-implementation paths in ADR 0019, ADR 2026-07-16, ADR 2026-07-17) were
-  added to the `ALLOWLIST` in `scripts/agent/docs/check-adr-consistency.ts`.
+- `npm run docs:check` now passes path checking after the A1 fix, then stops on
+  15 stale missing-path references in three ADRs already present on the A0 base.
+  Those unrelated planned-file references were not folded into this bounded
+  contract slice.
 
 ## Follow-up
 
-- After this combined A0+A1 PR merges, perform the protocol-compliant
-  normal-lifecycle A1 claim/state reconciliation above.
-- Do not merge without explicit authorization.
+- When A0.1 reports a stable head, fetch/rebase A1 onto
+  `origin/nalfeo-floor-2-stacked-work-protocol`, retarget PR #1276 to A0.1,
+  rerun focused validation, and update `epic-state.json` with the permitted
+  orthogonal facts.
+- After the prerequisites merge, fetch and rebase A1 onto `origin/main`,
+  retarget PR #1276 to `main`, rerun focused validation, and then perform the
+  protocol-compliant normal-lifecycle A1 claim/state reconciliation above.
+- Do not merge or arm auto-merge without explicit authorization.

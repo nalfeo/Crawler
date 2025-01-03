@@ -113,7 +113,7 @@ import {
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
 import { memorizeSpell } from './systems/abilitySystem.js';
-import { finalizeFloorAchievementProgressOnExit } from './systems/achievementSystem.js';
+import { evaluateAchievementUnlocksForPhase } from './systems/achievementSystem.js';
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor-config.js';
@@ -3166,7 +3166,7 @@ export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): 
   questSystem(world);
   world.state = 'safe_room';
   finalizeRunSummary(world, 'cleared_floor');
-  finalizeFloorAchievementProgressOnExit(world);
+  evaluateAchievementUnlocksForPhase(world, 'run_end_clear');
   return true;
 }
 

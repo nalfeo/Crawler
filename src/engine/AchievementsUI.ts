@@ -15,7 +15,7 @@ import { fitUiScale } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 import {
-  FLOOR1_ACHIEVEMENTS,
+  ALL_ACHIEVEMENTS,
   type AchievementDef,
   type AchievementDifficulty,
   type AchievementReward,
@@ -168,7 +168,7 @@ export function createAchievementsUI(
   }
 
   function unlockedDefs(world: GameWorld): AchievementDef[] {
-    return FLOOR1_ACHIEVEMENTS.filter((a) => world.achievements.unlockedIds.has(a.id));
+    return ALL_ACHIEVEMENTS.filter((a) => world.achievements.unlockedIds.has(a.id));
   }
 
   function computeSignature(world: GameWorld): string {
