@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
+import { asFamilyId, asResourceId } from '../../src/core/faction-relations.js';
 import {
   initializeFloor1Scenario,
   confirmFloor1StairDescend,
@@ -7,12 +8,19 @@ import {
 import {
   achievementSystem,
   claimAchievementReward,
+  collectCurrentFloorAchievementFacts,
   evaluateAchievementUnlocksForPhase,
   isAchievementClaimed,
   unlockAchievement,
 } from '../../src/game/systems/achievementSystem.js';
-import { capturePlayerCarryover, restorePlayerCarryover } from '../../src/game/playerCarryover.js';
-import { type AchievementDef } from '../../src/shared/achievements.js';
+import { createFloorMainSceneOptions } from '../../src/bootstrap/floor-main-scene-options.js';
+import {
+  createAchievementCatalog,
+  createAchievementCatalogRegistry,
+  createEmptyAchievementFactSnapshot,
+  FLOOR1_ACHIEVEMENTS,
+  type AchievementDef,
+} from '../../src/shared/achievements.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -35,24 +43,17 @@ function completeQuestState(questId: string): QuestState {
   };
 }
 
-/** Set up floor 1 staircase preconditions for descend tests. */
-function primeFloor1ForDescend(world: ReturnType<typeof createTestWorld>): void {
-  const obj = world.floorScenario!.objective;
-  obj.staircaseSpawned = true;
-  obj.staircaseUnlocked = true;
-  obj.staircaseLocked = false;
-  world.state = 'playing';
-}
-
-/** Build a minimal floor-2 extended state to make collectFloor2AchievementFacts non-null. */
-function makeFloor2ExtendedState(killsByFamily?: Map<string, number>) {
+function scopedAchievement(
+  id: string,
+  scope: 'floor' | 'current_run',
+  fact: 'playerGold' | 'totalKills' | 'clearedFloorCount',
+): AchievementDef {
   return {
-    familyState: {
-      presentFamilies: [] as never[],
-      contestedResource: 'gold-veins' as never,
-      betrayerFlag: false,
-      ...(killsByFamily !== undefined ? { trashKillsByFamily: killsByFamily as never } : {}),
-    },
+    ...FLOOR1_ACHIEVEMENTS[0]!,
+    id,
+    floor: 2,
+    scope,
+    unlockRules: [{ type: 'numberCompare' as const, fact, op: '>=' as const, value: 50 }],
   };
 }
 
@@ -100,6 +101,22 @@ describe('achievementSystem', () => {
 
     achievementSystem(world);
 
+    expect(world.achievements.pendingUnlockIds).toEqual([
+      'first-bonk',
+      'slime-no-more',
+      'rat-retired',
+      'crowd-control',
+      'skill-first-blood',
+      'skill-five',
+      'stat-point-spender',
+      'gold-goblin',
+      'stairs-unlocked',
+      'quest-accepted',
+      'quest-completed',
+      'all-floor1-quests',
+      'safe-room-discovered',
+      'merchant-customer',
+    ]);
     expect(world.achievements.unlockedIds.has('first-bonk')).toBe(true);
     expect(world.achievements.unlockedIds.has('rat-retired')).toBe(true);
     expect(world.achievements.unlockedIds.has('slime-no-more')).toBe(true);
@@ -135,147 +152,153 @@ describe('achievementSystem', () => {
     expect(world.floorScenario?.runSummary?.outcome).toBe('cleared_floor');
   });
 
-  it('carries run-global achievement facts across floor transitions and resets on a new run', () => {
-    const floor1 = createTestWorld({ seed: 42 });
-    const floor1Player = spawnPlayer(floor1, 0, 0);
-    initializeFloor1Scenario(floor1, floor1Player);
-
-    const objective = floor1.floorScenario!.objective;
-    objective.ratsKilled = 5;
-    objective.slimesKilled = 4;
-    objective.safeRoomDiscovered = true;
-    objective.staircaseSpawned = true;
-    objective.staircaseUnlocked = true;
-    objective.staircaseLocked = false;
-    floor1.state = 'playing';
-
-    floor1.questLog.set(
-      FLOOR1_FIND_WELCOME_QUEST_ID,
-      completeQuestState(FLOOR1_FIND_WELCOME_QUEST_ID),
-    );
-
-    expect(confirmFloor1StairDescend(floor1, floor1Player)).toBe(true);
-    expect(floor1.achievements.runGlobal.numberFacts.totalKills).toBe(9);
-    expect(floor1.achievements.runGlobal.completedQuestIds.has(FLOOR1_FIND_WELCOME_QUEST_ID)).toBe(
-      true,
-    );
-
-    const carryover = capturePlayerCarryover(floor1, floor1Player);
-    const floor2 = createTestWorld({ seed: 42, floor: 2 });
-    const floor2Player = spawnPlayer(floor2, 0, 0);
-    restorePlayerCarryover(floor2, floor2Player, carryover);
-
-    expect(floor2.achievements.runGlobal.numberFacts.totalKills).toBe(9);
-    expect(floor2.achievements.runGlobal.booleanFacts.staircaseDiscovered).toBe(true);
-    expect(floor2.achievements.runGlobal.completedQuestIds.has(FLOOR1_FIND_WELCOME_QUEST_ID)).toBe(
-      true,
-    );
-
-    const freshRun = createTestWorld({ seed: 42, floor: 2 });
-    expect(freshRun.achievements.runGlobal.numberFacts.totalKills).toBe(0);
-    expect(freshRun.achievements.runGlobal.completedQuestIds.size).toBe(0);
-  });
-
-  it('does not evaluate floor1 catalog entries on floor2', () => {
-    const world = createTestWorld({ seed: 42, floor: 2 });
-    spawnPlayer(world, 0, 0);
-    world.achievements.runGlobal.numberFacts.totalKills = 999;
-    world.achievements.runGlobal.booleanFacts.staircaseUnlocked = true;
-
-    achievementSystem(world);
-
-    expect(world.achievements.unlockedIds.size).toBe(0);
-  });
-
-  it('evaluates a current_run achievement using cumulative facts across floor transition', () => {
-    // Floor 1: 3 rats + 3 slimes = 6 kills
-    const floor1 = createTestWorld({ seed: 42 });
-    const floor1Player = spawnPlayer(floor1, 0, 0);
-    initializeFloor1Scenario(floor1, floor1Player);
-    floor1.floorScenario!.objective.ratsKilled = 3;
-    floor1.floorScenario!.objective.slimesKilled = 3;
-    primeFloor1ForDescend(floor1);
-    // Stair descend finalizes floor and snapshots 6 kills into runGlobal
-    confirmFloor1StairDescend(floor1, floor1Player);
-    expect(floor1.achievements.runGlobal.numberFacts.totalKills).toBe(6);
-
-    // Floor 2: carry over, then accumulate 4 more kills
-    const carryover = capturePlayerCarryover(floor1, floor1Player);
-    const floor2 = createTestWorld({ seed: 42, floor: 2 });
-    const floor2Player = spawnPlayer(floor2, 0, 0);
-    restorePlayerCarryover(floor2, floor2Player, carryover);
-    floor2.floorExtendedState = makeFloor2ExtendedState(new Map([['fam-a', 4]]));
-
-    // Synthetic achievements exercising the current_run vs floor scope split
-    const runScopedAchievement: AchievementDef = {
-      id: 'test-run-cumulative-kills',
-      floor: 2,
-      scope: 'current_run',
-      title: 'Run Veteran',
-      popupText: 'Run Veteran',
-      unlockCriteria: 'Kill 10 enemies total across the run',
-      details: 'Kill 10 enemies total across the run.',
-      directorFlavor: 'Nicely done.',
-      iconId: 'icon-placeholder',
-      difficulty: 'basic',
-      reward: { type: 'none' },
-      unlockRules: [{ type: 'numberCompare', fact: 'totalKills', op: '>=', value: 10 }],
-    };
-    const floorScopedAchievement: AchievementDef = {
-      ...runScopedAchievement,
-      id: 'test-floor-kills-only',
-      scope: 'floor',
-      unlockRules: [{ type: 'numberCompare', fact: 'totalKills', op: '>=', value: 10 }],
-    };
-
-    evaluateAchievementUnlocksForPhase(floor2, 'tick', [
-      runScopedAchievement,
-      floorScopedAchievement,
+  it('keeps carried run facts out of Floor 2 floor-scoped evaluation', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(2, [
+        scopedAchievement('floor2-local-gold', 'floor', 'playerGold'),
+        scopedAchievement('floor2-run-kills', 'current_run', 'totalKills'),
+      ]),
     ]);
-
-    // current_run: floor1 (6) + floor2 (4) = 10 ≥ 10 → should unlock
-    expect(floor2.achievements.unlockedIds.has('test-run-cumulative-kills')).toBe(true);
-    // floor scope: only 4 kills on floor2 → should NOT unlock
-    expect(floor2.achievements.unlockedIds.has('test-floor-kills-only')).toBe(false);
-  });
-
-  it('tracks playerGold as the current balance, not the maximum, for current_run scope', () => {
-    // Floor 1: exit with 100 gold (snapshotted into runGlobal)
-    const floor1 = createTestWorld({ seed: 42 });
-    const floor1Player = spawnPlayer(floor1, 0, 0);
-    initializeFloor1Scenario(floor1, floor1Player);
-    floor1.playerGold = 100;
-    primeFloor1ForDescend(floor1);
-    confirmFloor1StairDescend(floor1, floor1Player);
-    expect(floor1.achievements.runGlobal.numberFacts.playerGold).toBe(100);
-
-    // Floor 2: player spends down to 20 gold
-    const carryover = capturePlayerCarryover(floor1, floor1Player);
-    const floor2 = createTestWorld({ seed: 42, floor: 2 });
-    const floor2Player = spawnPlayer(floor2, 0, 0);
-    restorePlayerCarryover(floor2, floor2Player, carryover);
-    floor2.playerGold = 20;
-    floor2.floorExtendedState = makeFloor2ExtendedState();
-
-    const brokeAchievement: AchievementDef = {
-      id: 'test-broke',
-      floor: 2,
-      scope: 'current_run',
-      title: 'Penny Pinched',
-      popupText: 'Penny Pinched',
-      unlockCriteria: 'Hold less than 50 gold',
-      details: 'Hold less than 50 gold.',
-      directorFlavor: 'The coffers run dry.',
-      iconId: 'icon-placeholder',
-      difficulty: 'basic',
-      reward: { type: 'none' },
-      unlockRules: [{ type: 'numberCompare', fact: 'playerGold', op: '<', value: 50 }],
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    world.playerGold = 0;
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      numberFacts: {
+        ...createEmptyAchievementFactSnapshot().numberFacts,
+        playerGold: 100,
+        totalKills: 100,
+      },
+      reachedFloorIds: [1],
     };
 
-    evaluateAchievementUnlocksForPhase(floor2, 'tick', [brokeAchievement]);
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
 
-    // current balance is 20, not the floor-1 peak of 100, so < 50 should be true
-    expect(floor2.achievements.unlockedIds.has('test-broke')).toBe(true);
+    expect(world.achievements.unlockedIds.has('floor2-local-gold')).toBe(false);
+    expect(world.achievements.unlockedIds.has('floor2-run-kills')).toBe(true);
+  });
+
+  it('does not activate a Floor 2-introduced current-run definition on Floor 1', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(1, []),
+      createAchievementCatalog(2, [
+        scopedAchievement('floor2-run-gold', 'current_run', 'playerGold'),
+      ]),
+    ]);
+    const world = createTestWorld({ seed: 42 });
+    world.playerGold = 100;
+
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+    expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(false);
+
+    world.floor = 2;
+    world.floorId = 'floor2';
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      reachedFloorIds: [1, 2],
+    };
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+    expect(world.achievements.unlockedIds.has('floor2-run-gold')).toBe(true);
+  });
+
+  it('keeps mixed-scope unlock ordering aligned with registry.all authored order', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(1, [
+        {
+          ...scopedAchievement('floor1-run-kills', 'current_run', 'totalKills'),
+          floor: 1,
+          unlockRules: [{ type: 'numberCompare', fact: 'totalKills', op: '>=', value: 10 }],
+        },
+      ]),
+      createAchievementCatalog(2, [scopedAchievement('floor2-local-gold', 'floor', 'playerGold')]),
+    ]);
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    world.playerGold = 50;
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      numberFacts: {
+        ...createEmptyAchievementFactSnapshot().numberFacts,
+        totalKills: 10,
+      },
+      reachedFloorIds: [1],
+    };
+
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+
+    expect(registry.all.map((achievement) => achievement.id)).toEqual([
+      'floor1-run-kills',
+      'floor2-local-gold',
+    ]);
+    expect(world.achievements.pendingUnlockIds).toEqual(['floor1-run-kills', 'floor2-local-gold']);
+  });
+
+  it('unlocks current-run clearedFloorCount achievements after two cleared floors', () => {
+    const registry = createAchievementCatalogRegistry([
+      createAchievementCatalog(2, [
+        {
+          ...scopedAchievement('two-floors-cleared', 'current_run', 'clearedFloorCount'),
+          unlockRules: [{ type: 'numberCompare', fact: 'clearedFloorCount', op: '>=', value: 2 }],
+        },
+      ]),
+    ]);
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    const faceless = asFamilyId('faceless');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [faceless],
+        contestedResource: asResourceId('glimmercap'),
+        betrayerFlag: false,
+        trashKillsByFamily: new Map(),
+        staircaseDiscovered: true,
+      },
+    };
+    world.achievements.carriedRunFacts = {
+      ...createEmptyAchievementFactSnapshot(),
+      reachedFloorIds: [1],
+      clearedFloorIds: [1],
+    };
+
+    evaluateAchievementUnlocksForPhase(world, 'tick', registry);
+
+    expect(world.achievements.unlockedIds.has('two-floors-cleared')).toBe(true);
+  });
+
+  it('runs the Floor 2-safe evaluator through the real scene post-system pipeline', () => {
+    const options = createFloorMainSceneOptions('floor2');
+    const wiredAchievementSystem = options.postSystems?.find(
+      (system) => system === achievementSystem,
+    );
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    world.floorId = 'floor2';
+    world.floorScenario = null;
+
+    expect(wiredAchievementSystem).toBe(achievementSystem);
+    expect(() => wiredAchievementSystem?.(world)).not.toThrow();
+  });
+
+  it('collects Floor 2 player-attributed trash kills into the current-run total', () => {
+    const world = createTestWorld({ seed: 42, floor: 2 });
+    const mirekin = asFamilyId('mirekin');
+    const chitinous = asFamilyId('chitinous');
+    world.floorExtendedState = {
+      familyState: {
+        presentFamilies: [mirekin, chitinous],
+        contestedResource: asResourceId('glimmercap'),
+        betrayerFlag: false,
+        trashKillsByFamily: new Map([
+          [mirekin, 4],
+          [chitinous, 7],
+        ]),
+      },
+    };
+
+    const facts = collectCurrentFloorAchievementFacts(world);
+
+    expect(facts.numberFacts.totalKills).toBe(11);
+    expect(facts.numberFacts.ratsKilled).toBe(0);
+    expect(facts.numberFacts.slimesKilled).toBe(0);
   });
 });
 
