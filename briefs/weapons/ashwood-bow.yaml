@@ -1,0 +1,24 @@
+type: weapon
+name: ashwood-bow
+description: |
+  An ashwood longbow held vertically, limbs extending top and bottom with the
+  grip at center. The wood is pale ash — cream or off-white with subtle amber
+  grain lines running lengthwise along the limbs. The bow is a simple D-bow
+  or gentle recurve; the limbs taper gracefully from the broad riser to
+  narrower tips. A taut bowstring spans tip to tip, showing a slight inward
+  curve under tension. The center section is wrapped in dark leather or cord
+  — a worn, practical grip — with a small visible wrapping band or knot. No
+  arrow nocked. No quiver, no decoration, no magic glow. The silhouette
+  reads unambiguously as "bow" at a glance: two curved limbs, a vertical
+  riser, a taut string. Grungy dungeon wear: scuffs on the wood, a fraying
+  string strand or two, a small nick in one limb.
+# The bow grip sits at vertical center, not at the bottom of the frame.
+# Override the weapon-default anchor of {x: 32, y: 56}.
+anchor: { x: 32, y: 32 }
+# Orientation: vertical is the weapon default (limbs top/bottom, grip center).
+# No orientation sensor override needed.
+variations:
+  - recurve limbs with pronounced ear tips giving a stronger silhouette curve
+  - wide D-bow profile with thick riser and minimal taper
+  - slim longbow with very long limbs and narrow riser, emphasising length
+minVariations: 4
