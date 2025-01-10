@@ -155,3 +155,12 @@ assets:
     integration:
       kind: sprite-registry
       id: signet-of-focus
+
+  - id: surveyor-map
+    type: item
+    label: 'Surveyor Map'
+    brief: 'Surveyor Map — a single centered small object icon with a clear, readable silhouette on a transparent background. A battered folded map square with a leather strap, brown ink grid pattern on yellowed parchment, cracked wax compass-rose seal. Floor 2 accessory equipment icon for runtime key equipment/accessory/surveyor-map.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: surveyor-map
