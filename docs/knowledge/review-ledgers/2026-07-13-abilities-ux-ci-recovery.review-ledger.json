@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "abilities-ux-ci-recovery",
+  "task_title": "fix: recover abilities UX CI regression after saferoom gating",
+  "estimated_apples": 2,
+  "stages": {}
+}

@@ -96,6 +96,16 @@ export const mainSceneProbe = {
     page.evaluate(() => window.__mainSceneProbe!.requestEquipToggle()),
   queueAbilitiesToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesToggle()),
+  setWorldState: (page: Page, state: MainSceneState['worldState']): Promise<void> =>
+    page.evaluate(
+      (value) =>
+        window.__mainSceneProbe!.setWorldState(
+          value as 'playing' | 'loadout' | 'safe_room' | 'level_up' | 'game_over',
+        ),
+      state,
+    ),
+  tapAbilitiesButton: (page: Page): Promise<boolean> =>
+    page.evaluate(() => window.__mainSceneProbe!.tapAbilitiesButton()),
   queueAbilitiesAndAchievementsToggle: (page: Page): Promise<void> =>
     page.evaluate(() => window.__mainSceneProbe!.queueAbilitiesAndAchievementsToggle()),
   queueInteraction: (page: Page): Promise<void> =>
