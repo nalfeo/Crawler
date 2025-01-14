@@ -32,13 +32,76 @@ import type { GameWorld } from '../world.js';
  */
 export const TELEGRAPH_MS_UNSET = -1;
 
+/**
+ * True when `candidateMs` is safe to use as-is: finite after Float32
+ * rounding, non-negative, and does not silently underflow to exactly `0`.
+ * Guards every telegraph-delay entry point — the per-mob override
+ * (`spawnBehaviorEnemy({ telegraphMs })`, sanitized before it ever reaches
+ * the Float32Array-backed `telegraphMs` store), the world-level default
+ * (`world.enemyTelegraphMs`, also validated at config time by
+ * `runHeadless`'s `normalizeEnemyTelegraphMs`), and `clampToFloat32SafeTelegraphMs`
+ * / `getEffectiveTelegraphMs`'s fallback chain below — against three ways a
+ * configured delay can silently corrupt "telegraph every hostile projectile":
+ *
+ * - **Overflow**: a finite JS number outside Float32's representable range
+ *   (e.g. `1e39`) silently rounds to `Infinity` on assignment, and
+ *   `isEnemyProjectileTelegraphReady`'s `elapsed >= delayMs` fire check then
+ *   never trips — the enemy telegraphs forever and never fires. `Math.fround`
+ *   performs the exact same rounding Float32Array does, so it is the correct
+ *   generic overflow detector (this also catches `NaN`, since
+ *   `Math.fround(NaN)` is `NaN`).
+ * - **Negative**: a negative delay (e.g. `world.enemyTelegraphMs = -5`) is
+ *   finite and survives `Math.fround` unchanged, but makes
+ *   `isEnemyProjectileTelegraphReady` trip immediately (`elapsed >=
+ *   negativeDelay` is true from frame one), i.e. an effectively-zero-delay
+ *   instant fire with no visible cue window — silently violating the
+ *   "every hostile projectile telegraphs" contract (regression:
+ *   copilot-pull-request-reviewer finding).
+ * - **Underflow**: a tiny nonzero delay (e.g. `1e-50`) is finite and
+ *   non-negative, but `Math.fround` rounds it to exactly `0` — the same
+ *   Float32 store value used for an intentional, legitimate "legacy: no
+ *   telegraph" override. The consequence differs by entry point: a per-mob
+ *   override written directly to the Float32Array-backed `telegraphMs` store
+ *   (bypassing `spawnBehaviorEnemy`'s spawn-time sanitizer, see
+ *   `combatants.ts`) collapses to a stored `0` before this function ever
+ *   runs, so it IS silently indistinguishable from an explicit legacy
+ *   override once read back. A world-level `world.enemyTelegraphMs`, by
+ *   contrast, is a plain JS number preserved at full precision until this
+ *   function resolves it — so an underflowing world-level value is caught
+ *   right here and falls back to the constant (a real, nonzero telegraph),
+ *   never silently firing immediately. Either way, the requested duration
+ *   cannot be preserved as configured, so both paths reject any nonzero
+ *   input that would round to `0` (regression: copilot-pull-request-reviewer
+ *   finding); an explicit, already-zero input still passes.
+ */
+export function isFloat32SafeNonNegativeTelegraphMs(candidateMs: number): boolean {
+  const rounded = Math.fround(candidateMs);
+  if (!Number.isFinite(rounded) || candidateMs < 0) {
+    return false;
+  }
+  return !(candidateMs !== 0 && rounded === 0);
+}
+
+function clampToFloat32SafeTelegraphMs(candidateMs: number): number {
+  return isFloat32SafeNonNegativeTelegraphMs(candidateMs)
+    ? candidateMs
+    : ENEMY_PROJECTILE.TELEGRAPH_MS;
+}
+
 /** Resolves `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`. */
 export function getEffectiveTelegraphMs(world: GameWorld, eid: number): number {
   const perMob = world.stores.enemyBehavior.telegraphMs[eid] ?? TELEGRAPH_MS_UNSET;
-  if (perMob >= 0) {
+  // An invalid per-mob override (Float32-overflow, Float32-underflow-to-zero,
+  // non-finite, or negative) must be treated the same as "unset" and fall
+  // through to the world-level default rather than short-circuiting straight to the
+  // hardcoded constant — otherwise a configured `world.enemyTelegraphMs`
+  // never has a chance to apply, silently breaking the documented
+  // `mob ?? world ?? constant` precedence (regression:
+  // copilot-pull-request-reviewer finding).
+  if (isFloat32SafeNonNegativeTelegraphMs(perMob)) {
     return perMob;
   }
-  return world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS;
+  return clampToFloat32SafeTelegraphMs(world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS);
 }
 
 /** True while `eid` is in an active telegraph (aim locked, waiting to fire). */

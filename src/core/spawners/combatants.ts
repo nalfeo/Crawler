@@ -21,7 +21,10 @@ import { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
 import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity, setBloodColor } from './entity-core.js';
-import { TELEGRAPH_MS_UNSET } from '../systems/enemyTelegraph.js';
+import {
+  TELEGRAPH_MS_UNSET,
+  isFloat32SafeNonNegativeTelegraphMs,
+} from '../systems/enemyTelegraph.js';
 
 const ENEMY_SIZE_SCALE_MIN = 0.9;
 const ENEMY_SIZE_SCALE_MAX = 1.1;
@@ -172,7 +175,21 @@ export function spawnBehaviorEnemy(
       // (recycled AND brand-new EIDs) — the sentinel MUST be re-asserted here
       // at every spawn, not just once at store-array-creation time. See
       // TELEGRAPH_MS_UNSET in core/systems/enemyTelegraph.ts.
-      telegraphMs: options?.telegraphMs ?? TELEGRAPH_MS_UNSET,
+      //
+      // Sanitize BEFORE this ever reaches the Float32Array-backed
+      // `telegraphMs` store: a tiny nonzero override (e.g. `1e-50`) would
+      // silently round to `0` on assignment there, becoming
+      // indistinguishable from an intentional "legacy: no telegraph"
+      // override once written (regression: copilot-pull-request-reviewer
+      // finding). Treat any invalid override (negative, non-finite,
+      // Float32-overflowing, or Float32-underflowing-to-zero) as unset so it
+      // falls through to the world/constant default at resolve time instead
+      // of being stored verbatim.
+      telegraphMs:
+        options?.telegraphMs !== undefined &&
+        isFloat32SafeNonNegativeTelegraphMs(options.telegraphMs)
+          ? options.telegraphMs
+          : TELEGRAPH_MS_UNSET,
     }),
   );
   if (isFlying) {
