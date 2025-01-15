@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 export const QUEUE_LABEL = 'merge-train';
 export const BLOCKED_LABEL = 'merge-train-blocked';
+export const RECOVERY_PENDING_LABEL = 'merge-train-recovery-pending';
 export const NOOP_LABEL = 'merge-train-noop';
 // Durable, permanent marker that a PR's validated change actually reached
 // `main` through the train. Unlike the transient QUEUE/BLOCKED labels (which

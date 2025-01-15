@@ -1,12 +1,70 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ISSUE_INTAKE_BODY, runIssueIntake } from './issue-intake-lib.mjs';
+import { ISSUE_INTAKE_BODY, issueIntakeEligibility, runIssueIntake } from './issue-intake-lib.mjs';
 
 const issue = {
   node_id: 'ISSUE_1067',
   number: 1067,
 };
+
+test('issue intake accepts only trusted opener and label combinations', () => {
+  const cases = [
+    { name: 'maintainer', login: 'nalfeo', labels: [], eligible: true },
+    { name: 'maintainer case-insensitively', login: 'NALFEO', labels: [], eligible: true },
+    { name: 'Copilot app login', login: 'app/copilot-swe-agent', labels: [], eligible: true },
+    { name: 'Copilot REST bot login', login: 'copilot-swe-agent[bot]', labels: [], eligible: true },
+    {
+      name: 'Actions without automation',
+      login: 'github-actions[bot]',
+      labels: [],
+      eligible: true,
+    },
+    {
+      name: 'Actions with automation',
+      login: 'GitHub-Actions[bot]',
+      labels: ['automation'],
+      eligible: true,
+    },
+    { name: 'arbitrary bot', login: 'dependabot[bot]', labels: [], eligible: false },
+    {
+      name: 'maintainer automation issue',
+      login: 'nalfeo',
+      labels: ['automation'],
+      eligible: false,
+    },
+    {
+      name: 'Copilot automation issue',
+      login: 'copilot-swe-agent[bot]',
+      labels: ['automation'],
+      eligible: false,
+    },
+  ];
+
+  for (const entry of cases) {
+    const result = issueIntakeEligibility(
+      {
+        number: 123,
+        user: { login: entry.login },
+        labels: entry.labels.map((name) => ({ name })),
+      },
+      'nalfeo',
+    );
+    assert.equal(result.eligible, entry.eligible, entry.name);
+  }
+});
+
+test('issue intake rejects missing issues and pull-request payloads', () => {
+  assert.equal(issueIntakeEligibility(null).eligible, false);
+  assert.equal(
+    issueIntakeEligibility({
+      number: 123,
+      user: { login: 'nalfeo' },
+      pull_request: { url: 'https://example.test/pr/123' },
+    }).eligible,
+    false,
+  );
+});
 
 test('kickoff comment body includes the required planning instructions', () => {
   assert.match(ISSUE_INTAKE_BODY, /\*\*Before writing any code\*\*/);
@@ -48,7 +106,7 @@ test('posts kickoff comment before assigning Copilot and preserves existing assi
       replaceActorsForAssignable: {
         assignable: {
           assignees: {
-            nodes: [{ login: 'nalfeo' }, { login: 'copilot-swe-agent' }],
+            nodes: [{ login: 'nalfeo' }, { login: 'Copilot' }],
           },
         },
       },

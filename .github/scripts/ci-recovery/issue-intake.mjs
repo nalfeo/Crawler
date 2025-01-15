@@ -1,5 +1,5 @@
 import { graphql, paginate, request } from './github.mjs';
-import { runIssueIntake } from './issue-intake-lib.mjs';
+import { issueIntakeEligibility, runIssueIntake } from './issue-intake-lib.mjs';
 
 const token = process.env.CRAWLER_CI_PAT || '';
 const repository = process.env.GITHUB_REPOSITORY || '';
@@ -14,21 +14,9 @@ if (!token || !owner || !repo || !eventPath) {
 const payload = JSON.parse(await (await import('node:fs/promises')).readFile(eventPath, 'utf8'));
 const issue = payload.issue;
 
-if (!issue || issue.pull_request) {
-  process.stdout.write('skip: event has no eligible issue payload\n');
-  process.exit(0);
-}
-
-if (String(issue.user?.login || '').toLowerCase() !== issueOwner) {
-  process.stdout.write(`skip: opener @${issue.user?.login || 'unknown'} != @${issueOwner}\n`);
-  process.exit(0);
-}
-
-const automationLabels = (issue.labels || []).map((l) => String(l.name || '').toLowerCase());
-if (automationLabels.includes('automation')) {
-  process.stdout.write(
-    `skip: issue #${issue.number} has automation label — already managed by CI automation\n`,
-  );
+const eligibility = issueIntakeEligibility(issue, issueOwner);
+if (!eligibility.eligible) {
+  process.stdout.write(`skip: ${eligibility.reason}\n`);
   process.exit(0);
 }
 

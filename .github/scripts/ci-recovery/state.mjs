@@ -13,6 +13,43 @@ export const DEFAULT_LEASE_GRACE_MINUTES = 5;
 // Anyone able to post an untrusted check-run named "merge-train" must not be
 // able to fake promotion evidence.
 const TRAIN_PROMOTION_FINGERPRINT_SHAPE = /^[0-9a-f]{64}$/;
+const COPILOT_REVIEWER_LOGINS = new Set([
+  'copilot-pull-request-reviewer',
+  'copilot-pull-request-reviewer[bot]',
+]);
+const COPILOT_NO_FILES_REVIEW =
+  /^copilot wasn['’]t able to review any files in this pull request\.\s*$/i;
+const SUBMITTED_REVIEW_STATES = new Set(['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED']);
+
+function isSubstantiveReviewText(value) {
+  const body = String(value || '').trim();
+  return body.length > 0 && !COPILOT_NO_FILES_REVIEW.test(body);
+}
+
+export function isSubstantiveCopilotReview(review) {
+  const author = String(review?.author?.login || '').toLowerCase();
+  const state = String(review?.state || '').toUpperCase();
+  if (!COPILOT_REVIEWER_LOGINS.has(author) || !SUBMITTED_REVIEW_STATES.has(state)) {
+    return false;
+  }
+
+  if (isSubstantiveReviewText(review.body)) {
+    return true;
+  }
+
+  return (review.comments?.nodes || []).some((comment) => isSubstantiveReviewText(comment.body));
+}
+
+export function hasSubstantiveCopilotReview(reviews) {
+  return (reviews || []).some(isSubstantiveCopilotReview);
+}
+
+export function admissionWaitReasons(requiredChecks, reviews) {
+  return [
+    ...(requiredChecks || []),
+    ...(!hasSubstantiveCopilotReview(reviews) ? ['substantive-copilot-review'] : []),
+  ];
+}
 
 export function isTrustedTrainPromotionCheck(check, trustedAppId) {
   return Boolean(

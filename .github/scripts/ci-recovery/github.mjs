@@ -63,14 +63,22 @@ export async function graphql(token, query, variables = {}) {
   return payload.data;
 }
 
-export async function listReviewThreads(token, owner, repo, number) {
+export async function listReviewThreads(token, owner, repo, number, graphqlFn = graphql) {
   const query = `
-    query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+    query(
+      $owner: String!,
+      $repo: String!,
+      $number: Int!,
+      $threadCursor: String,
+      $reviewCursor: String,
+      $includeThreads: Boolean!,
+      $includeReviews: Boolean!
+    ) {
       repository(owner: $owner, name: $repo) {
         pullRequest(number: $number) {
           id
           assignees(first: 50) { nodes { id login } }
-          reviewThreads(first: 100, after: $cursor) {
+          reviewThreads(first: 100, after: $threadCursor) @include(if: $includeThreads) {
             pageInfo { hasNextPage endCursor }
             nodes {
               id
@@ -89,26 +97,59 @@ export async function listReviewThreads(token, owner, repo, number) {
               }
             }
           }
+          reviews(first: 100, after: $reviewCursor) @include(if: $includeReviews) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              id
+              body
+              state
+              submittedAt
+              author { login }
+              comments(first: 1) {
+                nodes { body }
+              }
+            }
+          }
         }
       }
     }`;
   const threads = [];
-  let cursor = null;
+  const reviews = [];
+  let threadCursor = null;
+  let reviewCursor = null;
+  let includeThreads = true;
+  let includeReviews = true;
   let pullRequest = null;
   do {
-    const data = await graphql(token, query, { owner, repo, number, cursor });
-    pullRequest = data.repository?.pullRequest;
-    if (!pullRequest) {
+    const data = await graphqlFn(token, query, {
+      owner,
+      repo,
+      number,
+      threadCursor,
+      reviewCursor,
+      includeThreads,
+      includeReviews,
+    });
+    const page = data.repository?.pullRequest;
+    if (!page) {
       throw new Error(`PR #${number} was not found`);
     }
-    threads.push(...(pullRequest.reviewThreads?.nodes || []));
-    cursor = pullRequest.reviewThreads?.pageInfo?.hasNextPage
-      ? pullRequest.reviewThreads.pageInfo.endCursor
-      : null;
-  } while (cursor);
+    pullRequest = page;
+    if (includeThreads) {
+      threads.push(...(page.reviewThreads?.nodes || []));
+      includeThreads = page.reviewThreads?.pageInfo?.hasNextPage === true;
+      threadCursor = includeThreads ? page.reviewThreads.pageInfo.endCursor : null;
+    }
+    if (includeReviews) {
+      reviews.push(...(page.reviews?.nodes || []));
+      includeReviews = page.reviews?.pageInfo?.hasNextPage === true;
+      reviewCursor = includeReviews ? page.reviews.pageInfo.endCursor : null;
+    }
+  } while (includeThreads || includeReviews);
   return {
     id: pullRequest.id,
     assignees: pullRequest.assignees?.nodes || [],
+    reviews,
     threads,
   };
 }

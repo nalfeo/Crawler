@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "automation-ownership-cleanup",
+  "task_title": "Clean stale train labels and intake Actions issues",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Two plan reviews covered the holistic branch. Initial automation-ownership review resolved workflow eligibility drift, durable closed-PR recovery retry state, and cleanup ordering. Review-lifecycle extension resolved four concerns: submitted terminal Copilot reviews count when either body or an inline review comment is substantive; DISMISSED/PENDING reviews do not count; review history paginates independently and fails closed; missing review is an admission wait rather than a recovery blocker. Fresh synchronize changed-files reads use bounded retry before leaving a draft unpublished."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

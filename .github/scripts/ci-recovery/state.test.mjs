@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  admissionWaitReasons,
   assertOwnershipInvariant,
   blockerFingerprint,
   collapseCheckRunsByName,
   extractAddressedMarkerSha,
+  hasSubstantiveCopilotReview,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
   isLeaseExpired,
@@ -23,6 +25,72 @@ import {
   shouldSkipRepoIncidentWorkflowRun,
   shouldMutateRecoveryState,
 } from './state.mjs';
+
+test('requires a submitted substantive Copilot code review', () => {
+  const review = {
+    author: { login: 'copilot-pull-request-reviewer' },
+    state: 'COMMENTED',
+    body: 'Reviewed 3 files and found no blocking issues.',
+    comments: { nodes: [] },
+  };
+
+  assert.equal(hasSubstantiveCopilotReview([review]), true);
+  assert.equal(
+    hasSubstantiveCopilotReview([
+      {
+        ...review,
+        body: "Copilot wasn't able to review any files in this pull request.",
+      },
+    ]),
+    false,
+  );
+  assert.equal(hasSubstantiveCopilotReview([{ ...review, body: '   ' }]), false);
+  assert.equal(
+    hasSubstantiveCopilotReview([
+      {
+        ...review,
+        body: '',
+        comments: { nodes: [{ body: 'Potential null dereference on this line.' }] },
+      },
+    ]),
+    true,
+  );
+});
+
+test('rejects pending, dismissed, and non-Copilot reviews', () => {
+  const review = {
+    author: { login: 'copilot-pull-request-reviewer[bot]' },
+    state: 'COMMENTED',
+    body: 'Substantive review',
+    comments: { nodes: [] },
+  };
+
+  assert.equal(hasSubstantiveCopilotReview([{ ...review, state: 'PENDING' }]), false);
+  assert.equal(hasSubstantiveCopilotReview([{ ...review, state: 'DISMISSED' }]), false);
+  assert.equal(
+    hasSubstantiveCopilotReview([{ ...review, author: { login: 'some-other-reviewer[bot]' } }]),
+    false,
+  );
+});
+
+test('admission waits for both required checks and a substantive historical review', () => {
+  const noFilesReview = {
+    author: { login: 'copilot-pull-request-reviewer' },
+    state: 'COMMENTED',
+    body: "Copilot wasn't able to review any files in this pull request.",
+    comments: { nodes: [] },
+  };
+  const substantiveReview = {
+    ...noFilesReview,
+    body: 'Reviewed the pull request.',
+  };
+
+  assert.deepEqual(admissionWaitReasons(['ci'], [noFilesReview]), [
+    'ci',
+    'substantive-copilot-review',
+  ]);
+  assert.deepEqual(admissionWaitReasons([], [substantiveReview]), []);
+});
 
 test('normalizes blocker order before fingerprinting', () => {
   const left = [

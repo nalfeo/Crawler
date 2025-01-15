@@ -7,6 +7,7 @@ import {
   STATE_MARKER as RECOVERY_STATE_MARKER,
 } from '../ci-recovery/state.mjs';
 import {
+  applyLandedRecoveryDecision,
   buildCandidate,
   buildDispatchBindings,
   createMergePullRequest,
@@ -36,6 +37,7 @@ import {
   planPrefixPromotion,
   PROMOTION_POSTCONDITION_CHECK_NAME,
   QUEUE_LABEL,
+  RECOVERY_PENDING_LABEL,
   queueEntries,
   resolveAdmissionChecks,
   renderLandedComment,
@@ -353,10 +355,20 @@ async function landedCommitHasPostconditionFailure(landedSha) {
 // succeeded). A crash before the marker write is left for human review; a crash
 // between marker write and comment/label cleanup is recovered here.
 async function reconcileLandedSignals() {
-  const staleClosed = await paginate(
-    token,
-    `/repos/${owner}/${repo}/issues?state=closed&labels=${encodeURIComponent(QUEUE_LABEL)}`,
+  const staleByNumber = new Map();
+  const staleLists = await Promise.all(
+    [QUEUE_LABEL, RECOVERY_PENDING_LABEL].map((label) =>
+      paginate(
+        token,
+        `/repos/${owner}/${repo}/issues?state=closed&labels=${encodeURIComponent(label)}`,
+      ),
+    ),
   );
+  for (const item of staleLists.flat()) {
+    staleByNumber.set(item.number, item);
+  }
+
+  const staleClosed = [...staleByNumber.values()];
   for (const item of staleClosed) {
     if (!item.pull_request) continue;
     const pr = (await request(token, `/repos/${owner}/${repo}/pulls/${item.number}`)).data;
@@ -394,18 +406,28 @@ async function reconcileLandedSignals() {
       hasLandedLabel,
       factsComplete,
     });
-    if (decision.action !== 'finish') {
+    await applyLandedRecoveryDecision({
+      prNumber: pr.number,
+      landedSha,
+      decision,
+      postLandedComment,
+      setLabel,
+      removeLabel,
+    });
+
+    if (decision.action === 'finish') {
+      process.stdout.write(`recovered interrupted landing for pr=#${pr.number} sha=${landedSha}\n`);
+      continue;
+    }
+    if (decision.action === 'retry') {
       process.stdout.write(
-        `WARN: pr=#${pr.number} still queued after close but not a provable train landing (${decision.reason}); leaving ${QUEUE_LABEL} for review\n`,
+        `deferred closed-pr landing recovery for pr=#${pr.number} (${decision.reason}); moved retry state to ${RECOVERY_PENDING_LABEL}\n`,
       );
       continue;
     }
-    // LANDED_LABEL is already present (required by planLandedRecovery); post the
-    // truthful RECOVERED comment and remove the transient labels.
-    await postLandedComment(pr.number, landedSha, '', true);
-    await removeLabel(pr.number, BLOCKED_LABEL);
-    await removeLabel(pr.number, QUEUE_LABEL);
-    process.stdout.write(`recovered interrupted landing for pr=#${pr.number} sha=${landedSha}\n`);
+    process.stdout.write(
+      `cleared stale ${QUEUE_LABEL} state for closed pr=#${pr.number} (${decision.reason})\n`,
+    );
   }
 }
 
@@ -459,6 +481,11 @@ async function dispatchValidation(sha, fingerprint, entries) {
 
 await ensureLabel(QUEUE_LABEL, '1f6feb', 'Ready for the repository-managed merge train');
 await ensureLabel(BLOCKED_LABEL, 'd1242f', 'Merge-train candidate needs intervention');
+await ensureLabel(
+  RECOVERY_PENDING_LABEL,
+  'fbca04',
+  'Closed merge-train PR needs another landed-proof recovery attempt',
+);
 await ensureLabel(NOOP_LABEL, 'bf8700', 'PR squash diff is already present in the train base');
 await ensureLabel(
   VALIDATION_FAILED_LABEL,
