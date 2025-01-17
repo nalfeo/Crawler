@@ -7,6 +7,7 @@
  */
 import { AIDecisionMode, AIPathingMode } from './types.js';
 import type { AIDecisionModeValue, AIPathingModeValue } from './types.js';
+import { ENEMY_PROJECTILE } from '../../shared/constants.js';
 
 export interface CLIArgs {
   seed: number;
@@ -21,6 +22,7 @@ export interface CLIArgs {
   sampleInterval: number;
   weapon: string | null;
   enemyDamageMultiplier: number;
+  enemyTelegraphMs: number;
   floorId: string;
   startPlayerLevel: number;
   weaponTelemetry: boolean;
@@ -49,6 +51,7 @@ export function defaultCLIArgs(
     sampleInterval: 15,
     weapon: null,
     enemyDamageMultiplier: 1,
+    enemyTelegraphMs: ENEMY_PROJECTILE.TELEGRAPH_MS,
     floorId: 'floor1',
     startPlayerLevel: 1,
     weaponTelemetry: false,
@@ -112,6 +115,13 @@ export function parseArgs(
       }
       args.enemyDamageMultiplier = parsed;
       i++;
+    } else if (arg === '--enemy-telegraph-ms' && next) {
+      const parsed = Number(next);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error(`Invalid --enemy-telegraph-ms "${next}" (must be a finite number >= 0)`);
+      }
+      args.enemyTelegraphMs = parsed;
+      i++;
     } else if (arg === '--floor' && next) {
       args.floorId = next;
       i++;
@@ -172,6 +182,9 @@ Options:
   --debug                 Enable verbose logging
   --enemy-damage-multiplier <n>
                            Multiply hostile Damage values (default: 1)
+  --enemy-telegraph-ms <n>
+                           Delay (ms) enemy projectiles telegraph before firing;
+                           0 reproduces legacy immediate-fire behavior (default: ${ENEMY_PROJECTILE.TELEGRAPH_MS})
   --floor <id>            Scenario floor id (default: floor1)
   --start-level <n>       Start at player character level N (default: 1, no boost)
   --weapon-telemetry      Collect + print per-run weapon accuracy (swings, hits, multi-hit)

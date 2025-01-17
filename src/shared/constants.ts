@@ -101,6 +101,13 @@ export const ENEMY_PROJECTILE = {
   DAMAGE: tuning.enemyProjectile.damage,
   MUZZLE_OFFSET: tuning.enemyProjectile.muzzleOffset,
   ACCURACY: tuning.enemyProjectile.accuracy,
+  /**
+   * Default telegraph delay (ms) before a hostile projectile fires, used when
+   * neither a per-mob override (`EnemyBehavior.telegraphMs`) nor a world-level
+   * override (`world.enemyTelegraphMs`, e.g. the headless `--enemy-telegraph-ms`
+   * flag) is set. See `getEffectiveTelegraphMs()` in core/systems/enemyTelegraph.ts.
+   */
+  TELEGRAPH_MS: tuning.enemyProjectile.telegraphMs,
 } as const;
 
 export const FLOOR = {

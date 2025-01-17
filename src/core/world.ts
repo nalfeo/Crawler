@@ -120,6 +120,15 @@ export interface GameWorld {
   hostileEncounterRevision: number;
   /** Optional hostile-damage multiplier for simulation/testing modes (default 1). */
   hostileDamageMultiplier?: number;
+  /**
+   * Optional world-level override (ms) for the enemy-projectile telegraph
+   * delay, resolved via `getEffectiveTelegraphMs()` (core/systems/enemyTelegraph.ts)
+   * as `mob.telegraphMs ?? world.enemyTelegraphMs ?? ENEMY_PROJECTILE.TELEGRAPH_MS`.
+   * Undefined (production default) falls through to the constant 250ms. Set
+   * directly by the headless CLI's `--enemy-telegraph-ms <n>` flag; `0` is a
+   * legitimate value that reproduces exact legacy (no-telegraph) behavior.
+   */
+  enemyTelegraphMs?: number;
   /** Current floor number (1-indexed) */
   floor: number;
   /** Game state */

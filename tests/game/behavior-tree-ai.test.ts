@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addComponent, set } from 'bitecs';
+import { addComponent, query, set } from 'bitecs';
 import {
   spawnBehaviorEnemy,
   spawnEnemy,
@@ -9,10 +9,12 @@ import {
   spawnPlayer,
   spawnXpGem,
 } from '../../src/core/helpers.js';
-import { spawnEnemyProjectile } from '../../src/core/spawners/projectiles.js';
+import { spawnEnemyProjectile, spawnAoeProjectile } from '../../src/core/spawners/projectiles.js';
 import { createInputState } from '../../src/shared/input.js';
+import { GAME, TeamId } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
 import {
   initializeFloor1Scenario,
@@ -36,7 +38,8 @@ import { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
-import { AI_TYPE } from '../../src/game/enemyAISystem.js';
+import { AI_TYPE, enemyAISystem } from '../../src/game/enemyAISystem.js';
+import { isEnemyProjectileTelegraphActive } from '../../src/core/systems/enemyTelegraph.js';
 import {
   AINpcInteractionAction,
   AIProgressSuppressionSource,
@@ -55,7 +58,12 @@ import {
 } from '../../src/game/ai/bt-ai-tuning.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
-import { FamilyMembership, AoeOnImpact } from '../../src/core/components.js';
+import {
+  FamilyMembership,
+  AoeOnImpact,
+  EnemyProjectile,
+  Projectile,
+} from '../../src/core/components.js';
 import { asFamilyId, type FamilyId } from '../../src/core/faction-relations.js';
 
 /**
@@ -2208,6 +2216,361 @@ describe('BehaviorTreeAI', () => {
     expect(input.moveX).toBeGreaterThan(0);
     expect(Math.abs(input.moveY)).toBeGreaterThan(0.25);
     expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
+  it('sidesteps a telegraphed-but-not-yet-fired shot using the LOCKED aim (no privileged prediction)', () => {
+    // Same geometry as the real-projectile dodge test above, but the shot has
+    // not spawned yet — it is only telegraphing. The dodge must react to the
+    // locked origin/direction read from the shared public EnemyBehavior store
+    // (see core/systems/enemyTelegraph.ts), the same state the render cue uses.
+    const sword = getWeaponDef('sword')!;
+    const world = createTestWorld({ seed: 42 });
+    world.enemyTelegraphMs = 250;
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, sword);
+
+    // Drive the real fire logic to start (but not resolve) a telegraph aimed
+    // at the player, exactly as the real game loop would.
+    enemyAISystem(world);
+    expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(true);
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+    ai.poll(input, world);
+    const decision = ai.getDecision();
+    const dodge = ai.getOpportunisticDebug();
+
+    // No projectile exists yet — the only way a dodge triggers here is via the
+    // telegraphed-shot virtual-projectile loop reading locked origin/dir.
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
+  it('applies the muzzle offset to the telegraphed virtual-projectile dodge, matching the real fire-time spawn point (regression: gpt-5.3-codex + gemini-3.1-pro-preview finding)', () => {
+    // The real shot spawns at `telegraphOrigin + telegraphDir * MUZZLE_OFFSET`
+    // (see enemyAISystem.ts's fireEnemyProjectileFrom), not at the raw locked
+    // origin. If the AI's virtual-projectile dodge math ever regresses back to
+    // using the raw origin, its impact-time estimate drifts by
+    // MUZZLE_OFFSET/projectileSpeed frames. The runtime source of truth for
+    // `projectileSpeed` is `getWeaponDef('fireball')` (src/shared/weaponDefs.ts),
+    // which both the real fire path and this dodge math call — NOT the raw
+    // `src/shared/data/weapons.json` value, which is unused stale data here.
+    // getWeaponDef('fireball').projectileSpeed === 0.5 ft/frame, so the drift
+    // is 1.5ft / 0.5ft-per-frame = 3 frames for the fireball def used here.
+    //
+    // Geometry is tuned so that drift is the ONLY thing separating "candidate
+    // accepted" from "candidate silently skipped" at the dodge horizon gate
+    // (PROJECTILE_DODGE_HORIZON_FRAMES = 90):
+    //   - player sits at x = MUZZLE_OFFSET (1.5), so the FIXED spawn point
+    //     (origin + dir * MUZZLE_OFFSET) lands exactly on the player's x —
+    //     impactFramesAfterSpawn = 0, totalImpactFrames = remainingFrames.
+    //   - remainingFrames = 89.8 (comfortably <= 90 with the fix).
+    //   - WITHOUT the fix, the virtual shot spawns 1.5ft "behind" (at the raw
+    //     origin), adding exactly 3 impact frames -> totalImpactFrames =
+    //     92.8 (> 90) -> the candidate is skipped and dodgeY stays 0.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 1.5, 1);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const REMAINING_FRAMES = 89.8;
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = REMAINING_FRAMES * GAME.DELTA_MS;
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Only reachable if the dodge math offsets the spawn point by
+    // MUZZLE_OFFSET before computing impact time; otherwise this candidate is
+    // skipped for exceeding the dodge horizon and dodgeY stays 0.
+    expect(dodge.dodgeY).toBeGreaterThan(2);
+  });
+
+  it('counts the discrete pre-fire movement steps for the telegraphed-shot dodge horizon, not the raw fractional quotient (regression: copilot-pull-request-reviewer finding)', () => {
+    // The AI's poll() runs BEFORE runSimulationStep() advances world.elapsedMs
+    // and runs preSystems for the CURRENT step (see headless-runner.ts's main
+    // loop), while isEnemyProjectileTelegraphReady's fire check runs AFTER
+    // that increment but BEFORE that step's movementSystem
+    // (simulation-core-step.ts's preSystems -> movementSystem order). So the
+    // step on which the shot fires still advances elapsedMs and trips the
+    // fire check, but that step's OWN player movement happens after the fire
+    // (never before the shot spawns). The raw fractional quotient
+    // (remainingMs / DELTA_MS) overcounts the pre-fire player movements by
+    // exactly one step; the correct count is
+    // ceil(remainingMs / DELTA_MS) - 1.
+    //
+    // Geometry mirrors the muzzle-offset test above: the player sits exactly
+    // at the virtual shot's spawn point (origin + dir * MUZZLE_OFFSET) with
+    // zero velocity, so impactFramesAfterSpawn = 0 and
+    // totalImpactFrames = remainingFrames exactly — isolating the horizon
+    // gate (PROJECTILE_DODGE_HORIZON_FRAMES = 90) to the remainingFrames
+    // formula alone, independent of projected player position.
+    //   - delayMs = 91 whole frames.
+    //   - Raw fractional quotient: remainingFrames = 91 -> totalImpactFrames
+    //     = 91 > 90 -> candidate skipped -> dodgeY stays 0 (a real dodge is
+    //     missed one frame early).
+    //   - Correct discrete count: remainingFrames = ceil(91) - 1 = 90 ->
+    //     totalImpactFrames = 90 (not > 90) -> candidate accepted -> dodgeY
+    //     > 0.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 1.5, 1);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const DELAY_FRAMES = 91;
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = DELAY_FRAMES * GAME.DELTA_MS;
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Only reachable with the discrete pre-fire movement count: the raw
+    // fractional quotient would put this candidate one frame beyond the
+    // dodge horizon, silently skipping a shot the player can genuinely still
+    // react to.
+    expect(dodge.dodgeY).toBeGreaterThan(2);
+  });
+
+  it("dodges a telegraphed shot only once the shooter's tile is in LIVE FOV, not merely discovered/remembered tile memory (regression: copilot-pull-request-reviewer finding)", () => {
+    // canCurrentlyPerceiveWorldPosition (used solely for this telegraph-dodge
+    // gate) is a STRICT sibling of canPerceiveWorldPosition: it requires the
+    // shooter's LIVE tile to be in current FOV, not merely discovered/
+    // remembered — matching PhaserBridge's render-cue gate exactly, so the AI
+    // never reacts to a threat the player cannot currently see rendered.
+    // This distinguishes it from every OTHER perception check in this file
+    // (which use the looser canPerceiveWorldPosition and accept discovered-
+    // but-not-currently-visible tiles).
+    const world = createTestWorld({ seed: 42 });
+    world.floorMap = makeOpenRoom(24, 24);
+    world.enemyTelegraphMs = 250;
+    world.elapsedMs = 5000;
+    spawnPlayer(world, 0, 0);
+    // 20ft away, and makeOpenRoom's tileSizeFt = 4 -> a distinct tile from
+    // the player's (tile x = 5 vs 0), so marking the player's tile visible
+    // does not incidentally also mark the shooter's tile visible.
+    const enemy = spawnBehaviorEnemy(world, 20, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const floorMap = world.floorMap;
+    const playerTile = floorMap.worldToTile(0, 0);
+    const enemyTile = floorMap.worldToTile(20, 0);
+    expect(enemyTile.x).not.toBe(playerTile.x);
+    // Player tile visible+discovered triggers hasPerceptionData = true
+    // (restrictive mode) — matching the established pattern above.
+    floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    floorMap.setDiscovered(playerTile.x * 2, playerTile.y * 2);
+    // Shooter's tile: discovered (remembered from an earlier visit) but NOT
+    // currently visible.
+    floorMap.setDiscovered(enemyTile.x * 2, enemyTile.y * 2);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    const input = createInputState();
+
+    // Drive the real fire logic to start (but not resolve) a telegraph aimed
+    // at the player, exactly as the real game loop would.
+    enemyAISystem(world);
+    expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(true);
+
+    ai.poll(input, world);
+    let dodge = ai.getOpportunisticDebug();
+    // Discovered-but-not-currently-visible: the strict gate must reject this
+    // candidate even though the looser discovered-tile memory would allow it.
+    expect(dodge.dodgeY).toBe(0);
+
+    // Once the shooter's tile also enters LIVE FOV, the same telegraph must
+    // be dodged.
+    floorMap.setVisible(enemyTile.x * 2, enemyTile.y * 2);
+    ai.poll(input, world);
+    dodge = ai.getOpportunisticDebug();
+    expect(Math.abs(dodge.dodgeY)).toBeGreaterThan(1);
+  });
+
+  it('ignores a telegraphed shot from a shooter that already died this simulation step (regression: copilot-pull-request-reviewer finding)', () => {
+    // The input-polling AI runs before enemyAISystem in the frame order, so a
+    // shooter killed earlier this step can still have `telegraphActive` set
+    // here — enemyAISystem only cancels it once its own DeathTimer branch
+    // runs. Without filtering non-positive health (the same filter the
+    // closing-speed danger scorer already applies), the player would dodge a
+    // shot that is guaranteed to be cancelled and never actually fire.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 1.5, 1);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const REMAINING_FRAMES = 89.8;
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = REMAINING_FRAMES * GAME.DELTA_MS;
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+    // The shooter died earlier this step; DeathTimer hasn't cancelled the
+    // telegraph yet (that happens later, in enemyAISystem).
+    world.stores.health.current[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Same geometry that produces dodgeY > 2 in the live-shooter case above —
+    // here it must stay at 0 because the dead shooter's telegraph is ignored.
+    expect(dodge.dodgeY).toBe(0);
+  });
+
+  it("ignores a telegraphed shot whose closest approach lies beyond the real projectile's range (regression: copilot-pull-request-reviewer finding)", () => {
+    // The real fire path spawns via spawnAoeProjectile(..., FIREBALL_DEF.range)
+    // (enemyAISystem.ts's fireEnemyProjectileFrom) and projectileCleanupSystem
+    // despawns the projectile once it has traveled that far (32ft for
+    // fireball) from its spawn point. The virtual-projectile dodge model must
+    // respect the same bound — otherwise the AI dodges a shot that will
+    // despawn long before it could ever reach the player.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    // Stand directly on the aim ray, 38.5ft from the (muzzle-offset) spawn
+    // point — well beyond the fireball's 32ft range — so the shot would
+    // despawn in flight and can never actually hit.
+    spawnPlayer(world, 40, 0);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = 0; // ready to fire immediately
+    enemyBehavior.telegraphOriginX[enemy] = 0;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Without the range bound, this dead-center trajectory (well within the
+    // dodge horizon) would trigger a nonzero perpendicular dodge; with the
+    // bound in place the candidate is out of the real projectile's reach and
+    // must be skipped, leaving dodgeY at 0.
+    expect(dodge.dodgeY).toBe(0);
+  });
+
+  it("dodges a telegraphed shot whose closest approach lands just PAST nominal range, within the real pipeline's one-step grace (regression: copilot-pull-request-reviewer finding)", () => {
+    // projectileCleanupSystem despawns a projectile once its traveled
+    // distance EXCEEDS maxRange, but that check runs AFTER movement +
+    // collision + damage each step (simulation-core-step.ts), so the real
+    // shot can still land on the exact step it first crosses maxRange —
+    // one whole step beyond the nominal boundary. A hard `> rangeFt`
+    // rejection (the previous fix) would make the AI ignore a threat that
+    // can genuinely still hit. Fireball: range=32ft, projectileSpeed=0.5ft/
+    // frame -> last reachable step is floor(32/0.5)+1 = 65 frames (32.5ft).
+    //
+    // The enemy's LIVE body sits close to the player (15ft, well inside the
+    // player-AI's own melee-engage threshold) purely so the opportunistic
+    // dodge action actually runs — travel steering zeroes the dodge vector
+    // outright while the player AI is in EXPLORE (see
+    // buildOpportunisticDodge's travel-steering block), which would
+    // otherwise mask this candidate's math regardless of the fix under
+    // test. The telegraph's locked origin (what the range/geometry math
+    // reads) is set independently, 34ft behind the player, so the shot
+    // itself still has to travel the full 32.5ft grace distance to connect
+    // — exactly like a shooter that telegraphed at max range and then the
+    // player closed distance toward it during the delay.
+    const world = createTestWorld({ seed: 42 });
+    world.elapsedMs = 0;
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 15, 0, 40, AI_TYPE.RANGED, 5, 200, 160);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const { enemyBehavior } = world.stores;
+    enemyBehavior.telegraphActive[enemy] = 1;
+    enemyBehavior.telegraphStartMs[enemy] = 0;
+    enemyBehavior.telegraphDelayMs[enemy] = 0; // ready to fire immediately
+    // 32.5ft (muzzle-offset-adjusted) west of the player — just past the
+    // nominal 32ft range but exactly at the one-step grace boundary.
+    enemyBehavior.telegraphOriginX[enemy] = -34;
+    enemyBehavior.telegraphOriginY[enemy] = 0;
+    enemyBehavior.telegraphDirX[enemy] = 1;
+    enemyBehavior.telegraphDirY[enemy] = 0;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const dodge = ai.getOpportunisticDebug();
+
+    // Without the grace fix, this candidate's raw analytic frame (65) would
+    // have been hard-rejected for exceeding the nominal 32ft range,
+    // leaving dodgeX/Y at 0.
+    expect(Math.abs(dodge.dodgeX) + Math.abs(dodge.dodgeY)).toBeGreaterThan(0);
+  });
+
+  it('real pipeline: an enemy AoE projectile can still hit the player on the exact step it first exceeds nominal maxRange, before cleanup removes it (validates the dodge grace window above)', () => {
+    // Proves the "one-step grace" the dodge-math fix above models is real:
+    // movementSystem -> collisionSystem -> damageSystem all run BEFORE
+    // projectileCleanupSystem removes a projectile that has exceeded
+    // maxRange (simulation-core-step.ts ordering), so a hit landing exactly
+    // on the range-crossing step is genuine, not a modeling artifact.
+    // Fireball travels only 0.5ft/frame, so rather than simulate 64 steps to
+    // reach the boundary, fast-forward the projectile's Position to the
+    // last-safe distance (32ft, exactly at range) while leaving its
+    // Projectile.originX/Y at the true spawn point (0,0) — one real
+    // simulation step then advances it to 32.5ft (past the nominal 32ft
+    // range) in the same step collision/damage run.
+    const world = createTestWorld({ seed: 42 });
+    const fireballDef = getWeaponDef('fireball')!;
+    const enemy = spawnBehaviorEnemy(world, -50, 0, 40, AI_TYPE.RANGED, 0, 1, 1);
+    const player = spawnPlayer(world, 32.5, 0);
+
+    const projectile = spawnAoeProjectile(
+      world,
+      0,
+      0,
+      fireballDef.projectileSpeed,
+      0,
+      fireballDef.baseDamage,
+      fireballDef.aoeRadius,
+      fireballDef.baseDamage,
+      enemy,
+      TeamId.ENEMY,
+      fireballDef.range,
+    );
+    // spawnAoeProjectile does not tag EnemyProjectile itself — the real fire
+    // path (enemyAISystem.ts's fireEnemyProjectileFrom) adds it right after
+    // spawning; damageSystem's applyEnemyProjectileHit requires it to treat a
+    // hit as a legitimate enemy-on-player attack.
+    addComponent(world.ecs, projectile, EnemyProjectile);
+    // Fast-forward: already traveled to exactly the nominal range boundary
+    // (32ft); origin stays at the true spawn point for the cleanup system's
+    // distance-from-origin check.
+    world.stores.position.x[projectile] = fireballDef.range;
+    world.stores.position.y[projectile] = 0;
+
+    const healthBefore = world.stores.health.current[player] ?? 0;
+    runSimulationStep(world, createInputState(), GAME.DELTA_MS);
+
+    expect(world.stores.health.current[player] ?? 0).toBeLessThan(healthBefore);
+    // The same step that lands the hit also removes the now-out-of-range projectile.
+    expect(query(world.ecs, [Projectile]).includes(projectile)).toBe(false);
   });
 
   it('triggers dodge for an AoE fireball that misses the direct-hit clearance but lands within splash radius+buffer, and ignores one just outside', () => {

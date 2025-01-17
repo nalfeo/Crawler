@@ -189,6 +189,44 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       aggroedPermanently: new Uint8Array(maxEntities),
       /** Frames since velocity was zero (used to detect stuck enemies). */
       stuckFrames: new Uint16Array(maxEntities),
+      /**
+       * Per-mob override (ms) for the projectile telegraph delay. `-1`
+       * (TELEGRAPH_MS_UNSET, see core/systems/enemyTelegraph.ts) means "no
+       * override — use the configured/world default". An explicit `0` is a
+       * legitimate override forcing legacy (no-telegraph) behavior for this
+       * one mob and is intentionally NOT the sentinel value, since it must be
+       * distinguishable from "unset". `.fill(-1)` below is the array-creation
+       * default; because `clearEntityStores()` zeroes every typed-array slot
+       * on EVERY `createEntity()` call (not just recycled EIDs), the real
+       * sentinel guarantee comes from `spawnBehaviorEnemy` explicitly writing
+       * this field at every spawn — see src/core/spawners/combatants.ts.
+       */
+      telegraphMs: new Float32Array(maxEntities).fill(-1),
+      /** 1 while this enemy is telegraphing (aim locked, waiting to fire). */
+      telegraphActive: new Uint8Array(maxEntities),
+      /** world.elapsedMs when the active telegraph began. */
+      telegraphStartMs: new Float32Array(maxEntities),
+      /** Resolved effective delay (ms) for the active telegraph, captured once at telegraph start. */
+      telegraphDelayMs: new Float32Array(maxEntities),
+      /** Locked aim unit vector (x), immutable for the whole telegraph window. */
+      telegraphDirX: new Float32Array(maxEntities),
+      /** Locked aim unit vector (y), immutable for the whole telegraph window. */
+      telegraphDirY: new Float32Array(maxEntities),
+      /** Locked firing origin (x), captured once at telegraph start; the real fire spawns from here, not live position. */
+      telegraphOriginX: new Float32Array(maxEntities),
+      /** Locked firing origin (y), captured once at telegraph start; the real fire spawns from here, not live position. */
+      telegraphOriginY: new Float32Array(maxEntities),
+      /**
+       * Render-frame sticky: set to 1 whenever `telegraphActive` transitions
+       * to 1 within any simulation step in a batch; cleared by
+       * `PhaserBridge.sync()` at the end of each rendered frame. Ensures a
+       * telegraph that starts AND completes entirely within a multi-step
+       * catch-up batch (e.g. AI-runner lab 16× playback) still renders its
+       * cue for at least one frame instead of being silently skipped because
+       * `telegraphActive` returned to 0 before the next sync. Default (0) is
+       * correct — `clearEntityStores()` zeroes this on every `createEntity()`.
+       */
+      telegraphWasActiveThisFrame: new Uint8Array(maxEntities),
     },
     spawner: {
       /** Index into the SPAWNER_ARCHETYPES registry (src/game/spawners). */

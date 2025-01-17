@@ -1,6 +1,7 @@
 import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
 import { DeathTimer, Position, Prop, Rotation, Sprite } from '../core/components.js';
+import { isEnemyProjectileTelegraphActive } from '../core/systems/enemyTelegraph.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite, getSheet } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
@@ -351,6 +352,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const mobHealthBars = new Map<number, Phaser.GameObjects.Graphics>();
+  /** Per-enemy locked-trajectory telegraph cue (see enemyTelegraph.ts). */
+  const telegraphGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
   /** Per-harvestable node Graphics (fallback body circle + progress ring redrawn each frame). */
@@ -1324,6 +1327,91 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             bar.lineStyle(1, 0x000000, 1);
             bar.strokeRect(barX - 1, barY - 1, barWidth + 2, MOB_HEALTH_BAR_HEIGHT_PX + 2);
           }
+
+          // --- Locked-trajectory telegraph cue ---
+          // Reads the SAME locked origin/direction fields the fire logic and
+          // AI dodge reasoning use (core/systems/enemyTelegraph.ts) — never
+          // live position — so what the player sees is exactly what will fire.
+          // Gated on the same `isVisible` FOV check as the sprite/health bar:
+          // an off-screen/fog-hidden shooter must not reveal its position or
+          // aim line through the telegraph cue. The AI's dodge reasoning is
+          // gated the same way (via `canCurrentlyPerceiveWorldPosition()` at
+          // the shooter's live position, in bt-ai-provider.ts) so both paths
+          // share the same no-privileged-visibility contract.
+          // Also gated on `!isDeadEnemy`: damage/drop/death processing runs
+          // after enemy AI, and this render pass runs after that, so a
+          // shooter killed earlier this same frame can still have
+          // `telegraphActive` set until the NEXT enemyAISystem pass cancels
+          // it — without this guard the cue would draw from a corpse.
+          //
+          // The `telegraphWasActiveThisFrame` sticky flag handles the 16×
+          // AI-runner-lab playback case: at high simulation speeds the
+          // catch-up loop can run many sim steps per rendered frame, so a
+          // short telegraph (e.g. 250ms default delay at 16× = only ~1 sim
+          // step) can start AND complete within a single batch, meaning
+          // `telegraphActive` flips 0→1→0 before the next sync(). The sticky
+          // flag is set once by `startEnemyProjectileTelegraph()` and cleared
+          // here (after rendering) so the cue is visible for exactly one
+          // rendered frame even when `telegraphActive` is already 0 at sync
+          // time. Production (1× speed) is unaffected: every step is followed
+          // by a sync, so `telegraphActive` alone is sufficient.
+          const { enemyBehavior: eb } = world.stores;
+          const isTelegraphing =
+            (isEnemyProjectileTelegraphActive(world, eid) ||
+              eb.telegraphWasActiveThisFrame[eid] === 1) &&
+            isVisible &&
+            !isDeadEnemy;
+          const existingTelegraph = telegraphGraphics.get(eid);
+          if (!isTelegraphing) {
+            existingTelegraph?.setVisible(false);
+          } else if (typeof scene.add.graphics === 'function') {
+            const enemyBehaviorStore = world.stores.enemyBehavior;
+            const startMs = enemyBehaviorStore.telegraphStartMs[eid] ?? 0;
+            const delayMs = Math.max(1, enemyBehaviorStore.telegraphDelayMs[eid] ?? 1);
+            const elapsedMs = Math.max(0, renderElapsedMs - startMs);
+            const progress = Math.min(1, elapsedMs / delayMs);
+            const originX = ftToPx(enemyBehaviorStore.telegraphOriginX[eid] ?? 0);
+            const originY = ftToPx(enemyBehaviorStore.telegraphOriginY[eid] ?? 0);
+            const dirX = enemyBehaviorStore.telegraphDirX[eid] ?? 0;
+            const dirY = enemyBehaviorStore.telegraphDirY[eid] ?? 0;
+            const rangeFt = Math.max(1, enemyBehaviorStore.attackRange[eid] ?? 1);
+            const length = ftToPx(rangeFt);
+            // Pulses faster as the shot nears firing so the cue reads as an
+            // urgency ramp, not a static line. Phased on this telegraph's own
+            // `elapsedMs` (not the absolute/global `renderElapsedMs`) so the
+            // pulse frequency change from `progress` doesn't cause the sine
+            // phase to jump — an absolute-time phase combined with a
+            // progress-dependent frequency produces a phase discontinuity
+            // every frame once the game has been running a while, which
+            // reads as random high-frequency flicker instead of a smooth
+            // urgency ramp.
+            const pulse = 0.55 + 0.45 * Math.sin(elapsedMs * (0.006 + progress * 0.02));
+            const alpha = (0.35 + 0.5 * progress) * pulse;
+
+            const tg = existingTelegraph ?? scene.add.graphics();
+            if (!existingTelegraph) {
+              telegraphGraphics.set(eid, tg);
+            }
+            tg.setDepth((img.depth ?? 0) + 1).setVisible(true);
+            tg.clear();
+            tg.lineStyle(2, 0xff2222, alpha);
+            tg.beginPath();
+            tg.moveTo(originX, originY);
+            tg.lineTo(originX + dirX * length, originY + dirY * length);
+            tg.strokePath();
+            // Origin marker so the locked shooter position reads clearly even
+            // if the enemy's sprite has visually drifted (e.g. from a knockback
+            // that intentionally does not un-lock the telegraph — see
+            // enemyTelegraph.ts).
+            tg.fillStyle(0xff2222, Math.min(1, alpha + 0.15));
+            tg.fillCircle(originX, originY, 4);
+          }
+          // Clear the per-frame sticky flag after it has been consumed. If the
+          // telegraph is still active (`eb.telegraphActive[eid] === 1`) the cue
+          // will keep rendering via that flag in future frames; if it completed
+          // during the batch, it will have rendered for exactly one frame here
+          // and now correctly goes dark.
+          eb.telegraphWasActiveThisFrame[eid] = 0;
         }
       }
 
@@ -1580,6 +1668,22 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         mobHealthBars.delete(eid);
       }
 
+      for (const [eid, tg] of telegraphGraphics) {
+        // Beyond the usual active-entity liveness check, also require the
+        // EID to still resolve as an enemy: bitecs may recycle a removed
+        // enemy's EID for an unrelated sprite (e.g. a gem/prop) across a
+        // batch of simulation steps that runs before the next render, and
+        // `activeEntities` alone can't distinguish "same enemy, still alive"
+        // from "different entity now occupying this recycled EID" — without
+        // this check the old aim line would keep rendering indefinitely,
+        // now pinned to the wrong entity's position.
+        if (activeEntities.has(eid) && resolveRenderKind(world, eid) === 'enemy') {
+          continue;
+        }
+        tg.destroy();
+        telegraphGraphics.delete(eid);
+      }
+
       // Iterate the spawn-time maps (always populated on first sight), not the
       // shadow maps (only populated when the scene supports add.ellipse), so
       // gem/gold entities clean up even in headless/test render paths that never
@@ -1661,6 +1765,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         bar.destroy();
       }
       mobHealthBars.clear();
+
+      for (const tg of telegraphGraphics.values()) {
+        tg.destroy();
+      }
+      telegraphGraphics.clear();
 
       for (const visual of propVisuals.values()) {
         visual.obj.destroy();

@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "ai-runner-16x-telegraph-sticky-flag",
+  "task_title": "AI-runner 16x playback sticky telegraph flag (fix short-lived cue batch skip)",
+  "estimated_apples": 2,
+  "stages": {}
+}

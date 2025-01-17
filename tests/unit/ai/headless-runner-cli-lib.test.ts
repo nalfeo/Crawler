@@ -66,3 +66,33 @@ describe('headless-runner-cli parseArgs — A/B mode flags', () => {
     ).toBe(true);
   });
 });
+
+describe('headless-runner-cli parseArgs — --enemy-telegraph-ms', () => {
+  it('defaults to 250ms (production/headless default)', () => {
+    expect(cli().enemyTelegraphMs).toBe(250);
+    expect(defaultCLIArgs({}).enemyTelegraphMs).toBe(250);
+  });
+
+  it('parses an explicit --enemy-telegraph-ms override', () => {
+    expect(cli('--enemy-telegraph-ms', '500').enemyTelegraphMs).toBe(500);
+  });
+
+  it('accepts an explicit 0 (legacy parity), not treated as unset', () => {
+    expect(cli('--enemy-telegraph-ms', '0').enemyTelegraphMs).toBe(0);
+  });
+
+  it('throws on a negative --enemy-telegraph-ms', () => {
+    expect(() => cli('--enemy-telegraph-ms', '-5')).toThrow(/Invalid --enemy-telegraph-ms/);
+  });
+
+  it('throws on a non-numeric --enemy-telegraph-ms', () => {
+    expect(() => cli('--enemy-telegraph-ms', 'bogus')).toThrow(/Invalid --enemy-telegraph-ms/);
+  });
+
+  it('throws on a malformed value with a numeric prefix (regression: copilot-pull-request-reviewer finding)', () => {
+    // Number.parseFloat('250ms') === 250 -- it stops at the first non-numeric
+    // character instead of rejecting the whole token, silently accepting
+    // malformed CLI input. Number('250ms') is NaN, correctly rejecting it.
+    expect(() => cli('--enemy-telegraph-ms', '250ms')).toThrow(/Invalid --enemy-telegraph-ms/);
+  });
+});
