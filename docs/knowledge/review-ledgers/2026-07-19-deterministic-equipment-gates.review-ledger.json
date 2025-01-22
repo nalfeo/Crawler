@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "deterministic-equipment-gates",
+  "task_title": "Add deterministic equipment DPS and distribution gates",
+  "estimated_apples": 2,
+  "stages": {}
+}
