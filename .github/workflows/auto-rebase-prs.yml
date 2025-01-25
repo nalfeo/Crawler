@@ -21,6 +21,11 @@ on:
         required: false
         default: ''
         type: string
+      expected_base_ref:
+        description: Expected PR base ref for conflict-only rebase
+        required: false
+        default: ''
+        type: string
       trigger:
         description: Rebase dispatch source
         required: false
@@ -63,6 +68,7 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_BASE_REF_INPUT: ${{ inputs.expected_base_ref }}
         run: |
           set -euo pipefail
 
@@ -79,6 +85,10 @@ jobs:
           if [ "$train_enabled" = "true" ]; then
             target_pr='${{ inputs.pr_number }}'
             expected_head='${{ inputs.expected_head_sha }}'
+            expected_base="${EXPECTED_BASE_REF_INPUT}"
+            if [ -z "$expected_base" ]; then
+              expected_base=main
+            fi
             if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] || [ -z "$target_pr" ]; then
               echo "Merge train enabled; blanket rebase sweep disabled."
               exit 0
@@ -87,11 +97,11 @@ jobs:
               gh pr view "$target_pr" \
                 --repo "$GITHUB_REPOSITORY" \
                 --json number,state,isDraft,baseRefName,headRefOid,headRefName,headRepository,headRepositoryOwner,labels |
-                jq --arg expected "$expected_head" \
-                  '[select(.state == "OPEN" and .isDraft == false and .baseRefName == "main" and .headRefOid == $expected)]'
+                jq --arg expected "$expected_head" --arg expectedBase "$expected_base" \
+                  '[select(.state == "OPEN" and .isDraft == false and .baseRefName == $expectedBase and .headRefOid == $expected)]'
             )
             if [ "$(echo "$prs_json" | jq 'length')" -eq 0 ]; then
-              echo "Target PR is no longer open, non-draft, main-targeting, or at the expected head; skipping stale dispatch."
+              echo "Target PR is no longer open, non-draft, at the expected base ref, or at the expected head; skipping stale dispatch."
               exit 0
             fi
           else
@@ -99,7 +109,7 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --state open \
               --base main \
-              --json number,isDraft,headRefOid,headRefName,headRepository,headRepositoryOwner,labels \
+              --json number,isDraft,baseRefName,headRefOid,headRefName,headRepository,headRepositoryOwner,labels \
               --jq '[.[] | select(.isDraft == false)]')
           fi
 
@@ -126,6 +136,7 @@ jobs:
             head_owner=$(echo "$pr" | jq -r '.headRepositoryOwner.login // empty')
             head_repo=$(echo "$pr" | jq -r '.headRepository.name // empty')
             expected_head=$(echo "$pr" | jq -r '.headRefOid // empty')
+            expected_base=$(echo "$pr" | jq -r '.baseRefName // "main"')
 
             echo "Processing PR #$number ($head_owner/$head_repo:$head_ref)..."
 
@@ -164,6 +175,8 @@ jobs:
                 -f operation=reconcile \
                 -f pr_number="$number" \
                 -f trigger=auto-rebase-conflict \
+                -f expected_head_sha="$expected_head" \
+                -f expected_base_ref="$expected_base" \
                 -f lease_id=
               conflicts=$((conflicts + 1))
             fi
@@ -177,6 +190,8 @@ jobs:
               -f operation=reconcile \
               -f pr_number="$target_pr" \
               -f trigger=auto-rebase-failure \
+              -f expected_head_sha="$expected_head" \
+              -f expected_base_ref="$expected_base" \
               -f lease_id=
             exit 1
           fi

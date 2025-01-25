@@ -22,6 +22,22 @@ on:
         required: false
         default: workflow_dispatch
         type: string
+      expected_head_sha:
+        description: >-
+          Optional PR head SHA this dispatch was validated against. When set,
+          recovery fails closed (skips without mutating) if the live PR metadata
+          no longer matches. Empty preserves normal manual/router behavior.
+        required: false
+        default: ''
+        type: string
+      expected_base_ref:
+        description: >-
+          Optional default-branch base ref the trusted dispatch was validated
+          against. Required when expected_head_sha is set; recovery fails closed
+          if it is missing or if the live PR base ref no longer matches.
+        required: false
+        default: ''
+        type: string
       lease_id:
         description: Non-secret shepherd ownership identifier
         required: false
@@ -58,5 +74,7 @@ jobs:
           PR_NUMBER: ${{ inputs.pr_number }}
           RECOVERY_OPERATION: ${{ inputs.operation }}
           RECOVERY_TRIGGER: ${{ inputs.trigger }}
+          EXPECTED_HEAD_SHA: ${{ inputs.expected_head_sha }}
+          EXPECTED_BASE_REF: ${{ inputs.expected_base_ref }}
           LEASE_ID: ${{ inputs.lease_id }}
         run: node .github/scripts/ci-recovery/reconcile.mjs
