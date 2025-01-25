@@ -1,23 +1,27 @@
 type: weapon
 name: chain-flail
-floor: 2
 description: |
-  A brutal Floor 2 chain flail held vertically, chain at the top hanging
-  down to a heavy iron ball, wrapped leather grip at the bottom. Three to
-  four visible chain links between the handle and the weighted head — each
-  link rendered as a small oval or ring. The ball is large and solid:
-  riveted iron sphere, optionally spiked. Dark iron chain with cool grey
-  highlights; dull steel ball with shadow on the underside; dark brown
-  wrapped grip with a simple band or pommel at the base. Worn metal
-  throughout — scratches, dents, and scuffs on the ball and chain.
-  No glow, no enchantment, no blood, no fire. The silhouette must read as
-  "chain with heavy ball" at a glance and clearly not be a sword or mace.
-# Chain flail is a standard vertical bludgeon weapon.
-# Vertical orientation, 4x4 sheet, palette, references, and anchor
-# all inherited from data/sprite-types/weapon.json.
-# minVariations: 8 lets the runner expand the seed list with diverse
-# silhouette / proportion variants (ball size, chain length, spike count).
+  A heavy one-handed flail held vertically, haft at the bottom, spiked ball
+  at the top. The short dark-wood or wrapped-iron haft fills the lower third
+  of the canvas, ending in a small iron pommel. Two to three large oval iron
+  chain links connect the haft tip to the ball — the links must read clearly
+  as chain, not rope or cord. The ball is a solid dark-iron sphere studded
+  with four to six blunt conical spikes radiating outward; spikes should be
+  thick and readable at native size. Floor 2 palette: cool near-black iron
+  for the ball and chain, dark muted brown for the haft, dull pewter
+  highlight along one edge of each chain link and one side of the ball.
+  Single thin reflected-light highlight on the topmost spike. No glow, no
+  flames, no blood, no enchantment, no wrapped chain coil. The silhouette
+  must read as "spiked ball on a chain on a stick" at a glance and must not
+  be mistaken for a morning star (rigid pole) — the chain gap between haft
+  and ball is the key differentiator.
+# Vertical orientation, 4×4 sheet, kenney-roguelike palette, anchor (32,56),
+# and VLM judge — all inherited from data/sprite-types/weapon.json.
+# Chain flail hangs vertically (haft bottom → chain → ball top), so the
+# default vertical sensor is correct; no orientation override needed.
+# Each variation is an independent design alternative — the generator
+# produces one of these per applicable variant slot, not combinations.
 variations:
-  - spiked iron ball with four outward-facing spikes
-  - smooth heavy cannonball-style weight, extra-long chain
-minVariations: 8
+  - ball replaced by a barbed pear-shaped iron weight instead of a round sphere
+  - double-link chain (two side-by-side chains) connecting haft to ball
+minVariations: 6
