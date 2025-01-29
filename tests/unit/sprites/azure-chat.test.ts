@@ -89,6 +89,8 @@ describe('AzureOpenAIChatProvider.expandVariations', () => {
     expect(body.response_format).toEqual({ type: 'json_object' });
     expect(body.messages[0]?.role).toBe('system');
     expect(body.messages[1]?.role).toBe('user');
+    expect(body.messages[0]?.content).toContain('panda mafia dons');
+    expect(body.messages[1]?.content).toContain('FLOOR: 1 of 20');
     // User prompt must mention the count and the existing seed.
     expect(body.messages[1]?.content).toContain('exactly 3');
     expect(body.messages[1]?.content).toContain('seed entry');

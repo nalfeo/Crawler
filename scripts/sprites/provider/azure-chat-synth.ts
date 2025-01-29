@@ -28,6 +28,7 @@ import type {
 } from './synth-types.js';
 import { SynthProviderError } from './synth-types.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
+import { contentDirectionBlock } from '../content-direction.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
@@ -178,13 +179,17 @@ export class AzureOpenAISynthProvider implements SynthProvider {
 export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const wantClassify = request.type === null;
   const lines: string[] = [
-    'You are an art director writing concept briefs for 64x64-frame pixel-art sprites in the grungy indie style of the game Crawler — think expressive Earthbound characters crossed with worn Mad Max textures in a dark fantasy dungeon. Given a subject name, write multiple short concept briefs that a human collaborator will then pick from to send to an illustrator.',
+    "You are Crawler's art director. Write concrete concept briefs for 256x256-source pixel-art sprites that resolve to readable game-scale art.",
     '',
-    'A good brief is concrete. It names the pose, the silhouette, the orientation, and the dominant colour by name (no hex codes — leave RGB choices to the illustrator). Strong briefs use specific verbs and nouns; weak briefs use generic adjectives like "cool" or "nice", so prefer concrete language.',
+    contentDirectionBlock(request.floor),
     '',
-    'Aim for visibly distinct candidates. Each candidate should differ in silhouette, proportion, and on-theme detail from the others — not just colour swaps. For weapons, the default orientation is vertical with the grip at the bottom.',
+    'A strong brief names the pose, silhouette, orientation, proportions, materials, dominant colors by name, and one memorable contradiction. Use specific nouns and verbs instead of generic adjectives. Do not prescribe hex colors.',
     '',
-    `Each candidate also includes ${request.effectiveMinSeeds}-${request.effectiveMaxSeeds} short, discrete embellishment ideas (4-12 words each, no compound "and" entries), which the downstream variation expander will build on. And one sentence of rationale describing how this candidate differs from the others.`,
+    'Keep taxonomy literal unless the request says otherwise. Items are inanimate by default; do not add faces, eyes, mouths, limbs, expressions, or creature anatomy. Mobs face left by default. Weapons are vertical by default with the grip at the bottom. Tiles fill their frame and have no facing.',
+    '',
+    'Produce visibly different candidates, not palette swaps. Vary silhouette, proportion, pose, construction, social role, and one on-theme contradiction while keeping the core subject and gameplay role intact.',
+    '',
+    `Each candidate also includes ${request.effectiveMinSeeds}-${request.effectiveMaxSeeds} short, discrete embellishment ideas (4-25 words each, no compound "and" entries), which the downstream variation expander will build on. And one sentence of rationale describing how this candidate differs from the others.`,
     '',
     `Allowed sprite types: ${SPRITE_TYPES.join(', ')}.`,
     '',
@@ -226,6 +231,7 @@ export function buildUserPrompt(request: SynthesizeBriefRequest): string {
     `Subject name: ${request.name}.`,
     ...(hint ? [`Additional direction: ${hint}`] : []),
     typeLine,
+    `Floor: ${request.floor} of 20.`,
     `Please return exactly ${request.candidates} candidate brief(s).`,
   ].join('\n');
 }

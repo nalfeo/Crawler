@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
 import { variantCount } from './brief-schema.js';
 import { resizeSpriteStrategy } from './size-variants.js';
+import { CRAWLER_DESIGN_LANGUAGE, floorContextBlock } from './content-direction.js';
 
 /**
  * Pure prompt builders for the sprite generation pipeline.
@@ -72,7 +73,8 @@ export function extractPreamble(markdown: string): string {
     .map((line) => line.trimEnd())
     .filter((line, idx, arr) => !(line === '' && arr[idx - 1] === ''))
     .join('\n')
-    .trim();
+    .trim()
+    .replace('{{CRAWLER_DESIGN_LANGUAGE}}', CRAWLER_DESIGN_LANGUAGE);
 }
 
 /**
@@ -87,6 +89,8 @@ export function buildPrompt(brief: Brief, styleGuide: string): string {
   const rules = typeRulesBlock(brief);
   return [
     styleGuide,
+    '',
+    floorContextBlock(brief.floor),
     '',
     briefSubjectBlock(brief),
     '',
@@ -112,6 +116,8 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const variationsBlock = thematicVariationsBlock(brief.variations);
   return [
     styleGuide,
+    '',
+    floorContextBlock(brief.floor),
     '',
     briefSubjectBlock(brief),
     '',
@@ -255,7 +261,7 @@ function typeRulesBlock(brief: Brief): string | null {
   if (brief.type === 'enemy') {
     const { cellW, cellH } = cellDims(brief);
     const { loH, hiH } = sourceFootprint(brief);
-    const facing = brief.sensors.enemy?.facing ?? 'right';
+    const facing = brief.sensors.enemy?.facing ?? 'left';
     const facingLine =
       facing === 'front'
         ? '- Draw the mob facing straight forward toward the camera, not angled or in three-quarter view.'
@@ -296,6 +302,19 @@ function typeRulesBlock(brief: Brief): string | null {
       '- Avoid drab monochrome outfits. Use high-contrast wardrobe accents from across the available palette (cool + warm hues, not only browns/oranges).',
       '- Ensure hair and skin tones are clearly differentiated from clothing so the silhouette and face stay readable at 1×.',
       '- Preserve practical adventurer styling (functional gear, no ornate royal costume unless explicitly requested).',
+    ].join('\n');
+  }
+  if (brief.type === 'weapon') {
+    return [
+      '## Weapon rules',
+      '- Draw the weapon vertically by default, with the grip at the bottom and business end at the top, unless the brief explicitly requires another orientation.',
+    ].join('\n');
+  }
+  if (brief.type === 'item') {
+    return [
+      '## Item rules',
+      '- Keep the item inanimate. Do not invent eyes, faces, mouths, limbs, expressions, mascot features, or creature anatomy unless the brief explicitly requests them.',
+      '- Separate the object, fittings, fabric, and accents with distinct hues or value groups instead of a muddy single-family palette.',
     ].join('\n');
   }
   return null;
@@ -359,7 +378,7 @@ function sheetLayoutBlock(brief: Brief, count: number): string {
     lines.push('Every cell must contain exactly one variant — no empty cells.');
   }
   lines.push(
-    'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose / angle within the orientation rule, internal detail density, shading direction, individual material color choices (e.g. a different brown for a wrapped hilt, a different grey for steel). DO NOT vary along: art style, outline thickness, subject identity, orientation, level of stylization. If the subject description is short or leaves room for interpretation, lean into the variation axes above so the sheet covers the design space rather than producing near-duplicates.',
+    'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose within the orientation rule, construction, material distribution, shading direction, and contrasting accent colors. Preserve subject identity, gameplay role, orientation, rendering style, and floor-context intensity. Do not reduce diversity to different shades of one dominant color. If the subject description leaves room for interpretation, cover the design space rather than producing near-duplicates.',
   );
   return lines.join('\n');
 }

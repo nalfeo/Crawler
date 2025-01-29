@@ -18,6 +18,7 @@ describe('synth-cli parseArgs', () => {
       candidates: 3,
       allowPartial: false,
       size: 'default',
+      floor: 1,
     });
   });
 
@@ -48,6 +49,13 @@ describe('synth-cli parseArgs', () => {
   it('parses --allow-partial as a boolean switch', () => {
     const args = parseArgs(['scythe', '--allow-partial']);
     expect(args.allowPartial).toBe(true);
+  });
+
+  it('parses --floor and rejects values outside 1 through 20', () => {
+    expect(parseArgs(['llama', '--floor', '2']).floor).toBe(2);
+    expect(() => parseArgs(['llama', '--floor', '0'])).toThrow(/integer in \[1, 20\]/);
+    expect(() => parseArgs(['llama', '--floor', '21'])).toThrow(/integer in \[1, 20\]/);
+    expect(() => parseArgs(['llama', '--floor', '2.5'])).toThrow(/integer in \[1, 20\]/);
   });
 
   it('rejects an unknown sprite type', () => {

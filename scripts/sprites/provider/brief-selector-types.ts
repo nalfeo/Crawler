@@ -6,6 +6,7 @@ export interface BriefSelectorCandidate {
 export interface SelectBriefRequest {
   readonly name: string;
   readonly briefSentence: string;
+  readonly floor: number;
   readonly candidates: ReadonlyArray<BriefSelectorCandidate>;
 }
 

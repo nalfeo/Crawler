@@ -62,6 +62,7 @@ function baseInputs() {
     variantPng: Buffer.from([1, 2, 3, 4, 5]),
     referencePngs: [Buffer.from([10, 11, 12]), Buffer.from([20, 21, 22])],
     briefMatchInstructions: 'A vertical iron sword.',
+    floor: 1,
   };
 }
 
@@ -129,6 +130,12 @@ describe('JudgeCache.computeKey', () => {
       ...baseInputs(),
       briefMatchInstructions: 'A red sword instead.',
     });
+    expect(a).not.toBe(b);
+  });
+
+  it('distinguishes identical inputs judged at different floors', () => {
+    const a = cache.computeKey({ ...baseInputs(), floor: 1 });
+    const b = cache.computeKey({ ...baseInputs(), floor: 20 });
     expect(a).not.toBe(b);
   });
 });

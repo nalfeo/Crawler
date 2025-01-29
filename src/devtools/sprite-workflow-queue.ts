@@ -104,6 +104,8 @@ export interface QueueSynthCandidate {
 export interface QueueJudgeSummary {
   readonly passed: boolean;
   readonly minScore: number;
+  readonly designLanguage?: number;
+  readonly referenceStyleMatch?: number;
   readonly styleMatch: number;
   readonly briefMatch: number;
   readonly readability: number;
@@ -669,7 +671,11 @@ function sanitizeJudgeSummary(value: unknown): QueueJudgeSummary | null {
   return {
     passed: j.passed === true,
     minScore: num(j.minScore),
-    styleMatch: num(j.styleMatch),
+    ...(typeof j.designLanguage === 'number' ? { designLanguage: num(j.designLanguage) } : {}),
+    ...(typeof j.referenceStyleMatch === 'number'
+      ? { referenceStyleMatch: num(j.referenceStyleMatch) }
+      : {}),
+    styleMatch: num(j.styleMatch ?? j.referenceStyleMatch),
     briefMatch: num(j.briefMatch),
     readability: num(j.readability),
     rejectedBy: Array.isArray(j.rejectedBy)

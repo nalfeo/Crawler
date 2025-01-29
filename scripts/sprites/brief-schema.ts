@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEFAULT_FLOOR, MAX_FLOOR } from './content-direction.js';
 import { SIZE_VARIANTS } from './size-variants.js';
 
 /**
@@ -207,6 +208,7 @@ export const briefSchema = z
     anchor: anchorSchema,
     tags: z.array(z.string().min(1)).default([]),
     prompt: z.string().min(1),
+    floor: z.number().int().min(DEFAULT_FLOOR).max(MAX_FLOOR).default(DEFAULT_FLOOR),
     /**
      * Legacy author-pinned reference images. NO LONGER READ by generation:
      * the pipeline now selects our own highest-quality approved sprites at
@@ -256,8 +258,8 @@ export const briefSchema = z
     /**
      * Opt-in for the local-only VLM judge (spec §F4).
      *
-     * The judge runs three evaluators (`style_match`, `brief_match`,
-     * `readability`) on each sensor-passing variant via a vision model
+     * The judge runs four evaluators (`design_language`,
+     * `reference_style_match`, `brief_match`, `readability`) on each sensor-passing variant via a vision model
      * and rejects variants where ANY evaluator scores below 3 (on the
      * 1-5 ordinal scale). Disabled by default so existing briefs and
      * unattended-but-CI runs are unaffected — flip to `enabled: true`
@@ -408,6 +410,7 @@ export const minimalBriefSchema = z
     // superRefine below can require one of the two without tripping on
     // `.passthrough()` losing the field's type.
     prompt: z.string().trim().min(1).optional(),
+    floor: z.number().int().min(DEFAULT_FLOOR).max(MAX_FLOOR).default(DEFAULT_FLOOR),
   })
   .passthrough()
   .superRefine((data, ctx) => {

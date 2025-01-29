@@ -76,6 +76,8 @@ export interface SynthesizeBriefOptions {
    * `typeConfidence >= ${MIN_TYPE_CONFIDENCE}` or the call throws.
    */
   readonly type?: SpriteType;
+  /** Dungeon floor intensity. Defaults to 1. */
+  readonly floor?: number;
   /** Number of candidates to request. Default 3, capped at MAX_CANDIDATES. */
   readonly candidates?: number;
   /**
@@ -191,6 +193,10 @@ export async function synthesizeBrief(
   }
 
   const name = normaliseName(options.name);
+  const floor = options.floor ?? 1;
+  if (!Number.isInteger(floor) || floor < 1 || floor > 20) {
+    throw new SynthesizeBriefError(`floor must be an integer in [1, 20], got ${String(floor)}.`);
+  }
   const sizeVariant = coerceSizeVariant(options.sizeVariant);
   const requested = options.candidates ?? 3;
   if (!Number.isInteger(requested) || requested < MIN_CANDIDATES || requested > MAX_CANDIDATES) {
@@ -207,6 +213,7 @@ export async function synthesizeBrief(
     name,
     ...(briefHint ? { briefHint } : {}),
     type: callerType,
+    floor,
     candidates: requested,
     effectiveMinSeeds,
     effectiveMaxSeeds,
@@ -274,7 +281,7 @@ export async function synthesizeBrief(
 
   const written = accepted.map(({ candidate }, i) => {
     const yamlPath = path.join(outDir, `${name}-v${i + 1}.yaml`);
-    const yaml = renderCandidateYaml(candidate, sizeVariant);
+    const yaml = renderCandidateYaml(candidate, sizeVariant, floor);
     writes.writeFile(yamlPath, yaml);
     return { ...candidate, id: `${name}-v${i + 1}`, yamlPath };
   });
@@ -284,6 +291,7 @@ export async function synthesizeBrief(
     name,
     type,
     sizeVariant,
+    floor,
     requestedCandidates: requested,
     providerLabel: options.provider.providerLabel,
     promptHash,
@@ -431,6 +439,7 @@ function reject(index: number, reason: string): EvaluatedCandidate {
 function renderCandidateYaml(
   candidate: SynthesizedBriefCandidate,
   sizeVariant: SizeVariant,
+  floor: number,
 ): string {
   // Minimal-brief shape only: type, name, [sizeVariant], description,
   // variations. Let the loader's deep-merge fill in defaults.
@@ -440,6 +449,7 @@ function renderCandidateYaml(
     type: candidate.type,
     name: candidate.id,
     ...(sizeVariant === DEFAULT_SIZE_VARIANT ? {} : { sizeVariant }),
+    ...(floor === 1 ? {} : { floor }),
     description: candidate.description,
     variations: candidate.embellishmentSeeds.slice(),
   };

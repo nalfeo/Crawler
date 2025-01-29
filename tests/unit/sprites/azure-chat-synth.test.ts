@@ -16,6 +16,7 @@ function makeRequest(overrides: Partial<SynthesizeBriefRequest> = {}): Synthesiz
   return {
     name: 'skull-mace',
     type: 'weapon',
+    floor: 1,
     candidates: 2,
     effectiveMinSeeds: 3,
     effectiveMaxSeeds: 5,
@@ -28,6 +29,7 @@ describe('buildUserPrompt', () => {
     const prompt = buildUserPrompt(makeRequest());
     expect(prompt).toContain('Subject name: skull-mace.');
     expect(prompt).toContain('Sprite type: weapon.');
+    expect(prompt).toContain('Floor: 1 of 20.');
     expect(prompt).toContain('Please return exactly 2 candidate brief(s).');
     expect(prompt).not.toContain('Additional direction:');
   });

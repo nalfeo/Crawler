@@ -408,7 +408,11 @@ export function createIssueIngesterController(
       for (const issue of issuesToProcess) {
         const payload = parseAssetRequestIssueBody(issue.body);
         if (!payload) continue;
-        const fingerprint = fingerprintAssetRequest(payload.name, payload.briefSentence);
+        const fingerprint = fingerprintAssetRequest(
+          payload.name,
+          payload.briefSentence,
+          payload.floor,
+        );
         const key = claimKey(issue.number, fingerprint);
         if (state.rejected[key]) {
           skippedDuplicate += 1;
@@ -449,6 +453,12 @@ export function createIssueIngesterController(
           name: payload.name,
           briefSentence: payload.briefSentence,
           ...(payload.type ? { type: payload.type } : {}),
+          ...(typeof payload.floor === 'number' &&
+          Number.isInteger(payload.floor) &&
+          payload.floor >= 1 &&
+          payload.floor <= 20
+            ? { floor: payload.floor }
+            : {}),
           fingerprint,
           claimedAt,
           requestedBy: options.requestedBy,

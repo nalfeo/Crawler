@@ -121,6 +121,24 @@ describe('normalizeAssetRequest', () => {
     expect(result).toMatchObject({ kind: 'issue-request', type: 'weapon' });
   });
 
+  it('accepts valid floors and rejects invalid floor payloads', () => {
+    const request = {
+      kind: 'issue-request',
+      issueNumber: 42,
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+      fingerprint: 'abc',
+      claimedAt: '2026-06-10T00:00:00.000Z',
+      requestedBy: 'test',
+      requestedAt: '2026-06-10T00:00:00.000Z',
+      priority: 'normal',
+    };
+
+    expect(normalizeAssetRequest({ ...request, floor: 12 })).toMatchObject({ floor: 12 });
+    expect(normalizeAssetRequest({ ...request, floor: 0 })).toBeNull();
+    expect(normalizeAssetRequest({ ...request, floor: '12' })).toBeNull();
+  });
+
   it('silently omits invalid type field', () => {
     const result = normalizeAssetRequest({
       kind: 'issue-request',
