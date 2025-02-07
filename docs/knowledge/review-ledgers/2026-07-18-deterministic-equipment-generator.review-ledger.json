@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "deterministic-equipment-generator",
+  "task_title": "Deterministic equipment generator",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted explicit V1 family curves (weapon-linear-percent, armor-linear-percent, no-inherent) selected per normalized base instead of an implicit global fallback; deferred the single nearest-half-up normalization until after all resolved effects; made Rare weighting explicit as an equal draw between available one-two-unit and two-one-unit shapes followed by a canonical combination draw; constrained V1 stat effects to add-only and mirrored grant arrays from resolved effects. The runtime-consumer concern is resolved by scope: rewards, merchants, drops, UX, and AI are explicitly excluded generation sources, so no production caller is invented; integration uses a configured real GameWorld registry plus C1 activation and C2 grant/revoke APIs, with explicit unconfigured-world failure coverage."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
