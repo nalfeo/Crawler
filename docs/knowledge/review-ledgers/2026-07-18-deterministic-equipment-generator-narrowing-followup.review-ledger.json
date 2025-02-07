@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "deterministic-equipment-generator-narrowing-followup",
+  "task_title": "Fix deterministic equipment test narrowing",
+  "estimated_apples": 1,
+  "stages": {}
+}

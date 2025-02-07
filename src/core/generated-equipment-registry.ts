@@ -7,6 +7,8 @@ import {
   GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
   GENERATED_EQUIPMENT_REGISTRY_SCHEMA_VERSION,
   type ActiveWeaponClassSkillTag,
+  type ActiveWeaponCombatOverridesV1,
+  type ActiveWeaponSnapshotCreateInputV1,
   type ActiveWeaponSnapshotV1,
   type ActiveWeaponTypeSkillTag,
   type EquipmentFingerprintV1,
@@ -587,6 +589,59 @@ function validateStatBonuses(
   return Object.freeze(bonuses);
 }
 
+function isActiveWeaponSnapshotCreateInput(
+  value: unknown,
+): value is ActiveWeaponSnapshotCreateInputV1 {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.weaponDefId === 'string' &&
+    (obj as Record<string, unknown>).schemaVersion !== ACTIVE_WEAPON_SNAPSHOT_SCHEMA_VERSION
+  );
+}
+
+function buildSnapshotFromCreateInput(
+  value: unknown,
+  expectedInstanceId: GeneratedEquipmentInstanceId | undefined,
+  path: string,
+): ActiveWeaponSnapshotV1 {
+  const record = requireRecord(value, path);
+  const weaponDefId = requireNonEmptyString(record.weaponDefId, `${path}.weaponDefId`);
+  const weaponDef = getWeaponDef(weaponDefId);
+  if (!weaponDef) {
+    fail('invalid-payload', `Unknown weapon def "${weaponDefId}"`, `${path}.weaponDefId`);
+  }
+  if (expectedInstanceId === undefined) {
+    fail(
+      'invalid-payload',
+      'Cannot resolve weapon-snapshot create input without an expected instance ID',
+      path,
+    );
+  }
+  return createActiveWeaponSnapshotV1(
+    { instanceId: expectedInstanceId },
+    weaponDef,
+    record.overrides,
+  );
+}
+
+/**
+ * Returns a deferred {@link ActiveWeaponSnapshotCreateInputV1} that the
+ * registry will expand into a full {@link ActiveWeaponSnapshotV1} (with the
+ * correct instance ID and fingerprint) inside
+ * {@link createGeneratedEquipmentInstance}.
+ *
+ * @param weaponDefId   The static weapon-def ID to base the snapshot on.
+ * @param overrides     Optional combat-stat overrides (validated against the
+ *                      allowed-override key list inside the registry).
+ */
+export function createActiveWeaponSnapshotInput(
+  weaponDefId: string,
+  overrides?: ActiveWeaponCombatOverridesV1,
+): ActiveWeaponSnapshotCreateInputV1 {
+  return Object.freeze({ weaponDefId, ...(overrides !== undefined ? { overrides } : {}) });
+}
+
 function validateFrozenFields(
   value: unknown,
   path: string,
@@ -615,6 +670,21 @@ function validateFrozenFields(
     `${path}.schemaVersion`,
   );
 
+  let activeWeaponSnapshot: ActiveWeaponSnapshotV1 | null;
+  if (record.activeWeaponSnapshot === null) {
+    activeWeaponSnapshot = null;
+  } else if (isActiveWeaponSnapshotCreateInput(record.activeWeaponSnapshot)) {
+    activeWeaponSnapshot = buildSnapshotFromCreateInput(
+      record.activeWeaponSnapshot,
+      expectedInstanceId,
+      `${path}.activeWeaponSnapshot`,
+    );
+  } else {
+    activeWeaponSnapshot = validateActiveWeaponSnapshotV1(record.activeWeaponSnapshot, {
+      expectedInstanceId,
+    });
+  }
+
   return deepFreeze({
     schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
     displayName: requireNonEmptyString(record.displayName, `${path}.displayName`),
@@ -625,12 +695,7 @@ function validateFrozenFields(
     statBonuses: validateStatBonuses(record.statBonuses, `${path}.statBonuses`),
     abilityGrants: requireStringArray(record.abilityGrants, `${path}.abilityGrants`, true),
     passiveGrants: requireStringArray(record.passiveGrants, `${path}.passiveGrants`, true),
-    activeWeaponSnapshot:
-      record.activeWeaponSnapshot === null
-        ? null
-        : validateActiveWeaponSnapshotV1(record.activeWeaponSnapshot, {
-            expectedInstanceId,
-          }),
+    activeWeaponSnapshot,
   });
 }
 
@@ -994,7 +1059,14 @@ function validateCreateInput(
   value: unknown,
   policy: GeneratedEquipmentGenerationPolicyV1,
   expectedInstanceId: GeneratedEquipmentInstanceId,
-): GeneratedEquipmentCreateInputV1 {
+): {
+  readonly baseId: string;
+  readonly itemLevel: number;
+  readonly rarity: GeneratedEquipmentRarity;
+  readonly enhancementLevel: GeneratedEquipmentEnhancementLevel;
+  readonly resolvedEffects: readonly ResolvedEquipmentEffectV1[];
+  readonly frozen: FrozenEquipmentFieldsV1;
+} {
   const path = '$.createInput';
   const record = requireRecord(value, path);
   requireKeys(
