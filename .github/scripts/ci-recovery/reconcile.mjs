@@ -992,6 +992,18 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+
+function hasTrustedAddressedMarker(thread) {
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) return false;
+  const last = comments[comments.length - 1];
+  return (
+    extractAddressedMarkerSha(last?.body) !== null &&
+    (TRUSTED_ASSOCIATIONS.has(String(last?.authorAssociation ?? '').toUpperCase()) ||
+      TRUSTED_BOT_LOGINS.has(String(last?.author?.login ?? '').toLowerCase()))
+  );
+}
+
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
 // no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
@@ -1002,8 +1014,7 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter(
-  (candidate) =>
-    candidate.isOutdated && !shouldResolveThread(candidate, headSha, reachableMarkerShas),
+  (candidate) => candidate.isOutdated && !hasTrustedAddressedMarker(candidate),
 )) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
