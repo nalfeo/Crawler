@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "floor-2-quartermaster-placement",
+  "task_title": "Guarantee Floor 2 Quartermaster placement",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted explicit full-pack shuffle then filter/take semantics with insufficient-pool failure; staged all validation, inventory generation, and placement before world mutation; strengthened RNG compatibility so the legacy shuffled prefix consumes identical inventory draws while only newly added shops use derived RNG; expanded real-pipeline coverage to 2-room/3-shop and 3-room cases."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
