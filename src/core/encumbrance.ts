@@ -42,7 +42,7 @@ export function getEntityEncumbranceSnapshot(
   const effectiveStrength = hasComponent(world.ecs, eid, EffectiveStats)
     ? (world.stores.effectiveStats.strength[eid] ?? 0)
     : 0;
-  const equippedWeightLb = computeEquippedWeightLb(getEquipmentState(world, eid));
+  const equippedWeightLb = computeEquippedWeightLb(world, getEquipmentState(world, eid));
   const totalMassLb = bodyWeightLb + equippedWeightLb;
   const thresholds = computeEncumbranceThresholds(bodyWeightLb, effectiveStrength);
   const band = computeEncumbranceBand(totalMassLb, thresholds);

@@ -3,6 +3,8 @@
  */
 
 import type { EquipmentSlotId } from './equipment-slots.js';
+import type { GeneratedEquipmentInstanceKey } from './generated-equipment-types.js';
+import type { InventoryBagEntry } from './inventory.js';
 import type { StatId } from './stats.js';
 import type { StatusEffectSpec } from './status-effect-types.js';
 
@@ -58,7 +60,7 @@ export interface EquipmentItemDef {
 
 // --- Equipment Instance ---
 
-export type EquipmentInstanceId = number;
+export type EquipmentInstanceId = number | GeneratedEquipmentInstanceKey;
 
 export interface EquipmentInstance {
   readonly instanceId: EquipmentInstanceId;
@@ -77,6 +79,21 @@ export interface EquipmentState {
 
 export type EquipFailureReason =
   | { readonly type: 'invalidDef'; readonly message: string }
+  | {
+      readonly type: 'generatedInstanceNotFound';
+      readonly instanceKey: GeneratedEquipmentInstanceKey;
+      readonly message: string;
+    }
+  | {
+      readonly type: 'generatedOwnershipConflict';
+      readonly instanceKey: GeneratedEquipmentInstanceKey;
+      readonly message: string;
+    }
+  | {
+      readonly type: 'unsupportedGeneratedContent';
+      readonly instanceKey: GeneratedEquipmentInstanceKey;
+      readonly message: string;
+    }
   | { readonly type: 'unknownSlot'; readonly slotId: string }
   | { readonly type: 'occupiedSlot'; readonly slotId: string }
   | {
@@ -90,7 +107,13 @@ export type EquipResult =
   | { readonly ok: false; readonly reasons: EquipFailureReason[] };
 
 export type UnequipResult =
-  | { readonly ok: true; readonly item: EquipmentInstance }
+  | {
+      readonly ok: true;
+      readonly item: EquipmentInstance;
+      readonly entry: InventoryBagEntry;
+      /** Generated references move to the bag atomically; legacy callers still rebag static items. */
+      readonly bagUpdated: boolean;
+    }
   | { readonly ok: false; readonly reason: string };
 
 export interface CanEquipResult {

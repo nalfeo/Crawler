@@ -38,6 +38,7 @@ import {
 import type { PrimaryStatId, SecondaryStatId, StatId } from '../shared/stats.js';
 import type { EquipmentInstanceId, EquipmentState } from '../shared/equipment-types.js';
 import type { GameWorld } from './world.js';
+import { requireGeneratedEquipmentInstance } from './generated-equipment-registry.js';
 
 /**
  * Minimal structural shape of an equipped item for stat purposes: its flat
@@ -126,6 +127,7 @@ export function computeEffectiveStatsFromLoadout(
  * two-handed weapon's `weightLb` counts once, not once per occupied slot.
  */
 export function uniqueEquippedDefs(
+  world: GameWorld,
   equipmentState: EquipmentState | undefined,
 ): Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> {
   const defs: Array<{ instanceId: EquipmentInstanceId } & StatBonusSource> = [];
@@ -135,13 +137,22 @@ export function uniqueEquippedDefs(
     const instId = equipmentState.equipped[slotId] ?? null;
     if (instId === null || seen.has(instId)) continue;
     seen.add(instId);
-    const inst = equipmentState.instances.get(instId);
-    if (!inst) continue;
-    defs.push({
-      instanceId: instId,
-      statBonuses: inst.def.statBonuses,
-      weightLb: inst.def.weightLb,
-    });
+    if (typeof instId === 'number') {
+      const inst = equipmentState.instances.get(instId);
+      if (!inst) continue;
+      defs.push({
+        instanceId: instId,
+        statBonuses: inst.def.statBonuses,
+        weightLb: inst.def.weightLb,
+      });
+    } else {
+      const generated = requireGeneratedEquipmentInstance(world, instId);
+      defs.push({
+        instanceId: instId,
+        statBonuses: generated.frozen.statBonuses,
+        weightLb: generated.frozen.weightLb,
+      });
+    }
   }
   return defs;
 }
@@ -153,9 +164,12 @@ export function uniqueEquippedDefs(
  * entity's `Weight` component (body mass) for total carried mass — see
  * `shared/encumbrance.ts`.
  */
-export function computeEquippedWeightLb(equipmentState: EquipmentState | undefined): number {
+export function computeEquippedWeightLb(
+  world: GameWorld,
+  equipmentState: EquipmentState | undefined,
+): number {
   let total = 0;
-  for (const def of uniqueEquippedDefs(equipmentState)) {
+  for (const def of uniqueEquippedDefs(world, equipmentState)) {
     total += def.weightLb;
   }
   return total;
@@ -189,7 +203,7 @@ export function applyEffectiveStats(
   const eff = computeEffectiveStatsFromLoadout(
     base,
     core,
-    uniqueEquippedDefs(equipmentState),
+    uniqueEquippedDefs(world, equipmentState),
     activeModifiers,
   );
 

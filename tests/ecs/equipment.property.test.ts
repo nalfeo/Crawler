@@ -18,7 +18,11 @@ import {
   CORE_STAT_TO_SECONDARY,
 } from '../../src/shared/stats.js';
 import type { StatId, SecondaryStatId } from '../../src/shared/stats.js';
-import type { EquipmentItemDef, ItemRarity } from '../../src/shared/equipment-types.js';
+import type {
+  EquipmentInstanceId,
+  EquipmentItemDef,
+  ItemRarity,
+} from '../../src/shared/equipment-types.js';
 
 const SLOT_IDS = SLOT_REGISTRY.map((s) => s.id);
 const RARITIES: ItemRarity[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
@@ -78,7 +82,7 @@ describe('Equipment System — Property Tests', () => {
         // from the (post-equipment) effective primaries, then clamp — mirroring
         // applyEffectiveStats. (coreStatPoints is 0 for a fresh entity.)
         const expected = { ...DEFAULT_BASE_STATS } as Record<StatId, number>;
-        const seenInstances = new Set<number>();
+        const seenInstances = new Set<EquipmentInstanceId>();
         for (const slotId of Object.keys(state.equipped)) {
           const instId = state.equipped[slotId] ?? null;
           if (instId === null || seenInstances.has(instId)) continue;

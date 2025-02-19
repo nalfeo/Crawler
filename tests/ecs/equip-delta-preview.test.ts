@@ -7,16 +7,24 @@ import {
   type StatBonusSource,
 } from '../../src/core/effective-stats.js';
 import {
+  addGeneratedEquipmentToBag,
+  equipFromBag,
   initializeBaseStats,
   equip,
   previewEquipDelta,
 } from '../../src/core/systems/equipmentSystem.js';
+import { createGeneratedEquipmentInstance } from '../../src/core/generated-equipment-registry.js';
 import {
   getEquipmentDefForItem,
   _registerEquipmentDefForTest,
   _clearEquipmentDefsForTest,
 } from '../../src/shared/equipmentDefs.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
+import {
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  type GeneratedEquipmentCreateInputV1,
+} from '../../src/shared/generated-equipment-types.js';
+import { createInventoryBag } from '../../src/shared/inventory.js';
 import {
   DEFAULT_BASE_STATS,
   CORE_STAT_TO_SECONDARY,
@@ -123,7 +131,7 @@ describe('previewEquipDelta', () => {
   let entity: number;
 
   beforeEach(() => {
-    world = createTestWorld();
+    world = createTestWorld({ generatedEquipmentRunKey: 'b2-preview-test' });
     world.state = 'safe_room';
     entity = addEntity(world.ecs);
     initializeBaseStats(world, entity);
@@ -170,6 +178,43 @@ describe('previewEquipDelta', () => {
     expect(preview.swappedOut).toHaveLength(1);
     expect(preview.swappedOut[0]!.id).toBe('iron-helm');
     expect(preview.canEquip).toBe(true);
+  });
+
+  it('uses the frozen display name for a displaced generated instance', () => {
+    const input: GeneratedEquipmentCreateInputV1 = {
+      baseId: 'armor.preview-helm',
+      itemLevel: 2,
+      rarity: 'common',
+      enhancementLevel: 0,
+      resolvedEffects: [],
+      frozen: {
+        schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+        displayName: 'Frozen Preview Helm',
+        artKey: 'equipment.preview-helm',
+        slots: ['head'],
+        tags: ['armor'],
+        weightLb: 4,
+        statBonuses: { armor: 1 },
+        abilityGrants: [],
+        passiveGrants: [],
+        activeWeaponSnapshot: null,
+      },
+    };
+    const generated = createGeneratedEquipmentInstance(world, input);
+    world.inventories.set(entity, createInventoryBag());
+    expect(addGeneratedEquipmentToBag(world, entity, generated.instanceId).ok).toBe(true);
+    expect(
+      equipFromBag(world, entity, {
+        kind: 'generated-instance',
+        instanceKey: generated.instanceId,
+      }).ok,
+    ).toBe(true);
+
+    const preview = previewEquipDelta(world, entity, 'iron-helm')!;
+
+    expect(preview.swappedOut).toHaveLength(1);
+    expect(preview.swappedOut[0]!.id).toBe(generated.instanceId);
+    expect(preview.swappedOut[0]!.name).toBe('Frozen Preview Helm');
   });
 
   it('does not mutate live effective stats (read-only preview)', () => {

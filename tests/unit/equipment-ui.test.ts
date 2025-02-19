@@ -46,4 +46,15 @@ describe('EquipmentUI bag-scroll architectural guard', () => {
       'const next = Math.min(bagMaxScroll, Math.max(0, bagScrollRow + rows));',
     );
   });
+
+  it('does not re-add generated equipment that core unequip already moved to the bag', () => {
+    expect(source).toContain('if (!result.bagUpdated)');
+  });
+
+  it('resolves generated equipment through the world registry for render and dirty checks', () => {
+    expect(source.match(/resolveEquipmentInstance\(lastWorld, state, instId\)/g)).toHaveLength(2);
+    expect(source).toContain('itemDef ?? instance.def');
+    expect(source).toContain('showGeneratedEquipmentTooltip(instance.def)');
+    expect(source).toContain('getItemById(swapped.id)?.name ?? swapped.name');
+  });
 });
