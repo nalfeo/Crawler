@@ -174,13 +174,30 @@ export function capturePlayerCarryover(
     coreStatPoints[statId] = world.stores.coreStatPoints[statId][playerEid] ?? 0;
   }
 
+  const inventory = world.inventories.get(playerEid);
+  if ((inventory?.generatedEquipment?.length ?? 0) > 0) {
+    throw new Error(
+      'Generated equipment carryover is not supported until the B3 persistence slice lands',
+    );
+  }
+
   const equipment = getEquipmentState(world, playerEid);
   const equippedItemIds: string[] = [];
   const seenInstances = new Set<number>();
   if (equipment) {
     for (const slot of SLOT_REGISTRY) {
       const instanceId = equipment.equipped[slot.id];
-      if (instanceId == null || seenInstances.has(instanceId)) continue;
+      if (instanceId == null) {
+        continue;
+      }
+      if (typeof instanceId !== 'number') {
+        throw new Error(
+          'Generated equipment carryover is not supported until the B3 persistence slice lands',
+        );
+      }
+      if (seenInstances.has(instanceId)) {
+        continue;
+      }
       const instance = equipment.instances.get(instanceId);
       if (!instance) {
         throw new Error(`Missing equipped instance ${instanceId} while capturing player carryover`);
@@ -190,7 +207,6 @@ export function capturePlayerCarryover(
     }
   }
 
-  const inventory = world.inventories.get(playerEid);
   const abilityState = snapshotAbilityState(
     world.abilityStatesByEntity.get(playerEid),
     world.frameCount,

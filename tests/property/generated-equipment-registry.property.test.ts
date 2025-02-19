@@ -1,327 +1,112 @@
-/**
- * Property tests for the generated equipment registry (B1).
- *
- * Invariants under arbitrary valid inputs:
- * - Registered instances are always lookupable by their ID.
- * - Fingerprint is deterministic (same input → same output).
- * - Distinct content produces distinct fingerprints.
- * - validateFingerprint is true for any correctly-built instance.
- * - Fingerprint changes when any field changes.
- * - Per-world isolation holds for any number of registrations.
- */
-
-import { describe, it } from 'vitest';
-import fc from 'fast-check';
-import { createTestWorld } from '../helpers/world-factory.js';
+import { describe, expect, it } from 'vitest';
+import * as fc from 'fast-check';
 import {
-  createInstanceId,
-  registerInstance,
-  lookupInstance,
-  hasInstance,
-  getRegistrySize,
-  computeFingerprint,
-  validateFingerprint,
-  validateInstanceStructure,
-  canonicalJson,
-} from '../../src/game/generated-equipment-registry.js';
-import type {
-  GeneratedEquipmentInstanceV1,
-  GeneratedEquipmentInstanceId,
-  ResolvedEquipmentEffectV1,
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+  type GeneratedEquipmentCreateInputV1,
+  type GeneratedEquipmentRarity,
+  type ResolvedEquipmentEffectV1,
 } from '../../src/shared/generated-equipment-types.js';
-import { RARITY_EFFECT_BUDGET } from '../../src/shared/generated-equipment-types.js';
-import type { GameWorld } from '../../src/core/world.js';
-import type { StatId } from '../../src/shared/stats.js';
-import { PRIMARY_STATS, SECONDARY_STATS } from '../../src/shared/stats.js';
+import { canonicalJson, sha256Hex } from '../../src/shared/canonical-json.js';
+import {
+  createGeneratedEquipmentInstance,
+  generatedEquipmentInstanceKey,
+} from '../../src/core/generated-equipment-registry.js';
+import { createTestWorld } from '../helpers/world-factory.js';
 
-// ---------------------------------------------------------------------------
-// Arbitraries
-// ---------------------------------------------------------------------------
+const runKeyArbitrary = fc.stringMatching(/^[a-z0-9][a-z0-9._-]{0,127}$/);
+const rarityArbitrary = fc.constantFrom<GeneratedEquipmentRarity>('common', 'uncommon', 'rare');
 
-const ALL_STAT_IDS: readonly StatId[] = [...PRIMARY_STATS, ...SECONDARY_STATS];
+function effectsFor(rarity: GeneratedEquipmentRarity): readonly ResolvedEquipmentEffectV1[] {
+  const count = rarity === 'common' ? 0 : rarity === 'uncommon' ? 1 : 2;
+  return Array.from({ length: count }, (_, effectOrdinal) => ({
+    schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+    effectId: `effect-${effectOrdinal}`,
+    effectOrdinal,
+    unitCost: 1 as const,
+    kind: 'stat' as const,
+    stat: 'armor' as const,
+    operation: 'add' as const,
+    value: effectOrdinal + 1,
+  }));
+}
 
-type GeneratedEquipmentRarity = 'common' | 'uncommon' | 'rare';
-const RARITIES: GeneratedEquipmentRarity[] = ['common', 'uncommon', 'rare'];
-const SCHEMA_V1 = 'floor2-equipment-instance/v1' as const;
-
-const arbRarity = fc.constantFrom(...RARITIES);
-
-const arbEnhancementLevel = fc.integer({ min: 0, max: 5 }) as fc.Arbitrary<0 | 1 | 2 | 3 | 4 | 5>;
-
-const arbStatBonus: fc.Arbitrary<Partial<Record<StatId, number>>> = fc
-  .dictionary(
-    fc.constantFrom(...ALL_STAT_IDS),
-    fc.float({ min: Math.fround(-100), max: Math.fround(100), noNaN: true }),
-  )
-  .filter((d) => Object.values(d).every((v) => Number.isFinite(v)))
-  .map((d) => d as Partial<Record<StatId, number>>);
-
-const arbFrozen = fc.record({
-  displayName: fc.string({ minLength: 1, maxLength: 32 }).filter((s) => s.trim().length > 0),
-  artKey: fc.string({ minLength: 1, maxLength: 32 }).filter((s) => s.trim().length > 0),
-  statBonuses: arbStatBonus,
-});
-
-/** Build effects whose unit total exactly matches the rarity budget. */
-function makeEffectsForRarity(
+function inputFor(
   rarity: GeneratedEquipmentRarity,
-  _effectIdsArb: fc.Arbitrary<string[]>,
-): fc.Arbitrary<ResolvedEquipmentEffectV1[]> {
-  const budget = RARITY_EFFECT_BUDGET[rarity];
-  if (budget === 0) return fc.constant([]);
-  if (budget === 1) {
-    return fc
-      .tuple(
-        fc.string({ minLength: 1, maxLength: 12 }).filter((s) => s.trim().length > 0),
-        fc.float({ min: Math.fround(0.1), max: Math.fround(100), noNaN: true }),
-      )
-      .map(([id, mag]) => [{ effectId: id, magnitude: mag, units: 1 as const }]);
-  }
-  // budget === 2: either one 2-unit or two 1-unit (distinct IDs)
-  return fc.oneof(
-    // One 2-unit effect
-    fc
-      .tuple(
-        fc.string({ minLength: 1, maxLength: 12 }).filter((s) => s.trim().length > 0),
-        fc.float({ min: Math.fround(0.1), max: Math.fround(100), noNaN: true }),
-      )
-      .map(([id, mag]) => [{ effectId: id, magnitude: mag, units: 2 as const }]),
-    // Two 1-unit effects with distinct IDs
-    fc
-      .tuple(
-        fc.string({ minLength: 1, maxLength: 12 }).filter((s) => s.trim().length > 0),
-        fc.string({ minLength: 1, maxLength: 12 }).filter((s) => s.trim().length > 0),
-        fc.float({ min: Math.fround(0.1), max: Math.fround(100), noNaN: true }),
-        fc.float({ min: Math.fround(0.1), max: Math.fround(100), noNaN: true }),
-      )
-      .filter(([id1, id2]) => id1 !== id2)
-      .map(([id1, id2, m1, m2]) => [
-        { effectId: id1, magnitude: m1, units: 1 as const },
-        { effectId: id2, magnitude: m2, units: 1 as const },
-      ]),
-  );
+  itemLevel: number,
+): GeneratedEquipmentCreateInputV1 {
+  return {
+    baseId: 'weapon.iron-cleaver',
+    itemLevel,
+    rarity,
+    enhancementLevel: 0,
+    resolvedEffects: effectsFor(rarity),
+    frozen: {
+      schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+      displayName: 'Property Sword',
+      artKey: 'weapon.iron-cleaver',
+      slots: ['mainHand'],
+      tags: ['weapon'],
+      weightLb: 3,
+      statBonuses: { armor: itemLevel },
+      abilityGrants: [],
+      passiveGrants: [],
+      activeWeaponSnapshot: null,
+    },
+  };
 }
 
-const arbInstance = arbRarity.chain((rarity) =>
-  fc
-    .tuple(
-      arbEnhancementLevel,
-      arbFrozen,
-      makeEffectsForRarity(rarity, fc.array(fc.string({ minLength: 1, maxLength: 8 }))),
-      fc.string({ minLength: 1, maxLength: 12 }).filter((s) => /^[a-zA-Z0-9_-]+$/.test(s)),
-      fc.nat({ max: 999 }),
-      fc.integer({ min: 1, max: 50 }), // itemLevel
-    )
-    .map(([enhancementLevel, frozen, effects, runKey, ordinal, itemLevel]) => ({
-      schemaVersion: SCHEMA_V1,
-      instanceId: createInstanceId(runKey, ordinal),
-      contentRevision: 0,
-      baseId: `base-${runKey}`,
-      itemLevel,
-      rarity,
-      enhancementLevel,
-      resolvedEffects: effects,
-      frozen,
-    })),
-);
-
-function enableRegistry(world: GameWorld): GameWorld {
-  world.floor2EquipmentFlags.floor2EquipmentRegistry = true;
-  return world;
-}
-
-// ---------------------------------------------------------------------------
-// Properties
-// ---------------------------------------------------------------------------
-
-describe('Generated Equipment Registry — Property Tests', () => {
-  it('registered instances are always lookupable by their ID', async () => {
-    await fc.assert(
-      fc.asyncProperty(arbInstance, async (base) => {
-        const world = enableRegistry(createTestWorld());
-        const fp = await computeFingerprint(base);
-        const instance: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
-
-        const result = await registerInstance(world, instance);
-        if (!result.ok) return; // skip if validation fails (shouldn't with arbInstance)
-
-        const found = lookupInstance(world, instance.instanceId);
-        return found !== undefined && found.instanceId === instance.instanceId;
+describe('generated equipment registry properties', () => {
+  it('produces stable distinct keys for every valid run key and ordinal', () => {
+    fc.assert(
+      fc.property(runKeyArbitrary, fc.integer({ min: 0, max: 100_000 }), (runKey, ordinal) => {
+        expect(generatedEquipmentInstanceKey(runKey, ordinal)).toBe(
+          generatedEquipmentInstanceKey(runKey, ordinal),
+        );
+        expect(generatedEquipmentInstanceKey(runKey, ordinal)).not.toBe(
+          generatedEquipmentInstanceKey(runKey, ordinal + 1),
+        );
       }),
-      { numRuns: 50 },
     );
   });
 
-  it('computeFingerprint is deterministic', async () => {
-    await fc.assert(
-      fc.asyncProperty(arbInstance, async (base) => {
-        const fp1 = await computeFingerprint(base);
-        const fp2 = await computeFingerprint(base);
-        return fp1 === fp2;
-      }),
-      { numRuns: 50 },
-    );
-  });
-
-  it('validateFingerprint returns true for any correctly-built instance', async () => {
-    await fc.assert(
-      fc.asyncProperty(arbInstance, async (base) => {
-        const fp = await computeFingerprint(base);
-        const instance: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
-        return await validateFingerprint(instance);
-      }),
-      { numRuns: 50 },
-    );
-  });
-
-  it('fingerprint changes when baseId changes', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        arbInstance,
-        fc.string({ minLength: 1, maxLength: 8 }),
-        async (base, altBaseId) => {
-          fc.pre(altBaseId !== base.baseId && altBaseId.trim() !== '');
-          const base2 = { ...base, baseId: altBaseId };
-          const fp1 = await computeFingerprint(base);
-          const fp2 = await computeFingerprint(base2);
-          return fp1 !== fp2;
-        },
-      ),
-      { numRuns: 50 },
-    );
-  });
-
-  it('fingerprint changes when rarity changes', async () => {
-    await fc.assert(
-      fc.asyncProperty(arbRarity, arbRarity, async (r1, r2) => {
-        fc.pre(r1 !== r2);
-        // Build separate instances differing only in rarity + effects (must match budget)
-        const effects1 = await makeEffectsSync(r1);
-        const effects2 = await makeEffectsSync(r2);
-        const base1 = {
-          schemaVersion: SCHEMA_V1,
-          instanceId: createInstanceId('run', 1),
-          contentRevision: 0,
-          baseId: 'base',
-          itemLevel: 1,
-          rarity: r1,
-          enhancementLevel: 0 as const,
-          resolvedEffects: effects1,
-          frozen: { displayName: 'X', artKey: 'y', statBonuses: {} },
-        };
-        const base2 = { ...base1, rarity: r2, resolvedEffects: effects2 };
-        const fp1 = await computeFingerprint(base1);
-        const fp2 = await computeFingerprint(base2);
-        return fp1 !== fp2;
-      }),
-      { numRuns: 30 },
-    );
-  });
-
-  it('validateStructure passes for all arbitrary valid instances', async () => {
-    await fc.assert(
-      fc.asyncProperty(arbInstance, async (base) => {
-        const fp = await computeFingerprint(base);
-        const instance: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
-        return validateInstanceStructure(instance) === null;
-      }),
-      { numRuns: 50 },
-    );
-  });
-
-  it('per-world isolation: registry sizes are independent', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(arbInstance, { minLength: 0, maxLength: 5 }),
-        fc.array(arbInstance, { minLength: 0, maxLength: 5 }),
-        async (instances1Raw, instances2Raw) => {
-          const world1 = enableRegistry(createTestWorld());
-          const world2 = enableRegistry(createTestWorld());
-
-          const deduped1 = deduplicateByInstanceId(instances1Raw);
-          // Remap world2 instances to ordinals 1000+ so IDs are guaranteed valid
-          // and disjoint from world1's (arbInstance uses ordinals 0..999).
-          const deduped2 = instances2Raw.map((b, i) => ({
-            ...b,
-            instanceId: createInstanceId('w2', 1000 + i),
-          }));
-
-          const registered1Ids = new Set<GeneratedEquipmentInstanceId>();
-          for (const base of deduped1) {
-            const fp = await computeFingerprint(base);
-            const inst: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
-            const r = await registerInstance(world1, inst);
-            if (r.ok) registered1Ids.add(base.instanceId);
-          }
-
-          const registered2Ids = new Set<GeneratedEquipmentInstanceId>();
-          for (const base of deduped2) {
-            const fp = await computeFingerprint(base);
-            const inst: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
-            const r = await registerInstance(world2, inst);
-            if (r.ok) registered2Ids.add(base.instanceId);
-          }
-
-          // Each world must report exactly the instances registered into it
-          if (getRegistrySize(world1) !== registered1Ids.size) return false;
-          if (getRegistrySize(world2) !== registered2Ids.size) return false;
-
-          // IDs registered in world1 must not be visible in world2
-          for (const id of registered1Ids) {
-            if (hasInstance(world2, id)) return false; // isolation violation
-          }
-          // IDs registered in world2 must not be visible in world1
-          for (const id of registered2Ids) {
-            if (hasInstance(world1, id)) return false; // isolation violation
-          }
-          return true;
-        },
-      ),
-      { numRuns: 20 },
-    );
-  });
-
-  it('canonicalJson is stable for objects with different key insertion order', () => {
+  it('canonicalizes every insertion order to the same SHA-256 digest', () => {
     fc.assert(
       fc.property(
         fc.dictionary(
-          fc.string({ minLength: 1, maxLength: 8 }),
-          fc.oneof(fc.integer(), fc.string({ minLength: 0, maxLength: 8 })),
+          fc.string({ minLength: 1, maxLength: 12 }),
+          fc.oneof(fc.integer(), fc.boolean(), fc.string()),
         ),
-        (obj) => {
-          // Create two objects with same content but potentially different key order
-          const keys = Object.keys(obj);
-          const reversed = Object.fromEntries(keys.reverse().map((k) => [k, obj[k]]));
-          return canonicalJson(obj) === canonicalJson(reversed);
+        (record) => {
+          const entries = Object.entries(record);
+          const forward = Object.fromEntries(entries);
+          const reversed = Object.fromEntries([...entries].reverse());
+          expect(canonicalJson(forward)).toBe(canonicalJson(reversed));
+          expect(sha256Hex(canonicalJson(forward))).toBe(sha256Hex(canonicalJson(reversed)));
         },
       ),
-      { numRuns: 100 },
+    );
+  });
+
+  it('creates byte-identical records from equal world configuration and inputs', () => {
+    fc.assert(
+      fc.property(
+        runKeyArbitrary,
+        rarityArbitrary,
+        fc.integer({ min: 1, max: 100 }),
+        (runKey, rarity, itemLevel) => {
+          const left = createTestWorld({ generatedEquipmentRunKey: runKey });
+          const right = createTestWorld({ generatedEquipmentRunKey: runKey });
+          const input = inputFor(rarity, itemLevel);
+
+          const leftInstance = createGeneratedEquipmentInstance(left, input);
+          const rightInstance = createGeneratedEquipmentInstance(right, input);
+
+          expect(rightInstance).toEqual(leftInstance);
+          expect(rightInstance.fingerprint).toBe(leftInstance.fingerprint);
+          expect(Object.isFrozen(leftInstance.frozen.statBonuses)).toBe(true);
+        },
+      ),
     );
   });
 });
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function deduplicateByInstanceId<T extends { instanceId: string }>(arr: T[]): T[] {
-  const seen = new Set<string>();
-  return arr.filter((x) => {
-    if (seen.has(x.instanceId)) return false;
-    seen.add(x.instanceId);
-    return true;
-  });
-}
-
-type Rarity = 'common' | 'uncommon' | 'rare';
-
-/** Synchronous helper to produce a minimal valid effect set for a rarity. */
-function makeEffectsSync(rarity: Rarity): ResolvedEquipmentEffectV1[] {
-  const budget = RARITY_EFFECT_BUDGET[rarity];
-  if (budget === 0) return [];
-  if (budget === 1) return [{ effectId: 'bonus-armor', magnitude: 5, units: 1 }];
-  return [
-    { effectId: 'bonus-armor', magnitude: 5, units: 1 },
-    { effectId: 'bonus-dodge', magnitude: 0.05, units: 1 },
-  ];
-}

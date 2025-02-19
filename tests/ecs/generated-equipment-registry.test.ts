@@ -23,6 +23,10 @@ import {
   hydrateRegistry,
 } from '../../src/game/generated-equipment-registry.js';
 import {
+  FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
+  GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION,
   isValidGeneratedInstanceId,
   isValidFingerprintV1,
   isKnownGeneratedSchemaVersion,
@@ -45,15 +49,41 @@ import type { StatId } from '../../src/shared/stats.js';
 // Test helpers
 // ---------------------------------------------------------------------------
 
-const SCHEMA_V1 = 'floor2-equipment-instance/v1' as const;
+const SCHEMA_V1 = GENERATED_EQUIPMENT_INSTANCE_SCHEMA_VERSION;
 
 /** Build a minimal valid frozen fields object. */
 function makeFrozen(overrides?: Partial<FrozenEquipmentFieldsV1>): FrozenEquipmentFieldsV1 {
   return {
+    schemaVersion: FROZEN_EQUIPMENT_FIELDS_SCHEMA_VERSION,
     displayName: 'Iron Visor',
     artKey: 'head.iron-visor',
+    slots: ['head'],
+    tags: ['armor'],
+    weightLb: 2,
     statBonuses: { armor: 3 },
+    abilityGrants: [],
+    passiveGrants: [],
+    activeWeaponSnapshot: null,
     ...overrides,
+  };
+}
+
+function makeStatEffect(
+  effectId: string,
+  effectOrdinal: number,
+  unitCost: 1 | 2,
+  stat: StatId,
+  value: number,
+): ResolvedEquipmentEffectV1 {
+  return {
+    schemaVersion: GENERATED_EQUIPMENT_EFFECT_SCHEMA_VERSION,
+    effectId,
+    effectOrdinal,
+    unitCost,
+    kind: 'stat',
+    stat,
+    operation: 'add',
+    value,
   };
 }
 
@@ -71,6 +101,12 @@ function makeInstanceBase(
     enhancementLevel: 0,
     resolvedEffects: [],
     frozen: makeFrozen(),
+    generation: {
+      schemaVersion: GENERATED_EQUIPMENT_GENERATION_SCHEMA_VERSION,
+      runKey: 'seed42',
+      ordinal: 1,
+      generationPolicyFingerprint: `sha256:${'0'.repeat(64)}` as EquipmentFingerprintV1,
+    },
     ...overrides,
   };
 }
@@ -79,9 +115,7 @@ function makeInstanceBase(
 function makeUncommonBase(
   overrides: Partial<Omit<GeneratedEquipmentInstanceV1, 'fingerprint'>> = {},
 ): Omit<GeneratedEquipmentInstanceV1, 'fingerprint'> {
-  const effects: ResolvedEquipmentEffectV1[] = [
-    { effectId: 'bonus-armor', magnitude: 5, units: 1 },
-  ];
+  const effects: ResolvedEquipmentEffectV1[] = [makeStatEffect('bonus-armor', 0, 1, 'armor', 5)];
   return makeInstanceBase({ rarity: 'uncommon', resolvedEffects: effects, ...overrides });
 }
 
@@ -90,8 +124,8 @@ function makeRareBase(
   overrides: Partial<Omit<GeneratedEquipmentInstanceV1, 'fingerprint'>> = {},
 ): Omit<GeneratedEquipmentInstanceV1, 'fingerprint'> {
   const effects: ResolvedEquipmentEffectV1[] = [
-    { effectId: 'bonus-armor', magnitude: 5, units: 1 },
-    { effectId: 'bonus-dodge', magnitude: 0.05, units: 1 },
+    makeStatEffect('bonus-armor', 0, 1, 'armor', 5),
+    makeStatEffect('bonus-dodge', 1, 1, 'dodgeChance', 0.05),
   ];
   return makeInstanceBase({ rarity: 'rare', resolvedEffects: effects, ...overrides });
 }
@@ -393,7 +427,7 @@ describe('validateInstanceStructure', () => {
 
   it('rejects effect unit budget mismatch (rare with only 1 unit)', async () => {
     const base = makeRareBase({
-      resolvedEffects: [{ effectId: 'bonus-armor', magnitude: 5, units: 1 }],
+      resolvedEffects: [makeStatEffect('bonus-armor', 0, 1, 'armor', 5)],
     });
     const fp = await computeFingerprint(base);
     const bad: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
@@ -406,8 +440,8 @@ describe('validateInstanceStructure', () => {
     const base = makeInstanceBase({
       rarity: 'rare',
       resolvedEffects: [
-        { effectId: 'bonus-armor', magnitude: 5, units: 1 },
-        { effectId: 'bonus-armor', magnitude: 3, units: 1 }, // duplicate
+        makeStatEffect('bonus-armor', 0, 1, 'armor', 5),
+        makeStatEffect('bonus-armor', 1, 1, 'armor', 3), // duplicate
       ],
     });
     const fp = await computeFingerprint(base);
@@ -817,7 +851,7 @@ describe('RARITY_EFFECT_BUDGET', () => {
   it('rare item can use one two-unit effect', async () => {
     const base = makeInstanceBase({
       rarity: 'rare',
-      resolvedEffects: [{ effectId: 'major-armor', magnitude: 15, units: 2 }],
+      resolvedEffects: [makeStatEffect('major-armor', 0, 2, 'armor', 15)],
     });
     const fp = await computeFingerprint(base);
     const instance: GeneratedEquipmentInstanceV1 = { ...base, fingerprint: fp };
