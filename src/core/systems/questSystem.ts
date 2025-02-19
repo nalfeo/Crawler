@@ -16,7 +16,7 @@ import { Player } from '../components.js';
 import type { GameWorld } from '../world.js';
 import { getItemCount, hasItem } from '../../shared/inventory.js';
 import { getEquippableItemIds, isEquippableItem } from '../../shared/equipmentDefs.js';
-import { getEquipmentState } from './equipmentSystem.js';
+import { getEquipmentState, resolveEquipmentInstance } from './equipmentSystem.js';
 import {
   getQuestDef,
   objectiveTarget,
@@ -210,7 +210,7 @@ function isLatchedComplete(
         if (instanceId === null) {
           continue;
         }
-        const inst = state.instances.get(instanceId);
+        const inst = resolveEquipmentInstance(world, state, instanceId);
         if (inst && (!objective.equipmentId || inst.def.id === objective.equipmentId)) {
           return true;
         }
