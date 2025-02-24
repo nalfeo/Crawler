@@ -46,6 +46,8 @@ emit_all() {
   emit_output gameplay_safe "$3"
   emit_output sprites_only "$4"
   emit_output sprites_touched "$5"
+  emit_output sim_touched "$6"
+  emit_output coverage_touched "$7"
 }
 
 # package.json gameplay-safe split:
@@ -133,7 +135,7 @@ else
 
   if [ -z "$base_ref" ]; then
     echo "No comparison base available — running full CI." >&2
-    emit_all false false false false false
+    emit_all false false false false false true true
     exit 0
   fi
 
@@ -151,7 +153,7 @@ echo "${changed:-<none>}" >&2
 
 # Fail-safe: no changed files (or an all-whitespace override) runs the full suite.
 if [ -z "$(printf '%s' "$changed" | tr -d '[:space:]')" ]; then
-  emit_all false false false false false
+  emit_all false false false false false true true
   exit 0
 fi
 
@@ -286,4 +288,90 @@ while IFS= read -r file; do
   esac
 done <<<"$changed"
 
-emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched"
+# sim_touched: at least one changed file is in the simulation-critical surface.
+# Fail-closed: unknown/unclassified paths set sim_touched=true (run the gate).
+# ci.yml uses this to gate the headless Floor-1 job on PRs: headless runs only
+# when sim_touched=true; main-push and schedule always run it as a backstop.
+sim_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    # Known surfaces that provably cannot affect the ECS sim.
+    # NOTE: src/engine/* and src/labs/* are NOT listed here — headless tests
+    # directly import engine modules (e.g. src/engine/lighting/light-field) and
+    # lab scenario presets (e.g. src/labs/ai-runner-lab/scenario-presets), so
+    # changes to those paths can alter headless test outcomes.
+    tests/e2e/*) ;;
+    tests/unit/*) ;;
+    tests/integration/*) ;;
+    docs/*) ;;
+    public/*) ;;
+    .github/*) ;;
+    .specify/*) ;;
+    scripts/*) ;;
+    src/shared/data/sprite-catalog.json) ;;
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        sim_touched=true
+        break
+      fi
+      ;;
+    *.md) ;;
+    *.txt) ;;
+    # Everything else (src/core, src/game, src/shared, src/bootstrap,
+    # src/engine, src/labs, tests/headless, unknown paths) → simulation is
+    # potentially touched.
+    *)
+      sim_touched=true
+      break
+      ;;
+  esac
+done <<<"$changed"
+
+# coverage_touched: at least one changed file is in the unit-test coverage surface.
+# Fail-closed: unknown/unclassified paths set coverage_touched=true (run the gate).
+# ci.yml uses this to gate the advisory unit-coverage job on PRs:
+# coverage runs only when coverage_touched=true; main-push and schedule always run it.
+coverage_touched=false
+while IFS= read -r file; do
+  [ -z "$file" ] && continue
+  case "$file" in
+    # Known surfaces that provably cannot affect unit test coverage.
+    # NOTE: src/engine/* is NOT listed here — vitest includes src/**/*.ts for
+    # coverage (only specific engine files are excluded), and many unit tests
+    # directly import engine modules, so engine changes can alter coverage numbers.
+    # src/labs/* IS safe here: vitest explicitly excludes src/labs/** from coverage.
+    src/labs/*) ;;
+    tests/e2e/*) ;;
+    tests/headless/*) ;;
+    tests/integration/*) ;;
+    docs/*) ;;
+    public/*) ;;
+    .github/*) ;;
+    .specify/*) ;;
+    scripts/*) ;;
+    src/shared/data/sprite-catalog.json) ;;
+    package.json)
+      if package_json_gameplay_safe; then
+        :
+      else
+        coverage_touched=true
+        break
+      fi
+      ;;
+    *.md) ;;
+    *.txt) ;;
+    tests/unit/sprites/*) ;;
+    # Everything else (src/core, src/game, src/shared, src/bootstrap,
+    # src/engine, tests/unit non-sprites, unknown paths) → unit coverage is
+    # potentially touched.
+    *)
+      coverage_touched=true
+      break
+      ;;
+  esac
+done <<<"$changed"
+
+emit_all "$art_only" "$docs_only" "$gameplay_safe" "$sprites_only" "$sprites_touched" "$sim_touched" "$coverage_touched"

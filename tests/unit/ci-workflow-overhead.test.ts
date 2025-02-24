@@ -192,12 +192,12 @@ describe('merge-gate aggregation policy', () => {
     const workflow = loadWorkflow('.github/workflows/ci.yml');
     const step = workflow.jobs['merge-gate']?.steps?.[0];
     const script = String(step?.run ?? '');
-    // Unit tests, integration tests, headless, E2E all use allow_skipped=true.
+    // Unit tests, integration tests, and E2E all use allow_skipped=true via the check() helper.
+    // Headless Floor 1 uses a custom sim_touched validation block instead — see ci-gating-policy.test.ts.
     const allowSkippedJobs = [
       'Unit tests',
       'Integration tests',
       'Sprite pipeline tests',
-      'Headless Floor 1 completion',
       'E2E Visual Regression',
     ];
     for (const name of allowSkippedJobs) {
