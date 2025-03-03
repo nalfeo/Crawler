@@ -9,6 +9,7 @@ import {
   blockerFingerprint,
   collapseCheckRunsByName,
   extractAddressedMarkerSha,
+  hasBareAddressedMarker,
   hasSubstantiveCopilotReview,
   hasTrustedTrainPromotionCheck,
   isDuplicateDispatch,
@@ -720,6 +721,132 @@ test('shouldResolveThread accepts latest trusted commit URL marker on head linea
     true,
   );
   assert.equal(shouldResolveThread(thread, 'abc123456789abcdef', new Set()), false);
+});
+
+test('hasBareAddressedMarker accepts bare "✅ Addressed" forms and rejects "in <sha>" forms', () => {
+  // Accepted: bare form (no "in <sha>")
+  assert.equal(hasBareAddressedMarker('✅ Addressed: finding not applicable'), true);
+  assert.equal(hasBareAddressedMarker('✅ Addressed.'), true);
+  assert.equal(hasBareAddressedMarker('✅ Addressed'), true);
+  assert.equal(hasBareAddressedMarker('✅ addressed: lower-case'), true);
+  assert.equal(
+    hasBareAddressedMarker(
+      '✅ Addressed: the table rows already use a single leading `|` — finding not applicable at current HEAD.',
+    ),
+    true,
+  );
+
+  // Rejected: "✅ Addressed in <sha>" excludes the bare path
+  assert.equal(hasBareAddressedMarker('✅ Addressed in abc1234: fixed'), false);
+  assert.equal(hasBareAddressedMarker('✅ Addressed in abc1234def0000: note'), false);
+  assert.equal(hasBareAddressedMarker('✅ Addressed in not-a-sha: still has "in"'), false);
+  assert.equal(hasBareAddressedMarker(''), false);
+  assert.equal(hasBareAddressedMarker(null), false);
+  assert.equal(hasBareAddressedMarker('<!-- addressed -->'), false);
+});
+
+test('shouldResolveThread accepts bare "✅ Addressed" from trusted copilot-swe-agent (PR #1426 regression)', () => {
+  // Regression: the non-applicable reply posted on PR #1426 thread
+  // PRRT_kwDOSvo2Ms6R8vKh had no SHA and the parser rejected it.
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'The table rows start with `||`, which renders as an empty first column.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-pull-request-reviewer' },
+        },
+        {
+          body: '✅ Addressed: the table rows already use a single leading `|` — finding not applicable at current HEAD. No change was needed.',
+          authorAssociation: 'NONE',
+          author: { login: 'copilot-swe-agent' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, '9fcf158fa793c0e03498a5fda24be6ef8fdb650f'), true);
+});
+
+test('shouldResolveThread accepts bare "✅ Addressed" from trusted owner', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: 'Some review comment.',
+          authorAssociation: 'NONE',
+          author: { login: 'reviewer' },
+        },
+        {
+          body: '✅ Addressed: not applicable',
+          authorAssociation: 'OWNER',
+          author: { login: 'dev' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), true);
+});
+
+test('shouldResolveThread rejects bare "✅ Addressed" from untrusted author', () => {
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed: not applicable',
+          authorAssociation: 'NONE',
+          author: { login: 'random-stranger' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc123456789abcdef'), false);
+});
+
+test('shouldResolveThread rejects "✅ Addressed in <wrong-sha>" — does not fall through to bare path', () => {
+  // A marker with a wrong-lineage SHA must NOT resolve via the bare path.
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in def5678: this has a SHA so bare path must not trigger',
+          authorAssociation: 'OWNER',
+          author: { login: 'dev' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc12345678'), false);
+});
+
+test('hasBareAddressedMarker returns false when body contains both "✅ Addressed in <sha>" and bare marker', () => {
+  // Combined body: a wrong-SHA "in" marker followed by a separate bare marker.
+  // The "in <sha>" form is present anywhere in the body, so the bare path must not fire.
+  assert.equal(
+    hasBareAddressedMarker(
+      '✅ Addressed in wrongsha123: attempted fix\n✅ Addressed: also not applicable',
+    ),
+    false,
+  );
+  assert.equal(
+    hasBareAddressedMarker('Some text. ✅ Addressed in abc1234: note\n✅ Addressed: bare form'),
+    false,
+  );
+});
+
+test('shouldResolveThread rejects combined body with wrong-SHA "in" marker and separate bare marker', () => {
+  // Even though a bare "✅ Addressed" is present, the wrong-SHA "in" marker controls.
+  const thread = {
+    comments: {
+      nodes: [
+        {
+          body: '✅ Addressed in def5678: wrong SHA\n✅ Addressed: not applicable',
+          authorAssociation: 'OWNER',
+          author: { login: 'dev' },
+        },
+      ],
+    },
+  };
+  assert.equal(shouldResolveThread(thread, 'abc12345678'), false);
 });
 
 test('collapseCheckRunsByName keeps latest attempt by id', () => {
