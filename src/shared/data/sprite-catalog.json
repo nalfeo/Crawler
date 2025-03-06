@@ -2491,6 +2491,19 @@
     "row": 0
   },
   {
+    "id": "generated:twin-katar-var-0",
+    "kind": "sprite",
+    "label": "twin-katar-var-0",
+    "description": "Hand-authored silhouette icon for runtime key equipment/weapon/twin-katar.",
+    "tags": ["weapon", "generated", "hand-authored"],
+    "spriteId": "twin-katar-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/twin-katar-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "generated:welcome-room-bookcase-var-0",
     "kind": "sprite",
     "label": "welcome-room-bookcase-var-0",

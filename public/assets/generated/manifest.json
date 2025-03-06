@@ -7343,6 +7343,18 @@
       "judgeScore": null,
       "type": null
     },
+    "twin-katar-var-0": {
+      "briefId": "twin-katar",
+      "spriteName": "twin-katar-var-0",
+      "assetPath": "generated/twin-katar-var-0.png",
+      "approvedAt": "2026-07-18T01:45:00.000Z",
+      "sourceRun": "manual/twin-katar",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual",
+      "judgeScore": null,
+      "type": "weapon"
+    },
     "vip-lanyard-placeholder": {
       "briefId": "vip-lanyard",
       "spriteName": "vip-lanyard",
