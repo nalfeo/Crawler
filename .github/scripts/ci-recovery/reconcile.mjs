@@ -1003,6 +1003,24 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+function shouldAutoPostOutdatedMarker(candidate) {
+  if (!candidate.isOutdated) return false;
+  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
+
+  const comments = candidate.comments?.nodes ?? [];
+  const last = comments[comments.length - 1];
+  const hasTrustedMarker =
+    last &&
+    extractAddressedMarkerSha(last.body) !== null &&
+    (TRUSTED_ASSOCIATIONS.has(String(last.authorAssociation ?? '').toUpperCase()) ||
+      TRUSTED_BOT_LOGINS.has(String(last.author?.login ?? '').toLowerCase()));
+
+  // Preserve trusted markers whose lineage is stale or temporarily indeterminate.
+  // A definitive stale marker needs the recovery hint below; an indeterminate one
+  // must remain a generic blocker until GitHub can validate its lineage.
+  return !hasTrustedMarker;
+}
+
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
 // no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
@@ -1012,23 +1030,7 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 //
 // This handles the case where the repair agent cannot post thread replies (e.g. HTTP 403 via
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
-for (const thread of unresolvedThreads.filter((candidate) => {
-  if (!candidate.isOutdated) return false;
-  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
-  // A marker naming a commit that does not exist on GitHub is stronger evidence than
-  // isOutdated: the claimed fix was never published and must remain a recovery blocker.
-  const candidateComments = candidate.comments?.nodes ?? [];
-  const lastComment = candidateComments[candidateComments.length - 1];
-  const candidateMarkerSha = extractAddressedMarkerSha(lastComment?.body);
-  if (candidateMarkerSha && definitivelyUnreachableMarkerShas.has(candidateMarkerSha)) {
-    const authorLogin = String(lastComment?.author?.login ?? '').toLowerCase();
-    const authorAssociation = String(lastComment?.authorAssociation ?? '').toUpperCase();
-    if (TRUSTED_ASSOCIATIONS.has(authorAssociation) || TRUSTED_BOT_LOGINS.has(authorLogin)) {
-      return false;
-    }
-  }
-  return true;
-})) {
+for (const thread of unresolvedThreads.filter(shouldAutoPostOutdatedMarker)) {
   const root = thread.comments?.nodes?.[0];
   const replyCommentId = reviewThreadReplyCommentId(root?.url);
   if (!replyCommentId) {

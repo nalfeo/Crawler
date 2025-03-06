@@ -4,6 +4,9 @@ import test from 'node:test';
 
 import { listReviewThreads } from './github.mjs';
 
+// Force zero retry delay so unit tests do not incur real wait times.
+process.env.GITHUB_REQUEST_RETRY_DELAY_MS = '0';
+
 const MODULE_URL = new URL('./github.mjs', import.meta.url).href;
 let importCounter = 0;
 
@@ -135,3 +138,69 @@ test('request rejects a non-JSON success body instead of returning null data', a
     },
   );
 });
+
+test('request retries a GET on 503 and succeeds on the next attempt', async (t) => {
+  let callCount = 0;
+  const { server, port } = await startServer((req, res) => {
+    callCount += 1;
+    if (callCount === 1) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ message: 'Service Unavailable' }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify([{ id: 1 }]));
+  });
+  t.after(() => server.close());
+
+  const { request: requestFromFreshImport } = await importRequestWithApiBase(port);
+  const result = await requestFromFreshImport('token', '/repos/test-owner/test-repo/pulls');
+  assert.equal(callCount, 2);
+  assert.deepEqual(result.data, [{ id: 1 }]);
+});
+
+test('request exhausts retries and surfaces the last 503 error', async (t) => {
+  let callCount = 0;
+  const { server, port } = await startServer((req, res) => {
+    callCount += 1;
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Service Unavailable' }));
+  });
+  t.after(() => server.close());
+
+  const { request: requestFromFreshImport } = await importRequestWithApiBase(port);
+  await assert.rejects(
+    () => requestFromFreshImport('token', '/repos/test-owner/test-repo/pulls'),
+    (error) => {
+      assert.equal(error.status, 503);
+      assert.match(error.message, /failed \(503\)/);
+      assert.equal(callCount, 3);
+      return true;
+    },
+  );
+});
+
+test('request does not retry a non-GET (POST) on 503', async (t) => {
+  let callCount = 0;
+  const { server, port } = await startServer((req, res) => {
+    callCount += 1;
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ message: 'Service Unavailable' }));
+  });
+  t.after(() => server.close());
+
+  const { request: requestFromFreshImport } = await importRequestWithApiBase(port);
+  await assert.rejects(
+    () =>
+      requestFromFreshImport('token', '/repos/test-owner/test-repo/issues/1/comments', {
+        method: 'POST',
+        body: { body: 'comment' },
+      }),
+    (error) => {
+      assert.equal(error.status, 503);
+      assert.equal(callCount, 1);
+      return true;
+    },
+  );
+});
+

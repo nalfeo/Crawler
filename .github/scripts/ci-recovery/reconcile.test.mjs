@@ -6941,6 +6941,15 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
     /verify fix is present.*reply to this thread/i,
     'task body must instruct the agent to verify and re-post the marker',
   );
+
+  // The reconciler must NOT inject an outdated-marker auto-reply for a stale-marker
+  // thread — doing so would create a fresh trusted marker and auto-resolve the thread,
+  // masking the real issue (a commit that was never pushed to GitHub).
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`posted outdated-marker thread=${threadId}`),
+    'must not post an auto-marker for a stale-marker thread (would mask the real issue)',
+  );
 });
 
 test('outdated thread ignores unreachable marker from an untrusted commenter', async (t) => {
@@ -7087,7 +7096,7 @@ test('transient compare failure does not produce a stale-marker hint (generic bl
           {
             id: threadId,
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'src/core/systems/damageSystem.ts',
             line: 42,
             comments: {
@@ -7136,6 +7145,11 @@ test('transient compare failure does not produce a stale-marker hint (generic bl
 
   // Thread must NOT be auto-resolved (lineage was indeterminate).
   assert.doesNotMatch(stdout, new RegExp(`resolved thread=${threadId}`));
+  assert.doesNotMatch(
+    stdout,
+    new RegExp(`posted outdated-marker thread=${threadId}`),
+    'must not replace a trusted marker while its lineage is indeterminate',
+  );
 
   // A task comment must still be posted for the generic review-thread blocker.
   const taskCommentCall = mutatingCalls.find(
