@@ -54,6 +54,20 @@ Neither layer may call `Math.random()` or `Date.now()`.
 
 These are aspirational per-layer targets. Mechanical enforcement currently uses per-file thresholds in `vitest.config.ts`; see `docs/agent-os/policies/ci-policy.md` for the gate stack and enforcement details.
 
+### 9. Rapid Five-Level Build Growth
+
+Equipment and other build progression must preserve Crawler's rapid
+fragile-to-dominant power curve. For one fixed representative build cohort,
+median aggregate realized DPS over committed deterministic encounter fixtures
+must grow by **1.7x-2.3x every five player levels**.
+
+The initial release gate evaluates level 1 -> 6 and level 6 -> 11 as independent
+bands; both must pass. Results may be spiky for an individual build, encounter,
+or seed, but neither cherry-picked weapons nor averaging one failing band into a
+passing band may satisfy the principle. Later progression extends the same
+five-level windows (11 -> 16, 16 -> 21, and so on) with new representative
+fixtures; extending coverage never changes the 1.7x-2.3x target.
+
 ### 10. Hashimoto's Loop
 
 Every agent failure becomes a permanent fix: observe → classify → decide fix type → implement → add regression test → audit. Never "fix the prompt" — encode rules as sensors.
