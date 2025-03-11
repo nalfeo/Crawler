@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "post-rollout-ci-measurement",
+  "task_title": "Post-Rollout PR CI Resource Efficiency Measurement",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "Adversarial rubber-duck review identified 7 concerns; resolved by setting exact 3-apple tier, running required review stages, updating handoff apples, and tightening measurement-script examples/output formatting."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-sonnet-4.6"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
