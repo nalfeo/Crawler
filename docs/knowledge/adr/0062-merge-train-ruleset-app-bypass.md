@@ -457,8 +457,9 @@ atomic promotion to <sha>`. Investigation confirmed the atomic push had
   aggregated error without blocking cleanup.
 
 - **DEC-025**: Corrected `waitForMergedPr`'s confirmation predicate: GitHub's
-  `merged`/`merged_at` PR fields are **permanently unsatisfiable** for this
-  promotion mechanism, not merely laggy as DEC-024 assumed — replaced the
+  `merged`/`merged_at` PR fields are **not reliably satisfiable** for this
+  promotion mechanism (observed absent in all seven cases at the time, later
+  narrowed — see DEC-025 addendum below), not merely laggy as DEC-024 assumed — replaced the
   predicate with `state === 'closed'` (keeping `merged === true` as a
   defensive OR-branch), extracted the entire polling loop into a directly
   unit-testable factory, and gave the real predicate its first-ever direct
@@ -475,15 +476,20 @@ atomic promotion to <sha>`. Investigation confirmed the atomic push had
   `merged: false, merged_at: null` for **all seven** real promoted PRs across
   both the earlier 6-PR batch and this PR #1149 — including entries promoted
   **9+ hours** earlier — even though every one of their commits was correctly
-  present on `main`. This is not lag; no amount of waiting would ever satisfy
-  it. Confirmed via web research: GitHub only sets `merged`/`merged_at` when
-  a PR is closed through its own Merge API/UI, which this atomic multi-ref
-  force-push strategy intentionally bypasses (that bypass is the entire point
-  — it's what makes the promotion atomic across a multi-PR batch, which
-  GitHub's own merge API cannot do). DEC-024's framing ("an async lag under
-  load") was itself a wrong inference from a true observation (the six-PR
-  batch's confirmation read hadn't landed within the old budget) — the actual
-  cause was that the predicate could never be satisfied, at any budget.
+  present on `main`. Based on this observation, the original conclusion was that
+  no amount of waiting would ever satisfy it. _(Historical reasoning, since
+  narrowed by the DEC-025 addendum below:)_ Confirmed via web research at
+  the time: GitHub only sets `merged`/`merged_at` when a PR is closed
+  through its own Merge API/UI, which this atomic multi-ref force-push
+  strategy intentionally bypasses (that bypass is the entire point — it's
+  what makes the promotion atomic across a multi-PR batch, which GitHub's own
+  merge API cannot do). DEC-024's framing ("an async lag under load") was
+  itself a wrong inference from a true observation (the six-PR batch's
+  confirmation read hadn't landed within the old budget) — the actual cause
+  was believed to be that the predicate could never be satisfied, at any
+  budget. _(This web-research-based mechanism claim was later contradicted
+  by the PR #1131 observation — see the DEC-025 addendum below, which
+  narrows the conclusion from "permanently unsatisfiable" to "unreliable".)_
   Per this task's explicit instruction, the train was immediately paused
   (`MERGE_TRAIN_ENABLED=false`) and protection was safely rolled back
   (`protection.mjs rollback`) the moment the failure was understood to be
@@ -530,6 +536,19 @@ pollDelaysMs, sleep })`, mirroring the existing `buildDispatchBindings`
   GitHub's PR `state`/`merged` fields as audit/UI signals only rather than
   any part of the trust boundary. Tracked as a follow-up in issue #1157
   rather than implemented now.
+
+  **DEC-025 addendum** (2026-07-15, from the live cutover verification session —
+  `docs/knowledge/handoffs/2026-07-15-merge-train-live-cutover-verified.md`):
+  PR #1131's subsequent promotion during the live cutover showed `merged: true`
+  and `merged_at` populated promptly, which is counter-evidence to the
+  "permanently unsatisfiable" framing above. The narrowed, evidence-supported
+  conclusion is that `merged`/`merged_at` are **unreliable** for this promotion
+  mechanism — absent in all seven cases observed at the time of the DEC-025
+  discovery, present in at least one subsequent case (PR #1131) — not
+  universally absent. `state === 'closed'` remains the correct load-bearing
+  confirmation signal because `merged` cannot be depended on across all
+  promotions; the `merged === true` OR-branch is not dead code and correctly
+  handles the cases where GitHub does populate the field.
 
 ## Consequences
 
@@ -656,6 +675,7 @@ pollDelaysMs, sleep })`, mirroring the existing `buildDispatchBindings`
   distinct bug in `promoteExactBatch`'s promotion-postcondition/cleanup tail,
   outside this ADR's `protection.mjs` scope
 - Issue #1157: the 5th gap (DEC-025) — the `merged`/`merged_at` confirmation
-  predicate is permanently unsatisfiable (not laggy, as DEC-024 assumed) for
+  predicate is not reliably satisfiable (not laggy, as DEC-024 assumed) for
   this promotion mechanism; discovered live during the re-attempted cutover
-  immediately after DEC-024/#1154/PR #1156 shipped
+  immediately after DEC-024/#1154/PR #1156 shipped (see DEC-025 addendum for
+  the narrowed conclusion)

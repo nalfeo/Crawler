@@ -1,0 +1,9 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "merge-train-live-cutover-verified",
+  "task_title": "Merge-train live cutover capstone handoff + review-thread corrections (including source-comment narrowing)",
+  "estimated_apples": 1,
+  "scope_note": "Eight files changed in this PR: docs/knowledge/handoffs/2026-07-15-merge-train-live-cutover-verified.md (capstone handoff), docs/knowledge/handoffs/INDEX.md (regenerated index), docs/knowledge/metrics/guard-telemetry/2026-07-15-merge-train-live-cutover-verified.json (telemetry), docs/knowledge/adr/0062-merge-train-ruleset-app-bypass.md (DEC-025 narrowed from 'permanent' to 'unreliable', addendum added), docs/guides/merge-train.md (narrowed mechanism claim; corrected step-4 postcondition text), .github/scripts/merge-train/reconcile.mjs (comment rewrite: 'only ever set' claim removed), .github/scripts/merge-train/reconcile-lib.mjs (comment and JSDoc narrowed: ONLY/NEVER/permanent replaced with 'unreliable'), docs/knowledge/review-ledgers/2026-07-15-merge-train-live-cutover-verified.review-ledger.json (this file). The source-file changes are comment/JSDoc edits only (no logic change). The 1-apple tier covers this scope: the corrective work is scoped to documentation consistency, with no new logic paths, tests, or architectural decisions required.",
+  "stages": {}
+}

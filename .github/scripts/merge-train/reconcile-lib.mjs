@@ -453,18 +453,18 @@ export async function promoteExactBatch({
   // `finalCandidateSha`. `waitForMergedPr` below is a secondary confirmation
   // via GitHub's own view of each PR (useful for auditability and to catch a
   // genuinely wrong assumption), but it does NOT poll for GitHub's `merged`/
-  // `merged_at` fields to flip true -- those are only ever set when a PR is
-  // closed through GitHub's own merge machinery (its Merge API or the web
-  // "Merge" button), which this atomic multi-ref force-push strategy
-  // intentionally bypasses to get true cross-PR atomicity. This was
+  // `merged_at` fields to be set -- those are unreliable for this promotion
+  // mechanism: absent in all seven promotions observed during the DEC-025
+  // discovery (including one entry 9+ hours old), but observed populated in
+  // at least one subsequent promotion (PR #1131, same date), so the fields
+  // cannot be depended on (see DEC-025 addendum in ADR 0062). This was
   // originally believed to be an async *lag* under load (ADR 0062 DEC-024:
   // a six-PR batch where the first entry's confirmation read hadn't landed
-  // within the old retry budget), but was proven live on 2026-07-15 to be
-  // *permanent*, not a lag (ADR 0062 DEC-025): seven real promoted PRs across
-  // two separate batches -- one over nine hours old -- never showed
-  // `merged: true`, despite `git log main --grep Merge-Train-PR` proving
-  // every one of their commits correctly landed. `waitForMergedPr` (built by
-  // `createWaitForMergedPr` above) instead polls for `state === 'closed'`,
+  // within the old retry budget), then initially believed proven live on
+  // 2026-07-15 to be *permanent*, not a lag (ADR 0062 DEC-025), and finally
+  // narrowed to *unreliable* by the PR #1131 counter-evidence. `waitForMergedPr`
+  // (built by
+  // `createWaitForMergedPr` above) therefore polls for `state === 'closed'`,
   // which GitHub reliably sets within ~20s of the push in every observed
   // case, and is the actual achievable ground-truth signal for this
   // promotion mechanism.
@@ -575,27 +575,23 @@ export async function promoteExactBatch({
  * its own, prove a promotion happened; it corroborates one that the caller
  * already knows (from the push's own success) took effect.
  *
- * GitHub's `merged`/`merged_at` PR fields are populated ONLY when a PR is
- * closed through GitHub's own merge machinery (the Merge Pull Request
- * REST/GraphQL API or the web "Merge" button). This promotion strategy
- * intentionally bypasses that machinery -- it force-pushes the exact
- * validated candidate SHA directly onto both `main` and every entry's own
- * head ref in one atomic multi-ref push, specifically to get true atomicity
- * across a multi-PR batch, which GitHub's own merge API cannot do. That
- * means `merged`/`merged_at` are NEVER set for a promotion done this way, no
- * matter how long you wait -- this was originally believed to be a lag
- * (ADR 0062 DEC-024) but was proven, live in production on 2026-07-15, to be
- * permanent: seven real promoted PRs across two separate batches, one over
- * nine hours old, still showed `merged: false, merged_at: null`, even though
- * `git log main --grep Merge-Train-PR` proved every one of their commits was
- * correctly present on `main`. What GitHub *does* reliably do -- observed
- * within ~20s of the push in all seven cases -- is auto-close the PR once
- * its head ref (now identical to `main`'s tip) shows no remaining diff
- * against the base branch. `state === 'closed'` is therefore the correct,
- * achievable, fast ground-truth completion signal for this promotion
- * mechanism; `merged === true` is kept only as a defensive OR-branch in case
- * some other/future promotion path ever does go through GitHub's own merge
- * API. See ADR 0062 DEC-025.
+ * GitHub's `merged`/`merged_at` PR fields are **not reliably** set by this
+ * promotion mechanism -- absent in all seven promotions observed during the
+ * DEC-025 discovery (including one entry over nine hours old), but observed
+ * populated in at least one subsequent promotion (PR #1131, 2026-07-15 live
+ * cutover). Why this atomic multi-ref force-push strategy sometimes does and
+ * sometimes does not cause GitHub to set these fields is not fully understood;
+ * the fields cannot be depended on as a completion signal. This was originally
+ * believed to be a lag (ADR 0062 DEC-024) but was initially believed proven
+ * live on 2026-07-15 to be permanent (ADR 0062 DEC-025), and later narrowed
+ * to *unreliable* by the PR #1131 counter-evidence (see DEC-025 addendum in
+ * ADR 0062). What GitHub *does* reliably do -- observed within ~20s of the
+ * push in all seven DEC-025 cases -- is auto-close the PR once its head ref
+ * (now identical to `main`'s tip) shows no remaining diff against the base
+ * branch. `state === 'closed'` is therefore the correct, achievable, fast
+ * ground-truth completion signal for this promotion mechanism; `merged ===
+ * true` is kept as a defensive OR-branch for cases where GitHub does populate
+ * the field. See ADR 0062 DEC-025.
  */
 export function isPostPushConfirmationSatisfied(prData) {
   return Boolean(prData) && (prData.merged === true || prData.state === 'closed');

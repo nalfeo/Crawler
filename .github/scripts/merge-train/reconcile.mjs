@@ -254,17 +254,19 @@ async function mainHealthAllowsPromotion() {
 
 // `waitForMergedPr` polls each promoted entry's PR for GitHub's own view of
 // the promotion, as a secondary confirmation on top of the atomic push's own
-// (authoritative) success. It does NOT wait for `merged`/`merged_at` to flip
-// true -- those fields are only ever set when a PR is closed through
-// GitHub's own merge machinery (its Merge API or the web "Merge" button),
-// which this atomic multi-ref force-push strategy intentionally bypasses to
-// get true cross-PR atomicity; waiting on them can never succeed. It instead
+// (authoritative) success. It does NOT require GitHub's `merged`/`merged_at`
+// fields to be set -- those are unreliable for this promotion mechanism:
+// absent in all seven promotions observed during the DEC-025 discovery
+// (including one entry 9+ hours old), but observed populated in at least one
+// subsequent promotion (PR #1131, same date), so the fields cannot be
+// depended on as a completion signal (see DEC-025 addendum in ADR 0062).
+// This was originally believed to be an async *lag* under load (ADR 0062
+// DEC-024), then initially believed proven live on 2026-07-15 to be
+// *permanent*, not a lag (ADR 0062 DEC-025), and finally narrowed to
+// *unreliable* by the PR #1131 counter-evidence. `waitForMergedPr` therefore
 // polls for `state === 'closed'`, which GitHub reliably sets within ~20s of
-// the push (observed live on 2026-07-15 across two real promotion batches,
-// see ADR 0062 DEC-025 -- correcting DEC-024's original "async lag" framing,
-// which was itself proven wrong: `merged` never became true even 9+ hours
-// after promotion for PRs whose commits `git log main --grep Merge-Train-PR`
-// proved had already correctly landed). The ~77s budget below is kept as a
+// the push in every observed case, and is the actual achievable ground-truth
+// signal for this promotion mechanism. The ~77s budget below is kept as a
 // bounded safety margin against a genuine anomaly (a PR that never
 // auto-closes at all) even though `closed` typically fires in ~20s;
 // `createWaitForMergedPr` polls every entry in parallel (via

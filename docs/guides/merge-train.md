@@ -139,26 +139,29 @@ dry-run train mode.
    - a failed candidate is bisected and the maximal green prefix advances;
    - a `main` race rejects promotion and rebuilds;
    - a failure between PR-head update and main update retries the same tested SHA.
-4. Confirm GitHub records every disposable PR as merged and that the merge commit
-   OIDs equal their successful `merge-train` check OIDs.
-   Promotion also checks this postcondition in production and fails the train
-   run if GitHub does not record every included PR as merged.
+4. Confirm every disposable PR is closed or recorded as merged (`state ===
+   'closed'` or `merged === true`). Promotion polls this postcondition in
+   production after the atomic push; the train fails if an entry never
+   confirms within the poll budget. No merge-commit OID comparison is
+   performed — the atomic push's own success is the authoritative proof of a
+   correct promotion.
 
    > **GitHub's "merged" confirmation is a secondary corroboration, not the
-   > ground truth — and `merged`/`merged_at` never fire for this promotion
-   > mechanism at all.** The atomic `git push --atomic ... --force-with-lease` is the actual, authoritative proof that a batch
-   > promoted correctly. GitHub's `merged`/`merged_at` PR fields are populated
-   > only when a PR is closed through GitHub's own merge machinery (its Merge
-   > API or the web "Merge" button) — this promotion strategy intentionally
-   > bypasses that machinery to force-push the exact validated candidate
-   > directly onto every entry's head ref and `main` in one atomic multi-ref
-   > push, so `merged`/`merged_at` are **never** set, no matter how long you
-   > wait. This was originally believed to be an async _lag_ under load (ADR
-   > 0062 DEC-024, from a six-PR batch where one entry's confirmation read
-   > hadn't landed within the old retry budget) but was proven live in
-   > production on 2026-07-15 to be _permanent_: seven real promoted PRs
-   > across two separate batches — one over nine hours old — still showed
-   > `merged: false, merged_at: null`, even though `git log main --grep Merge-Train-PR` proved every one of their commits had correctly landed.
+   > ground truth — and `merged`/`merged_at` are not reliably set by this promotion
+   > mechanism.** The atomic `git push --atomic ... --force-with-lease` is the actual, authoritative proof that a batch
+   > promoted correctly. GitHub's `merged`/`merged_at` PR fields are **not
+   > reliably** set by this promotion mechanism — absent in all seven
+   > promotions observed during the DEC-025 discovery (including one entry
+   > 9+ hours old), but observed populated in at least one subsequent
+   > promotion (PR #1131, 2026-07-15 live cutover). Why a direct atomic
+   > multi-ref force-push sometimes does and sometimes does not cause GitHub
+   > to set these fields is not fully understood; the fields cannot be
+   > depended on as a completion signal for this mechanism. This was originally
+   > believed to be an async _lag_ under load (ADR 0062 DEC-024, from a six-PR
+   > batch where one entry's confirmation read hadn't landed within the old
+   > retry budget) but was shown to be a persistent unreliability (ADR 0062
+   > DEC-025, narrowed to "unreliable" from the initial "permanent" framing by
+   > the PR #1131 observation — see the DEC-025 addendum in ADR 0062).
    > What GitHub _does_ reliably do (observed within ~20s of the push in all
    > seven cases) is auto-close the PR once its head ref shows no remaining
    > diff against `main`. `promoteExactBatch`'s confirmation poller
