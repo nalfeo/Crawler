@@ -479,7 +479,7 @@
     "id": "generated:cactusfolk-boss-var-1",
     "kind": "sprite",
     "label": "cactusfolk-boss-var-1",
-    "description": "Generated sprite from brief: cactusfolk-boss.",
+    "description": "Abuela Saguaro, cactusfolk cartel matriarch. Current sprite is 64x64 v1 from the pre-redesign brief; a grandmother-themed variant with spectacles, floral rebozo, devotional charms, and salvage-armor dressing is pending regeneration.",
     "tags": ["enemy", "generated", "pipeline-approved"],
     "spriteId": "cactusfolk-boss-var-1",
     "sheetKey": "generated-manifest",
