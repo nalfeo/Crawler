@@ -70,6 +70,7 @@ Dark aged-iron barrel (long, slender, scuffed) + warm brown worn wooden stock + 
   - [ ] Wiring PR (separate code PR, full gates): add to `weapons.json`, `equipmentDefs.ts`, `ITEM_CATALOG`, `weapons.art.yaml`
 
   </details>
+
 - **Azure OpenAI credentials not available** in this CI environment. `npm run setup:azure:env` skips in cloud/CI context. Generation must be run locally via `npm run sprites:run -- --brief briefs/weapons/musketeer-rifle.yaml` with `.env.local` Azure credentials, or via the sidecar gallery.
 
 ## Pipeline next steps
