@@ -138,22 +138,22 @@
           "kind": "handoff",
           "path_or_check": "docs/knowledge/handoffs/2026-07-17-floor-2-equipment-epic-control.md",
           "sha256": "9d3dfa5fb7214032f0ff73cbc64a9da62e8c584291257bfb154bbb950910bfeb",
-          "commit": "8e9bb3208e8a4b4307401441525cfc76b3ac6d7d",
+          "commit": "84489aa693a18831b68c024630cf268eed35bd35",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
           "kind": "review-ledger",
           "path_or_check": "docs/knowledge/review-ledgers/2026-07-17-floor-2-epic-control.review-ledger.json",
           "sha256": "fa7d39e5a5e9dcc867ffdbc25ccf6b33c0f0ca86edc229cd8403b97df1316afa",
-          "commit": "8e9bb3208e8a4b4307401441525cfc76b3ac6d7d",
+          "commit": "84489aa693a18831b68c024630cf268eed35bd35",
           "recorded_at": "2026-07-17T18:25:00.000Z"
         },
         {
           "kind": "offline-validator-and-focused-tests",
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
-          "sha256": "91aa4bfcf6f52114eaec88f821f56d81082612bde2311c1b8a86de98379c0401",
-          "commit": "cd9989af1f9315617ebc84dfe1e64e4db81139d1",
-          "recorded_at": "2026-07-18T12:05:08.000Z"
+          "sha256": "294a8fe466b71466238e72d6090b027c555ba7d7b0a1368bd7c3a65051676425",
+          "commit": "1435703c4983c6b69c9e0ed222b74caaa296489a",
+          "recorded_at": "2026-07-18T22:22:00.000Z"
         }
       ],
       "reconciliation": {
