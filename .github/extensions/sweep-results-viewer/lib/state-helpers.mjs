@@ -30,6 +30,10 @@ export function formatCloudFailure(prefix, error) {
   return `${prefix}${detail}${authGuidance}`;
 }
 
+export function isCurrentCloudGeneration(state, generation) {
+  return !state.closed && state.generation === generation && state.source === 'cloud';
+}
+
 export function isCurrentLocalSelection(state, selection) {
   return (
     !state.closed &&

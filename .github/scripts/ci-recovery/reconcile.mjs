@@ -1004,14 +1004,6 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 for (const thread of unresolvedThreads.filter((candidate) => {
   if (!candidate.isOutdated) return false;
   if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
-  // Don't process as outdated if the thread has a definitively stale marker SHA —
-  // those threads surface through the stale-marker hint path instead.
-  const candidateComments = candidate.comments?.nodes ?? [];
-  const lastComment = candidateComments[candidateComments.length - 1];
-  const candidateMarkerSha = extractAddressedMarkerSha(lastComment?.body);
-  if (candidateMarkerSha && definitivelyUnreachableMarkerShas.has(candidateMarkerSha)) {
-    return false;
-  }
   return true;
 })) {
   const root = thread.comments?.nodes?.[0];
