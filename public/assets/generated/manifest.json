@@ -3771,6 +3771,37 @@
       "judgeScore": null,
       "type": null
     },
+    "merchant-sandals-var-0": {
+      "briefId": "merchant-sandals",
+      "spriteName": "merchant-sandals-var-0",
+      "assetPath": "generated/merchant-sandals-var-0.png",
+      "approvedAt": "2026-07-18T05:25:00.000Z",
+      "sourceRun": "manual/merchant-sandals",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 32,
+        "y": 56,
+        "source": "manual"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 56,
+          "source": "manual"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "manual"
+        }
+      },
+      "sensorScore": "manual-authored",
+      "judgeScore": null,
+      "type": "item",
+      "contentHash": "dd5885a474498ff120e0d95b42cf3dd1f9a8b6aab87fd5d2077184c824d24d85",
+      "effectiveAnchorSource": "manual",
+      "facingDirection": "right"
+    },
     "merchants-stained-charm-var-0": {
       "briefId": "merchants-stained-charm",
       "spriteName": "merchants-stained-charm-var-0",
