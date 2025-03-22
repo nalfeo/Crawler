@@ -446,6 +446,41 @@ describe('Map Generators', () => {
       }
     });
 
+    it('should keep SAFE and BOSS_STAIR room interiors fully rectangular after room variety', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizeFt: 4,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const floor = gen.generate({ ...config, seed }, new SeededRandom(seed));
+        const { width: w } = floor;
+
+        for (const room of floor.rooms) {
+          if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+          const { x, y, width, height } = room.bounds;
+
+          for (let ty = y + 1; ty < y + height - 1; ty += 1) {
+            for (let tx = x + 1; tx < x + width - 1; tx += 1) {
+              const flags = floor.tileMap.flags[ty * w + tx]!;
+              expect(
+                (flags & TileFlags.PASSABLE) !== 0,
+                `seed=${seed} room ${room.id} (${room.role}) has carved interior wall at (${tx},${ty})`,
+              ).toBe(true);
+            }
+          }
+        }
+      }
+    });
+
     it('should assign BOSS_STAIR room the same id before and after room variety', () => {
       // Regression: pre-assigning roles must produce the same boss room as the
       // old post-variety distance scoring in normal cases.

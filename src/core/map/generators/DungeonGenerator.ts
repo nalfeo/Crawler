@@ -18,6 +18,7 @@ import { SeededRandom } from '../../../shared/random';
 import { TileMap } from '../TileMap';
 import { RoomGraph } from '../RoomGraph';
 import { FloorMap } from '../FloorMap';
+import { restoreRoomInterior } from '../special-rooms.js';
 import type { MapGenerator } from './types';
 
 // ─── Extracted pipeline modules (in-layer split; see ./dungeon/) ─────────────
@@ -199,6 +200,11 @@ export class DungeonGenerator implements MapGenerator {
     if (this.caveRegions) {
       const caveProtectedMask = buildCaveProtectedMask(roomGraph, w, h);
       carveCaveRegions(tileMap, terrain, roomGraph, w, h, caveProtectedMask, config.seed);
+    }
+
+    for (const room of roomGraph.getAll()) {
+      if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+      restoreRoomInterior(tileMap.flags, terrain, w, room);
     }
 
     // Room adjacency is computed AFTER all tile-modifying passes (variety,

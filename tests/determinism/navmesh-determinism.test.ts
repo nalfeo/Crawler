@@ -66,7 +66,7 @@ import type { FloorMap } from '../../src/core/map/FloorMap.js';
  * (seed-42: 45/45 room centers reached). LOCKED — see file header. Cross-platform
  * re-proof (win local == linux CI) tracked in the Slice-3 handoff.
  */
-const GOLDEN_DETERMINISM_HASH = '75917f12';
+const GOLDEN_DETERMINISM_HASH = 'da8acb36';
 
 /** The exact seeds the spike hashed. */
 const SEEDS = [42, 1337, 999999] as const;
@@ -252,7 +252,7 @@ describe('NAVMESH determinism — pinned config regression guard (Gate 2)', () =
     await initNavmesh();
   });
 
-  it('reproduces the corrected Slice-3 golden determinism hash (75917f12)', () => {
+  it('reproduces the corrected Slice-3 golden determinism hash (da8acb36)', () => {
     const results = SEEDS.map((s) => runSeed(s));
     // Sanity: every seed must produce passable geometry AND every query must
     // ROUTE ALL THE WAY to its goal — not just return >1 point. The Slice-1
