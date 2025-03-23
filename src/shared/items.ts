@@ -221,6 +221,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('punch', 'Punch', 'Your own two knuckles and a bad attitude.', C),
   wpn('landmine', 'Landmine', 'Set it, bait it, and let the room solve itself.', U),
   wpn('toxic-blowgun', 'Toxic Blowgun', "One puff and they're napping.", U),
+  wpn('thorn-whip', 'Thorn Whip', 'Vines that bite back.', R),
   wpn('chain-whip', 'Chain Whip', 'Satisfying crack included.', R),
   wpn('obsidian-axe', 'Obsidian Axe', 'So sharp it cuts light.', R),
   wpn('gravity-hammer', 'Gravity Hammer', 'Weighs nothing until impact.', E),
