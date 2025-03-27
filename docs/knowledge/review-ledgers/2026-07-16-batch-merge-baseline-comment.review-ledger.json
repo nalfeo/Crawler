@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "batch-merge-baseline-comment",
+  "task_title": "fix: post baseline win-rate comment on all batch-merged PRs",
+  "estimated_apples": 1,
+  "stages": {}
+}
