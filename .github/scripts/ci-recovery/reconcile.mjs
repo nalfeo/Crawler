@@ -1,6 +1,8 @@
 import {
   assertOwnershipInvariant,
   admissionWaitReasons,
+  automationProgressKey,
+  automationStallAction,
   blockerFingerprint,
   collapseCheckRunsByName,
   isDuplicateDispatch,
@@ -11,6 +13,7 @@ import {
   reviewThreadBlockerId,
   extractAddressedMarkerSha,
   shouldMutateRecoveryState,
+  shouldDispatchMergeTrainFill,
   ownerLabel,
   parseStateComment,
   renderStateComment,
@@ -201,6 +204,33 @@ if (staleOwningState) {
       `PR #${prNumber} has an unexpired shepherd lease with a missing owner label; refusing automatic cleanup`,
     );
   }
+  // Detect an interrupted stale-automation-exhausted release: the repository
+  // label was already deleted (hence staleOwningState) but the state-comment
+  // PATCH failed before it could record the terminal idle state.  Without this
+  // guard the run would fall through to a fresh attempt-1 dispatch, silently
+  // resetting the exhausted retry budget.  Complete the pending state update
+  // now so the next reconciliation starts from a clean idle baseline.
+  if (state.owner === 'automation' && state.progressKey && state.attempt >= 2) {
+    await updateState(
+      makeState({
+        prNumber,
+        headSha: state.headSha,
+        fingerprint: state.fingerprint || blockerFingerprint([]),
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers: state.blockers || [],
+        attempt: state.attempt,
+        progressKey: state.progressKey,
+        progressAt: state.progressAt || state.updatedAt,
+        updatedAt: now.toISOString(),
+      }),
+    );
+    process.stdout.write(
+      `completed-interrupted-exhausted-release pr=#${prNumber} attempts=${state.attempt}\n`,
+    );
+    process.exit(0);
+  }
 } else if (!orphanedOwnershipArtifact) {
   assertOwnershipInvariant({ labelExists, state });
 }
@@ -234,7 +264,11 @@ async function updateState(nextState, { forceTimestamp = false } = {}) {
   return true;
 }
 
-async function acquire(nextOwner, nextLeaseId = null) {
+async function acquire(
+  nextOwner,
+  nextLeaseId = null,
+  { attempt = 0, progressKey = null, progressAt = null } = {},
+) {
   if (labelExists) {
     throw new Error(`PR #${prNumber} is already owned by ${state?.owner || 'unknown'}`);
   }
@@ -265,6 +299,9 @@ async function acquire(nextOwner, nextLeaseId = null) {
       leaseId: nextLeaseId,
       trigger,
       blockers: [],
+      attempt,
+      progressKey,
+      progressAt,
       updatedAt: now.toISOString(),
     }),
     { forceTimestamp: true },
@@ -358,6 +395,53 @@ async function repositoryLabelExists(name) {
   }
 }
 
+function isKnownStaleNodeLabelError(error) {
+  if (error?.status !== 422) return false;
+  const message = String(error?.data?.message || error?.message || '');
+  const errors = Array.isArray(error?.data?.errors) ? error.data.errors : [];
+  return (
+    /label.*(?:does not exist|not found|stale)/i.test(message) ||
+    errors.some(
+      (entry) =>
+        String(entry?.resource || '').toLowerCase() === 'issue' &&
+        String(entry?.field || '').toLowerCase() === 'labels' &&
+        ['missing', 'missing_field'].includes(String(entry?.code || '').toLowerCase()),
+    )
+  );
+}
+
+function sameOwnership(candidate, expected) {
+  if (!expected) {
+    return (
+      !candidate || candidate.owner === 'none' || ['idle', 'waiting'].includes(candidate.status)
+    );
+  }
+  return Boolean(candidate && JSON.stringify(candidate) === JSON.stringify(expected));
+}
+
+async function fetchOwnershipFacts() {
+  const [livePullRequest, liveComments, repositoryLabelPresent] = await Promise.all([
+    request(readToken, `/repos/${owner}/${repo}/pulls/${prNumber}`).then(
+      (response) => response.data,
+    ),
+    paginate(readToken, `/repos/${owner}/${repo}/issues/${prNumber}/comments`),
+    repositoryLabelExists(labelName),
+  ]);
+  const liveStateComments = liveComments.filter((comment) =>
+    hasLeadingMarker(comment.body, STATE_MARKER),
+  );
+  if (liveStateComments.length > 1) {
+    throw new Error(`PR #${prNumber} has ${liveStateComments.length} CI recovery state comments`);
+  }
+  const liveState =
+    liveStateComments.length === 1 ? parseStateComment(liveStateComments[0].body) : null;
+  return {
+    attached: (livePullRequest.labels || []).some((label) => label.name === labelName),
+    repositoryLabelPresent,
+    state: liveState,
+  };
+}
+
 async function disableAutoMergeForHumanGate() {
   if (!pr.auto_merge) return;
   if (!live) {
@@ -395,6 +479,7 @@ async function dispatchWorkflow(workflow, inputs) {
 }
 
 async function release(reason, nextState = null) {
+  const ownershipToRelease = state;
   const releasedState =
     nextState ||
     makeState({
@@ -411,16 +496,42 @@ async function release(reason, nextState = null) {
   const waitingTransition = releasedState.status === 'waiting' ? false : await prepareWaitingExit();
   if (shouldMutate) {
     await assertExpectedMetadataUnchanged('release-label');
-    const cleanup = await Promise.allSettled([
-      removePrLabel(labelName),
-      removeRepositoryLabel(labelName),
-    ]);
-    const failures = cleanup.filter((result) => result.status === 'rejected');
-    if (failures.length > 0) {
-      throw new AggregateError(
-        failures.map((result) => result.reason),
-        `Failed to fully release CI recovery ownership for PR #${prNumber}`,
-      );
+    let atomicOwnerBitAbsent = false;
+    try {
+      await removePrLabel(labelName);
+    } catch (error) {
+      if (!isKnownStaleNodeLabelError(error)) throw error;
+      let facts = await fetchOwnershipFacts();
+      if (!facts.repositoryLabelPresent) {
+        if (!sameOwnership(facts.state, ownershipToRelease)) {
+          throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
+        }
+        pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
+        labelExists = false;
+        atomicOwnerBitAbsent = true;
+      } else if (!facts.attached) {
+        if (!sameOwnership(facts.state, ownershipToRelease)) {
+          throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
+        }
+        pr.labels = (pr.labels || []).filter((label) => label.name !== labelName);
+      } else if (sameOwnership(facts.state, ownershipToRelease)) {
+        await removePrLabel(labelName);
+        facts = await fetchOwnershipFacts();
+        if (!facts.repositoryLabelPresent) {
+          if (!sameOwnership(facts.state, ownershipToRelease)) {
+            throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
+          }
+          atomicOwnerBitAbsent = true;
+        } else if (facts.attached || !sameOwnership(facts.state, ownershipToRelease)) {
+          throw new Error(`PR #${prNumber} ownership changed after stale-node retry`);
+        }
+      } else {
+        throw new Error(`PR #${prNumber} ownership changed during stale-node release`);
+      }
+    }
+
+    if (!atomicOwnerBitAbsent) {
+      await removeRepositoryLabel(labelName);
     }
     if (await repositoryLabelExists(labelName)) {
       throw new Error(`PR #${prNumber} owner label was recreated during release`);
@@ -966,25 +1077,42 @@ if (normalized.length === 0) {
     await removePrLabel(BLOCKED_LABEL);
     await removePrLabel(NOOP_LABEL);
     await removePrLabel(VALIDATION_FAILED_LABEL);
-    await assertExpectedMetadataUnchanged('queue-merge-train');
-    try {
-      await request(pat, `/repos/${owner}/${repo}/labels`, {
+    // Re-fetch labels live immediately before admission so a concurrent
+    // reconcile run that already attached QUEUE_LABEL is visible here.
+    // The initial pr.labels snapshot is stale by the time we reach this branch
+    // (after all blocker/review/check-run analysis), so alreadyQueued would
+    // always read false from the snapshot even if the label was just added.
+    // Use paginate() so a `merge-train` label beyond the first page (>30
+    // labels) is not missed, which would incorrectly re-dispatch a broad fill.
+    const liveAdmissionLabels = await paginate(
+      readToken,
+      `/repos/${owner}/${repo}/issues/${prNumber}/labels`,
+    );
+    const alreadyQueued = liveAdmissionLabels.some((label) => label.name === QUEUE_LABEL);
+    if (shouldDispatchMergeTrainFill(alreadyQueued)) {
+      await assertExpectedMetadataUnchanged('queue-merge-train');
+      try {
+        await request(pat, `/repos/${owner}/${repo}/labels`, {
+          method: 'POST',
+          body: {
+            name: QUEUE_LABEL,
+            color: '1f6feb',
+            description: 'Ready for the repository-managed merge train',
+          },
+        });
+      } catch (error) {
+        if (error.status !== 422) throw error;
+      }
+      await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
         method: 'POST',
-        body: {
-          name: QUEUE_LABEL,
-          color: '1f6feb',
-          description: 'Ready for the repository-managed merge train',
-        },
+        body: { labels: [QUEUE_LABEL] },
       });
-    } catch (error) {
-      if (error.status !== 422) throw error;
+      pr.labels = [...(pr.labels || []), { name: QUEUE_LABEL }];
+      process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
+      await dispatchWorkflow('ci-recovery-router.yml', {});
+    } else {
+      process.stdout.write(`queue unchanged merge-train pr=#${prNumber}\n`);
     }
-    await request(pat, `/repos/${owner}/${repo}/issues/${prNumber}/labels`, {
-      method: 'POST',
-      body: { labels: [QUEUE_LABEL] },
-    });
-    process.stdout.write(`queued merge-train pr=#${prNumber}\n`);
-    await dispatchWorkflow('ci-recovery-router.yml', {});
     process.exit(0);
   }
   if (live) {
@@ -1013,10 +1141,54 @@ if (normalized.length === 0) {
   process.exit(0);
 }
 
-// Unchanged fingerprints are never re-dispatched, regardless of timing.
+const currentProgressKey = automationProgressKey(pr.head.sha, fingerprint);
+let dispatchAttemptBase = 0;
+let dispatchProgressAt = now.toISOString();
+
 if (labelExists && isDuplicateDispatch(state, fingerprint)) {
-  process.stdout.write(`skip pr=#${prNumber} reason=duplicate-fingerprint\n`);
-  process.exit(0);
+  const staleAction = automationStallAction({
+    state,
+    headSha: pr.head.sha,
+    fingerprint,
+    now,
+  });
+  if (staleAction === 'wait') {
+    process.stdout.write(`skip pr=#${prNumber} reason=duplicate-fingerprint\n`);
+    process.exit(0);
+  }
+  if (staleAction === 'release') {
+    await release(
+      'stale-automation-exhausted',
+      makeState({
+        prNumber,
+        headSha: pr.head.sha,
+        fingerprint,
+        owner: 'none',
+        status: 'idle',
+        trigger: 'stale-automation-exhausted',
+        blockers: normalized,
+        attempt: state.attempt,
+        progressKey: currentProgressKey,
+        progressAt: state.progressAt || state.updatedAt,
+        updatedAt: now.toISOString(),
+      }),
+    );
+    process.stdout.write(`released stale automation pr=#${prNumber} attempts=${state.attempt}\n`);
+    process.exit(0);
+  }
+  if (staleAction === 'progressed') {
+    // The head advanced while the same blockers remained (e.g. a rebase that
+    // did not fix the failing checks). This is genuine new progress, not stale
+    // automation: reset the attempt counter so the new head gets a full set of
+    // retry budget, and use a distinct release reason so operators can tell
+    // head-progress releases apart from timeout-driven stale retries.
+    dispatchAttemptBase = 0;
+    dispatchProgressAt = now.toISOString();
+    await release('blocker-progressed');
+  } else {
+    dispatchAttemptBase = state?.attempt || 0;
+    await release('stale-automation-retry');
+  }
 }
 // The fingerprint changed. If Copilot was assigned recently it may still be
 // working on the previous blockers — give it time before overwriting with a
@@ -1026,15 +1198,34 @@ if (
   state?.owner === 'automation' &&
   ['active', 'dispatched'].includes(state.status) &&
   copilotAssigned &&
-  now.getTime() - Date.parse(state.updatedAt) < 30 * 60 * 1000
+  now.getTime() - Date.parse(state.progressAt || state.updatedAt) < 30 * 60 * 1000
 ) {
-  process.stdout.write(`skip pr=#${prNumber} reason=active-copilot-assignment\n`);
+  await updateState(
+    makeState({
+      prNumber,
+      headSha: pr.head.sha,
+      fingerprint,
+      owner: 'automation',
+      status: state.status,
+      trigger,
+      blockers: normalized,
+      attempt: 0,
+      progressKey: currentProgressKey,
+      progressAt: dispatchProgressAt,
+      updatedAt: now.toISOString(),
+    }),
+  );
+  process.stdout.write(`skip pr=#${prNumber} reason=active-copilot-progress\n`);
   process.exit(0);
 }
 if (labelExists) {
   await release('blocker-fingerprint-changed');
 }
-await acquire('automation');
+await acquire('automation', null, {
+  attempt: dispatchAttemptBase,
+  progressKey: currentProgressKey,
+  progressAt: dispatchProgressAt,
+});
 
 const taskBody = [
   `<!-- crawler-ci-task:v1 fingerprint=${fingerprint} -->`,
@@ -1099,7 +1290,9 @@ if (live) {
         status: 'escalated',
         trigger,
         blockers: normalized,
-        attempt: (state?.attempt || 0) + 1,
+        attempt: dispatchAttemptBase + 1,
+        progressKey: currentProgressKey,
+        progressAt: dispatchProgressAt,
         updatedAt: now.toISOString(),
       }),
     );
@@ -1137,7 +1330,9 @@ await updateState(
     status: live ? 'dispatched' : 'active',
     trigger,
     blockers: normalized,
-    attempt: (state?.attempt || 0) + 1,
+    attempt: dispatchAttemptBase + 1,
+    progressKey: currentProgressKey,
+    progressAt: dispatchProgressAt,
     updatedAt: now.toISOString(),
   }),
 );

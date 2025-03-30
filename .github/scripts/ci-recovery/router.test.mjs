@@ -8,12 +8,21 @@ import {
   collectPrNumbers,
   computeBackoffDelayMs,
   eventPrNumbers,
+  hasHealthyOwnerForSweep,
+  hydrateRecoveryOwnership,
   isRepairWindowSweepEvent,
   isRetryableError,
+  recoveryStateFromComments,
   requestWithBackoff,
   recoveryTriggerForPr,
   isManagedCommentEvent,
 } from './router.mjs';
+import {
+  automationProgressKey,
+  blockerFingerprint,
+  makeState,
+  renderStateComment,
+} from './state.mjs';
 
 const workflowPath = new URL('../../workflows/ci-recovery-router.yml', import.meta.url);
 const workflow = parse(await readFile(workflowPath, 'utf8'));
@@ -29,6 +38,22 @@ function makeError(status, message, headerMap = {}) {
     },
   };
   return error;
+}
+
+function automationOwnerState(prNumber, updatedAt, attempt = 1) {
+  const fingerprint = blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]);
+  return makeState({
+    prNumber,
+    headSha: `head-${prNumber}`,
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+    attempt,
+    progressKey: automationProgressKey(`head-${prNumber}`, fingerprint),
+    progressAt: updatedAt,
+    updatedAt,
+  });
 }
 
 test('collectPrNumbers applies dispatch cap for schedule sweeps', () => {
@@ -299,6 +324,7 @@ test('train PR-less default-branch CI sweeps preserve owner slots without redisp
     base: { ref: 'main' },
     head: { repo: { full_name: 'nalfeo/Crawler' } },
     labels: index === 0 ? [{ name: 'ci-owner-pr-1' }] : [],
+    recoveryState: index === 0 ? automationOwnerState(1, '2026-07-17T12:00:00.000Z') : undefined,
   }));
 
   assert.deepEqual(
@@ -311,8 +337,155 @@ test('train PR-less default-branch CI sweeps preserve owner slots without redisp
       repository: 'nalfeo/Crawler',
       scheduledPulls: pulls,
       trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
     }),
-    [2, 3, 4, 5, 6],
+    [2, 3, 4, 5, 6, 7],
+  );
+});
+
+test('train sweeps over-select past healthy owners to the next dispatchable PR', () => {
+  const pulls = Array.from({ length: 7 }, (_, index) => {
+    const number = index + 1;
+    return {
+      number,
+      state: 'open',
+      draft: false,
+      created_at: `2026-07-${String(number).padStart(2, '0')}T00:00:00Z`,
+      base: { ref: 'main' },
+      head: { repo: { full_name: 'nalfeo/Crawler' } },
+      labels: number <= 6 ? [{ name: `ci-owner-pr-${number}` }] : [],
+      recoveryState:
+        number <= 6 ? automationOwnerState(number, '2026-07-17T12:00:00.000Z') : undefined,
+    };
+  });
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: pulls,
+      trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    [7],
+  );
+});
+
+test('direct events retain a healthy owner while broad sweeps include stale and inconsistent owners', () => {
+  const healthy = {
+    number: 1,
+    state: 'open',
+    draft: false,
+    created_at: '2026-07-01T00:00:00Z',
+    base: { ref: 'main' },
+    head: { repo: { full_name: 'nalfeo/Crawler' } },
+    labels: [{ name: 'ci-owner-pr-1' }],
+    recoveryState: automationOwnerState(1, '2026-07-17T12:00:00.000Z'),
+  };
+  const stale = {
+    ...healthy,
+    number: 2,
+    created_at: '2026-07-02T00:00:00Z',
+    labels: [{ name: 'ci-owner-pr-2' }],
+    recoveryState: automationOwnerState(2, '2026-07-17T11:00:00.000Z'),
+  };
+  const inconsistent = {
+    ...healthy,
+    number: 3,
+    created_at: '2026-07-03T00:00:00Z',
+    labels: [{ name: 'ci-owner-pr-3' }],
+    recoveryState: null,
+  };
+
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: {},
+      eventName: 'schedule',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [healthy, stale, inconsistent],
+      trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    [2, 3],
+  );
+  assert.deepEqual(
+    collectPrNumbers({
+      payload: { pull_request: { number: 1 } },
+      eventName: 'pull_request_target',
+      repository: 'nalfeo/Crawler',
+      scheduledPulls: [healthy, stale, inconsistent],
+      trainEnabled: true,
+      now: new Date('2026-07-17T12:10:00.000Z'),
+    }),
+    [1],
+  );
+});
+
+test('owner-state hydration is bounded and malformed state remains sweep-visible', async () => {
+  const pulls = Array.from({ length: 8 }, (_, index) => ({
+    number: index + 1,
+    labels: [{ name: `ci-owner-pr-${index + 1}` }],
+  }));
+  let active = 0;
+  let maxActive = 0;
+  const hydrated = await hydrateRecoveryOwnership(pulls, async (number) => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 1));
+    active -= 1;
+    if (number === 8) return [{ body: '<!-- crawler-ci-state:v1 --> broken' }];
+    return [{ body: renderStateComment(automationOwnerState(number, '2026-07-17T12:00:00Z')) }];
+  });
+
+  assert.equal(maxActive, 6);
+  assert.equal(hasHealthyOwnerForSweep(hydrated[0], new Date('2026-07-17T12:10:00Z')), true);
+  assert.equal(recoveryStateFromComments([{ body: 'not managed' }]), null);
+  assert.equal(hasHealthyOwnerForSweep(hydrated[7], new Date('2026-07-17T12:10:00Z')), false);
+});
+
+test('automation owner with a stale head SHA is unhealthy for sweeps even when progressAt is fresh', () => {
+  // Regression for Thread 2: an automation state recorded against an older
+  // head SHA must NOT be treated as healthy even if progressAt is recent.
+  // Without this guard a push/rebase leaves the PR suppressed for up to 30
+  // minutes because isHealthyRecoveryOwner only inspects progressAt, not headSha.
+  const fingerprint = blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]);
+  const stateForOldHead = makeState({
+    prNumber: 1,
+    headSha: 'old-head-sha',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }],
+    attempt: 1,
+    progressKey: automationProgressKey('old-head-sha', fingerprint),
+    progressAt: new Date('2026-07-17T12:00:00Z').toISOString(),
+    updatedAt: new Date('2026-07-17T12:00:00Z').toISOString(),
+  });
+  const pullRequestWithNewHead = {
+    number: 1,
+    labels: [{ name: 'ci-owner-pr-1' }],
+    head: { sha: 'new-head-sha' },
+    recoveryState: stateForOldHead,
+  };
+  // 10 minutes after progressAt — fresh enough that the old code would return true
+  const now = new Date('2026-07-17T12:10:00Z');
+
+  assert.equal(
+    hasHealthyOwnerForSweep(pullRequestWithNewHead, now),
+    false,
+    'stale-head automation owner must be swept immediately after a head advance',
+  );
+
+  // Matching head: should remain healthy (progressAt is fresh, head matches)
+  const pullRequestWithMatchingHead = {
+    ...pullRequestWithNewHead,
+    head: { sha: 'old-head-sha' },
+  };
+  assert.equal(
+    hasHealthyOwnerForSweep(pullRequestWithMatchingHead, now),
+    true,
+    'matching-head automation owner with a fresh progressAt must remain healthy',
   );
 });
 
@@ -569,6 +742,10 @@ test('managed state, task, and train comments are rejected by the workflow job g
   }
 });
 
+test('router listens only for completed CI workflow runs', () => {
+  assert.deepEqual(workflow.on.workflow_run.types, ['completed']);
+});
+
 test('router concurrency keeps latest-pending sweeps and isolates single-PR workflow events', () => {
   assert.equal(routeJob.concurrency.queue, undefined);
   assert.match(routeJob.concurrency.group, /crawler-ci-recovery-router-train/);
@@ -634,4 +811,85 @@ test('requestWithBackoff stops immediately for non-retryable errors', async () =
     /Not Found/,
   );
   assert.equal(attempts, 1);
+});
+
+test('hydrateRecoveryOwnership stops incrementally after stopAfterDispatchable non-healthy PRs', async () => {
+  // Regression for Thread 8: the previous implementation loaded the full
+  // comment history for every owner-labeled PR before selecting at most six
+  // candidates. With a large owned backlog this scales with the queue length
+  // and can exhaust the router API budget or 10-minute timeout.
+  // The updated implementation stops hydrating once enough non-healthy PRs
+  // have been found (stopAfterDispatchable), continuing only when a batch is
+  // entirely healthy so stale owners behind a healthy front are not missed.
+  const now = new Date('2026-07-17T12:00:00Z');
+  const freshProgressKey = automationProgressKey(
+    'head-sha',
+    blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]),
+  );
+  // Healthy: fresh progressAt, head matches.
+  const makeHealthy = (number) =>
+    makeState({
+      prNumber: number,
+      headSha: 'head-sha',
+      fingerprint: blockerFingerprint([{ kind: 'ci-failure', id: 'ci', summary: 'CI failed' }]),
+      owner: 'automation',
+      status: 'dispatched',
+      blockers: [],
+      attempt: 1,
+      progressKey: freshProgressKey,
+      progressAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+  // Unhealthy: stale (40 min ago, past the 30-min threshold).
+  const makeUnhealthy = (number) =>
+    makeState({
+      prNumber: number,
+      headSha: 'head-sha',
+      fingerprint: blockerFingerprint([]),
+      owner: 'automation',
+      status: 'dispatched',
+      blockers: [],
+      attempt: 1,
+      progressKey: automationProgressKey('head-sha', blockerFingerprint([])),
+      progressAt: new Date(now.getTime() - 40 * 60 * 1000).toISOString(),
+      updatedAt: new Date(now.getTime() - 40 * 60 * 1000).toISOString(),
+    });
+
+  // 12 PRs with batchSize=3:
+  //   Batch 1 (PRs  1-3): all healthy  → 0 dispatchable total → continue
+  //   Batch 2 (PRs  4-6): all unhealthy → 3 dispatchable total → continue
+  //   Batch 3 (PRs  7-9): all unhealthy → 6 dispatchable total → stop
+  //   Batch 4 (PRs 10-12): healthy, must never be loaded
+  const pulls = Array.from({ length: 12 }, (_, i) => ({
+    number: i + 1,
+    labels: [{ name: `ci-owner-pr-${i + 1}` }],
+    head: { sha: 'head-sha' },
+  }));
+
+  let loadCount = 0;
+  const hydrated = await hydrateRecoveryOwnership(
+    pulls,
+    async (number) => {
+      loadCount += 1;
+      const isHealthy = number <= 3 || number >= 10;
+      const state = isHealthy ? makeHealthy(number) : makeUnhealthy(number);
+      return [{ body: renderStateComment(state) }];
+    },
+    3, // batchSize — use 3 so each batch is independently healthy/unhealthy
+    {
+      stopAfterDispatchable: 6,
+      isHealthy: (pr) => hasHealthyOwnerForSweep(pr, now),
+    },
+  );
+
+  // Batches 1–3 loaded (9 PRs). Batch 4 (PRs 10–12) skipped.
+  assert.equal(loadCount, 9, 'must stop hydrating after accumulating 6 dispatchable PRs');
+  // The unloaded tail must remain without a recoveryState.
+  assert.equal(hydrated[9].recoveryState, undefined);
+  assert.equal(hydrated[10].recoveryState, undefined);
+  assert.equal(hydrated[11].recoveryState, undefined);
+  // The healthy front (PRs 1–3) must be fully hydrated.
+  assert.ok(hydrated[0].recoveryState !== undefined);
+  assert.ok(hydrated[1].recoveryState !== undefined);
+  assert.ok(hydrated[2].recoveryState !== undefined);
 });
