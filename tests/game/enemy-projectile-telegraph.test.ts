@@ -24,6 +24,7 @@ import {
 } from '../../src/core/systems/enemyTelegraph.js';
 import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
 import { ENEMY_PROJECTILE } from '../../src/shared/constants.js';
+import { DEFAULT_GENERATED_VISUAL_WIDTH_FT } from '../../src/shared/generated-assets.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('getEffectiveTelegraphMs resolver', () => {
@@ -510,5 +511,61 @@ describe('telegraphWasActiveThisFrame sticky render-frame flag', () => {
     const world = createTestWorld();
     const enemy = spawnBehaviorEnemy(world, 0, 0, 10, AI_TYPE.RANGED, 0, 20, 20);
     expect(world.stores.enemyBehavior.telegraphWasActiveThisFrame[enemy]).toBe(0);
+  });
+});
+
+describe('weapon anchor — telegraph origin consumers', () => {
+  // NormalizedWeaponAnchor relX/relY are dimensionless fractions multiplied by
+  // DEFAULT_GENERATED_VISUAL_WIDTH_FT (3.2 ft for 64px @ 0.4 scale) in consumers.
+
+  it('startEnemyProjectileTelegraph uses weapon anchor origin when anchor is present (facing right)', () => {
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 5, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+    // Velocity rightward so facing is right.
+    world.stores.velocity.x[enemy] = 1;
+    // Inject a normalized weapon anchor: relX=0.1, relY=-0.05, right-art.
+    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'right' });
+
+    startEnemyProjectileTelegraph(world, enemy, 1, 0);
+
+    // facing right, art=right → needsMirror=false → originX = 5 + 0.1 * 3.2 = 5.32
+    // originY = 10 + (-0.05) * 3.2 = 9.84
+    expect(world.stores.enemyBehavior.telegraphOriginX[enemy]).toBeCloseTo(
+      5 + 0.1 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+    expect(world.stores.enemyBehavior.telegraphOriginY[enemy]).toBeCloseTo(
+      10 + -0.05 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+  });
+
+  it('startEnemyProjectileTelegraph mirrors X when right-art entity faces left', () => {
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 5, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+    // Velocity leftward so facing is left.
+    world.stores.velocity.x[enemy] = -1;
+    // Right-art anchor: relX=0.1 → mirrored to -0.1 → originX = 5 + (-0.1) * 3.2 = 4.68
+    world.entityWeaponAnchors.set(enemy, { relX: 0.1, relY: -0.05, artFacing: 'right' });
+
+    startEnemyProjectileTelegraph(world, enemy, 1, 0);
+
+    expect(world.stores.enemyBehavior.telegraphOriginX[enemy]).toBeCloseTo(
+      5 + -0.1 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+    expect(world.stores.enemyBehavior.telegraphOriginY[enemy]).toBeCloseTo(
+      10 + -0.05 * DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+    );
+  });
+
+  it('startEnemyProjectileTelegraph falls back to entity pivot when no weapon anchor present', () => {
+    const world = createTestWorld();
+    const enemy = spawnBehaviorEnemy(world, 5, 10, 10, AI_TYPE.RANGED, 0, 20, 20);
+    world.stores.velocity.x[enemy] = 1;
+    // No entry in entityWeaponAnchors and no generatedSpriteRegistry.
+
+    startEnemyProjectileTelegraph(world, enemy, 1, 0);
+
+    // Falls back to entity pivot.
+    expect(world.stores.enemyBehavior.telegraphOriginX[enemy]).toBeCloseTo(5);
+    expect(world.stores.enemyBehavior.telegraphOriginY[enemy]).toBeCloseTo(10);
   });
 });
