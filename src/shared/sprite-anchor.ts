@@ -17,6 +17,13 @@ export interface SpriteAnchor {
 export interface SpriteAnchors {
   readonly hold: SpriteAnchor;
   readonly centerOfGravity: SpriteAnchor;
+  /**
+   * Optional weapon-attachment anchor. Marks where a weapon fires from (ranged)
+   * or attaches to (melee). When absent the consumer falls back to the mob's
+   * ECS/visual pivot. Not defaulted to `hold` — having no weapon anchor is
+   * semantically different from having one that coincides with the grip.
+   */
+  readonly weapon?: SpriteAnchor;
 }
 
 /**
@@ -43,7 +50,14 @@ export function resolveSpriteAnchors(
 ): SpriteAnchors {
   const hold = anchors?.hold ?? fallback ?? DEFAULT_HANDHELD_SPRITE_ANCHOR;
   const centerOfGravity = anchors?.centerOfGravity ?? hold;
-  return { hold, centerOfGravity };
+  // weapon is intentionally NOT defaulted — absence means "no explicit anchor, use
+  // the mob's ECS pivot as fallback" which is semantically different from a weapon
+  // anchor that happens to coincide with the hold/grip point.
+  return {
+    hold,
+    centerOfGravity,
+    ...(anchors?.weapon !== undefined ? { weapon: anchors.weapon } : {}),
+  };
 }
 
 /**

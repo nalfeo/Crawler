@@ -208,6 +208,70 @@ describe('POST /api/runs/:briefId/:runId/postprocess', () => {
     expect(clearFacing.statusCode).toBe(200);
     expect(clearFacing.json().summary.postprocessOverrides?.facing).toBeNull();
   });
+
+  it('persists weaponAnchor in summary.postprocessOverrides for editor rehydration', async () => {
+    const seed = await setup();
+    const baseline = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    const chosenIndex = baseline.json().summary?.chosen?.index ?? 0;
+    const res = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: { background: { colorToleranceSq: 4200, fringeToleranceSq: 12345 } },
+        weaponAnchor: { variantIndex: chosenIndex, x: 42, y: 18 },
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.summary.postprocessOverrides?.manualWeaponAnchor).toMatchObject({
+      variantIndex: chosenIndex,
+      x: 42,
+      y: 18,
+      source: 'manual',
+    });
+  });
+
+  it('clears persisted weapon anchor when weaponAnchor is null in payload', async () => {
+    const seed = await setup();
+    const baseline = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    const chosenIndex = baseline.json().summary?.chosen?.index ?? 0;
+    // First set a weapon anchor.
+    await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: {},
+        weaponAnchor: { variantIndex: chosenIndex, x: 42, y: 18 },
+      },
+    });
+    // Then clear it.
+    const clearRes = await app!.inject({
+      method: 'POST',
+      url: `/api/runs/${seed.briefId}/${seed.runId}/postprocess`,
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        mode: 'replace',
+        options: {},
+        weaponAnchor: null,
+      },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    expect(clearRes.json().summary.postprocessOverrides?.manualWeaponAnchor).toBeNull();
+  });
 });
 
 describe('POST /api/runs/:briefId/:runId/judge', () => {

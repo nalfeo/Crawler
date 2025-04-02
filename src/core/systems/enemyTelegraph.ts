@@ -19,6 +19,10 @@
  * behavior exactly: no cue, no added delay, no locked-trajectory dodge logic.
  */
 import { ENEMY_PROJECTILE } from '../../shared/constants.js';
+import {
+  DEFAULT_GENERATED_VISUAL_WIDTH_FT,
+  getEntityNormalizedWeaponAnchor,
+} from '../../shared/generated-assets.js';
 import type { GameWorld } from '../world.js';
 
 /**
@@ -149,8 +153,21 @@ export function startEnemyProjectileTelegraph(
   enemyBehavior.telegraphDelayMs[eid] = getEffectiveTelegraphMs(world, eid);
   enemyBehavior.telegraphDirX[eid] = dirX;
   enemyBehavior.telegraphDirY[eid] = dirY;
-  enemyBehavior.telegraphOriginX[eid] = position.x[eid] ?? 0;
-  enemyBehavior.telegraphOriginY[eid] = position.y[eid] ?? 0;
+  // Apply weapon anchor offset when available.
+  // Resolve lazily: checks the cache then falls back to world.generatedSpriteRegistry.
+  const wa = getEntityNormalizedWeaponAnchor(world, eid);
+  const baseX = position.x[eid] ?? 0;
+  const baseY = position.y[eid] ?? 0;
+  if (wa) {
+    const facingRight = (world.stores.velocity.x[eid] ?? 0) >= 0;
+    const needsMirror = wa.artFacing !== (facingRight ? 'right' : 'left');
+    enemyBehavior.telegraphOriginX[eid] =
+      baseX + (needsMirror ? -wa.relX : wa.relX) * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
+    enemyBehavior.telegraphOriginY[eid] = baseY + wa.relY * DEFAULT_GENERATED_VISUAL_WIDTH_FT;
+  } else {
+    enemyBehavior.telegraphOriginX[eid] = baseX;
+    enemyBehavior.telegraphOriginY[eid] = baseY;
+  }
 }
 
 /**

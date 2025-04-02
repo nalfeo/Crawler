@@ -9,8 +9,23 @@ export const EFFECTIVE_PIPELINE_JSON_KEY = 'postprocess.pipeline.effective.json'
 export const EFFECTIVE_PIPELINE_YAML_KEY = 'postprocess.pipeline.effective.yaml';
 const MANUAL_ANCHOR_KEY = 'manual-anchor.json';
 const FACING_OVERRIDE_KEY = 'facing-override.json';
+const MANUAL_WEAPON_ANCHOR_KEY = 'weapon-anchor.json';
 
 export interface ManualAnchorOverride {
+  readonly variantIndex: number;
+  readonly x: number;
+  readonly y: number;
+  readonly applyToAllVariants?: boolean;
+  readonly source: 'manual';
+  readonly updatedAt: string;
+}
+
+/**
+ * Editor-authored weapon-attachment anchor for a run's variants.
+ * Same shape as {@link ManualAnchorOverride} but for the weapon anchor;
+ * stored as `weapon-anchor.json` in the run's store key.
+ */
+export interface ManualWeaponAnchorOverride {
   readonly variantIndex: number;
   readonly x: number;
   readonly y: number;
@@ -44,6 +59,7 @@ export interface EffectivePipelineSnapshot {
   }>;
   readonly options: PostprocessOptions;
   readonly manualAnchor: ManualAnchorOverride | null;
+  readonly manualWeaponAnchor: ManualWeaponAnchorOverride | null;
   readonly facing: FacingOverride | null;
 }
 
@@ -205,12 +221,71 @@ export async function removeFacingOverride(store: RunStore, baseKey: string): Pr
   await store.remove(`${baseKey}/${FACING_OVERRIDE_KEY}`);
 }
 
+export async function readManualWeaponAnchor(
+  store: RunStore,
+  baseKey: string,
+): Promise<ManualWeaponAnchorOverride | null> {
+  const key = `${baseKey}/${MANUAL_WEAPON_ANCHOR_KEY}`;
+  if (!(await store.has(key))) return null;
+  try {
+    const parsed = JSON.parse(
+      (await store.get(key)).toString('utf8'),
+    ) as Partial<ManualWeaponAnchorOverride>;
+    if (
+      parsed &&
+      parsed.source === 'manual' &&
+      Number.isInteger(parsed.variantIndex) &&
+      typeof parsed.x === 'number' &&
+      typeof parsed.y === 'number' &&
+      typeof parsed.updatedAt === 'string'
+    ) {
+      return {
+        variantIndex: parsed.variantIndex as number,
+        x: parsed.x,
+        y: parsed.y,
+        ...(parsed.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
+        source: 'manual',
+        updatedAt: parsed.updatedAt,
+      };
+    }
+  } catch {
+    // Ignore corrupt legacy payloads.
+  }
+  return null;
+}
+
+export async function writeManualWeaponAnchor(
+  store: RunStore,
+  baseKey: string,
+  anchor: { variantIndex: number; x: number; y: number; applyToAllVariants?: boolean },
+  nowIso: string,
+): Promise<ManualWeaponAnchorOverride> {
+  const payload: ManualWeaponAnchorOverride = {
+    variantIndex: anchor.variantIndex,
+    x: anchor.x,
+    y: anchor.y,
+    ...(anchor.applyToAllVariants === true ? { applyToAllVariants: true } : {}),
+    source: 'manual',
+    updatedAt: nowIso,
+  };
+  await store.put(
+    `${baseKey}/${MANUAL_WEAPON_ANCHOR_KEY}`,
+    Buffer.from(`${JSON.stringify(payload, null, 2)}\n`),
+  );
+  return payload;
+}
+
+export async function removeManualWeaponAnchor(store: RunStore, baseKey: string): Promise<void> {
+  await store.remove(`${baseKey}/${MANUAL_WEAPON_ANCHOR_KEY}`);
+}
+
 export async function writeEffectivePipelineSnapshot(args: {
   store: RunStore;
   baseKey: string;
   brief: Brief;
   options: PostprocessOptions;
   manualAnchor: ManualAnchorOverride | null;
+  manualWeaponAnchor: ManualWeaponAnchorOverride | null;
   facing: FacingOverride | null;
   nowIso: string;
 }): Promise<void> {
@@ -228,6 +303,7 @@ export async function writeEffectivePipelineSnapshot(args: {
     })),
     options: args.options,
     manualAnchor: args.manualAnchor,
+    manualWeaponAnchor: args.manualWeaponAnchor,
     facing: args.facing,
   };
   const json = `${JSON.stringify(snapshot, null, 2)}\n`;

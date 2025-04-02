@@ -429,6 +429,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
         }
         cachedGeneratedRegistry = generatedRegistry;
+        // Expose the registry to the game layer so projectile-origin helpers can
+        // resolve per-entity weapon anchors without a Phaser scene reference.
+        world.generatedSpriteRegistry = generatedRegistry;
+        // Invalidate per-entity cached anchors so the next consumer access
+        // recomputes from the updated registry.
+        world.entityWeaponAnchors.clear();
       }
       const resolvePreferredTexture = (
         type: string,
@@ -908,6 +914,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (img.texture.key !== preferred.key) {
             img.setTexture(preferred.key, preferred.frame);
             visual.baseScale = preferred.scale;
+            // Invalidate the cached weapon anchor so the next game-layer access
+            // recomputes from the updated variant entry.
+            world.entityWeaponAnchors.delete(eid);
           }
         }
         if (entityType === 'npc') {
@@ -1617,6 +1626,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
         visual.obj.destroy();
         visuals.delete(eid);
+        // Remove weapon anchor so dead/despawned entities don't leave stale
+        // offsets that could be picked up if the eid is reused later.
+        world.entityWeaponAnchors.delete(eid);
       }
 
       for (const [eid, marker] of deathMarkers) {

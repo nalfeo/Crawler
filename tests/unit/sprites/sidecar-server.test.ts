@@ -2027,6 +2027,27 @@ describe('storage lifecycle + manual anchor endpoints', () => {
     expect(clearRes.statusCode).toBe(200);
     expect(clearRes.json()).toEqual({ status: 'cleared' });
   });
+
+  it('sets and clears run-level weapon anchor artifacts via the dedicated route', async () => {
+    const setRes = await app.inject({
+      method: 'POST',
+      url: '/api/runs/iron-sword/2026-07-04T00-00-00-abc/weapon-anchor',
+      payload: { variantIndex: 0, x: 42, y: 18 },
+    });
+    expect(setRes.statusCode).toBe(200);
+    expect(setRes.json()).toMatchObject({
+      status: 'set',
+      weaponAnchor: { variantIndex: 0, x: 42, y: 18, source: 'manual' },
+    });
+
+    const clearRes = await app.inject({
+      method: 'POST',
+      url: '/api/runs/iron-sword/2026-07-04T00-00-00-abc/weapon-anchor',
+      payload: { clear: true },
+    });
+    expect(clearRes.statusCode).toBe(200);
+    expect(clearRes.json()).toEqual({ status: 'cleared' });
+  });
 });
 
 describe('storage run enrichment endpoint', () => {

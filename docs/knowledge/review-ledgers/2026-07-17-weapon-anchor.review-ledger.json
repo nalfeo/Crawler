@@ -1,0 +1,38 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "weapon-anchor",
+  "task_title": "Add generic weapon anchors to mob sprite metadata and editor",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Plan review (rubber-duck) identified 4 blocking issues: telegraph path missing weapon anchor; variant selection; manual weapon anchor pipeline survival; approve-from-store hydration. All 4 addressed in implementation: (1) enemyTelegraph.ts applies weapon anchor offset; (2) PhaserBridge uses pickGeneratedVariant with correct variantRoll; (3) run-pipeline.ts writes NN.anchor.weapon.json per-variant; (4) hydrateRunDirForApproveFromStore includes NN.anchor.weapon.json. Also corrected: weapon anchor not defaulted to hold; facing source uses velocity.x not shot direction."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "4 findings: (1) zero-indexed mirroring comment in resolveWeaponAnchorWorldPos - added; (2) magic 64 in PhaserBridge - extracted to DEFAULT_GENERATED_FRAME_SIZE_PX constant; (3) resolveWeaponAnchorSidecar JSDoc @returns clause - added; (4) 8-param function grouping suggestion - addressed via inline documentation clarifying call-site semantics"
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "All 4 concerns resolved. Typecheck and 8 unit tests green."
+        }
+      ]
+    }
+  }
+}
