@@ -1,0 +1,24 @@
+type: weapon
+name: oil-lantern
+description: |
+  A dungeon trap weapon: a squat glass-and-metal oil lantern held vertically,
+  base at the bottom, top bail or cap at the top. Rounded amber glass body
+  with visible warm-toned oil pooling at the base; short exposed wick near the
+  top glowing faintly orange. Dented iron or brass cap crimped onto the glass,
+  matching a rough base plate or foot ring. Carry handle or bail above the cap
+  folds over the top. Warm amber and burnt-orange palette inside the glass;
+  tarnished brass / dark iron for the metalwork; a tight bright highlight on
+  the glass curve. Silhouette reads as "lantern" at a glance — distinctly
+  different from any sword, mace, or disc. No flames escaping the glass, no
+  floating magical glow, no dripping oil puddles, no background. Dungeon-worn:
+  scuffs on the metal, a hairline crack on the glass, wax or soot near the wick.
+# Vertical orientation (default from data/sprite-types/weapon.json) — lantern
+# is held upright by its bail, grip at the base.
+# Anchor inherited from weapon.json: x=32 (horizontal center), y=56 (bottom
+# 8 px — the base ring / foot). derive:true so the pipeline walks the
+# silhouette bottom-center if the static anchor pixel is transparent.
+variations:
+  - iron frame lantern with cage bars instead of smooth glass body
+  - oversized cracked glass globe, oil visibly sloshes inside
+  - small square tin lantern with punched-hole panel and warm orange inner glow
+minVariations: 8
