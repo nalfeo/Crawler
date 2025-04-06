@@ -24,8 +24,8 @@ describe('floor1Config', () => {
     expect(floor1Config.starterWeapons).toContain('fireball');
   });
 
-  it('uses canonical throwing knife and fireball identities across starter equipment', () => {
-    for (const weaponId of ['throwing-knife', 'fireball']) {
+  it('uses canonical same-id identities across starter equipment that bypass shop aliases', () => {
+    for (const weaponId of ['throwing-knife', 'fireball', 'laser', 'punch', 'landmine']) {
       expect(STARTER_WEAPON_ID_TO_ITEM_ID.get(weaponId)).toBe(weaponId);
       expect(getEquipmentDefForStarterWeapon(weaponId)?.weaponId).toBe(weaponId);
       expect(getItemById(weaponId)?.name).toBe(getEquipmentDefForStarterWeapon(weaponId)?.name);
