@@ -35,7 +35,7 @@ import {
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floorScenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
-import { FLOOR1_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
+import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from '../../src/game/scenarios/floorLoadoutScenario.js';
 import {
   acceptQuest,
   isQuestComplete,
@@ -114,6 +114,33 @@ describe('floor1Scenario', () => {
     expect(new Set(world.floorScenario?.starterChoices ?? []).size).toBe(3);
     for (const weaponId of world.floorScenario?.starterChoices ?? []) {
       expect(getWeaponDef(weaponId)).toBeDefined();
+    }
+  });
+
+  it('widens the floor1 starter pool behind the experimental starter flag', () => {
+    const originalWindow = globalThis.window;
+    Object.assign(globalThis, {
+      window: { location: { search: '?floor1ExperimentalStarters=1' } },
+    });
+    try {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+
+      initializeFloor1Scenario(world, player);
+
+      expect(world.floorScenario?.starterWeaponPool).toEqual(
+        expect.arrayContaining(['laser', 'punch', 'landmine']),
+      );
+      expect(world.floorScenario?.starterChoices).toHaveLength(3);
+      for (const weaponId of world.floorScenario?.starterChoices ?? []) {
+        expect(world.floorScenario?.starterWeaponPool).toContain(weaponId);
+      }
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        Object.assign(globalThis, { window: originalWindow });
+      }
     }
   });
 
@@ -1293,19 +1320,19 @@ describe('floor1Scenario', () => {
       // Reproduce the reported in-game case: the visible Floor 1 starter set is
       // sword/bow/baseball-bat, so the merchant must offer the two non-selected
       // canonical weapons instead of re-selling the chosen starter.
-      worldA.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      worldA.floorScenario!.starterChoices = [...FLOOR1_BASE_LOADOUT_CHOICE_IDS];
       worldA.floorScenario!.selectedWeaponId = 'sword';
       worldA.floorScenario!.selectedChoiceIndex = 0;
-      expect(worldA.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
+      expect(worldA.floorScenario?.starterChoices).toEqual([...FLOOR1_BASE_LOADOUT_CHOICE_IDS]);
 
       const worldB = createTestWorld({ seed: 1 });
       const playerB = spawnPlayer(worldB, 0, 0);
       initializeFloor1Scenario(worldB, playerB);
       worldB.goalFlags.set('floor1-shop-quest-complete', true);
-      worldB.floorScenario!.starterChoices = [...FLOOR1_LOADOUT_CHOICE_IDS];
+      worldB.floorScenario!.starterChoices = [...FLOOR1_BASE_LOADOUT_CHOICE_IDS];
       worldB.floorScenario!.selectedWeaponId = 'sword';
       worldB.floorScenario!.selectedChoiceIndex = 0;
-      expect(worldB.floorScenario?.starterChoices).toEqual([...FLOOR1_LOADOUT_CHOICE_IDS]);
+      expect(worldB.floorScenario?.starterChoices).toEqual([...FLOOR1_BASE_LOADOUT_CHOICE_IDS]);
 
       const stockA = getShopkeeperPostQuestStock(worldA);
       const stockB = getShopkeeperPostQuestStock(worldB);
