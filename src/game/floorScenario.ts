@@ -44,8 +44,12 @@ import {
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { SHAPE_BOX, SHAPE_CIRCLE } from '../core/physics-defs.js';
+import {
+  getFloor1StarterWeaponPool,
+  isFloor1ExperimentalStarterOptionsEnabled,
+} from '../shared/floor1-starter-weapons.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { FLOOR1_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
+import { FLOOR1_BASE_LOADOUT_CHOICE_IDS } from './scenarios/floorLoadoutScenario.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import {
   clearEntityStores,
@@ -277,10 +281,10 @@ function getPopulatedRooms(world: GameWorld): Set<number> {
   return rooms;
 }
 
-function pickStarterChoices(world: GameWorld): string[] {
+function pickStarterChoices(world: GameWorld, starterWeaponPool: readonly string[]): string[] {
   const seenWeaponIds = new Set<string>();
   const pool: string[] = [];
-  for (const weaponId of floor1Config.starterWeapons) {
+  for (const weaponId of starterWeaponPool) {
     if (getWeaponDef(weaponId) === undefined || seenWeaponIds.has(weaponId)) {
       continue;
     }
@@ -1533,10 +1537,16 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     placePropsForFloor(world, floorMap, floor1Manifest.props, world.rng);
   }
 
+  const starterWeaponPool = getFloor1StarterWeaponPool(floor1Config.starterWeapons, {
+    enableExperimental: isFloor1ExperimentalStarterOptionsEnabled(
+      typeof window !== 'undefined' ? window.location.search : undefined,
+    ),
+  });
+
   world.floorScenario = {
     protagonistName: world.playerName,
-    starterWeaponPool: floor1Config.starterWeapons,
-    starterChoices: pickStarterChoices(world),
+    starterWeaponPool,
+    starterChoices: pickStarterChoices(world, starterWeaponPool),
     offeredRewardSpellIds: pickOfferedRewardSpellIds(world),
     selectedWeaponId: null,
     selectedChoiceIndex: null,
@@ -3186,7 +3196,7 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockItem[] {
   const seen = new Set<string>();
   const starterPool: string[] = [];
-  for (const weaponId of FLOOR1_LOADOUT_CHOICE_IDS) {
+  for (const weaponId of FLOOR1_BASE_LOADOUT_CHOICE_IDS) {
     if (
       seen.has(weaponId) ||
       getWeaponDef(weaponId) === undefined ||

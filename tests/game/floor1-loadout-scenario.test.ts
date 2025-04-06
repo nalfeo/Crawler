@@ -48,4 +48,23 @@ describe('floor1LoadoutScenario', () => {
     scenario.onCancel?.(world);
     expect(getActiveWeapon(world)?.id).toBe(DEFAULT_FLOOR1_LOADOUT_CHOICE);
   });
+
+  it('adds beam, fist, and trap starters when the feature flag is enabled', () => {
+    const originalWindow = globalThis.window;
+    Object.assign(globalThis, {
+      window: { location: { search: '?floor1ExperimentalStarters=1' } },
+    });
+    try {
+      const scenario = createFloor1LoadoutScenario();
+      expect(scenario.options.map((option) => option.id)).toEqual(
+        expect.arrayContaining(['laser', 'punch', 'landmine']),
+      );
+    } finally {
+      if (originalWindow === undefined) {
+        delete (globalThis as { window?: unknown }).window;
+      } else {
+        Object.assign(globalThis, { window: originalWindow });
+      }
+    }
+  });
 });

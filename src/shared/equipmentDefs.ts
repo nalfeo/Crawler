@@ -130,6 +130,30 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     rarity: 'uncommon',
     weaponId: 'fireball',
   }),
+  weapon({
+    id: 'laser',
+    name: 'Laser',
+    slots: ['mainHand'],
+    statBonuses: {},
+    rarity: 'rare',
+    weaponId: 'laser',
+  }),
+  weapon({
+    id: 'punch',
+    name: 'Punch',
+    slots: ['mainHand'],
+    statBonuses: {},
+    rarity: 'common',
+    weaponId: 'punch',
+  }),
+  weapon({
+    id: 'landmine',
+    name: 'Landmine',
+    slots: ['mainHand'],
+    statBonuses: {},
+    rarity: 'uncommon',
+    weaponId: 'landmine',
+  }),
 ];
 
 // ---------------------------------------------------------------------------
@@ -275,6 +299,9 @@ export const STARTER_WEAPON_ID_TO_ITEM_ID: ReadonlyMap<string, string> = new Map
   ['pistol', 'plasma-pistol'],
   ['throwing-knife', 'throwing-knife'],
   ['fireball', 'fireball'],
+  ['laser', 'laser'],
+  ['punch', 'punch'],
+  ['landmine', 'landmine'],
 ]);
 
 /** itemId → equipment definition for items that can be worn. */
