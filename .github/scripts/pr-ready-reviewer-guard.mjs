@@ -697,7 +697,6 @@ export async function runPrReadyReviewerGuard({
     log.info('No open PRs found.');
     return { draftsPublished: 0, emptyDraftRepairs: 0, reviewerRemovals: 0 };
   }
-
   let draftsPublished = 0;
   let emptyDraftRepairs = 0;
   let reviewerRemovals = 0;
