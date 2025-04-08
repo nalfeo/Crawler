@@ -48,6 +48,15 @@ assets:
       kind: sprite-registry
       id: iron-breastplate
 
+  - id: runed-cuirass
+    type: item
+    label: 'Runed Cuirass'
+    brief: 'Runed Cuirass — a single centered chest-armor icon with a clear, readable silhouette on a transparent background. Dark-metal breastplate with glowing arcane runes etched into the plate. Floor 2 rare gear with a bold electric-blue rune glow.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: runed-cuirass
+
   - id: travelers-cloak
     type: item
     label: "Traveler's Cloak"
