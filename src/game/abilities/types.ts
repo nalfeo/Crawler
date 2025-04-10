@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { AbilityTriggerCondition as SharedAbilityTriggerCondition } from '../../shared/abilities.js';
 import type { CatalogEffect, TimedBuffModifier } from '../../shared/progression-effects.js';
-import { STAT_KEYS } from '../../shared/stats.js';
+import { STAT_KEYS, type ScalableOutput } from '../../shared/stats.js';
 import {
   WEAPON_CLASS_SKILL_IDS,
   WEAPON_TYPE_SKILL_IDS,
@@ -29,7 +29,6 @@ export interface AbilityDefinitionBase {
 
 export interface ActiveAbilityDefinition extends AbilityDefinitionBase {
   kind: 'active' | 'spell';
-  mpCost: number;
   cooldownFrames: number;
   trigger: SharedAbilityTriggerCondition;
   effects: CatalogEffect[];
@@ -100,11 +99,54 @@ const triggerConditionSchema = z.discriminatedUnion('kind', [
 ]);
 
 const statKeySchema = z.enum(STAT_KEYS);
+const finiteScalableOutputSchema: z.ZodType<ScalableOutput> = z
+  .object({
+    base: z.number().finite(),
+    scalesWithIntelligence: z.boolean(),
+  })
+  .strict();
 const timedBuffModifierSchema: z.ZodType<TimedBuffModifier> = z
   .object({
     stat: statKeySchema,
     op: z.enum(['add', 'multiply']),
-    value: z.number(),
+    value: finiteScalableOutputSchema,
+  })
+  .strict();
+
+/**
+ * Every magical ability numeric output is inline `{ base, scalesWithIntelligence }`
+ * so it explicitly declares whether it scales with effective Intelligence —
+ * see `shared/stats.ts#resolveScalableOutput`.
+ *
+ * Field-specific constraints:
+ *   - `positiveScalableOutputSchema`        — base > 0 (damage, heal, radius, range, knockback)
+ *   - `positiveIntegerScalableOutputSchema` — base is a positive integer (frame/ms durations)
+ *   - `slowMultiplierScalableOutputSchema`  — 0 < base <= 1 (slow multiplier)
+ */
+/** Scalable output where `base` must be positive (damage, heal, radius, range, knockback). */
+const positiveScalableOutputSchema: z.ZodType<ScalableOutput> = z
+  .object({
+    base: z.number().positive(),
+    scalesWithIntelligence: z.boolean(),
+  })
+  .strict();
+
+/** Scalable output where `base` must be a positive integer (frame/ms durations). */
+const positiveIntegerScalableOutputSchema: z.ZodType<ScalableOutput> = z
+  .object({
+    base: z.number().int().positive(),
+    scalesWithIntelligence: z.boolean(),
+  })
+  .strict();
+
+/**
+ * Scalable output where `base` must satisfy `0 < base <= 1` (slow multiplier:
+ * 1 = no slow, approaching 0 = near-complete stop; zero or negative is invalid).
+ */
+const slowMultiplierScalableOutputSchema: z.ZodType<ScalableOutput> = z
+  .object({
+    base: z.number().positive().max(1),
+    scalesWithIntelligence: z.boolean(),
   })
   .strict();
 
@@ -139,43 +181,43 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('spell_fireball'),
-      damagePercent: z.number().positive(),
-      radiusTiles: z.number().positive(),
+      damage: positiveScalableOutputSchema,
+      radiusTiles: positiveScalableOutputSchema,
     })
     .strict(),
   z
     .object({
       type: z.literal('spell_heal'),
-      baseHeal: z.number().positive(),
+      heal: positiveScalableOutputSchema,
     })
     .strict(),
   z
     .object({
       type: z.literal('spell_pulse_shield'),
-      knockbackForce: z.number().positive(),
-      radiusTiles: z.number().positive(),
+      knockbackForce: positiveScalableOutputSchema,
+      radiusTiles: positiveScalableOutputSchema,
     })
     .strict(),
   z
     .object({
       type: z.literal('spell_magic_missile'),
-      damagePercent: z.number().positive(),
-      rangeTiles: z.number().positive(),
+      damage: positiveScalableOutputSchema,
+      rangeTiles: positiveScalableOutputSchema,
     })
     .strict(),
   z
     .object({
       type: z.literal('spell_frost_nova'),
-      damagePercent: z.number().positive(),
-      radiusTiles: z.number().positive(),
-      slowMultiplier: z.number().positive().max(1),
-      slowDurationMs: z.number().positive(),
+      damage: positiveScalableOutputSchema,
+      radiusTiles: positiveScalableOutputSchema,
+      slowMultiplier: slowMultiplierScalableOutputSchema,
+      slowDurationMs: positiveIntegerScalableOutputSchema,
     })
     .strict(),
   z
     .object({
       type: z.literal('spell_timed_buff'),
-      durationFrames: z.number().int().positive(),
+      durationFrames: positiveIntegerScalableOutputSchema,
       modifiers: z.array(timedBuffModifierSchema).min(1),
       vfxColor: z.number().int().optional(),
     })
@@ -183,18 +225,18 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('spell_enemy_slow_burst'),
-      radiusTiles: z.number().positive(),
-      slowMultiplier: z.number().positive().max(1),
-      slowDurationMs: z.number().positive(),
+      radiusTiles: positiveScalableOutputSchema,
+      slowMultiplier: slowMultiplierScalableOutputSchema,
+      slowDurationMs: positiveIntegerScalableOutputSchema,
       vfxColor: z.number().int().optional(),
     })
     .strict(),
   z
     .object({
       type: z.literal('spell_life_drain'),
-      damagePercent: z.number().positive(),
-      rangeTiles: z.number().positive(),
-      healPercent: z.number().positive(),
+      damage: positiveScalableOutputSchema,
+      rangeTiles: positiveScalableOutputSchema,
+      heal: positiveScalableOutputSchema,
     })
     .strict(),
 ]);
@@ -217,7 +259,6 @@ const baseAbilitySchema = z
 const activeAbilitySchema = baseAbilitySchema
   .extend({
     kind: z.enum(['active', 'spell']),
-    mpCost: z.number().nonnegative(),
     cooldownFrames: z.number().int().positive(),
     trigger: triggerConditionSchema,
     effects: z.array(effectSchema).min(1),
@@ -252,15 +293,5 @@ export const abilityCatalogSchema = z
         });
       }
       ids.add(def.id);
-    }
-
-    for (const def of definitions) {
-      if (def.kind === 'spell' && def.mpCost <= 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Spell ${def.id} must have positive mpCost`,
-          path: ['mpCost'],
-        });
-      }
     }
   });

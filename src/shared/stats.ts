@@ -1,5 +1,17 @@
 /**
  * Stat definitions — primary and secondary stats with clamp ranges.
+ *
+ * Contract (see ADR — primary-stat overhaul):
+ *   - Every primary stat's "effective point" value is `1 (base) + allocated
+ *     level-up points + equipment bonuses`. Every per-point rate below is
+ *     applied against that full effective value, so even an untouched stat
+ *     (effective = 1) contributes its baseline rate once.
+ *   - STR and INT are NOT generic secondary stats — they scale damage via a
+ *     *typed primary multiplier* applied directly at damage/spell resolution
+ *     (see `computeTypedPrimaryMultiplier`), so physical and magic offense
+ *     stay independent (STR never boosts spells, INT never boosts weapons).
+ *   - CHA is visible but intentionally has zero gameplay effect and is not
+ *     allocatable.
  */
 
 export const PRIMARY_STATS = [
@@ -10,7 +22,6 @@ export const PRIMARY_STATS = [
   'wisdom',
   'charisma',
   'luck',
-  'weight',
 ] as const;
 
 export const SECONDARY_STATS = [
@@ -25,6 +36,19 @@ export const SECONDARY_STATS = [
   'hpRegen',
   'xpBonus',
   'cooldownReduction',
+  /** Derived max HP (base floor + Constitution + equipment/ability modifiers). */
+  'maxHp',
+  /** Accuracy bonus stacked on top of a weapon's baseAccuracy. */
+  'accuracy',
+  /**
+   * Inert snapshot fields — kept so registries/tests/UI can display them and
+   * legacy ability/skill modifiers keep a valid target, but nothing currently
+   * consumes them for gameplay (see ADR — no gameplay regression from removing
+   * their old INT/LUCK derivations).
+   */
+  'pickupRange',
+  'projectileSpeed',
+  'projectileCount',
 ] as const;
 
 export type PrimaryStatId = (typeof PRIMARY_STATS)[number];
@@ -52,8 +76,32 @@ function ceilNearInteger(value: number, epsilon = NEAR_INTEGER_EPSILON): number 
   return Math.ceil(value);
 }
 
+/** Apply cooldown reduction only (ability cooldowns — no attack-speed bonus). */
 export function applyCooldownReduction(baseDuration: number, reduction: number): number {
   const scaledDuration = baseDuration * (1 - reduction);
+  return Math.max(1, ceilNearInteger(scaledDuration));
+}
+
+/**
+ * Lower clamp for the `attackSpeed` bonus fraction. Must stay strictly greater
+ * than -1 so `1 / (1 + attackSpeedBonus)` never divides by zero or goes
+ * negative even if debuffs/modifiers stack heavily.
+ */
+export const ATTACK_SPEED_BONUS_MIN_CLAMP = -0.9;
+
+/**
+ * Weapon cadence: `baseCooldownMs / (1 + attackSpeedBonus) * (1 - cooldownReduction)`.
+ * Single rounding pass at the end (no early rounding between the two factors).
+ * `attackSpeedBonus` is guarded to stay `> -1` (never divides by zero/flips
+ * sign) via `ATTACK_SPEED_BONUS_MIN_CLAMP`.
+ */
+export function applyAttackSpeedAndCooldownReduction(
+  baseCooldownMs: number,
+  attackSpeedBonus: number,
+  cooldownReduction: number,
+): number {
+  const safeBonus = Math.max(ATTACK_SPEED_BONUS_MIN_CLAMP, attackSpeedBonus);
+  const scaledDuration = (baseCooldownMs / (1 + safeBonus)) * (1 - cooldownReduction);
   return Math.max(1, ceilNearInteger(scaledDuration));
 }
 
@@ -70,11 +118,10 @@ export const STAT_CLAMPS: Readonly<Record<StatId, StatClamp>> = {
   wisdom: { min: 0 },
   charisma: { min: 0 },
   luck: { min: 0 },
-  weight: { min: 0 },
   armor: { min: 0 },
   damageBonus: {},
   damagePercent: { min: 0 },
-  attackSpeed: { min: 0.1 },
+  attackSpeed: { min: ATTACK_SPEED_BONUS_MIN_CLAMP },
   moveSpeed: { min: 0 },
   critChance: { min: 0, max: 1 },
   critMultiplier: { min: 1 },
@@ -82,7 +129,21 @@ export const STAT_CLAMPS: Readonly<Record<StatId, StatClamp>> = {
   hpRegen: { min: 0 },
   xpBonus: { min: 0 },
   cooldownReduction: { min: 0, max: 0.8 },
+  maxHp: { min: 1 },
+  accuracy: {},
+  pickupRange: { min: 0 },
+  projectileSpeed: { min: 0 },
+  projectileCount: { min: 0 },
 };
+
+/**
+ * Base-floor Max HP before Constitution's per-point contribution. Combined
+ * with `CORE_STAT_TO_SECONDARY.constitution.maxHp` (10/point) so a fresh
+ * character (effective CON = 1, no allocation/gear) starts at 170 HP:
+ * `160 + 10 * 1 === 170`. The extra floor replaces survivability removed when
+ * Strength stopped granting armor.
+ */
+const BASE_MAX_HP_FLOOR = 160;
 
 export const DEFAULT_BASE_STATS: Readonly<Record<StatId, number>> = {
   strength: 1,
@@ -92,7 +153,6 @@ export const DEFAULT_BASE_STATS: Readonly<Record<StatId, number>> = {
   wisdom: 1,
   charisma: 1,
   luck: 1,
-  weight: 1,
   armor: 0,
   damageBonus: 0,
   damagePercent: 0,
@@ -104,6 +164,11 @@ export const DEFAULT_BASE_STATS: Readonly<Record<StatId, number>> = {
   hpRegen: 0,
   xpBonus: 0,
   cooldownReduction: 0,
+  maxHp: BASE_MAX_HP_FLOOR,
+  accuracy: 0,
+  pickupRange: 0,
+  projectileSpeed: 0,
+  projectileCount: 0,
 };
 
 /** Clamp a stat value to its defined range. */
@@ -115,10 +180,15 @@ export function clampStat(statId: StatId, value: number): number {
   return v;
 }
 
-// --- Gameplay stat keys (used by Stats/StatPoints components) ---
+// --- Legacy modifier target keys (StatModifier.stat / ability & skill effects) ---
 
-/** Stat key definitions, base values, and per-point increments. */
-
+/**
+ * The set of gameplay-facing keys legacy ability/skill `StatModifier`s and
+ * `CatalogEffect` `stat_add`/`stat_multiply` entries may target. These are
+ * NOT a separate computed pipeline anymore — `foldLegacyStatModifier` folds
+ * each one into the unified EffectiveStats fields below, so `EffectiveStats`
+ * stays the sole runtime stat snapshot.
+ */
 export const STAT_KEYS = [
   'maxHp',
   'moveSpeed',
@@ -128,64 +198,48 @@ export const STAT_KEYS = [
   'pickupRange',
   'projectileCount',
   'projectileSpeed',
-  /**
-   * Accuracy bonus stacked on top of a weapon's baseAccuracy.
-   * Derived from dexterity (+0.01/point) and weapon type skills (+0.03/level).
-   * Applied in weaponSystem: effectiveAccuracy = clamp(0,1, def.baseAccuracy + accuracy).
-   */
   'accuracy',
 ] as const;
 
 export type StatKey = (typeof STAT_KEYS)[number];
 
-/** Base stat values for a fresh player. */
-export const STAT_BASE: Record<StatKey, number> = {
-  maxHp: 100,
-  moveSpeed: 0.375,
-  damage: 10,
-  armor: 0,
-  attackSpeed: 1.0,
-  pickupRange: 3.0,
-  projectileCount: 0,
-  projectileSpeed: 1.0,
-  /** Accuracy bonus — added to weapon's baseAccuracy. Starts at 0. */
-  accuracy: 0,
-};
+export interface LegacyStatModifierLike {
+  readonly stat: StatKey;
+  readonly op: 'add' | 'multiply';
+  readonly value: number;
+}
 
-/** How much each stat point adds to this stat. */
-export const STAT_POINT_INCREMENT: Record<StatKey, number> = {
-  maxHp: 10,
-  moveSpeed: 0.0125,
-  damage: 2,
-  armor: 1,
-  attackSpeed: 0.05,
-  pickupRange: 1.0,
-  projectileCount: 1,
-  projectileSpeed: 0.05,
-  /**
-   * Direct stat-point allocation to accuracy is not currently exposed in the
-   * level-up UI (accuracy is trained via weapon type skills + dexterity).
-   * This entry satisfies the Record<StatKey> constraint; the value is reserved
-   * for any future direct-allocation path. Keep this in sync with dexterity's
-   * per-point accuracy contribution in CORE_STAT_GAINS.
-   */
-  accuracy: 0.01,
-};
+/**
+ * Fold one legacy ability/skill modifier into the unified EffectiveStats
+ * accumulator (in place). Preserves the explicit legacy semantics documented
+ * in the primary-stat overhaul ADR:
+ *   - `damage` splits by op: `add` → flat `damageBonus`, `multiply` → generic
+ *     `damagePercent` (both consumed at damage resolution as
+ *     `(base+flat)*(1+genericPercent)*typedPrimaryMultiplier`).
+ *   - `maxHp`/`armor`/`attackSpeed`/`moveSpeed`/`accuracy`/`pickupRange`/
+ *     `projectileSpeed`/`projectileCount` fold additively into their
+ *     same-named EffectiveStats field regardless of `op` — skills such as
+ *     `combat-flow` intentionally use `multiply` on `attackSpeed` to
+ *     contribute to the bonus-fraction lane; both `add` and `multiply` ops
+ *     accumulate additively into that lane (documented, deterministic,
+ *     never silently dropped).
+ */
+export function foldLegacyStatModifier(
+  eff: Record<StatId, number>,
+  mod: LegacyStatModifierLike,
+): void {
+  if (mod.stat === 'damage') {
+    if (mod.op === 'add') {
+      eff.damageBonus = (eff.damageBonus ?? 0) + mod.value;
+    } else {
+      eff.damagePercent = (eff.damagePercent ?? 0) + mod.value;
+    }
+    return;
+  }
+  eff[mod.stat] = (eff[mod.stat] ?? 0) + mod.value;
+}
 
-/** Minimum clamped value for each stat. */
-export const STAT_MIN: Record<StatKey, number> = {
-  maxHp: 1,
-  moveSpeed: 0,
-  damage: 0,
-  armor: 0,
-  attackSpeed: 0.1,
-  pickupRange: 1.0,
-  projectileCount: 0,
-  projectileSpeed: 0.1,
-  accuracy: 0,
-};
-
-// --- Core stat (primary stat) to gameplay stat derivation ---
+// --- Core stat (primary stat) allocation policy ---
 
 /**
  * How many points each PRIMARY_STAT starts with at character creation.
@@ -199,7 +253,6 @@ export const CORE_STAT_BASE: Readonly<Record<PrimaryStatId, number>> = {
   wisdom: 0,
   charisma: 0,
   luck: 0,
-  weight: 0,
 };
 
 const ALLOCATABLE_PRIMARY_STATS = [
@@ -220,60 +273,108 @@ export function isAllocatablePrimaryStat(stat: PrimaryStatId): boolean {
 }
 
 /**
- * Per-point contribution of each PRIMARY_STAT to STAT_KEYS gameplay stats.
- *
- * When `statsSystem` recomputes, it sums:
- *   STAT_BASE[key] + (Σ coreStatPoints[p] × CORE_STAT_GAINS[p][key]) + modifiers
- *
- * Stats not listed here (charisma, weight) are reserved for future systems
- * (XP multiplier/NPC relations, momentum interactions) that do not yet have
- * STAT_KEYS entries.
- */
-export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<StatKey, number>>>> = {
-  /** Strength: raw damage output and physical resilience. */
-  strength: { damage: 2, armor: 1 },
-  /** Dexterity: speed of attack, foot movement, and weapon accuracy. */
-  dexterity: { attackSpeed: 0.05, moveSpeed: 0.0125, accuracy: 0.01 },
-  /** Constitution: health pool depth. */
-  constitution: { maxHp: 10 },
-  /** Intelligence: projectile control and arcane precision. */
-  intelligence: { projectileSpeed: 0.05 },
-  /** Wisdom: reserved — will gate mana pool / cooldown reduction. */
-  wisdom: {},
-  /** Charisma: reserved — will affect XP gain and NPC prices. */
-  charisma: {},
-  /** Luck: item magnetism and fortune. */
-  luck: { pickupRange: 0.5 },
-  /** Weight: reserved for future momentum/knockback interactions. */
-  weight: {},
-};
-
-/**
  * Per-point contribution of each PRIMARY_STAT to SECONDARY (effectiveStats)
- * stats. Applied during effective-stat computation
- * (see `core/effective-stats.ts`): each effective primary stat
- * contributes `value × rate` to the listed secondary.
+ * stats. Applied during effective-stat computation (see
+ * `core/effective-stats.ts`): each effective primary stat (base 1 + allocated
+ * + gear) contributes `value × effectivePoints` to the listed secondary.
  *
- * This is the bridge that lets level-up core-stat allocation reach combat —
- * e.g. Luck raises crit chance and Dexterity raises dodge chance, both of which
- * the damage path reads from the player's EffectiveStats.
- *
- * Rates are per *point* of the effective primary (which already folds in the
- * base value of 1, allocated level-up points, and equipment bonuses).
+ * Strength and Intelligence are intentionally NOT listed here — their per-
+ * point payoff is a *typed primary multiplier* applied directly at damage/
+ * spell resolution (`computeTypedPrimaryMultiplier`), keeping physical and
+ * magic offense fully independent instead of feeding a shared generic stat.
  */
 export const CORE_STAT_TO_SECONDARY: Readonly<
   Record<PrimaryStatId, Partial<Record<SecondaryStatId, number>>>
 > = {
-  /** Strength: offensive pressure — bonus damage multiplier. */
-  strength: { damagePercent: 0.01 },
-  /** Dexterity: nimbleness — chance to fully avoid an incoming hit. */
-  dexterity: { dodgeChance: 0.003 },
-  constitution: {},
+  strength: {},
+  /**
+   * Dexterity: +1% attack-speed bonus, +0.25% move-speed bonus
+   * (multiplicative — see `computeMoveSpeed`), +0.25pp accuracy, +1/300
+   * (≈0.333pp) dodge chance — all per effective point.
+   */
+  dexterity: {
+    attackSpeed: 0.01,
+    moveSpeed: 0.0025,
+    accuracy: 0.0025,
+    dodgeChance: 1 / 300,
+  },
+  /** Constitution: +10 max HP per effective point. */
+  constitution: { maxHp: 10 },
   intelligence: {},
-  /** Wisdom: focus — faster ability/skill cooldown recovery. */
+  /** Wisdom: +0.5pp cooldown reduction per effective point (cap 80%, see STAT_CLAMPS). */
   wisdom: { cooldownReduction: 0.005 },
+  /** Charisma: visible, intentionally zero gameplay effect, non-allocatable. */
   charisma: {},
-  /** Luck: fortune — chance for an outgoing hit to critically strike. */
-  luck: { critChance: 0.005 },
-  weight: {},
+  /** Luck: +0.25pp crit chance per effective point (cap 100%, see STAT_CLAMPS). */
+  luck: { critChance: 0.0025 },
 };
+
+// --- Typed primary damage/magic scaling (STR physical, INT magic) ---
+
+/** Strength: +1% physical damage per effective point. */
+export const STR_PHYSICAL_DAMAGE_RATE = 0.01;
+
+/** Intelligence: +1% magic strength per effective point. */
+export const INT_MAGIC_STRENGTH_RATE = 0.01;
+
+export type DamageAffinity = 'physical' | 'magic' | 'unscaled';
+
+/**
+ * The typed-primary multiplier applied at damage resolution, keyed on the
+ * damage's affinity: physical damage scales with effective Strength, magic
+ * damage scales with effective Intelligence, and `unscaled` damage (enemy /
+ * environment / explicitly-exempt sources) never gets a typed multiplier.
+ */
+export function computeTypedPrimaryMultiplier(
+  affinity: DamageAffinity,
+  effectiveStrength: number,
+  effectiveIntelligence: number,
+): number {
+  switch (affinity) {
+    case 'physical':
+      return 1 + effectiveStrength * STR_PHYSICAL_DAMAGE_RATE;
+    case 'magic':
+      return 1 + effectiveIntelligence * INT_MAGIC_STRENGTH_RATE;
+    case 'unscaled':
+    default:
+      return 1;
+  }
+}
+
+// --- Magical-ability explicit output scaling ---
+
+/**
+ * Every magical ability's numeric output (damage, healing, duration, radius,
+ * knockback, slow, etc.) is authored inline as `{ base, scalesWithIntelligence }`
+ * so each field explicitly declares whether it scales. Resolved once through
+ * `resolveScalableOutput` — true outputs get `+1%` per effective Intelligence
+ * point (the SAME `INT_MAGIC_STRENGTH_RATE` a magic weapon's typed multiplier
+ * uses, so a magic weapon and a spell see the same post-gear effective INT
+ * rate — see the parity test in `tests/unit/magic-scaling-parity.test.ts`).
+ */
+export interface ScalableOutput {
+  readonly base: number;
+  readonly scalesWithIntelligence: boolean;
+}
+
+/** Resolve a scalable output's numeric value against effective Intelligence. */
+export function resolveScalableOutput(
+  output: ScalableOutput,
+  effectiveIntelligence: number,
+): number {
+  return output.scalesWithIntelligence
+    ? output.base * (1 + effectiveIntelligence * INT_MAGIC_STRENGTH_RATE)
+    : output.base;
+}
+
+/**
+ * Resolve a scalable output and round to the nearest integer — use for
+ * integer-shaped outputs (damage, healing, frame/ms durations) so scaling
+ * never leaves a fractional gameplay value. Deterministic (no RNG).
+ */
+export function resolveScalableOutputRounded(
+  output: ScalableOutput,
+  effectiveIntelligence: number,
+): number {
+  return Math.round(resolveScalableOutput(output, effectiveIntelligence));
+}

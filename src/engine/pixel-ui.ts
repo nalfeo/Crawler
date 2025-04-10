@@ -39,8 +39,6 @@ export const PIXEL_UI = {
   hpMid: 0xf2b542,
   hpLow: 0xe23b3b,
   xpFill: 0x4ea8ff,
-  /** Mana bar fill — distinct sky-blue from `xpFill` so the two read as different resources. */
-  mpFill: 0x38bdf8,
 } as const;
 
 /** Standard depth band for HUD chrome. Panels sit just behind bars/text. */
@@ -301,7 +299,6 @@ export const PIXEL_ICON = {
   potion: '__cw_ui_potion',
   quest: '__cw_ui_quest',
   junk: '__cw_ui_junk',
-  mana: '__cw_ui_mana',
 } as const;
 
 /** Each glyph is an 8×8 grid drawn at `cell` px per pixel (→ 16×16 texture). */
@@ -427,20 +424,6 @@ const ICONS: readonly IconDef[] = [
       '  hhhh  ',
     ],
     palette: { h: 0x2a2e38, D: 0x8b94a3, k: 0x3a3f4a, S: 0xc2cad6 },
-  },
-  {
-    key: PIXEL_ICON.mana,
-    rows: [
-      '   kk   ',
-      '  kbbk  ',
-      ' kbllbk ',
-      'kbllllbk',
-      'kbllllbk',
-      'kbbllbbk',
-      ' kbbbbk ',
-      '  kkkk  ',
-    ],
-    palette: { k: 0x0a2a3a, b: 0x38bdf8, l: 0xbdeaff },
   },
 ];
 

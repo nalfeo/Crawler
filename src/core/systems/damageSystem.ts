@@ -5,14 +5,15 @@ import {
   DeathTimer,
   Enemy,
   EnemyProjectile,
+  EffectiveStats,
   Health,
   Owner,
   Player,
   Projectile,
   Returning,
-  Stats,
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { readDamageMeta } from '../damage-meta.js';
 import { clearEntityStores } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
@@ -83,10 +84,10 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
 
 /** Apply armor mitigation for player: damageTaken = max(1, incoming - armor) */
 function applyArmorReduction(world: GameWorld, player: number, rawDamage: number): number {
-  if (!hasComponent(world.ecs, player, Stats)) {
+  if (!hasComponent(world.ecs, player, EffectiveStats)) {
     return rawDamage;
   }
-  const armor = world.stores.stats.armor[player] ?? 0;
+  const armor = world.stores.effectiveStats.armor[player] ?? 0;
   return Math.max(1, rawDamage - armor);
 }
 
@@ -128,10 +129,12 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       amount,
       world.stores.position.x[enemy] ?? 0,
       world.stores.position.y[enemy] ?? 0,
-      undefined,
-      world.stores.position.x[projectile] ?? 0,
-      world.stores.position.y[projectile] ?? 0,
-      ownerEid >= 0 ? ownerEid : undefined,
+      {
+        ...readDamageMeta(world, projectile),
+        sourceX: world.stores.position.x[projectile] ?? 0,
+        sourceY: world.stores.position.y[projectile] ?? 0,
+        sourceEid: ownerEid >= 0 ? ownerEid : undefined,
+      },
     );
 
     // Emit weapon skill XP for the projectile's owner when damage lands on an enemy.
@@ -199,10 +202,15 @@ function applyPlayerEnemyHit(
     amount,
     world.stores.position.x[player] ?? 0,
     world.stores.position.y[player] ?? 0,
-    undefined,
-    world.stores.position.x[enemy] ?? 0,
-    world.stores.position.y[enemy] ?? 0,
-    enemy,
+    {
+      origin: 'enemy',
+      affinity: 'unscaled',
+      scaleWithPrimary: false,
+      canCrit: false,
+      sourceX: world.stores.position.x[enemy] ?? 0,
+      sourceY: world.stores.position.y[enemy] ?? 0,
+      sourceEid: enemy,
+    },
   );
   hitTimestamps[player] = world.elapsedMs;
 }
@@ -242,10 +250,15 @@ function applyEnemyProjectileHit(
     amount,
     world.stores.position.x[player] ?? 0,
     world.stores.position.y[player] ?? 0,
-    undefined,
-    world.stores.position.x[projectile] ?? 0,
-    world.stores.position.y[projectile] ?? 0,
-    projectileOwner !== -1 ? projectileOwner : projectile,
+    {
+      origin: 'enemy',
+      affinity: 'unscaled',
+      scaleWithPrimary: false,
+      canCrit: false,
+      sourceX: world.stores.position.x[projectile] ?? 0,
+      sourceY: world.stores.position.y[projectile] ?? 0,
+      sourceEid: projectileOwner !== -1 ? projectileOwner : projectile,
+    },
   );
   hitTimestamps[player] = world.elapsedMs;
 

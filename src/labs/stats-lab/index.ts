@@ -1,18 +1,14 @@
 import GUI from 'lil-gui';
 import { addComponent } from 'bitecs';
-import { Stats, SkillHolder } from '../../core/components.js';
+import { SkillHolder } from '../../core/components.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/helpers.js';
-import { statsSystem, spendPoints, addStatModifier } from '../../game/systems/statsSystem.js';
+import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
+import { statSystem } from '../../core/systems/index.js';
+import { spendPoints, addStatModifier } from '../../game/systems/statsSystem.js';
 import { levelSystem } from '../../game/systems/levelSystem.js';
-import {
-  PRIMARY_STATS,
-  STAT_KEYS,
-  STAT_BASE,
-  CORE_STAT_GAINS,
-  type StatKey,
-} from '../../shared/stats.js';
-import { PRIMARY_STAT_DISPLAY, STAT_DISPLAY } from '../../shared/stat-display.js';
+import { PRIMARY_STATS, SECONDARY_STATS, STAT_KEYS, type StatKey } from '../../shared/stats.js';
+import { PRIMARY_STAT_DISPLAY, formatCoreStatGains } from '../../shared/stat-display.js';
 import { createLogger } from '../../shared/logger.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -37,38 +33,38 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   function reset() {
     world = createGameWorld({ seed: 1337 });
     player = spawnPlayer(world, 0, 0);
-    addComponent(world.ecs, player, Stats);
+    initializeBaseStats(world, player);
     addComponent(world.ecs, player, SkillHolder);
     world.playerLevel.unspentPoints = 20;
-    statsSystem(world);
+    statSystem(world);
     render();
   }
 
   function render() {
     const pl = world.playerLevel;
 
-    // Core stat rows — what you allocate level-up points to.
+    // Core stat rows — what you allocate level-up points to, and their
+    // per-effective-point payoff (typed-primary rate for STR/INT, derived
+    // secondary rates for the rest — see formatCoreStatGains).
     const coreRows = PRIMARY_STATS.map((stat) => {
       const pts = world.stores.coreStatPoints[stat][player] ?? 0;
-      const gainsText =
-        Object.entries(CORE_STAT_GAINS[stat])
-          .map(([k, v]) => `${k}+${v}`)
-          .join(', ') || '—';
+      const effective = world.stores.effectiveStats[stat][player] ?? 0;
+      const gainsText = formatCoreStatGains(stat);
       return `<tr>
         <td style="padding:4px 12px;color:#fcd34d">${PRIMARY_STAT_DISPLAY[stat].label}</td>
         <td style="padding:4px 12px;text-align:right;color:#aef">${pts}</td>
-        <td style="padding:4px 12px;color:#888;font-size:11px">${gainsText}/pt</td>
+        <td style="padding:4px 12px;text-align:right;color:#4f8">${effective.toFixed(2)}</td>
+        <td style="padding:4px 12px;color:#888;font-size:11px">${gainsText}</td>
       </tr>`;
     }).join('');
 
-    // Derived STAT_KEYS rows — the final gameplay values.
-    const derivedRows = STAT_KEYS.map((key) => {
-      const base = STAT_BASE[key];
-      const current = world.stores.stats[key][player] ?? 0;
+    // EffectiveStats rows — the sole runtime stat snapshot (no separate
+    // computed "Stats" component anymore).
+    const derivedRows = SECONDARY_STATS.map((key) => {
+      const current = world.stores.effectiveStats[key][player] ?? 0;
       return `<tr>
-        <td style="padding:4px 12px;color:#9ba">${STAT_DISPLAY[key].label}</td>
-        <td style="padding:4px 12px;text-align:right;color:#888">${base.toFixed(2)}</td>
-        <td style="padding:4px 12px;text-align:right;color:#4f8">${current.toFixed(2)}</td>
+        <td style="padding:4px 12px;color:#9ba">${key}</td>
+        <td style="padding:4px 12px;text-align:right;color:#4f8">${current.toFixed(4)}</td>
       </tr>`;
     }).join('');
 
@@ -77,25 +73,25 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
       <p style="color:#888;margin:0 0 16px">Level ${pl.level} | XP: ${pl.xp} | Unspent: ${pl.unspentPoints} pts</p>
 
       <h3 style="color:#fcd34d;margin:0 0 4px;font-size:13px">Core Stats (level-up allocation)</h3>
-      <table style="border-collapse:collapse;width:100%;max-width:700px;margin-bottom:16px">
+      <table style="border-collapse:collapse;width:100%;max-width:800px;margin-bottom:16px">
         <thead><tr>
           <th style="text-align:left;padding:4px 12px;color:#aaa">Core Stat</th>
           <th style="text-align:right;padding:4px 12px;color:#aaa">Points</th>
-          <th style="text-align:left;padding:4px 12px;color:#aaa">Gains</th>
+          <th style="text-align:right;padding:4px 12px;color:#aaa">Effective</th>
+          <th style="text-align:left;padding:4px 12px;color:#aaa">Per-point payoff</th>
         </tr></thead>
         <tbody>${coreRows}</tbody>
       </table>
 
-      <h3 style="color:#9ba;margin:0 0 4px;font-size:13px">Derived Gameplay Stats</h3>
+      <h3 style="color:#9ba;margin:0 0 4px;font-size:13px">Effective Stats (secondary, derived every frame)</h3>
       <table style="border-collapse:collapse;width:100%;max-width:600px">
         <thead><tr>
           <th style="text-align:left;padding:4px 12px;color:#aaa">Stat</th>
-          <th style="text-align:right;padding:4px 12px;color:#aaa">Base</th>
-          <th style="text-align:right;padding:4px 12px;color:#aaa">Final</th>
+          <th style="text-align:right;padding:4px 12px;color:#aaa">Value</th>
         </tr></thead>
         <tbody>${derivedRows}</tbody>
       </table>
-      <p style="color:#666;margin-top:16px;font-size:11px">Use the controls panel to spend core stat points, grant XP, or add temporary modifiers.</p>
+      <p style="color:#666;margin-top:16px;font-size:11px">Use the controls panel to spend core stat points, grant XP, or add temporary legacy modifiers (folded into EffectiveStats).</p>
     `;
   }
 
@@ -116,7 +112,7 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         spendPoints: () => {
           try {
             spendPoints(world, { [params.targetCoreStat]: params.pointsToSpend });
-            statsSystem(world);
+            statSystem(world);
             render();
           } catch (e) {
             logger.warn('Cannot spend points in stats lab', { error: e });
@@ -134,7 +130,7 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         grantXp: () => {
           world.playerLevel.xp += params.xpToGrant;
           levelSystem(world);
-          statsSystem(world);
+          statSystem(world);
           render();
         },
       },
@@ -150,12 +146,12 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         addMod: () => {
           addStatModifier(world, {
             sourceType: 'buff',
-            sourceId: `lab-mod-${Date.now()}`,
+            sourceId: `lab-mod-${world.frameCount}`,
             stat: params.targetModStat,
             op: 'add',
             value: params.modifierValue,
           });
-          statsSystem(world);
+          statSystem(world);
           render();
         },
       },
@@ -169,7 +165,7 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Allocate core stat points (Strength, Constitution, …) and see how they derive gameplay stats. Add temporary modifiers on top of the derived values.';
+    'Allocate core stat points (Strength, Constitution, …) and see how they derive EffectiveStats. Add temporary legacy modifiers on top of the derived values.';
   hint.style.cssText = 'margin-top:16px;color:#fbcfe8;line-height:1.6;';
   controls.append(hint);
 
@@ -182,6 +178,6 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 registerLab('stats-lab', {
   category: 'Progression' as LabCategory,
   name: 'Stats Lab',
-  description: 'Inspect core stat allocation and derived gameplay stat computation.',
+  description: 'Inspect core stat allocation and derived EffectiveStats computation.',
   create: createStatsLab,
 });

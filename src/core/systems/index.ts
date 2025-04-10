@@ -2,7 +2,6 @@ export { collisionSystem } from './collisionSystem.js';
 export type { CollisionResult } from './collisionSystem.js';
 export { damageSystem } from './damageSystem.js';
 export { statSystem } from './statSystem.js';
-export { manaSystem } from './manaSystem.js';
 export { healthSystem } from './healthSystem.js';
 export { statusEffectSystem } from './statusEffectSystem.js';
 export { itemPickupSystem } from './itemPickupSystem.js';

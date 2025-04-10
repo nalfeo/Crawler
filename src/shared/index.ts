@@ -46,6 +46,16 @@ export type {
   UnequipResult,
   CanEquipResult,
 } from './equipment-types.js';
+export {
+  ENCUMBRANCE_THRESHOLD_BASE_LB,
+  ENCUMBRANCE_STR_THRESHOLD_BONUS_LB_PER_POINT,
+  ENCUMBRANCE_BAND_MULTIPLIER,
+  computeEncumbranceThresholds,
+  computeEncumbranceBand,
+  computeEncumbranceMultiplier,
+  computeEncumbranceMultiplierForMass,
+} from './encumbrance.js';
+export type { EncumbranceBand, EncumbranceThresholds } from './encumbrance.js';
 export type {
   StatusEffectStat,
   StatusEffectOp,
@@ -57,13 +67,20 @@ export type {
 } from './status-effect-types.js';
 export {
   STAT_KEYS,
-  STAT_BASE,
-  STAT_POINT_INCREMENT,
-  STAT_MIN,
-  CORE_STAT_GAINS,
   CORE_STAT_BASE,
+  CORE_STAT_TO_SECONDARY,
+  isAllocatablePrimaryStat,
+  foldLegacyStatModifier,
+  computeTypedPrimaryMultiplier,
+  resolveScalableOutput,
+  resolveScalableOutputRounded,
+  applyCooldownReduction,
+  applyAttackSpeedAndCooldownReduction,
+  STR_PHYSICAL_DAMAGE_RATE,
+  INT_MAGIC_STRENGTH_RATE,
+  ATTACK_SPEED_BONUS_MIN_CLAMP,
 } from './stats.js';
-export type { StatKey } from './stats.js';
+export type { StatKey, ScalableOutput, DamageAffinity, LegacyStatModifierLike } from './stats.js';
 export { xpThresholdForLevel, xpRequiredForLevel, levelForXp } from './xpMath.js';
 export { SKILL_NATURAL_CAP, SKILL_HARD_CAP } from './skills.js';
 export type {

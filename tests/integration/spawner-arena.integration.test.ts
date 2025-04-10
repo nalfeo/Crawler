@@ -23,7 +23,7 @@ import {
   Spawner,
   XpGem,
 } from '../../src/core/components.js';
-import { applyDamage } from '../../src/core/apply-damage.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { spawnBehaviorEnemy, spawnPlayer, spawnSpawner } from '../../src/core/helpers.js';
 import { deathTimerSystem } from '../../src/core/systems/deathTimerSystem.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
@@ -132,7 +132,7 @@ describe('spawner arena — integration', () => {
     // ── A burst attempt lands on the spawner corpse this frame — the exact path
     //    corpseStepSystem or a stray AoE/beam funnels through. The guard in
     //    applyDamage must skip it, so the death timer is NOT zeroed.
-    applyDamage(world, spawnerEid, 1, 100, 100);
+    applyDamage(world, spawnerEid, 1, 100, 100, DEFAULT_DAMAGE_OPTIONS);
     expect(world.stores.deathTimer.remainingMs[spawnerEid]).toBe(500);
     expect(world.combatEvents.some((e) => e.type === 'corpseExplode')).toBe(false);
 

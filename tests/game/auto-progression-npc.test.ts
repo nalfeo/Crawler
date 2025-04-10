@@ -375,15 +375,15 @@ describe('autoAllocateStatPoints', () => {
     expect(() => autoAllocateStatPoints(world, player)).not.toThrow();
   });
 
-  it('spends available points (strength (→ armor) is front-loaded for survival)', () => {
+  it('spends available points into Constitution first for survival', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     world.playerLevel.unspentPoints = 5;
-    const armorBefore = world.stores.coreStatPoints.strength[player] ?? 0;
+    const constitutionBefore = world.stores.coreStatPoints.constitution[player] ?? 0;
 
     autoAllocateStatPoints(world, player);
 
-    expect(world.stores.coreStatPoints.strength[player]).toBeGreaterThan(armorBefore);
+    expect(world.stores.coreStatPoints.constitution[player]).toBeGreaterThan(constitutionBefore);
   });
 });
 
@@ -515,8 +515,8 @@ describe('autoFloor1ProgressionSystem', () => {
       name: 'Arcanist Circlet',
       slots: ['head'],
       statBonuses: { intelligence: 2, cooldownReduction: 0.05 },
-      rarity: 'rare',
       weightLb: 0,
+      rarity: 'rare',
     };
     _registerEquipmentDefForTest(circlet);
 

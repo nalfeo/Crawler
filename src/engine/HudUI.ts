@@ -1,5 +1,5 @@
 /**
- * HudUI — facade that owns HudHealthBar, HudManaBar, HudFloorTimer, HudBossBar,
+ * HudUI — facade that owns HudHealthBar, HudFloorTimer, HudBossBar,
  * and HudMinimap.
  *
  * Call sync() every frame to update all HUD elements from the current world state.
@@ -8,7 +8,6 @@
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { createHudHealthBar } from './HudHealthBar.js';
-import { createHudManaBar } from './HudManaBar.js';
 import { createHudExperienceBar } from './HudExperienceBar.js';
 import { createHudFloorTimer } from './HudFloorTimer.js';
 import { createHudBossBar } from './HudBossBar.js';
@@ -79,13 +78,12 @@ export function createHudUI(scene: Phaser.Scene): {
 
   // Corner groups: each is scaled and re-anchored as a unit so its elements
   // keep their relative layout while growing on small screens.
-  const bottomLeft = makeGroup(); // health, mana, xp, loot
+  const bottomLeft = makeGroup(); // health, xp, loot
   const bottomCenter = makeGroup(); // ability bar
   const topCenter = makeGroup(); // floor timer + boss bar
   const bottomRight = makeGroup(); // family relationships (Floor 2)
 
   const healthBar = createHudHealthBar(scene, { parent: bottomLeft });
-  const manaBar = createHudManaBar(scene, { parent: bottomLeft });
   const xpBar = createHudExperienceBar(scene, { parent: bottomLeft });
   const lootCounter = createHudLootCounter(scene, { parent: bottomLeft });
   const skillTracker = createHudSkillTracker(scene, { parent: bottomLeft });
@@ -177,7 +175,6 @@ export function createHudUI(scene: Phaser.Scene): {
       return;
     }
     healthBar.sync(world, playerEid);
-    manaBar.sync(world);
     xpBar.sync(world);
     floorTimer.sync(world);
     bossBar.sync(world);
@@ -224,7 +221,6 @@ export function createHudUI(scene: Phaser.Scene): {
   function destroy(): void {
     offUiScaleChange();
     healthBar.destroy();
-    manaBar.destroy();
     xpBar.destroy();
     floorTimer.destroy();
     bossBar.destroy();

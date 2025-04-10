@@ -1,9 +1,17 @@
 import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Enemy, EffectiveStats, Health, Player } from '../../src/core/components.js';
-import { applyDamage } from '../../src/core/apply-damage.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { createEntity } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+/** Player-origin, unscaled (no typed-primary multiplier), crit-eligible — isolates crit/dodge from STR/INT scaling. */
+const PLAYER_CRIT_OPTIONS = {
+  origin: 'player' as const,
+  affinity: 'unscaled' as const,
+  scaleWithPrimary: false,
+  canCrit: true,
+};
 
 describe('applyDamage', () => {
   it('reduces target HP by the requested amount', () => {
@@ -11,18 +19,17 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
 
-    const dealt = applyDamage(world, eid, 30, 10, 20);
+    const dealt = applyDamage(world, eid, 30, 10, 20, DEFAULT_DAMAGE_OPTIONS);
 
     expect(dealt).toBe(30);
     expect(world.stores.health.current[eid]).toBe(70);
   });
-
   it('clamps dealt damage to remaining HP (overkill)', () => {
     const world = createTestWorld();
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 15, max: 100 }));
 
-    const dealt = applyDamage(world, eid, 50, 0, 0);
+    const dealt = applyDamage(world, eid, 50, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(dealt).toBe(15);
     expect(world.stores.health.current[eid]).toBe(0);
@@ -33,7 +40,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 10, max: 100 }));
 
-    applyDamage(world, eid, 25, 5, 7);
+    applyDamage(world, eid, 25, 5, 7, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents).toHaveLength(1);
     expect(world.combatEvents[0]).toMatchObject({
@@ -50,7 +57,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 0, max: 100 }));
 
-    const dealt = applyDamage(world, eid, 10, 0, 0);
+    const dealt = applyDamage(world, eid, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(dealt).toBe(0);
     expect(world.combatEvents).toHaveLength(0);
@@ -62,7 +69,7 @@ describe('applyDamage', () => {
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
     addComponent(world.ecs, eid, Player);
 
-    applyDamage(world, eid, 10, 1, 2);
+    applyDamage(world, eid, 10, 1, 2, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents[0]!.targetType).toBe('player');
   });
@@ -72,7 +79,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
 
-    applyDamage(world, eid, 10, 1, 2);
+    applyDamage(world, eid, 10, 1, 2, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents[0]!.targetType).toBe('enemy');
   });
@@ -83,7 +90,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
 
-    applyDamage(world, eid, 5, 0, 0);
+    applyDamage(world, eid, 5, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents[0]!.timestamp).toBe(12345);
   });
@@ -93,7 +100,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
 
-    const dealt = applyDamage(world, eid, -10, 0, 0);
+    const dealt = applyDamage(world, eid, -10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(dealt).toBe(0);
     expect(world.stores.health.current[eid]).toBe(50);
@@ -105,7 +112,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
 
-    const dealt = applyDamage(world, eid, NaN, 0, 0);
+    const dealt = applyDamage(world, eid, NaN, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(dealt).toBe(0);
     expect(world.stores.health.current[eid]).toBe(50);
@@ -117,7 +124,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
 
-    applyDamage(world, eid, 10, 5, 7, undefined, 100, 200);
+    applyDamage(world, eid, 10, 5, 7, { ...DEFAULT_DAMAGE_OPTIONS, sourceX: 100, sourceY: 200 });
 
     expect(world.combatEvents).toHaveLength(1);
     expect(world.combatEvents[0]).toMatchObject({
@@ -131,7 +138,7 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
 
-    applyDamage(world, eid, 10, 5, 7);
+    applyDamage(world, eid, 10, 5, 7, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents).toHaveLength(1);
     expect(world.combatEvents[0]!.sourceX).toBeUndefined();
@@ -148,7 +155,12 @@ describe('applyDamage', () => {
     addComponent(world.ecs, eid, EffectiveStats);
     world.stores.effectiveStats.dodgeChance[eid] = 1;
 
-    const dealt = applyDamage(world, eid, 20, 3, 4);
+    const dealt = applyDamage(world, eid, 20, 3, 4, {
+      origin: 'enemy',
+      affinity: 'unscaled',
+      scaleWithPrimary: false,
+      canCrit: false,
+    });
 
     expect(dealt).toBe(0);
     expect(world.stores.health.current[eid]).toBe(50); // unharmed
@@ -174,7 +186,7 @@ describe('applyDamage', () => {
     addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, enemy, Enemy);
 
-    const dealt = applyDamage(world, enemy, 10, 1, 2);
+    const dealt = applyDamage(world, enemy, 10, 1, 2, PLAYER_CRIT_OPTIONS);
 
     expect(dealt).toBe(20); // 10 * critMultiplier (2)
     expect(world.stores.health.current[enemy]).toBe(80);
@@ -200,7 +212,7 @@ describe('applyDamage', () => {
     addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, enemy, Enemy);
 
-    const dealt = applyDamage(world, enemy, 10, 1, 2);
+    const dealt = applyDamage(world, enemy, 10, 1, 2, PLAYER_CRIT_OPTIONS);
 
     expect(dealt).toBe(36); // ((10 + 2) * (1 + 0.5)) * 2
     expect(world.stores.health.current[enemy]).toBe(64);
@@ -215,7 +227,7 @@ describe('applyDamage', () => {
     addComponent(world.ecs, enemy, set(Health, { current: 50, max: 50 }));
     addComponent(world.ecs, enemy, Enemy);
 
-    applyDamage(world, enemy, 10, 0, 0);
+    applyDamage(world, enemy, 10, 0, 0, PLAYER_CRIT_OPTIONS);
 
     // RNG stream untouched: the next roll matches a pristine world's first roll.
     expect(world.rng.next()).toBe(control.rng.next());

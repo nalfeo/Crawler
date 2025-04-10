@@ -233,7 +233,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
 
   // ── Consumables (20) ────────────────────────────────────────────────
   con('health-vial', 'Health Vial', 'Tastes like pennies and hope.', C),
-  con('mana-flask', 'Mana Flask', 'Blue, bubbly, and slightly radioactive.', C),
+  con('recharge-tonic', 'Recharge Tonic', 'Fizzy, electric, and rude to your cooldowns.', C),
   con('stim-shot', 'Stim Shot', 'Speed boost. Side effects undisclosed.', U),
   con('shield-scroll', 'Shield Scroll', 'Unfurl for instant protection.', U),
   con('smoke-bomb', 'Smoke Bomb', 'Vanish dramatically. Audience loves it.', U),

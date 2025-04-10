@@ -10,9 +10,11 @@
  */
 import GUI from 'lil-gui';
 import { addComponent } from 'bitecs';
-import { Stats, SkillHolder } from '../../core/components.js';
+import { SkillHolder } from '../../core/components.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/helpers.js';
+import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
+import { statSystem } from '../../core/systems/index.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
 import {
   WEAPON_CLASS_SKILL_IDS,
@@ -23,7 +25,7 @@ import {
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
 import { emitWeaponSkillEvents, computeEffectiveAccuracy } from '../../game/weaponSystem.js';
-import { skillSystem, statsSystem } from '../../game/systems/index.js';
+import { skillSystem } from '../../game/systems/index.js';
 import { registerLab } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -50,9 +52,9 @@ function createWeaponSkillLab(canvasHost: HTMLElement, controls: HTMLElement): (
   function reset(): void {
     world = createGameWorld({ seed: 42 });
     player = spawnPlayer(world, 0, 0);
-    addComponent(world.ecs, player, Stats);
+    initializeBaseStats(world, player);
     addComponent(world.ecs, player, SkillHolder);
-    statsSystem(world);
+    statSystem(world);
 
     const skillMap = new Map<string, SkillState>();
     for (const skill of allSkills) {
@@ -76,7 +78,7 @@ function createWeaponSkillLab(canvasHost: HTMLElement, controls: HTMLElement): (
     for (let i = 0; i < n; i++) {
       emitWeaponSkillEvents(world, player, def);
       skillSystem(world);
-      statsSystem(world);
+      statSystem(world);
     }
     simulatedFireCount += n;
     render();

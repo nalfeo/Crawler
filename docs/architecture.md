@@ -197,7 +197,7 @@ flowchart LR
 **Weapon & AI systems** run inside `preSystems`/`postSystems` (injected by the Floor 1 scenario — canonical source `src/bootstrap/floor1-main-scene-options.ts`; the visual loop lives in `src/engine/scenes/MainGameScene.ts` and is mirrored headlessly by `src/game/ai/simulation-step.ts`):
 
 ```
-preSystems: statsSystem → statSystem → manaSystem → floor1PlayerStatSystem
+preSystems: statSystem → floor1PlayerStatSystem
             → weaponSystem → enemyAISystem → floor1EnemyDirectorSystem
 postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSystem → questSystem
 ```
@@ -234,7 +234,6 @@ postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSys
 | `safeRoomSystem`            | ✅     | Sets `world.playerInSafeRoom` from player tile                       | [ADR 0013](knowledge/adr/0013-safe-room-runtime-system.md)                       |
 | `npcSystem`                 | ✅     | NPC proximity / interaction-prompt detection                         | [ADR 0012](knowledge/adr/0012-multi-safe-room-and-npc-quest-callback-pattern.md) |
 | `statSystem`                | ✅     | Per-frame EffectiveStats recompute (base + points + equipment)       | [Progression](systems/05-progression.md)                                         |
-| `manaSystem`                | ✅     | Wisdom-scaled max MP + per-frame MP regen                            | [ADR 0019](knowledge/adr/0019-wisdom-mana-pool.md)                               |
 | `equipmentSystem`           | ✅     | Slot equip/unequip; bonuses folded via `effective-stats.ts`          | [Progression](systems/05-progression.md)                                         |
 | `questSystem`               | ✅     | Data-driven quest-log eval + feature unlocks (run via `postSystems`) | [ADR 0011](knowledge/adr/0011-data-driven-quest-system.md)                       |
 
@@ -247,7 +246,6 @@ postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSys
 | `enemyAISystem`             | ✅     | Pathfinding + 3 AI personas (Chase, Swarm, Ranged)      | [Enemy AI](systems/04-enemy-ai.md)                 |
 | `enemySpawnerSystem`        | ✅     | Timed enemy spawning within bounds                      | [Enemy AI](systems/04-enemy-ai.md)                 |
 | `levelSystem`               | ✅     | Accumulates XP; grants stat points on level-up          | [Progression](systems/05-progression.md)           |
-| `statsSystem`               | ✅     | Recomputes final stats from base + points + modifiers   | [Progression](systems/05-progression.md)           |
 | `skillSystem`               | ✅     | Processes SkillUsageEvents; levels skills at thresholds | [Progression](systems/05-progression.md)           |
 | `abilitySystem`             | ✅     | Active/passive abilities with trigger conditions        | [Progression](systems/05-progression.md)           |
 | `floor1PlayerStatSystem`    | ✅     | Applies Floor 1 scenario base stat bonuses              | [Map Generation](systems/06-map-generation.md)     |
@@ -334,7 +332,7 @@ Detailed diagrams, contracts, and cross-system relationships for each system gro
 | [Combat](systems/02-combat.md)                                | damage, health, knockback, melee swing, beam, trap, AoE, death timer, lifetime                                                     |
 | [Weapons](systems/03-weapons.md)                              | weaponSystem (all 6 types), weaponEntitySystem, projectile cleanup, returning projectile                                           |
 | [Enemy AI](systems/04-enemy-ai.md)                            | enemyAISystem (3 personas + pathfinding), enemySpawnerSystem                                                                       |
-| [Progression](systems/05-progression.md)                      | levelSystem, statsSystem, skillSystem, abilitySystem, equipmentSystem                                                              |
+| [Progression](systems/05-progression.md)                      | levelSystem, core statSystem, skillSystem, abilitySystem, equipmentSystem                                                          |
 | [Map Generation](systems/06-map-generation.md)                | Generators (Dungeon/Cave/Arena), FloorMap, FOV, doorSystem, Floor 1 scenario                                                       |
 | [Drops & Loot](systems/07-drops-loot.md)                      | dropSystem, itemPickupSystem, loot tables, inventory, items                                                                        |
 | [Engine Bridge](systems/08-engine-bridge.md)                  | PhaserBridge, HudUI, VFX, ModalPickerUI, sprites                                                                                   |

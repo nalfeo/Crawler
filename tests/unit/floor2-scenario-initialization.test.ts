@@ -181,10 +181,14 @@ describe('initializeFloor2Scenario manifest validation', () => {
 
     expect(world.playerLevel.level).toBe(5);
     expect(world.playerLevel.unspentPoints).toBe(0);
-    expect(world.stores.coreStatPoints.strength[playerEid]).toBe(6);
-    expect(world.stores.coreStatPoints.constitution[playerEid]).toBe(6);
-    expect(world.stores.health.max[playerEid]).toBe(190);
-    expect(world.stores.health.current[playerEid]).toBe(190);
+    // Default allocator sequence (CON->8, DEX->5, offense->5, WIS->5, offense->11,
+    // CON-remainder — see game/scenarios/playerStatAllocationPolicy.ts) spends the
+    // 12 points available at level 5 as: constitution->8, then 4 into dexterity.
+    expect(world.stores.coreStatPoints.strength[playerEid]).toBe(0);
+    expect(world.stores.coreStatPoints.constitution[playerEid]).toBe(8);
+    expect(world.stores.coreStatPoints.dexterity[playerEid]).toBe(4);
+    expect(world.stores.health.max[playerEid]).toBe(280);
+    expect(world.stores.health.current[playerEid]).toBe(280);
 
     const equipment = getEquipmentState(world, playerEid);
     const neckInstanceId = equipment?.equipped.neck ?? null;

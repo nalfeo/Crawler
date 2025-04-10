@@ -1,10 +1,4 @@
-import {
-  abilitySystem,
-  levelSystem,
-  skillSystem,
-  spendPoints,
-  statsSystem,
-} from '../game/systems/index.js';
+import { abilitySystem, levelSystem, skillSystem, spendPoints } from '../game/systems/index.js';
 import {
   enemyAISystem,
   familyFeudSystem,
@@ -43,7 +37,6 @@ import {
 } from '../game/floor2Scenario.js';
 import {
   statSystem,
-  manaSystem,
   statusEffectSystem,
   familyRelationshipSystem,
   type GameWorld,
@@ -119,9 +112,7 @@ export function createFloorMainSceneOptions(floorId: string = 'floor1') {
       : undefined,
     broker: !floor1Callbacks ? { met: meetBroker } : undefined,
     preSystems: [
-      statsSystem,
       statSystem,
-      manaSystem,
       // Drain queued faction-relation deltas early so any preSystem or
       // postSystem downstream this frame reads consistent post-adjust bands.
       // Always-safe: on Floor 1 the deltas queue stays empty (near-noop).

@@ -1,10 +1,12 @@
 import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { EffectiveStats, SkillHolder, Size, Stats, Enemy } from '../../src/core/components.js';
+import { EffectiveStats, SkillHolder, Size, Enemy } from '../../src/core/components.js';
 import { SHAPE_BOX } from '../../src/core/physics-defs.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { getStatusEffects } from '../../src/core/status-effects.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
+import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
+import { statSystem } from '../../src/core/systems/index.js';
 import { makeWalledMap } from '../helpers/map-fixtures.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../src/game/abilities/types.js';
 import {
@@ -14,7 +16,6 @@ import {
   grantPassiveAbility,
   memorizeSpell,
   queueAbilityTrigger,
-  statsSystem,
 } from '../../src/game/systems/index.js';
 import { forceActivateAbility } from '../../src/game/systems/abilitySystem.js';
 import { applyCatalogEffect } from '../../src/game/systems/progressionEffects.js';
@@ -23,9 +24,9 @@ import { createTestWorld } from '../helpers/world-factory.js';
 function setupPlayer() {
   const world = createTestWorld();
   const player = spawnPlayer(world, 0, 0);
-  addComponent(world.ecs, player, Stats);
+  initializeBaseStats(world, player);
   addComponent(world.ecs, player, SkillHolder);
-  statsSystem(world);
+  statSystem(world);
   getOrCreateAbilityState(world, player);
   return { world, player };
 }
@@ -147,10 +148,9 @@ describe('abilitySystem', () => {
     expect(world.abilityTriggerEvents).toHaveLength(0);
   });
 
-  it('auto-casts fireball on enemy clumps, spends MP, and honors 5s cooldown', () => {
+  it('auto-casts fireball on enemy clumps and honors 5s cooldown', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     memorizeSpell(world, player, 'fireball');
 
     // Place enemies within 6 feet trigger radius and give them enough health to survive 2 spells
@@ -162,23 +162,19 @@ describe('abilitySystem', () => {
     abilitySystem(world);
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
-    expect(world.playerMp).toBe(15);
 
     world.frameCount = 200;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
-    expect(world.playerMp).toBe(15);
 
     world.frameCount = 400;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('fireball')).toBe(400);
-    expect(world.playerMp).toBe(10);
   });
 
   it('honors cooldown reduction by allowing an earlier second activation', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     addComponent(world.ecs, player, EffectiveStats);
     world.stores.effectiveStats.cooldownReduction[player] = 0.5;
     memorizeSpell(world, player, 'fireball');
@@ -203,7 +199,6 @@ describe('abilitySystem', () => {
   it('does not add an extra frame for float32 near-integer cooldown products', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     addComponent(world.ecs, player, EffectiveStats);
     world.stores.effectiveStats.cooldownReduction[player] = 0.01;
     memorizeSpell(world, player, 'fireball');
@@ -228,7 +223,6 @@ describe('abilitySystem', () => {
   it('keeps cooldown gate aligned to the snapped HUD cooldown when stats change mid-cooldown', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     addComponent(world.ecs, player, EffectiveStats);
     world.stores.effectiveStats.cooldownReduction[player] = 0;
     memorizeSpell(world, player, 'fireball');
@@ -257,8 +251,9 @@ describe('abilitySystem', () => {
   it('auto-casts fireball at a single nearby enemy without waiting for a cluster', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
-    world.stores.stats.damage[player] = 20; // fireball deals round(20 * 1.5) = 30
+    // Fireball's authored base is 15 (scalesWithIntelligence), and a fresh
+    // player's effective Intelligence is 1 (base, no allocation/gear), so the
+    // resolved damage is round(15 * 1.01) = 15.
     memorizeSpell(world, player, 'fireball');
 
     // A lone enemy within the 6 ft trigger radius must still draw fire.
@@ -269,15 +264,12 @@ describe('abilitySystem', () => {
 
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
-    expect(world.playerMp).toBe(15);
-    expect(world.stores.health.current[enemy]).toBe(70);
+    expect(world.stores.health.current[enemy]).toBe(85);
   });
 
   it('prioritizes the densest enemy cluster over a lone nearer enemy', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
-    world.stores.stats.damage[player] = 20; // fireball deals round(20 * 1.5) = 30
     memorizeSpell(world, player, 'fireball');
 
     // Lone enemy hugs the caster and is what trips the auto-trigger (within 6 ft),
@@ -293,18 +285,23 @@ describe('abilitySystem', () => {
 
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
-    expect(world.stores.health.current[clusterA]).toBe(70);
-    expect(world.stores.health.current[clusterB]).toBe(70);
-    expect(world.stores.health.current[clusterC]).toBe(70);
+    // Fireball damage (15) can crit like any other player-sourced hit on an
+    // Enemy (SPELL_DAMAGE_OPTIONS.canCrit is true — see progressionEffects.ts).
+    // Baseline crit chance is 0.05 + effective Luck (base 1, no allocation) *
+    // 0.0025 = 0.0525 (see CORE_STAT_TO_SECONDARY.luck). With the fixed test
+    // seed (42), the splash loop's second roll (clusterB) lands under that
+    // chance and crits for 15*1.5=22.5; clusterA/clusterC roll non-crit hits.
+    expect(world.stores.health.current[clusterA]).toBe(85);
+    expect(world.stores.health.current[clusterB]).toBe(77.5);
+    expect(world.stores.health.current[clusterC]).toBe(85);
     // The lone enemy triggered the cast but lies outside the cluster blast, so it
     // is spared — group priority, without ever being exclusive to clusters.
     expect(world.stores.health.current[lone]).toBe(100);
   });
 
-  it('casts pulse shield only when low health and crowded, then spends 10 MP', () => {
+  it('casts pulse shield only when low health and crowded', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     memorizeSpell(world, player, 'pulse-shield');
     world.stores.health.current[player] = 40;
     world.stores.health.max[player] = 100;
@@ -316,19 +313,16 @@ describe('abilitySystem', () => {
     abilitySystem(world);
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.cooldownByAbilityId.has('pulse-shield')).toBe(false);
-    expect(world.playerMp).toBe(20);
 
     spawnEnemy(world, 0.75, -1, 10);
     world.frameCount = 200;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(200);
-    expect(world.playerMp).toBe(10);
 
     world.stores.health.current[player] = 85;
     world.frameCount = 1600;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(200);
-    expect(world.playerMp).toBe(10);
   });
 
   it('keeps pulse shield knockback from pushing enemies partially into walls', () => {
@@ -337,7 +331,6 @@ describe('abilitySystem', () => {
     world.stores.position.x[player] = 15;
     world.stores.position.y[player] = 12;
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     memorizeSpell(world, player, 'pulse-shield');
     world.stores.health.current[player] = 40;
     world.stores.health.max[player] = 100;
@@ -365,7 +358,6 @@ describe('abilitySystem', () => {
     abilitySystem(world);
     knockbackSystem(world);
 
-    expect(world.playerMp).toBe(10);
     // Knockback resolves in 0.125 ft substeps (the 1 px-equivalent sweep
     // resolution), so the enemy slides up against the wall and stops at 18.125 ft,
     // putting its right edge (18.125 + 3.75 / 2) exactly at the wall plane at 20 ft.
@@ -374,26 +366,9 @@ describe('abilitySystem', () => {
     expect(world.stores.position.y[wallEnemy]).toBeCloseTo(12);
   });
 
-  it('does not trigger spells when MP is below cost', () => {
+  it('casts heal only when HP deficit reaches heal amount, with 30s cooldown', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 4;
-    memorizeSpell(world, player, 'fireball');
-
-    spawnEnemy(world, 2.5, 0, 10);
-    spawnEnemy(world, 3, 0.5, 10);
-
-    world.frameCount = 100;
-    abilitySystem(world);
-    const state = world.abilityStatesByEntity.get(player)!;
-    expect(state.cooldownByAbilityId.has('fireball')).toBe(false);
-    expect(world.playerMp).toBe(4);
-  });
-
-  it('casts heal only when HP deficit reaches heal amount, with 30s cooldown and 10 MP cost', () => {
-    const { world, player } = setupPlayer();
-    world.featureUnlocks.spells = true;
-    world.playerMp = 30;
     memorizeSpell(world, player, 'heal');
     world.stores.health.max[player] = 100;
     world.stores.health.current[player] = 75; // deficit 25 (< 30)
@@ -402,30 +377,25 @@ describe('abilitySystem', () => {
     abilitySystem(world);
     const state = world.abilityStatesByEntity.get(player)!;
     expect(state.cooldownByAbilityId.has('heal')).toBe(false);
-    expect(world.playerMp).toBe(30);
 
     world.stores.health.current[player] = 70; // deficit 30
     world.frameCount = 200;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('heal')).toBe(200);
-    expect(world.playerMp).toBe(20);
 
     world.stores.health.current[player] = 40;
     world.frameCount = 1000; // still inside 1800-frame cooldown
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('heal')).toBe(200);
-    expect(world.playerMp).toBe(20);
 
     world.frameCount = 2001; // cooldown elapsed
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('heal')).toBe(2001);
-    expect(world.playerMp).toBe(10);
   });
 
   it('emits a fireballBlast VFX event at the chosen epicentre when fireball casts', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     memorizeSpell(world, player, 'fireball');
 
     // Cluster of 3 sits 4 ft from the caster along +X; a lone enemy is closer.
@@ -457,7 +427,6 @@ describe('abilitySystem', () => {
   it('emits a pulseShieldWave VFX event centred on the caster when pulse shield fires', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     memorizeSpell(world, player, 'pulse-shield');
     world.stores.health.current[player] = 40;
     world.stores.health.max[player] = 100;
@@ -481,7 +450,6 @@ describe('abilitySystem', () => {
   it('heals the caster and emits a healGlow VFX event when the heal spell auto-triggers on a deficit', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 30;
     memorizeSpell(world, player, 'heal');
     world.stores.health.max[player] = 100;
     world.stores.health.current[player] = 70; // deficit 30 meets health_deficit_at_least
@@ -490,8 +458,9 @@ describe('abilitySystem', () => {
     world.frameCount = 100;
     abilitySystem(world);
 
-    // The auto-trigger fires only on a real deficit, so HP is restored by
-    // baseHeal (30, capped at max) and exactly one glow is emitted at the caster.
+    // The auto-trigger fires only on a real deficit, so HP is restored by the
+    // resolved heal output (authored base 30, capped at max) and exactly one
+    // glow is emitted at the caster.
     expect(world.stores.health.current[player]).toBe(100);
     const glows = world.vfxEvents.filter((e) => e.kind === 'healGlow');
     expect(glows).toHaveLength(1);
@@ -509,11 +478,11 @@ describe('abilitySystem', () => {
     // The health_deficit_at_least(30) auto-trigger can NEVER fire at full HP, so
     // drive the cast directly the way activateAbility() does. This exercises
     // castHeal's deliberate "always emit the glow on cast" branch (the spell
-    // fired — MP spent, cooldown started) which the trigger path cannot reach.
+    // fired — cooldown started) which the trigger path cannot reach.
     applyCatalogEffect(world, {
       sourceType: 'ability',
       sourceId: `heal:active:${player}`,
-      effect: { type: 'spell_heal', baseHeal: 30 },
+      effect: { type: 'spell_heal', heal: { base: 30, scalesWithIntelligence: true } },
       holderEid: player,
     });
 
@@ -527,7 +496,6 @@ describe('abilitySystem', () => {
   it('casts magic missile at the nearest enemy and emits an arcaneBoltImpact VFX event', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     memorizeSpell(world, player, 'magic-missile');
     const target = spawnEnemy(world, 2, 0, 100);
     spawnEnemy(world, 8, 0, 100);
@@ -545,7 +513,6 @@ describe('abilitySystem', () => {
   it('casts frost nova, damaging and slowing nearby enemies, and emits a frostNovaBurst VFX event', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;
-    world.playerMp = 20;
     memorizeSpell(world, player, 'frost-nova');
     const enemy = spawnEnemy(world, 2, 0, 100);
     spawnEnemy(world, -2, 0, 100);
@@ -649,7 +616,6 @@ describe('abilitySystem', () => {
     it('returns false for spells when the spells feature is locked', () => {
       const { world, player } = setupPlayer();
       world.featureUnlocks.spells = false;
-      world.playerMp = 50;
       // memorizeSpell equips it in an active slot even while the feature is locked.
       memorizeSpell(world, player, 'fireball');
       world.frameCount = 100;
@@ -659,13 +625,11 @@ describe('abilitySystem', () => {
       expect(fired).toBe(false);
       const state = world.abilityStatesByEntity.get(player)!;
       expect(state.cooldownByAbilityId.has('fireball')).toBe(false);
-      expect(world.playerMp).toBe(50);
     });
 
-    it('bypasses cooldown and MP cost when it fires, applies effects, and records the cast frame', () => {
+    it('bypasses cooldown when it fires, applies effects, and records the cast frame', () => {
       const { world, player } = setupPlayer();
       world.featureUnlocks.spells = true;
-      world.playerMp = 0; // heal normally costs 10 MP; force must ignore that.
       memorizeSpell(world, player, 'heal');
       world.stores.health.max[player] = 100;
       world.stores.health.current[player] = 50;
@@ -680,8 +644,6 @@ describe('abilitySystem', () => {
       expect(fired).toBe(true);
       // Cast frame stamped at the current frame despite the recent prior cast.
       expect(state.cooldownByAbilityId.get('heal')).toBe(1001);
-      // MP untouched — force bypasses the cost.
-      expect(world.playerMp).toBe(0);
       // Effects were applied: HP restored above the pre-cast value.
       expect(world.stores.health.current[player]).toBeGreaterThan(50);
     });

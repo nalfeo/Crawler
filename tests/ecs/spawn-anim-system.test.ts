@@ -1,7 +1,7 @@
 import { addComponent, hasComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Invincible, SpawnAnim } from '../../src/core/components.js';
-import { applyDamage } from '../../src/core/apply-damage.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { spawnEnemy } from '../../src/core/helpers.js';
 import { spawnAnimSystem } from '../../src/core/systems/spawnAnimSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -56,7 +56,7 @@ describe('spawnAnimSystem', () => {
 
     // A still-animating baby takes full damage; the pop/wiggle never absorbs a hit.
     expect(hasComponent(world.ecs, eid, Invincible)).toBe(false);
-    expect(applyDamage(world, eid, 30, 0, 0)).toBe(30);
+    expect(applyDamage(world, eid, 30, 0, 0, DEFAULT_DAMAGE_OPTIONS)).toBe(30);
     expect(world.stores.health.current[eid]).toBe(20);
   });
 

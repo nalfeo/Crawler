@@ -38,11 +38,24 @@ export const Sprite = {};
 export const BroadcastScore = {};
 export const Equipment = {};
 export const BaseStats = {};
+/**
+ * Sole runtime stat snapshot: primary points (base 1 + allocated + equipment)
+ * plus every derived secondary (armor, damage bonuses, maxHp, accuracy, crit,
+ * dodge, cooldown reduction, etc). Recomputed each frame by `statSystem`
+ * (core) from BaseStats + CoreStatPoints + equipment + active modifiers — see
+ * `core/effective-stats.ts`. There is no separate computed `Stats` component.
+ */
 export const EffectiveStats = {};
-/** Tag: entity has computed final stats (typically player only in v1). */
-export const Stats = {};
 /** Tag: entity has a skill set (player only in v1). */
 export const SkillHolder = {};
+/**
+ * Persisted fail-closed damage-scaling metadata for a delayed damage-bearing
+ * entity (projectile, area-damage/explosion, beam, melee swing, trap). Tagged
+ * at spawn time (or propagated onto a later explosion/impact entity) so the
+ * collision system that eventually calls `applyDamage` doesn't need to
+ * re-resolve which weapon/spell created it. See `core/damage-meta.ts`.
+ */
+export const DamageMeta = {};
 
 // --- Weapon System Components ---
 /** Marks an entity as a weapon with type, stats, and cooldown tracking. */
@@ -417,7 +430,6 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
-      weight: new Float32Array(maxEntities),
       armor: new Float32Array(maxEntities),
       damageBonus: new Float32Array(maxEntities),
       damagePercent: new Float32Array(maxEntities),
@@ -429,6 +441,11 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       hpRegen: new Float32Array(maxEntities),
       xpBonus: new Float32Array(maxEntities),
       cooldownReduction: new Float32Array(maxEntities),
+      maxHp: new Float32Array(maxEntities),
+      accuracy: new Float32Array(maxEntities),
+      pickupRange: new Float32Array(maxEntities),
+      projectileSpeed: new Float32Array(maxEntities),
+      projectileCount: new Float32Array(maxEntities),
     },
     effectiveStats: {
       strength: new Float32Array(maxEntities),
@@ -438,7 +455,6 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
-      weight: new Float32Array(maxEntities),
       armor: new Float32Array(maxEntities),
       damageBonus: new Float32Array(maxEntities),
       damagePercent: new Float32Array(maxEntities),
@@ -450,22 +466,27 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       hpRegen: new Float32Array(maxEntities),
       xpBonus: new Float32Array(maxEntities),
       cooldownReduction: new Float32Array(maxEntities),
-    },
-    stats: {
       maxHp: new Float32Array(maxEntities),
-      moveSpeed: new Float32Array(maxEntities),
-      damage: new Float32Array(maxEntities),
-      armor: new Float32Array(maxEntities),
-      attackSpeed: new Float32Array(maxEntities),
-      pickupRange: new Float32Array(maxEntities),
-      projectileCount: new Float32Array(maxEntities),
-      projectileSpeed: new Float32Array(maxEntities),
-      /** Accuracy bonus stacked on top of a weapon's baseAccuracy (0..1 range). */
       accuracy: new Float32Array(maxEntities),
+      pickupRange: new Float32Array(maxEntities),
+      projectileSpeed: new Float32Array(maxEntities),
+      projectileCount: new Float32Array(maxEntities),
+    },
+    /**
+     * Fail-closed damage-scaling metadata for delayed damage-bearing entities.
+     * Numeric zero decodes to the fail-closed default in every field: origin=
+     * environment, affinity=unscaled, scaleWithPrimary=false, canCrit=false.
+     * See `core/damage-meta.ts` for the encode/decode helpers.
+     */
+    damageMeta: {
+      origin: new Uint8Array(maxEntities),
+      affinity: new Uint8Array(maxEntities),
+      scaleWithPrimary: new Uint8Array(maxEntities),
+      canCrit: new Uint8Array(maxEntities),
     },
     /**
      * How many level-up points the player has allocated to each PRIMARY_STAT.
-     * statsSystem reads these and derives STAT_KEYS values via CORE_STAT_GAINS.
+     * `statSystem` reads these and derives EffectiveStats via CORE_STAT_TO_SECONDARY.
      */
     coreStatPoints: {
       strength: new Float32Array(maxEntities),
@@ -475,7 +496,6 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
-      weight: new Float32Array(maxEntities),
     },
     prop: {
       /** Index into DECORATION_DEF_INDEX for the originating DecorationDef. */

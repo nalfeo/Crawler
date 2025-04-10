@@ -10,7 +10,7 @@ Interactive Phaser sandbox for the level-up stat-allocation overlay
 - The pure allocation rules from `src/shared/level-up-allocation.ts` (clamping to
   available points, banking unspent points).
 - That confirming an allocation spends points through the real `spendPoints` +
-  `statsSystem` pipeline.
+  core `statSystem` pipeline.
 
 ## How to use
 

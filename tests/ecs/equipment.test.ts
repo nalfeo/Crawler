@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { addEntity } from 'bitecs';
+import { addComponent, addEntity, setComponent } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory.js';
 import type { GameWorld } from '../../src/core/world.js';
+import { Health } from '../../src/core/components.js';
 import {
   initializeBaseStats,
   equip,
@@ -16,7 +17,7 @@ import {
 } from '../../src/core/systems/equipmentSystem.js';
 import { statSystem } from '../../src/core/systems/statSystem.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
-import { CORE_STAT_TO_SECONDARY } from '../../src/shared/stats.js';
+import { CORE_STAT_TO_SECONDARY, DEFAULT_BASE_STATS } from '../../src/shared/stats.js';
 import {
   getEquipmentDefForItem,
   getEquippableItemIds,
@@ -27,8 +28,6 @@ import {
 import { addItem, hasItem, getItemCount, type InventoryBag } from '../../src/shared/inventory.js';
 import { ItemRarity, customTag, type ItemDef } from '../../src/shared/items.js';
 import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
-
-const STR_TO_DAMAGE_PERCENT = CORE_STAT_TO_SECONDARY.strength.damagePercent!;
 
 // --- Test helpers ---
 
@@ -53,8 +52,8 @@ function makeItem(overrides: Partial<EquipmentItemDef> = {}): EquipmentItemDef {
     name: 'Test Item',
     slots: ['head'],
     statBonuses: {},
-    rarity: 'common',
     weightLb: 0,
+    rarity: 'common',
     ...overrides,
   };
 }
@@ -83,6 +82,30 @@ describe('Equipment System', () => {
     const state = getEquipmentState(world, entity)!;
     expect(state.equipped['head']).not.toBeNull();
     expect(getEffectiveStats(world, entity).armor).toBe(5);
+  });
+
+  it('applies maxHp delta to Health immediately on constitution equip/unequip', () => {
+    const hpEntity = addEntity(world.ecs);
+    addComponent(world.ecs, hpEntity, Health);
+    setComponent(world.ecs, hpEntity, Health, { max: 1, current: 1 });
+    initializeBaseStats(world, hpEntity);
+
+    const beforeMax = world.stores.health.max[hpEntity] ?? 0;
+    const beforeCurrent = world.stores.health.current[hpEntity] ?? 0;
+    const result = equip(
+      world,
+      hpEntity,
+      makeItem({ id: 'con-ring', slots: ['ringLeft'], statBonuses: { constitution: 1 } }),
+      { force: true },
+    );
+    expect(result.ok).toBe(true);
+    expect(world.stores.health.max[hpEntity]).toBe(beforeMax + 10);
+    expect(world.stores.health.current[hpEntity]).toBe(beforeCurrent + 10);
+
+    const unequipResult = unequip(world, hpEntity, 'ringLeft', { force: true });
+    expect(unequipResult.ok).toBe(true);
+    expect(world.stores.health.max[hpEntity]).toBe(beforeMax);
+    expect(world.stores.health.current[hpEntity]).toBe(beforeCurrent);
   });
 
   // 2. Equip multi-slot item
@@ -152,7 +175,14 @@ describe('Equipment System', () => {
     );
     const stats = getEffectiveStats(world, entity);
     expect(stats.armor).toBe(8);
-    expect(stats.moveSpeed).toBe(1);
+    // moveSpeed = gear flat bonus (1) + base Dexterity's own always-on
+    // derivation (effective DEX 1 * CORE_STAT_TO_SECONDARY.dexterity.moveSpeed)
+    // — Dexterity's per-point moveSpeed rate applies to the FULL effective
+    // value (base + allocated + gear), not just allocated points.
+    expect(stats.moveSpeed).toBeCloseTo(
+      1 + DEFAULT_BASE_STATS.dexterity * CORE_STAT_TO_SECONDARY.dexterity.moveSpeed!,
+      6,
+    );
   });
 
   // 8. Stat aggregation after partial unequip
@@ -227,6 +257,24 @@ describe('Equipment System', () => {
   it('rejects item with duplicate slots', () => {
     const result = equip(world, entity, makeItem({ slots: ['head', 'head'] }), { force: true });
     expect(result.ok).toBe(false);
+  });
+
+  it('rejects non-finite or negative weightLb', () => {
+    const nanWeight = equip(world, entity, makeItem({ id: 'nan-weight', weightLb: Number.NaN }), {
+      force: true,
+    });
+    expect(nanWeight.ok).toBe(false);
+    if (!nanWeight.ok) {
+      expect(nanWeight.reasons.some((r) => r.type === 'invalidDef')).toBe(true);
+    }
+
+    const negativeWeight = equip(world, entity, makeItem({ id: 'negative-weight', weightLb: -1 }), {
+      force: true,
+    });
+    expect(negativeWeight.ok).toBe(false);
+    if (!negativeWeight.ok) {
+      expect(negativeWeight.reasons.some((r) => r.type === 'invalidDef')).toBe(true);
+    }
   });
 
   // 15. Entity cleanup
@@ -333,15 +381,19 @@ describe('Equipment System', () => {
   // 24. Multi-slot stats not double-counted
   it('does not double-count multi-slot item stats', () => {
     statSystem(world);
-    const strength = getEffectiveStats(world, entity).strength;
     const item = makeItem({
       id: 'gs',
       slots: ['mainHand', 'offHand'],
       statBonuses: { damageBonus: 10 },
     });
     equip(world, entity, item, { force: true });
-    const expected = strength * STR_TO_DAMAGE_PERCENT;
-    expect(getEffectiveStats(world, entity).damagePercent).toBeCloseTo(expected, 6);
+    // Strength no longer auto-derives a generic `damagePercent` secondary (its
+    // payoff is a typed-primary multiplier applied at damage resolution — see
+    // shared/stats.ts#computeTypedPrimaryMultiplier), so a non-Strength item
+    // equipped once must leave damagePercent at 0 (proving no double-count
+    // leaked a phantom contribution) while damageBonus reflects exactly one
+    // copy of the 2H item's own bonus.
+    expect(getEffectiveStats(world, entity).damagePercent).toBeCloseTo(0, 6);
     expect(getEffectiveStats(world, entity).damageBonus).toBeCloseTo(10, 6);
   });
 
@@ -507,8 +559,8 @@ describe('equipFromBag', () => {
       name: 'Colossus Blade',
       slots: ['mainHand', 'offHand'],
       statBonuses: {},
-      rarity: 'rare',
       weightLb: 0,
+      rarity: 'rare',
       requirements: [{ type: 'minStat', stat: 'strength', value: 30 }],
     });
     const girdle = makeItem({
@@ -551,8 +603,8 @@ describe('equipFromBag', () => {
       name: 'Warblade',
       slots: ['mainHand'],
       statBonuses: { damageBonus: 4 },
-      rarity: 'rare',
       weightLb: 0,
+      rarity: 'rare',
       requirements: [{ type: 'minStat', stat: 'strength', value: 10 }],
     });
     addItem(bag, 'warblade', 1, TEST_CATALOG);

@@ -13,6 +13,38 @@ import type { GameWorld } from './world.js';
 import { resolveCrit, resolveDodge } from './combat-rolls.js';
 import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
 import { getBodyHalfWidth } from './physics-body.js';
+import { computeTypedPrimaryMultiplier, type DamageAffinity } from '../shared/stats.js';
+import { FAIL_CLOSED_DAMAGE_META, type DamageOrigin } from './damage-meta.js';
+
+/**
+ * Fail-closed metadata describing WHO dealt this damage and how it should
+ * scale/crit. Every damage-bearing/delayed entity path persists this via
+ * `core/damage-meta.ts` and reads it back here; instant resolutions (spell
+ * casts, corpse-step) pass it inline. Fresh/unset fields never scale or crit
+ * — see `FAIL_CLOSED_DAMAGE_META`.
+ */
+export interface DamageOptions {
+  /** Who dealt this damage. Numeric zero decodes to `'environment'` (fail-closed). */
+  readonly origin: DamageOrigin;
+  /** Damage type for the typed-primary multiplier (STR physical / INT magic). */
+  readonly affinity: DamageAffinity;
+  /**
+   * Whether the typed-primary multiplier (STR for physical, INT for magic)
+   * applies. `false` for magic-spell damage that already resolved its own
+   * INT scaling via `resolveScalableOutput` (avoids double-scaling).
+   */
+  readonly scaleWithPrimary: boolean;
+  /** Whether this hit is eligible to roll a critical strike. */
+  readonly canCrit: boolean;
+  /** Gore/VFX intensity hint (0..1). */
+  readonly weaponGoreFactor?: number;
+  readonly sourceX?: number;
+  readonly sourceY?: number;
+  readonly sourceEid?: number;
+}
+
+/** Convenience: the fail-closed default options (never scales, never crits, environment-sourced). */
+export const DEFAULT_DAMAGE_OPTIONS: DamageOptions = FAIL_CLOSED_DAMAGE_META;
 
 /**
  * Emit a `corpseExplode` combat event for a corpse struck during its
@@ -87,13 +119,17 @@ function emitCorpseExplosion(
  * Secondary stats hook in here, gated on the relevant entity having
  * `EffectiveStats` so bare test worlds (no stat stores) keep deterministic,
  * roll-free behavior:
- *   - Dodge: a player target can fully avoid an incoming hit (player-only).
- *   - Player damage scaling: player-sourced damage to an enemy applies the
- *     player's EffectiveStats `damageBonus` (flat) and `damagePercent`
- *     (multiplier), then can critically strike using critChance/critMultiplier.
- * The target's type fixes the direction of damage — an enemy target means the
- * blow is player-sourced (crit), a player target means it is enemy-sourced
- * (dodge) — so neither path needs the attacker entity.
+ *   - Dodge: a player target can fully avoid an incoming hit (player-only,
+ *     independent of `options` — enemies/environment are the only possible
+ *     sources of player-target damage).
+ *   - Player-sourced offense: ONLY `options.origin === 'player'` damage to an
+ *     Enemy target applies the generic offense
+ *     `(base + damageBonus) * (1 + damagePercent)`, then — when
+ *     `scaleWithPrimary` — the typed-primary multiplier (STR for physical
+ *     affinity, INT for magic), then — when `canCrit` — a crit roll using
+ *     critChance/critMultiplier. Enemy/environment-origin damage never scales.
+ * The target's type fixes the direction of dodge — a player target means the
+ * blow is enemy/environment-sourced — so dodge doesn't need `options.origin`.
  */
 export function applyDamage(
   world: GameWorld,
@@ -101,10 +137,7 @@ export function applyDamage(
   amount: number,
   x: number,
   y: number,
-  weaponGoreFactor?: number,
-  sourceX?: number,
-  sourceY?: number,
-  sourceEid?: number,
+  options: DamageOptions,
 ): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   if (hasComponent(world.ecs, target, Invincible)) return 0;
@@ -133,7 +166,7 @@ export function applyDamage(
     if (hasComponent(world.ecs, target, Spawner)) return 0;
     const remainingMs = world.stores.deathTimer.remainingMs[target] ?? 0;
     if (remainingMs > 0) {
-      emitCorpseExplosion(world, target, x, y, amount, sourceX, sourceY);
+      emitCorpseExplosion(world, target, x, y, amount, options.sourceX, options.sourceY);
       world.stores.deathTimer.remainingMs[target] = 0;
     }
     return 0;
@@ -159,21 +192,31 @@ export function applyDamage(
     }
   }
 
-  // Player-sourced scaling + crit: reads the player singleton's EffectiveStats
-  // and applies flat/percent damage bonuses before the crit roll.
+  // Player-sourced offense + crit: reads the player singleton's EffectiveStats
+  // and applies flat/percent damage bonuses, the typed-primary multiplier, and
+  // an optional crit roll — ONLY for player-origin damage to an Enemy target.
   let finalAmount = amount;
   let isCrit = false;
-  if (!isPlayerTarget && hasComponent(world.ecs, target, Enemy)) {
+  if (options.origin === 'player' && !isPlayerTarget && hasComponent(world.ecs, target, Enemy)) {
     const player = query(world.ecs, [Player, EffectiveStats])[0];
     if (player !== undefined) {
       const damageBonus = world.stores.effectiveStats.damageBonus[player] ?? 0;
       const damagePercent = world.stores.effectiveStats.damagePercent[player] ?? 0;
-      const scaledAmount = Math.max(0, amount + damageBonus) * (1 + Math.max(0, damagePercent));
-      const critChance = world.stores.effectiveStats.critChance[player] ?? 0;
-      const critMultiplier = world.stores.effectiveStats.critMultiplier[player] ?? 1;
-      const result = resolveCrit(world.rng.next(), scaledAmount, critChance, critMultiplier);
-      finalAmount = result.amount;
-      isCrit = result.isCrit;
+      let scaledAmount = Math.max(0, amount + damageBonus) * (1 + Math.max(0, damagePercent));
+      if (options.scaleWithPrimary) {
+        const strength = world.stores.effectiveStats.strength[player] ?? 0;
+        const intelligence = world.stores.effectiveStats.intelligence[player] ?? 0;
+        scaledAmount *= computeTypedPrimaryMultiplier(options.affinity, strength, intelligence);
+      }
+      if (options.canCrit) {
+        const critChance = world.stores.effectiveStats.critChance[player] ?? 0;
+        const critMultiplier = world.stores.effectiveStats.critMultiplier[player] ?? 1;
+        const result = resolveCrit(world.rng.next(), scaledAmount, critChance, critMultiplier);
+        finalAmount = result.amount;
+        isCrit = result.isCrit;
+      } else {
+        finalAmount = scaledAmount;
+      }
     }
   }
 
@@ -191,15 +234,15 @@ export function applyDamage(
       targetType,
       timestamp: world.elapsedMs,
       targetEid: target,
-      weaponGoreFactor,
-      sourceX,
-      sourceY,
+      weaponGoreFactor: options.weaponGoreFactor,
+      sourceX: options.sourceX,
+      sourceY: options.sourceY,
     };
     if (isCrit) event.isCrit = true;
-    if (sourceEid !== undefined) event.sourceEid = sourceEid;
+    if (options.sourceEid !== undefined) event.sourceEid = options.sourceEid;
     world.combatEvents.push(event);
-    if (sourceEid !== undefined && current - dealt <= 0) {
-      world.lethalDamageSourceByTarget.set(target, sourceEid);
+    if (options.sourceEid !== undefined && current - dealt <= 0) {
+      world.lethalDamageSourceByTarget.set(target, options.sourceEid);
     }
 
     // Floor 2 Slice 3 ally-defend: record who last hit the player into a
@@ -207,8 +250,8 @@ export function applyDamage(
     // drained by the VFX layer every rendered frame, so a friendly-band mob's
     // retaliation prepass (familyFeudSystem) would never see this hit in the
     // real game if it scanned the queue. This field survives the drain.
-    if (isPlayerTarget && sourceEid !== undefined && sourceEid >= 0) {
-      world.lastPlayerHit = { attackerEid: sourceEid, atMs: world.elapsedMs };
+    if (isPlayerTarget && options.sourceEid !== undefined && options.sourceEid >= 0) {
+      world.lastPlayerHit = { attackerEid: options.sourceEid, atMs: world.elapsedMs };
     }
   }
 

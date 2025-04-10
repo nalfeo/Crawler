@@ -22,7 +22,8 @@ import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer, spawnEnemy, spawnNpc } from '../../core/index.js';
-import { Stats, SkillHolder } from '../../core/components.js';
+import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
+import { SkillHolder } from '../../core/components.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
@@ -397,10 +398,10 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       spawnEnemy(world, pxToFt(5 * TILE + TILE / 2), pxToFt(8 * TILE + TILE / 2), 30);
       spawnEnemy(world, pxToFt(14 * TILE + TILE / 2), pxToFt(7 * TILE + TILE / 2), 12);
 
-      // Set up abilities UX: attach Stats + SkillHolder, initialize ability
-      // state, and equip a representative set of active abilities so the
-      // ability bar renders filled slots with cooldown indicators.
-      addComponent(world.ecs, playerEid, Stats);
+      // Set up abilities UX: initialize base stats + SkillHolder, initialize
+      // ability state, and equip a representative set of active abilities so
+      // the ability bar renders filled slots with cooldown indicators.
+      initializeBaseStats(world, playerEid);
       addComponent(world.ecs, playerEid, SkillHolder);
       const abilityState = getOrCreateAbilityState(world, playerEid);
       equipActiveAbility(world, playerEid, 'fireball');

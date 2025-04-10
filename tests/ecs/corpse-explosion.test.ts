@@ -9,7 +9,7 @@ import {
   Player,
   Spawner,
 } from '../../src/core/components.js';
-import { applyDamage } from '../../src/core/apply-damage.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { createEntity } from '../../src/core/helpers.js';
 import { deathTimerSystem } from '../../src/core/systems/deathTimerSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -41,7 +41,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     world.elapsedMs = 999;
     const corpse = makeCorpse(world, 500);
 
-    const dealt = applyDamage(world, corpse, 25, 10, 20);
+    const dealt = applyDamage(world, corpse, 25, 10, 20, DEFAULT_DAMAGE_OPTIONS);
 
     // The blow is consumed by the drama, not the (already 0) HP.
     expect(dealt).toBe(0);
@@ -70,7 +70,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     world.stores.bloodColor.b[corpse] = 0x99;
     world.stores.sprite.textureId[corpse] = 2;
 
-    applyDamage(world, corpse, 10, 0, 0);
+    applyDamage(world, corpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents[0]).toMatchObject({
       bloodColor: 0x336699,
@@ -82,7 +82,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const world = createTestWorld();
     const corpse = makeCorpse(world, 500);
 
-    applyDamage(world, corpse, 10, 0, 0);
+    applyDamage(world, corpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents[0]!.bloodColor).toBe(0xcc0000);
   });
@@ -92,7 +92,11 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const corpse = makeCorpse(world, 500);
 
     // Attacker below the corpse; the blow travels straight up (+y).
-    applyDamage(world, corpse, 10, 10, 20, undefined, 10, 0);
+    applyDamage(world, corpse, 10, 10, 20, {
+      ...DEFAULT_DAMAGE_OPTIONS,
+      sourceX: 10,
+      sourceY: 0,
+    });
 
     const event = world.combatEvents[0]!;
     expect(event.knockbackDirX).toBeCloseTo(0);
@@ -103,7 +107,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const world = createTestWorld();
     const corpse = makeCorpse(world, 500);
 
-    applyDamage(world, corpse, 10, 10, 20);
+    applyDamage(world, corpse, 10, 10, 20, DEFAULT_DAMAGE_OPTIONS);
 
     const event = world.combatEvents[0]!;
     expect(event.knockbackDirX).toBe(0);
@@ -114,8 +118,8 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const world = createTestWorld();
     const corpse = makeCorpse(world, 500);
 
-    applyDamage(world, corpse, 10, 0, 0);
-    applyDamage(world, corpse, 10, 0, 0);
+    applyDamage(world, corpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
+    applyDamage(world, corpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents).toHaveLength(1);
   });
@@ -124,7 +128,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const world = createTestWorld();
     const corpse = makeCorpse(world, 0);
 
-    const dealt = applyDamage(world, corpse, 10, 0, 0);
+    const dealt = applyDamage(world, corpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(dealt).toBe(0);
     expect(world.combatEvents).toHaveLength(0);
@@ -136,7 +140,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     addComponent(world.ecs, enemy, set(Health, { current: 30, max: 30 }));
     addComponent(world.ecs, enemy, Enemy);
 
-    const dealt = applyDamage(world, enemy, 10, 0, 0);
+    const dealt = applyDamage(world, enemy, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(dealt).toBe(10);
     expect(world.stores.health.current[enemy]).toBe(20);
@@ -150,7 +154,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     addComponent(world.ecs, eid, Player);
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
 
-    applyDamage(world, eid, 10, 0, 0);
+    applyDamage(world, eid, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents.some((e) => e.type === 'corpseExplode')).toBe(false);
   });
@@ -160,7 +164,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const corpse = makeCorpse(world, 500);
     addComponent(world.ecs, corpse, Invincible);
 
-    applyDamage(world, corpse, 10, 0, 0);
+    applyDamage(world, corpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
     expect(world.combatEvents).toHaveLength(0);
     expect(world.stores.deathTimer.remainingMs[corpse]).toBe(500);
@@ -170,7 +174,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const world = createTestWorld();
     const corpse = makeCorpse(world, 500);
 
-    applyDamage(world, corpse, 10, 0, 0);
+    applyDamage(world, corpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
     // remainingMs is now 0; deathTimerSystem decrements and removes when <= 0.
     deathTimerSystem(world);
 
@@ -182,7 +186,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const world = createTestWorld();
     const spawnerCorpse = makeSpawnerCorpse(world, 500);
 
-    const dealt = applyDamage(world, spawnerCorpse, 25, 10, 20);
+    const dealt = applyDamage(world, spawnerCorpse, 25, 10, 20, DEFAULT_DAMAGE_OPTIONS);
 
     // Blow is absorbed (corpse at 0 HP) but the burst is skipped entirely.
     expect(dealt).toBe(0);
@@ -197,7 +201,7 @@ describe('corpse explosion (applyDamage corpse choke point)', () => {
     const spawnerCorpse = makeSpawnerCorpse(world, 500);
 
     // A stray hit (footstep burst, AoE, beam) on the lingering spawner corpse…
-    applyDamage(world, spawnerCorpse, 10, 0, 0);
+    applyDamage(world, spawnerCorpse, 10, 0, 0, DEFAULT_DAMAGE_OPTIONS);
     // …must NOT let deathTimerSystem reap it this frame (timer still > 0).
     deathTimerSystem(world);
 

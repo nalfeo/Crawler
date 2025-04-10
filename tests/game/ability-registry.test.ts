@@ -54,7 +54,7 @@ describe('ability registry', () => {
     ).toThrow(/duplicate/i);
   });
 
-  it('rejects spells without positive MP costs', () => {
+  it('rejects the removed mpCost field on spell definitions (mana fully removed)', () => {
     expect(() =>
       parseAbilityCatalog([
         {
@@ -64,13 +64,13 @@ describe('ability registry', () => {
           description: 'desc',
           category: 'combat',
           kind: 'spell',
-          mpCost: 0,
+          mpCost: 5,
           cooldownFrames: 10,
           trigger: { kind: 'enemy_cluster', minEnemies: 2, withinFeet: 5 },
           effects: [{ type: 'stat_add', stat: 'damage', value: 1 }],
         },
       ]),
-    ).toThrow(/positive mpcost/i);
+    ).toThrow(/mpCost/i);
   });
 
   it('rejects removed manual trigger kind', () => {
@@ -83,7 +83,6 @@ describe('ability registry', () => {
           description: 'desc',
           category: 'combat',
           kind: 'spell',
-          mpCost: 5,
           cooldownFrames: 10,
           trigger: { kind: 'manual' },
           effects: [{ type: 'stat_add', stat: 'damage', value: 1 }],

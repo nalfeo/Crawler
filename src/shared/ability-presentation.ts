@@ -9,7 +9,6 @@ export interface AbilityPresentation {
   readonly category: AbilityPresentationCategory;
   readonly kind: AbilityPresentationKind;
   readonly iconBriefId?: string;
-  readonly mpCost?: number;
   readonly cooldownFrames?: number;
 }
 
@@ -21,7 +20,6 @@ export const ABILITY_PRESENTATION_BY_ID = {
     description: 'Land enough hits to convert momentum into damage.',
     category: 'combat',
     kind: 'active',
-    mpCost: 0,
     cooldownFrames: 30,
   },
   'veteran-instinct': {
@@ -40,7 +38,6 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'combat',
     kind: 'spell',
     iconBriefId: 'ability-icon-fireball-v1',
-    mpCost: 5,
     cooldownFrames: 300,
   },
   heal: {
@@ -51,7 +48,6 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'defense',
     kind: 'spell',
     iconBriefId: 'ability-icon-heal-v1',
-    mpCost: 10,
     cooldownFrames: 1800,
   },
   'pulse-shield': {
@@ -62,7 +58,6 @@ export const ABILITY_PRESENTATION_BY_ID = {
     category: 'defense',
     kind: 'spell',
     iconBriefId: 'ability-icon-pulse-shield-v1',
-    mpCost: 10,
     cooldownFrames: 1200,
   },
 } as const satisfies Readonly<Record<string, AbilityPresentation>>;

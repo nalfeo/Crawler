@@ -13,11 +13,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { addComponent } from 'bitecs';
-import { Health, Stats, SkillHolder } from '../../src/core/components.js';
+import { Health, SkillHolder } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
-import { statsSystem } from '../../src/game/systems/statsSystem.js';
+import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
+import { statSystem } from '../../src/core/systems/index.js';
 import {
   abilitySystem,
   grantPassiveAbility,
@@ -41,9 +42,9 @@ import { type SkillState } from '../../src/game/skills/types.js';
 function setupPlayerWithSkills() {
   const world = createTestWorld({ seed: 42 });
   const player = spawnPlayer(world, 0, 0);
-  addComponent(world.ecs, player, Stats);
+  initializeBaseStats(world, player);
   addComponent(world.ecs, player, SkillHolder);
-  statsSystem(world);
+  statSystem(world);
 
   const skillMap = new Map<string, SkillState>();
   for (const skill of getAllSkillDefinitions()) {
@@ -380,8 +381,8 @@ describe("athlete's-grit weapon-swap cycle does not grant free HP", () => {
     addComponent(world.ecs, player, Health);
 
     // Establish baseline stats.
-    statsSystem(world);
-    const baseArmor = world.stores.stats.armor[player] ?? 0;
+    statSystem(world);
+    const baseArmor = world.stores.effectiveStats.armor[player] ?? 0;
     const initialMax = world.stores.health.max[player] ?? 0;
 
     // Damage the player slightly so their HP is below max.
@@ -396,23 +397,21 @@ describe("athlete's-grit weapon-swap cycle does not grant free HP", () => {
     setActiveWeaponDef(world, sportsWeapon);
     grantPassiveAbility(world, player, 'athletes-grit');
     abilitySystem(world);
-    world.statsDirty = true;
-    statsSystem(world);
+    statSystem(world);
 
     // Armor should have increased; current HP and max HP must not change.
-    expect(world.stores.stats.armor[player]).toBeGreaterThan(baseArmor);
+    expect(world.stores.effectiveStats.armor[player]).toBeGreaterThan(baseArmor);
     expect(world.stores.health.current[player]).toBe(damagedHp);
     expect(world.stores.health.max[player]).toBe(initialMax);
 
     // Unequip weapon — passive revokes, armor returns to baseline.
     clearActiveWeaponDef(world);
     abilitySystem(world);
-    world.statsDirty = true;
-    statsSystem(world);
+    statSystem(world);
 
     // HP must not have increased; armor returns to baseline.
     expect(world.stores.health.current[player]).toBeLessThanOrEqual(damagedHp);
     expect(world.stores.health.max[player]).toBe(initialMax);
-    expect(world.stores.stats.armor[player]).toBe(baseArmor);
+    expect(world.stores.effectiveStats.armor[player]).toBe(baseArmor);
   });
 });

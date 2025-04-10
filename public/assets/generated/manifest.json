@@ -2986,10 +2986,10 @@
       "effectivePipelineSnapshotYamlPath": null,
       "effectiveAnchorSource": "brief"
     },
-    "mana-flask-placeholder": {
-      "briefId": "mana-flask",
-      "spriteName": "mana-flask",
-      "assetPath": "generated/mana-flask-placeholder.png",
+    "recharge-tonic-placeholder": {
+      "briefId": "recharge-tonic",
+      "spriteName": "recharge-tonic",
+      "assetPath": "generated/recharge-tonic-placeholder.png",
       "approvedAt": "2026-06-24T03:52:54.379Z",
       "sourceRun": "placeholder",
       "variantIndex": 0,

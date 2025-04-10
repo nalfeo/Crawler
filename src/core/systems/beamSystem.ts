@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { Enemy, Health, LineDamage, Owner, Player, Position, Sprite, Team } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { readDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { emitWeaponHitSkillEventsForSource } from '../weapon-skill-bridge.js';
@@ -240,10 +241,12 @@ export function beamSystem(world: GameWorld, collisionResult?: CollisionResult):
           damage,
           position.x[target] ?? 0,
           position.y[target] ?? 0,
-          undefined,
-          ax,
-          ay,
-          ownerEid >= 0 ? ownerEid : undefined,
+          {
+            ...readDamageMeta(world, eid),
+            sourceX: ax,
+            sourceY: ay,
+            sourceEid: ownerEid >= 0 ? ownerEid : undefined,
+          },
         );
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEventsForSource(world, ownerEid, eid);

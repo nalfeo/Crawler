@@ -1,19 +1,37 @@
-import type { GameWorld } from '../../core/index.js';
+import { getActiveWeaponDef, type GameWorld } from '../../core/index.js';
+import { WeaponType } from '../../shared/constants.js';
 import type { PrimaryStatId } from '../../shared/stats.js';
 
 /**
  * Deterministic survival-tiered auto-allocation policy shared by headless
  * progression and Floor 2's direct-start preset.
  *
- * Spend order front-loads sustain:
- *   1. Strength -> 5 armor
- *   2. Constitution -> +60 HP
- *   3. Strength -> 11 armor
- *   4. Constitution for the remainder
+ * Spend order (stat-system overhaul, plan resolution #11) shares the same
+ * CON/DEX/WIS logic regardless of weapon and ONLY changes which primary stat
+ * "offense" spends into — Strength for a physical weapon, Intelligence for a
+ * magic one (`WeaponType.MAGIC`, e.g. the starter fireball wand):
+ *   1. Constitution -> 8
+ *   2. Dexterity -> 5
+ *   3. Offense -> 5
+ *   4. Wisdom -> 5
+ *   5. Offense -> 11
+ *   6. Constitution for the remainder
+ *
+ * Weapon personas (see `game/ai/weapon-personas.ts`) stay disabled by default
+ * and take over via `computeAiStatAllocation`'s branch — this function is the
+ * shared/default path exercised whenever personas are off.
  */
-const ARMOR_SWARM_FLOOR = 5;
-const MAXHP_CUSHION_POINTS = 6;
-const ARMOR_BOSS_TARGET = 11;
+const CON_SURVIVAL_TARGET = 8;
+const OFFENSE_FLOOR_TARGET = 5;
+const DEX_TARGET = 5;
+const WIS_TARGET = 5;
+const OFFENSE_BOSS_TARGET = 11;
+
+/** Physical weapons spend offense points into Strength; magic ones into Intelligence. */
+function getOffenseStat(world: GameWorld): PrimaryStatId {
+  const activeWeapon = getActiveWeaponDef(world);
+  return activeWeapon?.weaponType === WeaponType.MAGIC ? 'intelligence' : 'strength';
+}
 
 export function computeAutoStatAllocation(
   world: GameWorld,
@@ -26,29 +44,22 @@ export function computeAutoStatAllocation(
     return allocation;
   }
 
-  const spendStrengthUpTo = (target: number): void => {
-    const current =
-      (world.stores.coreStatPoints.strength[playerEid] ?? 0) + (allocation.strength ?? 0);
+  const offenseStat = getOffenseStat(world);
+
+  const spendUpTo = (stat: PrimaryStatId, target: number): void => {
+    const current = (world.stores.coreStatPoints[stat][playerEid] ?? 0) + (allocation[stat] ?? 0);
     const spend = Math.min(Math.max(0, target - current), remaining);
     if (spend > 0) {
-      allocation.strength = (allocation.strength ?? 0) + spend;
+      allocation[stat] = (allocation[stat] ?? 0) + spend;
       remaining -= spend;
     }
   };
 
-  const spendConstitutionUpTo = (targetPoints: number): void => {
-    const current =
-      (world.stores.coreStatPoints.constitution[playerEid] ?? 0) + (allocation.constitution ?? 0);
-    const spend = Math.min(Math.max(0, targetPoints - current), remaining);
-    if (spend > 0) {
-      allocation.constitution = (allocation.constitution ?? 0) + spend;
-      remaining -= spend;
-    }
-  };
-
-  spendStrengthUpTo(ARMOR_SWARM_FLOOR);
-  spendConstitutionUpTo(MAXHP_CUSHION_POINTS);
-  spendStrengthUpTo(ARMOR_BOSS_TARGET);
+  spendUpTo('constitution', CON_SURVIVAL_TARGET);
+  spendUpTo('dexterity', DEX_TARGET);
+  spendUpTo(offenseStat, OFFENSE_FLOOR_TARGET);
+  spendUpTo('wisdom', WIS_TARGET);
+  spendUpTo(offenseStat, OFFENSE_BOSS_TARGET);
   if (remaining > 0) {
     allocation.constitution = (allocation.constitution ?? 0) + remaining;
   }

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as fc from 'fast-check';
 import { addComponent, set } from 'bitecs';
 import { Health, Invincible } from '../../src/core/components.js';
-import { applyDamage } from '../../src/core/apply-damage.js';
+import { applyDamage, DEFAULT_DAMAGE_OPTIONS } from '../../src/core/apply-damage.js';
 import { createEntity } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -30,7 +30,7 @@ describe('applyDamage invariants (property-based)', () => {
       fc.property(hp(), fc.integer({ min: -500, max: 100_000 }), (current, amount) => {
         const { world, eid } = withTarget(current);
 
-        const dealt = applyDamage(world, eid, amount, 0, 0);
+        const dealt = applyDamage(world, eid, amount, 0, 0, DEFAULT_DAMAGE_OPTIONS);
         const after = world.stores.health.current[eid] ?? 0;
 
         const expectedDealt = amount > 0 ? Math.min(current, amount) : 0;
@@ -50,7 +50,7 @@ describe('applyDamage invariants (property-based)', () => {
         (current, amount) => {
           const { world, eid } = withTarget(current);
 
-          const dealt = applyDamage(world, eid, amount, 0, 0);
+          const dealt = applyDamage(world, eid, amount, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
           expect(dealt).toBe(0);
           expect(world.stores.health.current[eid]).toBe(current);
@@ -66,7 +66,7 @@ describe('applyDamage invariants (property-based)', () => {
         const { world, eid } = withTarget(current);
         addComponent(world.ecs, eid, Invincible);
 
-        const dealt = applyDamage(world, eid, amount, 0, 0);
+        const dealt = applyDamage(world, eid, amount, 0, 0, DEFAULT_DAMAGE_OPTIONS);
 
         expect(dealt).toBe(0);
         expect(world.stores.health.current[eid]).toBe(current);
@@ -79,7 +79,7 @@ describe('applyDamage invariants (property-based)', () => {
       fc.property(hp(), fc.integer({ min: 1, max: 100_000 }), (current, amount) => {
         const { world, eid } = withTarget(current);
 
-        const dealt = applyDamage(world, eid, amount, 3, 4);
+        const dealt = applyDamage(world, eid, amount, 3, 4, DEFAULT_DAMAGE_OPTIONS);
 
         // An event is emitted iff some damage actually landed.
         if (dealt > 0) {

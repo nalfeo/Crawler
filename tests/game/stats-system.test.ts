@@ -1,92 +1,109 @@
 import { describe, it, expect } from 'vitest';
-import { addComponent } from 'bitecs';
-import { Stats } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
+import { statSystem } from '../../src/core/systems/index.js';
 import {
-  statsSystem,
   spendPoints,
   addStatModifier,
   removeStatModifiers,
 } from '../../src/game/systems/statsSystem.js';
-import { STAT_BASE, STAT_MIN, CORE_STAT_GAINS } from '../../src/shared/stats.js';
+import { DEFAULT_BASE_STATS, CORE_STAT_TO_SECONDARY, STAT_CLAMPS } from '../../src/shared/stats.js';
 
 function setupPlayerWithStats(seed = 42) {
   const world = createTestWorld({ seed });
   const player = spawnPlayer(world, 0, 0);
-  addComponent(world.ecs, player, Stats);
-  world.statsDirty = true;
+  initializeBaseStats(world, player);
   return { world, player };
 }
 
-describe('statsSystem', () => {
-  it('does not run if statsDirty is false', () => {
+describe('core statSystem — EffectiveStats derivation', () => {
+  it('computes base secondary stats from DEFAULT_BASE_STATS + base(1) Constitution when no allocation/modifiers', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world); // initial compute
-    world.stores.stats.maxHp[player] = 999; // manually corrupt
-    world.statsDirty = false;
-    statsSystem(world); // should not recompute
-    expect(world.stores.stats.maxHp[player]).toBe(999);
+    statSystem(world);
+    const baseConMaxHp =
+      DEFAULT_BASE_STATS.maxHp + 1 * (CORE_STAT_TO_SECONDARY.constitution.maxHp ?? 0);
+    expect(world.stores.effectiveStats.maxHp[player]).toBeCloseTo(baseConMaxHp);
+    expect(world.stores.effectiveStats.moveSpeed[player]).toBeCloseTo(DEFAULT_BASE_STATS.moveSpeed);
   });
 
-  it('does nothing when no player with Stats component exists', () => {
-    const world = createTestWorld();
-    world.statsDirty = true;
-    expect(() => statsSystem(world)).not.toThrow();
-    expect(world.statsDirty).toBe(true);
-  });
-
-  it('computes base stats from STAT_BASE when no core points or modifiers', () => {
+  it('is idempotent — recomputing without any state change never drifts', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world);
-    expect(world.stores.stats.maxHp[player]).toBeCloseTo(STAT_BASE.maxHp);
-    expect(world.stores.stats.moveSpeed[player]).toBeCloseTo(STAT_BASE.moveSpeed);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage);
+    statSystem(world);
+    const first = world.stores.effectiveStats.maxHp[player];
+    statSystem(world);
+    statSystem(world);
+    expect(world.stores.effectiveStats.maxHp[player]).toBe(first);
   });
 
-  it('clears dirty flag after compute', () => {
-    const { world } = setupPlayerWithStats();
-    statsSystem(world);
-    expect(world.statsDirty).toBe(false);
-  });
-
-  it('derives maxHp from constitution points', () => {
+  it('derives maxHp from EFFECTIVE constitution (base 1 + allocated points)', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world);
     world.playerLevel.unspentPoints = 3;
     spendPoints(world, { constitution: 3 });
-    statsSystem(world);
-    const expected = STAT_BASE.maxHp + 3 * (CORE_STAT_GAINS.constitution.maxHp ?? 0);
-    expect(world.stores.stats.maxHp[player]).toBeCloseTo(expected);
+    statSystem(world);
+    const effectiveCon = 1 + 3; // base + allocated
+    const expected =
+      DEFAULT_BASE_STATS.maxHp + effectiveCon * (CORE_STAT_TO_SECONDARY.constitution.maxHp ?? 0);
+    expect(world.stores.effectiveStats.maxHp[player]).toBeCloseTo(expected);
   });
 
-  it('derives armor and damage from strength points', () => {
+  it('strength contributes neither armor nor a flat/percent damage secondary (typed-primary only)', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world);
-    world.playerLevel.unspentPoints = 2;
-    spendPoints(world, { strength: 2 });
-    statsSystem(world);
-    const expectedArmor = STAT_BASE.armor + 2 * (CORE_STAT_GAINS.strength.armor ?? 0);
-    const expectedDamage = STAT_BASE.damage + 2 * (CORE_STAT_GAINS.strength.damage ?? 0);
-    expect(world.stores.stats.armor[player]).toBeCloseTo(expectedArmor);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(expectedDamage);
+    world.playerLevel.unspentPoints = 5;
+    spendPoints(world, { strength: 5 });
+    statSystem(world);
+    // STR's payoff is the typed-primary physical multiplier applied directly
+    // at damage resolution (see shared/stats.ts#computeTypedPrimaryMultiplier),
+    // NOT a generic secondary — armor/damageBonus/damagePercent stay at base.
+    expect(world.stores.effectiveStats.armor[player]).toBeCloseTo(DEFAULT_BASE_STATS.armor);
+    expect(world.stores.effectiveStats.damageBonus[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.damageBonus,
+    );
+    expect(world.stores.effectiveStats.damagePercent[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.damagePercent,
+    );
+  });
+
+  it('charisma is visible but has literally zero effect on every OTHER EffectiveStats field', () => {
+    const { world, player } = setupPlayerWithStats();
+    statSystem(world);
+    const before = { ...world.stores.effectiveStats } as Record<string, Float32Array>;
+    const snapshot: Record<string, number> = {};
+    for (const key of Object.keys(before)) {
+      if (key === 'charisma') continue;
+      snapshot[key] = before[key]![player] ?? 0;
+    }
+
+    // Force-write charisma directly (bypassing spendPoints's non-allocatable
+    // guard) to prove the NON-effect is mechanical, not just UI-gated.
+    world.stores.coreStatPoints.charisma[player] = 1_000_000;
+    statSystem(world);
+
+    for (const [key, value] of Object.entries(snapshot)) {
+      expect(
+        world.stores.effectiveStats[key as keyof typeof world.stores.effectiveStats][player],
+      ).toBeCloseTo(value, 6);
+    }
+    // Charisma itself still passes through as a visible (base+allocated+gear) value.
+    expect(world.stores.effectiveStats.charisma[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.charisma + 1_000_000,
+      0,
+    );
   });
 });
 
 describe('spendPoints', () => {
-  it('adds core-stat points, reduces unspent, and marks dirty', () => {
+  it('adds core-stat points and reduces unspent', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world);
     world.playerLevel.unspentPoints = 5;
     spendPoints(world, { constitution: 2, strength: 1 });
     expect(world.playerLevel.unspentPoints).toBe(2);
-    expect(world.statsDirty).toBe(true);
 
-    statsSystem(world);
-    const expectedMaxHp = STAT_BASE.maxHp + 2 * (CORE_STAT_GAINS.constitution.maxHp ?? 0);
-    const expectedDamage = STAT_BASE.damage + 1 * (CORE_STAT_GAINS.strength.damage ?? 0);
-    expect(world.stores.stats.maxHp[player]).toBeCloseTo(expectedMaxHp);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(expectedDamage);
+    statSystem(world);
+    const effectiveCon = 1 + 2;
+    const expectedMaxHp =
+      DEFAULT_BASE_STATS.maxHp + effectiveCon * (CORE_STAT_TO_SECONDARY.constitution.maxHp ?? 0);
+    expect(world.stores.effectiveStats.maxHp[player]).toBeCloseTo(expectedMaxHp);
   });
 
   it('throws when spending more points than available', () => {
@@ -103,17 +120,16 @@ describe('spendPoints', () => {
     ).toThrow();
   });
 
-  it('throws for non-allocatable primary stats', () => {
+  it('throws for non-allocatable primary stats (charisma)', () => {
     const { world } = setupPlayerWithStats();
     world.playerLevel.unspentPoints = 10;
-    expect(() => spendPoints(world, { weight: 1 })).toThrow(/cannot be allocated/i);
+    expect(() => spendPoints(world, { charisma: 1 })).toThrow(/cannot be allocated/i);
   });
 });
 
-describe('addStatModifier / removeStatModifiers', () => {
-  it('add modifier increases stat on recompute', () => {
+describe('addStatModifier / removeStatModifiers — folded into EffectiveStats', () => {
+  it('additive "damage" modifier folds into flat damageBonus', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world); // initial
     addStatModifier(world, {
       sourceType: 'buff',
       sourceId: 'test',
@@ -121,13 +137,14 @@ describe('addStatModifier / removeStatModifiers', () => {
       op: 'add',
       value: 10,
     });
-    statsSystem(world);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage + 10);
+    statSystem(world);
+    expect(world.stores.effectiveStats.damageBonus[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.damageBonus + 10,
+    );
   });
 
-  it('multiply modifier scales stat', () => {
+  it('multiplicative "damage" modifier folds into generic damagePercent', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world);
     addStatModifier(world, {
       sourceType: 'buff',
       sourceId: 'test2',
@@ -135,13 +152,14 @@ describe('addStatModifier / removeStatModifiers', () => {
       op: 'multiply',
       value: 0.5,
     });
-    statsSystem(world);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage * 1.5);
+    statSystem(world);
+    expect(world.stores.effectiveStats.damagePercent[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.damagePercent + 0.5,
+    );
   });
 
   it('removeStatModifiers removes by source', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world);
     addStatModifier(world, {
       sourceType: 'buff',
       sourceId: 'removable',
@@ -149,20 +167,19 @@ describe('addStatModifier / removeStatModifiers', () => {
       op: 'add',
       value: 5,
     });
-    statsSystem(world);
-    const withMod = world.stores.stats.armor[player] ?? 0;
+    statSystem(world);
+    const withMod = world.stores.effectiveStats.armor[player] ?? 0;
 
     removeStatModifiers(world, 'buff', 'removable');
-    statsSystem(world);
-    const withoutMod = world.stores.stats.armor[player] ?? 0;
+    statSystem(world);
+    const withoutMod = world.stores.effectiveStats.armor[player] ?? 0;
 
     expect(withMod).toBeGreaterThan(withoutMod);
-    expect(withoutMod).toBeCloseTo(STAT_BASE.armor);
+    expect(withoutMod).toBeCloseTo(DEFAULT_BASE_STATS.armor);
   });
 
   it('expired modifiers are filtered out', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world);
     world.frameCount = 100;
     addStatModifier(world, {
       sourceType: 'buff',
@@ -172,11 +189,13 @@ describe('addStatModifier / removeStatModifiers', () => {
       value: 20,
       expiresFrame: 50, // already expired
     });
-    statsSystem(world);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage);
+    statSystem(world);
+    expect(world.stores.effectiveStats.damageBonus[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.damageBonus,
+    );
   });
 
-  it('recomputes when modifiers expire even if statsDirty is false', () => {
+  it('drops expired modifiers on the next statSystem tick (no dirty-flag gating — always recomputes)', () => {
     const { world, player } = setupPlayerWithStats();
     addStatModifier(world, {
       sourceType: 'buff',
@@ -186,16 +205,19 @@ describe('addStatModifier / removeStatModifiers', () => {
       value: 5,
       expiresFrame: 10,
     });
-    statsSystem(world);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage + 5);
+    statSystem(world);
+    expect(world.stores.effectiveStats.damageBonus[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.damageBonus + 5,
+    );
 
     world.frameCount = 11;
-    world.statsDirty = false;
-    statsSystem(world);
-    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage);
+    statSystem(world);
+    expect(world.stores.effectiveStats.damageBonus[player]).toBeCloseTo(
+      DEFAULT_BASE_STATS.damageBonus,
+    );
   });
 
-  it('clamps stats to STAT_MIN', () => {
+  it('clamps stats to their configured range', () => {
     const { world, player } = setupPlayerWithStats();
     addStatModifier(world, {
       sourceType: 'buff',
@@ -204,7 +226,9 @@ describe('addStatModifier / removeStatModifiers', () => {
       op: 'add',
       value: -9999,
     });
-    statsSystem(world);
-    expect(world.stores.stats.moveSpeed[player]).toBeGreaterThanOrEqual(STAT_MIN.moveSpeed);
+    statSystem(world);
+    expect(world.stores.effectiveStats.moveSpeed[player]).toBeGreaterThanOrEqual(
+      STAT_CLAMPS.moveSpeed.min ?? 0,
+    );
   });
 });

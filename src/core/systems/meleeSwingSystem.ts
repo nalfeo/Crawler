@@ -11,6 +11,7 @@ import {
   Team,
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { readDamageMeta } from '../damage-meta.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
@@ -350,17 +351,12 @@ export function meleeSwingSystem(world: GameWorld, collisionResult?: CollisionRe
       }
 
       if (hitDamage > 0) {
-        const dealt = applyDamage(
-          world,
-          target,
-          hitDamage,
-          tx,
-          ty,
-          undefined,
-          px,
-          py,
-          ownerEid >= 0 ? ownerEid : undefined,
-        );
+        const dealt = applyDamage(world, target, hitDamage, tx, ty, {
+          ...readDamageMeta(world, eid),
+          sourceX: px,
+          sourceY: py,
+          sourceEid: ownerEid >= 0 ? ownerEid : undefined,
+        });
         if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEventsForSource(world, ownerEid, eid);
           recordWeaponEnemyHit(world, eid, target);

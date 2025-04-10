@@ -19,5 +19,4 @@ export function applyStartPlayerLevel(world: GameWorld, targetLevel: number): vo
   world.playerLevel.level = level;
   world.playerLevel.xp = Math.max(world.playerLevel.xp, xpRequiredForLevel(level));
   world.playerLevel.unspentPoints += levelsGained * world.playerLevel.pointsPerLevel;
-  world.statsDirty = true;
 }

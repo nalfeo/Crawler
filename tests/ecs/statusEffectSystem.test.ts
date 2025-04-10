@@ -308,8 +308,8 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
       name: 'Aura Charm',
       slots: ['neck'],
       statBonuses: {},
-      rarity: 'common',
       weightLb: 0,
+      rarity: 'common',
       grantsStatusEffects: [
         {
           stat: 'hpRegen',
@@ -343,8 +343,8 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
       name: 'Bad Charm',
       slots: ['neck'],
       statBonuses: {},
-      rarity: 'common',
       weightLb: 0,
+      rarity: 'common',
       grantsStatusEffects: [
         {
           stat: 'hpRegen',
