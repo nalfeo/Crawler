@@ -69,6 +69,7 @@ export interface BeveledPanelOptions {
 export interface BeveledPanel {
   readonly visible: boolean;
   setVisible(visible: boolean): void;
+  getBounds(): { x: number; y: number; width: number; height: number };
   /** Move the top-left corner. */
   setPosition(x: number, y: number): void;
   /** Resize (origin stays at the panel's top-left corner). */
@@ -150,6 +151,9 @@ export function createBeveledPanel(
       left.setVisible(visible);
       bottom.setVisible(visible);
       right.setVisible(visible);
+    },
+    getBounds(): { x: number; y: number; width: number; height: number } {
+      return { x: px, y: py, width: pw, height: ph };
     },
     setPosition(nx: number, ny: number): void {
       px = nx;

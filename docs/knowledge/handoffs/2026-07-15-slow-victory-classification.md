@@ -16,11 +16,13 @@ or reduce the reported win rate.
 ## Changes
 
 ### New file
+
 - `scripts/agent/perf/winrate-sweep-classify.ts` — pure, side-effect-free module exporting
   `SweepRunClassification` interface and `classifySweepRun(stats, floorId)` function. Extracted
   from `winrate-sweep.ts` so the classification logic is unit-testable without launching a sweep.
 
 ### Modified
+
 - `scripts/agent/perf/winrate-sweep-args.ts` — `FLOOR1_TIME_BUDGET_MS` is now exported (was `const`).
 - `scripts/agent/perf/winrate-sweep.ts`:
   - Win count uses `outcome === 'victory'` (outcome win), not `isOfficialWin`.
@@ -40,6 +42,7 @@ or reduce the reported win rate.
   - Backward compatible — old baselines without these fields show no breakdown.
 
 ### Tests
+
 - `tests/unit/winrate-sweep-classify.test.ts` (new — 8 tests):
   - Fast win, safe-room-credited fast win, over-budget slow victory, true loss (timeout/death),
     floor2 victory, floor2 loss.

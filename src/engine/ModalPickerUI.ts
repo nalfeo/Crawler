@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
-import { fitUiScale } from './ui-scale.js';
+import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { getRenderScale } from './render-scale.js';
 import { GAME } from '../shared/constants.js';
 import {
@@ -38,6 +38,19 @@ export interface ModalPickerOpenHooks<TId extends string = string> {
   readonly onSelectionChange?: (event: ModalPickerSelectionChangeEvent<TId>) => void;
 }
 
+export interface ModalPickerLayoutSnapshot {
+  readonly panel: ScreenBounds;
+  readonly title: ScreenBounds;
+  readonly subtitle: ScreenBounds | null;
+  readonly body: ScreenBounds | null;
+  readonly rows: ReadonlyArray<{
+    readonly row: ScreenBounds;
+    readonly label: ScreenBounds;
+    readonly description: ScreenBounds;
+  }>;
+  readonly footer: ScreenBounds;
+}
+
 interface RenderEntry<TId extends string = string> {
   readonly option: ModalPickerOption<TId>;
   readonly row: Phaser.GameObjects.Rectangle;
@@ -46,7 +59,7 @@ interface RenderEntry<TId extends string = string> {
 }
 
 const PANEL_WIDTH = 500;
-const PANEL_HEIGHT = 360;
+const PANEL_HEIGHT = 400;
 const PANEL_PADDING = 18;
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
@@ -62,8 +75,9 @@ const SUBTITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
 };
 const BODY_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
-  fontSize: '13px',
-  color: '#94a3b8',
+  fontSize: '14px',
+  color: '#cbd5e1',
+  lineSpacing: 4,
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
 const LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
@@ -78,15 +92,27 @@ const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
 };
 const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
-  fontSize: '12px',
-  color: '#94a3b8',
+  fontSize: '13px',
+  color: '#cbd5e1',
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 - 24 },
 };
+const FOOTER_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontFamily: 'monospace',
+  fontSize: '13px',
+  color: '#cbd5e1',
+  wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
+};
+const MIN_ROW_HEIGHT = 52;
+const ROW_GAP = 8;
+const LABEL_TOP = 8;
+const DESCRIPTION_TOP = 30;
+const ROW_TEXT_BOTTOM_PADDING = 8;
 
 export function createModalPickerUI(scene: Phaser.Scene): {
   open<TId extends string>(config: ModalPickerConfig<TId>, hooks?: ModalPickerOpenHooks<TId>): void;
   close(): void;
   isOpen(): boolean;
+  getLayoutSnapshot(): ModalPickerLayoutSnapshot | null;
   destroy(): void;
 } {
   // Responsive UI: lay the panel out in a "virtual" viewport (real size ÷
@@ -146,6 +172,10 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   let hooks: ModalPickerOpenHooks<string> | undefined;
   const entries: RenderEntry<string>[] = [];
   const textNodes: Phaser.GameObjects.Text[] = [];
+  let titleNode: Phaser.GameObjects.Text | undefined;
+  let subtitleNode: Phaser.GameObjects.Text | undefined;
+  let bodyNode: Phaser.GameObjects.Text | undefined;
+  let footerNode: Phaser.GameObjects.Text | undefined;
   let keyListener: ((event: KeyboardEvent) => void) | undefined;
 
   const clearEntries = (): void => {
@@ -162,7 +192,20 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       node.destroy();
     }
     textNodes.length = 0;
+    titleNode = undefined;
+    subtitleNode = undefined;
+    bodyNode = undefined;
+    footerNode = undefined;
   };
+
+  const screenBounds = (
+    object: Phaser.GameObjects.Components.Transform & { width: number; height: number },
+  ): ScreenBounds => ({
+    x: object.x * uiScale,
+    y: object.y * uiScale,
+    width: object.width * uiScale,
+    height: object.height * uiScale,
+  });
 
   const layoutPanel = (): void => {
     backdrop.setSize(viewWidth(), viewHeight());
@@ -199,12 +242,14 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     let cursorY = panelY + PANEL_PADDING;
 
     const title = crispText(panelX + PANEL_PADDING, cursorY, state.title, TITLE_STYLE);
+    titleNode = title;
     textNodes.push(title);
     overlay.add(title);
     cursorY += title.height + 6;
 
     if (state.subtitle) {
       const subtitle = crispText(panelX + PANEL_PADDING, cursorY, state.subtitle, SUBTITLE_STYLE);
+      subtitleNode = subtitle;
       textNodes.push(subtitle);
       overlay.add(subtitle);
       cursorY += subtitle.height + 6;
@@ -212,17 +257,37 @@ export function createModalPickerUI(scene: Phaser.Scene): {
 
     if (state.body) {
       const body = crispText(panelX + PANEL_PADDING, cursorY, state.body, BODY_STYLE);
+      bodyNode = body;
       textNodes.push(body);
       overlay.add(body);
       cursorY += body.height + 10;
     }
 
-    const rowHeight = 48;
     for (let index = 0; index < state.options.length; index += 1) {
       const option = state.options[index]!;
       const isSelected = state.selectedIndex === index;
       const isDisabled = Boolean(option.disabled);
-      const rowY = cursorY + index * (rowHeight + 8);
+      const rowY = cursorY;
+      const label = crispText(
+        panelX + PANEL_PADDING + 10,
+        rowY + LABEL_TOP,
+        `${isSelected ? '▶ ' : '  '}${option.label}`,
+        isDisabled ? LABEL_DISABLED_STYLE : LABEL_STYLE,
+      );
+      const description = crispText(
+        panelX + PANEL_PADDING + 26,
+        rowY + DESCRIPTION_TOP,
+        option.description ?? (isDisabled ? 'Unavailable' : ''),
+        DESCRIPTION_STYLE,
+      );
+      const textContentHeight = Math.max(
+        LABEL_TOP + label.height,
+        DESCRIPTION_TOP + description.height,
+      );
+      const rowHeight = Math.max(
+        MIN_ROW_HEIGHT,
+        Math.ceil(textContentHeight + ROW_TEXT_BOTTOM_PADDING),
+      );
       const bgColor = isSelected ? 0x1d4ed8 : PIXEL_UI.panelFill;
       const bgAlpha = isDisabled ? 0.4 : isSelected ? 0.95 : 0.85;
       const row = scene.add
@@ -268,34 +333,23 @@ export function createModalPickerUI(scene: Phaser.Scene): {
         rerender();
       });
 
-      const marker = isSelected ? '▶ ' : '  ';
-      const label = crispText(
-        panelX + PANEL_PADDING + 10,
-        rowY + 8,
-        `${marker}${option.label}`,
-        isDisabled ? LABEL_DISABLED_STYLE : LABEL_STYLE,
-      );
-      const description = crispText(
-        panelX + PANEL_PADDING + 26,
-        rowY + 30,
-        option.description ?? (isDisabled ? 'Unavailable' : ''),
-        DESCRIPTION_STYLE,
-      );
       description.setAlpha(isDisabled ? 0.5 : 0.8);
 
       entries.push({ option, row, label, description });
       overlay.add([row, label, description]);
+      cursorY += rowHeight + ROW_GAP;
     }
 
-    const footerY = cursorY + state.options.length * (rowHeight + 8) + 4;
+    const footerY = cursorY + 4;
     const footer = crispText(
       panelX + PANEL_PADDING,
       footerY,
       state.allowCancel
         ? 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
         : 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm',
-      BODY_STYLE,
+      FOOTER_STYLE,
     );
+    footerNode = footer;
     textNodes.push(footer);
     overlay.add(footer);
 
@@ -399,6 +453,23 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     close,
     isOpen(): boolean {
       return state !== null && state.status === 'open';
+    },
+    getLayoutSnapshot(): ModalPickerLayoutSnapshot | null {
+      if (!state || !titleNode || !footerNode) {
+        return null;
+      }
+      return {
+        panel: screenBounds(panel),
+        title: screenBounds(titleNode),
+        subtitle: subtitleNode ? screenBounds(subtitleNode) : null,
+        body: bodyNode ? screenBounds(bodyNode) : null,
+        rows: entries.map((entry) => ({
+          row: screenBounds(entry.row),
+          label: screenBounds(entry.label),
+          description: screenBounds(entry.description),
+        })),
+        footer: screenBounds(footerNode),
+      };
     },
     destroy(): void {
       if (keyListener) {

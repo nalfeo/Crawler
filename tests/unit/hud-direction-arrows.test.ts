@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatWaypointDistance,
   resolveDirectionArrowStates,
   type DirectionArrowState,
 } from '../../src/engine/HudDirectionArrows.js';
@@ -102,5 +103,52 @@ describe('resolveDirectionArrowStates', () => {
     );
 
     expect(states.map((state) => state.questId)).toEqual(['far']);
+  });
+
+  it('fans arrows away from reserved HUD regions', () => {
+    const reserved = [{ x: 1080, y: 0, width: 200, height: 340 }];
+    const [state] = resolveDirectionArrowStates([waypoint('right', 100, -10)], 0, 0, 1, reserved);
+
+    expect(state).toBeDefined();
+    expect(state!.screenY).toBeGreaterThan(340);
+  });
+
+  it('compacts long distances and wraps labels into two bounded lines', () => {
+    const [state] = resolveDirectionArrowStates(
+      [
+        {
+          ...waypoint('far', 12_345, 0),
+          label: 'A very long objective label that cannot fit beside an edge arrow',
+        },
+      ],
+      0,
+      0,
+      1,
+    );
+
+    expect(formatWaypointDistance(12_345)).toBe("12k'");
+    expect(state!.labelText).toContain("12k'");
+    expect(state!.labelText).not.toContain('...');
+    expect(state!.labelText.split('\n')).toHaveLength(2);
+    expect(state!.labelText.split('\n').every((line) => line.length <= 36)).toBe(true);
+    expect(Math.abs(state!.labelScreenY - state!.screenY)).toBeGreaterThanOrEqual(
+      state!.labelHeight / 2 + 19,
+    );
+  });
+
+  it('hard-splits an overlong single-token objective label', () => {
+    const [state] = resolveDirectionArrowStates(
+      [
+        {
+          ...waypoint('far', 12_345, 0),
+          label: 'SUPERCALIFRAGILISTICEXPIALIDOCIOUSOBJECTIVETOKENWITHOUTBREAKS',
+        },
+      ],
+      0,
+      0,
+      1,
+    );
+
+    expect(state!.labelText.split('\n').every((line) => line.length <= 36)).toBe(true);
   });
 });

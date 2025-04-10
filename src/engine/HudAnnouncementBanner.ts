@@ -18,17 +18,23 @@ import type { GameWorld } from '../core/world.js';
 import type { AnnouncementEvent, AnnouncementKind } from '../shared/announcement-events.js';
 import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
-import { applyCrispText } from './ui-scale.js';
+import { applyCrispText, type ScreenBounds } from './ui-scale.js';
+import {
+  ANNOUNCEMENT_PANEL_HEIGHT,
+  ENCOUNTER_PANEL_WIDTH,
+  ENCOUNTER_FIRST_ROW_Y,
+  ellipsizeEncounterLabel,
+} from './hud-encounter-layout.js';
 
 /**
  * Vertical offset from the top of the screen. Sits below the floor timer
  * (which lives at `TOP_Y = 14` for a 38 px panel, i.e. ~52 px reserved) with
  * a small buffer so the two never touch.
  */
-const TOP_Y = 60;
 const CENTER_X = GAME.WIDTH / 2;
-const PANEL_WIDTH = 360;
-const PANEL_HEIGHT = 42;
+const PANEL_WIDTH = ENCOUNTER_PANEL_WIDTH;
+const PANEL_X = CENTER_X - PANEL_WIDTH / 2;
+const MAX_LABEL_CHARACTERS = 44;
 
 const COLORS = {
   start: '#f5f5f5',
@@ -70,6 +76,8 @@ export function createHudAnnouncementBanner(
   options: { parent?: Phaser.GameObjects.Container } = {},
 ): {
   sync(world: GameWorld): void;
+  setTop(top: number): void;
+  getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } | null;
   destroy(): void;
 } {
   const outerParent = options.parent;
@@ -77,32 +85,50 @@ export function createHudAnnouncementBanner(
   // single alpha tween. `BeveledPanel` is a factory return type, not a
   // GameObject, so its `.setAlpha` isn't exposed — the container lets us
   // control opacity without leaking into the panel API.
-  const wrapper = scene.add.container(0, 0).setScrollFactor(0).setDepth(PIXEL_UI_DEPTH.panel);
+  const wrapper = scene.add
+    .container(0, ENCOUNTER_FIRST_ROW_Y)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.panel);
   outerParent?.add(wrapper);
 
-  const panel = createBeveledPanel(
-    scene,
-    CENTER_X - PANEL_WIDTH / 2,
-    TOP_Y,
-    PANEL_WIDTH,
-    PANEL_HEIGHT,
-    { parent: wrapper },
-  );
+  const panel = createBeveledPanel(scene, PANEL_X, 0, PANEL_WIDTH, ANNOUNCEMENT_PANEL_HEIGHT, {
+    parent: wrapper,
+  });
 
-  const text = scene.add
-    .text(CENTER_X, TOP_Y + PANEL_HEIGHT / 2, '', {
+  const accent = scene.add
+    .rectangle(PANEL_X + 4, 4, 4, ANNOUNCEMENT_PANEL_HEIGHT - 8, 0xfcd34d)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  wrapper.add(accent);
+
+  const labelText = scene.add
+    .text(CENTER_X, 16, '', {
       fontFamily: 'monospace',
-      fontSize: '18px',
+      fontSize: '14px',
+      fontStyle: 'bold',
       color: COLORS.fallback,
       stroke: '#02040a',
-      strokeThickness: 3,
+      strokeThickness: 2,
       align: 'center',
     })
     .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
-  wrapper.add(text);
-  const detachCrispText = applyCrispText(scene, [text]);
+  wrapper.add(labelText);
+
+  const verbText = scene.add
+    .text(CENTER_X, 35, '', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: '#94a3b8',
+      align: 'center',
+    })
+    .setOrigin(0.5, 0.5)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  wrapper.add(verbText);
+  const detachCrispText = applyCrispText(scene, [labelText, verbText]);
 
   // Hidden by default — banner only appears when an announcement is live.
   wrapper.setAlpha(0);
@@ -135,8 +161,10 @@ export function createHudAnnouncementBanner(
 
   function show(event: AnnouncementEvent): void {
     const label = event.displayName ?? 'Spawner';
-    text.setText(`${label} — ${verbForKind(event.kind)}`);
-    text.setColor(colorForKind(event.kind));
+    labelText.setText(ellipsizeEncounterLabel(label, MAX_LABEL_CHARACTERS));
+    labelText.setColor(colorForKind(event.kind));
+    verbText.setText(verbForKind(event.kind).toUpperCase());
+    accent.setFillStyle(event.kind === 'spawnerArenaStart' ? 0xf2b542 : 0x46d369);
     activeTween?.remove();
     activeTween = scene.tweens.add({
       targets: wrapper,
@@ -183,10 +211,37 @@ export function createHudAnnouncementBanner(
   function destroy(): void {
     detachCrispText();
     activeTween?.remove();
-    text.destroy();
+    labelText.destroy();
+    verbText.destroy();
+    accent.destroy();
     panel.destroy();
     wrapper.destroy();
   }
 
-  return { sync, destroy };
+  function getLayoutBounds(): { panel: ScreenBounds; text: ScreenBounds } | null {
+    if (hidden && wrapper.alpha === 0) return null;
+    const panelBounds = panel.getBounds();
+    const textLeft = Math.min(labelText.x - labelText.width / 2, verbText.x - verbText.width / 2);
+    const textRight = Math.max(labelText.x + labelText.width / 2, verbText.x + verbText.width / 2);
+    const textTop =
+      wrapper.y + Math.min(labelText.y - labelText.height / 2, verbText.y - verbText.height / 2);
+    const textBottom =
+      wrapper.y + Math.max(labelText.y + labelText.height / 2, verbText.y + verbText.height / 2);
+    return {
+      panel: { ...panelBounds, y: wrapper.y + panelBounds.y },
+      text: {
+        x: textLeft,
+        y: textTop,
+        width: textRight - textLeft,
+        height: textBottom - textTop,
+      },
+    };
+  }
+
+  return {
+    sync,
+    setTop: (top: number) => wrapper.setY(top),
+    getLayoutBounds,
+    destroy,
+  };
 }

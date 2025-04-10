@@ -186,6 +186,7 @@ _…and 23 older, see `archive/`._
 
 ## hud-ux
 
+- [2026-07-15-pr1131-merge-conflict-recovery](2026-07-15-pr1131-merge-conflict-recovery.md) — Merged latest `main` into PR #1131 and preserved both probe API slices across the only conflict
 - [2026-07-13-abilities-loadout-key-latch-fix](2026-07-13-abilities-loadout-key-latch-fix.md) — Handoff — Abilities loadout key latch fix
 - [2026-07-13-fix-family-hud-fullscreen-map](2026-07-13-fix-family-hud-fullscreen-map.md) — Floor 2 family HUD fullscreen-map gate
 - [2026-07-13-loot-skill-hud-polish](2026-07-13-loot-skill-hud-polish.md) — Loot/Skill HUD Polish

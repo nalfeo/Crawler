@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "reserve-navigation-arrows",
+  "task_title": "Reserve navigation arrow HUD space",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "Resolved by initializing and recording the ledger before code; whitelisting exactly four implementation/test files against parent 6d11e662; manually adapting hunks rather than cherry-picking; treating pure layout as HudDirectionArrows plus the existing parent navigation layout test only; forbidding familyRelationships.getBounds and reporting familyPanel null; preserving all existing arrow assertions and adding the prior reservation/format coverage. Telemetry input is absent and will be rechecked at handoff rather than fabricated."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

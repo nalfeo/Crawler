@@ -26,7 +26,21 @@ import {
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { computeVitalsScale } from './HudVitalsLayout.js';
 import { GAME } from '../shared/constants.js';
+import type { FamilyRelationshipsLayout } from './HudFamilyRelationships.js';
 import type { ScreenBounds } from './ui-scale.js';
+import { resolveNavigationHudLayout } from './navigation-hud-layout.js';
+import { ENCOUNTER_FIRST_ROW_Y, resolveEncounterStackLayout } from './hud-encounter-layout.js';
+
+export interface HudEncounterProbeBounds {
+  timerPanel: ScreenBounds;
+  timerText: ScreenBounds;
+  bossPanel: ScreenBounds | null;
+  bossText: ScreenBounds | null;
+  announcementPanel: ScreenBounds | null;
+  announcementText: ScreenBounds | null;
+  questPanel: ScreenBounds | null;
+  minimap: ScreenBounds | null;
+}
 
 /**
  * Keep the ability bar smaller than the rest of the HUD on narrow screens so
@@ -34,6 +48,16 @@ import type { ScreenBounds } from './ui-scale.js';
  * clear space and never collide with the slots row.
  */
 const ABILITY_BAR_MAX_SCALE = 1.0;
+
+export interface NavigationHudBounds {
+  readonly radar: ScreenBounds | null;
+  readonly questTracker: ScreenBounds | null;
+  readonly familyPanel: ScreenBounds | null;
+  readonly arrows: readonly ScreenBounds[];
+  readonly mapOverlay: ScreenBounds | null;
+  readonly mapClose: ScreenBounds | null;
+}
+
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   isMapOverlayOpen(): boolean;
@@ -41,7 +65,12 @@ export function createHudUI(scene: Phaser.Scene): {
   getAbilityBarBounds(): ScreenBounds;
   getAbilitySlotBounds(index: number): ScreenBounds | null;
   getFamilyRelationshipsState(): HudFamilyRelationshipsState;
+  getEncounterProbeBounds(): HudEncounterProbeBounds;
   setVisible(visible: boolean): void;
+  getNavigationBounds(): NavigationHudBounds;
+  getFamilyRelationshipsLayout(): FamilyRelationshipsLayout;
+  getMinimapBounds(): ScreenBounds | null;
+  getBottomCenterBounds(): ScreenBounds;
   destroy(): void;
 } {
   const depth = 1000;
@@ -53,7 +82,6 @@ export function createHudUI(scene: Phaser.Scene): {
   const bottomLeft = makeGroup(); // health, mana, xp, loot
   const bottomCenter = makeGroup(); // ability bar
   const topCenter = makeGroup(); // floor timer + boss bar
-  const topRight = makeGroup(); // quest tracker
   const bottomRight = makeGroup(); // family relationships (Floor 2)
 
   const healthBar = createHudHealthBar(scene, { parent: bottomLeft });
@@ -65,13 +93,20 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const bossBar = createHudBossBar(scene, { parent: topCenter });
   const announcementBanner = createHudAnnouncementBanner(scene, { parent: topCenter });
-  const questTracker = createHudQuestTracker(scene, { parent: topRight });
-  const familyRelationships = createHudFamilyRelationships(scene, { parent: bottomRight });
-
+  const questTracker = createHudQuestTracker(scene);
   // Minimap manages its own dynamic children/overlay and screen-space layout,
   // so it scales its docked radar dial internally (see HudMinimap.updateLayout)
   // rather than being grouped into a corner container here.
   const minimap = createHudMinimap(scene);
+  const familyRelationships = createHudFamilyRelationships(scene, {
+    parent: bottomRight,
+    getAvoidBounds: () => {
+      const bounds = [minimap.getDockedBounds()];
+      const b = bottomCenter.getBounds();
+      bounds.push({ x: b.x, y: b.y, width: b.width, height: b.height });
+      return bounds.filter((item): item is ScreenBounds => item !== null);
+    },
+  });
 
   // Off-screen quest waypoint arrows live full-screen (edge-pinned), so they
   // own their depth rather than belonging to a scaled corner group.
@@ -79,7 +114,7 @@ export function createHudUI(scene: Phaser.Scene): {
 
   // Phaser containers render children in insertion order; pixel-ui builders set
   // explicit depths, so sort each group to preserve intended layering.
-  for (const group of [bottomLeft, bottomCenter, topCenter, topRight, bottomRight]) {
+  for (const group of [bottomLeft, bottomCenter, topCenter, bottomRight]) {
     group.sort('depth');
   }
 
@@ -111,7 +146,6 @@ export function createHudUI(scene: Phaser.Scene): {
       .setScale(bottomCenterScale)
       .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale));
     topCenter.setScale(s).setPosition(cx * (1 - s), 0);
-    topRight.setScale(s).setPosition(w * (1 - s), 0);
     bottomRight.setScale(s).setPosition(w * (1 - s), h * (1 - s));
   }
 
@@ -128,9 +162,10 @@ export function createHudUI(scene: Phaser.Scene): {
 
   function setVisible(visible: boolean): void {
     hidden = !visible;
-    for (const group of [bottomLeft, bottomCenter, topCenter, topRight, bottomRight]) {
+    for (const group of [bottomLeft, bottomCenter, topCenter, bottomRight]) {
       group.setVisible(visible);
     }
+    questTracker.setVisible(visible);
     minimap.setHudVisible(visible);
     directionArrows.setVisible(visible);
     syncFamilyRelationshipsVisibility();
@@ -147,13 +182,43 @@ export function createHudUI(scene: Phaser.Scene): {
     floorTimer.sync(world);
     bossBar.sync(world);
     announcementBanner.sync(world);
+    const encounterLayout = resolveEncounterStackLayout(
+      bossBar.getLayoutBounds() !== null,
+      announcementBanner.getLayoutBounds() !== null,
+    );
+    bossBar.setTop(encounterLayout.bossTop ?? ENCOUNTER_FIRST_ROW_Y);
+    announcementBanner.setTop(encounterLayout.announcementTop ?? ENCOUNTER_FIRST_ROW_Y);
     lootCounter.sync(world);
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
-    questTracker.sync(world, playerEid);
-    directionArrows.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
     familyRelationships.sync(world);
+    const mapOpen = minimap.isOverlayOpen();
+    questTracker.setVisible(!mapOpen);
+    directionArrows.setVisible(!mapOpen);
+    if (!mapOpen) {
+      questTracker.sync(world, playerEid);
+      const familyLayout = familyRelationships.getLayout();
+      const layout = resolveNavigationHudLayout(getUiScale(scene), world.floor);
+      const forbiddenRegions = [
+        ...layout.criticalHudRegions,
+        layout.radarBounds,
+        questTracker.getBounds(),
+        familyLayout.panel,
+      ].filter((bounds): bounds is ScreenBounds => bounds !== null);
+      directionArrows.sync(world, playerEid, forbiddenRegions);
+    }
+  }
+
+  function getNavigationBounds(): NavigationHudBounds {
+    return {
+      radar: minimap.getDockedBounds(),
+      questTracker: questTracker.getBounds(),
+      familyPanel: familyRelationships.getLayout().panel,
+      arrows: directionArrows.getBounds(),
+      mapOverlay: null,
+      mapClose: minimap.getOverlayCloseBounds(),
+    };
   }
 
   function destroy(): void {
@@ -174,8 +239,35 @@ export function createHudUI(scene: Phaser.Scene): {
     bottomLeft.destroy();
     bottomCenter.destroy();
     topCenter.destroy();
-    topRight.destroy();
     bottomRight.destroy();
+  }
+
+  function transformBounds(
+    bounds: ScreenBounds,
+    group: Phaser.GameObjects.Container,
+  ): ScreenBounds {
+    return {
+      x: group.x + bounds.x * group.scaleX,
+      y: group.y + bounds.y * group.scaleY,
+      width: bounds.width * group.scaleX,
+      height: bounds.height * group.scaleY,
+    };
+  }
+
+  function getEncounterProbeBounds(): HudEncounterProbeBounds {
+    const timer = floorTimer.getLayoutBounds();
+    const boss = bossBar.getLayoutBounds();
+    const announcement = announcementBanner.getLayoutBounds();
+    return {
+      timerPanel: transformBounds(timer.panel, topCenter),
+      timerText: transformBounds(timer.text, topCenter),
+      bossPanel: boss ? transformBounds(boss.panel, topCenter) : null,
+      bossText: boss ? transformBounds(boss.text, topCenter) : null,
+      announcementPanel: announcement ? transformBounds(announcement.panel, topCenter) : null,
+      announcementText: announcement ? transformBounds(announcement.text, topCenter) : null,
+      questPanel: questTracker.getBounds(),
+      minimap: minimap.getDockedBounds(),
+    };
   }
 
   return {
@@ -185,7 +277,15 @@ export function createHudUI(scene: Phaser.Scene): {
     getAbilityBarBounds: abilityBar.getPanelScreenBounds,
     getAbilitySlotBounds: abilityBar.getSlotScreenBounds,
     getFamilyRelationshipsState: familyRelationships.getState,
+    getEncounterProbeBounds,
     setVisible,
+    getNavigationBounds,
+    getFamilyRelationshipsLayout: familyRelationships.getLayout,
+    getMinimapBounds: minimap.getDockedBounds,
+    getBottomCenterBounds: () => {
+      const b = bottomCenter.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
     destroy,
   };
 }
