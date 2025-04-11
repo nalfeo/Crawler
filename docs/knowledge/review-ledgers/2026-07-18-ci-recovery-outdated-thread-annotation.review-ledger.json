@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-outdated-thread-annotation",
+  "task_title": "Annotate outdated CI recovery review threads",
+  "estimated_apples": 2,
+  "stages": {}
+}
