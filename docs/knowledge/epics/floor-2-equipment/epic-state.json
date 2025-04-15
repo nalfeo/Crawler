@@ -153,8 +153,7 @@
           "path_or_check": "tests/unit/agent/epic-status.test.ts",
           "sha256": "fb5415de4d9d32769f767454bc9e36c7415a88432591e3403bbdeff5cf2ad1fc",
           "commit": "07b41178e62db0a5c17c9d9b4ac731e9d3a8340d",
-          "recorded_at": "2026-07-17T18:25:00.000Z"
-        }
+          "recorded_at": "2026-07-17T18:25:00.000Z"        }
       ],
       "reconciliation": {
         "last_audited_at": "2026-07-17T18:25:00.000Z",
