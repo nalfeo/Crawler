@@ -1,0 +1,21 @@
+type: weapon
+name: dueling-saber
+description: |
+  A dueling saber held vertically, blade curving elegantly upward, grip at
+  the bottom. Single-edged curved blade tapering to a sharp point at the top;
+  the gentle curve is visible in the silhouette. Swept knuckle guard in dull
+  iron-grey protects the hand — small but readable at native size. Short
+  straight quillon. Grip wrapped in dark brown leather with a small rounded
+  pommel at the base. Cool steel blade with a thin bright highlight along the
+  back edge and a deeper shadow on the flat; 3–4 stops of metallic grey-silver.
+  Worn, dungeon-scuffed surface with faint edge nicks — not pristine. No glow,
+  no enchantment, no runes. Silhouette must read as a slender curved saber
+  (not a straight sword, not a scimitar) at a glance.
+# Vertical orientation (grip bottom, tip top) inherited from weapon defaults.
+# The swept guard should remain readable — don't simplify it to a plain cross.
+variations:
+  - swept guard with a pronounced finger ring; blade has a stronger curve than baseline while remaining a slim saber silhouette
+  - simple single-bar guard; narrower blade, more rapier-like, longer and thinner
+# Seed list is intentionally short; the runner expands to minVariations via the
+# configured text provider (same pattern as other weapon briefs).
+minVariations: 8
