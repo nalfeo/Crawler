@@ -1,0 +1,31 @@
+type: weapon
+name: brass-knuckles
+description: |
+  A set of brass knuckles held at a slight diagonal — four-hole finger-ring
+  plate angled up-and-right at roughly 45 degrees, grip/palm bar at the
+  bottom-left. Sturdy cast metal body, scratched and dented from dungeon use.
+  Worn brass-gold tone on the ring plate catching a highlight along the top
+  edge; deep brown-black shadow on the underside and palm bar; muted oxidized
+  tarnish in the recesses between the finger holes. The four finger holes must
+  be clearly visible as negative space. No glow, no blood, no spikes unless
+  naturally part of the silhouette. The silhouette must read unmistakably as
+  brass knuckles — not a ring, not a coin, not a shield.
+# Brass knuckles are a flat, wide bludgeon weapon — a diagonal orientation
+# shows the full four-hole plate and avoids the thin vertical silhouette that
+# would read as a ring. Grip/palm bar at bottom-left, ring plate upper-right.
+# Anchor at grip, consistent with compact-disk.yaml diagonal anchor pattern.
+anchor: { x: 20, y: 48 }
+sensors:
+  weapon:
+    orientation: diagonal
+    diagonalToleranceDeg: 8
+variations:
+  - finger plate heavily dented and scratched, oxidized green-black in recesses
+  - reinforced with riveted metal band across the knuckle bridge
+  - polished but battle-worn, prominent crack running across the palm bar
+  - spike-studded knuckle bridge with three blunt metal protrusions
+  - wrapped in worn leather straps across the palm grip
+  - cast from dark iron, matte surface with orange-brown rust at the seams
+  - engraved with arcane symbols along the finger bridges, faint blue-grey patina
+  - lightweight fluted alloy frame with brushed silver finish and chamfered edges
+minVariations: 8
