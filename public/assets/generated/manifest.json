@@ -2288,6 +2288,26 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "equipment/weapon/crescent-glaive": {
+      "briefId": "equipment/weapon/crescent-glaive",
+      "spriteName": "equipment/weapon/crescent-glaive",
+      "assetPath": "generated/equipment/weapon/crescent-glaive-placeholder.png",
+      "approvedAt": "2026-07-17T00:00:00.000Z",
+      "sourceRun": "floor2-equipment-placeholder/v1",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null,
+      "type": "weapon",
+      "equipment": {
+        "stableId": "weapon.crescent-glaive",
+        "runtimeKey": "equipment/weapon/crescent-glaive",
+        "category": "weapon",
+        "family": "polearm",
+        "slot": "weapon",
+        "productionWaveId": "floor2-equipment-weapon-polearm"
+      }
+    },
     "faerie-boss-var-0": {
       "briefId": "faerie-boss",
       "spriteName": "faerie-boss-var-0",
