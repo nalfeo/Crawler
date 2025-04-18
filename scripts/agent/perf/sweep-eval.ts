@@ -7,15 +7,35 @@
  * for (weapon × seed) parallelism — so a single cloud job self-parallelises
  * without a config×seed matrix (see the plan's post-adversarial-review revision).
  *
- * Two stages:
- *   --stage search   For ONE combo, coordinate-ascent over its tunable knobs on
- *                    the TRAIN seeds, emitting every evaluated run + the tuned
- *                    best config. No holdout seeds are ever touched here.
- *   --stage validate For ONE combo, evaluate its tuned finalist (from a search
- *                    artifact) on the FULL panel incl. holdout, plus the untuned
- *                    LEGACY+LEGACY incumbent control (so every validate shard
- *                    carries a flip baseline; the aggregator collapses the
- *                    identical incumbent copies as a determinism proof).
+ * Four stages:
+ *   --stage search          LEGACY, kept for local/small-scale iteration. For ONE
+ *                            combo, coordinate-ascent over its tunable knobs on
+ *                            the TRAIN seeds IN-PROCESS (all of a round's
+ *                            candidates share one 4-worker pool), emitting every
+ *                            evaluated run + the tuned best config. Wall time
+ *                            scales as (candidates × weapons × seeds / workers),
+ *                            which is why the cloud workflow no longer uses this
+ *                            stage for its round loop (see search-baseline/
+ *                            search-eval below) — it remains for local smoke runs.
+ *   --stage search-baseline For ONE combo, evaluate ONLY its SSOT base config on
+ *                            the TRAIN seeds. Emits a plain shard (one config);
+ *                            the workflow wraps it into a round-0 checkpoint via
+ *                            `round-plan.ts --mode init`.
+ *   --stage search-eval     For ONE combo and ONE candidate config (given via
+ *                            --config-id/--config-json), evaluate it on the TRAIN
+ *                            seeds. Emits a plain shard (one config). This is the
+ *                            unit of work each parallel round-eval matrix job
+ *                            runs — fanning a round's candidates into independent
+ *                            jobs is what bounds wall time by (candidates /
+ *                            concurrency) instead of (candidates × weapons ×
+ *                            seeds / workers).
+ *   --stage validate        For ONE combo, evaluate its tuned finalist (from a
+ *                            search artifact OR a round checkpoint — same shape)
+ *                            on the FULL panel incl. holdout, plus the untuned
+ *                            LEGACY+LEGACY incumbent control (so every validate
+ *                            shard carries a flip baseline; the aggregator
+ *                            collapses the identical incumbent copies as a
+ *                            determinism proof). Unchanged by the round redesign.
  *
  * The SSOT tournament win is `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)`:
  * `outcome==='victory' && (gameTimeMs - safeRoomMs) < FLOOR1_TIME_BUDGET_MS`
@@ -36,12 +56,15 @@
  *
  * Usage
  * -----
- *   npm run ai:sweep-eval -- --stage search   --combo legacy+legacy --train-seeds 1-80 --workers 4 --rounds 3 --out search.json
- *   npm run ai:sweep-eval -- --stage validate --combo navmeshFused+slackAware --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
+ *   npm run ai:sweep-eval -- --stage search          --combo legacy+legacy --train-seeds 1-80 --workers 4 --rounds 3 --out search.json
+ *   npm run ai:sweep-eval -- --stage search-baseline --combo legacy+legacy --train-seeds 1-80 --workers 4 --out baseline.json
+ *   npm run ai:sweep-eval -- --stage search-eval     --combo legacy+legacy --config-id <id> --config-json '{"...":...}' --train-seeds 1-80 --workers 4 --out shard.json
+ *   npm run ai:sweep-eval -- --stage validate        --combo navmeshFused+slackAware --search-artifact search.json --seeds 1-100 --workers 4 --out validate.json
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
@@ -62,11 +85,16 @@ import {
 import {
   SHARD_SCHEMA_VERSION,
   assertSearchArtifactProvenance,
+  buildLeaderboard,
   deriveRunFacts,
+  isBetterQualifiedCandidate,
+  selectQualifiedWinner,
+  type LeaderboardRow,
   type RunRow,
   type ShardArtifact,
   type ShardMeta,
 } from './aggregate-shards.js';
+import { halveSteps } from './round-plan.js';
 import {
   runWorkerPool,
   type WorkerPoolTaskPayload,
@@ -185,6 +213,52 @@ function winsOf(rows: readonly RunRow[], id: string): number {
   return rows.filter((r) => r.configId === id && r.officialWin).length;
 }
 
+/**
+ * Pure gate-aware promotion decision for the legacy `--stage search` hill
+ * climb: a candidate may only replace the search's current position if it
+ * ALSO passes {@link selectQualifiedWinner}'s hard safety gate (>=90%
+ * official wins AND zero win→loss flips vs the FIXED original baseline
+ * `incumbentConfigId` — never the search's current position, which would let
+ * the gate itself drift), exactly mirroring `applyRoundResult`'s
+ * round-to-round promotion in `round-plan.ts`. Extracted as a pure function
+ * (taking already-evaluated rows, not running anything) so it is unit
+ * testable without headless game runs — the exact wiring bug class a review
+ * would otherwise only catch by re-deriving this logic by hand.
+ *
+ * Returns `null` when no candidate both qualifies and ranks ahead of the
+ * current position under the full tie-break ordering (steps should be halved
+ * by the caller in that case).
+ */
+export function selectSearchPromotion(
+  allRows: readonly RunRow[],
+  configs: Readonly<Record<string, SweepConfig>>,
+  comboStr: string,
+  incumbentConfigId: string,
+  candidateIds: ReadonlySet<string>,
+  budgetMs: number,
+  currentConfigId: string,
+): { bestId: string; bestScore: number } | null {
+  const leaderboard = buildLeaderboard(allRows, {
+    incumbentCombo: comboStr,
+    incumbentConfigId,
+    configs,
+    budgetMs,
+  });
+  const candidateRows = leaderboard.filter((r) => candidateIds.has(r.configId) && !r.isIncumbent);
+  const { winner: qualifiedWinner } = selectQualifiedWinner(candidateRows);
+  if (!qualifiedWinner) return null;
+  // Compare using the full tie-break ordering (score → clear time → HP → XP →
+  // gold) so a tie-equal candidate with a better secondary metric is not
+  // wrongly rejected by a score-only comparison.
+  const currentRow: LeaderboardRow | undefined = leaderboard.find(
+    (r) => r.configId === currentConfigId,
+  );
+  if (isBetterQualifiedCandidate(qualifiedWinner, currentRow)) {
+    return { bestId: qualifiedWinner.configId, bestScore: qualifiedWinner.totalScore };
+  }
+  return null;
+}
+
 interface SearchResult {
   rows: RunRow[];
   configs: Record<string, SweepConfig>;
@@ -270,16 +344,26 @@ async function searchCombo(
     );
     allRows.push(...rows);
 
-    let bestId: string | null = null;
-    let bestScore = currentScore;
-    for (const c of candidates) {
-      const s = totalScoreOf(rows, c.id);
-      if (bestId === null ? s > currentScore : s > bestScore) {
-        bestId = c.id;
-        bestScore = s;
-      }
-    }
-    if (bestId && bestScore > currentScore) {
+    // Gate promotion through the SAME hard safety gate used for round-plan.ts
+    // and final graduation (see selectSearchPromotion doc comment): a
+    // higher-scoring neighbour must ALSO have >=90% wins AND zero win->loss
+    // flips vs the FIXED original baseline (base.id, not the search's current
+    // position) before it can replace currentId. Naive score-only promotion
+    // here would reintroduce the exact GH-run-29597840666 bug this module
+    // exists to fix, just in the legacy local-smoke-run path instead of CI.
+    const candidateIds = new Set(candidates.map((c) => c.id));
+    const promotion = selectSearchPromotion(
+      allRows,
+      configs,
+      comboStr,
+      base.id,
+      candidateIds,
+      shared.budgetMs,
+      currentId,
+    );
+
+    if (promotion) {
+      const { bestId, bestScore } = promotion;
       console.log(
         `[${comboStr}] round ${round + 1}: ✅ ${currentScore.toExponential(3)} → ${bestScore.toExponential(3)} via ${bestId.slice(0, 48)}`,
       );
@@ -297,23 +381,6 @@ async function searchCombo(
     `[${comboStr}] BEST ${currentId.slice(0, 48)} score=${currentScore.toExponential(3)} wins=${winsOf(allRows, currentId)}/${opts.weapons.length * opts.trainSeeds.length}`,
   );
   return { rows: allRows, configs, bestConfigId: currentId };
-}
-
-/** Halve every knob's step; return whether any step is still ≥ its minStep. */
-function halveSteps(
-  steps: Partial<Record<TunableKnob, number>>,
-  knobs: readonly TunableKnob[],
-): boolean {
-  let anyAboveMin = false;
-  for (const knob of knobs) {
-    const range = rangeFor(knob);
-    const next = (steps[knob] ?? range.step) / 2;
-    steps[knob] = next;
-    if (next >= range.minStep) {
-      anyAboveMin = true;
-    }
-  }
-  return anyAboveMin;
 }
 
 function packageLockHash(): string {
@@ -341,9 +408,14 @@ function buildMeta(stage: string, floorId: string): ShardMeta {
 
 type SearchArtifact = ShardArtifact & { combo: string; bestConfigId: string };
 
+type Stage = 'search' | 'search-baseline' | 'search-eval' | 'validate';
+const STAGES: readonly Stage[] = ['search', 'search-baseline', 'search-eval', 'validate'];
+
 interface CliArgs {
-  stage: 'search' | 'validate';
+  stage: Stage;
   combo: string | null;
+  configId: string | null;
+  configJson: string | null;
   trainSeeds: number[];
   seeds: number[];
   weapons: string[];
@@ -360,6 +432,8 @@ function parseArgs(argv: readonly string[]): CliArgs {
   const args: CliArgs = {
     stage: 'search',
     combo: null,
+    configId: null,
+    configJson: null,
     trainSeeds: parseSeeds('1-80'),
     seeds: parseSeeds('1-100'),
     weapons: FLOOR1_WEAPONS,
@@ -375,13 +449,19 @@ function parseArgs(argv: readonly string[]): CliArgs {
     const arg = argv[i];
     const next = argv[i + 1];
     if (arg === '--stage' && next) {
-      if (next !== 'search' && next !== 'validate') {
-        throw new Error(`--stage must be search|validate, got ${JSON.stringify(next)}`);
+      if (!STAGES.includes(next as Stage)) {
+        throw new Error(`--stage must be one of ${STAGES.join('|')}, got ${JSON.stringify(next)}`);
       }
-      args.stage = next;
+      args.stage = next as Stage;
       i++;
     } else if (arg === '--combo' && next) {
       args.combo = next;
+      i++;
+    } else if (arg === '--config-id' && next) {
+      args.configId = next;
+      i++;
+    } else if (arg === '--config-json' && next) {
+      args.configJson = next;
       i++;
     } else if (arg === '--train-seeds' && next) {
       args.trainSeeds = parseSeeds(next);
@@ -416,6 +496,9 @@ function parseArgs(argv: readonly string[]): CliArgs {
   if (!args.combo) {
     throw new Error('--combo is required (e.g. --combo legacy+legacy)');
   }
+  if (args.stage === 'search-eval' && (!args.configId || !args.configJson)) {
+    throw new Error('--stage search-eval requires --config-id <id> --config-json <json>');
+  }
   if (args.floorId !== 'floor1') {
     throw new Error(
       `--floor '${args.floorId}' is not supported: this sweep is Floor-1-calibrated ` +
@@ -424,6 +507,34 @@ function parseArgs(argv: readonly string[]): CliArgs {
     );
   }
   return args;
+}
+
+/**
+ * Evaluate exactly ONE config (baseline or a single round candidate) across
+ * weapons × trainSeeds, emitting a plain single-config shard. Shared by
+ * `--stage search-baseline` and `--stage search-eval` — the two stages that
+ * replace the old monolithic per-combo round loop with independently
+ * schedulable units of work (one GitHub Actions matrix job each).
+ */
+async function evalStandalone(
+  comboStr: string,
+  id: string,
+  config: SweepConfig,
+  opts: { trainSeeds: number[]; weapons: string[]; workers: number; floorId: string },
+  stage: string,
+): Promise<ShardArtifact> {
+  const shared: EvalShared = {
+    maxFrames: MAX_FRAMES,
+    budgetMs: FLOOR1_TIME_BUDGET_MS,
+    wallCapMs: WALL_CAP_MS,
+    floorId: opts.floorId,
+  };
+  const rows = await runTasks(
+    buildTasks([{ id, config }], comboStr, opts.weapons, opts.trainSeeds),
+    shared,
+    opts.workers,
+  );
+  return { meta: buildMeta(stage, opts.floorId), configs: { [id]: config }, rows };
 }
 
 async function main(argv: readonly string[]): Promise<void> {
@@ -452,6 +563,59 @@ async function main(argv: readonly string[]): Promise<void> {
     };
     emit(artifact, args.out);
     console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${result.rows.length} runs`);
+    return;
+  }
+
+  if (args.stage === 'search-baseline') {
+    const base = baseConfigForCombo(combo);
+    const id = configId(base);
+    console.log(
+      `🔎 SEARCH-BASELINE ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
+    );
+    // meta.stage is intentionally set to 'search' for both search-baseline and
+    // search-eval shards: the `validate` stage and `initCheckpoint`/`applyRoundResult`
+    // consume them identically, and the stage field does not distinguish baseline vs
+    // candidate in either code path. The invoked CLI stage ('search-baseline' /
+    // 'search-eval') is logged to stdout above for human debugging instead.
+    const artifact = await evalStandalone(
+      comboId(combo),
+      id,
+      base,
+      {
+        trainSeeds: args.trainSeeds,
+        weapons: args.weapons,
+        workers: args.workers,
+        floorId: args.floorId,
+      },
+      'search',
+    );
+    emit(artifact, args.out);
+    console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${artifact.rows.length} runs`);
+    return;
+  }
+
+  if (args.stage === 'search-eval') {
+    const id = args.configId!;
+    const config = JSON.parse(args.configJson!) as SweepConfig;
+    console.log(
+      `🔎 SEARCH-EVAL ${comboId(combo)} · ${id.slice(0, 48)} · train seeds ${args.trainSeeds.length} · weapons ${args.weapons.join(',')} · workers ${args.workers}`,
+    );
+    // meta.stage is intentionally 'search' for both search-baseline and search-eval
+    // shards — see note in the search-baseline branch above.
+    const artifact = await evalStandalone(
+      comboId(combo),
+      id,
+      config,
+      {
+        trainSeeds: args.trainSeeds,
+        weapons: args.weapons,
+        workers: args.workers,
+        floorId: args.floorId,
+      },
+      'search',
+    );
+    emit(artifact, args.out);
+    console.log(`⏱  ${((Date.now() - start) / 1000).toFixed(0)}s · ${artifact.rows.length} runs`);
     return;
   }
 
@@ -534,7 +698,12 @@ function emit(artifact: ShardArtifact, out: string | null): void {
   }
 }
 
-if (!isMainThread) {
+// Guard on BOTH !isMainThread AND a real task payload: this module's own
+// runWorkerPool always sends a WorkerPoolTaskPayload, but a plain module
+// import from a non-main worker thread with no payload (e.g. this file
+// being imported for unit tests inside Vitest's own worker-thread pool)
+// must be a no-op, not attempt to run an undefined task.
+if (!isMainThread && workerData != null) {
   const payload = workerData as WorkerPoolTaskPayload<EvalTask, EvalShared>;
   runOne(payload.task, payload.shared)
     .then((result) => {
@@ -549,7 +718,11 @@ if (!isMainThread) {
         error: error instanceof Error ? (error.stack ?? error.message) : String(error),
       } satisfies WorkerTaskFailure);
     });
-} else {
+} else if (
+  isMainThread &&
+  process.argv[1] != null &&
+  fileURLToPath(import.meta.url) === process.argv[1]
+) {
   main(process.argv).catch((err) => {
     console.error('Fatal:', err instanceof Error ? err.stack : err);
     process.exit(1);
