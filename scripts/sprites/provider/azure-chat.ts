@@ -28,6 +28,7 @@
 import type { ExpandVariationsRequest, TextProvider, TextProviderErrorKind } from './text-types.js';
 import { TextProviderError } from './text-types.js';
 import { contentDirectionBlock } from '../content-direction.js';
+import { resolveDesignLanguageAddenda } from '../design-language-addenda.js';
 import {
   DEFAULT_PROVIDER_TIMEOUT_MS,
   isTimeoutAbortError,
@@ -90,7 +91,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
 
     const body = {
       messages: [
-        { role: 'system', content: buildSystemPrompt(request.brief.floor) },
+        { role: 'system', content: buildSystemPrompt(request.brief) },
         { role: 'user', content: buildUserPrompt(request) },
       ],
       temperature: this.temperature,
@@ -170,10 +171,10 @@ export class AzureOpenAIChatProvider implements TextProvider {
   }
 }
 
-function buildSystemPrompt(floor: number): string {
+function buildSystemPrompt(brief: ExpandVariationsRequest['brief']): string {
   return [
     'You design visual variations for 256x256-source pixel-art sprites that resolve cleanly at game scale.',
-    contentDirectionBlock(floor),
+    contentDirectionBlock(brief.floor, resolveDesignLanguageAddenda(brief.name, brief.floor)),
     "Each variation is one discrete, on-theme embellishment that preserves the subject's identity, gameplay role, orientation, and inanimate/animate category.",
     'Variations must be visually distinct, appropriate to the supplied floor, free of detail that collapses when scaled down, and described concisely (4-25 words). Never anthropomorphize an item unless the brief explicitly requests it.',
     'Output STRICT JSON only: an object with a single key "variations" whose value is an array of strings. No prose, no markdown.',

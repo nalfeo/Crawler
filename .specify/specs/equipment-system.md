@@ -862,9 +862,9 @@ This is distinct from the numeric `EquipmentInstanceId` used by the Floor 1 syst
 interface GeneratedEquipmentInstanceV1 {
   schemaVersion: 'floor2-equipment-instance/v1';
   instanceId: GeneratedEquipmentInstanceId;
-  contentRevision: number;        // 0 for new, incremented on enhancement
-  baseId: string;                 // catalog reference
-  itemLevel: number;              // positive integer
+  contentRevision: number; // 0 for new, incremented on enhancement
+  baseId: string; // catalog reference
+  itemLevel: number; // positive integer
   rarity: 'common' | 'uncommon' | 'rare';
   enhancementLevel: 0 | 1 | 2 | 3 | 4 | 5;
   resolvedEffects: ResolvedEquipmentEffectV1[];
@@ -885,6 +885,7 @@ The generated equipment registry (`src/game/generated-equipment-registry.ts`) is
 references only.
 
 The registry is:
+
 - **World-scoped** — each `GameWorld` has its own isolated registry (WeakMap storage).
 - **Feature-flagged** — registration is gated by `world.floor2EquipmentFlags.floor2EquipmentRegistry`; lookups and hydration are always permitted.
 - **Immutable after registration** — stored records are deeply frozen; content changes require a full replacement with an incremented `contentRevision`.
@@ -904,10 +905,10 @@ generated instances into the equip system via an adapter (ADR 0065 DEC-008).
 
 ### Rarity and Effect Budget
 
-| Rarity   | Effect budget | Notes                                    |
-| -------- | ------------- | ---------------------------------------- |
-| common   | 0 units       | No affixes                               |
-| uncommon | 1 unit        | One minor (1-unit) affix                 |
-| rare     | 2 units       | Two 1-unit affixes or one 2-unit affix   |
+| Rarity   | Effect budget | Notes                                  |
+| -------- | ------------- | -------------------------------------- |
+| common   | 0 units       | No affixes                             |
+| uncommon | 1 unit        | One minor (1-unit) affix               |
+| rare     | 2 units       | Two 1-unit affixes or one 2-unit affix |
 
 Rarities above Rare are not valid Floor 2 generation outcomes.

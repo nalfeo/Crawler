@@ -66,6 +66,8 @@ export interface JudgeCacheKeyInputs {
   readonly briefMatchInstructions: string;
   /** Dungeon depth changes the expected design-language intensity. */
   readonly floor: number;
+  /** Optional floor/theme direction changes the design-language rubric. */
+  readonly designLanguageAddenda: string;
 }
 
 export interface JudgeCacheOptions {
@@ -127,6 +129,8 @@ export class JudgeCache {
     hash.update(inputs.briefMatchInstructions);
     hash.update('\nfloor:');
     hash.update(String(inputs.floor));
+    hash.update('\ndesign-language-addenda:');
+    hash.update(inputs.designLanguageAddenda);
     hash.update('\nvariant-png:');
     hash.update(inputs.variantPng);
     hash.update('\nreferences:');

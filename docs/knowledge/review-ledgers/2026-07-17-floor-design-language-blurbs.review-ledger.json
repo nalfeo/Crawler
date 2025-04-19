@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "floor-design-language-blurbs",
+  "task_title": "Optional floor and family sprite design language",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted a split between shared design language and optional floor/theme additions to avoid build-prompt duplication; expanded the plan to one canonical identity-to-context resolver used by authored and synthesized paths; added neutral Floor 2/non-Floor-2 negative tests, exhaustive catalog drift guards, and explicit variation-expander coverage. No architectural fork warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ],
+      "notes": "Round 1 found missing direct coverage for the brief-selector prompt path. Added the focused selector test and direct primary sheet-path coverage; round 2 re-read the full diff and ended clean across all review categories."
+    }
+  }
+}

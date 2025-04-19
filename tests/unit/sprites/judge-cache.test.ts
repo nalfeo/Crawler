@@ -63,6 +63,7 @@ function baseInputs() {
     referencePngs: [Buffer.from([10, 11, 12]), Buffer.from([20, 21, 22])],
     briefMatchInstructions: 'A vertical iron sword.',
     floor: 1,
+    designLanguageAddenda: '',
   };
 }
 
@@ -136,6 +137,15 @@ describe('JudgeCache.computeKey', () => {
   it('distinguishes identical inputs judged at different floors', () => {
     const a = cache.computeKey({ ...baseInputs(), floor: 1 });
     const b = cache.computeKey({ ...baseInputs(), floor: 20 });
+    expect(a).not.toBe(b);
+  });
+
+  it('distinguishes different floor or theme addenda', () => {
+    const a = cache.computeKey(baseInputs());
+    const b = cache.computeKey({
+      ...baseInputs(),
+      designLanguageAddenda: 'A family-specific visual direction.',
+    });
     expect(a).not.toBe(b);
   });
 });

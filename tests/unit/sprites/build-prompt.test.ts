@@ -84,6 +84,40 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/shocking\/wonderful apex/i);
   });
 
+  it('adds independent Floor 2 and family design language for known family sprites', () => {
+    const out = buildPrompt(
+      makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toContain('## Floor design language');
+    expect(out).toContain('Family Matters');
+    expect(out).toContain('## Theme design language');
+    expect(out).toContain('The Snaggle Cartel');
+  });
+
+  it('states the theme > floor > Crawler design language conflict-resolution priority when family addenda are present', () => {
+    const out = buildPrompt(
+      makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toContain('## Design language priority');
+    expect(out).toContain(
+      'theme design language > floor design language > general Crawler design language',
+    );
+    const priorityIdx = out.indexOf('## Design language priority');
+    expect(out.indexOf('## Floor design language')).toBeGreaterThan(priorityIdx);
+    expect(out.indexOf('## Theme design language')).toBeGreaterThan(priorityIdx);
+  });
+
+  it('adds the Floor 2 language without a family blurb for neutral enemies', () => {
+    const out = buildPrompt(
+      makeBrief({ type: 'enemy', name: 'cave-slime', floor: 2 }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toContain('Family Matters');
+    expect(out).not.toContain('## Theme design language');
+  });
+
   it('keeps item briefs explicitly inanimate', () => {
     const out = buildPrompt(makeBrief({ type: 'item' }), FAKE_STYLE_GUIDE);
     expect(out).toMatch(/Keep the item inanimate/i);
@@ -188,6 +222,15 @@ describe('buildSheetPrompt', () => {
   it('starts with the style preamble (hard constraint)', () => {
     const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
     expect(out.startsWith(FAKE_STYLE_GUIDE)).toBe(true);
+  });
+
+  it('adds Floor 2 and family design language to the primary sheet path', () => {
+    const out = buildSheetPrompt(
+      makeBrief({ type: 'enemy', name: 'goblin-grunt', floor: 2 }),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toContain('Family Matters');
+    expect(out).toContain('The Snaggle Cartel');
   });
 
   it('asks for exactly the right variant count and grid shape', () => {
