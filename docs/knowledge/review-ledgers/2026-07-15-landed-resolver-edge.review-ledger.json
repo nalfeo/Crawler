@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "landed-resolver-edge",
+  "task_title": "Fix landed resolver attribution edge",
+  "estimated_apples": 2,
+  "stages": {}
+}
