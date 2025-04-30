@@ -8,8 +8,9 @@
  *   3. Seal its perimeter via `sealSpecialRooms` (same guarantee Floor 1's
  *      welcome office / shop room enjoy).
  *   4. Repaint its floor tiles to `SAFE_ROOM_FLOOR` for the calm-blue tint.
- *   5. Spawn The Broker, a defected family member, and 1–2 seeded shops onto
- *      settlement-room interior tiles with door buffers + spacing.
+ *   5. Spawn The Broker, a defected family member, one guaranteed Quartermaster,
+ *      and 1–2 seeded non-Quartermaster shops onto settlement-room interior
+ *      tiles with door buffers + spacing.
  *   6. Generate each shop's inventory via the pure `generateShopInventory`
  *      roller.
  *
@@ -42,11 +43,18 @@ import type {
 
 /** Options for {@link initializeFloor2Settlement}. */
 export interface InitializeFloor2SettlementOptions {
-  /** Override the number of shops to spawn (defaults to a seeded roll of 1–2). */
+  /** Override the number of non-Quartermaster shops to spawn (defaults to a seeded roll of 1–2). */
   readonly shopCount?: 1 | 2;
-  /** Override the pool of archetypes (defaults to the bundled pack). */
+  /**
+   * Override the non-Quartermaster archetype pool (defaults to the bundled pack
+   * minus the Quartermaster). The Quartermaster is always placed separately and
+   * is excluded from this pool regardless.
+   */
   readonly archetypes?: readonly ShopArchetypeDef[];
 }
+
+/** Archetype id of the guaranteed Quartermaster shop. */
+export const QUARTERMASTER_ARCHETYPE_ID = 'the-quartermaster';
 
 /**
  * Initialise the Floor 2 settlement. Returns the snapshot written to
@@ -91,9 +99,26 @@ export function initializeFloor2Settlement(
 
   // 3. Seeded shop roll — preserve the existing world.rng flow for shop selection
   // and inventories; all new placement/defector randomness uses a derived RNG.
-  const archetypes = options.archetypes ?? loadShopArchetypes();
+  // Quartermaster is excluded from the random pool and always placed separately.
+  const allArchetypes = options.archetypes ?? loadShopArchetypes();
+  // QM must always come from the canonical list (options.archetypes may be a custom subset).
+  const quartermasterArchetype =
+    allArchetypes.find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID) ??
+    loadShopArchetypes().find((a) => a.id === QUARTERMASTER_ARCHETYPE_ID);
+  if (!quartermasterArchetype) {
+    throw new Error(
+      `initializeFloor2Settlement: Quartermaster archetype "${QUARTERMASTER_ARCHETYPE_ID}" not found`,
+    );
+  }
+  const randomPool = allArchetypes.filter((a) => a.id !== QUARTERMASTER_ARCHETYPE_ID);
+  if (randomPool.length === 0) {
+    throw new Error(
+      'initializeFloor2Settlement: no non-Quartermaster archetypes available for random shop selection; ' +
+        'check shop-archetypes data or pass a non-empty non-Quartermaster options.archetypes override',
+    );
+  }
   const shopCount = options.shopCount ?? (world.rng.next() < 0.5 ? 1 : 2);
-  const shuffled = [...archetypes];
+  const shuffled = [...randomPool];
   world.rng.shuffle(shuffled);
   const picked = shuffled.slice(0, Math.min(shopCount, shuffled.length));
 
@@ -113,12 +138,20 @@ export function initializeFloor2Settlement(
   const defectorAppearanceKey = eliteArchetype?.id ?? fallbackArchetype.id;
   const defectorFallbackAppearanceKey = fallbackArchetype.id;
   const reservedTiles: Array<{ x: number; y: number }> = [];
-  const placementPlan = buildSettlementPlacementPlan(settlement, settlements, assignedRooms);
+  const placementPlan = buildSettlementPlacementPlan(
+    settlement,
+    settlements,
+    assignedRooms,
+    true /* includeQuartermaster */,
+  );
   const spawnTiles = placeSettlementNpcs(settlementRng, placementPlan, settlements, reservedTiles);
   const brokerTile = spawnTiles.get('broker');
   const defectorTile = spawnTiles.get('defector');
-  if (!brokerTile || !defectorTile) {
-    throw new Error('initializeFloor2Settlement: failed to place broker or defector');
+  const quartermasterTile = spawnTiles.get('quartermaster');
+  if (!brokerTile || !defectorTile || !quartermasterTile) {
+    throw new Error(
+      'initializeFloor2Settlement: failed to place broker, defector, or quartermaster',
+    );
   }
   const brokerPos = floorMap.tileToWorld(brokerTile.x, brokerTile.y);
   const brokerEid = spawnNpc(world, brokerPos.x, brokerPos.y, 'the-broker');
@@ -128,6 +161,25 @@ export function initializeFloor2Settlement(
     appearanceKey: defectorAppearanceKey,
     appearanceFallbackKey: defectorFallbackAppearanceKey,
   });
+
+  // Spawn guaranteed Quartermaster.
+  // QM is always guaranteed; roll its inventory with settlementRng so this extra
+  // guaranteed inventory roll does not perturb world.rng for downstream systems.
+  const qmWorldPos = floorMap.tileToWorld(quartermasterTile.x, quartermasterTile.y);
+  const qmNpcEid = spawnNpc(world, qmWorldPos.x, qmWorldPos.y, quartermasterArchetype.npcId);
+  const qmRolled = generateShopInventory(settlementRng, quartermasterArchetype);
+  const qmInventory: Floor2ShopInventoryItem[] = qmRolled.items.map((item) => ({
+    itemId: item.itemId,
+    unitPrice: item.unitPrice,
+    stock: item.stock,
+  }));
+  const quartermasterShop: Floor2ShopInstance = {
+    archetypeId: quartermasterArchetype.id,
+    npcId: quartermasterArchetype.npcId,
+    npcEid: qmNpcEid,
+    inventory: qmInventory,
+  };
+
   const shops: Floor2ShopInstance[] = [];
   picked.forEach((archetype, idx) => {
     const spawnTile = spawnTiles.get(`shop:${idx}`);
@@ -158,6 +210,7 @@ export function initializeFloor2Settlement(
     defectorFamilyId,
     defectorAppearanceKey,
     defectorFallbackAppearanceKey,
+    quartermasterShop,
     shops,
   };
   world.floorExtendedState = { ...(world.floorExtendedState ?? {}), settlement: snapshot };
@@ -211,11 +264,22 @@ function buildSettlementPlacementPlan(
   settlement: RoomData,
   settlements: readonly RoomData[],
   assignedRooms: readonly RoomData[],
+  includeQuartermaster: boolean,
 ): readonly SettlementPlacementEntry[] {
   const entries: SettlementPlacementEntry[] = [
     { key: 'broker', roomIds: [settlement.id] },
     { key: 'defector', roomIds: settlements.map((room) => room.id) },
   ];
+  if (includeQuartermaster) {
+    // Guaranteed Quartermaster: prefer non-bar settlement rooms, fall back to any.
+    const shopRoomIds = settlements
+      .filter((room) => room.id !== settlement.id)
+      .map((room) => room.id);
+    entries.push({
+      key: 'quartermaster',
+      roomIds: [...shopRoomIds, ...settlements.map((room) => room.id)],
+    });
+  }
   assignedRooms.forEach((room, idx) => {
     entries.push({
       key: `shop:${idx}`,
