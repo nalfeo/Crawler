@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "epic-status-review-blockers",
+  "task_title": "Fix epic-status review blockers: path traversal, git CLI fallback, schema constraints, key collision, unknown node",
+  "estimated_apples": 2,
+  "stages": {}
+}

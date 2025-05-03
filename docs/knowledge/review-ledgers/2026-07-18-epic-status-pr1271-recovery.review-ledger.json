@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "epic-status-pr1271-recovery",
+  "task_title": "PR #1271 recovery merge + blocker fixes",
+  "estimated_apples": 2,
+  "stages": {}
+}

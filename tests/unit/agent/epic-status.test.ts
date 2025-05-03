@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  applyGithubAudit,
   auditGithub,
   buildMaterializationPlan,
   createDefaultGitReader,
@@ -13,6 +14,7 @@ import {
   type EpicState,
   type GitReader,
   type GithubRunner,
+  type ValidationResult,
 } from '../../../scripts/agent/epics/epic-status-lib';
 
 const REPO_ROOT = process.cwd();
@@ -43,21 +45,44 @@ function sha256OfFile(repoRoot: string, repoRelPath: string): string {
  */
 function makeWorkingTreeGitReader(repoRoot: string): GitReader {
   return {
-    showContent(_commit: string, filePath: string): string | null {
+    readContent(_commit: string, filePath: string) {
       try {
-        return readFileSync(resolve(repoRoot, filePath), 'utf8');
+        return {
+          content: readFileSync(resolve(repoRoot, filePath), 'utf8'),
+          source: 'working-tree' as const,
+        };
       } catch {
         return null;
       }
     },
-    commitExists(_commit: string): boolean {
-      return true;
+    commitStatus(): 'commit' {
+      return 'commit';
     },
   };
 }
 
+function replacePlanContract(
+  markdown: string,
+  mutator: (contract: Record<string, unknown>) => Record<string, unknown>,
+): string {
+  const begin = markdown.indexOf('<!-- EPIC-CONTRACT:BEGIN -->');
+  const end = markdown.indexOf('<!-- EPIC-CONTRACT:END -->');
+  const section = markdown.slice(begin, end);
+  const match = section.match(/```json\r?\n([\s\S]*?)\r?\n```/);
+  if (!match?.[1]) {
+    throw new Error('Could not locate EPIC-CONTRACT JSON');
+  }
+  const next = mutator(JSON.parse(match[1]) as Record<string, unknown>);
+  const replacement = `\`\`\`json\n${JSON.stringify(next, null, 2)}\n\`\`\``;
+  return `${markdown.slice(0, begin)}<!-- EPIC-CONTRACT:BEGIN -->\n\n${replacement}\n\n${markdown.slice(end)}`;
+}
+
 function cloneState(): EpicState {
   const state = structuredClone(STATE);
+  const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+  if (a1) {
+    a1.github.issue = null;
+  }
   state.nodes[0]!.reconciliation.drift = [];
   state.reconciliation.drift = [];
   return state;
@@ -138,6 +163,7 @@ describe('Floor 2 equipment epic status', () => {
     expect(contract.catalog.sprite_ids).toHaveLength(70);
     expect(contract.catalog.sprite_ids.filter((id) => id.startsWith('weapon.'))).toHaveLength(50);
     expect(contract.hard_gate).toMatchObject({ minimum: 1.7, maximum: 2.3 });
+    expect(contract.graph.dependencies['slice:F2']).toEqual(['slice:F1', 'slice:B2']);
     expect(contract.economy.boss_chest_rarity_percent).toEqual({
       uncommon: 85,
       rare: 15,
@@ -275,6 +301,20 @@ describe('Floor 2 equipment epic status', () => {
     expect(validate(state).errors.map((error) => error.code)).toContain('evidence.hash-drift');
   });
 
+  it('rejects whitespace-only ownership metadata', () => {
+    const state = cloneState();
+    state.nodes[0]!.ownership.claimant = '   ';
+    state.nodes[0]!.ownership.session = ' ';
+    state.nodes[0]!.ownership.scope = '\t';
+
+    const result = validate(state);
+
+    expect(result.errors.map((error) => error.code)).toContain('state.schema');
+    expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.claimant');
+    expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.session');
+    expect(result.errors.map((error) => error.message).join('\n')).toContain('ownership.scope');
+  });
+
   it('renders stable child issue packets with late-bound parent substitution', () => {
     const state = structuredClone(STATE);
     state.github.parent_issue = null;
@@ -285,7 +325,7 @@ describe('Floor 2 equipment epic status', () => {
     };
     const withParent = buildMaterializationPlan(state);
 
-    expect(withoutParent).toHaveLength(EXPECTED_NODE_IDS.length - 1);
+    expect(withoutParent).toHaveLength(EXPECTED_NODE_IDS.length - 2);
     expect(withoutParent[0]?.body).toContain('#<parent-issue-number>');
     expect(withParent.map((packet) => packet.node_id)).toEqual(
       withoutParent.map((packet) => packet.node_id),
@@ -354,6 +394,44 @@ describe('Floor 2 equipment epic status', () => {
     expect(audit.proposal.operator_actions).toHaveLength(1);
   });
 
+  it('rejects active cached ownership when no live trusted CLAIMED comment exists', () => {
+    const state = cloneState();
+    state.nodes[0]!.ownership.claimant = 'Producer';
+    state.nodes[0]!.ownership.session = '7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd';
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(audit.errors.map((error) => error.code)).toContain('github.missing-live-claim');
+    expect(audit.proposal.operator_actions.some((action) => action.includes('slice:A0'))).toBe(
+      true,
+    );
+  });
+
   it('flags advanced PR heads when head-bound evidence is still pinned to the older commit', () => {
     const state = cloneState();
     const a0 = state.nodes[0]!;
@@ -372,6 +450,24 @@ describe('Floor 2 equipment epic status', () => {
             html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
+        }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
         }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
@@ -422,6 +518,24 @@ describe('Floor 2 equipment epic status', () => {
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
         }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
+        }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
           return {
@@ -465,6 +579,85 @@ describe('Floor 2 equipment epic status', () => {
     expect(codes).toContain('evidence.non-canonical-path');
   });
 
+  it('rejects path-traversal evidence paths', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.evidence[2]!.path_or_check = '../outside-repo.txt';
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
+  it('accepts valid check:run/<id> evidence references', () => {
+    const state = cloneState();
+    validateA0(state);
+    // Replace the offline-validator evidence (index 2) with a check: reference
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'check:run/12345678',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    // No evidence.unsafe-path — check:run/<id> is an allowlisted scheme
+    expect(codes).not.toContain('evidence.unsafe-path');
+  });
+
+  it('accepts valid check:job/<id> evidence references', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'check:job/99999999',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).not.toContain('evidence.unsafe-path');
+  });
+
+  it('rejects arbitrary URI schemes as evidence references', () => {
+    const state = cloneState();
+    validateA0(state);
+    // A non-check: scheme must be rejected even if syntactically URI-like
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'fake:anything',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
+  it('rejects check: URI with unsupported resource type', () => {
+    const state = cloneState();
+    validateA0(state);
+    // check:workflow/<id> is not an allowlisted resource type
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'check:workflow/12345678',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
+  it('rejects javascript: URI scheme as evidence reference', () => {
+    const state = cloneState();
+    validateA0(state);
+    state.nodes[0]!.evidence[2] = {
+      ...state.nodes[0]!.evidence[2]!,
+      path_or_check: 'javascript:alert(1)',
+    };
+
+    const codes = validate(state).errors.map((error) => error.code);
+
+    expect(codes).toContain('evidence.unsafe-path');
+  });
+
   it('rejects issue URL that does not match the issue number', () => {
     const state = cloneState();
     const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
@@ -489,6 +682,29 @@ describe('Floor 2 equipment epic status', () => {
 
     const codes = validate(state).errors.map((error) => error.code);
     expect(codes).toContain('dag.dependency-contract-drift');
+  });
+
+  it('rejects canonical parent-slice drift', () => {
+    const state = cloneState();
+    const d2a = state.nodes.find((node) => node.node_id === 'packet:D2-A');
+    expect(d2a).toBeDefined();
+    if (d2a) d2a.parent_slice = 'slice:Z9';
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('dag.parent-slice-contract-drift');
+  });
+
+  it('rejects duplicate node_id entries', () => {
+    const state = cloneState();
+    const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
+    expect(a0).toBeDefined();
+    if (a0) {
+      // Duplicate the node to simulate a state where node_id uniqueness is violated.
+      state.nodes.push({ ...a0 });
+    }
+
+    const codes = validate(state).errors.map((error) => error.code);
+    expect(codes).toContain('dag.duplicate-node-id');
   });
 
   it('detects committed JSON Schema parity drift when node constraints are loosened', () => {
@@ -613,9 +829,151 @@ describe('Floor 2 equipment epic status', () => {
       },
     };
     const audit = auditGithub(state, runner, NOW);
-    // No duplicate-live-claims and no operator action for the revoked claim.
     expect(audit.errors.map((e) => e.code)).not.toContain('github.duplicate-live-claims');
-    expect(audit.proposal.operator_actions.filter((a) => a.includes('session-z'))).toHaveLength(0);
+    expect(
+      audit.proposal.operator_actions.some((a) =>
+        a.includes('Ownership of slice:A0 was revoked by a BLOCKED event'),
+      ),
+    ).toBe(true);
+  });
+
+  it('suppresses revoke actions when a later CLAIMED comment re-establishes ownership', () => {
+    const state = cloneState();
+    const makeClaim = (claimedAt: string): string =>
+      [
+        'CLAIMED',
+        'node: slice:A0',
+        'claimant: agent-b',
+        'session: session-z',
+        'expires_at: 2026-07-18T18:00:00.000Z',
+        `claimed_at: ${claimedAt}`,
+        `base_commit: ${HANDOFF_COMMIT}`,
+        'scope: Slice A0 control plane only',
+      ].join('\n');
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: makeClaim('2026-07-17T16:00:00.000Z'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-20',
+            },
+            {
+              body: ['BLOCKED', 'node: slice:A0', 'reason: dependency unresolved'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-21',
+            },
+            {
+              body: makeClaim('2026-07-17T17:00:00.000Z'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-22',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+
+    expect(
+      audit.proposal.operator_actions.some((a) =>
+        a.includes('Ownership of slice:A0 was revoked by a BLOCKED event'),
+      ),
+    ).toBe(false);
+  });
+
+  it('does not emit revoke action when cache is already unclaimed after BLOCKED', () => {
+    const state = cloneState();
+    const a0 = state.nodes.find((node) => node.node_id === 'slice:A0');
+    expect(a0).toBeDefined();
+    if (a0) {
+      a0.status = 'blocked';
+      a0.ownership = {
+        claimant: null,
+        session: null,
+        source: 'none',
+        scope: null,
+        claimed_at: null,
+        lease_expires_at: null,
+        heartbeat_at: null,
+        base_commit: null,
+      };
+    }
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: ['BLOCKED', 'node: slice:A0', 'reason: dependency unresolved'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-21',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(
+      audit.proposal.operator_actions.some((a) =>
+        a.includes('Ownership of slice:A0 was revoked by a BLOCKED event'),
+      ),
+    ).toBe(false);
+  });
+
+  it('accepts trusted BLOCKED events without node field when expected node is known', () => {
+    const state = cloneState();
+    const runner: GithubRunner = {
+      get(path) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.includes('/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: ['BLOCKED', 'reason: dependency unresolved'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-99',
+            },
+          ];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        throw new Error(`Unexpected GitHub path ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    expect(
+      audit.proposal.operator_actions.some((a) =>
+        a.includes('Ownership of slice:A0 was revoked by a BLOCKED event'),
+      ),
+    ).toBe(true);
   });
 
   it('does not collapse competing claimants that share a session id', () => {
@@ -783,6 +1141,24 @@ describe('Floor 2 equipment epic status', () => {
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
           };
         }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
+        }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
           return {
@@ -933,23 +1309,198 @@ describe('Floor 2 equipment epic status', () => {
   });
 });
 
-describe('validateEvidenceRequirements', () => {
-  it('production git reader rejects non-commit git objects', () => {
-    const reader = createDefaultGitReader(REPO_ROOT);
-    const commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-    }).trim();
-    const blobSha = execFileSync('git', ['rev-parse', 'HEAD:package.json'], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-    }).trim();
+describe('applyGithubAudit', () => {
+  it('keeps release_ready false when GitHub audit adds errors', () => {
+    // Build a mock offline result with release_ready: true so that
+    // only the audit errors can flip the release gate.
+    const offlineReady: ValidationResult = {
+      state: null,
+      errors: [],
+      warnings: [],
+      blockers: [],
+      ready_queue: ['slice:A1'],
+      release_ready: true,
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+    const combined = applyGithubAudit(offlineReady, {
+      errors: [{ code: 'github.synthetic-error', message: 'synthetic audit failure' }],
+      warnings: [],
+      proposal: { repo_patch: [], operator_actions: [] },
+    });
 
-    expect(reader.commitExists(commitSha)).toBe(true);
-    expect(reader.commitExists(blobSha)).toBe(false);
+    expect(combined.release_ready).toBe(false);
+    expect(combined.errors.map((error) => error.code)).toContain('github.synthetic-error');
+    // ready_queue must be suppressed when audit has errors (GitHub facts are stronger authority)
+    expect(combined.ready_queue).toEqual([]);
   });
 
-  it('rejects a validated node with a fabricated commit for non-handoff evidence', () => {
+  it('merges warnings and reconciliation proposals when the audit is clean', () => {
+    const offline = validate(cloneState());
+    const combined = applyGithubAudit(offline, {
+      errors: [],
+      warnings: [{ code: 'github.synthetic-warning', message: 'synthetic audit warning' }],
+      proposal: {
+        repo_patch: [{ op: 'replace', path: '/plan/contract_sha256', value: 'x', reason: 'test' }],
+        operator_actions: ['follow up'],
+      },
+    });
+
+    expect(combined.warnings.map((warning) => warning.code)).toContain('github.synthetic-warning');
+    expect(combined.proposal.repo_patch).toContainEqual(
+      expect.objectContaining({ path: '/plan/contract_sha256' }),
+    );
+    expect(combined.proposal.operator_actions).toContain('follow up');
+  });
+
+  it('preserves release_ready true when offline is ready and audit is clean', () => {
+    const offlineReady: ValidationResult = {
+      state: null,
+      errors: [],
+      warnings: [],
+      blockers: [],
+      ready_queue: [],
+      release_ready: true,
+      proposal: { repo_patch: [], operator_actions: [] },
+    };
+    const combined = applyGithubAudit(offlineReady, {
+      errors: [],
+      warnings: [],
+      proposal: { repo_patch: [], operator_actions: [] },
+    });
+
+    expect(combined.release_ready).toBe(true);
+    expect(combined.errors).toEqual([]);
+  });
+});
+
+describe('validateEvidenceRequirements', () => {
+  it('supports legacy GitReader shape (showContent + commitExists + not-a-commit status)', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T20:00:00.000Z',
+    };
+    node.evidence = [
+      {
+        kind: 'offline-validator-and-focused-tests',
+        path_or_check: 'tests/unit/agent/epic-status.test.ts',
+        sha256: sha256OfFile(REPO_ROOT, 'tests/unit/agent/epic-status.test.ts'),
+        commit: HANDOFF_COMMIT,
+        recorded_at: '2026-07-17T20:01:00.000Z',
+      },
+    ];
+    const legacyReader: GitReader = {
+      commitStatus(sha) {
+        if (sha === TEST_MERGE_COMMIT) return 'not-a-commit';
+        return 'commit';
+      },
+      commitExists: () => true,
+      showContent(_commit, filePath) {
+        return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+      },
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      schemaDocument: SCHEMA,
+      gitReader: legacyReader,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');
+  });
+
+  it('accepts current not-commit status from commitStatus', () => {
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T20:00:00.000Z',
+    };
+    node.evidence = [
+      {
+        kind: 'offline-validator-and-focused-tests',
+        path_or_check: 'tests/unit/agent/epic-status.test.ts',
+        sha256: sha256OfFile(REPO_ROOT, 'tests/unit/agent/epic-status.test.ts'),
+        commit: HANDOFF_COMMIT,
+        recorded_at: '2026-07-17T20:01:00.000Z',
+      },
+    ];
+    const reader: GitReader = {
+      commitStatus(sha) {
+        if (sha === TEST_MERGE_COMMIT) return 'not-commit';
+        return 'commit';
+      },
+      readContent(commit, filePath) {
+        return {
+          content: readFileSync(resolve(REPO_ROOT, filePath), 'utf8'),
+          source: commit === HANDOFF_COMMIT ? 'working-tree' : 'git',
+        };
+      },
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      schemaDocument: SCHEMA,
+      gitReader: reader,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.not-a-commit');
+  });
+
+  it('maps legacy commitExists=false to missing commit status', () => {
+    const legacyReader: GitReader = {
+      commitExists: () => false,
+      showContent: () => null,
+    };
+    const state = cloneState();
+    const node = state.nodes[0]!;
+    node.status = 'validated';
+    node.merge = {
+      commit: TEST_MERGE_COMMIT,
+      merged_at: '2026-07-17T20:00:00.000Z',
+    };
+
+    const result = validateEpicState(state, {
+      repoRoot: REPO_ROOT,
+      now: NOW,
+      planMarkdown: PLAN,
+      schemaDocument: SCHEMA,
+      gitReader: legacyReader,
+    });
+
+    expect(result.errors.map((error) => error.code)).toContain('merge.commit-not-found');
+  });
+
+  it('production git reader rejects non-commit git objects', () => {
+    let commitSha: string;
+    let blobSha: string;
+    try {
+      commitSha = execFileSync('git', ['rev-parse', 'HEAD'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+      blobSha = execFileSync('git', ['rev-parse', 'HEAD:package.json'], {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+      }).trim();
+    } catch {
+      // Skip when git is unavailable or not in a repository.
+      return;
+    }
+
+    const reader = createDefaultGitReader(REPO_ROOT);
+    expect(reader.commitStatus(commitSha)).toBe('commit');
+    expect(reader.commitStatus(blobSha)).toBe('not-commit');
+  });
+
+  it('rejects a validated node with a fabricated commit in file-backed evidence', () => {
     const state = cloneState();
     const node = state.nodes[0]!;
     node.status = 'validated';
@@ -962,7 +1513,8 @@ describe('validateEvidenceRequirements', () => {
         return {
           ...e,
           commit: FABRICATED_COMMIT,
-          path_or_check: 'docs/knowledge/epics/floor-2-equipment/PLAN.md',
+          // Use the offline-validator test file as the path (file-backed evidence kind)
+          path_or_check: 'tests/unit/agent/epic-status.test.ts',
         };
       }
       return e;
@@ -971,12 +1523,16 @@ describe('validateEvidenceRequirements', () => {
     // Use a reader that only recognises the known commits, not the fabricated one.
     const knownCommits = new Set([HANDOFF_COMMIT, LEDGER_COMMIT]);
     const strictReader: GitReader = {
-      commitExists(sha) {
-        return knownCommits.has(sha);
+      commitStatus(sha) {
+        return knownCommits.has(sha) ? 'commit' : 'missing';
       },
-      showContent(_commit, filePath) {
+      readContent(commit, filePath) {
+        if (!knownCommits.has(commit)) return null;
         try {
-          return readFileSync(resolve(REPO_ROOT, filePath), 'utf8');
+          return {
+            content: readFileSync(resolve(REPO_ROOT, filePath), 'utf8'),
+            source: 'working-tree' as const,
+          };
         } catch {
           return null;
         }
@@ -1373,6 +1929,24 @@ describe('speculative stacked-work metadata', () => {
             url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1282',
           };
         }
+        if (path.includes('/issues/1264/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: [
+                'CLAIMED',
+                'node: slice:A0',
+                'claimant: Producer',
+                'session: 7b4a2e77-4353-401c-ab6f-2b7e9b6e3abd',
+                'expires_at: 2026-07-18T18:00:00.000Z',
+                'claimed_at: 2026-07-17T17:32:38.205Z',
+                `base_commit: ${HANDOFF_COMMIT}`,
+                'scope: Slice A0 control plane only; no gameplay',
+              ].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1264#issuecomment-1',
+            },
+          ];
+        }
         if (path.includes('/comments?per_page=100&page=1')) return [];
         if (path.endsWith('/pulls/1271')) {
           // The canonical A0 dep PR.
@@ -1412,6 +1986,88 @@ describe('speculative stacked-work metadata', () => {
     ).toBe(true);
   });
 
+  it('maps node-less BLOCKED comments on stacked_work issues to the owning node', () => {
+    const state = buildStateWithStackedWork();
+    const a1 = state.nodes.find((n) => n.node_id === 'slice:A1');
+    expect(a1).toBeDefined();
+    if (a1) {
+      a1.status = 'claimed';
+      a1.ownership = {
+        claimant: 'agent-z',
+        session: 'session-z',
+        source: 'child-issue-comment',
+        scope: 'stacked-work',
+        claimed_at: '2026-07-17T16:00:00.000Z',
+        lease_expires_at: '2026-07-18T18:00:00.000Z',
+        heartbeat_at: '2026-07-17T16:00:00.000Z',
+        base_commit: HANDOFF_COMMIT,
+      };
+    }
+    const runner: GithubRunner = {
+      get(path: string) {
+        if (path.endsWith('/issues/1264')) {
+          return {
+            number: 1264,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1264',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1264',
+          };
+        }
+        if (path.endsWith('/issues/9100')) {
+          return {
+            number: 9100,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/9100',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/9100',
+          };
+        }
+        if (path.endsWith('/issues/1282')) {
+          return {
+            number: 1282,
+            state: 'open',
+            html_url: 'https://github.com/nalfeo/Crawler/issues/1282',
+            url: 'https://api.github.com/repos/nalfeo/Crawler/issues/1282',
+          };
+        }
+        if (path.includes('/issues/1282/comments?per_page=100&page=1')) {
+          return [
+            {
+              body: ['BLOCKED', 'reason: dependency unresolved'].join('\n'),
+              author_association: 'OWNER',
+              html_url: 'https://github.com/nalfeo/Crawler/issues/1282#issuecomment-41',
+            },
+          ];
+        }
+        if (
+          path.includes('/issues/1264/comments?per_page=100&page=1') ||
+          path.includes('/issues/9100/comments?per_page=100&page=1')
+        ) {
+          return [];
+        }
+        if (path.includes('/comments?per_page=100&page=2')) return [];
+        if (path.endsWith('/pulls/1271')) {
+          return {
+            number: 1271,
+            state: 'open',
+            merged: false,
+            merge_commit_sha: null,
+            merged_at: null,
+            html_url: 'https://github.com/nalfeo/Crawler/pull/1271',
+            head: { sha: FULL_COMMIT },
+          };
+        }
+        throw new Error(`Unexpected GitHub path: ${path}`);
+      },
+    };
+
+    const audit = auditGithub(state, runner, NOW);
+    const revokeActions = audit.proposal.operator_actions.filter((a) =>
+      a.includes('was revoked by a BLOCKED event'),
+    );
+    expect(revokeActions.some((a) => a.includes('slice:A1'))).toBe(true);
+    expect(revokeActions.some((a) => a.includes('slice:A0'))).toBe(false);
+  });
+
   it('suppresses ready_queue when plan contract hash has drifted', () => {
     const state = cloneState();
     validateA0(state);
@@ -1430,6 +2086,58 @@ describe('speculative stacked-work metadata', () => {
 
     expect(result.errors.map((e) => e.code)).toContain('plan.contract-drift');
     expect(result.ready_queue).toEqual([]);
+  });
+
+  it('emits ready-queue.suppressed warning when nodes are ready but errors exist', () => {
+    const state = cloneState();
+    validateA0(state);
+    // Restore A1's issue (cloneState clears it) so A1 has issue authority and becomes ready.
+    const a1 = state.nodes.find((node) => node.node_id === 'slice:A1');
+    if (a1) {
+      a1.github.issue = {
+        number: 1279,
+        url: 'https://github.com/nalfeo/Crawler/issues/1279',
+      };
+    }
+    // Inject a non-schema error that occurs AFTER readyQueue is populated:
+    // add a phantom node ID to an existing release flag's validating_nodes.
+    // The string matches the /^slice:/ pattern so Zod parses successfully,
+    // but the post-schema check emits release.flag-node (node does not exist).
+    state.release.flags[0]!.validating_nodes.push('slice:PHANTOM-X');
+
+    const result = validate(state);
+
+    // readyQueue is suppressed due to errors.
+    expect(result.ready_queue).toEqual([]);
+    expect(result.warnings.map((w) => w.code)).toContain('ready-queue.suppressed');
+    const warn = result.warnings.find((w) => w.code === 'ready-queue.suppressed');
+    expect(warn?.message).toContain('slice:A1');
+  });
+
+  it('does not emit ready-queue.suppressed when queue is empty or no errors', () => {
+    const state = cloneState();
+    validateA0(state);
+    // No errors, no ready nodes (A1 has no issue authority).
+    const result = validate(state);
+    expect(result.warnings.map((w) => w.code)).not.toContain('ready-queue.suppressed');
+  });
+
+  it('derives canonical dependency edges from the plan contract graph', () => {
+    const state = cloneState();
+    const mutatedPlan = replacePlanContract(PLAN, (contract) => {
+      const next = structuredClone(contract);
+      const graph = next['graph'] as {
+        dependencies: Record<string, string[]>;
+        parent_slices: Record<string, string | null>;
+      };
+      graph.dependencies['slice:A1'] = [];
+      return next;
+    });
+    state.plan.contract_sha256 = extractPlanContract(mutatedPlan).sha256;
+
+    const result = validate(state, mutatedPlan);
+
+    expect(result.errors.map((e) => e.code)).toContain('dag.dependency-contract-drift');
   });
 
   it('counts a superseded required node as satisfied when its replacement is validated', () => {
@@ -1484,6 +2192,7 @@ describe('speculative stacked-work metadata', () => {
         (e) => e.code === 'lifecycle.superseded-replacement' && e.node_id === 'slice:A0',
       ),
     ).toBe(false);
+    expect(result.blockers.some((e) => e.node_id === 'slice:A0')).toBe(false);
   });
 
   it('does not require heartbeat_at for a freshly claimed node', () => {

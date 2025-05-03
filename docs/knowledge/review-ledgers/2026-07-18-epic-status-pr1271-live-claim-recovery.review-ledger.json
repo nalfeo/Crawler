@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "epic-status-pr1271-live-claim-recovery",
+  "task_title": "Recover PR #1271 epic-status blockers",
+  "estimated_apples": 2,
+  "stages": {}
+}
