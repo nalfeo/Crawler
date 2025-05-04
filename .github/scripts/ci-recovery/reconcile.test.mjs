@@ -4806,18 +4806,17 @@ test('queue admission finds a concurrently attached merge-train label on the sec
 });
 
 // ---------------------------------------------------------------------------
-// Thread 3 regression: automationStallAction 'progressed' resets attempt
-// counter and uses 'blocker-progressed' release trigger.
+// Regression: head-only drift with unchanged blockers must carry the stale
+// retry budget instead of resetting it as "progressed".
 // ---------------------------------------------------------------------------
 
-test('progressed stale action resets attempt counter to zero and uses blocker-progressed release trigger', async (t) => {
+test('stale automation increments attempt without reset when only headSha changes', async (t) => {
   // Scenario: the PR was dispatched against an older head SHA ('old-head-sha')
   // with attempt=1. The head has since advanced to HEAD_SHA (e.g. a rebase) but
-  // the blockers fingerprint is unchanged (same CI failure). automationStallAction
-  // must return 'progressed', which triggers the Thread 3 fix:
-  //   - dispatchAttemptBase reset to 0 (so the new head gets a full retry budget)
-  //   - release trigger set to 'blocker-progressed' (not 'stale-automation-retry')
-  //   - final attempt stored as 0+1=1 (not 2, which would exhaust the budget)
+  // the blockers fingerprint is unchanged (same CI failure). This must stay on
+  // the stale-retry path:
+  //   - release trigger is 'stale-automation-retry' (not 'blocker-progressed')
+  //   - final attempt is carried and incremented to 2 (not reset to 1)
   const PROG_FINGERPRINT = blockerFingerprint([
     {
       kind: 'ci-failure',
@@ -4931,36 +4930,35 @@ test('progressed stale action resets attempt counter to zero and uses blocker-pr
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /assigned copilot pr=#42/);
 
-  // Must use 'blocker-progressed' release trigger, never 'stale-automation-retry'.
+  // Must stay on stale-retry path, never classify as blocker-progressed.
   const releasePatch = capturedPatches.find((patch) => {
     const parsed = parseStateComment(patch.body);
-    return parsed?.trigger === 'blocker-progressed';
+    return parsed?.trigger === 'stale-automation-retry';
   });
   assert.ok(
     releasePatch,
-    'the release state must carry trigger=blocker-progressed for a progressed head',
+    'the release state must carry trigger=stale-automation-retry for unchanged blockers',
   );
   assert.ok(
     !mutatingCalls.some((call) => {
       if (call.method !== 'PATCH') return false;
       try {
-        return parseStateComment(call.body?.body)?.trigger === 'stale-automation-retry';
+        return parseStateComment(call.body?.body)?.trigger === 'blocker-progressed';
       } catch {
         return false;
       }
     }),
-    'must not use stale-automation-retry for a progressed head',
+    'must not use blocker-progressed when only headSha changed',
   );
 
-  // Final dispatched state must carry attempt=1 (reset-to-0 then incremented),
-  // not attempt=2 (which would carry forward the stale budget and exhaust it).
+  // Final dispatched state must carry attempt=2 (carried + incremented), not 1.
   const finalPatch = capturedPatches.at(-1);
   assert.ok(finalPatch, 'a final state PATCH must be issued');
   const finalState = parseStateComment(finalPatch.body);
   assert.equal(
     finalState?.attempt,
-    1,
-    'progressed dispatch must reset attempt budget: stored attempt must be 1 (0+1), not 2',
+    2,
+    'unchanged-blocker dispatch must carry attempt budget: stored attempt must be 2 (1+1), not reset',
   );
   assert.equal(finalState?.trigger, 'workflow_run:completed');
   assert.equal(finalState?.owner, 'automation');

@@ -110,15 +110,26 @@ export function normalizeBlockers(blockers) {
       ...(blocker.url ? { url: compact(blocker.url) } : {}),
       ...(blocker.threadId ? { threadId: compact(blocker.threadId) } : {}),
       ...(blocker.path ? { path: compact(blocker.path) } : {}),
-      ...(Number.isFinite(blocker.line) ? { line: blocker.line } : {}),
+      ...(blocker.line !== undefined && blocker.line !== null
+        ? {
+            line:
+              typeof blocker.line === 'number' && Number.isFinite(blocker.line)
+                ? blocker.line
+                : compact(blocker.line),
+          }
+        : {}),
     }))
     .sort((left, right) => `${left.kind}\0${left.id}`.localeCompare(`${right.kind}\0${right.id}`));
 }
 
 export function blockerFingerprint(blockers) {
   const normalized = normalizeBlockers(blockers);
+  // NOTE: `line` is display-only metadata. Diff-position lines drift whenever
+  // surrounding code changes (e.g. INDEX regeneration), so it must not
+  // participate in blocker identity hashing.
+  const fingerprintBlockers = normalized.map(({ line: _line, ...rest }) => rest);
   return createHash('sha256')
-    .update(JSON.stringify({ blockers: normalized }))
+    .update(JSON.stringify({ blockers: fingerprintBlockers }))
     .digest('hex');
 }
 
@@ -324,7 +335,7 @@ export function isDuplicateDispatch(state, fingerprint) {
 
 export function automationStallAction({
   state,
-  headSha,
+  headSha: _headSha,
   fingerprint,
   now = new Date(),
   staleMinutes = AUTOMATION_STALE_MINUTES,
@@ -337,10 +348,8 @@ export function automationStallAction({
     return 'new';
   }
 
-  const currentProgressKey = automationProgressKey(headSha, fingerprint);
-  const storedProgressKey =
-    state.progressKey || automationProgressKey(state.headSha, state.fingerprint);
-  if (storedProgressKey !== currentProgressKey) {
+  const currentFingerprint = compact(fingerprint);
+  if (compact(state.fingerprint) !== currentFingerprint) {
     return 'progressed';
   }
 
