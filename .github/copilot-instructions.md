@@ -36,6 +36,13 @@ The sole maintainer works best answering questions one at a time rather than wri
 - Before creating PR: Run the **review harness** for the change's apple tier and record a valid **review ledger** (`npm run review:ledger -- validate`) — the `pr-review-ledger` guard hard-denies `create_pull_request` otherwise. See `.github/skills/review-harness/SKILL.md`.
 - During fixes/implementations, make a best effort to improve or preserve unit-test coverage in touched areas so changes move toward UT coverage goals.
 
+## Pull Request Reviews
+
+For every pull request or diff review, follow the canonical exhaustive-review contract in
+`.github/instructions/review.instructions.md`. Adopt its Reviewer persona, complete every
+review category before responding, deduplicate by root cause, and return all validated
+findings in one pass.
+
 ## Critical Rules
 
 - All game randomness uses `SeededRandom` — NEVER `Math.random()`
