@@ -25,4 +25,15 @@ describe('createFloor1GameConfig', () => {
     expect(source).toContain('createFloorGameConfig');
     expect(source).toContain('createFloorMainSceneOptions');
   });
+
+  it('passes replacement options as queued scene-restart data', () => {
+    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+
+    expect(source).toContain('this.scene.restart({ mainGameSceneOptions: composedNextOptions })');
+    expect(source).toContain(
+      'this.options.recomposeFloorTransitionOptions?.(nextOptions) ?? nextOptions',
+    );
+    expect(source).toContain('this.options = data.mainGameSceneOptions');
+    expect(source).not.toContain('this.options = nextOptions');
+  });
 });
