@@ -36,7 +36,9 @@ export {
   meetSpellQuestGiver,
 } from './floorScenario.js';
 export { getScenarioDefinition } from './scenarioDefinitions.js';
-export type { ScenarioDefinition } from './scenarioDefinitions.js';
+export type { ScenarioDefinition, ScenarioInitializationOptions } from './scenarioDefinitions.js';
+export { capturePlayerCarryover, restorePlayerCarryover } from './playerCarryover.js';
+export type { PlayerCarryoverSnapshot } from './playerCarryover.js';
 export {
   initializeFloor2Scenario,
   floor2ObjectiveTick,

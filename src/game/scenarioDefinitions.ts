@@ -2,10 +2,19 @@ import type { GameWorld } from '../core/world.js';
 import { getFloorManifest } from '../shared/floor-registry.js';
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from './floorScenario.js';
 import { initializeFloor2Scenario } from './floor2Scenario.js';
+import type { PlayerCarryoverSnapshot } from './playerCarryover.js';
+
+export interface ScenarioInitializationOptions {
+  readonly playerCarryover?: PlayerCarryoverSnapshot;
+}
 
 export interface ScenarioDefinition {
   readonly floorId: string;
-  readonly configureWorld: (world: GameWorld, playerEid: number) => void;
+  readonly configureWorld: (
+    world: GameWorld,
+    playerEid: number,
+    options?: ScenarioInitializationOptions,
+  ) => void;
   readonly selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
   readonly director: {
     readonly intro: string;
