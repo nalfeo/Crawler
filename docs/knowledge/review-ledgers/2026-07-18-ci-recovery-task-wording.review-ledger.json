@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-task-wording",
+  "task_title": "Fix CI recovery task body to prevent agent reply on wrong comment",
+  "estimated_apples": 1,
+  "stages": {}
+}
