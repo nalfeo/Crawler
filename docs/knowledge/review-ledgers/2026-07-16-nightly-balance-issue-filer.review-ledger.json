@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "nightly-balance-issue-filer",
+  "task_title": "Add nightly balance issue filer",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "plan_divergence": "minor",
+      "notes": "Adopted: import HUMAN_APPROVAL_LABEL; fixed untemplated concurrency group; explicit PR-label/source-issue prompt assertions; direct created issue number/node_id passthrough test. Rejected branch-prefix instruction because the approved contract is branch-name-independent and explicitly requires Closes #<issue> plus PR labels. Rejected server-side label filtering because the hard requirement is pagination across all open issues and filtering could miss a malformed existing exact-title issue."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,7 @@
 import { TRUSTED_ASSOCIATIONS, TRUSTED_BOT_LOGINS } from './state.mjs';
 
 export const ISSUE_INTAKE_MARKER = '<!-- crawler-issue-intake:v1 -->';
-const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
+export const GITHUB_ACTIONS_LOGIN = 'github-actions[bot]';
 const COPILOT_OPENER_LOGINS = new Set([
   'copilot',
   'copilot[bot]',
@@ -11,7 +11,10 @@ const COPILOT_OPENER_LOGINS = new Set([
   'app/copilot-swe-agent',
 ]);
 
-function isCopilotLogin(login) {
+// Exported so callers (e.g. nightly-balance-issue.mjs) can recognize a completed
+// Copilot assignment as durable proof of finished intake without duplicating this
+// login list.
+export function isCopilotLogin(login) {
   return COPILOT_OPENER_LOGINS.has(String(login || '').toLowerCase());
 }
 
