@@ -1418,9 +1418,14 @@ function applyWelcomeRoomStructuralTiles(world: GameWorld, stamp: StampedSetPiec
           floorMap.tileMap.setFlags(tx, ty, TilePresets.DOOR_OPEN);
           floorMap.terrain[idx] = terrain;
         } else if (floorMap.terrain[idx] !== TerrainType.DOOR) {
-          if (!floorMap.tileMap.isPassable(tx, ty)) {
-            floorMap.tileMap.setFlags(tx, ty, TilePresets.WALL);
-          }
+          // Always set wall physics flags when stamping a wall prop — interior
+          // tiles start passable so the old `!isPassable` guard would silently
+          // skip the physics update, leaving a tile that looks like a wall but
+          // lets the player walk through it.  The welcome-room set-piece no
+          // longer includes wall-kind props (its structure comes from the dungeon
+          // generator), so this branch is a defensive guard for any future
+          // set-piece that authors explicit interior walls.
+          floorMap.tileMap.setFlags(tx, ty, TilePresets.WALL);
           floorMap.terrain[idx] = terrain;
         }
       }
