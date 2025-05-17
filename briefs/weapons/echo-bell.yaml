@@ -1,0 +1,24 @@
+type: weapon
+name: echo-bell
+description: |
+  A Floor 2 beam weapon: a sleek resonance bell mounted on a short
+  handle, held vertically with the bell-head at top and grip at bottom.
+  The bell is a smooth oval or dome shape — think tuning fork crossed with
+  a dungeon-salvage radio emitter — with faint vibration lines or arc
+  glyph etched around the bell face. Cool metallic body (gunmetal or
+  brushed steel) with a single glowing accent ring in electric blue or
+  cyan where the beam exits. Handle is short, wrapped in dark cord with
+  a small pommel. No glow aura, no sparks — the beam exits as a hair-thin
+  energy line from the bell aperture, just barely visible. The silhouette
+  must read as "bell on a handle" at a glance.
+# Vertical orientation, 4x4 sheet, 64x64 palette, anchor — all inherited
+# from data/sprite-types/weapon.json. This brief adds only what makes the
+# echo-bell specifically the echo-bell.
+#
+# Production wave: floor2-equipment-weapon-beam
+# Stable ID:       weapon.echo-bell
+# Runtime key:     equipment/weapon/echo-bell
+variations:
+  - wider bell dome with concentric arc etchings on the face
+  - elongated bell body with a visible aperture slit emitting a faint beam sliver
+minVariations: 6
