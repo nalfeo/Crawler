@@ -55,6 +55,7 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: Publish immutable candidate result
+        id: publish
         uses: actions/github-script@v7
         env:
           CANDIDATE_SHA: ${{ inputs.candidate_sha }}
@@ -96,11 +97,265 @@ jobs:
               },
             });
 
+      # If "Publish immutable candidate result" itself failed (e.g. a transient
+      # checks.create API error after the app token was successfully minted),
+      # the fingerprinted check is still whatever `dispatchValidation()`
+      # (reconcile.mjs) originally posted: `in_progress`. trainCheckState()
+      # (state.mjs) only demotes a stuck in_progress check to retryable
+      # ("missing") after CANDIDATE_VALIDATION_STALE_MS (40 minutes) --
+      # otherwise it reports `pending`, which planPrefixPromotion() (state.mjs)
+      # maps to the `wait` action. So without this step, the "Wake merge-train
+      # reconciliation" dispatch below would immediately wake reconcile.mjs
+      # only to have it see `pending` and do nothing -- the wake would be
+      # ineffective for exactly the failure case it exists to cover. Post a
+      # `cancelled` conclusion here -- mirroring reconcile.mjs's own
+      # dispatchValidation catch block -- so trainCheckState() sees "missing"
+      # immediately and the woken reconciliation redispatches validation right
+      # away.
+      #
+      # Mint a SEPARATE recovery token instead of reusing
+      # `steps.app-token.outputs.token`: if "Generate repository app token"
+      # itself is what failed (e.g. a transient GitHub Apps auth error), that
+      # output is empty, and `checks.create` requires a token from the
+      # trusted App identity -- trainCheckState() filters check runs by
+      # `app.id`, so a `GITHUB_TOKEN`-authored check would never be seen. This
+      # covers the app-token-mint-failure case too (not just post-mint publish
+      # failures): a fresh mint attempt gets a real chance to succeed.
+      #
+      # Both this step and the retryable-check step below are gated on
+      # `(failure() || cancelled()) && (steps.app-token.outcome == 'failure' ||
+      # steps.app-token.outcome == 'cancelled' || steps.publish.outcome ==
+      # 'failure' || steps.publish.outcome == 'cancelled')`.
+      #
+      # `cancelled()` is included alongside `failure()`, not just for symmetry:
+      # this workflow has no `concurrency:` block, so the only realistic path
+      # to a mid-flight cancellation of this specific step is a human
+      # manually cancelling a stuck run via the UI/API -- rare, but real. If
+      # "Publish immutable candidate result" is cancelled before its
+      # `checks.create` call completes, its `outcome` is `cancelled` (not
+      # `failure`), and bare `failure()` is false for a cancelled run --
+      # without `cancelled()` this fallback would never fire, leaving the
+      # original check `in_progress` and reconcile waiting out the 40-minute
+      # staleness bound purely because of how this fallback recovers, not
+      # because of any candidate defect. `always()`/`cancelled()` steps are
+      # documented by GitHub Actions to still execute after a run
+      # cancellation (that is their entire purpose), so this fallback firing
+      # on `cancelled()` is expected to work the same way the `always()`-gated
+      # wake-dispatch step below already does.
+      #
+      # The `failure() || cancelled()` prefix is REQUIRED, not decorative: a
+      # step `if:` that contains no status-check function (`success()`/
+      # `failure()`/`cancelled()`/`always()`) gets an implicit `success()`
+      # ANDed in by GitHub Actions. A bare `steps.app-token.outcome ==
+      # 'failure' || steps.publish.outcome == 'failure'` condition is
+      # therefore silently rewritten to `success() && (...)` -- which can
+      # NEVER be true, because `success()` requires every previous step in
+      # this job to have succeeded, while the outcome checks require one of
+      # those same two steps to have failed. Verified empirically in this
+      # repo (nalfeo/Crawler run 29467286711): a step with a bare
+      # `steps.X.outcome == 'failure'` condition was SKIPPED even though step
+      # X genuinely failed, while the same condition prefixed with
+      # `failure() &&` ran as expected. Without the prefix this whole
+      # fallback mechanism would be permanently dead code.
+      #
+      # The step-local outcome checks are still worth keeping alongside
+      # `failure() || cancelled()` (not just those bare status functions) as
+      # defense-in-depth: verified empirically (run 29467076748) that
+      # `failure()` at step level, once a job is already running via
+      # `if: always()`, only reflects STEPS in THIS job -- not an ancestor
+      # `needs:` job's result. So today, plain `failure()` already would NOT
+      # misfire when `verify` fails but "Publish immutable candidate result"
+      # itself succeeds (that step would still run normally, post the
+      # correct `failure` conclusion, and `failure()` afterward would be
+      # false). But GitHub's own docs describe `failure()` as considering
+      # "any ancestor job" in some job-dependency chains, so scoping
+      # explicitly to the two step-local outcomes removes any reliance on
+      # that ambiguity and keeps the intent self-documenting for future
+      # maintainers: this fallback exists ONLY to recover from a genuine
+      # app-token-mint or publish-step failure/cancellation, never to react
+      # to an upstream `verify` failure that publish already handled
+      # correctly. (The `cancelled()` extension above has not been
+      # independently re-verified with a live probe the way `failure()`/
+      # `success()` were -- it follows by documented design and by analogy
+      # with the same job-status-function category, but should be re-verified
+      # empirically if this fallback's behavior is ever in question.)
+      #
+      # The retryable-check step additionally requires
+      # `steps.recovery-app-token.outcome == 'success'`: if the recovery mint
+      # itself failed (e.g. the same transient GitHub Apps auth error that hit
+      # the original app-token step also hits the recovery attempt), there is
+      # no valid App-authored token to call `checks.create` with, so attempting
+      # the retryable-check step would just waste an attempt and produce a
+      # confusing secondary failure instead of a clean, diagnosable no-op.
+      #
+      # Before creating the cancellation check, the script below also queries
+      # for an existing terminal (success/failure) check from the trusted App
+      # for this fingerprint and skips publishing if one is already there.
+      # This guards against an "accepted but response lost" race: "Publish
+      # immutable candidate result"'s checks.create call can succeed
+      # server-side while the step itself still reports `failure`/`cancelled`
+      # (e.g. a transient network error after GitHub already persisted the
+      # check, or the run being cancelled between the request completing and
+      # the step returning). trainCheckState() (state.mjs latestChecksByName)
+      # selects the HIGHEST-ID check run matching name/fingerprint/app-id, so
+      # blindly creating a new `cancelled` check here would mask that
+      # already-persisted, genuinely correct terminal result with a newer,
+      # wrong one -- causing reconcile to redispatch validation instead of
+      # correctly bisecting a real candidate failure.
+      #
+      # The listForRef lookup above narrows but does not fully close this
+      # race: the original publish request can still be in flight when the
+      # lookup runs (finding no terminal check yet), and can persist its
+      # genuine terminal result *after* the lookup but *before* this step's
+      # own write. If that write were another `checks.create` call, it would
+      # always get a fresher/higher ID than whatever the in-flight request
+      # persists next, masking the real result again regardless of the
+      # lookup. To close this, when the lookup finds an existing (non-
+      # terminal) check run for this fingerprint, this step *updates the
+      # highest-ID matching run in place* (`checks.update`, same check_run_id) instead
+      # of creating a new one -- preserving its original (older, lower) ID.
+      # If the in-flight original request then lands afterwards, its
+      # `checks.create` call mints a genuinely new, higher-ID check, which
+      # correctly wins over this in-place cancelled update, regardless of
+      # read-visibility timing, because check-run IDs are allocated at
+      # creation time and only ever increase.
+      #
+      # This closes the race for the common case, since the very first
+      # in_progress check for a candidate is always created by reconcile.mjs
+      # before this workflow is even dispatched -- so listForRef should
+      # essentially always find at least that check to update. The only way
+      # this step still falls through to `checks.create` is if that initial
+      # check is not yet visible in listForRef's result at all (a narrower
+      # read-after-write visibility-lag scenario, not the original in-flight
+      # race). To shrink that residual window further, this step treats a
+      # "no matching check found" result as provisional and re-lists once
+      # more after a short delay before finalizing the decision to create --
+      # this narrows, but for the same reason as above (no atomic
+      # create-if-absent primitive in the Checks API) cannot fully eliminate,
+      # that last, much narrower race.
+      - name: Generate recovery app token
+        id: recovery-app-token
+        if: (failure() || cancelled()) && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Mark candidate check retryable if publishing failed
+        # Structure: (status-check failure/cancelled) &&
+        # (recovery token minted) &&
+        # (original app-token or publish step failed/cancelled)
+        if: (failure() || cancelled()) && steps.recovery-app-token.outcome == 'success' && (steps.app-token.outcome == 'failure' || steps.app-token.outcome == 'cancelled' || steps.publish.outcome == 'failure' || steps.publish.outcome == 'cancelled')
+        uses: actions/github-script@v7
+        env:
+          CANDIDATE_SHA: ${{ inputs.candidate_sha }}
+          FINGERPRINT: ${{ inputs.fingerprint }}
+          APP_ID: ${{ secrets.APP_ID }}
+        with:
+          github-token: ${{ steps.recovery-app-token.outputs.token }}
+          script: |
+            const findMatch = async () => {
+              const { data: existing } = await github.rest.checks.listForRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: process.env.CANDIDATE_SHA,
+                check_name: 'merge-train-candidate',
+                per_page: 100,
+              });
+              const trustedAppId = Number(process.env.APP_ID);
+              const matching = (existing.check_runs ?? []).filter(
+                (run) =>
+                  run.external_id === process.env.FINGERPRINT &&
+                  Number(run.app?.id) === trustedAppId,
+              );
+              // Select the highest-ID (authoritative, per trainCheckState())
+              // match first, then derive alreadyTerminal from that SAME run
+              // -- not from "any matching run is terminal" -- so an older
+              // terminal run can never mask a newer in_progress run that
+              // still needs to be corrected.
+              const existingRun = matching.reduce(
+                (latest, run) => (!latest || Number(run.id) > Number(latest.id) ? run : latest),
+                undefined,
+              );
+              const alreadyTerminal =
+                existingRun?.status === 'completed' &&
+                (existingRun.conclusion === 'success' || existingRun.conclusion === 'failure');
+              return { existingRun, alreadyTerminal };
+            };
+            let lastError;
+            for (const delayMs of [0, 1000, 2000]) {
+              if (delayMs > 0) {
+                await new Promise((resolve) => setTimeout(resolve, delayMs));
+              }
+              try {
+                let { existingRun, alreadyTerminal } = await findMatch();
+                if (alreadyTerminal) {
+                  return;
+                }
+                if (!existingRun) {
+                  // No matching check run found at all yet -- treat this as
+                  // provisional (it may just be read-visibility lag on the
+                  // initial in_progress check reconcile.mjs already created)
+                  // and re-list once more before finalizing the decision to
+                  // fall back to checks.create. See the comment above this
+                  // step for why this narrows, but cannot fully eliminate,
+                  // the residual race.
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+                  ({ existingRun, alreadyTerminal } = await findMatch());
+                  if (alreadyTerminal) {
+                    return;
+                  }
+                }
+                const payload = {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: 'merge-train-candidate',
+                  head_sha: process.env.CANDIDATE_SHA,
+                  status: 'completed',
+                  conclusion: 'cancelled',
+                  external_id: process.env.FINGERPRINT,
+                  output: {
+                    title: 'Merge-train candidate validation was not completed (token mint or result publication failed)',
+                    summary:
+                      'Either the App-token mint or the "Publish immutable candidate result" step failed/was cancelled before a terminal check could be posted. Marked cancelled so the next reconciliation retries validation immediately instead of waiting for the stale in_progress check to expire.',
+                  },
+                };
+                // Prefer updating an existing (non-terminal) check run
+                // in place, preserving its original ID, over creating a
+                // brand-new one -- see the comment above this step for why.
+                if (existingRun) {
+                  // head_sha is create-only on the Checks API -- the
+                  // "Update a check run" endpoint does not accept it, so it
+                  // must be stripped from the shared payload before the
+                  // update call (sending it would risk a 422).
+                  const { head_sha: _headSha, ...updatePayload } = payload;
+                  await github.rest.checks.update({
+                    ...updatePayload,
+                    check_run_id: existingRun.id,
+                  });
+                } else {
+                  await github.rest.checks.create(payload);
+                }
+                return;
+              } catch (error) {
+                lastError = error;
+              }
+            }
+            throw lastError;
+
       # `workflow_run` delivery is best-effort; wake reconciliation after the
       # immutable result is durable. Must use GITHUB_TOKEN, not the App token:
       # the App token receives 403 on workflow_dispatch endpoints
       # (reconcile-lib.mjs buildDispatchBindings uses GITHUB_TOKEN for the same reason).
+      #
+      # `if: always()` so this fires even when the "Publish immutable candidate
+      # result" step (and the retryable-check fallback above) failed --
+      # without it, this step's implicit default condition (success()) skips it
+      # whenever a previous step fails, leaving reconcile un-woken with no
+      # published check to act on until the unreliable workflow_run/schedule
+      # fallback triggers eventually fire.
       - name: Wake merge-train reconciliation
+        if: always()
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
