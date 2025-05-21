@@ -417,6 +417,134 @@ test('reconcile treats mergeable_state=behind as non-conflict and does not dispa
   assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
 });
 
+test('human-gated balance PR cannot keep merge-train or armed auto-merge before owner approval', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        node_id: 'PR_balance_gate',
+        auto_merge: { enabled_at: '2026-07-16T00:00:00Z' },
+        head: {
+          ...basePr().head,
+          ref: 'copilot/balance-telemetry-driven-improvement-sweep',
+        },
+        labels: [
+          { name: 'merge-train' },
+          { name: 'merge-train-blocked' },
+          { name: 'human-approval-required' },
+          { name: 'ci-recovery-opt-out' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/`]: () => ({ body: {} }),
+    [`POST /graphql`]: (_url, parsed) => {
+      if (String(parsed?.query || '').includes('closingIssuesReferences')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                pullRequest: {
+                  closingIssuesReferences: {
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    nodes: [],
+                  },
+                },
+              },
+            },
+          },
+        };
+      }
+      if (
+        String(parsed?.query || '')
+          .trimStart()
+          .startsWith('mutation')
+      ) {
+        return {
+          body: {
+            data: {
+              disablePullRequestAutoMerge: { pullRequest: { autoMergeRequest: null } },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [
+          { id: 1, name: 'Human approval', status: 'completed', conclusion: 'failure' },
+          { id: 2, name: 'Merge gate', status: 'completed', conclusion: 'failure' },
+          { id: 3, name: 'ci', status: 'completed', conclusion: 'failure' },
+          { id: 4, name: 'Security checks', status: 'completed', conclusion: 'success' },
+        ],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /blocked pr=#42 reason=human-approval-required/);
+  assert.match(stdout, /disabled auto-merge pr=#42 reason=human-approval-required/);
+  // TODO(ci-recovery): remove required-checks fallback once all branches emit admission=.
+  // Accept both log formats while train admission wording converges across branches.
+  assert.match(stdout, /wait pr=#42 (required-checks|admission)=ci/);
+  assert.doesNotMatch(stdout, /removed temporary approval opt-out/);
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url.endsWith(`/labels/${encodeURIComponent('merge-train')}`),
+    ),
+  );
+  assert.ok(
+    mutatingCalls.some((call) => call.method === 'GRAPHQL_MUTATION' && call.url === '/graphql'),
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url.endsWith(`/labels/${encodeURIComponent('merge-train-blocked')}`),
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url.endsWith(`/labels/${encodeURIComponent('ci-recovery-opt-out')}`),
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) => call.method === 'POST' && call.body?.labels?.includes('merge-train'),
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        typeof call.body?.body === 'string' &&
+        call.body.body.includes('crawler-ci-task'),
+    ),
+    false,
+  );
+});
+
 test('scheduled sweep clears stale train labels when persisted state head differs from the live PR head', async (t) => {
   const staleState = makeState({
     prNumber: PR_NUM,

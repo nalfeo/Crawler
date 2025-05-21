@@ -1,0 +1,203 @@
+name: Human Approval CI Rerun
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+  issue_comment:
+    types: [created, edited, deleted]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+jobs:
+  rerun:
+    if: >-
+      (github.event_name == 'issue_comment'
+        && github.event.issue.pull_request
+        && github.actor == github.repository_owner)
+      || (github.event_name == 'workflow_run'
+        && github.event.workflow_run.event == 'pull_request')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Rerun CI when human-approval state and CI result diverge
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const HUMAN_APPROVAL_LABEL = 'human-approval-required';
+            const HUMAN_APPROVAL_PHRASE = 'APPROVED FOR CHECK-IN';
+            const NIGHTLY_BALANCE_BRANCH_PREFIX = 'copilot/balance-telemetry-driven-improvement-sweep';
+
+            function hasLabel(labels, wanted) {
+              const entries = Array.isArray(labels) ? labels : labels?.nodes || [];
+              return entries.some((label) => String(label.name || '') === wanted);
+            }
+
+            async function listClosingIssues(pullNumber) {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $number) {
+                      closingIssuesReferences(first: 100, after: $cursor) {
+                        pageInfo { hasNextPage endCursor }
+                        nodes {
+                          labels(first: 50) { nodes { name } }
+                        }
+                      }
+                    }
+                  }
+                }`;
+              const issues = [];
+              let cursor = null;
+              do {
+                const result = await github.graphql(query, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  number: pullNumber,
+                  cursor,
+                });
+                const page = result.repository?.pullRequest?.closingIssuesReferences;
+                issues.push(...(page?.nodes || []));
+                cursor = page?.pageInfo?.hasNextPage ? page.pageInfo.endCursor : null;
+              } while (cursor);
+              return issues;
+            }
+
+            function requiresHumanApproval(pullRequest, closingIssues) {
+              if (hasLabel(pullRequest?.labels, HUMAN_APPROVAL_LABEL)) return true;
+              if (
+                String(pullRequest?.head?.ref || '').startsWith(NIGHTLY_BALANCE_BRANCH_PREFIX)
+              ) {
+                return true;
+              }
+              return (closingIssues || []).some((issue) =>
+                hasLabel(issue.labels?.nodes, HUMAN_APPROVAL_LABEL),
+              );
+            }
+
+            function hasOwnerApproval(comments) {
+              const owner = String(context.repo.owner || '').toLowerCase();
+              return (comments || []).some(
+                (comment) =>
+                  String(comment.user?.login || '').toLowerCase() === owner &&
+                  String(comment.body || '').trim() === HUMAN_APPROVAL_PHRASE,
+              );
+            }
+
+            async function latestCiRunForHead(headSha) {
+              const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                head_sha: headSha,
+                event: 'pull_request',
+                per_page: 100,
+              });
+              return runs
+                .filter(run => String(run.name || '') === 'CI')
+                .sort((left, right) => new Date(right.created_at) - new Date(left.created_at))[0];
+            }
+
+            async function humanApprovalJobConclusion(runId) {
+              const response = await github.rest.actions.listJobsForWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+                per_page: 100,
+              });
+              const humanJob = (response.data.jobs || []).find((job) => job.name === 'Human approval');
+              return humanJob?.conclusion || null;
+            }
+
+            function needsRerun(approvalPresent, humanJobConclusion) {
+              return (
+                (approvalPresent && humanJobConclusion !== 'success') ||
+                (!approvalPresent && humanJobConclusion === 'success')
+              );
+            }
+
+            async function maybeRerunForPr(prNumber, workflowRun = null) {
+              const pull = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: prNumber,
+              });
+              if (pull.data.state !== 'open') {
+                core.info(`PR #${prNumber} is not open`);
+                return;
+              }
+
+              const [comments, closingIssues] = await Promise.all([
+                github.paginate(github.rest.issues.listComments, {
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: prNumber,
+                  per_page: 100,
+                }),
+                listClosingIssues(prNumber),
+              ]);
+              if (!requiresHumanApproval(pull.data, closingIssues)) {
+                core.info(`PR #${prNumber} does not require human approval`);
+                return;
+              }
+              const approvalPresent = hasOwnerApproval(comments);
+
+              const latestCi =
+                workflowRun &&
+                String(workflowRun.head_sha || '') === String(pull.data.head.sha || '')
+                  ? workflowRun
+                  : await latestCiRunForHead(pull.data.head.sha);
+              if (!latestCi) {
+                core.info(`PR #${prNumber} has no CI run for head ${pull.data.head.sha}`);
+                return;
+              }
+
+              if (latestCi.status !== 'completed') {
+                core.info(
+                  `PR #${prNumber}: CI run ${latestCi.id} is ${latestCi.status}; waiting for workflow_run completion`,
+                );
+                return;
+              }
+
+              const humanJobConclusion = await humanApprovalJobConclusion(latestCi.id);
+              if (!needsRerun(approvalPresent, humanJobConclusion)) {
+                core.info(
+                  `PR #${prNumber}: approval=${approvalPresent} and Human approval job=${humanJobConclusion}; no rerun`,
+                );
+                return;
+              }
+
+              await github.rest.actions.reRunWorkflow({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: latestCi.id,
+              });
+              core.info(
+                `Rerunning CI workflow ${latestCi.id} for PR #${prNumber} (approval=${approvalPresent}, humanJob=${humanJobConclusion})`,
+              );
+            }
+
+            if (context.eventName === 'issue_comment') {
+              await maybeRerunForPr(context.issue.number);
+              return;
+            }
+
+            if (context.eventName === 'workflow_run') {
+              const linkedPrs = (context.payload.workflow_run?.pull_requests || [])
+                .map((entry) => Number(entry.number))
+                .filter((number) => Number.isInteger(number) && number > 0);
+              if (linkedPrs.length === 0) {
+                core.info('No pull requests linked to this workflow_run');
+                return;
+              }
+              for (const prNumber of linkedPrs) {
+                await maybeRerunForPr(prNumber, {
+                  id: context.payload.workflow_run.id,
+                  status: context.payload.workflow_run.status,
+                  conclusion: context.payload.workflow_run.conclusion,
+                  head_sha: context.payload.workflow_run.head_sha,
+                });
+              }
+            }
