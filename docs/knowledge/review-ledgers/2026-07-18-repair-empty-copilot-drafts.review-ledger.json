@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "repair-empty-copilot-drafts",
+  "task_title": "Repair empty Copilot draft shells",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Added global workflow serialization to prevent schedule/pull_request_target double-repair overlap; narrowed cloud-agent run eligibility to an explicit predicate over Copilot-authored workflow runs on the exact head branch+SHA and newest-match completion/grace semantics; expanded rollback to cover close->remove and close->remove->readd failure branches with surfaced rollback failures; preserved scan-all/fail-at-end semantics by aggregating repair errors instead of aborting the loop."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
