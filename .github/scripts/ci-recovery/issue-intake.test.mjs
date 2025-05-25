@@ -4,9 +4,15 @@ import test from 'node:test';
 import {
   addIssueAssignees,
   buildIssueActorIds,
+  buildRetroactivePlanComment,
+  hasCopilotPlanComment,
+  hasIntakeRequirementComment,
   ISSUE_INTAKE_BODY,
+  ISSUE_INTAKE_MARKER,
+  ISSUE_RECOVERY_PLAN_MARKER,
   issueIntakeEligibility,
   removeIssueAssignees,
+  reviewThreadPlanIssueNumbers,
   runIssueIntake,
 } from './issue-intake-lib.mjs';
 
@@ -70,6 +76,160 @@ test('issue intake rejects missing issues and pull-request payloads', () => {
       pull_request: { url: 'https://example.test/pr/123' },
     }).eligible,
     false,
+  );
+});
+
+test('review plan issue selection fails closed on unmatched explicit issue references', () => {
+  const closingIssues = [{ number: 1307 }];
+  const trustedRoot = (body) => ({
+    body,
+    author: { login: 'copilot-pull-request-reviewer' },
+    authorAssociation: 'NONE',
+  });
+
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot('Issue #1307 required an implementation plan comment before the PR.'),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('Issue #999 required an implementation plan comment before the PR.')],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot('Issue #13070 required an implementation plan comment before the PR.'),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('The source issue required an implementation plan before the PR.')],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('The implementation plan on #1307 is complete.')],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot('Issue #1307 requires no changes; the implementation plan is complete.'),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot(
+              'Issue #1307: the implementation plan is complete; a checklist is required.',
+            ),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot('Issue #1307 requires the issue comment itself to contain a checklist.'),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [1307],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [trustedRoot('#999 required an implementation plan before the PR.')],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            trustedRoot(
+              'Issue #1307 closes this PR, but #999 required an implementation plan before the PR.',
+            ),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
+  );
+  assert.deepEqual(
+    reviewThreadPlanIssueNumbers(
+      {
+        comments: {
+          nodes: [
+            {
+              body: 'The source issue required an implementation plan before the PR.',
+              author: { login: 'random-user' },
+              authorAssociation: 'NONE',
+            },
+            trustedRoot('Issue #1307 required an implementation plan comment before the PR.'),
+          ],
+        },
+      },
+      closingIssues,
+    ),
+    [],
   );
 });
 
@@ -336,4 +496,212 @@ test('removeIssueAssignees returns empty array when response is missing the assi
     actorIds: ['BOT_COPILOT'],
   });
   assert.deepEqual(result, []);
+});
+
+test('hasIntakeRequirementComment returns true only for trusted intake-marker comments', () => {
+  assert.equal(hasIntakeRequirementComment([]), false);
+  assert.equal(
+    hasIntakeRequirementComment([
+      { body: 'no marker here', user: { login: 'nalfeo' }, author_association: 'OWNER' },
+    ]),
+    false,
+  );
+  assert.equal(
+    hasIntakeRequirementComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+        user: { login: 'nalfeo' },
+        author_association: 'OWNER',
+      },
+    ]),
+    true,
+  );
+  // Intake marker from untrusted author (non-member) does not count.
+  assert.equal(
+    hasIntakeRequirementComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+        user: { login: 'random-user' },
+        author_association: 'NONE',
+      },
+    ]),
+    false,
+  );
+  // Trusted bot login also counts.
+  assert.equal(
+    hasIntakeRequirementComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot\nPlease handle...`,
+        user: { login: 'github-actions[bot]' },
+        author_association: 'NONE',
+      },
+    ]),
+    true,
+  );
+});
+
+test('hasCopilotPlanComment recognises existing Copilot plan and recovery plan markers', () => {
+  assert.equal(hasCopilotPlanComment([]), false);
+  // Intake comment from Copilot does NOT count as a plan comment.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: `${ISSUE_INTAKE_MARKER}\n@copilot`,
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    false,
+  );
+  // A structured non-intake Copilot plan comment counts.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: [
+          '**High-level design and approach**',
+          'Create the weapon brief in the shared catalog.',
+          '',
+          '**Key decisions and alternatives**',
+          '- Keep the current manifest format.',
+          '',
+          '**Checklist**',
+          '- [x] Add the brief.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    true,
+  );
+  // Arbitrary Copilot status notes do NOT count as plan evidence.
+  assert.equal(
+    hasCopilotPlanComment([
+      { body: 'Still investigating the failing review thread.', user: { login: 'copilot' } },
+    ]),
+    false,
+  );
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: [
+          'The reviewer requested high-level design, key decisions, and checklist details.',
+          '- Still investigating.',
+          'Progress update one.',
+          'Progress update two.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    false,
+  );
+  // Standalone non-plan headings reset section parsing and must not satisfy required sections.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: [
+          '**High-level design and approach**',
+          '## Status',
+          'Still investigating.',
+          '**Key decisions and alternatives**',
+          '- Keep the current manifest format.',
+          '**Checklist**',
+          '- [x] Add the brief.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    false,
+  );
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: [
+          '**High-level design and approach**',
+          'Create the weapon brief in the shared catalog.',
+          '',
+          '**Key decisions and alternatives**',
+          '- Keep the current manifest format.',
+          '',
+          '**Checklist**',
+          '',
+          '## Status',
+          '- [x] Still investigating.',
+        ].join('\n'),
+        user: { login: 'copilot-swe-agent' },
+      },
+    ]),
+    false,
+  );
+  // Trusted recovery plan marker counts.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: `${ISSUE_RECOVERY_PLAN_MARKER}\n\nRetroactive plan...`,
+        user: { login: 'nalfeo' },
+        author_association: 'OWNER',
+      },
+    ]),
+    true,
+  );
+  // Untrusted recovery marker spoof does not count.
+  assert.equal(
+    hasCopilotPlanComment([
+      {
+        body: `${ISSUE_RECOVERY_PLAN_MARKER}\n\nRetroactive plan...`,
+        user: { login: 'random-user' },
+        author_association: 'NONE',
+      },
+    ]),
+    false,
+  );
+});
+
+test('buildRetroactivePlanComment embeds required plan content and PR reference', () => {
+  const body = buildRetroactivePlanComment(
+    42,
+    'feat: add quarterstaff',
+    'https://github.com/o/r/pull/42',
+    [
+      'Repair-agent sessions lack `issues: write`, so the reconciler must post the plan itself.',
+      '',
+      '## Changes',
+      '- Add trusted plan detection helpers.',
+      '- Post the retroactive plan from reconcile.',
+    ].join('\n'),
+  );
+  assert.ok(body.includes(ISSUE_RECOVERY_PLAN_MARKER));
+  assert.ok(body.includes('#42'));
+  assert.ok(body.includes('feat: add quarterstaff'));
+  assert.ok(body.includes('https://github.com/o/r/pull/42'));
+  assert.match(body, /\*\*High-level design and approach\*\*/);
+  assert.match(body, /\*\*Key decisions and alternatives\*\*/);
+  assert.match(body, /\*\*Checklist\*\*/);
+  assert.match(body, /- \[x\] Add trusted plan detection helpers\./);
+});
+
+test('buildRetroactivePlanComment stays below the GitHub comment limit for oversized PR bodies', () => {
+  const prUrl = 'https://github.com/nalfeo/Crawler/pull/1604';
+  const oversizedBody = [
+    '## Fix',
+    'x'.repeat(65_000),
+    '',
+    '## Changes',
+    ...Array.from({ length: 100 }, (_, index) => `- ${index}: ${'y'.repeat(1_000)}`),
+  ].join('\n');
+
+  const body = buildRetroactivePlanComment(1604, 'Permission gap recovery', prUrl, oversizedBody);
+
+  assert.ok(body.length < 65_536, `expected body below GitHub limit, got ${body.length}`);
+  assert.ok(body.includes(`**PR:** ${prUrl}`), 'truncation must preserve the source PR link');
+  assert.match(body, /\*\*High-level design and approach\*\*/);
+  assert.match(body, /\*\*Key decisions and alternatives\*\*/);
+  assert.match(body, /\*\*Checklist\*\*/);
+  assert.match(body, /Review remaining implementation details/);
+  // Must not include untrusted HTML comment injection.
+  const injected = buildRetroactivePlanComment(
+    1,
+    '<!-- injected -->',
+    'https://example.com/p/1',
+    '<!-- hidden -->\n\n## Changes\n- keep visible',
+  );
+  assert.ok(!injected.includes('<!-- injected -->'));
+  assert.ok(!injected.includes('<!-- hidden -->'));
 });
