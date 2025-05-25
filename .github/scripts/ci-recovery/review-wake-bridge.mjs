@@ -28,6 +28,7 @@ export const PROTECTED_WORKFLOW_PATHS = new Set([
   '.github/scripts/ci-recovery/reconcile.mjs',
   '.github/scripts/ci-recovery/loop-incident-lib.mjs',
   '.github/scripts/ci-recovery/github.mjs',
+  '.github/scripts/ci-recovery/issue-intake-lib.mjs',
   '.github/scripts/ci-recovery/state.mjs',
   '.github/scripts/ci-recovery/approval.mjs',
   '.github/scripts/merge-train/state.mjs',
