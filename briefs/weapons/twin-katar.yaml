@@ -1,0 +1,21 @@
+type: weapon
+name: twin-katar
+floor: 2
+description: |
+  A single twin katar shown as one centered thrown weapon icon on a transparent
+  background. Read immediately as a compact push-dagger / punch-knife silhouette:
+  short central grip with a rigid crossbar handle and twin forward blades running
+  parallel from the fist guard, angled up-right in a clean diagonal side or
+  three-quarter profile. Dark iron frame with worn steel blade edges and one small
+  muted brass wrap or rivet accent for Floor 2 salvage flavor. Keep the silhouette
+  bold, compact, and readable at game scale. No hand, no extra off-hand copy, no
+  sheath, no glow, no magic trails, no blood, no background props.
+anchor: { x: 24, y: 44 }
+sensors:
+  weapon:
+    orientation: diagonal
+    diagonalToleranceDeg: 6
+variations:
+  - slightly broader fist guard with a squared industrial knuckle-bar silhouette
+  - slimmer parallel blades with a more triangular spear-point finish
+minVariations: 6
