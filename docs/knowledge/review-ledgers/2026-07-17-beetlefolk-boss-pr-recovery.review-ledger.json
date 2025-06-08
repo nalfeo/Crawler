@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "beetlefolk-boss-pr-recovery",
+  "task_title": "fix: recover beetlefolk boss PR blockers",
+  "estimated_apples": 2,
+  "stages": {}
+}

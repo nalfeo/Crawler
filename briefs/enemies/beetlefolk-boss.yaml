@@ -1,0 +1,29 @@
+type: enemy
+name: beetlefolk-boss
+sizeVariant: wide
+floor: 2
+description: |
+  The Broodfather — a massive beetlefolk patriarch with organized-crime authority.
+  A broad, low, wider-than-tall armored dome. The carapace is a dark, segmented
+  shell made of industrial salvage plating: bolt-riveted steel panels bolted over
+  chitinous exoskeleton sections, dark charcoal-gray and oily-brown tones with
+  verdigris-stained brass rivets and rust bleed-through. The body is distinctly
+  beetle-shaped — a fat, squat dome that is visibly wider than it is tall.
+  Six thick, stubby legs (three per side) fuse flush with the body silhouette;
+  they do not extend beyond the main outline as separate thin features.
+  Two short, chunky antennae curve forward from the broad head at the right end;
+  they merge into the body silhouette near their base. Mandibles are thick and
+  prominent — the creature clearly chews its way through obstacles. Floor 2
+  dark-fantasy wear: cracked plating, rust streaks, scorch marks, grime-coated
+  underbelly. The overall silhouette reads unmistakably as a fat wide beetle when
+  viewed from a slight bird's-eye three-quarter angle.
+  Facing right. No disconnected thin parts anywhere.
+sensors:
+  edge:
+    allowMainTouch: true
+  enemy:
+    facing: right
+    toleranceDeg: 40
+judge:
+  enabled: true
+  maxVariants: 8

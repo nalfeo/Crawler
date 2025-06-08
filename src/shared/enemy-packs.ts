@@ -44,6 +44,14 @@ const enemyArchetypeDefSchema = z
      * `BOSS_DEN` at floor-init). Bosses require `familyId`.
      */
     isBoss: z.boolean().optional(),
+    /**
+     * Explicit collision radius in feet. When set, overrides the default
+     * `max(spriteWidth, spriteHeight) * 0.5` calculation (also in feet). Use
+     * when the sprite's aspect ratio should not determine physics size — e.g. a
+     * wide sprite whose collision footprint should match its height, not
+     * its width.
+     */
+    collisionRadius: z.number().positive().optional(),
   })
   .strict()
   .superRefine((archetype, ctx) => {
