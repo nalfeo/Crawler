@@ -4,6 +4,9 @@ import test from 'node:test';
 
 import { HUMAN_APPROVAL_LABEL } from '../merge-train/human-approval.mjs';
 import {
+  buildFinalAggregateArtifactClause,
+  buildIssueBody,
+  FINAL_AGGREGATE_ARTIFACTS,
   ISSUE_BODY,
   ISSUE_LABELS,
   ISSUE_TITLE,
@@ -20,6 +23,7 @@ function createHarness({
   // successful resume) can script each intake/close call independently. An
   // undefined/falsy entry at a given call index means that call succeeds.
   intakeErrors = [],
+  updateErrors = [],
   closeErrors = [],
   initialIssues = [],
 } = {}) {
@@ -27,6 +31,7 @@ function createHarness({
   const openIssues = [...initialIssues];
   let nextIssueNumber = 1203;
   let intakeCallCount = 0;
+  let updateCallCount = 0;
   let closeCallCount = 0;
 
   const paginateFn = async (token, path) => {
@@ -49,6 +54,7 @@ function createHarness({
         number: nextIssueNumber,
         node_id: `ISSUE_${nextIssueNumber}`,
         title: options.body.title,
+        body: options.body.body,
         user: { login: 'github-actions[bot]' },
         labels: (options.body.labels || []).map((name) => ({ name })),
         assignees: [],
@@ -56,6 +62,15 @@ function createHarness({
       nextIssueNumber += 1;
       openIssues.push(issue);
       return { data: issue };
+    }
+    if (options.method === 'PATCH' && typeof options.body?.body === 'string') {
+      const updateError = updateErrors[updateCallCount];
+      updateCallCount += 1;
+      if (updateError) throw updateError;
+      const issueNumber = Number(path.split('/').at(-1));
+      const target = openIssues.find((issue) => issue.number === issueNumber);
+      if (target) target.body = options.body.body;
+      return { data: target ?? { number: issueNumber, body: options.body.body } };
     }
     if (options.method === 'PATCH' && options.body?.state === 'closed') {
       const closeError = closeErrors[closeCallCount];
@@ -99,7 +114,6 @@ function runWithHarness(harness, overrides = {}) {
 
 test('hardened prompt encodes every evidence and approval gate', () => {
   const required = [
-    /all six FINAL `weapon-sweep-<weapon>` aggregate artifacts and 100 seeds\/weapon only/,
     /exact head SHA/,
     /Shipped\/default runtime configuration only/,
     /telemetry-backed causal attribution/,
@@ -119,6 +133,12 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     /closure is mandatory, not optional, for every no-PR path/,
     /@copilot Please execute this issue end-to-end/,
   ];
+  assert.equal(ISSUE_BODY.includes(buildFinalAggregateArtifactClause()), true);
+  assert.match(ISSUE_BODY, /all six FINAL aggregate artifacts/);
+  assert.match(ISSUE_BODY, /100 seeds\/weapon only/);
+  for (const artifact of FINAL_AGGREGATE_ARTIFACTS) {
+    assert.equal(ISSUE_BODY.includes(artifact), true);
+  }
   for (const invariant of required) assert.match(ISSUE_BODY, invariant);
 
   assert.doesNotMatch(ISSUE_BODY, /(?:exactly|at least) 3 (?:ideas|candidates)/i);
@@ -131,6 +151,12 @@ test('hardened prompt encodes every evidence and approval gate', () => {
     'ai',
     HUMAN_APPROVAL_LABEL,
   ]);
+});
+
+test('issue body builder injects the exact issue number for the live approval gate', () => {
+  const body = buildIssueBody(1253);
+  assert.match(body, /Gameplay PR contains `Closes #1253`/);
+  assert.equal(body.includes('weapon-sweep-<weapon>'), false);
 });
 
 test('consecutive runs create one issue and invoke Copilot intake once', async () => {
@@ -152,6 +178,16 @@ test('consecutive runs create one issue and invoke Copilot intake once', async (
     body: ISSUE_BODY,
     labels: ISSUE_LABELS,
   });
+  const bodyUpdates = harness.calls.filter(
+    (call) =>
+      call.kind === 'request' &&
+      call.path === `/repos/nalfeo/Crawler/issues/${harness.openIssues[0].number}` &&
+      call.options.method === 'PATCH' &&
+      typeof call.options.body?.body === 'string',
+  );
+  assert.equal(bodyUpdates.length, 2);
+  assert.ok(bodyUpdates.every((call) => call.options.body.body === buildIssueBody(1203)));
+  assert.equal(harness.openIssues[0].body, buildIssueBody(1203));
   const intakeCalls = harness.calls.filter((call) => call.kind === 'intake');
   assert.equal(intakeCalls.length, 1);
   assert.equal(intakeCalls[0].args.token, intakeToken);
@@ -230,6 +266,94 @@ test('wraps both errors in an AggregateError when the rollback close also fails'
   );
   assert.equal(close.path, '/repos/nalfeo/Crawler/issues/1203');
   assert.equal(harness.openIssues.length, 1);
+});
+
+test('closes a newly created issue when patching in the exact issue number fails', async () => {
+  const updateError = new Error('issue update failed');
+  const harness = createHarness({ updateErrors: [updateError] });
+
+  await assert.rejects(runWithHarness(harness), (error) => error === updateError);
+
+  const close = harness.calls.find(
+    (call) => call.kind === 'request' && call.options.body?.state === 'closed',
+  );
+  assert.equal(close.path, '/repos/nalfeo/Crawler/issues/1203');
+  assert.equal(harness.openIssues.length, 0);
+});
+
+test('wraps both errors when issue-number patching fails and rollback close also fails', async () => {
+  const updateError = new Error('issue update failed');
+  const closeError = new Error('GitHub API unavailable');
+  const harness = createHarness({ updateErrors: [updateError], closeErrors: [closeError] });
+
+  await assert.rejects(runWithHarness(harness), (error) => {
+    assert.ok(error instanceof AggregateError);
+    assert.deepEqual(error.errors, [updateError, closeError]);
+    assert.equal(error.cause, updateError);
+    assert.equal(
+      error.message,
+      'Issue body update failed for #1203: issue update failed; ' +
+        'closing the issue also failed: GitHub API unavailable',
+    );
+    return true;
+  });
+
+  assert.equal(harness.openIssues.length, 1);
+});
+
+test('resumed orphan run canonicalizes issue body before intake', async () => {
+  const firstUpdateError = new Error('issue update failed');
+  const firstCloseError = new Error('GitHub API unavailable');
+  const harness = createHarness({
+    updateErrors: [firstUpdateError],
+    closeErrors: [firstCloseError],
+  });
+
+  await assert.rejects(runWithHarness(harness), (error) => error instanceof AggregateError);
+  assert.equal(harness.openIssues.length, 1);
+  assert.equal(harness.openIssues[0].body, ISSUE_BODY);
+
+  const second = await runWithHarness(harness);
+
+  assert.equal(second.status, 'resumed');
+  assert.equal(harness.openIssues[0].body, buildIssueBody(1203));
+  assert.equal(harness.calls.filter((call) => call.kind === 'intake').length, 1);
+
+  const secondRunCalls = harness.calls.slice(
+    harness.calls.findIndex((call, index) => index > 0 && call.kind === 'paginate'),
+  );
+  const secondRunUpdateIndex = secondRunCalls.findIndex(
+    (call) =>
+      call.kind === 'request' &&
+      call.path === '/repos/nalfeo/Crawler/issues/1203' &&
+      call.options.method === 'PATCH' &&
+      typeof call.options.body?.body === 'string',
+  );
+  const secondRunIntakeIndex = secondRunCalls.findIndex((call) => call.kind === 'intake');
+  assert.ok(secondRunUpdateIndex >= 0 && secondRunIntakeIndex >= 0);
+  assert.ok(secondRunUpdateIndex < secondRunIntakeIndex);
+});
+
+test('resume path retries later when existing automation issue body patch fails', async () => {
+  const firstUpdateError = new Error('issue update failed');
+  const firstCloseError = new Error('GitHub API unavailable');
+  const secondUpdateError = new Error('resume body patch failed');
+  const harness = createHarness({
+    updateErrors: [firstUpdateError, secondUpdateError],
+    closeErrors: [firstCloseError],
+  });
+
+  await assert.rejects(runWithHarness(harness), (error) => error instanceof AggregateError);
+  await assert.rejects(runWithHarness(harness), (error) => error === secondUpdateError);
+
+  assert.equal(harness.openIssues.length, 1);
+  assert.equal(harness.openIssues[0].body, ISSUE_BODY);
+  assert.equal(harness.calls.filter((call) => call.kind === 'intake').length, 0);
+  assert.equal(
+    harness.calls.filter((call) => call.kind === 'request' && call.options.body?.state === 'closed')
+      .length,
+    1,
+  );
 });
 
 test('resumes intake on the same automation-created issue after a prior run left it orphaned', async () => {
