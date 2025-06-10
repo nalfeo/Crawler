@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "fix-safe-room-doorway-livelock",
+  "task_title": "Fix Floor1 safe-room doorway livelock (timeout bucket)",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "plan_divergence": "minor",
+      "notes": "6 concerns: (1) blast radius bigger than described -> corrected comment to cite the pre-existing 30-frame exit-hysteresis latch as the actual bound, and gated the merge decision on the GH Actions sweep. (2) node contract inaccurate / stale threat not revalidated -> tried an engage-range-revalidation tightening, but it flipped bow@91 (a required repro) from VICTORY to DEATH, so it was reverted; relying on the existing bounded latch was judged the safer, still-generic fix. (3)/(4) alternative FSM / shared hysteresis abstraction -> rejected for this fix (no repeat-pattern justification yet beyond the one already-fixed quest-giver-detour case cited in the writeup); noted as a future follow-up if the pattern recurs a third time. (5) missing focused regression test -> added tests/game/behavior-tree-ai.test.ts flicker-survival test plus updated the pre-existing test that encoded the old instant-release semantics. (6) control-set bookkeeping error -> corrected: 3 of 16 controls (pistol@23, throwing-knife@6, throwing-knife@18) were actually original evidence pairs, not independent controls; re-verified and fully disclosed in plan.md including a distinct new finding (pistol@23 DEATH->TIMEOUT via massive progression improvement, a floor-exit-pacing issue not the doorway livelock)."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
