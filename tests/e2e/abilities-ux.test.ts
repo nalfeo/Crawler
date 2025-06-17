@@ -126,9 +126,7 @@ describe('abilities hotbar and loadout UX', () => {
     const context = await browser.newContext({ viewport: VIEWPORTS[0], deviceScaleFactor: 2 });
     const page = await context.newPage();
     await loadAbilitiesLab(page);
-    await page.keyboard.press('b');
-    await page.waitForFunction(() => window.__abilitiesProbe?.getSnapshot().open === true);
-    const opened = await page.evaluate(() => window.__abilitiesProbe!.getSnapshot());
+    const opened = await openLoadout(page);
     const secondRow = opened.visibleRows[1]!;
     const secondAbilityId = opened.visibleAbilityIds[1]!;
     await page.mouse.click(secondRow.x + 8, secondRow.y + 8);

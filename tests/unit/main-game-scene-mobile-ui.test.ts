@@ -31,3 +31,65 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain('(this.inventoryButton?.height ?? 44) * buttonScale + 8');
   });
 });
+
+describe('HUD panel UX consistency', () => {
+  const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+
+  it('all saferoom panels require safeCtx to open', () => {
+    // Inventory
+    expect(source).toContain(
+      'unlocks.inventory && safeCtx && !isUiLockOpen() && inventoryToggleRequested',
+    );
+    // Equipment
+    expect(source).toContain('unlocks.equipment && safeCtx && !isUiLockOpen() && equipRequested');
+    // Abilities — must now also require safeCtx
+    expect(source).toContain(
+      'unlocks.spells && safeCtx && !isUiLockOpen() && abilitiesToggleRequested',
+    );
+    // Achievements — gated via achievementsAvailable which includes safeCtx
+    expect(source).toContain(
+      'const achievementsAvailable = safeCtx && this.world.achievements.unlockedIds.size > 0',
+    );
+  });
+
+  it('[B] toggle-closes the abilities surface when it is open', () => {
+    expect(source).toContain('if (this.abilityLoadoutUI?.isOpen()) {');
+    expect(source).toContain('if (abilitiesToggleRequested && abilitiesOpen) {');
+    expect(source).toContain('this.closeAbilitiesModal();');
+    expect(source).toContain('private closeAbilitiesModal(): void {');
+  });
+
+  it('abilities modal auto-closes when the player leaves the safe room', () => {
+    expect(source).toContain('} else if (abilitiesOpen && !safeCtx) {');
+    // Both the condition and the close call must be present (separate assertions
+    // avoid a fragile regex with a variable-length gap between them)
+    expect(source).toContain('abilitiesOpen && !safeCtx');
+    expect(source).toContain('this.closeAbilitiesModal();');
+  });
+
+  it('tracks whether the abilities config surface is open', () => {
+    expect(source).toContain('private abilitiesModalOpen = false;');
+    expect(source).toContain('this.abilitiesModalOpen = true;');
+    expect(source).toContain('this.abilitiesModalOpen = false;');
+  });
+
+  it('touch dismiss: each panel button remains visible while its own panel is open', () => {
+    expect(source).toContain('inventoryOpen || canOpenNew');
+    expect(source).toContain('equipOpen || canOpenNew');
+    expect(source).toContain('achievementsOpen || canOpenNew');
+    expect(source).toContain('abilitiesOpen || canOpenNew');
+    expect(source).toContain('MODAL_DISMISS_BUTTON_DEPTH');
+  });
+
+  it('abilities touch button is wired and included in corner-button hit-test', () => {
+    expect(source).toContain('this.abilitiesButton = makeCornerButton(');
+    expect(source).toContain("'🔮 Skills'");
+    expect(source).toContain('isCornerButtonHit(this.abilitiesButton)');
+  });
+
+  it('abilities touch button is scaled and destroyed with the other corner buttons', () => {
+    expect(source).toContain('this.abilitiesButton?.setScale(buttonScale);');
+    expect(source).toContain('this.abilitiesButton?.destroy();');
+    expect(source).toContain('this.abilitiesButton = undefined;');
+  });
+});
