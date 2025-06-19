@@ -309,6 +309,7 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
       slots: ['neck'],
       statBonuses: {},
       rarity: 'common',
+      weightLb: 0,
       grantsStatusEffects: [
         {
           stat: 'hpRegen',
@@ -343,6 +344,7 @@ describe('equipment integration (Merchant’s Charm HoT)', () => {
       slots: ['neck'],
       statBonuses: {},
       rarity: 'common',
+      weightLb: 0,
       grantsStatusEffects: [
         {
           stat: 'hpRegen',

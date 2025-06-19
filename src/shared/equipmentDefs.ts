@@ -33,6 +33,7 @@ export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
   slots: ['neck'],
   statBonuses: { charisma: 1 },
   rarity: 'uncommon',
+  weightLb: 0.25,
   grantsStatusEffects: [
     {
       stat: 'hpRegen',
@@ -89,6 +90,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'common',
     weaponId: 'sword',
+    weightLb: 3,
   }),
   weapon({
     id: 'frost-bow',
@@ -97,6 +99,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'uncommon',
     weaponId: 'bow',
+    weightLb: 5,
   }),
   weapon({
     id: 'bone-club',
@@ -105,6 +108,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'common',
     weaponId: 'baseball-bat',
+    weightLb: 6,
   }),
   weapon({
     id: 'plasma-pistol',
@@ -113,6 +117,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'rare',
     weaponId: 'pistol',
+    weightLb: 2,
   }),
   weapon({
     id: 'throwing-knife',
@@ -121,6 +126,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'common',
     weaponId: 'throwing-knife',
+    weightLb: 0.5,
   }),
   weapon({
     id: 'fireball',
@@ -129,6 +135,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'uncommon',
     weaponId: 'fireball',
+    weightLb: 1,
   }),
   weapon({
     id: 'laser',
@@ -137,6 +144,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'rare',
     weaponId: 'laser',
+    weightLb: 2,
   }),
   weapon({
     id: 'punch',
@@ -145,6 +153,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'common',
     weaponId: 'punch',
+    weightLb: 0.5,
   }),
   weapon({
     id: 'landmine',
@@ -153,6 +162,7 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     statBonuses: {},
     rarity: 'uncommon',
     weaponId: 'landmine',
+    weightLb: 3,
   }),
 ];
 
@@ -177,6 +187,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['head'],
     statBonuses: { armor: 2, constitution: 1 },
     rarity: 'common',
+    weightLb: 5,
   },
   {
     id: 'iron-visor',
@@ -184,6 +195,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['face'],
     statBonuses: { armor: 1, critChance: 0.03 },
     rarity: 'common',
+    weightLb: 2,
   },
   {
     id: 'steel-pauldrons',
@@ -191,6 +203,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['shoulders'],
     statBonuses: { armor: 2, strength: 1 },
     rarity: 'uncommon',
+    weightLb: 6,
   },
   {
     id: 'iron-breastplate',
@@ -198,6 +211,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['chest'],
     statBonuses: { armor: 4, constitution: 1 },
     rarity: 'uncommon',
+    weightLb: 15,
   },
   {
     id: 'travelers-cloak',
@@ -205,6 +219,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['back'],
     statBonuses: { moveSpeed: 0.05, dodgeChance: 0.03 },
     rarity: 'uncommon',
+    weightLb: 2,
   },
   {
     id: 'sturdy-belt',
@@ -212,6 +227,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['belt'],
     statBonuses: { hpRegen: 0.5, constitution: 1 },
     rarity: 'common',
+    weightLb: 1,
   },
   {
     id: 'iron-greaves',
@@ -219,6 +235,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['legs'],
     statBonuses: { armor: 3, dexterity: 1 },
     rarity: 'uncommon',
+    weightLb: 8,
   },
   {
     id: 'leather-boots',
@@ -226,6 +243,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['feet'],
     statBonuses: { moveSpeed: 0.06, armor: 1 },
     rarity: 'common',
+    weightLb: 2,
   },
   {
     id: 'leather-gloves',
@@ -233,6 +251,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['gloves'],
     statBonuses: { attackSpeed: 0.05, dexterity: 1 },
     rarity: 'common',
+    weightLb: 1,
   },
   {
     id: 'bronze-vambrace',
@@ -240,6 +259,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['leftArm'],
     statBonuses: { armor: 1, strength: 1 },
     rarity: 'common',
+    weightLb: 2,
   },
   {
     id: 'iron-armguard',
@@ -247,6 +267,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['rightArm'],
     statBonuses: { armor: 1, damageBonus: 2 },
     rarity: 'common',
+    weightLb: 2,
   },
   {
     id: 'leather-bracer',
@@ -254,6 +275,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['leftWrist'],
     statBonuses: { dexterity: 1, dodgeChance: 0.02 },
     rarity: 'common',
+    weightLb: 0.5,
   },
   {
     id: 'beaded-bracelet',
@@ -261,6 +283,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['rightWrist'],
     statBonuses: { critChance: 0.02, luck: 1 },
     rarity: 'uncommon',
+    weightLb: 0.25,
   },
   {
     id: 'band-of-fortune',
@@ -268,6 +291,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['ringLeft'],
     statBonuses: { luck: 1, xpBonus: 0.05 },
     rarity: 'rare',
+    weightLb: 0.25,
   },
   {
     id: 'signet-of-focus',
@@ -275,6 +299,7 @@ const GEAR_EQUIPMENT_DEFS: readonly EquipmentItemDef[] = [
     slots: ['ringRight'],
     statBonuses: { intelligence: 1, cooldownReduction: 0.03 },
     rarity: 'rare',
+    weightLb: 0.25,
   },
 ];
 
