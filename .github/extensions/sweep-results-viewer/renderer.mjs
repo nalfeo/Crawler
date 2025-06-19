@@ -1,118 +1,172 @@
-// HTML renderer for the sweep-results-viewer canvas.
-// The page connects to /events (SSE) and re-renders on every state update.
-
 export function renderHtml(instanceId) {
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Sweep Results — ${instanceId}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sweep Results — ${escapeHtml(instanceId)}</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #0d1117;
-      --panel: #161b22;
-      --border: #30363d;
-      --text: #c9d1d9;
-      --muted: #8b949e;
-      --accent: #58a6ff;
-      --win: #3fb950;
-      --loss: #f85149;
-      --timeout: #d29922;
-      --stalled: #a371f7;
-      --errored: #f778ba;
+      --panel: color-mix(in srgb, var(--background-color-default, #0d1117) 88%, var(--text-color-default, #c9d1d9));
+      --subtle: color-mix(in srgb, var(--background-color-default, #0d1117) 94%, var(--text-color-default, #c9d1d9));
+      --win: var(--true-color-green, #3fb950);
+      --loss: var(--true-color-red, #f85149);
+      --timeout: var(--true-color-yellow, #d29922);
+      --stalled: var(--true-color-purple, #a371f7);
+      --errored: var(--true-color-pink, #f778ba);
+      --accent: var(--true-color-blue, #58a6ff);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      padding: 1rem;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      font-size: 13px;
+      padding: 16px;
+      background: var(--background-color-default, #0d1117);
+      color: var(--text-color-default, #c9d1d9);
+      font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      font-size: var(--text-body-medium, 14px);
+      line-height: var(--leading-body-medium, 20px);
     }
     header {
       display: flex;
-      align-items: baseline;
+      align-items: flex-start;
       justify-content: space-between;
-      gap: 1rem;
-      margin-bottom: 0.75rem;
+      gap: 16px;
+      margin-bottom: 12px;
     }
-    h1 { font-size: 15px; margin: 0; font-weight: 600; }
-    .meta { color: var(--muted); font-size: 11px; }
-    .path { font-family: ui-monospace, monospace; color: var(--accent); }
-    button {
+    h1 {
+      margin: 0;
+      font-size: var(--text-title-medium, 20px);
+      line-height: var(--leading-title-medium, 26px);
+      font-weight: var(--font-weight-semibold, 600);
+    }
+    h2 {
+      margin: 0 0 8px;
+      color: var(--text-color-muted, #8b949e);
+      font-size: var(--text-body-small, 12px);
+      font-weight: var(--font-weight-semibold, 600);
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+    .meta {
+      margin-top: 2px;
+      color: var(--text-color-muted, #8b949e);
+      font-size: var(--text-body-small, 12px);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 10px;
+      border: 1px solid var(--border-color-default, #30363d);
+      border-radius: 6px;
+      background: var(--subtle);
+    }
+    select, button {
+      min-height: 32px;
+      border: 1px solid var(--border-color-default, #30363d);
+      border-radius: 5px;
       background: var(--panel);
-      color: var(--text);
-      border: 1px solid var(--border);
-      padding: 4px 10px;
-      border-radius: 4px;
+      color: var(--text-color-default, #c9d1d9);
+      font: inherit;
+    }
+    select { width: 100%; padding: 4px 8px; }
+    button {
+      padding: 4px 12px;
       cursor: pointer;
-      font-size: 12px;
+      font-weight: var(--font-weight-semibold, 600);
     }
-    button:hover { border-color: var(--accent); }
-    .error {
-      background: rgba(248,81,73,0.1);
-      border: 1px solid var(--loss);
-      color: var(--loss);
-      padding: 0.5rem 0.75rem;
-      border-radius: 4px;
-      margin: 0.5rem 0;
-      font-family: ui-monospace, monospace;
+    button:hover, select:focus { border-color: var(--accent); }
+    button:focus-visible, select:focus-visible {
+      outline: 2px solid var(--color-focus-outline, #58a6ff);
+      outline-offset: 1px;
     }
-    section { margin-bottom: 1.25rem; }
-    h2 { font-size: 13px; margin: 0 0 0.5rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+    button:disabled, select:disabled { cursor: wait; opacity: .6; }
+    .status-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 12px;
+      color: var(--text-color-muted, #8b949e);
+      font-size: var(--text-body-small, 12px);
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 1px 7px;
+      border: 1px solid var(--border-color-default, #30363d);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--text-color-default, #c9d1d9);
+    }
+    .pill.active { border-color: var(--accent); color: var(--accent); }
+    .pill.success { border-color: var(--win); color: var(--win); }
+    .pill.failure, .pill.cancelled { border-color: var(--loss); color: var(--loss); }
+    .message {
+      margin: 0 0 12px;
+      padding: 8px 10px;
+      border: 1px solid var(--border-color-default, #30363d);
+      border-radius: 5px;
+      background: var(--subtle);
+    }
+    .message.error { border-color: var(--loss); color: var(--loss); }
+    .message.warning { border-color: var(--timeout); color: var(--timeout); }
+    section { margin-bottom: 20px; }
+    .table-wrap, .grid-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border-color-default, #30363d);
+      border-radius: 6px;
+    }
     table {
       width: 100%;
       border-collapse: collapse;
       background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      overflow: hidden;
     }
     th, td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--border-color-default, #30363d);
       text-align: right;
-      padding: 6px 10px;
-      border-bottom: 1px solid var(--border);
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
     th:first-child, td:first-child { text-align: left; }
     th {
-      background: rgba(255,255,255,0.03);
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      background: var(--subtle);
+      color: var(--text-color-muted, #8b949e);
+      font-size: var(--text-body-small, 12px);
+      font-weight: var(--font-weight-semibold, 600);
     }
     tr:last-child td { border-bottom: none; }
-    .weapon-name { font-weight: 600; }
+    .weapon-name { font-weight: var(--font-weight-semibold, 600); }
     .winrate {
       display: inline-block;
-      min-width: 44px;
+      min-width: 50px;
       padding: 1px 6px;
-      border-radius: 3px;
-      font-weight: 600;
+      border-radius: 4px;
+      font-weight: var(--font-weight-semibold, 600);
     }
-    .winrate.high { background: rgba(63,185,80,0.2); color: var(--win); }
-    .winrate.mid  { background: rgba(210,153,34,0.2); color: var(--timeout); }
-    .winrate.low  { background: rgba(248,81,73,0.2); color: var(--loss); }
-
-    .grid-wrap { overflow-x: auto; }
+    .winrate.high { background: color-mix(in srgb, var(--win) 20%, transparent); color: var(--win); }
+    .winrate.mid { background: color-mix(in srgb, var(--timeout) 20%, transparent); color: var(--timeout); }
+    .winrate.low { background: color-mix(in srgb, var(--loss) 20%, transparent); color: var(--loss); }
     .grid {
       display: grid;
       gap: 2px;
-      font-family: ui-monospace, monospace;
-      font-size: 10px;
+      min-width: max-content;
+      padding: 8px;
+      background: var(--panel);
+      font-family: var(--font-mono, "SFMono-Regular", Consolas, monospace);
+      font-size: var(--text-code-inline, 12px);
     }
-    .grid .head {
-      color: var(--muted);
-      text-align: center;
-      padding: 2px 0;
-    }
+    .grid .head { padding: 2px 0; color: var(--text-color-muted, #8b949e); text-align: center; }
     .grid .row-label {
-      color: var(--muted);
+      position: sticky;
+      left: 0;
+      z-index: 1;
       padding: 2px 6px;
+      background: var(--panel);
+      color: var(--text-color-muted, #8b949e);
       text-align: right;
       white-space: nowrap;
     }
@@ -120,197 +174,264 @@ export function renderHtml(instanceId) {
       display: flex;
       align-items: center;
       justify-content: center;
-      height: 22px;
-      border-radius: 2px;
+      height: 24px;
+      border-radius: 3px;
+      color: var(--color-white, #fff);
       cursor: help;
-      color: #fff;
-      font-weight: 600;
+      font-weight: var(--font-weight-semibold, 600);
     }
     .cell.victory { background: var(--win); }
-    .cell.death   { background: var(--loss); }
+    .cell.death { background: var(--loss); }
     .cell.timeout { background: var(--timeout); }
     .cell.stalled { background: var(--stalled); }
     .cell.errored { background: var(--errored); }
-    .cell.empty   { background: var(--panel); border: 1px solid var(--border); color: var(--muted); }
-
-    .legend { display: flex; gap: 1rem; font-size: 11px; color: var(--muted); margin-top: 0.5rem; }
-    .legend .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
-
-    .empty-state {
-      background: var(--panel);
-      border: 1px dashed var(--border);
-      border-radius: 4px;
-      padding: 2rem;
-      text-align: center;
-      color: var(--muted);
+    .cell.empty {
+      border: 1px solid var(--border-color-default, #30363d);
+      background: var(--subtle);
+      color: var(--text-color-muted, #8b949e);
     }
-    .empty-state code { color: var(--accent); }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 7px; color: var(--text-color-muted, #8b949e); font-size: 12px; }
+    .swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; vertical-align: middle; }
+    .empty-state {
+      padding: 28px;
+      border: 1px dashed var(--border-color-default, #30363d);
+      border-radius: 6px;
+      color: var(--text-color-muted, #8b949e);
+      text-align: center;
+    }
+    a { color: var(--accent); }
+    code { font-family: var(--font-mono, "SFMono-Regular", Consolas, monospace); }
+    @media (max-width: 620px) {
+      header { display: block; }
+      .controls { grid-template-columns: 1fr; }
+      header button { margin-top: 8px; }
+    }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>Weapon Sweep Results</h1>
-      <div class="meta"><span id="path" class="path">—</span> · <span id="runAt">—</span></div>
+      <div id="meta" class="meta">Loading attached project context…</div>
     </div>
-    <button id="reload">↻ Reload</button>
   </header>
-  <div id="error" class="error" style="display:none"></div>
-  <div id="content"></div>
+  <div class="controls">
+    <select id="run-select" aria-label="Cloud weapon-sweep run">
+      <option>Loading cloud runs…</option>
+    </select>
+    <button id="reload" type="button">Refresh</button>
+  </div>
+  <div id="status" class="status-row"></div>
+  <div id="connection-error" class="message error" hidden></div>
+  <div id="error" class="message error" hidden></div>
+  <div id="warning" class="message warning" hidden></div>
+  <main id="content"></main>
 
   <script>
-  const instanceId = ${JSON.stringify(instanceId)};
+  const token = new URLSearchParams(location.search).get('token');
+  const apiUrl = (path) => path + '?token=' + encodeURIComponent(token || '');
+  const fmtPct = (value) => Number.isFinite(Number(value)) ? (Number(value) * 100).toFixed(1) + '%' : '—';
+  const fmtNum = (value, digits = 1) => Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '—';
+  const esc = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  let currentState = null;
 
-  const fmtPct = (n) => (n * 100).toFixed(1) + '%';
-  const fmtNum = (n, d = 1) => Number(n).toFixed(d);
-  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-  function winRateClass(r) {
-    if (r >= 0.9) return 'high';
-    if (r >= 0.5) return 'mid';
-    return 'low';
+  function outcomeAbbrev(outcome) {
+    return ({ victory: 'W', death: 'D', timeout: 'T', stalled: 'S', error: 'E' })[outcome] || '?';
   }
 
-  function outcomeAbbrev(o) {
-    switch (o) {
-      case 'victory': return 'W';
-      case 'death': return 'D';
-      case 'timeout': return 'T';
-      case 'stalled': return 'S';
-      case 'error': return 'E';
-      default: return '?';
+  function outcomeClass(outcome) {
+    return ({ victory: 'victory', death: 'death', timeout: 'timeout', stalled: 'stalled', error: 'errored' })[outcome] || 'empty';
+  }
+
+  function winRateClass(rate) {
+    return rate >= .9 ? 'high' : rate >= .5 ? 'mid' : 'low';
+  }
+
+  function runLabel(run) {
+    const created = run.createdAt ? new Date(run.createdAt).toLocaleString() : 'unknown time';
+    const result = run.status === 'completed' ? (run.conclusion || 'completed') : run.status;
+    return '#' + run.id + ' · ' + created + ' · ' + (run.headBranch || 'detached') + ' · ' + result;
+  }
+
+  function renderRunSelector(state) {
+    const select = document.getElementById('run-select');
+    const runs = state.runs || [];
+    if (!runs.length) {
+      select.innerHTML = '<option value="">No cloud weapon-sweep runs found</option>';
+      select.disabled = true;
+      return;
+    }
+    select.innerHTML = runs.map((run) =>
+      '<option value="' + run.id + '"' + (run.id === state.selectedRun?.id ? ' selected' : '') + '>' + esc(runLabel(run)) + '</option>'
+    ).join('');
+    select.disabled = state.refreshing;
+  }
+
+  function renderMessages(state) {
+    for (const [id, message] of [['error', state.error], ['warning', state.warning]]) {
+      const element = document.getElementById(id);
+      element.hidden = !message;
+      element.textContent = message || '';
     }
   }
 
-  // Map a run outcome to its cell CSS modifier. 'error' maps to 'errored' so the
-  // cell never collides with the global .error banner class and inherits its
-  // padding/border/color.
-  function outcomeClass(o) {
-    switch (o) {
-      case 'victory':
-      case 'death':
-      case 'timeout':
-      case 'stalled':
-        return o;
-      case 'error':
-        return 'errored';
-      default:
-        return 'empty';
+  function renderStatus(state) {
+    const status = document.getElementById('status');
+    const run = state.selectedRun;
+    const pieces = [];
+    pieces.push('<span class="pill">' + esc(state.source === 'cloud' ? 'GitHub Actions' : 'Local file') + '</span>');
+    if (run) {
+      const statusClass = run.status === 'completed' ? esc(run.conclusion || 'completed') : 'active';
+      pieces.push('<span class="pill ' + statusClass + '">' + esc(run.status === 'completed' ? (run.conclusion || 'completed') : run.status) + '</span>');
+      if (state.expectedWeapons?.length) {
+        pieces.push('<span class="pill">' + state.availableWeapons.length + '/' + state.expectedWeapons.length + ' weapons</span>');
+      } else {
+        pieces.push('<span class="pill">' + state.availableWeapons.length + ' weapon result' + (state.availableWeapons.length === 1 ? '' : 's') + '</span>');
+      }
+      if (state.polling) pieces.push('<span class="pill active">auto-refresh 30s</span>');
+      if (run.url) pieces.push('<a href="' + esc(run.url) + '" target="_blank" rel="noreferrer">Open workflow run</a>');
     }
+    if (state.refreshing) pieces.push('<span class="pill active">refreshing…</span>');
+    if (state.lastRefreshedAt) pieces.push('<span>Updated ' + esc(new Date(state.lastRefreshedAt).toLocaleTimeString()) + '</span>');
+    status.innerHTML = pieces.join('');
   }
 
-  function render(state) {
-    const path = document.getElementById('path');
-    const runAt = document.getElementById('runAt');
-    const errorEl = document.getElementById('error');
+  function renderResults(state) {
     const content = document.getElementById('content');
-
-    path.textContent = state.path || '—';
-
-    if (state.error) {
-      errorEl.style.display = 'block';
-      errorEl.textContent = state.error;
-    } else {
-      errorEl.style.display = 'none';
-    }
-
     if (!state.data) {
-      runAt.textContent = 'no data';
-      content.innerHTML = '<div class="empty-state">No sweep data loaded. Run <code>npm run ai:weapon-sweep</code> to produce <code>' + (state.path || '/tmp/weapon-sweep.json') + '</code>, then click Reload.</div>';
+      const detail = state.source === 'local'
+        ? 'No local sweep data loaded. Use the <code>load_file</code> canvas action with an absolute JSON path.'
+        : (state.refreshing ? 'Loading cloud sweep results…' : 'No aggregate cloud results are available for this run.');
+      content.innerHTML = '<div class="empty-state">' + detail + '</div>';
       return;
     }
 
-    const d = state.data;
-    runAt.textContent = d.runAt ? new Date(d.runAt).toLocaleString() : '—';
-
-    // Summary table
-    const summaries = d.summaries || [];
-    let html = '<section><h2>Per-Weapon Summary (' + (d.seeds?.length ?? 0) + ' seeds × ' + (d.weapons?.length ?? 0) + ' weapons)</h2>';
-    html += '<table><thead><tr>';
-    html += '<th>Weapon</th><th>Runs</th><th>Wins</th><th>Win Rate</th><th>Mean Score</th><th>Mean Time (s)</th><th>Mean Lv</th><th>Mean Kills</th><th>Mean Min HP%</th>';
-    html += '</tr></thead><tbody>';
-    for (const s of summaries) {
-      html += '<tr>';
-      html += '<td class="weapon-name">' + esc(s.weapon) + '</td>';
-      html += '<td>' + s.runs + '</td>';
-      html += '<td>' + s.victories + '</td>';
-      html += '<td><span class="winrate ' + winRateClass(s.winRate) + '">' + fmtPct(s.winRate) + '</span></td>';
-      html += '<td>' + fmtNum(s.meanScore, 0) + '</td>';
-      html += '<td>' + fmtNum(s.meanGameTimeSec, 1) + '</td>';
-      html += '<td>' + fmtNum(s.meanLevel, 1) + '</td>';
-      html += '<td>' + fmtNum(s.meanKills, 1) + '</td>';
-      html += '<td>' + fmtPct(s.meanMinHealthPct) + '</td>';
-      html += '</tr>';
+    const data = state.data;
+    const summaries = data.summaries || [];
+    let html = '<section><h2>Per-weapon summary (' + (data.seeds?.length || 0) + ' seeds × ' + (data.weapons?.length || 0) + ' available weapons)</h2>';
+    html += '<div class="table-wrap"><table><thead><tr><th>Weapon</th><th>Runs</th><th>Wins</th><th>Win rate</th><th>Mean score</th><th>Mean time</th><th>Mean level</th><th>Mean kills</th><th>Mean min HP</th></tr></thead><tbody>';
+    for (const summary of summaries) {
+      html += '<tr><td class="weapon-name">' + esc(summary.weapon) + '</td>';
+      html += '<td>' + esc(summary.runs) + '</td><td>' + esc(summary.victories) + '</td>';
+      html += '<td><span class="winrate ' + winRateClass(summary.winRate) + '">' + fmtPct(summary.winRate) + '</span></td>';
+      html += '<td>' + fmtNum(summary.meanScore, 0) + '</td><td>' + fmtNum(summary.meanGameTimeSec, 1) + 's</td>';
+      html += '<td>' + fmtNum(summary.meanLevel, 1) + '</td><td>' + fmtNum(summary.meanKills, 1) + '</td><td>' + fmtPct(summary.meanMinHealthPct) + '</td></tr>';
     }
-    html += '</tbody></table></section>';
+    html += '</tbody></table></div></section>';
 
-    // Per-seed heatmap
-    const seeds = d.seeds || [];
-    const weapons = d.weapons || [];
+    const seeds = data.seeds || [];
+    const weapons = data.weapons || [];
     if (seeds.length && weapons.length) {
-      // Index records: recordsByWeaponSeed[weapon][seed] = record
-      const idx = {};
-      for (const r of d.allRecords || []) {
-        (idx[r.weapon] ||= {})[r.seed] = r;
+      const records = {};
+      for (const record of data.allRecords || []) {
+        (records[record.weapon] ||= {})[record.seed] = record;
       }
-
-      html += '<section><h2>Per-Seed Outcomes</h2><div class="grid-wrap">';
-      html += '<div class="grid" style="grid-template-columns: auto repeat(' + seeds.length + ', minmax(28px, 1fr));">';
+      html += '<section><h2>Per-seed outcomes</h2><div class="grid-wrap"><div class="grid" style="grid-template-columns:auto repeat(' + seeds.length + ', minmax(28px, 1fr))">';
       html += '<div class="head"></div>';
       for (const seed of seeds) html += '<div class="head">' + esc(seed) + '</div>';
       for (const weapon of weapons) {
         html += '<div class="row-label">' + esc(weapon) + '</div>';
         for (const seed of seeds) {
-          const r = idx[weapon]?.[seed];
-          if (!r) {
-            html += '<div class="cell empty" title="' + esc(weapon) + ' seed=' + esc(seed) + ': (no data)">—</div>';
-          } else {
-            const cls = 'cell ' + outcomeClass(r.outcome);
-            const title = esc(weapon) + ' seed=' + esc(seed) + ' · ' + esc(r.outcome)
-              + ' · t=' + fmtNum(r.gameTimeSec, 0) + 's'
-              + ' · lv=' + r.finalLevel
-              + ' · kills=' + r.totalKills
-              + ' · score=' + fmtNum(r.score, 0)
-              + ' · minHP=' + fmtPct(r.minHealthPct);
-            html += '<div class="' + cls + '" title="' + title + '">' + outcomeAbbrev(r.outcome) + '</div>';
+          const record = records[weapon]?.[seed];
+          if (!record) {
+            html += '<div class="cell empty" title="' + esc(weapon) + ' seed ' + esc(seed) + ': no data">—</div>';
+            continue;
           }
+          const title = esc(weapon) + ' seed=' + esc(seed) + ' · ' + esc(record.outcome)
+            + ' · t=' + fmtNum(record.gameTimeSec, 0) + 's · lv=' + esc(record.finalLevel)
+            + ' · kills=' + esc(record.totalKills) + ' · score=' + fmtNum(record.score, 0)
+            + ' · minHP=' + fmtPct(record.minHealthPct);
+          html += '<div class="cell ' + outcomeClass(record.outcome) + '" title="' + title + '">' + outcomeAbbrev(record.outcome) + '</div>';
         }
       }
-      html += '</div></div>';
-      html += '<div class="legend">'
+      html += '</div></div><div class="legend">'
         + '<span><span class="swatch" style="background:var(--win)"></span>victory</span>'
         + '<span><span class="swatch" style="background:var(--loss)"></span>death</span>'
         + '<span><span class="swatch" style="background:var(--timeout)"></span>timeout</span>'
         + '<span><span class="swatch" style="background:var(--stalled)"></span>stalled</span>'
         + '<span><span class="swatch" style="background:var(--errored)"></span>error</span>'
-        + '</div>';
-      html += '</section>';
+        + '</div></section>';
     }
-
     content.innerHTML = html;
   }
 
+  function render(state) {
+    currentState = state;
+    const meta = document.getElementById('meta');
+    meta.textContent = state.source === 'cloud'
+      ? (state.repository || 'Unknown repository') + ' · attached branch ' + (state.branch || 'detached')
+      : (state.path || 'No local path');
+    document.getElementById('reload').disabled = state.refreshing;
+    renderRunSelector(state);
+    renderMessages(state);
+    renderStatus(state);
+    renderResults(state);
+  }
+
+  async function request(path, options = {}) {
+    const response = await fetch(apiUrl(path), {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || ('Request failed with status ' + response.status));
+    return body;
+  }
+
   document.getElementById('reload').addEventListener('click', async () => {
-    try {
-      const resp = await fetch('/api/reload', { method: 'POST' });
-      const state = await resp.json();
-      render(state);
-    } catch (err) {
-      const el = document.getElementById('error');
-      el.style.display = 'block';
-      el.textContent = 'Reload failed: ' + err.message;
+    try { render(await request('/api/reload', { method: 'POST' })); }
+    catch (error) {
+      const element = document.getElementById('connection-error');
+      element.hidden = false;
+      element.textContent = 'Refresh request failed: ' + error.message;
     }
   });
 
-  // Live updates via SSE
-  const es = new EventSource('/events');
-  es.onmessage = (ev) => {
-    try { render(JSON.parse(ev.data)); } catch (e) { /* ignore */ }
-  };
+  document.getElementById('run-select').addEventListener('change', async (event) => {
+    const runId = Number(event.target.value);
+    if (!Number.isSafeInteger(runId)) return;
+    event.target.disabled = true;
+    try {
+      render(await request('/api/select-run', { method: 'POST', body: JSON.stringify({ runId }) }));
+    } catch (error) {
+      const element = document.getElementById('connection-error');
+      element.hidden = false;
+      element.textContent = 'Run selection failed: ' + error.message;
+      if (currentState) render(currentState);
+    }
+  });
 
-  // Initial fetch (in case SSE lags)
-  fetch('/api/state').then((r) => r.json()).then(render).catch(() => {});
+  const events = new EventSource(apiUrl('/events'));
+  events.onmessage = (event) => {
+    try {
+      document.getElementById('connection-error').hidden = true;
+      render(JSON.parse(event.data));
+    } catch (error) {
+      const element = document.getElementById('connection-error');
+      element.hidden = false;
+      element.textContent = 'Live update was invalid: ' + error.message;
+    }
+  };
+  events.onerror = () => {
+    const element = document.getElementById('connection-error');
+    element.hidden = false;
+    element.textContent = 'Live updates disconnected; retrying automatically.';
+  };
+  request('/api/state').then(render).catch((error) => {
+    const element = document.getElementById('connection-error');
+    element.hidden = false;
+    element.textContent = 'Initial state failed: ' + error.message;
+  });
   </script>
 </body>
 </html>`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
