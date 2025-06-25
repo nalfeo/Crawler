@@ -501,11 +501,21 @@ function upsertCatalog(
   const tags = briefType
     ? [briefType, 'generated', 'pipeline-approved']
     : ['generated', 'pipeline-approved'];
+
+  // Preserve any existing hand-authored description so approve does not clobber
+  // richer catalog copy that was written after initial generation.
+  const existingEntry = catalog.find((e) => e.id === `generated:${catalogId}`);
+  const existingDescription =
+    typeof existingEntry?.description === 'string' &&
+    existingEntry.description !== `Generated sprite from brief: ${manifestEntry.briefId}.`
+      ? existingEntry.description
+      : null;
+
   const catalogEntry: Record<string, unknown> = {
     id: `generated:${catalogId}`,
     kind: 'sprite',
     label: manifestEntry.spriteName,
-    description: `Generated sprite from brief: ${manifestEntry.briefId}.`,
+    description: existingDescription ?? `Generated sprite from brief: ${manifestEntry.briefId}.`,
     tags,
     spriteId: manifestEntry.spriteName,
     sheetKey: 'generated-manifest',
