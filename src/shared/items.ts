@@ -395,6 +395,12 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   // Slug mirrors an EquipmentItemDef in equipmentDefs.ts (same id) so the
   // item round-trips bag → equip → unequip → bag. Tagged only 'Gear'.
   gear('iron-helm', 'Iron Helm', 'A dented pot with eyeholes. Surprisingly reassuring.', C),
+  gear(
+    'batfolk-hood',
+    'Batfolk Hood',
+    'Cured membrane hide with twin bat-ear protrusions. Floor 2 souvenir.',
+    U,
+  ),
   gear('iron-visor', 'Iron Visor', 'A slitted faceplate. You see less, you flinch less.', C),
   gear('steel-pauldrons', 'Steel Pauldrons', 'Broad shoulder plates. Makes doorways a gamble.', U),
   gear('iron-breastplate', 'Iron Breastplate', 'Heavy, honest protection for the vitals.', U),
