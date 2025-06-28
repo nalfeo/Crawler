@@ -1,0 +1,65 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "bloody-footprints",
+  "task_title": "Add bloody footprints and smears",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "major_fork",
+      "notes": "Alt A render-only footprints over GoreVfx pools rejected because it weakens deterministic sim/test coverage and leaves no authoritative runtime state. Alt B sim-owned pools rendered by GoreVfx adopted because it removes the dead parallel path and guarantees pool contact, footprint color, and visible pool lifetime/position stay in sync. Addressed concerns by making world blood pools authoritative, pinning shared color/lifetime helpers, defining deterministic contact/mixing rules, and planning real MainGameScene probe evidence."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Final code-review pass after pool-contact, teleport-gap, intensity-zero, and stride-smear fixes found no validated issues."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "concerns_count": 4,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "Validated and fixed four issues: teleport trail backfill after large jumps, per-frame footprint geometry redraw, visible/contact blood-pool mismatch, and intensity=0 still rendering authoritative pools."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "A follow-up review surfaced one additional valid issue: smear intensity ignored the real stride distance because only fixed 0.42-ft segments reached the footprint builder. Fixed by threading strideDistanceFt through bloodyFootprintSystem into createBloodFootprintSurface."
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.6-sol", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Both review models were clean after the final fixes; adjudicator confirmed no unresolved multi-model concern remains."
+        }
+      ]
+    }
+  }
+}

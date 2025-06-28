@@ -30,6 +30,7 @@ import {
   spawnXpGem,
 } from '../helpers.js';
 import type { GameWorld } from '../world.js';
+import { MAX_BLOOD_POOLS, createBloodPoolSurface } from '../../shared/blood-surfaces.js';
 import {
   getEnemyDropConfig,
   rollLootTable,
@@ -469,6 +470,20 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     const isBoss = hasComponent(world.ecs, eid, FamilyMembership)
       ? ((world.stores.familyMembership.isBoss[eid] ?? 0) as 0 | 1)
       : 0;
+    world.bloodPools.push(
+      createBloodPoolSurface({
+        worldSeed: world.seed,
+        poolId: world.bloodyFootprintState.nextPoolId++,
+        x,
+        y,
+        color: bloodColor,
+        overkill,
+        createdAtMs: world.elapsedMs,
+      }),
+    );
+    if (world.bloodPools.length > MAX_BLOOD_POOLS) {
+      world.bloodPools.splice(0, world.bloodPools.length - MAX_BLOOD_POOLS);
+    }
     world.combatEvents.push({
       type: 'death',
       x,

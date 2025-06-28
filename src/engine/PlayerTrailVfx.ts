@@ -19,6 +19,7 @@ import { Player, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 import { ftToPx } from '../shared/units.js';
+import { isBloodyFootprintSourceActive } from '../shared/blood-surfaces.js';
 
 /** World-feet the player must travel before another puff is spawned. */
 const TRAIL_EMIT_DISTANCE_FT = 0.35;
@@ -42,10 +43,12 @@ export function createPlayerTrailVfx(scene: Phaser.Scene): PlayerTrailVfx {
   // Capability guard: headless/mocked scenes may not provide add.circle or the
   // tween manager. When absent we no-op — the trail is cosmetic and never
   // affects sim state, so silently skipping is correct.
-  const enabled =
+  const dustEnabled =
     typeof scene.add?.circle === 'function' && typeof scene.tweens?.add === 'function';
+  const graphicsEnabled = typeof scene.add?.graphics === 'function';
 
   const active = new Set<Phaser.GameObjects.Shape>();
+  const footprintGraphics = new Map<number, Phaser.GameObjects.Graphics>();
 
   /** Private non-deterministic RNG — cosmetic only, isolated from world.rng. */
   let seed = 0x1a2b3c;
@@ -58,7 +61,7 @@ export function createPlayerTrailVfx(scene: Phaser.Scene): PlayerTrailVfx {
   let lastEmitY: number | null = null;
 
   function spawnPuff(px: number, py: number): void {
-    if (!enabled) return;
+    if (!dustEnabled) return;
     const radius = TRAIL_PUFF_BASE_RADIUS_PX * (0.7 + rand() * 0.6);
     const puff = scene.add.circle(
       px + (rand() - 0.5) * 2,
@@ -87,9 +90,76 @@ export function createPlayerTrailVfx(scene: Phaser.Scene): PlayerTrailVfx {
     });
   }
 
+  function drawFootprintShape(
+    graphic: Phaser.GameObjects.Graphics,
+    footprint: GameWorld['bloodyFootprints'][number],
+  ): void {
+    graphic.clear();
+    graphic.fillStyle(footprint.color, 1);
+    if (footprint.smearLengthFt > 0) {
+      graphic.fillEllipse(
+        ftToPx(footprint.toeOffsetFt * 0.5),
+        0,
+        ftToPx(footprint.smearLengthFt),
+        ftToPx(footprint.smearWidthFt),
+      );
+    }
+    graphic.fillEllipse(
+      0,
+      0,
+      ftToPx(footprint.heelRadiusXFt) * 2,
+      ftToPx(footprint.heelRadiusYFt) * 2,
+    );
+    graphic.fillEllipse(
+      ftToPx(footprint.toeOffsetFt),
+      0,
+      ftToPx(footprint.toeRadiusXFt) * 2,
+      ftToPx(footprint.toeRadiusYFt) * 2,
+    );
+    graphic.setRotation(footprint.angleRad);
+  }
+
+  function setFootprintAlpha(
+    graphic: Phaser.GameObjects.Graphics,
+    footprint: GameWorld['bloodyFootprints'][number],
+    simNowMs: number,
+  ): void {
+    const lifetimeMs = Math.max(1, footprint.expiresAtMs - footprint.createdAtMs);
+    const progress = Math.max(0, Math.min(1, (simNowMs - footprint.createdAtMs) / lifetimeMs));
+    const alpha = 0.58 * (1 - progress);
+    graphic.setAlpha(alpha);
+  }
+
   return {
-    update(world: GameWorld): void {
-      if (!enabled) return;
+    update(world: GameWorld, _renderElapsedMs: number): void {
+      if (!dustEnabled && !graphicsEnabled) return;
+      if (graphicsEnabled) {
+        const activeFootprintIds = new Set(world.bloodyFootprints.map((footprint) => footprint.id));
+        for (const [id, graphic] of footprintGraphics) {
+          if (!activeFootprintIds.has(id)) {
+            graphic.destroy();
+            footprintGraphics.delete(id);
+          }
+        }
+        for (const footprint of world.bloodyFootprints) {
+          let graphic = footprintGraphics.get(footprint.id);
+          if (!graphic) {
+            graphic = scene.add.graphics({
+              x: ftToPx(footprint.x),
+              y: ftToPx(footprint.y) + TRAIL_PUFF_FOOT_OFFSET_PX,
+            });
+            graphic.setDepth(WORLD_VFX_DEPTH.bloodyFootprint);
+            graphic.name = `bloody-footprint:${footprint.id}`;
+            (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+              graphic,
+            );
+            drawFootprintShape(graphic, footprint);
+            footprintGraphics.set(footprint.id, graphic);
+          }
+          setFootprintAlpha(graphic, footprint, world.elapsedMs);
+        }
+      }
+
       const players = query(world.ecs, [Player, Position]);
       if (players.length === 0) {
         lastEmitX = null;
@@ -101,6 +171,10 @@ export function createPlayerTrailVfx(scene: Phaser.Scene): PlayerTrailVfx {
 
       const wx = world.stores.position.x[playerEid] ?? 0;
       const wy = world.stores.position.y[playerEid] ?? 0;
+      const sourceActive = isBloodyFootprintSourceActive(
+        world.bloodyFootprintState.source,
+        world.elapsedMs,
+      );
 
       if (lastEmitX === null || lastEmitY === null) {
         lastEmitX = wx;
@@ -113,19 +187,25 @@ export function createPlayerTrailVfx(scene: Phaser.Scene): PlayerTrailVfx {
       const distSq = dx * dx + dy * dy;
       if (distSq < TRAIL_EMIT_DISTANCE_FT * TRAIL_EMIT_DISTANCE_FT) return;
 
-      // Spawn the puff at the PREVIOUS emit point so it visibly trails the
-      // player rather than pinning to their current position.
-      spawnPuff(ftToPx(lastEmitX), ftToPx(lastEmitY));
+      if (!sourceActive) {
+        // Spawn the puff at the PREVIOUS emit point so it visibly trails the
+        // player rather than pinning to their current position.
+        spawnPuff(ftToPx(lastEmitX), ftToPx(lastEmitY));
+      }
       lastEmitX = wx;
       lastEmitY = wy;
     },
 
     destroy(): void {
-      if (enabled) {
+      if (dustEnabled) {
         scene.tweens.killTweensOf([...active]);
       }
       for (const obj of active) obj.destroy();
       active.clear();
+      for (const graphic of footprintGraphics.values()) {
+        graphic.destroy();
+      }
+      footprintGraphics.clear();
       lastEmitX = null;
       lastEmitY = null;
     },

@@ -101,12 +101,13 @@ export function setPieceZToDepth(z: number): number {
  * so `refreshCameraMasks()` keeps them on the world camera. Relative ordering
  * controls which VFX draws on top (gore < combat text < debug path).
  *
- * Ground-plane VFX (bloodPool, corpse, playerTrail) live in NEGATIVE depths so
+ * Ground-plane VFX (bloodPool, corpse, bloodyFootprint, playerTrail) live in
+ * NEGATIVE depths so
  * they render BELOW the default Phaser display depth (0) that living entities
  * inherit. This keeps the player from being buried under blood or corpses.
- * Relative ordering between them (pool < corpse < trail) is preserved so a
- * corpse still lies on top of the pool it bled into and the walking dust
- * doesn't hide either.
+ * Relative ordering between them (pool < corpse < footprint < trail) is preserved
+ * so a corpse still lies on top of the pool it bled into, bloody prints sit on
+ * the floor above pooled blood, and walking dust never hides either.
  */
 export const WORLD_VFX_DEPTH = {
   /** Persistent blood/ichor pools left on the ground after an enemy dies.
@@ -118,10 +119,12 @@ export const WORLD_VFX_DEPTH = {
    * reads as lying IN the pool, and below the default entity depth (0) so
    * the living player never renders under a corpse. */
   corpse: -17,
+  /** Persistent bloody footprints/smears tracked by the simulation. */
+  bloodyFootprint: -16,
   /** Small dust puffs kicked up behind the player as they move. Sits above
-   * the blood pool + corpse but still below entities so the puff is a
+   * the blood pool + corpse + footprints but still below entities so the puff is a
    * ground-plane effect, not something floating in front of the player. */
-  playerTrail: -16,
+  playerTrail: -15,
   /** Blood/gore splatter particles. */
   gore: 10,
   /** Enemy death "pop" ring + scatter (EffectsVfx). */

@@ -3,6 +3,7 @@ import type { GameWorld } from './world.js';
 import { aoeOnImpactPostDamage, aoeOnImpactPreDamage } from './systems/aoeOnImpactSystem.js';
 import { areaDamageSystem } from './systems/areaDamageSystem.js';
 import { beamSystem } from './systems/beamSystem.js';
+import { bloodyFootprintSystem } from './systems/bloodyFootprintSystem.js';
 import { collisionSystem } from './systems/collisionSystem.js';
 import { corpseStepSystem } from './systems/corpseStepSystem.js';
 import { damageSystem } from './systems/damageSystem.js';
@@ -67,6 +68,7 @@ export function runCoreSimulationStep(
   harvestSystem(world);
   dropSystem(world);
   corpseStepSystem(world);
+  bloodyFootprintSystem(world);
   deathTimerSystem(world);
   spawnAnimSystem(world);
   healthSystem(world);
