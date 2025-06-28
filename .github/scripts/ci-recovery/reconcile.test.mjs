@@ -131,6 +131,10 @@ function gqlNoThreads(reviews = [substantiveCopilotReview()]) {
         pullRequest: {
           id: 'PR_test_id',
           assignees: { nodes: [] },
+          closingIssuesReferences: {
+            pageInfo: { hasNextPage: false, endCursor: null },
+            nodes: [],
+          },
           reviews: reviewConnection(reviews),
           reviewThreads: {
             pageInfo: { hasNextPage: false, endCursor: null },
@@ -280,6 +284,7 @@ test('lease-acquire in dry-run writes the owner label and state comment', async 
     [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: { id: 999, body: '' },
     }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
   });
 
   t.after(() => server.close());
@@ -395,6 +400,175 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
   assert.ok(labelDetach, 'expected DELETE to detach the owner label from the PR');
   assert.ok(labelDelete, 'expected DELETE to remove the owner label from the repo');
   assert.ok(commentUpdate, 'expected PATCH to write idle state into the state comment');
+});
+
+for (const [name, repositoryLabelInitiallyExists, ownerLabelInitiallyAttached] of [
+  ['repository label only', true, false],
+  ['PR attachment only', false, true],
+]) {
+  test(`interrupted acquire cleans an orphaned ${name} before invariant checks`, async (t) => {
+    let repositoryLabelExists = repositoryLabelInitiallyExists;
+    const prLabels = [{ name: 'ci-recovery-opt-out' }];
+    if (ownerLabelInitiallyAttached) prLabels.push({ name: LABEL });
+
+    const { server, port, mutatingCalls } = await startServer({
+      [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+        body: { ...basePr(), labels: prLabels },
+      }),
+      [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+      [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+        repositoryLabelExists
+          ? { body: { name: LABEL } }
+          : { status: 404, body: { message: 'Not Found' } },
+      [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () =>
+        ownerLabelInitiallyAttached
+          ? { body: {} }
+          : { status: 404, body: { message: 'Label does not exist' } },
+      [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+        if (!repositoryLabelExists) {
+          return { status: 404, body: { message: 'Not Found' } };
+        }
+        repositoryLabelExists = false;
+        return { body: {} };
+      },
+      [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+        body: { id: 999, body: '' },
+      }),
+      [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    });
+    t.after(() => server.close());
+
+    const { code, stdout, stderr } = await runScript(port, {
+      RECOVERY_OPERATION: 'reconcile',
+      RECOVERY_TRIGGER: 'workflow_dispatch',
+      CI_RECOVERY_MODE: 'live',
+    });
+
+    if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+    assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+    assert.match(stdout, /skip pr=#42 reason=opt-out/);
+    assert.ok(
+      mutatingCalls.some(
+        (call) =>
+          call.method === 'DELETE' &&
+          call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+      ),
+    );
+    assert.ok(
+      mutatingCalls.some(
+        (call) =>
+          call.method === 'POST' &&
+          call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+      ),
+    );
+  });
+}
+
+test('closed PR orphan cleanup releases ownership exactly once', async (t) => {
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), state: 'closed', labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_dispatch',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /skip pr=#42 state=closed/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ).length,
+    1,
+  );
+});
+
+test('admission wait after orphan cleanup does not release ownership twice', async (t) => {
+  const stateCommentId = 999;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({ body: {} }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: stateCommentId, body: '' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateCommentId}`]: () => ({
+      body: { id: stateCommentId, body: '' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /cleanup pr=#42 reason=orphaned-owner-label/);
+  assert.match(stdout, /wait pr=#42 admission=/);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
+  assert.equal(
+    mutatingCalls.filter(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ).length,
+    1,
+  );
 });
 
 test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
@@ -1065,6 +1239,348 @@ test('reconcile in dry-run makes no mutating API calls', async (t) => {
   assert.deepEqual(mutatingCalls, [], 'reconcile in dry-run must not issue any mutating API calls');
 });
 
+// ---------------------------------------------------------------------------
+// expected_head_sha binding — fail closed on a time-of-check/time-of-use race
+// between the trusted review-wake bridge's validation and this reconciliation.
+// ---------------------------------------------------------------------------
+
+/** Clean-PR route set: reconcile reaches the arm/admission decision. */
+function trustedReviewWakePr(overrides = {}) {
+  return {
+    ...basePr(),
+    base: { ref: 'main', repo: { full_name: `${OWNER}/${REPO}` } },
+    ...overrides,
+  };
+}
+
+function cleanReconcileRoutes() {
+  return {
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  };
+}
+
+test('expected_head_sha match: reconcile proceeds normally past the head guard', async (t) => {
+  const { server, port, mutatingCalls } = await startServer(cleanReconcileRoutes());
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'a matching head must not trip the guard');
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('expected_head_sha mismatch: reconcile fails closed before any mutation, even in live mode', async (t) => {
+  const movedHead = 'b'.repeat(40);
+  // Only the PR fetch should be reached; the guard exits before comments,
+  // labels, checks, or any mutation — so no other route is registered.
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: movedHead,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=head-sha-moved expected=${movedHead} actual=${HEAD_SHA}`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'a mismatched head must fail closed with no mutation');
+});
+
+test('trusted metadata mismatch does not clean a pre-existing ownership artifact', async (t) => {
+  const movedHead = 'b'.repeat(40);
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...trustedReviewWakePr(),
+        labels: [{ name: LABEL }],
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: movedHead,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /reason=head-sha-moved/);
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'orphan cleanup must remain behind the opening trusted-metadata fence',
+  );
+});
+
+test('expected_head_sha without expected_base_ref fails closed before any mutation', async (t) => {
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: trustedReviewWakePr(),
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: '',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=missing-expected-base-ref expected=non-empty actual=`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'an incomplete trust envelope must not mutate the PR');
+});
+
+test('empty expected_head_sha preserves normal reconcile behavior', async (t) => {
+  const { server, port, mutatingCalls } = await startServer(cleanReconcileRoutes());
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    EXPECTED_HEAD_SHA: '',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'an empty expected SHA must not trip the guard');
+  assert.match(stdout, /(dry-run would-arm-auto-merge|wait pr=#42 admission=)/);
+  assert.deepEqual(mutatingCalls, [], 'dry-run must not issue any mutating API calls');
+});
+
+test('same-head retarget before reconcile fails closed before any mutation', async (t) => {
+  const retargetedBase = 'release';
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...trustedReviewWakePr(),
+        base: { ...trustedReviewWakePr().base, ref: retargetedBase },
+      },
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(`skip pr=#${PR_NUM} reason=base-ref-moved expected=main actual=${retargetedBase}`),
+  );
+  assert.deepEqual(mutatingCalls, [], 'a retargeted PR must fail closed with no mutation');
+});
+
+test('moved head after initial fetch fails closed before the first mutation phase', async (t) => {
+  // A synchronize can land after reconcile's opening PR fetch but before the
+  // first write. The per-phase recheck must re-fetch the live head immediately
+  // before mutating and fail closed if it moved, so no state comment, label,
+  // task comment, or Copilot assignment ever touches a head the bridge never
+  // validated. A mergeable:false PR deterministically reaches acquire (the very
+  // first mutation phase) in live mode.
+  const movedHead = 'b'.repeat(40);
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      // Call #1 is the opening fetch (passes the initial guard); call #2 is the
+      // per-phase recheck inside acquire, which must observe the moved head.
+      const head = pullFetches === 1 ? HEAD_SHA : movedHead;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          head: { ...trustedReviewWakePr().head, sha: head },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=head-sha-moved-before-mutation phase=acquire-label expected=${HEAD_SHA} actual=${movedHead}`,
+    ),
+    'a head that moved after the initial fetch must trip the per-phase guard',
+  );
+  assert.equal(pullFetches, 2, 'the per-phase guard must re-fetch the live head before mutating');
+  assert.deepEqual(
+    mutatingCalls,
+    [],
+    'a head moved before the first mutation must fail closed with no mutation',
+  );
+});
+
+test('same-head retarget after initial fetch fails closed before the first mutation phase', async (t) => {
+  const retargetedBase = 'release';
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const baseRef = pullFetches === 1 ? 'main' : retargetedBase;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          base: { ...trustedReviewWakePr().base, ref: baseRef },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=base-ref-moved-before-mutation phase=acquire-label expected=main actual=${retargetedBase}`,
+    ),
+  );
+  assert.equal(pullFetches, 2);
+  assert.deepEqual(mutatingCalls, [], 'a same-head retarget must fail closed with no mutation');
+});
+
+test('same-head draft conversion fails closed before the first mutation phase', async (t) => {
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'clean',
+          draft: pullFetches > 1,
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    new RegExp(
+      `skip pr=#${PR_NUM} reason=pr-drafted-before-mutation phase=acquire-label expected=false actual=true`,
+    ),
+  );
+  assert.equal(pullFetches, 2);
+  assert.deepEqual(mutatingCalls, [], 'a draft conversion must fail closed with no mutation');
+});
+
+test('empty expected_head_sha makes no extra head re-fetch before mutations', async (t) => {
+  // The per-phase recheck is a no-op when EXPECTED_HEAD_SHA is empty, so normal
+  // manual/router/scheduled/lease flows keep their exact prior API footprint:
+  // exactly one PR fetch and no additional /pulls calls per mutation phase.
+  let pullFetches = 0;
+  const { server, port } = await startServer({
+    ...cleanReconcileRoutes(),
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      return { body: basePr() };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    EXPECTED_HEAD_SHA: '',
+    CI_RECOVERY_MODE: 'live',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.doesNotMatch(stdout, /head-sha-moved/, 'an empty expected SHA must not trip any guard');
+  assert.equal(pullFetches, 1, 'an empty expected SHA must not add per-phase head re-fetches');
+});
+
 test('reconcile treats mergeable_state=behind as non-conflict and does not dispatch recovery', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
@@ -1596,7 +2112,7 @@ test('reconcile still emits merge-conflict blocker for dirty or mergeable=false 
 test('train mode dispatches exactly one conflict-only rebase', async (t) => {
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
-      body: { ...basePr(), mergeable: false, mergeable_state: 'dirty' },
+      body: { ...trustedReviewWakePr(), mergeable: false, mergeable_state: 'dirty' },
     }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
     [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
@@ -1643,6 +2159,62 @@ test('train mode dispatches exactly one conflict-only rebase', async (t) => {
       call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
   );
   assert.equal(dispatch.body.inputs.expected_head_sha, HEAD_SHA);
+  assert.equal(dispatch.body.inputs.expected_base_ref, 'main');
+});
+
+test('trusted metadata drift after conflict state write blocks auto-rebase dispatch', async (t) => {
+  let pullFetches = 0;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => {
+      pullFetches += 1;
+      const baseRef = pullFetches >= 3 ? 'release' : 'main';
+      return {
+        body: {
+          ...trustedReviewWakePr(),
+          mergeable: false,
+          mergeable_state: 'dirty',
+          base: { ...trustedReviewWakePr().base, ref: baseRef },
+        },
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 999, body: '' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'trusted-review-wake:pull_request_review:run-1',
+    EXPECTED_HEAD_SHA: HEAD_SHA,
+    EXPECTED_BASE_REF: 'main',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(
+    stdout,
+    /reason=base-ref-moved-before-mutation phase=auto-rebase-dispatch expected=main actual=release/,
+  );
+  assert.equal(pullFetches, 3);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/actions/workflows/auto-rebase-prs.yml/dispatches`,
+    ).length,
+    0,
+  );
 });
 
 /** A previously-dispatched conflict-only rebase state comment for HEAD_SHA. */
