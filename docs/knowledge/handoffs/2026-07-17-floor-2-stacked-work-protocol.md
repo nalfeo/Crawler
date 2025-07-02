@@ -51,6 +51,7 @@ The key design principle: **node `status` remains `blocked` while `stacked_work`
 ### `tests/unit/agent/epic-status.test.ts`
 
 Added `describe('speculative stacked-work metadata', ...)` block with 11 tests:
+
 1. Accepts a valid `stacked_work` block on a blocked node with `pr_open` dep
 2. Node with `stacked_work` remains lifecycle-blocked and absent from `ready_queue`
 3. `ready_queue` stays clear even when all deps would otherwise be validated (`requires_main_rebase`)
@@ -65,21 +66,21 @@ Added `describe('speculative stacked-work metadata', ...)` block with 11 tests:
 
 ## Error codes added
 
-| Code | Meaning |
-|------|---------|
-| `stacked.not-blocked` | `stacked_work` on non-blocked node |
-| `stacked.pr-open-missing-pr` | `stacked_pr_open` mode without PR ref |
-| `stacked.base-not-dependency` | `stack_base` dep not an unvalidated direct dep |
-| `stacked.missing-base` | unvalidated dep has no `stack_base` |
-| `stacked.duplicate-base` | duplicate `dep_node_id` in `stack_bases` |
-| `stacked.dep-not-pr-open` | dep is not `pr_open`/`merged`/`validated` |
-| `stacked.dep-missing-pr` | `pr_open` dep has no PR ref |
-| `stacked.stale-dep-head` | dep PR head advanced since last resync |
+| Code                                 | Meaning                                        |
+| ------------------------------------ | ---------------------------------------------- |
+| `stacked.not-blocked`                | `stacked_work` on non-blocked node             |
+| `stacked.pr-open-missing-pr`         | `stacked_pr_open` mode without PR ref          |
+| `stacked.base-not-dependency`        | `stack_base` dep not an unvalidated direct dep |
+| `stacked.missing-base`               | unvalidated dep has no `stack_base`            |
+| `stacked.duplicate-base`             | duplicate `dep_node_id` in `stack_bases`       |
+| `stacked.dep-not-pr-open`            | dep is not `pr_open`/`merged`/`validated`      |
+| `stacked.dep-missing-pr`             | `pr_open` dep has no PR ref                    |
+| `stacked.stale-dep-head`             | dep PR head advanced since last resync         |
 | `stacked.merged-dep-rebase-required` | dep is merged but `requires_main_rebase=false` |
-| `stacked.requires-main-rebase` | `requires_main_rebase=true`, rebase not done |
-| `stacked.duplicate-session` | same session on two `stacked_work` nodes |
-| `stacked.duplicate-issue` | same issue on two `stacked_work` nodes |
-| `github.stacked-pr-audit` | GitHub audit failure for speculative PR |
+| `stacked.requires-main-rebase`       | `requires_main_rebase=true`, rebase not done   |
+| `stacked.duplicate-session`          | same session on two `stacked_work` nodes       |
+| `stacked.duplicate-issue`            | same issue on two `stacked_work` nodes         |
+| `github.stacked-pr-audit`            | GitHub audit failure for speculative PR        |
 
 ## Key design decisions
 
