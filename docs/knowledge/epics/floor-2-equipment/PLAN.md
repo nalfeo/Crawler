@@ -330,26 +330,26 @@ All of the following must hold before recording `stacked_work`:
 
 ### stacked_work fields
 
-| Field | Description |
-| ----- | ----------- |
-| `mode` | `stacked_in_progress` or `stacked_pr_open` |
-| `issue` | Issue ref for the speculative work's child issue |
-| `session` | Session identifier for the speculative work owner |
-| `branch` | The stacked branch name |
-| `pr` | PR ref for the speculative PR (required when mode is `stacked_pr_open`) |
-| `stack_bases` | One entry per unvalidated direct dependency (see below) |
-| `drift_reason` | Optional material drift or block reason |
+| Field          | Description                                                             |
+| -------------- | ----------------------------------------------------------------------- |
+| `mode`         | `stacked_in_progress` or `stacked_pr_open`                              |
+| `issue`        | Issue ref for the speculative work's child issue                        |
+| `session`      | Session identifier for the speculative work owner                       |
+| `branch`       | The stacked branch name                                                 |
+| `pr`           | PR ref for the speculative PR (required when mode is `stacked_pr_open`) |
+| `stack_bases`  | One entry per unvalidated direct dependency (see below)                 |
+| `drift_reason` | Optional material drift or block reason                                 |
 
 ### stack_bases entry fields
 
-| Field | Description |
-| ----- | ----------- |
-| `dependency_node_id` | Node ID of the unvalidated direct dependency |
-| `dependency_pr_number` | PR number of the dependency |
-| `dependency_branch` | Branch name of the dependency PR |
-| `dependency_head_sha` | Dep's head SHA when speculative work was initiated |
-| `last_resynced_at` | Timestamp of the most recent resync with the dep |
-| `last_resynced_head` | Dep's head SHA at last resync |
+| Field                  | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `dependency_node_id`   | Node ID of the unvalidated direct dependency                |
+| `dependency_pr_number` | PR number of the dependency                                 |
+| `dependency_branch`    | Branch name of the dependency PR                            |
+| `dependency_head_sha`  | Dep's head SHA when speculative work was initiated          |
+| `last_resynced_at`     | Timestamp of the most recent resync with the dep            |
+| `last_resynced_head`   | Dep's head SHA at last resync                               |
 | `requires_main_rebase` | `true` once the dep PR merges; blocks lifecycle advancement |
 
 ### Stale-head detection
@@ -387,7 +387,7 @@ Once a dependency PR merges:
    and posts a `STACKED-WORK` update confirming completion.
 4. The Producer verifies the rebase, clears `stacked_work` (sets it to `null`),
    and advances the node through the normal lifecycle (`blocked → ready →
-   claimed → ...`).
+claimed → ...`).
 5. Normal lifecycle checks then apply; the node enters the ready queue only when
    all deps are `validated` and `stacked_work` is `null`.
 
