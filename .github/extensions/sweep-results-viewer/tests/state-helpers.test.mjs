@@ -73,3 +73,35 @@ test('terminal stabilization exhausts retry budget while still incomplete', asyn
     ['sword', 'bow'],
   );
 });
+
+test('terminal stabilization with custom isComplete callback stops early for AI sweep leaderboard', async () => {
+  const snapshots = [
+    // Terminal run with no leaderboard yet.
+    { run: { status: 'completed' }, leaderboardData: null, expiredArtifactCount: 0 },
+    // After first reload: leaderboard arrived.
+    { run: { status: 'completed' }, leaderboardData: { byComposite: [] }, expiredArtifactCount: 0 },
+    // Should NOT be loaded; we should stop after snapshot[1].
+    {
+      run: { status: 'completed' },
+      leaderboardData: { byComposite: [{ combo: 'x' }] },
+      expiredArtifactCount: 0,
+    },
+  ];
+  let loads = 0;
+  const stabilized = await stabilizeTerminalSnapshot(snapshots[0], {
+    attempts: 5,
+    delayMs: 0,
+    signal: new AbortController().signal,
+    isTerminalRun: (run) => run.status === 'completed',
+    isComplete: (snapshot) =>
+      Boolean(snapshot.leaderboardData) || snapshot.expiredArtifactCount > 0,
+    loadSnapshot: async () => {
+      loads += 1;
+      return snapshots[loads];
+    },
+    sleep: async () => {},
+  });
+  // Should stop after 1 reload once leaderboard arrives.
+  assert.equal(loads, 1);
+  assert.ok(stabilized.leaderboardData !== null);
+});

@@ -6,7 +6,9 @@ import { promisify } from 'node:util';
 import {
   aggregateArtifactWeapon,
   expectedWeaponsFromJobs,
+  isLeaderboardArtifact,
   normalizeRun,
+  parseAiSweepJobPhases,
   sortRunsNewestFirst,
 } from './cloud-results.mjs';
 
@@ -144,7 +146,101 @@ export async function listWeaponSweepRuns(repository, signal) {
     'workflow_runs',
     signal,
   );
-  return sortRunsNewestFirst(rawRuns.map(normalizeRun));
+  return sortRunsNewestFirst(
+    rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'weapon-sweep' })),
+  );
+}
+
+/**
+ * Lists all AI Sweep Eval (`ai-sweep.yml`) workflow runs, newest first.
+ * Each run is tagged with `workflowType: 'ai-sweep'`.
+ */
+export async function listAiSweepRuns(repository, signal) {
+  const rawRuns = await paginate(
+    repository,
+    'actions/workflows/ai-sweep.yml/runs',
+    'workflow_runs',
+    signal,
+  );
+  return sortRunsNewestFirst(
+    rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'ai-sweep' })),
+  );
+}
+
+/**
+ * Lists all sweep runs (weapon-sweep + AI Sweep Eval) combined, newest first.
+ * Each run carries a `workflowType` field indicating its source workflow.
+ * Any rejection from either workflow request is propagated immediately.
+ */
+export async function listAllSweepRuns(repository, signal) {
+  const [weaponRuns, aiRuns] = await Promise.all([
+    listWeaponSweepRuns(repository, signal),
+    listAiSweepRuns(repository, signal),
+  ]);
+  return sortRunsNewestFirst([...weaponRuns, ...aiRuns]);
+}
+
+/**
+ * Creates bound list functions that use the provided `runGhJsonFn` as the
+ * GitHub API boundary. Exported for unit tests that need to inject a mock.
+ */
+export function _createListClient(runGhJsonFn) {
+  async function paginateWith(repo, path, collectionName, signal) {
+    const values = [];
+    for (let page = 1; ; page += 1) {
+      const separator = path.includes('?') ? '&' : '?';
+      const response = await runGhJsonFn(
+        ['api', '--method', 'GET', `repos/${repo}/${path}${separator}per_page=100&page=${page}`],
+        { signal },
+      );
+      const pageValues = response?.[collectionName];
+      if (!Array.isArray(pageValues)) {
+        throw new Error(`GitHub API response did not contain "${collectionName}".`);
+      }
+      values.push(...pageValues);
+      if (pageValues.length < 100) {
+        return values;
+      }
+    }
+  }
+
+  async function clientListWeaponSweepRuns(repository, signal) {
+    const rawRuns = await paginateWith(
+      repository,
+      'actions/workflows/weapon-sweep.yml/runs',
+      'workflow_runs',
+      signal,
+    );
+    return sortRunsNewestFirst(
+      rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'weapon-sweep' })),
+    );
+  }
+
+  async function clientListAiSweepRuns(repository, signal) {
+    const rawRuns = await paginateWith(
+      repository,
+      'actions/workflows/ai-sweep.yml/runs',
+      'workflow_runs',
+      signal,
+    );
+    return sortRunsNewestFirst(
+      rawRuns.map((raw) => ({ ...normalizeRun(raw), workflowType: 'ai-sweep' })),
+    );
+  }
+
+  async function clientListAllSweepRuns(repository, signal) {
+    const [weaponRuns, aiRuns] = await Promise.all([
+      clientListWeaponSweepRuns(repository, signal),
+      clientListAiSweepRuns(repository, signal),
+    ]);
+    return sortRunsNewestFirst([...weaponRuns, ...aiRuns]);
+  }
+
+  return {
+    listWeaponSweepRuns: clientListWeaponSweepRuns,
+    listAiSweepRuns: clientListAiSweepRuns,
+    listAllSweepRuns: clientListAllSweepRuns,
+  };
 }
 
 async function getRun(repository, runId, signal) {
@@ -238,5 +334,37 @@ export async function loadCloudRun(repository, runId, signal) {
     expiredArtifactCount: artifacts.filter(
       (artifact) => artifact.expired === true && /^weapon-sweep-(?!shard-)/.test(artifact.name),
     ).length,
+  };
+}
+
+/**
+ * Loads metadata, job phases, and leaderboard artifact for an AI Sweep Eval run.
+ *
+ * @param {string} repository  e.g. "nalfeo/Crawler"
+ * @param {number} runId
+ * @param {AbortSignal} signal
+ * @returns {Promise<{ run: object, jobPhases: object, leaderboardData: object | null, expiredArtifactCount: number }>}
+ */
+export async function loadAiSweepRun(repository, runId, signal) {
+  const [run, artifacts, jobs] = await Promise.all([
+    getRun(repository, runId, signal),
+    listArtifacts(repository, runId, signal),
+    listJobs(repository, runId, signal),
+  ]);
+
+  const leaderboardArtifact = artifacts.find(isLeaderboardArtifact) ?? null;
+  const leaderboardData = leaderboardArtifact
+    ? await downloadArtifactJson(repository, runId, leaderboardArtifact, signal)
+    : null;
+
+  const expiredArtifactCount = artifacts.filter(
+    (artifact) => artifact.expired === true && artifact.name === 'leaderboard',
+  ).length;
+
+  return {
+    run,
+    jobPhases: parseAiSweepJobPhases(jobs),
+    leaderboardData,
+    expiredArtifactCount,
   };
 }
