@@ -411,6 +411,72 @@ describe('runIssuePipeline', () => {
     expect(callArgs.type).toBe('weapon');
   });
 
+  it.each([
+    {
+      label: 'legacy omitted-size boss',
+      request: { name: 'batfolk-boss', type: 'enemy' as const },
+      expected: 'large' as const,
+    },
+    {
+      label: 'explicit wide boss',
+      request: { name: 'beetlefolk-boss', type: 'enemy' as const, sizeVariant: 'wide' as const },
+      expected: 'wide' as const,
+    },
+    {
+      label: 'ordinary enemy',
+      request: { name: 'beetlefolk-enforcer', type: 'enemy' as const },
+      expected: 'default' as const,
+    },
+  ])('passes the effective size to synthesis for $label', async ({ request, expected }) => {
+    const winnerPath = path.join(repoRoot, `${request.name}.yaml`);
+    writeFileSync(winnerPath, `name: ${request.name}\njudge:\n  enabled: false\n`, 'utf8');
+    const store = makeStore();
+    mockSynthesizeBrief.mockResolvedValueOnce({
+      name: request.name,
+      type: 'enemy',
+      sizeVariant: expected,
+      outDir: repoRoot,
+      written: [
+        {
+          id: `${request.name}-v1`,
+          type: 'enemy',
+          description: 'enemy boss',
+          embellishmentSeeds: [],
+          synthesisRationale: 'clear silhouette',
+          yamlPath: winnerPath,
+        },
+      ],
+      rejected: [],
+      sidecarPath: path.join(repoRoot, 'synthesis.json'),
+      providerLabel: 'azure-openai:synth',
+      promptHash: 'prompt-hash',
+    });
+    mockRunFull.mockResolvedValueOnce({
+      summary: { brief: request.name, runId: 'run-size' },
+      summaryPath: '/tmp/run-size/summary.json',
+    } as never);
+
+    await runIssuePipeline({
+      request: makeRequest(request),
+      repoRoot,
+      store,
+      imageProvider: {} as never,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {
+        modelDeployment: 'selector-deploy',
+        async selectBrief() {
+          return { index: 0, rationale: 'best match', modelDeployment: 'selector-deploy' };
+        },
+      },
+      visionProvider: null,
+      issueApi: { comment: async () => {} },
+      env: {},
+    });
+
+    expect(mockSynthesizeBrief.mock.calls[0]![0].sizeVariant).toBe(expected);
+  });
+
   it('mirrors the post-enableJudge brief bytes into the store before runFull executes', async () => {
     // Regression test: issue-pipeline must mirror the promoted brief to the store
     // (via mirrorBriefToStore) AFTER enableJudge mutates it and BEFORE runFull starts,

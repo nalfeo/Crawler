@@ -1,6 +1,10 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { ASSET_REQUEST_LABEL, parseAssetRequestIssueBody } from '../asset-request.js';
+import {
+  ASSET_REQUEST_LABEL,
+  AssetRequestValidationError,
+  parseAssetRequestIssueBody,
+} from '../asset-request.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -50,7 +54,12 @@ interface GhIssueListItem {
 
 const OPEN_ASSET_REQUEST_ISSUE_LIMIT = '200';
 
-export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssueApi {
+type AssetRequestIssueParser = typeof parseAssetRequestIssueBody;
+
+export function createGhAssetRequestIssueApi(
+  repoRoot: string,
+  parseIssue: AssetRequestIssueParser = parseAssetRequestIssueBody,
+): AssetRequestIssueApi {
   return {
     async listOpenAssetRequestIssues(): Promise<readonly OpenAssetRequestIssue[]> {
       const { stdout } = await execFileAsync(
@@ -82,7 +91,7 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
           continue;
         if (typeof row.body !== 'string') continue;
         // Filter to issues that actually carry the machine-readable contract.
-        if (!parseAssetRequestIssueBody(row.body)) continue;
+        if (!parseIssueBody(row.number, row.body, parseIssue)) continue;
         // `gh issue list --json author` returns `{ login, id, name, is_bot }`.
         // We only need `login` for downstream trust-gates.
         const authorLogin =
@@ -140,7 +149,7 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
         return typeof name === 'string' && name === ASSET_REQUEST_LABEL;
       });
       if (!hasAssetLabel) return null;
-      if (!parseAssetRequestIssueBody(row.body)) return null;
+      if (!parseIssueBody(row.number, row.body, parseIssue)) return null;
       const authorLogin =
         row.author &&
         typeof row.author === 'object' &&
@@ -151,4 +160,16 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
       return { number: row.number, body: row.body, authorLogin };
     },
   };
+}
+
+function parseIssueBody(issueNumber: number, body: string, parseIssue: AssetRequestIssueParser) {
+  try {
+    return parseIssue(body);
+  } catch (error) {
+    if (error instanceof AssetRequestValidationError) {
+      process.stderr.write(`asset-request-issue-api: issue #${issueNumber}: ${error.message}\n`);
+      return null;
+    }
+    throw error;
+  }
 }

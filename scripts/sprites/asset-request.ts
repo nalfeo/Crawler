@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
 import { SPRITE_TYPES } from './brief-schema.js';
+import {
+  DEFAULT_SIZE_VARIANT,
+  isSizeVariant,
+  SIZE_VARIANTS,
+  type SizeVariant,
+} from './size-variants.js';
 
 export const ASSET_REQUEST_LABEL = 'asset-request';
 export const ASSET_REQUEST_MARKER = 'asset-request:v1';
@@ -46,6 +52,7 @@ export interface AssetRequestPayload {
   readonly briefSentence: string;
   readonly type?: string;
   readonly floor?: number;
+  readonly sizeVariant?: string;
 }
 
 export interface ParsedAssetRequestIssue {
@@ -53,7 +60,15 @@ export interface ParsedAssetRequestIssue {
   readonly briefSentence: string;
   readonly type?: string;
   readonly floor?: number;
+  /** Effective requested size. Omitted for ordinary default-sized requests. */
+  readonly sizeVariant?: SizeVariant;
   readonly fingerprint: string;
+  /** Pre-type-aware identity retained only for legacy claim/rejection lookups. */
+  readonly legacyFingerprint?: string;
+}
+
+export class AssetRequestValidationError extends Error {
+  override readonly name = 'AssetRequestValidationError';
 }
 
 export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssue | null {
@@ -72,7 +87,30 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
       } catch {
         parsed = null;
       }
+      validatePotentialMarkerSize(parsed);
       if (isAssetRequestPayload(parsed)) {
+        const explicitSizeVariant = parseOptionalSizeVariant(
+          parsed.sizeVariant,
+          'asset-request marker',
+        );
+        const effectiveSizeVariant =
+          explicitSizeVariant ??
+          (isBossAssetRequest(parsed.name, parsed.briefSentence, parsed.type)
+            ? 'large'
+            : undefined);
+        const legacyFingerprint = fingerprintAssetRequest(
+          parsed.name,
+          parsed.briefSentence,
+          parsed.floor,
+          explicitSizeVariant,
+        );
+        const fingerprint = fingerprintParsedAssetRequest({
+          name: parsed.name,
+          briefSentence: parsed.briefSentence,
+          type: parsed.type,
+          floor: parsed.floor,
+          explicitSizeVariant,
+        });
         // Machine-authored marker payload: preserve `briefSentence` verbatim so
         // the machine contract stays byte-stable for the downstream prompt. The
         // fingerprint collapses whitespace internally, so a marker payload and
@@ -82,7 +120,9 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
           briefSentence: parsed.briefSentence,
           type: parsed.type && parsed.type.trim() !== '' ? parsed.type : undefined,
           floor: parsed.floor,
-          fingerprint: fingerprintAssetRequest(parsed.name, parsed.briefSentence, parsed.floor),
+          ...(effectiveSizeVariant ? { sizeVariant: effectiveSizeVariant } : {}),
+          fingerprint,
+          ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
         };
       }
     }
@@ -90,17 +130,102 @@ export function parseAssetRequestIssueBody(body: string): ParsedAssetRequestIssu
   // Fallback for issue-form rendered text ("### Name", "### Brief", "### Type").
   const fallback = parseIssueFormBody(normalizedBody);
   if (!fallback) return null;
+  const { explicitSizeVariant, ...request } = fallback;
+  const legacyFingerprint = fingerprintAssetRequest(
+    fallback.name,
+    fallback.briefSentence,
+    fallback.floor,
+    explicitSizeVariant,
+  );
+  const fingerprint = fingerprintParsedAssetRequest({
+    name: fallback.name,
+    briefSentence: fallback.briefSentence,
+    type: fallback.type,
+    floor: fallback.floor,
+    explicitSizeVariant,
+  });
   return {
-    ...fallback,
-    fingerprint: fingerprintAssetRequest(fallback.name, fallback.briefSentence, fallback.floor),
+    ...request,
+    fingerprint,
+    ...(fingerprint !== legacyFingerprint ? { legacyFingerprint } : {}),
   };
 }
 
-export function fingerprintAssetRequest(name: string, briefSentence: string, floor = 1): string {
+export function fingerprintAssetRequest(
+  name: string,
+  briefSentence: string,
+  floor = 1,
+  explicitSizeVariant?: SizeVariant,
+): string {
   const normalized =
     `${name.trim().toLowerCase()}\n${briefSentence.trim().replace(/\s+/g, ' ')}` +
-    (floor === 1 ? '' : `\nfloor:${floor}`);
+    (floor === 1 ? '' : `\nfloor:${floor}`) +
+    (explicitSizeVariant === undefined ? '' : `\nsize:${explicitSizeVariant}`);
   return createHash('sha256').update(normalized).digest('hex');
+}
+
+/**
+ * Preserve the legacy request fingerprint unless an explicit `type` is the only
+ * reason boss-size inference changes. In that narrow case, append normalized
+ * type context so a type-only edit gets a distinct queue/claim identity while
+ * unchanged legacy requests continue to match their pre-upgrade keys.
+ */
+function fingerprintParsedAssetRequest(input: {
+  readonly name: string;
+  readonly briefSentence: string;
+  readonly type?: string;
+  readonly floor?: number;
+  readonly explicitSizeVariant?: SizeVariant;
+}): string {
+  const legacyFingerprint = fingerprintAssetRequest(
+    input.name,
+    input.briefSentence,
+    input.floor,
+    input.explicitSizeVariant,
+  );
+  if (input.explicitSizeVariant !== undefined) return legacyFingerprint;
+  const normalizedType = input.type?.trim().toLowerCase();
+  if (!normalizedType) return legacyFingerprint;
+  const typeChangesBossInference =
+    isBossAssetRequest(input.name, input.briefSentence, normalizedType) !==
+    isBossAssetRequest(input.name, input.briefSentence);
+  if (!typeChangesBossInference) return legacyFingerprint;
+  return createHash('sha256').update(`${legacyFingerprint}\ntype:${normalizedType}`).digest('hex');
+}
+
+/**
+ * Resolve the generation size for a parsed or persisted issue request.
+ *
+ * New ingested requests persist this effective value. The inference path remains
+ * here for legacy queue messages that predate the size field.
+ */
+export function resolveAssetRequestSizeVariant(input: {
+  readonly name: string;
+  readonly briefSentence: string;
+  readonly type?: string;
+  readonly sizeVariant?: unknown;
+}): SizeVariant {
+  const explicit = parseOptionalSizeVariant(input.sizeVariant, 'asset request');
+  if (explicit) return explicit;
+  return isBossAssetRequest(input.name, input.briefSentence, input.type)
+    ? 'large'
+    : DEFAULT_SIZE_VARIANT;
+}
+
+function isBossAssetRequest(name: string, briefSentence: string, type?: string): boolean {
+  const normalizedType = type?.trim().toLowerCase();
+  // Explicit non-enemy type always suppresses boss sizing.
+  if (normalizedType && normalizedType !== 'enemy') return false;
+
+  const normalizedName = name.trim().toLowerCase();
+  if (/(?:^|-)boss$/.test(normalizedName)) return true;
+
+  // Brief-text cues (e.g. "crime boss", "godfather") only fire when the type
+  // is explicitly 'enemy'. When type is omitted the name-suffix check above is
+  // the sole signal, preventing "boss chamber" in a tile brief from triggering
+  // large sizing.
+  if (normalizedType !== 'enemy') return false;
+  return /\b(?:boss|godfather|godmother)\b/i.test(briefSentence);
 }
 
 function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
@@ -116,7 +241,8 @@ function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
   if (containsUnrenderedTemplate(v.name) || containsUnrenderedTemplate(v.briefSentence)) {
     return false;
   }
-  // Validate type if present: must be empty string, or a valid SPRITE_TYPES value
+  // Validate type if present: must be empty or a valid SPRITE_TYPES string.
+  if (v.type !== undefined && typeof v.type !== 'string') return false;
   if (typeof v.type === 'string' && v.type.trim() !== '') {
     if (!(SPRITE_TYPES as readonly string[]).includes(v.type.trim().toLowerCase())) {
       return false;
@@ -128,7 +254,45 @@ function isAssetRequestPayload(value: unknown): value is AssetRequestPayload {
   ) {
     return false;
   }
+  if (
+    v.sizeVariant !== undefined &&
+    (typeof v.sizeVariant !== 'string' ||
+      (v.sizeVariant.trim() !== '' &&
+        v.sizeVariant.trim() !== '_No response_' &&
+        !isSizeVariant(v.sizeVariant.trim().toLowerCase())))
+  ) {
+    return false;
+  }
   return true;
+}
+
+function validatePotentialMarkerSize(value: unknown): void {
+  if (!value || typeof value !== 'object') return;
+  const v = value as Record<string, unknown>;
+  if (
+    v.version !== 1 ||
+    typeof v.name !== 'string' ||
+    typeof v.briefSentence !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(v, 'sizeVariant')
+  ) {
+    return;
+  }
+  parseOptionalSizeVariant(v.sizeVariant, 'asset-request marker');
+}
+
+function parseOptionalSizeVariant(value: unknown, source: string): SizeVariant | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === '' || normalized === '_no response_') return undefined;
+    // Unrendered GitHub Actions template expressions (`${{ … }}`) are treated as
+    // omitted — the same fallback logic that applies to unrendered name/brief.
+    if (containsUnrenderedTemplate(value)) return undefined;
+    if (isSizeVariant(normalized)) return normalized;
+  }
+  throw new AssetRequestValidationError(
+    `Invalid size '${String(value)}' in ${source}. Expected one of ${SIZE_VARIANTS.join(', ')}.`,
+  );
 }
 
 /**
@@ -170,6 +334,8 @@ function parseIssueFormBody(body: string): {
   readonly briefSentence: string;
   readonly type?: string;
   readonly floor?: number;
+  readonly sizeVariant?: SizeVariant;
+  readonly explicitSizeVariant?: SizeVariant;
 } | null {
   const nameMatch = body.match(/(?:^|\n)###\s+Name\s*\n+([^\n]+)/i);
   // Capture the FULL Brief section — every line after the heading up to the next
@@ -185,7 +351,7 @@ function parseIssueFormBody(body: string): {
   const name = nameMatch[1]!.trim();
   const briefSentence = normalizeBriefText(briefMatch[1]!);
   if (name === '' || !isValidBriefText(briefSentence)) return null;
-  const typeMatch = body.match(/(?:^|\n)###\s+Type\s*\n+([^\n]+)/i);
+  const typeMatch = body.match(/(?:^|\n)###\s+Type(?:\s+\(optional\))?\s*\n+([^\n]+)/i);
   let type: string | undefined;
   if (typeMatch) {
     const candidate = typeMatch[1]!.trim().toLowerCase();
@@ -203,5 +369,21 @@ function parseIssueFormBody(body: string): {
     floor = Number(floorMatch[1]!.trim());
     if (!Number.isInteger(floor) || floor < 1 || floor > 20) return null;
   }
-  return { name, briefSentence, type, floor };
+  const sizeMatch = body.match(
+    /(?:^|\n)###\s+Size(?:\s+variant)?(?:\s+\(optional\))?\s*\n+([^\n]+)/i,
+  );
+  const explicitSizeVariant = parseOptionalSizeVariant(
+    sizeMatch?.[1],
+    'asset-request issue field "Size"',
+  );
+  const effectiveSizeVariant =
+    explicitSizeVariant ?? (isBossAssetRequest(name, briefSentence, type) ? 'large' : undefined);
+  return {
+    name,
+    briefSentence,
+    type,
+    floor,
+    ...(effectiveSizeVariant ? { sizeVariant: effectiveSizeVariant } : {}),
+    ...(explicitSizeVariant ? { explicitSizeVariant } : {}),
+  };
 }

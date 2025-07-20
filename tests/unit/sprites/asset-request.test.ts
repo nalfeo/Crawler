@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   ASSET_REQUEST_MARKER,
+  AssetRequestValidationError,
   fingerprintAssetRequest,
   parseAssetRequestIssueBody,
+  resolveAssetRequestSizeVariant,
 } from '../../../scripts/sprites/asset-request.js';
 
 /**
@@ -23,11 +25,19 @@ const issuesFixture = JSON.parse(
 };
 
 /** Build an issue-form rendered body from parts (mirrors GitHub's rendering). */
-function formBody(parts: { name?: string; brief?: string; type?: string }): string {
+function formBody(parts: {
+  name?: string;
+  brief?: string;
+  type?: string;
+  floor?: string;
+  size?: string;
+}): string {
   const lines: string[] = [];
   if (parts.name !== undefined) lines.push('### Name', parts.name, '');
   if (parts.brief !== undefined) lines.push('### Brief', parts.brief, '');
-  if (parts.type !== undefined) lines.push('### Type', parts.type, '');
+  if (parts.type !== undefined) lines.push('### Type (optional)', parts.type, '');
+  if (parts.floor !== undefined) lines.push('### Floor (optional)', parts.floor, '');
+  if (parts.size !== undefined) lines.push('### Size (optional)', parts.size, '');
   return lines.join('\n');
 }
 
@@ -124,6 +134,22 @@ describe('parseAssetRequestIssueBody', () => {
     expect(parsed?.type).toBeUndefined();
   });
 
+  it('rejects marker payloads with non-string types without throwing', () => {
+    for (const type of [false, 42, []]) {
+      const body = [
+        `<!-- ${ASSET_REQUEST_MARKER}`,
+        JSON.stringify({
+          version: 1,
+          name: 'carved-idol',
+          briefSentence: 'A small carved stone idol with hollow eyes.',
+          type,
+        }),
+        '-->',
+      ].join('\n');
+      expect(parseAssetRequestIssueBody(body)).toBeNull();
+    }
+  });
+
   it('rejects invalid marker floors even when type is omitted', () => {
     for (const floor of ['21', '"12"']) {
       const body = [
@@ -143,12 +169,35 @@ describe('parseAssetRequestIssueBody', () => {
       '### Brief',
       'A chipped bone dagger with twine-wrapped handle.',
       '',
-      '### Type',
+      '### Type (optional)',
       'weapon',
     ].join('\n');
     const parsed = parseAssetRequestIssueBody(body);
     expect(parsed?.name).toBe('bone-dagger');
     expect(parsed?.type).toBe('weapon');
+  });
+
+  it('applies brief-only boss cues when "### Type (optional)" heading supplies enemy type', () => {
+    const body = formBody({
+      name: 'countess-vesper',
+      brief: 'An aristocratic batfolk crime boss with folded cloak-like wings.',
+      type: 'enemy',
+    });
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.type).toBe('enemy');
+    expect(parsed?.sizeVariant).toBe('large');
+  });
+
+  it('suppresses boss-name inference when "### Type (optional)" heading supplies non-enemy type', () => {
+    const body = formBody({
+      name: 'tile-boss-arena-floor',
+      brief: 'The floor of the boss arena. Worn stone, subtle hazard markings.',
+      type: 'tile',
+    });
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.type).toBe('tile');
+    expect(parsed?.sizeVariant).toBeUndefined();
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
   });
 
   it('rejects form-rendered type field when invalid', () => {
@@ -159,7 +208,7 @@ describe('parseAssetRequestIssueBody', () => {
       '### Brief',
       'A chipped bone dagger with twine-wrapped handle.',
       '',
-      '### Type',
+      '### Type (optional)',
       'invalid-type',
     ].join('\n');
     // Should reject entirely if form has a non-empty invalid type
@@ -225,6 +274,137 @@ describe('parseAssetRequestIssueBody', () => {
       '1.5',
     ].join('\n');
     expect(parseAssetRequestIssueBody(body)).toBeNull();
+  });
+
+  it('defaults an omitted canonical boss request to large without changing its legacy fingerprint', () => {
+    const brief = 'Aristocratic batfolk crime boss with folded cloak-like wings.';
+    const parsed = parseAssetRequestIssueBody(
+      formBody({ name: 'batfolk-boss', brief, type: 'enemy', floor: '2' }),
+    );
+    expect(parsed).toMatchObject({ name: 'batfolk-boss', sizeVariant: 'large', floor: 2 });
+    expect(parsed?.fingerprint).toBe(fingerprintAssetRequest('batfolk-boss', brief, 2));
+  });
+
+  it('changes fingerprint when explicit enemy type is the only boss-size signal', () => {
+    const brief = 'An aristocratic batfolk crime boss with folded cloak-like wings.';
+    const omitted = parseAssetRequestIssueBody(formBody({ name: 'countess-vesper', brief }));
+    const typed = parseAssetRequestIssueBody(
+      formBody({ name: 'countess-vesper', brief, type: 'enemy' }),
+    );
+
+    expect(omitted?.sizeVariant).toBeUndefined();
+    expect(typed?.sizeVariant).toBe('large');
+    expect(typed?.fingerprint).not.toBe(omitted?.fingerprint);
+    expect(typed?.legacyFingerprint).toBe(omitted?.fingerprint);
+  });
+
+  it.each(['wide', 'tall', 'large', 'default'] as const)(
+    'preserves an explicit %s size override for a boss request',
+    (sizeVariant) => {
+      const brief = 'A family crime boss with a single connected silhouette.';
+      const parsed = parseAssetRequestIssueBody(
+        formBody({ name: 'beetlefolk-boss', brief, type: 'enemy', size: sizeVariant }),
+      );
+      expect(parsed?.sizeVariant).toBe(sizeVariant);
+      expect(parsed?.fingerprint).toBe(
+        fingerprintAssetRequest('beetlefolk-boss', brief, 1, sizeVariant),
+      );
+    },
+  );
+
+  it('keeps ordinary enemies default-sized and avoids internal -boss- false positives', () => {
+    const ordinary = parseAssetRequestIssueBody(
+      formBody({
+        name: 'beetlefolk-enforcer',
+        brief: 'A broad armored beetlefolk enforcer.',
+        type: 'enemy',
+      }),
+    );
+    expect(ordinary?.sizeVariant).toBeUndefined();
+    expect(resolveAssetRequestSizeVariant(ordinary!)).toBe('default');
+
+    const tile = parseAssetRequestIssueBody(
+      formBody({
+        name: 'tile-boss-staircase-floor',
+        brief: 'The floor of the boss chamber.',
+        type: 'tile',
+      }),
+    );
+    expect(tile?.sizeVariant).toBeUndefined();
+    expect(resolveAssetRequestSizeVariant(tile!)).toBe('default');
+  });
+
+  it('type-omitted request with terminal -boss name is large; brief-text boss cue is NOT sufficient when type is omitted', () => {
+    // Terminal -boss name: boss sizing even without explicit type.
+    const nameOnly = parseAssetRequestIssueBody(
+      formBody({
+        name: 'countess-boss',
+        brief: 'An aristocratic batfolk crime boss with folded cloak-like wings.',
+      }),
+    );
+    expect(nameOnly?.sizeVariant).toBe('large');
+
+    // Brief contains "boss" but name does NOT end in -boss and type is omitted:
+    // brief-text cues must not fire here.
+    const briefOnly = parseAssetRequestIssueBody(
+      formBody({
+        name: 'countess-vesper',
+        brief: 'An aristocratic batfolk crime boss with folded cloak-like wings.',
+      }),
+    );
+    expect(briefOnly?.sizeVariant).toBeUndefined();
+  });
+
+  it('type-omitted tile-boss-staircase-floor gets default sizing (#607 regression)', () => {
+    // The brief mentions "boss" multiple times but the type is omitted and the
+    // name does not end with -boss. Brief-text cues must NOT fire here.
+    const parsed = parseAssetRequestIssueBody(
+      formBody({
+        name: 'tile-boss-staircase-floor',
+        brief:
+          'The floor of the boss chamber and staircase room. Seamless special-room floor tile.',
+      }),
+    );
+    expect(parsed?.sizeVariant).toBeUndefined();
+    expect(resolveAssetRequestSizeVariant(parsed!)).toBe('default');
+  });
+
+  it('treats blank and _No response_ size fields as omitted', () => {
+    for (const size of ['', '_No response_']) {
+      const parsed = parseAssetRequestIssueBody(
+        formBody({
+          name: 'geese-boss',
+          brief: 'A mafia boss goose with a compact rounded body.',
+          type: 'enemy',
+          size,
+        }),
+      );
+      expect(parsed?.sizeVariant).toBe('large');
+    }
+  });
+
+  it('throws a clear validation error for invalid explicit form and marker sizes', () => {
+    expect(() =>
+      parseAssetRequestIssueBody(
+        formBody({
+          name: 'batfolk-boss',
+          brief: 'An aristocratic batfolk crime boss.',
+          type: 'enemy',
+          size: 'huge',
+        }),
+      ),
+    ).toThrowError(AssetRequestValidationError);
+    expect(() =>
+      parseAssetRequestIssueBody(
+        `<!-- ${ASSET_REQUEST_MARKER}\n${JSON.stringify({
+          version: 1,
+          name: 'batfolk-boss',
+          briefSentence: 'An aristocratic batfolk crime boss.',
+          type: 'enemy',
+          sizeVariant: 'huge',
+        })}\n-->`,
+      ),
+    ).toThrow(/Invalid size 'huge'.*default, wide, tall, large/);
   });
 });
 
@@ -511,5 +691,54 @@ describe('parseAssetRequestIssueBody — marker path with relaxed briefs', () =>
     ].join('\n');
     // No form headings to fall back to → null (garbage never enqueued).
     expect(parseAssetRequestIssueBody(body)).toBeNull();
+  });
+
+  it('treats an unrendered template expression in sizeVariant as omitted (fallback-eligible)', () => {
+    // Workflow failed to render ${{ inputs.size }} — should fall back to form
+    // headings rather than throwing AssetRequestValidationError.
+    const body = [
+      '### Name',
+      'iron-shield',
+      '',
+      '### Brief',
+      'A small round iron shield with a central boss.',
+      '',
+      `<!-- ${ASSET_REQUEST_MARKER}`,
+      JSON.stringify({
+        version: 1,
+        name: 'iron-shield',
+        briefSentence: 'A small round iron shield with a central boss.',
+        type: 'item',
+        sizeVariant: '${{ inputs.size }}',
+      }),
+      '-->',
+    ].join('\n');
+    // Must not throw; falls back to form headings and parses successfully.
+    expect(() => parseAssetRequestIssueBody(body)).not.toThrow();
+    const parsed = parseAssetRequestIssueBody(body);
+    expect(parsed?.name).toBe('iron-shield');
+    // No explicit size set in the form → no sizeVariant on the parsed result.
+    expect(parsed?.sizeVariant).toBeUndefined();
+  });
+
+  it('still throws a clear AssetRequestValidationError for real invalid explicit size values', () => {
+    const body = [
+      '### Name',
+      'iron-shield',
+      '',
+      '### Brief',
+      'A small round iron shield.',
+      '',
+      `<!-- ${ASSET_REQUEST_MARKER}`,
+      JSON.stringify({
+        version: 1,
+        name: 'iron-shield',
+        briefSentence: 'A small round iron shield.',
+        sizeVariant: 'huge',
+      }),
+      '-->',
+    ].join('\n');
+    expect(() => parseAssetRequestIssueBody(body)).toThrowError(AssetRequestValidationError);
+    expect(() => parseAssetRequestIssueBody(body)).toThrow(/Invalid size 'huge'/);
   });
 });

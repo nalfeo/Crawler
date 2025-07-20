@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "asset-request-type-fingerprint-recovery",
+  "task_title": "fix(sprites): recover type-aware asset-request dedupe",
+  "estimated_apples": 2,
+  "stages": {}
+}

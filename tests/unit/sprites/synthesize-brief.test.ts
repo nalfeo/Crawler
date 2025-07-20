@@ -266,6 +266,38 @@ describe('synthesizeBrief — size variants', () => {
     expect(sidecar.sizeVariant).toBe('default');
   });
 
+  it.each([
+    ['wide', { width: 128, height: 64 }, { rows: 4, cols: 2 }],
+    ['tall', { width: 64, height: 128 }, { rows: 2, cols: 4 }],
+    ['large', { width: 128, height: 128 }, { rows: 2, cols: 2 }],
+  ] as const)('produces the documented %s geometry', async (sizeVariant, size, sheet) => {
+    const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
+    const { hooks, files } = makeFsWrites();
+    const result = await synthesizeBrief({
+      name: `${sizeVariant}-enemy`,
+      type: 'weapon',
+      candidates: 1,
+      sizeVariant,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      fsWrites: hooks,
+    });
+    const parsed = parseYaml(files.get(result.written[0]!.yamlPath)!) as Record<string, unknown>;
+    const merged = mergeMinimalIntoDefaults(parsed, {
+      ...WEAPON_DEFAULTS,
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 32 },
+    } as never);
+    const generation = merged.generation as {
+      readonly sheet: { readonly rows: number; readonly cols: number };
+    };
+    expect(merged.size).toEqual(size);
+    expect(generation.sheet).toMatchObject(sheet);
+    expect(1024 / generation.sheet.cols).toBe(size.width * 4);
+    expect(1024 / generation.sheet.rows).toBe(size.height * 4);
+  });
+
   it('omits baseline floor 1 from YAML and writes explicit deeper floors', async () => {
     const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
 

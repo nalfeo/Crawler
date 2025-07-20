@@ -33,6 +33,7 @@
 import { QueueServiceClient, StorageSharedKeyCredential } from '@azure/storage-queue';
 import type { QueueClient } from '@azure/storage-queue';
 import {
+  InvalidAssetRequestMessageError,
   normalizeAssetRequest,
   type AssetQueue,
   type AssetRequest,
@@ -105,33 +106,51 @@ export class AzureStorageQueue implements AssetQueue {
   }
 
   async dequeue(): Promise<DequeuedMessage | null> {
-    const response = await this.client.receiveMessages({
-      numberOfMessages: 1,
-      visibilityTimeout: this.visibilityTimeout,
-    });
-    const msg = response.receivedMessageItems[0];
-    if (!msg) return null;
+    // Keep discarded poison messages from counting as empty-queue polls in drain mode.
+    while (true) {
+      const response = await this.client.receiveMessages({
+        numberOfMessages: 1,
+        visibilityTimeout: this.visibilityTimeout,
+      });
+      const msg = response.receivedMessageItems[0];
+      if (!msg) return null;
 
-    let request: AssetRequest | null;
-    try {
-      request = normalizeAssetRequest(JSON.parse(msg.messageText));
-    } catch {
-      // Malformed message: ack it to avoid a poison-pill loop
-      await this.client.deleteMessage(msg.messageId, msg.popReceipt);
-      return null;
-    }
-    if (!request) {
-      await this.client.deleteMessage(msg.messageId, msg.popReceipt);
-      return null;
-    }
-
-    return {
-      request,
-      dequeueCount: msg.dequeueCount ?? 1,
-      ack: async () => {
+      let request: AssetRequest | null;
+      try {
+        request = normalizeAssetRequest(JSON.parse(msg.messageText));
+      } catch (error) {
+        if (error instanceof InvalidAssetRequestMessageError) {
+          process.stderr.write(
+            `azure-queue: dropping invalid-size queue message: ${error.message}\n`,
+          );
+          try {
+            await this.client.deleteMessage(msg.messageId, msg.popReceipt);
+          } catch (deleteError) {
+            throw new Error(
+              `azure-queue: failed to delete invalid-size message (${error.message}); ` +
+                `delete also failed: ${deleteError instanceof Error ? deleteError.message : String(deleteError)}`,
+              { cause: deleteError },
+            );
+          }
+          continue;
+        }
+        // Malformed JSON or other non-validation errors: ack to avoid poison-pill loop.
         await this.client.deleteMessage(msg.messageId, msg.popReceipt);
-      },
-    };
+        continue;
+      }
+      if (!request) {
+        await this.client.deleteMessage(msg.messageId, msg.popReceipt);
+        continue;
+      }
+
+      return {
+        request,
+        dequeueCount: msg.dequeueCount ?? 1,
+        ack: async () => {
+          await this.client.deleteMessage(msg.messageId, msg.popReceipt);
+        },
+      };
+    }
   }
 
   async peek(maxCount = 1): Promise<readonly AssetRequest[]> {
