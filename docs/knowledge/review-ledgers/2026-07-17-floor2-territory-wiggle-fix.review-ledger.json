@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "floor2-territory-wiggle-fix",
+  "task_title": "Floor 2 unreachable progress target recovery",
+  "estimated_apples": 2,
+  "stages": {}
+}
