@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-20",
+  "session_slug": "fix-aborted-promotion-status",
+  "task_title": "Preserve merge-train queue position after aborted promotion",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "minor",
+      "notes": "Approved with minor changes: fail closed unless promoted is exactly true and greenPrefixLength is an integer; add aborted-promotion coverage through runTrainBuildLoop; verify the final diff remains scoped to the focused correction plus required records."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "copilot-pull-request-reviewer", "gpt-5.5"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
