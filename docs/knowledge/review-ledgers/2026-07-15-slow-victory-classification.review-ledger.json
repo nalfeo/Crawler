@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "slow-victory-classification",
+  "task_title": "fix(sweep): count all victories as wins; track slow clears separately",
+  "estimated_apples": 2,
+  "stages": {}
+}

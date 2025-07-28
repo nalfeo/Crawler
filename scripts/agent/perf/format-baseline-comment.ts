@@ -10,6 +10,10 @@ interface Baseline {
   winRate: number;
   totalWins?: number;
   totalRuns: number;
+  /** Outcome victories that exceeded the active-time budget (slow clears). Optional — present in baselines captured after issue #1146. */
+  totalSlowVictories?: number;
+  /** Non-victory runs (deaths, timeouts, stalls). Optional — present in baselines captured after issue #1146. */
+  totalTrueLosses?: number;
 }
 
 interface BaselineIndexEntry {
@@ -91,8 +95,24 @@ export function formatBaselineComment(
   const pct = Math.round(baseline.winRate * 100);
   const wins = Number.isFinite(baseline.totalWins) ? baseline.totalWins : '?';
   const runUrl = baseline.meta?.runUrl || options.fallbackRunUrl;
+
+  // Optional breakdown line — only shown when the baseline was captured with
+  // the slow-victory separation (introduced in issue #1146).
+  const slowVictories = baseline.totalSlowVictories;
+  const trueLosses = baseline.totalTrueLosses;
+  const hasBreakdown = Number.isFinite(slowVictories) && Number.isFinite(trueLosses);
+  const fastWins =
+    hasBreakdown && Number.isFinite(baseline.totalWins)
+      ? (baseline.totalWins as number) - (slowVictories as number)
+      : null;
+  const breakdownLine =
+    hasBreakdown && fastWins !== null
+      ? `  ↳ ${fastWins} fast wins · ${slowVictories} slow victories · ${trueLosses} true losses`
+      : null;
+
   return [
     `📊 Baseline win-rate for this release: **${pct}%** (${wins}/${baseline.totalRuns})`,
+    ...(breakdownLine ? [breakdownLine] : []),
     '',
     `📈 Last ${newestFive.length} recorded baseline${newestFive.length === 1 ? '' : 's'} (oldest → newest):`,
     ...trendLines,

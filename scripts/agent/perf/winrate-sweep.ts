@@ -4,21 +4,23 @@
  *
  * Drives the same pure-ECS `runHeadless` + `BehaviorTreeAI` pipeline the gate
  * uses, across a large seed range × all six Floor-1 starter weapons, and
- * reports the aggregate WIN RATE plus a per-failure diagnostic (outcome,
- * game-time, level, kills, stall reason, dominant wasted-time state). This is
- * the deterministic instrument behind the "90%+ of Floor 1 seeds win" rule:
- * it gates on the *rate* over a representative sample, never on a hand-picked
- * set of comfortable seeds.
+ * reports the aggregate WIN RATE plus per-failure and per-slow-victory
+ * diagnostics (outcome, game-time, level, kills, stall reason, dominant
+ * wasted-time state). This is the deterministic instrument behind the
+ * "90%+ of Floor 1 seeds win" rule: it gates on the *rate* over a
+ * representative sample, never on a hand-picked set of comfortable seeds.
  *
- * A "win" here is floor-aware. On Floor 1 it is the SSOT
- * `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)` — a victory whose
- * safe-room-credited ACTIVE time is under the 6-min budget — matching
- * scoring.ts, the official headless gate, and the ab-* harnesses (the
- * floor-collapse deadline pauses in safe rooms, so a bare `outcome==='victory'`
- * would miscount boundary / safe-room-credited clears). Other floors have
- * different timing semantics and no validated active-time budget here, so a win
- * on `--floor floor2` falls back to the raw `outcome==='victory'` (the
- * pre-safe-room behaviour) rather than misapplying Floor 1's budget.
+ * **Win definition (Floor 1):** any run whose terminal outcome is `victory`
+ * counts as a win, regardless of the active-time budget. Victories that
+ * exceeded the 6-min active-time budget are separately flagged as slow clears
+ * and reported in a dedicated section — they never appear in the loss count.
+ * The SSOT `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)` flag is preserved for
+ * tournament/A-B scoring; it does not affect the win-rate denominator.
+ *
+ * Other floors have different timing semantics and no validated active-time
+ * budget here, so a win on `--floor floor2` is the raw `outcome==='victory'`
+ * (identical to the "outcome victory" definition above — no slow-victory
+ * concept on those floors).
  *
  * Usage
  * -----
@@ -35,7 +37,6 @@ import { writeFileSync } from 'node:fs';
 import { isMainThread, parentPort, workerData } from 'node:worker_threads';
 import { BehaviorTreeAI } from '../../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../../src/game/ai/headless-runner.js';
-import { isOfficialWin } from '../../../src/game/ai/scoring.js';
 import { summarizeEvents, type SimEvent } from '../../../src/game/ai/event-log.js';
 import type { RunStats } from '../../../src/game/ai/types.js';
 import {
@@ -45,26 +46,7 @@ import {
   type WorkerTaskSuccess,
 } from './worker-pool.js';
 import { type CLIArgs, parseSweepArgs } from './winrate-sweep-args.js';
-
-/**
- * SSOT Floor-1 win budget: 6 minutes of ACTIVE (safe-room-credited) game time.
- * A run is a win iff `isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)`. Kept in sync
- * with scoring.ts, the headless gate, and the ab-* harnesses.
- */
-const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
-
-/**
- * Classify a run as an official (tournament) win, floor-aware. On Floor 1 this
- * is the SSOT `isOfficialWin` (a victory whose safe-room-credited active time is
- * under the 6-min budget). Other floors have no validated active-time budget
- * here, so they fall back to the raw victory outcome — misapplying Floor 1's
- * 360s budget to a legitimate longer Floor-2 clear would wrongly report a loss.
- */
-function classifyOfficialWin(stats: RunStats, floorId: string): boolean {
-  return floorId === 'floor1'
-    ? isOfficialWin(stats, FLOOR1_TIME_BUDGET_MS)
-    : stats.outcome === 'victory';
-}
+import { classifySweepRun } from './winrate-sweep-classify.js';
 
 interface SweepTask {
   weapon: string;
@@ -81,9 +63,16 @@ interface SweepSharedConfig {
 interface SweepTaskResult {
   task: SweepTask;
   stats: RunStats;
-  /** SSOT floor-aware official-win classification (see classifyOfficialWin). */
+  /** True if the run ended in victory (outcome win — the win-rate numerator). */
+  outcomeVictory: boolean;
+  /** True if this is an official (tournament) win: victory AND under active-time budget. */
   officialWin: boolean;
+  /** True if the run achieved victory but exceeded the active-time budget (slow clear). */
+  slowVictory: boolean;
+  /** Diagnostic record for a true loss (non-victory). Null for victories. */
   failRecord: FailRecord | null;
+  /** Diagnostic record for a slow victory (over-budget). Null for non-slow-victories. */
+  slowRecord: FailRecord | null;
 }
 
 async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise<SweepTaskResult> {
@@ -104,18 +93,17 @@ async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise
           },
         }),
   });
-  // Build the failure diagnostic for every non-official-win — including an
-  // over-budget victory (outcome==='victory' but active time >= budget), which
-  // the aggregation counts as a loss. Doing it here (worker-side, where the
-  // event log is available) keeps the printed failure list reconciled with
-  // totalRuns - totalWins.
-  const officialWin = classifyOfficialWin(stats, config.floorId);
+  const { outcomeVictory, officialWin, slowVictory } = classifySweepRun(stats, config.floorId);
   let failRecord: FailRecord | null = null;
-  if (!officialWin) {
+  let slowRecord: FailRecord | null = null;
+  // Build a diagnostic record for true losses (non-victories) and for slow
+  // victories (over-budget). Both need event-log analysis, so the two cases
+  // share the summarization work, then assign the record to the right slot.
+  if (!outcomeVictory || slowVictory) {
     const sum = config.skipEvents ? null : summarizeEvents(events);
     const dom = sum ? Object.entries(sum.statePct).sort((a, b) => b[1] - a[1])[0] : null;
     const wig = sum?.wiggleEpisodes[0];
-    failRecord = {
+    const record: FailRecord = {
       weapon: task.weapon,
       seed: task.seed,
       outcome: stats.outcome,
@@ -131,8 +119,13 @@ async function runSweepTask(task: SweepTask, config: SweepSharedConfig): Promise
             : '—',
       stall: stats.stallReason ?? '',
     };
+    if (!outcomeVictory) {
+      failRecord = record;
+    } else {
+      slowRecord = record;
+    }
   }
-  return { task, stats, officialWin, failRecord };
+  return { task, stats, outcomeVictory, officialWin, slowVictory, failRecord, slowRecord };
 }
 
 interface FailRecord {
@@ -152,7 +145,10 @@ interface FailRecord {
 interface RunMetric {
   weapon: string;
   seed: number;
+  /** True if outcome === 'victory' (outcome win — used for the win-rate numerator). */
   win: boolean;
+  /** True if win is true AND the active time exceeded the Floor-1 budget (slow clear). */
+  slowVictory: boolean;
   gameTimeSec: number;
   damageTaken: number;
   damageTakenPerSec: number;
@@ -222,8 +218,9 @@ async function sweep(args: CLIArgs): Promise<void> {
   console.log('');
 
   const fails: FailRecord[] = [];
+  const slowFails: FailRecord[] = [];
   const metrics: RunMetric[] = [];
-  const perWeapon: { weapon: string; wins: number; runs: number }[] = [];
+  const perWeapon: { weapon: string; wins: number; slowVictories: number; runs: number }[] = [];
   const sharedConfig: SweepSharedConfig = {
     maxFrames: args.maxFrames,
     enemyDamageMultiplier: args.enemyDamageMultiplier,
@@ -259,6 +256,7 @@ async function sweep(args: CLIArgs): Promise<void> {
 
   for (const weapon of args.weapons) {
     let wins = 0;
+    let slowVictoriesForWeapon = 0;
     for (const seed of args.seeds) {
       const result = taskResults[resultIndex];
       resultIndex += 1;
@@ -267,12 +265,13 @@ async function sweep(args: CLIArgs): Promise<void> {
           `Sweep task ordering mismatch at ${weapon}/${seed}; got ${result?.task.weapon ?? 'n/a'}/${result?.task.seed ?? 'n/a'}`,
         );
       }
-      const { stats, officialWin, failRecord } = result;
+      const { stats, outcomeVictory, slowVictory, failRecord, slowRecord } = result;
       const gameTimeSec = stats.gameTimeMs / 1000;
       metrics.push({
         weapon,
         seed,
-        win: officialWin,
+        win: outcomeVictory,
+        slowVictory,
         gameTimeSec: Math.round(gameTimeSec),
         damageTaken: stats.combat.damageTaken,
         damageTakenPerSec: gameTimeSec > 0 ? stats.combat.damageTaken / gameTimeSec : 0,
@@ -282,47 +281,73 @@ async function sweep(args: CLIArgs): Promise<void> {
         minHealthPercent: stats.health.minHealthPercent,
         finalHealthPercent: stats.health.finalHealthPercent,
       });
-      if (officialWin) {
+      if (outcomeVictory) {
         wins++;
+        if (slowVictory) {
+          slowVictoriesForWeapon++;
+          if (slowRecord) slowFails.push(slowRecord);
+        }
       } else if (failRecord) {
         fails.push(failRecord);
       }
-      process.stdout.write(officialWin ? '.' : 'F');
+      // Progress indicator: '.' = fast win, 's' = slow victory, 'F' = true loss
+      process.stdout.write(outcomeVictory ? (slowVictory ? 's' : '.') : 'F');
     }
-    perWeapon.push({ weapon, wins, runs: args.seeds.length });
+    perWeapon.push({
+      weapon,
+      wins,
+      slowVictories: slowVictoriesForWeapon,
+      runs: args.seeds.length,
+    });
     process.stdout.write('\n');
   }
 
   console.log('');
   console.log('━'.repeat(70));
-  console.log('Weapon'.padEnd(16) + 'Win/Run'.padEnd(12) + 'Win%');
-  console.log('─'.repeat(40));
+  console.log('Weapon'.padEnd(16) + 'Win/Run'.padEnd(12) + 'Win%'.padEnd(10) + 'Slow');
+  console.log('─'.repeat(45));
   let totalWins = 0;
   let totalRuns = 0;
+  let totalSlowVictories = 0;
   for (const w of perWeapon) {
     totalWins += w.wins;
     totalRuns += w.runs;
+    totalSlowVictories += w.slowVictories;
     console.log(
       w.weapon.padEnd(16) +
         `${w.wins}/${w.runs}`.padEnd(12) +
-        `${((w.wins / w.runs) * 100).toFixed(1)}%`,
+        `${((w.wins / w.runs) * 100).toFixed(1)}%`.padEnd(10) +
+        (w.slowVictories > 0 ? `${w.slowVictories} slow` : ''),
     );
   }
-  console.log('─'.repeat(40));
+  const totalTrueLosses = totalRuns - totalWins;
+  console.log('─'.repeat(45));
   console.log(
     'OVERALL'.padEnd(16) +
       `${totalWins}/${totalRuns}`.padEnd(12) +
-      `${((totalWins / totalRuns) * 100).toFixed(1)}%`,
+      `${((totalWins / totalRuns) * 100).toFixed(1)}%`.padEnd(10) +
+      (totalSlowVictories > 0 ? `${totalSlowVictories} slow` : ''),
   );
+  if (totalSlowVictories > 0 || totalTrueLosses > 0) {
+    console.log(
+      `  ↳ ${totalWins - totalSlowVictories} fast wins · ${totalSlowVictories} slow victories · ${totalTrueLosses} true losses`,
+    );
+  }
 
   console.log('');
   console.log('Quality (means per run) — user goals: max xp/gold, MIN damage taken');
   console.log('─'.repeat(70));
   summarizeMetrics('ALL', metrics);
   summarizeMetrics(
-    'WINS',
-    metrics.filter((m) => m.win),
+    'FAST WINS',
+    metrics.filter((m) => m.win && !m.slowVictory),
   );
+  if (metrics.some((m) => m.slowVictory)) {
+    summarizeMetrics(
+      'SLOW WINS',
+      metrics.filter((m) => m.slowVictory),
+    );
+  }
   summarizeMetrics(
     'LOSSES',
     metrics.filter((m) => !m.win),
@@ -336,29 +361,16 @@ async function sweep(args: CLIArgs): Promise<void> {
 
   if (fails.length > 0) {
     console.log('');
-    console.log(`❌ ${fails.length} failures:`);
+    console.log(`❌ ${fails.length} true failure${fails.length === 1 ? '' : 's'}:`);
+    printFailTable(fails);
+  }
+
+  if (slowFails.length > 0) {
+    console.log('');
     console.log(
-      'seed'.padEnd(6) +
-        'wep'.padEnd(14) +
-        'outcome'.padEnd(10) +
-        't'.padEnd(6) +
-        'lv'.padEnd(4) +
-        'kills'.padEnd(7) +
-        'dominant'.padEnd(16) +
-        'worstWiggle',
+      `⏱️  ${slowFails.length} slow victor${slowFails.length === 1 ? 'y' : 'ies'} (outcome=victory, over active-time budget):`,
     );
-    for (const f of fails) {
-      console.log(
-        String(f.seed).padEnd(6) +
-          f.weapon.padEnd(14) +
-          f.outcome.padEnd(10) +
-          `${f.gameTimeSec}s`.padEnd(6) +
-          String(f.level).padEnd(4) +
-          String(f.kills).padEnd(7) +
-          f.dominantState.padEnd(16) +
-          f.worstWiggle,
-      );
-    }
+    printFailTable(slowFails);
   }
 
   console.log('');
@@ -373,21 +385,50 @@ async function sweep(args: CLIArgs): Promise<void> {
           enemyDamageMultiplier: args.enemyDamageMultiplier,
           perWeapon,
           totalWins,
+          totalSlowVictories,
+          totalTrueLosses,
           totalRuns,
           winRate: totalWins / totalRuns,
           aggregate: {
             all: aggregateOf(metrics),
             wins: aggregateOf(metrics.filter((m) => m.win)),
+            slowVictories: aggregateOf(metrics.filter((m) => m.slowVictory)),
             losses: aggregateOf(metrics.filter((m) => !m.win)),
           },
           metrics,
           fails,
+          slowFails,
         },
         null,
         2,
       ),
     );
     console.log(`💾 ${args.out}`);
+  }
+}
+
+function printFailTable(records: FailRecord[]): void {
+  console.log(
+    'seed'.padEnd(6) +
+      'wep'.padEnd(14) +
+      'outcome'.padEnd(10) +
+      't'.padEnd(6) +
+      'lv'.padEnd(4) +
+      'kills'.padEnd(7) +
+      'dominant'.padEnd(16) +
+      'worstWiggle',
+  );
+  for (const f of records) {
+    console.log(
+      String(f.seed).padEnd(6) +
+        f.weapon.padEnd(14) +
+        f.outcome.padEnd(10) +
+        `${f.gameTimeSec}s`.padEnd(6) +
+        String(f.level).padEnd(4) +
+        String(f.kills).padEnd(7) +
+        f.dominantState.padEnd(16) +
+        f.worstWiggle,
+    );
   }
 }
 
