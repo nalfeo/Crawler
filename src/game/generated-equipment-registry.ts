@@ -45,6 +45,7 @@ import type {
   GeneratedEquipmentInstanceId,
   GeneratedEquipmentInstanceV1,
   EquipmentFingerprintV1,
+  LegacyResolvedEquipmentEffectV1,
   GeneratedEquipmentRarity,
 } from '../shared/generated-equipment-types.js';
 import { isValidStatId } from '../shared/stats.js';
@@ -244,17 +245,18 @@ export function validateInstanceStructure(instance: GeneratedEquipmentInstanceV1
   let totalUnits = 0;
   const seenEffectIds = new Set<string>();
   for (const effect of instance.resolvedEffects) {
-    if (effect.units !== 1 && effect.units !== 2) {
-      return `effect "${effect.effectId}" has invalid units: ${effect.units} (must be 1 or 2)`;
+    const legacyEffect = effect as Partial<LegacyResolvedEquipmentEffectV1>;
+    if (legacyEffect.units !== 1 && legacyEffect.units !== 2) {
+      return `effect "${effect.effectId}" has invalid units: ${String(legacyEffect.units)} (must be 1 or 2)`;
     }
-    if (!Number.isFinite(effect.magnitude)) {
-      return `effect "${effect.effectId}" magnitude must be finite, got ${effect.magnitude}`;
+    if (!Number.isFinite(legacyEffect.magnitude)) {
+      return `effect "${effect.effectId}" magnitude must be finite, got ${String(legacyEffect.magnitude)}`;
     }
     if (seenEffectIds.has(effect.effectId)) {
       return `duplicate effectId in resolvedEffects: "${effect.effectId}"`;
     }
     seenEffectIds.add(effect.effectId);
-    totalUnits += effect.units;
+    totalUnits += legacyEffect.units;
   }
   if (totalUnits !== budget) {
     return `resolvedEffects total units ${totalUnits} does not match rarity budget ${budget} for "${instance.rarity}"`;
