@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "floor-2-epic-control",
+  "task_title": "Floor 2 equipment epic control plane",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "plan_divergence": "minor",
+      "notes": "Adopted per-field authority; deferred is release_requirement not lifecycle; active work losing readiness blocks and revokes leases; evidence is commit/content-hash addressed; drift hashes only machine-owned PLAN contract; scheduled/manual audit runs read-only GitHub mode; reconcile separates repo_patch/operator_actions; issue packets use stable slugs with late parent substitution; live child writes and gameplay remain excluded."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

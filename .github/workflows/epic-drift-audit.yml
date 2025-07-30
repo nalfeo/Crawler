@@ -1,0 +1,77 @@
+name: Epic Drift Audit
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/knowledge/epics/**'
+      - 'scripts/agent/epics/**'
+      - 'tests/unit/agent/epic-status.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/epic-drift-audit.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docs/knowledge/epics/**'
+      - 'scripts/agent/epics/**'
+      - 'tests/unit/agent/epic-status.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/epic-drift-audit.yml'
+  schedule:
+    - cron: '23 10 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  offline:
+    name: Offline epic validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Validate Floor 2 equipment control plane
+        run: npm run epic:status -- floor-2-equipment
+
+  github-drift:
+    name: Read-only GitHub drift audit
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Audit and propose reconciliation
+        shell: bash
+        run: |
+          set +e
+          npm run epic:status -- floor-2-equipment --github --reconcile --json > epic-audit.json
+          rc=$?
+          set -e
+          {
+            echo '## Floor 2 equipment epic drift audit'
+            echo
+            echo 'Read-only audit; no issue, PR, or repository state was changed.'
+            echo
+            echo '```json'
+            cat epic-audit.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat epic-audit.json
+          exit "$rc"
