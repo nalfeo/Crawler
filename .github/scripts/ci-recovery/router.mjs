@@ -323,18 +323,39 @@ export async function hydrateRecoveryOwnership(
   pulls,
   loadComments,
   batchSize = OWNERSHIP_HYDRATION_BATCH_SIZE,
-  { stopAfterDispatchable = Infinity, isHealthy = () => false } = {},
+  { targetDispatchable = null, countDispatchable = null } = {},
 ) {
   const hydrated = [...pulls];
-  const ownerIndexes = hydrated
+  const orderedPulls = hydrated
     .map((pullRequest, index) => ({ pullRequest, index }))
-    .filter(({ pullRequest }) =>
-      (pullRequest.labels || []).some((label) =>
-        String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
-      ),
-    );
+    .sort(
+      (left, right) =>
+        (Date.parse(left.pullRequest.created_at) || 0) -
+          (Date.parse(right.pullRequest.created_at) || 0) ||
+        left.pullRequest.number - right.pullRequest.number,
+    )
+    .map((entry, orderIndex) => ({ ...entry, orderIndex }));
+  const ownerIndexes = orderedPulls.filter(({ pullRequest }) =>
+    (pullRequest.labels || []).some((label) =>
+      String(label.name || '').startsWith(OWNER_LABEL_PREFIX),
+    ),
+  );
 
-  let dispatchableCount = 0;
+  const resolvedDispatchableCount = (endOrderIndex) => {
+    if (!countDispatchable) return 0;
+    return countDispatchable(
+      orderedPulls.slice(0, endOrderIndex).map(({ index }) => hydrated[index]),
+    );
+  };
+
+  const firstOwnerOrderIndex = ownerIndexes[0]?.orderIndex ?? orderedPulls.length;
+  if (
+    targetDispatchable !== null &&
+    resolvedDispatchableCount(firstOwnerOrderIndex) >= targetDispatchable
+  ) {
+    return hydrated;
+  }
+
   for (let offset = 0; offset < ownerIndexes.length; offset += batchSize) {
     const batch = ownerIndexes.slice(offset, offset + batchSize);
     await Promise.all(
@@ -354,17 +375,12 @@ export async function hydrateRecoveryOwnership(
         }
       }),
     );
-    // Count newly-hydrated non-healthy (dispatchable) PRs in this batch and
-    // stop early once we have enough candidates to fill the repair window.
-    // Continuing only when a batch is entirely healthy ensures stale owners
-    // further back in the age-ordered queue are not missed if the front of
-    // the queue looks healthy.
-    for (const { index } of batch) {
-      if (!isHealthy(hydrated[index])) {
-        dispatchableCount += 1;
-      }
-    }
-    if (dispatchableCount >= stopAfterDispatchable) {
+    const nextOwner = ownerIndexes[offset + batch.length];
+    const resolvedEndOrderIndex = nextOwner?.orderIndex ?? orderedPulls.length;
+    if (
+      targetDispatchable !== null &&
+      resolvedDispatchableCount(resolvedEndOrderIndex) >= targetDispatchable
+    ) {
       break;
     }
   }
@@ -472,6 +488,9 @@ export async function runFromEnv(env = process.env) {
         trainEnabled,
       })
     ) {
+      // Snapshot the reference time before hydration so the age-ordering and
+      // "healthy owner" checks inside the callback all share the same clock.
+      const hydrateNow = new Date();
       scheduledPulls = await hydrateRecoveryOwnership(
         scheduledPulls,
         (number) =>
@@ -481,8 +500,17 @@ export async function runFromEnv(env = process.env) {
           ),
         OWNERSHIP_HYDRATION_BATCH_SIZE,
         {
-          stopAfterDispatchable: REPAIR_WINDOW_SIZE,
-          isHealthy: (pullRequest) => hasHealthyOwnerForSweep(pullRequest, new Date()),
+          targetDispatchable: REPAIR_WINDOW_SIZE,
+          countDispatchable: (resolvedPulls) =>
+            collectPrNumbers({
+              payload: {},
+              eventName: 'workflow_dispatch',
+              repository,
+              scheduledPulls: resolvedPulls,
+              maxDispatchPerRun: REPAIR_WINDOW_SIZE,
+              trainEnabled: true,
+              now: hydrateNow,
+            }).length,
         },
       );
     }
