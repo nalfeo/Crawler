@@ -3,7 +3,10 @@ import { addComponent } from 'bitecs';
 import { Stats, SkillHolder } from '../../core/components.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/helpers.js';
-import { getAllAbilityDefinitions } from '../../game/abilities/registry.js';
+import {
+  getAllAbilityDefinitions,
+  SKILL_LEVEL5_ABILITY_GRANTS,
+} from '../../game/abilities/registry.js';
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
 import {
@@ -15,6 +18,7 @@ import {
   queueAbilityTrigger,
   skillSystem,
   statsSystem,
+  weaponPrerequisiteMet,
 } from '../../game/systems/index.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -81,6 +85,23 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           })
           .join('');
 
+        // Show the level-5 ability grant (if any) and its prerequisite status.
+        const abilityGrantId = SKILL_LEVEL5_ABILITY_GRANTS.get(skill.id);
+        const abilityGrantCell = abilityGrantId
+          ? (() => {
+              const abilityDef = allAbilities.find((a) => a.id === abilityGrantId);
+              if (!abilityDef || abilityDef.kind !== 'passive') return '—';
+              const granted = passiveIds.includes(abilityGrantId);
+              const prereqMet = granted
+                ? weaponPrerequisiteMet(world, player, abilityGrantId)
+                : false;
+              const prereq = abilityDef.weaponPrerequisite;
+              const statusColor = !granted ? '#555' : prereqMet ? '#4f8' : '#fa0';
+              const statusText = !granted ? '—' : prereqMet ? '✓ active' : `⚠ needs ${prereq}`;
+              return `<span title="${abilityDef.description}" style="color:${statusColor}">${abilityDef.name} (${statusText})</span>`;
+            })()
+          : '—';
+
         return `
         <tr>
           <td style="padding:5px 10px;color:#9ba">${skill.name}</td>
@@ -88,6 +109,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           <td style="padding:5px 10px;text-align:right;color:#888">${state.usage}</td>
           <td style="padding:5px 10px;text-align:right;color:#888">${nextThreshold}</td>
           <td style="padding:5px 10px">${milestones}</td>
+          <td style="padding:5px 10px;font-size:11px">${abilityGrantCell}</td>
         </tr>`;
       })
       .join('');
@@ -119,13 +141,15 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
       <h2 style="color:#cde;margin:0 0 8px">Skill + Ability Lab</h2>
       <p style="margin:0 0 12px;color:#89a">Active slots: ${activeIds.length}/10 • Passive grants: ${passiveIds.length}</p>
       <h3 style="margin:10px 0 6px;color:#bcd">Skill Catalog</h3>
-      <table style="border-collapse:collapse;width:100%;max-width:860px;margin-bottom:14px">
+      <p style="margin:0 0 8px;color:#678;font-size:11px">Lv5 Ability column: ✓ active = weapon equipped &amp; ability applied. ⚠ = ability unlocked but weapon not equipped.</p>
+      <table style="border-collapse:collapse;width:100%;max-width:1000px;margin-bottom:14px">
         <thead><tr>
           <th style="text-align:left;padding:5px 10px;color:#aaa">Skill</th>
           <th style="padding:5px 10px;color:#aaa">Level</th>
           <th style="text-align:right;padding:5px 10px;color:#aaa">Usage</th>
           <th style="text-align:right;padding:5px 10px;color:#aaa">Next Threshold</th>
           <th style="padding:5px 10px;color:#aaa">Milestones</th>
+          <th style="padding:5px 10px;color:#c9a;text-align:left">Lv5 Ability</th>
         </tr></thead>
         <tbody>${skillRows}</tbody>
       </table>

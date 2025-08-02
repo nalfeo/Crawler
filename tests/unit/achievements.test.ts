@@ -8,9 +8,9 @@ import {
 } from '../../src/shared/achievements.js';
 
 describe('floor1 achievements catalog', () => {
-  it('contains exactly 100 achievements', () => {
-    expect(FLOOR1_ACHIEVEMENT_COUNT).toBe(100);
-    expect(FLOOR1_ACHIEVEMENTS).toHaveLength(100);
+  it('contains exactly 103 achievements', () => {
+    expect(FLOOR1_ACHIEVEMENT_COUNT).toBe(103);
+    expect(FLOOR1_ACHIEVEMENTS).toHaveLength(103);
   });
 
   it('has unique achievement ids', () => {
