@@ -1,0 +1,45 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-13",
+  "session_slug": "weapon-skill-abilities",
+  "task_title": "Level-5 weapon skill passive abilities",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Alt A: derive passives from skill level + equipped weapon during stat recompute (rejected — requires invasive statsSystem rewrite, no benefit for player-only feature). Alt B: encode ability grant on skill milestone definition not side map (deferred — valid future improvement, out of scope for this PR). Alt C: holder-scoped weapon state for multi-entity support (deferred — player-only scope is current constraint; guarded by hasComponent(Player) check). Resolved: removed lastWeaponGenerationByEntity cache (redundant + stale-EID risk), fixed unlockedAbilityCount to query only player entity, removed broad try/catch hiding real config errors, removed weaponChanged gate from revoke (now evaluates each frame cleanly). Save/load and multi-entity concerns documented as future work. 1-frame stat-application delay accepted as standard ECS behavior for passive bonuses."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview", "gpt-5.4"],
+          "concerns_count": 6,
+          "resolved_count": 6,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

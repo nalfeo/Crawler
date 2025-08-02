@@ -1,3 +1,5 @@
+import { query } from 'bitecs';
+import { Player } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import {
   FLOOR1_ACHIEVEMENTS,
@@ -22,6 +24,23 @@ function highestSkillLevel(world: GameWorld): number {
 function spentStatPoints(world: GameWorld): number {
   const pointsGranted = world.playerLevel.level * world.playerLevel.pointsPerLevel;
   return Math.max(0, pointsGranted - world.playerLevel.unspentPoints);
+}
+
+/**
+ * Count total passive abilities granted to the player entity. Scoped to the
+ * player only so non-player ability holders (if any are added in future) do not
+ * inflate the achievement counter.
+ *
+ * Assumes at most one Player entity per world (the current single-player
+ * constraint). Uses `players[0]` and returns 0 when no player exists (e.g.
+ * during world initialization before spawnPlayer).
+ */
+function unlockedAbilityCount(world: GameWorld): number {
+  const players = query(world.ecs, [Player]);
+  const playerEid = players[0];
+  if (playerEid === undefined) return 0;
+  const state = world.abilityStatesByEntity.get(playerEid);
+  return state?.passiveAbilityIds.length ?? 0;
 }
 
 interface AchievementFacts {
@@ -72,6 +91,7 @@ function collectAchievementFacts(world: GameWorld): AchievementFacts {
       completedQuestCount: completedQuestIds.size,
       questLogSize: world.questLog.size,
       playerGold: world.playerGold,
+      unlockedAbilityCount: unlockedAbilityCount(world),
     },
     booleanFacts: {
       staircaseBattleStarted: floor1Objective.bossBattles.get('staircase')?.started === true,

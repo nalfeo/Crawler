@@ -46,6 +46,7 @@ import {
   statsSystem,
   unequipActiveAbility,
   weaponSystem,
+  weaponPrerequisiteMet,
   type AbilityDefinition,
 } from '../../game/index.js';
 import { getAbilityPresentation } from '../../shared/ability-presentation.js';
@@ -53,6 +54,7 @@ import { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityState } from '../../shared/abili
 import { BiomeType } from '../../shared/map-types.js';
 import type { MapConfig } from '../../shared/map-types.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
+import { getActiveWeaponDef } from '../../core/active-weapon.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -772,17 +774,35 @@ function createAbilitiesLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     const state = world.abilityStatesByEntity.get(eid);
     const enemyCount = query(world.ecs, [Enemy]).length;
     const equippedCount = state?.equippedActiveAbilityIds.length ?? 0;
-    const passives = state?.passiveAbilityIds.length ?? 0;
+    const passiveIds = state?.passiveAbilityIds ?? [];
     const hp = world.stores.health.current[eid] ?? 0;
     const hpMax = world.stores.health.max[eid] ?? 0;
+    const currentWeapon = getActiveWeaponDef(world);
+
+    const passiveLines = passiveIds.map((pid) => {
+      const def = ABILITIES.find((a) => a.id === pid);
+      if (!def || def.kind !== 'passive') return '';
+      const prereq = def.weaponPrerequisite;
+      const active = state?.appliedPassiveAbilityIds.has(pid) ?? false;
+      if (prereq !== undefined) {
+        const met = weaponPrerequisiteMet(world, eid, pid);
+        return `  ${met ? '✓' : '✗'} ${def.name} [needs: ${prereq}]${active ? ' (applied)' : ''}`;
+      }
+      return `  ✓ ${def.name}${active ? ' (applied)' : ''}`;
+    });
+
     hud.textContent = [
+      `Weapon: ${currentWeapon?.id ?? '(none)'}`,
       `Scenario: ${getScenario(settings.scenario).label}`,
       `HP: ${hp.toFixed(0)} / ${hpMax.toFixed(0)}`,
       `MP: ${world.playerMp.toFixed(0)} / ${world.playerMaxMp.toFixed(0)}`,
       `Enemies: ${enemyCount}`,
-      `Equipped: ${equippedCount} active/spell   ${passives} passive`,
+      `Equipped: ${equippedCount} active/spell   ${passiveIds.length} passive`,
+      passiveIds.length > 0 ? `Passives:\n${passiveLines.filter(Boolean).join('\n')}` : '',
       `State: ${world.state}`,
-    ].join('\n');
+    ]
+      .filter(Boolean)
+      .join('\n');
   }, 100);
 
   // ---- GUI ----
