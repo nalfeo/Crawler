@@ -1,0 +1,11 @@
+type: weapon
+name: moon-scythe
+description: |
+  A single centered moon scythe held in a mostly vertical pose. Long dark haft
+  with a compact grip at the bottom, a cool silver crescent blade mounted at
+  the top, and a small moon-blue focus gem where the blade meets the staff.
+  The crescent should read clearly at a glance as a moon-themed reaper weapon,
+  not an axe or farming tool. Keep the silhouette crisp and readable on a
+  transparent background. No hands, no glow trails, no extra stars, no blood,
+  no chains, no second weapon head.
+minVariations: 0
