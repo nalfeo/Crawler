@@ -1,0 +1,22 @@
+type: item
+name: thorn-gauntlets
+floor: 2
+description: |
+  A matched pair of thorn gauntlets displayed together as one centered item icon,
+  front-facing and fully inside the frame. The silhouette should read instantly as
+  heavy handwear armor at 64x64: two squat iron gauntlets with clear knuckle plates,
+  cuff openings, and hooked thorn growth curling outward from the backs of the hands
+  and wrists. The material is battered dungeon-forged iron with dark grime in the
+  seams, chipped edges, and a few rust-tinged scratches, but the form stays clean
+  and iconic rather than cluttered. Use bold contrast and chunky 1-pixel outlines so
+  the pair stays readable on a dark floor: cold grey metal, deep shadow between the
+  fingers and cuffs, and a restrained sickly green accent on the thorns or wrap ties.
+  No character arms, no glow, no blood, no background, no floor — just the two
+  gauntlets on a transparent background.
+variations:
+  - Broad rectangular gauntlets with three large knuckle spikes each and thick flared wrist cuffs wrapped in torn dark leather.
+  - Leaner segmented gauntlets with overlapping finger plates and bramble-like thorns growing backward along the forehand.
+  - Brutal forged gauntlets with a heavy central knuckle ridge, asymmetrical thorn clusters, and chipped riveted cuff rims.
+  - Elegant articulated gauntlets with slim finger joints, a single curved thorn growing from each knuckle, and polished iron over dark felt underlining.
+  - Squat war gauntlets with wide palm guards, five forward-curving thorns across the knuckle row, and deep hammer-dented surfaces with heavy rust staining.
+minVariations: 5
