@@ -220,7 +220,35 @@ produces workflows that "run green" but do nothing.
   Keep `cancel-in-progress: false` so an in-flight required check is not
   killed by the next push.
 
-<!-- Source handoff: 2026-06-25-pr-guard-concurrency.md -->
+### Guard vs full-workflow cancel policy
+
+The rule above (`cancel-in-progress: false`) applies to **guard** workflows —
+lightweight per-check workflows where each run is a distinct required check and
+canceling an in-flight run leaves the PR in a broken state.
+
+**Full CI and Security Review workflows** (`.github/workflows/ci.yml`,
+`.github/workflows/security-review.yml`) follow a different policy: they
+explicitly set `cancel-in-progress: true` for `pull_request` events so that
+stale builds triggered by superseded pushes are preempted. This is safe because
+each new push triggers a fresh run and the old run's result is no longer
+meaningful. Non-PR events (`push`, `schedule`, `workflow_dispatch`) use
+`cancel-in-progress: false` via the same expression.
+
+The concurrency group for these full workflows uses a hardcoded, immutable
+workflow-specific prefix (e.g. `crawler-ci-`) rather than `github.workflow`
+(the mutable display name) to guarantee group stability across renames and
+prevent cross-workflow cancellation from display-name collisions:
+
+```yaml
+concurrency:
+  group: >-
+    crawler-ci-${{ github.event_name == 'pull_request'
+      && format('pr-{0}', github.event.pull_request.number)
+      || format('{0}-{1}-{2}', github.event_name, github.ref, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+<!-- Source handoff: 2026-06-25-pr-guard-concurrency.md, 2026-07-19-ci-pr-cancel-policy.md -->
 
 ## Non-Negotiable
 
