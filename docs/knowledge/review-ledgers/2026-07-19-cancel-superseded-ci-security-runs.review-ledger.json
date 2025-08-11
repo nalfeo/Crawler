@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "cancel-superseded-ci-security-runs",
+  "task_title": "ci: cancel superseded PR CI and security runs",
+  "estimated_apples": 1,
+  "stages": {}
+}
