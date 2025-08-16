@@ -240,6 +240,61 @@ describe('BT — arena lock-in priority (1.5)', () => {
     expect(decision.reason).toContain('boss');
   });
 
+  it('boss lock-in: wounded player clears an add inside immediate pressure range', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 30;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    // Exact tied geometry: boss at (px+7, py) and add at (px, py+7) are both
+    // 7 ft away. Without the excludeEid fix, the boss (lower eid) would win
+    // the distance-tie sort and `nearestEnemy.eid === target.eid`, so
+    // defensiveAddPressure would never fire and the wounded AI would stay on
+    // the boss instead of clearing the add.
+    const bossEid = startStaircaseBossLockin(world, px, py, 7, 0);
+    const addEid = spawnEnemy(world, px, py + 7, 40);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(addEid);
+    expect(decision.targetEid).not.toBe(bossEid);
+    expect(decision.reason).toContain('clearing add');
+  });
+
+  it('boss lock-in: healthy player preserves boss focus at equal add pressure', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 80;
+
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    // Exact tied geometry: boss at (px+7, py) and add at (px, py+7) both at
+    // distance 7. A healthy player (80% HP ≥ ARENA_LOCKIN_DEFENSIVE_HP_FRACTION
+    // 60%) does not trigger defensiveAddPressure, and the add is not closer
+    // enough by ARENA_LOCKIN_ADD_HYSTERESIS_FT (3 ft) to steal priority, so
+    // the AI correctly maintains boss focus.
+    const bossEid = startStaircaseBossLockin(world, px, py, 7, 0);
+    spawnEnemy(world, px, py + 7, 40);
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.targetEid).toBe(bossEid);
+    expect(decision.reason).toContain('boss');
+  });
+
   it('boss lock-in: ignored closest add is neither selected nor counted for crowd pressure', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
@@ -281,7 +336,10 @@ describe('BT — arena lock-in priority (1.5)', () => {
     const py = world.stores.position.y[player]!;
     const bossEid = startStaircaseBossLockin(world, px, py, 4, 0);
     const ignoredStickyAddEid = spawnEnemy(world, px + 3.8, py + 0.4, 40);
-    spawnEnemy(world, px + 4.4, py + 1.2, 40);
+    // Non-ignored add placed outside the 9-ft defensive-pressure zone so a
+    // wounded player's add-pressure logic fires only for non-ignored adds that
+    // are actually close. The ignored add above must be skipped entirely.
+    spawnEnemy(world, px + 10, py, 40);
 
     const ai = new BehaviorTreeAI({ seed: 42 });
     markEnemyIgnored(ai, ignoredStickyAddEid, world.frameCount + 300);
