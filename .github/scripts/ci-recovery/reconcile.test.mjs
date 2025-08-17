@@ -13,7 +13,15 @@ import { spawn } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { blockerFingerprint, makeState, renderStateComment } from './state.mjs';
+import {
+  blockerFingerprint,
+  makeState,
+  parseStateComment,
+  renderStateComment,
+  WAITING_LABEL,
+  WAITING_TRANSITION_LABEL,
+} from './state.mjs';
+import { admissionFingerprint } from '../merge-train/state.mjs';
 
 const SCRIPT = fileURLToPath(new URL('./reconcile.mjs', import.meta.url));
 const OWNER = 'test-owner';
@@ -40,7 +48,7 @@ function basePr() {
 }
 
 /** Build a rendered state comment for an active shepherd lease. */
-function shepherdStateComment(id = 777) {
+function shepherdStateComment(id = 777, overrides = {}) {
   const state = makeState({
     prNumber: PR_NUM,
     headSha: HEAD_SHA,
@@ -50,6 +58,46 @@ function shepherdStateComment(id = 777) {
     leaseId: LEASE_ID,
     blockers: [],
     updatedAt: new Date().toISOString(),
+    ...overrides,
+  });
+  return { id, body: renderStateComment(state) };
+}
+
+function automationStateComment(id = 778) {
+  const state = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: blockerFingerprint([]),
+    owner: 'automation',
+    status: 'active',
+    blockers: [],
+    updatedAt: '2026-07-16T12:00:00.000Z',
+  });
+  return { id, body: renderStateComment(state) };
+}
+
+function waitingStateComment(
+  id = 779,
+  {
+    checkRuns = [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }],
+    ...overrides
+  } = {},
+) {
+  const state = makeState({
+    prNumber: PR_NUM,
+    headSha: HEAD_SHA,
+    fingerprint: admissionFingerprint({
+      headSha: HEAD_SHA,
+      checkRuns,
+      requiredNames: ['ci'],
+      reviewThreads: [],
+    }),
+    owner: 'none',
+    status: 'waiting',
+    trigger: 'schedule:sweep',
+    blockers: [],
+    updatedAt: '2026-07-16T12:00:00.000Z',
+    ...overrides,
   });
   return { id, body: renderStateComment(state) };
 }
@@ -299,19 +347,24 @@ test('lease-heartbeat in dry-run updates the state comment', async (t) => {
 
 test('lease-release in dry-run removes the owner label and writes idle state', async (t) => {
   const stateComment = shepherdStateComment();
+  let repositoryLabelExists = true;
 
   const { server, port, mutatingCalls } = await startServer({
     [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
     [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
       body: [stateComment],
     }),
-    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({ body: { name: LABEL } }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
     [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
       body: {},
     }),
-    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
-      body: {},
-    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
     [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
       body: { id: stateComment.id, body: '' },
     }),
@@ -342,6 +395,632 @@ test('lease-release in dry-run removes the owner label and writes idle state', a
   assert.ok(labelDetach, 'expected DELETE to detach the owner label from the PR');
   assert.ok(labelDelete, 'expected DELETE to remove the owner label from the repo');
   assert.ok(commentUpdate, 'expected PATCH to write idle state into the state comment');
+});
+
+test('PR #1208 partial cleanup converges when both owner-label deletes return 404', async (t) => {
+  const stateComment = automationStateComment();
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Label does not exist' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+    ),
+  );
+  assert.ok(
+    mutatingCalls.some(
+      (call) => call.method === 'DELETE' && call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`,
+    ),
+  );
+  const statePatch = mutatingCalls.find(
+    (call) =>
+      call.method === 'PATCH' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+  );
+  assert.equal(parseStateComment(statePatch.body.body).owner, 'none');
+  assert.equal(parseStateComment(statePatch.body.body).status, 'idle');
+});
+
+test('partial cleanup independently tolerates a missing PR attachment before deleting the repository label', async (t) => {
+  const stateComment = automationStateComment(780);
+  let repositoryLabelExists = true;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryLabelExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Label does not exist' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryLabelExists = false;
+      return { body: {} };
+    },
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.equal(repositoryLabelExists, false);
+  assert.equal(
+    mutatingCalls.filter(
+      (call) =>
+        call.method === 'DELETE' &&
+        (call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}` ||
+          call.url === `/repos/${OWNER}/${REPO}/labels/${LABEL}`),
+    ).length,
+    2,
+  );
+});
+
+test('missing-label shepherd state fails closed until expiry but matching release still converges', async (t) => {
+  const unexpired = shepherdStateComment(781);
+  const routes = {
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [unexpired],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+  };
+  const first = await startServer(routes);
+  t.after(() => first.server.close());
+  const blocked = await runScript(first.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'live',
+  });
+  assert.notEqual(blocked.code, 0);
+  assert.match(blocked.stderr, /unexpired shepherd lease with a missing owner label/);
+
+  const second = await startServer({
+    ...routes,
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Label does not exist' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${unexpired.id}`]: () => ({
+      body: { id: unexpired.id },
+    }),
+  });
+  t.after(() => second.server.close());
+  const released = await runScript(second.port, {
+    RECOVERY_OPERATION: 'lease-release',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+  if (!assertSuccessfulExit(t, released.code, released.stderr, '', true)) return;
+  assert.ok(
+    second.mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${unexpired.id}`,
+    ),
+  );
+});
+
+test('an expired missing-label shepherd lease can be safely reacquired', async (t) => {
+  const expired = shepherdStateComment(783, {
+    trigger: 'workflow_dispatch',
+    updatedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  });
+  let reacquiredStateBody = null;
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [expired],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${expired.id}`]: (_url, body) => {
+      reacquiredStateBody = body.body;
+      return { body: { id: expired.id } };
+    },
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'lease-acquire',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.ok(
+    mutatingCalls.some(
+      (call) => call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/labels`,
+    ),
+  );
+  const reacquired = parseStateComment(reacquiredStateBody);
+  assert.equal(reacquired.leaseId, LEASE_ID);
+  assert.equal(reacquired.trigger, 'workflow_dispatch');
+  assert.ok(
+    Date.parse(reacquired.updatedAt) > Date.parse(parseStateComment(expired.body).updatedAt),
+    'same-ID/same-trigger reacquisition must persist a fresh lease timestamp',
+  );
+  assert.ok(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${expired.id}`,
+    ),
+  );
+});
+
+test('repeated direct waiting reconciliation keeps durable state without PATCH churn', async (t) => {
+  const stateComment = waitingStateComment();
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  assert.match(stdout, /state unchanged pr=#42 status=waiting/);
+  assert.match(stdout, /wait pr=#42 admission=ci/);
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'PATCH' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+    ),
+    false,
+  );
+  assert.equal(
+    mutatingCalls.some(
+      (call) =>
+        call.method === 'DELETE' &&
+        call.url.endsWith(`/labels/${encodeURIComponent(WAITING_LABEL)}`),
+    ),
+    false,
+    'direct rechecks must retain the waiting marker until facts leave waiting',
+  );
+});
+
+test('direct state-change event persists convergence before clearing the waiting marker', async (t) => {
+  const stateComment = waitingStateComment(782);
+  const { server, port, mutatingCalls } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [stateComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`]: () => ({
+      body: { id: stateComment.id },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      body: {},
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 2, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => server.close());
+
+  const { code, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+  const statePatchIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'PATCH' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/comments/${stateComment.id}`,
+  );
+  const transitionPostIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'POST' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+      call.body?.labels?.includes(WAITING_TRANSITION_LABEL),
+  );
+  const waitingDeleteIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_LABEL)}`,
+  );
+  const transitionDeleteIndex = mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url ===
+        `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(WAITING_TRANSITION_LABEL)}`,
+  );
+  assert.ok(transitionPostIndex >= 0);
+  assert.ok(statePatchIndex > transitionPostIndex);
+  assert.ok(statePatchIndex >= 0);
+  assert.ok(waitingDeleteIndex > statePatchIndex);
+  assert.ok(transitionDeleteIndex > waitingDeleteIndex);
+});
+
+test('failed non-owning waiting cleanup remains schedule-retryable via transition marker', async (t) => {
+  const waitingComment = waitingStateComment(786);
+  let convergedStateBody = null;
+  const first = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [waitingComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${waitingComment.id}`]: (_url, body) => {
+      convergedStateBody = body.body;
+      return { body: { id: waitingComment.id } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      status: 500,
+      body: { message: 'temporary waiting cleanup failure' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 2, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+  });
+  t.after(() => first.server.close());
+
+  const failed = await runScript(first.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (isWindowsAsyncCloseCrash(failed.code, failed.stderr)) {
+    t.skip('Node subprocess hit the known Windows UV_HANDLE_CLOSING shutdown assertion');
+    return;
+  }
+  assert.notEqual(failed.code, 0);
+  assert.match(failed.stderr, /temporary waiting cleanup failure/);
+  assert.equal(parseStateComment(convergedStateBody).status, 'idle');
+  assert.ok(
+    first.mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        call.body?.labels?.includes(WAITING_TRANSITION_LABEL),
+    ),
+    'the transition marker must be durable before persisting non-waiting state',
+  );
+
+  const followupComment = { id: waitingComment.id, body: convergedStateBody };
+  const second = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: WAITING_LABEL }, { name: WAITING_TRANSITION_LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [followupComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/`]: () => ({ body: {} }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: {
+        check_runs: [{ id: 2, name: 'ci', status: 'completed', conclusion: 'success' }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`POST /repos/${OWNER}/${REPO}/actions/workflows/ci-recovery-router.yml/dispatches`]: () => ({
+      body: {},
+    }),
+  });
+  t.after(() => second.server.close());
+
+  const retried = await runScript(second.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ENABLED: 'true',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, retried.code, retried.stderr, '', true)) return;
+  assert.match(retried.stdout, /queued merge-train pr=#42/);
+  for (const label of [WAITING_LABEL, WAITING_TRANSITION_LABEL]) {
+    assert.ok(
+      second.mutatingCalls.some(
+        (call) =>
+          call.method === 'DELETE' &&
+          call.url ===
+            `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${encodeURIComponent(label)}`,
+      ),
+      `schedule retry must clear ${label}`,
+    );
+  }
+});
+
+test('failed waiting-marker cleanup remains sweep-retryable after automation ownership is acquired', async (t) => {
+  const waitingComment = waitingStateComment(784);
+  const failedCheck = {
+    id: 7,
+    name: 'ci',
+    status: 'completed',
+    conclusion: 'failure',
+    html_url: `https://github.com/${OWNER}/${REPO}/actions/runs/7`,
+  };
+  let acquiredStateBody = null;
+  const first = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: { ...basePr(), labels: [{ name: WAITING_LABEL }] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [waitingComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => ({ body: { name: LABEL } }),
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${waitingComment.id}`]: (_url, body) => {
+      acquiredStateBody = body.body;
+      return { body: { id: waitingComment.id } };
+    },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      status: 500,
+      body: { message: 'temporary label API failure' },
+    }),
+    [`POST /graphql`]: () => ({ body: gqlNoThreads() }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => first.server.close());
+
+  const failed = await runScript(first.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'workflow_run:completed',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (isWindowsAsyncCloseCrash(failed.code, failed.stderr)) {
+    t.skip('Node subprocess hit the known Windows UV_HANDLE_CLOSING shutdown assertion');
+    return;
+  }
+  assert.notEqual(failed.code, 0);
+  assert.match(failed.stderr, /temporary label API failure/);
+  assert.equal(parseStateComment(acquiredStateBody).status, 'active');
+  assert.equal(parseStateComment(acquiredStateBody).owner, 'automation');
+  assert.ok(
+    first.mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' &&
+        call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels` &&
+        call.body?.labels?.includes(WAITING_TRANSITION_LABEL),
+    ),
+  );
+  assert.equal(
+    first.mutatingCalls.some(
+      (call) =>
+        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
+    ),
+    false,
+    'the recovery task is not posted before waiting-marker cleanup succeeds',
+  );
+
+  let repositoryOwnerExists = true;
+  const followupComment = { id: waitingComment.id, body: acquiredStateBody };
+  const second = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({
+      body: {
+        ...basePr(),
+        labels: [{ name: WAITING_LABEL }, { name: WAITING_TRANSITION_LABEL }, { name: LABEL }],
+      },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: [followupComment],
+    }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () =>
+      repositoryOwnerExists
+        ? { body: { name: LABEL } }
+        : { status: 404, body: { message: 'Not Found' } },
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_TRANSITION_LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`]: () => ({
+      body: {},
+    }),
+    [`DELETE /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => {
+      repositoryOwnerExists = false;
+      return { body: {} };
+    },
+    [`POST /repos/${OWNER}/${REPO}/labels`]: () => {
+      repositoryOwnerExists = true;
+      return { body: { name: LABEL } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`]: () => ({ body: {} }),
+    [`PATCH /repos/${OWNER}/${REPO}/issues/comments/${followupComment.id}`]: (_url, body) => {
+      followupComment.body = body.body;
+      return { body: { id: followupComment.id } };
+    },
+    [`POST /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({
+      body: { id: 785 },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return { body: gqlNoThreads() };
+    },
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [failedCheck] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+  t.after(() => second.server.close());
+
+  const retried = await runScript(second.port, {
+    RECOVERY_OPERATION: 'reconcile',
+    RECOVERY_TRIGGER: 'schedule:sweep',
+    CI_RECOVERY_MODE: 'live',
+    MERGE_TRAIN_ADMISSION_CHECKS: 'ci',
+  });
+  if (!assertSuccessfulExit(t, retried.code, retried.stderr, '', true)) return;
+  assert.match(retried.stdout, /assigned copilot pr=#42/);
+  const waitingCleanupIndex = second.mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_LABEL}`,
+  );
+  const ownerReleaseIndex = second.mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${LABEL}`,
+  );
+  const transitionCleanupIndex = second.mutatingCalls.findIndex(
+    (call) =>
+      call.method === 'DELETE' &&
+      call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels/${WAITING_TRANSITION_LABEL}`,
+  );
+  assert.ok(waitingCleanupIndex >= 0);
+  assert.ok(transitionCleanupIndex > waitingCleanupIndex);
+  assert.ok(ownerReleaseIndex > waitingCleanupIndex);
 });
 
 // ---------------------------------------------------------------------------
@@ -713,11 +1392,16 @@ test('train mode waits when Copilot produced only a no-files review', async (t) 
 
   if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
   assert.match(stdout, /admission=substantive-copilot-review/);
+  const labelPosts = mutatingCalls.filter(
+    (call) =>
+      call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
+  );
+  assert.ok(
+    labelPosts.some((call) => call.body?.labels?.includes(WAITING_LABEL)),
+    'a no-files review should durably mark the PR as waiting',
+  );
   assert.equal(
-    mutatingCalls.some(
-      (call) =>
-        call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/labels`,
-    ),
+    labelPosts.some((call) => call.body?.labels?.includes('merge-train')),
     false,
     'a no-files review must not admit the PR to the merge train',
   );
@@ -1368,8 +2052,8 @@ test('reconcile ignores same-repository action-required runs without approval or
       (call) =>
         call.method === 'POST' && call.url === `/repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`,
     ).length,
-    0,
-    'label-free PRs waiting on required checks should not create state comments',
+    1,
+    'waiting PRs should persist one durable state comment',
   );
 });
 
