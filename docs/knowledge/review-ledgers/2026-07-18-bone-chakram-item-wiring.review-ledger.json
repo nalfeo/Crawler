@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "bone-chakram-item-wiring",
+  "task_title": "Add bone-chakram Floor 2 weapon to ITEM_CATALOG with placeholder art and art plan entry",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-sonnet-5",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "plan_divergence": "none",
+      "notes": "Plan review identified 2 items: (1) anchor coordinate derivation needed explanation in the brief — added inline comment explaining x:32 (horizontal center) and y:40 (slightly above center for throw-tilt); (2) CI cancellation context missing from handoff — updated handoff to explain both runs were externally cancelled (batch cancel and workflow cancel). Both addressed before final push."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "No code concerns. Changes limited to: (1) ITEM_CATALOG entry in items.ts (wpn helper, Rare rarity, flavor text); (2) test snapshot updates (catalog 126→127, Weapons 23→24); (3) plans/item-icons/weapons.art.yaml art plan entry; (4) gen-placeholders run producing 16×16 PNG and manifest entry. All 1260 tests green after changes. ADR-0051 manifest-only wiring path confirmed: resolveItemSprite('bone-chakram') auto-resolves via manifest briefId match."
+        }
+      ]
+    }
+  }
+}
