@@ -4,7 +4,7 @@ import {
   getSessionServerPorts,
   getVitePortForMode,
 } from './scripts/shared/session-server-ports.js';
-import { labTuningSavePlugin } from './tools/vite-plugin-save-tuning.ts';
+import { labTuningSavePlugin } from './tools/vite-plugin-save-tuning';
 
 const basePaths: Record<string, string> = {
   local: '/',

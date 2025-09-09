@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "fast-verifier-typecheck",
+  "task_title": "Make verify:fast catch test TypeScript failures",
+  "estimated_apples": 2,
+  "stages": {}
+}
