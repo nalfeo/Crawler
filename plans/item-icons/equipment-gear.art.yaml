@@ -2,6 +2,16 @@ id: item-icons-equipment-gear
 title: 'Item Icons — Equipment Gear'
 summary: 'Placeholder wearable-gear icons covering every non-weapon, non-neck paper-doll slot (head, face, shoulders, chest, back, belt, legs, feet, gloves, arms, wrists, rings). These render the InventoryUI/EquipmentUI text fallback today; each needs real authored pixel art generated via the sprite pipeline when provider access is available.'
 assets:
+  - id: alchemist-goggles
+    type: item
+    label: 'Alchemist Goggles'
+    briefId: alchemist-goggles
+    brief: 'Alchemist Goggles — see briefs/items/alchemist-goggles.yaml for the authored Floor 2 dual-lens equipment-icon brief.'
+    placeholderInUse: true
+    integration:
+      kind: item-catalog
+      id: alchemist-goggles
+
   - id: iron-helm
     type: item
     label: 'Iron Helm'
