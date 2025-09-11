@@ -1,0 +1,32 @@
+type: item
+name: alchemist-goggles
+floor: 2
+description: |
+  A pair of oversized alchemist's goggles displayed face-on, centered in the
+  frame. The goggles consist of two large round lens housings side-by-side
+  joined by a wide bridge, plus a worn leather strap visible at each side
+  curving out of frame. The lens housings are chunky brass or tarnished
+  copper rings — thick-rimmed, industrial, each big enough to cover an eye
+  completely. The lenses themselves are tinted dark amber or deep green-grey,
+  scratched from dungeon use and smeared with chemical residue around the
+  edges. The rims show heavy patina: green verdigris pooling in the grooves,
+  surface scratches exposing bare dull metal beneath, micro-dents along the
+  outer ring. The bridge connecting the two housings is a flat riveted band,
+  slightly wider than the frames, with one or two visible screws. The leather
+  strap segments are dark brown, stiff with age, stitched at the attachment
+  points. No glow, no magical aura, no visible eyes behind the lenses — just
+  dungeon-worn headgear. The silhouette must read unmistakably as dual-lens
+  goggles at 64×64: two large circles side by side with a connecting bridge,
+  the distinctive shape of protective eyewear.
+
+  Floor 2 retro-futurist corporate-decay aesthetic: these goggles look like
+  they came out of a dungeon alchemist's lab, not a fantasy forge. Think
+  worn industrial safety gear crossed with steampunk salvage.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - brass-rimmed lenses with heavy green verdigris patches, cracked lens corner
+  - dark-iron frames with amber tinted lenses, riveted bridge with hex bolt heads
+  - copper-toned rims with deep scratches, one lens rim slightly bent inward
+minVariations: 5
