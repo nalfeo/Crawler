@@ -384,6 +384,59 @@ export interface SpawnerArenaMetrics {
   bankedXpTotal: number;
 }
 
+/** Per-family evidence for production Floor 2 progression. */
+export interface Floor2FamilyProgressMetrics {
+  /** Player-attributed non-boss kills recorded by the production objective tick. */
+  trashKills: number;
+  /** Kill count on the first frame the production den-unlock flag became true. */
+  trashKillsAtDenUnlock: number | null;
+  /** Whether the production den-unlock goal completed. */
+  denUnlocked: boolean;
+  /**
+   * Whether the player entered the den room. The production encounter starts
+   * atomically on room entry, so this mirrors the encounter's `started` latch.
+   */
+  denEntered: boolean;
+  /** Whether the real production boss encounter started. */
+  encounterStarted: boolean;
+  /** Simulated time when the production encounter first started. */
+  encounterStartedMs: number | null;
+  /** Whether the real production boss encounter was defeated. */
+  encounterDefeated: boolean;
+  /** Simulated time when the production encounter was first defeated. */
+  encounterDefeatedMs: number | null;
+}
+
+/** Hunt-only activity evidence for production Floor 2 progression. */
+export interface Floor2HuntMetrics {
+  /** Simulated time spent pursuing a still-locked family den. */
+  huntTimeMs: number;
+  /** Hunt time where the AI emitted its production ENGAGE state. */
+  engageTimeMs: number;
+  /** ENGAGE share of hunt time, from 0 to 1. */
+  engageRatio: number;
+  /** Hunt time spent actively fighting or dodging (ENGAGE + RETREAT). */
+  activeCombatTimeMs: number;
+  /** Active-combat share of hunt time, from 0 to 1. */
+  activeCombatRatio: number;
+  /** Player-attributed family trash deaths during active hunt frames. */
+  familyTrashKills: number;
+  /** Neutral trash deaths during active hunt frames. */
+  neutralTrashKills: number;
+  /** Mean live enemies inside the production director's engagement radius. */
+  averageNearbyEnemies: number;
+  /** Peak live enemies inside the production director's engagement radius. */
+  peakNearbyEnemies: number;
+}
+
+/** Complete production Floor 2 progression evidence captured by the headless runner. */
+export interface Floor2ProgressionMetrics {
+  families: Record<string, Floor2FamilyProgressMetrics>;
+  hunt: Floor2HuntMetrics;
+  /** Whether the player confirmed the real production Floor 2 staircase exit. */
+  exitCompleted: boolean;
+}
+
 /**
  * Run statistics for performance tracking.
  */
@@ -432,6 +485,8 @@ export interface RunStats {
   totalGold: number;
   /** Durable player-attributed Floor 2 trash kills by family id. */
   familyTrashKills?: Record<string, number>;
+  /** Full production Floor 2 den, encounter, and exit progression evidence. */
+  floor2Progression?: Floor2ProgressionMetrics;
   /** ID of the starting weapon selected for this run */
   startingWeapon: string;
   /** Optional telemetry rollups for AI decision-state accounting. */

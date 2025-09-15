@@ -5,7 +5,7 @@ import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL, GAME_H, GAME_W } from './e2e-constants.js';
 import { loadFamilies } from '../../src/shared/data/families.js';
 import { parseHexColor } from '../../src/engine/family-relationships-state.js';
-import { toGrayscale } from '../../src/engine/minimap-family-tint.js';
+import { TERRITORY_OVERLAY_ALPHA, toGrayscale } from '../../src/engine/minimap-family-tint.js';
 import type { FamilyRelProbeApi } from '../../src/labs/hud-family-relationships-lab/index.js';
 
 /** Panel background — see HudFamilyRelationships PANEL / lab bg (0x05070f). */
@@ -16,6 +16,10 @@ const RADAR_CY = 12 + 76;
 const RADAR_TILE_PX = 6;
 const PLAYER_TILE_CENTER = { x: 12.5, y: 8.5 };
 const TERRITORY_ROOM_SIZE = { width: 12, height: 8 };
+const CAVE_FLOOR = { r: 0x2a, g: 0x2a, b: 0x3d };
+const OVERLAP_TILE = { x: 14, y: 8 };
+const OVERLAY_TILE_PX = 33;
+const OVERLAY_CENTER = { x: GAME_W / 2, y: 364 };
 
 const PRESENT_FAMILIES = [...loadFamilies()]
   .sort(
@@ -30,6 +34,26 @@ function rgbFromHex(color: number): { r: number; g: number; b: number } {
     b: color & 0xff,
   };
 }
+
+function blendColor(
+  base: { r: number; g: number; b: number },
+  tint: { r: number; g: number; b: number },
+  alpha: number,
+): { r: number; g: number; b: number } {
+  return {
+    r: Math.round(base.r * (1 - alpha) + tint.r * alpha),
+    g: Math.round(base.g * (1 - alpha) + tint.g * alpha),
+    b: Math.round(base.b * (1 - alpha) + tint.b * alpha),
+  };
+}
+
+const OVERLAP_COLORS = [0, 1].map((index) =>
+  blendColor(
+    CAVE_FLOOR,
+    rgbFromHex(parseHexColor(PRESENT_FAMILIES[index]!.hudColor)),
+    TERRITORY_OVERLAY_ALPHA,
+  ),
+);
 
 function territoryRoomCenter(index: number): { x: number; y: number } {
   const col = index % 2;
@@ -111,6 +135,24 @@ function territoryMarkerPoint(rect: CanvasRect, roomIndex: number): { x: number;
     rect,
     RADAR_CX + (center.x - PLAYER_TILE_CENTER.x) * RADAR_TILE_PX,
     RADAR_CY + (center.y - PLAYER_TILE_CENTER.y) * RADAR_TILE_PX,
+  );
+}
+
+function radarOverlapBandPoint(rect: CanvasRect, band: number): { x: number; y: number } {
+  const bandFraction = (band + 0.5) / OVERLAP_COLORS.length;
+  return gameToScreen(
+    rect,
+    RADAR_CX + (OVERLAP_TILE.x + bandFraction - PLAYER_TILE_CENTER.x) * RADAR_TILE_PX,
+    RADAR_CY + (OVERLAP_TILE.y + 0.5 - PLAYER_TILE_CENTER.y) * RADAR_TILE_PX,
+  );
+}
+
+function overlayOverlapBandPoint(rect: CanvasRect, band: number): { x: number; y: number } {
+  const bandFraction = (band + 0.5) / OVERLAP_COLORS.length;
+  return gameToScreen(
+    rect,
+    OVERLAY_CENTER.x + (OVERLAP_TILE.x + bandFraction - 12) * OVERLAY_TILE_PX,
+    OVERLAY_CENTER.y + (OVERLAP_TILE.y + 0.5 - 8) * OVERLAY_TILE_PX,
   );
 }
 
@@ -319,6 +361,40 @@ describe('HudFamilyRelationships deterministic visual guard', () => {
     ).toBeGreaterThan(20);
   });
 
+  it('shows both family bands where territories overlap in the docked radar', async () => {
+    await page.evaluate(() => {
+      const probe = (window as { __familyRelProbe?: FamilyRelProbeApi }).__familyRelProbe;
+      if (!probe) throw new Error('__familyRelProbe missing');
+      probe.setBossDefeated(0, false);
+      probe.setBossDefeated(1, false);
+    });
+    await page.waitForTimeout(300);
+
+    const canvas = await getCanvasRect(page);
+    const png = parsePng(await page.screenshot({ type: 'png' }));
+    for (const [band, expected] of OVERLAP_COLORS.entries()) {
+      const point = radarOverlapBandPoint(canvas, band);
+      expect(
+        colorDist(readPixel(png, point.x, point.y), expected),
+        `radar overlap band ${band} must retain its family color`,
+      ).toBeLessThan(30);
+    }
+  });
+
+  it('shows both family bands where territories overlap in the fullscreen map', async () => {
+    await page.keyboard.press('m');
+    await page.waitForTimeout(400);
+    const canvas = await getCanvasRect(page);
+    const png = parsePng(await page.screenshot({ type: 'png' }));
+    for (const [band, expected] of OVERLAP_COLORS.entries()) {
+      const point = overlayOverlapBandPoint(canvas, band);
+      expect(
+        colorDist(readPixel(png, point.x, point.y), expected),
+        `fullscreen overlap band ${band} must retain its family color`,
+      ).toBeLessThan(30);
+    }
+    await page.keyboard.press('m');
+  });
   it('contains every label and avoids the minimap and adjacent HUD at target viewports', async () => {
     for (const viewport of [
       { width: 1280, height: 720 },

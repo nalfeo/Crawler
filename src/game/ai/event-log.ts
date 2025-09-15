@@ -55,6 +55,10 @@ export interface SimEvent {
   targetEid: number | null;
   /** Distance to the AI's chosen target (ft), if any. */
   targetDist: number | null;
+  /** Current/max health of the chosen target when it has health. */
+  targetHealth?: { current: number; max: number } | null;
+  /** Floor-director archetype id of the chosen target, when tracked. */
+  targetArchetype?: string | null;
   /** Live enemy count. */
   enemyCount: number;
   /** Distance to nearest enemy (ft), if any. */

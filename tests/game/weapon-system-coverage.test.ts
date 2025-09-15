@@ -15,14 +15,16 @@ import {
   clearActiveWeapon,
   computeEffectiveAccuracy,
   getActiveWeapon,
+  getActiveWeaponReadiness,
   setActiveWeapon,
+  setPreferredWeaponTarget,
   weaponEntitySystem,
   weaponSystem,
 } from '../../src/game/weaponSystem.js';
 import { WEAPON, WeaponType, TeamId, type WeaponTypeValue } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { makeOpenFloorMap } from '../helpers/map-fixtures.js';
+import { makeMapWithSafeRoom, makeOpenFloorMap } from '../helpers/map-fixtures.js';
 
 describe('weaponSystem coverage paths', () => {
   it('keeps cooldown when updating active weapon; clearing weapon silences auto-fire', () => {
@@ -581,5 +583,130 @@ describe('weaponSystem line-of-sight gating', () => {
     // Fired UP at the visible enemy, not RIGHT through the wall at the boss.
     expect(vy).toBeLessThan(0);
     expect(Math.abs(vy)).toBeGreaterThan(Math.abs(vx));
+  });
+});
+
+describe('getActiveWeaponReadiness paths', () => {
+  it('returns null when no weapon is equipped', () => {
+    // No weapon → def === undefined → Branch 77[0] (return null path)
+    const world = createTestWorld();
+    const result = getActiveWeaponReadiness(world);
+    expect(result).toBeNull();
+  });
+
+  it('uses def.cooldownMs directly when no player entity exists', () => {
+    // No player → player === undefined → Branch 78[0] (ternary true branch)
+    const world = createTestWorld();
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    const result = getActiveWeaponReadiness(world);
+    expect(result).not.toBeNull();
+    expect(result!.cooldownMs).toBe(pistol.cooldownMs);
+  });
+
+  it('re-syncs generation when weapon is set after readiness was first polled (no player)', () => {
+    // First call initialises WeaponState with gen=0; setting a weapon bumps gen to 1.
+    // Second call: gen=1 ≠ lastActive=0 → syncActiveWeaponGeneration runs
+    // (Branches 2[1], 3[1], 4[0]) — all with no player, so def.cooldownMs is used.
+    const world = createTestWorld();
+    getActiveWeaponReadiness(world); // init state, gen=0
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol); // gen → 1
+    const result = getActiveWeaponReadiness(world); // gen=1 ≠ 0 → re-sync
+    expect(result!.cooldownMs).toBe(pistol.cooldownMs);
+    // syncActiveWeaponGeneration resets lastFireMs = elapsedMs - cooldownMs so
+    // the freshly-equipped weapon can fire immediately: ready === true.
+    expect(result!.ready).toBe(true);
+  });
+});
+
+describe('weaponSystem sync and safe-space paths', () => {
+  it('clears fire state when active weapon is removed mid-run (Branch 2[1] + 3[0])', () => {
+    // After the weapon is cleared, weaponSystem re-syncs (gen mismatch) and resets
+    // lastFireMs because def is now undefined.
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+    weaponSystem(world); // init WeaponState with gen=1; no enemy → no fire
+
+    clearActiveWeapon(world); // gen → 2, def = undefined
+    world.elapsedMs += pistol.cooldownMs;
+    weaponSystem(world); // gen=2 ≠ 1 (Branch 2[1]) → def=undefined (Branch 3[0]) → reset
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+  });
+
+  it('returns early without firing when player is in a safe room', () => {
+    // isEntityInSafeSpace → Branch 80[0]: return before any weapon fires.
+    // Safe room covers tiles (1,1)–(4,4) with 32 ft/tile; player at (64,64) = tile (2,2).
+    const world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoom();
+    spawnPlayer(world, 64, 64); // inside safe room
+    spawnEnemy(world, 128, 64, 50);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+  });
+
+  it('weaponEntitySystem: skips a player-owned weapon entity when player is in a safe room', () => {
+    // Branch 101[0]: Player + isEntityInSafeSpace → continue (no fire).
+    const world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoom();
+    const owner = spawnPlayer(world, 64, 64); // inside safe room
+    spawnEnemy(world, 128, 64, 50);
+    const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 20, 50, 0, 300, TeamId.PLAYER);
+    world.elapsedMs = 50;
+
+    weaponEntitySystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+    expect(world.stores.weapon.lastFireMs[weapon]).toBe(-50); // not updated
+  });
+});
+
+describe('weaponSystem preferred-target routing', () => {
+  it('fires at the preferred target when it is within melee gate range', () => {
+    // setPreferredWeaponTarget makes getPreferredEnemyTarget return a valid target.
+    // With the preferred entity at 3.75 ft and a 7.5 ft melee gate, the
+    // preferredInRange ternary is true (Branch 90[0]) and the binary-expr
+    // reaches its second operand (Branch 91[1]).
+    // Also covers getPreferredEnemyTarget body: Branches 32[1], 34[1], 37[1].
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const preferred = spawnEnemy(world, 3.75, 0, 50);
+    setPreferredWeaponTarget(world, preferred);
+
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(1);
+  });
+
+  it('fires at the preferred target when it is within ranged gate range', () => {
+    // Same preferred-target routing but for the ranged/magic/thrown path
+    // (Branch 96[0] true, Branch 97[1] second operand reached).
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const preferred = spawnEnemy(world, 12.5, 0, 50);
+    setPreferredWeaponTarget(world, preferred);
+
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
   });
 });

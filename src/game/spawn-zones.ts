@@ -1,5 +1,10 @@
 export type SpawnZoneWeights = ReadonlyMap<string, number>;
 
+export interface SpawnZoneMix {
+  readonly weights: SpawnZoneWeights;
+  readonly share: number;
+}
+
 export function mergeSpawnZoneWeights(zones: readonly SpawnZoneWeights[]): Map<string, number> {
   const merged = new Map<string, number>();
   for (const zone of zones) {
@@ -26,6 +31,36 @@ export function normalizeSpawnZoneWeights(weights: SpawnZoneWeights): Map<string
     normalized.set(id, value / total);
   }
   return normalized;
+}
+
+/**
+ * Normalize each category independently, then reserve its requested share of
+ * the final probability mass. Empty categories are omitted and the remaining
+ * shares are renormalized.
+ */
+export function mixSpawnZoneWeights(categories: readonly SpawnZoneMix[]): Map<string, number> {
+  const active = categories
+    .map((category) => ({
+      normalized: normalizeSpawnZoneWeights(category.weights),
+      share: category.share,
+    }))
+    .filter(
+      (category) =>
+        category.normalized.size > 0 && category.share > 0 && Number.isFinite(category.share),
+    );
+  const totalShare = active.reduce((sum, category) => sum + category.share, 0);
+  if (!(totalShare > 0) || !Number.isFinite(totalShare)) {
+    return new Map();
+  }
+
+  const mixed = new Map<string, number>();
+  for (const category of active) {
+    const categoryShare = category.share / totalShare;
+    for (const [id, probability] of category.normalized) {
+      mixed.set(id, (mixed.get(id) ?? 0) + probability * categoryShare);
+    }
+  }
+  return mixed;
 }
 
 function pickFromNormalizedSpawnZoneWeights(

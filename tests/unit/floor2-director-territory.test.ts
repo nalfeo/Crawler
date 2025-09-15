@@ -8,11 +8,14 @@ import { SeededRandom } from '../../src/shared/random.js';
 import { CaveSystemGenerator } from '../../src/core/map/generators/cave-system.js';
 import {
   FLOOR2_TIMEOUT_GOAL_ID,
+  FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE,
+  FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE,
   floor2EnemyDirectorSystem,
   floor2ObjectiveTick,
   getQuadrantForPosition,
   getQuadrantSpawnWeights,
   resolveAmbientFamilyIndex,
+  resolveFloor2TrashSpawnWeights,
 } from '../../src/game/floor2Scenario.js';
 import { spawnBehaviorEnemy } from '../../src/core/spawners/combatants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -128,6 +131,44 @@ describe('Floor 2 director/runtime behavior', () => {
 
     expect(tracked).toBeGreaterThan(0);
     expect(query(world.ecs, [Enemy]).length).toBeGreaterThan(0);
+  });
+
+  it('reserves 75% family mass across overlapping territories', () => {
+    const { world } = createFloor2World(89);
+    const floorMap = world.floorMap!;
+    const center = floorMap.playerSpawn;
+    (
+      floorMap as unknown as {
+        territoryZones: Array<{
+          familyIndex: number;
+          centerX: number;
+          centerY: number;
+          radius: number;
+        }>;
+      }
+    ).territoryZones = [
+      { familyIndex: 0, centerX: center.x, centerY: center.y, radius: 30 },
+      { familyIndex: 1, centerX: center.x, centerY: center.y, radius: 30 },
+    ];
+    const position = floorMap.tileToWorld(center.x, center.y);
+    const weights = resolveFloor2TrashSpawnWeights(world, position.x, position.y);
+    let familyMass = 0;
+    let neutralMass = 0;
+    const familyMassByIndex = new Map<number, number>();
+    for (const [archetypeId, probability] of weights) {
+      const familyIndex = resolveAmbientFamilyIndex(world, archetypeId);
+      if (familyIndex < 0) {
+        neutralMass += probability;
+      } else {
+        familyMass += probability;
+        familyMassByIndex.set(familyIndex, (familyMassByIndex.get(familyIndex) ?? 0) + probability);
+      }
+    }
+
+    expect(familyMass).toBeCloseTo(FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE, 6);
+    expect(neutralMass).toBeCloseTo(FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE, 6);
+    expect(familyMassByIndex.get(0)).toBeCloseTo(0.375, 6);
+    expect(familyMassByIndex.get(1)).toBeCloseTo(0.375, 6);
   });
 
   it('keeps neutral trash spawns within the 4 assigned territory archetypes', () => {

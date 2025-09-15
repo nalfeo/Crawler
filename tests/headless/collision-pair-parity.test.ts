@@ -211,18 +211,22 @@ interface CollisionFingerprint {
  *   seed  42:  4/193.14999961853027/5/2    →  unchanged
  *   seed 137:  4/216.71999943256378/8/0    →  4/225.55999952554703/8/2
  */
-// Re-baselined after merging floor1 NPC anchor/routability hardening (#1043) +
-// pipeline unification (issue #663, 2026-07-11): critical welcome-room NPCs now
-// preserve valid authored stamped tiles and spawn-routability excludes locked
-// doors; the headless pipeline now derives pre/post systems from
-// createFloorMainSceneOptions() so weaponSystem and floor1EnemyDirectorSystem
-// run at the same pipeline position as in the visual game. Both changes alter
-// early collision occupancy in this 1500-frame slice and drift seed 42/137.
+// Re-baselined after merging feat(hud): combined navigation, family, and encounter HUD UX
+// batch (#1131) onto main (2026-07-15): the batch added Floor 1 flagged starter weapon
+// classes, an ability system, and associated gameplay changes that shift early combat
+// interactions in this 1500-frame slice. Seeds 13/42/137 now record one–two additional
+// kills while damageDealt/damageTaken/finalScore remain unchanged. Verified stable across
+// two back-to-back invocations (the determinism test below).
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  3/157.86999559402466/10/0   →  unchanged
+//   seed  13:  4/215.00000381469727/20/2   →  5/215.00000381469727/20/2
+//   seed  42:  4/193.14999961853027/5/2    →  5/193.14999961853027/5/2
+//   seed 137:  4/225.55999952554703/8/2    →  6/225.55999952554703/8/2
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
+    kills: 5,
     damageDealt: 193.14999961853027,
     damageTaken: 5,
     finalScore: 2,
@@ -238,7 +242,7 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   13: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
+    kills: 5,
     damageDealt: 215.00000381469727,
     damageTaken: 20,
     finalScore: 2,
@@ -246,7 +250,7 @@ const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   137: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 4,
+    kills: 6,
     damageDealt: 225.55999952554703,
     damageTaken: 8,
     finalScore: 2,

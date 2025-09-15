@@ -8,7 +8,7 @@
       "summary": "Cull enough of the family's rank-and-file that their boss's own den will crack open — nobody guards a boss they can't afford to lose.",
       "objectiveLabel": "Kill {familyName} trash mobs",
       "kind": "killTargets",
-      "killTarget": 100
+      "killTarget": 50
     },
     {
       "id": "steal-ledger",

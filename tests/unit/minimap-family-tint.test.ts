@@ -4,13 +4,14 @@ import {
   RESOURCE_HEART_TINT,
   SETTLEMENT_TINT,
   TERRITORY_NEUTRAL_TINT,
+  territoryTintsForTile,
   familyColorForEnemy,
   familyTintForRoom,
   isFamilyBossDefeated,
   resolveFamilyByIndex,
   toGrayscale,
 } from '../../src/engine/minimap-family-tint.js';
-import { RoomRole } from '../../src/shared/map-types.js';
+import { RoomRole, type TerritoryZone } from '../../src/shared/map-types.js';
 import { asFamilyId, type FamilyId } from '../../src/core/faction-relations.js';
 import type { FamilyDef } from '../../src/shared/data/families.js';
 
@@ -210,6 +211,38 @@ describe('familyColorForEnemy', () => {
       goalFlags: new Map(),
     };
     expect(familyColorForEnemy(world as never, [goblins], 0)).toBeNull();
+  });
+
+  describe('territoryTintsForTile', () => {
+    const goblins = makeFamily('goblins', '#22c55e');
+    const kobolds = makeFamily('kobolds', '#ea580c');
+    const families = [goblins, kobolds];
+    const zones: TerritoryZone[] = [
+      { familyIndex: 1, centerX: 7, centerY: 5, radius: 3 },
+      { familyIndex: 0, centerX: 5, centerY: 5, radius: 3 },
+      { familyIndex: 99, centerX: 6, centerY: 5, radius: 3 },
+    ];
+
+    it('returns every overlapping family in stable family-index order', () => {
+      const world = stubWorld(['goblins', 'kobolds']);
+      expect(territoryTintsForTile(world as never, families, zones, 6, 5)).toEqual([
+        0x22c55e, 0xea580c,
+      ]);
+    });
+
+    it('includes the circular boundary and excludes tiles outside it', () => {
+      const world = stubWorld(['goblins', 'kobolds']);
+      expect(territoryTintsForTile(world as never, families, zones, 2, 5)).toEqual([0x22c55e]);
+      expect(territoryTintsForTile(world as never, families, zones, 1, 5)).toEqual([]);
+    });
+
+    it('grays a defeated family band without changing the other overlap band', () => {
+      const world = stubWorld(['goblins', 'kobolds'], ['goblins']);
+      expect(territoryTintsForTile(world as never, families, zones, 6, 5)).toEqual([
+        toGrayscale(0x22c55e),
+        0xea580c,
+      ]);
+    });
   });
 
   it('returns the family hud color for a valid index', () => {

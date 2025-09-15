@@ -1,0 +1,45 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "floor2-ai-hunt-progression",
+  "task_title": "Fix production Floor 2 AI hunt progression",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8 + gpt-5.4",
+      "concerns_count": 19,
+      "resolved_count": 19,
+      "adversarial": true,
+      "alternatives_considered": 5,
+      "plan_divergence": "minor",
+      "notes": "Alt A attribution/spawn fix rejected by constraints and probe: all observed family deaths were correctly player-attributed; authored spawn weights unchanged. Alt B separate selector module partially adopted through explicit isolated hunt-state helpers/reset lifecycle, without replacing the existing BT objective contract. Alt C exploration bias partially adopted by reusing door-aware A*, reachable interior cells, dwell/suppression, and deterministic patrol rotation. Added feasibility bound (1/6 family weight, theoretical 42.9 target spawns/min vs 20 required), monotonic roster commitment with deterministic no-progress deferral/revisit, suppression advances reachable patrol points instead of dropping the family, den-unlock-keyed boss filtering everywhere, crash-safe progression telemetry, den-egress assertions, short determinism coverage, and a diagnostic exact-run gate. Follow-up gpt-5.4 red-team considered Alt D, a cached per-tile territory ownership mask, and Alt E, dominant-family fill plus overlap glyph. The chosen family-band display remains clearer, but now uses a cached 4-pixels-per-tile overlay texture with explicit discovery and boss-defeat invalidation, derives integration boundaries from the production quest target, orders bands by family index, covers both radar and fullscreen rendering, guarantees one pixel per family for the production four-family maximum, and separates target-5 versus target-12 proof runs. divergence=minor; no new architecture or ADR warranted."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.4"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gemini-3.1-pro-preview",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-5", "gpt-5.3-codex"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

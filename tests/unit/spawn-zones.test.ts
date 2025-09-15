@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   mergeSpawnZoneWeights,
+  mixSpawnZoneWeights,
   normalizeSpawnZoneWeights,
   pickFromSpawnZones,
 } from '../../src/game/spawn-zones.js';
@@ -52,5 +53,38 @@ describe('spawn-zones', () => {
     expect(highRoll.pickedId).not.toBeNull();
     expect(lowRoll.normalized.size).toBeGreaterThan(0);
     expect(highRoll.normalized.size).toBe(lowRoll.normalized.size);
+  });
+
+  it('reserves category shares independently of raw weights', () => {
+    const mixed = mixSpawnZoneWeights([
+      {
+        weights: new Map([
+          ['family-a', 100],
+          ['family-b', 100],
+        ]),
+        share: 0.75,
+      },
+      {
+        weights: new Map([
+          ['neutral-a', 1],
+          ['neutral-b', 3],
+        ]),
+        share: 0.25,
+      },
+    ]);
+
+    expect(mixed.get('family-a')).toBeCloseTo(0.375, 6);
+    expect(mixed.get('family-b')).toBeCloseTo(0.375, 6);
+    expect(mixed.get('neutral-a')).toBeCloseTo(0.0625, 6);
+    expect(mixed.get('neutral-b')).toBeCloseTo(0.1875, 6);
+  });
+
+  it('renormalizes shares when a category is empty', () => {
+    const mixed = mixSpawnZoneWeights([
+      { weights: new Map(), share: 0.75 },
+      { weights: new Map([['neutral', 1]]), share: 0.25 },
+    ]);
+
+    expect(mixed).toEqual(new Map([['neutral', 1]]));
   });
 });

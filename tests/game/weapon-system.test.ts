@@ -4,12 +4,15 @@ import {
   Damage,
   DeathTimer,
   EffectiveStats,
+  FamilyMembership,
   MeleeSwing,
   Position,
   Projectile,
   Velocity,
 } from '../../src/core/components.js';
+import { asFamilyId } from '../../src/core/faction-relations.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { denUnlockGoalId } from '../../src/game/floor2Scenario.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { WEAPON } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
@@ -228,5 +231,99 @@ describe('weaponSystem', () => {
     expect(projectile).toBeDefined();
     expect(world.stores.velocity.x[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
     expect(world.stores.velocity.y[projectile!]).toBeCloseTo(0, 5);
+  });
+
+  it('skips a Floor 2 family boss before den unlock, after den unlock but encounter inactive, and targets it once the encounter starts', () => {
+    // Shared setup: player at origin, live boss below, live trash enemy to the
+    // right.  The boss has FamilyMembership.isBoss=1 so isEnemyCombatEligible
+    // gates it; the trash enemy (no FamilyMembership) is always eligible and
+    // stands at +X so a correct skip fires +X.
+    const familyId = asFamilyId('imps');
+
+    function makeWorld(): ReturnType<typeof createTestWorld> {
+      const w = createTestWorld({ floor: 2 });
+      spawnPlayer(w, 0, 0);
+      const trashEid = spawnEnemy(w, 3.75, 0, 10); // to the right (+X)
+      void trashEid;
+
+      const bossEid = spawnEnemy(w, 0, 5, 100); // below (+Y)
+      addComponent(w.ecs, bossEid, FamilyMembership);
+      w.stores.familyMembership.familyId[bossEid] = 0; // presentFamilies[0]
+      w.stores.familyMembership.isBoss[bossEid] = 1;
+
+      w.floorExtendedState = {
+        familyState: {
+          presentFamilies: [familyId],
+          contestedResource: 'gold-veins' as never,
+          betrayerFlag: false,
+          reputationSystemActive: true,
+          trashKillsByFamily: new Map([[familyId, 0]]),
+          bossEncounters: new Map([
+            [
+              familyId,
+              {
+                familyId,
+                roomId: -1,
+                doorEids: [],
+                activeGoalId: 'floor2-den-imps-boss-active',
+                started: false,
+                bossEid,
+                defeated: false,
+                displayName: 'Imp Boss',
+                lootTableId: 'boss',
+              },
+            ],
+          ]),
+        },
+      };
+
+      const pistol = getWeaponDef('pistol')!;
+      setActiveWeapon(w, pistol);
+      w.elapsedMs = pistol.cooldownMs;
+      return w;
+    }
+
+    // Case 1: den locked — boss is ineligible, weapon fires at trash (+X).
+    const lockedWorld = makeWorld();
+    weaponSystem(lockedWorld);
+    const lockedProjectile = query(lockedWorld.ecs, [Projectile])[0];
+    expect(lockedProjectile).toBeDefined();
+    expect(lockedWorld.stores.velocity.x[lockedProjectile!]).toBeGreaterThan(0);
+    expect(lockedWorld.stores.velocity.y[lockedProjectile!]).toBeCloseTo(0, 1);
+
+    // Case 2: den unlocked but encounter not started — boss still ineligible.
+    const unlockedWorld = makeWorld();
+    unlockedWorld.goalFlags.set(denUnlockGoalId(familyId), true);
+    weaponSystem(unlockedWorld);
+    const unlockedProjectile = query(unlockedWorld.ecs, [Projectile])[0];
+    expect(unlockedProjectile).toBeDefined();
+    expect(unlockedWorld.stores.velocity.x[unlockedProjectile!]).toBeGreaterThan(0);
+    expect(unlockedWorld.stores.velocity.y[unlockedProjectile!]).toBeCloseTo(0, 1);
+
+    // Case 3: den unlocked AND encounter started — boss becomes the nearer
+    // target (+Y direction, boss at distance 5 vs trash at distance 3.75).
+    // The boss is farther, so the pistol should still prefer the closer trash
+    // for getNearestEnemyTarget — but the boss IS now eligible.  Confirm
+    // eligibility by verifying the projectile fires +Y when trash is removed.
+    const activeWorld = makeWorld();
+    activeWorld.goalFlags.set(denUnlockGoalId(familyId), true);
+    const activeBossEncounter =
+      activeWorld.floorExtendedState!.familyState!.bossEncounters!.get(familyId)!;
+    activeBossEncounter.started = true;
+    // Remove the trash enemy so the boss is the only target.
+    const trashEids = query(activeWorld.ecs, [Position]);
+    for (const eid of trashEids) {
+      if (
+        (activeWorld.stores.position.x[eid] ?? 0) > 0 &&
+        (activeWorld.stores.familyMembership.isBoss[eid] ?? 0) === 0
+      ) {
+        activeWorld.stores.health.current[eid] = 0;
+      }
+    }
+    weaponSystem(activeWorld);
+    const activeProjectile = query(activeWorld.ecs, [Projectile])[0];
+    expect(activeProjectile).toBeDefined();
+    // Boss is below (+Y), so the projectile must have a +Y component.
+    expect(activeWorld.stores.velocity.y[activeProjectile!]).toBeGreaterThan(0);
   });
 });

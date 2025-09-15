@@ -124,7 +124,13 @@ import {
   ensureBossBattleSpellReward,
   initializePlayerWeaponSkills,
 } from './floorScenario.js';
-import { pickFromSpawnZones, type SpawnZoneWeights } from './spawn-zones.js';
+import {
+  mergeSpawnZoneWeights,
+  mixSpawnZoneWeights,
+  normalizeSpawnZoneWeights,
+  pickFromSpawnZones,
+  type SpawnZoneWeights,
+} from './spawn-zones.js';
 import { equipStarterOrFallback } from './scenarios/starterWeaponEquip.js';
 import { applyStartPlayerLevel } from './scenarios/playerLevelProgression.js';
 import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolicy.js';
@@ -132,6 +138,8 @@ import { computeAutoStatAllocation } from './scenarios/playerStatAllocationPolic
 const FLOOR2_BOSS_HP_SCALE = 0.03;
 const FLOOR2_BOSS_CONTACT_DAMAGE = 2;
 const FLOOR2_DIRECT_START_LEVEL = 5;
+export const FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE = 0.75;
+export const FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE = 0.25;
 const floor2CombatEventCursor = new WeakMap<GameWorld, { cursor: number; lastEvent?: object }>();
 
 export function resolveFloor2ArchetypeAIType(archetype: EnemyArchetypeDef): number {
@@ -1172,18 +1180,33 @@ function assignQuadrantTrashTerritories(world: GameWorld): Map<string, string> {
 }
 
 /**
- * Pick a Floor 2 ambient archetype by unioning every spawn zone in scope at
- * the current position, then normalizing the combined weights:
- *  1) family territory-zone pools (per-family 1/74/25),
- *  2) quadrant territory-zone pool (single quadrant archetype),
- *  3) global fallback pool (the same per-seed quadrant trash set).
+ * Resolve Floor 2 ambient probabilities at the player's current position.
+ * Family territories reserve 75% of the probability mass and neutral trash
+ * reserves 25%. Overlapping family territories share the family mass instead
+ * of stacking independent 75% allocations.
  */
-function pickFloor2TrashArchetype(world: GameWorld, x: number, y: number): EnemyArchetypeDef {
+export function resolveFloor2TrashSpawnWeights(
+  world: GameWorld,
+  x: number,
+  y: number,
+): ReadonlyMap<string, number> {
   const familyZone = collectFamilyTerritoryZoneWeights(world, x, y);
   const quadrantZone = collectQuadrantZoneWeights(world, x, y);
   const globalZone = collectGlobalFallbackZoneWeights(world);
+  const neutralZone = mergeSpawnZoneWeights([quadrantZone, globalZone]);
+  if (familyZone.size === 0) {
+    return normalizeSpawnZoneWeights(neutralZone);
+  }
+  return mixSpawnZoneWeights([
+    { weights: familyZone, share: FLOOR2_TERRITORY_FAMILY_SPAWN_SHARE },
+    { weights: neutralZone, share: FLOOR2_TERRITORY_NEUTRAL_SPAWN_SHARE },
+  ]);
+}
+
+function pickFloor2TrashArchetype(world: GameWorld, x: number, y: number): EnemyArchetypeDef {
+  const weights = resolveFloor2TrashSpawnWeights(world, x, y);
   const { pickedId } = pickFromSpawnZones(
-    [familyZone, quadrantZone, globalZone] as const satisfies readonly SpawnZoneWeights[],
+    [weights] as const satisfies readonly SpawnZoneWeights[],
     () => world.rng.next(),
   );
   if (pickedId !== null) {
@@ -1363,8 +1386,14 @@ function unstickFloor2Bosses(world: GameWorld): void {
  * Spawn one Floor 2 ambient archetype with quadrant-based trash weighting,
  * scaling stats based on distance from spawn.
  */
-function spawnFloor2AmbientArchetype(world: GameWorld, x: number, y: number): number {
-  const selectedArchetype = pickFloor2TrashArchetype(world, x, y);
+function spawnFloor2AmbientArchetype(
+  world: GameWorld,
+  x: number,
+  y: number,
+  selectionX: number,
+  selectionY: number,
+): number {
+  const selectedArchetype = pickFloor2TrashArchetype(world, selectionX, selectionY);
   let hp = selectedArchetype.hp;
   let speed = selectedArchetype.speed;
   if (world.floorMap) {
@@ -1492,7 +1521,7 @@ export function floor2EnemyDirectorSystem(world: GameWorld): void {
     if (!spawnPoint) {
       break;
     }
-    spawnFloor2AmbientArchetype(world, spawnPoint.x, spawnPoint.y);
+    spawnFloor2AmbientArchetype(world, spawnPoint.x, spawnPoint.y, playerX, playerY);
   }
   state.lastSpawnMs = world.elapsedMs;
 }
