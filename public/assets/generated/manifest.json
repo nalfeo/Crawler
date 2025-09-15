@@ -4228,6 +4228,17 @@
       "judgeScore": null,
       "type": null
     },
+    "oil-lantern-placeholder": {
+      "briefId": "oil-lantern",
+      "spriteName": "oil-lantern",
+      "assetPath": "generated/oil-lantern-placeholder.png",
+      "approvedAt": "2026-07-18T01:43:20.931Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "old-sock-var-4": {
       "briefId": "old-sock",
       "spriteName": "old-sock-var-4",
