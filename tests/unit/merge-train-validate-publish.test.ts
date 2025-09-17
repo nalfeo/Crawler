@@ -41,6 +41,7 @@ interface WorkflowStep {
 
 interface WorkflowJob {
   permissions?: Record<string, string>;
+  needs?: string[];
   steps?: WorkflowStep[];
 }
 
@@ -68,7 +69,19 @@ function getPublishScript(doc: WorkflowDoc): string {
   return script;
 }
 
-async function runPublishScript(verifyResult: string): Promise<{
+type ValidationResult = 'success' | 'failure' | 'cancelled' | 'skipped';
+
+const ALL_VALIDATION_SUCCESS = {
+  static: { result: 'success' },
+  'unit-tests': { result: 'success' },
+  'sprite-tests': { result: 'success' },
+  health: { result: 'success' },
+  security: { result: 'success' },
+} satisfies Record<string, { result: ValidationResult }>;
+
+async function runPublishScript(
+  validationResults: Record<string, { result: ValidationResult }>,
+): Promise<{
   conclusion: string;
   title: string;
   calls: string[];
@@ -94,12 +107,12 @@ async function runPublishScript(verifyResult: string): Promise<{
     payload: { repository: { default_branch: 'main' } },
   };
   const previousEnv = {
-    VERIFY_RESULT: process.env.VERIFY_RESULT,
+    VALIDATION_RESULTS: process.env.VALIDATION_RESULTS,
     CANDIDATE_SHA: process.env.CANDIDATE_SHA,
     FINGERPRINT: process.env.FINGERPRINT,
     PR_NUMBERS: process.env.PR_NUMBERS,
   };
-  process.env.VERIFY_RESULT = verifyResult;
+  process.env.VALIDATION_RESULTS = JSON.stringify(validationResults);
   process.env.CANDIDATE_SHA = 'a'.repeat(40);
   process.env.FINGERPRINT = 'deadbeef';
   process.env.PR_NUMBERS = '42,43';
@@ -125,32 +138,49 @@ async function runPublishScript(verifyResult: string): Promise<{
 
 describe('merge-train-validate.yml publish step (verify result -> check conclusion mapping)', () => {
   it('maps a genuine executed failure to a failure conclusion', async () => {
-    const { conclusion, title } = await runPublishScript('failure');
+    const { conclusion, title } = await runPublishScript({
+      ...ALL_VALIDATION_SUCCESS,
+      health: { result: 'failure' },
+    });
     expect(conclusion).toBe('failure');
     expect(title).toMatch(/failed/i);
   });
 
   it('maps a genuine success to a success conclusion', async () => {
-    const { conclusion, title } = await runPublishScript('success');
+    const { conclusion, title } = await runPublishScript(ALL_VALIDATION_SUCCESS);
     expect(conclusion).toBe('success');
     expect(title).toMatch(/passed/i);
   });
 
   it('maps an infrastructure cancellation to cancelled, not failure', async () => {
-    const { conclusion, title } = await runPublishScript('cancelled');
+    const { conclusion, title } = await runPublishScript({
+      ...ALL_VALIDATION_SUCCESS,
+      'sprite-tests': { result: 'cancelled' },
+    });
     expect(conclusion).toBe('cancelled');
     expect(title).not.toMatch(/failed/i);
   });
 
   it('maps a skipped verify job (e.g. a superseded run) to cancelled, not failure', async () => {
-    const { conclusion } = await runPublishScript('skipped');
+    const { conclusion } = await runPublishScript({
+      ...ALL_VALIDATION_SUCCESS,
+      static: { result: 'skipped' },
+    });
     expect(conclusion).toBe('cancelled');
   });
 
-  it('treats any other/unexpected verify result as cancelled (fails safe, not closed)', async () => {
-    // A timed-out job surfaces as `cancelled` per GitHub Actions, but this
-    // also guards against any future/unknown result string.
-    const { conclusion } = await runPublishScript('timed_out');
+  it('prioritizes a genuine failure over a simultaneous infrastructure cancellation', async () => {
+    const { conclusion } = await runPublishScript({
+      ...ALL_VALIDATION_SUCCESS,
+      health: { result: 'failure' },
+      security: { result: 'cancelled' },
+    });
+    expect(conclusion).toBe('failure');
+  });
+
+  it('fails safely to cancelled when a required result is absent', async () => {
+    const { security: _security, ...missingSecurity } = ALL_VALIDATION_SUCCESS;
+    const { conclusion } = await runPublishScript(missingSecurity);
     expect(conclusion).toBe('cancelled');
   });
 
@@ -175,7 +205,7 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
   });
 
   it('publish script only calls checks.create (no dispatch — dispatch is a separate GITHUB_TOKEN step)', async () => {
-    const { calls } = await runPublishScript('success');
+    const { calls } = await runPublishScript(ALL_VALIDATION_SUCCESS);
     expect(calls).toEqual(['check']);
   });
 
