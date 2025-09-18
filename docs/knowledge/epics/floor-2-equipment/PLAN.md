@@ -220,7 +220,15 @@ manifest rewrite. Changes inside the contract require the plan-change protocol.
       "slice:H1": ["slice:C1", "slice:F1"],
       "slice:H2": ["slice:H1", "slice:G2"],
       "slice:H3": ["slice:H2", "slice:G3"],
-      "slice:I1": ["slice:B3", "slice:C2", "slice:D3", "slice:E3", "slice:F4", "slice:G3", "slice:H3"],
+      "slice:I1": [
+        "slice:B3",
+        "slice:C2",
+        "slice:D3",
+        "slice:E3",
+        "slice:F4",
+        "slice:G3",
+        "slice:H3"
+      ],
       "slice:I2": ["slice:I1"],
       "slice:I3": ["slice:I2"],
       "slice:J": ["slice:I3"]

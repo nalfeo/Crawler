@@ -16,6 +16,7 @@ Addressed the final two open review threads from the PR #1271 recovery cycle:
 3. **Code review follow-up**: Added `node_id` assertion to the `stacked.missing-issue` test for precision.
 
 Previously addressed (committed in earlier sessions of this recovery cycle):
+
 - **3608166835** (schema): `stacked_work` schema, validator, audit, and tests fully restored
 - **3608085312** (TREE_OBJECT_SHA): fallback changed from `'0'.repeat(40)` to `null`, using `it.skipIf(!TREE_OBJECT_SHA)`
 - Path traversal fix, DAG completeness checks, not-commit error message, nodesById loop optimization, parent-slice drift test, blocked URL usage
