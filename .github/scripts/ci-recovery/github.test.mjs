@@ -203,4 +203,3 @@ test('request does not retry a non-GET (POST) on 503', async (t) => {
     },
   );
 });
-

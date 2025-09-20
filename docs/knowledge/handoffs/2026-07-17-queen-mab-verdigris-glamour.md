@@ -185,7 +185,7 @@ Post-merge recovery session resolved the following blockers:
 - **TS2717 typecheck failure**: `queen-mab-arena-observation.test.ts` redeclared
   `Window.__arenaScene` with a richer type that conflicted with the narrower
   declaration in `combat-arena-terrain.test.ts`. Fixed by removing the `declare
-  global` augmentation and using a local `QmArenaScene` interface with inline
+global` augmentation and using a local `QmArenaScene` interface with inline
   casts in all `page.evaluate()` / `page.waitForFunction()` callbacks. TypeScript
   erases the inline casts at compile time so the emitted JavaScript is simply
   `window.__arenaScene`.
