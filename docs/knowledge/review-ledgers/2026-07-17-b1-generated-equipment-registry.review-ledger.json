@@ -1,0 +1,37 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "b1-generated-equipment-registry",
+  "task_title": "B1: Add generated equipment instance registry",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "plan_divergence": "minor",
+      "notes": "1. Generation inputs: instance fields (baseId/itemLevel/rarity/enhancementLevel/resolvedEffects) ARE the versioned inputs — no separate type needed; added doc comment. 2. Serialization boundary: added snapshotRegistry/hydrateRegistry APIs to establish boundary without full carryover. 3. Runtime validation: added validateInstanceV1() before registration (rarity/enhancement/stat keys/effect budget/effect uniqueness). 4. Async write path: registerInstance is async (validates fingerprint cryptographically); generation/hydration happens off frame loop so async is fine. 5. FrozenEquipmentFieldsV1 versioning: weapon snapshot adds optional field in weapon-snapshot slice (V1 compatible); doc comment added. 6. Stricter guards: regex for instanceId (^gei:v1:[a-zA-Z0-9_-]+:\\d+$), fingerprint (^sha256:[0-9a-f]{64}$), non-negative integer ordinal check. 7. Added tests for: structural validation rejection, per-world isolation, canonicalization stability, malformed IDs, mutation isolation."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        },
+        {
+          "round": 2,
+          "models": ["copilot-pull-request-reviewer"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": true,
+          "notes": "1. ADR 0065 and spec section missing — created ADR + added Floor 2 Generated Equipment Contract section to equipment-system.md. 2. Shallow freeze — replaced deepFreezeInstance with deepCloneAndFreeze (recursive clone+freeze); clone before validation to prevent mutation races. 3. hydrateRegistry accepts trusted type without shape guards — changed to accept unknown, added guardRawInstance() checking frozen/resolvedEffects/statBonuses shapes. 4. Property isolation test trivially returns true — fixed with valid disjoint IDs (ordinals 1000+), getRegistrySize size assertions, and both isolation directions verified."
+        }
+      ]
+    }
+  }
+}
