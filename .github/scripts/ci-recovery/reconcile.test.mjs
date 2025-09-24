@@ -6707,7 +6707,7 @@ test('outdated stale-marker thread auto-resolves without posting a blocker summa
           {
             id: threadId,
             isResolved: false,
-            isOutdated: false,
+            isOutdated: true,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
