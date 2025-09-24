@@ -122,6 +122,7 @@ const SOURCE_PATH_TO_LABS = {
   'src/shared/harvestableDefs': ['harvest-lab'],
   'src/core/systems/dropSystem': ['drop-lab', 'gore-lab'],
   'src/core/systems/equipmentSystem': ['equipment-lab'],
+  'src/game/ai/equipment-evaluator': ['equipment-evaluator'],
   'src/game/systems/statsSystem': ['stats-lab', 'stat-lab'],
   'src/core/systems/statSystem': ['stat-lab'],
   'src/core/systems/lifetimeSystem': ['lifetime-lab'],

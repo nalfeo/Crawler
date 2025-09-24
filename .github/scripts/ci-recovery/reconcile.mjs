@@ -998,6 +998,18 @@ for (const markerSha of markerShasNeedingLineageCheck) {
     // hint is emitted; the generic review-thread blocker is preserved instead.
   }
 }
+
+function hasTrustedAddressedMarker(thread) {
+  const comments = thread.comments?.nodes ?? [];
+  if (comments.length === 0) return false;
+  const last = comments[comments.length - 1];
+  return (
+    extractAddressedMarkerSha(last?.body) !== null &&
+    (TRUSTED_ASSOCIATIONS.has(String(last?.authorAssociation ?? '').toUpperCase()) ||
+      TRUSTED_BOT_LOGINS.has(String(last?.author?.login ?? '').toLowerCase()))
+  );
+}
+
 // Post reconciler-authored marker replies for outdated threads that have no trusted marker.
 // thread.isOutdated=true is GitHub's authoritative signal that the reviewed code lines are
 // no longer at the reviewed location; any remaining concern must be re-raised by the reviewer
@@ -1009,15 +1021,12 @@ for (const markerSha of markerShasNeedingLineageCheck) {
 // DNS monitoring proxy in the cloud agent environment), breaking the recovery loop.
 for (const thread of unresolvedThreads.filter((candidate) => {
   if (!candidate.isOutdated) return false;
-  if (shouldResolveThread(candidate, headSha, reachableMarkerShas)) return false;
-  // Don't process as outdated if the thread has a definitively stale marker SHA —
-  // those threads surface through the stale-marker hint path instead.
   const candidateComments = candidate.comments?.nodes ?? [];
   const lastComment = candidateComments[candidateComments.length - 1];
   const candidateMarkerSha = extractAddressedMarkerSha(lastComment?.body);
-  if (candidateMarkerSha && definitivelyUnreachableMarkerShas.has(candidateMarkerSha)) {
-    return false;
-  }
+  const hasDefinitivelyStaleMarker =
+    candidateMarkerSha && definitivelyUnreachableMarkerShas.has(candidateMarkerSha);
+  if (!hasDefinitivelyStaleMarker && hasTrustedAddressedMarker(candidate)) return false;
   return true;
 })) {
   const root = thread.comments?.nodes?.[0];
