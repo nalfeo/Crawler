@@ -111,6 +111,33 @@ test('normalizes blocker order before fingerprinting', () => {
   assert.equal(blockerFingerprint(left), blockerFingerprint(right));
 });
 
+test('line-number drift does not change the blocker fingerprint', () => {
+  // Regression: diff-position line numbers drift whenever surrounding code is
+  // modified (e.g. INDEX.md regenerated).  Including `line` in normalizeBlockers
+  // previously caused a new fingerprint on every line-shift, which
+  // automationStallAction interpreted as 'progressed' and reset the attempt
+  // counter — granting a fresh retry budget for the same underlying blocker and
+  // creating an infinite recovery loop (CI recovery loop incident pattern).
+  const base = {
+    kind: 'review-thread',
+    id: 'review-thread:PRRT_test:abcdef1234',
+    summary: 'reviewer: handoff landing in _unclassified_',
+    path: 'docs/knowledge/handoffs/INDEX.md',
+    line: 488,
+  };
+  const shifted = { ...base, line: 497 };
+  const noLine = { ...base, line: undefined };
+  const normalizedBase = normalizeBlockers([base])[0];
+  const normalizedShifted = normalizeBlockers([shifted])[0];
+
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([shifted]));
+  assert.equal(blockerFingerprint([base]), blockerFingerprint([noLine]));
+  assert.equal(normalizedBase.line, 488);
+  assert.equal(normalizedShifted.line, 497);
+  // line should remain available for display metadata even though hashing ignores it
+  assert.notEqual(normalizedBase.line, normalizedShifted.line);
+});
+
 test('review-thread blocker identity changes when comments change', () => {
   const baseThread = {
     id: 'thread-1',
@@ -447,7 +474,37 @@ test('automation staleness waits, retries once, then releases without treating w
       fingerprint,
       now: new Date('2026-07-17T13:00:00.000Z'),
     }),
-    'progressed',
+    'retry',
+  );
+});
+
+test('automation staleness keeps retry budget when only headSha changes', () => {
+  const fingerprint = blockerFingerprint([
+    { kind: 'review-thread', id: 'review-thread:PRRT_test:abcd', summary: 'Review finding' },
+  ]);
+  const state = makeState({
+    prNumber: 42,
+    headSha: 'old-head',
+    fingerprint,
+    owner: 'automation',
+    status: 'dispatched',
+    blockers: [
+      { kind: 'review-thread', id: 'review-thread:PRRT_test:abcd', summary: 'Review finding' },
+    ],
+    attempt: 2,
+    progressKey: automationProgressKey('old-head', fingerprint),
+    progressAt: '2026-07-17T12:00:00.000Z',
+    updatedAt: '2026-07-17T12:20:00.000Z',
+  });
+
+  assert.equal(
+    automationStallAction({
+      state,
+      headSha: 'new-head',
+      fingerprint,
+      now: new Date('2026-07-17T13:00:00.000Z'),
+    }),
+    'release',
   );
 });
 
