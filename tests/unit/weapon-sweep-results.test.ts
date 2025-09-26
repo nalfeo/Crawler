@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   mergeWeaponSweepShards,
+  normalizeWeaponSweepFloors,
   summarizeWeaponRecords,
   type WeaponSweepOutput,
   type WeaponSweepRecord,
@@ -23,10 +24,15 @@ function record(seed: number, weapon = 'sword'): WeaponSweepRecord {
   };
 }
 
-function shard(seeds: number[], weaponPersonas = false): WeaponSweepOutput {
+function shard(
+  seeds: number[],
+  weaponPersonas = false,
+  floors: number[] | null = [1],
+): WeaponSweepOutput {
   const records = seeds.map((seed) => record(seed));
   return {
     runAt: 'ignored',
+    ...(floors === null ? {} : { floors }),
     seeds,
     weapons: ['sword'],
     maxFrames: 19_800,
@@ -42,6 +48,7 @@ describe('mergeWeaponSweepShards', () => {
     const result = mergeWeaponSweepShards([shard([2, 4]), shard([1, 3])], 'sword', [1, 2, 3, 4]);
 
     expect(result.seeds).toEqual([1, 2, 3, 4]);
+    expect(result.floors).toEqual([1]);
     expect(result.allRecords.map(({ seed }) => seed)).toEqual([1, 2, 3, 4]);
     expect(result.summaries[0]).toMatchObject({
       weapon: 'sword',
@@ -106,5 +113,32 @@ describe('mergeWeaponSweepShards', () => {
     expect(() =>
       mergeWeaponSweepShards([shard([1], true), shard([2], false)], 'sword', [1, 2]),
     ).toThrow('Shard persona-mode mismatch for "sword": false vs true');
+  });
+
+  it('normalizes and unions floor provenance across shards', () => {
+    const result = mergeWeaponSweepShards(
+      [shard([1], false, [2, 1, 2]), shard([2], false, [3, 2])],
+      'sword',
+      [1, 2],
+    );
+    expect(result.floors).toEqual([1, 2, 3]);
+  });
+
+  it('omits floor provenance when any legacy shard lacks metadata', () => {
+    const result = mergeWeaponSweepShards(
+      [shard([1], false, [1]), shard([2], false, null)],
+      'sword',
+      [1, 2],
+    );
+    expect(result).not.toHaveProperty('floors');
+  });
+
+  it('rejects malformed present floor metadata instead of treating it as legacy', () => {
+    expect(() => normalizeWeaponSweepFloors([])).toThrow(
+      'Sweep floor metadata must be a non-empty array of positive integers',
+    );
+    expect(() => normalizeWeaponSweepFloors(['1'])).toThrow(
+      'Sweep floor metadata must be a non-empty array of positive integers',
+    );
   });
 });
