@@ -499,6 +499,37 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     ).toBe(true);
   });
 
+  it('loads and preloads the shipped harpoon-gun placeholder key from the real manifest', () => {
+    if (!existsSync(REPO_MANIFEST) || sharedRealRegistry === null) {
+      return;
+    }
+    const briefId = 'harpoon-gun';
+    const textureKey = 'harpoon-gun-placeholder';
+    const entry = sharedRealRegistry
+      .entries()
+      .find((candidate) => candidate.textureKey === textureKey);
+    expect(entry, `missing shipped generated-manifest entry for ${textureKey}`).not.toBeUndefined();
+    expect(entry?.textureKey).toBe(textureKey);
+    expect(sharedRealRegistry.lookup(briefId)?.textureKey).toBe(textureKey);
+    expect(entry?.assetPath).toBe('generated/harpoon-gun-placeholder.png');
+    expect(entry?.sourceRun).toBe('placeholder');
+
+    const queued: Array<{ textureKey: string; url: string }> = [];
+    preloadGeneratedSprites(
+      { image: (queuedTextureKey, url) => queued.push({ textureKey: queuedTextureKey, url }) },
+      sharedRealRegistry,
+    );
+    expect(queued).toContainEqual({
+      textureKey,
+      url: '/assets/generated/harpoon-gun-placeholder.png',
+    });
+    expect(
+      existsSync(
+        path.resolve(__dirname, '../../public/assets/generated/harpoon-gun-placeholder.png'),
+      ),
+    ).toBe(true);
+  });
+
   it('wires all Floor-1 harvestable nodes to real approved art, not placeholders', async () => {
     if (!existsSync(REPO_MANIFEST)) {
       // Fresh checkout without generated art on disk — nothing to observe.

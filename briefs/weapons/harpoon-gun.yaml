@@ -1,0 +1,23 @@
+type: weapon
+name: harpoon-gun
+description: |
+  A harpoon gun — a chunky, industrial ranged firearm with a thick barrel and
+  a large mounted harpoon bolt loaded at the front. The weapon stands vertically
+  with the grip at the bottom and the barrel pointing straight up; the harpoon
+  tip (barbed metal point) crowns the top of the barrel. Heavy welded metal
+  construction with bolted plating, reinforced stock, and a trigger mechanism
+  visible at the grip. Matte dark steel body with rust-streaked seams and oil-
+  stained cloth wrap on the grip. A length of thick cable or chain coils near
+  the base, suggesting the harpoon is tethered. Bold, readable silhouette —
+  the barrel-plus-harpoon shape must clearly distinguish it from a sword or
+  staff at a glance. No glow, no magic effects, no decorative backgrounds.
+# Harpoon gun stands vertically (barrel up, grip bottom) — standard weapon
+# orientation. The default (32, 56) anchor sits at the grip center, which
+# is correct for this weapon. Everything else inherited from
+# data/sprite-types/weapon.json (64x64, kenney-roguelike palette, 4x4 sheet,
+# VLM judge enabled).
+variations:
+  - pneumatic pump handle visible on the side, copper piping details
+  - crossbow-like stock with a shoulder brace, chain coil larger
+  - wider barrel with a spear-fin harpoon head, riveted industrial look
+minVariations: 6
