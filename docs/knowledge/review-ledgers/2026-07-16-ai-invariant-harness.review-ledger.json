@@ -1,0 +1,36 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "ai-invariant-harness",
+  "task_title": "Add shared deterministic AI invariant harness",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "Adopted live same-AI multi-poll mutation rows for door/goal invalidation and stall recovery; defined a non-lossy fingerprint over decision, effective run-plan route head/actionable goal, urgency/slack, and suppression/commitment markers with activation preconditions; split NPC anchor coverage into off-body approach and close-first/far-revisit cache-poison cases; enforced an auditable invariant-by-mode applicability matrix with no vacuous hard-gate invariant. Minimal shared planner/oracle/cache fixes remain allowed only when proven by the matrix; fused/navmesh locomotion and balance remain excluded. divergence=minor."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
