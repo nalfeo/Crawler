@@ -1,0 +1,23 @@
+type: weapon
+name: chain-flail
+floor: 2
+description: |
+  A brutal Floor 2 chain flail held vertically, chain at the top hanging
+  down to a heavy iron ball, wrapped leather grip at the bottom. Three to
+  four visible chain links between the handle and the weighted head — each
+  link rendered as a small oval or ring. The ball is large and solid:
+  riveted iron sphere, optionally spiked. Dark iron chain with cool grey
+  highlights; dull steel ball with shadow on the underside; dark brown
+  wrapped grip with a simple band or pommel at the base. Worn metal
+  throughout — scratches, dents, and scuffs on the ball and chain.
+  No glow, no enchantment, no blood, no fire. The silhouette must read as
+  "chain with heavy ball" at a glance and clearly not be a sword or mace.
+# Chain flail is a standard vertical bludgeon weapon.
+# Vertical orientation, 4x4 sheet, palette, references, and anchor
+# all inherited from data/sprite-types/weapon.json.
+# minVariations: 8 lets the runner expand the seed list with diverse
+# silhouette / proportion variants (ball size, chain length, spike count).
+variations:
+  - spiked iron ball with four outward-facing spikes
+  - smooth heavy cannonball-style weight, extra-long chain
+minVariations: 8
