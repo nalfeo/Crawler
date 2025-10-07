@@ -459,12 +459,14 @@ export async function promoteExactBatch({
   // intentionally bypasses to get true cross-PR atomicity. This was
   // originally believed to be an async *lag* under load (ADR 0062 DEC-024:
   // a six-PR batch where the first entry's confirmation read hadn't landed
-  // within the old retry budget), but was proven live on 2026-07-15 to be
-  // *permanent*, not a lag (ADR 0062 DEC-025): seven real promoted PRs across
-  // two separate batches -- one over nine hours old -- never showed
-  // `merged: true`, despite `git log main --grep Merge-Train-PR` proving
-  // every one of their commits correctly landed. `waitForMergedPr` (built by
-  // `createWaitForMergedPr` above) instead polls for `state === 'closed'`,
+  // within the old retry budget), then initially believed proven live on
+  // 2026-07-15 to be *permanent*, not a lag (ADR 0062 DEC-025): seven real
+  // promoted PRs across two separate batches -- one over nine hours old --
+  // never showed `merged: true`. However, a subsequent promotion (PR #1131,
+  // same date) did show `merged: true` populated promptly -- narrowing the
+  // conclusion to *unreliable* rather than universally absent (see DEC-025
+  // addendum in ADR 0062). `waitForMergedPr` (built by
+  // `createWaitForMergedPr` above) therefore polls for `state === 'closed'`,
   // which GitHub reliably sets within ~20s of the push in every observed
   // case, and is the actual achievable ground-truth signal for this
   // promotion mechanism.

@@ -145,20 +145,23 @@ dry-run train mode.
    run if GitHub does not record every included PR as merged.
 
    > **GitHub's "merged" confirmation is a secondary corroboration, not the
-   > ground truth — and `merged`/`merged_at` never fire for this promotion
-   > mechanism at all.** The atomic `git push --atomic ... --force-with-lease` is the actual, authoritative proof that a batch
+   > ground truth — and `merged`/`merged_at` are not reliably set by this promotion
+   > mechanism.** The atomic `git push --atomic ... --force-with-lease` is the actual, authoritative proof that a batch
    > promoted correctly. GitHub's `merged`/`merged_at` PR fields are populated
    > only when a PR is closed through GitHub's own merge machinery (its Merge
    > API or the web "Merge" button) — this promotion strategy intentionally
    > bypasses that machinery to force-push the exact validated candidate
    > directly onto every entry's head ref and `main` in one atomic multi-ref
-   > push, so `merged`/`merged_at` are **never** set, no matter how long you
-   > wait. This was originally believed to be an async _lag_ under load (ADR
-   > 0062 DEC-024, from a six-PR batch where one entry's confirmation read
-   > hadn't landed within the old retry budget) but was proven live in
-   > production on 2026-07-15 to be _permanent_: seven real promoted PRs
-   > across two separate batches — one over nine hours old — still showed
-   > `merged: false, merged_at: null`, even though `git log main --grep Merge-Train-PR` proved every one of their commits had correctly landed.
+   > push, so `merged`/`merged_at` are **not reliably** set. They were absent
+   > in all seven promotions observed during the DEC-025 discovery (including
+   > one entry 9+ hours old), and observed populated in at least one subsequent
+   > promotion (PR #1131, 2026-07-15 live cutover). The fields cannot be
+   > depended on as a completion signal for this mechanism. This was originally
+   > believed to be an async _lag_ under load (ADR 0062 DEC-024, from a six-PR
+   > batch where one entry's confirmation read hadn't landed within the old
+   > retry budget) but was shown to be a persistent unreliability (ADR 0062
+   > DEC-025, narrowed to "unreliable" from the initial "permanent" framing by
+   > the PR #1131 observation — see the DEC-025 addendum in ADR 0062).
    > What GitHub _does_ reliably do (observed within ~20s of the push in all
    > seven cases) is auto-close the PR once its head ref shows no remaining
    > diff against `main`. `promoteExactBatch`'s confirmation poller
