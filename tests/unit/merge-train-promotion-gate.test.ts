@@ -73,6 +73,17 @@ function templateExpressions(script: string, values: Record<string, string>): st
   return result;
 }
 
+type GhStubOptions = {
+  body: string;
+  exitCode?: number;
+};
+
+function writeGhStub(workdir: string, { body, exitCode = 0 }: GhStubOptions): void {
+  const ghStub = path.join(workdir, 'gh');
+  writeFileSync(ghStub, `#!/usr/bin/env bash\ncat <<'EOF'\n${body}\nEOF\nexit ${exitCode}\n`);
+  chmodSync(ghStub, 0o755);
+}
+
 describe.skipIf(!hasBash || !hasJq)('merge-train promotion check gating (ci.yml)', () => {
   let workdir: string;
   let githubOutput: string;
@@ -86,6 +97,7 @@ describe.skipIf(!hasBash || !hasJq)('merge-train promotion check gating (ci.yml)
   function runCiScope(
     eventName: 'push' | 'pull_request',
     mergeTrainEnabled: string,
+    ghStubOptions: GhStubOptions = { body: FAKE_CHECK_RUNS },
   ): Record<string, string> {
     const raw = readFileSync(path.join(REPO_ROOT, '.github/workflows/ci.yml'), 'utf8');
     const block = extractRunBlock(raw, 'Preserve train-promoted head evidence');
@@ -101,9 +113,7 @@ describe.skipIf(!hasBash || !hasJq)('merge-train promotion check gating (ci.yml)
 
     // Stub `gh` so the real jq filter runs against a fabricated, otherwise
     // fully-trusted, successful merge-train check-run.
-    const ghStub = path.join(workdir, 'gh');
-    writeFileSync(ghStub, `#!/usr/bin/env bash\necho '${FAKE_CHECK_RUNS}'\n`);
-    chmodSync(ghStub, 0o755);
+    writeGhStub(workdir, ghStubOptions);
 
     const res = spawnSync('bash', ['-c', templated], {
       encoding: 'utf8',
@@ -155,6 +165,14 @@ describe.skipIf(!hasBash || !hasJq)('merge-train promotion check gating (ci.yml)
     expect(out.docs_only).toBe('false');
     expect(out.train_promoted).toBe('false');
   });
+
+  it('fails open to full CI when check-runs output is not valid JSON', () => {
+    const out = runCiScope('pull_request', 'true', {
+      body: '<!DOCTYPE html><html>bad gateway</html>',
+    });
+    expect(out.docs_only).toBe('false');
+    expect(out.train_promoted).toBe('false');
+  });
 });
 
 describe.skipIf(!hasBash || !hasJq)(
@@ -169,7 +187,10 @@ describe.skipIf(!hasBash || !hasJq)(
       writeFileSync(githubOutput, '');
     });
 
-    function runSecurityScope(mergeTrainEnabled: string): Record<string, string> {
+    function runSecurityScope(
+      mergeTrainEnabled: string,
+      ghStubOptions: GhStubOptions = { body: FAKE_CHECK_RUNS },
+    ): Record<string, string> {
       const raw = readFileSync(
         path.join(REPO_ROOT, '.github/workflows/security-review.yml'),
         'utf8',
@@ -181,9 +202,7 @@ describe.skipIf(!hasBash || !hasJq)(
         'vars.MERGE_TRAIN_ENABLED': mergeTrainEnabled,
       });
 
-      const ghStub = path.join(workdir, 'gh');
-      writeFileSync(ghStub, `#!/usr/bin/env bash\necho '${FAKE_CHECK_RUNS}'\n`);
-      chmodSync(ghStub, 0o755);
+      writeGhStub(workdir, ghStubOptions);
 
       const res = spawnSync('bash', ['-c', templated], {
         encoding: 'utf8',
@@ -226,6 +245,12 @@ describe.skipIf(!hasBash || !hasJq)(
       const out = runSecurityScope('true');
       expect(out.docs_only).toBe('true');
       expect(out.train_promoted).toBe('true');
+    });
+
+    it('fails open to full security checks when check-runs output is not valid JSON', () => {
+      const out = runSecurityScope('true', { body: '<!DOCTYPE html><html>bad gateway</html>' });
+      expect(out.docs_only).toBe('false');
+      expect(out.train_promoted).toBe('false');
     });
   },
 );

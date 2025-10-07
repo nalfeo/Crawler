@@ -434,6 +434,55 @@ describe('enemy projectile telegraph — nonzero delay lifecycle', () => {
     enemyAISystem(world);
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(2);
   });
+
+  it('gives every subsequent shot its OWN independently locked aim vector, not a stale copy of the previous shot', () => {
+    const world = createTestWorld();
+    world.enemyTelegraphMs = 250;
+    world.elapsedMs = 100;
+    vi.spyOn(world.rng, 'next').mockReturnValue(0);
+
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+
+    // First shot: telegraph locks aim pointing west (toward the player at the origin).
+    enemyAISystem(world);
+    const firstDirX = world.stores.enemyBehavior.telegraphDirX[enemy]!;
+    const firstDirY = world.stores.enemyBehavior.telegraphDirY[enemy]!;
+    expect(firstDirX).toBeLessThan(-0.9);
+    expect(Math.abs(firstDirY)).toBeLessThan(0.01);
+
+    world.elapsedMs = 351;
+    enemyAISystem(world); // first shot fires using the west lock
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(1);
+
+    // Move the player to a very different angle (due north of the enemy,
+    // still within the 150 attack range) before the second telegraph begins.
+    world.stores.position.x[player] = 100;
+    world.stores.position.y[player] = -140;
+
+    world.elapsedMs = 351 + ENEMY_PROJECTILE.FIRE_COOLDOWN_MS + 1;
+    enemyAISystem(world); // second telegraph starts — must lock a FRESH aim
+    expect(isEnemyProjectileTelegraphActive(world, enemy)).toBe(true);
+    const secondDirX = world.stores.enemyBehavior.telegraphDirX[enemy]!;
+    const secondDirY = world.stores.enemyBehavior.telegraphDirY[enemy]!;
+
+    // The second lock points north (toward the player's new position),
+    // proving it was independently recomputed at this shot's telegraph start
+    // rather than carrying over the first shot's westward lock.
+    expect(Math.abs(secondDirX)).toBeLessThan(0.01);
+    expect(secondDirY).toBeLessThan(-0.9);
+
+    world.elapsedMs = 351 + ENEMY_PROJECTILE.FIRE_COOLDOWN_MS + 1 + 251;
+    enemyAISystem(world);
+    const projectiles = query(world.ecs, [EnemyProjectile, Projectile]);
+    expect(projectiles.length).toBe(2);
+    const secondProj = projectiles[1] as number;
+    const vx = world.stores.velocity.x[secondProj] ?? 0;
+    const vy = world.stores.velocity.y[secondProj] ?? 0;
+    // Fired using the second (northward) lock, not the first (westward) one.
+    expect(Math.abs(vx)).toBeLessThan(Math.abs(vy) * 0.1);
+    expect(vy).toBeLessThan(0);
+  });
 });
 
 describe('telegraphWasActiveThisFrame sticky render-frame flag', () => {

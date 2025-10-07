@@ -1,6 +1,16 @@
 const apiUrl = process.env.GITHUB_API_URL || 'https://api.github.com';
 const graphqlUrl = process.env.GITHUB_GRAPHQL_URL || 'https://api.github.com/graphql';
 
+function summarizeBody(text, maxLength = 240) {
+  const normalized = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return 'empty response body';
+  }
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1)}…`;
+}
+
 function headers(token, extra = {}) {
   return {
     Accept: 'application/vnd.github+json',
@@ -18,14 +28,37 @@ export async function request(token, path, options = {}) {
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   });
   const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
+  let data = null;
+  let parseError = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      parseError = error;
+    }
+  }
   if (!response.ok) {
     const error = new Error(
-      `GitHub ${options.method || 'GET'} ${path} failed (${response.status}): ${data?.message || text}`,
+      `GitHub ${options.method || 'GET'} ${path} failed (${response.status}): ${data?.message || summarizeBody(text)}`,
     );
     error.status = response.status;
     error.data = data;
     error.headers = response.headers;
+    error.body = text;
+    if (parseError) {
+      error.cause = parseError;
+    }
+    throw error;
+  }
+  if (parseError) {
+    const error = new Error(
+      `GitHub ${options.method || 'GET'} ${path} returned non-JSON success (${response.status}): ${summarizeBody(text)}`,
+    );
+    error.status = response.status;
+    error.data = null;
+    error.headers = response.headers;
+    error.body = text;
+    error.cause = parseError;
     throw error;
   }
   return { data, headers: response.headers, status: response.status };
