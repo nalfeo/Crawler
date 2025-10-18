@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-thread-reply-target",
+  "task_title": "Clarify CI recovery thread reply targets",
+  "estimated_apples": 2,
+  "stages": {}
+}
