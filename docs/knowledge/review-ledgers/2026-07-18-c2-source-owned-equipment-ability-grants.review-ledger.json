@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "c2-source-owned-equipment-ability-grants",
+  "task_title": "C2: Track source-owned equipment ability grants",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 3,
+      "resolved_count": 3,
+      "plan_divergence": "convergent",
+      "notes": "Reviewer raised 2 blocking + 1 non-blocking concern. Blocking 1: stale equipment instanceIds after carryover — fixed by stripping equipment sources from snapshotAbilityState and dropping equipment-only abilities from the ID lists. Blocking 2: no real unequip hooks — addressed with TODO comments at EquipmentUI.ts, floor2Scenario.ts, starterWeaponEquip.ts with the exact revoke call to wire. Non-blocking 3: migration loses skill source fidelity — accepted limitation with comment; skill source recovery deferred until skill-reset feature ships."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

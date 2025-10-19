@@ -48,6 +48,8 @@ describe('player floor carryover', () => {
       cooldownByAbilityId: new Map([['fireball', 980]]),
       cooldownFramesByAbilityId: new Map([['fireball', 120]]),
       appliedPassiveAbilityIds: new Set(),
+      activeAbilityGrantSources: new Map([['fireball', [{ kind: 'learned' }]]]),
+      passiveAbilityGrantSources: new Map(),
     });
     source.frameCount = 1000;
     source.featureUnlocks = { inventory: true, equipment: true, spells: true };

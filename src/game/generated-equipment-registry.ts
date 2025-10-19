@@ -47,6 +47,7 @@ import type {
   EquipmentFingerprintV1,
   GeneratedEquipmentRarity,
 } from '../shared/generated-equipment-types.js';
+import { canonicalJson } from '../shared/canonical-json.js';
 import { isValidStatId } from '../shared/stats.js';
 
 // ---------------------------------------------------------------------------
@@ -101,34 +102,7 @@ export function createInstanceId(runKey: string, ordinal: number): GeneratedEqui
 // Canonical JSON for fingerprinting
 // ---------------------------------------------------------------------------
 
-/**
- * Produce the canonical JSON string used as fingerprint input.
- *
- * Rules (per spec):
- * - Object keys sorted lexicographically (recursive).
- * - Arrays retain their defined order.
- * - Finite numbers in their normalized decimal form.
- * - No `undefined` values permitted (throws if encountered).
- * - Ownership container, merchant price, UI selection, and claim state are
- *   excluded so moving an instance never changes its fingerprint.
- */
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(value, sortedReplacer);
-}
-
-function sortedReplacer(_key: string, val: unknown): unknown {
-  if (val === undefined) {
-    throw new Error('canonicalJson: undefined values are not permitted in fingerprint input');
-  }
-  if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-    const sorted: Record<string, unknown> = {};
-    for (const k of Object.keys(val as object).sort()) {
-      sorted[k] = (val as Record<string, unknown>)[k];
-    }
-    return sorted;
-  }
-  return val;
-}
+export { canonicalJson };
 
 // ---------------------------------------------------------------------------
 // Fingerprint computation
