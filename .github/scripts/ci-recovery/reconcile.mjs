@@ -43,6 +43,12 @@ import {
   requiresHumanApproval,
 } from '../merge-train/human-approval.mjs';
 import { fileLoopIncident } from './loop-incident-lib.mjs';
+import {
+  buildRetroactivePlanComment,
+  hasCopilotPlanComment,
+  hasIntakeRequirementComment,
+  reviewThreadPlanIssueNumbers,
+} from './issue-intake-lib.mjs';
 
 const repository = process.env.GITHUB_REPOSITORY || '';
 const [owner, repo] = repository.split('/');
@@ -1371,10 +1377,15 @@ for (const run of actionRequiredRuns) {
   }
 }
 
+const retroactivePlanIssueNumbers = new Set();
 for (const thread of review.threads.filter((candidate) => !candidate.isResolved)) {
   const root = thread.comments?.nodes?.[0];
   const staleSha = staleAddressedMarkerByThread.get(thread.id);
   const reviewerSummary = `${root?.author?.login || 'reviewer'}: ${String(root?.body || '').slice(0, 450)}`;
+  const planIssueNumbers = reviewThreadPlanIssueNumbers(thread, closingIssues);
+  for (const issueNumber of planIssueNumbers) {
+    retroactivePlanIssueNumbers.add(issueNumber);
+  }
   // When the thread already has a trusted ✅ Addressed marker but the referenced
   // commit is not reachable from the current head, prepend a targeted hint so
   // the recovery agent knows it only needs to re-post the marker with the
@@ -1386,6 +1397,7 @@ for (const thread of review.threads.filter((candidate) => !candidate.isResolved)
     kind: 'review-thread',
     id: reviewThreadBlockerId(thread),
     threadId: thread.id,
+    requiresIssuePlanComment: planIssueNumbers.length > 0,
     path: thread.path || undefined,
     line: thread.isOutdated ? undefined : thread.line || undefined,
     summary,
@@ -1405,6 +1417,32 @@ const fingerprint =
         reviewThreads: review.threads,
       })
     : blockerFingerprint(normalized);
+
+// Proactively satisfy the issue-side plan-comment requirement only when this
+// cycle is about to dispatch a review-thread blocker that explicitly identifies
+// a missing plan on a linked intake issue. This avoids mutating unrelated live
+// reconciliations (opt-out / merge-train-owned / active-shepherd / clean PR).
+if (live && retroactivePlanIssueNumbers.size > 0) {
+  for (const linkedIssue of closingIssues) {
+    if (!retroactivePlanIssueNumbers.has(linkedIssue.number)) continue;
+    const issueComments = await paginate(
+      readToken,
+      `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`,
+    );
+    if (!hasIntakeRequirementComment(issueComments) || hasCopilotPlanComment(issueComments)) {
+      continue;
+    }
+    await assertExpectedMetadataUnchanged('retroactive-plan-comment');
+    const planBody = buildRetroactivePlanComment(prNumber, pr.title, pr.html_url, pr.body);
+    await request(pat, `/repos/${owner}/${repo}/issues/${linkedIssue.number}/comments`, {
+      method: 'POST',
+      body: { body: planBody },
+    });
+    process.stdout.write(
+      `posted retroactive plan comment on source issue #${linkedIssue.number} for pr=#${prNumber}\n`,
+    );
+  }
+}
 
 if (normalized.length === 0) {
   const waiting = [
