@@ -385,14 +385,18 @@ _…and 77 older, see `archive/`._
 - [2026-07-19-pr1287-conflict-recovery](2026-07-19-pr1287-conflict-recovery.md) — Handoff: PR #1287 conflict recovery
 - [2026-07-19-pr1571-review-recovery](2026-07-19-pr1571-review-recovery.md) — PR #1571 review recovery
 - [2026-07-19-pr1593-merge-conflict-recovery](2026-07-19-pr1593-merge-conflict-recovery.md) — Handoff: PR #1593 merge-conflict recovery
+- [2026-07-19-pr1604-merge-conflict-recovery](2026-07-19-pr1604-merge-conflict-recovery.md) — Handoff: PR #1604 merge-conflict recovery
 - [2026-07-18-active-weapon-snapshots-main-merge-recovery](2026-07-18-active-weapon-snapshots-main-merge-recovery.md) — Handoff: active weapon snapshots main merge recovery
 - [2026-07-18-bone-saw-pr-merge-recovery](2026-07-18-bone-saw-pr-merge-recovery.md) — Handoff: bone-saw PR merge recovery
 - [2026-07-18-ci-recovery-balance-sweep-prefix](2026-07-18-ci-recovery-balance-sweep-prefix.md) — Handoff: Fix stale NIGHTLY_BALANCE_BRANCH_PREFIX in CI recovery automation
 - [2026-07-18-ci-recovery-loop-epic-state](2026-07-18-ci-recovery-loop-epic-state.md) — 2026-07-18 CI Recovery Loop — Epic-State Stale Commit Fix
 - [2026-07-18-ci-recovery-loop-fingerprint-fix](2026-07-18-ci-recovery-loop-fingerprint-fix.md) — Removed `line` (diff-position line number) from `normalizeBlockers` in
+- [2026-07-18-ci-recovery-loop-pr1350](2026-07-18-ci-recovery-loop-pr1350.md) — Handoff: CI recovery loop fix — PR #1350 (retroactive plan comment)
 - [2026-07-18-ci-recovery-outdated-thread-fix](2026-07-18-ci-recovery-outdated-thread-fix.md) — 2026-07-18 CI Recovery: Auto-post Trusted Marker for isOutdated Review Threads
+- [2026-07-18-ci-recovery-plan-review-fixes](2026-07-18-ci-recovery-plan-review-fixes.md) — Handoff: CI recovery plan-comment review fixes
 - [2026-07-18-ci-recovery-pr1265-outdated-threads](2026-07-18-ci-recovery-pr1265-outdated-threads.md) — Handoff: PR #1265 CI recovery outdated-thread convergence
 - [2026-07-18-ci-recovery-pr1271-thread-guidance](2026-07-18-ci-recovery-pr1271-thread-guidance.md) — Handoff: CI recovery PR #1271 in-thread guidance
+- [2026-07-18-ci-recovery-protected-path-fix](2026-07-18-ci-recovery-protected-path-fix.md) — Handoff: CI recovery protected-path fix
 - [2026-07-18-ci-recovery-slash-sha-marker-fix](2026-07-18-ci-recovery-slash-sha-marker-fix.md) — Handoff: CI Recovery Slash-SHA Marker Parser Fix
 - [2026-07-18-ci-recovery-task-wording](2026-07-18-ci-recovery-task-wording.md) — Investigated CI recovery loop incident #1583 (PR #1507 — merchant-sandals brief).
 - [2026-07-18-ci-recovery-thread-reply-target](2026-07-18-ci-recovery-thread-reply-target.md) — Handoff: CI recovery thread reply target hints
