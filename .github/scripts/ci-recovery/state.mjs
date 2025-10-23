@@ -404,6 +404,17 @@ function parseMarkerShaToken(rawToken) {
   if (hexShaPattern.test(token)) {
     return token.toLowerCase();
   }
+  // Handle slash-separated SHA pairs like "9adef25/28f3d0f" (agents sometimes
+  // write two SHAs when a fix spans multiple commits). Require exactly two
+  // hex-SHA components; return the second (later) SHA so its ancestry proves
+  // the complete pair is present.
+  const slashParts = token.split('/');
+  if (slashParts.length === 2) {
+    const [firstPart, secondPart] = slashParts;
+    if (hexShaPattern.test(firstPart) && hexShaPattern.test(secondPart)) {
+      return secondPart.toLowerCase();
+    }
+  }
   try {
     const parsed = new URL(token);
     const commitMatch = parsed.pathname.match(/\/commit\/([0-9a-f]{7,40})\b/i);
