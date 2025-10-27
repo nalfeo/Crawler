@@ -72,12 +72,24 @@ function main(): void {
       result = applyGithubAudit(result, audit);
     }
   }
+  const stackedWork =
+    result.state?.nodes
+      .filter((node) => node.stacked_work)
+      .map((node) => ({
+        node_id: node.node_id,
+        lifecycle_status: node.status,
+        stacked_state: node.stacked_work!.state,
+        branch: node.stacked_work!.dependent.branch,
+        dependency_head: node.stacked_work!.last_resynced_dependency_head_sha,
+        rebase_to_main_pending: node.stacked_work!.rebase_to_main.pending,
+      })) ?? [];
 
   const payload = {
     epic_id: options.epicId,
     valid: result.errors.length === 0,
     release_ready: result.release_ready,
     ready_queue: result.ready_queue,
+    stacked_work: stackedWork,
     blockers: result.blockers,
     errors: result.errors,
     warnings: result.warnings,
@@ -97,6 +109,16 @@ function main(): void {
       `Offline schema/DAG: ${result.errors.length === 0 ? 'valid' : 'invalid'}`,
       `Release ready: ${result.release_ready ? 'yes' : 'no'}`,
       `Ready queue: ${result.ready_queue.length > 0 ? result.ready_queue.join(', ') : '(empty)'}`,
+      `Stacked work: ${
+        stackedWork.length > 0
+          ? stackedWork
+              .map(
+                (work) =>
+                  `${work.node_id}=${work.stacked_state} (lifecycle ${work.lifecycle_status}, ${work.branch})`,
+              )
+              .join(', ')
+          : '(none)'
+      }`,
       ...renderDiagnostics('Errors', [...result.errors]),
       ...renderDiagnostics('Warnings', [...result.warnings]),
       ...renderDiagnostics('Blockers', [...result.blockers]),

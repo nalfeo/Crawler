@@ -1,199 +1,125 @@
 # Stacked-Work Recovery Protocol
 
 **Epic:** floor-2-equipment  
-**Applies to:** Nodes with `stacked_work != null` in `epic-state.json`
+**Applies to:** Nodes with non-null `stacked_work` in `epic-state.json`
 
----
+## Authority and invariants
 
-## Overview
+The Producer is the sole writer of global epic state. Child agents publish
+trusted `STACKED-WORK`, `BLOCKED`, and `HANDOFF` comments and never edit
+`epic-state.json` directly.
 
-A node with `stacked_work` is proceeding speculatively on an exact stacked branch
-while its lifecycle status remains `blocked`. This protocol defines:
+Stacked work is orthogonal to the normal lifecycle:
 
-1. **Rebase-to-main**: what to do when the dependency PR merges.
-2. **Normal-lifecycle handoff**: how to promote stacked work into the official lifecycle.
-3. **Abandonment**: how to cleanly clear stacked work that is no longer viable.
+- The node remains `status: blocked` and never enters `ready_queue`.
+- The node must use an execution lane listed in
+  `stacked_work_policy.allowed_execution_lanes`.
+- `stacked_work.owner.issue` must equal the node's materialized child issue.
+- One live trusted `STACKED-WORK` comment must match the cached owner, session,
+  branch, and prerequisite head.
+- Every incomplete direct prerequisite must have one exact entry in
+  `dependency_pull_requests`. Exactly one entry is the immediate stack base.
+- `last_resynced_dependency_head_sha` must match that stack base and
+  `last_resynced_at` must satisfy
+  `stacked_work_policy.maximum_without_resync_hours`.
+- A dependent PR is required when `state` is `stacked_pr_open`.
 
-The **Producer** is the sole writer of global epic state. Child agents update only their
-child issue and handoff file; they never write `epic-state.json` directly.
+Run both audits before changing state:
 
----
-
-## Preconditions for Starting Stacked Work
-
-Before recording `stacked_work` on a node, the Producer must confirm:
-
-- The node's lifecycle `status` is `blocked`.
-- The node has a materialized child issue (`github.issue != null`).
-- The node's execution lane is not `verification`.
-- The dependency whose PR the stacked branch targets is tracked in `stacked_work.dependency`.
-- If the dependency node has a tracked `github.pr`, the `stacked_work.dependency.pr_number`
-  must match.
-- `rebase_to_main.state` starts as `pending`.
-- `resync.at` is within the last 48 hours.
-
----
-
-## Resync Cadence
-
-The stacked branch **must be rebased onto the dependency branch at least every 48 hours**.
-After each rebase:
-
-1. Update `stacked_work.resync.head_sha` to the dependency branch's current head SHA.
-2. Update `stacked_work.resync.at` to the current timestamp.
-3. Update `stacked_work.dependent.head_sha` to the stacked branch's new head SHA.
-
-Failure to resync within 48 hours triggers a `stacked.stale-resync` validation error.
-
----
-
-## Rebase-to-Main (Dependency Merges)
-
-When the dependency PR merges into main:
-
-### Step 1 — Confirm merge facts
-
-```
-git fetch origin main
-git log origin/main -1 --oneline   # note the merge commit SHA
-```
-
-Confirm the merge commit matches the dependency node's eventual `merge.commit` in the state.
-
-### Step 2 — Rebase stacked branch onto main
-
-```
-git fetch origin main
-git checkout <stacked-branch>
-git rebase origin/main
-```
-
-Resolve any conflicts. Force-push the branch when clean.
-
-### Step 3 — Update `stacked_work.rebase_to_main`
-
-Only after ALL of the node's dependencies satisfy the same readiness contract as the epic
-itself — `validated`, or `superseded` with a `validated` replacement:
-
-```json
-"rebase_to_main": {
-  "state": "complete",
-  "completed_at": "<ISO-8601 timestamp>"
-}
-```
-
-Premature completion (dependencies not yet validated) is rejected by
-`stacked.premature-rebase-complete` validation.
-
-### Step 4 — Run offline validation
-
-```
+```text
 npm run epic:status -- floor-2-equipment
+npm run epic:status -- floor-2-equipment --github --reconcile
 ```
 
-Confirm no `stacked.*` errors.
+The GitHub audit is read-only. Review every proposed `repo_patch` and
+`operator_action`; it never applies them automatically.
 
----
+## Refreshing an active stack
 
-## Normal-Lifecycle Handoff (After Prerequisite Merges or Validates)
+1. Fetch every recorded prerequisite branch and verify its canonical open PR
+   URL, branch, base, and full head SHA.
+2. Rebase or merge the latest immediate stack-base branch into the dependent
+   branch.
+3. Push the dependent branch.
+4. Post one fresh trusted `STACKED-WORK` comment with the owner identity,
+   dependent branch, exact prerequisite head, claim time, lease expiry, and
+   heartbeat.
+5. As Producer, apply the reviewed audit proposals for:
+   - `stacked_work.owner.claimed_at`
+   - `stacked_work.owner.lease_expires_at`
+   - `stacked_work.owner.heartbeat_at`
+   - prerequisite `observed_*` facts
+   - dependent `observed_*` facts
+6. Update `last_resynced_dependency_head_sha` and `last_resynced_at` only after
+   the exact remote prerequisite head has been observed.
+7. Re-run both audits. Do not advance lifecycle.
 
-When the dependency node reaches `merged` status (PR landed on main), the stacked branch may
-perform the git rebase from Step 2. The state must remain
-`stacked_work.rebase_to_main.state = "pending"` until the dependency reaches `validated`
-status. Once the dependency reaches `validated` status, the stacked node is eligible to mark
-rebase-to-main complete and continue through the full normal lifecycle. The Producer
-executes:
+## Prerequisite merge and rebase to main
 
-### Step 1 — Confirm readiness
+When a recorded prerequisite PR merges:
 
-Run `npm run epic:status -- floor-2-equipment`.  
-The target node should appear in `ready_queue` after its dependency reaches `validated` status.
+1. Record the GitHub-observed merge facts on its
+   `dependency_pull_requests` entry.
+2. Set:
 
-### Step 2 — Promote stacked work into normal lifecycle
+   ```json
+   "rebase_to_main": {
+     "pending": true,
+     "pre_rebase_dependent_head_sha": "<GitHub-observed dependent head before rebase>",
+     "prerequisite_merge_commit": "<GitHub-observed prerequisite merge commit>"
+   }
+   ```
 
-The Producer updates `epic-state.json`:
+3. Fetch `origin/main`, rebase the dependent branch onto it, resolve conflicts,
+   and push the new dependent head.
+4. Retarget the dependent PR to `main`.
+5. Run the GitHub reconciliation audit. Completion requires GitHub to observe:
+   - a dependent head different from `pre_rebase_dependent_head_sha`;
+   - the recorded dependent branch;
+   - `base: main`;
+   - the exact prerequisite merge commit.
+6. Revalidate the dependent work and its evidence.
+7. Only after those observations, clear `stacked_work`. Normal readiness may
+   then move the node from `blocked` to `ready`; establish ordinary ownership
+   with a separate trusted `CLAIMED` comment.
 
-```json
-"status": "claimed",           // or "in_progress", depending on work state
-"stacked_work": null,          // clear the stacked_work field
-"ownership": {
-  "claimant": "<same claimant from stacked_work.owner.claimant>",
-  "session": "<same session>",
-  "source": "child-issue-comment",
-  "scope": "<scope>",
-  "claimed_at": "<ISO-8601>",
-  "lease_expires_at": "<ISO-8601, +24h>",
-  "heartbeat_at": "<ISO-8601>",
-  "base_commit": "<HEAD of stacked branch after rebase>"
-},
-"github": {
-  "issue": { ... },            // retain existing issue ref
-  "pr": null                   // set to the PR number once opened, or null if still WIP
-}
-```
-
-The claimant must post a `CLAIMED` comment on the child issue to establish authority
-per the standard protocol (`claim_policy.protocol_headings`).
-
-### Step 3 — If stacked_pr_open: update PR base
-
-Change the speculative PR's base branch from the (now-merged) dependency branch to `main`
-via the GitHub UI or API. The PR's head is already rebased from Step 2 of rebase-to-main.
-
-### Step 4 — Final verification
-
-```
-npm run epic:status -- floor-2-equipment
-```
-
-Confirm:
-
-- No `stacked.*` errors
-- The node is no longer in `stacked_work` state
-- The normal lifecycle fields (`ownership`, `github.pr`) are populated correctly
-
----
+Do not clear `rebase_to_main.pending` while retaining stacked metadata.
+`stacked_work` is removed as one reviewed Producer update after the remote
+rebase and retarget are proven.
 
 ## Abandonment
 
-If speculative work is abandoned before the dependency merges:
+1. Post a trusted `BLOCKED` comment on the stacked owner's issue. This revokes
+   live normal and stacked claims for that node.
+2. Close the dependent PR without merging when appropriate and record the
+   reason.
+3. Archive or delete the dependent branch according to repository policy.
+4. As Producer, clear `stacked_work` while leaving lifecycle `blocked`.
+5. Run offline and GitHub reconciliation audits again.
 
-1. The Producer sets `stacked_work: null` on the node.
-2. The stacked branch is deleted or archived.
-3. If a stacked PR was open (`stacked_pr_open`), close it without merging and note the
-   reason in the PR description.
-4. The node remains `blocked` with no active work.
+## Diagnostic map
 
-Post a `BLOCKED` comment on the child issue with a brief explanation.
+| Condition                                                   | Diagnostic                                                                                                                                                                                                     |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node is not lifecycle-blocked                               | `stacked.lifecycle-not-blocked`                                                                                                                                                                                |
+| Execution lane is not allowed                               | `stacked.lane-not-allowed`                                                                                                                                                                                     |
+| Owner issue is missing or wrong                             | `stacked.missing-issue-owner`                                                                                                                                                                                  |
+| Cached owner identity conflicts                             | `stacked.owner-mismatch`                                                                                                                                                                                       |
+| Claim, lease, or heartbeat chronology is invalid            | `stacked.owner-claimed-future`, `stacked.owner-expired`, `stacked.owner-heartbeat-before-claim`, `stacked.owner-heartbeat-stale`, `stacked.owner-heartbeat-future`                                             |
+| Prerequisite coverage or exact stack base is wrong          | `stacked.dependency-coverage`, `stacked.stack-base-count`                                                                                                                                                      |
+| Auxiliary stack base lacks its required tracking issue      | `stacked.auxiliary-base-authority`                                                                                                                                                                             |
+| Prerequisite PR identity is missing or not open             | `stacked.dependency-pr-missing`, `stacked.dependency-not-open`, `stacked.dependency-pr-closed`                                                                                                                 |
+| Cached prerequisite PR facts drift                          | `stacked.dependency-snapshot-stale`, `stacked.dependency-head-stale`, `stacked.dependency-branch-drift`, `stacked.dependency-base-drift`                                                                       |
+| Merged prerequisite lacks complete merge observations       | `stacked.dependency-merge-facts`                                                                                                                                                                               |
+| Resync facts are stale or future-dated                      | `stacked.resync-head-stale`, `stacked.resync-stale`, `stacked.resync-future`                                                                                                                                   |
+| Dependent branch is not based on an allowed transition base | `stacked.wrong-base-branch`, `stacked.wrong-base-after-merge`                                                                                                                                                  |
+| Dependent PR is missing, premature, closed, or drifted      | `stacked.dependent-pr-missing`, `stacked.dependent-pr-premature`, `stacked.dependent-pr-closed`, `stacked.dependent-branch-drift`, `stacked.dependent-base-drift`, `stacked.dependent-observations-without-pr` |
+| Prerequisite merged but rebase transition is incomplete     | `stacked.rebase-to-main-required`, `stacked.rebase-pre-head-unbound`, `stacked.rebase-base-not-observed`, `stacked.rebase-not-pushed`                                                                          |
+| Rebase transition is asserted too early                     | `stacked.unexpected-rebase-to-main`                                                                                                                                                                            |
+| Material contract drift or a block is recorded              | `stacked.material-block`                                                                                                                                                                                       |
+| Ownership or branch overlaps another node                   | `stacked.duplicate-owner`, `stacked.duplicate-branch`                                                                                                                                                          |
 
----
-
-## GitHub Audit
-
-`npm run epic:status -- floor-2-equipment --github` audits stacked PRs:
-
-| Condition                                | Response                                                                   |
-| ---------------------------------------- | -------------------------------------------------------------------------- |
-| Dependency PR head advanced              | Proposes `stacked_work.dependency.head_sha` patch + rebase operator action |
-| Dependency PR merged                     | Operator action: execute rebase-to-main immediately                        |
-| Dependent PR head advanced               | Proposes `stacked_work.dependent.head_sha` patch                           |
-| Dependent PR merged (node still blocked) | Error: `stacked.dependent-pr-merged` — execute recovery handoff            |
-| Dependent PR closed without merge        | Error: `stacked.dependent-pr-closed` — investigate                         |
-
-The audit is **read-only**. It never writes completion state.
-
----
-
-## Invariants
-
-These must hold at all times and are enforced by `npm run epic:status`:
-
-- `stacked_work != null` iff `status === 'blocked'` (`stacked.non-blocked-status`)
-- `stacked_work` requires `github.issue != null` (`stacked.missing-issue`)
-- `resync.at` within 48 hours (`stacked.stale-resync`)
-- `execution_lane !== 'verification'` (`stacked.invalid-lane`)
-- `dependency.node_id` in `node.dependencies` (`stacked.dependency-node-mismatch`)
-- `dependency.pr_number` matches dependency node's tracked PR if present (`stacked.dependency-pr-snapshot-mismatch`)
-- `rebase_to_main.complete` only after all deps satisfied (`stacked.premature-rebase-complete`)
-- One stacked-work slot per claimant/session (`stacked.duplicate-ownership`)
-- `stacked_pr_open` requires `dependent.pr_number != null` (`stacked.pr-open-missing-number`)
+GitHub-specific drift uses the `github.stacked-*` diagnostics, including
+`github.stacked-future-heartbeat`, and emits reviewed cache proposals or
+operator actions. It never changes lifecycle status or marks the rebase
+complete.

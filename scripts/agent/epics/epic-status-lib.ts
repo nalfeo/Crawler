@@ -115,6 +115,17 @@ const statePrRefSchema = prRefSchema
       });
     }
   });
+const prIdentitySchema = z
+  .object({
+    url: z.string().regex(GITHUB_PR_URL),
+  })
+  .strict();
+type PrIdentity = z.infer<typeof prIdentitySchema>;
+
+function prNumberFromIdentity(identity: PrIdentity): number {
+  return Number(identity.url.slice(identity.url.lastIndexOf('/') + 1));
+}
+const observedPrStateSchema = z.enum(['OPEN', 'CLOSED', 'MERGED']).nullable();
 const evidenceSchema = z
   .object({
     kind: z.string().min(1),
@@ -146,51 +157,66 @@ const reconciliationSchema = z
     drift: z.array(z.string()),
   })
   .strict();
-
-/**
- * Schema for one stack-base entry — one per unvalidated direct prerequisite.
- * Records the dependency PR facts needed to detect staleness and post-merge rebase requirements.
- */
-const stackBaseSchema = z
-  .object({
-    dependency_node_id: z.string().regex(NODE_ID_PATTERN),
-    dependency_pr_number: z.number().int().positive(),
-    dependency_branch: z.string().min(1),
-    /** The dep's head SHA at the time speculative work was initiated (initial branch point). */
-    dependency_head_sha: z.string().regex(SHA40_PATTERN),
-    last_resynced_at: z.string().datetime({ offset: true }),
-    /**
-     * The dep's head SHA at the most recent resync. Stale when this differs
-     * from the dep node's cached github.pr.head_sha.
-     */
-    last_resynced_head: z.string().regex(SHA40_PATTERN),
-    /**
-     * Set to true once the dep PR merges. Blocks normal lifecycle advancement
-     * until the stacked branch is rebased onto main and stacked_work is cleared.
-     */
-    requires_main_rebase: z.boolean(),
-  })
-  .strict();
-
-/**
- * Speculative stacked-work metadata on a lifecycle-blocked node.
- * The node's main `status` stays `blocked`; this object tracks orthogonal
- * progress on a stacked branch while prerequisites are under review.
- */
 const stackedWorkSchema = z
   .object({
-    mode: z.enum(['stacked_in_progress', 'stacked_pr_open']),
-    issue: stateIssueRefSchema,
-    session: z.string().min(1),
-    branch: z.string().min(1),
-    /** Present only when mode is stacked_pr_open. */
-    pr: statePrRefSchema.nullable(),
-    /** One entry per unvalidated direct dependency. Must not be empty. */
-    stack_bases: z.array(stackBaseSchema).min(1),
-    drift_reason: z.string().nullable(),
+    state: z.enum(['stacked_in_progress', 'stacked_pr_open']),
+    owner: z
+      .object({
+        node_id: z.string().regex(NODE_ID_PATTERN),
+        issue: stateIssueRefSchema,
+        claimant: nonEmptyTrimmedString,
+        session: nonEmptyTrimmedString,
+        branch: nonEmptyTrimmedString,
+        claimed_at: z.string().datetime({ offset: true }),
+        lease_expires_at: z.string().datetime({ offset: true }),
+        heartbeat_at: z.string().datetime({ offset: true }),
+      })
+      .strict(),
+    dependency_pull_requests: z
+      .array(
+        z
+          .object({
+            node_id: z.string().regex(NODE_ID_PATTERN).nullable(),
+            tracking_issue: stateIssueRefSchema.nullable(),
+            repository: z.literal('nalfeo/Crawler'),
+            branch: z.string().min(1),
+            pull_request: prIdentitySchema,
+            head_sha: z.string().regex(SHA40_PATTERN),
+            base_branch: z.string().min(1),
+            is_stack_base: z.boolean(),
+            observed_pr_state: observedPrStateSchema,
+            observed_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
+            observed_head_branch: z.string().nullable(),
+            observed_base_branch: z.string().nullable(),
+            observed_merge_commit: z.string().regex(SHA40_PATTERN).nullable(),
+          })
+          .strict(),
+      )
+      .min(1),
+    dependent: z
+      .object({
+        branch: z.string().min(1),
+        base_branch: z.string().min(1),
+        pull_request: prIdentitySchema.nullable(),
+        observed_pr_state: observedPrStateSchema,
+        observed_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
+        observed_head_branch: z.string().nullable(),
+        observed_base_branch: z.string().nullable(),
+      })
+      .strict(),
+    last_resynced_dependency_head_sha: z.string().regex(SHA40_PATTERN),
+    last_resynced_at: z.string().datetime({ offset: true }),
+    rebase_to_main: z
+      .object({
+        pending: z.boolean(),
+        pre_rebase_dependent_head_sha: z.string().regex(SHA40_PATTERN).nullable(),
+        prerequisite_merge_commit: z.string().regex(SHA40_PATTERN).nullable(),
+      })
+      .strict(),
+    material_contract_drift: z.string().nullable(),
+    blocked_reason: z.string().nullable(),
   })
   .strict();
-
 const nodeSchema = z
   .object({
     node_id: z.string().regex(NODE_ID_PATTERN),
@@ -258,7 +284,7 @@ const nodeSchema = z
 const epicStateSchema = z
   .object({
     $schema: z.literal('./epic-state.schema.json'),
-    schema_version: z.literal('crawler-epic-state/v1'),
+    schema_version: z.literal('crawler-epic-state/v2'),
     epic_id: z.literal('floor-2-equipment'),
     title: z.string().min(1),
     updated_at: z.string().datetime({ offset: true }),
@@ -309,6 +335,15 @@ const epicStateSchema = z
           z.literal('SCOPE-CHANGE-REQUEST'),
           z.literal('HANDOFF'),
         ]),
+      })
+      .strict(),
+    stacked_work_policy: z
+      .object({
+        states: z.tuple([z.literal('stacked_in_progress'), z.literal('stacked_pr_open')]),
+        allowed_execution_lanes: z.tuple([z.literal('control')]),
+        maximum_without_resync_hours: z.literal(24),
+        comment_heading: z.literal('STACKED-WORK'),
+        main_branch: z.literal('main'),
       })
       .strict(),
     github: z
@@ -780,8 +815,81 @@ function validateCommittedSchema(
       type: z.literal('object'),
       additionalProperties: z.literal(false),
       required: z.array(z.string()),
-      properties: z.record(z.string(), z.unknown()),
-      $defs: z.record(z.string(), z.unknown()),
+      properties: z
+        .object({
+          schema_version: z.object({ const: z.string() }),
+          epic_id: z.object({ const: z.string() }),
+          nodes: z.object({ minItems: z.literal(37) }).passthrough(),
+          release: z
+            .object({
+              properties: z
+                .object({ flags: z.object({ minItems: z.literal(7) }).passthrough() })
+                .passthrough(),
+            })
+            .passthrough(),
+          authority: z
+            .object({
+              properties: z
+                .object({
+                  ordered_sources: z.object({ minItems: z.literal(4) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          lifecycle: z
+            .object({
+              properties: z
+                .object({
+                  normal: z.object({ minItems: z.literal(7) }).passthrough(),
+                  terminal: z.object({ minItems: z.literal(2) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          claim_policy: z
+            .object({
+              properties: z
+                .object({
+                  protocol_headings: z.object({ minItems: z.literal(6) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          stacked_work_policy: z
+            .object({
+              properties: z
+                .object({
+                  states: z.object({ minItems: z.literal(2) }).passthrough(),
+                  allowed_execution_lanes: z.object({ minItems: z.literal(1) }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+        })
+        .passthrough(),
+      $defs: z
+        .object({
+          node: z.object({ type: z.literal('object') }).passthrough(),
+          issueRef: z
+            .object({
+              properties: z
+                .object({
+                  url: z.object({ pattern: z.string() }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+          prRef: z
+            .object({
+              properties: z
+                .object({
+                  url: z.object({ pattern: z.string() }).passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+        })
+        .passthrough(),
     })
     .passthrough()
     .safeParse(schemaDocument);
@@ -803,6 +911,7 @@ function validateCommittedSchema(
     'authority',
     'lifecycle',
     'claim_policy',
+    'stacked_work_policy',
     'github',
     'issue_materialization',
     'release',
@@ -820,7 +929,7 @@ function validateCommittedSchema(
     : null;
   const rootEpicId = isRecord(data.properties.epic_id) ? data.properties.epic_id : null;
   if (
-    rootSchemaVersion?.const !== 'crawler-epic-state/v1' ||
+    rootSchemaVersion?.const !== 'crawler-epic-state/v2' ||
     rootEpicId?.const !== 'floor-2-equipment'
   ) {
     result.errors.push({
@@ -862,8 +971,12 @@ function validateCommittedSchema(
   const defs = data.$defs;
   const issueRef = isRecord(defs.issueRef) ? defs.issueRef : null;
   const prRef = isRecord(defs.prRef) ? defs.prRef : null;
+  const prIdentity = isRecord(defs.prIdentity) ? defs.prIdentity : null;
+  const nullablePrIdentity = isRecord(defs.nullablePrIdentity) ? defs.nullablePrIdentity : null;
   const node = isRecord(defs.node) ? defs.node : null;
-  const stackBase = isRecord(defs.stackBase) ? defs.stackBase : null;
+  const stackedOwner = isRecord(defs.stackedOwner) ? defs.stackedOwner : null;
+  const stackedDependency = isRecord(defs.stackedDependency) ? defs.stackedDependency : null;
+  const stackedDependent = isRecord(defs.stackedDependent) ? defs.stackedDependent : null;
   const stackedWork = isRecord(defs.stackedWork) ? defs.stackedWork : null;
   const nodeProps = node && isRecord(node.properties) ? node.properties : null;
   const expectedNodeRequired = [
@@ -922,85 +1035,141 @@ function validateCommittedSchema(
     prRef && isRecord(prRef.properties) && isRecord(prRef.properties.url)
       ? prRef.properties.url
       : null;
+  const prIdentityUrl =
+    prIdentity && isRecord(prIdentity.properties) && isRecord(prIdentity.properties.url)
+      ? prIdentity.properties.url
+      : null;
+  const prIdentityProperties =
+    prIdentity && isRecord(prIdentity.properties) ? prIdentity.properties : null;
   if (
     issueUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/issues/[1-9][0-9]*$' ||
-    prUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$'
+    prUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$' ||
+    prIdentityUrl?.pattern !== '^https://github\\.com/nalfeo/Crawler/pull/[1-9][0-9]*$' ||
+    !prIdentityProperties ||
+    Object.prototype.hasOwnProperty.call(prIdentityProperties, 'number')
   ) {
     result.errors.push({
       code: 'schema.contract-parity',
       message: 'Committed JSON Schema issue/PR URL patterns drifted from the Zod contract',
     });
   }
-  if (
-    !stackBase ||
-    stackBase.additionalProperties !== false ||
-    !sameMembers(stackBase.required, [
-      'dependency_node_id',
-      'dependency_pr_number',
-      'dependency_branch',
-      'dependency_head_sha',
-      'last_resynced_at',
-      'last_resynced_head',
-      'requires_main_rebase',
-    ])
-  ) {
-    result.errors.push({
-      code: 'schema.contract-parity',
-      message: 'Committed JSON Schema $defs.stackBase drifted from the Zod contract',
-    });
-  }
-  const stackBaseProps = stackBase && isRecord(stackBase.properties) ? stackBase.properties : null;
-  if (
-    !stackBaseProps ||
-    !isRecord(stackBaseProps.dependency_head_sha) ||
-    stackBaseProps.dependency_head_sha.$ref !== '#/$defs/sha40' ||
-    !isRecord(stackBaseProps.last_resynced_head) ||
-    stackBaseProps.last_resynced_head.$ref !== '#/$defs/sha40'
-  ) {
-    result.errors.push({
-      code: 'schema.contract-parity',
-      message: 'Committed JSON Schema $defs.stackBase SHA references drifted from the Zod contract',
-    });
-  }
-  if (
-    !stackedWork ||
-    stackedWork.additionalProperties !== false ||
-    !sameMembers(stackedWork.required, [
-      'mode',
-      'issue',
-      'session',
-      'branch',
-      'pr',
-      'stack_bases',
-      'drift_reason',
-    ])
-  ) {
-    result.errors.push({
-      code: 'schema.contract-parity',
-      message: 'Committed JSON Schema $defs.stackedWork drifted from the Zod contract',
-    });
+  const expectedStackedDefinitions: ReadonlyArray<
+    readonly [Record<string, unknown> | null, ReadonlyArray<string>, string]
+  > = [
+    [prIdentity, ['url'], 'prIdentity'],
+    [
+      stackedOwner,
+      [
+        'node_id',
+        'issue',
+        'claimant',
+        'session',
+        'branch',
+        'claimed_at',
+        'lease_expires_at',
+        'heartbeat_at',
+      ],
+      'stackedOwner',
+    ],
+    [
+      stackedDependency,
+      [
+        'node_id',
+        'tracking_issue',
+        'repository',
+        'branch',
+        'pull_request',
+        'head_sha',
+        'base_branch',
+        'is_stack_base',
+        'observed_pr_state',
+        'observed_head_sha',
+        'observed_head_branch',
+        'observed_base_branch',
+        'observed_merge_commit',
+      ],
+      'stackedDependency',
+    ],
+    [
+      stackedDependent,
+      [
+        'branch',
+        'base_branch',
+        'pull_request',
+        'observed_pr_state',
+        'observed_head_sha',
+        'observed_head_branch',
+        'observed_base_branch',
+      ],
+      'stackedDependent',
+    ],
+    [
+      stackedWork,
+      [
+        'state',
+        'owner',
+        'dependency_pull_requests',
+        'dependent',
+        'last_resynced_dependency_head_sha',
+        'last_resynced_at',
+        'rebase_to_main',
+        'material_contract_drift',
+        'blocked_reason',
+      ],
+      'stackedWork',
+    ],
+  ];
+  for (const [definition, required, name] of expectedStackedDefinitions) {
+    if (
+      !definition ||
+      definition.additionalProperties !== false ||
+      !sameMembers(definition.required, required)
+    ) {
+      result.errors.push({
+        code: 'schema.contract-parity',
+        message: `Committed JSON Schema $defs.${name} drifted from the Zod contract`,
+      });
+    }
   }
   const stackedWorkProps =
     stackedWork && isRecord(stackedWork.properties) ? stackedWork.properties : null;
-  const stackedWorkPrAnyOf =
-    stackedWorkProps && isRecord(stackedWorkProps.pr) && Array.isArray(stackedWorkProps.pr.anyOf)
-      ? stackedWorkProps.pr.anyOf
+  const stackedDependencyProps =
+    stackedDependency && isRecord(stackedDependency.properties)
+      ? stackedDependency.properties
       : null;
-  const hasStackedPrRef =
-    stackedWorkPrAnyOf?.some((entry) => isRecord(entry) && entry.$ref === '#/$defs/prRef') ?? false;
-  const hasStackedPrNull =
-    stackedWorkPrAnyOf?.some((entry) => isRecord(entry) && entry.type === 'null') ?? false;
+  const stackedDependentProps =
+    stackedDependent && isRecord(stackedDependent.properties) ? stackedDependent.properties : null;
+  const dependencyItems =
+    stackedWorkProps &&
+    isRecord(stackedWorkProps.dependency_pull_requests) &&
+    isRecord(stackedWorkProps.dependency_pull_requests.items)
+      ? stackedWorkProps.dependency_pull_requests.items
+      : null;
+  const nullablePrIdentityAnyOf = Array.isArray(nullablePrIdentity?.anyOf)
+    ? nullablePrIdentity.anyOf
+    : null;
+  const hasNullablePrIdentityRef =
+    nullablePrIdentityAnyOf?.some(
+      (entry) => isRecord(entry) && entry.$ref === '#/$defs/prIdentity',
+    ) ?? false;
+  const hasNullablePrIdentityNull =
+    nullablePrIdentityAnyOf?.some((entry) => isRecord(entry) && entry.type === 'null') ?? false;
   if (
     !stackedWorkProps ||
-    !isRecord(stackedWorkProps.mode) ||
-    !Array.isArray(stackedWorkProps.mode.enum) ||
-    !isRecord(stackedWorkProps.issue) ||
-    stackedWorkProps.issue.$ref !== '#/$defs/issueRef' ||
-    !hasStackedPrRef ||
-    !hasStackedPrNull ||
-    !isRecord(stackedWorkProps.stack_bases) ||
-    !isRecord(stackedWorkProps.stack_bases.items) ||
-    stackedWorkProps.stack_bases.items.$ref !== '#/$defs/stackBase'
+    !isRecord(stackedWorkProps.owner) ||
+    stackedWorkProps.owner.$ref !== '#/$defs/stackedOwner' ||
+    dependencyItems?.$ref !== '#/$defs/stackedDependency' ||
+    !isRecord(stackedWorkProps.dependent) ||
+    stackedWorkProps.dependent.$ref !== '#/$defs/stackedDependent' ||
+    !stackedDependencyProps ||
+    !isRecord(stackedDependencyProps.pull_request) ||
+    stackedDependencyProps.pull_request.$ref !== '#/$defs/prIdentity' ||
+    !stackedDependentProps ||
+    !isRecord(stackedDependentProps.pull_request) ||
+    stackedDependentProps.pull_request.$ref !== '#/$defs/nullablePrIdentity' ||
+    nullablePrIdentityAnyOf?.length !== 2 ||
+    !hasNullablePrIdentityRef ||
+    !hasNullablePrIdentityNull
   ) {
     result.errors.push({
       code: 'schema.contract-parity',
@@ -1061,10 +1230,9 @@ function computeReady(
   node: EpicNode,
   nodesById: ReadonlyMap<string, EpicNode>,
 ): boolean {
-  // Any active stacked_work (regardless of requires_main_rebase) prevents the
-  // node from entering the ready queue. The Producer must explicitly reconcile
-  // and clear the speculative metadata before normal lifecycle advancement can
-  // occur — even when all dependencies are otherwise validated.
+  // Any active stacked_work prevents the node from entering the ready queue.
+  // The Producer must explicitly reconcile and clear speculative metadata before
+  // normal lifecycle advancement can occur, even when all dependencies validate.
   // stacked_work is nullable().optional() so both null and undefined mean "absent".
   return (
     node.release_requirement === 'required' &&
@@ -1458,179 +1626,397 @@ function validateEvidenceRequirements(
   }
 }
 
-/**
- * Validates stacked_work metadata on a lifecycle-blocked node.
- *
- * Rules enforced:
- * 1. Speculative work only on `blocked` nodes.
- * 2. `stacked_pr_open` requires a PR ref.
- * 3. One stack_base per unvalidated direct dependency (no extra, no missing).
- * 4. Each dep must be `pr_open` (or `merged`/`validated` with requires_main_rebase: true).
- * 5. Stale detection: dep's cached PR head must match last_resynced_head.
- * 6. Post-merge: when dep is merged/validated, requires_main_rebase must be true
- *    and an operator action is emitted.
- * 7. No duplicate dependency node IDs within stack_bases.
- */
 function validateStackedWork(
+  state: EpicState,
   node: EpicNode,
   nodesById: ReadonlyMap<string, EpicNode>,
+  now: Date,
   result: MutableValidation,
 ): void {
-  const sw = node.stacked_work;
-  if (!sw) return;
+  const stacked = node.stacked_work;
+  if (!stacked) return;
 
-  // Rule 1: node status must be blocked.
   if (node.status !== 'blocked') {
     result.errors.push({
-      code: 'stacked.not-blocked',
+      code: 'stacked.lifecycle-not-blocked',
+      node_id: node.node_id,
+      message: `${node.node_id} has stacked work but lifecycle is ${node.status}, not blocked`,
+    });
+  }
+  if (
+    !state.stacked_work_policy.allowed_execution_lanes.some((lane) => lane === node.execution_lane)
+  ) {
+    result.errors.push({
+      code: 'stacked.lane-not-allowed',
+      node_id: node.node_id,
+      message: `${node.execution_lane} does not permit locally coordinated stacked work`,
+    });
+  }
+  if (
+    !node.github.issue ||
+    stacked.owner.node_id !== node.node_id ||
+    stacked.owner.issue.number !== node.github.issue.number ||
+    stacked.owner.issue.url !== node.github.issue.url
+  ) {
+    result.errors.push({
+      code: 'stacked.missing-issue-owner',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner must match its dedicated child issue`,
+    });
+  }
+  if (
+    stacked.owner.branch !== stacked.dependent.branch ||
+    Date.parse(stacked.owner.lease_expires_at) <= Date.parse(stacked.owner.claimed_at)
+  ) {
+    result.errors.push({
+      code: 'stacked.owner-mismatch',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner branch or lease metadata is inconsistent`,
+    });
+  }
+  const ownerClaimedMs = Date.parse(stacked.owner.claimed_at);
+  if (ownerClaimedMs > now.getTime()) {
+    result.errors.push({
+      code: 'stacked.owner-claimed-future',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner claimed_at is in the future`,
+    });
+  }
+  if (Date.parse(stacked.owner.lease_expires_at) <= now.getTime()) {
+    result.errors.push({
+      code: 'stacked.owner-expired',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner lease expired at ${stacked.owner.lease_expires_at}`,
+    });
+  }
+  const maxOwnershipHeartbeatMs = state.claim_policy.maximum_without_heartbeat_hours * 3_600_000;
+  const ownerHeartbeatMs = Date.parse(stacked.owner.heartbeat_at);
+  if (ownerHeartbeatMs < ownerClaimedMs) {
+    result.errors.push({
+      code: 'stacked.owner-heartbeat-before-claim',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner heartbeat_at predates claimed_at`,
+    });
+  } else if (ownerHeartbeatMs > now.getTime()) {
+    result.errors.push({
+      code: 'stacked.owner-heartbeat-future',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner heartbeat_at is in the future`,
+    });
+  } else if (now.getTime() - ownerHeartbeatMs > maxOwnershipHeartbeatMs) {
+    result.errors.push({
+      code: 'stacked.owner-heartbeat-stale',
+      node_id: node.node_id,
+      message: `${node.node_id} stacked owner heartbeat exceeds ${state.claim_policy.maximum_without_heartbeat_hours}h`,
+    });
+  }
+
+  if (stacked.state === 'stacked_pr_open' && !stacked.dependent.pull_request) {
+    result.errors.push({
+      code: 'stacked.dependent-pr-missing',
+      node_id: node.node_id,
+      message: `${node.node_id} is stacked_pr_open without a dependent PR`,
+    });
+  }
+  if (stacked.state === 'stacked_in_progress' && stacked.dependent.pull_request) {
+    result.errors.push({
+      code: 'stacked.dependent-pr-premature',
+      node_id: node.node_id,
+      message: `${node.node_id} has a dependent PR but state is stacked_in_progress`,
+    });
+  }
+  if (
+    stacked.dependent.observed_pr_state === 'CLOSED' ||
+    stacked.dependent.observed_pr_state === 'MERGED'
+  ) {
+    result.errors.push({
+      code: 'stacked.dependent-pr-closed',
       node_id: node.node_id,
       message:
-        `${node.node_id} has stacked_work but status is ${node.status}; ` +
-        'speculative work requires status blocked',
+        stacked.dependent.observed_pr_state === 'MERGED'
+          ? `${node.node_id} dependent PR is observed merged; Producer must clear stacked metadata via normal handoff`
+          : `${node.node_id} dependent PR is observed closed without merge`,
     });
   }
-
-  // Rule 2: stacked_pr_open requires a PR ref.
-  if (sw.mode === 'stacked_pr_open' && !sw.pr) {
+  // When no dependent PR exists, all observation fields must remain null.
+  // Offline validation trusts cached values, so a non-null observation without
+  // a backing PR is an unverifiable claim that can bypass the rebase proof.
+  if (!stacked.dependent.pull_request) {
+    const nonNullDependentObservations = [
+      stacked.dependent.observed_pr_state,
+      stacked.dependent.observed_head_sha,
+      stacked.dependent.observed_head_branch,
+      stacked.dependent.observed_base_branch,
+    ].filter((v) => v !== null);
+    if (nonNullDependentObservations.length > 0) {
+      result.errors.push({
+        code: 'stacked.dependent-observations-without-pr',
+        node_id: node.node_id,
+        message: `${node.node_id} has non-null dependent observations but no dependent PR to verify them against`,
+      });
+    }
+  }
+  if (
+    stacked.dependent.observed_head_branch &&
+    stacked.dependent.observed_head_branch !== stacked.dependent.branch
+  ) {
     result.errors.push({
-      code: 'stacked.pr-open-missing-pr',
+      code: 'stacked.dependent-branch-drift',
       node_id: node.node_id,
-      message: `${node.node_id} stacked_work mode is stacked_pr_open but pr is null`,
+      message: `${node.node_id} dependent PR head branch differs from the recorded branch`,
+    });
+  }
+  if (
+    stacked.dependent.observed_base_branch &&
+    stacked.dependent.observed_base_branch !== stacked.dependent.base_branch
+  ) {
+    result.errors.push({
+      code: 'stacked.dependent-base-drift',
+      node_id: node.node_id,
+      message: `${node.node_id} dependent PR base differs from the recorded base`,
     });
   }
 
-  // Determine all direct dependencies and the subset that are unvalidated.
-  // Note: validateDag already catches unknown dependency IDs, so by the time
-  // validateStackedWork runs all node.dependencies exist in nodesById.
-  const directDepSet = new Set(node.dependencies);
-  const unvalidatedDepIds = node.dependencies.filter((depId) => {
-    const dep = nodesById.get(depId);
-    return dep !== undefined && !isDependencySatisfied(dep, nodesById);
+  const incompleteDependencies = node.dependencies.filter((dependencyId) => {
+    const dependency = nodesById.get(dependencyId);
+    return !dependency || !isDependencySatisfied(dependency, nodesById);
   });
-
-  // Build stack-base index for O(1) lookup.
-  const stackBasesByDepId = new Map<string, (typeof sw.stack_bases)[number]>();
-  for (const base of sw.stack_bases) {
-    stackBasesByDepId.set(base.dependency_node_id, base);
+  const recordedDependencyIds = stacked.dependency_pull_requests
+    .map((dependency) => dependency.node_id)
+    .filter((dependencyId): dependencyId is string => dependencyId !== null);
+  // A direct stack base can validate before its dependent finishes rebasing.
+  // Retain only the observed merge that is bound to that pending rebase proof.
+  const retainedMergedStackBase = stacked.dependency_pull_requests.find(
+    (dependency) =>
+      dependency.is_stack_base &&
+      dependency.node_id !== null &&
+      node.dependencies.includes(dependency.node_id) &&
+      dependency.observed_pr_state === 'MERGED' &&
+      dependency.observed_merge_commit !== null &&
+      stacked.rebase_to_main.pending &&
+      stacked.rebase_to_main.prerequisite_merge_commit === dependency.observed_merge_commit,
+  );
+  const extraRecordedDependencyIds = recordedDependencyIds.filter(
+    (dependencyId) => !incompleteDependencies.includes(dependencyId),
+  );
+  if (
+    new Set(recordedDependencyIds).size !== recordedDependencyIds.length ||
+    incompleteDependencies.some((dependencyId) => !recordedDependencyIds.includes(dependencyId)) ||
+    extraRecordedDependencyIds.length > 1 ||
+    extraRecordedDependencyIds.some(
+      (dependencyId) => dependencyId !== retainedMergedStackBase?.node_id,
+    )
+  ) {
+    result.errors.push({
+      code: 'stacked.dependency-coverage',
+      node_id: node.node_id,
+      message: `${node.node_id} must represent every incomplete direct prerequisite exactly once`,
+    });
   }
 
-  // Rule 3a: every stack_base dep must be a direct dependency (validated deps
-  // with requires_main_rebase=true are a valid transitional state — the
-  // stack_base survives until the child branch rebases onto main).
-  for (const base of sw.stack_bases) {
-    if (!directDepSet.has(base.dependency_node_id)) {
-      result.errors.push({
-        code: 'stacked.base-not-dependency',
-        node_id: node.node_id,
-        message:
-          `${node.node_id} stacked_work stack_bases includes ${base.dependency_node_id} ` +
-          'which is not a direct dependency',
-      });
-    }
+  const stackBases = stacked.dependency_pull_requests.filter(
+    (dependency) => dependency.is_stack_base,
+  );
+  if (stackBases.length !== 1) {
+    result.errors.push({
+      code: 'stacked.stack-base-count',
+      node_id: node.node_id,
+      message: `${node.node_id} must identify exactly one dependency PR as its stack base`,
+    });
   }
 
-  // Rule 3b: every unvalidated direct dependency must have a stack_base.
-  for (const depId of unvalidatedDepIds) {
-    if (!stackBasesByDepId.has(depId)) {
-      result.errors.push({
-        code: 'stacked.missing-base',
-        node_id: node.node_id,
-        message: `${node.node_id} stacked_work is missing stack_base for unvalidated dependency ${depId}`,
-      });
-    }
-  }
-
-  // Rule 7: no duplicate dependency node IDs in stack_bases.
-  const seenDeps = new Set<string>();
-  for (const base of sw.stack_bases) {
-    if (seenDeps.has(base.dependency_node_id)) {
-      result.errors.push({
-        code: 'stacked.duplicate-base',
-        node_id: node.node_id,
-        message: `${node.node_id} stacked_work has duplicate stack_base for ${base.dependency_node_id}`,
-      });
-    }
-    seenDeps.add(base.dependency_node_id);
-  }
-
-  // Rules 4, 5, 6: per-dep head and state checks.
-  for (const base of sw.stack_bases) {
-    const dep = nodesById.get(base.dependency_node_id);
-    if (!dep) continue; // already caught by base-not-dependency
-
-    // Rule 4: dep must be pr_open or merged/validated (with rebase flag).
-    if (dep.status !== 'pr_open' && !POST_MERGE_STATUSES.has(dep.status)) {
-      result.errors.push({
-        code: 'stacked.dep-not-pr-open',
-        node_id: node.node_id,
-        message:
-          `${node.node_id} stacked_work dep ${base.dependency_node_id} is ${dep.status}; ` +
-          'speculative work requires dep status pr_open (or merged/validated with requires_main_rebase)',
-      });
-    }
-
-    // Rule 4b: pr_open dep must have a PR ref for stale detection.
-    if (dep.status === 'pr_open' && !dep.github.pr) {
-      result.errors.push({
-        code: 'stacked.dep-missing-pr',
-        node_id: node.node_id,
-        message:
-          `${node.node_id} stacked_work dep ${base.dependency_node_id} is pr_open ` +
-          'but has no PR ref; cannot verify stack base',
-      });
-      continue;
-    }
-
-    // Rule 4c: dependency_pr_number must match the dep's recorded PR number.
-    if (dep.github.pr && dep.github.pr.number !== base.dependency_pr_number) {
-      result.errors.push({
-        code: 'stacked.base-pr-mismatch',
-        node_id: node.node_id,
-        message:
-          `${node.node_id} stacked_work stack_base dependency_pr_number ${base.dependency_pr_number} ` +
-          `does not match dep ${base.dependency_node_id} recorded PR #${dep.github.pr.number}`,
-      });
-    }
-
-    // Rule 5: stale detection — dep's cached PR head must match last_resynced_head.
-    if (dep.github.pr && dep.github.pr.head_sha !== base.last_resynced_head) {
-      result.errors.push({
-        code: 'stacked.stale-dep-head',
-        node_id: node.node_id,
-        message:
-          `${node.node_id} stacked_work dep ${base.dependency_node_id} head has advanced ` +
-          `(cached: ${dep.github.pr.head_sha}, resynced: ${base.last_resynced_head}); ` +
-          'resynchronization required before continuing speculative work',
-      });
-    }
-
-    // Rules 6a/6b: post-merge rebase requirements.
-    if (POST_MERGE_STATUSES.has(dep.status)) {
-      if (!base.requires_main_rebase) {
+  let mergedStackBase = false;
+  for (const dependencySnapshot of stacked.dependency_pull_requests) {
+    const dependencyLabel = dependencySnapshot.node_id ?? 'auxiliary stack base';
+    if (dependencySnapshot.node_id === null) {
+      if (!dependencySnapshot.is_stack_base || !dependencySnapshot.tracking_issue) {
         result.errors.push({
-          code: 'stacked.merged-dep-rebase-required',
+          code: 'stacked.auxiliary-base-authority',
           node_id: node.node_id,
-          message:
-            `${node.node_id} stacked_work dep ${base.dependency_node_id} is ${dep.status}; ` +
-            'stack_base must set requires_main_rebase: true',
+          message: `${node.node_id} auxiliary stack base requires a tracking issue and is_stack_base`,
         });
-      } else {
-        // requires_main_rebase correctly set; rebase has not yet happened — block and emit operator action.
+      }
+    } else {
+      const dependency = nodesById.get(dependencySnapshot.node_id);
+      if (!dependency?.github.pr) {
         result.errors.push({
-          code: 'stacked.requires-main-rebase',
+          code: 'stacked.dependency-pr-missing',
           node_id: node.node_id,
-          message:
-            `${node.node_id} stacked branch must be rebased onto main ` +
-            `(dep ${base.dependency_node_id} is ${dep.status}); ` +
-            'Producer must reconcile after rebase completes and clear stacked_work',
+          message: `${dependencySnapshot.node_id} has no cached prerequisite PR`,
         });
-        result.proposal.operator_actions.push(
-          `${node.node_id}: dep ${base.dependency_node_id} has ${dep.status}. ` +
-            'Rebase the stacked branch onto main, verify the speculative work, ' +
-            'then clear stacked_work and advance through the normal lifecycle.',
-        );
+        continue;
+      }
+      if (
+        dependency.github.pr.number !== prNumberFromIdentity(dependencySnapshot.pull_request) ||
+        dependency.github.pr.url !== dependencySnapshot.pull_request.url ||
+        dependency.github.pr.head_sha !== dependencySnapshot.head_sha
+      ) {
+        result.errors.push({
+          code: 'stacked.dependency-snapshot-stale',
+          node_id: node.node_id,
+          message: `${dependencySnapshot.node_id} PR snapshot does not match cached prerequisite facts`,
+        });
+      }
+      if (dependency.status !== 'pr_open' && dependencySnapshot.observed_pr_state !== 'MERGED') {
+        result.errors.push({
+          code: 'stacked.dependency-not-open',
+          node_id: node.node_id,
+          message: `${dependencySnapshot.node_id} is not represented by an open prerequisite PR`,
+        });
       }
     }
+    if (dependencySnapshot.observed_pr_state === 'CLOSED') {
+      result.errors.push({
+        code: 'stacked.dependency-pr-closed',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite PR is closed without merge`,
+      });
+    }
+    if (
+      dependencySnapshot.observed_head_sha &&
+      dependencySnapshot.observed_head_sha !== dependencySnapshot.head_sha
+    ) {
+      result.errors.push({
+        code: 'stacked.dependency-head-stale',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite head advanced after the last resync`,
+      });
+    }
+    if (
+      dependencySnapshot.observed_head_branch &&
+      dependencySnapshot.observed_head_branch !== dependencySnapshot.branch
+    ) {
+      result.errors.push({
+        code: 'stacked.dependency-branch-drift',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite head branch drifted`,
+      });
+    }
+    if (
+      dependencySnapshot.observed_base_branch &&
+      dependencySnapshot.observed_base_branch !== dependencySnapshot.base_branch
+    ) {
+      result.errors.push({
+        code: 'stacked.dependency-base-drift',
+        node_id: node.node_id,
+        message: `${dependencyLabel} prerequisite base branch drifted`,
+      });
+    }
+    if (dependencySnapshot.observed_pr_state === 'MERGED') {
+      if (!dependencySnapshot.observed_merge_commit) {
+        result.errors.push({
+          code: 'stacked.dependency-merge-facts',
+          node_id: node.node_id,
+          message: `${dependencyLabel} is observed merged without a merge commit`,
+        });
+      }
+      if (dependencySnapshot.is_stack_base) mergedStackBase = true;
+    }
+  }
+
+  const stackBase = stackBases[0];
+  if (stackBase) {
+    if (stacked.last_resynced_dependency_head_sha !== stackBase.head_sha) {
+      result.errors.push({
+        code: 'stacked.resync-head-stale',
+        node_id: node.node_id,
+        message: `${node.node_id} last-resynced head does not match its stack-base head`,
+      });
+    }
+    if (!mergedStackBase && stacked.dependent.base_branch !== stackBase.branch) {
+      result.errors.push({
+        code: 'stacked.wrong-base-branch',
+        node_id: node.node_id,
+        message: `${node.node_id} dependent branch is not based on ${stackBase.branch}`,
+      });
+    }
+    if (
+      mergedStackBase &&
+      stacked.dependent.base_branch !== stackBase.branch &&
+      stacked.dependent.base_branch !== state.stacked_work_policy.main_branch
+    ) {
+      result.errors.push({
+        code: 'stacked.wrong-base-after-merge',
+        node_id: node.node_id,
+        message: `${node.node_id} dependent base after stack-base merge must be ${stackBase.branch} or ${state.stacked_work_policy.main_branch}`,
+      });
+    }
+  }
+  const maxResyncMs = state.stacked_work_policy.maximum_without_resync_hours * 3_600_000;
+  const lastResyncMs = Date.parse(stacked.last_resynced_at);
+  if (lastResyncMs > now.getTime()) {
+    result.errors.push({
+      code: 'stacked.resync-future',
+      node_id: node.node_id,
+      message: `${node.node_id} last_resynced_at is in the future`,
+    });
+  } else if (now.getTime() - lastResyncMs > maxResyncMs) {
+    result.errors.push({
+      code: 'stacked.resync-stale',
+      node_id: node.node_id,
+      message: `${node.node_id} has not resynced within ${state.stacked_work_policy.maximum_without_resync_hours}h`,
+    });
+  }
+
+  if (mergedStackBase) {
+    const mergeCommit = stackBase?.observed_merge_commit ?? null;
+    if (
+      !stacked.rebase_to_main.pending ||
+      !stacked.rebase_to_main.pre_rebase_dependent_head_sha ||
+      stacked.rebase_to_main.prerequisite_merge_commit !== mergeCommit
+    ) {
+      result.errors.push({
+        code: 'stacked.rebase-to-main-required',
+        node_id: node.node_id,
+        message: `${node.node_id} must keep rebase_to_main pending with exact merge facts`,
+      });
+    } else if (stacked.dependent.base_branch === state.stacked_work_policy.main_branch) {
+      if (stacked.dependent.observed_base_branch !== state.stacked_work_policy.main_branch) {
+        result.errors.push({
+          code: 'stacked.rebase-base-not-observed',
+          node_id: node.node_id,
+          message: `${node.node_id} cannot complete rebase-to-main until GitHub observes the dependent PR base as ${state.stacked_work_policy.main_branch}`,
+        });
+      }
+      if (
+        !stacked.dependent.observed_head_sha ||
+        stacked.dependent.observed_head_sha === stacked.rebase_to_main.pre_rebase_dependent_head_sha
+      ) {
+        result.errors.push({
+          code: 'stacked.rebase-not-pushed',
+          node_id: node.node_id,
+          message: `${node.node_id} retargeted to main without an observed rebased dependent head`,
+        });
+      }
+    } else if (
+      !stacked.dependent.observed_head_sha ||
+      stacked.rebase_to_main.pre_rebase_dependent_head_sha !== stacked.dependent.observed_head_sha
+    ) {
+      result.errors.push({
+        code: 'stacked.rebase-pre-head-unbound',
+        node_id: node.node_id,
+        message: `${node.node_id} rebase_to_main.pre_rebase_dependent_head_sha must equal the observed dependent head before retargeting`,
+      });
+    }
+  } else if (
+    stacked.rebase_to_main.pending ||
+    stacked.rebase_to_main.pre_rebase_dependent_head_sha ||
+    stacked.rebase_to_main.prerequisite_merge_commit
+  ) {
+    result.errors.push({
+      code: 'stacked.unexpected-rebase-to-main',
+      node_id: node.node_id,
+      message: `${node.node_id} records rebase-to-main work before its stack base merged`,
+    });
+  }
+
+  if (stacked.material_contract_drift || stacked.blocked_reason) {
+    result.blockers.push({
+      code: 'stacked.material-block',
+      node_id: node.node_id,
+      message:
+        stacked.material_contract_drift ?? stacked.blocked_reason ?? 'Stacked work is blocked',
+    });
   }
 }
 
@@ -1676,7 +2062,7 @@ function validateNodeLifecycle(
     });
   }
 
-  validateStackedWork(node, nodesById, result);
+  validateStackedWork(state, node, nodesById, now, result);
 
   const ready = computeReady(state, node, nodesById);
   if (ready) result.readyQueue.push(node.node_id);
@@ -1764,7 +2150,14 @@ function validateNodeLifecycle(
     }
     if (owns.heartbeat_at) {
       const maxHeartbeatMs = (state.claim_policy.maximum_without_heartbeat_hours ?? 48) * 3_600_000;
-      if (now.getTime() - Date.parse(owns.heartbeat_at) > maxHeartbeatMs) {
+      const heartbeatMs = Date.parse(owns.heartbeat_at);
+      if (heartbeatMs > now.getTime()) {
+        result.errors.push({
+          code: 'ownership.heartbeat-future',
+          node_id: node.node_id,
+          message: `${node.node_id} heartbeat_at is in the future`,
+        });
+      } else if (now.getTime() - heartbeatMs > maxHeartbeatMs) {
         result.errors.push({
           code: 'ownership.stale-heartbeat',
           node_id: node.node_id,
@@ -1848,16 +2241,12 @@ function validateNodeLifecycle(
       message: `${node.node_id} has no materialized child issue`,
     });
   }
-
-  // Validate speculative stacked-work metadata (orthogonal to the normal lifecycle).
-  validateStackedWork(node, nodesById, result);
 }
 
 function validateDuplicateOwnership(state: EpicState, result: MutableValidation): void {
   const ownership = new Map<string, string>();
+  const stackedBranches = new Map<string, string>();
   const issues = new Map<number, string>();
-  const stackedSessions = new Map<string, string>();
-  const stackedIssues = new Map<number, string>();
   for (const node of state.nodes) {
     if (ACTIVE_STATUSES.has(node.status) && node.ownership.claimant && node.ownership.session) {
       const key = `${node.ownership.claimant}\u0000${node.ownership.session}`;
@@ -1872,6 +2261,29 @@ function validateDuplicateOwnership(state: EpicState, result: MutableValidation)
         ownership.set(key, node.node_id);
       }
     }
+    if (node.stacked_work) {
+      const key = `${node.stacked_work.owner.claimant}\u0000${node.stacked_work.owner.session}`;
+      const priorOwner = ownership.get(key);
+      if (priorOwner) {
+        result.errors.push({
+          code: 'stacked.duplicate-owner',
+          node_id: node.node_id,
+          message: `${node.stacked_work.owner.claimant}/${node.stacked_work.owner.session} owns both ${priorOwner} and ${node.node_id}`,
+        });
+      } else {
+        ownership.set(key, node.node_id);
+      }
+      const priorBranch = stackedBranches.get(node.stacked_work.dependent.branch);
+      if (priorBranch) {
+        result.errors.push({
+          code: 'stacked.duplicate-branch',
+          node_id: node.node_id,
+          message: `${node.stacked_work.dependent.branch} is assigned to both ${priorBranch} and ${node.node_id}`,
+        });
+      } else {
+        stackedBranches.set(node.stacked_work.dependent.branch, node.node_id);
+      }
+    }
     if (node.github.issue) {
       const prior = issues.get(node.github.issue.number);
       if (prior) {
@@ -1882,32 +2294,6 @@ function validateDuplicateOwnership(state: EpicState, result: MutableValidation)
         });
       } else {
         issues.set(node.github.issue.number, node.node_id);
-      }
-    }
-    if (node.stacked_work) {
-      const priorSession = stackedSessions.get(node.stacked_work.session);
-      if (priorSession) {
-        result.errors.push({
-          code: 'stacked.duplicate-session',
-          node_id: node.node_id,
-          message:
-            `stacked_work session ${node.stacked_work.session} is assigned to both ` +
-            `${priorSession} and ${node.node_id}`,
-        });
-      } else {
-        stackedSessions.set(node.stacked_work.session, node.node_id);
-      }
-      const priorIssue = stackedIssues.get(node.stacked_work.issue.number);
-      if (priorIssue) {
-        result.errors.push({
-          code: 'stacked.duplicate-issue',
-          node_id: node.node_id,
-          message:
-            `stacked_work issue #${node.stacked_work.issue.number} is assigned to both ` +
-            `${priorIssue} and ${node.node_id}`,
-        });
-      } else {
-        stackedIssues.set(node.stacked_work.issue.number, node.node_id);
       }
     }
   }
@@ -2127,7 +2513,7 @@ export function buildMaterializationPlan(state: EpicState): ReadonlyArray<Materi
         ...node.evidence_requirements.map((requirement) => `- \`${requirement}\``),
         '',
         '## Coordination protocol',
-        'Use structured CLAIMED, BLOCKED, UNBLOCKED, SCOPE-CHANGE-REQUEST, STACKED-WORK, and HANDOFF comments.',
+        'Use structured CLAIMED, STACKED-WORK, BLOCKED, UNBLOCKED, SCOPE-CHANGE-REQUEST, and HANDOFF comments.',
         'Do not edit the global epic state; the Producer is the sole global-state writer.',
       ].join('\n'),
     }));
@@ -2148,6 +2534,10 @@ interface GithubPull {
   readonly html_url: string;
   readonly head: {
     readonly sha: string;
+    readonly ref?: string;
+  };
+  readonly base?: {
+    readonly ref: string;
   };
 }
 
@@ -2199,6 +2589,18 @@ interface ParsedClaim {
 
 interface ParsedBlockedEvent {
   readonly nodeId: string;
+  readonly url: string;
+}
+
+interface ParsedStackedClaim {
+  readonly nodeId: string;
+  readonly claimant: string;
+  readonly session: string;
+  readonly branch: string;
+  readonly dependencyHead: string;
+  readonly expiresAt: string;
+  readonly claimedAt: string;
+  readonly heartbeatAt: string;
   readonly url: string;
 }
 
@@ -2274,6 +2676,54 @@ function findStaleHeadBoundEvidence(node: EpicNode, headSha: string): string[] {
     .sort();
 }
 
+function parseTrustedStackedClaim(
+  comment: GithubComment,
+  expectedNodeId?: string,
+): ParsedStackedClaim | null {
+  if (!isTrustedAuthor(comment)) return null;
+  const lines = comment.body.split(/\r?\n/);
+  if (lines[0]?.trim() !== 'STACKED-WORK') return null;
+  const fields = new Map<string, string>();
+  for (const line of lines.slice(1)) {
+    const match = /^([a-z_]+):\s*(.+)$/.exec(line.trim());
+    if (match?.[1] && match[2]) fields.set(match[1], match[2]);
+  }
+  const nodeId = fields.get('node');
+  const claimant = fields.get('claimant');
+  const session = fields.get('session');
+  const branch = fields.get('branch');
+  const dependencyHead = fields.get('dependency_head');
+  const expiresAt = fields.get('expires_at');
+  const claimedAt = fields.get('claimed_at');
+  const heartbeatAt = fields.get('heartbeat_at');
+  if (
+    !nodeId ||
+    !claimant ||
+    !session ||
+    !branch ||
+    !dependencyHead ||
+    !expiresAt ||
+    !claimedAt ||
+    !heartbeatAt ||
+    !SHA40_PATTERN.test(dependencyHead) ||
+    [expiresAt, claimedAt, heartbeatAt].some((value) => Number.isNaN(Date.parse(value)))
+  ) {
+    return null;
+  }
+  if (expectedNodeId !== undefined && nodeId !== expectedNodeId) return null;
+  return {
+    nodeId,
+    claimant,
+    session,
+    branch,
+    dependencyHead,
+    expiresAt,
+    claimedAt,
+    heartbeatAt,
+    url: comment.html_url,
+  };
+}
+
 export function auditGithub(
   state: EpicState,
   runner: GithubRunner,
@@ -2296,6 +2746,7 @@ export function auditGithub(
     };
   }
   const issueClaims: ParsedClaim[] = [];
+  const stackedClaims: ParsedStackedClaim[] = [];
   const auditedIssues = new Map<number, GithubIssue>();
   const failedIssueAudits = new Set<number>();
   const proposeIssueState = (issue: GithubIssue, expectedNode?: EpicNode): void => {
@@ -2351,6 +2802,11 @@ export function auditGithub(
         if (blocked) {
           latestClaimsByNodeAndOwner.delete(blocked.nodeId);
           latestRevokeByNode.set(blocked.nodeId, blocked);
+          for (let index = stackedClaims.length - 1; index >= 0; index -= 1) {
+            if (stackedClaims[index]?.nodeId === blocked.nodeId) {
+              stackedClaims.splice(index, 1);
+            }
+          }
           continue;
         }
         const claim = parseTrustedClaim(comment, expectedNodeId);
@@ -2364,6 +2820,8 @@ export function auditGithub(
           }
           latestClaimsByNodeAndOwner.set(claim.nodeId, perOwner);
         }
+        const stackedClaim = parseTrustedStackedClaim(comment, expectedNodeId);
+        if (stackedClaim) stackedClaims.push(stackedClaim);
       }
       const nodesById = new Map(state.nodes.map((n) => [n.node_id, n]));
       for (const [revokedNodeId, blocked] of latestRevokeByNode) {
@@ -2402,7 +2860,7 @@ export function auditGithub(
   if (state.github.parent_issue) auditIssue(state.github.parent_issue.number);
   for (const node of state.nodes) {
     if (node.github.issue) auditIssue(node.github.issue.number, node);
-    const stackedIssue = node.stacked_work?.issue;
+    const stackedIssue = node.stacked_work?.owner.issue;
     const mainIssue = node.github.issue;
     if (stackedIssue && stackedIssue.number !== mainIssue?.number) {
       auditIssue(stackedIssue.number, node);
@@ -2502,9 +2960,7 @@ export function auditGithub(
     }
   }
 
-  // Audit speculative stacked-work PRs (stacked_pr_open mode).
-  // Proposes head-SHA updates and flags merged/closed speculative PRs for Producer attention.
-  const prSchema = z
+  const stackedPullSchema = z
     .object({
       number: z.number().int().positive(),
       state: z.enum(['open', 'closed']),
@@ -2512,41 +2968,205 @@ export function auditGithub(
       merge_commit_sha: z.string().nullable(),
       merged_at: z.string().nullable(),
       html_url: z.string().url(),
-      head: z.object({ sha: z.string().regex(SHA40_PATTERN) }),
+      head: z.object({
+        sha: z.string().regex(SHA40_PATTERN),
+        ref: z.string().min(1),
+      }),
+      base: z.object({ ref: z.string().min(1) }),
     })
     .passthrough();
+  const stackedPullCache = new Map<number, z.infer<typeof stackedPullSchema>>();
+  const readStackedPull = (number: number): z.infer<typeof stackedPullSchema> => {
+    const cached = stackedPullCache.get(number);
+    if (cached) return cached;
+    const pull = stackedPullSchema.parse(runner.get(`/repos/${owner}/${repo}/pulls/${number}`));
+    stackedPullCache.set(number, pull);
+    return pull;
+  };
+
   for (const node of state.nodes) {
-    const sw = node.stacked_work;
-    if (!sw?.pr) continue;
-    try {
-      const pull = prSchema.parse(
-        runner.get(`/repos/${owner}/${repo}/pulls/${sw.pr.number}`),
-      ) as GithubPull;
-      if (pull.head.sha !== sw.pr.head_sha) {
-        repoPatch.push({
-          op: 'replace',
-          path: `/nodes/${state.nodes.indexOf(node)}/stacked_work/pr/head_sha`,
-          value: pull.head.sha,
-          reason: `Observed speculative PR #${pull.number} head advanced on GitHub`,
+    const stacked = node.stacked_work;
+    if (!stacked) continue;
+    const nodeIndex = state.nodes.indexOf(node);
+    for (const [dependencyIndex, dependency] of stacked.dependency_pull_requests.entries()) {
+      try {
+        const dependencyPrNumber = prNumberFromIdentity(dependency.pull_request);
+        const pull = readStackedPull(dependencyPrNumber);
+        const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
+        const observedMergeCommit = pull.merged ? pull.merge_commit_sha : null;
+        const observations: ReadonlyArray<{
+          readonly field: string;
+          readonly current: unknown;
+          readonly value: unknown;
+        }> = [
+          {
+            field: 'observed_pr_state',
+            current: dependency.observed_pr_state,
+            value: observedState,
+          },
+          {
+            field: 'observed_head_sha',
+            current: dependency.observed_head_sha,
+            value: pull.head.sha,
+          },
+          {
+            field: 'observed_head_branch',
+            current: dependency.observed_head_branch,
+            value: pull.head.ref,
+          },
+          {
+            field: 'observed_base_branch',
+            current: dependency.observed_base_branch,
+            value: pull.base.ref,
+          },
+          {
+            field: 'observed_merge_commit',
+            current: dependency.observed_merge_commit,
+            value: observedMergeCommit,
+          },
+        ];
+        for (const observation of observations) {
+          if (observation.current === observation.value) continue;
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${nodeIndex}/stacked_work/dependency_pull_requests/${dependencyIndex}/${observation.field}`,
+            value: observation.value,
+            reason: `Observed stacked prerequisite PR #${pull.number} ${observation.field} from GitHub`,
+          });
+        }
+        if (
+          pull.head.sha !== dependency.head_sha ||
+          pull.head.ref !== dependency.branch ||
+          pull.base.ref !== dependency.base_branch
+        ) {
+          errors.push({
+            code: 'github.stacked-dependency-drift',
+            node_id: node.node_id,
+            message: `Prerequisite PR #${pull.number} no longer matches the recorded head/base snapshot`,
+          });
+        }
+        if (observedState !== 'OPEN' && dependency.observed_pr_state !== observedState) {
+          errors.push({
+            code: pull.merged
+              ? 'github.stacked-dependency-merged'
+              : 'github.stacked-dependency-closed',
+            node_id: node.node_id,
+            message: `Prerequisite PR #${pull.number} is ${observedState}`,
+          });
+          operatorActions.push(
+            pull.merged
+              ? `Set ${node.node_id} rebase_to_main pending with merge ${pull.merge_commit_sha ?? 'unknown'}, rebase ${stacked.dependent.branch} onto ${state.stacked_work_policy.main_branch}, retarget its PR, revalidate, then clear stacked metadata.`
+              : `Stop stacked work for ${node.node_id}; prerequisite PR #${pull.number} closed without merge.`,
+          );
+        }
+      } catch (error) {
+        errors.push({
+          code: 'github.stacked-dependency-audit',
+          node_id: node.node_id,
+          message: `Could not audit stacked prerequisite PR #${prNumberFromIdentity(
+            dependency.pull_request,
+          )}: ${error instanceof Error ? error.message : String(error)}`,
         });
       }
-      if (pull.merged && pull.merge_commit_sha) {
-        operatorActions.push(
-          `Speculative PR #${pull.number} for ${node.node_id} is merged on GitHub ` +
-            `(sha: ${pull.merge_commit_sha}, merged_at: ${pull.merged_at ?? 'unknown'}). ` +
-            'Producer must verify rebase-to-main is complete, clear stacked_work, and advance through normal lifecycle.',
-        );
-      } else if (!pull.merged && pull.state === 'closed') {
-        operatorActions.push(
-          `Speculative PR #${pull.number} for ${node.node_id} is closed without merging. ` +
-            'Producer must investigate and update stacked_work status accordingly.',
-        );
+    }
+
+    const dependentPr = stacked.dependent.pull_request;
+    if (!dependentPr) {
+      // When there is no dependent PR (stacked_in_progress), all dependent
+      // observation fields must be null. Propose to clear any stale cached values
+      // so offline validation cannot trust unverified observations.
+      const dependentNullFields = [
+        'observed_pr_state',
+        'observed_head_sha',
+        'observed_head_branch',
+        'observed_base_branch',
+      ] as const;
+      for (const field of dependentNullFields) {
+        if (stacked.dependent[field] !== null) {
+          repoPatch.push({
+            op: 'replace',
+            path: `/nodes/${nodeIndex}/stacked_work/dependent/${field}`,
+            value: null,
+            reason: `No dependent PR exists; clearing stale ${field} observation for ${node.node_id}`,
+          });
+        }
+      }
+      continue;
+    }
+    try {
+      const dependentPrNumber = prNumberFromIdentity(dependentPr);
+      const pull = readStackedPull(dependentPrNumber);
+      const observedState = pull.merged ? 'MERGED' : pull.state.toUpperCase();
+      const observations: ReadonlyArray<{
+        readonly field: string;
+        readonly current: unknown;
+        readonly value: unknown;
+      }> = [
+        {
+          field: 'observed_pr_state',
+          current: stacked.dependent.observed_pr_state,
+          value: observedState,
+        },
+        {
+          field: 'observed_head_sha',
+          current: stacked.dependent.observed_head_sha,
+          value: pull.head.sha,
+        },
+        {
+          field: 'observed_head_branch',
+          current: stacked.dependent.observed_head_branch,
+          value: pull.head.ref,
+        },
+        {
+          field: 'observed_base_branch',
+          current: stacked.dependent.observed_base_branch,
+          value: pull.base.ref,
+        },
+      ];
+      for (const observation of observations) {
+        if (observation.current === observation.value) continue;
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${nodeIndex}/stacked_work/dependent/${observation.field}`,
+          value: observation.value,
+          reason: `Observed stacked dependent PR #${pull.number} ${observation.field} from GitHub`,
+        });
+      }
+      if (
+        pull.head.ref !== stacked.dependent.branch ||
+        pull.base.ref !== stacked.dependent.base_branch
+      ) {
+        errors.push({
+          code: 'github.stacked-dependent-drift',
+          node_id: node.node_id,
+          message: `Dependent PR #${pull.number} no longer matches the recorded branch/base identity`,
+        });
+      }
+      // Always surface a MERGED dependent PR as an error, even when the cache
+      // already records MERGED, because MERGED is an active lifecycle problem
+      // requiring Producer clearance — unlike CLOSED which is idempotent once
+      // recorded.
+      if (observedState === 'MERGED') {
+        errors.push({
+          code: 'github.stacked-dependent-not-open',
+          node_id: node.node_id,
+          message: `Dependent PR #${pull.number} is MERGED; Producer must clear stacked metadata via normal handoff`,
+        });
+      } else if (
+        observedState !== 'OPEN' &&
+        stacked.dependent.observed_pr_state !== observedState
+      ) {
+        errors.push({
+          code: 'github.stacked-dependent-not-open',
+          node_id: node.node_id,
+          message: `Dependent PR #${pull.number} is ${observedState}, not OPEN`,
+        });
       }
     } catch (error) {
       errors.push({
-        code: 'github.stacked-pr-audit',
+        code: 'github.stacked-dependent-audit',
         node_id: node.node_id,
-        message: `Could not audit speculative PR #${sw.pr.number}: ${
+        message: `Could not audit stacked dependent PR #${prNumberFromIdentity(dependentPr)}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       });
@@ -2678,6 +3298,115 @@ export function auditGithub(
       operatorActions.push(
         `Producer must confirm non-overlapping scope or release claims for ${[...nodes].join(', ')}.`,
       );
+    }
+  }
+
+  const stackedClaimsByNode = new Map<string, Map<string, ParsedStackedClaim>>();
+  for (const claim of stackedClaims) {
+    // Reject future heartbeats: they are chronologically invalid and would
+    // supersede all valid claims until that future time.
+    if (Date.parse(claim.heartbeatAt) > now.getTime()) {
+      errors.push({
+        code: 'github.stacked-future-heartbeat',
+        node_id: claim.nodeId,
+        message: `STACKED-WORK claim for ${claim.nodeId} has a future heartbeat_at (${claim.heartbeatAt}); skipping as invalid`,
+      });
+      continue;
+    }
+    const byOwner = stackedClaimsByNode.get(claim.nodeId) ?? new Map();
+    const ownerKey = `${claim.claimant}\u0000${claim.session}`;
+    const prior = byOwner.get(ownerKey);
+    if (!prior || Date.parse(claim.heartbeatAt) > Date.parse(prior.heartbeatAt)) {
+      byOwner.set(ownerKey, claim);
+    }
+    stackedClaimsByNode.set(claim.nodeId, byOwner);
+  }
+  for (const node of state.nodes) {
+    const ownerIssueNumber = node.stacked_work?.owner.issue.number ?? node.github.issue?.number;
+    if (ownerIssueNumber && failedIssueAudits.has(ownerIssueNumber)) continue;
+    const liveClaims = [...(stackedClaimsByNode.get(node.node_id)?.values() ?? [])].filter(
+      (claim) => Date.parse(claim.expiresAt) > now.getTime(),
+    );
+    if (!node.stacked_work) {
+      if (liveClaims.length > 0) {
+        errors.push({
+          code: 'github.unexpected-stacked-owner',
+          node_id: node.node_id,
+          message: `${node.node_id} has a live STACKED-WORK owner but no stacked metadata`,
+        });
+      }
+      continue;
+    }
+    const normalClaims = deduplicatedByNode.get(node.node_id) ?? [];
+    if (normalClaims.length > 0) {
+      errors.push({
+        code: 'github.stacked-normal-claim-conflict',
+        node_id: node.node_id,
+        message: `${node.node_id} has both normal CLAIMED and STACKED-WORK ownership`,
+      });
+    }
+    if (liveClaims.length !== 1) {
+      errors.push({
+        code:
+          liveClaims.length === 0
+            ? 'github.stacked-owner-missing'
+            : 'github.stacked-owner-duplicate',
+        node_id: node.node_id,
+        message: `${node.node_id} requires exactly one live trusted STACKED-WORK owner; found ${liveClaims.length}`,
+      });
+      operatorActions.push(
+        `Reconcile STACKED-WORK ownership on issue #${node.github.issue?.number ?? 'missing'} for ${node.node_id}.`,
+      );
+      continue;
+    }
+    const live = liveClaims[0]!;
+    const expected = node.stacked_work;
+    if (
+      live.claimant !== expected.owner.claimant ||
+      live.session !== expected.owner.session ||
+      live.branch !== expected.owner.branch ||
+      live.dependencyHead !== expected.last_resynced_dependency_head_sha
+    ) {
+      errors.push({
+        code: 'github.stacked-owner-drift',
+        node_id: node.node_id,
+        message: `${node.node_id} live STACKED-WORK owner differs from cached state`,
+      });
+      operatorActions.push(
+        `Verify the live STACKED-WORK comment ${live.url} and reconcile ${node.node_id} as Producer.`,
+      );
+    } else {
+      const nodeIndex = state.nodes.indexOf(node);
+      const ownerObservations: ReadonlyArray<{
+        readonly field: string;
+        readonly current: string;
+        readonly value: string;
+      }> = [
+        {
+          field: 'claimed_at',
+          current: expected.owner.claimed_at,
+          value: live.claimedAt,
+        },
+        {
+          field: 'lease_expires_at',
+          current: expected.owner.lease_expires_at,
+          value: live.expiresAt,
+        },
+        {
+          field: 'heartbeat_at',
+          current: expected.owner.heartbeat_at,
+          value: live.heartbeatAt,
+        },
+      ];
+      for (const observation of ownerObservations) {
+        if (observation.current === observation.value) continue;
+        repoPatch.push({
+          op: 'replace',
+          path: `/nodes/${nodeIndex}/stacked_work/owner/${observation.field}`,
+          value: observation.value,
+          reason: `Live STACKED-WORK comment has updated ${observation.field} for ${node.node_id}`,
+        });
+      }
     }
   }
   return {
