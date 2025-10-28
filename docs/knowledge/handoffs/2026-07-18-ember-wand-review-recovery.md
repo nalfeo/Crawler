@@ -18,39 +18,32 @@ Estimated 2🍎, actual 2🍎.
 
 ## Summary
 
-Recovered PR #1390's three exact review-thread blockers without changing ember-wand gameplay tuning. The repair updates one stale catalog section count, normalizes the art-plan spelling to match the player-facing item copy, and clarifies that the existing `aoeRadius: 4` is an intentional small splash distinct from fireball's wider blast.
+Corrected this recovery handoff so it accurately describes the actual PR #1545 branch changes. The `items.ts` anti-drift section-header cleanup was already landed earlier, so this follow-up only fixes documentation accuracy and thread-tracking notes.
 
 ## Files touched
 
-- `src/shared/items.ts`
-- `src/shared/weaponDefs.ts`
-- `plans/item-icons/weapons.art.yaml`
-- `docs/knowledge/review-ledgers/2026-07-18-ember-wand-review-recovery.review-ledger.json`
 - `docs/knowledge/handoffs/2026-07-18-ember-wand-review-recovery.md`
 
 ## What changed
 
-- Updated the `Weapons` section header comment in `ITEM_CATALOG` from `(21)` to `(24)` so the inline count matches the actual catalog and the existing unit-test snapshot.
-- Changed the ember-wand art-plan brief from `smouldering` to `smoldering` so the sprite brief matches the player-facing catalog text.
-- Clarified the ember-wand projectile comments in `weaponDefs.ts` to state that `projectileSpeed: 0.55` pairs with a smaller heat burst, and that `aoeRadius: 4` is an intentional small splash tighter than fireball's `6`.
-- Initialized a 2🍎 review ledger for this recovery session.
+- Corrected this handoff's audit bullets so they describe the real file-level changes in this PR.
+- Removed wording that implied new `items.ts` edits in this follow-up and replaced it with references to the earlier landed anti-drift fix.
 
 ## Review-thread validation
 
-- Ran three separate-model validators (one per thread) and all three confirmed the comments were still applicable on head `c691177`.
-- Kept the remedy minimal by fixing wording/comments rather than retuning `aoeRadius`.
+- Confirmed the two cited threads (`#discussion_r3607770778`, `#discussion_r3607770783`) were the blockers being tracked by this handoff.
+- Kept the remedy minimal by fixing documentation/audit text only, then posting `✅ Addressed in <sha>` thread replies.
 
 ## CI / validation
 
-- GitHub Actions investigation showed the latest real `CI` run on this branch (`29625982261`) completed successfully with no failed jobs.
-- The `CI Recovery Router` run (`29626310177`) was `action_required` with zero jobs, so there was no failing workflow job to repair before addressing review feedback.
+- GitHub Actions investigation (`list_workflow_runs` + `get_job_logs`) showed no failed jobs for the latest PR `CI` run on this branch.
 - `npm run verify:fast`
 
 ## Observe before done
 
-- Before: the PR still had three unresolved review blockers — stale weapon count comment, spelling mismatch between item copy and art-plan brief, and ambiguous ember-wand splash intent commentary.
-- After: the files now align with the existing data/tests, and the ember-wand comments explicitly describe the retained small-splash behavior.
+- Before: the PR still had unresolved review blockers for stale handoff audit text and manually maintained section-count comments.
+- After: this handoff now matches the actual branch diff for auditable recovery notes and records the previously landed `items.ts` anti-drift cleanup.
 
 ## Unresolved issues
 
-- None in code. The remaining resolution step is posting `✅ Addressed in <sha>` replies on the exact review threads after the repair commit lands.
+- None.
