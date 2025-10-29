@@ -492,6 +492,17 @@
       "judgeScore": null,
       "type": null
     },
+    "azure-mushroom-placeholder": {
+      "briefId": "azure-mushroom",
+      "spriteName": "azure-mushroom",
+      "assetPath": "generated/azure-mushroom-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.903Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "azure-mushroom-v1-var-0": {
       "briefId": "azure-mushroom-v1",
       "spriteName": "azure-mushroom-v1-var-0",
@@ -1829,6 +1840,17 @@
       "effectiveAnchorSource": "manual",
       "facingDirection": "right"
     },
+    "crimson-mushroom-placeholder": {
+      "briefId": "crimson-mushroom",
+      "spriteName": "crimson-mushroom",
+      "assetPath": "generated/crimson-mushroom-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.902Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "crimson-mushroom-v1-var-3": {
       "briefId": "crimson-mushroom-v1",
       "spriteName": "crimson-mushroom-v1-var-3",
@@ -2151,6 +2173,17 @@
       "judgeScore": null,
       "type": null
     },
+    "fireball-placeholder": {
+      "briefId": "fireball",
+      "spriteName": "fireball",
+      "assetPath": "generated/fireball-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.893Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "flame-dagger-var-3": {
       "briefId": "flame-dagger",
       "spriteName": "flame-dagger-var-3",
@@ -2263,6 +2296,17 @@
       "sensorScore": "placeholder",
       "judgeScore": null,
       "type": null
+    },
+    "frost-lichen-placeholder": {
+      "briefId": "frost-lichen",
+      "spriteName": "frost-lichen",
+      "assetPath": "generated/frost-lichen-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.905Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "frost-lichen-v1-var-12": {
       "briefId": "frost-lichen-v1",
@@ -3245,6 +3289,28 @@
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
     },
+    "landmine-placeholder": {
+      "briefId": "landmine",
+      "spriteName": "landmine",
+      "assetPath": "generated/landmine-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.897Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "laser-placeholder": {
+      "briefId": "laser",
+      "spriteName": "laser",
+      "assetPath": "generated/laser-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.894Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "laugh-track-tape-placeholder": {
       "briefId": "laugh-track-tape",
       "spriteName": "laugh-track-tape",
@@ -3612,6 +3678,17 @@
       "effectivePipelineSnapshotYamlPath": "C:\\Users\\nalfeo\\.copilot\\repos\\copilot-worktrees\\Crawler\\nalfeo-upgraded-enigma\\generated\\runs\\molefolk-burrower\\2026-07-08T05-05-46-350b03d1\\postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived",
       "facingDirection": "right"
+    },
+    "moonbloom-flower-placeholder": {
+      "briefId": "moonbloom-flower",
+      "spriteName": "moonbloom-flower",
+      "assetPath": "generated/moonbloom-flower-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.904Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "moonbloom-flower-v1-var-0": {
       "briefId": "moonbloom-flower-v1",
@@ -4782,6 +4859,17 @@
       "effectiveAnchorSource": "manual",
       "facingDirection": "left"
     },
+    "punch-placeholder": {
+      "briefId": "punch",
+      "spriteName": "punch",
+      "assetPath": "generated/punch-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.895Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "purple-potion-bottle-v1-var-4": {
       "briefId": "purple-potion-bottle-v1",
       "spriteName": "purple-potion-bottle-v1-var-4",
@@ -5680,6 +5768,17 @@
       "type": "tile",
       "contentHash": "7199c43c07d8b31017cf0fad4815dfdb9dc2f9b020243b415f92c5f1fd099f1b"
     },
+    "shadow-lichen-placeholder": {
+      "briefId": "shadow-lichen",
+      "spriteName": "shadow-lichen",
+      "assetPath": "generated/shadow-lichen-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.905Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "shadow-lichen-v1-var-12": {
       "briefId": "shadow-lichen-v1",
       "spriteName": "shadow-lichen-v1-var-12",
@@ -6330,6 +6429,28 @@
       "judgeScore": null,
       "type": "item"
     },
+    "sun-hammer-placeholder": {
+      "briefId": "sun-hammer",
+      "spriteName": "sun-hammer",
+      "assetPath": "generated/sun-hammer-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.898Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "sunpetal-flower-placeholder": {
+      "briefId": "sunpetal-flower",
+      "spriteName": "sunpetal-flower",
+      "assetPath": "generated/sunpetal-flower-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.904Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
     "sunpetal-flower-v1-var-0": {
       "briefId": "sunpetal-flower-v1",
       "spriteName": "sunpetal-flower-v1-var-0",
@@ -6561,6 +6682,17 @@
       "effectivePipelineSnapshotPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.json",
       "effectivePipelineSnapshotYamlPath": "https://crawlersprites.blob.core.windows.net/generated-runs/the-stairs-v2/2026-07-06T23-56-51-e0da8b0a/postprocess.pipeline.effective.yaml",
       "effectiveAnchorSource": "derived"
+    },
+    "throwing-knife-placeholder": {
+      "briefId": "throwing-knife",
+      "spriteName": "throwing-knife",
+      "assetPath": "generated/throwing-knife-placeholder.png",
+      "approvedAt": "2026-07-18T02:44:38.891Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     },
     "thunder-staff-placeholder": {
       "briefId": "thunder-staff",

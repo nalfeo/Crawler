@@ -224,6 +224,12 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   wpn('chain-whip', 'Chain Whip', 'Satisfying crack included.', R),
   wpn('obsidian-axe', 'Obsidian Axe', 'So sharp it cuts light.', R),
   wpn('gravity-hammer', 'Gravity Hammer', 'Weighs nothing until impact.', E),
+  wpn(
+    'sun-hammer',
+    'Sun Hammer',
+    'Hammer head plated in scorched gold. Hits like a solar flare.',
+    R,
+  ),
   wpn('spectral-blade', 'Spectral Blade', 'Partially exists in another dimension.', E),
   wpn('director-mic', "Director's Microphone", 'Weaponized broadcasting. Very meta.', L),
   wpn('sling-of-shame', 'Sling of Shame', 'Rated #1 by audience vote.', U),
