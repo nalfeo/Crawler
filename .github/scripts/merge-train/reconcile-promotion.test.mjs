@@ -129,7 +129,7 @@ function runPromotion(overrides = {}) {
     postLandedComment: async (number, landedSha, candidateSha) => {
       records.landedComments.push({ number, landedSha, candidateSha });
     },
-    verifyPrefixEvidence: overrides.verifyPrefixEvidence || (async () => true),
+    verifyCandidateEvidence: overrides.verifyCandidateEvidence || (async () => true),
     publishPostconditionCheck: async (sha, fingerprint, provenance) => {
       records.postconditions.push({ sha, fingerprint, provenance });
     },
@@ -165,9 +165,9 @@ test('promoteExactBatch squash-merges each PR through GitHub and records real la
   assert.ok(records.removedLabels.some((l) => l.number === 1 && l.name === QUEUE_LABEL));
   assert.ok(records.removedLabels.some((l) => l.number === 2 && l.name === BLOCKED_LABEL));
   // Completion comment posted on each original PR with the landed commit and
-  // the exact validated prefix candidate that PR's tree was proven against.
+  // the one batch candidate whose validation authorized the FIFO promotion.
   assert.deepEqual(records.landedComments, [
-    { number: 1, landedSha: LAND1, candidateSha: CAND1 },
+    { number: 1, landedSha: LAND1, candidateSha: CAND2 },
     { number: 2, landedSha: LAND2, candidateSha: CAND2 },
   ]);
   // No postcondition failure and main ends at the last landed commit.
@@ -294,11 +294,13 @@ test('promoteExactBatch refuses to promote a PR with an armed auto-merge', async
   assert.equal(records.merges.length, 0);
 });
 
-test('promoteExactBatch fails closed when a prefix lost its validation evidence before merge', async () => {
-  // Prefix T2 (index 1) no longer has success evidence: never merge it. PR1
-  // (prefix validated) lands; PR2 does not, and nothing bad is exposed.
+test('promoteExactBatch fails closed when batch validation evidence is lost between merges', async () => {
+  let checks = 0;
   const { promise, records } = runPromotion({
-    verifyPrefixEvidence: async (index) => index === 0,
+    verifyCandidateEvidence: async () => {
+      checks += 1;
+      return checks === 1;
+    },
     fetchCommit: async (sha) => ({
       sha,
       parents: [{ sha: BASE }],
@@ -314,11 +316,11 @@ test('promoteExactBatch fails closed when a prefix lost its validation evidence 
   assert.ok(!records.landedComments.some((c) => c.number === 2));
 });
 
-test('promoteExactBatch never merges when the first prefix lacks validation evidence', async () => {
+test('promoteExactBatch never merges when batch validation evidence is absent', async () => {
   const { promise, records } = runPromotion({
     entries: [1],
     candidateShas: [CAND1],
-    verifyPrefixEvidence: async () => false,
+    verifyCandidateEvidence: async () => false,
   });
   assert.equal(await promise, false);
   assert.equal(records.merges.length, 0);

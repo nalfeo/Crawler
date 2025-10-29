@@ -135,6 +135,16 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   bisect. The maintainer explicitly accepts the extra `verify:fast`/targeted
   candidate reruns this entails; the forbidden cost is repeated heavy CI/reviews,
   which this does not incur.
+- **DEC-012 (2026-07-16, supersedes DEC-011)**: Validate the maximal FIFO
+  candidate first. A terminal SUCCESS authorizes sequential promotion of the
+  whole batch; `promoteExactBatch` re-confirms that same immutable trusted check
+  before each merge, and retains per-merge admission, main-health, base-CAS,
+  landed-parent, and landed-tree proofs. A terminal FAILURE enters binary
+  bisection and requests smaller prefixes until the first failing addition is
+  isolated; cancelled, stale, timed-out, skipped, dispatch, and publication
+  failures remain retryable and never shrink the batch. This replaces up to six
+  eager prefix validations with one validation on the successful path while
+  preserving FIFO ordering and the full candidate validation suite.
 
 ## Consequences
 
@@ -150,22 +160,16 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   review anchors survive (fixes ADR 0060 NEG-001).
 - **POS-005**: Partial promotion is naturally, idempotently recoverable via
   real merged-state; no PR is ever silently closed-without-merge.
-- **POS-006**: Every tree that reaches `main` — including each intermediate
-  state the sequential merges expose — has terminal deterministic validation
-  evidence bound to its exact prefix (DEC-011), so downstream automation
-  triggered by an intermediate push can never observe an unvalidated tree. This
-  preserves ADR 0060's no-unvalidated-`main` invariant under sequential merges.
+- **POS-006 (superseded by DEC-012)**: Intermediate cumulative trees retain
+  deterministic construction and exact landed-tree postconditions, while the
+  maximal integrated candidate supplies the trusted validation evidence for a
+  successful batch.
 
 ### Negative
 
-- **NEG-001**: A full 6-PR batch runs up to 6 prefix candidate validations
-  (`verify:fast` + targeted security) instead of the single full-candidate run
-  the old atomic push used on its happy path (DEC-011). They are dispatched in
-  parallel so wall-time stays close to one run, and the maintainer explicitly
-  accepts these fast/targeted reruns as the cost of never exposing an
-  unvalidated intermediate tree. The trade is bounded to the fast gate — it
-  never triggers repeated heavy CI (the ~306s Floor-1/coverage suite) or repeated
-  reviews.
+- **NEG-001 (superseded by DEC-012)**: A successful batch again uses one maximal
+  candidate validation. Failed batches pay for bounded bisection rounds to
+  localize the first failing addition.
 - **NEG-002**: Lower theoretical throughput ceiling than the single atomic push,
   since each PR is a separate merge API round-trip plus a bounded mergeability
   poll. In practice the batch still admits together; only the landing is
@@ -193,8 +197,8 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   already carries for any PR merged to `main`. It is mitigated by the unchanged
   admission gate — a train PR admits only after its required `ci` and
   `Security checks` status checks pass and all review threads resolve (enforced
-  by `eligible()`) — and every promoted prefix additionally passes `verify:fast`
-  and `security:check` (DEC-011), the same gate the final candidate passes. It is
+  by `eligible()`) — and the maximal integrated candidate additionally passes
+  `verify:fast` and `security:check` (DEC-012). It is
   NOT a regression relative to normally merging PRs to `main`; it only gives up
   the atomic model's exceptional "intermediates never exposed" property, which
   cannot coexist with real merged semantics. Reducing to one-PR-per-cycle
@@ -203,7 +207,7 @@ and the completion-signal contract that four prior gap-fix sessions built on.
   ruleset for each merge, CODEOWNERS and required-review are NOT enforced at the
   point of the App merge itself; the effective controls are the `ci` /
   `Security checks` status checks and unresolved-thread gate enforced at admission
-  plus the per-prefix DEC-011 validation gate. This is an accepted risk of the
+  plus the maximal-candidate DEC-012 validation gate. This is an accepted risk of the
   real-merged-semantics design; a workflow-file-change admission ban would close
   the gap at the cost of blocking legitimate workflow improvements from the train.
 
@@ -216,10 +220,9 @@ and the completion-signal contract that four prior gap-fix sessions built on.
 - **ALT-002**: **Rejection reason**: Also fully eliminates unvalidated
   intermediate states, but it reverses ADR 0060's approved speculative-batch
   throughput optimization (ADR 0060 ALT-003/004) and meaningfully lowers
-  throughput. DEC-011 (validate every promoted prefix before merging) achieves
-  the same no-unvalidated-tree guarantee while keeping batch admission, so this
-  FIFO is retained only as the fallback if the parallel prefix-validation cost
-  ever proves unacceptable.
+  throughput. DEC-012 keeps speculative batch admission and validates the
+  maximal integrated candidate first, using smaller prefixes only to localize a
+  genuine failure.
 
 ### Atomic force-push, then "flip" semantics via the merge API
 

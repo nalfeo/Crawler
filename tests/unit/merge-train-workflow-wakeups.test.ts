@@ -7,8 +7,17 @@ import { describe, expect, it } from 'vitest';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 interface WorkflowDoc {
-  on: { workflow_run?: { workflows?: string[]; types?: string[]; branches?: string[] } };
-  jobs: { reconcile?: { if?: string } };
+  on: {
+    workflow_run?: { workflows?: string[]; types?: string[]; branches?: string[] };
+    pull_request_target?: { types?: string[] };
+  };
+  concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
+  jobs: {
+    reconcile?: {
+      if?: string;
+      concurrency?: { group?: string; queue?: string; 'cancel-in-progress'?: boolean };
+    };
+  };
 }
 
 function loadWorkflow(): WorkflowDoc {
@@ -24,6 +33,10 @@ function evaluatesReconcileCondition(
 ): boolean {
   const expression = condition
     .replace(/^\s*\${{\s*|\s*}}\s*$/g, '')
+    .replace("contains(github.event.pull_request.labels.*.name, 'merge-train')", 'false')
+    .replaceAll('github.event.pull_request.head.repo.full_name', JSON.stringify(''))
+    .replaceAll('github.event.label.name', JSON.stringify(null))
+    .replaceAll('github.repository', JSON.stringify('nalfeo/Crawler'))
     .replaceAll('github.event.repository.default_branch', JSON.stringify('main'))
     .replaceAll('github.event.workflow_run.head_branch', JSON.stringify(workflowRun.headBranch))
     .replaceAll('github.event.workflow_run.event', JSON.stringify(workflowRun.event))
@@ -34,7 +47,106 @@ function evaluatesReconcileCondition(
   return new Function(`return (${expression});`)() as boolean;
 }
 
+function evaluatesPullRequestCondition(
+  condition: string,
+  event: {
+    repository: string;
+    headRepository: string;
+    labels: string[];
+    transitionedLabel?: string;
+  },
+): boolean {
+  const expression = condition
+    .replace(/^\s*\${{\s*|\s*}}\s*$/g, '')
+    .replace(
+      "contains(github.event.pull_request.labels.*.name, 'merge-train')",
+      JSON.stringify(event.labels.includes('merge-train')),
+    )
+    .replaceAll(
+      'github.event.pull_request.head.repo.full_name',
+      JSON.stringify(event.headRepository),
+    )
+    .replaceAll('github.event.label.name', JSON.stringify(event.transitionedLabel ?? null))
+    .replaceAll('github.repository', JSON.stringify(event.repository))
+    .replaceAll('github.event_name', JSON.stringify('pull_request_target'));
+
+  return new Function(`return (${expression});`)() as boolean;
+}
+
 describe('merge-train workflow wake-ups', () => {
+  it('keeps one active reconcile and only the latest pending wake', () => {
+    const workflow = loadWorkflow();
+    // Workflow-level concurrency applies before `jobs.<job>.if`. We must not use it,
+    // otherwise unrelated events could steal the `queue: single` slot and displace
+    // a valid wake, only to skip the job later.
+    expect(workflow.concurrency).toBeUndefined();
+
+    const concurrency = workflow.jobs.reconcile?.concurrency;
+    expect(concurrency?.group).toBe('crawler-merge-train');
+    expect(concurrency?.queue).toBe('single');
+    expect(concurrency?.['cancel-in-progress']).not.toBe(true);
+  });
+
+  it('subscribes to all required pull_request_target event types', () => {
+    const types = loadWorkflow().on.pull_request_target?.types ?? [];
+    expect(types).toEqual(
+      expect.arrayContaining([
+        'labeled',
+        'unlabeled',
+        'synchronize',
+        'edited',
+        'closed',
+        'ready_for_review',
+      ]),
+    );
+    expect(types).toHaveLength(6);
+  });
+
+  it('admits same-repository PRs that carry the merge-train label', () => {
+    const condition = loadWorkflow().jobs.reconcile?.if;
+    if (!condition) throw new Error('reconcile job condition not found');
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'nalfeo/Crawler',
+        labels: ['merge-train'],
+      }),
+    ).toBe(true);
+  });
+
+  it('admits merge-train label transitions, including removal', () => {
+    const condition = loadWorkflow().jobs.reconcile?.if;
+    if (!condition) throw new Error('reconcile job condition not found');
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'nalfeo/Crawler',
+        labels: [],
+        transitionedLabel: 'merge-train',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects unrelated PR wakes and fork PRs', () => {
+    const condition = loadWorkflow().jobs.reconcile?.if;
+    if (!condition) throw new Error('reconcile job condition not found');
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'nalfeo/Crawler',
+        labels: [],
+        transitionedLabel: 'unrelated',
+      }),
+    ).toBe(false);
+    expect(
+      evaluatesPullRequestCondition(condition, {
+        repository: 'nalfeo/Crawler',
+        headRepository: 'fork/Crawler',
+        labels: ['merge-train'],
+      }),
+    ).toBe(false);
+  });
+
   it('subscribes to only default-branch candidate validation and CI completions', () => {
     const workflowRun = loadWorkflow().on.workflow_run;
     expect(workflowRun?.workflows).toEqual(
@@ -74,12 +186,13 @@ describe('merge-train workflow wake-ups', () => {
   });
 
   it('reconciles a completed scheduled CI run only while the merge train is enabled', () => {
-    // mainHealthReason() (reconcile-lib.mjs) treats whichever CI run for the
-    // current main SHA is newest by created_at as authoritative, regardless of
-    // whether it was push- or schedule-triggered. Without this carve-out, a
-    // scheduled CI completion that races a push completion would never
-    // re-wake reconcile, leaving the train stuck until the unreliable */5 cron
-    // fallback (observed arriving ~hourly in production) eventually fires.
+    // mainHealthReason() (reconcile-lib.mjs) picks the newest *completed* run
+    // for the current main SHA as authoritative; a pending duplicate never hides
+    // completed evidence. This carve-out covers only the pending-only initial
+    // case: when main just moved and no completed CI run exists yet, reconcile
+    // pauses, and a wakeup is needed once that pending run completes. Without
+    // this carve-out, nothing re-wakes reconcile in that window, leaving the
+    // train stuck until the unreliable */5 cron (observed ~hourly in production).
     const condition = loadWorkflow().jobs.reconcile?.if;
     if (!condition) throw new Error('reconcile job condition not found');
 

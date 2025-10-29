@@ -407,6 +407,41 @@ test('mainHealthReason fails closed while the current main SHA is still pending'
   );
 });
 
+test('mainHealthReason preserves completed green evidence across a newer pending duplicate', () => {
+  assert.equal(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [
+        makeCiRun({ created_at: '2024-01-01T00:00:00Z' }),
+        makeCiRun({
+          created_at: '2024-01-01T01:00:00Z',
+          status: 'in_progress',
+          conclusion: null,
+        }),
+      ],
+    }),
+    null,
+  );
+});
+
+test('mainHealthReason blocks on a later completed failure despite older green evidence', () => {
+  assert.match(
+    mainHealthReason({
+      mainSha: baseSha,
+      runs: [
+        makeCiRun({ created_at: '2024-01-01T00:00:00Z' }),
+        makeCiRun({ created_at: '2024-01-01T01:00:00Z', conclusion: 'failure' }),
+        makeCiRun({
+          created_at: '2024-01-01T02:00:00Z',
+          status: 'in_progress',
+          conclusion: null,
+        }),
+      ],
+    }),
+    /concluded failure/,
+  );
+});
+
 test('mainHealthReason reports a genuine completed failure on the current main SHA', () => {
   assert.match(
     mainHealthReason({
