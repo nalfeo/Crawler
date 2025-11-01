@@ -33,6 +33,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 interface WorkflowStep {
   name?: string;
   uses?: string;
+  if?: string;
   env?: Record<string, string>;
   with?: { script?: string; [key: string]: unknown };
 }
@@ -206,5 +207,139 @@ describe('merge-train-validate.yml publish step (verify result -> check conclusi
     expect(script).toBeDefined();
     expect(script).toContain('merge-train.yml');
     expect(script).toContain('default_branch');
+  });
+
+  it('reconciliation wake-up step runs after the publish step (not before it)', () => {
+    // The wake-up dispatch is meant to fire *after* the immutable check is
+    // published (so reconcile has something durable to act on). A future
+    // refactor could reorder the steps while still keeping `if: always()` on
+    // the wake step, which would cause a premature wake before the check
+    // exists. Lock in the relative ordering.
+    const raw = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'),
+      'utf8',
+    );
+    const doc = parse(raw) as WorkflowDoc;
+    const steps = doc.jobs.publish?.steps ?? [];
+    const publishIndex = steps.findIndex((s) => s.name === 'Publish immutable candidate result');
+    const wakeIndex = steps.findIndex((s) => s.name === 'Wake merge-train reconciliation');
+    expect(publishIndex).toBeGreaterThanOrEqual(0);
+    expect(wakeIndex).toBeGreaterThan(publishIndex);
+  });
+
+  describe('retryable-check fallback for a failed publish step', () => {
+    // Regression coverage for a real review finding: `if: always()` alone
+    // makes the wake-up *dispatch* fire when "Publish immutable candidate
+    // result" fails, but that alone does not make the wake *effective*. The
+    // fingerprinted check is still whatever the original dispatch posted --
+    // `in_progress` -- and trainCheckState() (state.mjs) only demotes a
+    // stuck in_progress check to retryable ("missing") after
+    // CANDIDATE_VALIDATION_STALE_MS (40 minutes); before that it reports
+    // `pending`, which planPrefixPromotion() maps to the `wait` action. So an
+    // immediate wake would just see `pending` and do nothing -- no better
+    // than the unreliable schedule fallback it was meant to replace. A
+    // fallback step must post a `cancelled` conclusion (mirroring
+    // reconcile.mjs's own dispatchValidation catch block) BEFORE the wake
+    // dispatches, so the woken reconciliation redispatches validation
+    // immediately instead of waiting.
+    //
+    // Scope limitation: this fallback handles post-token-mint publish failures
+    // only (e.g. a transient checks.create API error after the App token was
+    // minted). If the `app-token` mint step itself fails, the fallback step
+    // also has no valid token and cannot post the cancelled check; the train
+    // falls back to the CANDIDATE_VALIDATION_STALE_MS (40-minute) stale bound
+    // for that rarer failure mode.
+    function getFallbackStep(doc: WorkflowDoc): WorkflowStep {
+      const steps = doc.jobs.publish?.steps ?? [];
+      const step = steps.find(
+        (candidate) => candidate.name === 'Mark candidate check retryable if publishing failed',
+      );
+      if (!step) throw new Error('retryable-check fallback step not found');
+      return step;
+    }
+
+    it('exists, runs on failure(), and uses the App token (covers post-token-mint publish failures)', () => {
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      expect(step.if).toBe('failure()');
+      expect(step.uses).toMatch(/^actions\/github-script/);
+      expect(step.with?.['github-token']).toBe('${{ steps.app-token.outputs.token }}');
+    });
+
+    it('runs after the publish step and before the wake-up dispatch', () => {
+      const doc = loadWorkflow();
+      const steps = doc.jobs.publish?.steps ?? [];
+      const publishIndex = steps.findIndex((s) => s.name === 'Publish immutable candidate result');
+      const fallbackIndex = steps.findIndex(
+        (s) => s.name === 'Mark candidate check retryable if publishing failed',
+      );
+      const wakeIndex = steps.findIndex((s) => s.name === 'Wake merge-train reconciliation');
+      expect(fallbackIndex).toBeGreaterThan(publishIndex);
+      expect(wakeIndex).toBeGreaterThan(fallbackIndex);
+    });
+
+    it('posts a cancelled conclusion for the fingerprinted candidate check', async () => {
+      const doc = loadWorkflow();
+      const step = getFallbackStep(doc);
+      const script = step.with?.script;
+      expect(typeof script).toBe('string');
+
+      let createArgs:
+        | { conclusion: string; head_sha: string; external_id: string; output: { title: string } }
+        | undefined;
+      const github = {
+        rest: {
+          checks: {
+            create: async (args: typeof createArgs) => {
+              createArgs = args;
+              return { data: {} };
+            },
+          },
+        },
+      };
+      const context = { repo: { owner: 'nalfeo', repo: 'Crawler' } };
+      const previousEnv = {
+        CANDIDATE_SHA: process.env.CANDIDATE_SHA,
+        FINGERPRINT: process.env.FINGERPRINT,
+      };
+      process.env.CANDIDATE_SHA = 'b'.repeat(40);
+      process.env.FINGERPRINT = 'cafef00d';
+      try {
+        const run = new Function(
+          'github',
+          'context',
+          `return (async () => {\n${script}\n})();`,
+        ) as (github: unknown, context: unknown) => Promise<void>;
+        await run(github, context);
+      } finally {
+        for (const [key, value] of Object.entries(previousEnv)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+      expect(createArgs).toBeDefined();
+      expect(createArgs?.conclusion).toBe('cancelled');
+      expect(createArgs?.head_sha).toBe('b'.repeat(40));
+      expect(createArgs?.external_id).toBe('cafef00d');
+    });
+  });
+
+  it('reconciliation wake-up step runs with if: always(), even if publishing the check failed', () => {
+    // Regression coverage: this step previously had no `if:` at all, which
+    // defaults to the implicit `success()` condition. That silently skipped
+    // the dispatch whenever "Publish immutable candidate result" itself
+    // failed (e.g. a transient checks.create API error) -- exactly the
+    // failure/cancelled case reconcile most needs to be woken for, so it can
+    // consume/retry/bisect instead of stalling on the unreliable
+    // workflow_run/schedule fallback.
+    const raw = readFileSync(
+      path.join(REPO_ROOT, '.github/workflows/merge-train-validate.yml'),
+      'utf8',
+    );
+    const doc = parse(raw) as WorkflowDoc;
+    const steps = doc.jobs.publish?.steps ?? [];
+    const wakeStep = steps.find((s) => s.name === 'Wake merge-train reconciliation');
+    expect(wakeStep).toBeDefined();
+    expect(wakeStep?.if).toBe('always()');
   });
 });
