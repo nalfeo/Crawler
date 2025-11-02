@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "ci-recovery-markdown-marker",
+  "task_title": "Accept Markdown inline-code addressed markers",
+  "estimated_apples": 2,
+  "stages": {}
+}

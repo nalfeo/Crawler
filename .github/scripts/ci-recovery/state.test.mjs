@@ -613,15 +613,33 @@ test('markerNamesHead accepts full SHA and unambiguous prefix', () => {
   assert.equal(markerNamesHead('✅ Addressed in abc12: note', 'abc12345'), false); // < 7 chars
 });
 
-test('extractAddressedMarkerSha parses raw SHA and commit URL markers', () => {
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in abc1234def: note'), 'abc1234def');
-  assert.equal(
-    extractAddressedMarkerSha(
-      '✅ Addressed in <https://github.com/nalfeo/Crawler/commit/def5678abc1234ff00aa11bb22cc33dd44ee55ff>',
-    ),
-    'def5678abc1234ff00aa11bb22cc33dd44ee55ff',
-  );
-  assert.equal(extractAddressedMarkerSha('✅ Addressed in not-a-commit-link'), null);
+test('extractAddressedMarkerSha parses raw and inline-code SHA or commit URL markers', () => {
+  const commitSha = 'def5678abc1234ff00aa11bb22cc33dd44ee55ff';
+  const commitUrl = `https://github.com/nalfeo/Crawler/commit/${commitSha}`;
+  const accepted = new Map([
+    ['✅ Addressed in abc1234def: note', 'abc1234def'],
+    ['✅ Addressed in abc1234def).', 'abc1234def'],
+    [`✅ Addressed in <${commitUrl}>`, commitSha],
+    [`✅ Addressed in ${commitUrl},`, commitSha],
+    ['✅ Addressed in `abc1234def`: note', 'abc1234def'],
+    ['✅ Addressed in ``abc1234def``).', 'abc1234def'],
+    [`✅ Addressed in \`${commitUrl}\`: note`, commitSha],
+  ]);
+  for (const [body, expected] of accepted) {
+    assert.equal(extractAddressedMarkerSha(body), expected, body);
+  }
+
+  const rejected = [
+    '✅ Addressed in not-a-commit-link',
+    '✅ Addressed in https://github.com/nalfeo/Crawler/pull/1234',
+    '✅ Addressed in `abc1234def: note',
+    '✅ Addressed in abc1234def`: note',
+    '✅ Addressed in `abc1234`def`: note',
+    '✅ Addressed in ``abc1234def`: note',
+  ];
+  for (const body of rejected) {
+    assert.equal(extractAddressedMarkerSha(body), null, body);
+  }
 });
 
 test('shouldResolveThread accepts latest trusted commit URL marker on head lineage', () => {
