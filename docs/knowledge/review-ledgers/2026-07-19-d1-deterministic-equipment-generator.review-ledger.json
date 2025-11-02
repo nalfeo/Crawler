@@ -1,0 +1,29 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "d1-deterministic-equipment-generator",
+  "task_title": "D1: Deterministic equipment generator",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "1. Blocking: validateFrozenFields deferred-snapshot path fires on restore path too - fixed with allowDeferredSnapshot flag, gating expansion to createInput path only. 2. Catalog coverage test added proving all target-kind/rarity combos have legal shapes. 3. Suggestion: effect-catalog fingerprint/version - deferred as out-of-scope for this slice (catalog is frozen module constant, not runtime data). 4. Suggestion: deferred-snapshot seam tests added in new describe block."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
