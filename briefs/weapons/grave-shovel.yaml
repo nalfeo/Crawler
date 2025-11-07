@@ -1,0 +1,25 @@
+type: weapon
+name: grave-shovel
+description: |
+  A long polearm held vertically — blade at the top, grip at the bottom.
+  The blade is a wide, flat iron spade/shovel head: squared-off corners,
+  roughly rectangular with a slight concave scoop, riveted to the haft just
+  below the socket. The haft is weathered wood — dark brown with knot-holes,
+  grain lines, and grime. The blade is rusty iron: muted orange-brown oxide
+  over cold grey iron, with a thin highlight along the top edge. Grave-soil
+  markings: patches of dark earth crusted along the lower blade edge and
+  lower haft, a faint earthen shadow on the spade face. Simple wrapped grip
+  with a wooden or iron pommel knob at the base. The silhouette must read
+  unambiguously as a digging-polearm weapon — wide blade top, straight haft
+  — at a glance and clearly not be a sword or spear. No glow, no
+  enchantment, no blood, no skulls, no magic runes. Muted dungeon palette:
+  rust-orange, dirty iron-grey, dark earthy brown, with one subtle warm
+  highlight on the metal.
+# Grave-shovel is a vertical polearm: blade up, grip down.
+# Vertical orientation and 4x4 sheet inherited from data/sprite-types/weapon.json.
+# Anchor is inherited from data/sprite-types/weapon.json defaults.
+# judge.enabled=true inherited — VLM judge active for quality filtering.
+variations:
+  - cracked wooden haft with iron reinforcing bands
+  - wider, more rounded spade head with a visible edge nick
+minVariations: 6
