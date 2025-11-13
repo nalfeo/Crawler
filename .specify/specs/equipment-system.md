@@ -884,13 +884,13 @@ interface GeneratedEquipmentInstanceV1 {
 
 #### Registry Operations
 
-| Operation    | Signature (logical)                                                            | Failure contract                                          |
-| ------------ | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| `create`     | `(def, itemLevel, rng) → GeneratedEquipmentInstanceV1`                         | Throws on unknown `baseDefId` or invalid `itemLevel`.     |
-| `get`        | `(instanceId) → GeneratedEquipmentInstanceV1 \| undefined`                     | Returns `undefined` for an unknown ID (no throw).         |
-| `transfer`   | `(instanceId, fromContainer, toContainer) → void`                              | Throws if `instanceId` absent in `fromContainer`.         |
-| `replace`    | `(instanceId, updatedRecord) → void`                                           | Throws if `instanceId` unknown or `schemaVersion` differs.|
-| `validateOwnership` | `(instanceId, container) → boolean`                                     | Pure; never mutates registry state.                       |
+| Operation           | Signature (logical)                                        | Failure contract                                           |
+| ------------------- | ---------------------------------------------------------- | ---------------------------------------------------------- |
+| `create`            | `(def, itemLevel, rng) → GeneratedEquipmentInstanceV1`     | Throws on unknown `baseDefId` or invalid `itemLevel`.      |
+| `get`               | `(instanceId) → GeneratedEquipmentInstanceV1 \| undefined` | Returns `undefined` for an unknown ID (no throw).          |
+| `transfer`          | `(instanceId, fromContainer, toContainer) → void`          | Throws if `instanceId` absent in `fromContainer`.          |
+| `replace`           | `(instanceId, updatedRecord) → void`                       | Throws if `instanceId` unknown or `schemaVersion` differs. |
+| `validateOwnership` | `(instanceId, container) → boolean`                        | Pure; never mutates registry state.                        |
 
 ### Resolution Order (immutable after freeze)
 
@@ -936,7 +936,6 @@ static `WeaponDef` template.
 - The existing ten-slot active-ability limit remains authoritative.
 
 Rarities above Rare are not valid Floor 2 generation outcomes.
-
 
 ### Achievement Reward Contracts
 
@@ -990,15 +989,15 @@ If an attempt is made to enable a flag while a dependency is off, the runtime mu
 refuse the mutation (never auto-enable prerequisites silently). Invalid configurations are
 rejected rather than auto-corrected.
 
-| Flag ID                        | Depends on                                                            |
-| ------------------------------ | --------------------------------------------------------------------- |
-| `floor2EquipmentRegistry`      | (none — root flag)                                                    |
-| `floor2EquipmentCatalog`       | `floor2EquipmentRegistry`                                             |
-| `floor2EquipmentRewards`       | `floor2EquipmentCatalog`                                              |
-| `floor2EquipmentEconomy`       | `floor2EquipmentCatalog`                                              |
-| `floor2EquipmentUX`            | `floor2EquipmentRegistry`                                             |
-| `floor2EquipmentWorldInteg`    | `floor2EquipmentRegistry`, `floor2EquipmentCatalog`                   |
-| `floor2EquipmentAIMaintenance` | `floor2EquipmentRegistry`, `floor2EquipmentEconomy`                   |
+| Flag ID                        | Depends on                                          |
+| ------------------------------ | --------------------------------------------------- |
+| `floor2EquipmentRegistry`      | (none — root flag)                                  |
+| `floor2EquipmentCatalog`       | `floor2EquipmentRegistry`                           |
+| `floor2EquipmentRewards`       | `floor2EquipmentCatalog`                            |
+| `floor2EquipmentEconomy`       | `floor2EquipmentCatalog`                            |
+| `floor2EquipmentUX`            | `floor2EquipmentRegistry`                           |
+| `floor2EquipmentWorldInteg`    | `floor2EquipmentRegistry`, `floor2EquipmentCatalog` |
+| `floor2EquipmentAIMaintenance` | `floor2EquipmentRegistry`, `floor2EquipmentEconomy` |
 
 Disabling a flag with persisted items preserves existing instances (no forced unequip or data loss).
 
@@ -1216,7 +1215,7 @@ The existing active-ability slot limit remains the authority.
 
 - **Save format**: `PlayerUniqueEquipmentState` is serialized alongside the
   generated-instance registry. It is initialized to `{ ownedUniques: [],
-  equippedUniques: {}, upgradeLevels: {} }` for saves predating Unique support.
+equippedUniques: {}, upgradeLevels: {} }` for saves predating Unique support.
 - **Forward compatibility**: Unknown `UniqueEquipmentId` values in `ownedUniques`
   are retained verbatim on load. No migration discards or rerolls known Uniques.
 - **Migration**: A save that contains a `uniqueId` that no longer exists in the
