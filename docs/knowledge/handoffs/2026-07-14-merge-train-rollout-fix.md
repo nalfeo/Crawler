@@ -47,7 +47,21 @@ protection.
 
 ## Retrospective
 
+### Lessons Learned
+
 The initial rollout tests covered deterministic synthetic commits but did not
 exercise hosted-runner identity or the distinct permission boundary between
 repository App tokens and the workflow's built-in Actions token. The corrected
 tests now make both runtime assumptions explicit.
+
+### Mistakes Made
+
+Tests relied only on synthetic commits without verifying the hosted-runner
+permission model, masking the App token vs. Actions token identity boundary
+until the first real CI run.
+
+### Opportunities for Future Improvement
+
+Any future workflow identity or permission change should update the rollout
+tests first, so the boundary assumptions are validated before deployment rather
+than discovered at canary time.

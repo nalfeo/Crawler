@@ -32,6 +32,20 @@ ci-policy
 
 ## Retrospective
 
+### Lessons Learned
+
 The recovery rollout mode and explicit lease ownership are separate concerns:
 shadowing automated repair must not disable the ownership primitive that prevents
 automation and shepherds from racing.
+
+### Mistakes Made
+
+The dry-run mode accidentally blocked lease persist operations, causing heartbeat
+failures for leases that were never successfully acquired under dry-run, because
+the ownership primitive was gated on the same rollout flag as automated repair.
+
+### Opportunities for Future Improvement
+
+Add explicit rollout-mode matrix tests verifying each lease operation (acquire,
+heartbeat, release) independently across all three modes (off / dry-run / on) to
+catch similar regressions before they reach production.

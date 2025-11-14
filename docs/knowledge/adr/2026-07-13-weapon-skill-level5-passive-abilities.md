@@ -1,6 +1,8 @@
 # ADR 0061: Level-5 Weapon Skill Passive Abilities with Weapon Prerequisites
 
-**Status:** Accepted
+## Status
+
+Accepted
 
 ## Date
 

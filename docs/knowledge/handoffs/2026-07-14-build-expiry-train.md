@@ -373,11 +373,24 @@ wave of 5 unresolved Copilot review threads:
 
 ## Retrospective
 
+### Lessons Learned
+
 - JavaScript function placement inside a nearby function can survive syntax
   checks while failing only on a rare state-machine branch; targeted lint and
   branch execution tests are required for workflow scripts.
 - A commit-message footer is useful provenance for humans but is not a security
   attestation. Post-promotion suppression now requires a successful exact-SHA
   check run with an external fingerprint.
-- Build-expiry savings remain safe when heavy PR evidence is immutable and the
-  combined candidate receives a small integration plus security gate.
+
+### Mistakes Made
+
+A helper function was accidentally nested inside an outer function, bypassing
+static analysis while silently breaking on a state-machine path that was not
+covered by the existing test suite.
+
+### Opportunities for Future Improvement
+
+Build-expiry savings remain safe when heavy PR evidence is immutable and the
+combined candidate receives a small integration plus security gate. Future
+work should add branch-coverage tests for every state-machine path in merge
+train workflow scripts to catch similar misplacements earlier.

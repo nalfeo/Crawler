@@ -177,17 +177,29 @@ train and re-observe a clean cycle.
 
 ## Retrospective
 
+### Lessons Learned
+
 - The GitHub Actions `schedule` cron and `workflow_run` triggers on
   `merge-train.yml` were observed running unreliably under heavy concurrent
-  Actions load in this shared repo (real gaps of 1.5–2 hours vs. the
-  configured 5-minute cron; `workflow_run` failing to fire after several
-  validation completions). This is an operational observation, not something
-  fixed in this session — worth a future look if it recurs, but out of scope
-  for this bug fix.
-- This incident is a strong, concrete instance of the general lesson from
-  #1151/DEC-021 (list-summary vs. detail hydration) recurring one layer up
-  the stack: an eventually-consistent, secondary GitHub API signal
-  (`merged`/`merged_at`) was treated as synchronous and authoritative, and a
-  lag in it was allowed to override/block already-established ground truth
-  (the atomic git push). Worth keeping in mind for any future GitHub-API-based
-  postcondition check in this codebase.
+  Actions load (real gaps of 1.5–2 hours vs. the configured 5-minute cron;
+  `workflow_run` failing to fire after several validation completions). This is
+  an operational observation, not something fixed in this session — worth a
+  future look if it recurs.
+- This incident is a concrete instance of the recurring pattern from
+  #1151/DEC-021 (list-summary vs. detail hydration): an eventually-consistent,
+  secondary GitHub API signal (`merged`/`merged_at`) was treated as synchronous
+  and authoritative, and a lag in it was allowed to override already-established
+  ground truth (the atomic git push). Any future GitHub-API-based postcondition
+  check should prefer the git ref over the REST API merge state.
+
+### Mistakes Made
+
+The postcondition check used `merged`/`merged_at` from the GitHub PR REST API,
+which can lag the actual git push, causing batch promotion to incorrectly block
+on PRs that had already been merged and their branch deleted.
+
+### Opportunities for Future Improvement
+
+A periodic sweep for closed-but-still-labeled PRs would serve as defense in
+depth beyond the coupling fix. Track in issue #1154 if the stale-label pattern
+recurs.
