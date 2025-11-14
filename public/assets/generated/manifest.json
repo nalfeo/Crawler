@@ -1895,6 +1895,19 @@
       "type": "weapon",
       "contentHash": "07299e230d7ccfd469dbea9de3053da5f49405f9af97188a8bd77d14fa4c1fb3"
     },
+    "flame-tongs-var-0": {
+      "briefId": "flame-tongs",
+      "spriteName": "flame-tongs-var-0",
+      "assetPath": "generated/flame-tongs-var-0.png",
+      "approvedAt": "2026-07-18T02:31:00.000Z",
+      "sourceRun": "manual-issue-1470",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "manual",
+      "judgeScore": null,
+      "type": "weapon",
+      "contentHash": "8fe853d18f6b7507ff67eb471b44486d9c8cb84d5409243adb203acd4a4b5c7a"
+    },
     "floor-key-bronze-placeholder": {
       "briefId": "floor-key-bronze",
       "spriteName": "floor-key-bronze",
