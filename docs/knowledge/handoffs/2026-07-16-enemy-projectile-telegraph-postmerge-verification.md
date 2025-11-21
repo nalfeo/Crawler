@@ -102,7 +102,9 @@ equivalent evidence per repo convention (rule #9).
 
 ### Mistakes Made
 
-None.
+- I first invoked the review-ledger initializer through the npm/PowerShell
+  wrapper even though this environment mis-parses those flags; switching to the
+  direct Node CLI avoided the wrapper-specific failure.
 
 ### Opportunities for Future Improvement
 

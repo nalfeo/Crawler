@@ -12,11 +12,16 @@
  */
 
 /**
- * Which stat a modifier targets. `speed` is folded in at movement read-sites;
- * `hpRegen` is applied per-tick by the system as a heal-over-time. Extensible to
- * `defense` / `dot` etc. without touching the framework.
+ * Which stat a modifier targets. `speed` and `attackSpeed` are folded in at
+ * read-sites (movement / weapon-cooldown respectively); `hpRegen` is applied
+ * per-tick by the system as a heal-over-time. Extensible to `defense` / `dot`
+ * etc. without touching the framework.
+ *
+ * `attackSpeed` is a multiplicative attack-rate factor (1 = unchanged, 0.75 =
+ * attacks 25% slower). `getEffectiveCooldownMs` (weaponSystem) divides the base
+ * cooldown by this product so a slow debuff lengthens the cooldown.
  */
-export type StatusEffectStat = 'speed' | 'hpRegen';
+export type StatusEffectStat = 'speed' | 'hpRegen' | 'attackSpeed';
 
 /**
  * How a modifier composes with the base value.

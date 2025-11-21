@@ -68,8 +68,23 @@ Observed in `npm run lab` (`?lab=equipment`) — LOAD row now shows e.g. `3/45lb
 
 ## Retrospective
 
-**What went well**: The required-field approach caught all 26 defs at compile time. The `computeEquippedWeightLb` dedup approach exactly mirrors the existing `uniqueEquippedDefs` invariant.
+### Lessons Learned
 
-**What was tricky**: The `toFixed(1)` JS precision bug for 0.25 lb values was caught by Gemini — a good example of multi-model review finding implementation-level bugs. The LOAD display denominator issue (Sonnet) was also non-obvious: the encumbrance design uses `unburdened_cap` as the carry threshold, but displaying that as `X/15lb` when carrying 37 lb is confusing.
+- Making `weightLb` required caught all 26 definitions at compile time, and
+  mirroring the existing equipped-instance dedup invariant kept multi-slot
+  equipment from being counted more than once.
+- Multi-model review caught two non-obvious presentation defects: JavaScript's
+  `toFixed(1)` rounding for quarter-pound values and the misleading LOAD
+  denominator when the player is already encumbered.
 
-**Missed**: The test header initially documented "representative loadouts at STR 1" without noting that steel-pauldrons give +1 STR, making the real in-game band different from what the test implied. Resolved by clarifying the comment.
+### Mistakes Made
+
+- The initial test header described representative loadouts at Strength 1
+  without accounting for steel pauldrons granting +1 Strength, so its prose did
+  not match the real in-game band. The comment was corrected during review.
+
+### Opportunities for Future Improvement
+
+- Extract the shared unique-equipped-instance traversal used by encumbrance and
+  effective stats, then wire the already-authored movement penalties through the
+  canonical movement calculation with dedicated lab and runtime evidence.
