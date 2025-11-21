@@ -1,6 +1,7 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
 import { DeathTimer, Enemy, Health, Player } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
+import { clearMobAbility } from '../mob-abilities/runtime.js';
 import type { GameWorld } from '../world.js';
 import { createLogger } from '../../shared/logger.js';
 
@@ -18,6 +19,21 @@ export function healthSystem(world: GameWorld): void {
     const currentHealth = health.current[eid] ?? 0;
 
     if (currentHealth <= 0) {
+      // Clear status-effect sidecar for every dead entity so that Tarnished
+      // indicators and other debuffs don't persist through the corpse linger.
+      // This must run before the DeathTimer early-return so entities with a
+      // linger timer are also cleaned up.
+      world.statusEffectsByEntity.delete(eid);
+
+      // Also clear any in-flight ability state (telegraph cue, announcement,
+      // owned status effects) for a dead caster before the DeathTimer linger
+      // return. Without this, mobAbilitySystem (which runs in preSystems before
+      // healthSystem) can leave a stale cue on a dead boss that PhaserBridge.sync
+      // renders for the rest of the corpse-linger window. The burst queue
+      // (pendingBursts) is NOT cleared here so a resolution VFX that already
+      // fired in the same step still renders correctly.
+      clearMobAbility(world, eid);
+
       // Skip entities with DeathTimer — they're handled by deathTimerSystem
       if (hasComponent(world.ecs, eid, DeathTimer)) {
         continue;

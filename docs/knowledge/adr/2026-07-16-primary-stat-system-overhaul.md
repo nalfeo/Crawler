@@ -70,13 +70,13 @@ considered, 19 concerns resolved — see
 
 1. **`EffectiveStats` becomes the sole runtime stat snapshot.** The legacy
    `Stats` component/store and the computational game-layer `statsSystem` are
-   deleted outright. `core/systems/statSystem.ts` is now the only per-frame
+   deleted outright. `src/core/systems/statSystem.ts` is now the only per-frame
    stat recompute: it prunes expired `world.statModifiers`, calls the one
    pure derivation (`computeEffectiveStatsFromLoadout` — base, core-stat
    points, unique equipped-item bonuses, active modifiers), and syncs
    `Health.max/current` by delta. Allocation/modifier APIs (`spendPoints`,
    `addStatModifier`, `removeStatModifiers`) remain in
-   `game/systems/statsSystem.ts` as a non-system module — the file keeps its
+   `src/game/systems/statsSystem.ts` as a non-system module — the file keeps its
    name but no longer exports a `(world) => void` system.
 2. **Player Health seeds to derived max HP at spawn.**
    `equipmentSystem.initializeBaseStats` now calls `recomputeEffectiveStats`
@@ -85,7 +85,7 @@ maxHp`, so a base-CON(1) character starts at exactly 170 HP
    (`BASE_MAX_HP_FLOOR = 160` chosen so `160 + 10×1 === 170`) and `statSystem`'s
    delta-sync sees `prevMaxHp === newMaxHp` on the first tick — no creep.
 3. **Legacy modifier semantics are preserved through an explicit fold table**
-   (`foldLegacyStatModifier`, `shared/stats.ts`): additive `damage` → flat
+   (`foldLegacyStatModifier`, `src/shared/stats.ts`): additive `damage` → flat
    `damageBonus`; multiplicative `damage` → generic `damagePercent`; every
    other legacy stat key (`maxHp`/`armor`/`attackSpeed`/`moveSpeed`/
    `accuracy`/`pickupRange`/`projectileSpeed`/`projectileCount`) folds
@@ -110,7 +110,7 @@ damagePercent`, so a fresh character's spell damage is unchanged from
    typed-primary + optional crit treatment — closing the target-shape-gated
    bug above. Numeric zero decodes to `'environment'`/`'unscaled'`/`false`/
    `false` (fail-closed). A persisted `DamageMeta` ECS store
-   (`core/damage-meta.ts`, fail-closed zero-decode, auto-cleared by the
+   (`src/core/damage-meta.ts`, fail-closed zero-decode, auto-cleared by the
    existing generic entity-recycle store clearing) carries this metadata onto
    delayed damage-bearing entities (player projectiles, `AreaDamage`
    explosions from traps/AoE-on-impact) that a single collision system
@@ -131,7 +131,8 @@ false` (the INT scaling already happened) but `canCrit: true`. Life-drain
    heals resolve from their OWN authored base+flag at the same effective INT,
    independent of damage dealt.
 7. **Spell unlock gating is untouched; every mana-shaped surface is deleted**
-   rather than neutered: world `playerMp`/`playerMaxMp`, `shared/mana.ts`,
+   rather than neutered: world `playerMp`/`playerMaxMp`, the former
+   _src/shared/mana.ts_,
    `manaSystem` (+ its lab/pipeline wiring), `mpCost` (schema, data,
    presentation, gating, spending), the HUD mana bar/layout row, the
    mana-flask consumable, and the `mana-efficiency` skill perk (renamed
@@ -154,11 +155,11 @@ moveSpeedBonus) × statusMultiplier × encumbranceMultiplier` — status
    keys (some registries still reference them) but the obsolete INT→
    projectile-speed and LUCK→pickup-range derivations are removed — nothing
    currently writes non-zero values into them.
-10. **Encumbrance is fully wired but currently inert.** `shared/encumbrance.ts`
+10. **Encumbrance is fully wired but currently inert.** `src/shared/encumbrance.ts`
     is pure band math: thresholds = body weight + 40/80/120 lb + 5 lb per
     effective Strength point; bands (inclusive upper bound) unburdened(×1) /
     encumbered(×0.85) / heavy(×0.70) / overloaded(×0.70).
-    `core/encumbrance.ts` combines the ECS `Weight` component (body mass),
+    `src/core/encumbrance.ts` combines the ECS `Weight` component (body mass),
     deduped equipped-item weight (`computeEquippedWeightLb` — a multi-slot
     item's `weightLb` counts once, not once per occupied slot), and effective
     Strength. `EquipmentUI` now shows equipped weight / total mass / band.
@@ -170,13 +171,14 @@ moveSpeedBonus) × statusMultiplier × encumbranceMultiplier` — status
     else.** New sequence: Constitution → 8, Dexterity → 5, offense (Strength for a
     physical weapon, Intelligence for `WeaponType.MAGIC`) → 5,
     Wisdom → 5, offense → 11, Constitution for the remainder. Weapon personas
-    (`game/ai/weapon-personas.ts`) stay disabled by default; only their
+    (`src/game/ai/weapon-personas.ts`) stay disabled by default; only their
     compatibility with the new stat schema was verified, no new persona
     tuning was added.
 12. **Labs updated, mana lab deleted.** `stats-lab`, `stat-lab`, `level-up-lab`,
     `abilities-lab` (and its `weapon-skill-lab`/`ux-snapshot-lab` neighbors)
     were updated to the new `initializeBaseStats` + core `statSystem`
-    pipeline and the weightLb/mana-free schema; `src/labs/mana-lab/` and its
+    pipeline and the weightLb/mana-free schema; the former _src/labs/mana-lab/_
+    and its
     `lab-main.ts` registration are deleted.
 13. **This ADR supersedes** `2026-07-10-shared-stat-allocation-and-runtime-
 derivations.md` (Strength `damagePercent` scaling, the `weight`
@@ -279,11 +281,11 @@ derivations.md` (Strength `damagePercent` scaling, the `weight`
   physical/magic split, fail-closed damage metadata threaded through a
   bitecs typed-array ECS) that no general-purpose stat library models
   out of the box; adopting one would mean writing an adapter layer at least
-  as large as the ~200 lines of pure functions in `shared/stats.ts` while
+  as large as the ~200 lines of pure functions in `src/shared/stats.ts` while
   losing determinism guarantees (no library dependency to audit for hidden
   `Math.random()`/`Date.now()`) and fighting the library's own data model
   against bitecs's typed-array-per-field storage. The existing in-repo
   pattern — plain pure functions plus Zod for the one place data crosses a
-  trust boundary (`game/abilities/registry.ts`'s catalog parsing) — already
+  trust boundary (`src/game/abilities/registry.ts`'s catalog parsing) — already
   fits a deterministic, typed-array ECS precisely and needed no new
   dependency.

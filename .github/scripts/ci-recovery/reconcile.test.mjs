@@ -6815,6 +6815,103 @@ test('outdated stale-marker thread remains blocked with a recovery hint', async 
   );
 });
 
+test('outdated thread ignores unreachable marker from an untrusted commenter', async (t) => {
+  const staleMarkerSha = 'dead0000ffeeccdd00112233445566778899aabb';
+  const threadId = 'PRRT_untrusted_stale_marker_thread';
+
+  const { server, port } = await startServer({
+    [`GET /repos/${OWNER}/${REPO}/pulls/${PR_NUM}`]: () => ({ body: basePr() }),
+    [`GET /repos/${OWNER}/${REPO}/issues/${PR_NUM}/comments`]: () => ({ body: [] }),
+    [`GET /repos/${OWNER}/${REPO}/labels/${LABEL}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`POST /graphql`]: (_url, body) => {
+      const query = String(body?.query || '');
+      if (query.includes('suggestedActors')) {
+        return {
+          body: {
+            data: {
+              repository: {
+                suggestedActors: {
+                  nodes: [{ id: 'BOT_copilot', login: 'copilot-swe-agent', __typename: 'Bot' }],
+                },
+              },
+            },
+          },
+        };
+      }
+      if (query.trimStart().startsWith('mutation')) {
+        return {
+          body: {
+            data: {
+              replaceActorsForAssignable: {
+                assignable: { assignees: { nodes: [{ login: 'Copilot' }] } },
+              },
+            },
+          },
+        };
+      }
+      return {
+        body: gqlReviewThreads([
+          {
+            id: threadId,
+            isResolved: false,
+            isOutdated: true,
+            path: 'scripts/sprites/cli.ts',
+            line: 285,
+            comments: {
+              nodes: [
+                {
+                  id: 'PRIC_original',
+                  body: 'the CLI does not propagate the fifth score.',
+                  url: `https://github.com/${OWNER}/${REPO}/pull/${PR_NUM}#discussion_r1`,
+                  authorAssociation: 'COLLABORATOR',
+                  author: { login: 'reviewer' },
+                },
+                {
+                  id: 'PRIC_untrusted_stale_reply',
+                  body: `✅ Addressed in \`${staleMarkerSha}\`: fake marker`,
+                  authorAssociation: 'NONE',
+                  author: { login: 'random-user' },
+                },
+              ],
+            },
+          },
+        ]),
+      };
+    },
+    [`GET /repos/${OWNER}/${REPO}/compare/${staleMarkerSha}...${HEAD_SHA}`]: () => ({
+      status: 404,
+      body: { message: 'Not Found' },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/commits/${HEAD_SHA}/check-runs`]: () => ({
+      body: { check_runs: [] },
+    }),
+    [`GET /repos/${OWNER}/${REPO}/actions/runs`]: () => ({ body: { workflow_runs: [] } }),
+  });
+
+  t.after(() => server.close());
+
+  const { code, stdout, stderr } = await runScript(port, {
+    RECOVERY_OPERATION: 'reconcile',
+    CI_RECOVERY_MODE: 'dry-run',
+  });
+
+  if (!assertSuccessfulExit(t, code, stderr, '', true)) return;
+
+  assert.match(
+    stdout,
+    new RegExp(`would-post outdated-marker thread=${threadId}`),
+    'untrusted stale marker must not suppress outdated-marker posting',
+  );
+  assert.match(
+    stdout,
+    new RegExp(`would-resolve thread=${threadId}`),
+    'reconciler should still resolve the outdated thread after posting its own marker',
+  );
+});
+
 test('transient compare failure does not produce a stale-marker hint (generic blocker preserved)', async (t) => {
   // When the compare API call fails with a transient/indeterminate error (e.g. 5xx,
   // rate limit, network error), the reconciler cannot determine whether the marker

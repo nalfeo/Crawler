@@ -1,0 +1,68 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "queen-mab-verdigris-glamour",
+  "task_title": "Implement Queen Mab Verdigris Glamour arena slice",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.6-terra",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "minor",
+      "notes": "Adversarial reviewer enumerated 3 alternatives to the chosen design (integer frame-deadline scheduler vs float timer+epsilon; immutable MobAbilityCast event record vs mutable instance state; single typed adapter vs a discriminated-union ability-kind registry) and argued against the float-timer + single-adapter choice. 6 concerns: (1) float timer accumulation — ACCEPTED: dt is exactly GAME.DELTA_MS, all catalog durations are integer multiples of it, and a 1e-6 epsilon absorbs residual; frame indices 540/630/1170/1260 verified exact. (2) global encounter reset semantics — ACCEPTED for the single-boss arena; documented as a future multi-encounter extension point. (3) circle-only geometry + player-only targeting — ACCEPTED as the incremental typed-adapter path; new ability kinds add adapters, not a DSL. (4) re-register overwrite of a live instance — FIXED: registerMobAbility now clears prior cue + owned effects first. (5) invalid/dead locked target at telegraph time — FIXED downstream in code review: findDefaultTarget skips dead/absent players so beginTelegraph re-arms with no phantom cast. (6) renderer reads cached geometry — ACCEPTED: renderer is presentation-only and consumes the committed public cue state, never simulation state. Divergence 'minor': the chosen catalog-driven typed-adapter + fixed-step design held; changes were hardening, not a re-architecture."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-opus-4.8",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
