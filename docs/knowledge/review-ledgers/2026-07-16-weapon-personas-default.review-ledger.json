@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "weapon-personas-default",
+  "task_title": "Enable weapon personas by default",
+  "estimated_apples": 2,
+  "stages": {}
+}

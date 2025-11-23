@@ -31,7 +31,7 @@ export const WEAPON_PERSONAS: Readonly<Partial<Record<string, WeaponPersona>>> =
   },
   bow: {
     name: 'Kite Archer',
-    minimumTargets: { constitution: 5, dexterity: 5 },
+    minimumTargets: { constitution: 7, dexterity: 5 },
     statWeights: {
       dexterity: 5,
       constitution: 4,

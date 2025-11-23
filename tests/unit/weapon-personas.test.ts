@@ -39,14 +39,28 @@ describe('weapon AI personas', () => {
     expect(allocation).toEqual({ constitution: 6 });
   });
 
-  it('keeps legacy allocation by default and diverges only when enabled', () => {
+  it('enables persona allocation by default and preserves legacy fallback when disabled', () => {
     const world = createTestWorld({ seed: 42 });
     const playerEid = spawnPlayer(world, 0, 0);
     setActiveWeaponDef(world, getWeaponDef('bow')!);
-    expect(computeAiStatAllocation(world, playerEid, 5)).toEqual(
-      computeAutoStatAllocation(world, playerEid, 5),
+
+    expect(computeAiStatAllocation(world, playerEid, 8)).toEqual(
+      computeAiStatAllocation(world, playerEid, 8, true),
     );
-    expect(computeAiStatAllocation(world, playerEid, 5, true)).toEqual({ constitution: 5 });
+    expect(computeAiStatAllocation(world, playerEid, 8)).toEqual({
+      constitution: 7,
+      dexterity: 1,
+    });
+    expect(computeAiStatAllocation(world, playerEid, 8)).not.toEqual(
+      computeAutoStatAllocation(world, playerEid, 8),
+    );
+    expect(computeAiStatAllocation(world, playerEid, 8, true)).toEqual({
+      constitution: 7,
+      dexterity: 1,
+    });
+    expect(computeAiStatAllocation(world, playerEid, 8, false)).toEqual(
+      computeAutoStatAllocation(world, playerEid, 8),
+    );
   });
 
   it('falls back to legacy allocation for an unmapped equipped weapon', () => {

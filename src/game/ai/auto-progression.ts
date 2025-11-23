@@ -159,7 +159,7 @@ export function autoFloor1ProgressionSystem(
   world: GameWorld,
   playerEid: number,
   aiProvider?: AIInputProvider,
-  weaponPersonas = false,
+  weaponPersonas = true,
 ): void {
   if (!world.floorScenario) {
     return;
@@ -266,7 +266,7 @@ export function computeAiStatAllocation(
   world: GameWorld,
   playerEid: number,
   available: number,
-  weaponPersonas = false,
+  weaponPersonas = true,
 ): Partial<Record<PrimaryStatId, number>> {
   const persona = weaponPersonas ? getWeaponPersonaForWorld(world) : undefined;
   return persona
@@ -277,7 +277,7 @@ export function computeAiStatAllocation(
 export function autoAllocateStatPoints(
   world: GameWorld,
   playerEid: number,
-  weaponPersonas = false,
+  weaponPersonas = true,
 ): void {
   const pl = world.playerLevel;
   if (pl.unspentPoints <= 0) {

@@ -644,7 +644,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     visualNavmesh: persisted?.aiConfig?.visualNavmesh ?? false,
     threatPreviewFrames: persisted?.aiConfig?.threatPreviewFrames ?? 0,
     autoPauseOnDamage: persisted?.aiConfig?.autoPauseOnDamage ?? false,
-    weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? false,
+    weaponPersonas: persisted?.aiConfig?.weaponPersonas ?? true,
     merchantWeaponPurchase: persisted?.aiConfig?.merchantWeaponPurchase ?? false,
     seamWeight: persisted?.aiConfig?.seamWeight ?? 0,
   };
@@ -1256,7 +1256,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const aiModesFolder = gui.addFolder('AI Modes (A/B)');
   aiModesFolder
     .add(aiConfig, 'weaponPersonas')
-    .name('Weapon personas (experimental)')
+    .name('Weapon personas')
     .onChange(() => {
       persistLabState();
     });
