@@ -2498,13 +2498,11 @@ export class BehaviorTreeAI implements AIInputProvider {
         // The enemy is pinned at the locked origin for the whole telegraph
         // (see enemyAISystem.ts's movement freeze), so only the player needs
         // to be projected forward to the instant the virtual shot spawns.
-        // The virtual projectile must start from the SAME point the real one
-        // will — fireEnemyProjectileFrom() spawns at origin + dir *
-        // MUZZLE_OFFSET, not the raw locked origin — otherwise this dodge
-        // math models a shot ~MUZZLE_OFFSET/projectileSpeed frames further
-        // away than it will actually be, drifting from the real threat.
-        const spawnX = originX + dirX * ENEMY_PROJECTILE.MUZZLE_OFFSET;
-        const spawnY = originY + dirY * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+        // The virtual projectile starts at the exact locked ECS/visual pivot,
+        // matching fireEnemyProjectileFrom(). Keeping the raw origin here makes
+        // the AI's threat timing identical to the real projectile spawn.
+        const spawnX = originX;
+        const spawnY = originY;
         const projectedPlayerX = ctx.playerX + playerVx * remainingFrames;
         const projectedPlayerY = ctx.playerY + playerVy * remainingFrames;
         const relativeX = spawnX - projectedPlayerX;

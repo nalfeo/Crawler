@@ -27,7 +27,6 @@
     "speed": 0.375,
     "fireCooldownMs": 1200,
     "damage": 8,
-    "muzzleOffset": 1.5,
     "accuracy": 0.9,
     "telegraphMs": 250
   },

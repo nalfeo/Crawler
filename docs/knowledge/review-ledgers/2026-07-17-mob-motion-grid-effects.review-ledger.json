@@ -1,0 +1,45 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "mob-motion-grid-effects",
+  "task_title": "Expand mob motion effects and align hostile projectile origins",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-opus-4.8",
+      "concerns_count": 8,
+      "resolved_count": 8,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "major_fork",
+      "notes": "Overall divergence remains major_fork from the original brief-centric plan: archetype-first + variant-second was selected so shared art cannot merge ranged and melee behavior. Supplemental projectile-origin red-team approved the pivot contract with detail changes. Alt A keep muzzleOffset=0 rejected because the scalar would be stale surface conflicting with the future generic weapon anchor. Alt B implement editor/pipeline/runtime weapon anchors now rejected as scope expansion; tracked separately with ECS-pivot fallback. Alt C reuse generated hold anchors rejected because hold is an attachment point and varies between center and feet. Adopted all eight concerns: exact raw-pivot spawn assertions for immediate and delayed fire; BT horizon fixtures moved to x=0 without weakening thresholds; timing/RNG parity wording replaces false byte-parity claims; no defensive nudge that would violate exact pivot spawn; paired large-N GitHub sweep; virtual-threat rationale rewritten; telegraph ADR amended; zero stale muzzleOffset references required."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 1,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

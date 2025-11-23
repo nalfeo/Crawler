@@ -49,6 +49,11 @@ export const PLAYER_SPEED: number = tuning.player.speed;
 /** Fallback blood colour (red) used when an entity/event carries no explicit bloodColor. */
 export const DEFAULT_BLOOD_COLOR = 0xcc0000;
 
+/** Runtime presentation window for a dead enemy before its corpse entity is reaped. */
+export const CORPSE = {
+  LINGER_MS: 3_000,
+} as const;
+
 export const WeaponType = {
   MELEE: 0,
   RANGED: 1,
@@ -99,7 +104,6 @@ export const ENEMY_PROJECTILE = {
   SPEED: tuning.enemyProjectile.speed,
   FIRE_COOLDOWN_MS: tuning.enemyProjectile.fireCooldownMs,
   DAMAGE: tuning.enemyProjectile.damage,
-  MUZZLE_OFFSET: tuning.enemyProjectile.muzzleOffset,
   ACCURACY: tuning.enemyProjectile.accuracy,
   /**
    * Default telegraph delay (ms) before a hostile projectile fires, used when

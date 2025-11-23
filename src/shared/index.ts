@@ -1,5 +1,6 @@
 export {
   GAME,
+  CORPSE,
   FLOOR,
   PLAYER_SPEED,
   SAFE_ROOM,
