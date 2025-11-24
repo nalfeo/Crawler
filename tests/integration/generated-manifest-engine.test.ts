@@ -202,6 +202,7 @@ describe('generated manifest -> engine chain (fixture)', () => {
 });
 
 describe('generated manifest -> engine chain (real repo manifest)', () => {
+  const itWithRepoManifest = existsSync(REPO_MANIFEST) ? it : it.skip;
   // Build the real-manifest registry ONCE for the table-driven item cases below,
   // rather than re-reading + re-parsing the on-disk manifest for every row.
   let sharedRealRegistry: Awaited<ReturnType<typeof fetchGeneratedSpriteRegistry>> | null = null;
@@ -240,6 +241,38 @@ describe('generated manifest -> engine chain (real repo manifest)', () => {
     expect(registry.version).toBe(GENERATED_MANIFEST_VERSION);
     expect(typeof registry.size).toBe('number');
   });
+
+  itWithRepoManifest(
+    'loads and preloads the shipped Floor 2 bone-saw runtime key from the real manifest',
+    async () => {
+      if (sharedRealRegistry === null) {
+        throw new Error('expected shared real generated-sprite registry to initialize');
+      }
+      const runtimeKey = 'equipment/weapon/bone-saw';
+      const entry = sharedRealRegistry.lookup(runtimeKey);
+      if (entry === null) {
+        throw new Error(`missing shipped generated-manifest entry for ${runtimeKey}`);
+      }
+      expect(entry.textureKey).toBe(runtimeKey);
+      expect(entry.assetPath).toBe('generated/equipment/weapon/bone-saw.png');
+      expect(entry.sourceRun).not.toBe('placeholder');
+
+      const queued: Array<{ textureKey: string; url: string }> = [];
+      preloadGeneratedSprites(
+        { image: (textureKey, url) => queued.push({ textureKey, url }) },
+        sharedRealRegistry,
+      );
+      expect(queued).toContainEqual({
+        textureKey: runtimeKey,
+        url: '/assets/generated/equipment/weapon/bone-saw.png',
+      });
+      expect(
+        existsSync(
+          path.resolve(__dirname, '../../public/assets/generated/equipment/weapon/bone-saw.png'),
+        ),
+      ).toBe(true);
+    },
+  );
 
   // Every migratable Floor-1 item must resolve — BY ITEM ID — to its real,
   // approved generated art, never the 2×2 placeholder. This is the deterministic
