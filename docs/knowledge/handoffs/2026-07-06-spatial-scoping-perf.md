@@ -7,7 +7,7 @@ two reverts + parity proof made this a 3-apple shepherd, not the original 2)
 
 ## Systems touched
 
-fov, flow-field, enemy-ai, ai-pathfinding
+ai-pathfinding, ai-behavior-tree
 
 ## Outcome (what actually ships)
 

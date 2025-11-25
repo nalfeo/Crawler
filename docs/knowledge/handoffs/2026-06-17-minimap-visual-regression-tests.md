@@ -4,6 +4,10 @@
 **Branch:** `copilot/add-visual-regression-tests-minimap`  
 **Apples:** 🍎🍎 estimate → 🍎🍎 actual (exact)
 
+## Systems touched
+
+hud-ux
+
 ## What changed
 
 Added two new `describe` blocks to `tests/unit/hud-minimap.test.ts` covering the

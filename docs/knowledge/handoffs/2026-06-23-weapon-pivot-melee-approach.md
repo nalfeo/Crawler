@@ -16,6 +16,10 @@ Verdict: 🎯 Exact
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+weapons
+
 ## What Was Done
 
 ### Bug 1 — Weapon sprite pivot at player's right hand (`src/engine/PhaserBridge.ts`)

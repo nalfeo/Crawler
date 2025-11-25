@@ -14,6 +14,10 @@ Estimated: 🍎 x 1
 Actual: 🍎 x 1  
 Verdict: 🎯 Exact
 
+## Systems touched
+
+azure-infra, sprite-workflow
+
 ## What changed
 
 - Fixed issue-ingested sprite workflow blocking on model deployment split by allowing Azure brief selector and synth to share the same deployment.

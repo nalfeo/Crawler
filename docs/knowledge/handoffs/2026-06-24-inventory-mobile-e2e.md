@@ -27,6 +27,10 @@ suite. Pure test authoring would have been ~2.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+enemies, inventory, mobile-ux
+
 ## What Was Done
 
 This is the third and final PR of **PR Group D — Test & coverage hardening**.

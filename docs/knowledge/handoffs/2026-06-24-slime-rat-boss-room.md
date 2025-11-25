@@ -20,6 +20,10 @@ Verdict: 🎯 Exact
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies
+
 ## What Was Done
 
 Upgraded the slime rat room from a "walk in and fight" room to a proper boss room:

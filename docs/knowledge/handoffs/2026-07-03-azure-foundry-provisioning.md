@@ -26,6 +26,10 @@ clean on round 1 with zero rework.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+azure-infra
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-03-azure-foundry-provisioning.review-ledger.json`

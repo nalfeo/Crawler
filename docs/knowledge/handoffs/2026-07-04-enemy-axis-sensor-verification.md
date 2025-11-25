@@ -5,6 +5,10 @@
 **Persona**: Producer  
 **Apples**: 🍎 (verification-only, no code changes)
 
+## Systems touched
+
+enemies
+
 ## Summary
 
 Verified that the design decision from **2026-06-28 handoff** ("Enemies do NOT need an axis-orientation sensor") is correctly implemented across the sprite generation pipeline, tested, and enforced. No changes required.

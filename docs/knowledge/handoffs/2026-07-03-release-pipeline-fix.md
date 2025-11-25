@@ -1,5 +1,9 @@
 # 2026-07-03 - Release Pipeline Fix
 
+## Systems touched
+
+ci-policy
+
 ## Summary
 
 Diagnosed and fixed intermittent "Deployment failed, try again later" errors from

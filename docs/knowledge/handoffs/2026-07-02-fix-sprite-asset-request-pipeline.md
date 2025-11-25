@@ -26,6 +26,10 @@ review, code-review loop, multi-model review). Landed squarely where estimated.
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+quests
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-fix-sprite-asset-request-pipeline.review-ledger.json`

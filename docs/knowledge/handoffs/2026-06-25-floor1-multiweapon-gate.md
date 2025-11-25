@@ -5,6 +5,10 @@
 **Persona:** Gameplay/Systems Engineer
 **Apple estimate:** 🍎🍎🍎 | **Actual:** 🍎🍎🍎 | **Verdict:** 🎯 exact
 
+## Systems touched
+
+weapons
+
 ## What Was Done (ITEM #1 — PR #1)
 
 Expanded the headless Floor 1 completion gate from a single sword seed into a

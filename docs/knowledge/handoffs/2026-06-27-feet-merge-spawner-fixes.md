@@ -26,6 +26,10 @@ Verdict: 🎯 Exact — the parent pixels→feet inversion was already scored 5/
 This continuation session (merge + main's px backfill + CI) is part of that same
 task and PR, so no new apple file was created.
 
+## Systems touched
+
+enemies
+
 ## What Was Done
 
 Closed out PR #366 (`nalfeo-remove-pixels-use-feet`) by repeatedly merging

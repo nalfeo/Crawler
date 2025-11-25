@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — feature required coordinated core-map usage, engine rend
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+lighting
+
 ## What Was Done
 
 - Added `src/engine/lighting/light-field.ts` with configurable multi-resolution light buffers (`stepPx`), presets, dirty-rect support, occlusion-aware lighting compute, optional blur, and auto step fallback helpers.

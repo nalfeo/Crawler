@@ -20,6 +20,10 @@ Verdict: 🎯 Exact
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+ai-combat-balance
+
 ## What Was Done
 
 - Re-ran the headless Floor 1 completion gate to confirm the current winning-seed matrix still passes.

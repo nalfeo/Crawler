@@ -66,3 +66,7 @@ the item id slug exactly.
 (catalog bug), no ECS systems.
 
 **Verdict:** On target.
+
+## Systems touched
+
+inventory

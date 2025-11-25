@@ -4,6 +4,10 @@
 **Persona:** Game Designer  
 **Apples:** 🍎🍎 (Small) — estimated 🍎🍎, actual 🍎🍎
 
+## Systems touched
+
+ai-combat-balance, weapons
+
 ## Summary
 
 The AI runner now maintains a standoff distance for ranged weapons instead of charging directly onto enemies. With a ranged weapon equipped, the AI orbits at **75% of weapon range** rather than walking into melee range.

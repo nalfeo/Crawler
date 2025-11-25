@@ -21,6 +21,10 @@ Verdict: 🎯 Exact — N/A
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+devtools, inventory
+
 ## What Was Done
 
 Follow-up to #261. The inventory **lab** still rendered every item as a

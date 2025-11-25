@@ -4,6 +4,10 @@
 **Persona:** Game Designer (AI behavior tuning)  
 **Apple estimate:** 🍎🍎 (Small) — actual: 🍎🍎 ✅
 
+## Systems touched
+
+ai-pathfinding
+
 ## Problem
 
 "The player should be closing the gap" — the direct analog to the previous session's enemy fix (enemies no longer stall at tile center when player is nearby). The player AI was exhibiting two symmetric stall patterns that prevented tight pixel-level pursuit of enemies during ENGAGE.

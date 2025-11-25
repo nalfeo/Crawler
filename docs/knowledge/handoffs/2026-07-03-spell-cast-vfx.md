@@ -24,6 +24,10 @@ flash) with no scope creep and no schema migration.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies, vfx
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-03-spell-cast-vfx.review-ledger.json`

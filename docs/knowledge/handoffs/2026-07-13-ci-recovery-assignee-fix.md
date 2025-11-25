@@ -10,7 +10,7 @@ Removed the `existing-copilot-assignment` early-exit guard from `reconcile.mjs` 
 
 ## Systems touched
 
-ci-recovery
+ci-policy
 
 ## Files touched
 

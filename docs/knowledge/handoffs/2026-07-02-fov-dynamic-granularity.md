@@ -28,6 +28,10 @@ sub-factor visibility invariant) was contained to docs + tests.
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+ai-pathfinding
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-fov-dynamic-granularity.review-ledger.json`

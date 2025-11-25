@@ -163,6 +163,10 @@ So the only new work was frontend data plumbing (no rendering):
   test-placement adjustment, but no real scope creep.
 - Hello kitties: 0.8
 
+## Systems touched
+
+sprite-pipeline
+
 ## Follow-ups (rest of the PR2 stack)
 
 Tracked in the session todo DB:

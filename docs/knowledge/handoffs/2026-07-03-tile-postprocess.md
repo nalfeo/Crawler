@@ -20,6 +20,10 @@ Verdict: Exact - the work stayed within a focused sprite-pipeline change plus te
 
 Hello kitties: 2/5 = 0.40
 
+## Systems touched
+
+sprite-pipeline
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-03-tile-postprocess.review-ledger.json`

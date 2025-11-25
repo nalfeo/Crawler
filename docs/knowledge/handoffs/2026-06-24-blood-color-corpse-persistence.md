@@ -27,6 +27,10 @@ One sentence: new ECS component + observer + store + propagation through drop sy
 - VFX renderer changes + scenario wiring + tests across 10 files landed solidly in
   Large.
 
+## Systems touched
+
+enemies, vfx
+
 ## What Was Done
 
 Implemented three related features from the problem statement:

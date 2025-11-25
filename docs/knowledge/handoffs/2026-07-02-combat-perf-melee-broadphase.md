@@ -28,6 +28,10 @@ the 3🍎 envelope.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+weapons
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-combat-perf-engagement-budget.review-ledger.json`

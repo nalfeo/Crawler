@@ -24,6 +24,10 @@ feet↔pixel port of `MainGameScene` lighting plus the integration test.
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+ci-policy, lighting
+
 ## What Was Done
 
 - **Rebased** `copilot/design-lighting-and-shadow-system` onto latest

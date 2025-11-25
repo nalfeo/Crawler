@@ -5,6 +5,10 @@
 **Persona:** Producer (multi-layer: engine + labs + tests, plus PR coordination)
 **Apple estimate:** 🍎🍎🍎 | **Actual:** 🍎🍎🍎 | **Verdict:** 🎯 exact
 
+## Systems touched
+
+ci-policy
+
 ## Why
 
 PR #374 (`feat: gold coin drop art/animation + gear & items UX in ux-snapshot-lab`)

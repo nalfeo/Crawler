@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — one engine fix plus one focused regression test.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+lighting
+
 ## What Was Done
 
 - Updated `src/engine/scenes/MainGameScene.ts` so the normal post-simulation `playing` sync block now calls `updateLightingOverlay()`.

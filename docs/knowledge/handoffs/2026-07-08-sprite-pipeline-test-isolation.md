@@ -60,7 +60,7 @@ and locally; a game-only change skips sprite tests entirely.
 
 ## Systems touched
 
-ci, test-infra
+ci-policy
 
 ## Verification
 

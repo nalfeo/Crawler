@@ -23,6 +23,10 @@ Verdict: 🎯 Exact — N/A
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+inventory
+
 ## What Was Done
 
 Four user-reported issues fixed:

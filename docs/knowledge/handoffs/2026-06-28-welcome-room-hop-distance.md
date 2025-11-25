@@ -43,3 +43,7 @@ Seed 665790 is a known degenerate case (only 4 rooms are accessible without the 
 - Estimated: 🍎🍎
 - Actual: 🍎🍎
 - Verdict: exact
+
+## Systems touched
+
+mapgen

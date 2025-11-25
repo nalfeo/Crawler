@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — scope stayed to targeted touch-target sizing plus guard 
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies, mobile-ux
+
 ## What Was Done
 
 - Increased fullscreen minimap close affordance in `src/engine/HudMinimap.ts`:

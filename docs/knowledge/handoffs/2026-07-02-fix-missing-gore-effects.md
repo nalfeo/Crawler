@@ -27,6 +27,10 @@ complexity.
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+enemies
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-fix-missing-gore-effects.review-ledger.json`

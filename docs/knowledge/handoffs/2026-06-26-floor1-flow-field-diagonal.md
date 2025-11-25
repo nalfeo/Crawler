@@ -28,6 +28,10 @@ oscillation fix, and two lab visualisations, which is a multi-system + ADR job (
 
 Hello kitties: 5/5 = 1.00 🎀
 
+## Systems touched
+
+ai-pathfinding
+
 ## What Was Done
 
 This branch first shipped the **Floor 1 spawn-density engagement budget** (committed

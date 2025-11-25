@@ -25,6 +25,10 @@ surprises beyond two trivial lint/format fixups.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies
+
 ## What Was Done
 
 - Split the ~725-line god-module `src/core/helpers.ts` into six cohesive modules

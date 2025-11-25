@@ -27,6 +27,10 @@ force-rebased onto a newer `main` (Slice 2 + sprite caching) mid-flight, so the
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+ci-policy
+
 ## Review Harness
 
 No new ledger required — this session addressed review threads on an

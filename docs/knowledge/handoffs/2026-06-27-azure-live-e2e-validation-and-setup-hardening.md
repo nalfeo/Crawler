@@ -28,6 +28,10 @@ a dependency-free pwsh test + docs. No new subsystem, no ADR.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+azure-infra
+
 ## What Was Done
 
 Two deliverables, both closing the loop on the PR2 epic and the user's

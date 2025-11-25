@@ -8,6 +8,10 @@
 
 - **Producer** (AI gameplay behavior + tests + review-harness orchestration)
 
+## Systems touched
+
+inventory, quests
+
 ## Apple Estimate
 
 - Estimated: **2 apples**

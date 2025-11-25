@@ -1,5 +1,9 @@
 # Session Handoff — PR Shepherd refresh/takeover skill updates
 
+## Systems touched
+
+ci-policy
+
 ## Summary
 
 - Updated `.github/skills/pr-shepherd/SKILL.md` to document refresh-loop behavior and idle-owner takeover semantics.

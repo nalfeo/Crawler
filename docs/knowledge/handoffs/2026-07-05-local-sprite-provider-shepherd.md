@@ -7,6 +7,10 @@
 **Persona:** Producer  
 **Status:** Review threads resolved; auto-merge armed
 
+## Systems touched
+
+ci-policy
+
 ## Systems Touched
 
 sprites, provider

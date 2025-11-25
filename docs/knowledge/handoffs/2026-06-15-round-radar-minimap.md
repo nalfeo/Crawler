@@ -4,6 +4,10 @@
 **Branch:** `nalfeo/ux-art-enhancements`
 **Apples:** 🍎🍎🍎 estimate → 🍎🍎🍎 actual (exact)
 
+## Systems touched
+
+hud-ux
+
 ## What changed
 
 Converted the docked HUD minimap into a **player-centered round radar** pinned to

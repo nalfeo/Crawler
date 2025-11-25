@@ -8,7 +8,7 @@
 
 ## Systems touched
 
-ai-behavior-tree, mapgen, tests
+ai-behavior-tree, mapgen
 
 ## What was done
 

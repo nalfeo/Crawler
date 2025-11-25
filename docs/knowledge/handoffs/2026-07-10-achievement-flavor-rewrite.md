@@ -22,7 +22,7 @@ instructions file to remove the old 2-sentence maximum and add explicit tiered l
 
 ## Systems touched
 
-achievements
+quests
 
 ## Verification
 

@@ -26,6 +26,10 @@ the envelope).
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+ci-policy
+
 ## What Was Done
 
 Follow-up fix on branch `nalfeo-launch-devtools-sidecar` (PR #413), addressing

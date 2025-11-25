@@ -1,5 +1,9 @@
 # Handoff: Quest Packs + Event Contract + Templates (Phase 1-3) — 2026-06-14
 
+## Systems touched
+
+quests
+
 ## Session Summary
 
 Implemented the requested first three quest-system phases only:

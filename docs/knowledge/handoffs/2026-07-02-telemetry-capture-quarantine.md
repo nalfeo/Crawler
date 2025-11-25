@@ -25,6 +25,10 @@ clean on round 1 with no rework.
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+docs-tooling
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-telemetry-capture-quarantine.review-ledger.json`

@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-floor2-scenario, quest-system, reputation-system, hud
+mapgen, quests, hud-ux
 
 ## Summary
 

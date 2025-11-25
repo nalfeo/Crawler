@@ -20,6 +20,10 @@ Verdict: 💥 Miss — integrating PR #164 first, then wiring queue/store behavi
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+azure-infra
+
 ## What Was Done
 
 - Merged `origin/nalfeo/e2e-sprite-workflow` (PR #164) into `copilot/asset-generation-azure-queue`.

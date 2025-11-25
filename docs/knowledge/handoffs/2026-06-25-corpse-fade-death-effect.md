@@ -60,3 +60,7 @@ a separate scene image and is driven inside the dead block.
 - Estimated: 🍎🍎
 - Actual: 🍎🍎
 - Verdict: 🎯 exact — new pure helper + test suite plus a localized bridge wiring fix; scope landed where expected (4 files, no lab/ADR).
+
+## Systems touched
+
+enemies

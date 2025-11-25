@@ -5,6 +5,10 @@
 **Persona:** Game Designer  
 **Apple estimate:** 🍎 | **Actual:** 🍎 | **Verdict:** exact
 
+## Systems touched
+
+enemies
+
 ## Problem
 
 The staircase was only unlocking _after_ the boss body entity was fully removed from ECS (when the death-linger timer expired). Players had to wait through the entire death animation before the stair doors opened.

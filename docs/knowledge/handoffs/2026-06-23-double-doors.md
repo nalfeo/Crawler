@@ -17,6 +17,10 @@ Verdict: 📉 Under
 
 The mapgen change itself stayed medium-sized, but revalidating the headless gate and re-verifying a new canonical winning seed pushed the session into a larger slice.
 
+## Systems touched
+
+mapgen
+
 ## What Was Done
 
 ### Double-door support for widened corridors

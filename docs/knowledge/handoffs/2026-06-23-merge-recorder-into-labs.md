@@ -4,6 +4,10 @@
 **Branch:** `nalfeo-merge-recorder-into-labs`
 **Apples:** estimated 🍎🍎 / actual 🍎🍎 — calibrated
 
+## Systems touched
+
+devtools
+
 ## What changed
 
 The standalone `session-recorder-lab` was removed. Its recording UI + scene

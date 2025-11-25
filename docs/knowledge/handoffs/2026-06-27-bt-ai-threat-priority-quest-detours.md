@@ -26,6 +26,10 @@ no extra conceptual complexity.
 
 Hello kitties: 3/5 = 0.60 🎀 <!-- actual_apples / 5, two decimal places -->
 
+## Systems touched
+
+ai-behavior-tree, quests
+
 ## What Was Done
 
 Drove PR #372 (`copilot/pathing-and-quest-npc-visits`) from DIRTY to a clean,

@@ -23,6 +23,10 @@ tests; the CI/auto-merge orchestration added wall-clock time but no real complex
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+enemies, inventory
+
 ## What Was Done
 
 - **Fixed the Copilot review finding** (comment 3484192106, `src/labs/spawner-lab/index.ts`):

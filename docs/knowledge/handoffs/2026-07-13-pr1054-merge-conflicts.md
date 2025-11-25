@@ -9,7 +9,7 @@
 
 ## Systems touched
 
-skill-system, damage-pipeline
+weapons
 
 ## Summary
 

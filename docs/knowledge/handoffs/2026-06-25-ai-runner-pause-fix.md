@@ -25,6 +25,10 @@ regression test file and a full-suite verification pass, nudging it to a Small.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+ai-combat-balance
+
 ## What Was Done
 
 Fixed the AI Runner Lab Pause / "Advance 1 frame" controls, which had stopped

@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — one-line lil-gui folder change plus a focused source-gua
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+ai-combat-balance, lighting
+
 ## What Was Done
 
 - `src/labs/ai-runner-lab/index.ts`: added `lightingFolder.close();` after the

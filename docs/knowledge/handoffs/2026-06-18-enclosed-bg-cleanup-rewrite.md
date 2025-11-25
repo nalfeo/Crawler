@@ -4,6 +4,10 @@
 **Branch:** `nalfeo/launching-sprites`
 **Apple:** declared 🍎🍎🍎 · actual 🍎🍎🍎 · verdict exact · 🐱 0.6
 
+## Systems touched
+
+ai-pathfinding
+
 ## What changed
 
 Rewrote the **enclosed background-region cleanup** in `scripts/sprites/postprocess.ts`

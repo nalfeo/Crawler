@@ -26,6 +26,10 @@ private `hasClearLineOfSight`) was a one-edit fix.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+ai-behavior-tree
+
 ## What Was Done
 
 Workstream C of the refactor fan-out: started safely decomposing the ~3990-line

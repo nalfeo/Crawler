@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-core, lighting
+lighting
 
 ## Summary
 

@@ -19,6 +19,10 @@ and a lab, so the Producer's cross-layer view fit.
 Estimated: 🍎 x 3 <!-- declared before work began -->
 Actual: 🍎 x 3
 
+## Systems touched
+
+inventory
+
 ## What shipped
 
 Built the actual level-up UX where the player selects stats to raise.

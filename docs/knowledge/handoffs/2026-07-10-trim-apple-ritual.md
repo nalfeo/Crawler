@@ -26,7 +26,7 @@ bad `--actual 9` exits 1, duplicate file exits 1, missing args prints usage.
 
 ## Systems touched
 
-agent-os
+agent-personas
 
 ## Apples
 

@@ -1,5 +1,9 @@
 # Handoff — 2026-06-15 — Floor1 boss spell unlock hardening
 
+## Systems touched
+
+enemies
+
 ## Summary
 
 - Hardened Floor 1 boss reward spell flow by removing duplicated spell-option sources and wiring spell selection to the active scene player entity.

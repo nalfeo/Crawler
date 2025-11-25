@@ -20,6 +20,10 @@ Verdict: 🎯 Exact - small multi-file operational/docs + generated-asset check-
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+azure-infra, sprite-pipeline, sprite-workflow
+
 ## What Was Done
 
 - Built and launched devtools/sidecar, then corrected sidecar launch behavior to Azure-first.

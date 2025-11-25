@@ -1,5 +1,9 @@
 # Handoff: Generic Floor Objective System — 2026-06-14
 
+## Systems touched
+
+quests
+
 ## Apple Estimate
 
 - Declared: 🍎🍎 (Small)

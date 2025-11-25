@@ -24,6 +24,10 @@ tests. No new subsystems.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+hud-ux
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-03-floor2-slice7-hud-minimap.review-ledger.json`

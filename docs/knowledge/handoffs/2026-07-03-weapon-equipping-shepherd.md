@@ -1,5 +1,9 @@
 # 2026-07-03 - Weapon-equipping PR #719 shepherd
 
+## Systems touched
+
+ci-policy, weapons
+
 ## Summary
 
 Shepherded PR #719 (`feat/weapon-equipping`) — "require weapons to be equipped in

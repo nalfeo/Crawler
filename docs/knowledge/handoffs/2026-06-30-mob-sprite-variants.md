@@ -5,6 +5,10 @@
 **Estimate:** 🍎🍎🍎 (Medium)  
 **Status:** ✅ Complete and merged
 
+## Systems touched
+
+enemies
+
 ## Summary
 
 Implemented multi-variant sprite selection and size scaling for mobs with generated art. Each mob now randomly picks a visual variant at spawn (+/-10% size from default), enhancing visual variety while coupling perceived size to weight for physics coherence. All changes are render-only; gameplay and collision geometry remain unchanged.

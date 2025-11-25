@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — enabling the layer was easy; the forward-cone rewrite ov
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+ai-combat-balance
+
 ## What Was Done
 
 Seed 42's parallel opportunistic layer (Collect/Dodge/Farm) was effectively dead: dodge 0, collect 85, farm 0 frames. Brought it alive **during quest-objective navigation**:

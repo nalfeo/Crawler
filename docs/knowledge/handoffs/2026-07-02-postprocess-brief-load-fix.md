@@ -29,6 +29,10 @@ confinement) added work but stayed squarely inside the 3🍎 envelope.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+sprite-pipeline
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-postprocess-brief-load-fix.review-ledger.json`

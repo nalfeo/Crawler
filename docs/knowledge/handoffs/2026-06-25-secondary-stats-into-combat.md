@@ -27,6 +27,10 @@ new ECS system (no new lab), landing squarely at the declared 4.
 
 Hello kitties: 4/5 = 0.80 🎀
 
+## Systems touched
+
+inventory
+
 ## What Was Done
 
 Wired the previously-inert secondary stats into combat (ITEM 5):

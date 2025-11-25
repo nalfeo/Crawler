@@ -1,5 +1,9 @@
 # 2026-06-28 — achievements config-driven
 
+## Systems touched
+
+quests
+
 ## Summary
 
 - Converted Floor 1 achievements from a hardcoded TypeScript array to external config data.

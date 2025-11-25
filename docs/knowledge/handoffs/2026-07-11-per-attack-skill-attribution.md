@@ -45,7 +45,7 @@ immune to subsequent weapon dispatches.
 
 ## Systems touched
 
-weapon-system, skill-system, damage-pipeline
+weapons
 
 ## Related ADR
 

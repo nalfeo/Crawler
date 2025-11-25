@@ -4,6 +4,10 @@
 **Branch:** nalfeo-lightweight-ci-md-only-prs  
 **Apple estimate:** 🍎 (1 apple)
 
+## Systems touched
+
+inventory
+
 ## Summary
 
 Added `docs_only` scope detection to CI and guards so PRs that only touch `.md`/`.txt` files skip the full test gauntlet and run only commit-lint.
@@ -23,15 +27,15 @@ Added `docs_only` scope detection to CI and guards so PRs that only touch `.md`/
 
 ## What CI Now Does for md-only PRs
 
-| Job               | Before               | After                                  |
-| ----------------- | -------------------- | -------------------------------------- |
-| commit-lint       | ✅ runs              | ✅ runs (separate workflow, unchanged) |
-| Types & Lint      | ✅ runs              | ⏭ skipped                              |
-| Format & Labs     | ✅ runs              | ⏭ skipped                              |
-| Unit Tests        | ✅ runs              | ⏭ skipped                              |
-| Integration Tests | ⏭ skipped (art-only) | ⏭ skipped                              |
-| Headless          | ⏭ skipped (art-only) | ⏭ skipped                              |
-| E2E               | ⏭ skipped (art-only) | ⏭ skipped                              |
+| Job               | Before                | After                                  |
+| ----------------- | --------------------- | -------------------------------------- |
+| commit-lint       | ✅ runs               | ✅ runs (separate workflow, unchanged) |
+| Types & Lint      | ✅ runs               | ⏭ skipped                             |
+| Format & Labs     | ✅ runs               | ⏭ skipped                             |
+| Unit Tests        | ✅ runs               | ⏭ skipped                             |
+| Integration Tests | ⏭ skipped (art-only) | ⏭ skipped                             |
+| Headless          | ⏭ skipped (art-only) | ⏭ skipped                             |
+| E2E               | ⏭ skipped (art-only) | ⏭ skipped                             |
 
 ## Unresolved Issues
 

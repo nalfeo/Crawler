@@ -21,6 +21,10 @@ Verdict: 🎯 Exact — reused existing VFX/spawn-animation patterns, so the cha
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies, vfx
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-06-30-spawner-spawn-vfx.review-ledger.json`

@@ -4,6 +4,10 @@
 **Persona:** Producer (game systems — single-layer ability/effect change)
 **Apples:** estimated 🍎🍎🍎 / actual 🍎🍎 (over — contained change with no schema migration or lab; one ADR added for the cross-layer design decision)
 
+## Systems touched
+
+enemies
+
 ## Task
 
 The player **Fireball** spell used to wait for an enemy cluster (`enemy_cluster`,

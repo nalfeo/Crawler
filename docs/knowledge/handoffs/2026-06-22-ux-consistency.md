@@ -37,3 +37,7 @@ Aligned three game surfaces — floor1-lab, main game (`src/main.ts`), and ai-ru
 - **Estimated:** 🍎🍎
 - **Actual:** 🍎🍎
 - **Verdict:** on target
+
+## Systems touched
+
+hud-ux

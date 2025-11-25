@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-ai-behavior-tree, headless-runner, equipment, quests
+ai-behavior-tree, ai-combat-balance, inventory, quests
 
 ## Summary
 

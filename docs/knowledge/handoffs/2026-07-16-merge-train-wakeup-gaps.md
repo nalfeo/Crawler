@@ -2,7 +2,7 @@
 
 ## Systems touched
 
-merge-automation, ci-infra
+ci-policy
 
 ## Summary
 

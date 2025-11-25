@@ -29,6 +29,10 @@ operational, not implementation.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+sprite-pipeline
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-asset-ingestion-hookup.review-ledger.json`

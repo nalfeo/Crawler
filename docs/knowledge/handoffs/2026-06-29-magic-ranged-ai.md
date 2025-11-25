@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — two surgical fixes plus mirrored regression tests, exact
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+ai-combat-balance, weapons
+
 ## What Was Done
 
 Fixed two bugs for magic (fireball) base weapon, reproduced via seed 748338:

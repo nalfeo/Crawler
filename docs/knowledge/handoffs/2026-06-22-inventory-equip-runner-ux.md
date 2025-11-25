@@ -37,6 +37,10 @@ Fixed the Floor 1 bag/equip UX so paused safe-room scenes still process the Bag/
 - Verdict: 🎯 Exact
 - Hello kitties: 0.60
 
+## Systems touched
+
+inventory
+
 ## Notes
 
 - No ADR needed: this was a targeted UX/wiring repair, not a new multi-system architecture decision.

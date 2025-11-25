@@ -5,6 +5,10 @@
 **Branch:** nalfeo-shiny-invention  
 **Complexity Estimate:** 2🍎
 
+## Systems touched
+
+quests
+
 ## Summary
 
 Completed comprehensive asset-request type-inference feature with full validation gates across all entry points (form, JSON marker, queue deserialization). All prior code-review concerns resolved. Feature ready for merge.

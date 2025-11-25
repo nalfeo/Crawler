@@ -102,3 +102,7 @@ surfaced after a failed first-hypothesis CI cycle. The work spanned: shared-flak
 diagnosis across three PRs, a wrong first fix, reading the CI DOM dump to spot the
 poll clobber, a DOM refactor in `devtools-main.ts`, and promoting the bug class to
 a deterministic persistence guard.
+
+## Systems touched
+
+sprite-pipeline

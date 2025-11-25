@@ -28,6 +28,10 @@ Verdict: 🎯 Exact — recorded canonically in
 
 Hello kitties: 5/5 = 1.0 🎀 (parent task)
 
+## Systems touched
+
+devtools
+
 ## What Was Done
 
 Completed the lab migration so every spatially-rendering lab works under the new

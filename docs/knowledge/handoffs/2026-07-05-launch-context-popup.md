@@ -21,7 +21,7 @@ Verdict: 🎯 Exact
 
 ## Systems touched
 
-shared, labs, devtools
+docs-tooling, devtools
 
 ## What Was Done
 

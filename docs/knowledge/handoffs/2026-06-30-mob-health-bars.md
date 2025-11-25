@@ -4,6 +4,10 @@
 **Persona:** UX Designer  
 **Apples:** estimated 🍎🍎 / actual 🍎🍎
 
+## Systems touched
+
+enemies
+
 ## Summary
 
 Added world-space health bars under mob enemies so players can read enemy HP at a glance in combat, while explicitly excluding bosses because boss health is already represented in the top HUD boss bar.

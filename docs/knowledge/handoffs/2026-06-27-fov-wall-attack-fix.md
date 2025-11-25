@@ -98,3 +98,7 @@ and 9 new regression tests across three suites — but it reused existing
 deterministic primitives (`hasLineOfSight` from ADR 0018, door-aware A\* /
 `isTargetReachable` from ADR 0021) rather than building new machinery, landing
 squarely at the Large estimate.
+
+## Systems touched
+
+ai-pathfinding

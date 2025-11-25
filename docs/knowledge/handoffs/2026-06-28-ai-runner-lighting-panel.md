@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — one lab wiring change plus one focused regression guard.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+ai-combat-balance, lighting
+
 ## What Was Done
 
 - Added a lil-gui `Lighting` folder to `src/labs/ai-runner-lab/index.ts`.

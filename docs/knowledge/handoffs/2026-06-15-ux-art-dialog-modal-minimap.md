@@ -4,6 +4,10 @@ Date: 2026-06-15
 Branch: `nalfeo/ux-art-enhancements`
 Apple complexity: estimated 🍎🍎🍎 · actual 🍎🍎🍎 · verdict exact
 
+## Systems touched
+
+hud-ux
+
 ## What this session did
 
 Re-skinned the three remaining UX surfaces the user called out ("still looks old

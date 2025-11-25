@@ -17,6 +17,10 @@ Actual: 🍎 x 3
 Verdict: 🎯 Exact — pure design doc; ADR + index update + handoff, no code.
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+azure-infra
+
 ## What Was Done
 
 Authored **ADR 0033 — Migrate Content Generation from Direct Azure OpenAI to

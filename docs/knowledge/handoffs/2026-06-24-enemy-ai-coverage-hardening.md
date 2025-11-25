@@ -20,6 +20,10 @@ Verdict: 🎯 Exact
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+enemies
+
 ## What Was Done
 
 Picked up PR Group D, Item 7 from a review of last week's PRs/handoffs. The

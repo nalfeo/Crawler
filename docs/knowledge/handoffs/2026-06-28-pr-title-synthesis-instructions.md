@@ -1,5 +1,9 @@
 # Handoff: PR Title/Description Synthesis Rule
 
+## Systems touched
+
+docs-tooling
+
 ## Summary
 
 Added Rule 11 to AGENTS.md and a matching bullet to `.github/copilot-instructions.md` to prevent agents from overwriting PR titles and descriptions when handling feedback turns.

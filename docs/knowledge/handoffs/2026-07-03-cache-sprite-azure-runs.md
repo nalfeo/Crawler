@@ -1,5 +1,9 @@
 # Handoff — Cache Azure runs in the sprite devtools so a reload paints instantly (2026-07-03)
 
+## Systems touched
+
+azure-infra
+
 ## Why
 
 In the devtools sprite-generation UI, both run pickers — the Azure **"reload a

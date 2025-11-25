@@ -6,6 +6,10 @@
 - Wired DevTools postprocess actions to persisted/reset/replace behavior and manual-anchor set/clear flows.
 - Added/updated tests for sidecar rerun persistence, storage endpoints, and devtools API client wrappers.
 
+## Systems touched
+
+azure-infra, sprite-pipeline
+
 ## Files touched
 
 - scripts/sprites/postprocess-overrides.ts

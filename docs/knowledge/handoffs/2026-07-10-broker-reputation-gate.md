@@ -6,7 +6,7 @@
 
 ## Systems touched
 
-floor2-scenario, reputation-system, dialogue-system, headless-runner
+mapgen, quests, ai-combat-balance
 
 ## Summary
 

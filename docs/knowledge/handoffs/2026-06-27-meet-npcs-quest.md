@@ -23,6 +23,10 @@ NPC indicator update, and test additions; 4 files, no new ECS system/ADR.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+quests
+
 ## What Was Done
 
 After the Tutorial Goon's kill-grind quest (`floor1-boss-unlock`) completes,

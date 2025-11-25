@@ -23,6 +23,10 @@ surface; the only friction was discovering the CLI's skill-discovery path.
 
 Hello kitties: 1/5 = 0.20 🎀
 
+## Systems touched
+
+ci-policy
+
 ## What Was Done
 
 Added a discoverable **project skill** that codifies the PR shepherding loop:

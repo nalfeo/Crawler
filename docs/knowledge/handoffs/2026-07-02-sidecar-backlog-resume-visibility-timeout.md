@@ -30,6 +30,10 @@ four separate fix PRs to merge. That pushed it past a trivial one-command ops to
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+sprite-workflow
+
 ## Review Harness
 
 N/A for this session's own diff — **docs-only** (this handoff + the apple-metrics

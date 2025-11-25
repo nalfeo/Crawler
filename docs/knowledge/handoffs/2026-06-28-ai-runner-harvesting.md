@@ -18,6 +18,10 @@ Estimated: 🍎🍎🍎
 Actual: 🍎🍎🍎
 Verdict: 🎯 Exact — three layers (pipeline, loot targeting, watchdogs) as scoped.
 
+## Systems touched
+
+ai-combat-balance, quests
+
 ## What Was Done
 
 - `src/game/ai/simulation-step.ts`: tick `harvestSystem` after `itemPickupSystem`,

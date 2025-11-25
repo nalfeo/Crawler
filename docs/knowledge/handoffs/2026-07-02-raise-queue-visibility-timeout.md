@@ -29,6 +29,10 @@ rather than a 1.
 
 Hello kitties: 2/5 = 0.40 🎀
 
+## Systems touched
+
+azure-infra, ci-policy
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-02-raise-queue-visibility-timeout.review-ledger.json`

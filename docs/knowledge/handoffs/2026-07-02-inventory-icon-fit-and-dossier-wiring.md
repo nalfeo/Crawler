@@ -28,6 +28,10 @@ coverage, and a probe-lab change. 9 files instead of ~3.
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+inventory
+
 ## Review Harness
 
 Ledger: `docs/knowledge/review-ledgers/2026-07-03-fix-asset-pr-title-and-wire-classified-dossier.review-ledger.json`

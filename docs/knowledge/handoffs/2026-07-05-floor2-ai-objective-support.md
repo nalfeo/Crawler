@@ -10,7 +10,7 @@ Implemented Floor 2 AI objective plumbing so den unlock and boss-defeat progress
 
 ## Systems touched
 
-ai-behavior-tree, quests, combat-events, floor2-scenario, headless-runner
+ai-behavior-tree, quests, ai-combat-balance, mapgen
 
 ## Files changed
 

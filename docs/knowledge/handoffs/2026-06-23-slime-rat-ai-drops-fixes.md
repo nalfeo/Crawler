@@ -20,6 +20,10 @@ Verdict: 🎯 Exact — scope stayed within targeted bug fixes plus focused regr
 
 Hello kitties: 3/5 = 0.60 🎀
 
+## Systems touched
+
+enemies, inventory
+
 ## What Was Done
 
 - Increased slime leap travel window in `src/game/enemyAISystem.ts` (`SLIME_LEAP_MIN_FRAMES` 10, `SLIME_LEAP_MAX_FRAMES` 14) so pounces carry farther.
