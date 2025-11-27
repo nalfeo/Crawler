@@ -156,6 +156,27 @@ export const KITE_RADIAL_STEP_FT = KITE_STEP_FT;
 export const KITE_STRAFE_FT = KITE_STEP_FT * 0.25;
 // Radius (ft) within which a non-primary enemy counts as a back threat.
 export const KITE_BACK_THREAT_RADIUS_FT = 20;
+// Radius (ft) used by ranged kiting's multi-threat scans: bounds how far
+// `computeOtherThreatEscapePush` and `findNearestOtherEnemyDistance` look
+// for other enemies. Note: the scan radius alone does NOT trigger an earlier
+// reaction — `computeOtherThreatEscapePush` only engages once a threat has
+// already breached the tighter `spacedOrbit` standoff ring (~4.5-7.2ft), so
+// the scan radius is non-binding for the escape-push. Its primary practical
+// effect is as the base for deriving SAFE_LOOT_ENEMY_CLEARANCE_FT below.
+// Matched to KITE_BACK_THREAT_RADIUS_FT for consistency across threat scans.
+export const RANGED_MULTI_THREAT_SCAN_FT = KITE_BACK_THREAT_RADIUS_FT;
+// Minimum distance (ft) to the nearest perceived enemy before a ranged-kiting
+// "safe loot detour" is considered. Deliberately wider than
+// RANGED_MULTI_THREAT_SCAN_FT so the AI only breaks off orbiting to grab loot
+// once every nearby enemy has actually cleared the multi-threat defense
+// radius — never while a threat could still be closing in.
+export const SAFE_LOOT_ENEMY_CLEARANCE_FT = RANGED_MULTI_THREAT_SCAN_FT * 1.5;
+// Max distance (ft) a ranged-kiting AI will detour off its orbit position to
+// grab loot. Kept short and well inside scanRadius (50ft) so the detour never
+// wanders toward new danger or turns into a long cross-room errand — this is
+// an opportunistic "grab it since I'm already clear" pickup, not a dedicated
+// loot run (that remains Collect's job once no threat is nearby at all).
+export const LOOT_DETOUR_MAX_FT = 15;
 // Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
 // reversal keeps the player juking and prevents it from grinding into one wall
 // forever; far longer than any oscillation so it reads as intentional kiting.

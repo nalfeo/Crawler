@@ -1,0 +1,64 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-16",
+  "session_slug": "ranged-kiting-strategy",
+  "task_title": "Multi-threat-aware ranged kiting + safe loot detour",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 7,
+      "resolved_count": 7,
+      "adversarial": true,
+      "alternatives_considered": 3,
+      "plan_divergence": "convergent",
+      "notes": "Adversarial review (gpt-5.4, high effort) on the implemented diff — NOTE: this review was performed post-implementation on the cumulative diff rather than as a pre-implementation plan gate; the pre-implementation plan-review stage was missed for this session. The review was conducted with the same adversarial protocol (3 alternatives enumerated, all argued against) and produced substantive blocking finds that were fixed before merge (see concern #1 below), but it is recorded here as a post-implementation adversarial design review rather than the required pre-implementation plan gate. Human escalation noted. 3 alternatives enumerated and argued against (unified all-enemy potential field; single consolidated threat-scan helper; top-K/strongest-contributor capping) - reviewer agreed none warranted a rewrite. plan_divergence=convergent (no alternative adopted). 7 concerns: #1 BLOCKING (confirmed real) - findNearestOtherEnemyDistance/computeOtherThreatEscapePush lacked a Health filter, letting lingering corpses (DeathTimer window) block the loot detour or bias the escape-push vector; fixed by querying [Enemy,Position,Health] and skipping health<=0, mirroring findNearestEnemy; added 2 regression tests; this fix also resolved a throwing-knife-specific win-rate regression discovered in the first broad sweep (94pct baseline -> 90pct pre-fix -> 97pct post-fix, exceeding baseline). Concerns #2-6 (loot-detour closing-phase-only semantics, distance-only worth-it gating, dist<0.125 deadzone, untested symmetric cancellation, docs) accepted as documented tradeoffs. Concern #7 (test coverage) addressed via the 2 new corpse-exclusion tests."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "Non-blocking: hasThreatFromBehind missing corpse/Health filter (inconsistent with new helpers); computeOtherThreatEscapePush sub-0.125ft dead-zone silently zeroed secondary-threat push instead of substituting a fallback direction. No blocking bugs; vector math, clamping, and loot-detour gating all verified correct."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Verified commit de6b7c53 correctly and completely fixes both round-1 findings; fresh pass over full cumulative diff found no new issues; arithmetically confirmed SAFE_LOOT_ENEMY_CLEARANCE_FT(30ft) > contactThreatRadius(<=9ft) invariant. CLEAN."
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "claude-sonnet-4.6",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-opus-4.8", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 2,
+          "valid_count": 2,
+          "resolved_count": 2,
+          "clean": false,
+          "notes": "gpt-5.3-codex: findNearestOtherEnemyDistance/computeOtherThreatEscapePush/hasThreatFromBehind lacked the isEnemyCombatEligible gate that findNearestEnemy already applies, so a dormant Floor 2 boss could incorrectly block the loot detour or bend the escape-push vector (zero effect on Floor 1). claude-opus-4.8: RANGED_MULTI_THREAT_SCAN_FT doc comment overstated its effect - the escape push actually only engages once a threat breaches the tighter spacedOrbit ring (~4.5-7.2ft), not merely within the wider 20ft scan radius; doc-only fix. gemini-3.1-pro-preview: CLEAN, no concerns (independently verified vector math, corpse filtering, loot-detour gating, and state-machine integrity). Both valid concerns fixed via a delegated fixer agent (commit 45b3975c): added isEnemyCombatEligible gate to all 3 loops (matching findNearestEnemy pattern) + corrected the tuning-constant comment. typecheck/lint clean, 81/81 tests passing, bow-91 headless repro reconfirmed victory with no regression."
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.3-codex", "claude-opus-4.8"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "Independent round-2 re-review by both original finding-reporters, over the final 5-commit diff including fix commit 45b3975c. Both verified the isEnemyCombatEligible gate is correctly applied to all 3 loops (matching findNearestEnemy, confirmed no-op on Floor 1 since isEnemyCombatEligible short-circuits true for non-Floor-2/non-boss enemies) and the RANGED_MULTI_THREAT_SCAN_FT comment rewrite is accurate and doc-only (no numeric/behavioral change). Both independently reported CLEAN, no concerns after a fresh full-diff scrutiny pass."
+        }
+      ]
+    }
+  }
+}

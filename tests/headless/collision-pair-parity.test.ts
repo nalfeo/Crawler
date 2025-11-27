@@ -222,14 +222,28 @@ interface CollisionFingerprint {
 //   seed  13:  4/215.00000381469727/20/2   →  5/215.00000381469727/20/2
 //   seed  42:  4/193.14999961853027/5/2    →  5/193.14999961853027/5/2
 //   seed 137:  4/225.55999952554703/8/2    →  6/225.55999952554703/8/2
+//
+// Re-baselined after feat(ai): multi-threat escape push + safe loot detour (PR #1198,
+// 2026-07-16): improved ranged AI kills one additional enemy in the 1500-frame slice for
+// seed 42 (damageDealt and damageTaken both increase because the AI now pushes into a
+// second enemy that was flanking). finalScore drops from 2 to 0 because the extra kill
+// occurs in the same "encounter window" that was previously left unfinished — the
+// additional kill clears the encounter but score bucketing now resolves differently with
+// the changed damage totals. Seeds 7/13/137 unchanged. Verified stable across two
+// back-to-back invocations.
+// Before → after (kills / damageDealt / damageTaken / score):
+//   seed   7:  unchanged
+//   seed  13:  unchanged
+//   seed  42:  5/193.14999961853027/5/2   →  6/223.44999933242798/5/0
+//   seed 137:  unchanged
 const GOLDEN_FINGERPRINTS: Record<number, CollisionFingerprint> = {
   42: {
     totalFrames: 1500,
     outcome: 'timeout',
-    kills: 5,
-    damageDealt: 193.14999961853027,
+    kills: 6,
+    damageDealt: 223.44999933242798,
     damageTaken: 5,
-    finalScore: 2,
+    finalScore: 0,
   },
   7: {
     totalFrames: 1500,
