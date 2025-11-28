@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACHIEVEMENT_ART_BACKLOG,
+  ACHIEVEMENT_SCOPES,
   FLOOR1_ACHIEVEMENT_COUNT,
   FLOOR1_ACHIEVEMENTS,
+  FLOOR2_ACHIEVEMENTS,
   LOOT_BOX_TIERS,
+  getAchievementById,
+  getAchievementCatalogForFloor,
   parseAchievementCatalog,
 } from '../../src/shared/achievements.js';
 
@@ -45,7 +49,28 @@ describe('floor1 achievements catalog', () => {
   it('defines unlock rules for each achievement entry', () => {
     for (const achievement of FLOOR1_ACHIEVEMENTS) {
       expect(Array.isArray(achievement.unlockRules)).toBe(true);
+      expect(ACHIEVEMENT_SCOPES).toContain(achievement.scope);
     }
+  });
+
+  it('keeps floor-aware catalog lookup isolated by floor', () => {
+    expect(getAchievementCatalogForFloor(1)).toBe(FLOOR1_ACHIEVEMENTS);
+    expect(getAchievementCatalogForFloor(2)).toBe(FLOOR2_ACHIEVEMENTS);
+    expect(getAchievementById('first-bonk', { floor: 2 })).toBeUndefined();
+  });
+
+  it('defaults missing scope to floor for backward compatibility', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    delete raw[0]!.scope;
+    const parsed = parseAchievementCatalog(raw);
+    expect(parsed[0]?.scope).toBe('floor');
+  });
+
+  it('rejects floor-scoped facts in current_run-scoped rules', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    raw[0]!.scope = 'current_run';
+    raw[0]!.unlockRules = [{ type: 'booleanIs', fact: 'staircaseDiscovered', value: true }];
+    expect(() => parseAchievementCatalog(raw)).toThrow();
   });
 
   it('tracks placeholder art backlog for all icon packs and loot-box tiers', () => {
