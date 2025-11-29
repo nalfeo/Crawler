@@ -81,17 +81,18 @@ function main(): void {
     }
   }
 
+  const releaseReady = offline.release_ready && errors.length === 0;
   const payload = {
     epic_id: options.epicId,
     valid: errors.length === 0,
-    release_ready: offline.release_ready,
+    release_ready: releaseReady,
     ready_queue: offline.ready_queue,
     blockers: offline.blockers,
     errors,
     warnings,
     reconciliation: options.reconcile ? proposal : undefined,
     materialization_plan:
-      options.materializationPlan && offline.state
+      options.materializationPlan && offline.state && offline.errors.length === 0
         ? buildMaterializationPlan(offline.state)
         : undefined,
     writes_performed: false,
@@ -103,7 +104,7 @@ function main(): void {
     const lines = [
       `Epic: ${options.epicId}`,
       `Offline schema/DAG: ${offline.errors.length === 0 ? 'valid' : 'invalid'}`,
-      `Release ready: ${offline.release_ready ? 'yes' : 'no'}`,
+      `Release ready: ${releaseReady ? 'yes' : 'no'}`,
       `Ready queue: ${offline.ready_queue.length > 0 ? offline.ready_queue.join(', ') : '(empty)'}`,
       ...renderDiagnostics('Errors', errors),
       ...renderDiagnostics('Warnings', warnings),
