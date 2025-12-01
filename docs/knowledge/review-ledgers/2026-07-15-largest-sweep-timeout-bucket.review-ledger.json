@@ -1,0 +1,62 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-15",
+  "session_slug": "largest-sweep-timeout-bucket",
+  "task_title": "Fix largest Floor 1 sweep timeout bucket",
+  "estimated_apples": 5,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 9,
+      "resolved_count": 9,
+      "adversarial": true,
+      "alternatives_considered": 2,
+      "plan_divergence": "major_fork",
+      "notes": "Human rejected the initial hardcoded BT reorder. Static pairwise planning was rejected because future door reachability depends on simulated goal effects; hierarchical room planning was rejected in favor of the human-selected unlock-aware state-space planner. Resolutions cover effect masks, strict unreachable edges, optional bundles, explicit work semantics, single planner ownership, exact-route tests, bitmask DP caching, integer costs, and separate route/action heads."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["gpt-5.4"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ],
+      "notes": "Resolved initial-effect propagation, objective-cache invalidation, optional merchant double-accounting, post-detour origin, and final runtime committed-goal identity wiring."
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.6-terra",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 4,
+          "valid_count": 4,
+          "resolved_count": 4,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.4"],
+          "concerns_count": 3,
+          "valid_count": 3,
+          "resolved_count": 3,
+          "clean": true
+        }
+      ],
+      "notes": "Adjudicated and fixed BigInt effect masks, missing goon effect, boss/Slime Rat effect semantics, detour budget, live committed-goal propagation, merchant cache invalidation, and post-tick merchant decision timing. Final targeted adjudication found no remaining concerns."
+    }
+  }
+}

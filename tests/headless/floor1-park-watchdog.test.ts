@@ -43,10 +43,12 @@
  * produces a valid event log for the portion simulated, which is enough to flag a
  * sustained park episode.
  *
- * At ~1 000 simulated-FPS on CI each truncated run takes ≈ 12 s wall time; the
- * 20-seed sword sweep is ~240 s, comfortably inside the 10-minute hook timeout.
+ * This sweep is wall-clock heavy because it intentionally runs real headless
+ * gameplay across 20 seeds. Keep timeout control at the per-probe level rather
+ * than in one monolithic hook so a slower-but-healthy branch does not fail with
+ * a suite-level hook timeout before any assertions run.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import { runHeadless } from '../../src/game/ai/headless-runner.js';
 import { summarizeEvents, type EventSummary, type SimEvent } from '../../src/game/ai/event-log.js';
@@ -205,12 +207,8 @@ function assertNoSustainedStuck(probe: ParkProbe, label: string): void {
   ).toBeLessThan(MAX_STUCK_MS);
 }
 
-/**
- * Hook timeout for the 20-seed sword sweep: 20 runs × ~12 s each on a slow CI
- * runner = ~240 s. Use 10 minutes to give CI plenty of headroom without masking
- * a genuine performance regression (the per-run budget already bounds each run).
- */
-const SWEEP_HOOK_TIMEOUT_MS = 10 * 60 * 1000;
+/** Per-probe wall-clock timeout for a bounded 12,000-frame headless run. */
+const PROBE_TIMEOUT_MS = 2 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Deterministic synthetic coverage for the stuck-detector helper
@@ -260,23 +258,16 @@ describe('computeLongestNearZeroDispMs', () => {
 // ---------------------------------------------------------------------------
 
 describe('Floor-1 park watchdog — seeds 1–20 (sword)', () => {
-  const probes = new Map<number, ParkProbe>();
-
-  // Run all 20 seeds sequentially inside a single beforeAll so the simulation
-  // cost is paid once; each seed then gets its own it() assertions.
-  // 20 × ~12 s wall time per truncated run ≈ 240 s on a CI runner.
-  beforeAll(async () => {
-    for (const seed of SEEDS_1_TO_20) {
-      probes.set(seed, await runParkProbe(seed, 'sword'));
-    }
-  }, SWEEP_HOOK_TIMEOUT_MS);
-
   for (const seed of SEEDS_1_TO_20) {
-    it(`seed ${seed} · sword never sustains long park episodes`, () => {
-      const probe = probes.get(seed)!;
-      assertNoSustainedWiggle(probe, `seed ${seed} · sword`);
-      assertNoSustainedStuck(probe, `seed ${seed} · sword`);
-    });
+    it(
+      `seed ${seed} · sword never sustains long park episodes`,
+      async () => {
+        const probe = await runParkProbe(seed, 'sword');
+        assertNoSustainedWiggle(probe, `seed ${seed} · sword`);
+        assertNoSustainedStuck(probe, `seed ${seed} · sword`);
+      },
+      PROBE_TIMEOUT_MS,
+    );
   }
 });
 
@@ -286,20 +277,14 @@ describe('Floor-1 park watchdog — seeds 1–20 (sword)', () => {
 
 describe('Floor-1 park watchdog — extended seed/weapon pairs from issue', () => {
   for (const { seed, weapon, label } of EXTENDED_CASES) {
-    describe(label, () => {
-      let probe: ParkProbe;
-
-      beforeAll(async () => {
-        probe = await runParkProbe(seed, weapon);
-      });
-
-      it('never sustains a long wiggle (oscillation) episode', () => {
+    it(
+      `${label} never sustains long park episodes`,
+      async () => {
+        const probe = await runParkProbe(seed, weapon);
         assertNoSustainedWiggle(probe, label);
-      });
-
-      it('never sustains a long stuck (near-zero displacement) episode', () => {
         assertNoSustainedStuck(probe, label);
-      });
-    });
+      },
+      PROBE_TIMEOUT_MS,
+    );
   }
 });

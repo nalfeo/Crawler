@@ -4,7 +4,23 @@
  * The behavior tree remains the source of truth for the current objective. This
  * module only estimates how much time remains on the authoritative Floor 1 quest
  * chain so tactical layers can decide whether optional value is still affordable.
+ *
+ * Ordering is delegated to the declarative goal graph (`floor1-goal-graph.ts`)
+ * and the generic unlock-aware planner (`objective-route-planner.ts`) — see
+ * those modules for the dependency model and search algorithm. This module's
+ * own responsibility is: translate live snapshot fields the graph doesn't
+ * know about (safety buffer, urgency window, deadline) into the final
+ * ETA/slack/urgency figure, and convert the planner's abstract route back
+ * into the {@link RunPlanSegment} shape existing consumers expect.
  */
+
+import { IN_PLACE_LOCATION, planObjectiveRoute } from './objective-route-planner.js';
+import {
+  applyFloor1WorkCosts,
+  buildFloor1GoalGraph,
+  makeStraightLineTravelOracle,
+  PLAYER_START_LOCATION,
+} from './floor1-goal-graph.js';
 
 export type RunPlannerShopStage =
   | 'not-met'
@@ -24,6 +40,15 @@ export interface RunPlannerCurrentTarget extends RunPlannerPoint {
   readonly eid: number | null;
   readonly reason: string;
   readonly kind: RunPlannerCurrentTargetKind;
+  /**
+   * Explicit goal-id of the graph goal this detour fulfills, or `null` if
+   * the detour is purely ad-hoc (e.g. a chase toward a drop that has no
+   * corresponding graph goal). When set, the planner removes this goal from
+   * the pending graph (treating it as completed via `completedGoalIds`) and
+   * includes its `unlockEffects` in `initialSatisfiedEffects`, so the goal
+   * is neither double-charged nor its unlock effects lost.
+   */
+  readonly committedGoalId?: string | null;
 }
 
 export interface Floor1RunPlannerSnapshot {
@@ -48,10 +73,18 @@ export interface Floor1RunPlannerSnapshot {
   readonly slimeRatStarted: boolean;
   readonly slimeRatDefeated: boolean;
   readonly spellsUnlocked: boolean;
+  /** Explicit flag sourced from `world.goalFlags.get('floor1-boss-battle-complete') === true`.
+   * Controls whether `floor1-boss-battle-complete` is in the initial satisfied effects;
+   * distinct from `spellsUnlocked` which gates goal-graph construction. */
+  readonly bossBattleComplete: boolean;
   readonly staircaseStarted: boolean;
   readonly staircaseDefeated: boolean;
   readonly staircaseUnlocked: boolean;
   readonly staircaseDiscovered: boolean;
+  readonly merchantWeaponIntent?: {
+    readonly status: 'farming' | 'returning';
+    readonly cost: number;
+  } | null;
   readonly positions: {
     readonly welcomeOffice: RunPlannerPoint;
     readonly shop: RunPlannerPoint;
@@ -131,6 +164,27 @@ export interface Floor1RunPlan {
   readonly slackMs: number;
   readonly urgency: number;
   readonly segments: readonly RunPlanSegment[];
+  /**
+   * The unlock-aware goal-graph planner's chosen route head — the first
+   * not-yet-completed goal id in the exact-optimum ordering computed by
+   * `planObjectiveRoute` over the declarative Floor 1 goal graph (see
+   * `floor1-goal-graph.ts`). This remains the first pending graph goal even
+   * while a committed quest-giver detour is the current first leg in
+   * {@link segments}; `null` only when no graph goals remain (floor clear).
+   */
+  readonly routeHeadId: string | null;
+  /**
+   * The single next goal id the agent should act on this frame. Equal to
+   * {@link routeHeadId} at present — the planner has no notion of "partially
+   * committed to the head goal" yet — kept as a distinct field so BT wiring
+   * (`findProgressObjective`) and telemetry can evolve independently of the
+   * route's own identity. See ADR discussion in the unlock-aware planner
+   * review ledger for why these are separate fields.
+   */
+  readonly nextActionableGoalId: string | null;
+  /** Optional bundles selected or rejected by the same route calculation. */
+  readonly includedOptionalBundleIds: readonly string[];
+  readonly droppedOptionalBundleIds: readonly string[];
 }
 
 /**
@@ -229,227 +283,98 @@ export function estimateFloor1RunPlan(
     );
   }
 
-  if (!snapshot.tutorialAccepted) {
-    addSegment(
-      'meet-tutorial-goon',
-      'Meet Tutorial Goon',
-      'travel',
-      'pre-chain',
-      snapshot.positions.welcomeOffice,
-      params.interactionMs,
-      'Accept the opening Floor 1 quest and unlock drops',
-    );
-  }
+  // Declarative goal graph (see floor1-goal-graph.ts): builds the set of
+  // not-yet-completed Floor 1 goals with their true dependency structure
+  // (shop chain and spell-broker chain are independent siblings; both must
+  // finish before the staircase boss, matching the real door-lock gate), then
+  // asks the generic unlock-aware planner (objective-route-planner.ts) for
+  // the exact-optimum visitation order. This is the SAME route used to expose
+  // `routeHeadId` / `nextActionableGoalId` below, so ETA/slack and "what goal
+  // is next" always agree.
+  const rawGoalGraph = buildFloor1GoalGraph(snapshot);
+  const goalGraph = applyFloor1WorkCosts(rawGoalGraph, snapshot, params);
+  let routeHeadId: string | null = null;
+  let nextActionableGoalId: string | null = null;
+  let includedOptionalBundleIds: readonly string[] = [];
+  let droppedOptionalBundleIds: readonly string[] = [];
 
-  if (snapshot.playerLevel < 2) {
-    addSegment(
-      'reach-level-2',
-      'Reach level 2',
-      'work',
-      'pre-chain',
-      cursor,
-      params.level2GrindMs,
-      'Farm ambient XP until merchant and spell quests unlock',
-    );
-  }
+  if (goalGraph.goals.length > 0) {
+    const travelOracle = makeStraightLineTravelOracle(goalGraph.locations, params.moveSpeedFtPerMs);
 
-  if (!snapshot.questCompleted) {
-    const ratsLeft = Math.max(0, snapshot.requiredRats - snapshot.ratsKilled);
-    const slimesLeft = Math.max(0, snapshot.requiredSlimes - snapshot.slimesKilled);
-    const totalLeft = Math.max(
-      0,
-      snapshot.requiredTotalKills - (snapshot.ratsKilled + snapshot.slimesKilled),
-      ratsLeft + slimesLeft,
-    );
-    const target =
-      !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'quest-kills'
-        ? snapshot.currentTarget
-        : cursor;
-    addSegment(
-      'complete-goon-kills',
-      'Complete Goon kill quota',
-      'work',
-      'pre-chain',
-      target,
-      totalLeft * params.questKillMs,
-      `${ratsLeft} rats, ${slimesLeft} slimes, ${totalLeft} total kills remaining`,
-    );
-  }
+    // --- Committed-detour budget and goal-identity accounting ---------------
+    // The planner already starts from the detour endpoint (PLAYER_START_LOCATION
+    // maps to currentTarget when activeQuestGiverDetour).  Subtract the detour's
+    // own travel+work cost from the budget so optional bundles that only fit
+    // BEFORE the detour cost are correctly dropped.
+    const detourTarget = snapshot.activeQuestGiverDetour ? snapshot.currentTarget : null;
+    const detourCostMs = detourTarget
+      ? travelTimeMs(snapshot.player, detourTarget, params) + params.interactionMs
+      : 0;
+    const rawBudgetMs = Math.max(0, snapshot.deadlineMs - snapshot.nowMs - params.safetyBufferMs);
+    const planBudgetMs = Math.max(0, rawBudgetMs - detourCostMs);
 
-  const addShopFetchAndReturnSegments = (): void => {
-    if (!snapshot.hasShopFetchItem) {
-      addSegment(
-        'fetch-shop-prize',
-        'Fetch merchant prize',
-        'travel',
-        'shop',
-        snapshot.positions.questItem,
-        params.fetchPickupMs,
-        'Collect the merchant fetch item',
-      );
+    // If the detour fulfills an explicit graph goal, treat that goal as already
+    // completed so it is neither replanned nor double-charged.  Its unlockEffects
+    // are merged into initialSatisfiedEffects so the DP's hypothetical effect set
+    // is not retroactively missing them.
+    const committedGoalId = detourTarget?.committedGoalId ?? null;
+    let effectiveInitialEffects = goalGraph.initialSatisfiedEffects;
+    let effectiveGoals = goalGraph.goals;
+    let effectiveCompletedGoalIds: ReadonlySet<string> | undefined;
+
+    if (committedGoalId) {
+      const committedGoal = goalGraph.goals.find((g) => g.id === committedGoalId);
+      if (committedGoal) {
+        // Remove the fulfilled goal from the pending list.
+        effectiveGoals = goalGraph.goals.filter((g) => g.id !== committedGoalId);
+        // Add its effects to initial satisfied effects.
+        if (committedGoal.unlockEffects && committedGoal.unlockEffects.length > 0) {
+          const merged = new Set(goalGraph.initialSatisfiedEffects);
+          for (const eff of committedGoal.unlockEffects) merged.add(eff);
+          effectiveInitialEffects = merged;
+        }
+        // Declare it completed so other goals may reference it as a prerequisite.
+        effectiveCompletedGoalIds = new Set([committedGoalId]);
+      }
     }
-    addSegment(
-      'return-shop-prize',
-      'Return merchant prize',
-      'travel',
-      'shop',
-      snapshot.positions.shop,
-      params.interactionMs,
-      'Return the merchant fetch item',
-    );
-  };
 
-  const addShopBuySegment = (): void => {
-    const goldOwed = Math.max(0, snapshot.shopkeeperEquipmentCost - snapshot.playerGold);
-    if (goldOwed > 0) {
-      const target =
-        !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
-          ? snapshot.currentTarget
-          : cursor;
-      addSegment(
-        'farm-shop-gold',
-        'Farm charm gold',
-        'work',
-        'shop',
-        target,
-        goldOwed * params.goldFarmMs,
-        `${goldOwed} gold remaining for the merchant charm`,
-      );
+    const route = planObjectiveRoute({
+      goals: effectiveGoals,
+      startLocation: PLAYER_START_LOCATION,
+      initialSatisfiedEffects: effectiveInitialEffects,
+      completedGoalIds: effectiveCompletedGoalIds,
+      budgetMs: planBudgetMs,
+      travelOracle,
+    });
+    routeHeadId = route.routeHeadId;
+    nextActionableGoalId = route.nextActionableGoalId;
+    includedOptionalBundleIds = route.includedOptionalBundleIds;
+    droppedOptionalBundleIds = route.droppedOptionalBundleIds;
+
+    for (const step of route.steps) {
+      const meta = goalGraph.meta.get(step.goalId);
+      if (!meta) continue; // unreachable: every planned goal has metadata
+      // Preserve the pre-existing "point Progress at the live hunted
+      // entity/gold pile, not just the work-only cursor" nuance for the two
+      // ambient-grind goals, exactly as the prior procedural planner did.
+      let to: RunPlannerPoint;
+      if (step.goalId === 'complete-goon-kills') {
+        to =
+          !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'quest-kills'
+            ? snapshot.currentTarget
+            : cursor;
+      } else if (step.goalId === 'farm-shop-gold') {
+        to =
+          !snapshot.activeQuestGiverDetour && snapshot.currentTarget?.kind === 'gold-farm'
+            ? snapshot.currentTarget
+            : cursor;
+      } else if (step.location === IN_PLACE_LOCATION) {
+        to = cursor;
+      } else {
+        to = goalGraph.locations.get(step.location) ?? cursor;
+      }
+      addSegment(step.goalId, meta.label, meta.kind, meta.phase, to, step.workMs, meta.detail);
     }
-    addSegment(
-      'buy-shop-charm',
-      'Buy merchant charm',
-      'travel',
-      'shop',
-      snapshot.positions.shop,
-      params.interactionMs,
-      'Buy the merchant reward',
-    );
-  };
-
-  const addShopEquipSegment = (): void => {
-    addSegment(
-      'equip-shop-charm',
-      'Equip merchant charm',
-      'work',
-      'shop',
-      cursor,
-      params.interactionMs,
-      'Equip the purchased merchant reward',
-    );
-  };
-
-  switch (snapshot.shopStage) {
-    case 'not-met':
-      addSegment(
-        'meet-shopkeeper',
-        'Meet Shopkeeper',
-        'travel',
-        'shop',
-        snapshot.positions.shop,
-        params.interactionMs,
-        'Start the merchant errand',
-      );
-      addShopFetchAndReturnSegments();
-      addShopBuySegment();
-      addShopEquipSegment();
-      break;
-    case 'awaiting-prize':
-      addShopFetchAndReturnSegments();
-      addShopBuySegment();
-      addShopEquipSegment();
-      break;
-    case 'ready-to-buy':
-      addShopBuySegment();
-      addShopEquipSegment();
-      break;
-    case 'awaiting-equip':
-      addShopEquipSegment();
-      break;
-    case 'complete':
-      break;
-  }
-
-  if (!snapshot.bossBattleAccepted) {
-    addSegment(
-      'accept-spell-quest',
-      'Accept Spell Broker quest',
-      'travel',
-      'spell-broker',
-      snapshot.positions.spellQuestGiver,
-      params.interactionMs,
-      'Unlock the Slime Rat room objective',
-    );
-  }
-
-  if (!snapshot.slimeRatStarted) {
-    addSegment(
-      'kill-slime-rat',
-      'Reach and kill Slime Rat',
-      'boss',
-      'spell-broker',
-      snapshot.positions.slimeRatRoom,
-      params.minorBossKillMs,
-      'Complete the spell-unlock boss battle',
-    );
-  } else if (!snapshot.slimeRatDefeated) {
-    addSegment(
-      'finish-slime-rat',
-      'Finish Slime Rat',
-      'boss',
-      'spell-broker',
-      cursor,
-      params.minorBossKillMs,
-      'Finish the active spell-unlock boss battle',
-    );
-  }
-
-  if (snapshot.slimeRatDefeated && !snapshot.spellsUnlocked) {
-    addSegment(
-      'claim-spell-reward',
-      'Claim spell reward',
-      'travel',
-      'spell-broker',
-      snapshot.positions.spellQuestGiver,
-      params.interactionMs,
-      'Claim the spell reward before the final boss',
-    );
-  }
-
-  if (!snapshot.staircaseStarted) {
-    addSegment(
-      'kill-staircase-boss',
-      'Reach and kill staircase boss',
-      'boss',
-      'staircase',
-      snapshot.positions.staircase,
-      params.finalBossKillMs,
-      'Unlock the stairs by defeating the final Floor 1 boss',
-    );
-  } else if (!snapshot.staircaseDefeated) {
-    addSegment(
-      'finish-staircase-boss',
-      'Finish staircase boss',
-      'boss',
-      'staircase',
-      cursor,
-      params.finalBossKillMs,
-      'Finish the active final boss battle',
-    );
-  }
-
-  if (!snapshot.staircaseDiscovered) {
-    addSegment(
-      'take-stairs',
-      'Take the stairs',
-      'travel',
-      'post-stairs',
-      snapshot.positions.staircase,
-      params.stairsInteractMs,
-      snapshot.staircaseUnlocked
-        ? 'Descend the unlocked stairs'
-        : 'Descend once the boss unlocks the stairs',
-    );
   }
 
   const estimatedBeforeBuffer = segments.reduce((sum, segment) => sum + segment.estimatedMs, 0);
@@ -468,5 +393,9 @@ export function estimateFloor1RunPlan(
     slackMs,
     urgency,
     segments,
+    routeHeadId,
+    nextActionableGoalId,
+    includedOptionalBundleIds,
+    droppedOptionalBundleIds,
   };
 }

@@ -87,6 +87,21 @@ describe('door-navigation', () => {
       setGoalFlag(world, 'relocked', true);
       expect(getDoorNavInfos(world)[0]!.navigationBlocked).toBe(true);
     });
+
+    it('honors a hypothetical goalOverrides map without touching live goal-flag state', () => {
+      const door = spawnDoor(world, 5, 5);
+      setDoorLockConfig(world, door, {
+        unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'hypothetical-goal' }] },
+      });
+      // Live state: still blocked.
+      expect(getDoorNavInfos(world)[0]!.navigationBlocked).toBe(true);
+      // Hypothetical override: "as if hypothetical-goal were already satisfied".
+      const overrides = new Map([['hypothetical-goal', true]]);
+      expect(getDoorNavInfos(world, overrides)[0]!.navigationBlocked).toBe(false);
+      // The live world was never mutated by the hypothetical query.
+      expect(world.goalFlags.get('hypothetical-goal')).not.toBe(true);
+      expect(getDoorNavInfos(world)[0]!.navigationBlocked).toBe(true);
+    });
   });
 
   describe('getNavigationBlockedDoors', () => {
@@ -122,6 +137,18 @@ describe('door-navigation', () => {
       });
       const passable = buildDoorAwarePassable(world);
       expect(passable(5, 5)).toBe(false);
+    });
+
+    it('treats a locked door as passable under a hypothetical goalOverrides map', () => {
+      const door = spawnDoor(world, 5, 5);
+      setDoorLockConfig(world, door, {
+        unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'someday' }] },
+      });
+      expect(buildDoorAwarePassable(world)(5, 5)).toBe(false);
+      const hypothetical = buildDoorAwarePassable(world, new Map([['someday', true]]));
+      expect(hypothetical(5, 5)).toBe(true);
+      // Live predicate is unaffected by the hypothetical one.
+      expect(buildDoorAwarePassable(world)(5, 5)).toBe(false);
     });
 
     it('returns an always-false predicate when there is no floor map', () => {

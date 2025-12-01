@@ -30,6 +30,10 @@ function plan(slackMs: number): Floor1RunPlan {
     slackMs,
     urgency: 0,
     segments: [],
+    routeHeadId: null,
+    nextActionableGoalId: null,
+    includedOptionalBundleIds: [],
+    droppedOptionalBundleIds: [],
   };
 }
 
@@ -120,6 +124,34 @@ describe('merchant weapon purchase intent', () => {
     configureMerchantWeaponPurchase(noSlack, true);
     updateMerchantWeaponIntent(noSlack, plan(0), GOLD_FARM_MS);
     expect(getMerchantWeaponIntent(noSlack).status).toBe('abandoned');
+  });
+
+  it('uses the planner bundle verdict without charging its work against slack twice', () => {
+    const includedWorld = completedMerchantWorld(1);
+    configureMerchantWeaponPurchase(includedWorld, true);
+    updateMerchantWeaponIntent(includedWorld, plan(1_000_000), GOLD_FARM_MS);
+    updateMerchantWeaponIntent(
+      includedWorld,
+      {
+        ...plan(0),
+        includedOptionalBundleIds: ['merchant-weapon-purchase'],
+      },
+      GOLD_FARM_MS,
+    );
+    expect(getMerchantWeaponIntent(includedWorld).status).toBe('farming');
+
+    const droppedWorld = completedMerchantWorld(1);
+    configureMerchantWeaponPurchase(droppedWorld, true);
+    updateMerchantWeaponIntent(droppedWorld, plan(1_000_000), GOLD_FARM_MS);
+    updateMerchantWeaponIntent(
+      droppedWorld,
+      {
+        ...plan(1_000_000),
+        droppedOptionalBundleIds: ['merchant-weapon-purchase'],
+      },
+      GOLD_FARM_MS,
+    );
+    expect(getMerchantWeaponIntent(droppedWorld).status).toBe('abandoned');
   });
 
   it('buys once affordable and force-equips the selected weapon over the starter', () => {
