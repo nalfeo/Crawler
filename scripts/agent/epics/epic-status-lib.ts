@@ -1,6 +1,13 @@
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { z } from 'zod';
@@ -2718,5 +2725,276 @@ export function findRepoRoot(start: string): string {
       throw new Error(`Could not locate repository root from ${start}`);
     }
     current = parent;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Materialization — write side
+// ---------------------------------------------------------------------------
+
+/** A runner that can both read and create GitHub resources. */
+export interface GithubWriteRunner extends GithubRunner {
+  /**
+   * POST to a GitHub API path with a JSON payload.
+   * Returns the parsed JSON response.
+   */
+  post(path: string, payload: unknown): unknown;
+}
+
+export function createGhWriteRunner(): GithubWriteRunner {
+  return {
+    get(path: string): unknown {
+      const output = execFileSync('gh', ['api', path], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      return JSON.parse(output) as unknown;
+    },
+    post(path: string, payload: unknown): unknown {
+      const body = JSON.stringify(payload);
+      const output = execFileSync('gh', ['api', '--method', 'POST', path, '--input', '-'], {
+        encoding: 'utf8',
+        input: body,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      return JSON.parse(output) as unknown;
+    },
+  };
+}
+
+/** Outcome for a single materialization packet. */
+export interface MaterializationOutcome {
+  readonly node_id: string;
+  readonly title: string;
+  /** 'created' — new issue was created; 'existing' — issue already exists (skipped); 'dry-run' — no write performed. */
+  readonly status: 'created' | 'existing' | 'dry-run';
+  readonly issue_number: number | null;
+  readonly issue_url: string | null;
+}
+
+export interface MaterializationResult {
+  readonly outcomes: ReadonlyArray<MaterializationOutcome>;
+  readonly created_count: number;
+  readonly existing_count: number;
+  readonly dry_run: boolean;
+}
+
+/** Shape of the GitHub API response for a created or listed issue. */
+const githubIssueApiSchema = z
+  .object({
+    number: z.number().int().positive(),
+    html_url: z.string().url(),
+    title: z.string(),
+    body: z.string().nullable().optional(),
+    /** Present on pull requests; absent on plain issues. */
+    pull_request: z.unknown().optional(),
+  })
+  .passthrough();
+
+/** The `Node: \`<node_id>\`` marker embedded in every materialized issue body. */
+const NODE_MARKER_PATTERN = /^Node:\s*`([^`]+)`/m;
+
+/**
+ * Extract the node_id from an issue body via the stable `Node: \`slice:...\`` marker.
+ * Returns null if the marker is absent or does not match the NODE_ID_PATTERN.
+ */
+function extractNodeIdFromBody(body: string | null | undefined): string | null {
+  if (!body) return null;
+  const match = NODE_MARKER_PATTERN.exec(body);
+  if (!match?.[1]) return null;
+  return NODE_ID_PATTERN.test(match[1]) ? match[1] : null;
+}
+
+/**
+ * List all issues in the repo (open or closed) that carry every label in
+ * `labels`. Uses `gh api` with `state=all` and paginates (`page=N`,
+ * `per_page=100`) until completion so previously-created (including closed)
+ * issues are detected and duplicates are prevented.
+ */
+function listIssuesByLabels(
+  runner: GithubRunner,
+  repo: string,
+  labels: ReadonlyArray<string>,
+): Array<{ number: number; title: string; html_url: string; body: string | null }> {
+  const labelParam = encodeURIComponent(labels.join(','));
+  const allIssues: Array<{ number: number; title: string; html_url: string; body: string | null }> =
+    [];
+  for (let page = 1; ; page++) {
+    const path = `/repos/${repo}/issues?state=all&labels=${labelParam}&per_page=100&page=${page}`;
+    const raw = runner.get(path);
+    const parsed = z.array(githubIssueApiSchema).safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(
+        `GitHub API returned unexpected issue list shape (page ${page}): ${parsed.error.message}`,
+      );
+    }
+    // Filter out pull requests — the Issues API can return PRs for the same labels.
+    const issues = parsed.data.filter((item) => item.pull_request === undefined);
+    allIssues.push(
+      ...issues.map((issue) => ({
+        number: issue.number,
+        title: issue.title,
+        html_url: issue.html_url,
+        body: issue.body ?? null,
+      })),
+    );
+    if (parsed.data.length < 100) break;
+  }
+  return allIssues;
+}
+
+/**
+ * Materialize child issues for the given epic state.
+ *
+ * In dry-run mode (`options.dryRun === true`) no GitHub writes are performed
+ * and no state file is mutated. Returns an outcome with status `'dry-run'` for
+ * each planned packet.
+ *
+ * In write mode (`options.dryRun === false`) each packet is matched against
+ * existing issues first by the stable `Node: \`<node_id>\`` body marker, then
+ * by exact title as a fallback. If a match is found the issue is recorded as
+ * `'existing'` (no write); otherwise a new issue is created and recorded as
+ * `'created'`. The caller is responsible for persisting the resulting issue map
+ * to `epic-state.json` via `patchEpicStateIssues`.
+ */
+export function materializeChildIssues(
+  state: EpicState,
+  runner: GithubWriteRunner,
+  options: { readonly dryRun: boolean },
+): MaterializationResult {
+  const plan = buildMaterializationPlan(state);
+  const repo = state.github.repository;
+
+  if (options.dryRun || plan.length === 0) {
+    return {
+      outcomes: plan.map((packet) => ({
+        node_id: packet.node_id,
+        title: packet.title,
+        status: 'dry-run',
+        issue_number: null,
+        issue_url: null,
+      })),
+      created_count: 0,
+      existing_count: 0,
+      dry_run: options.dryRun,
+    };
+  }
+
+  // Fetch existing issues once to enable idempotency checks.
+  const existingIssues = listIssuesByLabels(runner, repo, state.issue_materialization.labels);
+  // Primary key: stable node_id extracted from the `Node: \`...\`` body marker.
+  const existingByNodeId = new Map<
+    string,
+    { number: number; title: string; html_url: string; body: string | null }
+  >();
+  // Fallback key: exact title match (covers issues created before the marker convention).
+  const existingByTitle = new Map<
+    string,
+    { number: number; title: string; html_url: string; body: string | null }
+  >();
+  for (const issue of existingIssues) {
+    const nodeId = extractNodeIdFromBody(issue.body);
+    if (nodeId) existingByNodeId.set(nodeId, issue);
+    // Title fallback is legacy-only: once an issue has a stable Node marker,
+    // it must be matched by marker to prevent cross-node collisions.
+    if (!nodeId) existingByTitle.set(issue.title, issue);
+  }
+
+  const outcomes: MaterializationOutcome[] = [];
+  let createdCount = 0;
+  let existingCount = 0;
+
+  for (const packet of plan) {
+    // Match by stable node_id marker first, then fall back to title.
+    const existing = existingByNodeId.get(packet.node_id) ?? existingByTitle.get(packet.title);
+    if (existing) {
+      outcomes.push({
+        node_id: packet.node_id,
+        title: packet.title,
+        status: 'existing',
+        issue_number: existing.number,
+        issue_url: existing.html_url,
+      });
+      existingCount++;
+      continue;
+    }
+
+    // Create the issue via gh api POST.
+    const payload = {
+      title: packet.title,
+      body: packet.body,
+      labels: [...packet.labels],
+    };
+    const raw = runner.post(`/repos/${repo}/issues`, payload);
+    const parsed = githubIssueApiSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error(
+        `GitHub API returned unexpected shape for new issue (node ${packet.node_id}): ${JSON.stringify(raw)}`,
+      );
+    }
+    outcomes.push({
+      node_id: packet.node_id,
+      title: packet.title,
+      status: 'created',
+      issue_number: parsed.data.number,
+      issue_url: parsed.data.html_url,
+    });
+    createdCount++;
+  }
+
+  return {
+    outcomes,
+    created_count: createdCount,
+    existing_count: existingCount,
+    dry_run: false,
+  };
+}
+
+/**
+ * Atomically patch `epic-state.json` to record newly created (or discovered)
+ * child issue numbers for the given node IDs.
+ *
+ * `issueMap` maps `node_id → { number, url }`. Only nodes present in the map
+ * are updated; existing issue fields are never overwritten.
+ */
+export function patchEpicStateIssues(
+  repoRoot: string,
+  epicId: string,
+  issueMap: ReadonlyMap<string, { readonly number: number; readonly url: string }>,
+): void {
+  if (issueMap.size === 0) return;
+  const stateFilePath = resolve(repoRoot, 'docs', 'knowledge', 'epics', epicId, 'epic-state.json');
+  const raw = JSON.parse(readFileSync(stateFilePath, 'utf8')) as Record<string, unknown>;
+  const nodes = raw['nodes'];
+  if (!Array.isArray(nodes)) {
+    throw new Error('epic-state.json is missing a top-level "nodes" array');
+  }
+  for (const node of nodes as Array<Record<string, unknown>>) {
+    const nodeId = node['node_id'];
+    if (typeof nodeId !== 'string') continue;
+    const entry = issueMap.get(nodeId);
+    if (!entry) continue;
+    const github = node['github'];
+    if (!github || typeof github !== 'object') continue;
+    const gh = github as Record<string, unknown>;
+    // Never overwrite an existing issue entry.
+    if (gh['issue'] !== null && gh['issue'] !== undefined) continue;
+    gh['issue'] = { number: entry.number, url: entry.url };
+  }
+  const tempPath = `${stateFilePath}.tmp-${process.pid}-${randomUUID()}`;
+  let tempWritten = false;
+  try {
+    writeFileSync(tempPath, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+    tempWritten = true;
+    renameSync(tempPath, stateFilePath);
+    tempWritten = false;
+  } finally {
+    if (tempWritten) {
+      try {
+        unlinkSync(tempPath);
+      } catch {
+        // best-effort cleanup only
+      }
+    }
   }
 }
