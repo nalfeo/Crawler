@@ -3848,6 +3848,19 @@ test('live reconcile task comment includes explicit review-thread reply comment 
     ) && taskCommentCall.body.body.includes('exact thread comment listed above'),
     'task comment should explicitly reject top-level PR comments for review-thread blockers',
   );
+  assert.ok(
+    taskCommentCall.body.body.includes('validated `✅ Addressed in <sha>: <one-line note>` result'),
+    'task comment should require a SHA for ordinary Addressed markers',
+  );
+  assert.equal(
+    taskCommentCall.body.body.includes('validated `✅ Addressed` result'),
+    false,
+    'task comment should not advertise a bare Addressed marker',
+  );
+  assert.ok(
+    taskCommentCall.body.body.includes('`✅ Not applicable: <one-line reason>`'),
+    'task comment should reserve the SHA-less marker for deterministic non-applicability',
+  );
 });
 
 test('reconcile proceeds when copilot is assigned but no lease/state exists', async (t) => {
@@ -6382,7 +6395,7 @@ test('outdated stale-marker thread auto-resolves without posting a blocker summa
           {
             id: threadId,
             isResolved: false,
-            isOutdated: true,
+            isOutdated: false,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
