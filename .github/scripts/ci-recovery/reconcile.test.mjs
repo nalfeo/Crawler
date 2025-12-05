@@ -6382,7 +6382,7 @@ test('stale-marker thread includes recovery hint in blocker summary', async (t) 
           {
             id: threadId,
             isResolved: false,
-            isOutdated: true,
+            isOutdated: false,
             path: 'scripts/sprites/cli.ts',
             line: 285,
             comments: {
