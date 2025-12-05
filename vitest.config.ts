@@ -82,6 +82,11 @@ export default defineConfig({
           // Sprite pipeline tests live in their own project — exclude them here
           // so game test runs stay fast and focused on game code.
           exclude: ['tests/unit/sprites/**'],
+          // Explicitly cap worker count and memory to avoid CI OOM crashes on
+          // high-core runners where Vitest's default per-worker memory limit
+          // scales down with CPU count.
+          maxWorkers: 4,
+          vmMemoryLimit: '2GB',
           // Worker threads start faster than forked processes (no process spawn
           // overhead per worker). Unit tests are pure-logic with no DOM side
           // effects; with Vitest's default isolate:true each test file gets its
