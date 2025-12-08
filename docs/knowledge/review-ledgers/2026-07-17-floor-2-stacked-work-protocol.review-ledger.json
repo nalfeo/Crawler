@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-17",
+  "session_slug": "floor-2-stacked-work-protocol",
+  "task_title": "Add speculative stacked-work metadata to epic control plane",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 4,
+      "resolved_count": 4,
+      "plan_divergence": "minor",
+      "notes": "4 concerns found (2 critical, 2 major), all resolved: (1) post-merge stack_base simultaneously required+rejected — fixed by widening allowed set from unvalidated-only to all direct deps; (2) computeReady only gated on requires_main_rebase flag not on stacked_work presence — fixed to gate on node.stacked_work==null; (3) stacked_work.issue not audited on GitHub — fixed by adding stacked_work.issue to the auditIssue loop; (4) dependency_pr_number not validated against dep PR — fixed with new stacked.base-pr-mismatch check. Plan divergence=minor: no re-architecture, all fixes were detail-level corrections to the chosen design."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": [
+            "claude-opus-4.8"
+          ],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": true
+        }
+      ]
+    }
+  }
+}
