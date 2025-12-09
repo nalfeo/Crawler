@@ -1,0 +1,171 @@
+name: G2-B Harvest and Approve
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (download + score but do not commit or open PR)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      create_pr:
+        description: 'Create stacked PR after approvals'
+        required: false
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+concurrency:
+  group: g2b-harvest-approve
+  cancel-in-progress: false
+
+jobs:
+  harvest-approve:
+    name: Harvest Azure runs + approve best variants + open stacked PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout G2-A branch (base for stacked PR)
+        uses: actions/checkout@v4
+        with:
+          ref: nalfeo-floor-2-equipment-placeholders
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --prefer-offline
+
+      - name: Create generated/runs directory
+        run: mkdir -p generated/runs
+
+      - name: Run harvest+approve script
+        env:
+          AZURE_STORAGE_ACCOUNT: ${{ secrets.AZURE_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_KEY: ${{ secrets.AZURE_STORAGE_KEY }}
+          SPRITES_ALLOW_CI_PIPELINE: 'true'
+          DRY_RUN: ${{ inputs.dry_run }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: npx tsx scripts/sprites/ci-harvest-approve.ts
+
+      - name: Show approval results
+        if: always()
+        run: |
+          if [ -f g2b-harvest-results.json ]; then
+            echo "=== G2-B Harvest Results ==="
+            cat g2b-harvest-results.json
+          fi
+
+      - name: Check if any new approvals
+        id: check_changes
+        run: |
+          if git diff --quiet HEAD -- public/assets/generated/ src/shared/data/sprite-catalog.json; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "No new approvals — nothing to commit."
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            CHANGED=$(git diff --name-only HEAD -- public/assets/generated/ src/shared/data/sprite-catalog.json | wc -l)
+            echo "Found $CHANGED changed files."
+          fi
+
+      - name: Create stacked art branch and commit
+        if: steps.check_changes.outputs.has_changes == 'true' && inputs.dry_run == 'false'
+        id: create_branch
+        run: |
+          TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+          BRANCH="assets/g2b-floor2-equipment-${TIMESTAMP}"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "${BRANCH}"
+
+          # Stage all generated art + manifest + catalog
+          git add public/assets/generated/
+          git add src/shared/data/sprite-catalog.json
+          # Also stage g2b-harvest-results.json as a workflow artifact reference
+          git add g2b-harvest-results.json || true
+
+          APPROVED_COUNT=$(node -e "const r=require('./g2b-harvest-results.json'); console.log(r.approved + (r.alreadyApproved||0))")
+          git commit -m "art(g2b): approve ${APPROVED_COUNT} Floor 2 equipment sprites" \
+            -m "Harvested and approved from Azure-generated pipeline runs. Stacked on nalfeo-floor-2-equipment-placeholders (G2-A). Source: g2b-harvest-approve workflow run ${{ github.run_id }}"
+
+          git push origin "${BRANCH}"
+          echo "Pushed branch: ${BRANCH}"
+
+      - name: Open stacked PR (art-only, targeting G2-A)
+        if: steps.check_changes.outputs.has_changes == 'true' && inputs.dry_run == 'false' && inputs.create_pr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.create_branch.outputs.branch }}"
+          APPROVED=$(node -e "const r=require('./g2b-harvest-results.json'); console.log(r.approved + (r.alreadyApproved||0))")
+          MISSING=$(node -e "const r=require('./g2b-harvest-results.json'); console.log(r.missing||0)")
+
+          # Write PR body to a temp file to avoid YAML block-scalar blank-line issues
+          cat > /tmp/pr-body.md << PREOF
+          ## G2-B: Floor 2 Equipment Sprites (art-only)
+
+          Stacked on: \`nalfeo-floor-2-equipment-placeholders\` (G2-A #1302)
+          Parent issue: #1303
+
+          ### Summary
+          - **Approved sprites:** ${APPROVED} / 70
+          - **Missing (pipeline still running):** ${MISSING}
+          - **Harvest run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          ### Contents
+          Art-only PR: new \`public/assets/generated/*.png\` sprites and updated \`manifest.json\` + \`sprite-catalog.json\`.
+          No gameplay code, no stats, no wiring patches (wiring deferred to post-merge step).
+
+          ### Stacking note
+          Do NOT merge until G2-A (#1302) is merged to \`main\` first.
+          Do NOT arm auto-merge — awaiting explicit maintainer authorization per G2-B contract.
+
+          Closes #1303
+          PREOF
+
+          gh pr create \
+            --base nalfeo-floor-2-equipment-placeholders \
+            --head "${BRANCH}" \
+            --title "art(g2b): Floor 2 equipment sprites [${APPROVED}/70]" \
+            --body-file /tmp/pr-body.md \
+            --label "art-only" || true
+
+          echo "PR created from ${BRANCH} → nalfeo-floor-2-equipment-placeholders"
+
+      - name: Report pipeline status
+        if: always()
+        run: |
+          echo "=== G2-B Harvest+Approve Complete ==="
+          if [ -f g2b-harvest-results.json ]; then
+            node -e "
+              const r = require('./g2b-harvest-results.json');
+              console.log('Approved:       ', r.approved);
+              console.log('Already ok:     ', r.alreadyApproved || 0);
+              console.log('Skipped:        ', r.skipped || 0);
+              console.log('Errors:         ', r.errors || 0);
+              console.log('Missing runs:   ', r.missing || 0);
+              if (r.missing > 0) {
+                console.log('');
+                console.log('Re-trigger this workflow after the asset-request pipeline');
+                console.log('finishes generating the missing sprites.');
+              }
+            "
+          fi
