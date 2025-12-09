@@ -1,6 +1,20 @@
-import { CORPSE, ENEMY_PROJECTILE } from '../../shared/constants.js';
+import { CORPSE } from '../../shared/constants.js';
 import { computeCorpseDecay, type CorpseDecay } from '../../engine/corpse-decay.js';
-import { computeSpawnPopScale, MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
+import {
+  CONTACT_ATTACK_MOTION_MS,
+  NEUTRAL_MOB_MOTION,
+  sampleAttackPreview,
+  sampleContactAttackMotion,
+  sampleHitReactionMotion,
+  sampleMovementMotion,
+  sampleRangedReleaseMotion,
+  sampleRangedWindupMotion,
+  sampleSpawnMotion,
+  sampleStatusPreviewMotion,
+  scaleMobMotion,
+  type MobLocomotionStyle,
+  type MobMotionTransform,
+} from '../../shared/mob-motion.js';
 import {
   parseGeneratedManifest,
   type GeneratedManifest,
@@ -8,8 +22,14 @@ import {
 } from '../../shared/generated-assets.js';
 
 export type MobMotionState = 'spawn' | 'movement' | 'attack' | 'hit' | 'death' | 'status';
-export type MobLocomotionStyle = 'stride' | 'hop' | 'hover' | 'slither' | 'stomp';
-export type MobStatusTreatment = 'freeze' | 'burn' | 'stun';
+export {
+  sampleAttackPreview,
+  sampleStatusTreatment,
+  type AttackPreviewSample,
+  type MobLocomotionStyle,
+  type MobMotionTransform,
+  type MobStatusTreatment,
+} from '../../shared/mob-motion.js';
 
 export interface MobSpriteOption {
   readonly textureKey: string;
@@ -21,16 +41,6 @@ export interface MobSpriteOption {
   readonly centerOfGravity: { readonly x: number; readonly y: number } | null;
 }
 
-export interface MobMotionTransform {
-  readonly offsetX: number;
-  readonly offsetY: number;
-  readonly scaleX: number;
-  readonly scaleY: number;
-  readonly rotation: number;
-  readonly alpha: number;
-  readonly flash: number;
-}
-
 export interface MobMotionOptions {
   readonly intensity?: number;
   readonly movementStyle?: MobLocomotionStyle;
@@ -38,14 +48,6 @@ export interface MobMotionOptions {
     readonly hasProjectile: boolean;
     readonly telegraphMs: number;
   };
-}
-
-export interface AttackPreviewSample {
-  readonly phaseMs: number;
-  readonly telegraphActive: boolean;
-  readonly telegraphPulse: number;
-  readonly projectileVisible: boolean;
-  readonly projectileProgress: number;
 }
 
 export interface DeathPreviewSample {
@@ -60,7 +62,6 @@ export interface DeathPreviewSample {
 // These enemy-typed manifest entries are structures, so movement transforms
 // would misrepresent them as mobile mobs.
 const STATIONARY_ENEMY_BRIEFS = new Set(['rat-nest-v2', 'rats-nest-v1', 'slime-pool-v1']);
-const TAU = Math.PI * 2;
 const SPAWN_CYCLE_MS = 1_300;
 const MELEE_ATTACK_CYCLE_MS = 900;
 const HIT_CYCLE_MS = 1_000;
@@ -69,19 +70,6 @@ const DEATH_POP_MS = 500;
 const DEATH_KNOCKBACK_MS = 220;
 const BLOOD_POOL_LIFETIME_MS = 30_000;
 const BLOOD_POOL_EXPAND_FRACTION = 0.7;
-const STATUS_TREATMENT_MS = 800;
-const PROJECTILE_TRAVEL_MS = 500;
-const PROJECTILE_RECOVERY_MS = 120;
-
-const NEUTRAL_TRANSFORM: MobMotionTransform = {
-  offsetX: 0,
-  offsetY: 0,
-  scaleX: 1,
-  scaleY: 1,
-  rotation: 0,
-  alpha: 1,
-  flash: 0,
-};
 
 function anchorPoint(
   entry: ManifestEntry,
@@ -122,205 +110,60 @@ function smoothstep(value: number): number {
   return t * t * (3 - 2 * t);
 }
 
-function quantize(value: number, step: number): number {
-  if (!Number.isFinite(value)) return 0;
-  return Math.round(value / step) * step;
-}
-
 function elapsedWithin(elapsedMs: number, periodMs: number): number {
   const safeElapsed = Number.isFinite(elapsedMs) ? elapsedMs : 0;
   return ((safeElapsed % periodMs) + periodMs) % periodMs;
 }
 
-function normalizedPhase(elapsedMs: number, periodMs: number): number {
-  return elapsedWithin(elapsedMs, periodMs) / periodMs;
-}
-
-function scaleTransform(transform: MobMotionTransform, intensity: number): MobMotionTransform {
-  const amount = Math.max(0, Number.isFinite(intensity) ? intensity : 0);
-  return {
-    offsetX: quantize(transform.offsetX * amount, 0.5),
-    offsetY: quantize(transform.offsetY * amount, 0.5),
-    scaleX: quantize(1 + (transform.scaleX - 1) * amount, 0.005),
-    scaleY: quantize(1 + (transform.scaleY - 1) * amount, 0.005),
-    rotation: quantize(transform.rotation * amount, 0.005),
-    alpha: quantize(1 + (transform.alpha - 1) * Math.min(1, amount), 0.05),
-    flash: clamp01(transform.flash * amount),
-  };
-}
-
 function sampleSpawn(elapsedMs: number): MobMotionTransform {
-  const phaseMs = elapsedWithin(elapsedMs, SPAWN_CYCLE_MS);
-  if (phaseMs >= MINI_SLIME_SPAWN_ANIM_MS) {
-    return NEUTRAL_TRANSFORM;
-  }
-
-  const progress = phaseMs / MINI_SLIME_SPAWN_ANIM_MS;
-  const scale = computeSpawnPopScale(progress);
-  return {
-    offsetX: 0,
-    offsetY: quantize((1 - progress) * 6, 0.5),
-    scaleX: quantize(scale.x, 0.005),
-    scaleY: quantize(scale.y, 0.005),
-    rotation: quantize(Math.sin(progress * Math.PI * 3) * 0.04 * (1 - progress), 0.005),
-    alpha: quantize(clamp01(progress * 3), 0.05),
-    flash: 0,
-  };
+  return sampleSpawnMotion(elapsedWithin(elapsedMs, SPAWN_CYCLE_MS));
 }
 
 function sampleMovement(elapsedMs: number, style: MobLocomotionStyle): MobMotionTransform {
-  if (style === 'hop') {
-    const phase = normalizedPhase(elapsedMs, 720);
-    const arc = Math.sin(phase * Math.PI);
-    const lean = Math.sin(phase * TAU);
-    return {
-      offsetX: lean * 0.75,
-      offsetY: -arc * 5,
-      scaleX: 1 - arc * 0.05,
-      scaleY: 1 + arc * 0.08,
-      rotation: lean * 0.035,
-      alpha: 1,
-      flash: 0,
-    };
-  }
-
-  if (style === 'hover') {
-    const phase = normalizedPhase(elapsedMs, 1_100);
-    const wave = Math.sin(phase * TAU);
-    return {
-      offsetX: Math.cos(phase * TAU) * 0.75,
-      offsetY: -2.5 - wave * 2,
-      scaleX: 1 + wave * 0.015,
-      scaleY: 1 - wave * 0.015,
-      rotation: wave * 0.025,
-      alpha: 1,
-      flash: 0,
-    };
-  }
-
-  if (style === 'slither') {
-    const phase = normalizedPhase(elapsedMs, 640);
-    const sway = Math.sin(phase * TAU);
-    const compression = Math.abs(Math.cos(phase * TAU));
-    return {
-      offsetX: sway * 1.5,
-      offsetY: -Math.abs(sway) * 0.5,
-      scaleX: 1 + compression * 0.06,
-      scaleY: 1 - compression * 0.04,
-      rotation: sway * 0.055,
-      alpha: 1,
-      flash: 0,
-    };
-  }
-
-  if (style === 'stomp') {
-    const phase = normalizedPhase(elapsedMs, 900);
-    const lift = phase < 0.35 ? Math.sin((phase / 0.35) * Math.PI) : 0;
-    const impact = phase >= 0.35 && phase < 0.52 ? 1 - (phase - 0.35) / 0.17 : 0;
-    return {
-      offsetX: 0,
-      offsetY: -lift * 2.5,
-      scaleX: 1 + impact * 0.11,
-      scaleY: 1 - impact * 0.13,
-      rotation: Math.sin(phase * TAU) * 0.01,
-      alpha: 1,
-      flash: 0,
-    };
-  }
-
-  const phase = normalizedPhase(elapsedMs, 560);
-  const stride = Math.sin(phase * TAU);
-  const lift = Math.abs(stride);
-  return {
-    offsetX: stride,
-    offsetY: -lift * 2,
-    scaleX: 1 + lift * 0.04,
-    scaleY: 1 - lift * 0.06,
-    rotation: stride * 0.025,
-    alpha: 1,
-    flash: 0,
-  };
-}
-
-export function sampleAttackPreview(
-  elapsedMs: number,
-  hasProjectile: boolean,
-  telegraphMs: number,
-): AttackPreviewSample {
-  const phaseMs = elapsedWithin(elapsedMs, ENEMY_PROJECTILE.FIRE_COOLDOWN_MS);
-  if (!hasProjectile) {
-    return {
-      phaseMs,
-      telegraphActive: false,
-      telegraphPulse: 0,
-      projectileVisible: false,
-      projectileProgress: 0,
-    };
-  }
-
-  const delayMs = Math.min(
-    Math.max(0, Number.isFinite(telegraphMs) ? telegraphMs : 0),
-    ENEMY_PROJECTILE.FIRE_COOLDOWN_MS - PROJECTILE_RECOVERY_MS,
-  );
-  const telegraphActive = delayMs > 0 && phaseMs < delayMs;
-  const travelEndMs = Math.min(
-    ENEMY_PROJECTILE.FIRE_COOLDOWN_MS - PROJECTILE_RECOVERY_MS,
-    delayMs + PROJECTILE_TRAVEL_MS,
-  );
-  const projectileVisible = phaseMs >= delayMs && phaseMs < travelEndMs;
-  const travelDurationMs = Math.max(1, travelEndMs - delayMs);
-
-  return {
-    phaseMs,
-    telegraphActive,
-    telegraphPulse: telegraphActive
-      ? quantize(0.55 + Math.sin((phaseMs / Math.max(1, delayMs)) * Math.PI * 4) * 0.2, 0.05)
-      : 0,
-    projectileVisible,
-    projectileProgress: projectileVisible ? clamp01((phaseMs - delayMs) / travelDurationMs) : 0,
-  };
+  return sampleMovementMotion(elapsedMs, style);
 }
 
 function sampleMeleeAttack(elapsedMs: number): MobMotionTransform {
-  const phase = normalizedPhase(elapsedMs, MELEE_ATTACK_CYCLE_MS);
-  let offsetX: number;
-  let offsetY: number;
-  let scaleX: number;
-  let scaleY: number;
-  let rotation: number;
+  const phaseMs = elapsedWithin(elapsedMs, MELEE_ATTACK_CYCLE_MS);
+  const windupMs = 320;
+  const strikeMs = 220;
+  const recoveryMs = MELEE_ATTACK_CYCLE_MS - windupMs - strikeMs;
 
-  if (phase < 0.32) {
-    const windup = smoothstep(phase / 0.32);
-    offsetX = -3 * windup;
-    offsetY = windup;
-    scaleX = 1 - 0.04 * windup;
-    scaleY = 1 + 0.05 * windup;
-    rotation = -0.08 * windup;
-  } else if (phase < 0.5) {
-    const strike = smoothstep((phase - 0.32) / 0.18);
-    offsetX = -3 + 11 * strike;
-    offsetY = 1 - 2 * Math.sin(strike * Math.PI);
-    scaleX = 0.96 + 0.14 * strike;
-    scaleY = 1.05 - 0.11 * strike;
-    rotation = -0.08 + 0.2 * strike;
-  } else {
-    const recover = smoothstep((phase - 0.5) / 0.5);
-    offsetX = 8 * (1 - recover);
-    offsetY = -Math.sin(recover * Math.PI);
-    scaleX = 1 + 0.1 * (1 - recover);
-    scaleY = 1 - 0.06 * (1 - recover);
-    rotation = 0.12 * (1 - recover);
+  if (phaseMs < windupMs) {
+    const progress = phaseMs / windupMs;
+    return {
+      offsetX: -0.18 * progress,
+      offsetY: 0.04 * progress,
+      scaleX: 1 - 0.06 * progress,
+      scaleY: 1 + 0.07 * progress,
+      rotation: -0.09 * progress,
+      alpha: 1,
+      flash: 0,
+    };
   }
 
-  return {
-    offsetX,
-    offsetY,
-    scaleX,
-    scaleY,
-    rotation,
-    alpha: 1,
-    flash: 0,
-  };
+  if (phaseMs < windupMs + strikeMs) {
+    const strikeElapsedMs = phaseMs - windupMs;
+    const t = strikeElapsedMs / Math.max(1, strikeMs);
+    // Interpolate from the windup endpoint (t=0) to the full contact lunge (t=1).
+    // This preserves continuous motion at the windup→strike boundary instead of
+    // snapping to neutral (which occurred when contactElapsedMs=CONTACT_ATTACK_MOTION_MS
+    // was passed to sampleContactAttackMotion at strikeElapsedMs=0).
+    const lunge = sampleContactAttackMotion(0);
+    return {
+      offsetX: -0.18 + (lunge.offsetX + 0.18) * t,
+      offsetY: 0.04 + (lunge.offsetY - 0.04) * t,
+      scaleX: 0.94 + (lunge.scaleX - 0.94) * t,
+      scaleY: 1.07 + (lunge.scaleY - 1.07) * t,
+      rotation: -0.09 + (lunge.rotation + 0.09) * t,
+      alpha: 1,
+      flash: 0,
+    };
+  }
+
+  const recoveryElapsedMs = phaseMs - windupMs - strikeMs;
+  const contactElapsedMs = recoveryElapsedMs * (CONTACT_ATTACK_MOTION_MS / Math.max(1, recoveryMs));
+  return sampleContactAttackMotion(Math.max(0, contactElapsedMs));
 }
 
 function sampleRangedAttack(elapsedMs: number, telegraphMs: number): MobMotionTransform {
@@ -328,50 +171,18 @@ function sampleRangedAttack(elapsedMs: number, telegraphMs: number): MobMotionTr
   const delayMs = Math.max(0, telegraphMs);
 
   if (preview.telegraphActive) {
-    const windup = smoothstep(preview.phaseMs / Math.max(1, delayMs));
-    return {
-      offsetX: -2.5 * windup,
-      offsetY: windup,
-      scaleX: 1 - 0.05 * windup,
-      scaleY: 1 + 0.06 * windup,
-      rotation: -0.06 * windup,
-      alpha: 1,
-      flash: 0,
-    };
+    return sampleRangedWindupMotion(preview.phaseMs / Math.max(1, delayMs));
   }
 
   if (preview.projectileVisible) {
-    const recoil = 1 - smoothstep(Math.min(1, preview.projectileProgress * 3));
-    return {
-      offsetX: 4 * recoil,
-      offsetY: -recoil,
-      scaleX: 1 + recoil * 0.08,
-      scaleY: 1 - recoil * 0.05,
-      rotation: 0.08 * recoil,
-      alpha: 1,
-      flash: recoil,
-    };
+    return sampleRangedReleaseMotion(preview.phaseMs - delayMs);
   }
 
-  return NEUTRAL_TRANSFORM;
+  return NEUTRAL_MOB_MOTION;
 }
 
 function sampleHit(elapsedMs: number): MobMotionTransform {
-  const phase = normalizedPhase(elapsedMs, HIT_CYCLE_MS);
-  const active = phase < 0.32 ? 1 - phase / 0.32 : 0;
-  if (active === 0) {
-    return NEUTRAL_TRANSFORM;
-  }
-  const shake = Math.floor(phase * 48) % 2 === 0 ? -1 : 1;
-  return {
-    offsetX: -6 * active + shake * 1.5 * active,
-    offsetY: -active,
-    scaleX: 1 + active * 0.08,
-    scaleY: 1 - active * 0.08,
-    rotation: -active * 0.07,
-    alpha: 1 - active * 0.25,
-    flash: active,
-  };
+  return sampleHitReactionMotion(elapsedWithin(elapsedMs, HIT_CYCLE_MS));
 }
 
 export function sampleDeathPreview(elapsedMs: number): DeathPreviewSample {
@@ -393,12 +204,19 @@ export function sampleDeathPreview(elapsedMs: number): DeathPreviewSample {
   };
 }
 
+// Death knockback is authored in legacy pixel units (7 px X, 1 px Y at full
+// progress). Convert to feet at the same ratio used by the other shared
+// samplers (8 px/ft) so ftToPx() in the render boundary produces the
+// originally-intended screen displacement.
+const DEATH_KNOCKBACK_X_FT = 7 / 8; // 7 px / 8 px·ft⁻¹ = 0.875 ft
+const DEATH_KNOCKBACK_Y_FT = 1 / 8; // 1 px / 8 px·ft⁻¹ = 0.125 ft
+
 function sampleDeath(elapsedMs: number): MobMotionTransform {
   const preview = sampleDeathPreview(elapsedMs);
   const impactFlash = 1 - clamp01(preview.phaseMs / 100);
   return {
-    offsetX: 7 * preview.knockbackProgress,
-    offsetY: preview.knockbackProgress,
+    offsetX: DEATH_KNOCKBACK_X_FT * preview.knockbackProgress,
+    offsetY: DEATH_KNOCKBACK_Y_FT * preview.knockbackProgress,
     scaleX: 1,
     scaleY: 1,
     rotation: 0,
@@ -407,54 +225,8 @@ function sampleDeath(elapsedMs: number): MobMotionTransform {
   };
 }
 
-export function sampleStatusTreatment(elapsedMs: number): MobStatusTreatment {
-  const index = Math.floor(elapsedWithin(elapsedMs, STATUS_TREATMENT_MS * 3) / STATUS_TREATMENT_MS);
-  return (['freeze', 'burn', 'stun'] as const)[index] ?? 'freeze';
-}
-
 function sampleStatus(elapsedMs: number): MobMotionTransform {
-  const treatment = sampleStatusTreatment(elapsedMs);
-  const localPhase = normalizedPhase(
-    elapsedWithin(elapsedMs, STATUS_TREATMENT_MS),
-    STATUS_TREATMENT_MS,
-  );
-
-  if (treatment === 'freeze') {
-    const shake = Math.floor(localPhase * 16) % 2 === 0 ? -1 : 1;
-    return {
-      offsetX: shake * 0.75,
-      offsetY: 0,
-      scaleX: 0.98,
-      scaleY: 1.02,
-      rotation: shake * 0.01,
-      alpha: 0.9,
-      flash: 0.15,
-    };
-  }
-
-  if (treatment === 'burn') {
-    const flicker = Math.abs(Math.sin(localPhase * TAU * 3));
-    return {
-      offsetX: 0,
-      offsetY: -flicker,
-      scaleX: 1 + flicker * 0.04,
-      scaleY: 1 - flicker * 0.03,
-      rotation: Math.sin(localPhase * TAU * 2) * 0.015,
-      alpha: 0.85 + flicker * 0.15,
-      flash: flicker * 0.3,
-    };
-  }
-
-  const wobble = Math.sin(localPhase * TAU * 2);
-  return {
-    offsetX: wobble,
-    offsetY: -Math.abs(wobble),
-    scaleX: 1,
-    scaleY: 1,
-    rotation: wobble * 0.12,
-    alpha: 1,
-    flash: Math.max(0, wobble) * 0.2,
-  };
+  return sampleStatusPreviewMotion(elapsedMs);
 }
 
 export function sampleMobMotion(
@@ -488,5 +260,5 @@ export function sampleMobMotion(
       break;
   }
 
-  return scaleTransform(transform, intensity);
+  return scaleMobMotion(transform, intensity);
 }

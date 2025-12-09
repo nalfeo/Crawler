@@ -267,7 +267,52 @@ describe('combat-arena-lab wiring', () => {
     }
   });
 
-  // ── Headless integration: full arena pipeline without Phaser ──────────────
+  it('spawnPresetAroundCenter routes f2 boss entries through production-compatible spawn: scaled HP, contact damage 2, family tag', () => {
+    // Find the first f2 preset that has a RANGED boss entry so all production-parity
+    // behaviors are exercised, including the max(160, detectRange × 4) attack range branch.
+    const f2Preset = ARENA_ENEMY_PRESETS.find(
+      (p) =>
+        p.floor === 'floor2' &&
+        p.entries.some((e) => e.def.isBoss === true && e.def.aiType === 'ranged'),
+    );
+    expect(f2Preset).toBeDefined();
+    if (!f2Preset) return;
+
+    const bossEntry = f2Preset.entries.find(
+      (e) => e.def.isBoss === true && e.def.aiType === 'ranged',
+    )!;
+    const bossDef = bossEntry.def;
+
+    const rng = new SeededRandom(42424);
+    const world = createTestWorld({ seed: rng.nextInt(1, 99999) });
+    const bossArena = ARENA_ROOM_PRESETS.find((p) => p.id === 'boss-arena')!;
+    const map = bossArena.buildMap();
+    world.floorMap = map;
+
+    const centerPt = map.tileToWorld(Math.floor(map.width / 2), Math.floor(map.height / 2));
+    const eids = spawnPresetAroundCenter(world, map, f2Preset, centerPt.x, centerPt.y, rng);
+    expect(eids.length).toBeGreaterThan(0);
+
+    // Find the boss entity — it should have FamilyMembership.isBoss = 1
+    const bossEid = eids.find((eid) => (world.stores.familyMembership.isBoss[eid] ?? 0) === 1);
+    expect(bossEid).toBeDefined();
+    if (bossEid === undefined) return;
+
+    // HP must be scaled by 0.03 (production spawnFamilyBoss scale), clamped to ≥ 1
+    const expectedHp = Math.max(1, Math.round(bossDef.hp * 0.03));
+    expect(world.stores.health.current[bossEid]).toBe(expectedHp);
+
+    // Contact damage must be 2 (not fallback 5 from generic spawnFromArchetype)
+    expect(world.stores.damage.amount[bossEid]).toBe(2);
+
+    // FamilyMembership.isBoss must be set to 1
+    expect(world.stores.familyMembership.isBoss[bossEid]).toBe(1);
+
+    // If the boss is ranged, attack range must be ≥ 160 (max(160, detectRange × 4))
+    // This is guaranteed to execute because we selected a ranged boss above.
+    const expectedRange = Math.max(160, bossDef.detectRange * 4);
+    expect(world.stores.enemyBehavior.attackRange[bossEid]).toBe(expectedRange);
+  });
 
   it('headless arena pipeline: spawn preset + run simulation steps without crash', () => {
     const rng = new SeededRandom(77777);

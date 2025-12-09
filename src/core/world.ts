@@ -114,6 +114,13 @@ export interface GameWorld {
   ecs: ReturnType<typeof createBitecsWorld>;
   /** Typed-array component stores — read directly: stores.position.x[eid] */
   stores: ComponentStores;
+  /**
+   * Monotonic cosmetic spawn identity per EID. Renderers use it to distinguish
+   * recycled entities without consulting or mutating gameplay state.
+   */
+  entityRenderGeneration: Uint32Array;
+  /** Counter backing {@link entityRenderGeneration}; zero is reserved for unset slots. */
+  nextEntityRenderGeneration: number;
   /** Seeded RNG — never use Math.random() */
   rng: SeededRandom;
   /**
@@ -530,6 +537,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   const world: GameWorld = {
     ecs,
     stores,
+    entityRenderGeneration: new Uint32Array(maxEntities),
+    nextEntityRenderGeneration: 0,
     rng: new SeededRandom(options.seed ?? 42),
     seed: options.seed ?? 42,
     frameCount: 0,

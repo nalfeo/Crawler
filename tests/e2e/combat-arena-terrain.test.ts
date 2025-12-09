@@ -33,6 +33,11 @@ const ARENA_BG = { r: 0x0a, g: 0x08, b: 0x10 };
 declare global {
   interface Window {
     __arenaReady?: boolean;
+    __arenaScene?: {
+      children?: {
+        list?: Array<{ type?: string; depth?: number; setVisible?: (visible: boolean) => void }>;
+      };
+    };
   }
 }
 
@@ -70,6 +75,29 @@ async function getCanvasRect(
     if (!canvas) throw new Error('Phaser canvas not found inside #lab-canvas');
     const r = canvas.getBoundingClientRect();
     return { x: r.x, y: r.y, width: r.width, height: r.height };
+  });
+}
+
+async function hideNonTerrainObjects(page: Page): Promise<{ hidden: number; terrain: number }> {
+  return page.evaluate(() => {
+    const list = window.__arenaScene?.children?.list;
+    if (!Array.isArray(list)) {
+      throw new Error('CombatArenaScene display list not available');
+    }
+    let hidden = 0;
+    let terrain = 0;
+    for (const obj of list) {
+      if (obj?.type === 'RenderTexture' && obj?.depth === -20) {
+        terrain += 1;
+        continue;
+      }
+      obj?.setVisible?.(false);
+      hidden += 1;
+    }
+    if (terrain === 0) {
+      throw new Error('No terrain RenderTexture found in CombatArenaScene display list');
+    }
+    return { hidden, terrain };
   });
 }
 
@@ -117,15 +145,16 @@ describe('Combat arena lab terrain render guard', () => {
 
   it('renders terrain tiles (non-background pixels) after buildTerrainLayer is called', async () => {
     await loadArenaLab(page);
+    const hidden = await hideNonTerrainObjects(page);
+    await page.waitForTimeout(100);
 
     const canvasRect = await getCanvasRect(page);
     const screenshot = await page.screenshot();
     const png = parsePng(screenshot);
 
-    // Sample the central 40 % of the canvas. The boss-arena preset is 34×24
-    // tiles and always covers the viewport center. Without buildTerrainLayer the
-    // region would be solid ARENA_BG; with it, stone-floor and wall tiles produce
-    // clearly different RGB values.
+    // Sample the central 40 % of the canvas after hiding all non-terrain
+    // display objects. This makes the assertion terrain-only: a passing sample
+    // can only come from the baked RenderTexture, not player/enemy sprites.
     const cx = canvasRect.x + canvasRect.width / 2;
     const cy = canvasRect.y + canvasRect.height / 2;
     const sampleW = canvasRect.width * 0.4;
@@ -143,7 +172,8 @@ describe('Combat arena lab terrain render guard', () => {
       `Expected ≥1% non-background pixels in canvas centre but got ${(ratio * 100).toFixed(2)}%. ` +
         `A 0% reading means buildTerrainLayer was not called or its RenderTexture is not ` +
         `visible in the viewport (check depth=-20 and camera bounds). ` +
-        `canvas=${JSON.stringify(canvasRect)} sample=${JSON.stringify({ cx, cy, sampleW, sampleH })}`,
+        `hidden=${JSON.stringify(hidden)} canvas=${JSON.stringify(canvasRect)} ` +
+        `sample=${JSON.stringify({ cx, cy, sampleW, sampleH })}`,
     ).toBeGreaterThan(0.01);
   });
 });

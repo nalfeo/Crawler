@@ -43,6 +43,12 @@ export interface CombatEvent {
   sourceX?: number;
   sourceY?: number;
   /**
+   * How a successful hit reached its target. Renderers use this to distinguish
+   * authoritative contact strikes from projectile impacts without inferring
+   * from proximity or cooldown state.
+   */
+  delivery?: 'contact' | 'projectile';
+  /**
    * Attacker entity id — the mob (or projectile owner) whose action caused this
    * event. Optional and best-effort; consumers must validate before use because
    * the entity may not exist next frame. Consumed by Floor 2 Slice 3's
@@ -50,6 +56,20 @@ export interface CombatEvent {
    * against.
    */
   sourceEid?: number;
+  /**
+   * Render-generation of `sourceEid` at event creation time.
+   * Renderers compare this against `world.entityRenderGeneration[sourceEid]`
+   * and skip the reaction if the EID was recycled between event creation and
+   * the next render frame.
+   */
+  sourceRenderGeneration?: number;
+  /**
+   * Render-generation of `targetEid` at event creation time.
+   * Renderers compare this against `world.entityRenderGeneration[targetEid]`
+   * and skip the reaction if the EID was recycled between event creation and
+   * the next render frame.
+   */
+  targetRenderGeneration?: number;
   /** Blood/ichor colour of the dying entity (0xRRGGBB). Defaults to red when absent. */
   bloodColor?: number;
   /** True when this hit critically struck (player-sourced damage only). */

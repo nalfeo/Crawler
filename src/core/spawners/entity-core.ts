@@ -24,6 +24,10 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
 export function createEntity(world: GameWorld): number {
   const eid = addEntity(world.ecs);
   clearEntityStores(world, eid);
+  let generation = (world.nextEntityRenderGeneration + 1) >>> 0;
+  if (generation === 0) generation = 1;
+  world.nextEntityRenderGeneration = generation;
+  world.entityRenderGeneration[eid] = generation;
   return eid;
 }
 
