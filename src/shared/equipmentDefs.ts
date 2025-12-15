@@ -174,6 +174,15 @@ const WEAPON_EQUIPMENT_DEFS: readonly WeaponEquipmentDef[] = [
     weaponId: 'sun-hammer',
     weightLb: 8,
   }),
+  weapon({
+    id: 'ember-wand',
+    name: 'Ember Wand',
+    slots: ['mainHand'],
+    statBonuses: {},
+    rarity: 'rare',
+    weaponId: 'ember-wand',
+    weightLb: 1.5,
+  }),
 ];
 
 // ---------------------------------------------------------------------------
