@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-18",
+  "session_slug": "ci-recovery-outdated-thread-fix",
+  "task_title": "Fix CI recovery loop: auto-post trusted marker for isOutdated review threads",
+  "estimated_apples": 2,
+  "stages": {}
+}
