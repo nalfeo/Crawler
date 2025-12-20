@@ -1,0 +1,28 @@
+type: weapon
+name: baseball-bat
+description: |
+  A baseball bat held vertically, thick barrel at the top, narrow handle
+  straight down. Standard cylindrical wooden bat — wide rounded barrel
+  tapering to a slender grip with a small knob at the base. Medium-brown
+  wood with a single thin highlight along one edge of the barrel; darker
+  grain lines visible on the body. No metal bands, no tape, no studs, no
+  glow, no enchantment. The silhouette must read as a bludgeon bat at a
+  glance — clearly thicker at the top and narrower at the base — and not
+  be confused with a sword, mace, or staff.
+# Runtime key: equipment/weapon/baseball-bat (from stable ID weapon.baseball-bat).
+# Vertical orientation, 4x4 sheet, palette, references, anchor — all
+# inherited from data/sprite-types/weapon.json (default weapon anchor 32,56
+# kept since the knob sits at the base and the barrel head at the top).
+# `variations` carries the full in-repo authored sheet for this brief so the
+# run is deterministic and fully offline-runnable. `minVariations: 8` locks the
+# runner to this guaranteed eight-variant seed list.
+variations:
+  - bat with visible wood grain rings on the barrel
+  - darker stained-wood finish with a lighter grip highlight
+  - pale ash-wood body with darker grain streaks
+  - slightly more rounded barrel tip silhouette
+  - slimmer handle taper with a more pronounced knob
+  - lacquered chestnut finish with warmer highlights
+  - faint scuff marks and use-wear along the barrel
+  - subtle maker stamp burned into the lower barrel
+minVariations: 8
