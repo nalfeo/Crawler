@@ -238,7 +238,10 @@ assets:
   - id: bone-chakram
     type: weapon
     label: 'Bone Chakram'
-    brief: 'Bone Chakram — a centered thrown weapon icon on a transparent background. Diagonal ring of carved bone with a silhouette that reads clearly as a circular blade. Bone-ivory texture, cracked surface, Floor 2 intensity.'
+    brief: >-
+      Bone Chakram — a centered thrown weapon icon on a transparent background.
+      Diagonal ring of carved bone with a silhouette that reads clearly as a
+      circular blade. Bone-ivory texture, cracked surface, Floor 2 intensity.
     placeholderInUse: true
     integration:
       kind: sprite-registry
