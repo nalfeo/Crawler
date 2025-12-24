@@ -18,17 +18,35 @@ describe('AI runner run-settings wiring', () => {
     expect(source).not.toContain('id="ai-scenario-apply"');
   });
 
-  it('keeps run/manual controls in a themed sticky always-visible control dock', () => {
+  it('keeps expert run controls in a compact sticky command deck', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
 
-    expect(source).toContain('Playback controls');
     expect(source).toContain('id="ai-playback-dock"');
-    expect(source).toContain('position:sticky; top:8px; z-index:8;');
-    expect(source).toContain('linear-gradient(180deg,#10172a,#0b1222)');
+    expect(source).toContain('.runner-command-deck');
+    expect(source).toContain('position: sticky;');
     expect(source).toContain('id="ai-toggle-run"');
     expect(source).toContain('id="ai-manual-toggle"');
+    expect(source).toContain('id="ai-restart-current"');
     expect(source).toContain('id="ai-speed-1"');
     expect(source).toContain('id="ai-speed-4"');
     expect(source).toContain('id="ai-speed-16"');
+    expect(source).toContain('aria-pressed="${selectedSpeed === 1}"');
+  });
+
+  it('separates restart-current from applying staged run settings', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
+
+    expect(source).toContain('Restarted the currently applied run.');
+    expect(source).toContain('Apply staged + restart');
+    expect(source).toContain('stagedSeedText');
+    expect(source).toContain('stagedRunTarget');
+  });
+
+  it('does not frame-step when focus is inside any interactive control', () => {
+    const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
+
+    expect(source).toContain(
+      '\'button, input, select, textarea, summary, a, [contenteditable="true"], [role="button"]\'',
+    );
   });
 });

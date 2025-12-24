@@ -38,6 +38,7 @@ export interface CliOptions {
   uxName: string;
   uxGoal: string;
   setupFile: string | null;
+  skipProbeWait: boolean;
   screenshotName: string;
   viewportWidth: number;
   viewportHeight: number;
@@ -224,6 +225,7 @@ export function parseArgs(argv: string[]): CliOptions {
     uxGoal:
       'clear slot layout, readable typography, strong hierarchy, coherent spacing, icon-first item representation',
     setupFile: null,
+    skipProbeWait: false,
     screenshotName: 'ux-surface',
     viewportWidth: 1600,
     viewportHeight: 1000,
@@ -293,6 +295,10 @@ export function parseArgs(argv: string[]): CliOptions {
     if (arg === '--setup-file' && next) {
       opts.setupFile = resolve(process.cwd(), next);
       i += 1;
+      continue;
+    }
+    if (arg === '--no-probe-wait') {
+      opts.skipProbeWait = true;
       continue;
     }
     if (arg === '--screenshot-name' && next) {
@@ -582,7 +588,7 @@ Return ONLY this JSON schema:
 }
 
 async function captureScreenshot(
-  opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'waitMs' | 'clip' | 'viewport'>,
+  opts: Pick<CliOptions, 'labUrl' | 'setupFile' | 'skipProbeWait' | 'waitMs' | 'clip' | 'viewport'>,
   outPath: string,
   cropsDir: string | null,
 ): Promise<CaptureResult> {
@@ -593,7 +599,10 @@ async function captureScreenshot(
   console.log(`[visual-review-agent] navigating to: ${opts.labUrl}`);
   await page.goto(opts.labUrl, { waitUntil: 'commit', timeout: 45_000 });
   await page.waitForFunction(
-    () => {
+    (skipProbeWait) => {
+      if (skipProbeWait) {
+        return document.readyState === 'complete';
+      }
       const globalWithProbe = window as unknown as {
         __uiProbe?: { ready?: () => boolean };
         __mainSceneProbe?: { ready?: () => boolean };
@@ -603,7 +612,7 @@ async function captureScreenshot(
         globalWithProbe.__mainSceneProbe?.ready?.() === true
       );
     },
-    undefined,
+    opts.skipProbeWait,
     { timeout: 45_000 },
   );
   await page.waitForTimeout(250);

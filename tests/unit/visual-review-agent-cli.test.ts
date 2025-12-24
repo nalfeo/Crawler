@@ -34,4 +34,9 @@ describe('visual-review-agent viewport parsing', () => {
       height: 720,
     });
   });
+
+  it('preserves probe readiness by default and allows an explicit opt-out', () => {
+    expect(parseArgs(['--setup-file', 'setup.js']).skipProbeWait).toBe(false);
+    expect(parseArgs(['--setup-file', 'setup.js', '--no-probe-wait']).skipProbeWait).toBe(true);
+  });
 });
