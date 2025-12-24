@@ -1,0 +1,8 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-07-19",
+  "session_slug": "scope-pr-guard-to-triggering-pr",
+  "task_title": "perf(ci): scope PR Ready/Reviewer Guard to the triggering PR",
+  "estimated_apples": 2,
+  "stages": {}
+}
