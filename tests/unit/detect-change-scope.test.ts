@@ -45,6 +45,9 @@ interface Scope {
   game_visual_touched: boolean;
   asset_visual_touched: boolean;
   devtool_visual_touched: boolean;
+  dependencies_touched: boolean;
+  ai_code_touched: boolean;
+  codeowners_touched: boolean;
 }
 
 function run(override: string, extraEnv: Record<string, string> = {}): Scope {
@@ -81,6 +84,9 @@ function run(override: string, extraEnv: Record<string, string> = {}): Scope {
     game_visual_touched: read('game_visual_touched'),
     asset_visual_touched: read('asset_visual_touched'),
     devtool_visual_touched: read('devtool_visual_touched'),
+    dependencies_touched: read('dependencies_touched'),
+    ai_code_touched: read('ai_code_touched'),
+    codeowners_touched: read('codeowners_touched'),
   };
 }
 
@@ -107,10 +113,13 @@ const F = (
   sprites_touched: boolean,
   sim_touched: boolean,
   coverage_touched: boolean,
-  visual_touched: boolean,
-  game_visual_touched: boolean,
-  asset_visual_touched: boolean,
-  devtool_visual_touched: boolean,
+  visual_touched: boolean = false,
+  game_visual_touched: boolean = false,
+  asset_visual_touched: boolean = false,
+  devtool_visual_touched: boolean = false,
+  dependencies_touched: boolean = false,
+  ai_code_touched: boolean = false,
+  codeowners_touched: boolean = false,
 ): Scope => ({
   art_only,
   docs_only,
@@ -123,6 +132,9 @@ const F = (
   game_visual_touched,
   asset_visual_touched,
   devtool_visual_touched,
+  dependencies_touched,
+  ai_code_touched,
+  codeowners_touched,
 });
 
 const cases: Case[] = [
@@ -142,20 +154,35 @@ const cases: Case[] = [
     name: 'package script wiring (safe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'true' },
-    //                          art   docs  gsafe sponly sptch  vis   game  asset devt
-    expected: F(false, false, true, false, false, false, false, true, true, true, true),
+    //                          art   docs  gsafe sponly sptch  vis   game  asset devt  deps
+    expected: F(false, false, true, false, false, false, false, true, true, true, true, true),
   },
   {
     name: 'package core script wiring (unsafe split)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
-    expected: F(false, false, false, false, false, true, true, true, true, true, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
   },
   // CI/tooling-only: non-visual.
   {
     name: 'scope classifier script',
     files: ['scripts/agent/ci/detect-art-only.sh'],
-    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+    expected: F(
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+    ),
   },
   {
     name: 'scope classifier unit test',
@@ -241,12 +268,42 @@ const cases: Case[] = [
   {
     name: 'ci script change',
     files: ['scripts/agent/ci/detect-art-only.sh'],
-    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+    expected: F(
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+    ),
   },
   {
     name: 'workflow change',
     files: ['.github/workflows/ci.yml'],
-    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+    expected: F(
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ),
   },
   {
     name: 'github actions change',
@@ -261,12 +318,42 @@ const cases: Case[] = [
   {
     name: 'mixed workflow + engine (non-gameplay)',
     files: ['.github/workflows/ci.yml', 'src/engine/render/foo.ts'],
-    expected: F(false, false, true, false, false, true, true, true, true, false, false),
+    expected: F(
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ),
   },
   {
     name: 'workflow + game code (gameplay-unsafe)',
     files: ['.github/workflows/ci.yml', 'src/game/combat.ts'],
-    expected: F(false, false, false, false, false, true, true, true, true, false, false),
+    expected: F(
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ),
   },
   // Sprite pipeline paths: gameplay_safe=true, sprites_only=true, sprites_touched=true.
   // These are non-visual (pipeline scripts, not the rendered output).
@@ -340,8 +427,23 @@ const cases: Case[] = [
   {
     name: 'ci-only change → visual_touched=false',
     files: ['.github/workflows/ci.yml', 'scripts/agent/ci/detect-art-only.sh'],
-    // .github/*, scripts/agent/* → sim=false, cov=false, visual=false
-    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+    // .github/*, scripts/agent/* → sim=false, cov=false, visual=false; detect-art-only.sh → security_infra
+    expected: F(
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+    ),
   },
   {
     name: 'unit tests only → visual_touched=false',
@@ -403,7 +505,23 @@ const cases: Case[] = [
   {
     name: 'CI-only: github workflow change',
     files: ['.github/workflows/ci.yml'],
-    expected: F(false, false, true, false, false, false, false, false, false, false, false),
+    // .github/workflows/* → codeowners_touched=true
+    expected: F(
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ),
   },
   {
     name: 'CI-only: scripts/agent tooling change',
@@ -417,13 +535,13 @@ const cases: Case[] = [
     files: ['.github/actions/setup-node/action.yml', '.github/instructions/core.instructions.md'],
     expected: F(false, false, true, false, false, false, false, false, false, false, false),
   },
-  // Dependency change: unsafe for both sim and coverage.
+  // Dependency change: unsafe for both sim, coverage, and deps.
   {
     name: 'dependency change (package.json, deps touched)',
     files: ['package.json'],
     env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
     // package.json (unsafe) falls to catch-all → all visual surfaces touched
-    expected: F(false, false, false, false, false, true, true, true, true, true, true),
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
   },
   // Asset change: sim and coverage untouched.
   {
@@ -473,6 +591,156 @@ const cases: Case[] = [
     files: ['docs/knowledge/handoffs/2026-07-19-my-feature.md'],
     expected: F(false, true, true, false, false, false, false, false, false, false, false),
   },
+  // Security-impact surfaces: dependencies_touched.
+  {
+    name: 'package-lock.json → dependencies_touched',
+    files: ['package-lock.json'],
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
+  },
+  {
+    name: 'yarn.lock → dependencies_touched',
+    files: ['yarn.lock'],
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
+  },
+  {
+    name: 'npm-shrinkwrap.json → dependencies_touched',
+    files: ['npm-shrinkwrap.json'],
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
+  },
+  {
+    name: 'dep-allowlist validator → dependencies_touched',
+    files: ['scripts/agent/security/check-deps.ts'],
+    expected: F(false, false, false, false, false, false, false, false, false, false, false, true),
+  },
+  // Security-impact surfaces: ai_code_touched.
+  {
+    name: 'AI source file → ai_code_touched',
+    files: ['src/game/ai/bt-ai-provider.ts'],
+    expected: F(
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      true,
+    ),
+  },
+  {
+    name: 'AI prompt-injection validator → ai_code_touched',
+    files: ['scripts/agent/security/check-ai-prompts.ts'],
+    expected: F(
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ),
+  },
+  {
+    name: 'copilot instructions file → docs_only, not ai_code_touched',
+    files: ['.github/copilot-instructions.md'],
+    // *.md matches docs-only surface; check-ai-prompts.ts only scans src/game/ai
+    // so instruction files are intentionally excluded from ai_code_touched.
+    expected: F(false, true, true, false, false, false, false),
+  },
+  {
+    name: 'github instructions file → docs_only, not ai_code_touched',
+    files: ['.github/instructions/ai.instructions.md'],
+    // Same reasoning: instruction *.md files are docs-only; validator does not scan them.
+    expected: F(false, true, true, false, false, false, false),
+  },
+  // Security-impact surfaces: codeowners_touched.
+  {
+    name: 'CODEOWNERS → codeowners_touched',
+    files: ['CODEOWNERS'],
+    expected: F(
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      true,
+    ),
+  },
+  {
+    name: 'CODEOWNERS validator → codeowners_touched',
+    files: ['scripts/agent/security/check-codeowners.ts'],
+    expected: F(
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+    ),
+  },
+  // Security infra: changes to the security workflow or scope classifier force all
+  // three security flags so modified gates are exercised in the same PR.
+  {
+    name: 'security-review.yml → all security flags',
+    files: ['.github/workflows/security-review.yml'],
+    expected: F(
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+    ),
+  },
+  // Mixed: package.json + game code.
+  {
+    name: 'package.json + game code → dependencies_touched, not gameplay_safe',
+    files: ['package.json', 'src/game/combat.ts'],
+    env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true),
+  },
+  // Mixed: AI source + dep change.
+  {
+    name: 'AI source + package.json → ai_code_touched + dependencies_touched',
+    files: ['src/game/ai/bt-ai-provider.ts', 'package.json'],
+    env: { PACKAGE_JSON_GAMEPLAY_SAFE_OVERRIDE: 'false' },
+    expected: F(false, false, false, false, false, true, true, true, true, true, true, true, true),
+  },
 ];
 
 describe('detect-art-only.sh change-scope classifier', () => {
@@ -480,22 +748,31 @@ describe('detect-art-only.sh change-scope classifier', () => {
     expect(hasBash).toBe(true);
   });
 
+  it.skipIf(!hasBash)('fail-safe: a blank/whitespace change set runs the full suite', () => {
+    // A lone newline enters the override branch but strips to empty → fail-safe.
+    // sim_touched=true, coverage_touched=true, and all security flags true ensure all gates run.
+    expect(run('\n')).toEqual(
+      F(false, false, false, false, false, true, true, true, true, true, true, true, true, true),
+    );
+  });
+
   it.skipIf(!hasBash)(
     'fail-safe: an empty/whitespace change set enables all visual suites (unknown diff → run everything)',
     () => {
       // A lone newline enters the override branch but strips to empty.
       // Empty/unknown changeset → we cannot safely skip visual suites, so all
-      // three surface flags must be true (same fail-safe as the no-base-ref path).
+      // surface flags must be true (same fail-safe as the no-base-ref path).
       expect(run('\n')).toEqual(
-        F(false, false, false, false, false, true, true, true, true, true, true),
+        F(false, false, false, false, false, true, true, true, true, true, true, true, true, true),
       );
     },
   );
 
   it.skipIf(!hasBash)('fail-safe: an explicitly empty override enables all visual suites', () => {
     // Presence-detected (${VAR+x}), so set-but-empty must NOT fall back to git.
+    // Security-impact flags default to true on ambiguous scope so checks always run.
     expect(run('')).toEqual(
-      F(false, false, false, false, false, true, true, true, true, true, true),
+      F(false, false, false, false, false, true, true, true, true, true, true, true, true, true),
     );
   });
 

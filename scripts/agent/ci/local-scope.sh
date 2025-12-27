@@ -38,7 +38,7 @@ emit_all_false() {
   # Legacy flags (safe/only): false → broader gates run.
   # New positive-contract flags: true → fail toward broader validation when
   # scope cannot be determined (consistent with detect-art-only.sh fail-safe).
-  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nsim_touched=true\ncoverage_touched=true\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
+  printf 'art_only=false\ndocs_only=false\ngameplay_safe=false\nsprites_only=false\nsprites_touched=false\nsim_touched=true\ncoverage_touched=true\ndependencies_touched=true\nai_code_touched=true\ncodeowners_touched=true\nvisual_touched=true\ngame_visual_touched=true\nasset_visual_touched=true\ndevtool_visual_touched=true\n'
 }
 
 # Not a git work tree (or git unavailable) → cannot compute a trustworthy set.

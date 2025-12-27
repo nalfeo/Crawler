@@ -195,9 +195,13 @@ describe.skipIf(!hasBash || !hasJq)(
         path.join(REPO_ROOT, '.github/workflows/security-review.yml'),
         'utf8',
       );
-      const block = extractRunBlock(raw, 'Normalize docs-only scope');
+      const block = extractRunBlock(raw, 'Normalize scope for security review');
       const templated = templateExpressions(block, {
         'steps.detect.outputs.docs_only': 'false',
+        'steps.detect.outputs.art_only': 'false',
+        'steps.detect.outputs.dependencies_touched': 'false',
+        'steps.detect.outputs.ai_code_touched': 'false',
+        'steps.detect.outputs.codeowners_touched': 'false',
         'github.event_name': 'pull_request',
         'vars.MERGE_TRAIN_ENABLED': mergeTrainEnabled,
       });
