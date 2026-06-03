@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
+import { BootScene, MainGameScene } from './engine/index.js';
+import { GAME } from './shared/constants.js';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game-container',
-  width: 1280,
-  height: 720,
+  width: GAME.WIDTH,
+  height: GAME.HEIGHT,
   backgroundColor: '#111111',
   physics: {
     default: 'arcade',
@@ -13,7 +15,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [],
+  scene: [BootScene, MainGameScene],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

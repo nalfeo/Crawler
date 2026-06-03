@@ -7,6 +7,8 @@ export const GAME = {
   DELTA_MS: 1000 / 60,
 } as const;
 
+export const PLAYER_SPEED = 3.0;
+
 export const FLOOR = {
   MIN_DURATION_S: 120,
   MAX_DURATION_S: 300,
