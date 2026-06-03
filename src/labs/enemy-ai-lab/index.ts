@@ -10,6 +10,7 @@ import {
   healthSystem,
   movementSystem,
   playerInputSystem,
+  projectileCleanupSystem,
   spawnBehaviorEnemy,
   spawnPlayer,
   type GameWorld,
@@ -192,6 +193,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         const collisions = collisionSystem(this.world);
         damageSystem(this.world, collisions);
         healthSystem(this.world);
+        projectileCleanupSystem(this.world);
 
         this.accumulator -= GAME.DELTA_MS;
         steps += 1;

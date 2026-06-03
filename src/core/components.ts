@@ -22,6 +22,7 @@ export const Player = {};
 export const Enemy = {};
 export const EnemyBehavior = {};
 export const Projectile = {};
+export const EnemyProjectile = {};
 export const XpGem = {};
 export const DroppedItem = {};
 export const Sprite = {};
@@ -54,6 +55,8 @@ export function createComponentStores() {
       speed: new Float32Array(MAX_ENTITIES),
       aggroRange: new Float32Array(MAX_ENTITIES),
       attackRange: new Float32Array(MAX_ENTITIES),
+      fireCooldownMs: new Float32Array(MAX_ENTITIES),
+      lastFireMs: new Float32Array(MAX_ENTITIES),
     },
     broadcastScore: { current: new Float32Array(MAX_ENTITIES) },
   };

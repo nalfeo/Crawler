@@ -1,6 +1,6 @@
 import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
-import { Enemy, Player, Position, Projectile, Sprite, XpGem } from '../core/components.js';
+import { Enemy, EnemyProjectile, Player, Position, Projectile, Sprite, XpGem } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 
 interface RenderStyle {
@@ -20,6 +20,10 @@ function getRenderStyle(world: GameWorld, eid: number): RenderStyle {
 
   if (hasComponent(world.ecs, eid, XpGem)) {
     return { color: 0xffff00, width: 8, height: 8 };
+  }
+
+  if (hasComponent(world.ecs, eid, EnemyProjectile)) {
+    return { color: 0xff6600, width: 6, height: 6 };
   }
 
   if (hasComponent(world.ecs, eid, Projectile)) {

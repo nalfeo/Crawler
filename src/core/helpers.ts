@@ -3,6 +3,7 @@ import {
   Damage,
   Enemy,
   EnemyBehavior,
+  EnemyProjectile,
   Health,
   Player,
   Position,
@@ -104,5 +105,18 @@ export function spawnProjectile(
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 6, height: 6 }));
   addComponent(world.ecs, eid, Projectile);
 
+  return eid;
+}
+
+export function spawnEnemyProjectile(
+  world: GameWorld,
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  damage: number,
+): number {
+  const eid = spawnProjectile(world, x, y, vx, vy, damage);
+  addComponent(world.ecs, eid, EnemyProjectile);
   return eid;
 }

@@ -239,8 +239,9 @@ describe('InputCapture (raw DOM)', () => {
 
 describe('InputCapture architectural guard', () => {
   it('does not import Phaser keyboard types for key tracking', async () => {
-    const fs = await import('node:fs');
-    const source = fs.readFileSync('src/engine/InputCapture.ts', 'utf-8');
+    // @ts-expect-error Node fs module available at runtime but not in tsconfig types
+    const { readFileSync } = await import('fs');
+    const source = (readFileSync as (p: string, e: string) => string)('src/engine/InputCapture.ts', 'utf-8');
 
     // Must NOT use Phaser.Input.Keyboard (the focus-dependent API)
     expect(source).not.toContain('Phaser.Input.Keyboard');

@@ -1,6 +1,6 @@
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
-import { Damage, Enemy, Health, Player, Projectile, XpGem } from '../components.js';
+import { Damage, Enemy, EnemyProjectile, Health, Player, Projectile, XpGem } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
@@ -64,6 +64,27 @@ function applyPlayerEnemyHit(world: GameWorld, player: number, enemy: number, hi
   hitTimestamps[player] = world.elapsedMs;
 }
 
+function applyEnemyProjectileHit(world: GameWorld, projectile: number, player: number, hitTimestamps: Float64Array): void {
+  if (!hasComponent(world.ecs, player, Health)) {
+    destroyEntity(world, projectile);
+    return;
+  }
+
+  const lastHitMs = hitTimestamps[player] ?? -Infinity;
+
+  if ((world.elapsedMs - lastHitMs) < PLAYER_INVINCIBILITY_MS) {
+    destroyEntity(world, projectile);
+    return;
+  }
+
+  const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+  const currentHealth = world.stores.health.current[player] ?? 0;
+  world.stores.health.current[player] = Math.max(0, currentHealth - amount);
+  hitTimestamps[player] = world.elapsedMs;
+
+  destroyEntity(world, projectile);
+}
+
 function collectXpGem(world: GameWorld, player: number, gem: number): void {
   const currentScore = world.stores.broadcastScore.current[player] ?? 0;
   const gemValue = world.stores.xpGem.value[gem] ?? 0;
@@ -82,13 +103,25 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       continue;
     }
 
-    if (hasComponent(world.ecs, a, Projectile) && hasComponent(world.ecs, b, Enemy)) {
+    // Player projectile hits enemy (skip enemy projectiles)
+    if (hasComponent(world.ecs, a, Projectile) && !hasComponent(world.ecs, a, EnemyProjectile) && hasComponent(world.ecs, b, Enemy)) {
       applyProjectileHit(world, a, b);
       continue;
     }
 
-    if (hasComponent(world.ecs, b, Projectile) && hasComponent(world.ecs, a, Enemy)) {
+    if (hasComponent(world.ecs, b, Projectile) && !hasComponent(world.ecs, b, EnemyProjectile) && hasComponent(world.ecs, a, Enemy)) {
       applyProjectileHit(world, b, a);
+      continue;
+    }
+
+    // Enemy projectile hits player
+    if (hasComponent(world.ecs, a, EnemyProjectile) && hasComponent(world.ecs, b, Player)) {
+      applyEnemyProjectileHit(world, a, b, hitTimestamps);
+      continue;
+    }
+
+    if (hasComponent(world.ecs, b, EnemyProjectile) && hasComponent(world.ecs, a, Player)) {
+      applyEnemyProjectileHit(world, b, a, hitTimestamps);
       continue;
     }
 

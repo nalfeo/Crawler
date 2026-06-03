@@ -15,6 +15,13 @@ export const WEAPON = {
   BASE_DAMAGE: 10,
 } as const;
 
+export const ENEMY_PROJECTILE = {
+  SPEED: 3.0,
+  FIRE_COOLDOWN_MS: 1200,
+  DAMAGE: 8,
+  MUZZLE_OFFSET: 12,
+} as const;
+
 export const FLOOR = {
   MIN_DURATION_S: 120,
   MAX_DURATION_S: 300,
