@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { createGameWorld } from '../../src/core/world.js';
 import { SeededRandom } from '../../src/shared/random.js';
+import { addEntity, addComponent, query } from 'bitecs';
+import { Position, Health } from '../../src/core/components.js';
+import { set } from 'bitecs';
 
 describe('createGameWorld', () => {
-  it('returns a world with ECS state, RNG, and frame metadata', () => {
+  it('returns a world with ECS state, RNG, stores, and frame metadata', () => {
     const world = createGameWorld();
 
     expect(world.ecs).toBeDefined();
     expect(typeof world.ecs).toBe('object');
+    expect(world.stores).toBeDefined();
+    expect(world.stores.position.x).toBeInstanceOf(Float32Array);
     expect(world.rng).toBeInstanceOf(SeededRandom);
     expect(world.frameCount).toBe(0);
     expect(world.elapsedMs).toBe(0);
@@ -38,5 +43,34 @@ describe('createGameWorld', () => {
 
     expect(world.floor).toBe(3);
     expect(world.rng.next()).toBe(expected.next());
+  });
+
+  it('wires component stores via onSet observers', () => {
+    const world = createGameWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 42.5, y: 99.1 }));
+
+    expect(world.stores.position.x[eid]).toBeCloseTo(42.5, 1);
+    expect(world.stores.position.y[eid]).toBeCloseTo(99.1, 1);
+  });
+
+  it('wires Health store correctly', () => {
+    const world = createGameWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Health, { current: 80, max: 100 }));
+
+    expect(world.stores.health.current[eid]).toBe(80);
+    expect(world.stores.health.max[eid]).toBe(100);
+  });
+
+  it('supports querying entities by component', () => {
+    const world = createGameWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, Position);
+
+    const results = query(world.ecs, [Position]);
+    expect(Array.from(results)).toContain(eid);
   });
 });

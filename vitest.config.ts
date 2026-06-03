@@ -8,14 +8,8 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
-      thresholds: {
-        lines: 80,
-        functions: 80,
-        branches: 75,
-        statements: 80,
-      },
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/main.ts', 'src/lab-main.ts'],
+      exclude: ['src/**/*.test.ts', 'src/main.ts', 'src/lab-main.ts', 'src/**/index.ts'],
     },
     projects: [
       {

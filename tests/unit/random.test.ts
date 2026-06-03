@@ -50,4 +50,23 @@ describe('SeededRandom', () => {
 
     expect(shuffledA).toEqual(shuffledB);
   });
+
+  it('handles seed of 0 without collapsing to constant output', () => {
+    const rng = new SeededRandom(0);
+    const values = Array.from({ length: 10 }, () => rng.next());
+    const unique = new Set(values);
+
+    // Must produce more than 1 distinct value (seed=0 would collapse xorshift)
+    expect(unique.size).toBeGreaterThan(1);
+  });
+
+  it('never produces values outside [0, 1)', () => {
+    const rng = new SeededRandom(42);
+
+    for (let i = 0; i < 1000; i++) {
+      const val = rng.next();
+      expect(val).toBeGreaterThanOrEqual(0);
+      expect(val).toBeLessThan(1);
+    }
+  });
 });

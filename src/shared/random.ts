@@ -7,14 +7,15 @@ export class SeededRandom {
   private state: number;
 
   constructor(seed: number) {
-    this.state = seed;
+    // xorshift32 has a fixed point at 0 — guard against it
+    this.state = (seed | 0) || 0x9e3779b9;
   }
 
   /** Returns a float in [0, 1) — deterministic for a given seed sequence. */
   next(): number {
-    // xorshift32
+    // xorshift32 (canonical unsigned variant)
     this.state ^= this.state << 13;
-    this.state ^= this.state >> 17;
+    this.state ^= this.state >>> 17;
     this.state ^= this.state << 5;
     return ((this.state >>> 0) % 1_000_000) / 1_000_000;
   }
