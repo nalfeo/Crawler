@@ -4,7 +4,6 @@ import Phaser from 'phaser';
 import { Enemy, Player, Position, Velocity } from '../../core/components.js';
 import {
   createGameWorld,
-  healthSystem,
   movementSystem,
   playerInputSystem,
   spawnEnemy,
@@ -189,6 +188,14 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       this.drawTrail();
       this.updateInfo();
 
+      // Re-focus the Phaser canvas when the game host is clicked,
+      // so keyboard input resumes after clicking GUI controls.
+      const canvas = this.game.canvas;
+      const handleCanvasFocus = () => {
+        canvas.focus();
+      };
+      gameHost.addEventListener('pointerdown', handleCanvasFocus);
+
       const handleResize = () => {
         this.redrawGrid();
         this.drawTrail();
@@ -201,6 +208,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         refreshTrailFromGui = () => undefined;
         updateInfoFromGui = () => undefined;
 
+        gameHost.removeEventListener('pointerdown', handleCanvasFocus);
         this.scale.off('resize', handleResize);
         this.inputCapture?.destroy();
         this.inputCapture = undefined;
@@ -228,7 +236,6 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
         this.applyPlayerMovementTuning();
         movementSystem(this.world);
-        healthSystem(this.world);
         this.recordTrail();
 
         this.accumulator -= GAME.DELTA_MS;
@@ -278,7 +285,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       const enemyCount = query(this.world.ecs, [Enemy]).length;
 
       info.textContent = [
-        `Speed: ${settings.speed.toFixed(1)}  Accel: ${settings.acceleration.toFixed(2)}  Friction: ${settings.friction.toFixed(2)}`,
+        `State: ${this.world.state}  Speed: ${settings.speed.toFixed(1)}  Accel: ${settings.acceleration.toFixed(2)}  Friction: ${settings.friction.toFixed(2)}`,
         `Player: (${playerX.toFixed(1)}, ${playerY.toFixed(1)})`,
         `Velocity: (${velocityX.toFixed(2)}, ${velocityY.toFixed(2)})`,
         `Trail: ${settings.showTrail ? `${Math.min(settings.trailLength, MAX_TRAIL_POINTS)} pts` : 'off'}  Enemies: ${enemyCount}`,

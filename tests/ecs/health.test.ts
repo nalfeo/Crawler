@@ -47,7 +47,8 @@ describe('healthSystem', () => {
 
     const gems = query(world.ecs, [XpGem, Position]);
     expect(gems.length).toBe(1);
-    expect(world.stores.position.x[gems[0]]).toBe(42);
-    expect(world.stores.position.y[gems[0]]).toBe(77);
+    const gemEid = gems[0] as number;
+    expect(world.stores.position.x[gemEid]).toBe(42);
+    expect(world.stores.position.y[gemEid]).toBe(77);
   });
 });
