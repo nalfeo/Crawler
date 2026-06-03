@@ -15,6 +15,7 @@ import {
   Damage,
   XpGem,
   Sprite,
+  EnemyBehavior,
   BroadcastScore,
   createComponentStores,
   type ComponentStores,
@@ -67,6 +68,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Damage, stores.damage);
   wireStore(ecs, XpGem, stores.xpGem);
   wireStore(ecs, Sprite, stores.sprite);
+  wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
 
   return {

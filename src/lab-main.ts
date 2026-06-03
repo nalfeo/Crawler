@@ -1,5 +1,8 @@
 import './labs/index.js';
+import './labs/combat-lab/index.js';
 import './labs/hello-world/index.js';
+import './labs/movement-lab/index.js';
+import './labs/enemy-ai-lab/index.js';
 import { renderLabIndex } from './labs/lab-index.js';
 import { runLab } from './labs/lab-runner.js';
 

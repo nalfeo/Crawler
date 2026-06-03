@@ -4,6 +4,7 @@ import {
   healthSystem,
   movementSystem,
   playerInputSystem,
+  projectileCleanupSystem,
   spawnPlayer,
   type GameWorld,
 } from '../../core/index.js';
@@ -75,6 +76,7 @@ export class MainGameScene extends Phaser.Scene {
       playerInputSystem(this.world, this.inputState);
       movementSystem(this.world);
       healthSystem(this.world);
+      projectileCleanupSystem(this.world);
 
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;

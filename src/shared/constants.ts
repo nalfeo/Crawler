@@ -9,6 +9,12 @@ export const GAME = {
 
 export const PLAYER_SPEED = 3.0;
 
+export const WEAPON = {
+  PROJECTILE_SPEED: 5.0,
+  FIRE_RATE_MS: 500,
+  BASE_DAMAGE: 10,
+} as const;
+
 export const FLOOR = {
   MIN_DURATION_S: 120,
   MAX_DURATION_S: 300,

@@ -16,7 +16,7 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: ['tests/{unit,ecs,property,determinism}/**/*.{test,spec}.ts'],
+          include: ['tests/{unit,ecs,game,property,determinism}/**/*.{test,spec}.ts'],
         },
       },
       {

@@ -1,0 +1,457 @@
+import { hasComponent, query, setComponent } from 'bitecs';
+import GUI from 'lil-gui';
+import Phaser from 'phaser';
+import { Enemy, Player, Position, Velocity } from '../../core/components.js';
+import {
+  createGameWorld,
+  healthSystem,
+  movementSystem,
+  playerInputSystem,
+  spawnEnemy,
+  spawnPlayer,
+  type GameWorld,
+} from '../../core/index.js';
+import { createInputCapture } from '../../engine/InputCapture.js';
+import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
+import { createInputState, type InputState } from '../../shared/input.js';
+import { registerLab } from '../registry.js';
+
+type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+
+type TrailPoint = {
+  x: number;
+  y: number;
+};
+
+interface MovementLabSettings {
+  speed: number;
+  acceleration: number;
+  friction: number;
+  showTrail: boolean;
+  trailLength: number;
+}
+
+const MAX_STEPS_PER_FRAME = 4;
+const MAX_TRAIL_POINTS = 100;
+const GRID_SIZE = 48;
+const ENEMY_COUNT = 10;
+const ENEMY_MARGIN = 32;
+
+class TrailBuffer {
+  private readonly points: Array<TrailPoint | undefined>;
+
+  private head = 0;
+
+  private size = 0;
+
+  constructor(private readonly capacity: number) {
+    this.points = new Array<TrailPoint | undefined>(capacity);
+  }
+
+  push(x: number, y: number): void {
+    this.points[this.head] = { x, y };
+    this.head = (this.head + 1) % this.capacity;
+    this.size = Math.min(this.size + 1, this.capacity);
+  }
+
+  last(): TrailPoint | undefined {
+    if (this.size === 0) {
+      return undefined;
+    }
+
+    const index = (this.head - 1 + this.capacity) % this.capacity;
+    return this.points[index];
+  }
+
+  getPoints(limit: number): TrailPoint[] {
+    const count = Math.min(this.size, Math.max(0, Math.floor(limit)));
+    const start = (this.head - count + this.capacity) % this.capacity;
+    const ordered: TrailPoint[] = [];
+
+    for (let index = 0; index < count; index += 1) {
+      const point = this.points[(start + index) % this.capacity];
+      if (point) {
+        ordered.push(point);
+      }
+    }
+
+    return ordered;
+  }
+}
+
+function lerp(from: number, to: number, factor: number): number {
+  return from + (to - from) * factor;
+}
+
+function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
+  const gui = (controls as ControlsWithGui).__labGui;
+  if (!(gui instanceof GUI)) {
+    throw new Error('Lab runner did not initialize lil-gui.');
+  }
+
+  const root = document.createElement('div');
+  root.style.position = 'relative';
+  root.style.width = '100%';
+  root.style.height = '100%';
+  root.style.overflow = 'hidden';
+  root.style.background = 'radial-gradient(circle at top, #12213d 0%, #090f1c 68%, #05070f 100%)';
+
+  const gameHost = document.createElement('div');
+  gameHost.style.width = '100%';
+  gameHost.style.height = '100%';
+
+  const info = document.createElement('div');
+  info.style.position = 'absolute';
+  info.style.left = '16px';
+  info.style.bottom = '16px';
+  info.style.padding = '10px 12px';
+  info.style.borderRadius = '12px';
+  info.style.background = 'rgba(5, 10, 24, 0.78)';
+  info.style.border = '1px solid rgba(255, 255, 255, 0.12)';
+  info.style.color = '#f8fafc';
+  info.style.lineHeight = '1.5';
+  info.style.whiteSpace = 'pre-line';
+  info.style.pointerEvents = 'none';
+
+  const hint = document.createElement('p');
+  hint.textContent = 'Move with WASD or arrow keys. Tune speed, acceleration, friction, trail length, and enemy clutter live.';
+  hint.style.marginTop = '16px';
+  hint.style.color = '#c9d4ff';
+  hint.style.lineHeight = '1.6';
+
+  controls.append(hint);
+  root.append(gameHost, info);
+  canvasHost.append(root);
+
+  const settings: MovementLabSettings = {
+    speed: PLAYER_SPEED,
+    acceleration: 1,
+    friction: 0,
+    showTrail: true,
+    trailLength: 20,
+  };
+
+  let spawnEnemiesFromGui = (_count: number) => undefined;
+  let refreshTrailFromGui = () => undefined;
+  let updateInfoFromGui = () => undefined;
+
+  class MovementLabScene extends Phaser.Scene {
+    private accumulator = 0;
+
+    private bridge?: ReturnType<typeof createPhaserBridge>;
+
+    private gridGraphics?: Phaser.GameObjects.Graphics;
+
+    private inputCapture?: ReturnType<typeof createInputCapture>;
+
+    private inputState!: InputState;
+
+    private playerEid = -1;
+
+    private trailGraphics?: Phaser.GameObjects.Graphics;
+
+    private readonly trail = new TrailBuffer(MAX_TRAIL_POINTS);
+
+    private world!: GameWorld;
+
+    constructor() {
+      super({ key: 'MovementLabScene' });
+    }
+
+    create(): void {
+      spawnEnemiesFromGui = (count: number) => {
+        this.spawnEnemies(count);
+      };
+      refreshTrailFromGui = () => {
+        this.refreshTrail();
+      };
+      updateInfoFromGui = () => {
+        this.updateInfo();
+      };
+
+      this.accumulator = 0;
+      this.world = createGameWorld({ seed: 1337 });
+      this.inputState = createInputState();
+      this.inputCapture = createInputCapture(this);
+
+      this.cameras.main.setBackgroundColor('#050816');
+
+      this.gridGraphics = this.add.graphics();
+      this.trailGraphics = this.add.graphics();
+      this.redrawGrid();
+
+      this.playerEid = spawnPlayer(this.world, this.getViewportWidth() / 2, this.getViewportHeight() / 2);
+      this.recordTrail(true);
+
+      this.bridge = createPhaserBridge(this);
+      this.bridge.sync(this.world);
+      this.drawTrail();
+      this.updateInfo();
+
+      const handleResize = () => {
+        this.redrawGrid();
+        this.drawTrail();
+        this.updateInfo();
+      };
+
+      this.scale.on('resize', handleResize);
+      this.events.once('shutdown', () => {
+        spawnEnemiesFromGui = (_count: number) => undefined;
+        refreshTrailFromGui = () => undefined;
+        updateInfoFromGui = () => undefined;
+
+        this.scale.off('resize', handleResize);
+        this.inputCapture?.destroy();
+        this.inputCapture = undefined;
+        this.bridge?.destroy();
+        this.bridge = undefined;
+        this.gridGraphics?.destroy();
+        this.gridGraphics = undefined;
+        this.trailGraphics?.destroy();
+        this.trailGraphics = undefined;
+      });
+    }
+
+    update(_time: number, delta: number): void {
+      if (!this.bridge || !this.inputCapture || this.world.state !== 'playing') {
+        return;
+      }
+
+      this.inputCapture.poll(this.inputState);
+      this.accumulator += delta;
+      let steps = 0;
+
+      while (this.accumulator >= GAME.DELTA_MS && steps < MAX_STEPS_PER_FRAME) {
+        this.world.frameCount += 1;
+        this.world.elapsedMs += GAME.DELTA_MS;
+
+        this.applyPlayerMovementTuning();
+        movementSystem(this.world);
+        healthSystem(this.world);
+        this.recordTrail();
+
+        this.accumulator -= GAME.DELTA_MS;
+        steps += 1;
+
+        if (this.world.state !== 'playing') {
+          break;
+        }
+      }
+
+      if (this.accumulator > GAME.DELTA_MS * MAX_STEPS_PER_FRAME) {
+        this.accumulator = 0;
+      }
+
+      this.bridge.sync(this.world);
+      this.drawTrail();
+      this.updateInfo();
+    }
+
+    spawnEnemies(count: number): void {
+      const spawnWidth = this.getViewportWidth();
+      const spawnHeight = this.getViewportHeight();
+      const usableWidth = Math.max(1, spawnWidth - ENEMY_MARGIN * 2);
+      const usableHeight = Math.max(1, spawnHeight - ENEMY_MARGIN * 2);
+
+      for (let index = 0; index < count; index += 1) {
+        const x = ENEMY_MARGIN + this.world.rng.next() * usableWidth;
+        const y = ENEMY_MARGIN + this.world.rng.next() * usableHeight;
+        const hp = this.world.rng.nextInt(15, 40);
+        spawnEnemy(this.world, x, y, hp);
+      }
+
+      this.bridge?.sync(this.world);
+      this.updateInfo();
+    }
+
+    refreshTrail(): void {
+      this.drawTrail();
+      this.updateInfo();
+    }
+
+    updateInfo(): void {
+      const playerX = this.playerEid >= 0 ? this.world.stores.position.x[this.playerEid] ?? 0 : 0;
+      const playerY = this.playerEid >= 0 ? this.world.stores.position.y[this.playerEid] ?? 0 : 0;
+      const velocityX = this.playerEid >= 0 ? this.world.stores.velocity.x[this.playerEid] ?? 0 : 0;
+      const velocityY = this.playerEid >= 0 ? this.world.stores.velocity.y[this.playerEid] ?? 0 : 0;
+      const enemyCount = query(this.world.ecs, [Enemy]).length;
+
+      info.textContent = [
+        `Speed: ${settings.speed.toFixed(1)}  Accel: ${settings.acceleration.toFixed(2)}  Friction: ${settings.friction.toFixed(2)}`,
+        `Player: (${playerX.toFixed(1)}, ${playerY.toFixed(1)})`,
+        `Velocity: (${velocityX.toFixed(2)}, ${velocityY.toFixed(2)})`,
+        `Trail: ${settings.showTrail ? `${Math.min(settings.trailLength, MAX_TRAIL_POINTS)} pts` : 'off'}  Enemies: ${enemyCount}`,
+      ].join('\n');
+    }
+
+    private applyPlayerMovementTuning(): void {
+      const players = Array.from(query(this.world.ecs, [Player, Velocity]));
+      if (players.length === 0) {
+        return;
+      }
+
+      const previousVelocities = players.map((eid) => ({
+        eid,
+        x: this.world.stores.velocity.x[eid] ?? 0,
+        y: this.world.stores.velocity.y[eid] ?? 0,
+      }));
+
+      playerInputSystem(this.world, this.inputState);
+
+      const speedScale = settings.speed / PLAYER_SPEED;
+      const acceleration = Math.max(0, Math.min(1, settings.acceleration));
+      const friction = Math.max(0, Math.min(1, settings.friction));
+      const damping = 1 - friction;
+
+      for (const previousVelocity of previousVelocities) {
+        const targetX = (this.world.stores.velocity.x[previousVelocity.eid] ?? 0) * speedScale;
+        const targetY = (this.world.stores.velocity.y[previousVelocity.eid] ?? 0) * speedScale;
+        const nextX = acceleration < 1 ? lerp(previousVelocity.x, targetX, acceleration) : targetX;
+        const nextY = acceleration < 1 ? lerp(previousVelocity.y, targetY, acceleration) : targetY;
+
+        setComponent(this.world.ecs, previousVelocity.eid, Velocity, {
+          x: nextX * damping,
+          y: nextY * damping,
+        });
+      }
+    }
+
+    private recordTrail(force = false): void {
+      if (this.playerEid < 0 || !hasComponent(this.world.ecs, this.playerEid, Position)) {
+        return;
+      }
+
+      const x = this.world.stores.position.x[this.playerEid] ?? 0;
+      const y = this.world.stores.position.y[this.playerEid] ?? 0;
+      const lastPoint = this.trail.last();
+
+      if (force || !lastPoint || Math.hypot(lastPoint.x - x, lastPoint.y - y) > 0.05) {
+        this.trail.push(x, y);
+      }
+    }
+
+    private drawTrail(): void {
+      const graphics = this.trailGraphics;
+      if (!graphics) {
+        return;
+      }
+
+      graphics.clear();
+      if (!settings.showTrail) {
+        return;
+      }
+
+      const points = this.trail.getPoints(settings.trailLength);
+      if (points.length === 0) {
+        return;
+      }
+
+      for (let index = 1; index < points.length; index += 1) {
+        const previous = points[index - 1];
+        const current = points[index];
+        if (!previous || !current) {
+          continue;
+        }
+
+        const alpha = index / points.length;
+        graphics.lineStyle(2, 0x7ee0ff, alpha * 0.45);
+        graphics.lineBetween(previous.x, previous.y, current.x, current.y);
+      }
+
+      for (let index = 0; index < points.length; index += 1) {
+        const point = points[index];
+        if (!point) {
+          continue;
+        }
+
+        const alpha = (index + 1) / points.length;
+        graphics.fillStyle(0x7ee0ff, alpha * 0.75);
+        graphics.fillCircle(point.x, point.y, 2 + alpha * 2);
+      }
+    }
+
+    private redrawGrid(): void {
+      const graphics = this.gridGraphics;
+      if (!graphics) {
+        return;
+      }
+
+      const width = this.getViewportWidth();
+      const height = this.getViewportHeight();
+      graphics.clear();
+      graphics.fillStyle(0x070d1a, 0.4);
+      graphics.fillRect(0, 0, width, height);
+      graphics.lineStyle(1, 0x24324a, 0.45);
+
+      for (let x = 0; x <= width; x += GRID_SIZE) {
+        graphics.lineBetween(x, 0, x, height);
+      }
+
+      for (let y = 0; y <= height; y += GRID_SIZE) {
+        graphics.lineBetween(0, y, width, y);
+      }
+    }
+
+    private getViewportHeight(): number {
+      return Math.max(1, Math.round(this.scale.height || this.cameras.main.height || GAME.HEIGHT));
+    }
+
+    private getViewportWidth(): number {
+      return Math.max(1, Math.round(this.scale.width || this.cameras.main.width || GAME.WIDTH));
+    }
+  }
+
+  const controlsApi = {
+    spawnEnemies: () => {
+      spawnEnemiesFromGui(ENEMY_COUNT);
+    },
+  };
+
+  gui.add(settings, 'speed', 1, 15, 0.1).name('Speed').onChange(() => updateInfoFromGui());
+  gui.add(settings, 'acceleration', 0, 1, 0.01).name('Acceleration').onChange(() => updateInfoFromGui());
+  gui.add(settings, 'friction', 0, 1, 0.01).name('Friction').onChange(() => updateInfoFromGui());
+  gui.add(settings, 'showTrail').name('Show Trail').onChange(() => refreshTrailFromGui());
+  gui.add(settings, 'trailLength', 5, 100, 1).name('Trail Length').onChange(() => refreshTrailFromGui());
+  gui.add(controlsApi, 'spawnEnemies').name('Spawn Enemies');
+
+  const getSize = () => ({
+    width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),
+    height: Math.max(1, Math.round(gameHost.clientHeight || GAME.HEIGHT)),
+  });
+
+  const initialSize = getSize();
+  const config: Phaser.Types.Core.GameConfig = {
+    type: Phaser.AUTO,
+    parent: gameHost,
+    width: initialSize.width,
+    height: initialSize.height,
+    backgroundColor: '#050816',
+    scene: [MovementLabScene],
+    scale: {
+      mode: Phaser.Scale.RESIZE,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
+  };
+
+  const game = new Phaser.Game(config);
+  const resizeObserver = new ResizeObserver(() => {
+    const nextSize = getSize();
+    game.scale.resize(nextSize.width, nextSize.height);
+  });
+  resizeObserver.observe(gameHost);
+
+  return () => {
+    resizeObserver.disconnect();
+    game.destroy(true);
+    hint.remove();
+    root.remove();
+  };
+}
+
+registerLab('movement-lab', {
+  name: 'Movement Lab',
+  description: 'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls.',
+  create: createMovementLab,
+});
+

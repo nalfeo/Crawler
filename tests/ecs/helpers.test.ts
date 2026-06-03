@@ -1,15 +1,26 @@
 import { hasComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
+  Damage,
   Enemy,
+  EnemyBehavior,
   Health,
   Player,
   Position,
+  Projectile,
   Sprite,
   Velocity,
   XpGem,
 } from '../../src/core/components.js';
-import { clearEntityStores, createEntity, spawnEnemy, spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
+import {
+  clearEntityStores,
+  createEntity,
+  spawnBehaviorEnemy,
+  spawnEnemy,
+  spawnPlayer,
+  spawnProjectile,
+  spawnXpGem,
+} from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('spawn helpers', () => {
@@ -62,6 +73,38 @@ describe('spawn helpers', () => {
     expect(world.stores.sprite.width[eid]).toBe(8);
     expect(world.stores.sprite.height[eid]).toBe(8);
   });
+
+  it('spawnProjectile creates a damaging projectile with movement and Sprite', () => {
+    const world = createTestWorld();
+    const eid = spawnProjectile(world, 10, 20, 3, -4, 12);
+
+    expect(hasComponent(world.ecs, eid, Position)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Velocity)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Damage)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Projectile)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Sprite)).toBe(true);
+    expect(world.stores.position.x[eid]).toBe(10);
+    expect(world.stores.position.y[eid]).toBe(20);
+    expect(world.stores.velocity.x[eid]).toBe(3);
+    expect(world.stores.velocity.y[eid]).toBe(-4);
+    expect(world.stores.damage.amount[eid]).toBe(12);
+    expect(world.stores.sprite.width[eid]).toBe(6);
+    expect(world.stores.sprite.height[eid]).toBe(6);
+  });
+
+  it('spawnBehaviorEnemy creates an enemy with behavior data', () => {
+    const world = createTestWorld();
+    const eid = spawnBehaviorEnemy(world, 30, -10, 45, 2, 1.5, 220, 160);
+
+    expect(hasComponent(world.ecs, eid, Position)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Velocity)).toBe(true);
+    expect(hasComponent(world.ecs, eid, Enemy)).toBe(true);
+    expect(hasComponent(world.ecs, eid, EnemyBehavior)).toBe(true);
+    expect(world.stores.enemyBehavior.type[eid]).toBe(2);
+    expect(world.stores.enemyBehavior.speed[eid]).toBeCloseTo(1.5);
+    expect(world.stores.enemyBehavior.aggroRange[eid]).toBe(220);
+    expect(world.stores.enemyBehavior.attackRange[eid]).toBe(160);
+  });
 });
 
 describe('entity recycling safety', () => {
@@ -81,6 +124,8 @@ describe('entity recycling safety', () => {
     expect(world.stores.health.current[eid]).toBe(0);
     expect(world.stores.health.max[eid]).toBe(0);
     expect(world.stores.sprite.width[eid]).toBe(0);
+    expect(world.stores.enemyBehavior.type[eid]).toBe(0);
+    expect(world.stores.enemyBehavior.speed[eid]).toBe(0);
   });
 
   it('createEntity returns an entity with zeroed stores', () => {

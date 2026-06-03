@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createGameWorld } from '../../src/core/world.js';
 import { SeededRandom } from '../../src/shared/random.js';
 import { addEntity, addComponent, query } from 'bitecs';
-import { Position, Health } from '../../src/core/components.js';
+import { EnemyBehavior, Health, Position } from '../../src/core/components.js';
 import { set } from 'bitecs';
 
 describe('createGameWorld', () => {
@@ -63,6 +63,18 @@ describe('createGameWorld', () => {
 
     expect(world.stores.health.current[eid]).toBe(80);
     expect(world.stores.health.max[eid]).toBe(100);
+  });
+
+  it('wires EnemyBehavior store correctly', () => {
+    const world = createGameWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(EnemyBehavior, { type: 2, speed: 1.25, aggroRange: 240, attackRange: 160 }));
+
+    expect(world.stores.enemyBehavior.type[eid]).toBe(2);
+    expect(world.stores.enemyBehavior.speed[eid]).toBeCloseTo(1.25);
+    expect(world.stores.enemyBehavior.aggroRange[eid]).toBe(240);
+    expect(world.stores.enemyBehavior.attackRange[eid]).toBe(160);
   });
 
   it('supports querying entities by component', () => {

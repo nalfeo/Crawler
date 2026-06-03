@@ -1,0 +1,59 @@
+import { addComponent, entityExists, set } from 'bitecs';
+import { describe, expect, it } from 'vitest';
+import { BroadcastScore, Position, Projectile, Sprite } from '../../src/core/components.js';
+import { createEntity, spawnEnemy, spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
+import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
+import { damageSystem } from '../../src/core/systems/damageSystem.js';
+import { createTestWorld } from '../helpers/world-factory.js';
+
+describe('damageSystem', () => {
+  it('reduces enemy health when a projectile hits', () => {
+    const world = createTestWorld();
+    const projectile = createEntity(world);
+    const enemy = spawnEnemy(world, 8, 0, 25);
+
+    addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(world.ecs, projectile, Projectile);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[enemy]).toBe(15);
+  });
+
+  it('reduces player health when an enemy hits', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+
+    spawnEnemy(world, 8, 0, 25);
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[player]).toBe(95);
+  });
+
+  it('destroys xp gems and adds their value to the player score when collected', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const gem = spawnXpGem(world, 4, 0, 7);
+
+    addComponent(world.ecs, player, set(BroadcastScore, { current: 0 }));
+    damageSystem(world, collisionSystem(world));
+
+    expect(entityExists(world.ecs, gem)).toBe(false);
+    expect(world.stores.broadcastScore.current[player]).toBe(7);
+  });
+
+  it('destroys projectiles after they hit enemies', () => {
+    const world = createTestWorld();
+    const projectile = createEntity(world);
+
+    spawnEnemy(world, 8, 0, 25);
+    addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(world.ecs, projectile, Projectile);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(entityExists(world.ecs, projectile)).toBe(false);
+  });
+});
