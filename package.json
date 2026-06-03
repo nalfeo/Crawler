@@ -1,0 +1,54 @@
+{
+  "name": "crawler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A crafting-focused vampire-survivors-like set inside a brutal intergalactic reality show dungeon",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/ tests/ --max-warnings 0",
+    "lint:fix": "eslint src/ tests/ --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "lint:dead-code": "knip",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e",
+    "lab": "vite --mode lab",
+    "verify:fast": "bash scripts/agent/verify-fast.sh",
+    "verify": "bash scripts/agent/verify.sh"
+  },
+  "keywords": [
+    "game",
+    "vampire-survivors",
+    "ecs",
+    "phaser",
+    "roguelite"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "bitecs": "^0.4.0",
+    "phaser": "^4.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.9.1",
+    "@vitejs/plugin-legacy": "^8.0.2",
+    "@vitest/coverage-v8": "^4.1.8",
+    "eslint": "^10.4.1",
+    "fast-check": "^4.8.0",
+    "globals": "^17.6.0",
+    "knip": "^6.15.0",
+    "lil-gui": "^0.21.0",
+    "prettier": "^3.8.3",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.1",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
+  }
+}

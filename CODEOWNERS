@@ -1,0 +1,8 @@
+# Critical files — require explicit review
+/.github/workflows/ @nalfeo
+/.github/workflows/copilot-setup-steps.yml @nalfeo
+/.github/copilot-instructions.md @nalfeo
+/.github/copilot-setup-steps.yml @nalfeo
+/AGENTS.md @nalfeo
+/.specify/ @nalfeo
+/docs/agent-os/policies/ @nalfeo
