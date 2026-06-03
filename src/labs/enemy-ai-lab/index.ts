@@ -356,11 +356,6 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     height: initialSize.height,
     backgroundColor: '#080910',
     scene: [EnemyAiLabScene],
-    input: {
-      keyboard: {
-        target: window,
-      },
-    },
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,

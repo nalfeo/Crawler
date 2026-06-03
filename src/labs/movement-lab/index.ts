@@ -112,6 +112,26 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   info.style.lineHeight = '1.5';
   info.style.whiteSpace = 'pre-line';
   info.style.pointerEvents = 'none';
+  info.id = 'movement-lab-debug';
+
+  // Raw keyboard tracker independent of Phaser
+  const rawKeys = new Set<string>();
+  const keyLog: string[] = [];
+  const MAX_KEY_LOG = 20;
+  const logKey = (type: string, key: string) => {
+    keyLog.push(`${Date.now() % 100000} ${type} ${key}`);
+    if (keyLog.length > MAX_KEY_LOG) keyLog.shift();
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    rawKeys.add(e.code);
+    logKey('DN', e.code);
+  };
+  const onKeyUp = (e: KeyboardEvent) => {
+    rawKeys.delete(e.code);
+    logKey('UP', e.code);
+  };
+  window.addEventListener('keydown', onKeyDown, true);
+  window.addEventListener('keyup', onKeyUp, true);
 
   const hint = document.createElement('p');
   hint.textContent = 'Move with WASD or arrow keys. Tune speed, acceleration, friction, trail length, and enemy clutter live.';
@@ -275,11 +295,34 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       const velocityY = this.playerEid >= 0 ? this.world.stores.velocity.y[this.playerEid] ?? 0 : 0;
       const enemyCount = query(this.world.ecs, [Enemy]).length;
 
+      // Read Phaser key states directly
+      const kb = this.input.keyboard;
+      const phaserW = kb?.checkDown(kb?.addKey('W', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+      const phaserA = kb?.checkDown(kb?.addKey('A', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+      const phaserS = kb?.checkDown(kb?.addKey('S', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+      const phaserD = kb?.checkDown(kb?.addKey('D', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+
+      const rawKeysStr = rawKeys.size > 0 ? Array.from(rawKeys).join('+') : 'none';
+      const phaserKeysStr = [phaserW && 'W', phaserA && 'A', phaserS && 'S', phaserD && 'D'].filter(Boolean).join('+') || 'none';
+
+      // Expose debug object on window for JS evaluation
+      (window as unknown as Record<string, unknown>).__movLabDebug = {
+        worldState: this.world.state,
+        rawKeys: Array.from(rawKeys),
+        phaserKeys: { W: phaserW, A: phaserA, S: phaserS, D: phaserD },
+        inputState: { ...this.inputState },
+        velocity: { x: velocityX, y: velocityY },
+        frameCount: this.world.frameCount,
+        playerEid: this.playerEid,
+        keyLog: [...keyLog],
+      };
+
       info.textContent = [
-        `State: ${this.world.state}  Speed: ${settings.speed.toFixed(1)}  Accel: ${settings.acceleration.toFixed(2)}  Friction: ${settings.friction.toFixed(2)}`,
-        `Player: (${playerX.toFixed(1)}, ${playerY.toFixed(1)})`,
-        `Velocity: (${velocityX.toFixed(2)}, ${velocityY.toFixed(2)})`,
-        `Trail: ${settings.showTrail ? `${Math.min(settings.trailLength, MAX_TRAIL_POINTS)} pts` : 'off'}  Enemies: ${enemyCount}`,
+        `State: ${this.world.state}  Frame: ${this.world.frameCount}  Enemies: ${enemyCount}`,
+        `Player: (${playerX.toFixed(1)}, ${playerY.toFixed(1)})  Vel: (${velocityX.toFixed(2)}, ${velocityY.toFixed(2)})`,
+        `Input: move(${this.inputState.moveX.toFixed(2)}, ${this.inputState.moveY.toFixed(2)})`,
+        `RawKeys: ${rawKeysStr}  PhaserKeys: ${phaserKeysStr}`,
+        `Speed: ${settings.speed.toFixed(1)}  Accel: ${settings.acceleration.toFixed(2)}  Fric: ${settings.friction.toFixed(2)}`,
       ].join('\n');
     }
 
@@ -426,11 +469,6 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     height: initialSize.height,
     backgroundColor: '#050816',
     scene: [MovementLabScene],
-    input: {
-      keyboard: {
-        target: window,
-      },
-    },
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -445,6 +483,9 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   resizeObserver.observe(gameHost);
 
   return () => {
+    window.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('keyup', onKeyUp, true);
+    delete (window as unknown as Record<string, unknown>).__movLabDebug;
     resizeObserver.disconnect();
     game.destroy(true);
     hint.remove();
