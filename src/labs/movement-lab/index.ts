@@ -188,14 +188,6 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       this.drawTrail();
       this.updateInfo();
 
-      // Re-focus the Phaser canvas when the game host is clicked,
-      // so keyboard input resumes after clicking GUI controls.
-      const canvas = this.game.canvas;
-      const handleCanvasFocus = () => {
-        canvas.focus();
-      };
-      gameHost.addEventListener('pointerdown', handleCanvasFocus);
-
       const handleResize = () => {
         this.redrawGrid();
         this.drawTrail();
@@ -208,7 +200,6 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
         refreshTrailFromGui = () => undefined;
         updateInfoFromGui = () => undefined;
 
-        gameHost.removeEventListener('pointerdown', handleCanvasFocus);
         this.scale.off('resize', handleResize);
         this.inputCapture?.destroy();
         this.inputCapture = undefined;
@@ -435,6 +426,11 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     height: initialSize.height,
     backgroundColor: '#050816',
     scene: [MovementLabScene],
+    input: {
+      keyboard: {
+        target: window,
+      },
+    },
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,

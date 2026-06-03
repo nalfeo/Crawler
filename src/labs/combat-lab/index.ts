@@ -276,6 +276,11 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     height: initialSize.height,
     backgroundColor: '#110814',
     scene: [CombatLabScene],
+    input: {
+      keyboard: {
+        target: window,
+      },
+    },
     scale: {
       mode: Phaser.Scale.RESIZE,
       autoCenter: Phaser.Scale.CENTER_BOTH,
