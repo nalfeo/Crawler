@@ -70,6 +70,7 @@ interface TunableWeaponDef {
   headRadius: number;
   shaftDamageMult: number;
   knockback: number;
+  pierce: number;
 }
 
 function cloneWeaponDef(def: WeaponDef): TunableWeaponDef {
@@ -376,9 +377,10 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       weaponFolder.add(tunedWeapon, 'knockback', 0, 100, 1).name('Knockback (px)');
     }
 
-    // Ranged: projectile speed
+    // Ranged: projectile speed + pierce
     if (wt === WeaponType.RANGED) {
       weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Projectile Speed');
+      weaponFolder.add(tunedWeapon, 'pierce', 0, 20, 1).name('Pierce');
     }
 
     // Magic: projectile speed + AoE radius

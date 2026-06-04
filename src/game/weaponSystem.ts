@@ -185,7 +185,7 @@ function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef, dir: 
 function fireRangedAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnProjectile(world, px, py, dir.x * def.projectileSpeed, dir.y * def.projectileSpeed, def.baseDamage);
+  spawnProjectile(world, px, py, dir.x * def.projectileSpeed, dir.y * def.projectileSpeed, def.baseDamage, def.pierce);
 }
 
 function fireUnarmedAttack(world: GameWorld, player: number, def: WeaponDef): void {

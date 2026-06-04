@@ -23,8 +23,28 @@ function getPlayerHitTimestamps(world: GameWorld): Float64Array {
   return hitTimestamps;
 }
 
+/** Per-projectile hit tracking for pierce (prevents double-hitting same enemy). */
+const pierceHitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
+
+function getPierceHitSet(world: GameWorld, eid: number): Set<number> {
+  let worldHits = pierceHitSets.get(world);
+  if (worldHits === undefined) {
+    worldHits = new Map();
+    pierceHitSets.set(world, worldHits);
+  }
+  let hits = worldHits.get(eid);
+  if (hits === undefined) {
+    hits = new Set();
+    worldHits.set(eid, hits);
+  }
+  return hits;
+}
+
 function destroyEntity(world: GameWorld, eid: number): void {
   clearEntityStores(world, eid);
+  // Clean up pierce hit tracking
+  const worldHits = pierceHitSets.get(world);
+  if (worldHits !== undefined) worldHits.delete(eid);
   removeEntity(world.ecs, eid);
 }
 
@@ -38,13 +58,25 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
 }
 
 function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
+  // Check if this enemy was already hit by this piercing projectile
+  const hitSet = getPierceHitSet(world, projectile);
+  if (hitSet.has(enemy)) return;
+
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
     const currentHealth = world.stores.health.current[enemy] ?? 0;
     world.stores.health.current[enemy] = Math.max(0, currentHealth - amount);
   }
 
-  destroyEntity(world, projectile);
+  hitSet.add(enemy);
+
+  const pierce = world.stores.projectile.pierce[projectile] ?? 0;
+  const hitCount = (world.stores.projectile.hitCount[projectile] ?? 0) + 1;
+  world.stores.projectile.hitCount[projectile] = hitCount;
+
+  if (hitCount > pierce) {
+    destroyEntity(world, projectile);
+  }
 }
 
 function applyPlayerEnemyHit(world: GameWorld, player: number, enemy: number, hitTimestamps: Float64Array): void {

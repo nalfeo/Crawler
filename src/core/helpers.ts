@@ -107,6 +107,7 @@ export function spawnProjectile(
   vx: number,
   vy: number,
   damage: number,
+  pierce: number = 0,
 ): number {
   const eid = createEntity(world);
 
@@ -114,7 +115,7 @@ export function spawnProjectile(
   addComponent(world.ecs, eid, set(Velocity, { x: vx, y: vy }));
   addComponent(world.ecs, eid, set(Damage, { amount: damage, cooldownMs: 0, lastFireMs: 0 }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 6, height: 6 }));
-  addComponent(world.ecs, eid, Projectile);
+  addComponent(world.ecs, eid, set(Projectile, { pierce, hitCount: 0 }));
 
   return eid;
 }

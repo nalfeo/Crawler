@@ -37,6 +37,8 @@ export interface WeaponDef {
   readonly shaftDamageMult: number;
   /** Knockback displacement in pixels applied on hit (0 = no knockback). */
   readonly knockback: number;
+  /** Number of enemies a projectile can pierce through (0 = destroy on first hit). */
+  readonly pierce: number;
 }
 
 function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weaponType' | 'baseDamage' | 'cooldownMs'>): WeaponDef {
@@ -57,6 +59,7 @@ function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weap
     headRadius: 0,
     shaftDamageMult: 1.0,
     knockback: 0,
+    pierce: 0,
     ...partial,
   };
 }

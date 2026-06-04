@@ -22,6 +22,7 @@ export const Player = {};
 export const Enemy = {};
 export const EnemyBehavior = {};
 export const Projectile = {};
+/** Marks an entity as an enemy projectile. */
 export const EnemyProjectile = {};
 export const XpGem = {};
 export const DroppedItem = {};
@@ -69,6 +70,10 @@ export function createComponentStores() {
       lastFireMs: new Float32Array(MAX_ENTITIES),
     },
     xpGem: { value: new Float32Array(MAX_ENTITIES) },
+    projectile: {
+      pierce: new Uint8Array(MAX_ENTITIES),
+      hitCount: new Uint8Array(MAX_ENTITIES),
+    },
     sprite: {
       textureId: new Uint16Array(MAX_ENTITIES),
       width: new Float32Array(MAX_ENTITIES),

@@ -13,6 +13,7 @@ import {
   Rotation,
   Health,
   Damage,
+  Projectile,
   XpGem,
   Sprite,
   EnemyBehavior,
@@ -77,6 +78,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Rotation, stores.rotation);
   wireStore(ecs, Health, stores.health);
   wireStore(ecs, Damage, stores.damage);
+  wireStore(ecs, Projectile, stores.projectile);
   wireStore(ecs, XpGem, stores.xpGem);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
