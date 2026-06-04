@@ -28,14 +28,38 @@ import {
   setActiveWeapon,
   weaponSystem,
 } from '../../game/index.js';
-import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
+import { GAME, PLAYER_SPEED, WeaponType } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
-import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
+import { WEAPON_DEFS, type WeaponDef } from '../../shared/weaponDefs.js';
 import { registerLab } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 const WEAPON_IDS = [...WEAPON_DEFS.keys()];
+
+/** Mutable copy of a WeaponDef for live tuning. */
+interface TunableWeaponDef {
+  id: string;
+  name: string;
+  weaponType: number;
+  baseDamage: number;
+  cooldownMs: number;
+  range: number;
+  projectileSpeed: number;
+  aoeRadius: number;
+  durationMs: number;
+  beamTickMs: number;
+  beamLength: number;
+  trapArmMs: number;
+  trapTriggerRadius: number;
+  trapExplosionRadius: number;
+  returnSpeed: number;
+  maxRange: number;
+}
+
+function cloneWeaponDef(def: WeaponDef): TunableWeaponDef {
+  return { ...def };
+}
 
 interface WeaponsLabSettings {
   playerSpeed: number;
@@ -202,9 +226,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     }
 
     private applyActiveWeapon(): void {
-      const def = WEAPON_DEFS.get(settings.activeWeapon);
-      if (def !== undefined) {
-        setActiveWeapon(this.world, def);
+      if (tunedWeapon !== undefined) {
+        setActiveWeapon(this.world, tunedWeapon as WeaponDef);
       }
     }
 
@@ -266,6 +289,76 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     }
   }
 
+  let tunedWeapon: TunableWeaponDef | undefined;
+  let weaponFolder: GUI | undefined;
+
+  function buildWeaponFolder(): void {
+    if (weaponFolder) {
+      weaponFolder.destroy();
+      weaponFolder = undefined;
+    }
+
+    const baseDef = WEAPON_DEFS.get(settings.activeWeapon);
+    if (!baseDef || !gui) return;
+
+    tunedWeapon = cloneWeaponDef(baseDef);
+    weaponFolder = gui.addFolder(`${baseDef.name} Stats`);
+    weaponFolder.open();
+
+    // Common to all weapons
+    weaponFolder.add(tunedWeapon, 'baseDamage', 1, 100, 1).name('Damage');
+    weaponFolder.add(tunedWeapon, 'cooldownMs', 50, 5000, 10).name('Cooldown (ms)');
+
+    const wt = baseDef.weaponType;
+
+    // Melee / Unarmed: radius + duration
+    if (wt === WeaponType.MELEE || wt === WeaponType.UNARMED) {
+      weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Swing Radius');
+      weaponFolder.add(tunedWeapon, 'durationMs', 50, 1000, 10).name('Duration (ms)');
+    }
+
+    // Ranged: projectile speed
+    if (wt === WeaponType.RANGED) {
+      weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Projectile Speed');
+    }
+
+    // Magic: projectile speed + AoE radius
+    if (wt === WeaponType.MAGIC) {
+      weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Projectile Speed');
+      weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 150, 1).name('Explosion Radius');
+    }
+
+    // Thrown: projectile speed + return speed + max range
+    if (wt === WeaponType.THROWN) {
+      weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Throw Speed');
+      weaponFolder.add(tunedWeapon, 'returnSpeed', 1, 15, 0.5).name('Return Speed');
+      weaponFolder.add(tunedWeapon, 'maxRange', 50, 500, 10).name('Max Range');
+    }
+
+    // Beam: length + duration + tick interval
+    if (wt === WeaponType.BEAM) {
+      weaponFolder.add(tunedWeapon, 'beamLength', 50, 500, 10).name('Beam Length');
+      weaponFolder.add(tunedWeapon, 'durationMs', 100, 2000, 50).name('Duration (ms)');
+      weaponFolder.add(tunedWeapon, 'beamTickMs', 25, 500, 25).name('Tick Interval (ms)');
+    }
+
+    // Trap: arm time + trigger radius + explosion radius
+    if (wt === WeaponType.TRAP) {
+      weaponFolder.add(tunedWeapon, 'trapArmMs', 0, 3000, 50).name('Arm Delay (ms)');
+      weaponFolder.add(tunedWeapon, 'trapTriggerRadius', 8, 100, 1).name('Trigger Radius');
+      weaponFolder.add(tunedWeapon, 'trapExplosionRadius', 16, 200, 1).name('Explosion Radius');
+    }
+
+    // Reset to defaults button
+    weaponFolder.add({ reset: () => {
+      const fresh = WEAPON_DEFS.get(settings.activeWeapon);
+      if (fresh && tunedWeapon) {
+        Object.assign(tunedWeapon, cloneWeaponDef(fresh));
+        weaponFolder?.controllersRecursive().forEach((c) => c.updateDisplay());
+      }
+    } }, 'reset').name('Reset to Defaults');
+  }
+
   const controlsApi = {
     reset: () => {
       resetWorldFromGui();
@@ -273,14 +366,19 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   };
 
   gui.add(settings, 'activeWeapon', WEAPON_IDS).name('Weapon').onChange(() => {
-    // weapon applied on next frame
+    buildWeaponFolder();
   });
-  gui.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
-  gui.add(settings, 'maxEnemies', 5, 200, 1).name('Max Enemies');
-  gui.add(settings, 'spawnIntervalMs', 100, 5000, 1).name('Spawn Interval');
-  gui.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');
-  gui.add(settings, 'enemySpeed', 0.5, 5, 0.1).name('Enemy Speed');
-  gui.add(controlsApi, 'reset').name('Reset');
+
+  const arenaFolder = gui.addFolder('Arena');
+  arenaFolder.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
+  arenaFolder.add(settings, 'maxEnemies', 5, 200, 1).name('Max Enemies');
+  arenaFolder.add(settings, 'spawnIntervalMs', 100, 5000, 1).name('Spawn Interval');
+  arenaFolder.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');
+  arenaFolder.add(settings, 'enemySpeed', 0.5, 5, 0.1).name('Enemy Speed');
+  arenaFolder.add(controlsApi, 'reset').name('Reset');
+
+  // Build initial weapon folder
+  buildWeaponFolder();
 
   const getSize = () => ({
     width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),
