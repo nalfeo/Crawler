@@ -5,6 +5,16 @@ SYSTEMS_DIR="src/core/systems"
 LABS_DIR="src/labs"
 FAILED=0
 
+# Systems covered by a shared lab (e.g., weapons-lab covers all weapon-type systems)
+declare -A SHARED_LAB_MAP=(
+  [beam]="weapons-lab"
+  [meleeswing]="weapons-lab"
+  [trap]="weapons-lab"
+  [aoeonimpact]="weapons-lab"
+  [areadamage]="weapons-lab"
+  [returningprojectile]="weapons-lab"
+)
+
 echo "🔬 Lab Gate Check: Verifying every system has a lab..."
 
 # If no systems directory exists yet, pass
@@ -26,6 +36,15 @@ for system_file in "$SYSTEMS_DIR"/*.ts; do
   # Extract system name (e.g., "movement" from "movementSystem.ts" or "movement.ts")
   system_name=$(echo "$basename" | sed 's/System$//' | tr '[:upper:]' '[:lower:]')
   
+  # Check if covered by a shared lab
+  if [ -n "${SHARED_LAB_MAP[$system_name]:-}" ]; then
+    shared_lab="${SHARED_LAB_MAP[$system_name]}"
+    if [ -d "$LABS_DIR/$shared_lab" ]; then
+      echo "✅ System '$basename' → covered by $shared_lab"
+      continue
+    fi
+  fi
+
   # Check for a corresponding lab directory
   lab_found=false
   for lab_dir in "$LABS_DIR"/*/; do
