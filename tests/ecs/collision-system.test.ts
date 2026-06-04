@@ -27,7 +27,10 @@ describe('collisionSystem', () => {
 
     const result = collisionSystem(world);
 
-    expect(result.pairs).toContainEqual({ a: Math.min(projectile, enemy), b: Math.max(projectile, enemy) });
+    expect(result.pairs).toContainEqual({
+      a: Math.min(projectile, enemy),
+      b: Math.max(projectile, enemy),
+    });
   });
 
   it('returns no collisions when entities do not overlap', () => {
@@ -49,6 +52,9 @@ describe('collisionSystem', () => {
     setComponent(world.ecs, enemy, Position, { x: 8, y: 0 });
     const updatedResult = collisionSystem(world);
 
-    expect(updatedResult.pairs).toContainEqual({ a: Math.min(player, enemy), b: Math.max(player, enemy) });
+    expect(updatedResult.pairs).toContainEqual({
+      a: Math.min(player, enemy),
+      b: Math.max(player, enemy),
+    });
   });
 });

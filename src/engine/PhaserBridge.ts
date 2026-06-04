@@ -1,6 +1,14 @@
 import { hasComponent, query } from 'bitecs';
 import type Phaser from 'phaser';
-import { Enemy, EnemyProjectile, Player, Position, Projectile, Sprite, XpGem } from '../core/components.js';
+import {
+  Enemy,
+  EnemyProjectile,
+  Player,
+  Position,
+  Projectile,
+  Sprite,
+  XpGem,
+} from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 
 interface RenderStyle {
@@ -33,7 +41,10 @@ function getRenderStyle(world: GameWorld, eid: number): RenderStyle {
   return { color: 0x808080, width: 12, height: 12 };
 }
 
-export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld): void; destroy(): void } {
+export function createPhaserBridge(scene: Phaser.Scene): {
+  sync(world: GameWorld): void;
+  destroy(): void;
+} {
   const gameObjects = new Map<number, Phaser.GameObjects.Rectangle>();
 
   return {

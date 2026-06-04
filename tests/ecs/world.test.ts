@@ -69,7 +69,11 @@ describe('createGameWorld', () => {
     const world = createGameWorld();
     const eid = addEntity(world.ecs);
 
-    addComponent(world.ecs, eid, set(EnemyBehavior, { type: 2, speed: 1.25, aggroRange: 240, attackRange: 160 }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(EnemyBehavior, { type: 2, speed: 1.25, aggroRange: 240, attackRange: 160 }),
+    );
 
     expect(world.stores.enemyBehavior.type[eid]).toBe(2);
     expect(world.stores.enemyBehavior.speed[eid]).toBeCloseTo(1.25);
