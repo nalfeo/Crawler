@@ -262,7 +262,7 @@ describe('InputCapture (raw DOM)', () => {
     capture.poll(state);
     expect(state.moveX).toBeGreaterThan(0);
 
-    startTouch(2, 900, 300);
+    startTouch(2, 600, 300);
     capture.poll(state);
     expect(state.action).toBe(true);
 
@@ -298,15 +298,15 @@ describe('InputCapture (raw DOM)', () => {
   });
 
   it('right-side touch enables action and updates pointer', () => {
-    startTouch(2, 900, 300);
-    moveTouch(2, 920, 340);
+    startTouch(2, 600, 300);
+    moveTouch(2, 620, 340);
 
     capture.poll(state);
     expect(state.action).toBe(true);
-    expect(state.pointerX).toBe(920);
+    expect(state.pointerX).toBe(620);
     expect(state.pointerY).toBe(340);
 
-    endTouch(2, 920, 340);
+    endTouch(2, 620, 340);
     capture.poll(state);
     expect(state.action).toBe(false);
   });

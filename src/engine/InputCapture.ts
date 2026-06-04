@@ -71,7 +71,7 @@ export function createInputCapture(scene: Phaser.Scene): {
       state.x = touch.clientX;
       state.y = touch.clientY;
     }
-    e.preventDefault?.();
+    if (e.cancelable) e.preventDefault();
   };
   const onTouchEnd = (e: TouchEvent) => {
     for (const touch of e.changedTouches) {
