@@ -8,7 +8,7 @@ Crawler's characters need a full equipment system befitting a dungeon crawler. C
 
 ### Equipment Slots
 
-Slots are defined in a **data-driven slot registry** — a plain array/map of slot definitions. New slots (trinkets, ammo, earrings, etc.) can be added at any time by appending to the registry without modifying existing code or breaking save compatibility.
+Slots are defined in a **data-driven slot registry** — a plain array/map of slot definitions. Adding a new slot requires appending to the registry and updating any UI/layout/content that wants to expose it, but does not require changing core equip/unequip/stat logic.
 
 #### V1 Slot Registry
 
@@ -137,6 +137,58 @@ All equipment stat bonuses are **additive flat values** in v1. No multiplicative
 
 Primary stat → secondary stat derivation formulas are **deferred to a future spec**. In v1, primary stats are tracked but do not auto-derive secondary stats.
 
+### V1 Stat Formulas (Downstream Integration)
+
+These formulas define how `EffectiveStats` modify existing systems:
+
+```
+// Weapon system (weaponSystem.ts)
+effectiveFireRateMs = baseCooldownMs / max(0.1, 1 + attackSpeed) * (1 - cooldownReduction)
+outgoingDamage     = max(0, baseDamage + damageBonus)
+isCrit             = world.rng.next() < critChance   // uses SeededRandom
+critDamage         = outgoingDamage * critMultiplier
+
+// Damage system (healthSystem.ts)
+incomingDamage     = max(1, rawDamage - armor)        // minimum 1 damage
+isDodged           = world.rng.next() < dodgeChance   // uses SeededRandom
+
+// Movement (playerInputSystem.ts)
+effectiveSpeed     = max(0, baseSpeed + moveSpeed)
+
+// Health regen
+hpPerFrame         = hpRegen * (deltaMs / 1000)
+
+// XP collection
+effectiveXp        = baseXpValue * (1 + xpBonus)
+```
+
+**Integration points** (existing systems to update):
+- `weaponSystem.ts` → read `EffectiveStats` for `damageBonus`, `attackSpeed`, `cooldownReduction`, `critChance`, `critMultiplier`
+- `healthSystem.ts` → read `armor`, `dodgeChance`, `hpRegen`
+- `playerInputSystem.ts` → read `moveSpeed`
+- XP collection (when implemented) → read `xpBonus`
+- `BroadcastScore` → read `charisma` bonus (future)
+
+Stats are read **live each frame** from the `EffectiveStats` store, not snapshotted. Projectiles use damage values at spawn time.
+
+### Default Base Stats
+
+Entities must be initialized with `initializeBaseStats(world, entity, defaults)` before using the stat system. Default values:
+
+```typescript
+const DEFAULT_BASE_STATS: Record<StatId, number> = {
+  // Primary (all start at 1)
+  strength: 1, dexterity: 1, constitution: 1,
+  intelligence: 1, wisdom: 1, charisma: 1, luck: 1,
+  // Secondary
+  armor: 0, damageBonus: 0, attackSpeed: 0, moveSpeed: 0,
+  critChance: 0.05, critMultiplier: 1.5, dodgeChance: 0,
+  hpRegen: 0, xpBonus: 0, cooldownReduction: 0,
+};
+```
+
+These defaults ensure typed-array zero-init for most stats is safe, with the exception of `critMultiplier` (base 1.5) and `critChance` (base 0.05) which must be explicitly set via `initializeBaseStats`.
+
 ### Equipment Item Definition
 
 ```typescript
@@ -213,8 +265,8 @@ interface EquipmentInstance {
 interface EquipmentState {
   /** Map of slot → equipped instance ID (or null) */
   equipped: Record<EquipmentSlotId, EquipmentInstanceId | null>;
-  /** Registry of instance ID → item definition (source of truth for stats/slots) */
-  instances: Map<EquipmentInstanceId, EquipmentItemDef>;
+  /** Registry of instance ID → full instance (source of truth for stats/slots) */
+  instances: Map<EquipmentInstanceId, EquipmentInstance>;
   /** Set of currently disabled slot IDs */
   disabledSlots: Set<EquipmentSlotId>;
 }
@@ -229,9 +281,39 @@ interface EquipmentState {
 | `disableSlot(world, entity, slot)`  | —                                                          | Forcibly unequips item if present, marks disabled |
 | `enableSlot(world, entity, slot)`   | —                                                          | Marks slot enabled                               |
 | `getEffectiveStats(world, entity)`  | —                                                          | Returns sum of base stats + all equipment bonuses |
-| `canEquip(world, entity, itemDef)`  | —                                                          | Returns `{ allowed: boolean; reasons: string[] }` — checks slots AND requirements |
+| `canEquip(world, entity, itemDef)`  | —                                                          | Returns `CanEquipResult` — checks slots AND requirements |
 
 All operations take `world: GameWorld` as the first argument (required to access the WeakMap side-map and typed-array stores).
+
+### Result Types
+
+```typescript
+type EquipResult =
+  | { ok: true; instanceId: EquipmentInstanceId }
+  | { ok: false; reasons: EquipFailureReason[] };
+
+type EquipFailureReason =
+  | { type: 'invalidDef'; message: string }       // empty slots, duplicate slots, bad stat values
+  | { type: 'unknownSlot'; slotId: string }
+  | { type: 'disabledSlot'; slotId: string }
+  | { type: 'occupiedSlot'; slotId: string }
+  | { type: 'requirementFailed'; requirement: EquipRequirement; message: string };
+
+type UnequipResult =
+  | { ok: true; item: EquipmentInstance }
+  | { ok: false; reason: string };
+
+type DisableSlotResult = {
+  unequippedItem: EquipmentInstance | null;
+};
+
+type CanEquipResult = {
+  allowed: boolean;
+  reasons: EquipFailureReason[];
+};
+```
+
+**Reason ordering** (deterministic): invalidDef → unknownSlot → disabledSlot → occupiedSlot → requirementFailed.
 
 ### Constraints
 
@@ -246,7 +328,24 @@ All operations take `world: GameWorld` as the first argument (required to access
 
 - `itemDef.slots` must be non-empty.
 - `itemDef.slots` must not contain duplicate slot IDs.
-- Unknown slot IDs or stat IDs are rejected at equip time.
+- Unknown slot IDs (not in `SLOT_REGISTRY`) are rejected at equip time.
+- Unknown stat IDs in `statBonuses` are rejected at equip time.
+- Non-finite stat values (`NaN`, `Infinity`, `-Infinity`) are rejected at equip time.
+- Primary stat bonuses must be integers (fractional values are rejected).
+
+### Stat Aggregation Rule
+
+> Stat aggregation iterates **unique equipped instance IDs**, not slots. Each equipped item contributes its bonuses exactly once, regardless of how many slots it occupies. Multi-slot items are never double-counted.
+
+### Requirement Evaluation
+
+- **`minStat` / `minLevel` requirements check current `EffectiveStats`** (including bonuses from already-equipped gear), **excluding** the candidate item's own bonuses. The item being equipped does not bootstrap itself.
+- **`hasTag` / `notTag`** refer to **entity tags** — a lightweight string set stored per entity in the equipment side-map (e.g. `'male'`, `'undead'`, `'class:mage'`). Entity tags are set at character creation and may be modified by game events. They are distinct from item `tags` (which are for crafting/synergy).
+- **Custom predicates** must be pure and deterministic — they receive `(world, entity, itemDef)` and must not use `Math.random()`, `Date.now()`, or mutable globals. The custom requirement registry is scoped per `GameWorld` to prevent test bleed.
+
+### When Equipment Can Change
+
+Equipment changes (equip/unequip) are permitted **only in safe rooms** (`world.state === 'safe_room'`) and in labs. Mid-combat equipment changes are not allowed in v1. The `equip`/`unequip` functions enforce this by checking `world.state` (with a `forceInLab` override for lab/test use).
 
 ## Scope & Future Work
 
@@ -294,8 +393,17 @@ All operations take `world: GameWorld` as the first argument (required to access
 - Equipment state is stored in a **side map** (`WeakMap<GameWorld, Map<number, EquipmentState>>`) following the same pattern as `weaponSystem.ts`, keeping ECS components slim.
 - A new **`BaseStats`** tag component + typed-array store holds intrinsic stat values per entity (never modified by equipment).
 - A new **`EffectiveStats`** tag component + typed-array store holds computed stat values (base + equipment).
+- **Entity tags** stored as `WeakMap<GameWorld, Map<number, Set<string>>>` for the `hasTag`/`notTag` requirement system.
 - The **`statSystem`** runs after `equipmentSystem` each frame (or on-demand after equip/unequip) to aggregate base stats + equipment bonuses into the `EffectiveStats` store.
-- **Entity cleanup**: When an entity is destroyed or its `Equipment` component is removed, the side-map entry is deleted to prevent stale state on entity ID reuse.
+- **Entity cleanup**: When an entity is destroyed or its `Equipment` component is removed, the side-map entry and entity tags entry are deleted to prevent stale state on entity ID reuse.
+
+#### World Factory Integration Steps
+
+1. Add `BaseStats` and `EffectiveStats` tags to `src/core/components.ts`.
+2. Add typed-array stores for all stat fields in `createComponentStores()`.
+3. Wire `BaseStats` and `EffectiveStats` stores via `wireStore()` in `createGameWorld()`.
+4. Export new components from `src/core/components.ts`.
+5. Update `ComponentStores` type (auto-derived from `createComponentStores` return).
 
 ### Data Flow
 
@@ -411,6 +519,10 @@ The UI layer reads from `EquipmentState` (via the ECS bridge) and calls `equip`/
 27. **Custom requirement predicate** — registered predicate denies equip, verify denial.
 28. **New slot added to registry** — item targeting new slot can be equipped.
 29. **Unknown slot rejected** — item referencing unregistered slot fails validation.
+30. **Multi-slot item stats not double-counted** — two-handed weapon in mainHand+offHand grants bonuses exactly once.
+31. **NaN/Infinity stat values rejected** — equip denied with invalidDef reason.
+32. **Equip denied outside safe room** — equip returns `ok: false` when `world.state !== 'safe_room'` (without `forceInLab`).
+33. **Entity tag requirements** — `hasTag` checks entity tag set, not item tags.
 
 ### Property-Based Tests (`tests/ecs/equipment.property.test.ts`)
 
