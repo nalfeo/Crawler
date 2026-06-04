@@ -167,7 +167,9 @@ jobs:
                 description: 'Release-related'
               });
             } catch (e) {
-              // Label already exists — that's fine
+              if (e.status !== 422) {
+                core.warning(`Could not create 'release' label: ${e.message}`);
+              }
             }
 
             const issue = await github.rest.issues.create({

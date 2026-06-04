@@ -169,8 +169,10 @@ jobs:
           PAGES_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
           # Ensure the "released" label exists
-          gh label create "released" --repo "${{ github.repository }}" \
-            --color "0E8A16" --description "Changes deployed to GitHub Pages" 2>/dev/null || true
+          if ! gh label create "released" --repo "${{ github.repository }}" \
+            --color "0E8A16" --description "Changes deployed to GitHub Pages" 2>/dev/null; then
+            echo "::notice::Label 'released' already exists or could not be created"
+          fi
 
           # Find merged PRs targeting main that don't have the "released" label yet
           PR_NUMBERS=$(gh pr list \
@@ -182,9 +184,13 @@ jobs:
 
           for PR in $PR_NUMBERS; do
             echo "Marking PR #$PR as released"
-            gh pr edit "$PR" --repo "${{ github.repository }}" --add-label "released" || true
-            gh pr comment "$PR" --repo "${{ github.repository }}" \
-              --body "🚀 Released in [deploy #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) → [${PAGES_URL}dev/](${PAGES_URL}dev/)" || true
+            if ! gh pr edit "$PR" --repo "${{ github.repository }}" --add-label "released"; then
+              echo "::warning::Failed to label PR #$PR"
+            fi
+            if ! gh pr comment "$PR" --repo "${{ github.repository }}" \
+              --body "🚀 Released in [deploy #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) → [${PAGES_URL}dev/](${PAGES_URL}dev/)"; then
+              echo "::warning::Failed to comment on PR #$PR"
+            fi
           done
 
       - name: Create failure issue for copilot
@@ -215,7 +221,9 @@ jobs:
                 description: 'Release-related'
               });
             } catch (e) {
-              // Label already exists — that's fine
+              if (e.status !== 422) {
+                core.warning(`Could not create 'release' label: ${e.message}`);
+              }
             }
 
             const issue = await github.rest.issues.create({
