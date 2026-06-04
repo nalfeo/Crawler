@@ -9,10 +9,8 @@ const SKILL_DEFINITIONS: SkillDefinition[] = [
     category: 'combat',
     usageMetric: 'hits_landed',
     usageThresholds: [
-      10, 25, 45, 70, 100,
-      135, 175, 220, 270, 325,
-      385, 450, 520, 595, 675,
-      760, 850, 945, 1045, 1150,
+      10, 25, 45, 70, 100, 135, 175, 220, 270, 325, 385, 450, 520, 595, 675, 760, 850, 945, 1045,
+      1150,
     ],
     perLevelBonus: { damage: 1 },
     milestones: [
@@ -50,10 +48,8 @@ const SKILL_DEFINITIONS: SkillDefinition[] = [
     category: 'defense',
     usageMetric: 'damage_dealt',
     usageThresholds: [
-      50, 120, 210, 320, 450,
-      600, 770, 960, 1170, 1400,
-      1650, 1920, 2210, 2520, 2850,
-      3200, 3570, 3960, 4370, 4800,
+      50, 120, 210, 320, 450, 600, 770, 960, 1170, 1400, 1650, 1920, 2210, 2520, 2850, 3200, 3570,
+      3960, 4370, 4800,
     ],
     perLevelBonus: { armor: 1, maxHp: 5 },
     milestones: [
@@ -82,7 +78,8 @@ const SKILL_DEFINITIONS: SkillDefinition[] = [
         effect: { type: 'aura', radius: 48, dpsPercentOfDamage: 0.05 },
       },
     ],
-    flavorText: '"Audience engagement peaks when performers survive against all odds." — The Director',
+    flavorText:
+      '"Audience engagement peaks when performers survive against all odds." — The Director',
   },
   {
     id: 'sprint',
@@ -91,10 +88,8 @@ const SKILL_DEFINITIONS: SkillDefinition[] = [
     category: 'utility',
     usageMetric: 'distance_dodged_near_threat',
     usageThresholds: [
-      30, 80, 150, 240, 350,
-      480, 630, 800, 990, 1200,
-      1430, 1680, 1950, 2240, 2550,
-      2880, 3230, 3600, 3990, 4400,
+      30, 80, 150, 240, 350, 480, 630, 800, 990, 1200, 1430, 1680, 1950, 2240, 2550, 2880, 3230,
+      3600, 3990, 4400,
     ],
     perLevelBonus: { moveSpeed: 0.05, pickupRange: 2 },
     milestones: [

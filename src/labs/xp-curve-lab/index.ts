@@ -17,13 +17,15 @@ function createXpCurveLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   canvasHost.append(canvas);
 
   const table = document.createElement('div');
-  table.style.cssText = 'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:12px;overflow:auto;max-height:300px;';
+  table.style.cssText =
+    'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:12px;overflow:auto;max-height:300px;';
   canvasHost.append(table);
 
   const params = { maxLevel: 50, gemsPerMinute: 30, gemValue: 2 };
 
   function renderTable(maxLevel: number) {
-    let html = '<table style="border-collapse:collapse;"><thead><tr><th style="padding:3px 10px">Lv</th><th style="padding:3px 10px">XP Required</th><th style="padding:3px 10px">Threshold</th><th style="padding:3px 10px">Mins @ rate</th></tr></thead><tbody>';
+    let html =
+      '<table style="border-collapse:collapse;"><thead><tr><th style="padding:3px 10px">Lv</th><th style="padding:3px 10px">XP Required</th><th style="padding:3px 10px">Threshold</th><th style="padding:3px 10px">Mins @ rate</th></tr></thead><tbody>';
     const xpPerMinute = params.gemsPerMinute * params.gemValue;
     for (let n = 1; n <= maxLevel; n++) {
       const xpReq = xpRequiredForLevel(n) - xpRequiredForLevel(n - 1);
@@ -112,8 +114,10 @@ function createXpCurveLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   redraw();
 
   const hint = document.createElement('p');
-  hint.textContent = 'XP curve tuner — adjust max level, gem rate, and gem value to see how long each level takes to reach.';
-  hint.style.cssText = 'padding:8px 16px;color:#fbcfe8;font-family:monospace;font-size:12px;background:#0d0d14;';
+  hint.textContent =
+    'XP curve tuner — adjust max level, gem rate, and gem value to see how long each level takes to reach.';
+  hint.style.cssText =
+    'padding:8px 16px;color:#fbcfe8;font-family:monospace;font-size:12px;background:#0d0d14;';
   controls.append(hint);
 
   return () => {
@@ -125,6 +129,7 @@ function createXpCurveLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
 registerLab('xp-curve-lab', {
   name: 'XP Curve Lab',
-  description: 'Visualize XP requirements per level and simulate progression speed at different gem collection rates.',
+  description:
+    'Visualize XP requirements per level and simulate progression speed at different gem collection rates.',
   create: createXpCurveLab,
 });

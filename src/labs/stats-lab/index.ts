@@ -17,7 +17,8 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   }
 
   const root = document.createElement('div');
-  root.style.cssText = 'width:100%;height:100%;overflow:auto;padding:20px;box-sizing:border-box;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:13px;';
+  root.style.cssText =
+    'width:100%;height:100%;overflow:auto;padding:20px;box-sizing:border-box;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:13px;';
 
   canvasHost.append(root);
 
@@ -74,58 +75,65 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
   gui.add(params, 'targetStat', STAT_KEYS).name('Stat');
   gui.add(params, 'pointsToSpend', 1, 20, 1).name('Points');
-  gui.add(
-    {
-      spendPoints: () => {
-        try {
-          spendPoints(world, { [params.targetStat]: params.pointsToSpend });
-          statsSystem(world);
-          render();
-        } catch (e) {
-          console.warn('Cannot spend points:', e);
-        }
+  gui
+    .add(
+      {
+        spendPoints: () => {
+          try {
+            spendPoints(world, { [params.targetStat]: params.pointsToSpend });
+            statsSystem(world);
+            render();
+          } catch (e) {
+            console.warn('Cannot spend points:', e);
+          }
+        },
       },
-    },
-    'spendPoints',
-  ).name('Spend Points');
+      'spendPoints',
+    )
+    .name('Spend Points');
 
   gui.add(params, 'xpToGrant', 1, 200, 1).name('XP to Grant');
-  gui.add(
-    {
-      grantXp: () => {
-        world.playerLevel.xp += params.xpToGrant;
-        levelSystem(world);
-        statsSystem(world);
-        render();
+  gui
+    .add(
+      {
+        grantXp: () => {
+          world.playerLevel.xp += params.xpToGrant;
+          levelSystem(world);
+          statsSystem(world);
+          render();
+        },
       },
-    },
-    'grantXp',
-  ).name('Grant XP');
+      'grantXp',
+    )
+    .name('Grant XP');
 
   gui.add(params, 'modifierValue', 1, 50, 1).name('Modifier Value');
-  gui.add(
-    {
-      addMod: () => {
-        addStatModifier(world, {
-          sourceType: 'buff',
-          sourceId: `lab-mod-${Date.now()}`,
-          stat: params.targetStat as typeof STAT_KEYS[number],
-          op: 'add',
-          value: params.modifierValue,
-        });
-        statsSystem(world);
-        render();
+  gui
+    .add(
+      {
+        addMod: () => {
+          addStatModifier(world, {
+            sourceType: 'buff',
+            sourceId: `lab-mod-${Date.now()}`,
+            stat: params.targetStat as (typeof STAT_KEYS)[number],
+            op: 'add',
+            value: params.modifierValue,
+          });
+          statsSystem(world);
+          render();
+        },
       },
-    },
-    'addMod',
-  ).name('Add Modifier');
+      'addMod',
+    )
+    .name('Add Modifier');
 
   gui.add(params, 'reset').name('Reset World');
 
   reset();
 
   const hint = document.createElement('p');
-  hint.textContent = 'Inspect how stat points and modifiers interact. Use the GUI to allocate points, grant XP, or add temporary modifiers.';
+  hint.textContent =
+    'Inspect how stat points and modifiers interact. Use the GUI to allocate points, grant XP, or add temporary modifiers.';
   hint.style.cssText = 'margin-top:16px;color:#fbcfe8;line-height:1.6;';
   controls.append(hint);
 

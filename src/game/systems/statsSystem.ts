@@ -1,7 +1,13 @@
 import { query } from 'bitecs';
 import { Player, Stats } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
-import { STAT_KEYS, STAT_BASE, STAT_POINT_INCREMENT, STAT_MIN, type StatKey } from '../../shared/stats.js';
+import {
+  STAT_KEYS,
+  STAT_BASE,
+  STAT_POINT_INCREMENT,
+  STAT_MIN,
+  type StatKey,
+} from '../../shared/stats.js';
 import type { StatModifier } from '../skills/types.js';
 
 /**
@@ -71,7 +77,8 @@ export function spendPoints(world: GameWorld, allocations: Partial<Record<StatKe
 
   for (const [statKey, points] of Object.entries(allocations) as [StatKey, number][]) {
     if (points > 0) {
-      world.stores.statPoints[statKey][player] = (world.stores.statPoints[statKey][player] ?? 0) + points;
+      world.stores.statPoints[statKey][player] =
+        (world.stores.statPoints[statKey][player] ?? 0) + points;
     }
   }
 
@@ -86,7 +93,11 @@ export function addStatModifier(world: GameWorld, mod: StatModifier): void {
 }
 
 /** Remove all modifiers from a given source and dirty stats. */
-export function removeStatModifiers(world: GameWorld, sourceType: StatModifier['sourceType'], sourceId: string): void {
+export function removeStatModifiers(
+  world: GameWorld,
+  sourceType: StatModifier['sourceType'],
+  sourceId: string,
+): void {
   world.statModifiers = world.statModifiers.filter(
     (m) => !(m.sourceType === sourceType && m.sourceId === sourceId),
   );

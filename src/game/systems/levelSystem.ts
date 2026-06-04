@@ -40,4 +40,3 @@ export function levelSystem(world: GameWorld): void {
     }
   }
 }
-

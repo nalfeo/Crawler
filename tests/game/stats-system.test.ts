@@ -3,7 +3,12 @@ import { addComponent } from 'bitecs';
 import { Stats } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { statsSystem, spendPoints, addStatModifier, removeStatModifiers } from '../../src/game/systems/statsSystem.js';
+import {
+  statsSystem,
+  spendPoints,
+  addStatModifier,
+  removeStatModifiers,
+} from '../../src/game/systems/statsSystem.js';
 import { STAT_BASE, STAT_POINT_INCREMENT, STAT_MIN } from '../../src/shared/stats.js';
 
 function setupPlayerWithStats(seed = 42) {
@@ -72,7 +77,13 @@ describe('addStatModifier / removeStatModifiers', () => {
   it('add modifier increases stat on recompute', () => {
     const { world, player } = setupPlayerWithStats();
     statsSystem(world); // initial
-    addStatModifier(world, { sourceType: 'buff', sourceId: 'test', stat: 'damage', op: 'add', value: 10 });
+    addStatModifier(world, {
+      sourceType: 'buff',
+      sourceId: 'test',
+      stat: 'damage',
+      op: 'add',
+      value: 10,
+    });
     statsSystem(world);
     expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage + 10);
   });
@@ -80,7 +91,13 @@ describe('addStatModifier / removeStatModifiers', () => {
   it('multiply modifier scales stat', () => {
     const { world, player } = setupPlayerWithStats();
     statsSystem(world);
-    addStatModifier(world, { sourceType: 'buff', sourceId: 'test2', stat: 'damage', op: 'multiply', value: 0.5 });
+    addStatModifier(world, {
+      sourceType: 'buff',
+      sourceId: 'test2',
+      stat: 'damage',
+      op: 'multiply',
+      value: 0.5,
+    });
     statsSystem(world);
     expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage * 1.5);
   });
@@ -88,7 +105,13 @@ describe('addStatModifier / removeStatModifiers', () => {
   it('removeStatModifiers removes by source', () => {
     const { world, player } = setupPlayerWithStats();
     statsSystem(world);
-    addStatModifier(world, { sourceType: 'buff', sourceId: 'removable', stat: 'armor', op: 'add', value: 5 });
+    addStatModifier(world, {
+      sourceType: 'buff',
+      sourceId: 'removable',
+      stat: 'armor',
+      op: 'add',
+      value: 5,
+    });
     statsSystem(world);
     const withMod = world.stores.stats.armor[player] ?? 0;
 
@@ -118,7 +141,13 @@ describe('addStatModifier / removeStatModifiers', () => {
 
   it('clamps stats to STAT_MIN', () => {
     const { world, player } = setupPlayerWithStats();
-    addStatModifier(world, { sourceType: 'buff', sourceId: 'neg', stat: 'moveSpeed', op: 'add', value: -9999 });
+    addStatModifier(world, {
+      sourceType: 'buff',
+      sourceId: 'neg',
+      stat: 'moveSpeed',
+      op: 'add',
+      value: -9999,
+    });
     statsSystem(world);
     expect(world.stores.stats.moveSpeed[player]).toBeGreaterThanOrEqual(STAT_MIN.moveSpeed);
   });

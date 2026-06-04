@@ -31,10 +31,26 @@ export interface SkillDefinition {
   usageMetric: UsageMetric;
   /** Strictly increasing, length MUST equal SKILL_HARD_CAP (20). */
   usageThresholds: [
-    number, number, number, number, number,
-    number, number, number, number, number,
-    number, number, number, number, number,
-    number, number, number, number, number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
   ];
   perLevelBonus: Partial<Record<StatKey, number>>;
   milestones: SkillMilestone[];

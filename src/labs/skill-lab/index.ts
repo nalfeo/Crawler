@@ -19,7 +19,8 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   }
 
   const root = document.createElement('div');
-  root.style.cssText = 'width:100%;height:100%;overflow:auto;padding:20px;box-sizing:border-box;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:13px;';
+  root.style.cssText =
+    'width:100%;height:100%;overflow:auto;padding:20px;box-sizing:border-box;background:#0d0d14;color:#f0f0f0;font-family:monospace;font-size:13px;';
   canvasHost.append(root);
 
   const allSkills = getAllSkillDefinitions();
@@ -49,22 +50,30 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   function render() {
     const modsBySkill: Record<string, number> = {};
     for (const m of world.statModifiers) {
-      if (m.sourceId.startsWith('swordsmanship:') || m.sourceId.startsWith('iron-skin:') || m.sourceId.startsWith('sprint:')) {
+      if (
+        m.sourceId.startsWith('swordsmanship:') ||
+        m.sourceId.startsWith('iron-skin:') ||
+        m.sourceId.startsWith('sprint:')
+      ) {
         const key = m.sourceId.split(':')[0] ?? 'unknown';
         modsBySkill[key] = (modsBySkill[key] ?? 0) + 1;
       }
     }
 
-    const rows = allSkills.map((skill) => {
-      const state = world.playerSkills.get(skill.id);
-      if (!state) return '';
-      const effectiveCap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
-      const nextThreshold = state.level < effectiveCap ? (skill.usageThresholds[state.level] ?? '—') : 'Maxed';
-      const milestones = skill.milestones.map((m) => {
-        const done = state.triggeredMilestones.has(m.level);
-        return `<span style="color:${done ? '#4f8' : '#555'};margin-right:4px">${m.level}${done ? '✓' : '○'}</span>`;
-      }).join('');
-      return `
+    const rows = allSkills
+      .map((skill) => {
+        const state = world.playerSkills.get(skill.id);
+        if (!state) return '';
+        const effectiveCap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
+        const nextThreshold =
+          state.level < effectiveCap ? (skill.usageThresholds[state.level] ?? '—') : 'Maxed';
+        const milestones = skill.milestones
+          .map((m) => {
+            const done = state.triggeredMilestones.has(m.level);
+            return `<span style="color:${done ? '#4f8' : '#555'};margin-right:4px">${m.level}${done ? '✓' : '○'}</span>`;
+          })
+          .join('');
+        return `
         <tr>
           <td style="padding:5px 10px;color:#9ba">${skill.name}</td>
           <td style="padding:5px 10px;text-align:center;color:#aef">${state.level}/${effectiveCap}</td>
@@ -73,7 +82,8 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           <td style="padding:5px 10px">${milestones}</td>
           <td style="padding:5px 10px;text-align:right;color:#f8a">${modsBySkill[skill.id] ?? 0}</td>
         </tr>`;
-    }).join('');
+      })
+      .join('');
 
     root.innerHTML = `
       <h2 style="color:#cde;margin:0 0 8px">Skill Lab</h2>
@@ -99,42 +109,56 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     reset,
   };
 
-  gui.add(params, 'selectedSkill', allSkills.map((s) => s.id)).name('Skill').onChange((id: string) => {
-    const def = allSkills.find((s) => s.id === id);
-    params.metric = def?.usageMetric ?? 'hits_landed';
-  });
+  gui
+    .add(
+      params,
+      'selectedSkill',
+      allSkills.map((s) => s.id),
+    )
+    .name('Skill')
+    .onChange((id: string) => {
+      const def = allSkills.find((s) => s.id === id);
+      params.metric = def?.usageMetric ?? 'hits_landed';
+    });
 
   gui.add(params, 'usageAmount', 1, 500, 1).name('Usage Amount');
 
-  gui.add(
-    {
-      fireUsage: () => {
-        world.skillUsageEvents.push({
-          skillId: params.selectedSkill,
-          metric: params.metric as 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat',
-          amount: params.usageAmount,
-        });
-        skillSystem(world);
-        statsSystem(world);
-        render();
+  gui
+    .add(
+      {
+        fireUsage: () => {
+          world.skillUsageEvents.push({
+            skillId: params.selectedSkill,
+            metric: params.metric as 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat',
+            amount: params.usageAmount,
+          });
+          skillSystem(world);
+          statsSystem(world);
+          render();
+        },
       },
-    },
-    'fireUsage',
-  ).name('Fire Usage Event');
+      'fireUsage',
+    )
+    .name('Fire Usage Event');
 
-  gui.add(params, 'itemBonus', 0, 5, 1).name('Item Bonus').onChange((v: number) => {
-    const state = world.playerSkills.get(params.selectedSkill);
-    if (state) state.itemBonus = v;
-    render();
-  });
+  gui
+    .add(params, 'itemBonus', 0, 5, 1)
+    .name('Item Bonus')
+    .onChange((v: number) => {
+      const state = world.playerSkills.get(params.selectedSkill);
+      if (state) state.itemBonus = v;
+      render();
+    });
 
   gui.add(params, 'reset').name('Reset World');
 
   reset();
 
   const hint = document.createElement('p');
-  hint.textContent = 'Skill progression sandbox — fire usage events to watch skills level up, trigger milestones, and apply stat modifiers.';
-  hint.style.cssText = 'padding:8px 16px;color:#fbcfe8;font-family:monospace;font-size:12px;background:#0d0d14;';
+  hint.textContent =
+    'Skill progression sandbox — fire usage events to watch skills level up, trigger milestones, and apply stat modifiers.';
+  hint.style.cssText =
+    'padding:8px 16px;color:#fbcfe8;font-family:monospace;font-size:12px;background:#0d0d14;';
   controls.append(hint);
 
   return () => {
@@ -145,6 +169,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
 registerLab('skill-lab', {
   name: 'Skill Lab',
-  description: 'Simulate skill usage events, watch skills level up through milestones, and inspect resulting stat modifiers.',
+  description:
+    'Simulate skill usage events, watch skills level up through milestones, and inspect resulting stat modifiers.',
   create: createSkillLab,
 });

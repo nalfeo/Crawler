@@ -50,8 +50,10 @@ export function skillSystem(world: GameWorld): void {
       }
 
       // Fire milestones at levels 5, 10, 15, 20 — once only
-      if ((state.level === 5 || state.level === 10 || state.level === 15 || state.level === 20)
-        && !state.triggeredMilestones.has(state.level)) {
+      if (
+        (state.level === 5 || state.level === 10 || state.level === 15 || state.level === 20) &&
+        !state.triggeredMilestones.has(state.level)
+      ) {
         state.triggeredMilestones.add(state.level);
         applyMilestone(world, def.id, state.level);
       }
