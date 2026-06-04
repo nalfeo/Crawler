@@ -99,26 +99,25 @@ export function createInputCapture(scene: Phaser.Scene): {
       let touchAction = false;
       let actionTouchPosition: { x: number; y: number } | undefined;
       let hasMoveTouch = false;
+      const hasKeyboardInput = keyboardMoveX !== 0 || keyboardMoveY !== 0;
 
       for (const touch of activeTouches.values()) {
         if (touch.zone === 'move' && !hasMoveTouch) {
+          // First movement touch wins to keep movement stable with accidental multi-touch.
           const deltaX = touch.x - touch.startX;
           const deltaY = touch.y - touch.startY;
           touchMoveX = Math.max(-1, Math.min(1, deltaX / JOYSTICK_RADIUS_PX));
           touchMoveY = Math.max(-1, Math.min(1, deltaY / JOYSTICK_RADIUS_PX));
           hasMoveTouch = true;
-          continue;
-        }
-
-        if (touch.zone === 'action') {
+        } else if (touch.zone === 'action') {
           touchAction = true;
           actionTouchPosition = { x: touch.x, y: touch.y };
         }
       }
 
       const normalized = normalizeInputDirection(
-        keyboardMoveX !== 0 || keyboardMoveY !== 0 ? keyboardMoveX : touchMoveX,
-        keyboardMoveX !== 0 || keyboardMoveY !== 0 ? keyboardMoveY : touchMoveY,
+        hasKeyboardInput ? keyboardMoveX : touchMoveX,
+        hasKeyboardInput ? keyboardMoveY : touchMoveY,
       );
 
       state.moveX = normalized.moveX;
