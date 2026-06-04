@@ -1,6 +1,6 @@
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
-import { Damage, Enemy, EnemyProjectile, Health, Player, Projectile, XpGem } from '../components.js';
+import { Damage, Enemy, EnemyProjectile, Health, Player, Projectile, Stats, XpGem } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
@@ -37,11 +37,24 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
   return amount > 0 ? amount : fallbackAmount;
 }
 
+/** Apply armor mitigation for player: damageTaken = max(1, incoming - armor) */
+function applyArmorReduction(world: GameWorld, player: number, rawDamage: number): number {
+  if (!hasComponent(world.ecs, player, Stats)) {
+    return rawDamage;
+  }
+  const armor = world.stores.stats.armor[player] ?? 0;
+  return Math.max(1, rawDamage - armor);
+}
+
 function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
     const currentHealth = world.stores.health.current[enemy] ?? 0;
     world.stores.health.current[enemy] = Math.max(0, currentHealth - amount);
+
+    // Emit skill usage events for the player's weapon skill
+    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
+    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'damage_dealt', amount });
   }
 
   destroyEntity(world, projectile);
@@ -58,7 +71,8 @@ function applyPlayerEnemyHit(world: GameWorld, player: number, enemy: number, hi
     return;
   }
 
-  const amount = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
+  const raw = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
+  const amount = applyArmorReduction(world, player, raw);
   const currentHealth = world.stores.health.current[player] ?? 0;
   world.stores.health.current[player] = Math.max(0, currentHealth - amount);
   hitTimestamps[player] = world.elapsedMs;
@@ -77,7 +91,8 @@ function applyEnemyProjectileHit(world: GameWorld, projectile: number, player: n
     return;
   }
 
-  const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+  const raw = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+  const amount = applyArmorReduction(world, player, raw);
   const currentHealth = world.stores.health.current[player] ?? 0;
   world.stores.health.current[player] = Math.max(0, currentHealth - amount);
   hitTimestamps[player] = world.elapsedMs;
@@ -89,6 +104,9 @@ function collectXpGem(world: GameWorld, player: number, gem: number): void {
   const currentScore = world.stores.broadcastScore.current[player] ?? 0;
   const gemValue = world.stores.xpGem.value[gem] ?? 0;
   world.stores.broadcastScore.current[player] = currentScore + gemValue;
+
+  // Accumulate XP into the level system
+  world.playerLevel.xp += gemValue;
 
   destroyEntity(world, gem);
 }

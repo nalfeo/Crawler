@@ -1,5 +1,5 @@
 import { hasComponent, query, setComponent } from 'bitecs';
-import { Damage, Enemy, Player, Position } from '../core/components.js';
+import { Damage, Enemy, Player, Position, Stats } from '../core/components.js';
 import { spawnProjectile } from '../core/helpers.js';
 import type { GameWorld } from '../core/world.js';
 import { WEAPON } from '../shared/constants.js';
@@ -71,8 +71,26 @@ function getPlayerEntity(world: GameWorld): number | undefined {
   return players[0];
 }
 
+/**
+ * Resolves the effective weapon config for the current frame.
+ * If the player has a Stats component, reads from the stats store:
+ *   - effectiveCooldownMs = baseCooldownMs / max(0.1, attackSpeed)
+ *   - baseDamage = stats.damage
+ * Falls back to the WeaponConfig set via configureWeaponSystem.
+ */
 function resolveWeaponConfig(world: GameWorld, player: number): WeaponConfig {
   const config = getWeaponConfig(world);
+
+  if (hasComponent(world.ecs, player, Stats)) {
+    const attackSpeed = Math.max(0.1, world.stores.stats.attackSpeed[player] ?? 1.0);
+    const rawDamage = world.stores.stats.damage[player];
+    const damage = rawDamage !== undefined && rawDamage > 0 ? rawDamage : config.baseDamage;
+    return {
+      projectileSpeed: config.projectileSpeed,
+      fireRateMs: config.fireRateMs / attackSpeed,
+      baseDamage: damage,
+    };
+  }
 
   if (!hasComponent(world.ecs, player, Damage)) {
     return config;
@@ -177,14 +195,36 @@ export function weaponSystem(world: GameWorld): void {
   const playerY = world.stores.position.y[player] ?? 0;
   const direction = getNearestEnemyDirection(world, playerX, playerY) ?? { x: state.aimX, y: state.aimY };
 
-  spawnProjectile(
-    world,
-    playerX,
-    playerY,
-    direction.x * config.projectileSpeed,
-    direction.y * config.projectileSpeed,
-    config.baseDamage,
-  );
+  // Determine how many projectiles to fire (1 + floor(projectileCount bonus))
+  const extraProjectiles = hasComponent(world.ecs, player, Stats)
+    ? Math.floor(world.stores.stats.projectileCount[player] ?? 0)
+    : 0;
+  const totalProjectiles = 1 + extraProjectiles;
+
+  for (let i = 0; i < totalProjectiles; i++) {
+    // Spread extra projectiles slightly so they don't perfectly overlap
+    let dx = direction.x;
+    let dy = direction.y;
+    if (i > 0) {
+      const spreadAngle = (i % 2 === 1 ? 1 : -1) * (Math.ceil(i / 2) * 0.15);
+      const cos = Math.cos(spreadAngle);
+      const sin = Math.sin(spreadAngle);
+      dx = direction.x * cos - direction.y * sin;
+      dy = direction.x * sin + direction.y * cos;
+      const len = Math.hypot(dx, dy);
+      dx /= len;
+      dy /= len;
+    }
+
+    spawnProjectile(
+      world,
+      playerX,
+      playerY,
+      dx * config.projectileSpeed,
+      dy * config.projectileSpeed,
+      config.baseDamage,
+    );
+  }
 
   state.aimX = direction.x;
   state.aimY = direction.y;
