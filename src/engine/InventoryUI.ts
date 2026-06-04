@@ -87,7 +87,8 @@ export function createInventoryUI(
     y: number,
     text: string,
     style: Phaser.Types.GameObjects.Text.TextStyle,
-  ): Phaser.GameObjects.Text => scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
+  ): Phaser.GameObjects.Text =>
+    scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
 
   const basePanelWidth = COLS * (CELL_SIZE + CELL_GAP) + CELL_GAP + PANEL_PADDING * 2;
   const panelWidth = config.width ?? Math.max(basePanelWidth, 520);
@@ -220,7 +221,8 @@ export function createInventoryUI(
     const allTabs: (ItemTag | null)[] = [null, ...tabs];
     const labels = allTabs.map((tag) => tag ?? 'All');
     const rawWidths = labels.map((label) => label.length * 9 + 24);
-    const availableWidth = panelWidth - PANEL_PADDING * 2 - TAB_GAP * Math.max(0, labels.length - 1);
+    const availableWidth =
+      panelWidth - PANEL_PADDING * 2 - TAB_GAP * Math.max(0, labels.length - 1);
 
     const fittedWidths = [...rawWidths];
     const minWidth = 56;

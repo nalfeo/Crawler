@@ -60,7 +60,7 @@ describe('itemPickupSystem', () => {
   });
 
   it('picks up different item types', () => {
-    spawnDroppedItem(world, 100, 100, 0);  // First catalog item
+    spawnDroppedItem(world, 100, 100, 0); // First catalog item
     spawnDroppedItem(world, 100, 100, 20); // Item at index 20
 
     const collisions = collisionSystem(world);

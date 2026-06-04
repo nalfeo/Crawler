@@ -189,8 +189,7 @@ export function sortSlots(
   sortBy: SortField = 'rarity',
   catalog?: readonly ItemDef[],
 ): InventorySlot[] {
-  const resolve = (id: string) =>
-    catalog ? catalog.find((d) => d.id === id) : getItemById(id);
+  const resolve = (id: string) => (catalog ? catalog.find((d) => d.id === id) : getItemById(id));
 
   return [...bag.slots].sort((a, b) => {
     const defA = resolve(a.itemId);
@@ -218,10 +217,7 @@ export function sortSlots(
  * Collect all unique tags present in the player's current inventory.
  * Only tags attached to items the player actually holds appear.
  */
-export function getActiveTags(
-  bag: InventoryBag,
-  catalog?: readonly ItemDef[],
-): ItemTag[] {
+export function getActiveTags(bag: InventoryBag, catalog?: readonly ItemDef[]): ItemTag[] {
   const tags = new Set<ItemTag>();
   for (const slot of bag.slots) {
     const def = catalog ? catalog.find((d) => d.id === slot.itemId) : getItemById(slot.itemId);

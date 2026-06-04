@@ -47,9 +47,7 @@ describe('Item Catalog', () => {
   });
 
   it('some items have custom (non-known) tags', () => {
-    const hasCustomTag = ITEM_CATALOG.some((item) =>
-      item.tags.some((tag) => !isKnownTag(tag)),
-    );
+    const hasCustomTag = ITEM_CATALOG.some((item) => item.tags.some((tag) => !isKnownTag(tag)));
     expect(hasCustomTag).toBe(true);
   });
 
