@@ -1,6 +1,6 @@
-import { query } from 'bitecs';
+import { addComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Damage, Position, Projectile, Velocity } from '../../src/core/components.js';
+import { Damage, Position, Projectile, Stats, Velocity } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { weaponSystem } from '../../src/game/weaponSystem.js';
 import { WEAPON } from '../../src/shared/constants.js';
@@ -53,5 +53,21 @@ describe('weaponSystem', () => {
     weaponSystem(world);
 
     expect(query(world.ecs, [Projectile]).length).toBe(1);
+  });
+
+  it('uses stats damage directly even when it is zero', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 10, 20);
+    addComponent(world.ecs, player, Stats);
+    world.stores.stats.damage[player] = 0;
+    world.stores.stats.attackSpeed[player] = 1;
+    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+    spawnEnemy(world, 100, 20, 10);
+
+    weaponSystem(world);
+
+    const projectile = query(world.ecs, [Projectile, Damage])[0];
+    expect(projectile).toBeDefined();
+    expect(world.stores.damage.amount[projectile!]).toBe(0);
   });
 });

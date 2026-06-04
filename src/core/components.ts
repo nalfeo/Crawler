@@ -28,6 +28,10 @@ export const XpGem = {};
 export const DroppedItem = {};
 export const Sprite = {};
 export const BroadcastScore = {};
+/** Tag: entity has computed final stats (typically player only in v1). */
+export const Stats = {};
+/** Tag: entity has a skill set (player only in v1). */
+export const SkillHolder = {};
 
 // --- Weapon System Components ---
 /** Marks an entity as a weapon with type, stats, and cooldown tracking. */
@@ -154,6 +158,26 @@ export function createComponentStores() {
       dirY: new Float32Array(MAX_ENTITIES),
       remaining: new Float32Array(MAX_ENTITIES),
       speed: new Float32Array(MAX_ENTITIES),
+    },
+    stats: {
+      maxHp: new Float32Array(MAX_ENTITIES),
+      moveSpeed: new Float32Array(MAX_ENTITIES),
+      damage: new Float32Array(MAX_ENTITIES),
+      armor: new Float32Array(MAX_ENTITIES),
+      attackSpeed: new Float32Array(MAX_ENTITIES),
+      pickupRange: new Float32Array(MAX_ENTITIES),
+      projectileCount: new Float32Array(MAX_ENTITIES),
+      projectileSpeed: new Float32Array(MAX_ENTITIES),
+    },
+    statPoints: {
+      maxHp: new Float32Array(MAX_ENTITIES),
+      moveSpeed: new Float32Array(MAX_ENTITIES),
+      damage: new Float32Array(MAX_ENTITIES),
+      armor: new Float32Array(MAX_ENTITIES),
+      attackSpeed: new Float32Array(MAX_ENTITIES),
+      pickupRange: new Float32Array(MAX_ENTITIES),
+      projectileCount: new Float32Array(MAX_ENTITIES),
+      projectileSpeed: new Float32Array(MAX_ENTITIES),
     },
   };
 }
