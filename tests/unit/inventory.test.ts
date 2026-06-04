@@ -17,7 +17,7 @@ import {
   type InventoryBag,
   type TabPreferences,
 } from '../../src/shared/inventory.js';
-import { customTag, type ItemDef } from '../../src/shared/items.js';
+import { customTag, ItemRarity, type ItemDef } from '../../src/shared/items.js';
 
 // Small test catalog for deterministic tests
 const testCatalog: ItemDef[] = [
@@ -26,7 +26,7 @@ const testCatalog: ItemDef[] = [
     name: 'Test Ore',
     description: 'A test material',
     tags: ['Materials'],
-    rarity: 'Common' as never,
+    rarity: ItemRarity.Common,
     maxStack: 10,
     icon: 'test-ore',
   },
@@ -35,7 +35,7 @@ const testCatalog: ItemDef[] = [
     name: 'Test Sword',
     description: 'A test weapon',
     tags: ['Weapons'],
-    rarity: 'Rare' as never,
+    rarity: ItemRarity.Rare,
     maxStack: 1,
     icon: 'test-sword',
   },
@@ -44,7 +44,7 @@ const testCatalog: ItemDef[] = [
     name: 'Test Potion',
     description: 'A healing potion',
     tags: ['Consumables'],
-    rarity: 'Uncommon' as never,
+    rarity: ItemRarity.Uncommon,
     maxStack: 5,
     icon: 'test-potion',
   },
@@ -53,7 +53,7 @@ const testCatalog: ItemDef[] = [
     name: 'Stinky Bone',
     description: 'Really smelly',
     tags: ['Materials', customTag('Smelly Stuff')],
-    rarity: 'Common' as never,
+    rarity: ItemRarity.Common,
     maxStack: 20,
     icon: 'stinky-bone',
   },
@@ -304,7 +304,7 @@ describe('Tab system', () => {
       addItem(bag, 'stinky-bone', 1, testCatalog);
       const tabs = getVisibleTabs(bag, prefs, testCatalog);
       const materialsIdx = tabs.indexOf('Materials');
-      const smellyIdx = tabs.indexOf('Smelly Stuff' as never);
+      const smellyIdx = tabs.indexOf(customTag('Smelly Stuff'));
       expect(materialsIdx).toBeLessThan(smellyIdx);
     });
   });

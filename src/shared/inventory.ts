@@ -233,8 +233,8 @@ export function getActiveTags(bag: InventoryBag, catalog?: readonly ItemDef[]): 
  * Derive the visible, ordered list of tabs to render in the UI.
  * 1. Start with all active tags in the inventory.
  * 2. Remove tags in `prefs.hidden` (only custom tags can be hidden).
- * 3. Order: known tags first (in KNOWN_TAGS order), then user-ordered custom,
- *    then any remaining custom tags alphabetically.
+ * 3. Honour `prefs.order` first for both known and custom tags.
+ * 4. Append any remaining active tags alphabetically.
  */
 export function getVisibleTabs(
   bag: InventoryBag,

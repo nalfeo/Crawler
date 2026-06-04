@@ -179,6 +179,7 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
           this.world.elapsedMs += GAME.DELTA_MS;
 
           playerInputSystem(this.world, this.inputState);
+          this.applyPlayerSpeedSetting();
           movementSystem(this.world);
 
           const collisions = collisionSystem(this.world);
@@ -204,6 +205,19 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       this.bridge.sync(this.world);
       this.inventoryUI?.refresh(this.world);
       this.updateHud();
+    }
+
+    private applyPlayerSpeedSetting(): void {
+      if (this.playerEid < 0) {
+        return;
+      }
+
+      const scale = PLAYER_SPEED > 0 ? settings.playerSpeed / PLAYER_SPEED : 1;
+      const velocityX = (this.world.stores.velocity.x[this.playerEid] ?? 0) * scale;
+      const velocityY = (this.world.stores.velocity.y[this.playerEid] ?? 0) * scale;
+
+      this.world.stores.velocity.x[this.playerEid] = velocityX;
+      this.world.stores.velocity.y[this.playerEid] = velocityY;
     }
 
     private directAddItem(): void {

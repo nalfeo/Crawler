@@ -108,8 +108,8 @@ export function createInventoryUI(
   container.setVisible(false);
 
   // Panel background
-  const panelX = snap((scene.scale.width - panelWidth) / 2);
-  const panelY = snap((scene.scale.height - panelHeight) / 2);
+  let panelX = snap((scene.scale.width - panelWidth) / 2);
+  let panelY = snap((scene.scale.height - panelHeight) / 2);
 
   const bg = scene.add.rectangle(
     panelX + panelWidth / 2,
@@ -150,10 +150,10 @@ export function createInventoryUI(
   container.add(sortBtn);
 
   // Tab and content areas
-  const tabY = snap(panelY + PANEL_PADDING + 28);
-  const searchY = snap(tabY + TAB_HEIGHT + TAB_GAP);
-  const gridY = snap(searchY + SEARCH_HEIGHT + TAB_GAP + 4);
-  const gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
+  let tabY = snap(panelY + PANEL_PADDING + 28);
+  let searchY = snap(tabY + TAB_HEIGHT + TAB_GAP);
+  let gridY = snap(searchY + SEARCH_HEIGHT + TAB_GAP + 4);
+  let gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
 
   // Tab objects pool
   const tabObjects: Phaser.GameObjects.GameObject[] = [];
@@ -185,6 +185,26 @@ export function createInventoryUI(
   );
   searchText.setOrigin(0, 0.5);
   container.add(searchText);
+
+  function applyLayout(): void {
+    panelX = snap((scene.scale.width - panelWidth) / 2);
+    panelY = snap((scene.scale.height - panelHeight) / 2);
+    tabY = snap(panelY + PANEL_PADDING + 28);
+    searchY = snap(tabY + TAB_HEIGHT + TAB_GAP);
+    gridY = snap(searchY + SEARCH_HEIGHT + TAB_GAP + 4);
+    gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
+
+    bg.setPosition(panelX + panelWidth / 2, panelY + panelHeight / 2);
+    title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING);
+    sortBtn.setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING);
+    searchBg.setPosition(panelX + panelWidth / 2, searchY + SEARCH_HEIGHT / 2);
+    searchText.setPosition(panelX + PANEL_PADDING + 8, searchY + SEARCH_HEIGHT / 2);
+
+    if (visible) {
+      renderTabs();
+      renderItems();
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Rendering
@@ -475,6 +495,7 @@ export function createInventoryUI(
   }
 
   scene.input.keyboard?.on('keydown', handleKeyDown);
+  scene.scale.on('resize', applyLayout);
 
   // ---------------------------------------------------------------------------
   // Public API
@@ -515,6 +536,7 @@ export function createInventoryUI(
     isOpen: () => visible,
     destroy() {
       scene.input.keyboard?.off('keydown', handleKeyDown);
+      scene.scale.off('resize', applyLayout);
       clearTabObjects();
       clearCellObjects();
       clearTooltip();

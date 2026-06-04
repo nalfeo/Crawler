@@ -302,11 +302,13 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
 
 const catalogById = new Map<string, ItemDef>();
 const catalogByIndex = new Map<number, ItemDef>();
+const catalogIndexById = new Map<string, number>();
 
 for (let i = 0; i < ITEM_CATALOG.length; i++) {
   const item = ITEM_CATALOG[i]!;
   catalogById.set(item.id, item);
   catalogByIndex.set(i, item);
+  catalogIndexById.set(item.id, i);
 }
 
 /** Look up an item definition by its unique `id` slug. */
@@ -321,5 +323,5 @@ export function getItemByIndex(index: number): ItemDef | undefined {
 
 /** Get the catalog index for an item id. Returns -1 if not found. */
 export function getItemIndex(id: string): number {
-  return ITEM_CATALOG.findIndex((item) => item.id === id);
+  return catalogIndexById.get(id) ?? -1;
 }
