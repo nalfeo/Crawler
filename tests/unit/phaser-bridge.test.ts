@@ -12,12 +12,16 @@ class MockImage {
   scaleX = 1;
   scaleY = 1;
   rotation = 0;
+  frame: number | undefined;
 
   constructor(
     public x: number,
     public y: number,
     public textureKey: string,
-  ) {}
+    frame?: number,
+  ) {
+    this.frame = frame;
+  }
 
   setPosition(x: number, y: number): this {
     this.x = x;
@@ -25,8 +29,11 @@ class MockImage {
     return this;
   }
 
-  setTexture(key: string): this {
+  setTexture(key: string, frame?: number): this {
     this.textureKey = key;
+    if (frame !== undefined) {
+      this.frame = frame;
+    }
     return this;
   }
 
@@ -55,13 +62,15 @@ class MockImage {
   }
 }
 
-function createSceneStub() {
+function createSceneStub(options: { kenneyLoaded?: boolean } = {}) {
   const images: MockImage[] = [];
-  const image = vi.fn((x = 0, y = 0, textureKey = '') => {
-    const mockImage = new MockImage(x, y, textureKey);
+  const image = vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+    const mockImage = new MockImage(x, y, textureKey, frame);
     images.push(mockImage);
     return mockImage as unknown as Phaser.GameObjects.Image;
   });
+
+  const textures = options.kenneyLoaded ? { exists: (_key: string) => true } : undefined;
 
   return {
     images,
@@ -69,6 +78,7 @@ function createSceneStub() {
       add: {
         image,
       },
+      textures,
     } as unknown as Phaser.Scene,
   };
 }
@@ -139,5 +149,41 @@ describe('createPhaserBridge', () => {
     bridge.destroy();
 
     expect(images[1]?.destroyed).toBe(true);
+  });
+
+  it('uses procedural texture key when no Kenney sheet is loaded', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toMatch(/^__cw_/);
+    expect(images[0]?.frame).toBeUndefined();
+    expect(images[0]?.scaleX).toBe(1);
+  });
+
+  it('prefers Kenney sprite + frame when the sheet texture exists', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('kenney-roguelike-characters');
+    expect(images[0]?.frame).toBe(0); // player at (0, 0)
+    expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
   });
 });
