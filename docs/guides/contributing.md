@@ -49,11 +49,10 @@ This is the minimum bar before pushing branch updates.
 Before a pull request, run:
 
 ```bash
-npm run verify
-bash scripts/agent/lab-gate-check.sh
+npm run pre-pr:check
 ```
 
-If the change adds or touches an ECS system, the lab gate is mandatory.
+This gate runs the full repo verification suite, enforces the lab gate, and checks that the latest handoff records personas consulted, local review agents run, and review feedback status. The path-to-persona mapping lives in `docs/agent-os/policies/pre-pr-review-policy.md`.
 
 ## 7. Open a reviewable PR
 Before requesting review:
@@ -71,6 +70,9 @@ Include at least:
 - commands run for verification
 - open risks or follow-ups
 - the recommended next action
+- personas consulted
+- review agents run
+- feedback status (`addressed` or `no-findings`)
 
 ## 9. Special rule: lab gate
 No ECS system ships without a corresponding lab in `src/labs/`.

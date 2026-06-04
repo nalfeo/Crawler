@@ -14,7 +14,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 
 - After every change: `npm run verify:fast` (typecheck + lint + tests, ~30s)
 - Before committing: `npm run verify` (full suite, ~3min)
-- Before creating PR: Ensure `scripts/agent/lab-gate-check.sh` passes
+- Before creating PR: Run `npm run pre-pr:check`
 
 ## Critical Rules
 

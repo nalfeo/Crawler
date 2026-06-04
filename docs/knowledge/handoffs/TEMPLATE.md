@@ -17,6 +17,11 @@ YYYY-MM-DD
 - All tests passing: [yes/no]
 - PR created: [yes/no, link]
 
+## Review Evidence
+- Personas consulted: qa-engineer
+- Review agents run: rubber-duck, code-review
+- Feedback status: addressed
+
 ## Test Results
 <!-- Output of verify-fast.sh or verify.sh -->
 

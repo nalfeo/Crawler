@@ -20,8 +20,10 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "lab": "vite --mode lab",
-    "verify:fast": "bash scripts/agent/verify-fast.sh",
-    "verify": "bash scripts/agent/verify.sh"
+    "verify:fast": "node scripts/agent/verify-fast.mjs",
+    "verify": "node scripts/agent/verify.mjs",
+    "lab:gate": "node scripts/agent/lab-gate-check.mjs",
+    "pre-pr:check": "node scripts/agent/pre-pr-check.mjs"
   },
   "keywords": [
     "game",

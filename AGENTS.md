@@ -5,9 +5,10 @@
 1. Run `bash scripts/agent/preflight.sh` at session start
 2. Read your persona doc in `docs/agent-os/personas/`
 3. Check `docs/knowledge/handoffs/` for recent session context
-4. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
-5. Run `bash scripts/agent/verify.sh` before committing
-6. Write a handoff file before ending your session
+4. Run `npm run verify:fast` after every meaningful change
+5. Run `npm run verify` before committing
+6. Run `npm run pre-pr:check` before creating a PR
+7. Write a handoff file before ending your session
 
 ## Commands
 
@@ -26,6 +27,8 @@
 | Dead code         | `npm run lint:dead-code`   |
 | Fast verify       | `npm run verify:fast`      |
 | Full verify       | `npm run verify`           |
+| Lab gate          | `npm run lab:gate`         |
+| Pre-PR gate       | `npm run pre-pr:check`     |
 
 ## Architecture
 

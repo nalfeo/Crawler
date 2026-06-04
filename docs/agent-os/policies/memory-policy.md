@@ -12,7 +12,7 @@ This project uses a three-tier memory model so agents can load the smallest usef
 Every session writes a handoff file before ending work.
 - Location: `docs/knowledge/handoffs/`
 - Naming: `YYYY-MM-DD-<slug>.md`
-- Minimum contents: summary of work completed, files touched, verification run, unresolved issues, and recommended next steps
+- Minimum contents: summary of work completed, files touched, verification run, unresolved issues, recommended next steps, personas consulted, review agents run, and feedback status
 - Rule: no session ends silently; if no code changed, the handoff still records what was learned or decided
 
 ## ADR Threshold
