@@ -70,6 +70,7 @@ interface WeaponsLabSettings {
   enemyHp: number;
   enemySpeed: number;
   activeWeapon: string;
+  invulnerable: boolean;
 }
 
 const MAX_STEPS_PER_FRAME = 4;
@@ -122,6 +123,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     enemyHp: 30,
     enemySpeed: 1.25,
     activeWeapon: WEAPON_IDS[0] ?? 'sword',
+    invulnerable: true,
   };
 
   let resetWorldFromGui = () => undefined;
@@ -212,6 +214,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           trapSystem(this.world, collision);
 
           healthSystem(this.world);
+          this.applyInvulnerability();
           lifetimeSystem(this.world);
           projectileCleanupSystem(this.world);
 
@@ -247,6 +250,12 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         x: velocityX,
         y: velocityY,
       });
+    }
+
+    private applyInvulnerability(): void {
+      if (!settings.invulnerable || this.playerEid < 0) return;
+      const max = this.world.stores.health.max[this.playerEid] ?? 100;
+      this.world.stores.health.current[this.playerEid] = max;
     }
 
     private applySpawnerBounds(): void {
@@ -375,6 +384,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
   const arenaFolder = gui.addFolder('Arena');
   arenaFolder.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
+  arenaFolder.add(settings, 'invulnerable').name('Invulnerable');
   arenaFolder.add(settings, 'maxEnemies', 5, 200, 1).name('Max Enemies');
   arenaFolder.add(settings, 'spawnIntervalMs', 100, 5000, 1).name('Spawn Interval');
   arenaFolder.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');

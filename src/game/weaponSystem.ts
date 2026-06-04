@@ -264,6 +264,11 @@ export function configureWeaponSystem(world: GameWorld, config: Partial<WeaponCo
 /** Set the active weapon definition for the weapon system. */
 export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
   const state = getWeaponState(world);
+  if (state.activeWeaponId === weaponDef.id) {
+    // Update def for live tuning without resetting cooldown
+    state.activeWeaponDef = weaponDef;
+    return;
+  }
   state.activeWeaponId = weaponDef.id;
   state.activeWeaponDef = weaponDef;
   state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
