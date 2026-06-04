@@ -6,6 +6,10 @@ import { normalizeInputDirection, type InputState } from '../shared/input.js';
  * Phaser's built-in keyboard plugin is tied to canvas focus — when lil-gui
  * buttons steal focus, keyup events are missed and keys stick.  This
  * implementation is completely focus-independent.
+ *
+ * Touch listeners bind to the Phaser canvas (when available) so only
+ * touches that start on the game surface are captured — lab UI panels
+ * and other overlays remain scrollable.
  */
 export function createInputCapture(scene: Phaser.Scene): {
   /** Read current hardware state into the InputState */
@@ -13,6 +17,17 @@ export function createInputCapture(scene: Phaser.Scene): {
   destroy(): void;
 } {
   const keysDown = new Set<string>();
+  const activeTouches = new Map<
+    number,
+    { zone: 'move' | 'action'; startX: number; startY: number; x: number; y: number }
+  >();
+  const JOYSTICK_RADIUS_PX = 60;
+  const touchStartOptions: AddEventListenerOptions = { passive: true };
+  const touchMoveOptions: AddEventListenerOptions = { passive: false };
+  const touchEndOptions: AddEventListenerOptions = { passive: true };
+
+  // Touch target: prefer canvas so lab UI stays interactive
+  const touchTarget: EventTarget = scene.game?.canvas ?? window;
 
   const onKeyDown = (e: KeyboardEvent) => {
     keysDown.add(e.code);
@@ -20,39 +35,139 @@ export function createInputCapture(scene: Phaser.Scene): {
   const onKeyUp = (e: KeyboardEvent) => {
     keysDown.delete(e.code);
   };
-  // Clear all keys when the window loses focus (alt-tab, etc.)
+  // Clear all keys and touches when the window loses focus (alt-tab, etc.)
   const onBlur = () => {
     keysDown.clear();
+    activeTouches.clear();
+  };
+
+  const classifyTouchZone = (clientX: number): 'move' | 'action' => {
+    const canvas = scene.game?.canvas;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      return clientX < rect.left + rect.width / 2 ? 'move' : 'action';
+    }
+    return clientX < window.innerWidth / 2 ? 'move' : 'action';
+  };
+
+  const onTouchStart = (e: TouchEvent) => {
+    for (const touch of e.changedTouches) {
+      activeTouches.set(touch.identifier, {
+        zone: classifyTouchZone(touch.clientX),
+        startX: touch.clientX,
+        startY: touch.clientY,
+        x: touch.clientX,
+        y: touch.clientY,
+      });
+    }
+  };
+  const onTouchMove = (e: TouchEvent) => {
+    for (const touch of e.changedTouches) {
+      const state = activeTouches.get(touch.identifier);
+      if (!state) {
+        continue;
+      }
+
+      state.x = touch.clientX;
+      state.y = touch.clientY;
+    }
+    if (e.cancelable) e.preventDefault();
+  };
+  const onTouchEnd = (e: TouchEvent) => {
+    for (const touch of e.changedTouches) {
+      activeTouches.delete(touch.identifier);
+    }
+  };
+  const toWorldPoint = (clientX: number, clientY: number): { x: number; y: number } => {
+    const canvas = scene.game?.canvas;
+    if (!canvas) {
+      return { x: clientX, y: clientY };
+    }
+
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return { x: clientX, y: clientY };
+    }
+
+    const scaleX = scene.scale.width / rect.width;
+    const scaleY = scene.scale.height / rect.height;
+    const canvasX = (clientX - rect.left) * scaleX;
+    const canvasY = (clientY - rect.top) * scaleY;
+    const worldPoint = scene.cameras.main.getWorldPoint(canvasX, canvasY);
+    return { x: worldPoint.x, y: worldPoint.y };
   };
 
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('blur', onBlur);
+  touchTarget.addEventListener('touchstart', onTouchStart as EventListener, touchStartOptions);
+  touchTarget.addEventListener('touchmove', onTouchMove as EventListener, touchMoveOptions);
+  touchTarget.addEventListener('touchend', onTouchEnd as EventListener, touchEndOptions);
+  touchTarget.addEventListener('touchcancel', onTouchEnd as EventListener, touchEndOptions);
 
   return {
     poll(state: InputState): void {
-      const moveX =
+      const keyboardMoveX =
         Number(keysDown.has('ArrowRight') || keysDown.has('KeyD')) -
         Number(keysDown.has('ArrowLeft') || keysDown.has('KeyA'));
-      const moveY =
+      const keyboardMoveY =
         Number(keysDown.has('ArrowDown') || keysDown.has('KeyS')) -
         Number(keysDown.has('ArrowUp') || keysDown.has('KeyW'));
-      const normalized = normalizeInputDirection(moveX, moveY);
+      let touchMoveX = 0;
+      let touchMoveY = 0;
+      let touchAction = false;
+      let actionTouchPosition: { x: number; y: number } | undefined;
+      let hasMoveTouch = false;
+      const hasKeyboardInput = keyboardMoveX !== 0 || keyboardMoveY !== 0;
+
+      for (const touch of activeTouches.values()) {
+        if (touch.zone === 'move' && !hasMoveTouch) {
+          // First movement touch wins to keep movement stable with accidental multi-touch.
+          const deltaX = touch.x - touch.startX;
+          const deltaY = touch.y - touch.startY;
+          touchMoveX = Math.max(-1, Math.min(1, deltaX / JOYSTICK_RADIUS_PX));
+          touchMoveY = Math.max(-1, Math.min(1, deltaY / JOYSTICK_RADIUS_PX));
+          hasMoveTouch = true;
+        } else if (touch.zone === 'action') {
+          touchAction = true;
+          actionTouchPosition = { x: touch.x, y: touch.y };
+        }
+      }
+
+      const normalized = normalizeInputDirection(
+        hasKeyboardInput ? keyboardMoveX : touchMoveX,
+        hasKeyboardInput ? keyboardMoveY : touchMoveY,
+      );
 
       state.moveX = normalized.moveX;
       state.moveY = normalized.moveY;
-      state.action = keysDown.has('Space');
+      state.action = keysDown.has('Space') || touchAction;
 
-      const pointer = scene.input.activePointer;
-      pointer.updateWorldPoint(scene.cameras.main);
-      state.pointerX = pointer.worldX;
-      state.pointerY = pointer.worldY;
+      if (actionTouchPosition) {
+        const worldPoint = toWorldPoint(actionTouchPosition.x, actionTouchPosition.y);
+        state.pointerX = worldPoint.x;
+        state.pointerY = worldPoint.y;
+      } else {
+        const pointer = scene.input.activePointer;
+        pointer.updateWorldPoint(scene.cameras.main);
+        state.pointerX = pointer.worldX;
+        state.pointerY = pointer.worldY;
+      }
     },
     destroy(): void {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('blur', onBlur);
+      touchTarget.removeEventListener(
+        'touchstart',
+        onTouchStart as EventListener,
+        touchStartOptions,
+      );
+      touchTarget.removeEventListener('touchmove', onTouchMove as EventListener, touchMoveOptions);
+      touchTarget.removeEventListener('touchend', onTouchEnd as EventListener, touchEndOptions);
+      touchTarget.removeEventListener('touchcancel', onTouchEnd as EventListener, touchEndOptions);
       keysDown.clear();
+      activeTouches.clear();
     },
   };
 }

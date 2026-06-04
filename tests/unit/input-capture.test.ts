@@ -21,11 +21,19 @@ import { createInputState, type InputState } from '../../src/shared/input.js';
 // on `window`. We install a lightweight EventTarget as globalThis.window.
 const listeners = new Map<string, Set<EventListener>>();
 
-function mockAddEventListener(type: string, fn: EventListener, _capture?: boolean) {
+function mockAddEventListener(
+  type: string,
+  fn: EventListener,
+  _options?: boolean | AddEventListenerOptions,
+) {
   if (!listeners.has(type)) listeners.set(type, new Set());
   listeners.get(type)!.add(fn);
 }
-function mockRemoveEventListener(type: string, fn: EventListener, _capture?: boolean) {
+function mockRemoveEventListener(
+  type: string,
+  fn: EventListener,
+  _options?: boolean | EventListenerOptions,
+) {
   listeners.get(type)?.delete(fn);
 }
 function mockDispatchEvent(event: { type: string }): boolean {
@@ -42,6 +50,7 @@ beforeEach(() => {
     addEventListener: mockAddEventListener,
     removeEventListener: mockRemoveEventListener,
     dispatchEvent: mockDispatchEvent,
+    innerWidth: 1000,
   };
 });
 
@@ -51,8 +60,32 @@ afterEach(() => {
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
-function createMockScene() {
+function createMockCanvas(): HTMLCanvasElement {
+  const canvasListeners = new Map<string, Set<EventListener>>();
   return {
+    addEventListener(type: string, fn: EventListener, _opts?: boolean | AddEventListenerOptions) {
+      if (!canvasListeners.has(type)) canvasListeners.set(type, new Set());
+      canvasListeners.get(type)!.add(fn);
+    },
+    removeEventListener(type: string, fn: EventListener, _opts?: boolean | EventListenerOptions) {
+      canvasListeners.get(type)?.delete(fn);
+    },
+    dispatchEvent(event: { type: string }): boolean {
+      for (const fn of canvasListeners.get(event.type) ?? []) {
+        (fn as (e: unknown) => void)(event);
+      }
+      return true;
+    },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+  } as unknown as HTMLCanvasElement;
+}
+
+let mockCanvas: HTMLCanvasElement;
+
+function createMockScene() {
+  mockCanvas = createMockCanvas();
+  return {
+    game: { canvas: mockCanvas },
     input: {
       activePointer: {
         worldX: 0,
@@ -62,9 +95,24 @@ function createMockScene() {
       },
     },
     cameras: {
-      main: {},
+      main: {
+        getWorldPoint: (x: number, y: number) => ({ x, y }),
+      },
+    },
+    scale: {
+      width: 800,
+      height: 600,
     },
   } as unknown as import('phaser').Scene;
+}
+
+function dispatchCanvasTouch(
+  type: string,
+  touches: Array<{ id: number; x: number; y: number }>,
+): void {
+  (mockCanvas as unknown as { dispatchEvent: (e: unknown) => boolean }).dispatchEvent(
+    touchEvent(type, touches),
+  );
 }
 
 function pressKey(code: string): void {
@@ -77,6 +125,30 @@ function releaseKey(code: string): void {
 
 function blurWindow(): void {
   mockDispatchEvent({ type: 'blur' } as unknown as Event);
+}
+
+function touchEvent(type: string, touches: Array<{ id: number; x: number; y: number }>): Event {
+  return {
+    type,
+    changedTouches: touches.map((touch) => ({
+      identifier: touch.id,
+      clientX: touch.x,
+      clientY: touch.y,
+    })),
+    preventDefault: () => {},
+  } as unknown as Event;
+}
+
+function startTouch(id: number, x: number, y: number): void {
+  dispatchCanvasTouch('touchstart', [{ id, x, y }]);
+}
+
+function moveTouch(id: number, x: number, y: number): void {
+  dispatchCanvasTouch('touchmove', [{ id, x, y }]);
+}
+
+function endTouch(id: number, x: number, y: number): void {
+  dispatchCanvasTouch('touchend', [{ id, x, y }]);
 }
 
 describe('InputCapture (raw DOM)', () => {
@@ -184,12 +256,57 @@ describe('InputCapture (raw DOM)', () => {
     expect(state.moveY).toBe(0);
   });
 
+  it('window blur clears active touches', () => {
+    startTouch(1, 100, 200);
+    moveTouch(1, 160, 200);
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+
+    startTouch(2, 600, 300);
+    capture.poll(state);
+    expect(state.action).toBe(true);
+
+    blurWindow();
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+    expect(state.action).toBe(false);
+  });
+
   it('Space key triggers action', () => {
     pressKey('Space');
     capture.poll(state);
     expect(state.action).toBe(true);
 
     releaseKey('Space');
+    capture.poll(state);
+    expect(state.action).toBe(false);
+  });
+
+  it('left-side touch drag controls movement', () => {
+    startTouch(1, 100, 200);
+    moveTouch(1, 160, 200);
+
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+    expect(state.moveY).toBe(0);
+
+    endTouch(1, 160, 200);
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+  });
+
+  it('right-side touch enables action and updates pointer', () => {
+    startTouch(2, 600, 300);
+    moveTouch(2, 620, 340);
+
+    capture.poll(state);
+    expect(state.action).toBe(true);
+    expect(state.pointerX).toBe(620);
+    expect(state.pointerY).toBe(340);
+
+    endTouch(2, 620, 340);
     capture.poll(state);
     expect(state.action).toBe(false);
   });
