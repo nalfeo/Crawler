@@ -366,14 +366,20 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     const wt = baseDef.weaponType;
 
-    // Melee / Unarmed: blade length + arc + duration + style
+    // Melee / Unarmed: show only relevant controls per weapon
     if (wt === WeaponType.MELEE || wt === WeaponType.UNARMED) {
       weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Blade Length');
       weaponFolder.add(tunedWeapon, 'meleeStyle', { Slash: MeleeStyle.SLASH, Stab: MeleeStyle.STAB }).name('Style');
-      weaponFolder.add(tunedWeapon, 'swingArcDeg', 5, 360, 1).name('Swing Arc (°)');
+      // Swing arc only matters for slash weapons
+      if (baseDef.meleeStyle !== MeleeStyle.STAB) {
+        weaponFolder.add(tunedWeapon, 'swingArcDeg', 5, 360, 1).name('Swing Arc (°)');
+      }
       weaponFolder.add(tunedWeapon, 'durationMs', 50, 1000, 10).name('Swing Speed (ms)');
-      weaponFolder.add(tunedWeapon, 'headRadius', 0, 32, 1).name('Head Radius');
-      weaponFolder.add(tunedWeapon, 'shaftDamageMult', 0, 1, 0.05).name('Shaft Damage %');
+      // Head/shaft only for weapons with a head
+      if (baseDef.headRadius > 0) {
+        weaponFolder.add(tunedWeapon, 'headRadius', 0, 32, 1).name('Head Radius');
+        weaponFolder.add(tunedWeapon, 'shaftDamageMult', 0, 1, 0.05).name('Shaft Damage %');
+      }
       weaponFolder.add(tunedWeapon, 'knockback', 0, 100, 1).name('Knockback (px)');
     }
 
