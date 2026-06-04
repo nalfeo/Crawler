@@ -1,0 +1,49 @@
+{
+  "player": {
+    "speed": 3.0,
+    "invincibilityMs": 250
+  },
+  "damage": {
+    "defaultProjectileDamage": 10,
+    "defaultContactDamage": 5
+  },
+  "weapon": {
+    "projectileSpeed": 5.0,
+    "fireRateMs": 500,
+    "baseDamage": 10,
+    "meleeRange": 40,
+    "meleeDurationMs": 200,
+    "beamLength": 200,
+    "beamDurationMs": 300,
+    "beamTickMs": 100,
+    "trapArmMs": 500,
+    "trapTriggerRadius": 32,
+    "trapExplosionRadius": 64,
+    "thrownReturnSpeed": 4.0,
+    "thrownMaxRange": 200,
+    "aoeRadius": 48
+  },
+  "enemyProjectile": {
+    "speed": 3.0,
+    "fireCooldownMs": 1200,
+    "damage": 8,
+    "muzzleOffset": 12
+  },
+  "xp": {
+    "basePerLevel": 10,
+    "scalingFactor": 1.15
+  },
+  "floor": {
+    "minDurationS": 120,
+    "maxDurationS": 300,
+    "bossWarningS": 10
+  },
+  "safeRoom": {
+    "minDurationS": 60,
+    "optimalDurationS": 120,
+    "impatienceThresholdS": 180
+  },
+  "projectileCleanup": {
+    "cullMargin": 100
+  }
+}

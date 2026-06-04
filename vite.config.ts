@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
+import { labTuningSavePlugin } from './tools/vite-plugin-save-tuning.js';
 
 const basePaths: Record<string, string> = {
   local: '/',
@@ -14,6 +15,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: basePaths[deployEnv] ?? '/',
+    plugins: mode === 'lab' ? [labTuningSavePlugin()] : [],
     build: {
       target: 'es2022',
       outDir: process.env.BUILD_OUTDIR ?? 'dist',
