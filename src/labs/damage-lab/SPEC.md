@@ -13,7 +13,7 @@ Interactive sandbox for verifying the `damageSystem` formulas, interactions, and
 3. **Enemy Projectile → Player** ranged damage (with invincibility frames)
 4. **Armor mitigation**: `max(1, rawDamage - armor)`
 5. **Pierce**: projectile passes through N enemies, hit-set prevents double-hit
-6. **Returning**: after pierce exhausted, projectile returns instead of destroying
+6. **Returning**: after pierce exhausted, projectile returns instead of destroying
 
 ## Lab Sections
 

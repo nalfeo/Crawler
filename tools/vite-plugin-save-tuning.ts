@@ -10,13 +10,18 @@
  *   or: { "file": "tuning.json", "values": { "player.speed": 4.0, "damage.defaultContactDamage": 8 } }
  */
 import { readFileSync, writeFileSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, relative, isAbsolute } from 'path';
 import type { Plugin } from 'vite';
 
 const DATA_DIR = resolve(__dirname, '../src/shared/data');
 
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split('.');
+  if (keys.some((k) => DANGEROUS_KEYS.has(k))) {
+    throw new Error(`Dangerous path segment in "${path}"`);
+  }
   let current: Record<string, unknown> = obj;
   for (let i = 0; i < keys.length - 1; i++) {
     const key = keys[i]!;
@@ -26,6 +31,11 @@ function setNestedValue(obj: Record<string, unknown>, path: string, value: unkno
     current = current[key] as Record<string, unknown>;
   }
   current[keys[keys.length - 1]!] = value;
+}
+
+function isInsideDataDir(filePath: string): boolean {
+  const rel = relative(DATA_DIR, filePath);
+  return !isAbsolute(rel) && !rel.startsWith('..');
 }
 
 export function labTuningSavePlugin(): Plugin {
@@ -57,7 +67,7 @@ export function labTuningSavePlugin(): Plugin {
             const filePath = resolve(DATA_DIR, payload.file);
 
             // Security: only allow writing within data dir
-            if (!filePath.startsWith(DATA_DIR)) {
+            if (!isInsideDataDir(filePath)) {
               res.statusCode = 403;
               res.end(JSON.stringify({ error: 'Path outside data directory' }));
               return;
@@ -65,6 +75,14 @@ export function labTuningSavePlugin(): Plugin {
 
             const raw = readFileSync(filePath, 'utf-8');
             const data = JSON.parse(raw) as unknown;
+
+            if (Array.isArray(data) && !payload.id) {
+              res.statusCode = 400;
+              res.end(
+                JSON.stringify({ error: 'Array-based files require an "id" field' }),
+              );
+              return;
+            }
 
             if (Array.isArray(data) && payload.id) {
               // Array-based file (weapons.json): find by id and patch

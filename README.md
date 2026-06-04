@@ -2,9 +2,14 @@
 
 A DCC inspired prototype vampire survivor-like.
 
-## 🎮 Play Labs
+## Play
 
-Try the interactive labs on GitHub Pages: **[nalfeo.github.io/Crawler](https://nalfeo.github.io/Crawler/)**
+| Channel | Link |
+|---------|------|
+| Release | [Play](https://nalfeo.github.io/Crawler/) |
+| Beta | [Play](https://nalfeo.github.io/Crawler/beta/) |
+| Dev | [Play](https://nalfeo.github.io/Crawler/dev/) |
+| Lab (Dev) | [Open](https://nalfeo.github.io/Crawler/dev/lab.html) |
 
 ## Sprite assets
 
