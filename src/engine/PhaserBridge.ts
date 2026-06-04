@@ -164,7 +164,10 @@ function getTextureForType(type: string): string {
   }
 }
 
-export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld): void; destroy(): void } {
+export function createPhaserBridge(scene: Phaser.Scene): {
+  sync(world: GameWorld, renderElapsedMs?: number, interpAlpha?: number): void;
+  destroy(): void;
+} {
   generateTextures(scene);
 
   const visuals = new Map<number, EntityVisual>();
@@ -174,7 +177,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
   const arcSpawnMs = new Map<number, number>();
 
   return {
-    sync(world: GameWorld): void {
+    sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } = world.stores;
@@ -183,8 +186,8 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
         activeEntities.add(eid);
 
         const entityType = getEntityType(world, eid);
-        const x = position.x[eid] ?? 0;
-        const y = position.y[eid] ?? 0;
+        const x = (position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha;
+        const y = (position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha;
 
         // --- Beam rendering (uses Graphics, not Image) ---
         if (entityType === 'beam') {
@@ -201,7 +204,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
 
           // Lifetime fade
           const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
-          const remaining = Math.max(0, expiresAt - world.elapsedMs);
+          const remaining = Math.max(0, expiresAt - renderElapsedMs);
           const totalDuration = expiresAt - (expiresAt - 300); // approx
           const alpha = totalDuration > 0 ? Math.min(1, remaining / 200) : 1;
 
@@ -233,7 +236,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
           if (!ag) {
             ag = scene.add.graphics();
             arcGraphics.set(eid, ag);
-            arcSpawnMs.set(eid, world.elapsedMs);
+            arcSpawnMs.set(eid, renderElapsedMs);
           }
           ag.clear();
 
@@ -242,14 +245,14 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
           const arcHalf = meleeSwing.arcHalfRad[eid] ?? 0;
           const style = meleeSwing.style[eid] ?? 0;
           const headRadius = meleeSwing.headRadius[eid] ?? 0;
-          const spawnTime = arcSpawnMs.get(eid) ?? world.elapsedMs;
+          const spawnTime = arcSpawnMs.get(eid) ?? renderElapsedMs;
           const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
           const totalDuration = Math.max(1, expiresAt - spawnTime);
-          const elapsed = world.elapsedMs - spawnTime;
+          const elapsed = renderElapsedMs - spawnTime;
           const progress = Math.min(1, Math.max(0, elapsed / totalDuration));
 
           // Lifetime fade
-          const remaining = Math.max(0, expiresAt - world.elapsedMs);
+          const remaining = Math.max(0, expiresAt - renderElapsedMs);
           const alpha = Math.min(1, remaining / 50);
 
           let tipX: number;
@@ -353,7 +356,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
 
           case 'aoe_proj': {
             // Fireball: gentle pulsing glow
-            const pulse = 0.9 + 0.2 * Math.sin(world.elapsedMs * 0.01);
+            const pulse = 0.9 + 0.2 * Math.sin(renderElapsedMs * 0.01);
             img.setScale(pulse);
             const vx = velocity.x[eid] ?? 0;
             const vy = velocity.y[eid] ?? 0;
@@ -365,7 +368,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
 
           case 'returning': {
             // Spinning rotation
-            img.setRotation(world.elapsedMs * 0.015);
+            img.setRotation(renderElapsedMs * 0.015);
             break;
           }
 
@@ -377,7 +380,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
 
             // Fade out based on lifetime
             const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
-            const remaining = Math.max(0, expiresAt - world.elapsedMs);
+            const remaining = Math.max(0, expiresAt - renderElapsedMs);
             const alpha = Math.min(1, remaining / 100);
 
             if (isArc) {
@@ -387,15 +390,15 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
               if (!ag) {
                 ag = scene.add.graphics();
                 arcGraphics.set(eid, ag);
-                arcSpawnMs.set(eid, world.elapsedMs);
+                arcSpawnMs.set(eid, renderElapsedMs);
               }
               ag.clear();
 
               // Calculate sweep progress (0→1 over the swing duration)
-              const spawnTime = arcSpawnMs.get(eid) ?? world.elapsedMs;
+              const spawnTime = arcSpawnMs.get(eid) ?? renderElapsedMs;
               const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
               const totalDuration = Math.max(1, expiresAt - spawnTime);
-              const elapsed = world.elapsedMs - spawnTime;
+              const elapsed = renderElapsedMs - spawnTime;
               const progress = Math.min(1, Math.max(0, elapsed / totalDuration));
 
               // Sweep from start angle to end angle (right-to-left)
@@ -433,7 +436,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
               img.setAlpha(alpha);
 
               // Use explosion texture for trap-spawned AoEs (short duration)
-              const totalMs = expiresAt - world.elapsedMs + 200;
+              const totalMs = expiresAt - renderElapsedMs + 200;
               if (totalMs <= 100 && visual.type !== 'explosion') {
                 img.setTexture(TEX_EXPLOSION);
               }
@@ -452,16 +455,16 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
           case 'trap': {
             // Switch texture based on arm state
             const armAt = trap.armAtMs[eid] ?? 0;
-            const isArmed = world.elapsedMs >= armAt;
+            const isArmed = renderElapsedMs >= armAt;
             img.setTexture(isArmed ? TEX_TRAP_ARMED : TEX_TRAP_ARMING);
 
             // Pulse when armed
             if (isArmed) {
-              const pulse = 0.8 + 0.3 * Math.sin(world.elapsedMs * 0.008);
+              const pulse = 0.8 + 0.3 * Math.sin(renderElapsedMs * 0.008);
               img.setAlpha(pulse);
             } else {
               // Arming blink
-              const blink = Math.sin(world.elapsedMs * 0.02) > 0 ? 0.7 : 0.3;
+              const blink = Math.sin(renderElapsedMs * 0.02) > 0 ? 0.7 : 0.3;
               img.setAlpha(blink);
             }
             break;

@@ -87,7 +87,7 @@ interface WeaponsLabSettings {
   invulnerable: boolean;
 }
 
-const MAX_STEPS_PER_FRAME = 4;
+const MAX_STEPS_PER_FRAME = 8;
 const LAB_SEED = 7331;
 
 function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
@@ -244,11 +244,13 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         }
 
         if (this.accumulator > GAME.DELTA_MS * MAX_STEPS_PER_FRAME) {
-          this.accumulator = 0;
+          this.accumulator = GAME.DELTA_MS;
         }
       }
 
-      this.bridge.sync(this.world);
+      const interpAlpha = Math.min(1, Math.max(0, this.accumulator / GAME.DELTA_MS));
+      const renderElapsedMs = this.world.elapsedMs + this.accumulator;
+      this.bridge.sync(this.world, renderElapsedMs, interpAlpha);
       this.updateHud();
     }
 
