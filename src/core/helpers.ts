@@ -9,6 +9,7 @@ import {
   Health,
   Lifetime,
   LineDamage,
+  MeleeSwing,
   Owner,
   Player,
   Position,
@@ -267,5 +268,34 @@ export function spawnTrap(
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 12, height: 12 }));
+  return eid;
+}
+
+/** Spawn a melee swing entity — a blade that sweeps through an arc. */
+export function spawnMeleeSwing(
+  world: GameWorld,
+  x: number,
+  y: number,
+  ownerEid: number,
+  damage: number,
+  bladeLength: number,
+  durationMs: number,
+  dirX: number,
+  dirY: number,
+  arcDeg: number,
+  teamId: number,
+): number {
+  const eid = createEntity(world);
+  const arcCenterRad = Math.atan2(dirY, dirX);
+  const arcHalfRad = (arcDeg / 2) * (Math.PI / 180);
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(MeleeSwing, {
+    bladeLength, arcCenterRad, arcHalfRad, damage,
+    spawnAtMs: world.elapsedMs, durationMs,
+  }));
+  addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
+  addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
+  addComponent(world.ecs, eid, set(Team, { id: teamId }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: bladeLength * 2, height: bladeLength * 2 }));
   return eid;
 }

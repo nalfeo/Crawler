@@ -6,6 +6,7 @@ import {
   Enemy,
   EnemyProjectile,
   LineDamage,
+  MeleeSwing,
   Player,
   Position,
   Projectile,
@@ -138,6 +139,7 @@ function getEntityType(world: GameWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, LineDamage)) return 'beam';
+  if (hasComponent(world.ecs, eid, MeleeSwing)) return 'melee_swing';
   if (hasComponent(world.ecs, eid, Trap)) return 'trap';
   if (hasComponent(world.ecs, eid, AreaDamage)) return 'aoe';
   if (hasComponent(world.ecs, eid, Returning)) return 'returning';
@@ -175,7 +177,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
     sync(world: GameWorld): void {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
-      const { position, velocity, lineDamage, trap, areaDamage, lifetime } = world.stores;
+      const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } = world.stores;
 
       for (const eid of entities) {
         activeEntities.add(eid);
@@ -225,7 +227,63 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
           continue;
         }
 
-        // --- Image-based rendering ---
+        // --- Melee swing rendering (uses Graphics, not Image) ---
+        if (entityType === 'melee_swing') {
+          let ag = arcGraphics.get(eid);
+          if (!ag) {
+            ag = scene.add.graphics();
+            arcGraphics.set(eid, ag);
+            arcSpawnMs.set(eid, world.elapsedMs);
+          }
+          ag.clear();
+
+          const bladeLen = meleeSwing.bladeLength[eid] ?? 0;
+          const arcCenter = meleeSwing.arcCenterRad[eid] ?? 0;
+          const arcHalf = meleeSwing.arcHalfRad[eid] ?? 0;
+          const spawnTime = arcSpawnMs.get(eid) ?? world.elapsedMs;
+          const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
+          const totalDuration = Math.max(1, expiresAt - spawnTime);
+          const elapsed = world.elapsedMs - spawnTime;
+          const progress = Math.min(1, Math.max(0, elapsed / totalDuration));
+
+          // Sweep from start angle to end angle
+          const startAngle = arcCenter + arcHalf;
+          const endAngle = arcCenter - arcHalf;
+          const currentAngle = startAngle + (endAngle - startAngle) * progress;
+
+          const tipX = x + Math.cos(currentAngle) * bladeLen;
+          const tipY = y + Math.sin(currentAngle) * bladeLen;
+
+          // Lifetime fade
+          const remaining = Math.max(0, expiresAt - world.elapsedMs);
+          const alpha = Math.min(1, remaining / 50);
+
+          // Blade line
+          ag.lineStyle(3, 0xcccccc, alpha);
+          ag.beginPath();
+          ag.moveTo(x, y);
+          ag.lineTo(tipX, tipY);
+          ag.strokePath();
+
+          // Bright tip
+          ag.fillStyle(0xffffff, alpha);
+          ag.fillCircle(tipX, tipY, 3);
+
+          // Faint trail arc showing the swept area
+          if (progress > 0.05) {
+            ag.lineStyle(1, 0xffffaa, 0.15 * alpha);
+            ag.beginPath();
+            ag.arc(x, y, bladeLen, startAngle, currentAngle, startAngle > endAngle);
+            ag.strokePath();
+          }
+
+          // Hide the image for melee swing entities
+          const existingSwing = visuals.get(eid);
+          if (existingSwing) {
+            existingSwing.obj.setVisible(false);
+          }
+          continue;
+        }
         let visual = visuals.get(eid);
 
         if (!visual || visual.type !== entityType) {

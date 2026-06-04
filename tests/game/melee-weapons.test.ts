@@ -1,37 +1,18 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { AreaDamage, Lifetime, Owner, Position, Team } from '../../src/core/components.js';
+import { AreaDamage, Lifetime, MeleeSwing, Owner, Position, Team } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
-import { areaDamageSystem } from '../../src/core/systems/areaDamageSystem.js';
-import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
+import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
+import { GAME } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('melee weapons', () => {
-  it('sword spawns an AreaDamage entity at player position', () => {
+  it('sword spawns a MeleeSwing entity at player position', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 100, 100);
-    const def = getWeaponDef('sword')!;
-    setActiveWeapon(world, def);
-    world.elapsedMs = def.cooldownMs;
-
-    weaponSystem(world);
-
-    const areas = Array.from(query(world.ecs, [AreaDamage, Position, Lifetime, Owner]));
-    expect(areas).toHaveLength(1);
-    const aoe = areas[0]!;
-    expect(world.stores.position.x[aoe]).toBe(100);
-    expect(world.stores.position.y[aoe]).toBe(100);
-    expect(world.stores.areaDamage.damage[aoe]).toBe(def.baseDamage);
-    expect(world.stores.areaDamage.radius[aoe]).toBe(def.aoeRadius);
-    expect(world.stores.owner.eid[aoe]).toBe(player);
-  });
-
-  it('sword spawns arc attack with correct arc data', () => {
-    const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
-    // Place enemy to the right so arc faces right (angle ≈ 0)
+    // Place enemy so swing has a direction
     spawnEnemy(world, 200, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
@@ -39,70 +20,103 @@ describe('melee weapons', () => {
 
     weaponSystem(world);
 
-    const areas = Array.from(query(world.ecs, [AreaDamage, Position]));
-    expect(areas).toHaveLength(1);
-    const aoe = areas[0]!;
-    const arcHalfRad = world.stores.areaDamage.arcHalfRad[aoe] ?? 0;
-    expect(arcHalfRad).toBeGreaterThan(0);
-    expect(arcHalfRad).toBeLessThan(Math.PI);
-    // Sword is 90° → arcHalfRad should be 45° = π/4
-    expect(arcHalfRad).toBeCloseTo(Math.PI / 4, 4);
+    const swings = Array.from(query(world.ecs, [MeleeSwing, Position, Lifetime, Owner]));
+    expect(swings).toHaveLength(1);
+    const swing = swings[0]!;
+    expect(world.stores.position.x[swing]).toBe(100);
+    expect(world.stores.position.y[swing]).toBe(100);
+    expect(world.stores.meleeSwing.damage[swing]).toBe(def.baseDamage);
+    expect(world.stores.meleeSwing.bladeLength[swing]).toBe(def.aoeRadius);
+    expect(world.stores.owner.eid[swing]).toBe(player);
   });
 
-  it('sword arc hits enemy inside arc', () => {
+  it('sword blade hits enemy via line-segment collision', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);
-    const enemy = spawnEnemy(world, 130, 100, 50); // directly right
+    // Place enemy directly right, within blade length
+    const enemy = spawnEnemy(world, 130, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
 
     weaponSystem(world);
-    const collision = collisionSystem(world);
-    areaDamageSystem(world, collision);
+
+    // Advance time partway through the swing so blade reaches the enemy
+    world.elapsedMs += def.durationMs / 2;
+    meleeSwingSystem(world);
 
     expect(world.stores.health.current[enemy]).toBeLessThan(50);
   });
 
-  it('sword arc does NOT hit enemy outside arc', () => {
+  it('sword blade does NOT hit enemy behind (outside arc)', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);
-    // Enemy to the right (targeted)
+    // Nearest enemy to the right — arc faces right
     spawnEnemy(world, 130, 100, 50);
-    // Enemy directly behind (opposite direction, outside 90° arc)
-    const behindEnemy = spawnEnemy(world, 70, 100, 50);
+    // Enemy directly behind, farther away, within blade length but outside 90° arc
+    const behindEnemy = spawnEnemy(world, 65, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
 
     weaponSystem(world);
-    const collision = collisionSystem(world);
-    areaDamageSystem(world, collision);
 
-    // Behind enemy should NOT be hit (outside 90° arc facing right)
+    // Run multiple swing frames to cover the full arc
+    for (let i = 0; i < 12; i++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
+
+    // Behind enemy should NOT be hit
     expect(world.stores.health.current[behindEnemy]).toBe(50);
   });
 
-  it('sword arc hits near the π/-π boundary correctly', () => {
+  it('sword blade follows player position', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
-    // Place enemy to the left — arc faces left (angle ≈ π, near the wrap boundary)
-    const target = spawnEnemy(world, 70, 100, 50);
+    const player = spawnPlayer(world, 100, 100);
+    spawnEnemy(world, 200, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
 
     weaponSystem(world);
-    const collision = collisionSystem(world);
-    areaDamageSystem(world, collision);
 
-    // Should be hit — within range and within arc
-    expect(world.stores.health.current[target]).toBeLessThan(50);
+    // Move player
+    world.stores.position.x[player] = 200;
+    world.stores.position.y[player] = 200;
+
+    meleeSwingSystem(world);
+
+    const swings = Array.from(query(world.ecs, [MeleeSwing, Position]));
+    expect(swings).toHaveLength(1);
+    expect(world.stores.position.x[swings[0]!]).toBe(200);
+    expect(world.stores.position.y[swings[0]!]).toBe(200);
+  });
+
+  it('sword only hits each enemy once per swing', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    const enemy = spawnEnemy(world, 130, 100, 50);
+    const def = getWeaponDef('sword')!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+
+    weaponSystem(world);
+
+    // Run multiple swing ticks — enemy should only take damage once
+    for (let i = 0; i < 12; i++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
+
+    // Should be hit exactly once: 50 - 15 = 35
+    expect(world.stores.health.current[enemy]).toBe(50 - def.baseDamage);
   });
 
   it('sword respects cooldown', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);
+    spawnEnemy(world, 200, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -111,7 +125,7 @@ describe('melee weapons', () => {
     world.elapsedMs += def.cooldownMs / 2;
     weaponSystem(world);
 
-    expect(query(world.ecs, [AreaDamage]).length).toBe(1);
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(1);
   });
 
   it('knife has faster cooldown than sword', () => {
@@ -127,33 +141,36 @@ describe('melee weapons', () => {
     expect(hammer.cooldownMs).toBeGreaterThan(sword.cooldownMs);
   });
 
-  it('melee attack has Team component for friendly fire prevention', () => {
+  it('melee swing has Team component for friendly fire prevention', () => {
     const world = createTestWorld();
     spawnPlayer(world, 50, 50);
+    spawnEnemy(world, 100, 50, 50);
     setActiveWeapon(world, getWeaponDef('sword')!);
     world.elapsedMs = 1000;
 
     weaponSystem(world);
 
-    const areas = Array.from(query(world.ecs, [AreaDamage, Team]));
-    expect(areas).toHaveLength(1);
+    const swings = Array.from(query(world.ecs, [MeleeSwing, Team]));
+    expect(swings).toHaveLength(1);
   });
 
-  it('full-circle melee (swingArcDeg=360) hits in all directions', () => {
+  it('full-circle melee (hammer, 360°) hits in all directions', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);
-    // Place enemies in all directions within range
-    const right = spawnEnemy(world, 120, 100, 50);
-    const left = spawnEnemy(world, 80, 100, 50);
+    const right = spawnEnemy(world, 130, 100, 50);
+    const left = spawnEnemy(world, 75, 100, 50);
     const hammer = getWeaponDef('hammer')!;
-    // Hammer defaults to 360° arc
     expect(hammer.swingArcDeg).toBe(360);
     setActiveWeapon(world, hammer);
     world.elapsedMs = hammer.cooldownMs;
 
     weaponSystem(world);
-    const collision = collisionSystem(world);
-    areaDamageSystem(world, collision);
+
+    // Run swing frames
+    for (let i = 0; i < 12; i++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
 
     // Both should be hit
     expect(world.stores.health.current[right]).toBeLessThan(50);

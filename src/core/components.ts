@@ -47,6 +47,8 @@ export const Returning = {};
 export const LineDamage = {};
 /** Placed trap that arms and triggers on proximity. */
 export const Trap = {};
+/** Active melee swing — a blade line that sweeps through an arc. */
+export const MeleeSwing = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -127,6 +129,14 @@ export function createComponentStores() {
       explosionRadius: new Float32Array(MAX_ENTITIES),
       explosionDamage: new Float32Array(MAX_ENTITIES),
       armAtMs: new Float32Array(MAX_ENTITIES),
+    },
+    meleeSwing: {
+      bladeLength: new Float32Array(MAX_ENTITIES),
+      arcCenterRad: new Float32Array(MAX_ENTITIES),
+      arcHalfRad: new Float32Array(MAX_ENTITIES),
+      damage: new Float32Array(MAX_ENTITIES),
+      spawnAtMs: new Float32Array(MAX_ENTITIES),
+      durationMs: new Float32Array(MAX_ENTITIES),
     },
   };
 }

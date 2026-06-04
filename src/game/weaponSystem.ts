@@ -4,6 +4,7 @@ import {
   spawnAoeProjectile,
   spawnAreaAttack,
   spawnBeam,
+  spawnMeleeSwing,
   spawnProjectile,
   spawnReturningProjectile,
   spawnTrap,
@@ -168,8 +169,8 @@ function getNearestEnemyDirection(world: GameWorld, playerX: number, playerY: nu
 function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnAreaAttack(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs, TeamId.PLAYER,
-    dir.x, dir.y, def.swingArcDeg);
+  spawnMeleeSwing(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs,
+    dir.x, dir.y, def.swingArcDeg, TeamId.PLAYER);
 }
 
 function fireRangedAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {

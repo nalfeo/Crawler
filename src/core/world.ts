@@ -26,6 +26,7 @@ import {
   Returning,
   LineDamage,
   Trap,
+  MeleeSwing,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -88,6 +89,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Returning, stores.returning);
   wireStore(ecs, LineDamage, stores.lineDamage);
   wireStore(ecs, Trap, stores.trap);
+  wireStore(ecs, MeleeSwing, stores.meleeSwing);
 
   return {
     ecs,

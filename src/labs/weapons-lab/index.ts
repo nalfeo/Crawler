@@ -17,6 +17,7 @@ import {
   returningProjectileSystem,
   aoeOnImpactPreDamage,
   aoeOnImpactPostDamage,
+  meleeSwingSystem,
   spawnPlayer,
   type GameWorld,
 } from '../../core/index.js';
@@ -206,6 +207,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           aoeOnImpactPostDamage(this.world);
 
           areaDamageSystem(this.world, collision);
+          meleeSwingSystem(this.world);
           beamSystem(this.world);
           trapSystem(this.world, collision);
 
