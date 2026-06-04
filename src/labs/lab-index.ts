@@ -216,7 +216,8 @@ export function renderLabIndex(): void {
   count.style.color = '#7ee0ff';
 
   const toggleAll = document.createElement('button');
-  toggleAll.textContent = 'Collapse All';
+  const allStartCollapsed = sortedCategories.every((c) => collapsed.has(c));
+  toggleAll.textContent = allStartCollapsed ? 'Expand All' : 'Collapse All';
   toggleAll.style.background = 'rgba(126, 224, 255, 0.1)';
   toggleAll.style.border = '1px solid rgba(126, 224, 255, 0.3)';
   toggleAll.style.borderRadius = '8px';

@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { labTuningSavePlugin } from './tools/vite-plugin-save-tuning.js';
+import { labTuningSavePlugin } from './tools/vite-plugin-save-tuning.ts';
 
 const basePaths: Record<string, string> = {
   local: '/',
