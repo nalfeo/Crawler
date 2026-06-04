@@ -20,7 +20,6 @@ import type { StatModifier } from '../skills/types.js';
  */
 export function statsSystem(world: GameWorld): void {
   if (!world.statsDirty) return;
-  world.statsDirty = false;
 
   const players = query(world.ecs, [Player, Stats]);
   if (players.length === 0) return;
@@ -56,6 +55,8 @@ export function statsSystem(world: GameWorld): void {
     const clamped = Math.max(STAT_MIN[stat], raw);
     stores.stats[stat][player] = clamped * (1 + multiplicative);
   }
+
+  world.statsDirty = false;
 }
 
 /**

@@ -7,6 +7,8 @@
 
 const BASE_PER_LEVEL = 10;
 const SCALING_FACTOR = 1.15;
+const MAX_LEVEL_LOOKUP = 1000;
+const xpRequiredCache: number[] = [0];
 
 /**
  * XP required to advance from level `n` to level `n+1`.
@@ -23,22 +25,33 @@ export function xpThresholdForLevel(level: number): number {
  * xpRequiredForLevel(2) = xpThresholdForLevel(0) + xpThresholdForLevel(1)
  */
 export function xpRequiredForLevel(level: number): number {
-  let total = 0;
-  for (let i = 0; i < level; i++) {
-    total += xpThresholdForLevel(i);
+  if (level < 0) return 0;
+
+  while (xpRequiredCache.length <= level) {
+    const nextLevel = xpRequiredCache.length;
+    const prevTotal = xpRequiredCache[nextLevel - 1] ?? 0;
+    xpRequiredCache.push(prevTotal + xpThresholdForLevel(nextLevel - 1));
   }
-  return total;
+
+  return xpRequiredCache[level] ?? 0;
 }
 
 /**
  * Returns the level corresponding to a given lifetime XP amount.
- * Uses a linear scan capped at 1000 levels for safety.
+ * Uses a binary search capped at 1000 levels for safety.
  */
 export function levelForXp(xp: number): number {
-  let level = 0;
-  while (xpRequiredForLevel(level + 1) <= xp) {
-    level++;
-    if (level >= 1000) break;
+  let low = 0;
+  let high = MAX_LEVEL_LOOKUP;
+
+  while (low < high) {
+    const mid = Math.floor((low + high + 1) / 2);
+    if (xpRequiredForLevel(mid) <= xp) {
+      low = mid;
+    } else {
+      high = mid - 1;
+    }
   }
-  return level;
+
+  return low;
 }

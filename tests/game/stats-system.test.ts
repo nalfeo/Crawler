@@ -33,6 +33,7 @@ describe('statsSystem', () => {
     const world = createTestWorld();
     world.statsDirty = true;
     expect(() => statsSystem(world)).not.toThrow();
+    expect(world.statsDirty).toBe(true);
   });
 
   it('computes base stats from STAT_BASE when no points or modifiers', () => {

@@ -60,4 +60,8 @@ describe('levelForXp', () => {
       expect(levelForXp(xp)).toBe(level);
     }
   });
+
+  it('caps at level 1000 for unbounded XP', () => {
+    expect(levelForXp(Number.POSITIVE_INFINITY)).toBe(1000);
+  });
 });
