@@ -1,8 +1,29 @@
-import { hasComponent, query, setComponent } from 'bitecs';
-import { Damage, Enemy, Player, Position, Stats } from '../core/components.js';
-import { spawnProjectile } from '../core/helpers.js';
+import { hasComponent, query, removeEntity, setComponent } from 'bitecs';
+import {
+  Damage,
+  Enemy,
+  MeleeSwing,
+  Owner,
+  Player,
+  Position,
+  Stats,
+  Team,
+  Weapon,
+} from '../core/components.js';
+import {
+  spawnAoeProjectile,
+  spawnAreaAttack,
+  spawnBeam,
+  clearEntityStores,
+  spawnMeleeSwing,
+  spawnProjectile,
+  spawnReturningProjectile,
+  spawnTrap,
+} from '../core/helpers.js';
+import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import type { GameWorld } from '../core/world.js';
-import { WEAPON } from '../shared/constants.js';
+import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
+import type { WeaponDef } from '../shared/weaponDefs.js';
 
 export interface WeaponConfig {
   projectileSpeed: number;
@@ -14,6 +35,10 @@ interface WeaponState {
   lastFireMs: number;
   aimX: number;
   aimY: number;
+  /** Active weapon definition id, or undefined for legacy projectile mode. */
+  activeWeaponId: string | undefined;
+  /** Cached weapon def for the active weapon. */
+  activeWeaponDef: WeaponDef | undefined;
 }
 
 const weaponConfigs = new WeakMap<GameWorld, WeaponConfig>();
@@ -46,6 +71,8 @@ function getWeaponState(world: GameWorld): WeaponState {
       lastFireMs: -WEAPON.FIRE_RATE_MS,
       aimX: 1,
       aimY: 0,
+      activeWeaponId: undefined,
+      activeWeaponDef: undefined,
     };
     weaponStates.set(world, state);
   }
@@ -176,11 +203,208 @@ function getNearestEnemyDirection(
   return nearestDirection;
 }
 
+// --- Attack dispatchers per weapon type ---
+
+function fireMeleeAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
+  // Remove any existing swing — only one active at a time
+  const existingSwings = query(world.ecs, [MeleeSwing, Owner]);
+  for (const eid of existingSwings) {
+    if (eid !== undefined && (world.stores.owner.eid[eid] ?? 0) === player) {
+      clearMeleeSwingHits(world, eid);
+      clearEntityStores(world, eid);
+      removeEntity(world.ecs, eid);
+    }
+  }
+
+  const px = world.stores.position.x[player] ?? 0;
+  const py = world.stores.position.y[player] ?? 0;
+  spawnMeleeSwing(
+    world,
+    px,
+    py,
+    player,
+    def.baseDamage,
+    def.aoeRadius,
+    def.durationMs,
+    dir.x,
+    dir.y,
+    def.swingArcDeg,
+    TeamId.PLAYER,
+    def.meleeStyle,
+    def.headRadius,
+    def.shaftDamageMult,
+    def.knockback,
+  );
+}
+
+function fireRangedAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
+  const px = world.stores.position.x[player] ?? 0;
+  const py = world.stores.position.y[player] ?? 0;
+  spawnProjectile(
+    world,
+    px,
+    py,
+    dir.x * def.projectileSpeed,
+    dir.y * def.projectileSpeed,
+    def.baseDamage,
+    def.pierce,
+  );
+}
+
+function fireMagicAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
+  const px = world.stores.position.x[player] ?? 0;
+  const py = world.stores.position.y[player] ?? 0;
+  spawnAoeProjectile(
+    world,
+    px,
+    py,
+    dir.x * def.projectileSpeed,
+    dir.y * def.projectileSpeed,
+    def.baseDamage,
+    def.aoeRadius,
+    def.baseDamage,
+    player,
+    TeamId.PLAYER,
+  );
+}
+
+function fireThrownAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
+  const px = world.stores.position.x[player] ?? 0;
+  const py = world.stores.position.y[player] ?? 0;
+  spawnReturningProjectile(
+    world,
+    px,
+    py,
+    dir.x * def.projectileSpeed,
+    dir.y * def.projectileSpeed,
+    def.baseDamage,
+    player,
+    def.returnSpeed,
+    def.maxRange,
+    TeamId.PLAYER,
+    def.pierce,
+  );
+}
+
+function fireBeamAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
+  const px = world.stores.position.x[player] ?? 0;
+  const py = world.stores.position.y[player] ?? 0;
+  spawnBeam(
+    world,
+    px,
+    py,
+    dir.x,
+    dir.y,
+    def.beamLength,
+    def.baseDamage,
+    def.durationMs,
+    def.beamTickMs,
+    player,
+    TeamId.PLAYER,
+  );
+}
+
+function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void {
+  const px = world.stores.position.x[player] ?? 0;
+  const py = world.stores.position.y[player] ?? 0;
+  spawnTrap(
+    world,
+    px,
+    py,
+    def.baseDamage,
+    def.trapTriggerRadius,
+    def.trapExplosionRadius,
+    def.trapArmMs,
+    player,
+    TeamId.PLAYER,
+  );
+}
+
+function dispatchAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
+  switch (def.weaponType) {
+    case WeaponType.MELEE:
+      fireMeleeAttack(world, player, def, dir);
+      break;
+    case WeaponType.RANGED:
+      fireRangedAttack(world, player, def, dir);
+      break;
+    case WeaponType.MAGIC:
+      fireMagicAttack(world, player, def, dir);
+      break;
+    case WeaponType.THROWN:
+      fireThrownAttack(world, player, def, dir);
+      break;
+    case WeaponType.BEAM:
+      fireBeamAttack(world, player, def, dir);
+      break;
+    case WeaponType.TRAP:
+      fireTrapAttack(world, player, def);
+      break;
+    default:
+      break;
+  }
+}
+
 export function configureWeaponSystem(world: GameWorld, config: Partial<WeaponConfig>): void {
   weaponConfigs.set(world, {
     ...getWeaponConfig(world),
     ...config,
   });
+}
+
+/** Set the active weapon definition for the weapon system. */
+export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
+  const state = getWeaponState(world);
+  if (state.activeWeaponId === weaponDef.id) {
+    // Update def for live tuning without resetting cooldown
+    state.activeWeaponDef = weaponDef;
+    return;
+  }
+  state.activeWeaponId = weaponDef.id;
+  state.activeWeaponDef = weaponDef;
+  state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
+}
+
+/** Clear the active weapon, reverting to legacy projectile mode. */
+export function clearActiveWeapon(world: GameWorld): void {
+  const state = getWeaponState(world);
+  state.activeWeaponId = undefined;
+  state.activeWeaponDef = undefined;
+}
+
+/** Get the active weapon definition, if any. */
+export function getActiveWeapon(world: GameWorld): WeaponDef | undefined {
+  return getWeaponState(world).activeWeaponDef;
 }
 
 export function weaponSystem(world: GameWorld): void {
@@ -193,19 +417,36 @@ export function weaponSystem(world: GameWorld): void {
   const state = getWeaponState(world);
   updateAimFromVelocity(world, player, state);
 
-  const config = resolveWeaponConfig(world, player);
-  const lastFireMs = readLastFireMs(world, player);
-
-  if (world.elapsedMs - lastFireMs < config.fireRateMs) {
-    return;
-  }
-
   const playerX = world.stores.position.x[player] ?? 0;
   const playerY = world.stores.position.y[player] ?? 0;
   const direction = getNearestEnemyDirection(world, playerX, playerY) ?? {
     x: state.aimX,
     y: state.aimY,
   };
+
+  // Data-driven weapon mode
+  if (state.activeWeaponDef !== undefined) {
+    const def = state.activeWeaponDef;
+    const lastFire = state.lastFireMs;
+
+    if (world.elapsedMs - lastFire < def.cooldownMs) {
+      return;
+    }
+
+    dispatchAttack(world, player, def, direction);
+    state.aimX = direction.x;
+    state.aimY = direction.y;
+    state.lastFireMs = world.elapsedMs;
+    return;
+  }
+
+  // Legacy projectile mode (backwards compatible)
+  const config = resolveWeaponConfig(world, player);
+  const lastFireMs = readLastFireMs(world, player);
+
+  if (world.elapsedMs - lastFireMs < config.fireRateMs) {
+    return;
+  }
 
   // Determine how many projectiles to fire (1 + floor(projectileCount bonus))
   const extraProjectiles = hasComponent(world.ecs, player, Stats)
@@ -241,4 +482,63 @@ export function weaponSystem(world: GameWorld): void {
   state.aimX = direction.x;
   state.aimY = direction.y;
   writeLastFireMs(world, player, config, world.elapsedMs);
+}
+
+/** Process weapon entities (for multi-weapon support). */
+export function weaponEntitySystem(world: GameWorld): void {
+  const weaponEntities = query(world.ecs, [Weapon, Owner]);
+  const { weapon, owner, position, team } = world.stores;
+
+  for (const weid of weaponEntities) {
+    if (weid === undefined) {
+      continue;
+    }
+
+    const ownerEid = owner.eid[weid] ?? 0;
+    if (!hasComponent(world.ecs, ownerEid, Position)) {
+      continue;
+    }
+
+    const cooldownMs = weapon.cooldownMs[weid] ?? 0;
+    const lastFireMs = weapon.lastFireMs[weid] ?? 0;
+
+    if (world.elapsedMs - lastFireMs < cooldownMs) {
+      continue;
+    }
+
+    const px = position.x[ownerEid] ?? 0;
+    const py = position.y[ownerEid] ?? 0;
+    const dir = getNearestEnemyDirection(world, px, py) ?? { x: 1, y: 0 };
+    const baseDamage = weapon.baseDamage[weid] ?? 0;
+    const weaponType = weapon.weaponType[weid] ?? 0;
+    const projSpeed = weapon.projectileSpeed[weid] ?? WEAPON.PROJECTILE_SPEED;
+
+    switch (weaponType) {
+      case WeaponType.RANGED:
+        spawnProjectile(world, px, py, dir.x * projSpeed, dir.y * projSpeed, baseDamage);
+        break;
+      case WeaponType.MELEE: {
+        const range = weapon.range[weid] ?? WEAPON.MELEE_RANGE;
+        const ownerTeam = hasComponent(world.ecs, ownerEid, Team)
+          ? (team.id[ownerEid] ?? TeamId.PLAYER)
+          : TeamId.PLAYER;
+        spawnAreaAttack(
+          world,
+          px,
+          py,
+          ownerEid,
+          baseDamage,
+          range,
+          WEAPON.MELEE_DURATION_MS,
+          ownerTeam,
+        );
+        break;
+      }
+      default:
+        spawnProjectile(world, px, py, dir.x * projSpeed, dir.y * projSpeed, baseDamage);
+        break;
+    }
+
+    weapon.lastFireMs[weid] = world.elapsedMs;
+  }
 }

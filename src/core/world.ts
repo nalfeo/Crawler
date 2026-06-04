@@ -13,10 +13,22 @@ import {
   Rotation,
   Health,
   Damage,
+  Projectile,
   XpGem,
   Sprite,
   EnemyBehavior,
   BroadcastScore,
+  Weapon,
+  Owner,
+  Team,
+  Lifetime,
+  AreaDamage,
+  AoeOnImpact,
+  Returning,
+  LineDamage,
+  Trap,
+  MeleeSwing,
+  Knockback,
   BaseStats,
   EffectiveStats,
   createComponentStores,
@@ -82,10 +94,22 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Rotation, stores.rotation);
   wireStore(ecs, Health, stores.health);
   wireStore(ecs, Damage, stores.damage);
+  wireStore(ecs, Projectile, stores.projectile);
   wireStore(ecs, XpGem, stores.xpGem);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
+  wireStore(ecs, Weapon, stores.weapon);
+  wireStore(ecs, Owner, stores.owner);
+  wireStore(ecs, Team, stores.team);
+  wireStore(ecs, Lifetime, stores.lifetime);
+  wireStore(ecs, AreaDamage, stores.areaDamage);
+  wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
+  wireStore(ecs, Returning, stores.returning);
+  wireStore(ecs, LineDamage, stores.lineDamage);
+  wireStore(ecs, Trap, stores.trap);
+  wireStore(ecs, MeleeSwing, stores.meleeSwing);
+  wireStore(ecs, Knockback, stores.knockback);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
 

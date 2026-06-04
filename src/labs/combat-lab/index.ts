@@ -24,6 +24,7 @@ import {
 import { GAME, PLAYER_SPEED, WEAPON } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { registerLab } from '../registry.js';
+import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -40,6 +41,7 @@ interface CombatLabSettings {
 
 const MAX_STEPS_PER_FRAME = 4;
 const LAB_SEED = 1337;
+const LAB_ID = 'combat-lab';
 
 function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
@@ -91,6 +93,7 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     spawnIntervalMs: 750,
     enemyHp: 20,
     enemySpeed: 1.25,
+    ...(loadLabState<CombatLabSettings>(LAB_ID) ?? {}),
   };
 
   let resetWorldFromGui = () => undefined;
@@ -273,6 +276,7 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   gui.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');
   gui.add(settings, 'enemySpeed', 0.5, 5, 0.1).name('Enemy Speed');
   gui.add(controlsApi, 'reset').name('Reset');
+  gui.onChange(() => saveLabState(LAB_ID, settings));
 
   const getSize = () => ({
     width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),
