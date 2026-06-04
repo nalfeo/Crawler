@@ -104,9 +104,8 @@ export function meleeSwingSystem(world: GameWorld): void {
     const tipY = py + Math.sin(currentAngle) * bladeLength;
 
     const hitSet = getHitSet(world, eid);
-    const bladeLenSq = bladeLength * bladeLength;
 
-    // Check all Health entities for blade collision
+    // Check all Health entities for blade line-segment collision
     const targets = query(world.ecs, [Health, Position]);
     for (const target of targets) {
       if (target === undefined || target === eid || target === ownerEid) continue;
@@ -117,52 +116,12 @@ export function meleeSwingSystem(world: GameWorld): void {
       }
       if (hitSet.has(target)) continue;
 
-      const tx = (position.x[target] ?? 0) - px;
-      const ty = (position.y[target] ?? 0) - py;
-      const distSq = tx * tx + ty * ty;
+      const segDist = pointToSegmentDistSq(
+        position.x[target] ?? 0, position.y[target] ?? 0,
+        px, py, tipX, tipY,
+      );
 
-      // Must be within blade reach (+ hit half-width margin)
-      const reachSq = (bladeLength + BLADE_HIT_HALF_WIDTH) * (bladeLength + BLADE_HIT_HALF_WIDTH);
-      if (distSq > reachSq) continue;
-
-      let hit = false;
-
-      // Check 1: line-segment collision with current blade position
-      if (distSq <= bladeLenSq + hitDistSq) {
-        const segDist = pointToSegmentDistSq(
-          position.x[target] ?? 0, position.y[target] ?? 0,
-          px, py, tipX, tipY,
-        );
-        if (segDist <= hitDistSq) {
-          hit = true;
-        }
-      }
-
-      // Check 2: swept-arc check — has the blade passed over this target?
-      if (!hit) {
-        const targetAngle = Math.atan2(ty, tx);
-        // Normalize angles relative to startAngle
-        const sweepRange = currentAngle - startAngle;
-        const targetDelta = Math.atan2(
-          Math.sin(targetAngle - startAngle),
-          Math.cos(targetAngle - startAngle),
-        );
-        // Check if targetDelta is between 0 and sweepRange
-        // sweepRange is negative (sweeping from start to end, right to left)
-        if (sweepRange <= 0) {
-          // Normal sweep direction (clockwise)
-          if (targetDelta <= 0 && targetDelta >= sweepRange) {
-            hit = true;
-          }
-        } else {
-          // Reverse sweep direction (counter-clockwise)
-          if (targetDelta >= 0 && targetDelta <= sweepRange) {
-            hit = true;
-          }
-        }
-      }
-
-      if (hit) {
+      if (segDist <= hitDistSq) {
         const current = health.current[target] ?? 0;
         health.current[target] = Math.max(0, current - damage);
         hitSet.add(target);

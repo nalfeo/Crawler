@@ -166,13 +166,14 @@ describe('melee weapons', () => {
 
     weaponSystem(world);
 
-    // Run swing frames
-    for (let i = 0; i < 12; i++) {
+    // Run enough frames for the blade to sweep the full 360°
+    // hammer durationMs = 300, DELTA_MS ≈ 16.67, so ~18 frames
+    for (let i = 0; i < 20; i++) {
       world.elapsedMs += GAME.DELTA_MS;
       meleeSwingSystem(world);
     }
 
-    // Both should be hit
+    // Both should be hit as blade sweeps past
     expect(world.stores.health.current[right]).toBeLessThan(50);
     expect(world.stores.health.current[left]).toBeLessThan(50);
   });

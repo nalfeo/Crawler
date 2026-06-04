@@ -1,5 +1,5 @@
-import { hasComponent, query, setComponent } from 'bitecs';
-import { Damage, Enemy, Owner, Player, Position, Weapon } from '../core/components.js';
+import { hasComponent, query, removeEntity, setComponent } from 'bitecs';
+import { Damage, Enemy, MeleeSwing, Owner, Player, Position, Weapon } from '../core/components.js';
 import {
   spawnAoeProjectile,
   spawnAreaAttack,
@@ -167,6 +167,14 @@ function getNearestEnemyDirection(world: GameWorld, playerX: number, playerY: nu
 // --- Attack dispatchers per weapon type ---
 
 function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
+  // Remove any existing swing — only one active at a time
+  const existingSwings = query(world.ecs, [MeleeSwing, Owner]);
+  for (const eid of existingSwings) {
+    if (eid !== undefined && (world.stores.owner.eid[eid] ?? 0) === player) {
+      removeEntity(world.ecs, eid);
+    }
+  }
+
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
   spawnMeleeSwing(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs,
