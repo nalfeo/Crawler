@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { Enemy, Health, MeleeSwing, Owner, Player, Position, Team } from '../components.js';
 import type { GameWorld } from '../world.js';
+import { MeleeStyle } from '../../shared/constants.js';
 
 /** Half-width of the blade hitbox in pixels. */
 const BLADE_HIT_HALF_WIDTH = 12;
@@ -89,19 +90,32 @@ export function meleeSwingSystem(world: GameWorld): void {
     const damage = meleeSwing.damage[eid] ?? 0;
     const spawnAt = meleeSwing.spawnAtMs[eid] ?? 0;
     const duration = meleeSwing.durationMs[eid] ?? 1;
+    const style = meleeSwing.style[eid] ?? 0;
     const swingTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? 0) : -1;
 
-    // Compute sweep progress and current blade angle
     const elapsed = world.elapsedMs - spawnAt;
     const progress = Math.min(1, Math.max(0, elapsed / duration));
-    const startAngle = arcCenter + arcHalf;
-    const endAngle = arcCenter - arcHalf;
-    const currentAngle = startAngle + (endAngle - startAngle) * progress;
 
-    // Blade tip for line-segment check
-    const tipX = px + Math.cos(currentAngle) * bladeLength;
-    const tipY = py + Math.sin(currentAngle) * bladeLength;
+    let tipX: number;
+    let tipY: number;
+
+    if (style === MeleeStyle.STAB) {
+      // Stab: blade extends forward then retracts along a fixed direction
+      // 0→0.5: extend to full length, 0.5→1.0: retract back
+      const reach = progress <= 0.5
+        ? (progress / 0.5) * bladeLength
+        : ((1 - progress) / 0.5) * bladeLength;
+      tipX = px + Math.cos(arcCenter) * reach;
+      tipY = py + Math.sin(arcCenter) * reach;
+    } else {
+      // Slash: sweep through arc
+      const startAngle = arcCenter + arcHalf;
+      const endAngle = arcCenter - arcHalf;
+      const currentAngle = startAngle + (endAngle - startAngle) * progress;
+      tipX = px + Math.cos(currentAngle) * bladeLength;
+      tipY = py + Math.sin(currentAngle) * bladeLength;
+    }
 
     const hitSet = getHitSet(world, eid);
 

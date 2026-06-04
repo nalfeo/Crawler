@@ -178,7 +178,7 @@ function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef, dir: 
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
   spawnMeleeSwing(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs,
-    dir.x, dir.y, def.swingArcDeg, TeamId.PLAYER);
+    dir.x, dir.y, def.swingArcDeg, TeamId.PLAYER, def.meleeStyle);
 }
 
 function fireRangedAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {

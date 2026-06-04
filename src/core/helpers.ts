@@ -271,7 +271,7 @@ export function spawnTrap(
   return eid;
 }
 
-/** Spawn a melee swing entity — a blade that sweeps through an arc. */
+/** Spawn a melee swing entity — a blade that sweeps through an arc or thrusts forward. */
 export function spawnMeleeSwing(
   world: GameWorld,
   x: number,
@@ -284,6 +284,7 @@ export function spawnMeleeSwing(
   dirY: number,
   arcDeg: number,
   teamId: number,
+  style: number = 0,
 ): number {
   const eid = createEntity(world);
   const arcCenterRad = Math.atan2(dirY, dirX);
@@ -291,7 +292,7 @@ export function spawnMeleeSwing(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(MeleeSwing, {
     bladeLength, arcCenterRad, arcHalfRad, damage,
-    spawnAtMs: world.elapsedMs, durationMs,
+    spawnAtMs: world.elapsedMs, durationMs, style,
   }));
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));

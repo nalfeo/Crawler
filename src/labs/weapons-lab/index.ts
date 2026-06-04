@@ -29,7 +29,7 @@ import {
   setActiveWeapon,
   weaponSystem,
 } from '../../game/index.js';
-import { GAME, PLAYER_SPEED, WeaponType } from '../../shared/constants.js';
+import { GAME, MeleeStyle, PLAYER_SPEED, WeaponType } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { WEAPON_DEFS, type WeaponDef } from '../../shared/weaponDefs.js';
 import { registerLab } from '../registry.js';
@@ -57,6 +57,7 @@ interface TunableWeaponDef {
   returnSpeed: number;
   maxRange: number;
   swingArcDeg: number;
+  meleeStyle: number;
 }
 
 function cloneWeaponDef(def: WeaponDef): TunableWeaponDef {
@@ -323,9 +324,10 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     const wt = baseDef.weaponType;
 
-    // Melee / Unarmed: blade length + arc + duration
+    // Melee / Unarmed: blade length + arc + duration + style
     if (wt === WeaponType.MELEE || wt === WeaponType.UNARMED) {
       weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Blade Length');
+      weaponFolder.add(tunedWeapon, 'meleeStyle', { Slash: MeleeStyle.SLASH, Stab: MeleeStyle.STAB }).name('Style');
       weaponFolder.add(tunedWeapon, 'swingArcDeg', 5, 360, 1).name('Swing Arc (°)');
       weaponFolder.add(tunedWeapon, 'durationMs', 50, 1000, 10).name('Swing Speed (ms)');
     }

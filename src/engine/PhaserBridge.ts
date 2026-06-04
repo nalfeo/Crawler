@@ -240,41 +240,64 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
           const bladeLen = meleeSwing.bladeLength[eid] ?? 0;
           const arcCenter = meleeSwing.arcCenterRad[eid] ?? 0;
           const arcHalf = meleeSwing.arcHalfRad[eid] ?? 0;
+          const style = meleeSwing.style[eid] ?? 0;
           const spawnTime = arcSpawnMs.get(eid) ?? world.elapsedMs;
           const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
           const totalDuration = Math.max(1, expiresAt - spawnTime);
           const elapsed = world.elapsedMs - spawnTime;
           const progress = Math.min(1, Math.max(0, elapsed / totalDuration));
 
-          // Sweep from start angle to end angle
-          const startAngle = arcCenter + arcHalf;
-          const endAngle = arcCenter - arcHalf;
-          const currentAngle = startAngle + (endAngle - startAngle) * progress;
-
-          const tipX = x + Math.cos(currentAngle) * bladeLen;
-          const tipY = y + Math.sin(currentAngle) * bladeLen;
-
           // Lifetime fade
           const remaining = Math.max(0, expiresAt - world.elapsedMs);
           const alpha = Math.min(1, remaining / 50);
 
-          // Blade line
-          ag.lineStyle(3, 0xcccccc, alpha);
-          ag.beginPath();
-          ag.moveTo(x, y);
-          ag.lineTo(tipX, tipY);
-          ag.strokePath();
+          let tipX: number;
+          let tipY: number;
 
-          // Bright tip
-          ag.fillStyle(0xffffff, alpha);
-          ag.fillCircle(tipX, tipY, 3);
+          if (style === 1) {
+            // Stab: extend forward then retract
+            const reach = progress <= 0.5
+              ? (progress / 0.5) * bladeLen
+              : ((1 - progress) / 0.5) * bladeLen;
+            tipX = x + Math.cos(arcCenter) * reach;
+            tipY = y + Math.sin(arcCenter) * reach;
 
-          // Faint trail arc showing the swept area
-          if (progress > 0.05) {
-            ag.lineStyle(1, 0xffffaa, 0.15 * alpha);
+            // Blade line (slightly thinner for knife)
+            ag.lineStyle(2, 0xdddddd, alpha);
             ag.beginPath();
-            ag.arc(x, y, bladeLen, startAngle, currentAngle, startAngle > endAngle);
+            ag.moveTo(x, y);
+            ag.lineTo(tipX, tipY);
             ag.strokePath();
+
+            // Sharp tip
+            ag.fillStyle(0xffffff, alpha);
+            ag.fillCircle(tipX, tipY, 2);
+          } else {
+            // Slash: sweep through arc
+            const startAngle = arcCenter + arcHalf;
+            const endAngle = arcCenter - arcHalf;
+            const currentAngle = startAngle + (endAngle - startAngle) * progress;
+            tipX = x + Math.cos(currentAngle) * bladeLen;
+            tipY = y + Math.sin(currentAngle) * bladeLen;
+
+            // Blade line
+            ag.lineStyle(3, 0xcccccc, alpha);
+            ag.beginPath();
+            ag.moveTo(x, y);
+            ag.lineTo(tipX, tipY);
+            ag.strokePath();
+
+            // Bright tip
+            ag.fillStyle(0xffffff, alpha);
+            ag.fillCircle(tipX, tipY, 3);
+
+            // Faint trail arc showing the swept area
+            if (progress > 0.05) {
+              ag.lineStyle(1, 0xffffaa, 0.15 * alpha);
+              ag.beginPath();
+              ag.arc(x, y, bladeLen, startAngle, currentAngle, startAngle > endAngle);
+              ag.strokePath();
+            }
           }
 
           // Hide the image for melee swing entities

@@ -20,6 +20,12 @@ export const WeaponType = {
 } as const;
 export type WeaponTypeValue = (typeof WeaponType)[keyof typeof WeaponType];
 
+export const MeleeStyle = {
+  SLASH: 0,
+  STAB: 1,
+} as const;
+export type MeleeStyleValue = (typeof MeleeStyle)[keyof typeof MeleeStyle];
+
 export const TeamId = {
   PLAYER: 0,
   ENEMY: 1,

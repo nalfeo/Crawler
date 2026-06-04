@@ -1,4 +1,4 @@
-import { WEAPON, WeaponType, type WeaponTypeValue } from './constants.js';
+import { MeleeStyle, WEAPON, WeaponType, type MeleeStyleValue, type WeaponTypeValue } from './constants.js';
 
 export interface WeaponDef {
   readonly id: string;
@@ -29,6 +29,8 @@ export interface WeaponDef {
   readonly maxRange: number;
   /** Melee swing arc in degrees (360 = full circle, 45 = narrow cone). */
   readonly swingArcDeg: number;
+  /** Melee attack style (0 = slash/sweep, 1 = stab/thrust). */
+  readonly meleeStyle: MeleeStyleValue;
 }
 
 function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weaponType' | 'baseDamage' | 'cooldownMs'>): WeaponDef {
@@ -45,6 +47,7 @@ function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weap
     returnSpeed: 0,
     maxRange: 0,
     swingArcDeg: 360,
+    meleeStyle: MeleeStyle.SLASH,
     ...partial,
   };
 }
@@ -61,6 +64,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
     id: 'knife', name: 'Knife', weaponType: WeaponType.MELEE,
     baseDamage: 8, cooldownMs: 300, range: 28,
     aoeRadius: 28, durationMs: 150,
+    meleeStyle: MeleeStyle.STAB,
   })],
   ['hammer', def({
     id: 'hammer', name: 'Hammer', weaponType: WeaponType.MELEE,
