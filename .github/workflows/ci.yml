@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Gate 1: Type safety (~5s)
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Gate 2: Code style (~10s)
+      - name: Lint
+        run: npm run lint
+
+      # Gate 3: Format check (~5s)
+      - name: Format check
+        run: npm run format:check
+
+      # Gate 4: Dead code (~10s)
+      - name: Dead code detection
+        run: npm run lint:dead-code
+        continue-on-error: true # Non-blocking initially, will become blocking
+
+      # Gate 5: Lab gate check (~5s)
+      - name: Lab gate check
+        run: bash scripts/agent/lab-gate-check.sh
+
+      # Gate 6: Unit tests + coverage (~30s)
+      - name: Unit tests
+        run: npx vitest run --project unit --reporter=verbose
+
+      # Gate 7: Integration tests (~60s)
+      - name: Integration tests
+        run: npx vitest run --project integration --reporter=verbose
+        continue-on-error: true # No integration tests yet
+
+      # Gate 8: Build (~10s)
+      - name: Build
+        run: npm run build
+
+      # Gate 9: Dependency audit
+      - name: Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true # Advisory initially
+
+  commit-lint:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            chore
+            lab
+            docs
+            refactor
+            test
+            perf
+            ci

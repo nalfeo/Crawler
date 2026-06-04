@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crawler Labs</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { background: #1a1a2e; color: #e0e0e0; font-family: monospace; }
+      #lab-container { width: 100vw; height: 100vh; display: flex; }
+      #lab-canvas { flex: 1; }
+      #lab-controls { width: 300px; padding: 16px; background: #16213e; overflow-y: auto; }
+    </style>
+  </head>
+  <body>
+    <div id="lab-container">
+      <div id="lab-canvas"></div>
+      <div id="lab-controls"></div>
+    </div>
+    <script type="module" src="/src/lab-main.ts"></script>
+  </body>
+</html>
