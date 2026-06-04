@@ -184,8 +184,18 @@ jobs:
               repo: context.repo.repo,
               title,
               body,
-              assignees: ['copilot'],
               labels: ['bug', 'release']
             });
+
+            try {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.data.number,
+                assignees: ['copilot']
+              });
+            } catch (error) {
+              core.warning(`Could not assign @copilot automatically: ${error.message}`);
+            }
 
             core.info(`Created issue #${issue.data.number}`);
