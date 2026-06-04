@@ -230,11 +230,21 @@ function createProjectileCleanupLab(canvasHost: HTMLElement, controls: HTMLEleme
     context.strokeStyle = '#ffffff';
     context.lineWidth = 1;
     context.setLineDash([]);
-    context.strokeRect(viewport.gameLeft, viewport.gameTop, viewport.gameWidth, viewport.gameHeight);
+    context.strokeRect(
+      viewport.gameLeft,
+      viewport.gameTop,
+      viewport.gameWidth,
+      viewport.gameHeight,
+    );
 
     context.strokeStyle = '#ff4d4d';
     context.setLineDash([7, 5]);
-    context.strokeRect(viewport.outerLeft, viewport.outerTop, viewport.outerWidth, viewport.outerHeight);
+    context.strokeRect(
+      viewport.outerLeft,
+      viewport.outerTop,
+      viewport.outerWidth,
+      viewport.outerHeight,
+    );
     context.restore();
   };
 

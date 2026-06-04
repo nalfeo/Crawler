@@ -324,7 +324,8 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   damageTitle.textContent = 'Damage Calculator';
   const damageDescription = document.createElement('div');
   damageDescription.className = 'damage-lab__subtle';
-  damageDescription.textContent = 'Live visualization of armor mitigation: effectiveDamage = max(1, incoming - armor).';
+  damageDescription.textContent =
+    'Live visualization of armor mitigation: effectiveDamage = max(1, incoming - armor).';
   const damageFormula = document.createElement('div');
   damageFormula.className = 'damage-lab__formula';
   damageCard.append(damageTitle, damageDescription, damageFormula);
@@ -335,11 +336,13 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   invincibilityTitle.textContent = 'Invincibility Frame Tester';
   const invincibilityDescription = document.createElement('div');
   invincibilityDescription.className = 'damage-lab__subtle';
-  invincibilityDescription.textContent = 'Contact hits respect armor and block re-hits until invincibility expires.';
+  invincibilityDescription.textContent =
+    'Contact hits respect armor and block re-hits until invincibility expires.';
   const playerBox = document.createElement('div');
   playerBox.className = 'damage-lab__player';
   const playerName = document.createElement('div');
-  playerName.innerHTML = '<span class="damage-lab__label">Entity:</span> <span class="damage-lab__value">Player</span>';
+  playerName.innerHTML =
+    '<span class="damage-lab__label">Entity:</span> <span class="damage-lab__value">Player</span>';
   const healthShell = document.createElement('div');
   healthShell.className = 'damage-lab__health-shell';
   const healthFill = document.createElement('div');
@@ -361,7 +364,13 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   hitPlayerButton.className = 'damage-lab__button';
   hitPlayerButton.textContent = 'Hit Player';
   invincibilityActions.append(hitPlayerButton);
-  playerBox.append(playerName, healthShell, invincibilityStatus, cooldownShell, invincibilityActions);
+  playerBox.append(
+    playerName,
+    healthShell,
+    invincibilityStatus,
+    cooldownShell,
+    invincibilityActions,
+  );
   invincibilityCard.append(invincibilityTitle, invincibilityDescription, playerBox);
 
   const pierceCard = document.createElement('section');
@@ -370,7 +379,8 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   pierceTitle.textContent = 'Pierce Simulation';
   const pierceDescription = document.createElement('div');
   pierceDescription.className = 'damage-lab__subtle';
-  pierceDescription.textContent = 'Projectile tracks hits once per enemy, keeps moving until pierce is exhausted, then destroys or clears the lane.';
+  pierceDescription.textContent =
+    'Projectile tracks hits once per enemy, keeps moving until pierce is exhausted, then destroys or clears the lane.';
   const pierceActions = document.createElement('div');
   pierceActions.className = 'damage-lab__actions';
   const fireButton = document.createElement('button');
@@ -393,7 +403,8 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   dpsTitle.textContent = 'DPS Calculator';
   const dpsDescription = document.createElement('div');
   dpsDescription.className = 'damage-lab__subtle';
-  dpsDescription.textContent = 'Armor curve uses the current lane enemy count as targetCount for multi-hit throughput.';
+  dpsDescription.textContent =
+    'Armor curve uses the current lane enemy count as targetCount for multi-hit throughput.';
   const dpsStats = document.createElement('div');
   dpsStats.className = 'damage-lab__stats';
   const dpsCanvasWrap = document.createElement('div');
@@ -441,7 +452,9 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     }));
   };
 
-  const resetPierceSimulation = (message = 'Press Fire to simulate projectile pierce through the lane.') => {
+  const resetPierceSimulation = (
+    message = 'Press Fire to simulate projectile pierce through the lane.',
+  ) => {
     simulation = null;
     clearLog(message);
   };
@@ -477,14 +490,20 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       return;
     }
 
-    const appliedDamage = computeEffectiveDamage(invincibilitySettings.contactDamage, damageSettings.armor);
+    const appliedDamage = computeEffectiveDamage(
+      invincibilitySettings.contactDamage,
+      damageSettings.armor,
+    );
     playerHealth = Math.max(0, playerHealth - appliedDamage);
     lastHitTime = now;
   };
 
   const updateDamagePanel = () => {
     const rawSubtraction = damageSettings.incomingDamage - damageSettings.armor;
-    const effectiveDamage = computeEffectiveDamage(damageSettings.incomingDamage, damageSettings.armor);
+    const effectiveDamage = computeEffectiveDamage(
+      damageSettings.incomingDamage,
+      damageSettings.armor,
+    );
 
     damageFormula.innerHTML = `
       <div class="damage-lab__formula-row"><span class="damage-lab__label">Formula</span><span class="damage-lab__value">effectiveDamage = max(1, incoming - armor)</span></div>
@@ -563,7 +582,13 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     if (simulation) {
       pierceContext.fillStyle = HIGHLIGHT;
       pierceContext.beginPath();
-      pierceContext.arc(simulation.projectileX, simulation.projectileY, PROJECTILE_RADIUS, 0, Math.PI * 2);
+      pierceContext.arc(
+        simulation.projectileX,
+        simulation.projectileY,
+        PROJECTILE_RADIUS,
+        0,
+        Math.PI * 2,
+      );
       pierceContext.fill();
     }
   };
@@ -681,7 +706,10 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   const updateDpsPanel = () => {
     const targetCount = Math.max(1, pierceSettings.enemyCount);
-    const effectiveHitDamage = computeEffectiveDamage(dpsSettings.damagePerHit, dpsSettings.targetArmor);
+    const effectiveHitDamage = computeEffectiveDamage(
+      dpsSettings.damagePerHit,
+      dpsSettings.targetArmor,
+    );
     const hitTargets = Math.min(dpsSettings.pierce + 1, targetCount);
     const effectiveDps = computeEffectiveDps(
       dpsSettings.damagePerHit,
@@ -711,7 +739,10 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   fireButton.addEventListener('click', fireProjectile);
 
   const damageFolder = gui.addFolder('Damage Calculator');
-  damageFolder.add(damageSettings, 'incomingDamage', 1, 200, 1).name('incomingDamage').onChange(updateAllTextPanels);
+  damageFolder
+    .add(damageSettings, 'incomingDamage', 1, 200, 1)
+    .name('incomingDamage')
+    .onChange(updateAllTextPanels);
   damageFolder.add(damageSettings, 'armor', 0, 50, 1).name('armor').onChange(updateAllTextPanels);
   damageFolder.open();
 
@@ -753,10 +784,19 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   pierceFolder.open();
 
   const dpsFolder = gui.addFolder('DPS');
-  dpsFolder.add(dpsSettings, 'damagePerHit', 1, 200, 1).name('damagePerHit').onChange(updateAllTextPanels);
-  dpsFolder.add(dpsSettings, 'fireRate', 0.5, 20, 0.5).name('fireRate').onChange(updateAllTextPanels);
+  dpsFolder
+    .add(dpsSettings, 'damagePerHit', 1, 200, 1)
+    .name('damagePerHit')
+    .onChange(updateAllTextPanels);
+  dpsFolder
+    .add(dpsSettings, 'fireRate', 0.5, 20, 0.5)
+    .name('fireRate')
+    .onChange(updateAllTextPanels);
   dpsFolder.add(dpsSettings, 'pierce', 0, 10, 1).name('pierce').onChange(updateAllTextPanels);
-  dpsFolder.add(dpsSettings, 'targetArmor', 0, 50, 1).name('targetArmor').onChange(updateAllTextPanels);
+  dpsFolder
+    .add(dpsSettings, 'targetArmor', 0, 50, 1)
+    .name('targetArmor')
+    .onChange(updateAllTextPanels);
   dpsFolder.open();
 
   const frame = (now: number) => {

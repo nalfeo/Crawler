@@ -98,9 +98,7 @@ function createKeyGroup(title: string, keys: KeyDescriptor[], pressed: Set<strin
     badge.style.border = '1px solid rgba(255, 255, 255, 0.14)';
     badge.style.background = pressed.has(key.code) ? '#7ee0ff' : 'rgba(255, 255, 255, 0.04)';
     badge.style.color = pressed.has(key.code) ? '#04131d' : '#f4f7fb';
-    badge.style.boxShadow = pressed.has(key.code)
-      ? '0 0 20px rgba(126, 224, 255, 0.28)'
-      : 'none';
+    badge.style.boxShadow = pressed.has(key.code) ? '0 0 20px rgba(126, 224, 255, 0.28)' : 'none';
     badge.style.fontFamily = 'monospace';
     badge.style.fontSize = '16px';
     badge.style.fontWeight = '700';
@@ -365,12 +363,7 @@ function createPlayerInputLab(canvasHost: HTMLElement, controls: HTMLElement): (
       ctx.strokeStyle = '#7ee0ff';
       ctx.fillStyle = '#7ee0ff';
       ctx.lineWidth = 4;
-      drawArrow(
-        centerX,
-        centerY,
-        centerX + normalized.x * radius,
-        centerY + normalized.y * radius,
-      );
+      drawArrow(centerX, centerY, centerX + normalized.x * radius, centerY + normalized.y * radius);
     }
 
     readout.textContent = [

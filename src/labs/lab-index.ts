@@ -11,13 +11,13 @@ const CATEGORY_ORDER: LabCategory[] = [
 ];
 
 const CATEGORY_ICONS: Record<LabCategory | 'Uncategorized', string> = {
-  'Combat': '⚔️',
+  Combat: '⚔️',
   'Movement & Physics': '🏃',
   'Items & Equipment': '🎒',
-  'Progression': '📈',
-  'Entities': '👾',
-  'Meta': '🔧',
-  'Uncategorized': '📦',
+  Progression: '📈',
+  Entities: '👾',
+  Meta: '🔧',
+  Uncategorized: '📦',
 };
 
 const COLLAPSED_KEY = 'lab-index-collapsed';

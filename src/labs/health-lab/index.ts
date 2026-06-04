@@ -62,7 +62,12 @@ const DEFAULT_SETTINGS: HealthLabSettings = {
   respawnDelayMs: 2000,
 };
 
-function createEntity(id: string, label: string, kind: EntityKind, maxHealth: number): HealthLabEntity {
+function createEntity(
+  id: string,
+  label: string,
+  kind: EntityKind,
+  maxHealth: number,
+): HealthLabEntity {
   return {
     id,
     label,
@@ -350,7 +355,13 @@ function createHealthLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   function scheduleRespawn(entity: HealthLabEntity): void {
     clearRespawn(entity);
-    if (destroyed || gameOver || entity.kind !== 'enemy' || !entity.isDead || !settings.autoRespawn) {
+    if (
+      destroyed ||
+      gameOver ||
+      entity.kind !== 'enemy' ||
+      !entity.isDead ||
+      !settings.autoRespawn
+    ) {
       return;
     }
 
@@ -461,7 +472,9 @@ function createHealthLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     for (const entity of entities) {
       const ratio = entity.maxHealth > 0 ? entity.currentHealth / entity.maxHealth : 1;
       entity.maxHealth = settings.maxHealth;
-      entity.currentHealth = entity.isDead ? 0 : Math.max(1, Math.round(ratio * settings.maxHealth));
+      entity.currentHealth = entity.isDead
+        ? 0
+        : Math.max(1, Math.round(ratio * settings.maxHealth));
     }
 
     syncRespawnTimers();
