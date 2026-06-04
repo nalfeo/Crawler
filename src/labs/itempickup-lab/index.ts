@@ -40,4 +40,3 @@ registerLab('itempickup-lab', {
   description: 'Sandbox for item pickup system behavior.',
   create: createItemPickupLab,
 });
-
