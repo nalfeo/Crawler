@@ -50,3 +50,5 @@ export type {
   SkillUsageEvent,
   UsageMetric,
 } from './skills.js';
+export * from './items.js';
+export * from './inventory.js';

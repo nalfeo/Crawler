@@ -7,6 +7,7 @@
  */
 import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
+import type { InventoryBag } from '../shared/inventory.js';
 import {
   Position,
   Velocity,
@@ -18,6 +19,7 @@ import {
   Sprite,
   EnemyBehavior,
   BroadcastScore,
+  DroppedItem,
   Weapon,
   Owner,
   Team,
@@ -64,6 +66,8 @@ export interface GameWorld {
   skillUsageEvents: SkillUsageEvent[];
   /** Dirty flag: true when stats need recomputing. Set by level-up, modifier change, etc. */
   statsDirty: boolean;
+  /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
+  inventories: Map<number, InventoryBag>;
 }
 
 export interface CreateWorldOptions {
@@ -99,6 +103,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
+  wireStore(ecs, DroppedItem, stores.droppedItem);
   wireStore(ecs, Weapon, stores.weapon);
   wireStore(ecs, Owner, stores.owner);
   wireStore(ecs, Team, stores.team);
@@ -131,6 +136,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerSkills: new Map(),
     skillUsageEvents: [],
     statsDirty: true,
+    inventories: new Map(),
   };
 }
 

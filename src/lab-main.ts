@@ -8,6 +8,8 @@ import './labs/movement-lab/index.js';
 import './labs/playerinput-lab/index.js';
 import './labs/projectilecleanup-lab/index.js';
 import './labs/enemy-ai-lab/index.js';
+import './labs/inventory-lab/index.js';
+import './labs/itempickup-lab/index.js';
 import './labs/aoeonimpact-lab/index.js';
 import './labs/areadamage-lab/index.js';
 import './labs/beam-lab/index.js';

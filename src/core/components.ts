@@ -26,6 +26,7 @@ export const Projectile = {};
 export const EnemyProjectile = {};
 export const XpGem = {};
 export const DroppedItem = {};
+export const Inventory = {};
 export const Sprite = {};
 export const BroadcastScore = {};
 export const Equipment = {};
@@ -95,6 +96,7 @@ export function createComponentStores() {
       lastFireMs: new Float32Array(MAX_ENTITIES),
     },
     broadcastScore: { current: new Float32Array(MAX_ENTITIES) },
+    droppedItem: { itemIndex: new Uint16Array(MAX_ENTITIES) },
     weapon: {
       weaponType: new Uint8Array(MAX_ENTITIES),
       baseDamage: new Float32Array(MAX_ENTITIES),
