@@ -24,6 +24,7 @@ import {
 } from './components.js';
 import type { GameWorld } from './world.js';
 import type { WeaponTypeValue } from '../shared/constants.js';
+import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
 
 /** Zero all typed-array store slots for a recycled entity ID. */
@@ -180,6 +181,8 @@ export function spawnAreaAttack(
     arcCenterRad: hasArc ? Math.atan2(dirY, dirX) : 0,
     arcHalfRad: hasArc ? (arcDeg / 2) * (Math.PI / 180) : 0,
   }));
+  // Clear stale hit tracking in case this entity ID was recycled.
+  clearAreaDamageHits(world, eid);
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));

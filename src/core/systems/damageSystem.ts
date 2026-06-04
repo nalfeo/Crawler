@@ -62,6 +62,12 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
 }
 
 function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
+  // If this is the first hit for this projectile, clear stale hit tracking
+  // from any previous entity that used the same recycled ECS ID.
+  if ((world.stores.projectile.hitCount[projectile] ?? 0) === 0) {
+    clearProjectilePierceHits(world, projectile);
+  }
+
   // Check if this enemy was already hit by this piercing projectile
   const hitSet = getPierceHitSet(world, projectile);
   if (hitSet.has(enemy)) return;
