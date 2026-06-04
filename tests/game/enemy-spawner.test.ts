@@ -2,7 +2,11 @@ import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Enemy } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { configureEnemySpawner, enemySpawnerSystem, type SpawnerConfig } from '../../src/game/enemySpawnerSystem.js';
+import {
+  configureEnemySpawner,
+  enemySpawnerSystem,
+  type SpawnerConfig,
+} from '../../src/game/enemySpawnerSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 function createSpawnerConfig(): SpawnerConfig {
@@ -83,8 +87,14 @@ describe('enemySpawnerSystem', () => {
         throw new Error('Expected deterministic enemy entities in both worlds.');
       }
 
-      expect(worldA.stores.position.x[enemyA]).toBeCloseTo(worldB.stores.position.x[enemyB] ?? 0, 5);
-      expect(worldA.stores.position.y[enemyA]).toBeCloseTo(worldB.stores.position.y[enemyB] ?? 0, 5);
+      expect(worldA.stores.position.x[enemyA]).toBeCloseTo(
+        worldB.stores.position.x[enemyB] ?? 0,
+        5,
+      );
+      expect(worldA.stores.position.y[enemyA]).toBeCloseTo(
+        worldB.stores.position.y[enemyB] ?? 0,
+        5,
+      );
     }
   });
 });

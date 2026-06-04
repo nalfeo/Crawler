@@ -74,7 +74,11 @@ export function spawnBehaviorEnemy(
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
   addComponent(world.ecs, eid, Enemy);
-  addComponent(world.ecs, eid, set(EnemyBehavior, { type: behaviorType, speed, aggroRange, attackRange }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(EnemyBehavior, { type: behaviorType, speed, aggroRange, attackRange }),
+  );
 
   return eid;
 }

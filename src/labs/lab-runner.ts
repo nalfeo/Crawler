@@ -145,11 +145,13 @@ export function runLab(labId: string): void {
   }
 }
 
-const hot = (import.meta as ImportMeta & {
-  hot?: {
-    dispose: (callback: () => void) => void;
-  };
-}).hot;
+const hot = (
+  import.meta as ImportMeta & {
+    hot?: {
+      dispose: (callback: () => void) => void;
+    };
+  }
+).hot;
 
 if (hot) {
   hot.dispose(() => {
