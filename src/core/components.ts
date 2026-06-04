@@ -27,6 +27,9 @@ export const XpGem = {};
 export const DroppedItem = {};
 export const Sprite = {};
 export const BroadcastScore = {};
+export const Equipment = {};
+export const BaseStats = {};
+export const EffectiveStats = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -59,6 +62,44 @@ export function createComponentStores() {
       lastFireMs: new Float32Array(MAX_ENTITIES),
     },
     broadcastScore: { current: new Float32Array(MAX_ENTITIES) },
+    baseStats: {
+      strength: new Float32Array(MAX_ENTITIES),
+      dexterity: new Float32Array(MAX_ENTITIES),
+      constitution: new Float32Array(MAX_ENTITIES),
+      intelligence: new Float32Array(MAX_ENTITIES),
+      wisdom: new Float32Array(MAX_ENTITIES),
+      charisma: new Float32Array(MAX_ENTITIES),
+      luck: new Float32Array(MAX_ENTITIES),
+      armor: new Float32Array(MAX_ENTITIES),
+      damageBonus: new Float32Array(MAX_ENTITIES),
+      attackSpeed: new Float32Array(MAX_ENTITIES),
+      moveSpeed: new Float32Array(MAX_ENTITIES),
+      critChance: new Float32Array(MAX_ENTITIES),
+      critMultiplier: new Float32Array(MAX_ENTITIES),
+      dodgeChance: new Float32Array(MAX_ENTITIES),
+      hpRegen: new Float32Array(MAX_ENTITIES),
+      xpBonus: new Float32Array(MAX_ENTITIES),
+      cooldownReduction: new Float32Array(MAX_ENTITIES),
+    },
+    effectiveStats: {
+      strength: new Float32Array(MAX_ENTITIES),
+      dexterity: new Float32Array(MAX_ENTITIES),
+      constitution: new Float32Array(MAX_ENTITIES),
+      intelligence: new Float32Array(MAX_ENTITIES),
+      wisdom: new Float32Array(MAX_ENTITIES),
+      charisma: new Float32Array(MAX_ENTITIES),
+      luck: new Float32Array(MAX_ENTITIES),
+      armor: new Float32Array(MAX_ENTITIES),
+      damageBonus: new Float32Array(MAX_ENTITIES),
+      attackSpeed: new Float32Array(MAX_ENTITIES),
+      moveSpeed: new Float32Array(MAX_ENTITIES),
+      critChance: new Float32Array(MAX_ENTITIES),
+      critMultiplier: new Float32Array(MAX_ENTITIES),
+      dodgeChance: new Float32Array(MAX_ENTITIES),
+      hpRegen: new Float32Array(MAX_ENTITIES),
+      xpBonus: new Float32Array(MAX_ENTITIES),
+      cooldownReduction: new Float32Array(MAX_ENTITIES),
+    },
   };
 }
 

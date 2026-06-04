@@ -17,6 +17,8 @@ import {
   Sprite,
   EnemyBehavior,
   BroadcastScore,
+  BaseStats,
+  EffectiveStats,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -70,6 +72,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
+  wireStore(ecs, BaseStats, stores.baseStats);
+  wireStore(ecs, EffectiveStats, stores.effectiveStats);
 
   return {
     ecs,

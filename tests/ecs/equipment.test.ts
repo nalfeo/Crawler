@@ -1,0 +1,375 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { addEntity } from 'bitecs';
+import { createTestWorld } from '../helpers/world-factory.js';
+import type { GameWorld } from '../../src/core/world.js';
+import {
+  initializeBaseStats,
+  equip,
+  unequip,
+  canEquip,
+  getEffectiveStats,
+  getEquipmentState,
+  clearEquipmentState,
+  setEntityTags,
+  registerCustomRequirement,
+} from '../../src/core/systems/equipmentSystem.js';
+import { statSystem } from '../../src/core/systems/statSystem.js';
+import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
+import type { EquipmentItemDef } from '../../src/shared/equipment-types.js';
+
+// --- Test helpers ---
+
+function makeItem(overrides: Partial<EquipmentItemDef> = {}): EquipmentItemDef {
+  return {
+    id: 'test-item',
+    name: 'Test Item',
+    slots: ['head'],
+    statBonuses: {},
+    rarity: 'common',
+    ...overrides,
+  };
+}
+
+function setupEntity(world: GameWorld): number {
+  const eid = addEntity(world.ecs);
+  initializeBaseStats(world, eid);
+  return eid;
+}
+
+describe('Equipment System', () => {
+  let world: GameWorld;
+  let entity: number;
+
+  beforeEach(() => {
+    world = createTestWorld();
+    world.state = 'safe_room';
+    entity = setupEntity(world);
+  });
+
+  // 1. Equip single-slot item
+  it('equips a single-slot item', () => {
+    const item = makeItem({ statBonuses: { armor: 5 } });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(true);
+    const state = getEquipmentState(world, entity)!;
+    expect(state.equipped['head']).not.toBeNull();
+    expect(getEffectiveStats(world, entity).armor).toBe(5);
+  });
+
+  // 2. Equip multi-slot item
+  it('equips a multi-slot item occupying all specified slots', () => {
+    const item = makeItem({
+      id: 'greatsword',
+      slots: ['mainHand', 'offHand'],
+      statBonuses: { damageBonus: 10 },
+    });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(true);
+    const state = getEquipmentState(world, entity)!;
+    expect(state.equipped['mainHand']).toBe(state.equipped['offHand']);
+  });
+
+  // 3. Unequip single-slot item
+  it('unequips a single-slot item and removes stats', () => {
+    const item = makeItem({ statBonuses: { armor: 5 } });
+    equip(world, entity, item, { force: true });
+    const result = unequip(world, entity, 'head', { force: true });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.item.def.id).toBe('test-item');
+    expect(getEffectiveStats(world, entity).armor).toBe(0);
+  });
+
+  // 4. Unequip multi-slot item frees all slots
+  it('unequips multi-slot item from any occupied slot', () => {
+    const item = makeItem({ id: 'gs', slots: ['mainHand', 'offHand'] });
+    equip(world, entity, item, { force: true });
+    unequip(world, entity, 'offHand', { force: true });
+    const state = getEquipmentState(world, entity)!;
+    expect(state.equipped['mainHand']).toBeNull();
+    expect(state.equipped['offHand']).toBeNull();
+  });
+
+  // 5. Equip fails on occupied slot (atomic)
+  it('fails to equip when slot is occupied', () => {
+    equip(world, entity, makeItem(), { force: true });
+    const result = equip(world, entity, makeItem({ id: 'helm2' }), { force: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reasons.some((r) => r.type === 'occupiedSlot')).toBe(true);
+    }
+  });
+
+  // 6. Equip multi-slot fails partially blocked
+  it('fails atomically when one multi-slot is blocked', () => {
+    equip(world, entity, makeItem({ id: 'shield', slots: ['offHand'] }), { force: true });
+    const result = equip(
+      world,
+      entity,
+      makeItem({ id: 'gs', slots: ['mainHand', 'offHand'] }),
+      { force: true },
+    );
+    expect(result.ok).toBe(false);
+    const state = getEquipmentState(world, entity)!;
+    expect(state.equipped['mainHand']).toBeNull();
+  });
+
+  // 7. Stat aggregation across multiple items
+  it('aggregates stats from multiple equipped items', () => {
+    equip(world, entity, makeItem({ id: 'helm', slots: ['head'], statBonuses: { armor: 5 } }), {
+      force: true,
+    });
+    equip(
+      world,
+      entity,
+      makeItem({ id: 'boots', slots: ['feet'], statBonuses: { armor: 3, moveSpeed: 1 } }),
+      { force: true },
+    );
+    const stats = getEffectiveStats(world, entity);
+    expect(stats.armor).toBe(8);
+    expect(stats.moveSpeed).toBe(1);
+  });
+
+  // 8. Stat aggregation after partial unequip
+  it('recalculates stats after unequip', () => {
+    equip(world, entity, makeItem({ id: 'helm', slots: ['head'], statBonuses: { armor: 5 } }), {
+      force: true,
+    });
+    equip(world, entity, makeItem({ id: 'boots', slots: ['feet'], statBonuses: { armor: 3 } }), {
+      force: true,
+    });
+    unequip(world, entity, 'head', { force: true });
+    expect(getEffectiveStats(world, entity).armor).toBe(3);
+  });
+
+  // 9. Base stats never modified by equipment
+  it('does not modify base stats on equip/unequip', () => {
+    const baseBefore = world.stores.baseStats.armor[entity];
+    equip(world, entity, makeItem({ statBonuses: { armor: 10 } }), { force: true });
+    expect(world.stores.baseStats.armor[entity]).toBe(baseBefore);
+    unequip(world, entity, 'head', { force: true });
+    expect(world.stores.baseStats.armor[entity]).toBe(baseBefore);
+  });
+
+  // 10. Recompute is idempotent (no double-counting)
+  it('does not double-count stats on repeated recompute', () => {
+    equip(world, entity, makeItem({ statBonuses: { armor: 5 } }), { force: true });
+    const before = getEffectiveStats(world, entity).armor;
+    statSystem(world);
+    statSystem(world);
+    expect(getEffectiveStats(world, entity).armor).toBe(before);
+  });
+
+  // 11. All 16 slots can be equipped independently
+  it('equips all 16 slots independently', () => {
+    for (const slot of SLOT_REGISTRY) {
+      const result = equip(
+        world,
+        entity,
+        makeItem({ id: `item-${slot.id}`, slots: [slot.id], statBonuses: { armor: 1 } }),
+        { force: true },
+      );
+      expect(result.ok).toBe(true);
+    }
+    expect(getEffectiveStats(world, entity).armor).toBe(16);
+  });
+
+  // 12. Duplicate item definitions (same id, different instances)
+  it('handles duplicate item defs with independent instances', () => {
+    const ringDef = makeItem({ id: 'lucky-ring', slots: ['ringLeft'], statBonuses: { luck: 3 } });
+    equip(world, entity, ringDef, { force: true });
+    equip(
+      world,
+      entity,
+      makeItem({ id: 'lucky-ring', slots: ['ringRight'], statBonuses: { luck: 3 } }),
+      { force: true },
+    );
+    expect(getEffectiveStats(world, entity).luck).toBe(7); // base 1 + 3 + 3
+    unequip(world, entity, 'ringLeft', { force: true });
+    expect(getEffectiveStats(world, entity).luck).toBe(4); // base 1 + 3
+  });
+
+  // 13. Invalid item def (empty slots)
+  it('rejects item with empty slots', () => {
+    const result = equip(world, entity, makeItem({ slots: [] }), { force: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reasons.some((r) => r.type === 'invalidDef')).toBe(true);
+    }
+  });
+
+  // 14. Invalid item def (duplicate slots)
+  it('rejects item with duplicate slots', () => {
+    const result = equip(
+      world,
+      entity,
+      makeItem({ slots: ['head', 'head'] }),
+      { force: true },
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  // 15. Entity cleanup
+  it('clears equipment state on entity cleanup', () => {
+    equip(world, entity, makeItem({ statBonuses: { armor: 5 } }), { force: true });
+    clearEquipmentState(world, entity);
+    expect(getEquipmentState(world, entity)).toBeUndefined();
+  });
+
+  // 16. Equip/unequip determinism
+  it('produces identical results for same sequence', () => {
+    const world2 = createTestWorld();
+    world2.state = 'safe_room';
+    const e2 = setupEntity(world2);
+
+    const items = [
+      makeItem({ id: 'a', slots: ['head'], statBonuses: { armor: 5 } }),
+      makeItem({ id: 'b', slots: ['chest'], statBonuses: { strength: 3 } }),
+    ];
+
+    for (const item of items) {
+      equip(world, entity, item, { force: true });
+      equip(world2, e2, item, { force: true });
+    }
+
+    expect(getEffectiveStats(world, entity)).toEqual(getEffectiveStats(world2, e2));
+  });
+
+  // 17. Equip fails on minStat requirement
+  it('rejects equip when minStat requirement not met', () => {
+    const item = makeItem({
+      statBonuses: { armor: 5 },
+      requirements: [{ type: 'minStat', stat: 'strength', value: 100 }],
+    });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reasons.some((r) => r.type === 'requirementFailed')).toBe(true);
+    }
+  });
+
+  // 18. Equip fails on notTag requirement
+  it('rejects equip when notTag requirement fails', () => {
+    setEntityTags(world, entity, ['male']);
+    const item = makeItem({
+      requirements: [{ type: 'notTag', tag: 'male' }],
+    });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false);
+  });
+
+  // 19. Equip succeeds with all requirements met
+  it('equips when all requirements pass', () => {
+    setEntityTags(world, entity, ['class:mage']);
+    initializeBaseStats(world, entity, { strength: 10 });
+    const item = makeItem({
+      requirements: [
+        { type: 'minStat', stat: 'strength', value: 10 },
+        { type: 'hasTag', tag: 'class:mage' },
+      ],
+    });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(true);
+  });
+
+  // 20. canEquip returns reasons
+  it('canEquip returns all failure reasons', () => {
+    setEntityTags(world, entity, ['male']);
+    equip(world, entity, makeItem(), { force: true });
+    const item = makeItem({
+      requirements: [
+        { type: 'notTag', tag: 'male' },
+        { type: 'minStat', stat: 'strength', value: 999 },
+      ],
+    });
+    const result = canEquip(world, entity, item);
+    expect(result.allowed).toBe(false);
+    expect(result.reasons.length).toBeGreaterThanOrEqual(3); // occupied + 2 requirements
+  });
+
+  // 21. Custom requirement predicate
+  it('evaluates custom requirement predicates', () => {
+    registerCustomRequirement(world, 'always-fail', () => false);
+    const item = makeItem({ requirements: [{ type: 'custom', id: 'always-fail' }] });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false);
+  });
+
+  // 22. New slot added to registry — tested indirectly via slot registry length
+  it('supports all registered slots', () => {
+    expect(SLOT_REGISTRY.length).toBe(16);
+  });
+
+  // 23. Unknown slot rejected
+  it('rejects items referencing unknown slots', () => {
+    const item = makeItem({ slots: ['nonexistent'] });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reasons.some((r) => r.type === 'unknownSlot')).toBe(true);
+    }
+  });
+
+  // 24. Multi-slot stats not double-counted
+  it('does not double-count multi-slot item stats', () => {
+    const item = makeItem({
+      id: 'gs',
+      slots: ['mainHand', 'offHand'],
+      statBonuses: { damageBonus: 10 },
+    });
+    equip(world, entity, item, { force: true });
+    expect(getEffectiveStats(world, entity).damageBonus).toBe(10);
+  });
+
+  // 25. NaN/Infinity stat values rejected
+  it('rejects NaN stat values', () => {
+    const item = makeItem({ statBonuses: { armor: NaN } });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false);
+  });
+
+  it('rejects Infinity stat values', () => {
+    const item = makeItem({ statBonuses: { armor: Infinity } });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false);
+  });
+
+  // 26. Equip denied outside safe room
+  it('denies equip outside safe room without force', () => {
+    world.state = 'playing';
+    const result = equip(world, entity, makeItem());
+    expect(result.ok).toBe(false);
+  });
+
+  // 27. Entity tag requirements — hasTag checks entity tags
+  it('hasTag checks entity tags not item tags', () => {
+    const item = makeItem({
+      tags: ['sword'], // item tag
+      requirements: [{ type: 'hasTag', tag: 'warrior' }], // entity tag check
+    });
+    const result = equip(world, entity, item, { force: true });
+    expect(result.ok).toBe(false); // entity doesn't have 'warrior' tag
+
+    setEntityTags(world, entity, ['warrior']);
+    const result2 = equip(world, entity, item, { force: true });
+    expect(result2.ok).toBe(true);
+  });
+
+  // 28. Stat clamping
+  it('clamps stats to defined ranges', () => {
+    equip(
+      world,
+      entity,
+      makeItem({ id: 'a', slots: ['ringLeft'], statBonuses: { dodgeChance: 0.9 } }),
+      { force: true },
+    );
+    expect(getEffectiveStats(world, entity).dodgeChance).toBeCloseTo(0.75, 5); // capped
+
+    equip(
+      world,
+      entity,
+      makeItem({ id: 'b', slots: ['ringRight'], statBonuses: { cooldownReduction: 0.95 } }),
+      { force: true },
+    );
+    expect(getEffectiveStats(world, entity).cooldownReduction).toBeCloseTo(0.8, 5); // capped
+  });
+});
