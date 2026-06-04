@@ -85,7 +85,10 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
         const tx = (position.x[target] ?? 0) - x;
         const ty = (position.y[target] ?? 0) - y;
         const targetAngle = Math.atan2(ty, tx);
-        const delta = Math.atan2(Math.sin(targetAngle - arcCenterRad), Math.cos(targetAngle - arcCenterRad));
+        const delta = Math.atan2(
+          Math.sin(targetAngle - arcCenterRad),
+          Math.cos(targetAngle - arcCenterRad),
+        );
         if (Math.abs(delta) > arcHalfRad) {
           continue;
         }

@@ -1,6 +1,13 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Knockback, Lifetime, MeleeSwing, Owner, Position, Team } from '../../src/core/components.js';
+import {
+  Knockback,
+  Lifetime,
+  MeleeSwing,
+  Owner,
+  Position,
+  Team,
+} from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
@@ -175,7 +182,9 @@ describe('melee weapons', () => {
 
     expect(world.stores.health.current[enemy]).toBeLessThan(100);
     // Shaft damage should be less than full damage
-    expect(100 - (world.stores.health.current[enemy] ?? 0)).toBeLessThanOrEqual(hammer.baseDamage * hammer.shaftDamageMult);
+    expect(100 - (world.stores.health.current[enemy] ?? 0)).toBeLessThanOrEqual(
+      hammer.baseDamage * hammer.shaftDamageMult,
+    );
   });
 
   it('hammer knockback smoothly displaces enemy away from player', () => {

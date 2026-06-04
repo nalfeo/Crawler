@@ -4,9 +4,12 @@ import type { GameWorld } from '../world.js';
 
 /** Distance from a point to a line segment. */
 function pointToSegmentDistSq(
-  px: number, py: number,
-  ax: number, ay: number,
-  bx: number, by: number,
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
 ): number {
   const abx = bx - ax;
   const aby = by - ay;
@@ -41,7 +44,7 @@ export function beamSystem(world: GameWorld): void {
     const tickMs = lineDamage.tickMs[eid] ?? 0;
     const lastTickMs = lineDamage.lastTickMs[eid] ?? 0;
 
-    if (tickMs > 0 && (world.elapsedMs - lastTickMs) < tickMs) {
+    if (tickMs > 0 && world.elapsedMs - lastTickMs < tickMs) {
       continue;
     }
 
@@ -64,7 +67,12 @@ export function beamSystem(world: GameWorld): void {
     const targets = query(world.ecs, [Health, Position]);
 
     for (const target of targets) {
-      if (target === undefined || target === eid || target === ownerEid || !entityExists(world.ecs, target)) {
+      if (
+        target === undefined ||
+        target === eid ||
+        target === ownerEid ||
+        !entityExists(world.ecs, target)
+      ) {
         continue;
       }
 

@@ -121,7 +121,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   hud.style.pointerEvents = 'none';
 
   const hint = document.createElement('p');
-  hint.textContent = 'Move with WASD / arrows. Switch weapons in the controls panel. All weapon types auto-fire.';
+  hint.textContent =
+    'Move with WASD / arrows. Switch weapons in the controls panel. All weapon types auto-fire.';
   hint.style.marginTop = '16px';
   hint.style.color = '#a5b4fc';
   hint.style.lineHeight = '1.6';
@@ -144,7 +145,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   };
 
   // Per-weapon tuning overrides that survive weapon switching
-  const tunedOverrides: Record<string, Partial<TunableWeaponDef>> = saved?.tunedWeaponOverrides ?? {};
+  const tunedOverrides: Record<string, Partial<TunableWeaponDef>> = saved?.tunedWeaponOverrides ??
+  {};
 
   let resetWorldFromGui = () => undefined;
 
@@ -203,7 +205,11 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         this.accumulator += delta;
         let steps = 0;
 
-        while (this.accumulator >= GAME.DELTA_MS && steps < MAX_STEPS_PER_FRAME && this.world.state === 'playing') {
+        while (
+          this.accumulator >= GAME.DELTA_MS &&
+          steps < MAX_STEPS_PER_FRAME &&
+          this.world.state === 'playing'
+        ) {
           this.world.frameCount += 1;
           this.world.elapsedMs += GAME.DELTA_MS;
 
@@ -299,7 +305,11 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     private resetWorld(): void {
       this.accumulator = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
-      this.playerEid = spawnPlayer(this.world, this.getSimulationWidth() / 2, this.getSimulationHeight() / 2);
+      this.playerEid = spawnPlayer(
+        this.world,
+        this.getSimulationWidth() / 2,
+        this.getSimulationHeight() / 2,
+      );
       addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
 
       this.applyActiveWeapon();
@@ -309,8 +319,10 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     }
 
     private updateHud(): void {
-      const playerHp = this.playerEid >= 0 ? this.world.stores.health.current[this.playerEid] ?? 0 : 0;
-      const score = this.playerEid >= 0 ? this.world.stores.broadcastScore.current[this.playerEid] ?? 0 : 0;
+      const playerHp =
+        this.playerEid >= 0 ? (this.world.stores.health.current[this.playerEid] ?? 0) : 0;
+      const score =
+        this.playerEid >= 0 ? (this.world.stores.broadcastScore.current[this.playerEid] ?? 0) : 0;
       const enemyCount = query(this.world.ecs, [Enemy]).length;
       const def = WEAPON_DEFS.get(settings.activeWeapon);
 
@@ -371,7 +383,9 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     // Melee / Unarmed: show only relevant controls per weapon
     if (wt === WeaponType.MELEE) {
       weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Blade Length');
-      weaponFolder.add(tunedWeapon, 'meleeStyle', { Slash: MeleeStyle.SLASH, Stab: MeleeStyle.STAB }).name('Style');
+      weaponFolder
+        .add(tunedWeapon, 'meleeStyle', { Slash: MeleeStyle.SLASH, Stab: MeleeStyle.STAB })
+        .name('Style');
       // Swing arc only matters for slash weapons
       if (baseDef.meleeStyle !== MeleeStyle.STAB) {
         weaponFolder.add(tunedWeapon, 'swingArcDeg', 5, 360, 1).name('Swing Arc (°)');
@@ -420,13 +434,20 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     }
 
     // Reset to defaults button
-    weaponFolder.add({ reset: () => {
-      const fresh = WEAPON_DEFS.get(settings.activeWeapon);
-      if (fresh && tunedWeapon) {
-        Object.assign(tunedWeapon, cloneWeaponDef(fresh));
-        weaponFolder?.controllersRecursive().forEach((c) => c.updateDisplay());
-      }
-    } }, 'reset').name('Reset to Defaults');
+    weaponFolder
+      .add(
+        {
+          reset: () => {
+            const fresh = WEAPON_DEFS.get(settings.activeWeapon);
+            if (fresh && tunedWeapon) {
+              Object.assign(tunedWeapon, cloneWeaponDef(fresh));
+              weaponFolder?.controllersRecursive().forEach((c) => c.updateDisplay());
+            }
+          },
+        },
+        'reset',
+      )
+      .name('Reset to Defaults');
   }
 
   const controlsApi = {
@@ -435,14 +456,17 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     },
   };
 
-  gui.add(settings, 'activeWeapon', WEAPON_IDS).name('Weapon').onChange((newWeaponId: string) => {
-    // Save the previous weapon's tuning before switching
-    if (tunedWeapon && tunedWeapon.id !== newWeaponId) {
-      tunedOverrides[tunedWeapon.id] = { ...tunedWeapon };
-    }
-    buildWeaponFolder();
-    persistState();
-  });
+  gui
+    .add(settings, 'activeWeapon', WEAPON_IDS)
+    .name('Weapon')
+    .onChange((newWeaponId: string) => {
+      // Save the previous weapon's tuning before switching
+      if (tunedWeapon && tunedWeapon.id !== newWeaponId) {
+        tunedOverrides[tunedWeapon.id] = { ...tunedWeapon };
+      }
+      buildWeaponFolder();
+      persistState();
+    });
 
   const arenaFolder = gui.addFolder('Arena');
   arenaFolder.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
@@ -495,6 +519,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
 registerLab('weapons-lab', {
   name: 'Weapons Lab',
-  description: 'Test all weapon types: melee, ranged, unarmed, magic, thrown, beam, and traps. Switch weapons via the dropdown.',
+  description:
+    'Test all weapon types: melee, ranged, unarmed, magic, thrown, beam, and traps. Switch weapons via the dropdown.',
   create: createWeaponsLab,
 });

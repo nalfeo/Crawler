@@ -57,7 +57,16 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
     }
 
     if (snap.radius > 0) {
-      spawnAreaAttack(world, snap.x, snap.y, snap.ownerEid, snap.damage, snap.radius, 50, snap.teamId);
+      spawnAreaAttack(
+        world,
+        snap.x,
+        snap.y,
+        snap.ownerEid,
+        snap.damage,
+        snap.radius,
+        50,
+        snap.teamId,
+      );
     }
   }
 

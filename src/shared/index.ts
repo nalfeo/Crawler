@@ -1,4 +1,13 @@
-export { GAME, FLOOR, PLAYER_SPEED, SAFE_ROOM, WEAPON, WeaponType, TeamId, XP } from './constants.js';
+export {
+  GAME,
+  FLOOR,
+  PLAYER_SPEED,
+  SAFE_ROOM,
+  WEAPON,
+  WeaponType,
+  TeamId,
+  XP,
+} from './constants.js';
 export type { WeaponTypeValue, TeamIdValue } from './constants.js';
 export { createInputState, normalizeInputDirection } from './input.js';
 export type { InputState } from './input.js';

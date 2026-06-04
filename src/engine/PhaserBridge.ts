@@ -151,16 +151,26 @@ function getEntityType(world: GameWorld, eid: number): string {
 
 function getTextureForType(type: string): string {
   switch (type) {
-    case 'player': return TEX_PLAYER;
-    case 'enemy': return TEX_ENEMY;
-    case 'gem': return TEX_GEM;
-    case 'proj': return TEX_BULLET;
-    case 'enemy_proj': return TEX_ENEMY_BULLET;
-    case 'aoe_proj': return TEX_AOE_PROJ;
-    case 'returning': return TEX_RETURNING;
-    case 'aoe': return TEX_MELEE;
-    case 'trap': return TEX_TRAP_ARMING;
-    default: return TEX_BULLET;
+    case 'player':
+      return TEX_PLAYER;
+    case 'enemy':
+      return TEX_ENEMY;
+    case 'gem':
+      return TEX_GEM;
+    case 'proj':
+      return TEX_BULLET;
+    case 'enemy_proj':
+      return TEX_ENEMY_BULLET;
+    case 'aoe_proj':
+      return TEX_AOE_PROJ;
+    case 'returning':
+      return TEX_RETURNING;
+    case 'aoe':
+      return TEX_MELEE;
+    case 'trap':
+      return TEX_TRAP_ARMING;
+    default:
+      return TEX_BULLET;
   }
 }
 
@@ -180,7 +190,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
-      const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } = world.stores;
+      const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
+        world.stores;
 
       for (const eid of entities) {
         activeEntities.add(eid);
@@ -260,9 +271,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           if (style === 1) {
             // Stab: extend forward then retract
-            const reach = progress <= 0.5
-              ? (progress / 0.5) * bladeLen
-              : ((1 - progress) / 0.5) * bladeLen;
+            const reach =
+              progress <= 0.5 ? (progress / 0.5) * bladeLen : ((1 - progress) / 0.5) * bladeLen;
             tipX = x + Math.cos(arcCenter) * reach;
             tipY = y + Math.sin(arcCenter) * reach;
 

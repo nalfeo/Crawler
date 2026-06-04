@@ -1,5 +1,14 @@
 import { addComponent, entityExists, hasComponent, query, set } from 'bitecs';
-import { Enemy, Health, Knockback, MeleeSwing, Owner, Player, Position, Team } from '../components.js';
+import {
+  Enemy,
+  Health,
+  Knockback,
+  MeleeSwing,
+  Owner,
+  Player,
+  Position,
+  Team,
+} from '../components.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 
@@ -8,9 +17,12 @@ const BLADE_HIT_HALF_WIDTH = 12;
 
 /** Distance from a point to a line segment (squared). */
 function pointToSegmentDistSq(
-  px: number, py: number,
-  ax: number, ay: number,
-  bx: number, by: number,
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
 ): number {
   const abx = bx - ax;
   const aby = by - ay;
@@ -101,9 +113,8 @@ export function meleeSwingSystem(world: GameWorld): void {
     let tipY: number;
 
     if (style === MeleeStyle.STAB) {
-      const reach = progress <= 0.5
-        ? (progress / 0.5) * bladeLength
-        : ((1 - progress) / 0.5) * bladeLength;
+      const reach =
+        progress <= 0.5 ? (progress / 0.5) * bladeLength : ((1 - progress) / 0.5) * bladeLength;
       tipX = px + Math.cos(arcCenter) * reach;
       tipY = py + Math.sin(arcCenter) * reach;
     } else {
@@ -122,7 +133,8 @@ export function meleeSwingSystem(world: GameWorld): void {
     for (const target of targets) {
       if (target === undefined || target === eid || target === ownerEid) continue;
       if (!entityExists(world.ecs, target)) continue;
-      if (!hasComponent(world.ecs, target, Enemy) && !hasComponent(world.ecs, target, Player)) continue;
+      if (!hasComponent(world.ecs, target, Enemy) && !hasComponent(world.ecs, target, Player))
+        continue;
       if (swingTeam >= 0 && hasComponent(world.ecs, target, Team)) {
         if ((team.id[target] ?? 0) === swingTeam) continue;
       }
@@ -165,11 +177,16 @@ export function meleeSwingSystem(world: GameWorld): void {
             const ny = kbDy / kbDist;
             // Spread the knockback over ~10 frames for smooth motion
             const kbSpeed = Math.max(1, knockback / 10);
-            addComponent(world.ecs, target, set(Knockback, {
-              dirX: nx, dirY: ny,
-              remaining: knockback,
-              speed: kbSpeed,
-            }));
+            addComponent(
+              world.ecs,
+              target,
+              set(Knockback, {
+                dirX: nx,
+                dirY: ny,
+                remaining: knockback,
+                speed: kbSpeed,
+              }),
+            );
           }
         }
       }

@@ -43,7 +43,11 @@ export function returningProjectileSystem(world: GameWorld): void {
 
     if ((returning.isReturning[eid] ?? 0) !== 0) {
       // Owner dead/missing? Despawn.
-      if (ownerEid < 0 || !entityExists(world.ecs, ownerEid) || !hasComponent(world.ecs, ownerEid, Position)) {
+      if (
+        ownerEid < 0 ||
+        !entityExists(world.ecs, ownerEid) ||
+        !hasComponent(world.ecs, ownerEid, Position)
+      ) {
         clearEntityStores(world, eid);
         removeEntity(world.ecs, eid);
         continue;

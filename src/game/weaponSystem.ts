@@ -175,7 +175,12 @@ function getNearestEnemyDirection(
 
 // --- Attack dispatchers per weapon type ---
 
-function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
+function fireMeleeAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
   // Remove any existing swing — only one active at a time
   const existingSwings = query(world.ecs, [MeleeSwing, Owner]);
   for (const eid of existingSwings) {
@@ -186,51 +191,134 @@ function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef, dir: 
 
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnMeleeSwing(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs,
-    dir.x, dir.y, def.swingArcDeg, TeamId.PLAYER, def.meleeStyle,
-    def.headRadius, def.shaftDamageMult, def.knockback);
+  spawnMeleeSwing(
+    world,
+    px,
+    py,
+    player,
+    def.baseDamage,
+    def.aoeRadius,
+    def.durationMs,
+    dir.x,
+    dir.y,
+    def.swingArcDeg,
+    TeamId.PLAYER,
+    def.meleeStyle,
+    def.headRadius,
+    def.shaftDamageMult,
+    def.knockback,
+  );
 }
 
-function fireRangedAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
+function fireRangedAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnProjectile(world, px, py, dir.x * def.projectileSpeed, dir.y * def.projectileSpeed, def.baseDamage, def.pierce);
+  spawnProjectile(
+    world,
+    px,
+    py,
+    dir.x * def.projectileSpeed,
+    dir.y * def.projectileSpeed,
+    def.baseDamage,
+    def.pierce,
+  );
 }
 
-function fireMagicAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
+function fireMagicAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
   spawnAoeProjectile(
-    world, px, py,
-    dir.x * def.projectileSpeed, dir.y * def.projectileSpeed,
-    def.baseDamage, def.aoeRadius, def.baseDamage,
-    player, TeamId.PLAYER,
+    world,
+    px,
+    py,
+    dir.x * def.projectileSpeed,
+    dir.y * def.projectileSpeed,
+    def.baseDamage,
+    def.aoeRadius,
+    def.baseDamage,
+    player,
+    TeamId.PLAYER,
   );
 }
 
-function fireThrownAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
+function fireThrownAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
   spawnReturningProjectile(
-    world, px, py,
-    dir.x * def.projectileSpeed, dir.y * def.projectileSpeed,
-    def.baseDamage, player, def.returnSpeed, def.maxRange, TeamId.PLAYER, def.pierce,
+    world,
+    px,
+    py,
+    dir.x * def.projectileSpeed,
+    dir.y * def.projectileSpeed,
+    def.baseDamage,
+    player,
+    def.returnSpeed,
+    def.maxRange,
+    TeamId.PLAYER,
+    def.pierce,
   );
 }
 
-function fireBeamAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
+function fireBeamAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnBeam(world, px, py, dir.x, dir.y, def.beamLength, def.baseDamage, def.durationMs, def.beamTickMs, player, TeamId.PLAYER);
+  spawnBeam(
+    world,
+    px,
+    py,
+    dir.x,
+    dir.y,
+    def.beamLength,
+    def.baseDamage,
+    def.durationMs,
+    def.beamTickMs,
+    player,
+    TeamId.PLAYER,
+  );
 }
 
 function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnTrap(world, px, py, def.baseDamage, def.trapTriggerRadius, def.trapExplosionRadius, def.trapArmMs, player, TeamId.PLAYER);
+  spawnTrap(
+    world,
+    px,
+    py,
+    def.baseDamage,
+    def.trapTriggerRadius,
+    def.trapExplosionRadius,
+    def.trapArmMs,
+    player,
+    TeamId.PLAYER,
+  );
 }
 
-function dispatchAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
+function dispatchAttack(
+  world: GameWorld,
+  player: number,
+  def: WeaponDef,
+  dir: { x: number; y: number },
+): void {
   switch (def.weaponType) {
     case WeaponType.MELEE:
       fireMeleeAttack(world, player, def, dir);
@@ -299,14 +387,17 @@ export function weaponSystem(world: GameWorld): void {
 
   const playerX = world.stores.position.x[player] ?? 0;
   const playerY = world.stores.position.y[player] ?? 0;
-  const direction = getNearestEnemyDirection(world, playerX, playerY) ?? { x: state.aimX, y: state.aimY };
+  const direction = getNearestEnemyDirection(world, playerX, playerY) ?? {
+    x: state.aimX,
+    y: state.aimY,
+  };
 
   // Data-driven weapon mode
   if (state.activeWeaponDef !== undefined) {
     const def = state.activeWeaponDef;
     const lastFire = state.lastFireMs;
 
-    if ((world.elapsedMs - lastFire) < def.cooldownMs) {
+    if (world.elapsedMs - lastFire < def.cooldownMs) {
       return;
     }
 
@@ -357,7 +448,7 @@ export function weaponEntitySystem(world: GameWorld): void {
     const cooldownMs = weapon.cooldownMs[weid] ?? 0;
     const lastFireMs = weapon.lastFireMs[weid] ?? 0;
 
-    if ((world.elapsedMs - lastFireMs) < cooldownMs) {
+    if (world.elapsedMs - lastFireMs < cooldownMs) {
       continue;
     }
 
@@ -374,7 +465,16 @@ export function weaponEntitySystem(world: GameWorld): void {
         break;
       case WeaponType.MELEE: {
         const range = weapon.range[weid] ?? WEAPON.MELEE_RANGE;
-        spawnAreaAttack(world, px, py, ownerEid, baseDamage, range, WEAPON.MELEE_DURATION_MS, TeamId.PLAYER);
+        spawnAreaAttack(
+          world,
+          px,
+          py,
+          ownerEid,
+          baseDamage,
+          range,
+          WEAPON.MELEE_DURATION_MS,
+          TeamId.PLAYER,
+        );
         break;
       }
       default:

@@ -151,9 +151,18 @@ export function spawnWeapon(
   teamId: number,
 ): number {
   const eid = createEntity(world);
-  addComponent(world.ecs, eid, set(Weapon, {
-    weaponType, baseDamage, cooldownMs, lastFireMs: -cooldownMs, range, projectileSpeed,
-  }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Weapon, {
+      weaponType,
+      baseDamage,
+      cooldownMs,
+      lastFireMs: -cooldownMs,
+      range,
+      projectileSpeed,
+    }),
+  );
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   return eid;
@@ -174,19 +183,30 @@ export function spawnAreaAttack(
   arcDeg?: number,
 ): number {
   const eid = createEntity(world);
-  const hasArc = dirX !== undefined && dirY !== undefined && arcDeg !== undefined && arcDeg > 0 && arcDeg < 360;
+  const hasArc =
+    dirX !== undefined && dirY !== undefined && arcDeg !== undefined && arcDeg > 0 && arcDeg < 360;
   addComponent(world.ecs, eid, set(Position, { x, y }));
-  addComponent(world.ecs, eid, set(AreaDamage, {
-    radius, damage, hitOnce: 1,
-    arcCenterRad: hasArc ? Math.atan2(dirY, dirX) : 0,
-    arcHalfRad: hasArc ? (arcDeg / 2) * (Math.PI / 180) : 0,
-  }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(AreaDamage, {
+      radius,
+      damage,
+      hitOnce: 1,
+      arcCenterRad: hasArc ? Math.atan2(dirY, dirX) : 0,
+      arcHalfRad: hasArc ? (arcDeg / 2) * (Math.PI / 180) : 0,
+    }),
+  );
   // Clear stale hit tracking in case this entity ID was recycled.
   clearAreaDamageHits(world, eid);
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: radius * 2, height: radius * 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Sprite, { textureId: 0, width: radius * 2, height: radius * 2 }),
+  );
   return eid;
 }
 
@@ -225,9 +245,17 @@ export function spawnReturningProjectile(
   pierce: number = 0,
 ): number {
   const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce);
-  addComponent(world.ecs, eid, set(Returning, {
-    returnSpeed, isReturning: 0, maxRange, originX: x, originY: y,
-  }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Returning, {
+      returnSpeed,
+      isReturning: 0,
+      maxRange,
+      originX: x,
+      originY: y,
+    }),
+  );
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   return eid;
@@ -249,7 +277,11 @@ export function spawnBeam(
 ): number {
   const eid = createEntity(world);
   addComponent(world.ecs, eid, set(Position, { x, y }));
-  addComponent(world.ecs, eid, set(LineDamage, { dirX, dirY, length, damage, tickMs, lastTickMs: world.elapsedMs - tickMs }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(LineDamage, { dirX, dirY, length, damage, tickMs, lastTickMs: world.elapsedMs - tickMs }),
+  );
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
@@ -271,10 +303,16 @@ export function spawnTrap(
 ): number {
   const eid = createEntity(world);
   addComponent(world.ecs, eid, set(Position, { x, y }));
-  addComponent(world.ecs, eid, set(Trap, {
-    triggerRadius, explosionRadius, explosionDamage,
-    armAtMs: world.elapsedMs + armDelayMs,
-  }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Trap, {
+      triggerRadius,
+      explosionRadius,
+      explosionDamage,
+      armAtMs: world.elapsedMs + armDelayMs,
+    }),
+  );
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 12, height: 12 }));
@@ -303,16 +341,31 @@ export function spawnMeleeSwing(
   const arcCenterRad = Math.atan2(dirY, dirX);
   const arcHalfRad = (arcDeg / 2) * (Math.PI / 180);
   addComponent(world.ecs, eid, set(Position, { x, y }));
-  addComponent(world.ecs, eid, set(MeleeSwing, {
-    bladeLength, arcCenterRad, arcHalfRad, damage,
-    spawnAtMs: world.elapsedMs, durationMs, style,
-    headRadius, shaftDamageMult, knockback,
-  }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(MeleeSwing, {
+      bladeLength,
+      arcCenterRad,
+      arcHalfRad,
+      damage,
+      spawnAtMs: world.elapsedMs,
+      durationMs,
+      style,
+      headRadius,
+      shaftDamageMult,
+      knockback,
+    }),
+  );
   // Clear any stale hit tracking from a recycled entity ID
   clearMeleeSwingHits(world, eid);
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: bladeLength * 2, height: bladeLength * 2 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Sprite, { textureId: 0, width: bladeLength * 2, height: bladeLength * 2 }),
+  );
   return eid;
 }

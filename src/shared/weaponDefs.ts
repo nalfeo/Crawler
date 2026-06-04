@@ -1,4 +1,10 @@
-import { MeleeStyle, WEAPON, WeaponType, type MeleeStyleValue, type WeaponTypeValue } from './constants.js';
+import {
+  MeleeStyle,
+  WEAPON,
+  WeaponType,
+  type MeleeStyleValue,
+  type WeaponTypeValue,
+} from './constants.js';
 
 export interface WeaponDef {
   readonly id: string;
@@ -41,7 +47,10 @@ export interface WeaponDef {
   readonly pierce: number;
 }
 
-function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weaponType' | 'baseDamage' | 'cooldownMs'>): WeaponDef {
+function def(
+  partial: Partial<WeaponDef> &
+    Pick<WeaponDef, 'id' | 'name' | 'weaponType' | 'baseDamage' | 'cooldownMs'>,
+): WeaponDef {
   return {
     range: 0,
     projectileSpeed: 0,
@@ -66,96 +75,197 @@ function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weap
 
 export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
   // --- Melee ---
-  ['sword', def({
-    id: 'sword', name: 'Sword', weaponType: WeaponType.MELEE,
-    baseDamage: 15, cooldownMs: 600, range: WEAPON.MELEE_RANGE,
-    aoeRadius: WEAPON.MELEE_RANGE, durationMs: WEAPON.MELEE_DURATION_MS,
-    swingArcDeg: 90,
-  })],
-  ['knife', def({
-    id: 'knife', name: 'Knife', weaponType: WeaponType.MELEE,
-    baseDamage: 8, cooldownMs: 300, range: 28,
-    aoeRadius: 28, durationMs: 150,
-    meleeStyle: MeleeStyle.STAB,
-  })],
-  ['hammer', def({
-    id: 'hammer', name: 'Hammer', weaponType: WeaponType.MELEE,
-    baseDamage: 25, cooldownMs: 1000, range: 48,
-    aoeRadius: 48, durationMs: 300,
-    headRadius: 14, shaftDamageMult: 0.5, knockback: 30,
-  })],
+  [
+    'sword',
+    def({
+      id: 'sword',
+      name: 'Sword',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 15,
+      cooldownMs: 600,
+      range: WEAPON.MELEE_RANGE,
+      aoeRadius: WEAPON.MELEE_RANGE,
+      durationMs: WEAPON.MELEE_DURATION_MS,
+      swingArcDeg: 90,
+    }),
+  ],
+  [
+    'knife',
+    def({
+      id: 'knife',
+      name: 'Knife',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 8,
+      cooldownMs: 300,
+      range: 28,
+      aoeRadius: 28,
+      durationMs: 150,
+      meleeStyle: MeleeStyle.STAB,
+    }),
+  ],
+  [
+    'hammer',
+    def({
+      id: 'hammer',
+      name: 'Hammer',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 25,
+      cooldownMs: 1000,
+      range: 48,
+      aoeRadius: 48,
+      durationMs: 300,
+      headRadius: 14,
+      shaftDamageMult: 0.5,
+      knockback: 30,
+    }),
+  ],
 
   // --- Ranged ---
-  ['pistol', def({
-    id: 'pistol', name: 'Pistol', weaponType: WeaponType.RANGED,
-    baseDamage: WEAPON.BASE_DAMAGE, cooldownMs: WEAPON.FIRE_RATE_MS,
-    range: 300, projectileSpeed: WEAPON.PROJECTILE_SPEED,
-  })],
-  ['bow', def({
-    id: 'bow', name: 'Bow', weaponType: WeaponType.RANGED,
-    baseDamage: 12, cooldownMs: 700, range: 350,
-    projectileSpeed: 6.0,
-  })],
-  ['crossbow', def({
-    id: 'crossbow', name: 'Crossbow', weaponType: WeaponType.RANGED,
-    baseDamage: 18, cooldownMs: 1200, range: 400,
-    projectileSpeed: 8.0,
-  })],
+  [
+    'pistol',
+    def({
+      id: 'pistol',
+      name: 'Pistol',
+      weaponType: WeaponType.RANGED,
+      baseDamage: WEAPON.BASE_DAMAGE,
+      cooldownMs: WEAPON.FIRE_RATE_MS,
+      range: 300,
+      projectileSpeed: WEAPON.PROJECTILE_SPEED,
+    }),
+  ],
+  [
+    'bow',
+    def({
+      id: 'bow',
+      name: 'Bow',
+      weaponType: WeaponType.RANGED,
+      baseDamage: 12,
+      cooldownMs: 700,
+      range: 350,
+      projectileSpeed: 6.0,
+    }),
+  ],
+  [
+    'crossbow',
+    def({
+      id: 'crossbow',
+      name: 'Crossbow',
+      weaponType: WeaponType.RANGED,
+      baseDamage: 18,
+      cooldownMs: 1200,
+      range: 400,
+      projectileSpeed: 8.0,
+    }),
+  ],
 
   // --- Unarmed ---
-  ['punch', def({
-    id: 'punch', name: 'Punch', weaponType: WeaponType.MELEE,
-    baseDamage: 8, cooldownMs: 200, range: 24,
-    aoeRadius: 24, durationMs: 120,
-    meleeStyle: MeleeStyle.STAB,
-    headRadius: 10, shaftDamageMult: 0, knockback: 20,
-  })],
-  ['kick', def({
-    id: 'kick', name: 'Kick', weaponType: WeaponType.MELEE,
-    baseDamage: 7, cooldownMs: 400, range: 30,
-    aoeRadius: 30, durationMs: 200,
-  })],
+  [
+    'punch',
+    def({
+      id: 'punch',
+      name: 'Punch',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 8,
+      cooldownMs: 200,
+      range: 24,
+      aoeRadius: 24,
+      durationMs: 120,
+      meleeStyle: MeleeStyle.STAB,
+      headRadius: 10,
+      shaftDamageMult: 0,
+      knockback: 20,
+    }),
+  ],
+  [
+    'kick',
+    def({
+      id: 'kick',
+      name: 'Kick',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 7,
+      cooldownMs: 400,
+      range: 30,
+      aoeRadius: 30,
+      durationMs: 200,
+    }),
+  ],
 
   // --- Magic ---
-  ['fireball', def({
-    id: 'fireball', name: 'Fireball', weaponType: WeaponType.MAGIC,
-    baseDamage: 8, cooldownMs: 800, range: 250,
-    projectileSpeed: 4.0, aoeRadius: WEAPON.AOE_RADIUS,
-  })],
+  [
+    'fireball',
+    def({
+      id: 'fireball',
+      name: 'Fireball',
+      weaponType: WeaponType.MAGIC,
+      baseDamage: 8,
+      cooldownMs: 800,
+      range: 250,
+      projectileSpeed: 4.0,
+      aoeRadius: WEAPON.AOE_RADIUS,
+    }),
+  ],
 
   // --- Thrown ---
-  ['boomerang', def({
-    id: 'boomerang', name: 'Boomerang', weaponType: WeaponType.THROWN,
-    baseDamage: 10, cooldownMs: 900, range: WEAPON.THROWN_MAX_RANGE,
-    projectileSpeed: WEAPON.PROJECTILE_SPEED,
-    returnSpeed: WEAPON.THROWN_RETURN_SPEED,
-    maxRange: WEAPON.THROWN_MAX_RANGE,
-  })],
-  ['throwing-knife', def({
-    id: 'throwing-knife', name: 'Throwing Knife', weaponType: WeaponType.THROWN,
-    baseDamage: 6, cooldownMs: 350, range: 150,
-    projectileSpeed: 7.0,
-    returnSpeed: 5.0,
-    maxRange: 150,
-  })],
+  [
+    'boomerang',
+    def({
+      id: 'boomerang',
+      name: 'Boomerang',
+      weaponType: WeaponType.THROWN,
+      baseDamage: 10,
+      cooldownMs: 900,
+      range: WEAPON.THROWN_MAX_RANGE,
+      projectileSpeed: WEAPON.PROJECTILE_SPEED,
+      returnSpeed: WEAPON.THROWN_RETURN_SPEED,
+      maxRange: WEAPON.THROWN_MAX_RANGE,
+    }),
+  ],
+  [
+    'throwing-knife',
+    def({
+      id: 'throwing-knife',
+      name: 'Throwing Knife',
+      weaponType: WeaponType.THROWN,
+      baseDamage: 6,
+      cooldownMs: 350,
+      range: 150,
+      projectileSpeed: 7.0,
+      returnSpeed: 5.0,
+      maxRange: 150,
+    }),
+  ],
 
   // --- Beam ---
-  ['laser', def({
-    id: 'laser', name: 'Laser', weaponType: WeaponType.BEAM,
-    baseDamage: 3, cooldownMs: 1500, range: WEAPON.BEAM_LENGTH,
-    beamLength: WEAPON.BEAM_LENGTH,
-    durationMs: WEAPON.BEAM_DURATION_MS,
-    beamTickMs: WEAPON.BEAM_TICK_MS,
-  })],
+  [
+    'laser',
+    def({
+      id: 'laser',
+      name: 'Laser',
+      weaponType: WeaponType.BEAM,
+      baseDamage: 3,
+      cooldownMs: 1500,
+      range: WEAPON.BEAM_LENGTH,
+      beamLength: WEAPON.BEAM_LENGTH,
+      durationMs: WEAPON.BEAM_DURATION_MS,
+      beamTickMs: WEAPON.BEAM_TICK_MS,
+    }),
+  ],
 
   // --- Traps ---
-  ['landmine', def({
-    id: 'landmine', name: 'Landmine', weaponType: WeaponType.TRAP,
-    baseDamage: 30, cooldownMs: 2000, range: 0,
-    trapArmMs: WEAPON.TRAP_ARM_MS,
-    trapTriggerRadius: WEAPON.TRAP_TRIGGER_RADIUS,
-    trapExplosionRadius: WEAPON.TRAP_EXPLOSION_RADIUS,
-  })],
+  [
+    'landmine',
+    def({
+      id: 'landmine',
+      name: 'Landmine',
+      weaponType: WeaponType.TRAP,
+      baseDamage: 30,
+      cooldownMs: 2000,
+      range: 0,
+      trapArmMs: WEAPON.TRAP_ARM_MS,
+      trapTriggerRadius: WEAPON.TRAP_TRIGGER_RADIUS,
+      trapExplosionRadius: WEAPON.TRAP_EXPLOSION_RADIUS,
+    }),
+  ],
 ]);
 
 export function getWeaponDef(id: string): WeaponDef | undefined {

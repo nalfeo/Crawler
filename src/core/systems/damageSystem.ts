@@ -1,6 +1,15 @@
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
-import { Damage, Enemy, EnemyProjectile, Health, Player, Projectile, Returning, XpGem } from '../components.js';
+import {
+  Damage,
+  Enemy,
+  EnemyProjectile,
+  Health,
+  Player,
+  Projectile,
+  Returning,
+  XpGem,
+} from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
