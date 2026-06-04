@@ -188,12 +188,6 @@ function fireRangedAttack(world: GameWorld, player: number, def: WeaponDef, dir:
   spawnProjectile(world, px, py, dir.x * def.projectileSpeed, dir.y * def.projectileSpeed, def.baseDamage, def.pierce);
 }
 
-function fireUnarmedAttack(world: GameWorld, player: number, def: WeaponDef): void {
-  const px = world.stores.position.x[player] ?? 0;
-  const py = world.stores.position.y[player] ?? 0;
-  spawnAreaAttack(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs, TeamId.PLAYER);
-}
-
 function fireMagicAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
@@ -234,9 +228,6 @@ function dispatchAttack(world: GameWorld, player: number, def: WeaponDef, dir: {
       break;
     case WeaponType.RANGED:
       fireRangedAttack(world, player, def, dir);
-      break;
-    case WeaponType.UNARMED:
-      fireUnarmedAttack(world, player, def);
       break;
     case WeaponType.MAGIC:
       fireMagicAttack(world, player, def, dir);
@@ -372,8 +363,7 @@ export function weaponEntitySystem(world: GameWorld): void {
       case WeaponType.RANGED:
         spawnProjectile(world, px, py, dir.x * projSpeed, dir.y * projSpeed, baseDamage);
         break;
-      case WeaponType.MELEE:
-      case WeaponType.UNARMED: {
+      case WeaponType.MELEE: {
         const range = weapon.range[weid] ?? WEAPON.MELEE_RANGE;
         spawnAreaAttack(world, px, py, ownerEid, baseDamage, range, WEAPON.MELEE_DURATION_MS, TeamId.PLAYER);
         break;

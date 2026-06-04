@@ -1,6 +1,6 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { AreaDamage, Knockback, Lifetime, MeleeSwing, Owner, Position, Team } from '../../src/core/components.js';
+import { Knockback, Lifetime, MeleeSwing, Owner, Position, Team } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
@@ -295,17 +295,19 @@ describe('unarmed weapons', () => {
     expect(world.stores.meleeSwing.knockback[swing]).toBe(def.knockback);
   });
 
-  it('kick spawns a short-range AreaDamage', () => {
+  it('kick spawns a 360° MeleeSwing slash', () => {
     const world = createTestWorld();
     spawnPlayer(world, 200, 200);
+    spawnEnemy(world, 230, 200, 50);
     const def = getWeaponDef('kick')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
 
     weaponSystem(world);
 
-    const areas = Array.from(query(world.ecs, [AreaDamage, Position]));
-    expect(areas).toHaveLength(1);
-    expect(world.stores.areaDamage.radius[areas[0]!]).toBe(def.aoeRadius);
+    const swings = Array.from(query(world.ecs, [MeleeSwing, Position]));
+    expect(swings).toHaveLength(1);
+    expect(world.stores.meleeSwing.style[swings[0]!]).toBe(0); // SLASH
+    expect(def.swingArcDeg).toBe(360);
   });
 });

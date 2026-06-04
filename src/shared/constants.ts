@@ -12,7 +12,6 @@ export const PLAYER_SPEED = 3.0;
 export const WeaponType = {
   MELEE: 0,
   RANGED: 1,
-  UNARMED: 2,
   MAGIC: 3,
   THROWN: 4,
   BEAM: 5,
@@ -39,8 +38,6 @@ export const WEAPON = {
   BASE_DAMAGE: 10,
   MELEE_RANGE: 40,
   MELEE_DURATION_MS: 200,
-  UNARMED_RANGE: 24,
-  UNARMED_DURATION_MS: 150,
   BEAM_LENGTH: 200,
   BEAM_DURATION_MS: 300,
   BEAM_TICK_MS: 100,

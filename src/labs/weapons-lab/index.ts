@@ -367,7 +367,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     const wt = baseDef.weaponType;
 
     // Melee / Unarmed: show only relevant controls per weapon
-    if (wt === WeaponType.MELEE || wt === WeaponType.UNARMED) {
+    if (wt === WeaponType.MELEE) {
       weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Blade Length');
       weaponFolder.add(tunedWeapon, 'meleeStyle', { Slash: MeleeStyle.SLASH, Stab: MeleeStyle.STAB }).name('Style');
       // Swing arc only matters for slash weapons

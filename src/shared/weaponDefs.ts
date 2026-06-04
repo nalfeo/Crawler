@@ -9,9 +9,9 @@ export interface WeaponDef {
   readonly range: number;
   /** Projectile speed (for RANGED, MAGIC, THROWN). */
   readonly projectileSpeed: number;
-  /** AoE radius on impact (MAGIC) or swing radius (MELEE, UNARMED). */
+  /** AoE radius on impact (MAGIC) or swing radius (MELEE). */
   readonly aoeRadius: number;
-  /** Duration of active attack in ms (MELEE, UNARMED, BEAM). */
+  /** Duration of active attack in ms (MELEE, BEAM). */
   readonly durationMs: number;
   /** Beam-specific tick interval for repeated damage. */
   readonly beamTickMs: number;
@@ -105,13 +105,13 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
   // --- Unarmed ---
   ['punch', def({
     id: 'punch', name: 'Punch', weaponType: WeaponType.MELEE,
-    baseDamage: 8, cooldownMs: 200, range: WEAPON.UNARMED_RANGE,
-    aoeRadius: WEAPON.UNARMED_RANGE, durationMs: 120,
+    baseDamage: 8, cooldownMs: 200, range: 24,
+    aoeRadius: 24, durationMs: 120,
     meleeStyle: MeleeStyle.STAB,
     headRadius: 10, shaftDamageMult: 0, knockback: 20,
   })],
   ['kick', def({
-    id: 'kick', name: 'Kick', weaponType: WeaponType.UNARMED,
+    id: 'kick', name: 'Kick', weaponType: WeaponType.MELEE,
     baseDamage: 7, cooldownMs: 400, range: 30,
     aoeRadius: 30, durationMs: 200,
   })],
