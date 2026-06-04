@@ -113,7 +113,12 @@ function readLastFireMs(world: GameWorld, player: number): number {
   return state.lastFireMs;
 }
 
-function writeLastFireMs(world: GameWorld, player: number, config: WeaponConfig, lastFireMs: number): void {
+function writeLastFireMs(
+  world: GameWorld,
+  player: number,
+  config: WeaponConfig,
+  lastFireMs: number,
+): void {
   const state = getWeaponState(world);
   state.lastFireMs = lastFireMs;
 
@@ -139,7 +144,11 @@ function updateAimFromVelocity(world: GameWorld, player: number, state: WeaponSt
   state.aimY = direction.y;
 }
 
-function getNearestEnemyDirection(world: GameWorld, playerX: number, playerY: number): { x: number; y: number } | undefined {
+function getNearestEnemyDirection(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+): { x: number; y: number } | undefined {
   const enemies = query(world.ecs, [Enemy, Position]);
   let nearestDirection: { x: number; y: number } | undefined;
   let nearestDistanceSq = Number.POSITIVE_INFINITY;
@@ -151,7 +160,7 @@ function getNearestEnemyDirection(world: GameWorld, playerX: number, playerY: nu
 
     const deltaX = (world.stores.position.x[enemy] ?? 0) - playerX;
     const deltaY = (world.stores.position.y[enemy] ?? 0) - playerY;
-    const distanceSq = (deltaX * deltaX) + (deltaY * deltaY);
+    const distanceSq = deltaX * deltaX + deltaY * deltaY;
 
     if (distanceSq >= nearestDistanceSq || distanceSq <= 0.0001) {
       continue;
@@ -312,7 +321,7 @@ export function weaponSystem(world: GameWorld): void {
   const config = resolveWeaponConfig(world, player);
   const lastFireMs = readLastFireMs(world, player);
 
-  if ((world.elapsedMs - lastFireMs) < config.fireRateMs) {
+  if (world.elapsedMs - lastFireMs < config.fireRateMs) {
     return;
   }
 

@@ -120,7 +120,7 @@ export function enemySpawnerSystem(world: GameWorld, config: SpawnerConfig): voi
 
   const state = getSpawnerState(world);
 
-  if ((world.elapsedMs - state.lastSpawnMs) < config.spawnIntervalMs) {
+  if (world.elapsedMs - state.lastSpawnMs < config.spawnIntervalMs) {
     return;
   }
 

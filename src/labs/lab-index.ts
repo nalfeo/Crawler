@@ -11,7 +11,9 @@ export function renderLabIndex(): void {
   canvas.replaceChildren();
   controls.replaceChildren();
 
-  const labs = [...getAllLabs().entries()].sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
+  const labs = [...getAllLabs().entries()].sort(([leftId], [rightId]) =>
+    leftId.localeCompare(rightId),
+  );
 
   const wrapper = document.createElement('div');
   wrapper.style.padding = '32px';
@@ -24,7 +26,8 @@ export function renderLabIndex(): void {
   title.style.marginBottom = '12px';
 
   const subtitle = document.createElement('p');
-  subtitle.textContent = 'Developer sandboxes for prototyping systems before they move into the game.';
+  subtitle.textContent =
+    'Developer sandboxes for prototyping systems before they move into the game.';
   subtitle.style.color = '#c9d4ff';
   subtitle.style.lineHeight = '1.6';
   subtitle.style.marginBottom = '24px';
@@ -98,7 +101,8 @@ export function renderLabIndex(): void {
   summaryTitle.style.marginBottom = '8px';
 
   const summaryBody = document.createElement('p');
-  summaryBody.textContent = 'Each lab is a standalone sandbox with its own canvas and lil-gui controls.';
+  summaryBody.textContent =
+    'Each lab is a standalone sandbox with its own canvas and lil-gui controls.';
   summaryBody.style.color = '#c9d4ff';
   summaryBody.style.lineHeight = '1.6';
 
@@ -115,7 +119,10 @@ export function renderLabIndex(): void {
   hintTitle.style.marginBottom = '8px';
 
   const hintBody = document.createElement('p');
-  hintBody.textContent = labs.length > 0 ? 'Select a lab to launch it in this window.' : 'Register a lab in src/labs to see it here.';
+  hintBody.textContent =
+    labs.length > 0
+      ? 'Select a lab to launch it in this window.'
+      : 'Register a lab in src/labs to see it here.';
   hintBody.style.color = '#c9d4ff';
   hintBody.style.lineHeight = '1.6';
 

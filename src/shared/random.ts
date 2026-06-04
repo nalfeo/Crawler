@@ -8,7 +8,7 @@ export class SeededRandom {
 
   constructor(seed: number) {
     // xorshift32 has a fixed point at 0 — guard against it
-    this.state = (seed | 0) || 0x9e3779b9;
+    this.state = seed | 0 || 0x9e3779b9;
   }
 
   /** Returns a float in [0, 1) — deterministic for a given seed sequence. */

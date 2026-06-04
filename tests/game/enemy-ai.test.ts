@@ -1,7 +1,12 @@
 import { setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { EnemyBehavior, Velocity } from '../../src/core/components.js';
-import { movementSystem, spawnBehaviorEnemy, spawnEnemy, spawnPlayer } from '../../src/core/index.js';
+import {
+  movementSystem,
+  spawnBehaviorEnemy,
+  spawnEnemy,
+  spawnPlayer,
+} from '../../src/core/index.js';
 import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
