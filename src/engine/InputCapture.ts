@@ -6,6 +6,10 @@ import { normalizeInputDirection, type InputState } from '../shared/input.js';
  * Phaser's built-in keyboard plugin is tied to canvas focus — when lil-gui
  * buttons steal focus, keyup events are missed and keys stick.  This
  * implementation is completely focus-independent.
+ *
+ * Touch listeners bind to the Phaser canvas (when available) so only
+ * touches that start on the game surface are captured — lab UI panels
+ * and other overlays remain scrollable.
  */
 export function createInputCapture(scene: Phaser.Scene): {
   /** Read current hardware state into the InputState */
@@ -13,11 +17,17 @@ export function createInputCapture(scene: Phaser.Scene): {
   destroy(): void;
 } {
   const keysDown = new Set<string>();
-  const activeTouches = new Map<number, { zone: 'move' | 'action'; startX: number; startY: number; x: number; y: number }>();
+  const activeTouches = new Map<
+    number,
+    { zone: 'move' | 'action'; startX: number; startY: number; x: number; y: number }
+  >();
   const JOYSTICK_RADIUS_PX = 60;
   const touchStartOptions: AddEventListenerOptions = { passive: true };
   const touchMoveOptions: AddEventListenerOptions = { passive: false };
   const touchEndOptions: AddEventListenerOptions = { passive: true };
+
+  // Touch target: prefer canvas so lab UI stays interactive
+  const touchTarget: EventTarget = scene.game?.canvas ?? window;
 
   const onKeyDown = (e: KeyboardEvent) => {
     keysDown.add(e.code);
@@ -25,12 +35,21 @@ export function createInputCapture(scene: Phaser.Scene): {
   const onKeyUp = (e: KeyboardEvent) => {
     keysDown.delete(e.code);
   };
-  // Clear all keys when the window loses focus (alt-tab, etc.)
+  // Clear all keys and touches when the window loses focus (alt-tab, etc.)
   const onBlur = () => {
     keysDown.clear();
     activeTouches.clear();
   };
-  const classifyTouchZone = (clientX: number): 'move' | 'action' => (clientX < (window.innerWidth / 2) ? 'move' : 'action');
+
+  const classifyTouchZone = (clientX: number): 'move' | 'action' => {
+    const canvas = scene.game?.canvas;
+    if (canvas) {
+      const rect = canvas.getBoundingClientRect();
+      return clientX < rect.left + rect.width / 2 ? 'move' : 'action';
+    }
+    return clientX < window.innerWidth / 2 ? 'move' : 'action';
+  };
+
   const onTouchStart = (e: TouchEvent) => {
     for (const touch of e.changedTouches) {
       activeTouches.set(touch.identifier, {
@@ -81,10 +100,10 @@ export function createInputCapture(scene: Phaser.Scene): {
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('blur', onBlur);
-  window.addEventListener('touchstart', onTouchStart, touchStartOptions);
-  window.addEventListener('touchmove', onTouchMove, touchMoveOptions);
-  window.addEventListener('touchend', onTouchEnd, touchEndOptions);
-  window.addEventListener('touchcancel', onTouchEnd, touchEndOptions);
+  touchTarget.addEventListener('touchstart', onTouchStart as EventListener, touchStartOptions);
+  touchTarget.addEventListener('touchmove', onTouchMove as EventListener, touchMoveOptions);
+  touchTarget.addEventListener('touchend', onTouchEnd as EventListener, touchEndOptions);
+  touchTarget.addEventListener('touchcancel', onTouchEnd as EventListener, touchEndOptions);
 
   return {
     poll(state: InputState): void {
@@ -139,10 +158,14 @@ export function createInputCapture(scene: Phaser.Scene): {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('blur', onBlur);
-      window.removeEventListener('touchstart', onTouchStart, touchStartOptions);
-      window.removeEventListener('touchmove', onTouchMove, touchMoveOptions);
-      window.removeEventListener('touchend', onTouchEnd, touchEndOptions);
-      window.removeEventListener('touchcancel', onTouchEnd, touchEndOptions);
+      touchTarget.removeEventListener(
+        'touchstart',
+        onTouchStart as EventListener,
+        touchStartOptions,
+      );
+      touchTarget.removeEventListener('touchmove', onTouchMove as EventListener, touchMoveOptions);
+      touchTarget.removeEventListener('touchend', onTouchEnd as EventListener, touchEndOptions);
+      touchTarget.removeEventListener('touchcancel', onTouchEnd as EventListener, touchEndOptions);
       keysDown.clear();
       activeTouches.clear();
     },

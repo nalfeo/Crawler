@@ -60,8 +60,32 @@ afterEach(() => {
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────
-function createMockScene() {
+function createMockCanvas(): HTMLCanvasElement {
+  const canvasListeners = new Map<string, Set<EventListener>>();
   return {
+    addEventListener(type: string, fn: EventListener, _opts?: boolean | AddEventListenerOptions) {
+      if (!canvasListeners.has(type)) canvasListeners.set(type, new Set());
+      canvasListeners.get(type)!.add(fn);
+    },
+    removeEventListener(type: string, fn: EventListener, _opts?: boolean | EventListenerOptions) {
+      canvasListeners.get(type)?.delete(fn);
+    },
+    dispatchEvent(event: { type: string }): boolean {
+      for (const fn of canvasListeners.get(event.type) ?? []) {
+        (fn as (e: unknown) => void)(event);
+      }
+      return true;
+    },
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+  } as unknown as HTMLCanvasElement;
+}
+
+let mockCanvas: HTMLCanvasElement;
+
+function createMockScene() {
+  mockCanvas = createMockCanvas();
+  return {
+    game: { canvas: mockCanvas },
     input: {
       activePointer: {
         worldX: 0,
@@ -80,6 +104,15 @@ function createMockScene() {
       height: 600,
     },
   } as unknown as import('phaser').Scene;
+}
+
+function dispatchCanvasTouch(
+  type: string,
+  touches: Array<{ id: number; x: number; y: number }>,
+): void {
+  (mockCanvas as unknown as { dispatchEvent: (e: unknown) => boolean }).dispatchEvent(
+    touchEvent(type, touches),
+  );
 }
 
 function pressKey(code: string): void {
@@ -107,15 +140,15 @@ function touchEvent(type: string, touches: Array<{ id: number; x: number; y: num
 }
 
 function startTouch(id: number, x: number, y: number): void {
-  mockDispatchEvent(touchEvent('touchstart', [{ id, x, y }]));
+  dispatchCanvasTouch('touchstart', [{ id, x, y }]);
 }
 
 function moveTouch(id: number, x: number, y: number): void {
-  mockDispatchEvent(touchEvent('touchmove', [{ id, x, y }]));
+  dispatchCanvasTouch('touchmove', [{ id, x, y }]);
 }
 
 function endTouch(id: number, x: number, y: number): void {
-  mockDispatchEvent(touchEvent('touchend', [{ id, x, y }]));
+  dispatchCanvasTouch('touchend', [{ id, x, y }]);
 }
 
 describe('InputCapture (raw DOM)', () => {
@@ -221,6 +254,23 @@ describe('InputCapture (raw DOM)', () => {
     capture.poll(state);
     expect(state.moveX).toBe(0);
     expect(state.moveY).toBe(0);
+  });
+
+  it('window blur clears active touches', () => {
+    startTouch(1, 100, 200);
+    moveTouch(1, 160, 200);
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+
+    startTouch(2, 900, 300);
+    capture.poll(state);
+    expect(state.action).toBe(true);
+
+    blurWindow();
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+    expect(state.action).toBe(false);
   });
 
   it('Space key triggers action', () => {
