@@ -6,16 +6,17 @@ import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 
-class MockRectangle {
+class MockImage {
   destroyed = false;
+  alpha = 1;
+  scaleX = 1;
+  scaleY = 1;
+  rotation = 0;
 
   constructor(
     public x: number,
     public y: number,
-    public width: number,
-    public height: number,
-    public fillColor: number,
-    public fillAlpha = 1,
+    public textureKey: string,
   ) {}
 
   setPosition(x: number, y: number): this {
@@ -24,15 +25,28 @@ class MockRectangle {
     return this;
   }
 
-  setSize(width: number, height: number): this {
-    this.width = width;
-    this.height = height;
+  setTexture(key: string): this {
+    this.textureKey = key;
     return this;
   }
 
-  setFillStyle(fillColor: number, fillAlpha = 1): this {
-    this.fillColor = fillColor;
-    this.fillAlpha = fillAlpha;
+  setAlpha(alpha: number): this {
+    this.alpha = alpha;
+    return this;
+  }
+
+  setScale(scale: number): this {
+    this.scaleX = scale;
+    this.scaleY = scale;
+    return this;
+  }
+
+  setRotation(rotation: number): this {
+    this.rotation = rotation;
+    return this;
+  }
+
+  setVisible(_visible: boolean): this {
     return this;
   }
 
@@ -42,18 +56,18 @@ class MockRectangle {
 }
 
 function createSceneStub() {
-  const rectangles: MockRectangle[] = [];
-  const rectangle = vi.fn((x = 0, y = 0, width = 128, height = 128, fillColor = 0xffffff) => {
-    const mockRectangle = new MockRectangle(x, y, width, height, fillColor);
-    rectangles.push(mockRectangle);
-    return mockRectangle as unknown as Phaser.GameObjects.Rectangle;
+  const images: MockImage[] = [];
+  const image = vi.fn((x = 0, y = 0, textureKey = '') => {
+    const mockImage = new MockImage(x, y, textureKey);
+    images.push(mockImage);
+    return mockImage as unknown as Phaser.GameObjects.Image;
   });
 
   return {
-    rectangles,
+    images,
     scene: {
       add: {
-        rectangle,
+        image,
       },
     } as unknown as Phaser.Scene,
   };
@@ -61,17 +75,17 @@ function createSceneStub() {
 
 describe('createPhaserBridge', () => {
   it('handles empty worlds without creating game objects', () => {
-    const { scene, rectangles } = createSceneStub();
+    const { scene, images } = createSceneStub();
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
 
     bridge.sync(world);
 
-    expect(rectangles).toHaveLength(0);
+    expect(images).toHaveLength(0);
   });
 
-  it('creates and updates rectangles for sprite-position entities', () => {
-    const { scene, rectangles } = createSceneStub();
+  it('creates and updates images for sprite-position entities', () => {
+    const { scene, images } = createSceneStub();
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
     const eid = addEntity(world.ecs);
@@ -82,13 +96,10 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
 
-    expect(rectangles).toHaveLength(1);
-    expect(rectangles[0]).toMatchObject({
+    expect(images).toHaveLength(1);
+    expect(images[0]).toMatchObject({
       x: 10,
       y: 20,
-      width: 24,
-      height: 24,
-      fillColor: 0x00ff00,
       destroyed: false,
     });
 
@@ -97,12 +108,12 @@ describe('createPhaserBridge', () => {
 
     bridge.sync(world);
 
-    expect(rectangles).toHaveLength(1);
-    expect(rectangles[0]).toMatchObject({ x: 30, y: 40, width: 24, height: 24 });
+    expect(images).toHaveLength(1);
+    expect(images[0]).toMatchObject({ x: 30, y: 40 });
   });
 
-  it('destroys rectangles when entities disappear or the bridge is destroyed', () => {
-    const { scene, rectangles } = createSceneStub();
+  it('destroys images when entities disappear or the bridge is destroyed', () => {
+    const { scene, images } = createSceneStub();
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
     const eid = addEntity(world.ecs);
@@ -111,22 +122,22 @@ describe('createPhaserBridge', () => {
     addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 12, height: 12 }));
 
     bridge.sync(world);
-    expect(rectangles).toHaveLength(1);
+    expect(images).toHaveLength(1);
 
     removeEntity(world.ecs, eid);
     bridge.sync(world);
 
-    expect(rectangles[0]?.destroyed).toBe(true);
+    expect(images[0]?.destroyed).toBe(true);
 
     const secondEid = addEntity(world.ecs);
     addComponent(world.ecs, secondEid, set(Position, { x: 5, y: 6 }));
     addComponent(world.ecs, secondEid, set(Sprite, { textureId: 0, width: 12, height: 12 }));
 
     bridge.sync(world);
-    expect(rectangles).toHaveLength(2);
+    expect(images).toHaveLength(2);
 
     bridge.destroy();
 
-    expect(rectangles[1]?.destroyed).toBe(true);
+    expect(images[1]?.destroyed).toBe(true);
   });
 });

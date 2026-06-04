@@ -7,6 +7,8 @@ import {
   Health,
   Player,
   Projectile,
+  Returning,
+  Stats,
   XpGem,
 } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
@@ -31,8 +33,32 @@ function getPlayerHitTimestamps(world: GameWorld): Float64Array {
   return hitTimestamps;
 }
 
+/** Per-projectile hit tracking for pierce (prevents double-hitting same enemy). */
+const pierceHitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
+
+function getPierceHitSet(world: GameWorld, eid: number): Set<number> {
+  let worldHits = pierceHitSets.get(world);
+  if (worldHits === undefined) {
+    worldHits = new Map();
+    pierceHitSets.set(world, worldHits);
+  }
+  let hits = worldHits.get(eid);
+  if (hits === undefined) {
+    hits = new Set();
+    worldHits.set(eid, hits);
+  }
+  return hits;
+}
+
+export function clearProjectilePierceHits(world: GameWorld, eid: number): void {
+  const worldHits = pierceHitSets.get(world);
+  if (worldHits !== undefined) worldHits.delete(eid);
+}
+
 function destroyEntity(world: GameWorld, eid: number): void {
   clearEntityStores(world, eid);
+  // Clean up pierce hit tracking
+  clearProjectilePierceHits(world, eid);
   removeEntity(world.ecs, eid);
 }
 
@@ -45,14 +71,51 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
   return amount > 0 ? amount : fallbackAmount;
 }
 
+/** Apply armor mitigation for player: damageTaken = max(1, incoming - armor) */
+function applyArmorReduction(world: GameWorld, player: number, rawDamage: number): number {
+  if (!hasComponent(world.ecs, player, Stats)) {
+    return rawDamage;
+  }
+  const armor = world.stores.stats.armor[player] ?? 0;
+  return Math.max(1, rawDamage - armor);
+}
+
 function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
+  // If this is the first hit for this projectile, clear stale hit tracking
+  // from any previous entity that used the same recycled ECS ID.
+  if ((world.stores.projectile.hitCount[projectile] ?? 0) === 0) {
+    clearProjectilePierceHits(world, projectile);
+  }
+
+  // Check if this enemy was already hit by this piercing projectile
+  const hitSet = getPierceHitSet(world, projectile);
+  if (hitSet.has(enemy)) return;
+
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
     const currentHealth = world.stores.health.current[enemy] ?? 0;
     world.stores.health.current[enemy] = Math.max(0, currentHealth - amount);
+
+    // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
+    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
   }
 
-  destroyEntity(world, projectile);
+  hitSet.add(enemy);
+
+  const pierce = world.stores.projectile.pierce[projectile] ?? 0;
+  const hitCount = (world.stores.projectile.hitCount[projectile] ?? 0) + 1;
+  world.stores.projectile.hitCount[projectile] = hitCount;
+
+  if (hitCount > pierce) {
+    if (hasComponent(world.ecs, projectile, Returning)) {
+      world.stores.returning.isReturning[projectile] = 1;
+      world.stores.projectile.pierce[projectile] = 255;
+      world.stores.projectile.hitCount[projectile] = 0;
+      clearProjectilePierceHits(world, projectile);
+      return;
+    }
+    destroyEntity(world, projectile);
+  }
 }
 
 function applyPlayerEnemyHit(
@@ -71,7 +134,8 @@ function applyPlayerEnemyHit(
     return;
   }
 
-  const amount = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
+  const raw = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
+  const amount = applyArmorReduction(world, player, raw);
   const currentHealth = world.stores.health.current[player] ?? 0;
   world.stores.health.current[player] = Math.max(0, currentHealth - amount);
   hitTimestamps[player] = world.elapsedMs;
@@ -95,7 +159,8 @@ function applyEnemyProjectileHit(
     return;
   }
 
-  const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+  const raw = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+  const amount = applyArmorReduction(world, player, raw);
   const currentHealth = world.stores.health.current[player] ?? 0;
   world.stores.health.current[player] = Math.max(0, currentHealth - amount);
   hitTimestamps[player] = world.elapsedMs;
@@ -107,6 +172,9 @@ function collectXpGem(world: GameWorld, player: number, gem: number): void {
   const currentScore = world.stores.broadcastScore.current[player] ?? 0;
   const gemValue = world.stores.xpGem.value[gem] ?? 0;
   world.stores.broadcastScore.current[player] = currentScore + gemValue;
+
+  // Accumulate XP into the level system
+  world.playerLevel.xp += gemValue;
 
   destroyEntity(world, gem);
 }

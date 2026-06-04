@@ -7,19 +7,36 @@
  */
 import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
+import type { InventoryBag } from '../shared/inventory.js';
 import {
   Position,
   Velocity,
   Rotation,
   Health,
   Damage,
+  Projectile,
   XpGem,
   Sprite,
   EnemyBehavior,
   BroadcastScore,
+  DroppedItem,
+  Weapon,
+  Owner,
+  Team,
+  Lifetime,
+  AreaDamage,
+  AoeOnImpact,
+  Returning,
+  LineDamage,
+  Trap,
+  MeleeSwing,
+  Knockback,
+  BaseStats,
+  EffectiveStats,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
+import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
 
 export interface GameWorld {
   /** The bitecs ECS world instance */
@@ -35,7 +52,22 @@ export interface GameWorld {
   /** Current floor number (1-indexed) */
   floor: number;
   /** Game state */
-  state: 'loading' | 'playing' | 'paused' | 'safe_room' | 'game_over';
+  state: 'loading' | 'playing' | 'paused' | 'safe_room' | 'game_over' | 'level_up';
+
+  // --- Stats/Skills/Levels (player-singleton, stored at world level) ---
+
+  /** Player level state — JS numbers to avoid Uint16 cap and float precision issues. */
+  playerLevel: PlayerLevel;
+  /** Active stat modifiers from skills, floors, and buffs. Filtered by statsSystem. */
+  statModifiers: StatModifier[];
+  /** Per-skill state keyed by skill id. */
+  playerSkills: Map<string, SkillState>;
+  /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
+  skillUsageEvents: SkillUsageEvent[];
+  /** Dirty flag: true when stats need recomputing. Set by level-up, modifier change, etc. */
+  statsDirty: boolean;
+  /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
+  inventories: Map<number, InventoryBag>;
 }
 
 export interface CreateWorldOptions {
@@ -66,10 +98,25 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Rotation, stores.rotation);
   wireStore(ecs, Health, stores.health);
   wireStore(ecs, Damage, stores.damage);
+  wireStore(ecs, Projectile, stores.projectile);
   wireStore(ecs, XpGem, stores.xpGem);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
+  wireStore(ecs, DroppedItem, stores.droppedItem);
+  wireStore(ecs, Weapon, stores.weapon);
+  wireStore(ecs, Owner, stores.owner);
+  wireStore(ecs, Team, stores.team);
+  wireStore(ecs, Lifetime, stores.lifetime);
+  wireStore(ecs, AreaDamage, stores.areaDamage);
+  wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
+  wireStore(ecs, Returning, stores.returning);
+  wireStore(ecs, LineDamage, stores.lineDamage);
+  wireStore(ecs, Trap, stores.trap);
+  wireStore(ecs, MeleeSwing, stores.meleeSwing);
+  wireStore(ecs, Knockback, stores.knockback);
+  wireStore(ecs, BaseStats, stores.baseStats);
+  wireStore(ecs, EffectiveStats, stores.effectiveStats);
 
   return {
     ecs,
@@ -79,6 +126,17 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     elapsedMs: 0,
     floor: options.floor ?? 1,
     state: 'playing',
+    playerLevel: {
+      xp: 0,
+      level: 0,
+      unspentPoints: 0,
+      pointsPerLevel: 3,
+    },
+    statModifiers: [],
+    playerSkills: new Map(),
+    skillUsageEvents: [],
+    statsDirty: true,
+    inventories: new Map(),
   };
 }
 

@@ -21,6 +21,7 @@ import { AI_TYPE, enemyAISystem } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { registerLab } from '../registry.js';
+import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -37,6 +38,7 @@ const GROUP_RADIUS = 84;
 const MAX_STEPS_PER_FRAME = 4;
 const PLAYER_HEALTH = 1_000;
 const SWARM_RADIUS = 56;
+const LAB_ID = 'enemy-ai-lab';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -89,6 +91,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     rangedSpeed: 1.1,
     aggroRange: 260,
     attackRange: 180,
+    ...(loadLabState<EnemyAiLabSettings>(LAB_ID) ?? {}),
   };
 
   let spawnChasersFromGui = () => undefined;
@@ -377,6 +380,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     .onChange(() => syncSettingsFromGui());
   gui.add(controlsApi, 'clearEnemies').name('Clear Enemies');
   gui.add(controlsApi, 'reset').name('Reset');
+  gui.onChange(() => saveLabState(LAB_ID, settings));
 
   const getSize = () => ({
     width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),

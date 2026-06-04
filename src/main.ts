@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { BootScene, MainGameScene } from './engine/index.js';
 import { GAME } from './shared/constants.js';
+import { levelSystem, skillSystem, statsSystem } from './game/systems/index.js';
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
@@ -15,7 +16,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, MainGameScene],
+  scene: [BootScene, new MainGameScene([levelSystem, skillSystem, statsSystem])],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

@@ -15,6 +15,7 @@ import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { registerLab } from '../registry.js';
+import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -36,6 +37,7 @@ const MAX_TRAIL_POINTS = 100;
 const GRID_SIZE = 48;
 const ENEMY_COUNT = 10;
 const ENEMY_MARGIN = 32;
+const LAB_ID = 'movement-lab';
 
 class TrailBuffer {
   private readonly points: Array<TrailPoint | undefined>;
@@ -150,6 +152,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     friction: 0,
     showTrail: true,
     trailLength: 20,
+    ...(loadLabState<MovementLabSettings>(LAB_ID) ?? {}),
   };
 
   let spawnEnemiesFromGui = (_count: number) => undefined;
@@ -484,6 +487,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     .name('Trail Length')
     .onChange(() => refreshTrailFromGui());
   gui.add(controlsApi, 'spawnEnemies').name('Spawn Enemies');
+  gui.onChange(() => saveLabState(LAB_ID, settings));
 
   const getSize = () => ({
     width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),

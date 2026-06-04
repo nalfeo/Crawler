@@ -1,5 +1,6 @@
 import type GUI from 'lil-gui';
 import { registerLab } from '../registry.js';
+import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -8,6 +9,8 @@ function createHelloWorldLab(canvasHost: HTMLElement, controls: HTMLElement): ()
   if (!gui) {
     throw new Error('Lab runner did not initialize lil-gui.');
   }
+
+  const LAB_ID = 'hello-world';
 
   const root = document.createElement('div');
   root.style.position = 'relative';
@@ -50,15 +53,17 @@ function createHelloWorldLab(canvasHost: HTMLElement, controls: HTMLElement): ()
   }
   const ctx = context;
 
-  const settings = {
+  const settings: { color: string; speed: number; size: number } = {
     color: '#ff4d6d',
     speed: 220,
     size: 72,
+    ...(loadLabState<{ color: string; speed: number; size: number }>(LAB_ID) ?? {}),
   };
 
   gui.addColor(settings, 'color').name('Color');
   gui.add(settings, 'speed', 50, 480, 1).name('Speed');
   gui.add(settings, 'size', 24, 180, 1).name('Size');
+  gui.onChange(() => saveLabState(LAB_ID, settings));
 
   const rectangle = {
     x: 96,
