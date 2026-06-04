@@ -20,6 +20,7 @@ import {
   createComponentStores,
   type ComponentStores,
 } from './components.js';
+import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
 
 export interface GameWorld {
   /** The bitecs ECS world instance */
@@ -35,7 +36,20 @@ export interface GameWorld {
   /** Current floor number (1-indexed) */
   floor: number;
   /** Game state */
-  state: 'loading' | 'playing' | 'paused' | 'safe_room' | 'game_over';
+  state: 'loading' | 'playing' | 'paused' | 'safe_room' | 'game_over' | 'level_up';
+
+  // --- Stats/Skills/Levels (player-singleton, stored at world level) ---
+
+  /** Player level state — JS numbers to avoid Uint16 cap and float precision issues. */
+  playerLevel: PlayerLevel;
+  /** Active stat modifiers from skills, floors, and buffs. Filtered by statsSystem. */
+  statModifiers: StatModifier[];
+  /** Per-skill state keyed by skill id. */
+  playerSkills: Map<string, SkillState>;
+  /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
+  skillUsageEvents: SkillUsageEvent[];
+  /** Dirty flag: true when stats need recomputing. Set by level-up, modifier change, etc. */
+  statsDirty: boolean;
 }
 
 export interface CreateWorldOptions {
@@ -79,6 +93,16 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     elapsedMs: 0,
     floor: options.floor ?? 1,
     state: 'playing',
+    playerLevel: {
+      xp: 0,
+      level: 0,
+      unspentPoints: 0,
+      pointsPerLevel: 3,
+    },
+    statModifiers: [],
+    playerSkills: new Map(),
+    skillUsageEvents: [],
+    statsDirty: true,
   };
 }
 
