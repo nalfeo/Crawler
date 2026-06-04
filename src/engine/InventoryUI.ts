@@ -22,7 +22,6 @@ import {
 import {
   type ItemDef,
   type ItemTag,
-  ITEM_CATALOG,
   RARITY_COLORS,
   getItemById,
 } from '../shared/items.js';
@@ -235,7 +234,7 @@ export function createInventoryUI(
     clearTabObjects();
     if (!currentBag) return;
 
-    const tabs = getVisibleTabs(currentBag, tabPrefs, ITEM_CATALOG);
+    const tabs = getVisibleTabs(currentBag, tabPrefs);
 
     // "All" tab
     const allTabs: (ItemTag | null)[] = [null, ...tabs];
@@ -320,16 +319,16 @@ export function createInventoryUI(
     let slots: InventorySlot[];
 
     if (searchQuery) {
-      slots = search(currentBag, searchQuery, ITEM_CATALOG);
+      slots = search(currentBag, searchQuery);
     } else if (activeTag) {
-      slots = filterByTag(currentBag, activeTag, ITEM_CATALOG);
+      slots = filterByTag(currentBag, activeTag);
     } else {
       slots = currentBag.slots;
     }
 
     // Sort
     const tempBag = { slots };
-    return sortSlots(tempBag, currentSortBy, ITEM_CATALOG);
+    return sortSlots(tempBag, currentSortBy);
   }
 
   function renderItems(): void {

@@ -137,9 +137,10 @@ export function spawnDroppedItem(
   itemIndex: number,
 ): number {
   const eid = createEntity(world);
+  const sanitizedItemIndex = Math.max(0, Math.min(0xffff, Math.floor(itemIndex)));
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
-  addComponent(world.ecs, eid, set(DroppedItem, { itemIndex }));
+  addComponent(world.ecs, eid, set(DroppedItem, { itemIndex: sanitizedItemIndex }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 10, height: 10 }));
 
   return eid;

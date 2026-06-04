@@ -64,7 +64,11 @@ export function addItem(
   if (quantity <= 0) return 0;
 
   const def = catalog ? catalog.find((d) => d.id === itemId) : getItemById(itemId);
-  const maxStack = def?.maxStack ?? Infinity;
+  const rawMaxStack = def?.maxStack ?? Infinity;
+  if (rawMaxStack <= 0) {
+    throw new Error(`Invalid maxStack for item "${itemId}": ${rawMaxStack}`);
+  }
+  const maxStack = rawMaxStack;
   let remaining = quantity;
 
   // Fill existing slots first
