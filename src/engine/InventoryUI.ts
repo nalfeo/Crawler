@@ -230,6 +230,9 @@ export function createInventoryUI(
     if (!currentBag) return;
 
     const tabs = getVisibleTabs(currentBag, tabPrefs);
+    if (activeTag !== null && !tabs.includes(activeTag)) {
+      activeTag = null;
+    }
 
     // "All" tab
     const allTabs: (ItemTag | null)[] = [null, ...tabs];
@@ -466,6 +469,7 @@ export function createInventoryUI(
     if (!visible) return;
 
     if (event.key === 'Backspace') {
+      event.preventDefault();
       searchQuery = searchQuery.slice(0, -1);
       updateSearchDisplay();
       renderItems();

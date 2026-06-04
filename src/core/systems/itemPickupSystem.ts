@@ -5,7 +5,7 @@
  * a Player with Inventory and the other is a DroppedItem, the item is added to
  * the player's InventoryBag and the DroppedItem entity is removed.
  */
-import { hasComponent, removeEntity } from 'bitecs';
+import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import { DroppedItem, Inventory, Player } from '../components.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
@@ -14,6 +14,10 @@ import { getItemByIndex } from '../../shared/items.js';
 
 export function itemPickupSystem(world: GameWorld, collisions: CollisionResult): void {
   for (const pair of collisions.pairs) {
+    if (!entityExists(world.ecs, pair.a) || !entityExists(world.ecs, pair.b)) {
+      continue;
+    }
+
     let playerEid: number | undefined;
     let itemEid: number | undefined;
 
