@@ -167,6 +167,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
 
   const visuals = new Map<number, EntityVisual>();
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
 
   return {
     sync(world: GameWorld): void {
@@ -269,20 +270,62 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
           }
 
           case 'aoe': {
-            // Scale to match actual AoE radius
             const radius = areaDamage.radius[eid] ?? 32;
-            const scale = (radius * 2) / 66; // 66 is texture size
-            img.setScale(scale);
+            const arcHalf = areaDamage.arcHalfRad[eid] ?? 0;
+            const arcCenter = areaDamage.arcCenterRad[eid] ?? 0;
+            const isArc = arcHalf > 0 && arcHalf < Math.PI;
 
             // Fade out based on lifetime
             const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
             const remaining = Math.max(0, expiresAt - world.elapsedMs);
-            img.setAlpha(Math.min(1, remaining / 100));
+            const alpha = Math.min(1, remaining / 100);
 
-            // Use explosion texture for trap-spawned AoEs (short duration)
-            const totalMs = expiresAt - world.elapsedMs + 200;
-            if (totalMs <= 100 && visual.type !== 'explosion') {
-              img.setTexture(TEX_EXPLOSION);
+            if (isArc) {
+              // Render as a pie-slice using Graphics
+              img.setVisible(false);
+              let ag = arcGraphics.get(eid);
+              if (!ag) {
+                ag = scene.add.graphics();
+                arcGraphics.set(eid, ag);
+              }
+              ag.clear();
+
+              const startAngle = arcCenter - arcHalf;
+              const endAngle = arcCenter + arcHalf;
+
+              // Filled wedge
+              ag.fillStyle(0xffffaa, 0.2 * alpha);
+              ag.beginPath();
+              ag.moveTo(x, y);
+              ag.arc(x, y, radius, startAngle, endAngle, false);
+              ag.closePath();
+              ag.fillPath();
+
+              // Edge line
+              ag.lineStyle(2, 0xffffaa, 0.6 * alpha);
+              ag.beginPath();
+              ag.moveTo(x, y);
+              ag.arc(x, y, radius, startAngle, endAngle, false);
+              ag.closePath();
+              ag.strokePath();
+            } else {
+              // Full circle AoE — use image
+              const scale = (radius * 2) / 66;
+              img.setScale(scale);
+              img.setAlpha(alpha);
+
+              // Use explosion texture for trap-spawned AoEs (short duration)
+              const totalMs = expiresAt - world.elapsedMs + 200;
+              if (totalMs <= 100 && visual.type !== 'explosion') {
+                img.setTexture(TEX_EXPLOSION);
+              }
+
+              // Clean up any stale arc graphics
+              const staleAg = arcGraphics.get(eid);
+              if (staleAg) {
+                staleAg.destroy();
+                arcGraphics.delete(eid);
+              }
             }
             break;
           }
@@ -329,6 +372,14 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
         bg.destroy();
         beamGraphics.delete(eid);
       }
+
+      for (const [eid, ag] of arcGraphics) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        ag.destroy();
+        arcGraphics.delete(eid);
+      }
     },
 
     destroy(): void {
@@ -341,6 +392,11 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
         bg.destroy();
       }
       beamGraphics.clear();
+
+      for (const ag of arcGraphics.values()) {
+        ag.destroy();
+      }
+      arcGraphics.clear();
     },
   };
 }

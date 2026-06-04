@@ -100,6 +100,8 @@ export function createComponentStores() {
       radius: new Float32Array(MAX_ENTITIES),
       damage: new Float32Array(MAX_ENTITIES),
       hitOnce: new Uint8Array(MAX_ENTITIES),
+      arcCenterRad: new Float32Array(MAX_ENTITIES),
+      arcHalfRad: new Float32Array(MAX_ENTITIES),
     },
     aoeOnImpact: {
       radius: new Float32Array(MAX_ENTITIES),

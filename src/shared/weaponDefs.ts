@@ -27,6 +27,8 @@ export interface WeaponDef {
   readonly returnSpeed: number;
   /** Max range before boomerang returns. */
   readonly maxRange: number;
+  /** Melee swing arc in degrees (360 = full circle, 45 = narrow cone). */
+  readonly swingArcDeg: number;
 }
 
 function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weaponType' | 'baseDamage' | 'cooldownMs'>): WeaponDef {
@@ -42,6 +44,7 @@ function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weap
     trapExplosionRadius: 0,
     returnSpeed: 0,
     maxRange: 0,
+    swingArcDeg: 360,
     ...partial,
   };
 }
@@ -52,6 +55,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
     id: 'sword', name: 'Sword', weaponType: WeaponType.MELEE,
     baseDamage: 15, cooldownMs: 600, range: WEAPON.MELEE_RANGE,
     aoeRadius: WEAPON.MELEE_RANGE, durationMs: WEAPON.MELEE_DURATION_MS,
+    swingArcDeg: 90,
   })],
   ['knife', def({
     id: 'knife', name: 'Knife', weaponType: WeaponType.MELEE,

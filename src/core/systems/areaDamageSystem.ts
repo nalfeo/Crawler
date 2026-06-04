@@ -43,6 +43,9 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
     const damage = areaDamage.damage[eid] ?? 0;
     const isHitOnce = (areaDamage.hitOnce[eid] ?? 0) !== 0;
     const areaTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
+    const arcHalfRad = areaDamage.arcHalfRad[eid] ?? 0;
+    const arcCenterRad = areaDamage.arcCenterRad[eid] ?? 0;
+    const isArc = arcHalfRad > 0 && arcHalfRad < Math.PI;
 
     const hitSet = isHitOnce ? getHitSet(world, eid) : undefined;
     const candidates = collisionResult.grid.queryRadius(x, y, radius);
@@ -75,6 +78,17 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
       // Skip non-combatants — only damage Player or Enemy entities
       if (!hasComponent(world.ecs, target, Enemy) && !hasComponent(world.ecs, target, Player)) {
         continue;
+      }
+
+      // Arc check: skip targets outside the swing arc
+      if (isArc) {
+        const tx = (position.x[target] ?? 0) - x;
+        const ty = (position.y[target] ?? 0) - y;
+        const targetAngle = Math.atan2(ty, tx);
+        const delta = Math.atan2(Math.sin(targetAngle - arcCenterRad), Math.cos(targetAngle - arcCenterRad));
+        if (Math.abs(delta) > arcHalfRad) {
+          continue;
+        }
       }
 
       if (hitSet !== undefined && hitSet.has(target)) {

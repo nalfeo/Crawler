@@ -55,6 +55,7 @@ interface TunableWeaponDef {
   trapExplosionRadius: number;
   returnSpeed: number;
   maxRange: number;
+  swingArcDeg: number;
 }
 
 function cloneWeaponDef(def: WeaponDef): TunableWeaponDef {
@@ -311,10 +312,11 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     const wt = baseDef.weaponType;
 
-    // Melee / Unarmed: radius + duration
+    // Melee / Unarmed: blade length + arc + duration
     if (wt === WeaponType.MELEE || wt === WeaponType.UNARMED) {
-      weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Swing Radius');
-      weaponFolder.add(tunedWeapon, 'durationMs', 50, 1000, 10).name('Duration (ms)');
+      weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Blade Length');
+      weaponFolder.add(tunedWeapon, 'swingArcDeg', 5, 360, 1).name('Swing Arc (°)');
+      weaponFolder.add(tunedWeapon, 'durationMs', 50, 1000, 10).name('Swing Speed (ms)');
     }
 
     // Ranged: projectile speed

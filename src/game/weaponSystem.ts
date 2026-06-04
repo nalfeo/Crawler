@@ -165,10 +165,11 @@ function getNearestEnemyDirection(world: GameWorld, playerX: number, playerY: nu
 
 // --- Attack dispatchers per weapon type ---
 
-function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef): void {
+function fireMeleeAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  spawnAreaAttack(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs, TeamId.PLAYER);
+  spawnAreaAttack(world, px, py, player, def.baseDamage, def.aoeRadius, def.durationMs, TeamId.PLAYER,
+    dir.x, dir.y, def.swingArcDeg);
 }
 
 function fireRangedAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
@@ -219,7 +220,7 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
 function dispatchAttack(world: GameWorld, player: number, def: WeaponDef, dir: { x: number; y: number }): void {
   switch (def.weaponType) {
     case WeaponType.MELEE:
-      fireMeleeAttack(world, player, def);
+      fireMeleeAttack(world, player, def, dir);
       break;
     case WeaponType.RANGED:
       fireRangedAttack(world, player, def, dir);

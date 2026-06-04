@@ -161,10 +161,18 @@ export function spawnAreaAttack(
   radius: number,
   durationMs: number,
   teamId: number,
+  dirX?: number,
+  dirY?: number,
+  arcDeg?: number,
 ): number {
   const eid = createEntity(world);
+  const hasArc = dirX !== undefined && dirY !== undefined && arcDeg !== undefined && arcDeg > 0 && arcDeg < 360;
   addComponent(world.ecs, eid, set(Position, { x, y }));
-  addComponent(world.ecs, eid, set(AreaDamage, { radius, damage, hitOnce: 1 }));
+  addComponent(world.ecs, eid, set(AreaDamage, {
+    radius, damage, hitOnce: 1,
+    arcCenterRad: hasArc ? Math.atan2(dirY, dirX) : 0,
+    arcHalfRad: hasArc ? (arcDeg / 2) * (Math.PI / 180) : 0,
+  }));
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
