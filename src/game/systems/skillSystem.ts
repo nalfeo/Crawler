@@ -13,7 +13,7 @@ import { addStatModifier } from './statsSystem.js';
 export function skillSystem(world: GameWorld): void {
   const events = world.skillUsageEvents;
   if (events.length === 0) {
-    world.skillUsageEvents = [];
+    events.length = 0;
     return;
   }
 
@@ -63,7 +63,7 @@ export function skillSystem(world: GameWorld): void {
     }
   }
 
-  world.skillUsageEvents = [];
+  events.length = 0;
 }
 
 function applyMilestone(world: GameWorld, skillId: string, level: number): void {

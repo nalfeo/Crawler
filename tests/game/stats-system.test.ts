@@ -72,6 +72,16 @@ describe('spendPoints', () => {
     world.playerLevel.unspentPoints = 2;
     expect(() => spendPoints(world, { maxHp: 3 })).toThrow();
   });
+
+  it('throws for unknown allocation keys', () => {
+    const { world } = setupPlayerWithStats();
+    world.playerLevel.unspentPoints = 10;
+    expect(() =>
+      spendPoints(world, { lucky: 1 } as unknown as Partial<
+        Record<keyof typeof STAT_BASE, number>
+      >),
+    ).toThrow();
+  });
 });
 
 describe('addStatModifier / removeStatModifiers', () => {
@@ -136,6 +146,25 @@ describe('addStatModifier / removeStatModifiers', () => {
       value: 20,
       expiresFrame: 50, // already expired
     });
+    statsSystem(world);
+    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage);
+  });
+
+  it('recomputes when modifiers expire even if statsDirty is false', () => {
+    const { world, player } = setupPlayerWithStats();
+    addStatModifier(world, {
+      sourceType: 'buff',
+      sourceId: 'short-buff',
+      stat: 'damage',
+      op: 'add',
+      value: 5,
+      expiresFrame: 10,
+    });
+    statsSystem(world);
+    expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage + 5);
+
+    world.frameCount = 11;
+    world.statsDirty = false;
     statsSystem(world);
     expect(world.stores.stats.damage[player]).toBeCloseTo(STAT_BASE.damage);
   });

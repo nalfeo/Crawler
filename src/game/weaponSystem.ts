@@ -84,7 +84,7 @@ function resolveWeaponConfig(world: GameWorld, player: number): WeaponConfig {
   if (hasComponent(world.ecs, player, Stats)) {
     const attackSpeed = Math.max(0.1, world.stores.stats.attackSpeed[player] ?? 1.0);
     const rawDamage = world.stores.stats.damage[player];
-    const damage = rawDamage !== undefined && rawDamage > 0 ? rawDamage : config.baseDamage;
+    const damage = rawDamage ?? config.baseDamage;
     return {
       projectileSpeed: config.projectileSpeed,
       fireRateMs: config.fireRateMs / attackSpeed,

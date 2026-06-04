@@ -35,9 +35,11 @@ describe('skillSystem', () => {
 
   it('clears usage events each frame', () => {
     const { world } = setupPlayerWithSkill();
+    const eventsRef = world.skillUsageEvents;
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 5 });
     skillSystem(world);
     expect(world.skillUsageEvents).toHaveLength(0);
+    expect(world.skillUsageEvents).toBe(eventsRef);
   });
 
   it('ignores events for unknown skills', () => {

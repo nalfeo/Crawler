@@ -19,18 +19,21 @@ import type { StatModifier } from '../skills/types.js';
  *   final = clamp(min[stat], raw) * (1 + sum(multiply modifier values))
  */
 export function statsSystem(world: GameWorld): void {
+  const frameCount = world.frameCount;
+  const activeModifiers = world.statModifiers.filter(
+    (m) => m.expiresFrame === undefined || m.expiresFrame > frameCount,
+  );
+  if (activeModifiers.length !== world.statModifiers.length) {
+    world.statModifiers = activeModifiers;
+    world.statsDirty = true;
+  }
+
   if (!world.statsDirty) return;
 
   const players = query(world.ecs, [Player, Stats]);
   if (players.length === 0) return;
 
   const player = players[0]!;
-  const frameCount = world.frameCount;
-
-  // Filter out expired modifiers in-place
-  world.statModifiers = world.statModifiers.filter(
-    (m) => m.expiresFrame === undefined || m.expiresFrame > frameCount,
-  );
 
   const { stores } = world;
   const pointsStore = stores.statPoints;
@@ -70,24 +73,28 @@ export function spendPoints(world: GameWorld, allocations: Partial<Record<StatKe
 
   const player = players[0]!;
   const pl = world.playerLevel;
-
-  const totalSpent = Object.values(allocations).reduce((sum, n) => sum + (n ?? 0), 0);
+  let totalSpent = 0;
 
   // Validate: all values must be non-negative integers
   for (const [stat, points] of Object.entries(allocations)) {
+    if (!STAT_KEYS.includes(stat as StatKey)) {
+      throw new Error(`Invalid allocation key "${stat}": expected one of ${STAT_KEYS.join(', ')}`);
+    }
     const n = points ?? 0;
-    if (!Number.isInteger(n) || n < 0) {
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
       throw new Error(
         `Invalid allocation for stat "${stat}": must be a non-negative integer, got ${n}`,
       );
     }
+    totalSpent += n;
   }
 
   if (totalSpent > pl.unspentPoints) {
     throw new Error(`Cannot spend ${totalSpent} points — only ${pl.unspentPoints} available`);
   }
 
-  for (const [statKey, points] of Object.entries(allocations) as [StatKey, number][]) {
+  for (const [rawStatKey, points] of Object.entries(allocations)) {
+    const statKey = rawStatKey as StatKey;
     if (points > 0) {
       world.stores.statPoints[statKey][player] =
         (world.stores.statPoints[statKey][player] ?? 0) + points;
