@@ -34,12 +34,12 @@ import {
 const PANEL_PADDING = 16;
 const TAB_HEIGHT = 36;
 const TAB_GAP = 4;
-const SEARCH_HEIGHT = 32;
-const CELL_SIZE = 56;
+const SEARCH_HEIGHT = 36;
+const CELL_SIZE = 64;
 const CELL_GAP = 4;
-const COLS = 6;
+const COLS = 5;
 const BORDER_WIDTH = 2;
-const FONT_FAMILY = 'monospace';
+const FONT_FAMILY = 'Segoe UI, Arial, sans-serif';
 
 const COLORS = {
   panelBg: 0x0d0d1a,
@@ -78,7 +78,19 @@ export function createInventoryUI(
   isOpen(): boolean;
   destroy(): void;
 } {
-  const panelWidth = config.width ?? COLS * (CELL_SIZE + CELL_GAP) + CELL_GAP + PANEL_PADDING * 2;
+  scene.cameras.main.roundPixels = true;
+
+  const snap = (value: number): number => Math.round(value);
+  const textResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const crispText = (
+    x: number,
+    y: number,
+    text: string,
+    style: Phaser.Types.GameObjects.Text.TextStyle,
+  ): Phaser.GameObjects.Text => scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
+
+  const basePanelWidth = COLS * (CELL_SIZE + CELL_GAP) + CELL_GAP + PANEL_PADDING * 2;
+  const panelWidth = config.width ?? Math.max(basePanelWidth, 520);
   const panelHeight = config.height ?? 480;
 
   let visible = false;
@@ -95,8 +107,8 @@ export function createInventoryUI(
   container.setVisible(false);
 
   // Panel background
-  const panelX = (scene.scale.width - panelWidth) / 2;
-  const panelY = (scene.scale.height - panelHeight) / 2;
+  const panelX = snap((scene.scale.width - panelWidth) / 2);
+  const panelY = snap((scene.scale.height - panelHeight) / 2);
 
   const bg = scene.add.rectangle(
     panelX + panelWidth / 2,
@@ -110,18 +122,18 @@ export function createInventoryUI(
   container.add(bg);
 
   // Title
-  const title = scene.add.text(panelX + PANEL_PADDING, panelY + PANEL_PADDING, 'INVENTORY', {
+  const title = crispText(panelX + PANEL_PADDING, panelY + PANEL_PADDING, 'INVENTORY', {
     fontFamily: FONT_FAMILY,
-    fontSize: '18px',
+    fontSize: '20px',
     color: '#f8fafc',
   });
   container.add(title);
 
   // Sort button
   const sortBtn = scene.add
-    .text(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING, '⇅ Rarity', {
+    .text(snap(panelX + panelWidth - PANEL_PADDING), snap(panelY + PANEL_PADDING), '⇅ Rarity', {
       fontFamily: FONT_FAMILY,
-      fontSize: '12px',
+      fontSize: '14px',
       color: '#9ca3af',
     })
     .setOrigin(1, 0)
@@ -137,9 +149,9 @@ export function createInventoryUI(
   container.add(sortBtn);
 
   // Tab and content areas
-  const tabY = panelY + PANEL_PADDING + 28;
-  const searchY = tabY + TAB_HEIGHT + TAB_GAP;
-  const gridY = searchY + SEARCH_HEIGHT + TAB_GAP + 4;
+  const tabY = snap(panelY + PANEL_PADDING + 28);
+  const searchY = snap(tabY + TAB_HEIGHT + TAB_GAP);
+  const gridY = snap(searchY + SEARCH_HEIGHT + TAB_GAP + 4);
   const gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
 
   // Tab objects pool
@@ -160,13 +172,13 @@ export function createInventoryUI(
   searchBg.setStrokeStyle(1, COLORS.searchBorder);
   container.add(searchBg);
 
-  const searchText = scene.add.text(
+  const searchText = crispText(
     panelX + PANEL_PADDING + 8,
     searchY + SEARCH_HEIGHT / 2,
     '🔍 Type to search...',
     {
       fontFamily: FONT_FAMILY,
-      fontSize: '12px',
+      fontSize: '14px',
       color: '#666688',
     },
   );
@@ -206,12 +218,48 @@ export function createInventoryUI(
 
     // "All" tab
     const allTabs: (ItemTag | null)[] = [null, ...tabs];
+    const labels = allTabs.map((tag) => tag ?? 'All');
+    const rawWidths = labels.map((label) => label.length * 9 + 24);
+    const availableWidth = panelWidth - PANEL_PADDING * 2 - TAB_GAP * Math.max(0, labels.length - 1);
+
+    const fittedWidths = [...rawWidths];
+    const minWidth = 56;
+    const totalRawWidth = rawWidths.reduce((sum, width) => sum + width, 0);
+
+    if (totalRawWidth > availableWidth) {
+      const scale = availableWidth / totalRawWidth;
+      for (let i = 0; i < fittedWidths.length; i += 1) {
+        fittedWidths[i] = Math.max(minWidth, Math.floor(fittedWidths[i]! * scale));
+      }
+
+      let totalFitted = fittedWidths.reduce((sum, width) => sum + width, 0);
+      while (totalFitted > availableWidth) {
+        let reduced = false;
+        for (let i = 0; i < fittedWidths.length && totalFitted > availableWidth; i += 1) {
+          if (fittedWidths[i]! <= minWidth) {
+            continue;
+          }
+
+          fittedWidths[i]! -= 1;
+          totalFitted -= 1;
+          reduced = true;
+        }
+
+        if (!reduced) {
+          break;
+        }
+      }
+    }
 
     let tabX = panelX + PANEL_PADDING;
-    for (const tag of allTabs) {
-      const label = tag ?? 'All';
+    for (let i = 0; i < allTabs.length; i += 1) {
+      const tag = allTabs[i]!;
+      const label = labels[i]!;
       const isActive = tag === activeTag;
-      const tabWidth = label.length * 9 + 16;
+      const tabWidth = fittedWidths[i]!;
+      const maxChars = Math.max(3, Math.floor((tabWidth - 16) / 8));
+      const displayLabel =
+        label.length > maxChars ? `${label.slice(0, Math.max(1, maxChars - 1))}…` : label;
 
       const tabBg = scene.add.rectangle(
         tabX + tabWidth / 2,
@@ -229,9 +277,9 @@ export function createInventoryUI(
         renderItems();
       });
 
-      const tabLabel = scene.add.text(tabX + tabWidth / 2, tabY + TAB_HEIGHT / 2, label, {
+      const tabLabel = crispText(tabX + tabWidth / 2, tabY + TAB_HEIGHT / 2, displayLabel, {
         fontFamily: FONT_FAMILY,
-        fontSize: '11px',
+        fontSize: '13px',
         color: isActive ? '#ffffff' : '#c9d4ff',
       });
       tabLabel.setOrigin(0.5, 0.5);
@@ -278,8 +326,8 @@ export function createInventoryUI(
 
       const col = i % COLS;
       const row = Math.floor(i / COLS);
-      const cellX = panelX + PANEL_PADDING + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
-      const cellY = gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
+      const cellX = snap(panelX + PANEL_PADDING + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
+      const cellY = snap(gridY + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2);
 
       const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
 
@@ -298,22 +346,22 @@ export function createInventoryUI(
       });
 
       // Item icon placeholder (first 2 chars of name)
-      const iconText = scene.add.text(cellX, cellY - 6, def.name.substring(0, 2).toUpperCase(), {
+      const iconText = crispText(cellX, cellY - 6, def.name.substring(0, 2).toUpperCase(), {
         fontFamily: FONT_FAMILY,
-        fontSize: '14px',
+        fontSize: '16px',
         color: `#${rarityColor.toString(16).padStart(6, '0')}`,
       });
       iconText.setOrigin(0.5, 0.5);
 
       // Stack count
       if (slot.quantity > 1) {
-        const countText = scene.add.text(
+        const countText = crispText(
           cellX + CELL_SIZE / 2 - 4,
           cellY + CELL_SIZE / 2 - 4,
           `${slot.quantity}`,
           {
             fontFamily: FONT_FAMILY,
-            fontSize: '10px',
+            fontSize: '12px',
             color: '#ffffff',
           },
         );
@@ -328,13 +376,13 @@ export function createInventoryUI(
     }
 
     // Item count footer
-    const countFooter = scene.add.text(
+    const countFooter = crispText(
       panelX + PANEL_PADDING,
       panelY + panelHeight - PANEL_PADDING,
       `${slots.length} item${slots.length !== 1 ? 's' : ''}`,
       {
         fontFamily: FONT_FAMILY,
-        fontSize: '10px',
+        fontSize: '12px',
         color: '#666688',
       },
     );
@@ -347,9 +395,9 @@ export function createInventoryUI(
     clearTooltip();
 
     const tooltipWidth = 200;
-    const tooltipHeight = 80;
-    const tx = Math.min(cellX + CELL_SIZE / 2 + 8, panelX + panelWidth - tooltipWidth - 8);
-    const ty = Math.max(cellY - tooltipHeight / 2, panelY + 8);
+    const tooltipHeight = 110;
+    const tx = snap(Math.min(cellX + CELL_SIZE / 2 + 8, panelX + panelWidth - tooltipWidth - 8));
+    const ty = snap(Math.max(cellY - tooltipHeight / 2, panelY + 8));
 
     const tooltipBg = scene.add.rectangle(
       tx + tooltipWidth / 2,
@@ -362,27 +410,27 @@ export function createInventoryUI(
     tooltipBg.setStrokeStyle(1, COLORS.tooltipBorder);
 
     const rarityColor = RARITY_COLORS[def.rarity] ?? 0x9e9e9e;
-    const nameText = scene.add.text(tx + 8, ty + 8, def.name, {
+    const nameText = crispText(tx + 8, ty + 8, def.name, {
       fontFamily: FONT_FAMILY,
-      fontSize: '12px',
+      fontSize: '15px',
       color: `#${rarityColor.toString(16).padStart(6, '0')}`,
       wordWrap: { width: tooltipWidth - 16 },
     });
 
-    const descText = scene.add.text(tx + 8, ty + 26, def.description, {
+    const descText = crispText(tx + 8, ty + 26, def.description, {
       fontFamily: FONT_FAMILY,
-      fontSize: '9px',
+      fontSize: '12px',
       color: '#9ca3af',
       wordWrap: { width: tooltipWidth - 16 },
     });
 
-    const metaText = scene.add.text(
+    const metaText = crispText(
       tx + 8,
       ty + tooltipHeight - 16,
       `${def.rarity} · x${slot.quantity} · [${def.tags.join(', ')}]`,
       {
         fontFamily: FONT_FAMILY,
-        fontSize: '8px',
+        fontSize: '11px',
         color: '#666688',
       },
     );

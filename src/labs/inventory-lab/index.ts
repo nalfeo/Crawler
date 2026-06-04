@@ -310,6 +310,8 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     parent: gameHost,
     width: initialSize.width,
     height: initialSize.height,
+    autoRound: true,
+    roundPixels: true,
     backgroundColor: '#070d14',
     scene: [InventoryLabScene],
     scale: {
