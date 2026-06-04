@@ -25,6 +25,31 @@ describe('sprite registry', () => {
     }
   });
 
+  it('registers all 6 Kenney packs (characters + 4 Tiny packs + RPG pack)', () => {
+    const expected = [
+      'kenney-roguelike-characters',
+      'kenney-tiny-dungeon',
+      'kenney-tiny-town',
+      'kenney-tiny-battle',
+      'kenney-tiny-ski',
+      'kenney-roguelike-rpg-pack',
+    ];
+    for (const key of expected) {
+      const sheet = getSheet(key);
+      expect(sheet, `missing sheet: ${key}`).toBeDefined();
+      expect(sheet!.frameWidth).toBe(16);
+      expect(sheet!.frameHeight).toBe(16);
+      expect(sheet!.spacing).toBe(1);
+    }
+  });
+
+  it('registers the tiny-dungeon sheet for weapon/item sprites', () => {
+    const td = getSheet('kenney-tiny-dungeon');
+    expect(td).toBeDefined();
+    expect(td!.cols).toBe(12);
+    expect(td!.path).toBe('/assets/kenney/tiny-dungeon/spritesheet.png');
+  });
+
   it('every frame index is non-negative and within sheet capacity', () => {
     for (const sprite of SPRITES) {
       const sheet = getSheet(sprite.sheetKey);

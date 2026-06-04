@@ -1,5 +1,9 @@
+import type GUI from 'lil-gui';
 import { registerLab } from '../registry.js';
+import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { SHEETS, SPRITES, getSheet } from '../../engine/sprites/index.js';
+
+type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 interface SheetCacheEntry {
   image: HTMLImageElement;
@@ -7,12 +11,24 @@ interface SheetCacheEntry {
   error: boolean;
 }
 
+interface Settings {
+  scale: number;
+  background: 'checker' | 'dark' | 'magenta';
+  showFrameInfo: boolean;
+  showNotes: boolean;
+  filter: string;
+}
+
+const LAB_ID = 'sprite-preview';
+
+const BACKGROUNDS: Record<Settings['background'], string> = {
+  checker: 'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px',
+  dark: '#0f172a',
+  magenta: '#ff00ff',
+};
+
 function loadSheet(path: string): SheetCacheEntry {
-  const entry: SheetCacheEntry = {
-    image: new Image(),
-    loaded: false,
-    error: false,
-  };
+  const entry: SheetCacheEntry = { image: new Image(), loaded: false, error: false };
   entry.image.addEventListener('load', () => {
     entry.loaded = true;
   });
@@ -24,6 +40,20 @@ function loadSheet(path: string): SheetCacheEntry {
 }
 
 function createSpritePreviewLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
+  const gui = (controls as ControlsWithGui).__labGui;
+  if (!gui) {
+    throw new Error('Lab runner did not initialize lil-gui.');
+  }
+
+  const settings: Settings = {
+    scale: 4,
+    background: 'checker',
+    showFrameInfo: true,
+    showNotes: true,
+    filter: '',
+    ...(loadLabState<Partial<Settings>>(LAB_ID) ?? {}),
+  };
+
   const root = document.createElement('div');
   root.style.padding = '24px';
   root.style.overflow = 'auto';
@@ -38,30 +68,44 @@ function createSpritePreviewLab(canvasHost: HTMLElement, controls: HTMLElement):
 
   const subtitle = document.createElement('p');
   subtitle.textContent =
-    'Every sprite registered in src/engine/sprites/registry.ts, rendered at 4x for inspection.';
+    'Every sprite registered in src/engine/sprites/registry.ts. Use the controls panel to tweak the preview.';
   subtitle.style.color = '#c9d4ff';
   subtitle.style.lineHeight = '1.6';
   subtitle.style.marginBottom = '24px';
 
-  root.append(heading, subtitle);
+  const status = document.createElement('p');
+  status.style.color = '#7ee0ff';
+  status.style.fontSize = '13px';
+  status.style.marginBottom = '16px';
+
+  const grid = document.createElement('div');
+  grid.style.display = 'grid';
+  grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(200px, 1fr))';
+  grid.style.gap = '16px';
+
+  root.append(heading, subtitle, status, grid);
+  canvasHost.append(root);
 
   const sheetEntries = new Map<string, SheetCacheEntry>();
   for (const sheet of SHEETS) {
     sheetEntries.set(sheet.key, loadSheet(sheet.path));
   }
 
-  const grid = document.createElement('div');
-  grid.style.display = 'grid';
-  grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(160px, 1fr))';
-  grid.style.gap = '16px';
+  interface Tile {
+    el: HTMLDivElement;
+    canvas: HTMLCanvasElement;
+    frameLabel: HTMLSpanElement;
+    noteLabel: HTMLSpanElement | null;
+    spriteId: string;
+  }
 
-  const PREVIEW_SCALE = 4;
+  const tiles: Tile[] = [];
 
-  const tiles: Array<{ canvas: HTMLCanvasElement; spriteId: string }> = [];
-
-  for (const sprite of SPRITES) {
+  function buildTile(spriteId: string): Tile | null {
+    const sprite = SPRITES.find((s) => s.id === spriteId);
+    if (!sprite) return null;
     const sheet = getSheet(sprite.sheetKey);
-    if (!sheet) continue;
+    if (!sheet) return null;
 
     const tile = document.createElement('div');
     tile.style.padding = '12px';
@@ -74,11 +118,7 @@ function createSpritePreviewLab(canvasHost: HTMLElement, controls: HTMLElement):
     tile.style.gap = '8px';
 
     const canvas = document.createElement('canvas');
-    canvas.width = sheet.frameWidth * PREVIEW_SCALE;
-    canvas.height = sheet.frameHeight * PREVIEW_SCALE;
     canvas.style.imageRendering = 'pixelated';
-    canvas.style.background =
-      'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
 
     const idLabel = document.createElement('code');
     idLabel.textContent = sprite.id;
@@ -86,68 +126,118 @@ function createSpritePreviewLab(canvasHost: HTMLElement, controls: HTMLElement):
     idLabel.style.fontSize = '13px';
 
     const frameLabel = document.createElement('span');
-    frameLabel.textContent = `frame ${sprite.frame} (${sprite.frame % sheet.cols}, ${Math.floor(
-      sprite.frame / sheet.cols,
-    )})`;
     frameLabel.style.fontSize = '11px';
     frameLabel.style.color = '#94a3b8';
 
     tile.append(canvas, idLabel, frameLabel);
+
+    let noteLabel: HTMLSpanElement | null = null;
     if (sprite.note) {
-      const note = document.createElement('span');
-      note.textContent = sprite.note;
-      note.style.fontSize = '11px';
-      note.style.color = '#cbd5f5';
-      note.style.textAlign = 'center';
-      tile.append(note);
+      noteLabel = document.createElement('span');
+      noteLabel.textContent = sprite.note;
+      noteLabel.style.fontSize = '11px';
+      noteLabel.style.color = '#cbd5f5';
+      noteLabel.style.textAlign = 'center';
+      tile.append(noteLabel);
     }
 
-    grid.append(tile);
-    tiles.push({ canvas, spriteId: sprite.id });
+    return { el: tile, canvas, frameLabel, noteLabel, spriteId };
   }
 
-  root.append(grid);
-  canvasHost.append(root);
+  for (const sprite of SPRITES) {
+    const tile = buildTile(sprite.id);
+    if (tile) {
+      tiles.push(tile);
+      grid.append(tile.el);
+    }
+  }
 
-  const note = document.createElement('p');
-  note.textContent =
-    'Sprites are pulled directly from the asset PNGs served by Vite. If a tile is empty, the sheet is still loading or the file is missing — check public/assets/kenney/.';
-  note.style.color = '#c9d4ff';
-  note.style.lineHeight = '1.6';
-  controls.append(note);
+  function applySettings(): void {
+    saveLabState(LAB_ID, settings);
+    let visibleCount = 0;
+    const filter = settings.filter.trim().toLowerCase();
+    for (const tile of tiles) {
+      const sprite = SPRITES.find((s) => s.id === tile.spriteId);
+      if (!sprite) continue;
+      const sheet = getSheet(sprite.sheetKey);
+      if (!sheet) continue;
 
-  const sheetList = document.createElement('ul');
-  sheetList.style.marginTop = '12px';
-  sheetList.style.paddingLeft = '20px';
-  sheetList.style.color = '#cbd5f5';
+      const matches = filter === '' || tile.spriteId.toLowerCase().includes(filter);
+      tile.el.style.display = matches ? 'flex' : 'none';
+      if (matches) visibleCount += 1;
+
+      tile.canvas.width = sheet.frameWidth * settings.scale;
+      tile.canvas.height = sheet.frameHeight * settings.scale;
+      tile.canvas.style.background = BACKGROUNDS[settings.background];
+
+      tile.frameLabel.style.display = settings.showFrameInfo ? '' : 'none';
+      tile.frameLabel.textContent = `frame ${sprite.frame} (${
+        sprite.frame % sheet.cols
+      }, ${Math.floor(sprite.frame / sheet.cols)})`;
+
+      if (tile.noteLabel) {
+        tile.noteLabel.style.display = settings.showNotes ? '' : 'none';
+      }
+    }
+    status.textContent = `Showing ${visibleCount} / ${tiles.length} sprite${
+      tiles.length === 1 ? '' : 's'
+    } across ${SHEETS.length} sheet${SHEETS.length === 1 ? '' : 's'}.`;
+  }
+
+  // Controls
+  const previewFolder = gui.addFolder('Preview');
+  previewFolder
+    .add(settings, 'scale', { '1x': 1, '2x': 2, '4x': 4, '8x': 8, '16x': 16 })
+    .name('Scale');
+  previewFolder
+    .add(settings, 'background', {
+      Checkerboard: 'checker',
+      Dark: 'dark',
+      'Magenta (debug)': 'magenta',
+    })
+    .name('Background');
+  previewFolder.add(settings, 'showFrameInfo').name('Show frame info');
+  previewFolder.add(settings, 'showNotes').name('Show notes');
+  previewFolder.add(settings, 'filter').name('Filter (id)');
+
+  gui.onChange(() => {
+    applySettings();
+  });
+
+  const sheetsFolder = gui.addFolder('Sheets');
   for (const sheet of SHEETS) {
-    const li = document.createElement('li');
-    li.style.marginBottom = '4px';
-    li.textContent = `${sheet.key} — ${sheet.path}`;
-    sheetList.append(li);
+    const sheetSettings = {
+      reload: () => {
+        sheetEntries.set(sheet.key, loadSheet(sheet.path));
+      },
+    };
+    sheetsFolder.add(sheetSettings, 'reload').name(`Reload ${sheet.key}`);
   }
-  controls.append(sheetList);
+  sheetsFolder.close();
+
+  applySettings();
 
   let animationFrame = 0;
   let disposed = false;
 
   function paint(): void {
     if (disposed) return;
-    for (const { canvas, spriteId } of tiles) {
-      const sprite = SPRITES.find((s) => s.id === spriteId);
+    for (const tile of tiles) {
+      if (tile.el.style.display === 'none') continue;
+      const sprite = SPRITES.find((s) => s.id === tile.spriteId);
       if (!sprite) continue;
       const sheet = getSheet(sprite.sheetKey);
       const entry = sheetEntries.get(sprite.sheetKey);
       if (!sheet || !entry) continue;
-      const ctx = canvas.getContext('2d');
+      const ctx = tile.canvas.getContext('2d');
       if (!ctx) continue;
 
       ctx.imageSmoothingEnabled = false;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.clearRect(0, 0, tile.canvas.width, tile.canvas.height);
 
       if (entry.error) {
         ctx.fillStyle = '#ef4444';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, tile.canvas.width, tile.canvas.height);
         ctx.fillStyle = '#fff';
         ctx.font = '12px sans-serif';
         ctx.fillText('load error', 8, 16);
@@ -168,8 +258,8 @@ function createSpritePreviewLab(canvasHost: HTMLElement, controls: HTMLElement):
         sheet.frameHeight,
         0,
         0,
-        canvas.width,
-        canvas.height,
+        tile.canvas.width,
+        tile.canvas.height,
       );
     }
     animationFrame = window.requestAnimationFrame(paint);
@@ -180,13 +270,11 @@ function createSpritePreviewLab(canvasHost: HTMLElement, controls: HTMLElement):
   return () => {
     disposed = true;
     window.cancelAnimationFrame(animationFrame);
-    note.remove();
-    sheetList.remove();
     root.remove();
   };
 }
 
-registerLab('sprite-preview', {
+registerLab(LAB_ID, {
   name: 'Sprite Preview',
   description: 'Visual catalog of every sprite registered in the engine sprite registry.',
   create: createSpritePreviewLab,

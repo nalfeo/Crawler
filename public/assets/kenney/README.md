@@ -15,6 +15,15 @@ before writing into the repo.
 
 ## Packs
 
-| Pack                   | Source URL                                          | Notes                                     |
-| ---------------------- | --------------------------------------------------- | ----------------------------------------- |
-| roguelike-characters   | https://kenney.nl/assets/roguelike-characters       | 918x203 spritesheet, 16x16 tiles, 1px gap |
+| Pack                 | Source URL                                    | Sheet     | Tiles      | Notes                                                |
+| -------------------- | --------------------------------------------- | --------- | ---------- | ---------------------------------------------------- |
+| roguelike-characters | https://kenney.nl/assets/roguelike-characters | 918×203   | 54×12      | Characters + equipment.                              |
+| tiny-dungeon         | https://kenney.nl/assets/tiny-dungeon         | 203×186   | 12×11=132  | Dungeon characters, weapons, items, projectiles.     |
+| tiny-town            | https://kenney.nl/assets/tiny-town            | 203×186   | 12×11=132  | Outdoor terrain, buildings, trees, NPCs, animals.    |
+| tiny-battle          | https://kenney.nl/assets/tiny-battle          | 305×186   | 18×11=198  | Soldiers, vehicles, military props.                  |
+| tiny-ski             | https://kenney.nl/assets/tiny-ski             | 203×186   | 12×11=132  | Winter biome.                                        |
+| roguelike-rpg-pack   | https://kenney.nl/assets/roguelike-rpg-pack   | 968×526   | 57×31≈1767 | Floors, walls, roofs, flora, doors, furniture, UI.   |
+
+All packs share a unified hand-drawn 16×16 aesthetic with 1px tile
+spacing — they mix freely in the same scene. Use the `tile-explorer`
+lab (`?lab=tile-explorer`) to browse every tile and copy frame indices.

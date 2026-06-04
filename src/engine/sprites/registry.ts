@@ -56,6 +56,11 @@ export interface SpriteDef {
 }
 
 const KENNEY_ROGUELIKE_CHARS = 'kenney-roguelike-characters';
+const KENNEY_TINY_DUNGEON = 'kenney-tiny-dungeon';
+const KENNEY_TINY_TOWN = 'kenney-tiny-town';
+const KENNEY_TINY_BATTLE = 'kenney-tiny-battle';
+const KENNEY_TINY_SKI = 'kenney-tiny-ski';
+const KENNEY_ROGUELIKE_RPG = 'kenney-roguelike-rpg-pack';
 
 export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
   {
@@ -67,6 +72,64 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     spacing: 1,
     cols: 54,
     description: 'Kenney Roguelike Characters (CC0). 918x203, 16x16 tiles, 1px gap.',
+  },
+  {
+    key: KENNEY_TINY_DUNGEON,
+    path: '/assets/kenney/tiny-dungeon/spritesheet.png',
+    frameWidth: 16,
+    frameHeight: 16,
+    margin: 0,
+    spacing: 1,
+    cols: 12,
+    description:
+      'Kenney Tiny Dungeon (CC0). 203x186, 132 tiles (12x11). ' +
+      'Characters, weapons, items, dungeon terrain, projectiles.',
+  },
+  {
+    key: KENNEY_TINY_TOWN,
+    path: '/assets/kenney/tiny-town/spritesheet.png',
+    frameWidth: 16,
+    frameHeight: 16,
+    margin: 0,
+    spacing: 1,
+    cols: 12,
+    description:
+      'Kenney Tiny Town (CC0). 203x186, 132 tiles (12x11). ' +
+      'Outdoor terrain, buildings, trees, NPCs, animals.',
+  },
+  {
+    key: KENNEY_TINY_BATTLE,
+    path: '/assets/kenney/tiny-battle/spritesheet.png',
+    frameWidth: 16,
+    frameHeight: 16,
+    margin: 0,
+    spacing: 1,
+    cols: 18,
+    description:
+      'Kenney Tiny Battle (CC0). 305x186, 198 tiles (18x11). ' +
+      'Soldiers, vehicles, military props.',
+  },
+  {
+    key: KENNEY_TINY_SKI,
+    path: '/assets/kenney/tiny-ski/spritesheet.png',
+    frameWidth: 16,
+    frameHeight: 16,
+    margin: 0,
+    spacing: 1,
+    cols: 12,
+    description: 'Kenney Tiny Ski (CC0). 203x186, 132 tiles (12x11). Winter biome.',
+  },
+  {
+    key: KENNEY_ROGUELIKE_RPG,
+    path: '/assets/kenney/roguelike-rpg-pack/spritesheet.png',
+    frameWidth: 16,
+    frameHeight: 16,
+    margin: 0,
+    spacing: 1,
+    cols: 57,
+    description:
+      'Kenney Roguelike/RPG Pack (CC0). 968x526, ~1767 tiles (57x31). ' +
+      'Floors, walls, roofs, flora, doors, furniture, mining, banners, UI.',
   },
 ];
 
