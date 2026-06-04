@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -34,6 +34,7 @@ function createPlayerInputLab(canvasHost: HTMLElement, controls: HTMLElement): (
 }
 
 registerLab('playerinput-lab', {
+  category: 'Movement & Physics' as LabCategory,
   name: 'Player Input Lab',
   description: 'Scaffold for validating playerInputSystem mappings and tuning.',
   create: createPlayerInputLab,

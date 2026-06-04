@@ -23,7 +23,7 @@ import {
 } from '../../game/index.js';
 import { GAME, PLAYER_SPEED, WEAPON } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -313,6 +313,7 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 }
 
 registerLab('combat-lab', {
+  category: 'Combat' as LabCategory,
   name: 'Combat Lab',
   description:
     'Stress-test auto-attacks, deterministic enemy spawns, and the combat damage pipeline.',

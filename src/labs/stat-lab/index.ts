@@ -9,7 +9,7 @@ import {
 import { statSystem } from '../../core/systems/statSystem.js';
 import { PRIMARY_STATS, SECONDARY_STATS, DEFAULT_BASE_STATS } from '../../shared/stats.js';
 import type { EquipmentItemDef } from '../../shared/equipment-types.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -126,6 +126,7 @@ function createStatLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 }
 
 registerLab('stat-lab', {
+  category: 'Progression' as LabCategory,
   name: 'Stat System Lab',
   description: 'Verify per-frame stat aggregation: base stats + equipment bonuses with clamping.',
   create: createStatLab,

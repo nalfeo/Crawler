@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -19,6 +19,7 @@ function createMeleeSwingLab(canvasHost: HTMLElement, controls: HTMLElement): ()
 }
 
 registerLab('meleeswing-lab', {
+  category: 'Combat' as LabCategory,
   name: 'Melee Swing',
   description: 'Placeholder lab entry for meleeSwingSystem.',
   create: createMeleeSwingLab,

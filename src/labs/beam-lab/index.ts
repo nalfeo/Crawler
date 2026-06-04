@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -19,6 +19,7 @@ function createBeamLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 }
 
 registerLab('beam-lab', {
+  category: 'Combat' as LabCategory,
   name: 'Beam',
   description: 'Placeholder lab entry for beamSystem.',
   create: createBeamLab,

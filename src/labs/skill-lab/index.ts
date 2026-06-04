@@ -8,7 +8,7 @@ import { skillSystem } from '../../game/systems/skillSystem.js';
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
 import type { SkillState } from '../../game/skills/types.js';
 import { SKILL_NATURAL_CAP, SKILL_HARD_CAP } from '../../game/skills/types.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -168,6 +168,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 }
 
 registerLab('skill-lab', {
+  category: 'Progression' as LabCategory,
   name: 'Skill Lab',
   description:
     'Simulate skill usage events, watch skills level up through milestones, and inspect resulting stat modifiers.',

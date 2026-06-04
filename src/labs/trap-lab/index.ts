@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -19,6 +19,7 @@ function createTrapLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 }
 
 registerLab('trap-lab', {
+  category: 'Entities' as LabCategory,
   name: 'Trap',
   description: 'Placeholder lab entry for trapSystem.',
   create: createTrapLab,

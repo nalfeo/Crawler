@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -19,6 +19,7 @@ function createLifetimeLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 }
 
 registerLab('lifetime-lab', {
+  category: 'Entities' as LabCategory,
   name: 'Lifetime',
   description: 'Placeholder lab entry for lifetimeSystem.',
   create: createLifetimeLab,

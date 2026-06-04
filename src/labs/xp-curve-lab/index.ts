@@ -1,6 +1,6 @@
 import GUI from 'lil-gui';
 import { xpThresholdForLevel, xpRequiredForLevel } from '../../shared/xpMath.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -128,6 +128,7 @@ function createXpCurveLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 }
 
 registerLab('xp-curve-lab', {
+  category: 'Progression' as LabCategory,
   name: 'XP Curve Lab',
   description:
     'Visualize XP requirements per level and simulate progression speed at different gem collection rates.',

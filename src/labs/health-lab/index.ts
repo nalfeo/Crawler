@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -34,6 +34,7 @@ function createHealthLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 }
 
 registerLab('health-lab', {
+  category: 'Combat' as LabCategory,
   name: 'Health Lab',
   description: 'Scaffold for validating healthSystem behavior.',
   create: createHealthLab,

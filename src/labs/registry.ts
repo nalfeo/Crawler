@@ -1,6 +1,15 @@
+export type LabCategory =
+  | 'Combat'
+  | 'Movement & Physics'
+  | 'Items & Equipment'
+  | 'Progression'
+  | 'Entities'
+  | 'Meta';
+
 export interface LabDefinition {
   name: string;
   description: string;
+  category?: LabCategory;
   /** Create and start the lab. Returns a cleanup function. */
   create: (canvas: HTMLElement, controls: HTMLElement) => (() => void) | void;
 }

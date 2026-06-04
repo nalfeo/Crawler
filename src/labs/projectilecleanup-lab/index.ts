@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -34,6 +34,7 @@ function createProjectileCleanupLab(canvasHost: HTMLElement, controls: HTMLEleme
 }
 
 registerLab('projectilecleanup-lab', {
+  category: 'Entities' as LabCategory,
   name: 'Projectile Cleanup Lab',
   description: 'Scaffold for validating projectileCleanupSystem behavior.',
   create: createProjectileCleanupLab,

@@ -6,7 +6,7 @@ import { spawnPlayer } from '../../core/helpers.js';
 import { statsSystem, spendPoints, addStatModifier } from '../../game/systems/statsSystem.js';
 import { levelSystem } from '../../game/systems/levelSystem.js';
 import { STAT_KEYS, STAT_BASE } from '../../shared/stats.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -144,6 +144,7 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 }
 
 registerLab('stats-lab', {
+  category: 'Progression' as LabCategory,
   name: 'Stats Lab',
   description: 'Inspect stat computation: base values, point allocations, and modifier stacking.',
   create: createStatsLab,

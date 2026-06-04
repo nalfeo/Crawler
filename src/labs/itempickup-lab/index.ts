@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -36,6 +36,7 @@ function createItemPickupLab(canvasHost: HTMLElement, controls: HTMLElement): ()
 }
 
 registerLab('itempickup-lab', {
+  category: 'Items & Equipment' as LabCategory,
   name: 'Item Pickup Lab',
   description: 'Sandbox for item pickup system behavior.',
   create: createItemPickupLab,

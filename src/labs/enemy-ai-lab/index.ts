@@ -20,7 +20,7 @@ import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { AI_TYPE, enemyAISystem } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -417,6 +417,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 }
 
 registerLab('enemy-ai-lab', {
+  category: 'Entities' as LabCategory,
   name: 'Enemy AI Lab',
   description:
     'Compare chase, swarm, and ranged enemy behaviors with live spawn and tuning controls.',

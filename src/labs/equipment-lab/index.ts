@@ -25,7 +25,7 @@ import type {
   ItemRarity,
   EquipFailureReason,
 } from '../../shared/equipment-types.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -403,6 +403,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 }
 
 registerLab('equipment-lab', {
+  category: 'Items & Equipment' as LabCategory,
   name: 'Equipment Lab',
   description:
     'Interactive paper doll for testing equip/unequip operations, stat aggregation, requirements, and multi-slot items.',
