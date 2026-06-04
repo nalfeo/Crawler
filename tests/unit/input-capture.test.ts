@@ -151,6 +151,19 @@ function endTouch(id: number, x: number, y: number): void {
   dispatchCanvasTouch('touchend', [{ id, x, y }]);
 }
 
+function dispatchCanvasPointer(
+  type: string,
+  opts: { clientX: number; clientY: number; button: number; pointerType: string },
+): void {
+  (mockCanvas as unknown as { dispatchEvent: (e: unknown) => boolean }).dispatchEvent({
+    type,
+    clientX: opts.clientX,
+    clientY: opts.clientY,
+    button: opts.button,
+    pointerType: opts.pointerType,
+  });
+}
+
 describe('InputCapture (raw DOM)', () => {
   let createInputCapture: typeof import('../../src/engine/InputCapture.js').createInputCapture;
   let capture: ReturnType<typeof createInputCapture>;
@@ -351,6 +364,42 @@ describe('InputCapture (raw DOM)', () => {
     releaseKey('KeyS');
     releaseKey('KeyA');
     releaseKey('KeyD');
+  });
+
+  // --- Mouse pointer emulation tests ---
+  it('left-side mouse drag controls movement (touch emulation on PC)', () => {
+    dispatchCanvasPointer('pointerdown', { clientX: 100, clientY: 200, button: 0, pointerType: 'mouse' });
+    dispatchCanvasPointer('pointermove', { clientX: 160, clientY: 200, button: 0, pointerType: 'mouse' });
+
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+    expect(state.moveY).toBe(0);
+
+    dispatchCanvasPointer('pointerup', { clientX: 160, clientY: 200, button: 0, pointerType: 'mouse' });
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+  });
+
+  it('right-side mouse click enables action (touch emulation on PC)', () => {
+    dispatchCanvasPointer('pointerdown', { clientX: 600, clientY: 300, button: 0, pointerType: 'mouse' });
+
+    capture.poll(state);
+    expect(state.action).toBe(true);
+
+    dispatchCanvasPointer('pointerup', { clientX: 600, clientY: 300, button: 0, pointerType: 'mouse' });
+    capture.poll(state);
+    expect(state.action).toBe(false);
+  });
+
+  it('pointer events with pointerType "touch" are ignored (handled by touch listeners)', () => {
+    dispatchCanvasPointer('pointerdown', { clientX: 100, clientY: 200, button: 0, pointerType: 'touch' });
+    dispatchCanvasPointer('pointermove', { clientX: 160, clientY: 200, button: 0, pointerType: 'touch' });
+
+    capture.poll(state);
+    // Should not register since pointerType is 'touch' — real touch events handle those
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
   });
 });
 
