@@ -24,6 +24,7 @@ import {
 } from './components.js';
 import type { GameWorld } from './world.js';
 import type { WeaponTypeValue } from '../shared/constants.js';
+import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
 
 /** Zero all typed-array store slots for a recycled entity ID. */
 export function clearEntityStores(world: GameWorld, eid: number): void {
@@ -299,6 +300,8 @@ export function spawnMeleeSwing(
     spawnAtMs: world.elapsedMs, durationMs, style,
     headRadius, shaftDamageMult, knockback,
   }));
+  // Clear any stale hit tracking from a recycled entity ID
+  clearMeleeSwingHits(world, eid);
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
