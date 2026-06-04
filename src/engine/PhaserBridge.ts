@@ -16,6 +16,7 @@ import {
   XpGem,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
+import { getSprite } from './sprites/index.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -132,6 +133,8 @@ function generateTextures(scene: Phaser.Scene): void {
 interface EntityVisual {
   obj: Phaser.GameObjects.Image;
   type: string;
+  /** Base scale to restore in the default per-frame branch. */
+  baseScale: number;
 }
 
 function getEntityType(world: GameWorld, eid: number): string {
@@ -149,7 +152,59 @@ function getEntityType(world: GameWorld, eid: number): string {
   return 'default';
 }
 
-function getTextureForType(type: string): string {
+/**
+ * Mapping from entity type to a logical sprite ID in the registry.
+ * Types that omit a mapping always render with the procedural
+ * `__cw_*` texture. Types whose mapping resolves but whose sheet
+ * failed to load also fall back to the procedural texture, so the
+ * renderer is robust to missing sprite packs.
+ */
+const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
+  player: 'player',
+  enemy: 'enemy.orc',
+};
+
+/**
+ * Per-Kenney-sprite render scale, applied when the bridge picks a
+ * Kenney sprite for an entity type. 16x16 source pixels are scaled up
+ * so the sprite reads at roughly the same on-screen size as the
+ * procedural texture it replaces.
+ */
+const KENNEY_SCALE: Readonly<Record<string, number>> = {
+  player: 1.6, // procedural player texture is 26x26
+  enemy: 1.4, // procedural enemy texture is 22x22
+};
+
+interface ResolvedTexture {
+  key: string;
+  /** Frame index when `key` references a spritesheet. */
+  frame?: number;
+  /** Base render scale for this texture. */
+  scale: number;
+}
+
+/**
+ * Resolve the texture (and frame) to use for the given entity type.
+ * Prefers a Kenney sprite when both the registry mapping and the
+ * loaded texture exist; otherwise falls back to the procedural
+ * `__cw_*` texture.
+ */
+function resolveTexture(scene: Phaser.Scene, type: string): ResolvedTexture {
+  const spriteId = ENTITY_KENNEY_SPRITE[type];
+  if (spriteId !== undefined) {
+    const sprite = getSprite(spriteId);
+    if (sprite !== undefined && scene.textures?.exists(sprite.sheetKey)) {
+      return {
+        key: sprite.sheetKey,
+        frame: sprite.frame,
+        scale: KENNEY_SCALE[type] ?? 1,
+      };
+    }
+  }
+  return { key: getProceduralTextureForType(type), scale: 1 };
+}
+
+function getProceduralTextureForType(type: string): string {
   switch (type) {
     case 'player':
       return TEX_PLAYER;
@@ -342,9 +397,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual) {
             visual.obj.destroy();
           }
-          const texKey = getTextureForType(entityType);
-          const img = scene.add.image(x, y, texKey);
-          visual = { obj: img, type: entityType };
+          const resolved = resolveTexture(scene, entityType);
+          const img =
+            resolved.frame !== undefined
+              ? scene.add.image(x, y, resolved.key, resolved.frame)
+              : scene.add.image(x, y, resolved.key);
+          if (resolved.scale !== 1) {
+            img.setScale(resolved.scale);
+          }
+          visual = { obj: img, type: entityType, baseScale: resolved.scale };
           visuals.set(eid, visual);
         }
 
@@ -481,7 +542,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           default:
             img.setAlpha(1);
-            img.setScale(1);
+            img.setScale(visual.baseScale);
             img.setRotation(0);
             break;
         }
