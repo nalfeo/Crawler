@@ -67,13 +67,9 @@ Examples:
 - Full plate armour → occupies `chest` + `arms` + `shoulders`.
 - Long gloves → occupies `gloves` + `wrists`.
 
-### Slot Disabling
+### Slot Disabling (Deferred)
 
-Slots can be individually **disabled** at runtime (future mechanic: injuries, curses, mutations).
-
-- A disabled slot cannot hold an item. If an item is in that slot when it becomes disabled, the item is forcibly unequipped.
-- Multi-slot items are fully unequipped if **any** of their slots are disabled.
-- Disabling/re-enabling is tracked per-entity, per-slot.
+> **Deferred to a future spec.** Slot disabling (injuries, curses, mutations) is not part of v1. The `EquipmentState` type reserves a `disabledSlots` field for forward-compatibility, but `disableSlot`/`enableSlot` operations, forced unequip behaviour, and related tests are not implemented in v1.
 
 ### Stats
 
@@ -276,10 +272,8 @@ interface EquipmentState {
 
 | Operation                           | Preconditions                                              | Effects                                         |
 | ----------------------------------- | ---------------------------------------------------------- | ----------------------------------------------- |
-| `equip(world, entity, itemDef)`     | All required slots free AND enabled, all requirements pass | Sets item in all slots, recalculates stats       |
+| `equip(world, entity, itemDef)`     | All required slots free, all requirements pass             | Sets item in all slots, recalculates stats       |
 | `unequip(world, entity, slotId)`    | Slot has an item                                           | Frees all slots the item occupies, recalcs stats |
-| `disableSlot(world, entity, slot)`  | —                                                          | Forcibly unequips item if present, marks disabled |
-| `enableSlot(world, entity, slot)`   | —                                                          | Marks slot enabled                               |
 | `getEffectiveStats(world, entity)`  | —                                                          | Returns sum of base stats + all equipment bonuses |
 | `canEquip(world, entity, itemDef)`  | —                                                          | Returns `CanEquipResult` — checks slots AND requirements |
 
@@ -295,7 +289,6 @@ type EquipResult =
 type EquipFailureReason =
   | { type: 'invalidDef'; message: string }       // empty slots, duplicate slots, bad stat values
   | { type: 'unknownSlot'; slotId: string }
-  | { type: 'disabledSlot'; slotId: string }
   | { type: 'occupiedSlot'; slotId: string }
   | { type: 'requirementFailed'; requirement: EquipRequirement; message: string };
 
@@ -303,26 +296,21 @@ type UnequipResult =
   | { ok: true; item: EquipmentInstance }
   | { ok: false; reason: string };
 
-type DisableSlotResult = {
-  unequippedItem: EquipmentInstance | null;
-};
-
 type CanEquipResult = {
   allowed: boolean;
   reasons: EquipFailureReason[];
 };
 ```
 
-**Reason ordering** (deterministic): invalidDef → unknownSlot → disabledSlot → occupiedSlot → requirementFailed.
+**Reason ordering** (deterministic): invalidDef → unknownSlot → occupiedSlot → requirementFailed.
 
 ### Constraints
 
 - An entity can only equip one item per slot.
-- `equip` is **atomic**: it either fully succeeds (all slots filled, stats updated) or fails with no state change. It returns `false` if any required slot is occupied or disabled, **or if any equip requirement fails**.
+- `equip` is **atomic**: it either fully succeeds (all slots filled, stats updated) or fails with no state change. It returns `ok: false` if any required slot is occupied, **or if any equip requirement fails**.
 - A **swap** helper may be added later but is not required in v1 — caller unequips first.
-- Stats are **recomputed** on every equip/unequip/disable/enable, not cached lazily, to keep determinism simple.
-- `disableSlot` / `enableSlot` are **idempotent** — disabling an already-disabled slot or enabling an already-enabled slot is a no-op.
-- **Forced unequip** (from slot disabling) removes the item from equipment state and stat computation. The item is returned via a result value — inventory/drop behaviour is out of scope for v1.
+- Stats are **recomputed** on every equip/unequip, not cached lazily, to keep determinism simple.
+- **Forced unequip** (from future slot disabling) is deferred — see Slot Disabling section.
 
 ### Validation Rules
 
@@ -354,12 +342,12 @@ Equipment changes (equip/unequip) are permitted **only in safe rooms** (`world.s
 - Multi-slot items with atomic equip/unequip
 - Equip requirements (level, stat, tag, custom predicate)
 - `canEquip` query for UI/tooltip gating
-- Slot disabling/enabling
 - Flat additive stat bonuses with clamping
 - Base/effective stat separation
 - Side-map state with entity cleanup
 
 **Explicitly deferred:**
+- Slot disabling (injuries, curses, mutations)
 - Additional slot types (trinket/ammo/earring — add to registry when needed)
 - Weapon swap sets (mainHand2/offHand2)
 - Primary stat → secondary stat derivation formulas
@@ -458,7 +446,6 @@ The equipment screen uses a classic **paper doll** layout — a character silhou
 | ----------- | ----------------------------------------------------- |
 | Empty       | Dimmed outline + slot label text                      |
 | Equipped    | Item icon + rarity-coloured border                    |
-| Disabled    | Crossed out / red tint, non-interactive               |
 | Hover       | Tooltip with item name, stats, requirements           |
 | Invalid     | Red flash when attempting to equip a blocked/failed item |
 
@@ -496,40 +483,34 @@ The UI layer reads from `EquipmentState` (via the ECS bridge) and calls `equip`/
 4. **Unequip multi-slot item** — verify all slots freed via any one slot.
 5. **Equip fails on occupied slot** — returns false, state unchanged (atomic).
 6. **Equip multi-slot fails partially blocked** — one required slot occupied, all slots unchanged.
-7. **Equip fails on disabled slot** — returns false, state unchanged.
-8. **Disable slot with equipped item** — item unequipped, stats removed.
-9. **Disable slot on multi-slot item** — entire item unequipped.
-10. **Enable slot** — slot becomes available, no side effects.
-11. **Idempotent disable/enable** — double-disable or double-enable is a no-op, no stat drift.
-12. **Stat aggregation** — equip multiple items, verify sum is correct with clamping.
-13. **Stat aggregation after partial unequip** — verify recalculation.
-14. **Base stats never modified by equipment** — equip/unequip cycle, base stats unchanged.
-15. **Recompute idempotent** — recompute multiple times, no double-counting.
-16. **All slots can be equipped independently** — 16 items, 16 slots.
-17. **Duplicate item definitions** — two rings with same `itemDef.id`, unequip one, other remains.
-18. **Invalid item def (empty slots)** — equip rejected.
-19. **Invalid item def (duplicate slots)** — equip rejected.
-20. **Entity cleanup** — remove Equipment component, verify side-map entry cleared.
-21. **Equip/unequip determinism** — same sequence, same outcome (seeded world).
-22. **Equip fails on minLevel requirement** — entity below required level, equip denied.
-23. **Equip fails on minStat requirement** — entity strength too low, equip denied.
-24. **Equip fails on notTag requirement** — entity has excluded tag, equip denied.
-25. **Equip succeeds with all requirements met** — level, stat, and tag checks pass.
-26. **canEquip returns reasons** — multiple failed requirements, all reasons listed.
-27. **Custom requirement predicate** — registered predicate denies equip, verify denial.
-28. **New slot added to registry** — item targeting new slot can be equipped.
-29. **Unknown slot rejected** — item referencing unregistered slot fails validation.
-30. **Multi-slot item stats not double-counted** — two-handed weapon in mainHand+offHand grants bonuses exactly once.
-31. **NaN/Infinity stat values rejected** — equip denied with invalidDef reason.
-32. **Equip denied outside safe room** — equip returns `ok: false` when `world.state !== 'safe_room'` (without `forceInLab`).
-33. **Entity tag requirements** — `hasTag` checks entity tag set, not item tags.
+7. **Stat aggregation** — equip multiple items, verify sum is correct with clamping.
+8. **Stat aggregation after partial unequip** — verify recalculation.
+9. **Base stats never modified by equipment** — equip/unequip cycle, base stats unchanged.
+10. **Recompute idempotent** — recompute multiple times, no double-counting.
+11. **All slots can be equipped independently** — 16 items, 16 slots.
+12. **Duplicate item definitions** — two rings with same `itemDef.id`, unequip one, other remains.
+13. **Invalid item def (empty slots)** — equip rejected.
+14. **Invalid item def (duplicate slots)** — equip rejected.
+15. **Entity cleanup** — remove Equipment component, verify side-map entry cleared.
+16. **Equip/unequip determinism** — same sequence, same outcome (seeded world).
+17. **Equip fails on minLevel requirement** — entity below required level, equip denied.
+18. **Equip fails on minStat requirement** — entity strength too low, equip denied.
+19. **Equip fails on notTag requirement** — entity has excluded tag, equip denied.
+20. **Equip succeeds with all requirements met** — level, stat, and tag checks pass.
+21. **canEquip returns reasons** — multiple failed requirements, all reasons listed.
+22. **Custom requirement predicate** — registered predicate denies equip, verify denial.
+23. **New slot added to registry** — item targeting new slot can be equipped.
+24. **Unknown slot rejected** — item referencing unregistered slot fails validation.
+25. **Multi-slot item stats not double-counted** — two-handed weapon in mainHand+offHand grants bonuses exactly once.
+26. **NaN/Infinity stat values rejected** — equip denied with invalidDef reason.
+27. **Equip denied outside safe room** — equip returns `ok: false` when `world.state !== 'safe_room'` (without `forceInLab`).
+28. **Entity tag requirements** — `hasTag` checks entity tag set, not item tags.
 
 ### Property-Based Tests (`tests/ecs/equipment.property.test.ts`)
 
 Using `fast-check`:
-- **Invariant**: equipped item count ≤ 16 (one per slot).
+- **Invariant**: equipped item count ≤ slot count (one per slot).
 - **Invariant**: `getEffectiveStats` = base stats + Σ equipped bonuses with clamping (no drift).
-- **Invariant**: disabling a slot never leaves a dangling item reference.
 - **Invariant**: equipping then unequipping returns effective stats to base values.
 - **Invariant**: stat values respect their clamp ranges after any sequence of operations.
 
@@ -538,7 +519,6 @@ Using `fast-check`:
 Visual sandbox showing:
 - **Paper doll** with all 16 slot boxes positioned around a character silhouette.
 - Click-to-equip / click-to-unequip flow.
-- Slot disable/enable toggle buttons.
 - Live stat panel (base vs effective with diffs).
 - Multi-slot item demonstrations (two-handed weapon, full plate).
 - Requirement gating demo (level-locked item, stat-gated item).
