@@ -1,7 +1,8 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { AreaDamage, Lifetime, MeleeSwing, Owner, Position, Team } from '../../src/core/components.js';
+import { AreaDamage, Knockback, Lifetime, MeleeSwing, Owner, Position, Team } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { GAME } from '../../src/shared/constants.js';
@@ -177,7 +178,7 @@ describe('melee weapons', () => {
     expect(100 - (world.stores.health.current[enemy] ?? 0)).toBeLessThanOrEqual(hammer.baseDamage * hammer.shaftDamageMult);
   });
 
-  it('hammer knockback displaces enemy away from player', () => {
+  it('hammer knockback smoothly displaces enemy away from player', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);
     const hammer = getWeaponDef('hammer')!;
@@ -189,14 +190,29 @@ describe('melee weapons', () => {
 
     const beforeX = world.stores.position.x[enemy] ?? 0;
 
+    // Hit the enemy
     for (let i = 0; i < 10; i++) {
       world.elapsedMs += GAME.DELTA_MS;
       meleeSwingSystem(world);
     }
 
-    // Enemy should have been pushed to the right (away from player at 100,100)
+    // Enemy should now have Knockback component
+    const kbEntities = query(world.ecs, [Knockback]);
+    expect(kbEntities).toContain(enemy);
+
+    // Run knockback over several frames — should move smoothly
+    const midX1 = world.stores.position.x[enemy] ?? 0;
+    knockbackSystem(world);
+    const midX2 = world.stores.position.x[enemy] ?? 0;
+    expect(midX2).toBeGreaterThan(midX1);
+
+    // Run remaining knockback frames
+    for (let i = 0; i < 20; i++) {
+      knockbackSystem(world);
+    }
+
     const afterX = world.stores.position.x[enemy] ?? 0;
-    expect(afterX).toBeGreaterThan(beforeX);
+    // Total displacement should approximately equal knockback value
     expect(afterX - beforeX).toBeCloseTo(hammer.knockback, 0);
   });
 

@@ -49,6 +49,8 @@ export const LineDamage = {};
 export const Trap = {};
 /** Active melee swing — a blade line that sweeps through an arc. */
 export const MeleeSwing = {};
+/** Smooth knockback impulse — decays over time. */
+export const Knockback = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -141,6 +143,12 @@ export function createComponentStores() {
       headRadius: new Float32Array(MAX_ENTITIES),
       shaftDamageMult: new Float32Array(MAX_ENTITIES),
       knockback: new Float32Array(MAX_ENTITIES),
+    },
+    knockback: {
+      dirX: new Float32Array(MAX_ENTITIES),
+      dirY: new Float32Array(MAX_ENTITIES),
+      remaining: new Float32Array(MAX_ENTITIES),
+      speed: new Float32Array(MAX_ENTITIES),
     },
   };
 }

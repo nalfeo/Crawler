@@ -1,5 +1,5 @@
-import { entityExists, hasComponent, query } from 'bitecs';
-import { Enemy, Health, MeleeSwing, Owner, Player, Position, Team } from '../components.js';
+import { addComponent, entityExists, hasComponent, query, set } from 'bitecs';
+import { Enemy, Health, Knockback, MeleeSwing, Owner, Player, Position, Team } from '../components.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 
@@ -155,7 +155,7 @@ export function meleeSwingSystem(world: GameWorld): void {
         health.current[target] = Math.max(0, current - hitDamage);
         hitSet.add(target);
 
-        // Apply knockback as immediate position displacement
+        // Apply knockback as smooth impulse via Knockback component
         if (knockback > 0) {
           const kbDx = tx - px;
           const kbDy = ty - py;
@@ -163,8 +163,13 @@ export function meleeSwingSystem(world: GameWorld): void {
           if (kbDist > 0.001) {
             const nx = kbDx / kbDist;
             const ny = kbDy / kbDist;
-            position.x[target] = tx + nx * knockback;
-            position.y[target] = ty + ny * knockback;
+            // Spread the knockback over ~10 frames for smooth motion
+            const kbSpeed = Math.max(1, knockback / 10);
+            addComponent(world.ecs, target, set(Knockback, {
+              dirX: nx, dirY: ny,
+              remaining: knockback,
+              speed: kbSpeed,
+            }));
           }
         }
       }
