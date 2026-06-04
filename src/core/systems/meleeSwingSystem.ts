@@ -3,7 +3,7 @@ import { Enemy, Health, MeleeSwing, Owner, Player, Position, Team } from '../com
 import type { GameWorld } from '../world.js';
 
 /** Half-width of the blade hitbox in pixels. */
-const BLADE_HIT_HALF_WIDTH = 6;
+const BLADE_HIT_HALF_WIDTH = 12;
 
 /** Distance from a point to a line segment (squared). */
 function pointToSegmentDistSq(
