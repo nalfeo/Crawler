@@ -19,12 +19,7 @@ import {
   sortSlots,
   type SortField,
 } from '../shared/inventory.js';
-import {
-  type ItemDef,
-  type ItemTag,
-  RARITY_COLORS,
-  getItemById,
-} from '../shared/items.js';
+import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 
 // ---------------------------------------------------------------------------
 // Constants
