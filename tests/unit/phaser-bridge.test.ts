@@ -31,9 +31,8 @@ class MockImage {
 
   setTexture(key: string, frame?: number): this {
     this.textureKey = key;
-    if (frame !== undefined) {
-      this.frame = frame;
-    }
+    // Match Phaser semantics: setTexture(key) resets frame to the texture default.
+    this.frame = frame ?? 0;
     return this;
   }
 

@@ -147,7 +147,8 @@ function createTileExplorerLab(canvasHost: HTMLElement, controls: HTMLElement): 
       const img = entry.image;
       const totalCols = sheet.cols;
       const totalRows = Math.floor(
-        (img.naturalHeight - sheet.margin + sheet.spacing) / (sheet.frameHeight + sheet.spacing),
+        (img.naturalHeight - sheet.margin * 2 + sheet.spacing) /
+          (sheet.frameHeight + sheet.spacing),
       );
       const totalFrames = totalCols * totalRows;
 
