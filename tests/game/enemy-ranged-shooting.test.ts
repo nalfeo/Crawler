@@ -1,11 +1,6 @@
 import { hasComponent, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import {
-  Damage,
-  EnemyProjectile,
-  Position,
-  Projectile,
-} from '../../src/core/components.js';
+import { Damage, EnemyProjectile, Position, Projectile } from '../../src/core/components.js';
 import {
   collisionSystem,
   damageSystem,

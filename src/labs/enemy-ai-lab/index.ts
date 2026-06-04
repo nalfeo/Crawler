@@ -73,7 +73,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   info.style.pointerEvents = 'none';
 
   const hint = document.createElement('p');
-  hint.textContent = 'Move with WASD or arrow keys. Spawn chasers, swarmers, and ranged enemies to compare their movement live.';
+  hint.textContent =
+    'Move with WASD or arrow keys. Spawn chasers, swarmers, and ranged enemies to compare their movement live.';
   hint.style.marginTop = '16px';
   hint.style.color = '#d7d2ff';
   hint.style.lineHeight = '1.6';
@@ -120,8 +121,15 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.world = createGameWorld({ seed: 2027 });
       this.inputState = createInputState();
       this.inputCapture = createInputCapture(this);
-      this.playerEid = spawnPlayer(this.world, this.getViewportWidth() / 2, this.getViewportHeight() / 2);
-      setComponent(this.world.ecs, this.playerEid, Health, { current: PLAYER_HEALTH, max: PLAYER_HEALTH });
+      this.playerEid = spawnPlayer(
+        this.world,
+        this.getViewportWidth() / 2,
+        this.getViewportHeight() / 2,
+      );
+      setComponent(this.world.ecs, this.playerEid, Health, {
+        current: PLAYER_HEALTH,
+        max: PLAYER_HEALTH,
+      });
       this.spawnGroup(AI_TYPE.CHASE, 5);
       this.spawnGroup(AI_TYPE.SWARM, 10);
       this.spawnGroup(AI_TYPE.RANGED, 5);
@@ -267,7 +275,16 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         const x = clamp(anchor.x + Math.cos(angle + jitter) * distance, 24, maxX);
         const y = clamp(anchor.y + Math.sin(angle + jitter) * distance, 24, maxY);
 
-        spawnBehaviorEnemy(this.world, x, y, hp, type, speed, settings.aggroRange, settings.attackRange);
+        spawnBehaviorEnemy(
+          this.world,
+          x,
+          y,
+          hp,
+          type,
+          speed,
+          settings.aggroRange,
+          settings.attackRange,
+        );
       }
 
       this.bridge?.sync(this.world);
@@ -305,7 +322,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         }
       }
 
-      const playerHealth = this.playerEid >= 0 ? this.world.stores.health.current[this.playerEid] ?? 0 : 0;
+      const playerHealth =
+        this.playerEid >= 0 ? (this.world.stores.health.current[this.playerEid] ?? 0) : 0;
 
       info.textContent = [
         `Player HP: ${playerHealth.toFixed(0)}  State: ${this.world.state}`,
@@ -337,11 +355,26 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   gui.add(controlsApi, 'spawnChasers').name('Spawn Chasers (5)');
   gui.add(controlsApi, 'spawnSwarm').name('Spawn Swarm (10)');
   gui.add(controlsApi, 'spawnRanged').name('Spawn Ranged (5)');
-  gui.add(settings, 'chaseSpeed', 0.5, 5, 0.1).name('Chase Speed').onChange(() => syncSettingsFromGui());
-  gui.add(settings, 'swarmSpeed', 0.5, 5, 0.1).name('Swarm Speed').onChange(() => syncSettingsFromGui());
-  gui.add(settings, 'rangedSpeed', 0.5, 3, 0.1).name('Ranged Speed').onChange(() => syncSettingsFromGui());
-  gui.add(settings, 'aggroRange', 50, 400, 5).name('Aggro Range').onChange(() => syncSettingsFromGui());
-  gui.add(settings, 'attackRange', 100, 300, 5).name('Attack Range').onChange(() => syncSettingsFromGui());
+  gui
+    .add(settings, 'chaseSpeed', 0.5, 5, 0.1)
+    .name('Chase Speed')
+    .onChange(() => syncSettingsFromGui());
+  gui
+    .add(settings, 'swarmSpeed', 0.5, 5, 0.1)
+    .name('Swarm Speed')
+    .onChange(() => syncSettingsFromGui());
+  gui
+    .add(settings, 'rangedSpeed', 0.5, 3, 0.1)
+    .name('Ranged Speed')
+    .onChange(() => syncSettingsFromGui());
+  gui
+    .add(settings, 'aggroRange', 50, 400, 5)
+    .name('Aggro Range')
+    .onChange(() => syncSettingsFromGui());
+  gui
+    .add(settings, 'attackRange', 100, 300, 5)
+    .name('Attack Range')
+    .onChange(() => syncSettingsFromGui());
   gui.add(controlsApi, 'clearEnemies').name('Clear Enemies');
   gui.add(controlsApi, 'reset').name('Reset');
 
@@ -381,6 +414,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
 registerLab('enemy-ai-lab', {
   name: 'Enemy AI Lab',
-  description: 'Compare chase, swarm, and ranged enemy behaviors with live spawn and tuning controls.',
+  description:
+    'Compare chase, swarm, and ranged enemy behaviors with live spawn and tuning controls.',
   create: createEnemyAiLab,
 });

@@ -1,8 +1,16 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_prod:
+        description: 'Also rebuild prod from production tag'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -14,10 +22,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Admin check (manual triggers only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PERM=$(gh api "repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission" --jq '.permission')
+          if [ "$PERM" != "admin" ]; then
+            echo "::error::Only admins may trigger manual deploys (you have: $PERM)"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -27,21 +54,108 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
+      # --- Build Dev (includes labs) ---
+      - name: Build dev
         run: npm run build
+        env:
+          DEPLOY_ENV: dev
+          BUILD_OUTDIR: staging/dev
+
+      - name: Guard - dev must include lab.html
+        run: |
+          if [ ! -f staging/dev/lab.html ]; then
+            echo "::error::Dev build missing lab.html"
+            exit 1
+          fi
+
+      # --- Build Beta (no labs) ---
+      - name: Build beta
+        run: npm run build
+        env:
+          DEPLOY_ENV: beta
+          BUILD_OUTDIR: staging/beta
+
+      - name: Guard - beta must NOT include lab.html
+        run: |
+          if [ -f staging/beta/lab.html ]; then
+            echo "::error::Beta build contains lab.html - lab leakage!"
+            exit 1
+          fi
+
+      # --- Build Prod (from production tag, if exists) ---
+      - name: Check for production tag
+        id: prod-tag
+        run: |
+          if git rev-parse production >/dev/null 2>&1; then
+            SHA=$(git rev-parse production)
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout production ref for prod build
+        if: steps.prod-tag.outputs.exists == 'true'
+        run: git checkout ${{ steps.prod-tag.outputs.sha }} -- .
+
+      - name: Build prod
+        if: steps.prod-tag.outputs.exists == 'true'
+        run: |
+          npm ci
+          npm run build
+        env:
+          DEPLOY_ENV: prod
+          BUILD_OUTDIR: staging/prod
+
+      - name: Restore main branch
+        if: steps.prod-tag.outputs.exists == 'true'
+        run: git checkout ${{ github.sha }} -- .
+
+      - name: Guard - prod must NOT include lab.html
+        if: steps.prod-tag.outputs.exists == 'true'
+        run: |
+          if [ -f staging/prod/lab.html ]; then
+            echo "::error::Prod build contains lab.html - lab leakage!"
+            exit 1
+          fi
+
+      # --- Assemble final site ---
+      - name: Assemble site
+        run: |
+          mkdir -p site/dev site/beta
+
+          # Dev tier
+          cp -r staging/dev/* site/dev/
+
+          # Beta tier
+          cp -r staging/beta/* site/beta/
+
+          # Prod tier (or placeholder)
+          if [ -d staging/prod ]; then
+            cp -r staging/prod/* site/
+          else
+            echo '<!DOCTYPE html><html><body><h1>Crawler</h1><p>No production release yet. Visit <a href="beta/">beta</a> or <a href="dev/">dev</a>.</p></body></html>' > site/index.html
+          fi
+
+      # --- Write version markers ---
+      - name: Write version.json files
+        run: |
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          HEAD_SHA=${{ github.sha }}
+          PROD_SHA=${{ steps.prod-tag.outputs.sha || 'none' }}
+
+          echo "{\"commit\":\"$HEAD_SHA\",\"env\":\"dev\",\"builtAt\":\"$NOW\"}" > site/dev/version.json
+          echo "{\"commit\":\"$HEAD_SHA\",\"env\":\"beta\",\"builtAt\":\"$NOW\"}" > site/beta/version.json
+
+          if [ -d staging/prod ]; then
+            echo "{\"commit\":\"$PROD_SHA\",\"env\":\"prod\",\"builtAt\":\"$NOW\"}" > site/version.json
+          fi
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
 
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

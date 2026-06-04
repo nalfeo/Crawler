@@ -19,7 +19,10 @@ export function createInputState(): InputState {
   };
 }
 
-export function normalizeInputDirection(moveX: number, moveY: number): Pick<InputState, 'moveX' | 'moveY'> {
+export function normalizeInputDirection(
+  moveX: number,
+  moveY: number,
+): Pick<InputState, 'moveX' | 'moveY'> {
   const length = Math.hypot(moveX, moveY);
 
   if (length === 0) {
