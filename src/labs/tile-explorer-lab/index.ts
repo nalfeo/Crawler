@@ -79,8 +79,7 @@ function createTileExplorerLab(canvasHost: HTMLElement, controls: HTMLElement): 
   root.style.boxSizing = 'border-box';
   root.style.background = 'radial-gradient(circle at top, #1e293b 0%, #0f172a 60%, #020617 100%)';
   root.style.color = '#f8fafc';
-  root.style.fontFamily =
-    '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+  root.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 
   const heading = document.createElement('h1');
   heading.textContent = 'Tile Explorer';
@@ -212,8 +211,7 @@ function createTileExplorerLab(canvasHost: HTMLElement, controls: HTMLElement): 
     grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${cellWidth}px, max-content))`;
 
     const filter = settings.filter.trim();
-    const filterFrame =
-      filter !== '' && /^\d+$/u.test(filter) ? Number.parseInt(filter, 10) : null;
+    const filterFrame = filter !== '' && /^\d+$/u.test(filter) ? Number.parseInt(filter, 10) : null;
 
     let visible = 0;
     for (const tile of tiles) {
