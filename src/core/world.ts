@@ -17,6 +17,15 @@ import {
   Sprite,
   EnemyBehavior,
   BroadcastScore,
+  Weapon,
+  Owner,
+  Team,
+  Lifetime,
+  AreaDamage,
+  AoeOnImpact,
+  Returning,
+  LineDamage,
+  Trap,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -70,6 +79,15 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
+  wireStore(ecs, Weapon, stores.weapon);
+  wireStore(ecs, Owner, stores.owner);
+  wireStore(ecs, Team, stores.team);
+  wireStore(ecs, Lifetime, stores.lifetime);
+  wireStore(ecs, AreaDamage, stores.areaDamage);
+  wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
+  wireStore(ecs, Returning, stores.returning);
+  wireStore(ecs, LineDamage, stores.lineDamage);
+  wireStore(ecs, Trap, stores.trap);
 
   return {
     ecs,

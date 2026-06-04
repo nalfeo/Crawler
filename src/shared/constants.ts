@@ -9,10 +9,41 @@ export const GAME = {
 
 export const PLAYER_SPEED = 3.0;
 
+export const WeaponType = {
+  MELEE: 0,
+  RANGED: 1,
+  UNARMED: 2,
+  MAGIC: 3,
+  THROWN: 4,
+  BEAM: 5,
+  TRAP: 6,
+} as const;
+export type WeaponTypeValue = (typeof WeaponType)[keyof typeof WeaponType];
+
+export const TeamId = {
+  PLAYER: 0,
+  ENEMY: 1,
+  NEUTRAL: 2,
+} as const;
+export type TeamIdValue = (typeof TeamId)[keyof typeof TeamId];
+
 export const WEAPON = {
   PROJECTILE_SPEED: 5.0,
   FIRE_RATE_MS: 500,
   BASE_DAMAGE: 10,
+  MELEE_RANGE: 40,
+  MELEE_DURATION_MS: 200,
+  UNARMED_RANGE: 24,
+  UNARMED_DURATION_MS: 150,
+  BEAM_LENGTH: 200,
+  BEAM_DURATION_MS: 300,
+  BEAM_TICK_MS: 100,
+  TRAP_ARM_MS: 500,
+  TRAP_TRIGGER_RADIUS: 32,
+  TRAP_EXPLOSION_RADIUS: 64,
+  THROWN_RETURN_SPEED: 4.0,
+  THROWN_MAX_RANGE: 200,
+  AOE_RADIUS: 48,
 } as const;
 
 export const ENEMY_PROJECTILE = {
