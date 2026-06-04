@@ -102,12 +102,9 @@ describe('Equipment System', () => {
   // 6. Equip multi-slot fails partially blocked
   it('fails atomically when one multi-slot is blocked', () => {
     equip(world, entity, makeItem({ id: 'shield', slots: ['offHand'] }), { force: true });
-    const result = equip(
-      world,
-      entity,
-      makeItem({ id: 'gs', slots: ['mainHand', 'offHand'] }),
-      { force: true },
-    );
+    const result = equip(world, entity, makeItem({ id: 'gs', slots: ['mainHand', 'offHand'] }), {
+      force: true,
+    });
     expect(result.ok).toBe(false);
     const state = getEquipmentState(world, entity)!;
     expect(state.equipped['mainHand']).toBeNull();
@@ -199,12 +196,7 @@ describe('Equipment System', () => {
 
   // 14. Invalid item def (duplicate slots)
   it('rejects item with duplicate slots', () => {
-    const result = equip(
-      world,
-      entity,
-      makeItem({ slots: ['head', 'head'] }),
-      { force: true },
-    );
+    const result = equip(world, entity, makeItem({ slots: ['head', 'head'] }), { force: true });
     expect(result.ok).toBe(false);
   });
 

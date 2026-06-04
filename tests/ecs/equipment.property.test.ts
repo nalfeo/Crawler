@@ -25,10 +25,7 @@ const arbItem: fc.Arbitrary<EquipmentItemDef> = fc.record({
     .uniqueArray(fc.constantFrom(...SLOT_IDS), { minLength: 1, maxLength: 3 })
     .map((s) => [...s]),
   statBonuses: fc
-    .dictionary(
-      fc.constantFrom(...ALL_STAT_IDS),
-      fc.integer({ min: -10, max: 10 }),
-    )
+    .dictionary(fc.constantFrom(...ALL_STAT_IDS), fc.integer({ min: -10, max: 10 }))
     .map((d) => d as Partial<Record<StatId, number>>),
   rarity: fc.constantFrom(...RARITIES),
 });

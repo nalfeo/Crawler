@@ -125,8 +125,7 @@ function recomputeEffectiveStats(world: GameWorld, entity: number): void {
       if (!inst) continue;
       for (const [stat, bonus] of Object.entries(inst.def.statBonuses)) {
         if (typeof bonus === 'number' && isValidStatId(stat)) {
-          stores.effectiveStats[stat][entity] =
-            (stores.effectiveStats[stat][entity] ?? 0) + bonus;
+          stores.effectiveStats[stat][entity] = (stores.effectiveStats[stat][entity] ?? 0) + bonus;
         }
       }
     }
@@ -338,9 +337,7 @@ export function equip(
   if (!options?.force && world.state !== 'safe_room') {
     return {
       ok: false,
-      reasons: [
-        { type: 'invalidDef', message: 'Equipment changes only allowed in safe rooms' },
-      ],
+      reasons: [{ type: 'invalidDef', message: 'Equipment changes only allowed in safe rooms' }],
     };
   }
 
@@ -395,10 +392,7 @@ export function unequip(
 }
 
 /** Get effective stats for an entity. */
-export function getEffectiveStats(
-  world: GameWorld,
-  entity: number,
-): Record<StatId, number> {
+export function getEffectiveStats(world: GameWorld, entity: number): Record<StatId, number> {
   const result = {} as Record<StatId, number>;
   for (const statId of ALL_STAT_IDS) {
     result[statId] = world.stores.effectiveStats[statId][entity] ?? 0;
@@ -407,10 +401,7 @@ export function getEffectiveStats(
 }
 
 /** Get equipment state for an entity (read-only view). */
-export function getEquipmentState(
-  world: GameWorld,
-  entity: number,
-): EquipmentState | undefined {
+export function getEquipmentState(world: GameWorld, entity: number): EquipmentState | undefined {
   return getEquipmentMap(world).get(entity);
 }
 

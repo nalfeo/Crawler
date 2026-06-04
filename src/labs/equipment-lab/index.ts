@@ -13,7 +13,12 @@ import {
   clearEquipmentState,
 } from '../../core/systems/equipmentSystem.js';
 import { SLOT_REGISTRY } from '../../shared/equipment-slots.js';
-import { PRIMARY_STATS, SECONDARY_STATS, DEFAULT_BASE_STATS, type StatId } from '../../shared/stats.js';
+import {
+  PRIMARY_STATS,
+  SECONDARY_STATS,
+  DEFAULT_BASE_STATS,
+  type StatId,
+} from '../../shared/stats.js';
 import type { EquipmentItemDef, ItemRarity } from '../../shared/equipment-types.js';
 import { registerLab } from '../registry.js';
 
