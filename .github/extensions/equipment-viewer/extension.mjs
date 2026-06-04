@@ -52,6 +52,12 @@ function recomputeStats(state) {
 }
 
 function equipItem(state, itemDef) {
+    if (!itemDef.slots || !Array.isArray(itemDef.slots) || itemDef.slots.length === 0) {
+        return { ok: false, reasons: [{ type: "invalidDef", message: "Item must have at least one slot" }] };
+    }
+    if (new Set(itemDef.slots).size !== itemDef.slots.length) {
+        return { ok: false, reasons: [{ type: "invalidDef", message: "Item has duplicate slots" }] };
+    }
     for (const slotId of itemDef.slots) {
         if (!SLOT_REGISTRY.find(s => s.id === slotId)) {
             return { ok: false, reasons: [{ type: "unknownSlot", slotId }] };

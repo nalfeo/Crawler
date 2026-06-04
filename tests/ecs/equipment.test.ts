@@ -364,4 +364,13 @@ describe('Equipment System', () => {
     );
     expect(getEffectiveStats(world, entity).cooldownReduction).toBeCloseTo(0.8, 5); // capped
   });
+
+  // 29. Unequip rejects unknown slot IDs
+  it('rejects unequip with unknown slot id', () => {
+    const result = unequip(world, entity, 'nonexistent', { force: true });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('Unknown slot');
+    }
+  });
 });

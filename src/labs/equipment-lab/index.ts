@@ -9,6 +9,7 @@ import {
   getEffectiveStats,
   getEquipmentState,
   setEntityTags,
+  getEntityTags,
   registerCustomRequirement,
   clearEquipmentState,
 } from '../../core/systems/equipmentSystem.js';
@@ -19,12 +20,29 @@ import {
   DEFAULT_BASE_STATS,
   type StatId,
 } from '../../shared/stats.js';
-import type { EquipmentItemDef, ItemRarity } from '../../shared/equipment-types.js';
+import type {
+  EquipmentItemDef,
+  ItemRarity,
+  EquipFailureReason,
+} from '../../shared/equipment-types.js';
 import { registerLab } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 const LAB_SEED = 42;
+
+function formatReason(r: EquipFailureReason): string {
+  switch (r.type) {
+    case 'invalidDef':
+      return r.message;
+    case 'unknownSlot':
+      return `unknown slot: ${r.slotId}`;
+    case 'occupiedSlot':
+      return `slot occupied: ${r.slotId}`;
+    case 'requirementFailed':
+      return r.message;
+  }
+}
 
 // Sample items for interactive testing
 const SAMPLE_ITEMS: EquipmentItemDef[] = [
@@ -104,14 +122,14 @@ const SAMPLE_ITEMS: EquipmentItemDef[] = [
   {
     id: 'iron-gauntlets',
     name: 'Iron Gauntlets',
-    slots: ['hands'],
+    slots: ['gloves'],
     rarity: 'common',
     statBonuses: { strength: 1, armor: 2 },
   },
   {
     id: 'enchanted-belt',
     name: 'Enchanted Belt',
-    slots: ['waist'],
+    slots: ['belt'],
     rarity: 'rare',
     statBonuses: { constitution: 3, hpRegen: 2 },
   },
@@ -296,7 +314,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   function equipItem(item: EquipmentItemDef): void {
     const check = canEquip(world, entity, item);
     if (!check.allowed) {
-      log(`Cannot equip ${item.name}: ${check.reasons.join(', ')}`);
+      log(`Cannot equip ${item.name}: ${check.reasons.map(formatReason).join(', ')}`);
       render();
       return;
     }
@@ -304,7 +322,7 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     if (result.ok) {
       log(`Equipped ${item.name} → ${item.slots.join(', ')}`);
     } else {
-      log(`Failed: ${result.reasons.join(', ')}`);
+      log(`Failed: ${result.reasons.map(formatReason).join(', ')}`);
     }
     render();
   }
@@ -359,10 +377,8 @@ function createEquipmentLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       {
         registerReq: () => {
           registerCustomRequirement(world, 'isVampire', (_w, eid) => {
-            const tags = (
-              _w as unknown as { entityTags: Map<number, Set<string>> }
-            ).entityTags?.get(eid);
-            return tags?.has('vampire') ?? false;
+            const tags = getEntityTags(_w, eid);
+            return tags.has('vampire');
           });
           log('Registered custom requirement: isVampire');
         },

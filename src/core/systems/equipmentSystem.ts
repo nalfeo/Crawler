@@ -370,6 +370,10 @@ export function unequip(
     return { ok: false, reason: 'Equipment changes only allowed in safe rooms' };
   }
 
+  if (!isValidSlotId(slotId)) {
+    return { ok: false, reason: `Unknown slot: ${slotId}` };
+  }
+
   const state = getEquipmentMap(world).get(entity);
   if (!state) return { ok: false, reason: 'Entity has no equipment state' };
 
