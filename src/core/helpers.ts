@@ -1,16 +1,19 @@
 import { addComponent, addEntity, set } from 'bitecs';
+import { createInventoryBag } from '../shared/inventory.js';
 import {
   Damage,
   Enemy,
   EnemyBehavior,
   EnemyProjectile,
   Health,
+  Inventory,
   Player,
   Position,
   Projectile,
   Sprite,
   Velocity,
   XpGem,
+  DroppedItem,
 } from './components.js';
 import type { GameWorld } from './world.js';
 
@@ -41,6 +44,8 @@ export function spawnPlayer(world: GameWorld, x: number, y: number): number {
   addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 24, height: 24 }));
   addComponent(world.ecs, eid, Player);
+  addComponent(world.ecs, eid, Inventory);
+  world.inventories.set(eid, createInventoryBag());
 
   return eid;
 }
@@ -122,5 +127,20 @@ export function spawnEnemyProjectile(
 ): number {
   const eid = spawnProjectile(world, x, y, vx, vy, damage);
   addComponent(world.ecs, eid, EnemyProjectile);
+  return eid;
+}
+
+export function spawnDroppedItem(
+  world: GameWorld,
+  x: number,
+  y: number,
+  itemIndex: number,
+): number {
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(DroppedItem, { itemIndex }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 10, height: 10 }));
+
   return eid;
 }

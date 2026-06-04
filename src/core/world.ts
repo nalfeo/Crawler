@@ -7,6 +7,7 @@
  */
 import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
+import type { InventoryBag } from '../shared/inventory.js';
 import {
   Position,
   Velocity,
@@ -17,6 +18,7 @@ import {
   Sprite,
   EnemyBehavior,
   BroadcastScore,
+  DroppedItem,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -36,6 +38,8 @@ export interface GameWorld {
   floor: number;
   /** Game state */
   state: 'loading' | 'playing' | 'paused' | 'safe_room' | 'game_over';
+  /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
+  inventories: Map<number, InventoryBag>;
 }
 
 export interface CreateWorldOptions {
@@ -70,6 +74,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
+  wireStore(ecs, DroppedItem, stores.droppedItem);
 
   return {
     ecs,
@@ -79,6 +84,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     elapsedMs: 0,
     floor: options.floor ?? 1,
     state: 'playing',
+    inventories: new Map(),
   };
 }
 
