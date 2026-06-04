@@ -40,9 +40,9 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
 
     const itemIndex = world.stores.droppedItem.itemIndex[itemEid] ?? 0;
     const def = getItemByIndex(itemIndex);
-    if (!def) continue;
-
-    addItem(bag, def.id, 1);
+    if (def) {
+      addItem(bag, def.id, 1);
+    }
     removeEntity(world.ecs, itemEid);
   }
 }

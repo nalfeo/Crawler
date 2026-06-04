@@ -64,7 +64,10 @@ export function addItem(
   if (quantity <= 0) return 0;
 
   const def = catalog ? catalog.find((d) => d.id === itemId) : getItemById(itemId);
-  const rawMaxStack = def?.maxStack ?? Infinity;
+  if (!def) {
+    throw new Error(`Unknown itemId "${itemId}"`);
+  }
+  const rawMaxStack = def.maxStack;
   if (rawMaxStack <= 0) {
     throw new Error(`Invalid maxStack for item "${itemId}": ${rawMaxStack}`);
   }

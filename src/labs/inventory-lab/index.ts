@@ -130,12 +130,13 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       this.inventoryUI = createInventoryUI(this);
 
       // Toggle inventory on Tab or I
-      this.input.keyboard?.on('keydown', (event: KeyboardEvent) => {
+      const onKeyDown = (event: KeyboardEvent) => {
         if (event.key === 'Tab' || event.key === 'i' || event.key === 'I') {
           event.preventDefault();
           this.inventoryUI?.toggle(this.world);
         }
-      });
+      };
+      this.input.keyboard?.on('keydown', onKeyDown);
 
       this.resetWorld();
 
@@ -147,6 +148,7 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         resetWorldFromGui = () => undefined;
         directAddFromGui = () => undefined;
         this.scale.off('resize', handleResize);
+        this.input.keyboard?.off('keydown', onKeyDown);
         this.inputCapture?.destroy();
         this.inputCapture = undefined;
         this.inventoryUI?.destroy();

@@ -79,4 +79,17 @@ describe('itemPickupSystem', () => {
     const bag = world.inventories.get(playerEid)!;
     expect(bag.slots.length).toBe(0);
   });
+
+  it('removes dropped items even when item index is invalid', () => {
+    spawnDroppedItem(world, 100, 100, 99999);
+
+    const collisions = collisionSystem(world);
+    itemPickupSystem(world, collisions);
+
+    const droppedItems = query(world.ecs, [DroppedItem]);
+    expect(droppedItems.length).toBe(0);
+
+    const bag = world.inventories.get(playerEid)!;
+    expect(bag.slots.length).toBe(0);
+  });
 });

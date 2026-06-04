@@ -100,6 +100,10 @@ describe('InventoryBag', () => {
       expect(addItem(bag, 'test-ore', -5, testCatalog)).toBe(0);
       expect(bag.slots).toHaveLength(0);
     });
+
+    it('throws for unknown item ids', () => {
+      expect(() => addItem(bag, 'unknown-item', 1, testCatalog)).toThrow('Unknown itemId');
+    });
   });
 
   describe('removeItem', () => {

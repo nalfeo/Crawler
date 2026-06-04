@@ -4,8 +4,8 @@
  * Features:
  * - Dynamic tabs derived from held items' tags
  * - Search bar (filters by name/description)
- * - Scrollable grid with stack counts and rarity-colored borders
- * - Toggle with Tab or I key
+ * - Grid with stack counts and rarity-colored borders
+ * - Toggle handled by caller (for example lab or scene keybinds)
  * - Respects TabPreferences for tab ordering and hiding
  */
 import Phaser from 'phaser';
