@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -33,6 +33,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 }
 
 registerLab('collision-lab', {
+  category: 'Movement & Physics' as LabCategory,
   name: 'Collision Lab',
   description: 'Scaffold for validating collisionSystem behavior and tuning.',
   create: createCollisionLab,

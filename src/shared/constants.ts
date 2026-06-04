@@ -1,4 +1,11 @@
-/** Game-wide constants. */
+/**
+ * Game-wide constants.
+ *
+ * Tunable values are loaded from src/shared/data/tuning.json so labs can
+ * save tweaked values back to disk without editing source. Non-tunable
+ * structural constants (enums, game dimensions) remain hardcoded.
+ */
+import tuning from './data/tuning.json';
 
 export const GAME = {
   WIDTH: 1280,
@@ -7,7 +14,7 @@ export const GAME = {
   DELTA_MS: 1000 / 60,
 } as const;
 
-export const PLAYER_SPEED = 3.0;
+export const PLAYER_SPEED: number = tuning.player.speed;
 
 export const WeaponType = {
   MELEE: 0,
@@ -33,42 +40,42 @@ export const TeamId = {
 export type TeamIdValue = (typeof TeamId)[keyof typeof TeamId];
 
 export const WEAPON = {
-  PROJECTILE_SPEED: 5.0,
-  FIRE_RATE_MS: 500,
-  BASE_DAMAGE: 10,
-  MELEE_RANGE: 40,
-  MELEE_DURATION_MS: 200,
-  BEAM_LENGTH: 200,
-  BEAM_DURATION_MS: 300,
-  BEAM_TICK_MS: 100,
-  TRAP_ARM_MS: 500,
-  TRAP_TRIGGER_RADIUS: 32,
-  TRAP_EXPLOSION_RADIUS: 64,
-  THROWN_RETURN_SPEED: 4.0,
-  THROWN_MAX_RANGE: 200,
-  AOE_RADIUS: 48,
+  PROJECTILE_SPEED: tuning.weapon.projectileSpeed,
+  FIRE_RATE_MS: tuning.weapon.fireRateMs,
+  BASE_DAMAGE: tuning.weapon.baseDamage,
+  MELEE_RANGE: tuning.weapon.meleeRange,
+  MELEE_DURATION_MS: tuning.weapon.meleeDurationMs,
+  BEAM_LENGTH: tuning.weapon.beamLength,
+  BEAM_DURATION_MS: tuning.weapon.beamDurationMs,
+  BEAM_TICK_MS: tuning.weapon.beamTickMs,
+  TRAP_ARM_MS: tuning.weapon.trapArmMs,
+  TRAP_TRIGGER_RADIUS: tuning.weapon.trapTriggerRadius,
+  TRAP_EXPLOSION_RADIUS: tuning.weapon.trapExplosionRadius,
+  THROWN_RETURN_SPEED: tuning.weapon.thrownReturnSpeed,
+  THROWN_MAX_RANGE: tuning.weapon.thrownMaxRange,
+  AOE_RADIUS: tuning.weapon.aoeRadius,
 } as const;
 
 export const ENEMY_PROJECTILE = {
-  SPEED: 3.0,
-  FIRE_COOLDOWN_MS: 1200,
-  DAMAGE: 8,
-  MUZZLE_OFFSET: 12,
+  SPEED: tuning.enemyProjectile.speed,
+  FIRE_COOLDOWN_MS: tuning.enemyProjectile.fireCooldownMs,
+  DAMAGE: tuning.enemyProjectile.damage,
+  MUZZLE_OFFSET: tuning.enemyProjectile.muzzleOffset,
 } as const;
 
 export const FLOOR = {
-  MIN_DURATION_S: 120,
-  MAX_DURATION_S: 300,
-  BOSS_TRIGGER_WARNING_S: 10,
+  MIN_DURATION_S: tuning.floor.minDurationS,
+  MAX_DURATION_S: tuning.floor.maxDurationS,
+  BOSS_TRIGGER_WARNING_S: tuning.floor.bossWarningS,
 } as const;
 
 export const SAFE_ROOM = {
-  MIN_DURATION_S: 60,
-  OPTIMAL_DURATION_S: 120,
-  IMPATIENCE_THRESHOLD_S: 180,
+  MIN_DURATION_S: tuning.safeRoom.minDurationS,
+  OPTIMAL_DURATION_S: tuning.safeRoom.optimalDurationS,
+  IMPATIENCE_THRESHOLD_S: tuning.safeRoom.impatienceThresholdS,
 } as const;
 
 export const XP = {
-  BASE_PER_LEVEL: 10,
-  SCALING_FACTOR: 1.15,
+  BASE_PER_LEVEL: tuning.xp.basePerLevel,
+  SCALING_FACTOR: tuning.xp.scalingFactor,
 } as const;

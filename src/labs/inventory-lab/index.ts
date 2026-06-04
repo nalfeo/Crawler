@@ -22,7 +22,7 @@ import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { addItem } from '../../shared/inventory.js';
 import { ITEM_CATALOG } from '../../shared/items.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -352,6 +352,7 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 }
 
 registerLab('inventory-lab', {
+  category: 'Items & Equipment' as LabCategory,
   name: 'Inventory Lab',
   description:
     'Test the inventory system: auto-pickup, bag management, dynamic tabs, search, sorting, and item tooltips.',

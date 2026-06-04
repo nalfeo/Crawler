@@ -1,5 +1,5 @@
 import type GUI from 'lil-gui';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -170,6 +170,7 @@ function createHelloWorldLab(canvasHost: HTMLElement, controls: HTMLElement): ()
 }
 
 registerLab('hello-world', {
+  category: 'Meta' as LabCategory,
   name: 'Hello World',
   description: 'Basic lab framework test',
   create: createHelloWorldLab,

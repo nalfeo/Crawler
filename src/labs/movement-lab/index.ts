@@ -14,7 +14,7 @@ import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -527,6 +527,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 }
 
 registerLab('movement-lab', {
+  category: 'Movement & Physics' as LabCategory,
   name: 'Movement Lab',
   description:
     'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls.',

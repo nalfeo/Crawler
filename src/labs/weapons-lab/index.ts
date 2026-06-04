@@ -33,7 +33,7 @@ import {
 import { GAME, MeleeStyle, PLAYER_SPEED, WeaponType } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { WEAPON_DEFS, type WeaponDef } from '../../shared/weaponDefs.js';
-import { registerLab } from '../registry.js';
+import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -518,6 +518,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 }
 
 registerLab('weapons-lab', {
+  category: 'Items & Equipment' as LabCategory,
   name: 'Weapons Lab',
   description:
     'Test all weapon types: melee, ranged, unarmed, magic, thrown, beam, and traps. Switch weapons via the dropdown.',
