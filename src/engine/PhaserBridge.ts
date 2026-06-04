@@ -216,8 +216,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           // Lifetime fade
           const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
           const remaining = Math.max(0, expiresAt - renderElapsedMs);
-          const totalDuration = expiresAt - (expiresAt - 300); // approx
-          const alpha = totalDuration > 0 ? Math.min(1, remaining / 200) : 1;
+          const alpha = Math.min(1, remaining / 200);
 
           // Core beam line
           bg.lineStyle(4, 0x00ffff, alpha * 0.9);
@@ -447,8 +446,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               img.setAlpha(alpha);
 
               // Use explosion texture for trap-spawned AoEs (short duration)
-              const totalMs = expiresAt - renderElapsedMs + 200;
-              if (totalMs <= 100 && visual.type !== 'explosion') {
+              if (remaining <= 100 && img.texture.key !== TEX_EXPLOSION) {
                 img.setTexture(TEX_EXPLOSION);
               }
 

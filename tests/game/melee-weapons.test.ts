@@ -326,7 +326,7 @@ describe('unarmed weapons', () => {
     expect(world.stores.health.current[enemy]).toBe(50 - def.baseDamage);
   });
 
-  it('punch shaft (shaftDamageMult=0) deals NO damage', () => {
+  it('punch path still damages because the head overlaps shaft positions', () => {
     const world = createTestWorld();
     spawnPlayer(world, 200, 200);
     // Enemy at 12px — right along the shaft, not near the tip head

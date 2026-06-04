@@ -14,11 +14,13 @@ import {
   spawnAoeProjectile,
   spawnAreaAttack,
   spawnBeam,
+  clearEntityStores,
   spawnMeleeSwing,
   spawnProjectile,
   spawnReturningProjectile,
   spawnTrap,
 } from '../core/helpers.js';
+import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import type { GameWorld } from '../core/world.js';
 import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
@@ -213,6 +215,8 @@ function fireMeleeAttack(
   const existingSwings = query(world.ecs, [MeleeSwing, Owner]);
   for (const eid of existingSwings) {
     if (eid !== undefined && (world.stores.owner.eid[eid] ?? 0) === player) {
+      clearMeleeSwingHits(world, eid);
+      clearEntityStores(world, eid);
       removeEntity(world.ecs, eid);
     }
   }
