@@ -263,16 +263,24 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
             tipX = x + Math.cos(arcCenter) * reach;
             tipY = y + Math.sin(arcCenter) * reach;
 
-            // Blade line (slightly thinner for knife)
-            ag.lineStyle(2, 0xdddddd, alpha);
+            // Shaft line
+            ag.lineStyle(headRadius > 0 ? 1 : 2, 0xdddddd, alpha);
             ag.beginPath();
             ag.moveTo(x, y);
             ag.lineTo(tipX, tipY);
             ag.strokePath();
 
-            // Sharp tip
-            ag.fillStyle(0xffffff, alpha);
-            ag.fillCircle(tipX, tipY, 2);
+            if (headRadius > 0) {
+              // Fist/head — larger filled circle at the tip
+              ag.fillStyle(0xccaa88, alpha);
+              ag.fillCircle(tipX, tipY, headRadius);
+              ag.lineStyle(2, 0xddccaa, alpha);
+              ag.strokeCircle(tipX, tipY, headRadius);
+            } else {
+              // Sharp tip for knives
+              ag.fillStyle(0xffffff, alpha);
+              ag.fillCircle(tipX, tipY, 2);
+            }
           } else {
             // Slash: sweep through arc
             const startAngle = arcCenter + arcHalf;
