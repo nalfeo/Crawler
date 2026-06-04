@@ -205,7 +205,7 @@ function fireThrownAttack(world: GameWorld, player: number, def: WeaponDef, dir:
   spawnReturningProjectile(
     world, px, py,
     dir.x * def.projectileSpeed, dir.y * def.projectileSpeed,
-    def.baseDamage, player, def.returnSpeed, def.maxRange, TeamId.PLAYER,
+    def.baseDamage, player, def.returnSpeed, def.maxRange, TeamId.PLAYER, def.pierce,
   );
 }
 

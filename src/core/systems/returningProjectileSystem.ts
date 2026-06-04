@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query, removeEntity, setComponent } from 'bitecs';
-import { Owner, Position, Returning, Velocity } from '../components.js';
+import { Owner, Position, Projectile, Returning, Velocity } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
+import { clearProjectilePierceHits } from './damageSystem.js';
 import type { GameWorld } from '../world.js';
 
 const PICKUP_RADIUS_SQ = 16 * 16;
@@ -30,8 +31,13 @@ export function returningProjectileSystem(world: GameWorld): void {
       const maxRange = returning.maxRange[eid] ?? 0;
 
       if (distSq >= maxRange * maxRange) {
-        // Start returning
+        // Start returning with infinite pierce on inbound leg
         returning.isReturning[eid] = 1;
+        if (hasComponent(world.ecs, eid, Projectile)) {
+          world.stores.projectile.pierce[eid] = 255;
+          world.stores.projectile.hitCount[eid] = 0;
+          clearProjectilePierceHits(world, eid);
+        }
       }
     }
 

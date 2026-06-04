@@ -1,6 +1,6 @@
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
-import { Damage, Enemy, EnemyProjectile, Health, Player, Projectile, XpGem } from '../components.js';
+import { Damage, Enemy, EnemyProjectile, Health, Player, Projectile, Returning, XpGem } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
@@ -40,11 +40,15 @@ function getPierceHitSet(world: GameWorld, eid: number): Set<number> {
   return hits;
 }
 
+export function clearProjectilePierceHits(world: GameWorld, eid: number): void {
+  const worldHits = pierceHitSets.get(world);
+  if (worldHits !== undefined) worldHits.delete(eid);
+}
+
 function destroyEntity(world: GameWorld, eid: number): void {
   clearEntityStores(world, eid);
   // Clean up pierce hit tracking
-  const worldHits = pierceHitSets.get(world);
-  if (worldHits !== undefined) worldHits.delete(eid);
+  clearProjectilePierceHits(world, eid);
   removeEntity(world.ecs, eid);
 }
 
@@ -75,6 +79,13 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
   world.stores.projectile.hitCount[projectile] = hitCount;
 
   if (hitCount > pierce) {
+    if (hasComponent(world.ecs, projectile, Returning)) {
+      world.stores.returning.isReturning[projectile] = 1;
+      world.stores.projectile.pierce[projectile] = 255;
+      world.stores.projectile.hitCount[projectile] = 0;
+      clearProjectilePierceHits(world, projectile);
+      return;
+    }
     destroyEntity(world, projectile);
   }
 }

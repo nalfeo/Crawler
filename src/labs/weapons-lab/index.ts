@@ -400,6 +400,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     // Thrown: projectile speed + return speed + max range
     if (wt === WeaponType.THROWN) {
       weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Throw Speed');
+      weaponFolder.add(tunedWeapon, 'pierce', 0, 20, 1).name('Pierce');
       weaponFolder.add(tunedWeapon, 'returnSpeed', 1, 15, 0.5).name('Return Speed');
       weaponFolder.add(tunedWeapon, 'maxRange', 50, 500, 10).name('Max Range');
     }

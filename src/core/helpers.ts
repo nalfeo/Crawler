@@ -215,8 +215,9 @@ export function spawnReturningProjectile(
   returnSpeed: number,
   maxRange: number,
   teamId: number,
+  pierce: number = 0,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce);
   addComponent(world.ecs, eid, set(Returning, {
     returnSpeed, isReturning: 0, maxRange, originX: x, originY: y,
   }));
