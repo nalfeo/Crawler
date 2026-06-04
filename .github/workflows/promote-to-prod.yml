@@ -1,0 +1,129 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: 'Commit SHA to promote (defaults to latest beta = current main HEAD)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine promotion target
+        id: target
+        run: |
+          TARGET="${{ inputs.commit_sha }}"
+          if [ -z "$TARGET" ]; then
+            TARGET=$(git rev-parse HEAD)
+            echo "No SHA provided, using current main HEAD: $TARGET"
+          fi
+          # Verify the commit exists
+          if ! git cat-file -e "$TARGET" 2>/dev/null; then
+            echo "::error::Commit $TARGET does not exist"
+            exit 1
+          fi
+          echo "sha=$TARGET" >> "$GITHUB_OUTPUT"
+
+      - name: Move production tag
+        run: |
+          git tag -f production ${{ steps.target.outputs.sha }}
+          git push -f origin production
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # --- Build Dev from main HEAD ---
+      - name: Build dev
+        run: npm run build
+        env:
+          DEPLOY_ENV: dev
+          BUILD_OUTDIR: staging/dev
+
+      # --- Build Beta from main HEAD ---
+      - name: Build beta
+        run: npm run build
+        env:
+          DEPLOY_ENV: beta
+          BUILD_OUTDIR: staging/beta
+
+      # --- Build Prod from promoted SHA ---
+      - name: Checkout promoted commit
+        run: git checkout ${{ steps.target.outputs.sha }} -- .
+
+      - name: Reinstall dependencies for promoted commit
+        run: npm ci
+
+      - name: Build prod
+        run: npm run build
+        env:
+          DEPLOY_ENV: prod
+          BUILD_OUTDIR: staging/prod
+
+      - name: Guard - prod must NOT include lab.html
+        run: |
+          if [ -f staging/prod/lab.html ]; then
+            echo "::error::Prod build contains lab.html - lab leakage!"
+            exit 1
+          fi
+
+      # --- Assemble final site ---
+      - name: Assemble site
+        run: |
+          mkdir -p site/dev site/beta
+          cp -r staging/dev/* site/dev/
+          cp -r staging/beta/* site/beta/
+          cp -r staging/prod/* site/
+
+      - name: Write version.json files
+        run: |
+          NOW=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          HEAD_SHA=$(git rev-parse main)
+          PROD_SHA=${{ steps.target.outputs.sha }}
+
+          echo "{\"commit\":\"$HEAD_SHA\",\"env\":\"dev\",\"builtAt\":\"$NOW\"}" > site/dev/version.json
+          echo "{\"commit\":\"$HEAD_SHA\",\"env\":\"beta\",\"builtAt\":\"$NOW\"}" > site/beta/version.json
+          echo "{\"commit\":\"$PROD_SHA\",\"env\":\"prod\",\"builtAt\":\"$NOW\",\"promotedAt\":\"$NOW\"}" > site/version.json
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        run: |
+          echo "## 🚀 Production Promoted" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Promoted commit:** \`${{ steps.target.outputs.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Dev/Beta:** built from \`main\` HEAD" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **URLs:**" >> "$GITHUB_STEP_SUMMARY"
+          echo "  - Prod: https://nalfeo.github.io/Crawler/" >> "$GITHUB_STEP_SUMMARY"
+          echo "  - Beta: https://nalfeo.github.io/Crawler/beta/" >> "$GITHUB_STEP_SUMMARY"
+          echo "  - Dev: https://nalfeo.github.io/Crawler/dev/" >> "$GITHUB_STEP_SUMMARY"
