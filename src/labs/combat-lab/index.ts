@@ -72,7 +72,8 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   hud.style.pointerEvents = 'none';
 
   const hint = document.createElement('p');
-  hint.textContent = 'Move with WASD or arrow keys. Weapons auto-fire at the nearest enemy while the spawner floods the arena.';
+  hint.textContent =
+    'Move with WASD or arrow keys. Weapons auto-fire at the nearest enemy while the spawner floods the arena.';
   hint.style.marginTop = '16px';
   hint.style.color = '#fbcfe8';
   hint.style.lineHeight = '1.6';
@@ -149,7 +150,11 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
         this.accumulator += delta;
         let steps = 0;
 
-        while (this.accumulator >= GAME.DELTA_MS && steps < MAX_STEPS_PER_FRAME && this.world.state === 'playing') {
+        while (
+          this.accumulator >= GAME.DELTA_MS &&
+          steps < MAX_STEPS_PER_FRAME &&
+          this.world.state === 'playing'
+        ) {
           this.world.frameCount += 1;
           this.world.elapsedMs += GAME.DELTA_MS;
 
@@ -220,7 +225,11 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     private resetWorld(): void {
       this.accumulator = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
-      this.playerEid = spawnPlayer(this.world, this.getSimulationWidth() / 2, this.getSimulationHeight() / 2);
+      this.playerEid = spawnPlayer(
+        this.world,
+        this.getSimulationWidth() / 2,
+        this.getSimulationHeight() / 2,
+      );
       addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
 
       configureWeaponSystem(this.world, {
@@ -234,8 +243,10 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     }
 
     private updateHud(): void {
-      const playerHp = this.playerEid >= 0 ? this.world.stores.health.current[this.playerEid] ?? 0 : 0;
-      const score = this.playerEid >= 0 ? this.world.stores.broadcastScore.current[this.playerEid] ?? 0 : 0;
+      const playerHp =
+        this.playerEid >= 0 ? (this.world.stores.health.current[this.playerEid] ?? 0) : 0;
+      const score =
+        this.playerEid >= 0 ? (this.world.stores.broadcastScore.current[this.playerEid] ?? 0) : 0;
       const enemyCount = query(this.world.ecs, [Enemy]).length;
 
       hud.textContent = [
@@ -299,6 +310,7 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
 registerLab('combat-lab', {
   name: 'Combat Lab',
-  description: 'Stress-test auto-attacks, deterministic enemy spawns, and the combat damage pipeline.',
+  description:
+    'Stress-test auto-attacks, deterministic enemy spawns, and the combat damage pipeline.',
   create: createCombatLab,
 });

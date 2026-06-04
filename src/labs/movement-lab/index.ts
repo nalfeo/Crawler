@@ -134,7 +134,8 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   window.addEventListener('keyup', onKeyUp, true);
 
   const hint = document.createElement('p');
-  hint.textContent = 'Move with WASD or arrow keys. Tune speed, acceleration, friction, trail length, and enemy clutter live.';
+  hint.textContent =
+    'Move with WASD or arrow keys. Tune speed, acceleration, friction, trail length, and enemy clutter live.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';
@@ -200,7 +201,11 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       this.trailGraphics = this.add.graphics();
       this.redrawGrid();
 
-      this.playerEid = spawnPlayer(this.world, this.getViewportWidth() / 2, this.getViewportHeight() / 2);
+      this.playerEid = spawnPlayer(
+        this.world,
+        this.getViewportWidth() / 2,
+        this.getViewportHeight() / 2,
+      );
       this.recordTrail(true);
 
       this.bridge = createPhaserBridge(this);
@@ -289,21 +294,30 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     }
 
     updateInfo(): void {
-      const playerX = this.playerEid >= 0 ? this.world.stores.position.x[this.playerEid] ?? 0 : 0;
-      const playerY = this.playerEid >= 0 ? this.world.stores.position.y[this.playerEid] ?? 0 : 0;
-      const velocityX = this.playerEid >= 0 ? this.world.stores.velocity.x[this.playerEid] ?? 0 : 0;
-      const velocityY = this.playerEid >= 0 ? this.world.stores.velocity.y[this.playerEid] ?? 0 : 0;
+      const playerX = this.playerEid >= 0 ? (this.world.stores.position.x[this.playerEid] ?? 0) : 0;
+      const playerY = this.playerEid >= 0 ? (this.world.stores.position.y[this.playerEid] ?? 0) : 0;
+      const velocityX =
+        this.playerEid >= 0 ? (this.world.stores.velocity.x[this.playerEid] ?? 0) : 0;
+      const velocityY =
+        this.playerEid >= 0 ? (this.world.stores.velocity.y[this.playerEid] ?? 0) : 0;
       const enemyCount = query(this.world.ecs, [Enemy]).length;
 
       // Read Phaser key states directly
       const kb = this.input.keyboard;
-      const phaserW = kb?.checkDown(kb?.addKey('W', false, false) as Phaser.Input.Keyboard.Key) ?? false;
-      const phaserA = kb?.checkDown(kb?.addKey('A', false, false) as Phaser.Input.Keyboard.Key) ?? false;
-      const phaserS = kb?.checkDown(kb?.addKey('S', false, false) as Phaser.Input.Keyboard.Key) ?? false;
-      const phaserD = kb?.checkDown(kb?.addKey('D', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+      const phaserW =
+        kb?.checkDown(kb?.addKey('W', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+      const phaserA =
+        kb?.checkDown(kb?.addKey('A', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+      const phaserS =
+        kb?.checkDown(kb?.addKey('S', false, false) as Phaser.Input.Keyboard.Key) ?? false;
+      const phaserD =
+        kb?.checkDown(kb?.addKey('D', false, false) as Phaser.Input.Keyboard.Key) ?? false;
 
       const rawKeysStr = rawKeys.size > 0 ? Array.from(rawKeys).join('+') : 'none';
-      const phaserKeysStr = [phaserW && 'W', phaserA && 'A', phaserS && 'S', phaserD && 'D'].filter(Boolean).join('+') || 'none';
+      const phaserKeysStr =
+        [phaserW && 'W', phaserA && 'A', phaserS && 'S', phaserD && 'D']
+          .filter(Boolean)
+          .join('+') || 'none';
 
       // Expose debug object on window for JS evaluation
       (window as unknown as Record<string, unknown>).__movLabDebug = {
@@ -449,11 +463,26 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     },
   };
 
-  gui.add(settings, 'speed', 1, 15, 0.1).name('Speed').onChange(() => updateInfoFromGui());
-  gui.add(settings, 'acceleration', 0, 1, 0.01).name('Acceleration').onChange(() => updateInfoFromGui());
-  gui.add(settings, 'friction', 0, 1, 0.01).name('Friction').onChange(() => updateInfoFromGui());
-  gui.add(settings, 'showTrail').name('Show Trail').onChange(() => refreshTrailFromGui());
-  gui.add(settings, 'trailLength', 5, 100, 1).name('Trail Length').onChange(() => refreshTrailFromGui());
+  gui
+    .add(settings, 'speed', 1, 15, 0.1)
+    .name('Speed')
+    .onChange(() => updateInfoFromGui());
+  gui
+    .add(settings, 'acceleration', 0, 1, 0.01)
+    .name('Acceleration')
+    .onChange(() => updateInfoFromGui());
+  gui
+    .add(settings, 'friction', 0, 1, 0.01)
+    .name('Friction')
+    .onChange(() => updateInfoFromGui());
+  gui
+    .add(settings, 'showTrail')
+    .name('Show Trail')
+    .onChange(() => refreshTrailFromGui());
+  gui
+    .add(settings, 'trailLength', 5, 100, 1)
+    .name('Trail Length')
+    .onChange(() => refreshTrailFromGui());
   gui.add(controlsApi, 'spawnEnemies').name('Spawn Enemies');
 
   const getSize = () => ({
@@ -495,7 +524,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
 registerLab('movement-lab', {
   name: 'Movement Lab',
-  description: 'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls.',
+  description:
+    'Tune WASD movement with live speed, acceleration, friction, trail, and enemy spawn controls.',
   create: createMovementLab,
 });
-

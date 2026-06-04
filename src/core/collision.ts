@@ -15,13 +15,13 @@ const MAX_TRACKED_ENTITIES = 10_000;
 const PAIR_KEY_STRIDE = 131_072;
 
 function toUnsignedCoordinate(value: number): number {
-  return value >= 0 ? value * 2 : (-value * 2) - 1;
+  return value >= 0 ? value * 2 : -value * 2 - 1;
 }
 
 function hashCell(cellX: number, cellY: number): number {
   const x = toUnsignedCoordinate(cellX);
   const y = toUnsignedCoordinate(cellY);
-  return x >= y ? (x * x) + x + y : (y * y) + x;
+  return x >= y ? x * x + x + y : y * y + x;
 }
 
 function circleIntersectsAabb(
@@ -46,7 +46,7 @@ function circleIntersectsAabb(
 
   const cornerDx = dx - halfWidth;
   const cornerDy = dy - halfHeight;
-  return (cornerDx * cornerDx) + (cornerDy * cornerDy) <= radius * radius;
+  return cornerDx * cornerDx + cornerDy * cornerDy <= radius * radius;
 }
 
 class SpatialHashGridImpl implements SpatialHashGrid {
@@ -133,7 +133,7 @@ class SpatialHashGridImpl implements SpatialHashGrid {
 
           const a = first < second ? first : second;
           const b = first < second ? second : first;
-          const pairKey = (a * PAIR_KEY_STRIDE) + b;
+          const pairKey = a * PAIR_KEY_STRIDE + b;
 
           if (this.pairKeys.has(pairKey)) {
             continue;
@@ -205,15 +205,7 @@ class SpatialHashGridImpl implements SpatialHashGrid {
           const halfWidth = this.halfWidths[eid] ?? 0;
           const halfHeight = this.halfHeights[eid] ?? 0;
 
-          if (!circleIntersectsAabb(
-            x,
-            y,
-            queryRadius,
-            centerX,
-            centerY,
-            halfWidth,
-            halfHeight,
-          )) {
+          if (!circleIntersectsAabb(x, y, queryRadius, centerX, centerY, halfWidth, halfHeight)) {
             continue;
           }
 

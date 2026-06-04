@@ -131,7 +131,7 @@ function tryFireEnemyProjectile(
   const lastFire = enemyBehavior.lastFireMs[eid] ?? 0;
 
   // lastFireMs=0 means "never fired" — allow immediate first shot
-  if (lastFire > 0 && (world.elapsedMs - lastFire) < effectiveCooldown) {
+  if (lastFire > 0 && world.elapsedMs - lastFire < effectiveCooldown) {
     return;
   }
 
@@ -214,7 +214,9 @@ export function enemyAISystem(world: GameWorld): void {
   const { enemyBehavior, position } = world.stores;
   const playerX = position.x[playerEid] ?? 0;
   const playerY = position.y[playerEid] ?? 0;
-  const swarmEntities = Array.from(enemies).filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
+  const swarmEntities = Array.from(enemies).filter(
+    (eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM,
+  );
 
   for (const eid of enemies) {
     const enemyX = position.x[eid] ?? 0;
@@ -229,10 +231,28 @@ export function enemyAISystem(world: GameWorld): void {
 
     switch (behaviorType) {
       case AI_TYPE.SWARM:
-        applySwarmBehavior(world, eid, swarmEntities, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+        applySwarmBehavior(
+          world,
+          eid,
+          swarmEntities,
+          playerDx,
+          playerDy,
+          distanceToPlayer,
+          aggroRange,
+          speed,
+        );
         break;
       case AI_TYPE.RANGED:
-        applyRangedBehavior(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, attackRange, speed);
+        applyRangedBehavior(
+          world,
+          eid,
+          playerDx,
+          playerDy,
+          distanceToPlayer,
+          aggroRange,
+          attackRange,
+          speed,
+        );
         break;
       case AI_TYPE.CHASE:
       default:
