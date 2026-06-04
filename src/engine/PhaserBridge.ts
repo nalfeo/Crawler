@@ -168,6 +168,8 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
   const visuals = new Map<number, EntityVisual>();
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
+  /** Tracks spawn time for arc entities so we can animate the sweep. */
+  const arcSpawnMs = new Map<number, number>();
 
   return {
     sync(world: GameWorld): void {
@@ -281,33 +283,51 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
             const alpha = Math.min(1, remaining / 100);
 
             if (isArc) {
-              // Render as a pie-slice using Graphics
+              // Render as an animated sweeping blade line
               img.setVisible(false);
               let ag = arcGraphics.get(eid);
               if (!ag) {
                 ag = scene.add.graphics();
                 arcGraphics.set(eid, ag);
+                arcSpawnMs.set(eid, world.elapsedMs);
               }
               ag.clear();
 
-              const startAngle = arcCenter - arcHalf;
-              const endAngle = arcCenter + arcHalf;
+              // Calculate sweep progress (0→1 over the swing duration)
+              const spawnTime = arcSpawnMs.get(eid) ?? world.elapsedMs;
+              const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
+              const totalDuration = Math.max(1, expiresAt - spawnTime);
+              const elapsed = world.elapsedMs - spawnTime;
+              const progress = Math.min(1, Math.max(0, elapsed / totalDuration));
 
-              // Filled wedge
-              ag.fillStyle(0xffffaa, 0.2 * alpha);
+              // Sweep from start angle to end angle (right-to-left)
+              const startAngle = arcCenter + arcHalf;
+              const endAngle = arcCenter - arcHalf;
+              const currentAngle = startAngle + (endAngle - startAngle) * progress;
+
+              const tipX = x + Math.cos(currentAngle) * radius;
+              const tipY = y + Math.sin(currentAngle) * radius;
+
+              // Blade line
+              ag.lineStyle(3, 0xcccccc, alpha);
               ag.beginPath();
               ag.moveTo(x, y);
-              ag.arc(x, y, radius, startAngle, endAngle, false);
-              ag.closePath();
-              ag.fillPath();
-
-              // Edge line
-              ag.lineStyle(2, 0xffffaa, 0.6 * alpha);
-              ag.beginPath();
-              ag.moveTo(x, y);
-              ag.arc(x, y, radius, startAngle, endAngle, false);
-              ag.closePath();
+              ag.lineTo(tipX, tipY);
               ag.strokePath();
+
+              // Bright tip
+              ag.fillStyle(0xffffff, alpha);
+              ag.fillCircle(tipX, tipY, 3);
+
+              // Faint trail arc showing the swept area
+              if (progress > 0.05) {
+                const sweptStart = startAngle;
+                const sweptEnd = currentAngle;
+                ag.lineStyle(1, 0xffffaa, 0.15 * alpha);
+                ag.beginPath();
+                ag.arc(x, y, radius, sweptStart, sweptEnd, startAngle > endAngle);
+                ag.strokePath();
+              }
             } else {
               // Full circle AoE — use image
               const scale = (radius * 2) / 66;
@@ -325,6 +345,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
               if (staleAg) {
                 staleAg.destroy();
                 arcGraphics.delete(eid);
+                arcSpawnMs.delete(eid);
               }
             }
             break;
@@ -379,6 +400,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
         }
         ag.destroy();
         arcGraphics.delete(eid);
+        arcSpawnMs.delete(eid);
       }
     },
 
@@ -397,6 +419,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
         ag.destroy();
       }
       arcGraphics.clear();
+      arcSpawnMs.clear();
     },
   };
 }
