@@ -14,7 +14,7 @@ describe('xpThresholdForLevel', () => {
 
   it('strictly increases', () => {
     for (let i = 0; i < 20; i++) {
-      expect(xpThresholdForLevel(i + 1)).toBeGreaterThanOrEqual(xpThresholdForLevel(i));
+      expect(xpThresholdForLevel(i + 1)).toBeGreaterThan(xpThresholdForLevel(i));
     }
   });
 });

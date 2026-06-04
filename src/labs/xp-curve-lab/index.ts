@@ -30,7 +30,7 @@ function createXpCurveLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     for (let n = 1; n <= maxLevel; n++) {
       const xpReq = xpRequiredForLevel(n) - xpRequiredForLevel(n - 1);
       const totalXp = xpRequiredForLevel(n);
-      const threshold = xpThresholdForLevel(n);
+      const threshold = xpThresholdForLevel(n - 1);
       const mins = xpPerMinute > 0 ? (xpReq / xpPerMinute).toFixed(1) : '∞';
       html += `<tr><td style="padding:2px 10px;color:#9ba">${n}</td><td style="padding:2px 10px;text-align:right;color:#aef">${totalXp}</td><td style="padding:2px 10px;text-align:right;color:#888">${threshold}</td><td style="padding:2px 10px;text-align:right;color:#4f8">${mins}</td></tr>`;
     }

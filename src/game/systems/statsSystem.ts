@@ -71,6 +71,17 @@ export function spendPoints(world: GameWorld, allocations: Partial<Record<StatKe
   const pl = world.playerLevel;
 
   const totalSpent = Object.values(allocations).reduce((sum, n) => sum + (n ?? 0), 0);
+
+  // Validate: all values must be non-negative integers
+  for (const [stat, points] of Object.entries(allocations)) {
+    const n = points ?? 0;
+    if (!Number.isInteger(n) || n < 0) {
+      throw new Error(
+        `Invalid allocation for stat "${stat}": must be a non-negative integer, got ${n}`,
+      );
+    }
+  }
+
   if (totalSpent > pl.unspentPoints) {
     throw new Error(`Cannot spend ${totalSpent} points — only ${pl.unspentPoints} available`);
   }

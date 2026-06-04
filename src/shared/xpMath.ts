@@ -32,7 +32,7 @@ export function xpRequiredForLevel(level: number): number {
 
 /**
  * Returns the level corresponding to a given lifetime XP amount.
- * Uses binary search capped at 1000 levels for safety.
+ * Uses a linear scan capped at 1000 levels for safety.
  */
 export function levelForXp(xp: number): number {
   let level = 0;

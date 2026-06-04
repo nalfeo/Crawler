@@ -61,9 +61,8 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
     const currentHealth = world.stores.health.current[enemy] ?? 0;
     world.stores.health.current[enemy] = Math.max(0, currentHealth - amount);
 
-    // Emit skill usage events for the player's weapon skill
+    // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
-    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'damage_dealt', amount });
   }
 
   destroyEntity(world, projectile);

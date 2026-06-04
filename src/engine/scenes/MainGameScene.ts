@@ -30,7 +30,12 @@ export class MainGameScene extends Phaser.Scene {
   /** Accumulated real time not yet consumed by fixed-step simulation (ms). */
   private accumulator = 0;
 
-  constructor() {
+  /**
+   * Optional game-layer systems injected at construction time.
+   * The engine layer cannot import from the game layer, so callers
+   * (e.g. src/main.ts) inject these via the constructor.
+   */
+  constructor(private readonly extraSystems: ReadonlyArray<(world: GameWorld) => void> = []) {
     super({ key: MainGameScene.KEY });
   }
 
@@ -77,6 +82,9 @@ export class MainGameScene extends Phaser.Scene {
       movementSystem(this.world);
       healthSystem(this.world);
       projectileCleanupSystem(this.world);
+      for (const sys of this.extraSystems) {
+        sys(this.world);
+      }
 
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;

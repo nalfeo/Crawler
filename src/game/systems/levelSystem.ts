@@ -27,6 +27,7 @@ export function levelSystem(world: GameWorld): void {
   if (leveled) {
     pl.level = currentLevel;
     world.statsDirty = true;
+    world.state = 'level_up';
 
     // Add Stats and SkillHolder tags to player if not present
     const player = players[0];

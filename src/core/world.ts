@@ -46,7 +46,7 @@ export interface GameWorld {
   statModifiers: StatModifier[];
   /** Per-skill state keyed by skill id. */
   playerSkills: Map<string, SkillState>;
-  /** Usage events emitted this frame — cleared at start of skillSystem. */
+  /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
   skillUsageEvents: SkillUsageEvent[];
   /** Dirty flag: true when stats need recomputing. Set by level-up, modifier change, etc. */
   statsDirty: boolean;

@@ -24,6 +24,9 @@ export function skillSystem(world: GameWorld): void {
     const def = getSkillDefinition(event.skillId);
     if (def === undefined) continue;
 
+    // Only apply events that match the skill's declared usage metric
+    if (event.metric !== def.usageMetric) continue;
+
     state.usage += event.amount;
 
     const effectiveCap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
