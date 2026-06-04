@@ -138,6 +138,9 @@ export function createComponentStores() {
       spawnAtMs: new Float32Array(MAX_ENTITIES),
       durationMs: new Float32Array(MAX_ENTITIES),
       style: new Uint8Array(MAX_ENTITIES),
+      headRadius: new Float32Array(MAX_ENTITIES),
+      shaftDamageMult: new Float32Array(MAX_ENTITIES),
+      knockback: new Float32Array(MAX_ENTITIES),
     },
   };
 }

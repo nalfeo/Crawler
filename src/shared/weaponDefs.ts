@@ -31,6 +31,12 @@ export interface WeaponDef {
   readonly swingArcDeg: number;
   /** Melee attack style (0 = slash/sweep, 1 = stab/thrust). */
   readonly meleeStyle: MeleeStyleValue;
+  /** Radius of the weapon head at the tip (0 = no head, uniform damage). */
+  readonly headRadius: number;
+  /** Damage multiplier for shaft-only hits (1.0 = full damage). */
+  readonly shaftDamageMult: number;
+  /** Knockback displacement in pixels applied on hit (0 = no knockback). */
+  readonly knockback: number;
 }
 
 function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weaponType' | 'baseDamage' | 'cooldownMs'>): WeaponDef {
@@ -48,6 +54,9 @@ function def(partial: Partial<WeaponDef> & Pick<WeaponDef, 'id' | 'name' | 'weap
     maxRange: 0,
     swingArcDeg: 360,
     meleeStyle: MeleeStyle.SLASH,
+    headRadius: 0,
+    shaftDamageMult: 1.0,
+    knockback: 0,
     ...partial,
   };
 }
@@ -70,6 +79,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
     id: 'hammer', name: 'Hammer', weaponType: WeaponType.MELEE,
     baseDamage: 25, cooldownMs: 1000, range: 48,
     aoeRadius: 48, durationMs: 300,
+    headRadius: 14, shaftDamageMult: 0.5, knockback: 30,
   })],
 
   // --- Ranged ---

@@ -285,6 +285,9 @@ export function spawnMeleeSwing(
   arcDeg: number,
   teamId: number,
   style: number = 0,
+  headRadius: number = 0,
+  shaftDamageMult: number = 1,
+  knockback: number = 0,
 ): number {
   const eid = createEntity(world);
   const arcCenterRad = Math.atan2(dirY, dirX);
@@ -293,6 +296,7 @@ export function spawnMeleeSwing(
   addComponent(world.ecs, eid, set(MeleeSwing, {
     bladeLength, arcCenterRad, arcHalfRad, damage,
     spawnAtMs: world.elapsedMs, durationMs, style,
+    headRadius, shaftDamageMult, knockback,
   }));
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));

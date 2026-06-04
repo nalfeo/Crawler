@@ -58,12 +58,9 @@ export function clearMeleeSwingHits(world: GameWorld, eid: number): void {
  * Melee swing system — handles blade line-segment collision detection.
  *
  * Each MeleeSwing entity represents a blade sweeping through an arc.
- * The system:
- * 1. Follows the owner's position
- * 2. Computes the swept arc from start to current blade angle
- * 3. Checks if enemies fall within the swept region AND blade length
- * 4. Also does line-segment check for the current blade position
- * 5. Tracks hits per swing to prevent double-damage
+ * Supports head/shaft differentiation: head hits deal full damage,
+ * shaft hits deal damage * shaftDamageMult. Knockback displaces
+ * enemies away from the player on hit.
  */
 export function meleeSwingSystem(world: GameWorld): void {
   const swings = query(world.ecs, [MeleeSwing, Position]);
@@ -91,6 +88,9 @@ export function meleeSwingSystem(world: GameWorld): void {
     const spawnAt = meleeSwing.spawnAtMs[eid] ?? 0;
     const duration = meleeSwing.durationMs[eid] ?? 1;
     const style = meleeSwing.style[eid] ?? 0;
+    const headRadius = meleeSwing.headRadius[eid] ?? 0;
+    const shaftDamageMult = meleeSwing.shaftDamageMult[eid] ?? 1;
+    const knockback = meleeSwing.knockback[eid] ?? 0;
     const swingTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? 0) : -1;
 
@@ -101,15 +101,12 @@ export function meleeSwingSystem(world: GameWorld): void {
     let tipY: number;
 
     if (style === MeleeStyle.STAB) {
-      // Stab: blade extends forward then retracts along a fixed direction
-      // 0→0.5: extend to full length, 0.5→1.0: retract back
       const reach = progress <= 0.5
         ? (progress / 0.5) * bladeLength
         : ((1 - progress) / 0.5) * bladeLength;
       tipX = px + Math.cos(arcCenter) * reach;
       tipY = py + Math.sin(arcCenter) * reach;
     } else {
-      // Slash: sweep through arc
       const startAngle = arcCenter + arcHalf;
       const endAngle = arcCenter - arcHalf;
       const currentAngle = startAngle + (endAngle - startAngle) * progress;
@@ -118,8 +115,9 @@ export function meleeSwingSystem(world: GameWorld): void {
     }
 
     const hitSet = getHitSet(world, eid);
+    const headRadiusSq = headRadius * headRadius;
 
-    // Check all Health entities for blade line-segment collision
+    // Check all Health entities for collision
     const targets = query(world.ecs, [Health, Position]);
     for (const target of targets) {
       if (target === undefined || target === eid || target === ownerEid) continue;
@@ -130,15 +128,45 @@ export function meleeSwingSystem(world: GameWorld): void {
       }
       if (hitSet.has(target)) continue;
 
-      const segDist = pointToSegmentDistSq(
-        position.x[target] ?? 0, position.y[target] ?? 0,
-        px, py, tipX, tipY,
-      );
+      const tx = position.x[target] ?? 0;
+      const ty = position.y[target] ?? 0;
 
-      if (segDist <= hitDistSq) {
+      // Check head hit first (circle around tip)
+      let hitDamage = 0;
+      if (headRadius > 0) {
+        const dxHead = tx - tipX;
+        const dyHead = ty - tipY;
+        const headDistSq = dxHead * dxHead + dyHead * dyHead;
+        if (headDistSq <= headRadiusSq) {
+          hitDamage = damage;
+        }
+      }
+
+      // If no head hit, check shaft hit (line segment)
+      if (hitDamage === 0) {
+        const segDist = pointToSegmentDistSq(tx, ty, px, py, tipX, tipY);
+        if (segDist <= hitDistSq) {
+          hitDamage = damage * shaftDamageMult;
+        }
+      }
+
+      if (hitDamage > 0) {
         const current = health.current[target] ?? 0;
-        health.current[target] = Math.max(0, current - damage);
+        health.current[target] = Math.max(0, current - hitDamage);
         hitSet.add(target);
+
+        // Apply knockback as immediate position displacement
+        if (knockback > 0) {
+          const kbDx = tx - px;
+          const kbDy = ty - py;
+          const kbDist = Math.hypot(kbDx, kbDy);
+          if (kbDist > 0.001) {
+            const nx = kbDx / kbDist;
+            const ny = kbDy / kbDist;
+            position.x[target] = tx + nx * knockback;
+            position.y[target] = ty + ny * knockback;
+          }
+        }
       }
     }
   }

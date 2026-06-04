@@ -241,6 +241,7 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
           const arcCenter = meleeSwing.arcCenterRad[eid] ?? 0;
           const arcHalf = meleeSwing.arcHalfRad[eid] ?? 0;
           const style = meleeSwing.style[eid] ?? 0;
+          const headRadius = meleeSwing.headRadius[eid] ?? 0;
           const spawnTime = arcSpawnMs.get(eid) ?? world.elapsedMs;
           const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
           const totalDuration = Math.max(1, expiresAt - spawnTime);
@@ -280,16 +281,24 @@ export function createPhaserBridge(scene: Phaser.Scene): { sync(world: GameWorld
             tipX = x + Math.cos(currentAngle) * bladeLen;
             tipY = y + Math.sin(currentAngle) * bladeLen;
 
-            // Blade line
-            ag.lineStyle(3, 0xcccccc, alpha);
+            // Shaft line
+            ag.lineStyle(headRadius > 0 ? 2 : 3, 0xcccccc, alpha);
             ag.beginPath();
             ag.moveTo(x, y);
             ag.lineTo(tipX, tipY);
             ag.strokePath();
 
-            // Bright tip
-            ag.fillStyle(0xffffff, alpha);
-            ag.fillCircle(tipX, tipY, 3);
+            if (headRadius > 0) {
+              // Hammer head — larger filled rectangle at the tip
+              ag.fillStyle(0xaaaaaa, alpha);
+              ag.fillCircle(tipX, tipY, headRadius);
+              ag.lineStyle(2, 0xdddddd, alpha);
+              ag.strokeCircle(tipX, tipY, headRadius);
+            } else {
+              // Bright tip for swords
+              ag.fillStyle(0xffffff, alpha);
+              ag.fillCircle(tipX, tipY, 3);
+            }
 
             // Faint trail arc showing the swept area
             if (progress > 0.05) {

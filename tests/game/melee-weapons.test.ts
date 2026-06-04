@@ -134,11 +134,91 @@ describe('melee weapons', () => {
     expect(knife.cooldownMs).toBeLessThan(sword.cooldownMs);
   });
 
-  it('hammer has higher damage and longer cooldown', () => {
+  it('hammer head hit deals full damage', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
     const hammer = getWeaponDef('hammer')!;
+    // Place enemy at tip distance (within headRadius of the tip)
+    const enemy = spawnEnemy(world, 148, 100, 100);
+    setActiveWeapon(world, hammer);
+    world.elapsedMs = hammer.cooldownMs;
+
+    weaponSystem(world);
+
+    // At progress=0 the blade starts at arcCenter + arcHalf (top of arc)
+    // For 360° arc facing right, advance partway so blade sweeps to the right
+    for (let i = 0; i < 10; i++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
+
+    // Should take full damage (25)
+    expect(world.stores.health.current[enemy]).toBe(100 - hammer.baseDamage);
+  });
+
+  it('hammer shaft hit deals partial damage', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    const hammer = getWeaponDef('hammer')!;
+    // Place enemy on the shaft (halfway along blade, well inside blade length but outside head)
+    const enemy = spawnEnemy(world, 124, 100, 100);
+    setActiveWeapon(world, hammer);
+    world.elapsedMs = hammer.cooldownMs;
+
+    weaponSystem(world);
+
+    for (let i = 0; i < 10; i++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
+
+    expect(world.stores.health.current[enemy]).toBeLessThan(100);
+    // Shaft damage should be less than full damage
+    expect(100 - (world.stores.health.current[enemy] ?? 0)).toBeLessThanOrEqual(hammer.baseDamage * hammer.shaftDamageMult);
+  });
+
+  it('hammer knockback displaces enemy away from player', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    const hammer = getWeaponDef('hammer')!;
+    const enemy = spawnEnemy(world, 148, 100, 100);
+    setActiveWeapon(world, hammer);
+    world.elapsedMs = hammer.cooldownMs;
+
+    weaponSystem(world);
+
+    const beforeX = world.stores.position.x[enemy] ?? 0;
+
+    for (let i = 0; i < 10; i++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
+
+    // Enemy should have been pushed to the right (away from player at 100,100)
+    const afterX = world.stores.position.x[enemy] ?? 0;
+    expect(afterX).toBeGreaterThan(beforeX);
+    expect(afterX - beforeX).toBeCloseTo(hammer.knockback, 0);
+  });
+
+  it('sword (no headRadius) deals uniform damage everywhere on blade', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
     const sword = getWeaponDef('sword')!;
-    expect(hammer.baseDamage).toBeGreaterThan(sword.baseDamage);
-    expect(hammer.cooldownMs).toBeGreaterThan(sword.cooldownMs);
+    expect(sword.headRadius).toBe(0);
+    // Place enemy on the shaft (not at tip)
+    const enemy = spawnEnemy(world, 124, 100, 50);
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+
+    weaponSystem(world);
+
+    for (let i = 0; i < 10; i++) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
+
+    // Should take full damage since shaftDamageMult defaults to 1.0
+    expect(world.stores.health.current[enemy]).toBe(50 - sword.baseDamage);
   });
 
   it('melee swing has Team component for friendly fire prevention', () => {

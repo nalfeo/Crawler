@@ -58,6 +58,9 @@ interface TunableWeaponDef {
   maxRange: number;
   swingArcDeg: number;
   meleeStyle: number;
+  headRadius: number;
+  shaftDamageMult: number;
+  knockback: number;
 }
 
 function cloneWeaponDef(def: WeaponDef): TunableWeaponDef {
@@ -330,6 +333,9 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       weaponFolder.add(tunedWeapon, 'meleeStyle', { Slash: MeleeStyle.SLASH, Stab: MeleeStyle.STAB }).name('Style');
       weaponFolder.add(tunedWeapon, 'swingArcDeg', 5, 360, 1).name('Swing Arc (°)');
       weaponFolder.add(tunedWeapon, 'durationMs', 50, 1000, 10).name('Swing Speed (ms)');
+      weaponFolder.add(tunedWeapon, 'headRadius', 0, 32, 1).name('Head Radius');
+      weaponFolder.add(tunedWeapon, 'shaftDamageMult', 0, 1, 0.05).name('Shaft Damage %');
+      weaponFolder.add(tunedWeapon, 'knockback', 0, 100, 1).name('Knockback (px)');
     }
 
     // Ranged: projectile speed
