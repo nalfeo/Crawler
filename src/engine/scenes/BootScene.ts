@@ -15,7 +15,7 @@ export class BootScene extends Phaser.Scene {
     }
 
     // Failures are non-fatal: PhaserBridge falls back to procedural
-    // textures whenever a Kenney sheet did not register.
+    // textures whenever a Kenney sheet fails to load.
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
       console.warn(`[BootScene] failed to load sprite asset "${file.key}" from ${file.url}`);
     });

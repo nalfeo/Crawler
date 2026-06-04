@@ -50,14 +50,20 @@ describe('sprite registry', () => {
     expect(td!.path).toBe('/assets/kenney/tiny-dungeon/spritesheet.png');
   });
 
-  it('every frame index is non-negative and within sheet capacity', () => {
+  it('every sheet declares a positive column count', () => {
+    // Frame-index math (`frame % cols`, `frame / cols`) silently breaks
+    // if cols is 0 or NaN. Pin it as an explicit invariant.
+    for (const sheet of SHEETS) {
+      expect(sheet.cols, `sheet ${sheet.key} cols`).toBeGreaterThan(0);
+      expect(Number.isFinite(sheet.cols), `sheet ${sheet.key} cols finite`).toBe(true);
+    }
+  });
+
+  it('every sprite frame index is non-negative', () => {
     for (const sprite of SPRITES) {
       const sheet = getSheet(sprite.sheetKey);
       expect(sheet, `sheet ${sprite.sheetKey}`).toBeDefined();
-      expect(sprite.frame).toBeGreaterThanOrEqual(0);
-      // We can't bound the upper limit without loading the PNG, but
-      // we can at least ensure the column math is consistent.
-      expect(sprite.frame % sheet!.cols).toBeGreaterThanOrEqual(0);
+      expect(sprite.frame, `sprite ${sprite.id} frame`).toBeGreaterThanOrEqual(0);
     }
   });
 

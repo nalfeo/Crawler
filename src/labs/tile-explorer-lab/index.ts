@@ -119,10 +119,17 @@ function createTileExplorerLab(canvasHost: HTMLElement, controls: HTMLElement): 
   }
 
   let tiles: TileEntry[] = [];
+  // Generation counter: each rebuildTiles() call bumps it. A pending
+  // image.onload handler bails out if its generation no longer matches,
+  // preventing stale buildAll() closures from clobbering the grid when
+  // the user changes sheet/scale before the previous load resolves.
+  let buildGeneration = 0;
 
   function rebuildTiles(): void {
     grid.innerHTML = '';
     tiles = [];
+    buildGeneration += 1;
+    const myGeneration = buildGeneration;
     const sheet = SHEETS.find((s) => s.key === settings.sheet);
     if (!sheet) return;
 
@@ -135,10 +142,12 @@ function createTileExplorerLab(canvasHost: HTMLElement, controls: HTMLElement): 
     if (!entry) return;
 
     const buildAll = (): void => {
+      // Bail if a newer rebuildTiles() has fired since this load began.
+      if (myGeneration !== buildGeneration) return;
       const img = entry.image;
       const totalCols = sheet.cols;
       const totalRows = Math.floor(
-        (img.naturalHeight + sheet.spacing) / (sheet.frameHeight + sheet.spacing),
+        (img.naturalHeight - sheet.margin + sheet.spacing) / (sheet.frameHeight + sheet.spacing),
       );
       const totalFrames = totalCols * totalRows;
 

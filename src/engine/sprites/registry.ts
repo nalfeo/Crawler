@@ -138,7 +138,17 @@ function frameAt(cols: number, col: number, row: number): number {
   return row * cols + col;
 }
 
-const ROGUELIKE_COLS = 54;
+// Derive column counts from SHEETS rather than re-declaring them so
+// frame math can't drift if a sheet's metadata is edited.
+const colsOf = (key: string): number => {
+  const sheet = SHEETS.find((s) => s.key === key);
+  if (!sheet) {
+    throw new Error(`Unknown sheet key: ${key}`);
+  }
+  return sheet.cols;
+};
+
+const ROGUELIKE_COLS = colsOf(KENNEY_ROGUELIKE_CHARS);
 
 export const SPRITES: ReadonlyArray<SpriteDef> = [
   {
