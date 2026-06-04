@@ -15,6 +15,9 @@ export function createInputCapture(scene: Phaser.Scene): {
   const keysDown = new Set<string>();
   const activeTouches = new Map<number, { zone: 'move' | 'action'; startX: number; startY: number; x: number; y: number }>();
   const JOYSTICK_RADIUS_PX = 60;
+  const touchStartOptions: AddEventListenerOptions = { passive: true };
+  const touchMoveOptions: AddEventListenerOptions = { passive: false };
+  const touchEndOptions: AddEventListenerOptions = { passive: true };
 
   const onKeyDown = (e: KeyboardEvent) => {
     keysDown.add(e.code);
@@ -78,10 +81,10 @@ export function createInputCapture(scene: Phaser.Scene): {
   window.addEventListener('keydown', onKeyDown, true);
   window.addEventListener('keyup', onKeyUp, true);
   window.addEventListener('blur', onBlur);
-  window.addEventListener('touchstart', onTouchStart, { passive: true });
-  window.addEventListener('touchmove', onTouchMove, { passive: false });
-  window.addEventListener('touchend', onTouchEnd, { passive: true });
-  window.addEventListener('touchcancel', onTouchEnd, { passive: true });
+  window.addEventListener('touchstart', onTouchStart, touchStartOptions);
+  window.addEventListener('touchmove', onTouchMove, touchMoveOptions);
+  window.addEventListener('touchend', onTouchEnd, touchEndOptions);
+  window.addEventListener('touchcancel', onTouchEnd, touchEndOptions);
 
   return {
     poll(state: InputState): void {
@@ -95,23 +98,27 @@ export function createInputCapture(scene: Phaser.Scene): {
       let touchMoveY = 0;
       let touchAction = false;
       let actionTouchPosition: { x: number; y: number } | undefined;
+      let hasMoveTouch = false;
 
       for (const touch of activeTouches.values()) {
-        if (touch.zone === 'move') {
+        if (touch.zone === 'move' && !hasMoveTouch) {
           const deltaX = touch.x - touch.startX;
           const deltaY = touch.y - touch.startY;
           touchMoveX = Math.max(-1, Math.min(1, deltaX / JOYSTICK_RADIUS_PX));
           touchMoveY = Math.max(-1, Math.min(1, deltaY / JOYSTICK_RADIUS_PX));
+          hasMoveTouch = true;
           continue;
         }
 
-        touchAction = true;
-        actionTouchPosition = { x: touch.x, y: touch.y };
+        if (touch.zone === 'action') {
+          touchAction = true;
+          actionTouchPosition = { x: touch.x, y: touch.y };
+        }
       }
 
       const normalized = normalizeInputDirection(
         keyboardMoveX !== 0 || keyboardMoveY !== 0 ? keyboardMoveX : touchMoveX,
-        keyboardMoveY !== 0 || keyboardMoveX !== 0 ? keyboardMoveY : touchMoveY,
+        keyboardMoveX !== 0 || keyboardMoveY !== 0 ? keyboardMoveY : touchMoveY,
       );
 
       state.moveX = normalized.moveX;
@@ -133,10 +140,10 @@ export function createInputCapture(scene: Phaser.Scene): {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('blur', onBlur);
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
-      window.removeEventListener('touchend', onTouchEnd);
-      window.removeEventListener('touchcancel', onTouchEnd);
+      window.removeEventListener('touchstart', onTouchStart, touchStartOptions);
+      window.removeEventListener('touchmove', onTouchMove, touchMoveOptions);
+      window.removeEventListener('touchend', onTouchEnd, touchEndOptions);
+      window.removeEventListener('touchcancel', onTouchEnd, touchEndOptions);
       keysDown.clear();
       activeTouches.clear();
     },
