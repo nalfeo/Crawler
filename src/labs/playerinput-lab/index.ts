@@ -9,35 +9,32 @@ function createPlayerInputLab(canvasHost: HTMLElement, controls: HTMLElement): (
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const root = document.createElement('div');
-  root.style.display = 'grid';
-  root.style.placeItems = 'center';
-  root.style.height = '100%';
-  root.style.padding = '24px';
-  root.style.background = 'radial-gradient(circle at top, #2f2750 0%, #1a1630 60%, #100f1f 100%)';
+  const params = { deadzone: 0.1, smoothing: 0, sampleFrames: 240 };
+  gui.add(params, 'deadzone', 0, 0.5, 0.01).name('Deadzone');
+  gui.add(params, 'smoothing', 0, 1, 0.01).name('Smoothing');
+  gui.add(params, 'sampleFrames', 30, 600, 10).name('Frames');
 
-  const card = document.createElement('div');
-  card.style.maxWidth = '640px';
-  card.style.padding = '20px';
-  card.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-  card.style.borderRadius = '14px';
-  card.style.background = 'rgba(16, 13, 34, 0.85)';
-  card.style.color = '#ddd6fe';
-  card.style.lineHeight = '1.6';
-  card.textContent =
-    'Player Input Lab placeholder. Use this lab to tune input sampling, direction normalization, and control feel.';
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;line-height:1.6;';
+  panel.textContent =
+    'Player Input Lab scaffold.\nUse this sandbox to inspect normalized movement vectors and input responsiveness.';
+  canvasHost.append(panel);
 
-  root.append(card);
-  canvasHost.append(root);
+  const hint = document.createElement('p');
+  hint.textContent =
+    'Stub lab for playerInputSystem. Add live key/gamepad visualizations and input trace playback.';
+  hint.style.cssText = 'padding:8px 16px;color:#c9d4ff;line-height:1.6;';
+  controls.append(hint);
 
   return () => {
-    root.remove();
+    panel.remove();
+    hint.remove();
   };
 }
 
 registerLab('playerinput-lab', {
   name: 'Player Input Lab',
-  description: 'Sandbox for player input system behavior.',
+  description: 'Scaffold for validating playerInputSystem mappings and tuning.',
   create: createPlayerInputLab,
 });
-

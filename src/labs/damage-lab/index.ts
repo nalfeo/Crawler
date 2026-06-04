@@ -9,35 +9,32 @@ function createDamageLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const root = document.createElement('div');
-  root.style.display = 'grid';
-  root.style.placeItems = 'center';
-  root.style.height = '100%';
-  root.style.padding = '24px';
-  root.style.background = 'radial-gradient(circle at top, #3f1d2e 0%, #1e0f1d 60%, #120813 100%)';
+  const params = { incomingDamage: 25, armor: 5, sampleFrames: 120 };
+  gui.add(params, 'incomingDamage', 1, 200, 1).name('Damage');
+  gui.add(params, 'armor', 0, 50, 1).name('Armor');
+  gui.add(params, 'sampleFrames', 30, 600, 10).name('Frames');
 
-  const card = document.createElement('div');
-  card.style.maxWidth = '640px';
-  card.style.padding = '20px';
-  card.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-  card.style.borderRadius = '14px';
-  card.style.background = 'rgba(24, 8, 20, 0.85)';
-  card.style.color = '#f1d5db';
-  card.style.lineHeight = '1.6';
-  card.textContent =
-    'Damage Lab placeholder. Use this lab for tuning damage application, invulnerability windows, and hit validation.';
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;line-height:1.6;';
+  panel.textContent =
+    'Damage Lab scaffold.\nUse this sandbox to verify hit application, scaling, and stat interactions.';
+  canvasHost.append(panel);
 
-  root.append(card);
-  canvasHost.append(root);
+  const hint = document.createElement('p');
+  hint.textContent =
+    'Stub lab for damageSystem. Add repeatable hit simulation and damage breakdown tables.';
+  hint.style.cssText = 'padding:8px 16px;color:#c9d4ff;line-height:1.6;';
+  controls.append(hint);
 
   return () => {
-    root.remove();
+    panel.remove();
+    hint.remove();
   };
 }
 
 registerLab('damage-lab', {
   name: 'Damage Lab',
-  description: 'Sandbox for damage system behavior.',
+  description: 'Scaffold for validating damageSystem formulas and outcomes.',
   create: createDamageLab,
 });
-

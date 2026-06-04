@@ -9,35 +9,31 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const root = document.createElement('div');
-  root.style.display = 'grid';
-  root.style.placeItems = 'center';
-  root.style.height = '100%';
-  root.style.padding = '24px';
-  root.style.background = 'radial-gradient(circle at top, #1f2a44 0%, #111827 60%, #0b1020 100%)';
+  const params = { sampleEntities: 16, sampleFrames: 120 };
+  gui.add(params, 'sampleEntities', 2, 64, 1).name('Entities');
+  gui.add(params, 'sampleFrames', 30, 600, 10).name('Frames');
 
-  const card = document.createElement('div');
-  card.style.maxWidth = '640px';
-  card.style.padding = '20px';
-  card.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-  card.style.borderRadius = '14px';
-  card.style.background = 'rgba(9, 14, 28, 0.85)';
-  card.style.color = '#e2e8f0';
-  card.style.lineHeight = '1.6';
-  card.textContent =
-    'Collision Lab placeholder. Use this lab for focused collision-pair debugging and visualization experiments.';
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;line-height:1.6;';
+  panel.textContent =
+    'Collision Lab scaffold.\nUse this sandbox to tune broadphase and response behavior before integrating combat changes.';
+  canvasHost.append(panel);
 
-  root.append(card);
-  canvasHost.append(root);
+  const hint = document.createElement('p');
+  hint.textContent =
+    'Stub lab for collisionSystem. Expand this with visualization and overlap probes.';
+  hint.style.cssText = 'padding:8px 16px;color:#c9d4ff;line-height:1.6;';
+  controls.append(hint);
 
   return () => {
-    root.remove();
+    panel.remove();
+    hint.remove();
   };
 }
 
 registerLab('collision-lab', {
   name: 'Collision Lab',
-  description: 'Sandbox for collision system behavior.',
+  description: 'Scaffold for validating collisionSystem behavior and tuning.',
   create: createCollisionLab,
 });
-

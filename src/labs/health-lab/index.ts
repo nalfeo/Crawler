@@ -9,35 +9,32 @@ function createHealthLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const root = document.createElement('div');
-  root.style.display = 'grid';
-  root.style.placeItems = 'center';
-  root.style.height = '100%';
-  root.style.padding = '24px';
-  root.style.background = 'radial-gradient(circle at top, #214536 0%, #12291f 60%, #0b1711 100%)';
+  const params = { startHp: 100, regenPerSecond: 0, sampleSeconds: 30 };
+  gui.add(params, 'startHp', 1, 500, 1).name('Start HP');
+  gui.add(params, 'regenPerSecond', 0, 50, 1).name('Regen/s');
+  gui.add(params, 'sampleSeconds', 1, 120, 1).name('Seconds');
 
-  const card = document.createElement('div');
-  card.style.maxWidth = '640px';
-  card.style.padding = '20px';
-  card.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-  card.style.borderRadius = '14px';
-  card.style.background = 'rgba(10, 24, 17, 0.85)';
-  card.style.color = '#d1fae5';
-  card.style.lineHeight = '1.6';
-  card.textContent =
-    'Health Lab placeholder. Use this lab for max/current HP behavior, death transitions, and regen experiments.';
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;line-height:1.6;';
+  panel.textContent =
+    'Health Lab scaffold.\nUse this sandbox to tune health changes, death handling, and recovery rules.';
+  canvasHost.append(panel);
 
-  root.append(card);
-  canvasHost.append(root);
+  const hint = document.createElement('p');
+  hint.textContent =
+    'Stub lab for healthSystem. Add timeline charts for HP over time and death transitions.';
+  hint.style.cssText = 'padding:8px 16px;color:#c9d4ff;line-height:1.6;';
+  controls.append(hint);
 
   return () => {
-    root.remove();
+    panel.remove();
+    hint.remove();
   };
 }
 
 registerLab('health-lab', {
   name: 'Health Lab',
-  description: 'Sandbox for health system behavior.',
+  description: 'Scaffold for validating healthSystem behavior.',
   create: createHealthLab,
 });
-

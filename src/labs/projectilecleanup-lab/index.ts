@@ -9,35 +9,32 @@ function createProjectileCleanupLab(canvasHost: HTMLElement, controls: HTMLEleme
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const root = document.createElement('div');
-  root.style.display = 'grid';
-  root.style.placeItems = 'center';
-  root.style.height = '100%';
-  root.style.padding = '24px';
-  root.style.background = 'radial-gradient(circle at top, #4a321f 0%, #2b1e12 60%, #1a120b 100%)';
+  const params = { boundsPadding: 32, sampleProjectiles: 150, sampleFrames: 240 };
+  gui.add(params, 'boundsPadding', 0, 256, 1).name('Padding');
+  gui.add(params, 'sampleProjectiles', 10, 500, 1).name('Projectiles');
+  gui.add(params, 'sampleFrames', 30, 600, 10).name('Frames');
 
-  const card = document.createElement('div');
-  card.style.maxWidth = '640px';
-  card.style.padding = '20px';
-  card.style.border = '1px solid rgba(255, 255, 255, 0.12)';
-  card.style.borderRadius = '14px';
-  card.style.background = 'rgba(30, 20, 12, 0.85)';
-  card.style.color = '#fed7aa';
-  card.style.lineHeight = '1.6';
-  card.textContent =
-    'Projectile Cleanup Lab placeholder. Use this lab to validate projectile lifetime and bounds cleanup behavior.';
+  const panel = document.createElement('div');
+  panel.style.cssText =
+    'padding:16px;background:#0d0d14;color:#f0f0f0;font-family:monospace;line-height:1.6;';
+  panel.textContent =
+    'Projectile Cleanup Lab scaffold.\nUse this sandbox to verify off-screen/despawn cleanup behavior.';
+  canvasHost.append(panel);
 
-  root.append(card);
-  canvasHost.append(root);
+  const hint = document.createElement('p');
+  hint.textContent =
+    'Stub lab for projectileCleanupSystem. Add projectile lifetime histograms and despawn reason counters.';
+  hint.style.cssText = 'padding:8px 16px;color:#c9d4ff;line-height:1.6;';
+  controls.append(hint);
 
   return () => {
-    root.remove();
+    panel.remove();
+    hint.remove();
   };
 }
 
 registerLab('projectilecleanup-lab', {
   name: 'Projectile Cleanup Lab',
-  description: 'Sandbox for projectile cleanup system behavior.',
+  description: 'Scaffold for validating projectileCleanupSystem behavior.',
   create: createProjectileCleanupLab,
 });
-
