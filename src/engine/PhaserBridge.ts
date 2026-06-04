@@ -350,6 +350,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
 
         const img = visual.obj;
+        img.setVisible(true);
         img.setPosition(x, y);
 
         // Per-type updates

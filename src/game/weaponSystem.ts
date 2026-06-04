@@ -1,5 +1,15 @@
 import { hasComponent, query, removeEntity, setComponent } from 'bitecs';
-import { Damage, Enemy, MeleeSwing, Owner, Player, Position, Stats, Weapon } from '../core/components.js';
+import {
+  Damage,
+  Enemy,
+  MeleeSwing,
+  Owner,
+  Player,
+  Position,
+  Stats,
+  Team,
+  Weapon,
+} from '../core/components.js';
 import {
   spawnAoeProjectile,
   spawnAreaAttack,
@@ -473,7 +483,7 @@ export function weaponSystem(world: GameWorld): void {
 /** Process weapon entities (for multi-weapon support). */
 export function weaponEntitySystem(world: GameWorld): void {
   const weaponEntities = query(world.ecs, [Weapon, Owner]);
-  const { weapon, owner, position } = world.stores;
+  const { weapon, owner, position, team } = world.stores;
 
   for (const weid of weaponEntities) {
     if (weid === undefined) {
@@ -505,6 +515,9 @@ export function weaponEntitySystem(world: GameWorld): void {
         break;
       case WeaponType.MELEE: {
         const range = weapon.range[weid] ?? WEAPON.MELEE_RANGE;
+        const ownerTeam = hasComponent(world.ecs, ownerEid, Team)
+          ? (team.id[ownerEid] ?? TeamId.PLAYER)
+          : TeamId.PLAYER;
         spawnAreaAttack(
           world,
           px,
@@ -513,7 +526,7 @@ export function weaponEntitySystem(world: GameWorld): void {
           baseDamage,
           range,
           WEAPON.MELEE_DURATION_MS,
-          TeamId.PLAYER,
+          ownerTeam,
         );
         break;
       }

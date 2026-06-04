@@ -1,4 +1,4 @@
-import { addComponent, entityExists, hasComponent, query, set } from 'bitecs';
+import { addComponent, entityExists, hasComponent, query, set, setComponent } from 'bitecs';
 import {
   Enemy,
   Health,
@@ -177,16 +177,25 @@ export function meleeSwingSystem(world: GameWorld): void {
             const ny = kbDy / kbDist;
             // Spread the knockback over ~10 frames for smooth motion
             const kbSpeed = Math.max(1, knockback / 10);
-            addComponent(
-              world.ecs,
-              target,
-              set(Knockback, {
+            if (hasComponent(world.ecs, target, Knockback)) {
+              setComponent(world.ecs, target, Knockback, {
                 dirX: nx,
                 dirY: ny,
                 remaining: knockback,
                 speed: kbSpeed,
-              }),
-            );
+              });
+            } else {
+              addComponent(
+                world.ecs,
+                target,
+                set(Knockback, {
+                  dirX: nx,
+                  dirY: ny,
+                  remaining: knockback,
+                  speed: kbSpeed,
+                }),
+              );
+            }
           }
         }
       }
