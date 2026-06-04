@@ -30,6 +30,10 @@ export const BroadcastScore = {};
 export const Equipment = {};
 export const BaseStats = {};
 export const EffectiveStats = {};
+/** Tag: entity has computed final stats (typically player only in v1). */
+export const Stats = {};
+/** Tag: entity has a skill set (player only in v1). */
+export const SkillHolder = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -99,6 +103,26 @@ export function createComponentStores() {
       hpRegen: new Float32Array(MAX_ENTITIES),
       xpBonus: new Float32Array(MAX_ENTITIES),
       cooldownReduction: new Float32Array(MAX_ENTITIES),
+    },
+    stats: {
+      maxHp: new Float32Array(MAX_ENTITIES),
+      moveSpeed: new Float32Array(MAX_ENTITIES),
+      damage: new Float32Array(MAX_ENTITIES),
+      armor: new Float32Array(MAX_ENTITIES),
+      attackSpeed: new Float32Array(MAX_ENTITIES),
+      pickupRange: new Float32Array(MAX_ENTITIES),
+      projectileCount: new Float32Array(MAX_ENTITIES),
+      projectileSpeed: new Float32Array(MAX_ENTITIES),
+    },
+    statPoints: {
+      maxHp: new Float32Array(MAX_ENTITIES),
+      moveSpeed: new Float32Array(MAX_ENTITIES),
+      damage: new Float32Array(MAX_ENTITIES),
+      armor: new Float32Array(MAX_ENTITIES),
+      attackSpeed: new Float32Array(MAX_ENTITIES),
+      pickupRange: new Float32Array(MAX_ENTITIES),
+      projectileCount: new Float32Array(MAX_ENTITIES),
+      projectileSpeed: new Float32Array(MAX_ENTITIES),
     },
   };
 }

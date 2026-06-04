@@ -1,0 +1,35 @@
+import type { StatKey } from './stats.js';
+
+export const SKILL_NATURAL_CAP = 15;
+export const SKILL_HARD_CAP = 20;
+
+export type UsageMetric = 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat';
+
+export interface SkillUsageEvent {
+  skillId: string;
+  metric: UsageMetric;
+  amount: number;
+}
+
+export interface SkillState {
+  level: number;
+  usage: number;
+  itemBonus: number;
+  triggeredMilestones: Set<number>;
+}
+
+export interface StatModifier {
+  sourceType: 'skill' | 'floor' | 'buff';
+  sourceId: string;
+  stat: StatKey;
+  op: 'add' | 'multiply';
+  value: number;
+  expiresFrame?: number;
+}
+
+export interface PlayerLevel {
+  xp: number;
+  level: number;
+  unspentPoints: number;
+  pointsPerLevel: number;
+}

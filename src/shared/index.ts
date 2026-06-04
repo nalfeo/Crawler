@@ -27,3 +27,14 @@ export type {
   UnequipResult,
   CanEquipResult,
 } from './equipment-types.js';
+export { STAT_KEYS, STAT_BASE, STAT_POINT_INCREMENT, STAT_MIN } from './stats.js';
+export type { StatKey } from './stats.js';
+export { xpThresholdForLevel, xpRequiredForLevel, levelForXp } from './xpMath.js';
+export { SKILL_NATURAL_CAP, SKILL_HARD_CAP } from './skills.js';
+export type {
+  PlayerLevel,
+  StatModifier,
+  SkillState,
+  SkillUsageEvent,
+  UsageMetric,
+} from './skills.js';
