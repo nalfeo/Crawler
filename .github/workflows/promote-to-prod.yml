@@ -157,6 +157,19 @@ jobs:
               '@copilot please investigate and resolve this release failure.'
             ].join('\n');
 
+            // Ensure the "release" label exists before using it
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: 'release',
+                color: '5319E7',
+                description: 'Release-related'
+              });
+            } catch (e) {
+              // Label already exists — that's fine
+            }
+
             const issue = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
