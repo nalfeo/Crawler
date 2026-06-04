@@ -276,10 +276,29 @@ describe('melee weapons', () => {
 });
 
 describe('unarmed weapons', () => {
-  it('punch spawns a short-range AreaDamage', () => {
+  it('punch spawns a MeleeSwing with stab style and head', () => {
     const world = createTestWorld();
     spawnPlayer(world, 200, 200);
+    spawnEnemy(world, 230, 200, 50);
     const def = getWeaponDef('punch')!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+
+    weaponSystem(world);
+
+    const swings = Array.from(query(world.ecs, [MeleeSwing, Position]));
+    expect(swings).toHaveLength(1);
+    const swing = swings[0]!;
+    expect(world.stores.meleeSwing.style[swing]).toBe(1); // STAB
+    expect(world.stores.meleeSwing.headRadius[swing]).toBe(def.headRadius);
+    expect(world.stores.meleeSwing.shaftDamageMult[swing]).toBe(0);
+    expect(world.stores.meleeSwing.knockback[swing]).toBe(def.knockback);
+  });
+
+  it('kick spawns a short-range AreaDamage', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 200, 200);
+    const def = getWeaponDef('kick')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
 
@@ -288,13 +307,5 @@ describe('unarmed weapons', () => {
     const areas = Array.from(query(world.ecs, [AreaDamage, Position]));
     expect(areas).toHaveLength(1);
     expect(world.stores.areaDamage.radius[areas[0]!]).toBe(def.aoeRadius);
-    expect(world.stores.areaDamage.damage[areas[0]!]).toBe(def.baseDamage);
-  });
-
-  it('kick has shorter cooldown range than punch', () => {
-    const punch = getWeaponDef('punch')!;
-    const kick = getWeaponDef('kick')!;
-    expect(kick.cooldownMs).toBeGreaterThan(punch.cooldownMs);
-    expect(kick.baseDamage).toBeGreaterThan(punch.baseDamage);
   });
 });

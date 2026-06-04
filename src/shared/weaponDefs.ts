@@ -104,9 +104,11 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
 
   // --- Unarmed ---
   ['punch', def({
-    id: 'punch', name: 'Punch', weaponType: WeaponType.UNARMED,
-    baseDamage: 5, cooldownMs: 250, range: WEAPON.UNARMED_RANGE,
-    aoeRadius: WEAPON.UNARMED_RANGE, durationMs: WEAPON.UNARMED_DURATION_MS,
+    id: 'punch', name: 'Punch', weaponType: WeaponType.MELEE,
+    baseDamage: 8, cooldownMs: 200, range: WEAPON.UNARMED_RANGE,
+    aoeRadius: WEAPON.UNARMED_RANGE, durationMs: 120,
+    meleeStyle: MeleeStyle.STAB,
+    headRadius: 10, shaftDamageMult: 0, knockback: 20,
   })],
   ['kick', def({
     id: 'kick', name: 'Kick', weaponType: WeaponType.UNARMED,
