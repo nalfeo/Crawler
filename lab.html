@@ -7,16 +7,112 @@
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background: #1a1a2e; color: #e0e0e0; font-family: monospace; }
-      #lab-container { width: 100vw; height: 100vh; display: flex; }
-      #lab-canvas { flex: 1; }
-      #lab-controls { width: 300px; padding: 16px; background: #16213e; overflow-y: auto; }
+      #lab-container { width: 100vw; height: 100svh; display: flex; position: relative; overflow: hidden; }
+      #lab-canvas { flex: 1; min-width: 0; min-height: 0; }
+
+      #lab-controls {
+        width: 300px;
+        flex-shrink: 0;
+        padding: 16px;
+        background: #16213e;
+        overflow-y: auto;
+        transition: width 0.25s ease, padding 0.25s ease;
+      }
+      #lab-controls.collapsed {
+        width: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      #controls-toggle {
+        position: absolute;
+        right: 300px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 100;
+        background: #16213e;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-right: none;
+        color: #e0e0e0;
+        cursor: pointer;
+        width: 24px;
+        min-height: 64px;
+        border-radius: 6px 0 0 6px;
+        font-size: 16px;
+        line-height: 1;
+        transition: right 0.25s ease;
+        touch-action: manipulation;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #controls-toggle.collapsed {
+        right: 0;
+      }
+
+      /* On narrow screens in portrait, stack canvas above controls */
+      @media (max-width: 600px) and (orientation: portrait) {
+        #lab-container { flex-direction: column; }
+        #lab-canvas { flex: 1; }
+        #lab-controls {
+          width: 100%;
+          max-height: 40vh;
+          transition: max-height 0.25s ease, padding 0.25s ease;
+        }
+        #lab-controls.collapsed {
+          width: 100%;
+          max-height: 0;
+          padding: 0;
+        }
+        #controls-toggle {
+          right: unset;
+          left: 50%;
+          top: unset;
+          bottom: 40vh;
+          transform: translateX(-50%);
+          width: 64px;
+          min-height: 24px;
+          border-radius: 6px 6px 0 0;
+          border-right: 1px solid rgba(255, 255, 255, 0.2);
+          border-bottom: none;
+          transition: bottom 0.25s ease;
+        }
+        #controls-toggle.collapsed {
+          right: unset;
+          bottom: 0;
+        }
+      }
     </style>
   </head>
   <body>
     <div id="lab-container">
       <div id="lab-canvas"></div>
+      <button id="controls-toggle" aria-label="Collapse config panel" aria-expanded="true">›</button>
       <div id="lab-controls"></div>
     </div>
     <script type="module" src="/src/lab-main.ts"></script>
+    <script>
+      (function () {
+        const toggle = document.getElementById('controls-toggle');
+        const controls = document.getElementById('lab-controls');
+        const STORAGE_KEY = 'lab-controls-collapsed';
+
+        function setCollapsed(collapsed) {
+          controls.classList.toggle('collapsed', collapsed);
+          toggle.classList.toggle('collapsed', collapsed);
+          toggle.setAttribute('aria-expanded', String(!collapsed));
+          toggle.setAttribute('aria-label', collapsed ? 'Expand config panel' : 'Collapse config panel');
+          toggle.textContent = collapsed ? '‹' : '›';
+        }
+
+        setCollapsed(localStorage.getItem(STORAGE_KEY) === 'true');
+
+        toggle.addEventListener('click', function () {
+          const next = !controls.classList.contains('collapsed');
+          setCollapsed(next);
+          localStorage.setItem(STORAGE_KEY, String(next));
+        });
+      })();
+    </script>
   </body>
 </html>
