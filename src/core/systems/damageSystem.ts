@@ -7,6 +7,7 @@ import {
   Health,
   Player,
   Projectile,
+  Returning,
   Stats,
   XpGem,
 } from '../components.js';
@@ -32,8 +33,32 @@ function getPlayerHitTimestamps(world: GameWorld): Float64Array {
   return hitTimestamps;
 }
 
+/** Per-projectile hit tracking for pierce (prevents double-hitting same enemy). */
+const pierceHitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
+
+function getPierceHitSet(world: GameWorld, eid: number): Set<number> {
+  let worldHits = pierceHitSets.get(world);
+  if (worldHits === undefined) {
+    worldHits = new Map();
+    pierceHitSets.set(world, worldHits);
+  }
+  let hits = worldHits.get(eid);
+  if (hits === undefined) {
+    hits = new Set();
+    worldHits.set(eid, hits);
+  }
+  return hits;
+}
+
+export function clearProjectilePierceHits(world: GameWorld, eid: number): void {
+  const worldHits = pierceHitSets.get(world);
+  if (worldHits !== undefined) worldHits.delete(eid);
+}
+
 function destroyEntity(world: GameWorld, eid: number): void {
   clearEntityStores(world, eid);
+  // Clean up pierce hit tracking
+  clearProjectilePierceHits(world, eid);
   removeEntity(world.ecs, eid);
 }
 
@@ -56,6 +81,16 @@ function applyArmorReduction(world: GameWorld, player: number, rawDamage: number
 }
 
 function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
+  // If this is the first hit for this projectile, clear stale hit tracking
+  // from any previous entity that used the same recycled ECS ID.
+  if ((world.stores.projectile.hitCount[projectile] ?? 0) === 0) {
+    clearProjectilePierceHits(world, projectile);
+  }
+
+  // Check if this enemy was already hit by this piercing projectile
+  const hitSet = getPierceHitSet(world, projectile);
+  if (hitSet.has(enemy)) return;
+
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
     const currentHealth = world.stores.health.current[enemy] ?? 0;
@@ -65,7 +100,22 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
   }
 
-  destroyEntity(world, projectile);
+  hitSet.add(enemy);
+
+  const pierce = world.stores.projectile.pierce[projectile] ?? 0;
+  const hitCount = (world.stores.projectile.hitCount[projectile] ?? 0) + 1;
+  world.stores.projectile.hitCount[projectile] = hitCount;
+
+  if (hitCount > pierce) {
+    if (hasComponent(world.ecs, projectile, Returning)) {
+      world.stores.returning.isReturning[projectile] = 1;
+      world.stores.projectile.pierce[projectile] = 255;
+      world.stores.projectile.hitCount[projectile] = 0;
+      clearProjectilePierceHits(world, projectile);
+      return;
+    }
+    destroyEntity(world, projectile);
+  }
 }
 
 function applyPlayerEnemyHit(

@@ -1,7 +1,19 @@
-export { GAME, FLOOR, PLAYER_SPEED, SAFE_ROOM, XP } from './constants.js';
+export {
+  GAME,
+  FLOOR,
+  PLAYER_SPEED,
+  SAFE_ROOM,
+  WEAPON,
+  WeaponType,
+  TeamId,
+  XP,
+} from './constants.js';
+export type { WeaponTypeValue, TeamIdValue } from './constants.js';
 export { createInputState, normalizeInputDirection } from './input.js';
 export type { InputState } from './input.js';
 export { SeededRandom } from './random.js';
+export { WEAPON_DEFS, getWeaponDef } from './weaponDefs.js';
+export type { WeaponDef } from './weaponDefs.js';
 export { SLOT_REGISTRY, VALID_SLOT_IDS, isValidSlotId } from './equipment-slots.js';
 export type { SlotDefinition, EquipmentSlotId } from './equipment-slots.js';
 export {
