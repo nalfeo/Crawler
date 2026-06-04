@@ -8,8 +8,8 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background: #1a1a2e; color: #e0e0e0; font-family: monospace; }
       #lab-container { width: 100vw; height: 100vh; display: flex; }
-      #lab-canvas { flex: 1; }
-      #lab-controls { width: 300px; padding: 16px; background: #16213e; overflow-y: auto; }
+      #lab-canvas { flex: 1; min-width: 0; overflow: hidden; }
+      #lab-controls { width: 300px; padding: 16px; background: #16213e; overflow-y: auto; flex-shrink: 0; }
     </style>
   </head>
   <body>
