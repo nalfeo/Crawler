@@ -87,7 +87,7 @@
   <body>
     <div id="lab-container">
       <div id="lab-canvas"></div>
-      <button id="controls-toggle" aria-label="Toggle config panel" aria-expanded="true">›</button>
+      <button id="controls-toggle" aria-label="Collapse config panel" aria-expanded="true">›</button>
       <div id="lab-controls"></div>
     </div>
     <script type="module" src="/src/lab-main.ts"></script>
@@ -101,6 +101,7 @@
           controls.classList.toggle('collapsed', collapsed);
           toggle.classList.toggle('collapsed', collapsed);
           toggle.setAttribute('aria-expanded', String(!collapsed));
+          toggle.setAttribute('aria-label', collapsed ? 'Expand config panel' : 'Collapse config panel');
           toggle.textContent = collapsed ? '‹' : '›';
         }
 
