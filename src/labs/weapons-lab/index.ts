@@ -33,10 +33,18 @@ import { GAME, MeleeStyle, PLAYER_SPEED, WeaponType } from '../../shared/constan
 import { createInputState, type InputState } from '../../shared/input.js';
 import { WEAPON_DEFS, type WeaponDef } from '../../shared/weaponDefs.js';
 import { registerLab } from '../registry.js';
+import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 const WEAPON_IDS = [...WEAPON_DEFS.keys()];
+const LAB_ID = 'weapons-lab';
+
+/** Serializable snapshot of all lab state that should survive HMR. */
+interface WeaponsLabSnapshot {
+  settings: WeaponsLabSettings;
+  tunedWeaponOverrides: Record<string, Partial<TunableWeaponDef>>;
+}
 
 /** Mutable copy of a WeaponDef for live tuning. */
 interface TunableWeaponDef {
@@ -120,6 +128,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   root.append(gameHost, hud);
   canvasHost.append(root);
 
+  const saved = loadLabState<WeaponsLabSnapshot>(LAB_ID);
+
   const settings: WeaponsLabSettings = {
     playerSpeed: PLAYER_SPEED,
     maxEnemies: 30,
@@ -128,7 +138,11 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     enemySpeed: 1.25,
     activeWeapon: WEAPON_IDS[0] ?? 'sword',
     invulnerable: true,
+    ...(saved?.settings ?? {}),
   };
+
+  // Per-weapon tuning overrides that survive weapon switching
+  const tunedOverrides: Record<string, Partial<TunableWeaponDef>> = saved?.tunedWeaponOverrides ?? {};
 
   let resetWorldFromGui = () => undefined;
 
@@ -308,6 +322,17 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   let tunedWeapon: TunableWeaponDef | undefined;
   let weaponFolder: GUI | undefined;
 
+  /** Save current lab state to sessionStorage for HMR survival. */
+  function persistState(): void {
+    if (tunedWeapon) {
+      tunedOverrides[settings.activeWeapon] = { ...tunedWeapon };
+    }
+    saveLabState<WeaponsLabSnapshot>(LAB_ID, {
+      settings,
+      tunedWeaponOverrides: tunedOverrides,
+    });
+  }
+
   function buildWeaponFolder(): void {
     if (weaponFolder) {
       weaponFolder.destroy();
@@ -318,6 +343,17 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     if (!baseDef || !gui) return;
 
     tunedWeapon = cloneWeaponDef(baseDef);
+
+    // Restore any saved tuning overrides for this weapon
+    const overrides = tunedOverrides[settings.activeWeapon];
+    if (overrides) {
+      Object.assign(tunedWeapon, overrides);
+      // Keep identity fields from base def
+      tunedWeapon.id = baseDef.id;
+      tunedWeapon.name = baseDef.name;
+      tunedWeapon.weaponType = baseDef.weaponType;
+    }
+
     weaponFolder = gui.addFolder(`${baseDef.name} Stats`);
     weaponFolder.open();
 
@@ -386,8 +422,13 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     },
   };
 
-  gui.add(settings, 'activeWeapon', WEAPON_IDS).name('Weapon').onChange(() => {
+  gui.add(settings, 'activeWeapon', WEAPON_IDS).name('Weapon').onChange((newWeaponId: string) => {
+    // Save the previous weapon's tuning before switching
+    if (tunedWeapon && tunedWeapon.id !== newWeaponId) {
+      tunedOverrides[tunedWeapon.id] = { ...tunedWeapon };
+    }
     buildWeaponFolder();
+    persistState();
   });
 
   const arenaFolder = gui.addFolder('Arena');
@@ -401,6 +442,9 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
   // Build initial weapon folder
   buildWeaponFolder();
+
+  // Persist state on any GUI control change
+  gui.onChange(persistState);
 
   const getSize = () => ({
     width: Math.max(1, Math.round(gameHost.clientWidth || GAME.WIDTH)),
