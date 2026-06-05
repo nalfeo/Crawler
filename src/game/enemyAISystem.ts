@@ -13,6 +13,14 @@ const SWARM_PLAYER_WEIGHT = 1;
 const SWARM_SEPARATION_WEIGHT = 1.4;
 const SWARM_COHESION_WEIGHT = 0.2;
 
+/**
+ * Maximum allowed overlap fraction between enemy entities (0.25 = 25%).
+ * When two enemies overlap beyond this threshold, a separation force is applied.
+ */
+const MAX_OVERLAP_FRACTION = 0.25;
+const SEPARATION_FORCE = 2.0;
+const ENEMY_RADIUS = 8; // half of 16x16 sprite
+
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
   setComponent(world.ecs, eid, Velocity, { x, y });
 }
@@ -163,21 +171,17 @@ function applyRangedBehavior(
   playerDx: number,
   playerDy: number,
   distanceToPlayer: number,
-  aggroRange: number,
+  _aggroRange: number,
   attackRange: number,
   speed: number,
 ): void {
-  if (!isAggroActive(aggroRange, distanceToPlayer) && distanceToPlayer > attackRange) {
-    setVelocity(world, eid, 0, 0);
-    return;
-  }
-
   if (attackRange <= EPSILON) {
-    applyChaseBehavior(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+    const direction = normalize(playerDx, playerDy);
+    setVelocity(world, eid, direction.x * speed, direction.y * speed);
     return;
   }
 
-  const retreatDistance = Math.min(attackRange, Math.max(0, aggroRange * 0.5));
+  const retreatDistance = attackRange * 0.5;
   const toPlayer = normalize(playerDx, playerDy);
 
   if (distanceToPlayer > attackRange) {
@@ -199,6 +203,83 @@ function applyRangedBehavior(
   setVelocity(world, eid, tangent.x * speed, tangent.y * speed);
 }
 
+/**
+ * Post-process separation pass: pushes enemies apart when they exceed
+ * the MAX_OVERLAP_FRACTION threshold. Uses a simple pairwise distance check
+ * and blends a repulsion vector into the existing velocity.
+ * Only applies to actively-steered enemies (RANGED always; CHASE/SWARM when in aggro).
+ */
+function applySeparation(
+  world: GameWorld,
+  activeEnemies: number[],
+  position: GameWorld['stores']['position'],
+  velocity: GameWorld['stores']['velocity'],
+): void {
+  const minDistance = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION); // 12px for 25% overlap
+
+  for (let i = 0; i < activeEnemies.length; i += 1) {
+    const a = activeEnemies[i]!;
+    const ax = position.x[a]!;
+    const ay = position.y[a]!;
+
+    for (let j = i + 1; j < activeEnemies.length; j += 1) {
+      const b = activeEnemies[j]!;
+      const bx = position.x[b]!;
+      const by = position.y[b]!;
+
+      const dx = ax - bx;
+      const dy = ay - by;
+      const dist = Math.hypot(dx, dy);
+
+      if (dist >= minDistance) {
+        continue;
+      }
+
+      // Deterministic fallback when centers coincide to avoid division-by-zero
+      let nx: number;
+      let ny: number;
+      let penetration: number;
+
+      if (dist <= EPSILON) {
+        // Use entity IDs for a stable, deterministic push direction (survives ID recycling)
+        nx = a % 2 === 0 ? 1 : -1;
+        ny = b % 2 === 0 ? 1 : -1;
+        const len = Math.hypot(nx, ny);
+        nx /= len;
+        ny /= len;
+        penetration = 1; // full overlap
+      } else {
+        penetration = (minDistance - dist) / minDistance;
+        nx = dx / dist;
+        ny = dy / dist;
+      }
+
+      const force = penetration * SEPARATION_FORCE;
+
+      // Push each entity in opposite directions
+      velocity.x[a] = (velocity.x[a] ?? 0) + nx * force;
+      velocity.y[a] = (velocity.y[a] ?? 0) + ny * force;
+      velocity.x[b] = (velocity.x[b] ?? 0) - nx * force;
+      velocity.y[b] = (velocity.y[b] ?? 0) - ny * force;
+    }
+  }
+
+  // Clamp velocities to each enemy's configured speed and write back to ECS
+  for (const eid of activeEnemies) {
+    const vx = velocity.x[eid] ?? 0;
+    const vy = velocity.y[eid] ?? 0;
+    const mag = Math.hypot(vx, vy);
+    const maxSpeed = getEnemySpeed(world, eid);
+
+    if (mag > maxSpeed && mag > EPSILON) {
+      const scale = maxSpeed / mag;
+      setComponent(world.ecs, eid, Velocity, { x: vx * scale, y: vy * scale });
+    } else {
+      setComponent(world.ecs, eid, Velocity, { x: vx, y: vy });
+    }
+  }
+}
+
 export function enemyAISystem(world: GameWorld): void {
   const enemies = query(world.ecs, [Enemy, EnemyBehavior, Position, Velocity]);
   const players = query(world.ecs, [Player, Position]);
@@ -211,12 +292,13 @@ export function enemyAISystem(world: GameWorld): void {
     return;
   }
 
-  const { enemyBehavior, position } = world.stores;
+  const { enemyBehavior, position, velocity } = world.stores;
+  const enemyList = Array.from(enemies);
   const playerX = position.x[playerEid]!;
   const playerY = position.y[playerEid]!;
-  const swarmEntities = Array.from(enemies).filter(
-    (eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM,
-  );
+  const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
+
+  const activeEnemies: number[] = [];
 
   for (const eid of enemies) {
     const enemyX = position.x[eid]!;
@@ -241,6 +323,9 @@ export function enemyAISystem(world: GameWorld): void {
           aggroRange,
           speed,
         );
+        if (isAggroActive(aggroRange, distanceToPlayer)) {
+          activeEnemies.push(eid);
+        }
         break;
       case AI_TYPE.RANGED:
         applyRangedBehavior(
@@ -253,11 +338,19 @@ export function enemyAISystem(world: GameWorld): void {
           attackRange,
           speed,
         );
+        // Ranged enemies are always actively steered
+        activeEnemies.push(eid);
         break;
       case AI_TYPE.CHASE:
       default:
         applyChaseBehavior(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+        if (isAggroActive(aggroRange, distanceToPlayer)) {
+          activeEnemies.push(eid);
+        }
         break;
     }
   }
+
+  // Enforce max 25% overlap between actively-steered enemy pairs via separation forces
+  applySeparation(world, activeEnemies, position, velocity);
 }
