@@ -175,7 +175,6 @@ function applyRangedBehavior(
   attackRange: number,
   speed: number,
 ): void {
-
   if (attackRange <= EPSILON) {
     const direction = normalize(playerDx, playerDy);
     setVelocity(world, eid, direction.x * speed, direction.y * speed);
@@ -274,9 +273,7 @@ export function enemyAISystem(world: GameWorld): void {
   const enemyList = Array.from(enemies);
   const playerX = position.x[playerEid]!;
   const playerY = position.y[playerEid]!;
-  const swarmEntities = enemyList.filter(
-    (eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM,
-  );
+  const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
 
   for (const eid of enemies) {
     const enemyX = position.x[eid]!;
