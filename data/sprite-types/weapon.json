@@ -21,5 +21,10 @@
     "$comment": "diagonalToleranceDeg is a misnomer: it controls the half-width of the acceptance window around the requested principal-axis orientation (vertical here, diagonal elsewhere). At 16x16 native rendered upstream to 1024px and back, the 4x4 grid model regularly hits 86-87° instead of dead 90°, so we accept ±5° around vertical. Sensor tightening is a separate axis from prompt strictness — the prompt still asks for 'perfectly vertical'. anchor.derive opts every weapon into the silhouette-walking anchor sensor (PR #44) so the static-anchor pixel check doesn't reject slender blades.",
     "weapon": { "orientation": "vertical", "diagonalToleranceDeg": 5 },
     "anchor": { "derive": true, "bandRows": 4, "centerToleranceX": 3 }
+  },
+  "judge": {
+    "$comment": "VLM judge stays OFF by default for weapons — we'll flip it on a follow-up brief once we've measured cost/quality on iron-sword and katana. Enabling here costs Azure vision credits per variant, runs LOCAL ONLY (judge.ts refuses to run when env.CI is set), and rejects any variant where a 1-5 evaluator scores below 3.",
+    "enabled": false,
+    "maxVariants": 16
   }
 }

@@ -25,7 +25,11 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { generateOne } from './generate-one.js';
-import { createImageProvider, createTextProvider } from './provider/factory.js';
+import {
+  createImageProvider,
+  createTextProvider,
+  createVisionProvider,
+} from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
 
 interface CliArgs {
@@ -135,12 +139,31 @@ function printSummary(
   briefPath: string,
   runDir: string,
   attempts: number,
-  candidates: ReadonlyArray<{ index: number; score: number; outOf: number; passed: boolean }>,
+  candidates: ReadonlyArray<{
+    index: number;
+    score: number;
+    outOf: number;
+    passed: boolean;
+    combinedPassed: boolean;
+    judgeScorecard: {
+      readonly passed: boolean;
+      readonly minScore: number;
+      readonly styleMatch: { readonly score: number };
+      readonly briefMatch: { readonly score: number };
+      readonly readability: { readonly score: number };
+      readonly rejectedBy: ReadonlyArray<string>;
+    } | null;
+    judgeSkipReason: 'judge-disabled' | 'sensor-failed' | 'over-cap' | null;
+  }>,
   chosen: {
     readonly index: number;
     readonly score: number;
     readonly outOf: number;
     readonly anchor: { readonly x: number; readonly y: number; readonly source: string } | null;
+    readonly judgeScorecard: {
+      readonly passed: boolean;
+      readonly minScore: number;
+    } | null;
   } | null,
   durationMs: number,
   diversity: {
@@ -157,12 +180,17 @@ function printSummary(
     minVariations: number;
     skippedReason: string | null;
   },
+  judgeEnabled: boolean,
 ): void {
   process.stdout.write(`\n=== ${briefPath} ===\n`);
   process.stdout.write(`run dir : ${runDir}\n`);
   process.stdout.write(`attempts: ${attempts}    duration: ${(durationMs / 1000).toFixed(1)}s\n`);
-  const passed = candidates.filter((c) => c.passed).length;
-  process.stdout.write(`variants: ${candidates.length}    passed: ${passed}\n`);
+  const sensorPassed = candidates.filter((c) => c.passed).length;
+  const combinedPassed = candidates.filter((c) => c.combinedPassed).length;
+  const passLine = judgeEnabled
+    ? `variants: ${candidates.length}    sensor-pass: ${sensorPassed}    full-pipeline-pass: ${combinedPassed}`
+    : `variants: ${candidates.length}    passed: ${sensorPassed}`;
+  process.stdout.write(`${passLine}\n`);
   const seedN = variations.seed.length;
   const propN = variations.proposed.length;
   const finalN = variations.final.length;
@@ -170,20 +198,46 @@ function printSummary(
   process.stdout.write(
     `variations: ${seedN} seed + ${propN} expanded = ${finalN} final (min=${variations.minVariations})${reason}\n`,
   );
+  if (judgeEnabled) {
+    process.stdout.write(
+      `judge   : enabled (style_match / brief_match / readability, < 3 rejects)\n`,
+    );
+  }
   if (chosen) {
     const anchorStr = chosen.anchor
       ? `anchor=(${chosen.anchor.x},${chosen.anchor.y}) [${chosen.anchor.source}]`
       : 'anchor=<none>';
+    const judgeStr = chosen.judgeScorecard
+      ? `, judge-min=${chosen.judgeScorecard.minScore}/5 ${chosen.judgeScorecard.passed ? 'PASS' : 'fail'}`
+      : '';
     process.stdout.write(
-      `chosen  : variant ${chosen.index} (${formatScore(chosen.score, chosen.outOf)}), ${anchorStr}\n`,
+      `chosen  : variant ${chosen.index} (${formatScore(chosen.score, chosen.outOf)}${judgeStr}), ${anchorStr}\n`,
     );
   }
   process.stdout.write('\n');
-  process.stdout.write(`  ${pad('rank', 6)}${pad('idx', 6)}${pad('passed', 8)}score\n`);
+  const headerJudge = judgeEnabled ? pad('judge', 18) : '';
+  process.stdout.write(
+    `  ${pad('rank', 6)}${pad('idx', 6)}${pad('passed', 8)}${pad('score', 14)}${headerJudge}\n`,
+  );
   candidates.forEach((c, rank) => {
-    const tag = c.passed ? 'PASS' : 'fail';
+    const tag = c.combinedPassed ? 'PASS' : 'fail';
+    let judgeCol = '';
+    if (judgeEnabled) {
+      if (c.judgeScorecard) {
+        const j = c.judgeScorecard;
+        const verdict = j.passed ? 'PASS' : `FAIL[${j.rejectedBy.join(',')}]`;
+        judgeCol = `${j.styleMatch.score}/${j.briefMatch.score}/${j.readability.score} ${verdict}`;
+      } else {
+        judgeCol =
+          c.judgeSkipReason === 'sensor-failed'
+            ? '— sensor-failed'
+            : c.judgeSkipReason === 'over-cap'
+              ? '— over-cap'
+              : '—';
+      }
+    }
     process.stdout.write(
-      `  ${pad(String(rank), 6)}${pad(String(c.index), 6)}${pad(tag, 8)}${formatScore(c.score, c.outOf)}\n`,
+      `  ${pad(String(rank), 6)}${pad(String(c.index), 6)}${pad(tag, 8)}${pad(formatScore(c.score, c.outOf), 14)}${judgeCol}\n`,
     );
   });
   if (diversity) {
@@ -205,10 +259,17 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
     // SPRITES_TEXT_PROVIDER) surfaces as a per-brief failure in --all
     // batches instead of crashing the whole run before any brief reports.
     const textProvider = createTextProvider();
+    // Vision provider for the local-only VLM judge. Returns null when
+    // AZURE_OPENAI_VISION_DEPLOYMENT is unset; that's fine for briefs
+    // with judge.enabled=false. The orchestrator throws if a brief
+    // opted into the judge but no provider is available — silent skip
+    // would defeat the gate.
+    const visionProvider = createVisionProvider();
     const result = await generateOne({
       briefPath,
       provider,
       textProvider,
+      visionProvider,
       repoRoot: process.cwd(),
     });
     const duration = Date.now() - start;
@@ -221,14 +282,16 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
       duration,
       result.summary.diversity,
       result.summary.variations,
+      result.brief.judge.enabled,
     );
     const ranked = result.summary.candidates;
-    const anyPassed = ranked.some((c) => c.passed);
+    const anyPassed = ranked.some((c) => c.combinedPassed);
     if (!anyPassed) {
+      const gate = result.brief.judge.enabled ? 'all sensors + the VLM judge' : 'all sensors';
       return {
         briefPath,
         success: false,
-        message: 'No variant passed all sensors. Inspect the sheet under the run dir and rerun.',
+        message: `No variant passed ${gate}. Inspect the sheet under the run dir and rerun.`,
       };
     }
     if (pick !== undefined) {
@@ -241,11 +304,12 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
           message: `--pick ${pick}: variant index not found (only ${ranked.length} variants).`,
         };
       }
-      if (!picked.passed) {
+      if (!picked.combinedPassed) {
+        const gate = result.brief.judge.enabled ? 'all sensors and the VLM judge' : 'all sensors';
         return {
           briefPath,
           success: false,
-          message: `--pick ${pick}: that variant did not pass all sensors.`,
+          message: `--pick ${pick}: that variant did not pass ${gate}.`,
         };
       }
       const selectionPath = path.join(result.runDir, 'selection.json');

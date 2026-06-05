@@ -38,6 +38,7 @@ import type { Brief } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
 import { computeDiversity } from './diversity.js';
 import { expandVariations } from './expand-variations.js';
+import { judgeVariant, type JudgeScorecard } from './judge.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { postprocess } from './postprocess.js';
 import { scoreCandidate } from './score-candidate.js';
@@ -45,6 +46,7 @@ import { sliceSheetFromBrief } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
 import { ProviderError } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
+import type { VisionProvider } from './provider/vision-types.js';
 import {
   ensureRunDirs,
   makeRunId,
@@ -68,6 +70,17 @@ export interface GenerateOneOptions {
    * the brief actually wanted more variations than the seed provides.
    */
   readonly textProvider?: TextProvider | null;
+  /**
+   * Optional vision provider for the local-only VLM judge (spec §F4).
+   *
+   * Required when `brief.judge.enabled === true` — the orchestrator
+   * throws rather than silently skipping the judge if a brief asked
+   * for it but no provider was supplied. The judge is a quality gate;
+   * silently dropping it would defeat the whole point.
+   *
+   * Omitted/null is fine for any brief with `judge.enabled: false`.
+   */
+  readonly visionProvider?: VisionProvider | null;
   /** Repository root used to resolve the style guide + reference PNGs. */
   readonly repoRoot: string;
   /** Output directory for run artifacts. Defaults to `<repoRoot>/generated`. */
@@ -178,6 +191,22 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   // pass doesn't have to re-read every variant from disk. Same byte
   // sequences either way — `writeVariant` writes exactly what we hand it.
   const processedBuffers: Buffer[] = [];
+  // Two-pass design: write everything sensor-related first so a judge
+  // failure still leaves the sensor scorecard + processed PNG on disk
+  // for human review. Judge runs in a second pass.
+  interface SensorEntry {
+    readonly index: number;
+    readonly score: number;
+    readonly outOf: number;
+    readonly passed: boolean;
+    readonly rawPath: string;
+    readonly processedPath: string;
+    readonly scorecardPath: string;
+    readonly derivedAnchor: RunSummaryEntry['derivedAnchor'];
+    readonly anchorSidecarPath: string | null;
+    readonly processed: Buffer;
+  }
+  const sensorEntries: SensorEntry[] = [];
   for (let i = 0; i < sliced.length; i++) {
     const raw = sliced[i]!;
     const processed = postprocess(raw, brief, palette);
@@ -189,7 +218,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       processed,
       scorecard,
     );
-    entries.push({
+    sensorEntries.push({
       index: i,
       score: scorecard.score,
       outOf: scorecard.outOf,
@@ -199,8 +228,87 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       scorecardPath,
       derivedAnchor: scorecard.derivedAnchor,
       anchorSidecarPath,
+      processed,
     });
     processedBuffers.push(processed);
+  }
+
+  // --- Optional VLM judge pass (spec §F4, local-only per Constitutional §3). ---
+  const judgeEnabled = brief.judge.enabled;
+  if (judgeEnabled && !options.visionProvider) {
+    throw new Error(
+      `Brief '${brief.name}' opted into VLM judging (judge.enabled: true) but no vision ` +
+        `provider was supplied. Either disable the judge for this brief or configure ` +
+        `AZURE_OPENAI_VISION_DEPLOYMENT (and run with SPRITES_VISION_PROVIDER=azure-openai, ` +
+        `which is the default).`,
+    );
+  }
+  // Decide which sensor-passing variants get judged. Cap by maxVariants
+  // to bound cost on briefs with large grids. Ranking by sensor score
+  // means budget is spent on the variants with the best chance of
+  // surviving the judge.
+  const judgePlan: Map<number, JudgeScorecard | null> = new Map();
+  const judgeSkipReason: Map<number, 'judge-disabled' | 'sensor-failed' | 'over-cap' | null> =
+    new Map();
+  if (judgeEnabled) {
+    const sensorPassed = sensorEntries.filter((e) => e.passed);
+    const ordered = [...sensorPassed].sort((a, b) => b.score - a.score || a.index - b.index);
+    const eligible = new Set(ordered.slice(0, brief.judge.maxVariants).map((e) => e.index));
+    for (const e of sensorEntries) {
+      if (!e.passed) {
+        judgePlan.set(e.index, null);
+        judgeSkipReason.set(e.index, 'sensor-failed');
+      } else if (!eligible.has(e.index)) {
+        judgePlan.set(e.index, null);
+        judgeSkipReason.set(e.index, 'over-cap');
+      }
+    }
+    // Sequential judging — keeps Azure rate-limit headroom predictable
+    // and makes per-variant errors easy to attribute in logs. Parallel
+    // would save wall-clock at the cost of bursty 429s, which we'd then
+    // need to handle here. Not worth it for a per-brief one-shot.
+    const visionProvider = options.visionProvider!;
+    for (const e of sensorEntries) {
+      if (!e.passed || !eligible.has(e.index)) continue;
+      const scorecard = await judgeVariant({
+        processed: e.processed,
+        referencePngs,
+        brief,
+        styleGuide,
+        provider: visionProvider,
+        variantIndex: e.index,
+        processedDir: paths.processedDir,
+        ...(options.now ? { now: options.now } : {}),
+      });
+      judgePlan.set(e.index, scorecard);
+      judgeSkipReason.set(e.index, null);
+    }
+  } else {
+    for (const e of sensorEntries) {
+      judgePlan.set(e.index, null);
+      judgeSkipReason.set(e.index, 'judge-disabled');
+    }
+  }
+
+  for (const e of sensorEntries) {
+    const judgeScorecard = judgePlan.get(e.index) ?? null;
+    const reason = judgeSkipReason.get(e.index) ?? null;
+    const combinedPassed =
+      e.passed && (!judgeEnabled || (judgeScorecard !== null && judgeScorecard.passed));
+    entries.push({
+      index: e.index,
+      score: e.score,
+      outOf: e.outOf,
+      passed: e.passed,
+      rawPath: e.rawPath,
+      processedPath: e.processedPath,
+      scorecardPath: e.scorecardPath,
+      derivedAnchor: e.derivedAnchor,
+      anchorSidecarPath: e.anchorSidecarPath,
+      judgeScorecard,
+      judgeSkipReason: reason,
+      combinedPassed,
+    });
   }
 
   const ranked = rankCandidates(entries);
