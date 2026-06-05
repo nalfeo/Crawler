@@ -18,6 +18,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'lifetime-lab': '/src/labs/lifetime-lab/index.ts',
   'weapons-lab': '/src/labs/weapons-lab/index.ts',
   'equipment-lab': '/src/labs/equipment-lab/index.ts',
+  'anchor-lab': '/src/labs/anchor-lab/index.ts',
   'stat-lab': '/src/labs/stat-lab/index.ts',
   'stats-lab': '/src/labs/stats-lab/index.ts',
   'xp-curve-lab': '/src/labs/xp-curve-lab/index.ts',
