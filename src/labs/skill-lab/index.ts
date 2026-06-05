@@ -3,11 +3,19 @@ import { addComponent } from 'bitecs';
 import { Stats, SkillHolder } from '../../core/components.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/helpers.js';
-import { statsSystem } from '../../game/systems/statsSystem.js';
-import { skillSystem } from '../../game/systems/skillSystem.js';
+import { getAllAbilityDefinitions } from '../../game/abilities/registry.js';
 import { getAllSkillDefinitions } from '../../game/skills/registry.js';
-import type { SkillState } from '../../game/skills/types.js';
-import { SKILL_NATURAL_CAP, SKILL_HARD_CAP } from '../../game/skills/types.js';
+import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
+import {
+  abilitySystem,
+  equipActiveAbility,
+  getOrCreateAbilityState,
+  grantPassiveAbility,
+  memorizeSpell,
+  queueAbilityTrigger,
+  skillSystem,
+  statsSystem,
+} from '../../game/systems/index.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -24,8 +32,11 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   canvasHost.append(root);
 
   const allSkills = getAllSkillDefinitions();
+  const allAbilities = getAllAbilityDefinitions();
+  const activeOrSpell = allAbilities.filter((a) => a.kind !== 'passive');
+  const passives = allAbilities.filter((a) => a.kind === 'passive');
   let world: GameWorld;
-  let player: number;
+  let player = 0;
 
   function reset() {
     world = createGameWorld({ seed: 777 });
@@ -34,6 +45,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     addComponent(world.ecs, player, SkillHolder);
     statsSystem(world);
 
+    const skillStateById = new Map<string, SkillState>();
     for (const skill of allSkills) {
       const state: SkillState = {
         level: 0,
@@ -42,25 +54,20 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
         triggeredMilestones: new Set(),
       };
       world.playerSkills.set(skill.id, state);
+      skillStateById.set(skill.id, state);
     }
+    world.skillStatesByEntity.set(player, skillStateById);
+    world.abilityStatesByEntity.set(player, getOrCreateAbilityState(world, player));
 
     render();
   }
 
   function render() {
-    const modsBySkill: Record<string, number> = {};
-    for (const m of world.statModifiers) {
-      if (
-        m.sourceId.startsWith('swordsmanship:') ||
-        m.sourceId.startsWith('iron-skin:') ||
-        m.sourceId.startsWith('sprint:')
-      ) {
-        const key = m.sourceId.split(':')[0] ?? 'unknown';
-        modsBySkill[key] = (modsBySkill[key] ?? 0) + 1;
-      }
-    }
+    const abilityState = world.abilityStatesByEntity.get(player);
+    const activeIds = abilityState?.equippedActiveAbilityIds ?? [];
+    const passiveIds = abilityState?.passiveAbilityIds ?? [];
 
-    const rows = allSkills
+    const skillRows = allSkills
       .map((skill) => {
         const state = world.playerSkills.get(skill.id);
         if (!state) return '';
@@ -73,6 +80,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
             return `<span style="color:${done ? '#4f8' : '#555'};margin-right:4px">${m.level}${done ? '✓' : '○'}</span>`;
           })
           .join('');
+
         return `
         <tr>
           <td style="padding:5px 10px;color:#9ba">${skill.name}</td>
@@ -80,23 +88,56 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
           <td style="padding:5px 10px;text-align:right;color:#888">${state.usage}</td>
           <td style="padding:5px 10px;text-align:right;color:#888">${nextThreshold}</td>
           <td style="padding:5px 10px">${milestones}</td>
-          <td style="padding:5px 10px;text-align:right;color:#f8a">${modsBySkill[skill.id] ?? 0}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const abilityRows = allAbilities
+      .map((ability) => {
+        const isActiveEquipped = activeIds.includes(ability.id);
+        const isPassiveGranted = passiveIds.includes(ability.id);
+        const cooldown = abilityState?.cooldownByAbilityId.get(ability.id);
+        const remaining =
+          cooldown === undefined || ability.kind === 'passive'
+            ? undefined
+            : Math.max(0, ability.cooldownFrames - (world.frameCount - cooldown));
+        const cooldownText = remaining === undefined ? '—' : `${remaining}`;
+
+        return `
+        <tr>
+          <td style="padding:5px 10px;color:#9ba">${ability.name}</td>
+          <td style="padding:5px 10px;color:#8ab">${ability.kind}</td>
+          <td style="padding:5px 10px;color:${isActiveEquipped || isPassiveGranted ? '#4f8' : '#666'}">${
+            isActiveEquipped || isPassiveGranted ? 'yes' : 'no'
+          }</td>
+          <td style="padding:5px 10px;text-align:right;color:#888">${cooldownText}</td>
         </tr>`;
       })
       .join('');
 
     root.innerHTML = `
-      <h2 style="color:#cde;margin:0 0 8px">Skill Lab</h2>
-      <table style="border-collapse:collapse;width:100%;max-width:800px">
+      <h2 style="color:#cde;margin:0 0 8px">Skill + Ability Lab</h2>
+      <p style="margin:0 0 12px;color:#89a">Active slots: ${activeIds.length}/10 • Passive grants: ${passiveIds.length}</p>
+      <h3 style="margin:10px 0 6px;color:#bcd">Skill Catalog</h3>
+      <table style="border-collapse:collapse;width:100%;max-width:860px;margin-bottom:14px">
         <thead><tr>
           <th style="text-align:left;padding:5px 10px;color:#aaa">Skill</th>
           <th style="padding:5px 10px;color:#aaa">Level</th>
           <th style="text-align:right;padding:5px 10px;color:#aaa">Usage</th>
           <th style="text-align:right;padding:5px 10px;color:#aaa">Next Threshold</th>
           <th style="padding:5px 10px;color:#aaa">Milestones</th>
-          <th style="text-align:right;padding:5px 10px;color:#aaa">Active Mods</th>
         </tr></thead>
-        <tbody>${rows}</tbody>
+        <tbody>${skillRows}</tbody>
+      </table>
+      <h3 style="margin:10px 0 6px;color:#bcd">Ability Catalog</h3>
+      <table style="border-collapse:collapse;width:100%;max-width:860px">
+        <thead><tr>
+          <th style="text-align:left;padding:5px 10px;color:#aaa">Ability</th>
+          <th style="padding:5px 10px;color:#aaa">Kind</th>
+          <th style="padding:5px 10px;color:#aaa">Enabled</th>
+          <th style="text-align:right;padding:5px 10px;color:#aaa">Cooldown</th>
+        </tr></thead>
+        <tbody>${abilityRows}</tbody>
       </table>
     `;
   }
@@ -106,6 +147,9 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     metric: allSkills[0]!.usageMetric,
     usageAmount: 10,
     itemBonus: 0,
+    selectedActiveAbility: activeOrSpell[0]?.id ?? '',
+    selectedPassiveAbility: passives[0]?.id ?? '',
+    selectedTriggerKind: 'manual' as 'manual' | 'skill_usage',
     reset,
   };
 
@@ -119,6 +163,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     .onChange((id: string) => {
       const def = allSkills.find((s) => s.id === id);
       params.metric = def?.usageMetric ?? 'hits_landed';
+      render();
     });
 
   gui.add(params, 'usageAmount', 1, 500, 1).name('Usage Amount');
@@ -128,11 +173,14 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
       {
         fireUsage: () => {
           world.skillUsageEvents.push({
+            holderEid: player,
             skillId: params.selectedSkill,
-            metric: params.metric as 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat',
+            metric: params.metric,
             amount: params.usageAmount,
           });
+          world.frameCount += 1;
           skillSystem(world);
+          abilitySystem(world);
           statsSystem(world);
           render();
         },
@@ -150,13 +198,88 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
       render();
     });
 
+  if (activeOrSpell.length > 0) {
+    gui
+      .add(
+        params,
+        'selectedActiveAbility',
+        activeOrSpell.map((a) => a.id),
+      )
+      .name('Active/Spell');
+
+    gui
+      .add(
+        {
+          equipActive: () => {
+            const def = allAbilities.find((a) => a.id === params.selectedActiveAbility);
+            if (!def) return;
+            if (def.kind === 'spell') {
+              memorizeSpell(world, player, def.id);
+            } else {
+              equipActiveAbility(world, player, def.id);
+            }
+            render();
+          },
+        },
+        'equipActive',
+      )
+      .name('Equip Active/Spell');
+  }
+
+  if (passives.length > 0) {
+    gui
+      .add(
+        params,
+        'selectedPassiveAbility',
+        passives.map((a) => a.id),
+      )
+      .name('Passive');
+
+    gui
+      .add(
+        {
+          grantPassive: () => {
+            grantPassiveAbility(world, player, params.selectedPassiveAbility);
+            abilitySystem(world);
+            statsSystem(world);
+            render();
+          },
+        },
+        'grantPassive',
+      )
+      .name('Grant Passive');
+  }
+
+  gui.add(params, 'selectedTriggerKind', ['manual', 'skill_usage']).name('Trigger Kind');
+
+  gui
+    .add(
+      {
+        fireTrigger: () => {
+          queueAbilityTrigger(world, {
+            holderEid: player,
+            kind: params.selectedTriggerKind,
+            metric: params.metric,
+            skillId: params.selectedSkill,
+            amount: params.usageAmount,
+          });
+          world.frameCount += 1;
+          abilitySystem(world);
+          statsSystem(world);
+          render();
+        },
+      },
+      'fireTrigger',
+    )
+    .name('Fire Ability Trigger');
+
   gui.add(params, 'reset').name('Reset World');
 
   reset();
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Skill progression sandbox — fire usage events to watch skills level up, trigger milestones, and apply stat modifiers.';
+    'Catalog sandbox for skills and abilities — test usage progression, active slot limits, passive grants, and trigger cooldowns.';
   hint.style.cssText =
     'padding:8px 16px;color:#fbcfe8;font-family:monospace;font-size:12px;background:#0d0d14;';
   controls.append(hint);
@@ -171,6 +294,6 @@ registerLab('skill-lab', {
   category: 'Progression' as LabCategory,
   name: 'Skill Lab',
   description:
-    'Simulate skill usage events, watch skills level up through milestones, and inspect resulting stat modifiers.',
+    'Browse the skill and ability catalogs, simulate usage events, and inspect active/passive/cooldown behavior.',
   create: createSkillLab,
 });

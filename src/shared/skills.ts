@@ -6,6 +6,7 @@ export const SKILL_HARD_CAP = 20;
 export type UsageMetric = 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat';
 
 export interface SkillUsageEvent {
+  holderEid?: number;
   skillId: string;
   metric: UsageMetric;
   amount: number;
@@ -19,7 +20,7 @@ export interface SkillState {
 }
 
 export interface StatModifier {
-  sourceType: 'skill' | 'floor' | 'buff';
+  sourceType: 'skill' | 'floor' | 'buff' | 'ability';
   sourceId: string;
   stat: StatKey;
   op: 'add' | 'multiply';
