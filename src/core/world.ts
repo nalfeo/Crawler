@@ -34,6 +34,7 @@ import {
   Knockback,
   BaseStats,
   EffectiveStats,
+  Gold,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -71,6 +72,8 @@ export interface GameWorld {
   inventories: Map<number, InventoryBag>;
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
+  /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
+  playerGold: number;
 }
 
 export interface CreateWorldOptions {
@@ -120,6 +123,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Knockback, stores.knockback);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
+  wireStore(ecs, Gold, stores.gold);
 
   return {
     ecs,
@@ -141,6 +145,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     statsDirty: true,
     inventories: new Map(),
     combatEvents: [],
+    playerGold: 0,
   };
 }
 

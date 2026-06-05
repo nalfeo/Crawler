@@ -1,11 +1,11 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
 import { Enemy, Health, Player } from '../components.js';
-import { clearEntityStores, spawnXpGem } from '../helpers.js';
+import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
 export function healthSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Health]);
-  const { health, position } = world.stores;
+  const { health } = world.stores;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) {
@@ -18,11 +18,10 @@ export function healthSystem(world: GameWorld): void {
       if (hasComponent(world.ecs, eid, Player)) {
         world.state = 'game_over';
       } else {
-        // Drop XP gem at enemy's death position
+        // Drops are handled by dropSystem which runs before healthSystem.
+        // We only handle entity cleanup here.
         if (hasComponent(world.ecs, eid, Enemy)) {
-          const x = position.x[eid] ?? 0;
-          const y = position.y[eid] ?? 0;
-          spawnXpGem(world, x, y, 1);
+          // no-op: drops already spawned by dropSystem
         }
 
         clearEntityStores(world, eid);

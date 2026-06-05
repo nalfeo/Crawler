@@ -14,3 +14,4 @@ export { returningProjectileSystem } from './returningProjectileSystem.js';
 export { aoeOnImpactPreDamage, aoeOnImpactPostDamage } from './aoeOnImpactSystem.js';
 export { meleeSwingSystem, clearMeleeSwingHits } from './meleeSwingSystem.js';
 export { knockbackSystem } from './knockbackSystem.js';
+export { dropSystem, clearProcessedDeaths } from './dropSystem.js';

@@ -9,7 +9,6 @@ import {
   Projectile,
   Returning,
   Stats,
-  XpGem,
 } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
@@ -225,17 +224,6 @@ function applyEnemyProjectileHit(
   destroyEntity(world, projectile);
 }
 
-function collectXpGem(world: GameWorld, player: number, gem: number): void {
-  const currentScore = world.stores.broadcastScore.current[player] ?? 0;
-  const gemValue = world.stores.xpGem.value[gem] ?? 0;
-  world.stores.broadcastScore.current[player] = currentScore + gemValue;
-
-  // Accumulate XP into the level system
-  world.playerLevel.xp += gemValue;
-
-  destroyEntity(world, gem);
-}
-
 export function damageSystem(world: GameWorld, collisionResult: CollisionResult): void {
   const hitTimestamps = getPlayerHitTimestamps(world);
 
@@ -283,16 +271,6 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
 
     if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, Enemy)) {
       applyPlayerEnemyHit(world, b, a, hitTimestamps);
-      continue;
-    }
-
-    if (hasComponent(world.ecs, a, Player) && hasComponent(world.ecs, b, XpGem)) {
-      collectXpGem(world, a, b);
-      continue;
-    }
-
-    if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, XpGem)) {
-      collectXpGem(world, b, a);
     }
   }
 }

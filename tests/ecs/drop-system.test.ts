@@ -1,0 +1,91 @@
+import { query, setComponent } from 'bitecs';
+import { describe, expect, it } from 'vitest';
+import { Enemy, Gold, Health, Position, XpGem } from '../../src/core/components.js';
+import { spawnEnemy } from '../../src/core/helpers.js';
+import { dropSystem } from '../../src/core/systems/dropSystem.js';
+import { createTestWorld } from '../helpers/world-factory.js';
+
+describe('dropSystem', () => {
+  it('spawns loot when an enemy dies', () => {
+    const world = createTestWorld();
+    spawnEnemy(world, 100, 200, 10);
+
+    // Kill the enemy
+    const enemies = query(world.ecs, [Enemy]);
+    const eid = enemies[0] as number;
+    setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
+
+    dropSystem(world);
+
+    // BASIC_MELEE table always drops XP (chance 1.0)
+    const gems = query(world.ecs, [XpGem, Position]);
+    expect(gems.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('emits a death combat event', () => {
+    const world = createTestWorld();
+    spawnEnemy(world, 50, 60, 10);
+
+    const enemies = query(world.ecs, [Enemy]);
+    const eid = enemies[0] as number;
+    setComponent(world.ecs, eid, Health, { current: -5, max: 10 });
+
+    dropSystem(world);
+
+    const deathEvents = world.combatEvents.filter((e) => e.type === 'death');
+    expect(deathEvents.length).toBe(1);
+    expect(deathEvents[0]!.x).toBe(50);
+    expect(deathEvents[0]!.y).toBe(60);
+    expect(deathEvents[0]!.overkill).toBe(5);
+    expect(deathEvents[0]!.targetType).toBe('enemy');
+  });
+
+  it('does not double-process the same entity', () => {
+    const world = createTestWorld();
+    spawnEnemy(world, 100, 200, 10);
+
+    const enemies = query(world.ecs, [Enemy]);
+    const eid = enemies[0] as number;
+    setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
+
+    dropSystem(world);
+    const firstCount = world.combatEvents.filter((e) => e.type === 'death').length;
+
+    dropSystem(world);
+    const secondCount = world.combatEvents.filter((e) => e.type === 'death').length;
+
+    expect(secondCount).toBe(firstCount);
+  });
+
+  it('does not spawn drops for living enemies', () => {
+    const world = createTestWorld();
+    spawnEnemy(world, 100, 200, 10);
+
+    dropSystem(world);
+
+    const gems = query(world.ecs, [XpGem]);
+    const golds = query(world.ecs, [Gold]);
+    expect(gems.length).toBe(0);
+    expect(golds.length).toBe(0);
+    expect(world.combatEvents.filter((e) => e.type === 'death').length).toBe(0);
+  });
+
+  it('uses deterministic drops with seeded RNG', () => {
+    function runDrop(seed: number) {
+      const world = createTestWorld({ seed });
+      spawnEnemy(world, 100, 200, 10);
+      const enemies = query(world.ecs, [Enemy]);
+      setComponent(world.ecs, enemies[0] as number, Health, { current: 0, max: 10 });
+      dropSystem(world);
+      return {
+        gems: query(world.ecs, [XpGem]).length,
+        golds: query(world.ecs, [Gold]).length,
+        events: world.combatEvents.length,
+      };
+    }
+
+    const run1 = runDrop(42);
+    const run2 = runDrop(42);
+    expect(run1).toEqual(run2);
+  });
+});

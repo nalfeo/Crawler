@@ -25,6 +25,8 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'tile-explorer': '/src/labs/tile-explorer-lab/index.ts',
   'mobile-controls-lab': '/src/labs/mobile-controls-lab/index.ts',
   'sprite-catalog': '/src/labs/sprite-catalog-lab/index.ts',
+  'drops-lab': '/src/labs/drops-lab/index.ts',
+  'gore-lab': '/src/labs/gore-lab/index.ts',
 };
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;
