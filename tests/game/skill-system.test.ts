@@ -26,6 +26,24 @@ function setupPlayerWithSkill() {
   return { world, player };
 }
 
+function setupPlayerWithSkillState(skillId: string) {
+  const world = createTestWorld();
+  const player = spawnPlayer(world, 0, 0);
+  addComponent(world.ecs, player, Stats);
+  addComponent(world.ecs, player, SkillHolder);
+  world.statsDirty = true;
+  statsSystem(world);
+
+  const state: SkillState = {
+    level: 0,
+    usage: 0,
+    itemBonus: 0,
+    triggeredMilestones: new Set(),
+  };
+  world.playerSkills.set(skillId, state);
+  return { world, player };
+}
+
 describe('skillSystem', () => {
   it('does nothing when no usage events', () => {
     const { world } = setupPlayerWithSkill();
@@ -46,6 +64,24 @@ describe('skillSystem', () => {
     const { world } = setupPlayerWithSkill();
     world.skillUsageEvents.push({ skillId: 'unknown-skill', metric: 'hits_landed', amount: 100 });
     expect(() => skillSystem(world)).not.toThrow();
+  });
+
+  it('ignores events when skill state exists but skill definition is missing', () => {
+    const { world } = setupPlayerWithSkillState('missing-definition');
+    const state = world.playerSkills.get('missing-definition')!;
+    world.skillUsageEvents.push({ skillId: 'missing-definition', metric: 'hits_landed', amount: 100 });
+    skillSystem(world);
+    expect(state.level).toBe(0);
+    expect(state.usage).toBe(0);
+  });
+
+  it('ignores events when usage metric does not match skill definition', () => {
+    const { world } = setupPlayerWithSkill();
+    const state = world.playerSkills.get('swordsmanship')!;
+    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'damage_dealt', amount: 100 });
+    skillSystem(world);
+    expect(state.level).toBe(0);
+    expect(state.usage).toBe(0);
   });
 
   it('accumulates usage and levels up when threshold crossed', () => {
@@ -113,5 +149,33 @@ describe('skillSystem', () => {
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
     skillSystem(world);
     expect(world.statModifiers.length).toBe(countBefore);
+  });
+
+  it('applies stat_add milestone modifiers for iron-skin', () => {
+    const { world } = setupPlayerWithSkillState('iron-skin');
+    world.skillUsageEvents.push({ skillId: 'iron-skin', metric: 'damage_dealt', amount: 450 });
+    skillSystem(world);
+
+    const milestoneMod = world.statModifiers.find((m) => m.sourceId === 'iron-skin:milestone:5');
+    expect(milestoneMod).toBeDefined();
+    expect(milestoneMod!.stat).toBe('maxHp');
+    expect(milestoneMod!.op).toBe('add');
+    expect(milestoneMod!.value).toBe(20);
+  });
+
+  it('applies aura milestone placeholder modifier at level 20 for iron-skin', () => {
+    const { world } = setupPlayerWithSkillState('iron-skin');
+    const state = world.playerSkills.get('iron-skin')!;
+    state.itemBonus = 5;
+
+    world.skillUsageEvents.push({ skillId: 'iron-skin', metric: 'damage_dealt', amount: 5000 });
+    skillSystem(world);
+
+    expect(state.level).toBe(20);
+    const auraModifier = world.statModifiers.find((m) => m.sourceId === 'iron-skin:milestone:20');
+    expect(auraModifier).toBeDefined();
+    expect(auraModifier!.stat).toBe('damage');
+    expect(auraModifier!.op).toBe('add');
+    expect(auraModifier!.value).toBe(0);
   });
 });

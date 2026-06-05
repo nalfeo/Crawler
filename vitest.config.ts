@@ -10,6 +10,9 @@ export default defineConfig({
       reporter: ['text', 'lcov', 'json-summary'],
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/main.ts', 'src/lab-main.ts', 'src/**/index.ts'],
+      thresholds: {
+        'src/game/systems/skillSystem.ts': { lines: 90, branches: 80, statements: 90 },
+      },
     },
     projects: [
       {
