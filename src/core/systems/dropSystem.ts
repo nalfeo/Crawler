@@ -24,7 +24,7 @@ import { getItemIndex } from '../../shared/items.js';
  * Future: read enemy-type component and area context.
  */
 function getEnemyLootTables(
-  _world: GameWorld,
+  world: GameWorld,
   _eid: number,
 ): {
   entityTable?: LootTable;
@@ -34,7 +34,7 @@ function getEnemyLootTables(
 } {
   return {
     typeTable: LOOT_TABLES.BASIC_MELEE,
-    floorTable: _world.floor === 1 ? LOOT_TABLES.FLOOR_1 : undefined,
+    floorTable: world.floor === 1 ? LOOT_TABLES.FLOOR_1 : undefined,
   };
 }
 

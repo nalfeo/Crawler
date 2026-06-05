@@ -51,6 +51,7 @@ export interface LootDrop {
 
 /** Roll a single loot entry. Returns a LootDrop if the chance succeeds, else null. */
 export function rollEntry(entry: LootEntry, rng: SeededRandom): LootDrop | null {
+  if (entry.chance <= 0) return null;
   if (rng.next() > entry.chance) return null;
 
   const quantity =

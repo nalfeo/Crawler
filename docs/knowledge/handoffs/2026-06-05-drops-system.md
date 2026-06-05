@@ -1,6 +1,6 @@
 # Drops System + Gore VFX — Handoff
 
-**Date**: 2025-06-05
+**Date**: 2026-06-05
 **Branch**: `nalfeo/drops-system`
 **Status**: Complete — all tests pass, lint clean, typecheck clean
 

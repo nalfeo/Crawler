@@ -1,7 +1,7 @@
 # ADR-0006: Drops System Architecture
 
 **Status**: Accepted
-**Date**: 2025-06-05
+**Date**: 2026-06-05
 **Affects**: `src/core/`, `src/engine/`, `src/shared/`
 
 ## Context
