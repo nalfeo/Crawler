@@ -80,7 +80,7 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
       .join('\n');
     throw new Error(
       `Brief at ${absolute} is missing required minimal fields ` +
-        `(type, name, description):\n${issues}`,
+        `(type, name, and one of description/prompt):\n${issues}`,
     );
   }
   const loadDefaults = opts.loadTypeDefaults ?? defaultTypeDefaultsLoader(opts.projectRoot);
@@ -150,7 +150,15 @@ function defaultTypeDefaultsLoader(
         { cause: err },
       );
     }
-    const parsed = JSON.parse(raw) as unknown;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch (err) {
+      throw new Error(
+        `Failed parsing sprite-type defaults at ${defaultsPath}: ${(err as Error).message}`,
+        { cause: err },
+      );
+    }
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       throw new Error(`Sprite-type defaults at ${defaultsPath} must be a JSON object`);
     }

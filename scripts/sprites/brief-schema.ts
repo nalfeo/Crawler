@@ -221,8 +221,27 @@ export const minimalBriefSchema = z
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
     description: z.string().min(1).optional(),
+    // Legacy/fully-specified briefs may set `prompt` directly instead of
+    // `description`. We accept it here as a typed passthrough so the
+    // superRefine below can require one of the two without tripping on
+    // `.passthrough()` losing the field's type.
+    prompt: z.string().min(1).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((data, ctx) => {
+    // The merged brief needs *some* prompt text — either authored as a
+    // minimal `description` (which the loader maps to `prompt`) or as an
+    // explicit legacy `prompt`. Enforce that here so authors get one
+    // clear error at the minimal layer instead of a less actionable
+    // "prompt required" error after the merge.
+    if (!data.description && !data.prompt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['description'],
+        message: 'a brief must provide either `description` or `prompt`',
+      });
+    }
+  });
 
 export type MinimalBrief = z.infer<typeof minimalBriefSchema>;
 

@@ -155,9 +155,10 @@ describe('removeBackground', () => {
   });
 
   it('does not eat a saturated foreground colour that lives well outside tolerance', () => {
-    // Background near-white; a single bright-red pixel in the centre. Red
-    // is ≈ 320 channels away in squared distance per axis from white, so
-    // tolerance must not reach it.
+    // Background near-white (250,250,250); a single bright-red pixel in
+    // the centre (255,0,0). Squared Euclidean RGB distance is
+    // 5² + 250² + 250² = 125025 — over 100× the 32² = 1024 tolerance —
+    // so flood-fill must never reach the red pixel.
     const img = blank(8, 8, [250, 250, 250]);
     setPixel(img, 4, 4, 255, 0, 0);
     const out = removeBackground(img);

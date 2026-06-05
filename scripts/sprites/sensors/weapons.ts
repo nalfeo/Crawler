@@ -23,9 +23,11 @@ const RAD_PER_DEG = Math.PI / 180;
 /**
  * Allowed orientations for a weapon silhouette's principal axis.
  *
- * - `'any'` skips the check entirely (the sensor returns ok=true with the
- *   measured angle exposed in `breakdown` for visibility). Use when the brief
- *   does not care which way the weapon points — the engine will rotate it.
+ * - `'any'` accepts whatever orientation the silhouette ended up with —
+ *   the sensor returns `ok: true` as long as the silhouette is non-empty
+ *   and has a well-defined principal axis (empty / degenerate silhouettes
+ *   still fail with a reason, by design). Use when the brief does not
+ *   care which way the weapon points; the engine will rotate it.
  * - `'diagonal'` rejects axes within tolerance of horizontal *or* vertical
  *   (the original behaviour). Use for diagonal-only sprites like swords held
  *   at 45° in side-profile.
