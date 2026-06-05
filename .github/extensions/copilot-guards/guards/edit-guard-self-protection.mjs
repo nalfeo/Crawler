@@ -19,7 +19,7 @@ export default {
     matches(toolName, toolArgs) {
         if (toolName !== "edit" && toolName !== "create") return false;
         const path = normalizePath(toolArgs?.path);
-        return /^\.github\/extensions\/copilot-guards\//.test(path);
+        return SELF_PATH_RE.test(path);
     },
     check(toolArgs) {
         const path = normalizePath(toolArgs?.path);

@@ -10,7 +10,7 @@
 //   - additionalContext snippets are concatenated and returned even on allow
 //   - guards that throw are logged and treated per their failClosed flag
 
-import { isGuardEnabled, bypassReason } from "./config.mjs";
+import { isGuardEnabled, bypassReason, guardSeverity } from "./config.mjs";
 
 /**
  * @typedef {Object} GuardResult
@@ -71,40 +71,61 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
             continue;
         }
 
-        if (result.decision === "deny") {
+        // Collect additionalContext from deny/ask results too — soft
+        // warnings (e.g. ADR hints from pr-preflight) should still surface
+        // alongside hard failures.
+        if (result.additionalContext) additionalContexts.push(result.additionalContext);
+
+        // Severity downgrade: if config.json marks this guard as "ask",
+        // weaken any "deny" to "ask". Never upgrade. Lets repo owners
+        // soften an over-eager guard without disabling it.
+        let decision = result.decision;
+        if (decision === "deny" && guardSeverity(guard.id, "deny") === "ask") {
+            decision = "ask";
+        }
+
+        if (decision === "deny") {
             if (guard.category === "pr") {
                 prDenies.push({ id: guard.id, reason: result.reason });
                 continue;
             }
-            return {
+            const out = {
                 permissionDecision: "deny",
                 permissionDecisionReason: formatDeny(guard.id, result.reason),
             };
+            if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
+            return out;
         }
 
-        if (result.decision === "ask") {
+        if (decision === "ask") {
             if (guard.category === "pr") {
                 prAsks.push({ id: guard.id, reason: result.reason });
                 continue;
             }
-            return {
+            const out = {
                 permissionDecision: "ask",
                 permissionDecisionReason: formatDeny(guard.id, result.reason),
             };
+            if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
+            return out;
         }
     }
 
     if (prDenies.length > 0) {
-        return {
+        const out = {
             permissionDecision: "deny",
             permissionDecisionReason: formatPrAggregate(prDenies, prAsks),
         };
+        if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
+        return out;
     }
     if (prAsks.length > 0) {
-        return {
+        const out = {
             permissionDecision: "ask",
             permissionDecisionReason: formatPrAggregate([], prAsks),
         };
+        if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
+        return out;
     }
 
     if (additionalContexts.length > 0) {

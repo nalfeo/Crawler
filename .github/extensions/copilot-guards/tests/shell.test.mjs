@@ -25,6 +25,27 @@ test("normalizeCommand strips bash -c wrapper and preserves chained segments", (
     assert.deepEqual(segs, ["git status", "git push --force main"]);
 });
 
+test("normalizeCommand strips inner quoted body even with trailing args after close quote", () => {
+    // Real bypass vector: bash treats only the first arg after -c as the
+    // command; any trailing args (like positional $0/$1 placeholders) must
+    // be discarded, not kept inside the command string.
+    const segs = normalizeCommand('bash -c "git push --force origin main" -- arg0');
+    assert.deepEqual(segs, ["git push --force origin main"]);
+});
+
+test("isGit sees through bash -c with trailing positional args", () => {
+    const segs = normalizeCommand('bash -c "git push --force origin main" -- arg0');
+    assert.equal(segs.length, 1);
+    assert.ok(isGit(segs[0]));
+});
+
+test("normalizeCommand handles escaped quote inside bash -c body", () => {
+    // The escape sequence must not prematurely close the body extraction.
+    const segs = normalizeCommand('bash -c "echo \\"hi\\" && git push --force main"');
+    assert.equal(segs.length, 2);
+    assert.match(segs[1], /git push --force main/);
+});
+
 test("normalizeCommand strips pwsh -Command wrapper with single quotes", () => {
     const segs = normalizeCommand("pwsh -Command 'git push --force main'");
     assert.deepEqual(segs, ["git push --force main"]);

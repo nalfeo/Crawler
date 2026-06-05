@@ -25,11 +25,25 @@ export function normalizeCommand(raw) {
     // command collapses to a single quoted token and `isGit`/`isGh`
     // never matches — a trivial bypass for every shell guard.
     s = s.trim();
-    if (s.length >= 2) {
-        const first = s[0];
-        const last = s[s.length - 1];
-        if ((first === '"' || first === "'") && first === last) {
-            s = s.slice(1, -1);
+    // If what's left starts with a quote, find the matching close (respecting
+    // `\` escapes) and use the content between the quotes as the command body.
+    // This handles `bash -c "git push ..." -- arg0` where there are trailing
+    // args after the closed quote — without this, the closing quote isn't at
+    // the very end and the old "both ends quoted" check leaves the inner
+    // command quoted, defeating tokenize/isGit.
+    if (s.length >= 2 && (s[0] === '"' || s[0] === "'")) {
+        const quote = s[0];
+        let j = 1;
+        while (j < s.length) {
+            if (s[j] === "\\" && j + 1 < s.length) {
+                j += 2;
+                continue;
+            }
+            if (s[j] === quote) break;
+            j++;
+        }
+        if (j < s.length) {
+            s = s.slice(1, j);
         }
     }
 

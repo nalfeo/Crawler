@@ -149,3 +149,112 @@ test("env var COPILOT_GUARDS_DISABLE bypasses guard", async () => {
     assert.equal(result, undefined);
     delete process.env.COPILOT_GUARDS_DISABLE;
 });
+
+test("dispatch surfaces additionalContext alongside a non-pr deny", async () => {
+    const result = await dispatch(
+        [
+            {
+                id: "ctx",
+                matches: () => true,
+                check: () => ({ decision: "allow", additionalContext: "soft warning" }),
+            },
+            {
+                id: "shell-bad",
+                category: "shell",
+                matches: () => true,
+                check: () => ({ decision: "deny", reason: "hard fail" }),
+            },
+        ],
+        "powershell",
+        {},
+        noopCtx,
+    );
+    assert.equal(result.permissionDecision, "deny");
+    assert.match(result.permissionDecisionReason, /hard fail/);
+    assert.match(result.additionalContext, /soft warning/);
+});
+
+test("dispatch surfaces additionalContext from pr guards when aggregating denies", async () => {
+    const result = await dispatch(
+        [
+            {
+                id: "pr-warn",
+                category: "pr",
+                matches: () => true,
+                check: () => ({ decision: "allow", additionalContext: "ADR hint" }),
+            },
+            {
+                id: "pr-hard",
+                category: "pr",
+                matches: () => true,
+                check: () => ({ decision: "deny", reason: "real failure" }),
+            },
+        ],
+        "create_pull_request",
+        {},
+        noopCtx,
+    );
+    assert.equal(result.permissionDecision, "deny");
+    assert.match(result.permissionDecisionReason, /real failure/);
+    assert.match(result.additionalContext, /ADR hint/);
+});
+
+test("dispatch surfaces additionalContext attached to a deny result itself", async () => {
+    const result = await dispatch(
+        [
+            {
+                id: "shell-bad",
+                category: "shell",
+                matches: () => true,
+                check: () => ({
+                    decision: "deny",
+                    reason: "main reason",
+                    additionalContext: "extra context attached to the deny",
+                }),
+            },
+        ],
+        "powershell",
+        {},
+        noopCtx,
+    );
+    assert.equal(result.permissionDecision, "deny");
+    assert.match(result.additionalContext, /extra context attached to the deny/);
+});
+
+test("dispatch downgrades deny to ask when guardSeverity returns ask", async () => {
+    // edit-guard-self-protection is configured with severity: "ask" in
+    // config.json. Even if a guard returns deny, the dispatcher must
+    // honor that and emit ask instead.
+    const result = await dispatch(
+        [
+            {
+                id: "edit-guard-self-protection",
+                category: "edit",
+                matches: () => true,
+                check: () => ({ decision: "deny", reason: "would-be-deny" }),
+            },
+        ],
+        "edit",
+        {},
+        noopCtx,
+    );
+    assert.equal(result.permissionDecision, "ask");
+    assert.match(result.permissionDecisionReason, /would-be-deny/);
+});
+
+test("dispatch never upgrades ask to deny via severity", async () => {
+    const result = await dispatch(
+        [
+            {
+                id: "edit-guard-self-protection",
+                category: "edit",
+                matches: () => true,
+                check: () => ({ decision: "ask", reason: "confirm me" }),
+            },
+        ],
+        "edit",
+        {},
+        noopCtx,
+    );
+    assert.equal(result.permissionDecision, "ask");
+});

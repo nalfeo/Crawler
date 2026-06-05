@@ -43,3 +43,42 @@ test("handles escape sequences in strings", () => {
     const out = stripCommentsAndStrings("const a = 'it\\'s ok Math.random()';");
     assert.ok(!out.includes("Math.random"));
 });
+
+test("scans Math.random inside ${...} preceded by a code block with braces", () => {
+    // Regression: depth tracking on every `}` previously broke after the
+    // first `}` inside an object literal, dropping the rest of the
+    // expression including the forbidden call.
+    const src = "const a = `prefix ${ ({a:1, b:2}, Math.random()) } suffix`;";
+    const out = stripCommentsAndStrings(src);
+    assert.match(out, /Math\.random/, "must still see Math.random in the expression body");
+});
+
+test("scans Math.random inside nested object literal in template expression", () => {
+    const src = "const a = `${ {nested: {x: Math.random()}} }`;";
+    const out = stripCommentsAndStrings(src);
+    assert.match(out, /Math\.random/);
+});
+
+test("scans Math.random inside nested template inside ${...}", () => {
+    const src = "const a = `${ `inner ${Math.random()}` }`;";
+    const out = stripCommentsAndStrings(src);
+    assert.match(out, /Math\.random/);
+});
+
+test("stripCommentsOnly recurses into template ${...} so import 'phaser' is visible", async () => {
+    const { stripCommentsOnly } = await import("../lib/strip-comments.mjs");
+    // Real false-negative: a template-literal expression could hide
+    // require('phaser') from edit-phaser-in-core. The strings inside the
+    // expression must still pass through so the regex matches.
+    const src = "const x = `${require('phaser')}`;";
+    const out = stripCommentsOnly(src);
+    assert.match(out, /require\(\s*['"]phaser['"]\s*\)/);
+});
+
+test("stripCommentsOnly preserves string contents but drops comments inside ${...}", async () => {
+    const { stripCommentsOnly } = await import("../lib/strip-comments.mjs");
+    const src = "const x = `${ 'keep' /* drop */ }`;";
+    const out = stripCommentsOnly(src);
+    assert.match(out, /'keep'/);
+    assert.ok(!out.includes("drop"), "comment inside expression must be removed");
+});
