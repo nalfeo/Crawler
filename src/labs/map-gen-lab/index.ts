@@ -313,7 +313,9 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .add(
       {
         randomSeed: () => {
-          settings.seed = Math.floor(Math.random() * 9999) + 1;
+          const buf = new Uint16Array(1);
+          crypto.getRandomValues(buf);
+          settings.seed = (buf[0]! % 9999) + 1;
           gui.controllersRecursive().forEach((c) => c.updateDisplay());
           generate();
         },
