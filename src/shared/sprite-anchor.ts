@@ -21,7 +21,7 @@ export interface SpriteAnchor {
  * it should. **Not** a universal sprite default — helmets, rings, projectiles,
  * tiles, and VFX have different natural anchors.
  */
-export const DEFAULT_HANDHELD_SPRITE_ANCHOR: SpriteAnchor = { x: 8, y: 14 };
+export const DEFAULT_HANDHELD_SPRITE_ANCHOR: SpriteAnchor = Object.freeze({ x: 8, y: 14 });
 
 /**
  * Return the supplied anchor, or {@link DEFAULT_HANDHELD_SPRITE_ANCHOR} if it

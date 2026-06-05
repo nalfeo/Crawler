@@ -360,12 +360,22 @@ function createAnchorLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   copyBtn.addEventListener('click', () => {
     const text = jsonEl.textContent ?? '';
-    void navigator.clipboard?.writeText(text);
-    const original = copyBtn.textContent;
-    copyBtn.textContent = 'Copied!';
-    window.setTimeout(() => {
-      copyBtn.textContent = original ?? 'Copy';
-    }, 1000);
+    const original = copyBtn.textContent ?? 'Copy';
+    const restore = (label: string): void => {
+      copyBtn.textContent = label;
+      window.setTimeout(() => {
+        copyBtn.textContent = original;
+      }, 1200);
+    };
+    const writer = navigator.clipboard?.writeText.bind(navigator.clipboard);
+    if (!writer) {
+      restore('Copy unavailable');
+      return;
+    }
+    writer(text).then(
+      () => restore('Copied!'),
+      () => restore('Copy failed'),
+    );
   });
 
   // ── GUI ──────────────────────────────────────────────────────────────────
