@@ -79,14 +79,20 @@ export function meleeSwingSystem(world: GameWorld): void {
   const swings = query(world.ecs, [MeleeSwing, Position]);
   const { position, meleeSwing, team } = world.stores;
   const hitDistSq = BLADE_HIT_HALF_WIDTH * BLADE_HIT_HALF_WIDTH;
+  const storeSize = position.x.length;
 
   for (const eid of swings) {
-    if (!entityExists(world.ecs, eid)) continue;
+    if (!entityExists(world.ecs, eid) || eid >= storeSize) continue;
 
     // Follow owner position
     if (hasComponent(world.ecs, eid, Owner)) {
       const ownerEid = world.stores.owner.eid[eid]!;
-      if (entityExists(world.ecs, ownerEid) && hasComponent(world.ecs, ownerEid, Position)) {
+      if (
+        ownerEid >= 0 &&
+        ownerEid < storeSize &&
+        entityExists(world.ecs, ownerEid) &&
+        hasComponent(world.ecs, ownerEid, Position)
+      ) {
         position.x[eid] = position.x[ownerEid]!;
         position.y[eid] = position.y[ownerEid]!;
       }
@@ -132,12 +138,12 @@ export function meleeSwingSystem(world: GameWorld): void {
     // Check all Health entities for collision
     const targets = query(world.ecs, [Health, Position]);
     for (const target of targets) {
-      if (target === eid || target === ownerEid) continue;
+      if (target >= storeSize || target === eid || target === ownerEid) continue;
       if (!entityExists(world.ecs, target)) continue;
       if (!hasComponent(world.ecs, target, Enemy) && !hasComponent(world.ecs, target, Player))
         continue;
       if (swingTeam >= 0 && hasComponent(world.ecs, target, Team)) {
-        if (team.id[target] === swingTeam) continue;
+        if (target < team.id.length && team.id[target] === swingTeam) continue;
       }
       if (hitSet.has(target)) continue;
 

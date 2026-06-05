@@ -10,9 +10,10 @@ const PICKUP_RADIUS_SQ = 16 * 16;
 export function returningProjectileSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Returning, Position, Velocity]);
   const { position, returning, owner } = world.stores;
+  const storeSize = position.x.length;
 
   for (const eid of entities) {
-    if (!entityExists(world.ecs, eid)) {
+    if (!entityExists(world.ecs, eid) || eid >= storeSize) {
       continue;
     }
 
@@ -45,6 +46,7 @@ export function returningProjectileSystem(world: GameWorld): void {
       // Owner dead/missing? Despawn.
       if (
         ownerEid < 0 ||
+        ownerEid >= storeSize ||
         !entityExists(world.ecs, ownerEid) ||
         !hasComponent(world.ecs, ownerEid, Position)
       ) {

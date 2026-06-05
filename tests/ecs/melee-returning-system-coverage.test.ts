@@ -238,7 +238,11 @@ describe('returningProjectileSystem coverage edges', () => {
     const projectile = createEntity(world);
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
-    addComponent(world.ecs, projectile, set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }),
+    );
     addComponent(world.ecs, projectile, set(Owner, { eid: 999 }));
 
     returningProjectileSystem(world);
@@ -253,7 +257,11 @@ describe('returningProjectileSystem coverage edges', () => {
     const projectile = createEntity(world);
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
-    addComponent(world.ecs, projectile, set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }),
+    );
     addComponent(world.ecs, projectile, set(Owner, { eid: owner }));
 
     returningProjectileSystem(world);
@@ -399,7 +407,11 @@ describe('returningProjectileSystem coverage edges', () => {
     const projectile = createEntity(world);
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
-    addComponent(world.ecs, projectile, set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }));
+    addComponent(
+      world.ecs,
+      projectile,
+      set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }),
+    );
 
     returningProjectileSystem(world);
     expect(entityExists(world.ecs, projectile)).toBe(false);
