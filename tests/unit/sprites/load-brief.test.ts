@@ -53,7 +53,7 @@ describe('loadBrief', () => {
     const loaded = loadBrief(briefPath, { projectRoot: root });
     expect(loaded.brief.name).toBe('iron-sword');
     expect(loaded.brief.type).toBe('weapon');
-    expect(loaded.brief.generation.sheet.rows).toBe(3);
+    expect(loaded.brief.generation.sheet.rows).toBe(4);
     expect(loaded.palette).toHaveLength(3);
     expect(loaded.palette[1]).toEqual([255, 255, 255]);
     expect(loaded.briefPath).toBe(path.resolve(briefPath));

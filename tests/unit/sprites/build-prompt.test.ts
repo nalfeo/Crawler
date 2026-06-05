@@ -92,10 +92,10 @@ describe('buildSheetPrompt', () => {
   it('asks for exactly the right variant count and grid shape', () => {
     const brief = makeBrief();
     const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
-    // Default sheet is 3x3 = 9 variants.
-    expect(out).toMatch(/exactly 9 variants/i);
-    expect(out).toMatch(/3×3|3x3/);
-    expect(out).toMatch(/3 rows.*3 columns/i);
+    // Default sheet is 4x4 = 16 variants.
+    expect(out).toMatch(/exactly 16 variants/i);
+    expect(out).toMatch(/4×4|4x4/);
+    expect(out).toMatch(/4 rows.*4 columns/i);
   });
 
   it('honors a custom override for variant count', () => {
@@ -117,8 +117,8 @@ describe('buildSheetPrompt', () => {
     const brief = makeBrief({
       generation: {
         sheet: {
-          rows: 3,
-          cols: 3,
+          rows: 4,
+          cols: 4,
           // [row, col] tuples, 0-based. Output should be 1-based for humans/model.
           emptyCells: [[0, 0]] as ReadonlyArray<readonly [number, number]>,
           nativeCanvas: 1024,
@@ -126,7 +126,7 @@ describe('buildSheetPrompt', () => {
       },
     } as Partial<Brief>);
     const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
-    expect(out).toMatch(/exactly 8 variants/i);
+    expect(out).toMatch(/exactly 15 variants/i);
     expect(out).toMatch(/row 1.*col 1/);
   });
 

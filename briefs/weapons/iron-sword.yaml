@@ -21,12 +21,6 @@ references:
     note: roguelike RPG weapon sheet for silhouette + palette anchoring
   - path: public/assets/kenney/tiny-battle/spritesheet.png
     note: secondary palette/style anchor with hand-weapon shapes
-generation:
-  sheet:
-    rows: 3
-    cols: 3
-    emptyCells: []
-    nativeCanvas: 1024
 sensors:
   weapon:
     diagonalToleranceDeg: 3

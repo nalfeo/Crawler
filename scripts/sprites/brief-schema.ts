@@ -62,8 +62,14 @@ const referenceSchema = z
   .strict();
 
 /**
- * Optional sheet-mode generation hints. The pipeline defaults to a 3x3 grid
- * with 9 variants, no empty cells. Briefs can override per-asset.
+ * Optional sheet-mode generation hints. The pipeline defaults to a 4x4 grid
+ * with 16 variants, no empty cells. Rationale: a 1024 native canvas split
+ * 4-ways yields 256x256 cells, which downscale cleanly by an integer factor
+ * to 64x64, 32x32, and 16x16 pixel sprites; 16 variants per call gives the
+ * scoring loop enough headroom to reject low-quality candidates without
+ * paying for a second provider round-trip. The slicer requires `nativeCanvas`
+ * to be evenly divisible by both `rows` and `cols`, which the defaults
+ * satisfy by construction.
  *
  * - `rows` x `cols` defines the grid. Variant count equals `rows * cols` minus
  *   the number of declared `emptyCells`.
@@ -75,20 +81,20 @@ const referenceSchema = z
  */
 const sheetSchema = z
   .object({
-    rows: z.number().int().min(1).max(8).default(3),
-    cols: z.number().int().min(1).max(8).default(3),
+    rows: z.number().int().min(1).max(8).default(4),
+    cols: z.number().int().min(1).max(8).default(4),
     emptyCells: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).default([]),
     nativeCanvas: z.number().int().min(256).max(2048).default(1024),
   })
   .strict()
-  .default({ rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 });
+  .default({ rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 });
 
 const generationSchema = z
   .object({
     sheet: sheetSchema,
   })
   .strict()
-  .default({ sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } });
+  .default({ sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } });
 
 /**
  * Optional per-brief sensor threshold overrides. Defaults are baked into
@@ -168,6 +174,17 @@ export const briefSchema = z
         code: 'custom',
         path: ['generation', 'sheet'],
         message: `grid produces ${variantCount} variants — must be at least 1`,
+      });
+    }
+    // The slicer requires nativeCanvas to be evenly divisible by both rows
+    // and cols so every cell is an integer pixel grid. We catch this at
+    // brief-load time so we fail before a (slow, expensive) provider call.
+    const { nativeCanvas } = brief.generation.sheet;
+    if (nativeCanvas % rows !== 0 || nativeCanvas % cols !== 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['generation', 'sheet'],
+        message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
       });
     }
   });
