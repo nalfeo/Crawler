@@ -4,3 +4,8 @@ coverage/
 *.local
 .DS_Store
 *.tsbuildinfo
+
+# Sprite-generation pipeline scratch artifacts (raw candidates, processed
+# variants, judge scorecards). Approved sprites live under public/assets/
+# generated/ and ARE checked in. See .specify/specs/sprite-generation-pipeline.md.
+generated/
