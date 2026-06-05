@@ -23,7 +23,7 @@ import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { createGoreVfx } from '../../engine/GoreVfx.js';
 import { setActiveWeapon, weaponSystem } from '../../game/index.js';
-import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
+import { GAME } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -98,10 +98,10 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     private gore?: ReturnType<typeof createGoreVfx>;
     private inputCapture?: ReturnType<typeof createInputCapture>;
     private inputState!: InputState;
-    private playerEid = -1;
     private enemyEid = -1;
     private world!: GameWorld;
     private respawnTimer = 0;
+    private lastGoreEventCount = 0;
 
     constructor() {
       super({ key: 'GoreLabScene' });
@@ -152,7 +152,6 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
           this.applyActiveWeapon();
 
           playerInputSystem(this.world, this.inputState);
-          this.applyPlayerSpeed();
           weaponSystem(this.world);
           movementSystem(this.world);
           meleeSwingSystem(this.world);
@@ -182,6 +181,11 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       const renderElapsedMs = this.world.elapsedMs + this.accumulator;
       const interpAlpha = Math.min(1, Math.max(0, this.accumulator / GAME.DELTA_MS));
 
+      // Capture gore event count before bridge.sync() drains the queue
+      this.lastGoreEventCount = this.world.combatEvents.filter(
+        (e) => e.type === 'hit' || e.type === 'death',
+      ).length;
+
       // Gore VFX processes combat events and animates particles
       this.gore.update(this.world, renderElapsedMs, delta);
 
@@ -192,15 +196,6 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     private applyActiveWeapon(): void {
       const def = WEAPON_DEFS.get(settings.activeWeapon);
       if (def) setActiveWeapon(this.world, def);
-    }
-
-    private applyPlayerSpeed(): void {
-      if (this.playerEid < 0) return;
-      const vx = this.world.stores.velocity.x[this.playerEid] ?? 0;
-      const vy = this.world.stores.velocity.y[this.playerEid] ?? 0;
-      const scale = PLAYER_SPEED > 0 ? PLAYER_SPEED / PLAYER_SPEED : 1;
-      this.world.stores.velocity.x[this.playerEid] = vx * scale;
-      this.world.stores.velocity.y[this.playerEid] = vy * scale;
     }
 
     private keepEnemyStationary(): void {
@@ -241,7 +236,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       this.accumulator = 0;
       this.respawnTimer = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
-      this.playerEid = spawnPlayer(
+      spawnPlayer(
         this.world,
         this.getSimWidth() / 2,
         this.getSimHeight() / 2 + 60,
@@ -263,14 +258,11 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       const enemies = query(this.world.ecs, [Enemy]);
       const enemyHp = enemies.length > 0 ? (this.world.stores.health.current[enemies[0]!] ?? 0) : 0;
       const def = WEAPON_DEFS.get(settings.activeWeapon);
-      const goreEvents = this.world.combatEvents.filter(
-        (e) => e.type === 'hit' || e.type === 'death',
-      ).length;
 
       hud.textContent = [
         `Weapon: ${def?.name ?? settings.activeWeapon}`,
         `Enemy HP: ${enemyHp.toFixed(0)} / ${settings.enemyHp}`,
-        `Gore Events: ${goreEvents}`,
+        `Gore Events: ${this.lastGoreEventCount}`,
         `Intensity: ${settings.intensity.toFixed(1)}x`,
       ].join('\n');
     }

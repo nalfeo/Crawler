@@ -111,4 +111,30 @@ describe('applyDamage', () => {
     expect(world.stores.health.current[eid]).toBe(50);
     expect(world.combatEvents).toHaveLength(0);
   });
+
+  it('preserves sourceX/sourceY in the emitted CombatEvent', () => {
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
+
+    applyDamage(world, eid, 10, 5, 7, undefined, 100, 200);
+
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
+      sourceX: 100,
+      sourceY: 200,
+    });
+  });
+
+  it('leaves sourceX/sourceY undefined when not provided', () => {
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
+
+    applyDamage(world, eid, 10, 5, 7);
+
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]!.sourceX).toBeUndefined();
+    expect(world.combatEvents[0]!.sourceY).toBeUndefined();
+  });
 });
