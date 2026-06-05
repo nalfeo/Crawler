@@ -12,13 +12,13 @@ the `anchor: { x, y }` field on sprite briefs in the in-flight pipeline PR).
 
 **Findings — anchors were absent everywhere:**
 
-| Schema | Location | Sprite ref? | Anchor? |
-| --- | --- | --- | --- |
-| `ItemDef` | `src/shared/items.ts` | `icon: string` (placeholder) | no |
-| `EquipmentItemDef` | `src/shared/equipment-types.ts` | none | no |
-| `WeaponDef` | `src/shared/weaponDefs.ts` | none (mechanics-only) | no |
-| `SpriteDef` | `src/engine/sprites/registry.ts` | this *is* the sprite | no |
-| `Sprite` ECS | `src/core/components.ts` | `textureId/width/height` | no |
+| Schema             | Location                         | Sprite ref?                  | Anchor? |
+| ------------------ | -------------------------------- | ---------------------------- | ------- |
+| `ItemDef`          | `src/shared/items.ts`            | `icon: string` (placeholder) | no      |
+| `EquipmentItemDef` | `src/shared/equipment-types.ts`  | none                         | no      |
+| `WeaponDef`        | `src/shared/weaponDefs.ts`       | none (mechanics-only)        | no      |
+| `SpriteDef`        | `src/engine/sprites/registry.ts` | this _is_ the sprite         | no      |
+| `Sprite` ECS       | `src/core/components.ts`         | `textureId/width/height`     | no      |
 
 **No runtime consumer of an item anchor exists yet:**
 

@@ -1,35 +1,35 @@
 // Cached git helpers for PR-preflight. Results are keyed by HEAD sha so
 // repeated checks within one PR attempt don't re-shell.
 
-import { execFileSync } from "node:child_process";
+import { execFileSync } from 'node:child_process';
 
 const cache = new Map();
 
 function git(cwd, args) {
-    try {
-        return execFileSync("git", args, {
-            cwd,
-            encoding: "utf-8",
-            stdio: ["ignore", "pipe", "pipe"],
-        });
-    } catch (err) {
-        const stderr = err.stderr?.toString() || err.message;
-        throw new Error(`git ${args.join(" ")} failed: ${stderr.trim()}`);
-    }
+  try {
+    return execFileSync('git', args, {
+      cwd,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    const stderr = err.stderr?.toString() || err.message;
+    throw new Error(`git ${args.join(' ')} failed: ${stderr.trim()}`);
+  }
 }
 
 function headSha(cwd) {
-    return git(cwd, ["rev-parse", "HEAD"]).trim();
+  return git(cwd, ['rev-parse', 'HEAD']).trim();
 }
 
 function cached(key, cwd, compute) {
-    const sha = headSha(cwd);
-    const fullKey = `${key}:${cwd}`;
-    const entry = cache.get(fullKey);
-    if (entry && entry.headSha === sha) return entry.value;
-    const value = compute(sha);
-    cache.set(fullKey, { headSha: sha, value });
-    return value;
+  const sha = headSha(cwd);
+  const fullKey = `${key}:${cwd}`;
+  const entry = cache.get(fullKey);
+  if (entry && entry.headSha === sha) return entry.value;
+  const value = compute(sha);
+  cache.set(fullKey, { headSha: sha, value });
+  return value;
 }
 
 /**
@@ -37,21 +37,21 @@ function cached(key, cwd, compute) {
  * remote). Returns null if nothing resolves (very shallow clone, etc).
  */
 export function mergeBaseWithMain(cwd) {
-    return cached("mergebase", cwd, () => {
-        const candidates = ["origin/main", "main", "origin/master", "master"];
-        for (const ref of candidates) {
-            try {
-                return git(cwd, ["merge-base", ref, "HEAD"]).trim();
-            } catch {
-                /* try next */
-            }
-        }
-        try {
-            return git(cwd, ["rev-parse", "HEAD~1"]).trim();
-        } catch {
-            return null;
-        }
-    });
+  return cached('mergebase', cwd, () => {
+    const candidates = ['origin/main', 'main', 'origin/master', 'master'];
+    for (const ref of candidates) {
+      try {
+        return git(cwd, ['merge-base', ref, 'HEAD']).trim();
+      } catch {
+        /* try next */
+      }
+    }
+    try {
+      return git(cwd, ['rev-parse', 'HEAD~1']).trim();
+    } catch {
+      return null;
+    }
+  });
 }
 
 /**
@@ -59,15 +59,15 @@ export function mergeBaseWithMain(cwd) {
  * POSIX-style paths.
  */
 export function branchFiles(cwd) {
-    return cached("branchfiles", cwd, () => {
-        const base = mergeBaseWithMain(cwd);
-        if (!base) return [];
-        const out = git(cwd, ["diff", "--name-only", `${base}...HEAD`]);
-        return out
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-    });
+  return cached('branchfiles', cwd, () => {
+    const base = mergeBaseWithMain(cwd);
+    if (!base) return [];
+    const out = git(cwd, ['diff', '--name-only', `${base}...HEAD`]);
+    return out
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  });
 }
 
 /**
@@ -77,34 +77,34 @@ export function branchFiles(cwd) {
  * by edits to pre-existing files.
  */
 export function branchAddedFiles(cwd) {
-    return cached("branchaddedfiles", cwd, () => {
-        const base = mergeBaseWithMain(cwd);
-        if (!base) return [];
-        const out = git(cwd, ["diff", "--name-status", `${base}...HEAD`]);
-        return out
-            .split(/\r?\n/)
-            .map((line) => line.trim())
-            .filter(Boolean)
-            .filter((line) => line.startsWith("A\t"))
-            .map((line) => line.slice(2).trim());
-    });
+  return cached('branchaddedfiles', cwd, () => {
+    const base = mergeBaseWithMain(cwd);
+    if (!base) return [];
+    const out = git(cwd, ['diff', '--name-status', `${base}...HEAD`]);
+    return out
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .filter((line) => line.startsWith('A\t'))
+      .map((line) => line.slice(2).trim());
+  });
 }
 
 /**
  * Commit subjects on the branch since merge-base with main, excluding merges.
  */
 export function branchCommitSubjects(cwd) {
-    return cached("subjects", cwd, () => {
-        const base = mergeBaseWithMain(cwd);
-        if (!base) return [];
-        const out = git(cwd, ["log", "--no-merges", "--format=%s", `${base}..HEAD`]);
-        return out
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            .filter(Boolean);
-    });
+  return cached('subjects', cwd, () => {
+    const base = mergeBaseWithMain(cwd);
+    if (!base) return [];
+    const out = git(cwd, ['log', '--no-merges', '--format=%s', `${base}..HEAD`]);
+    return out
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  });
 }
 
 export function _resetCache() {
-    cache.clear();
+  cache.clear();
 }

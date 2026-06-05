@@ -36,16 +36,16 @@ architecture must accommodate them.
 
 #### Stat List (v1)
 
-| Stat | Effect | Base | Point Increment | Min |
-| --- | --- | --- | --- | --- |
-| `maxHp` | Maximum health | 100 | +10 | 1 |
-| `moveSpeed` | Movement pixels/frame | 3.0 | +0.1 | 0 |
-| `damage` | Projectile damage | 10 | +2 | 0 |
-| `armor` | Flat damage reduction | 0 | +1 | 0 |
-| `attackSpeed` | Fire rate multiplier | 1.0 | +0.05 | 0.1 |
-| `pickupRange` | XP gem magnet radius | 24 | +8 | 8 |
-| `projectileCount` | Extra projectiles per shot | 0 | +1 (integer) | 0 |
-| `projectileSpeed` | Projectile velocity multiplier | 1.0 | +0.05 | 0.1 |
+| Stat              | Effect                         | Base | Point Increment | Min |
+| ----------------- | ------------------------------ | ---- | --------------- | --- |
+| `maxHp`           | Maximum health                 | 100  | +10             | 1   |
+| `moveSpeed`       | Movement pixels/frame          | 3.0  | +0.1            | 0   |
+| `damage`          | Projectile damage              | 10   | +2              | 0   |
+| `armor`           | Flat damage reduction          | 0    | +1              | 0   |
+| `attackSpeed`     | Fire rate multiplier           | 1.0  | +0.05           | 0.1 |
+| `pickupRange`     | XP gem magnet radius           | 24   | +8              | 8   |
+| `projectileCount` | Extra projectiles per shot     | 0    | +1 (integer)    | 0   |
+| `projectileSpeed` | Projectile velocity multiplier | 1.0  | +0.05           | 0.1 |
 
 > **Deferred to v2:** `luck`, `area` — no consumers exist yet
 
@@ -82,11 +82,11 @@ Cap: `currentHp = min(currentHp, maxHp)`.
 
 #### Skill Categories (v1)
 
-| Category | Theme | Examples |
-| --- | --- | --- |
-| `combat` | Direct damage/weapons | Swordsmanship, Marksmanship, Heavy Ordnance |
-| `defense` | Survival/tanking | Iron Skin, Dodge Roll, Second Wind |
-| `utility` | Movement/QoL | Sprint, Magnet Hands, Lucky Star |
+| Category  | Theme                 | Examples                                    |
+| --------- | --------------------- | ------------------------------------------- |
+| `combat`  | Direct damage/weapons | Swordsmanship, Marksmanship, Heavy Ordnance |
+| `defense` | Survival/tanking      | Iron Skin, Dodge Roll, Second Wind          |
+| `utility` | Movement/QoL          | Sprint, Magnet Hands, Lucky Star            |
 
 > **Deferred to v2:** `crafting` category, `silly` skills, synergy system
 
@@ -104,18 +104,16 @@ Cap: `currentHp = min(currentHp, maxHp)`.
 
 ```typescript
 // New component tags
-export const Stats = {};       // entity has computed stats
+export const Stats = {}; // entity has computed stats
 export const SkillHolder = {}; // entity has skills (player-only v1)
 
 // New stores — all Float32Array unless noted
 stats: {
-  maxHp, moveSpeed, damage, armor, attackSpeed,
-  pickupRange, projectileCount, projectileSpeed
+  (maxHp, moveSpeed, damage, armor, attackSpeed, pickupRange, projectileCount, projectileSpeed);
 }
 statPoints: {
   // accumulated point bonuses per stat (same fields as stats)
-  maxHp, moveSpeed, damage, armor, attackSpeed,
-  pickupRange, projectileCount, projectileSpeed
+  (maxHp, moveSpeed, damage, armor, attackSpeed, pickupRange, projectileCount, projectileSpeed);
 }
 ```
 
@@ -156,10 +154,16 @@ Dirty flag is set whenever modifiers are added/removed or stat points change.
 
 ```typescript
 export const STAT_KEYS = [
-  'maxHp', 'moveSpeed', 'damage', 'armor', 'attackSpeed',
-  'pickupRange', 'projectileCount', 'projectileSpeed'
+  'maxHp',
+  'moveSpeed',
+  'damage',
+  'armor',
+  'attackSpeed',
+  'pickupRange',
+  'projectileCount',
+  'projectileSpeed',
 ] as const;
-export type StatKey = typeof STAT_KEYS[number];
+export type StatKey = (typeof STAT_KEYS)[number];
 ```
 
 ### Skill Data (world-level registry)
@@ -171,7 +175,7 @@ interface SkillDefinition {
   description: string;
   category: 'combat' | 'defense' | 'utility';
   usageMetric: UsageMetric;
-  usageThresholds: number[];  // strictly increasing, length = SKILL_HARD_CAP (20)
+  usageThresholds: number[]; // strictly increasing, length = SKILL_HARD_CAP (20)
   perLevelBonus: Partial<Record<StatKey, number>>; // added each level
   milestones: SkillMilestone[];
   flavorText?: string;
@@ -198,9 +202,9 @@ type MilestoneEffect =
 ```typescript
 // world.playerSkills: Map<string, SkillState>
 interface SkillState {
-  level: number;                  // 0–20
-  usage: number;                  // lifetime usage counter
-  itemBonus: number;              // stub: bonus levels from items, 0 in v1
+  level: number; // 0–20
+  usage: number; // lifetime usage counter
+  itemBonus: number; // stub: bonus levels from items, 0 in v1
   triggeredMilestones: Set<number>; // which milestone levels have fired
 }
 ```
@@ -217,6 +221,7 @@ interface SkillUsageEvent {
 ```
 
 Usage emitters:
+
 - `damageSystem` emits `hits_landed` and `damage_dealt` for player projectile hits
 - `movementSystem` emits `distance_dodged_near_threat` when player moves near an enemy projectile
 
@@ -286,16 +291,13 @@ skillSystem(world, frameCount)
 
 ## Constitutional Compliance
 
-| Principle | Compliance |
-| --- | --- |
-| §1 Agent = Model + Harness | Skill registry is TS data, not LLM-generated at runtime |
-| §2 Lab-Gated Development | 3 labs: stats-lab, xp-curve-lab, skill-lab |
-| §3 Deterministic CI | All tests deterministic, no LLM-as-judge |
+| Principle                   | Compliance                                                                              |
+| --------------------------- | --------------------------------------------------------------------------------------- |
+| §1 Agent = Model + Harness  | Skill registry is TS data, not LLM-generated at runtime                                 |
+| §2 Lab-Gated Development    | 3 labs: stats-lab, xp-curve-lab, skill-lab                                              |
+| §3 Deterministic CI         | All tests deterministic, no LLM-as-judge                                                |
 | §4 Deterministic Game Logic | XP/level math is pure functions of input; no Date.now(); usage events are frame-ordered |
-| §5 ECS-Phaser Bridge | All 3 systems in src/game/, no Phaser imports; math helpers in src/shared/ |
-| §6 AI Content During Load | Skill flavor text is static data |
-| §9 Coverage Requirements | Target 90%+ for all new game systems |
-| §10 Hashimoto's Loop | Tests cover edge cases surfaced by antagonistic review |
-
-
-
+| §5 ECS-Phaser Bridge        | All 3 systems in src/game/, no Phaser imports; math helpers in src/shared/              |
+| §6 AI Content During Load   | Skill flavor text is static data                                                        |
+| §9 Coverage Requirements    | Target 90%+ for all new game systems                                                    |
+| §10 Hashimoto's Loop        | Tests cover edge cases surfaced by antagonistic review                                  |

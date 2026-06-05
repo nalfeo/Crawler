@@ -1,38 +1,47 @@
 // HTML renderer for the paper doll equipment viewer
 
-import { SLOT_REGISTRY, PRIMARY_STATS, SECONDARY_STATS, STAT_LABELS, RARITY_COLORS, SLOT_ICONS } from "./data.mjs";
+import {
+  SLOT_REGISTRY,
+  PRIMARY_STATS,
+  SECONDARY_STATS,
+  STAT_LABELS,
+  RARITY_COLORS,
+  SLOT_ICONS,
+} from './data.mjs';
 
 export function renderHtml(instanceId) {
-    const slotBoxes = SLOT_REGISTRY.map(slot => {
-        const left = (slot.uiPosition.x * 100).toFixed(1);
-        const top = (slot.uiPosition.y * 100).toFixed(1);
-        return `<div class="slot" id="slot-${slot.id}"
+  const slotBoxes = SLOT_REGISTRY.map((slot) => {
+    const left = (slot.uiPosition.x * 100).toFixed(1);
+    const top = (slot.uiPosition.y * 100).toFixed(1);
+    return `<div class="slot" id="slot-${slot.id}"
             style="left:${left}%;top:${top}%"
             data-slot="${slot.id}" title="${slot.label}">
-            <span class="slot-icon">${SLOT_ICONS[slot.id] || "◻️"}</span>
+            <span class="slot-icon">${SLOT_ICONS[slot.id] || '◻️'}</span>
             <span class="slot-label">${slot.label}</span>
         </div>`;
-    }).join("\n");
+  }).join('\n');
 
-    const primaryStatRows = PRIMARY_STATS.map(s =>
-        `<div class="stat-row" id="stat-${s}">
+  const primaryStatRows = PRIMARY_STATS.map(
+    (s) =>
+      `<div class="stat-row" id="stat-${s}">
             <span class="stat-label">${STAT_LABELS[s]}</span>
             <span class="stat-base" id="base-${s}">—</span>
             <span class="stat-arrow">→</span>
             <span class="stat-eff" id="eff-${s}">—</span>
-        </div>`
-    ).join("\n");
+        </div>`,
+  ).join('\n');
 
-    const secondaryStatRows = SECONDARY_STATS.map(s =>
-        `<div class="stat-row" id="stat-${s}">
+  const secondaryStatRows = SECONDARY_STATS.map(
+    (s) =>
+      `<div class="stat-row" id="stat-${s}">
             <span class="stat-label">${STAT_LABELS[s]}</span>
             <span class="stat-base" id="base-${s}">—</span>
             <span class="stat-arrow">→</span>
             <span class="stat-eff" id="eff-${s}">—</span>
-        </div>`
-    ).join("\n");
+        </div>`,
+  ).join('\n');
 
-    return `<!doctype html>
+  return `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />

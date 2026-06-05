@@ -47,7 +47,9 @@ interface CandidateRef {
   candidateIndex: number;
 }
 
-type ElProps<K extends keyof HTMLElementTagNameMap> = Partial<Omit<HTMLElementTagNameMap[K], 'style'>> & {
+type ElProps<K extends keyof HTMLElementTagNameMap> = Partial<
+  Omit<HTMLElementTagNameMap[K], 'style'>
+> & {
   style?: Partial<CSSStyleDeclaration>;
 };
 
@@ -57,7 +59,10 @@ function el<K extends keyof HTMLElementTagNameMap>(
   children: (Node | string)[] = [],
 ): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
-  const { style, ...rest } = props as { style?: Partial<CSSStyleDeclaration> } & Record<string, unknown>;
+  const { style, ...rest } = props as { style?: Partial<CSSStyleDeclaration> } & Record<
+    string,
+    unknown
+  >;
   Object.assign(node, rest);
   if (style) {
     Object.assign(node.style, style);
@@ -86,13 +91,24 @@ async function fetchJson<T>(url: string): Promise<T> {
 
 /** Render a value as a collapsible tree using <details> for object/array nodes. */
 function renderJsonTree(value: unknown, label?: string): HTMLElement {
-  const wrap = el('div', { style: { fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.5' } });
+  const wrap = el('div', {
+    style: { fontFamily: 'monospace', fontSize: '12px', lineHeight: '1.5' },
+  });
   if (value === null || typeof value !== 'object') {
     const line = el('div');
-    const labelSpan = label ? el('span', { textContent: `${label}: `, style: { color: '#94a3b8' } }) : null;
+    const labelSpan = label
+      ? el('span', { textContent: `${label}: `, style: { color: '#94a3b8' } })
+      : null;
     const valSpan = el('span', {
       textContent: typeof value === 'string' ? `"${value}"` : String(value),
-      style: { color: typeof value === 'number' ? '#facc15' : typeof value === 'boolean' ? '#a78bfa' : '#bef264' },
+      style: {
+        color:
+          typeof value === 'number'
+            ? '#facc15'
+            : typeof value === 'boolean'
+              ? '#a78bfa'
+              : '#bef264',
+      },
     });
     if (labelSpan) line.append(labelSpan);
     line.append(valSpan);
@@ -120,7 +136,12 @@ function renderJsonTree(value: unknown, label?: string): HTMLElement {
   return wrap;
 }
 
-function renderBanner(host: HTMLElement, kind: 'error' | 'warn' | 'info', title: string, body: string): void {
+function renderBanner(
+  host: HTMLElement,
+  kind: 'error' | 'warn' | 'info',
+  title: string,
+  body: string,
+): void {
   const bg = kind === 'error' ? '#7f1d1d' : kind === 'warn' ? '#78350f' : '#1e3a8a';
   const banner = el(
     'div',
@@ -230,7 +251,8 @@ function createGalleryGrid(
       const idx = typeof cand.index === 'number' ? cand.index : ci;
       const padded = String(idx).padStart(2, '0');
       const passed = cand.passed === true;
-      const combinedPassed = cand.combinedPassed === true || (passed && cand.judgeScorecard == null);
+      const combinedPassed =
+        cand.combinedPassed === true || (passed && cand.judgeScorecard == null);
       const isChosen = run.chosenIndex === idx;
       const judge = cand.judgeScorecard as Record<string, unknown> | null | undefined;
 
@@ -483,7 +505,9 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   function setOverlayVisibility(show: boolean): void {
     state.showOverlay = show;
     overlayToggle.textContent = `Anchor overlay: ${show ? 'on' : 'off'}`;
-    for (const img of gridHost.querySelectorAll<HTMLImageElement>('img[data-role="anchor-overlay"]')) {
+    for (const img of gridHost.querySelectorAll<HTMLImageElement>(
+      'img[data-role="anchor-overlay"]',
+    )) {
       img.style.display = show ? 'block' : 'none';
     }
   }
@@ -562,10 +586,15 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       const detailEntries = await Promise.all(
         state.runs.map(async (r) => {
           try {
-            const summary = await fetchJson<Record<string, unknown>>(summaryUrl(r.briefId, r.runId));
+            const summary = await fetchJson<Record<string, unknown>>(
+              summaryUrl(r.briefId, r.runId),
+            );
             return [`${r.briefId}/${r.runId}`, summary] as const;
           } catch {
-            return [`${r.briefId}/${r.runId}`, { candidates: [] } as Record<string, unknown>] as const;
+            return [
+              `${r.briefId}/${r.runId}`,
+              { candidates: [] } as Record<string, unknown>,
+            ] as const;
           }
         }),
       );
@@ -603,7 +632,8 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
   function onKeyDown(event: KeyboardEvent): void {
     if (!state.grid || state.grid.candidates.length === 0) return;
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)
+      return;
     const cur = state.selected ?? state.grid.candidates[0]!;
     let next: CandidateRef | null = null;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {

@@ -49,16 +49,16 @@ Interactive sandbox for verifying the `damageSystem` formulas, interactions, and
 Damage Calculator/
   incomingDamage: 25
   armor: 5
-  
+
 Invincibility/
   invincibilityMs: 250
   contactDamage: 5
-  
+
 Pierce/
   pierceCount: 1
   enemyCount: 5
   projectileDamage: 10
-  
+
 DPS/
   damagePerHit: 10
   fireRate: 3
@@ -82,4 +82,4 @@ DPS/
 
 - Does NOT test actual ECS entity creation (that's combat-lab's job)
 - Does NOT render Phaser sprites
-- Pure math/formula visualization
+- Pure math/formula visualization

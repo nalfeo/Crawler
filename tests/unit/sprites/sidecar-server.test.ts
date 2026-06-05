@@ -257,6 +257,8 @@ describe('buildServer listen (binding)', () => {
     expect(addr.address).toBe('127.0.0.1');
     // Node's AddressInfo.family is typed as a string ('IPv4'|'IPv6') in our
     // version but historically has been 4/6 — accept both shapes.
-    expect((addr.family as string | number) === 'IPv4' || (addr.family as string | number) === 4).toBe(true);
+    expect(
+      (addr.family as string | number) === 'IPv4' || (addr.family as string | number) === 4,
+    ).toBe(true);
   });
 });

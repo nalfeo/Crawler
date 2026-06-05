@@ -18,6 +18,7 @@ Replaced the scaffold in `src/labs/playerinput-lab/index.ts` with a standalone i
 ## Validation
 
 Fast verification passed:
+
 - Typecheck
 - Lint
 - Unit tests

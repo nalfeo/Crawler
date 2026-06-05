@@ -10,8 +10,8 @@
 //   - additionalContext snippets are concatenated and returned even on allow
 //   - guards that throw are logged and treated per their failClosed flag
 
-import { isGuardEnabled, bypassReason, guardSeverity } from "./config.mjs";
-import { emitGuardTelemetry } from "./telemetry.mjs";
+import { isGuardEnabled, bypassReason, guardSeverity } from './config.mjs';
+import { emitGuardTelemetry } from './telemetry.mjs';
 
 /**
  * @typedef {Object} GuardResult
@@ -36,158 +36,160 @@ import { emitGuardTelemetry } from "./telemetry.mjs";
  */
 
 export async function dispatch(guards, toolName, toolArgs, ctx) {
-    const additionalContexts = [];
-    const prDenies = []; // aggregate
-    const prAsks = [];
+  const additionalContexts = [];
+  const prDenies = []; // aggregate
+  const prAsks = [];
 
-    for (const guard of guards) {
-        if (!guard.matches(toolName, toolArgs)) continue;
+  for (const guard of guards) {
+    if (!guard.matches(toolName, toolArgs)) continue;
 
-        if (!isGuardEnabled(guard.id)) {
-            const reason = bypassReason(guard.id);
-            await safeLog(ctx, `guard ${guard.id} bypassed (${reason})`, {
-                level: "warning",
-            });
-            await emitGuardTelemetry(ctx.log, {
-                guard_id: guard.id,
-                tool_name: toolName,
-                decision: "bypass",
-                bypass_used: true,
-                bypass_reason: reason,
-            });
-            continue;
-        }
-
-        let result;
-        try {
-            result = await guard.check(toolArgs, ctx);
-        } catch (err) {
-            await safeLog(ctx, `guard ${guard.id} crashed: ${err.message}`, {
-                level: "error",
-            });
-            await emitGuardTelemetry(ctx.log, {
-                guard_id: guard.id,
-                tool_name: toolName,
-                decision: "crash",
-                reason: err.message,
-            });
-            if (guard.failClosed) {
-                return {
-                    permissionDecision: "deny",
-                    permissionDecisionReason: `Guard ${guard.id} crashed and is configured fail-closed: ${err.message}. To bypass, set COPILOT_GUARDS_DISABLE=${guard.id}.`,
-                };
-            }
-            continue;
-        }
-
-        if (!result || result.decision === "skip" || result.decision === "allow") {
-            if (result?.additionalContext) additionalContexts.push(result.additionalContext);
-            await emitGuardTelemetry(ctx.log, {
-                guard_id: guard.id,
-                tool_name: toolName,
-                decision: result?.decision || "skip",
-            });
-            continue;
-        }
-
-        // Collect additionalContext from deny/ask results too — soft
-        // warnings (e.g. ADR hints from pr-preflight) should still surface
-        // alongside hard failures.
-        if (result.additionalContext) additionalContexts.push(result.additionalContext);
-
-        // Severity downgrade: if config.json marks this guard as "ask",
-        // weaken any "deny" to "ask". Never upgrade. Lets repo owners
-        // soften an over-eager guard without disabling it.
-        let decision = result.decision;
-        if (decision === "deny" && guardSeverity(guard.id, "deny") === "ask") {
-            decision = "ask";
-        }
-
-        await emitGuardTelemetry(ctx.log, {
-            guard_id: guard.id,
-            tool_name: toolName,
-            decision,
-            reason: result.reason,
-        });
-
-        if (decision === "deny") {
-            if (guard.category === "pr") {
-                prDenies.push({ id: guard.id, reason: result.reason });
-                continue;
-            }
-            const out = {
-                permissionDecision: "deny",
-                permissionDecisionReason: formatDeny(guard.id, result.reason),
-            };
-            if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
-            return out;
-        }
-
-        if (decision === "ask") {
-            if (guard.category === "pr") {
-                prAsks.push({ id: guard.id, reason: result.reason });
-                continue;
-            }
-            const out = {
-                permissionDecision: "ask",
-                permissionDecisionReason: formatDeny(guard.id, result.reason),
-            };
-            if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
-            return out;
-        }
+    if (!isGuardEnabled(guard.id)) {
+      const reason = bypassReason(guard.id);
+      await safeLog(ctx, `guard ${guard.id} bypassed (${reason})`, {
+        level: 'warning',
+      });
+      await emitGuardTelemetry(ctx.log, {
+        guard_id: guard.id,
+        tool_name: toolName,
+        decision: 'bypass',
+        bypass_used: true,
+        bypass_reason: reason,
+      });
+      continue;
     }
 
-    if (prDenies.length > 0) {
-        const out = {
-            permissionDecision: "deny",
-            permissionDecisionReason: formatPrAggregate(prDenies, prAsks),
-        };
-        if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
-        return out;
-    }
-    if (prAsks.length > 0) {
-        const out = {
-            permissionDecision: "ask",
-            permissionDecisionReason: formatPrAggregate([], prAsks),
-        };
-        if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join("\n\n");
-        return out;
-    }
-
-    if (additionalContexts.length > 0) {
+    let result;
+    try {
+      result = await guard.check(toolArgs, ctx);
+    } catch (err) {
+      await safeLog(ctx, `guard ${guard.id} crashed: ${err.message}`, {
+        level: 'error',
+      });
+      await emitGuardTelemetry(ctx.log, {
+        guard_id: guard.id,
+        tool_name: toolName,
+        decision: 'crash',
+        reason: err.message,
+      });
+      if (guard.failClosed) {
         return {
-            permissionDecision: "allow",
-            additionalContext: additionalContexts.join("\n\n"),
+          permissionDecision: 'deny',
+          permissionDecisionReason: `Guard ${guard.id} crashed and is configured fail-closed: ${err.message}. To bypass, set COPILOT_GUARDS_DISABLE=${guard.id}.`,
         };
+      }
+      continue;
     }
-    return undefined; // no opinion → default permission flow
+
+    if (!result || result.decision === 'skip' || result.decision === 'allow') {
+      if (result?.additionalContext) additionalContexts.push(result.additionalContext);
+      await emitGuardTelemetry(ctx.log, {
+        guard_id: guard.id,
+        tool_name: toolName,
+        decision: result?.decision || 'skip',
+      });
+      continue;
+    }
+
+    // Collect additionalContext from deny/ask results too — soft
+    // warnings (e.g. ADR hints from pr-preflight) should still surface
+    // alongside hard failures.
+    if (result.additionalContext) additionalContexts.push(result.additionalContext);
+
+    // Severity downgrade: if config.json marks this guard as "ask",
+    // weaken any "deny" to "ask". Never upgrade. Lets repo owners
+    // soften an over-eager guard without disabling it.
+    let decision = result.decision;
+    if (decision === 'deny' && guardSeverity(guard.id, 'deny') === 'ask') {
+      decision = 'ask';
+    }
+
+    await emitGuardTelemetry(ctx.log, {
+      guard_id: guard.id,
+      tool_name: toolName,
+      decision,
+      reason: result.reason,
+    });
+
+    if (decision === 'deny') {
+      if (guard.category === 'pr') {
+        prDenies.push({ id: guard.id, reason: result.reason });
+        continue;
+      }
+      const out = {
+        permissionDecision: 'deny',
+        permissionDecisionReason: formatDeny(guard.id, result.reason),
+      };
+      if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
+      return out;
+    }
+
+    if (decision === 'ask') {
+      if (guard.category === 'pr') {
+        prAsks.push({ id: guard.id, reason: result.reason });
+        continue;
+      }
+      const out = {
+        permissionDecision: 'ask',
+        permissionDecisionReason: formatDeny(guard.id, result.reason),
+      };
+      if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
+      return out;
+    }
+  }
+
+  if (prDenies.length > 0) {
+    const out = {
+      permissionDecision: 'deny',
+      permissionDecisionReason: formatPrAggregate(prDenies, prAsks),
+    };
+    if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
+    return out;
+  }
+  if (prAsks.length > 0) {
+    const out = {
+      permissionDecision: 'ask',
+      permissionDecisionReason: formatPrAggregate([], prAsks),
+    };
+    if (additionalContexts.length > 0) out.additionalContext = additionalContexts.join('\n\n');
+    return out;
+  }
+
+  if (additionalContexts.length > 0) {
+    return {
+      permissionDecision: 'allow',
+      additionalContext: additionalContexts.join('\n\n'),
+    };
+  }
+  return undefined; // no opinion → default permission flow
 }
 
 function formatDeny(id, reason) {
-    return `[copilot-guards/${id}] ${reason}`;
+  return `[copilot-guards/${id}] ${reason}`;
 }
 
 function formatPrAggregate(denies, asks) {
-    const header =
-        denies.length > 0
-            ? "PR preflight failed. Fix the following before retrying create_pull_request:"
-            : "PR preflight needs confirmation before continuing with create_pull_request:";
-    const lines = [header];
-    for (const d of denies) {
-        lines.push(`  ❌ [${d.id}] ${d.reason}`);
-    }
-    for (const a of asks) {
-        lines.push(`  ❓ [${a.id}] ${a.reason}`);
-    }
-    lines.push("");
-    lines.push("To bypass a specific guard (legitimate edge cases only): set COPILOT_GUARDS_DISABLE=<guard-id> in the environment.");
-    return lines.join("\n");
+  const header =
+    denies.length > 0
+      ? 'PR preflight failed. Fix the following before retrying create_pull_request:'
+      : 'PR preflight needs confirmation before continuing with create_pull_request:';
+  const lines = [header];
+  for (const d of denies) {
+    lines.push(`  ❌ [${d.id}] ${d.reason}`);
+  }
+  for (const a of asks) {
+    lines.push(`  ❓ [${a.id}] ${a.reason}`);
+  }
+  lines.push('');
+  lines.push(
+    'To bypass a specific guard (legitimate edge cases only): set COPILOT_GUARDS_DISABLE=<guard-id> in the environment.',
+  );
+  return lines.join('\n');
 }
 
 async function safeLog(ctx, msg, opts) {
-    try {
-        await ctx.log?.(msg, opts);
-    } catch {
-        /* never let logging break the dispatcher */
-    }
+  try {
+    await ctx.log?.(msg, opts);
+  } catch {
+    /* never let logging break the dispatcher */
+  }
 }

@@ -20,7 +20,11 @@ interface ParsedPixel {
   readonly a: number;
 }
 
-function decode(buffer: Buffer): { width: number; height: number; pixel: (x: number, y: number) => ParsedPixel } {
+function decode(buffer: Buffer): {
+  width: number;
+  height: number;
+  pixel: (x: number, y: number) => ParsedPixel;
+} {
   const png = PNG.sync.read(buffer);
   return {
     width: png.width,
@@ -109,15 +113,11 @@ describe('buildAnchorOverlay', () => {
 
   it('property: any in-bounds anchor produces exactly one red pixel at exactly that coord', () => {
     fc.assert(
-      fc.property(
-        fc.integer({ min: 0, max: 15 }),
-        fc.integer({ min: 0, max: 15 }),
-        (x, y) => {
-          const out = buildAnchorOverlay({ width: 16, height: 16, anchor: { x, y } });
-          const reds = findRedPixels(out);
-          expect(reds).toEqual([{ x, y }]);
-        },
-      ),
+      fc.property(fc.integer({ min: 0, max: 15 }), fc.integer({ min: 0, max: 15 }), (x, y) => {
+        const out = buildAnchorOverlay({ width: 16, height: 16, anchor: { x, y } });
+        const reds = findRedPixels(out);
+        expect(reds).toEqual([{ x, y }]);
+      }),
     );
   });
 });

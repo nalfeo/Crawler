@@ -10,27 +10,27 @@ Loaded automatically because it lives under `.github/extensions/`.
 
 ## What's enforced
 
-| Guard ID                       | Tool(s)                             | Decision | What it blocks                                                                                              |
-| ------------------------------ | ----------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `shell-force-push-main`        | `powershell`, `bash`                | **deny** | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.         |
-| `shell-main-branch-delete`     | `powershell`, `bash`                | **deny** | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).              |
-| `shell-gh-pr-create`           | `powershell`, `bash`                | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.      |
-| `shell-rm-rf-repo`             | `powershell`, `bash`                | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`. |
-| `edit-determinism`             | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored. |
-| `edit-phaser-in-core`          | `edit`, `create` (src/core)         | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                            |
-| `edit-repo-md-junk`            | `create` (`*.md`)                   | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.     |
-| `edit-guard-self-protection`   | `edit`, `create` (this extension)   | **ask**  | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                     |
-| `pr-preflight`                 | `create_pull_request`               | **deny** | Aggregated PR checks (semantic title, handoff, lab-gate, forbidden paths, cross-system ADR warning).        |
+| Guard ID                     | Tool(s)                                 | Decision | What it blocks                                                                                                                                                                    |
+| ---------------------------- | --------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shell-force-push-main`      | `powershell`, `bash`                    | **deny** | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.                                                                               |
+| `shell-main-branch-delete`   | `powershell`, `bash`                    | **deny** | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).                                                                                    |
+| `shell-gh-pr-create`         | `powershell`, `bash`                    | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                            |
+| `shell-rm-rf-repo`           | `powershell`, `bash`                    | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`. |
+| `edit-determinism`           | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                           |
+| `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                  |
+| `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                           |
+| `edit-guard-self-protection` | `edit`, `create` (this extension)       | **ask**  | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                                                                                           |
+| `pr-preflight`               | `create_pull_request`                   | **deny** | Aggregated PR checks (semantic title, handoff, lab-gate, forbidden paths, cross-system ADR warning).                                                                              |
 
 ### `pr-preflight` checks in detail
 
-| Check               | What                                                                                                                    |
-| ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Semantic title      | Title must match `<type>(scope?)!?: <subject>` where type ∈ feat,fix,chore,lab,docs,refactor,test,perf,ci,build.        |
-| Handoff required    | A `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` file must be added in the branch diff. Skipped for docs-only diffs.    |
-| Lab gate            | Runs `scripts/agent/lab-gate-check.sh` **only** when the diff touches `src/core/systems/**` or `src/labs/**`. Cached.   |
-| Forbidden paths     | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`. |
-| Cross-system ADR    | Soft warning (additionalContext, not deny) when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR. |
+| Check            | What                                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| Semantic title   | Title must match `<type>(scope?)!?: <subject>` where type ∈ feat,fix,chore,lab,docs,refactor,test,perf,ci,build.          |
+| Handoff required | A `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` file must be added in the branch diff. Skipped for docs-only diffs.      |
+| Lab gate         | Runs `scripts/agent/lab-gate-check.sh` **only** when the diff touches `src/core/systems/**` or `src/labs/**`. Cached.     |
+| Forbidden paths  | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`. |
+| Cross-system ADR | Soft warning (additionalContext, not deny) when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR. |
 
 ### `edit-repo-md-junk` allowlist
 
@@ -49,12 +49,12 @@ Everything else is denied. Use the session artifacts folder (`~/.copilot/session
 
 These exist for legitimate edge cases (hotfixes, intentional maintenance). Every bypass is logged via `session.log({level:'warning'})` so it's visible.
 
-| Mechanism                                        | Effect                                    |
-| ------------------------------------------------ | ----------------------------------------- |
-| `COPILOT_GUARDS_DISABLE=guard-id,other-id`       | Disables specific guards for the session. |
-| `COPILOT_GUARDS_DISABLE=*`                       | Disables all guards (escape hatch).       |
-| `COPILOT_GUARDS_EDIT=1`                          | Allows edits to this extension without `ask` prompt. |
-| `config.json` → `"disabled": true` per guard     | Repo-wide opt-out (committed).            |
+| Mechanism                                    | Effect                                               |
+| -------------------------------------------- | ---------------------------------------------------- |
+| `COPILOT_GUARDS_DISABLE=guard-id,other-id`   | Disables specific guards for the session.            |
+| `COPILOT_GUARDS_DISABLE=*`                   | Disables all guards (escape hatch).                  |
+| `COPILOT_GUARDS_EDIT=1`                      | Allows edits to this extension without `ask` prompt. |
+| `config.json` → `"disabled": true` per guard | Repo-wide opt-out (committed).                       |
 
 **Recommendation:** never set `COPILOT_GUARDS_DISABLE=*` in CI. Set it in a single shell when you intentionally need to bypass.
 

@@ -13,7 +13,9 @@ The pipeline must respect Crawler's constitution: deterministic CI gates only, l
 ### Functional
 
 #### F1. Brief-driven generation
+
 A YAML brief in `briefs/<type>/<name>.yaml` is the only input needed to run the full pipeline. Briefs declare:
+
 - `type` — asset family (`weapon`, `item`, `enemy`, `tile`); selects which sensors apply
 - `name` — stable id, becomes the registry key on approval
 - `size` — `[width, height]` in pixels (final, post-quantize)
@@ -30,6 +32,7 @@ A YAML brief in `briefs/<type>/<name>.yaml` is the only input needed to run the 
 **F2.2 Sheet-mode generation (default).** Instead of N=8 separate API calls, the generator requests **one 1024×1024 PNG containing a 3×3 grid of distinct candidates** (8 sprites + 1 deliberately-empty cell). Empirically this is ~5× cheaper and ~7× faster than 8 single-image calls (~$0.06 vs ~$0.34 per run, ~17s vs ~3min). For higher diversity, the orchestrator may issue 2–3 sheet requests with varied per-cell hints.
 
 **F2.3 Prompt template.** The request prompt is composed from:
+
 1. **Brief content** — `brief.prompt`, `brief.size`, type, plus per-cell variation hints if multi-sheet.
 2. **Global style preamble** — `docs/agent-os/sprite-style.md` _(planned — Phase 2 will create this file)_, loaded once. Concrete, derived from analyzing actual Kenney sprites: outline thickness, shading rules, anti-aliasing prohibitions, color count per sprite, silhouette conventions.
 3. **Reference images (MANDATORY)** — passed to the `images/edits` endpoint via multipart `image` field. Resolved from `brief.references`, which **must** include at least 2 exemplar sprites of the same family from existing assets, scaled up via nearest-neighbor (≥256×256) so the model can see pixel detail. Brief validation rejects any brief with fewer than 2 references. Empirically, references are doing ~90% of style fidelity work — a v3 A/B test (refs vs no-refs) showed the no-refs output produced "generic AI pixel art" while the refs output produced sprites that read as same-family Kenney tiny-dungeon weapons. References are non-optional.
@@ -39,6 +42,7 @@ A YAML brief in `briefs/<type>/<name>.yaml` is the only input needed to run the 
 The full template lives at `scripts/sprites/prompt-template.md` and is unit-tested for stable substitution. Because references are required, the generator always hits `images/edits` (not `images/generations`).
 
 **F2.4 Slicing (post-generator, pre-postprocessor).** A new pipeline stage `scripts/sprites/slice-sheet.ts`:
+
 - Takes the 1024×1024 sheet PNG and detects the 3×3 cell grid (assumes equal-size cells with ≥1px gutter; configurable).
 - Emits 8 cell PNGs `generated/raw/<name>/NN.png` at ~341×341 each. Discards the empty 9th cell (verified by opaque-pixel ratio < 5%).
 - If grid detection fails (e.g., model didn't follow layout), the entire sheet is rejected and the run is retried up to 2× with a stricter layout reminder appended to the prompt.
@@ -46,7 +50,9 @@ The full template lives at `scripts/sprites/prompt-template.md` and is unit-test
 **F2.5 Module shape.** Generator + slicer remain **pure modules** — no shared mutable state, no environment assumptions beyond provider env vars. CLI entry points: `npm run sprites:generate -- --brief briefs/weapons/iron-sword.yaml [--sheets 1] [--provider openai|mai]`.
 
 #### F3. Post-processor (the deterministic conformance step)
+
 Runs locally, no network. For each raw candidate:
+
 1. **Background removal** — corner-color flood-fill heuristic, anything reachable from the four corners becomes alpha 0.
 2. **Downscale** — nearest-neighbor resample from native (e.g. 1024x1024) to `brief.size`.
 3. **Palette quantize** — every opaque pixel snapped to the nearest entry in the palette referenced by `brief.palette`. Distance metric is Euclidean RGB (revisit later if results warrant).
@@ -55,9 +61,11 @@ Runs locally, no network. For each raw candidate:
 Output: `generated/processed/<name>/NN.png`. The post-processor is the **contract** that makes sensors trivially satisfiable — sensors verify the contract was met, they do not enforce it.
 
 #### F4. Sensors (deterministic gates)
+
 Implemented as Vitest tests under `tests/sensors/<type>.test.ts`. Per-type sensor sets share a common base:
 
 **Universal sensors (all types)**
+
 - Width and height match `brief.size` exactly.
 - Every alpha value is exactly 0 or 255 (no semi-transparency).
 - Every opaque pixel's RGB is an exact match for an entry in the palette JSON.
@@ -66,18 +74,20 @@ Implemented as Vitest tests under `tests/sensors/<type>.test.ts`. Per-type senso
 - The pixel at `brief.anchor` is opaque.
 
 **Weapon-specific sensors (MVP)**
+
 - Silhouette has at least one diagonal axis of variation — rejects perfect-vertical "staffs" when the brief asked for a sword. (Heuristic: PCA of opaque-pixel coordinates; primary axis must not be ±2° from vertical or horizontal.)
 
 Sensors run in CI on every PR that touches `public/assets/generated/`. **A sensor failure is a hard fail** — there is no soft path. If the post-processor produced something a sensor rejects, the post-processor needs fixing, not the sensor.
 
 #### F5. Evaluators (subjective scoring, offline)
+
 Run only locally and only on candidates that passed sensors. Three named scorers, each with an explicit rejection threshold:
 
 - **`style_match`** — VLM compares candidate to `brief.references` (the same Kenney-family sprites used to ground generation). Scores 1–5. Threshold: `< 3` auto-rejects before lab review. This is the primary defense against the model drifting into "generic AI pixel art" when the reference grounding wasn't strong enough.
 - **`brief_match`** — VLM compares candidate to `brief.prompt`. Scores 1–5. Threshold: `< 3` auto-rejects.
 - **`readability`** — VLM is asked "does this read at game scale on a dark floor tile?" with the candidate composited at 1× over a representative biome tile. Scores 1–5. Threshold: `< 3` auto-rejects.
 
-Two phases for *how* the scorers run; the contract `(candidate, brief) → {score, rationale}` is identical:
+Two phases for _how_ the scorers run; the contract `(candidate, brief) → {score, rationale}` is identical:
 
 **Phase 1 — JSON scorecard.** A Node script (`scripts/sprites/judge.ts`) calls Azure OpenAI `gpt-4o` (vision) for each candidate. Input: the candidate (upscaled 8x for model legibility), `brief.prompt`, three reference PNGs from `brief.references` or sibling registry entries. Output: a structured JSON per run at `generated/scorecard/<name>.json`:
 
@@ -87,15 +97,22 @@ Two phases for *how* the scorers run; the contract `(candidate, brief) → {scor
   "model": "gpt-4o",
   "ts": "2026-06-04T16:00:00Z",
   "candidates": [
-    { "id": "00", "sensors": "passed",
+    {
+      "id": "00",
+      "sensors": "passed",
       "scores": { "style_match": 4, "brief_match": 5, "readability": 4 },
       "rejected": false,
-      "rationale": "Strong diagonal silhouette..." },
+      "rationale": "Strong diagonal silhouette..."
+    },
     { "id": "01", "sensors": "failed:dimensions" },
-    { "id": "02", "sensors": "passed",
+    {
+      "id": "02",
+      "sensors": "passed",
       "scores": { "style_match": 2, "brief_match": 4, "readability": 3 },
-      "rejected": true, "rejectedBy": "style_match",
-      "rationale": "Outline is too thin; doesn't match Kenney maroon." }
+      "rejected": true,
+      "rejectedBy": "style_match",
+      "rationale": "Outline is too thin; doesn't match Kenney maroon."
+    }
   ]
 }
 ```
@@ -105,12 +122,15 @@ Two phases for *how* the scorers run; the contract `(candidate, brief) → {scor
 **Sensors stay in Vitest in both phases.** Foundry is the offline judge layer, never a CI gate.
 
 #### F6. Approval and registry integration
+
 - `scripts/sprites/approve.ts <brief> <candidate_id>` is the only operation that mutates checked-in repo state.
 - It moves `generated/processed/<name>/<id>.png` to `public/assets/generated/<type>/<name>.png` and appends a corresponding entry to `src/engine/sprites/registry.ts` (new `SHEETS` row + named sprite alias as appropriate for `type`).
 - After approval, the sensor test for that asset is added to the per-type sensor test file so future PRs cannot land changes that break the approved sprite.
 
 #### F7. `sprite-forge-lab`
+
 A new lab at `src/labs/sprite-forge-lab/` providing the human-in-the-loop surface. UI sections:
+
 - **Brief editor** — form-bound to the YAML schema; "Save brief" writes/updates `briefs/<type>/<name>.yaml`.
 - **Pipeline controls** — buttons for Generate, Postprocess, Judge, and Run-all; live status; last-run summary (candidates, sensor pass count, mean judge score).
 - **References panel** — auto-pulled from registry siblings (matching `brief.type` and any tags in common); the human-visible style baseline.
@@ -120,21 +140,24 @@ A new lab at `src/labs/sprite-forge-lab/` providing the human-in-the-loop surfac
 **Iterate** captures the selected candidate's prompt, lets the user tweak it inline, and re-runs gen with a smaller N (default 4) using the same brief otherwise — for fast prompt-tuning loops.
 
 #### F8. Sidecar architecture
+
 The lab cannot call Azure OpenAI directly (secrets, file I/O). `npm run lab:sprite-forge` starts Vite **and** a small Fastify sidecar (`scripts/sprites/sidecar/server.ts`, port 3010) that exposes:
 
-| Endpoint | Purpose |
-| --- | --- |
-| `GET /api/health` | Sidecar readiness; lab uses this to enable/disable action buttons |
-| `POST /api/briefs` | Save a brief YAML |
-| `POST /api/generate` | Kick a generate job; returns job id |
-| `GET /api/jobs/:id` | Job status + log tail |
-| `GET /api/scorecard/:name` | Latest scorecard JSON for a brief |
-| `POST /api/approve` | Run `approve.ts` for a `(brief, candidate)` pair |
+| Endpoint                   | Purpose                                                           |
+| -------------------------- | ----------------------------------------------------------------- |
+| `GET /api/health`          | Sidecar readiness; lab uses this to enable/disable action buttons |
+| `POST /api/briefs`         | Save a brief YAML                                                 |
+| `POST /api/generate`       | Kick a generate job; returns job id                               |
+| `GET /api/jobs/:id`        | Job status + log tail                                             |
+| `GET /api/scorecard/:name` | Latest scorecard JSON for a brief                                 |
+| `POST /api/approve`        | Run `approve.ts` for a `(brief, candidate)` pair                  |
 
 The sidecar is a thin HTTP shell over the same TypeScript modules the CLI uses. **No business logic in the sidecar.**
 
 #### F9. Graceful review-only mode
+
 When the sidecar is absent (the lab is hosted on GitHub Pages, or the user is reviewing without `npm run lab:sprite-forge`), the lab pings `/api/health`, fails, and falls into review-only mode:
+
 - Reads `generated/scorecard/*.json` and PNGs via Vite's static serving.
 - Candidate grid and selected-detail panels render normally.
 - Generate / Postprocess / Judge / Approve / Iterate / Save Brief buttons are disabled with tooltips explaining how to enable them.
@@ -231,14 +254,17 @@ A small TypeScript schema validator (`scripts/sprites/brief-schema.ts`, Zod) is 
 ### Palette extraction
 
 Run once per source pack:
+
 ```
 npm run sprites:extract-palette -- --source public/assets/kenney/roguelike-characters/spritesheet.png --out data/palettes/kenney-roguelike.json
 ```
+
 The script walks every pixel of the input sheet, dedupes opaque RGB tuples, and writes a sorted JSON array. Re-running produces identical output (set-based, sorted) — palette files are content-addressable.
 
 ### Pipeline run
 
 Two surfaces, identical underlying calls:
+
 - **CLI (CI / scripted use):** `npm run sprites:run -- briefs/weapons/rusty_longsword.yaml`
 - **Lab (interactive / human review):** `sprite-forge-lab` Run-all button
 
@@ -247,16 +273,19 @@ Both invoke `generate → postprocess → sensors → judge` in sequence, writin
 ### Sensor failure UX
 
 Each universal sensor returns a structured result, not a boolean:
+
 ```typescript
 type SensorResult =
   | { ok: true; sensor: string }
   | { ok: false; sensor: string; reason: string; pixels?: { x: number; y: number }[] };
 ```
-The lab uses `pixels` to highlight offending coordinates in the palette/pixel-grid overlays — palette failures show *which* pixel is out of palette, not just "palette failed."
+
+The lab uses `pixels` to highlight offending coordinates in the palette/pixel-grid overlays — palette failures show _which_ pixel is out of palette, not just "palette failed."
 
 ### Phase 2: Foundry evaluators
 
 Each Phase-1 judge becomes a Foundry custom evaluator:
+
 - `StyleMatchEvaluator` — VLM call comparing candidate vs. Kenney refs.
 - `BriefMatchEvaluator` — VLM call comparing candidate vs. `brief.prompt`.
 - `ReadabilityEvaluator` — VLM call asking "does this read at game scale on a dark floor tile?"

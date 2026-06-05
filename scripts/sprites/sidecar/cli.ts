@@ -29,7 +29,9 @@ function resolvePort(): number {
   if (!raw) return DEFAULT_PORT;
   const n = Number(raw);
   if (!Number.isFinite(n) || n < 0 || n > 65535) {
-    process.stderr.write(`sprites:gallery sidecar: invalid SPRITES_SIDECAR_PORT=${raw}, using ${DEFAULT_PORT}\n`);
+    process.stderr.write(
+      `sprites:gallery sidecar: invalid SPRITES_SIDECAR_PORT=${raw}, using ${DEFAULT_PORT}\n`,
+    );
     return DEFAULT_PORT;
   }
   return n;
@@ -61,7 +63,9 @@ async function main(): Promise<number> {
     process.stdout.write(`sprites:gallery sidecar listening on ${url}\n`);
     process.stdout.write(`  repoRoot: ${repoRoot}\n`);
     process.stdout.write(`  runsDir : ${runsDir}\n`);
-    process.stdout.write(`  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file\n`);
+    process.stdout.write(
+      `  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file\n`,
+    );
     return 0;
   } catch (err) {
     process.stderr.write(`sprites:gallery sidecar: failed to bind ${HOST}:${port}\n`);

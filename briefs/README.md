@@ -19,11 +19,11 @@ description: |
   down. ... (visual details that the model can act on)
 ```
 
-| Field | What it does |
-| --- | --- |
-| `type` | One of `weapon`, `enemy`, `item`, `tile`, `vfx`, `character`. Picks the per-type defaults file at `data/sprite-types/<type>.json`. |
-| `name` | Lowercase kebab-case. Becomes the brief id and the output folder name under `generated/`. |
-| `description` | Free-form prose. Becomes the `## Subject` block in the prompt and is the primary signal the model gets about what to draw. |
+| Field         | What it does                                                                                                                       |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `type`        | One of `weapon`, `enemy`, `item`, `tile`, `vfx`, `character`. Picks the per-type defaults file at `data/sprite-types/<type>.json`. |
+| `name`        | Lowercase kebab-case. Becomes the brief id and the output folder name under `generated/`.                                          |
+| `description` | Free-form prose. Becomes the `## Subject` block in the prompt and is the primary signal the model gets about what to draw.         |
 
 Everything else — `size`, `palette`, `anchor`, `references`, sheet layout,
 sensor thresholds, even `prompt` — comes from `data/sprite-types/<type>.json`

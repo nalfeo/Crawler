@@ -98,6 +98,7 @@ brief are easy to compare and never collide.
 ## Provider env
 
 The factory reads:
+
 - `AZURE_OPENAI_ENDPOINT` (required)
 - `AZURE_OPENAI_API_KEY` (required)
 - `AZURE_OPENAI_IMAGE_DEPLOYMENT` (default `gpt-image-1`)

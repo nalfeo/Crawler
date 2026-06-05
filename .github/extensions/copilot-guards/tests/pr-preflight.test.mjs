@@ -1,114 +1,125 @@
-import test from "node:test";
-import assert from "node:assert/strict";
+import test from 'node:test';
+import assert from 'node:assert/strict';
 import {
-    checkSemanticTitle,
-    checkHandoff,
-    checkForbiddenPaths,
-    checkCrossSystemAdr,
-    CONVENTIONAL_TITLE_RE,
-    HANDOFF_DATED_RE,
-    TRIVIAL_PATH_RE,
-} from "../guards/pr-preflight.mjs";
+  checkSemanticTitle,
+  checkHandoff,
+  checkForbiddenPaths,
+  checkCrossSystemAdr,
+  CONVENTIONAL_TITLE_RE,
+  HANDOFF_DATED_RE,
+  TRIVIAL_PATH_RE,
+} from '../guards/pr-preflight.mjs';
 
-test("CONVENTIONAL_TITLE_RE accepts every allowed type", () => {
-    for (const t of ["feat", "fix", "chore", "lab", "docs", "refactor", "test", "perf", "ci", "build"]) {
-        assert.match(`${t}: subject`, CONVENTIONAL_TITLE_RE);
-        assert.match(`${t}(scope): subject`, CONVENTIONAL_TITLE_RE);
-        assert.match(`${t}!: subject`, CONVENTIONAL_TITLE_RE);
-        assert.match(`${t}(scope)!: subject`, CONVENTIONAL_TITLE_RE);
-    }
+test('CONVENTIONAL_TITLE_RE accepts every allowed type', () => {
+  for (const t of [
+    'feat',
+    'fix',
+    'chore',
+    'lab',
+    'docs',
+    'refactor',
+    'test',
+    'perf',
+    'ci',
+    'build',
+  ]) {
+    assert.match(`${t}: subject`, CONVENTIONAL_TITLE_RE);
+    assert.match(`${t}(scope): subject`, CONVENTIONAL_TITLE_RE);
+    assert.match(`${t}!: subject`, CONVENTIONAL_TITLE_RE);
+    assert.match(`${t}(scope)!: subject`, CONVENTIONAL_TITLE_RE);
+  }
 });
 
-test("CONVENTIONAL_TITLE_RE rejects invalid", () => {
-    assert.doesNotMatch("style: foo", CONVENTIONAL_TITLE_RE);
-    assert.doesNotMatch("Feat: capitalized", CONVENTIONAL_TITLE_RE);
-    assert.doesNotMatch("feat:nospace", CONVENTIONAL_TITLE_RE);
-    assert.doesNotMatch("just a sentence", CONVENTIONAL_TITLE_RE);
+test('CONVENTIONAL_TITLE_RE rejects invalid', () => {
+  assert.doesNotMatch('style: foo', CONVENTIONAL_TITLE_RE);
+  assert.doesNotMatch('Feat: capitalized', CONVENTIONAL_TITLE_RE);
+  assert.doesNotMatch('feat:nospace', CONVENTIONAL_TITLE_RE);
+  assert.doesNotMatch('just a sentence', CONVENTIONAL_TITLE_RE);
 });
 
-test("checkSemanticTitle reports missing and bad titles", () => {
-    assert.ok(checkSemanticTitle({ title: "" }));
-    assert.ok(checkSemanticTitle({ title: "Some Title" }));
-    assert.equal(checkSemanticTitle({ title: "feat(guards): add stuff" }), null);
+test('checkSemanticTitle reports missing and bad titles', () => {
+  assert.ok(checkSemanticTitle({ title: '' }));
+  assert.ok(checkSemanticTitle({ title: 'Some Title' }));
+  assert.equal(checkSemanticTitle({ title: 'feat(guards): add stuff' }), null);
 });
 
-test("HANDOFF_DATED_RE matches required form", () => {
-    assert.match("docs/knowledge/handoffs/2026-06-04-enforcement-hooks.md", HANDOFF_DATED_RE);
-    assert.match("docs\\knowledge\\handoffs\\2025-12-31-final.md", HANDOFF_DATED_RE);
-    assert.doesNotMatch("docs/knowledge/handoffs/no-date.md", HANDOFF_DATED_RE);
-    assert.doesNotMatch("docs/knowledge/handoffs/2026-06-04.md", HANDOFF_DATED_RE);
+test('HANDOFF_DATED_RE matches required form', () => {
+  assert.match('docs/knowledge/handoffs/2026-06-04-enforcement-hooks.md', HANDOFF_DATED_RE);
+  assert.match('docs\\knowledge\\handoffs\\2025-12-31-final.md', HANDOFF_DATED_RE);
+  assert.doesNotMatch('docs/knowledge/handoffs/no-date.md', HANDOFF_DATED_RE);
+  assert.doesNotMatch('docs/knowledge/handoffs/2026-06-04.md', HANDOFF_DATED_RE);
 });
 
-test("TRIVIAL_PATH_RE classifies docs-only diffs", () => {
-    assert.match("docs/foo.md", TRIVIAL_PATH_RE);
-    assert.match("README.md", TRIVIAL_PATH_RE);
-    assert.match("package-lock.json", TRIVIAL_PATH_RE);
-    assert.match("package.json", TRIVIAL_PATH_RE);
-    assert.match(".github/workflows/ci.yml", TRIVIAL_PATH_RE);
-    assert.doesNotMatch("src/core/foo.ts", TRIVIAL_PATH_RE);
+test('TRIVIAL_PATH_RE classifies docs-only diffs', () => {
+  assert.match('docs/foo.md', TRIVIAL_PATH_RE);
+  assert.match('README.md', TRIVIAL_PATH_RE);
+  assert.match('package-lock.json', TRIVIAL_PATH_RE);
+  assert.match('package.json', TRIVIAL_PATH_RE);
+  assert.match('.github/workflows/ci.yml', TRIVIAL_PATH_RE);
+  assert.doesNotMatch('src/core/foo.ts', TRIVIAL_PATH_RE);
 });
 
-test("checkHandoff allows trivial diffs without handoff", () => {
-    assert.equal(checkHandoff(["docs/foo.md", "README.md"], []), null);
+test('checkHandoff allows trivial diffs without handoff', () => {
+  assert.equal(checkHandoff(['docs/foo.md', 'README.md'], []), null);
 });
 
-test("checkHandoff requires handoff for code diffs", () => {
-    assert.ok(checkHandoff(["src/core/foo.ts"], []));
+test('checkHandoff requires handoff for code diffs', () => {
+  assert.ok(checkHandoff(['src/core/foo.ts'], []));
 });
 
-test("checkHandoff passes when a NEW handoff is added", () => {
-    assert.equal(
-        checkHandoff(
-            ["src/core/foo.ts", "docs/knowledge/handoffs/2026-06-04-test.md"],
-            ["docs/knowledge/handoffs/2026-06-04-test.md"],
-        ),
-        null,
-    );
+test('checkHandoff passes when a NEW handoff is added', () => {
+  assert.equal(
+    checkHandoff(
+      ['src/core/foo.ts', 'docs/knowledge/handoffs/2026-06-04-test.md'],
+      ['docs/knowledge/handoffs/2026-06-04-test.md'],
+    ),
+    null,
+  );
 });
 
-test("checkHandoff rejects merely-edited existing handoff", () => {
-    // The handoff file appears in `files` (modified) but NOT in
-    // `addedFiles`. Editing an old handoff must not satisfy the guard.
-    const result = checkHandoff(
-        ["src/core/foo.ts", "docs/knowledge/handoffs/2026-01-01-old.md"],
-        [], // nothing added
-    );
-    assert.ok(result, "expected deny when handoff is edited, not added");
-    assert.match(result, /Editing an existing handoff does not count/);
+test('checkHandoff rejects merely-edited existing handoff', () => {
+  // The handoff file appears in `files` (modified) but NOT in
+  // `addedFiles`. Editing an old handoff must not satisfy the guard.
+  const result = checkHandoff(
+    ['src/core/foo.ts', 'docs/knowledge/handoffs/2026-01-01-old.md'],
+    [], // nothing added
+  );
+  assert.ok(result, 'expected deny when handoff is edited, not added');
+  assert.match(result, /Editing an existing handoff does not count/);
 });
 
-test("checkHandoff deny message points to full policy path", () => {
-    const result = checkHandoff(["src/core/foo.ts"], []);
-    assert.match(result, /docs\/agent-os\/policies\/memory-policy\.md/);
+test('checkHandoff deny message points to full policy path', () => {
+  const result = checkHandoff(['src/core/foo.ts'], []);
+  assert.match(result, /docs\/agent-os\/policies\/memory-policy\.md/);
 });
 
-test("checkForbiddenPaths catches secrets", () => {
-    assert.ok(checkForbiddenPaths([".env"]));
-    assert.ok(checkForbiddenPaths([".env.local"]));
-    assert.ok(checkForbiddenPaths(["secrets/id_rsa"]));
-    assert.ok(checkForbiddenPaths(["certs/server.pem"]));
-    assert.ok(checkForbiddenPaths(["session-state/foo"]));
-    assert.ok(checkForbiddenPaths([".copilot/repos/foo"]));
+test('checkForbiddenPaths catches secrets', () => {
+  assert.ok(checkForbiddenPaths(['.env']));
+  assert.ok(checkForbiddenPaths(['.env.local']));
+  assert.ok(checkForbiddenPaths(['secrets/id_rsa']));
+  assert.ok(checkForbiddenPaths(['certs/server.pem']));
+  assert.ok(checkForbiddenPaths(['session-state/foo']));
+  assert.ok(checkForbiddenPaths(['.copilot/repos/foo']));
 });
 
-test("checkForbiddenPaths allows normal files", () => {
-    assert.equal(checkForbiddenPaths(["src/core/foo.ts", "README.md"]), null);
+test('checkForbiddenPaths allows normal files', () => {
+  assert.equal(checkForbiddenPaths(['src/core/foo.ts', 'README.md']), null);
 });
 
-test("checkCrossSystemAdr warns when 2+ layers and no ADR", () => {
-    const warn = checkCrossSystemAdr(["src/core/a.ts", "src/game/b.ts"]);
-    assert.ok(warn);
+test('checkCrossSystemAdr warns when 2+ layers and no ADR', () => {
+  const warn = checkCrossSystemAdr(['src/core/a.ts', 'src/game/b.ts']);
+  assert.ok(warn);
 });
 
-test("checkCrossSystemAdr silent when only one layer", () => {
-    assert.equal(checkCrossSystemAdr(["src/core/a.ts", "src/core/b.ts"]), null);
+test('checkCrossSystemAdr silent when only one layer', () => {
+  assert.equal(checkCrossSystemAdr(['src/core/a.ts', 'src/core/b.ts']), null);
 });
 
-test("checkCrossSystemAdr silent when ADR added", () => {
-    const r = checkCrossSystemAdr([
-        "src/core/a.ts",
-        "src/game/b.ts",
-        "docs/knowledge/adr/0001-cross-cutting-change.md",
-    ]);
-    assert.equal(r, null);
+test('checkCrossSystemAdr silent when ADR added', () => {
+  const r = checkCrossSystemAdr([
+    'src/core/a.ts',
+    'src/game/b.ts',
+    'docs/knowledge/adr/0001-cross-cutting-change.md',
+  ]);
+  assert.equal(r, null);
 });
