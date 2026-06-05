@@ -160,6 +160,15 @@ export default {
     },
     async check(toolArgs, ctx) {
         const cwd = ctx?.cwd || process.cwd();
+
+        // Debug: log the shape of toolArgs so we can diagnose title extraction issues
+        if (!toolArgs?.title) {
+            await ctx?.log?.(
+                `[pr-preflight] toolArgs shape: ${JSON.stringify(Object.keys(toolArgs || {}))}, type: ${typeof toolArgs}`,
+                { level: "info" },
+            ).catch(() => {});
+        }
+
         let files;
         let addedFiles;
         try {

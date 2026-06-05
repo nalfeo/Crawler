@@ -11,6 +11,7 @@
 //   - guards that throw are logged and treated per their failClosed flag
 
 import { isGuardEnabled, bypassReason, guardSeverity } from "./config.mjs";
+import { emitGuardTelemetry } from "./telemetry.mjs";
 
 /**
  * @typedef {Object} GuardResult
@@ -47,6 +48,13 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
             await safeLog(ctx, `guard ${guard.id} bypassed (${reason})`, {
                 level: "warning",
             });
+            await emitGuardTelemetry(ctx.log, {
+                guard_id: guard.id,
+                tool_name: toolName,
+                decision: "bypass",
+                bypass_used: true,
+                bypass_reason: reason,
+            });
             continue;
         }
 
@@ -56,6 +64,12 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
         } catch (err) {
             await safeLog(ctx, `guard ${guard.id} crashed: ${err.message}`, {
                 level: "error",
+            });
+            await emitGuardTelemetry(ctx.log, {
+                guard_id: guard.id,
+                tool_name: toolName,
+                decision: "crash",
+                reason: err.message,
             });
             if (guard.failClosed) {
                 return {
@@ -68,6 +82,11 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
 
         if (!result || result.decision === "skip" || result.decision === "allow") {
             if (result?.additionalContext) additionalContexts.push(result.additionalContext);
+            await emitGuardTelemetry(ctx.log, {
+                guard_id: guard.id,
+                tool_name: toolName,
+                decision: result?.decision || "skip",
+            });
             continue;
         }
 
@@ -83,6 +102,13 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
         if (decision === "deny" && guardSeverity(guard.id, "deny") === "ask") {
             decision = "ask";
         }
+
+        await emitGuardTelemetry(ctx.log, {
+            guard_id: guard.id,
+            tool_name: toolName,
+            decision,
+            reason: result.reason,
+        });
 
         if (decision === "deny") {
             if (guard.category === "pr") {
