@@ -162,6 +162,98 @@ export function labTuningSavePlugin(): Plugin {
         });
       });
 
+      server.middlewares.use('/__sprite-catalog-add', (req, res) => {
+        if (!enforceLocalOnly(req, res)) {
+          return;
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        req.on('end', () => {
+          try {
+            const payload = JSON.parse(body) as { entries: unknown[] };
+            if (!Array.isArray(payload.entries) || payload.entries.length === 0) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Missing or empty "entries" array.' }));
+              return;
+            }
+
+            const catalogPath = resolve(DATA_DIR, 'sprite-catalog.json');
+            const raw = JSON.parse(readFileSync(catalogPath, 'utf-8'));
+            const catalog = parseSpriteCatalog(raw);
+            const existingIds = new Set(catalog.map((e: SpriteCatalogRecord) => e.id));
+            const existingFrames = new Set(
+              catalog
+                .filter((e: SpriteCatalogRecord) => e.kind === 'sprite')
+                .map((e: SpriteCatalogRecord) =>
+                  e.kind === 'sprite' ? `${e.sheetKey}:${e.frame}` : '',
+                ),
+            );
+
+            // Validate new entries and skip duplicates
+            const toAdd: SpriteCatalogRecord[] = [];
+            const skipped: string[] = [];
+
+            for (const entry of payload.entries) {
+              const record = entry as Record<string, unknown>;
+              const id = record['id'] as string;
+              if (existingIds.has(id)) {
+                skipped.push(id);
+                continue;
+              }
+              if (
+                record['kind'] === 'sprite' &&
+                existingFrames.has(`${record['sheetKey']}:${record['frame']}`)
+              ) {
+                skipped.push(id);
+                continue;
+              }
+              toAdd.push(record as unknown as SpriteCatalogRecord);
+            }
+
+            if (toAdd.length === 0) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, added: 0, skipped: skipped.length }));
+              return;
+            }
+
+            const merged = [...catalog, ...toAdd];
+            // Sort: sheets first, then sprites alphabetically
+            merged.sort((a, b) => {
+              const kindCmp = (a.kind === 'sheet' ? 0 : 1) - (b.kind === 'sheet' ? 0 : 1);
+              if (kindCmp !== 0) return kindCmp;
+              return a.id.localeCompare(b.id);
+            });
+
+            // Validate full catalog
+            const validated = parseSpriteCatalog(merged);
+            writeFileSync(catalogPath, JSON.stringify(validated, null, 2) + '\n', 'utf-8');
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({ ok: true, added: toAdd.length, skipped: skipped.length }),
+            );
+          } catch (err) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                error: err instanceof Error ? err.message : 'Unknown error',
+              }),
+            );
+          }
+        });
+      });
+
       server.middlewares.use('/__sprite-metadata-run', (req, res) => {
         if (!enforceLocalOnly(req, res)) {
           return;
