@@ -33,11 +33,11 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { briefSchema, variantCount, type Brief, type PaletteColors } from './brief-schema.js';
+import { variantCount } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { postprocess } from './postprocess.js';
-import { scoreCandidate, type Scorecard } from './score-candidate.js';
+import { scoreCandidate } from './score-candidate.js';
 import { sliceSheetFromBrief } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
 import { ProviderError } from './provider/types.js';
@@ -189,6 +189,5 @@ function asProviderError(err: unknown): ProviderError {
   return new ProviderError('provider-error', message, err ? { cause: err } : undefined);
 }
 
-// Re-exports so callers (CLI, tests) can have one import.
-export { briefSchema };
-export type { Brief, PaletteColors, Scorecard };
+// (No public re-exports — each consumer imports directly from the relevant
+// pure module. Keeps the orchestrator surface area minimal.)
