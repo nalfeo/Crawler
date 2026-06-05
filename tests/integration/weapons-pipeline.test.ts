@@ -48,6 +48,7 @@ const SWORD_BRIEF: Brief = {
   ],
   generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
   sensors: {},
+  variations: [],
 };
 
 function runAllSensors(

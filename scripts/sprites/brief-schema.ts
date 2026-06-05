@@ -141,6 +141,19 @@ export const briefSchema = z
       .min(2, 'references must contain at least 2 entries (F2.3)'),
     generation: generationSchema,
     sensors: sensorOverridesSchema,
+    /**
+     * Optional discrete on-theme embellishments the model is invited to
+     * distribute across cells (one per cell, never combined). Free-form
+     * natural language so authors can iterate without schema churn.
+     *
+     * Use this for thematic variety that the continuous "vary along
+     * silhouette / shading / material" axes in the sheet prompt cannot
+     * express — e.g. "spiked iron pommel at the base", "wolf skull
+     * instead of human skull". Leave empty/undefined for briefs where
+     * the subject must stay strictly canonical (e.g. icons matching
+     * existing in-game art).
+     */
+    variations: z.array(z.string().min(1)).max(20).default([]),
   })
   .strict()
   .superRefine((brief, ctx) => {

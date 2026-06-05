@@ -162,3 +162,49 @@ describe('buildSheetPrompt', () => {
     expect(layoutIdx).toBeGreaterThan(subjectIdx);
   });
 });
+
+describe('buildSheetPrompt — thematic variations', () => {
+  it('omits the variations block entirely when none are declared', () => {
+    const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
+    expect(out).not.toMatch(/## Thematic variations/);
+    expect(out).not.toMatch(/on-theme embellishments/);
+  });
+
+  it('emits the variations block with bullets in declared order', () => {
+    const brief = makeBrief({
+      variations: ['spiked pommel', 'wolf skull', 'rune-etched band'],
+    } as Partial<Brief>);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/## Thematic variations/);
+    // The hard rails that stop the model from inventing or stacking variations.
+    expect(out).toMatch(/Do not combine/i);
+    expect(out).toMatch(/Do not invent variations outside this list/i);
+    expect(out).toMatch(/Most cells.*ONE.*variations/);
+    // Bullets in declared order, each prefixed with "- ".
+    const spikedIdx = out.indexOf('- spiked pommel');
+    const wolfIdx = out.indexOf('- wolf skull');
+    const runeIdx = out.indexOf('- rune-etched band');
+    expect(spikedIdx).toBeGreaterThan(-1);
+    expect(wolfIdx).toBeGreaterThan(spikedIdx);
+    expect(runeIdx).toBeGreaterThan(wolfIdx);
+  });
+
+  it('places the variations block between the layout block and the per-variant constraints', () => {
+    const brief = makeBrief({ variations: ['spiked pommel'] } as Partial<Brief>);
+    const out = buildSheetPrompt(brief, FAKE_STYLE_GUIDE);
+    const layoutIdx = out.indexOf('## Sheet layout');
+    const variationsIdx = out.indexOf('## Thematic variations');
+    const constraintsIdx = out.indexOf('## Per-variant requirements');
+    expect(layoutIdx).toBeGreaterThan(-1);
+    expect(variationsIdx).toBeGreaterThan(layoutIdx);
+    expect(constraintsIdx).toBeGreaterThan(variationsIdx);
+  });
+
+  it('does not emit the variations block in single-image (non-sheet) mode', () => {
+    // Single mode generates one image, so "distribute across cells" is
+    // semantically meaningless — the block must stay out of buildPrompt.
+    const brief = makeBrief({ variations: ['spiked pommel'] } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).not.toMatch(/## Thematic variations/);
+  });
+});

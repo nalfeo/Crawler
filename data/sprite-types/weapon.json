@@ -18,6 +18,7 @@
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
   },
   "sensors": {
-    "weapon": { "orientation": "vertical" }
+    "$comment": "diagonalToleranceDeg is a misnomer: it controls the half-width of the acceptance window around the requested principal-axis orientation (vertical here, diagonal elsewhere). At 16x16 native rendered upsteam to 1024px and back, the 4x4 grid model regularly hits 86-87° instead of dead 90°, so we accept ±5° around vertical. Sensor tightening is a separate axis from prompt strictness — the prompt still asks for 'perfectly vertical'.",
+    "weapon": { "orientation": "vertical", "diagonalToleranceDeg": 5 }
   }
 }

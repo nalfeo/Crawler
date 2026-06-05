@@ -85,12 +85,14 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const cols = brief.generation.sheet.cols;
   const emptyCells = brief.generation.sheet.emptyCells;
   const count = variants ?? variantCount(brief);
+  const variationsBlock = thematicVariationsBlock(brief.variations);
   return [
     styleGuide,
     '',
     briefSubjectBlock(brief),
     '',
     sheetLayoutBlock(rows, cols, count, emptyCells),
+    ...(variationsBlock ? ['', variationsBlock] : []),
     '',
     sheetConstraintsBlock(),
   ].join('\n');
@@ -141,6 +143,27 @@ function sheetLayoutBlock(
     'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose / angle within the orientation rule, internal detail density, shading direction, individual material choices that stay inside the palette (e.g. a different brown for a wrapped hilt, a different grey for steel). DO NOT vary along: art style, outline thickness, palette / color family, subject identity, orientation, level of stylization. If the subject description is short or leaves room for interpretation, lean into the variation axes above so the sheet covers the design space rather than producing 16 near-duplicates.',
   );
   return lines.join('\n');
+}
+
+/**
+ * Optional thematic-variations block — emitted only when the brief lists
+ * concrete on-theme embellishments. The block sits between the layout
+ * block (which fixes count/grid/orientation) and the per-variant
+ * constraints block (which fixes square/no-text/no-borders) so the model
+ * reads "here's WHAT to do" → "here are the SPECIFIC variations" → "here
+ * are the FORMATTING rules" in that order.
+ *
+ * Returns `null` when no variations are declared so the caller can skip
+ * the surrounding blank line cleanly.
+ */
+function thematicVariationsBlock(variations: ReadonlyArray<string>): string | null {
+  if (variations.length === 0) return null;
+  const bullets = variations.map((v) => `- ${v.trim()}`).join('\n');
+  return [
+    '## Thematic variations',
+    "The subject's core identity must stay intact (silhouette, palette, orientation, and overall composition unchanged). Distribute the following on-theme embellishments across the cells. Most cells should incorporate exactly ONE of these variations; a few cells should remain baseline (no extra embellishment). Do not combine multiple embellishments in the same cell. Do not invent variations outside this list.",
+    bullets,
+  ].join('\n');
 }
 
 function sheetConstraintsBlock(): string {
