@@ -165,6 +165,9 @@ export function renderLabIndex(): void {
   canvas.replaceChildren();
   controls.replaceChildren();
 
+  // Clear any inline style overrides so #lab-canvas reverts to its stylesheet/flex defaults.
+  canvas.style.cssText = '';
+
   const labs = [...getAllLabs().entries()].sort(([leftId], [rightId]) =>
     leftId.localeCompare(rightId),
   );
