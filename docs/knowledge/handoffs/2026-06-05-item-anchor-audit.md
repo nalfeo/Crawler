@@ -121,3 +121,17 @@ over any declared anchor.
 - **Validator takes frame dimensions as parameters.** The sprite-pipeline brief
   schema already supports arbitrary `size.width/height`; hardcoding 16×16 in
   the validator would falsely reject anchors on future larger sprites.
+
+## Forward Integration Note
+
+The sprite-generation pipeline already carries an `anchor: { x, y }` field on
+each brief (`scripts/sprites/brief-schema.ts`), e.g. the iron-sword brief
+overrides to `{ 5, 12 }` because diagonal weapons grip in the bottom-left
+rather than bottom-center. The brief anchor and `SpriteDef.anchor` use the
+same coordinate system and semantics (pixel offset in the sprite's native
+frame), so when the pipeline lands and generated sprites are promoted into
+`SpriteDef` entries, the brief's `anchor` should flow directly into the
+registry entry's `anchor` field. No translation needed — same value, same
+meaning. The optional-on-`SpriteDef` shape means sprites without a brief
+override (or pre-pipeline registry entries) keep falling back to
+`DEFAULT_HANDHELD_SPRITE_ANCHOR` via `resolveHandheldAnchor()`.
