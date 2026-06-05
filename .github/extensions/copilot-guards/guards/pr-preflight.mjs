@@ -56,7 +56,17 @@ function isLayerHit(files, re) {
 }
 
 function checkSemanticTitle(args) {
-    const title = String(args?.title || "").trim();
+    // toolArgs may arrive as a string (JSON-serialized), a nested object,
+    // or with the title at the top level. Handle all shapes defensively.
+    let resolved = args;
+    if (typeof resolved === "string") {
+        try {
+            resolved = JSON.parse(resolved);
+        } catch {
+            /* not JSON, treat as-is */
+        }
+    }
+    const title = String(resolved?.title || "").trim();
     if (!title) {
         return "PR title is empty. Use a conventional-commit-style title: `<type>(scope?): <subject>` where type is one of feat|fix|chore|lab|docs|refactor|test|perf|ci|build.";
     }
@@ -129,6 +139,15 @@ export default {
     },
     async check(toolArgs, ctx) {
         const cwd = ctx?.cwd || process.cwd();
+
+        // Debug: log the shape of toolArgs so we can diagnose title extraction issues
+        if (!toolArgs?.title) {
+            await ctx?.log?.(
+                `[pr-preflight] toolArgs shape: ${JSON.stringify(Object.keys(toolArgs || {}))}, type: ${typeof toolArgs}`,
+                { level: "info" },
+            ).catch(() => {});
+        }
+
         let files;
         let addedFiles;
         try {
