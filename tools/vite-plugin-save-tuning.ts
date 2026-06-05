@@ -19,10 +19,7 @@ import {
   resolveProvider,
   type MetadataProviderMode,
 } from '../scripts/sprites/metadata-pipeline.js';
-import {
-  parseSpriteCatalog,
-  type SpriteCatalogRecord,
-} from '../src/shared/sprite-catalog.js';
+import { parseSpriteCatalog, type SpriteCatalogRecord } from '../src/shared/sprite-catalog.js';
 
 const DATA_DIR = resolve(__dirname, '../src/shared/data');
 const REPO_ROOT = resolve(__dirname, '..');
@@ -121,17 +118,13 @@ export function labTuningSavePlugin(): Plugin {
 
             if (Array.isArray(data) && !payload.id) {
               res.statusCode = 400;
-              res.end(
-                JSON.stringify({ error: 'Array-based files require an "id" field' }),
-              );
+              res.end(JSON.stringify({ error: 'Array-based files require an "id" field' }));
               return;
             }
 
             if (Array.isArray(data) && payload.id) {
               // Array-based file (weapons.json): find by id and patch
-              const item = (data as Record<string, unknown>[]).find(
-                (d) => d['id'] === payload.id,
-              );
+              const item = (data as Record<string, unknown>[]).find((d) => d['id'] === payload.id);
               if (!item) {
                 res.statusCode = 404;
                 res.end(JSON.stringify({ error: `Item "${payload.id}" not found` }));
@@ -209,6 +202,15 @@ export function labTuningSavePlugin(): Plugin {
 
             const raw = JSON.parse(readFileSync(absoluteCatalogPath, 'utf-8'));
             const catalog = parseSpriteCatalog(raw);
+            const existingEntry = catalog.find(
+              (entry: SpriteCatalogRecord) => entry.id === payload.id,
+            );
+            if (!existingEntry) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: `Catalog entry "${payload.id}" not found.` }));
+              return;
+            }
             const provider = await resolveProvider(payload.provider ?? 'auto');
             const result = await runMetadataPipeline(catalog, {
               provider,
@@ -216,7 +218,11 @@ export function labTuningSavePlugin(): Plugin {
               force: payload.force ?? true,
               minScore: payload.minScore,
             });
-            writeFileSync(absoluteCatalogPath, JSON.stringify(result.updated, null, 2) + '\n', 'utf-8');
+            writeFileSync(
+              absoluteCatalogPath,
+              JSON.stringify(result.updated, null, 2) + '\n',
+              'utf-8',
+            );
 
             const updatedEntry = result.updated.find(
               (entry: SpriteCatalogRecord) => entry.id === payload.id,

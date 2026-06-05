@@ -99,5 +99,5 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error: unknown) => {
-  renderFatal(error instanceof Error ? error.stack ?? error.message : String(error));
+  renderFatal(error instanceof Error ? (error.stack ?? error.message) : String(error));
 });

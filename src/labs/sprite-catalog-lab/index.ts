@@ -108,7 +108,12 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   const writeCapability = getRepoWriteCapability();
   const writeFolder = gui.addFolder('Write Back');
   writeFolder
-    .add({ mode: writeCapability.enabled ? 'enabled (local)' : `disabled (${writeCapability.reason})` }, 'mode')
+    .add(
+      {
+        mode: writeCapability.enabled ? 'enabled (local)' : `disabled (${writeCapability.reason})`,
+      },
+      'mode',
+    )
     .name('Repo writes')
     .disable();
   writeFolder
@@ -227,7 +232,12 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     }
 
     const tags = splitCommaValue(tagsInput);
-    const saveDescription = await saveTuning(CATALOG_FILE, 'description', description.trim(), entry.id);
+    const saveDescription = await saveTuning(
+      CATALOG_FILE,
+      'description',
+      description.trim(),
+      entry.id,
+    );
     if (!saveDescription.ok) {
       status.textContent = `Save failed: ${saveDescription.error ?? 'unknown error'}`;
       return;
@@ -420,7 +430,13 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
         'rgba(126,224,255,0.2)',
       );
       saveButton.addEventListener('click', async () => {
-        await saveEntry(selected, descriptionInput.value, tagsInput.value, connectsInput.value, clips.value);
+        await saveEntry(
+          selected,
+          descriptionInput.value,
+          tagsInput.value,
+          connectsInput.value,
+          clips.value,
+        );
       });
       detailPanel.append(saveButton);
 
@@ -464,7 +480,13 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
       'rgba(126,224,255,0.2)',
     );
     saveButton.addEventListener('click', async () => {
-      await saveEntry(selected, descriptionInput.value, tagsInput.value, connectsToInput, clipsInput);
+      await saveEntry(
+        selected,
+        descriptionInput.value,
+        tagsInput.value,
+        connectsToInput,
+        clipsInput,
+      );
     });
     detailPanel.append(saveButton);
 

@@ -167,7 +167,11 @@ function buildHeuristicTags(entry: SpriteCatalogRecord): string[] {
   const tags = new Set<string>(entry.tags);
   tags.add(entry.kind);
 
-  const entryTokens = [...tokenized(entry.id), ...tokenized(entry.label), ...tokenized(entry.sheetKey)];
+  const entryTokens = [
+    ...tokenized(entry.id),
+    ...tokenized(entry.label),
+    ...tokenized(entry.sheetKey),
+  ];
   for (const token of entryTokens) {
     if (
       token === 'enemy' ||
@@ -314,7 +318,9 @@ function createOpenAiProviderFromEnv(): MetadataProvider {
   const authScheme = process.env.SPRITE_METADATA_AUTH_SCHEME?.trim() || 'Bearer';
   const model = process.env.SPRITE_METADATA_MODEL?.trim();
 
-  const send = async (messages: Array<{ role: 'system' | 'user'; content: string }>): Promise<string> => {
+  const send = async (
+    messages: Array<{ role: 'system' | 'user'; content: string }>,
+  ): Promise<string> => {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       [authHeader]: authScheme ? `${authScheme} ${apiKey}` : apiKey,

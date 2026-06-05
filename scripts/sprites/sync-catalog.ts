@@ -1,7 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { SHEETS, SPRITES, type SpriteDef, type SpriteSheetDef } from '../../src/engine/sprites/index.js';
+import {
+  SHEETS,
+  SPRITES,
+  type SpriteDef,
+  type SpriteSheetDef,
+} from '../../src/engine/sprites/index.js';
 import {
   ensureSentence,
   parseSpriteCatalog,
@@ -133,7 +138,9 @@ export function syncCatalog(
       existingEntry && existingEntry.kind === 'sprite' ? existingEntry : undefined;
     const cols = sheetCols.get(sprite.sheetKey);
     if (!cols) {
-      throw new Error(`Cannot sync sprite "${sprite.id}" because sheet "${sprite.sheetKey}" is missing.`);
+      throw new Error(
+        `Cannot sync sprite "${sprite.id}" because sheet "${sprite.sheetKey}" is missing.`,
+      );
     }
     next.push(buildSpriteEntry(sprite, normalizedExisting, cols));
   }
