@@ -198,10 +198,12 @@ export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSumm
 
 /**
  * Pick the top-ranked candidate and resolve its anchor:
- *   - When the variant carries a `derivedAnchor`, surface that with
- *     `source: 'derived'` (the brief opted into per-variant derivation).
- *   - Otherwise fall back to the brief's static `anchor` pixel with
- *     `source: 'brief'`.
+ *   - In legacy mode (brief did not opt into `sensors.anchor.derive`), the
+ *     static `brief.anchor` pixel applies to every variant.
+ *   - In derive mode, only a `derivedAnchor` from the variant is a valid
+ *     anchor — `brief.anchor` is informational and must not be surfaced.
+ *     If derivation failed for the top variant, `anchor` is null so
+ *     downstream consumers see the failure instead of a wrong static value.
  *
  * Returns null when `ranked` is empty. Pure.
  */
@@ -211,9 +213,15 @@ export function pickChosen(
 ): ChosenCandidate | null {
   const top = ranked[0];
   if (!top) return null;
-  const anchor: ChosenAnchor = top.derivedAnchor
-    ? { x: top.derivedAnchor.x, y: top.derivedAnchor.y, source: 'derived' }
-    : { x: brief.anchor.x, y: brief.anchor.y, source: 'brief' };
+  const deriveMode = brief.sensors.anchor?.derive === true;
+  let anchor: ChosenAnchor | null;
+  if (top.derivedAnchor) {
+    anchor = { x: top.derivedAnchor.x, y: top.derivedAnchor.y, source: 'derived' };
+  } else if (deriveMode) {
+    anchor = null;
+  } else {
+    anchor = { x: brief.anchor.x, y: brief.anchor.y, source: 'brief' };
+  }
   return {
     index: top.index,
     score: top.score,

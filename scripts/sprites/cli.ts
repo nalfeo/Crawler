@@ -212,21 +212,39 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
         };
       }
       const selectionPath = path.join(result.runDir, 'selection.json');
-      // When the picked variant matches the auto-chosen top candidate, use the
-      // anchor that's already been resolved (brief vs derived). Otherwise fall
-      // back to the variant's own derivedAnchor, or — for legacy briefs —
-      // null. Downstream tools that need an anchor for a non-top pick can
-      // still find it via the per-variant scorecard.
-      const pickedAnchor =
-        result.summary.chosen && result.summary.chosen.index === picked.index
-          ? result.summary.chosen.anchor
-          : picked.derivedAnchor
-            ? {
-                x: picked.derivedAnchor.x,
-                y: picked.derivedAnchor.y,
-                source: 'derived' as const,
-              }
-            : null;
+      // Resolve the anchor surfaced in selection.json:
+      //   - In derive mode (brief opted into `sensors.anchor.derive`), only
+      //     a per-variant derivedAnchor is valid — `brief.anchor` is
+      //     informational and must NOT be surfaced. If the picked variant
+      //     has no derivedAnchor, anchor is null so downstream tools see the
+      //     failure rather than a wrong static value.
+      //   - In legacy mode, the static `brief.anchor` applies to every
+      //     variant, so it's surfaced regardless of which variant was picked.
+      //   - When the picked variant matches the auto-chosen top, the already
+      //     resolved `chosen.anchor` is preferred so the two artifacts agree.
+      const deriveMode = result.brief.sensors.anchor?.derive === true;
+      let pickedAnchor: {
+        readonly x: number;
+        readonly y: number;
+        readonly source: 'derived' | 'brief';
+      } | null;
+      if (result.summary.chosen && result.summary.chosen.index === picked.index) {
+        pickedAnchor = result.summary.chosen.anchor;
+      } else if (picked.derivedAnchor) {
+        pickedAnchor = {
+          x: picked.derivedAnchor.x,
+          y: picked.derivedAnchor.y,
+          source: 'derived' as const,
+        };
+      } else if (deriveMode) {
+        pickedAnchor = null;
+      } else {
+        pickedAnchor = {
+          x: result.brief.anchor.x,
+          y: result.brief.anchor.y,
+          source: 'brief' as const,
+        };
+      }
       writeFileSync(
         selectionPath,
         `${JSON.stringify(

@@ -180,5 +180,31 @@ describe('loadBrief', () => {
       writeFileSync(path.join(root, 'data', 'sprite-types', 'weapon.json'), '{ not valid json');
       expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/not valid JSON/);
     });
+
+    it('does not mask a malformed brief sensors block by replacing it with defaults', () => {
+      // If the brief author wrote `sensors: null` or `sensors: "oops"`, we
+      // must NOT quietly replace it with sprite-type defaults — that would
+      // hide their error. Leave it untouched so Zod reports the real issue.
+      const briefPath = path.join(root, 'briefs', 'iron-sword.yaml');
+      writeFileSync(briefPath, `${SAMPLE_BRIEF_YAML}\nsensors: "oops"\n`);
+      writeFileSync(
+        path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+        JSON.stringify([
+          [0, 0, 0],
+          [255, 255, 255],
+        ]),
+      );
+      mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+      writeFileSync(
+        path.join(root, 'data', 'sprite-types', 'weapon.json'),
+        JSON.stringify({
+          sensors: { anchor: { derive: true, bandRows: 4, centerToleranceX: 3 } },
+        }),
+      );
+
+      // The brief must fail Zod (because sensors is a string, not an object),
+      // not silently succeed by inheriting the sprite-type defaults.
+      expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/sensors/);
+    });
   });
 });

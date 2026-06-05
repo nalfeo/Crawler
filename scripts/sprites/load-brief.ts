@@ -88,12 +88,19 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
  *
  * Non-object inputs (e.g. when the YAML is malformed) are passed through
  * untouched — Zod will reject them downstream with a clearer error than
- * anything we could emit here.
+ * anything we could emit here. The same is true when the brief explicitly
+ * provides a `sensors` key whose value is not a plain object (e.g.
+ * `sensors: null` or `sensors: "oops"`): we leave it alone so the user sees
+ * the schema error instead of silently inheriting sprite-type defaults.
  */
 function mergeSpriteTypeDefaults(parsed: unknown, opts: LoadBriefOptions): unknown {
   if (!isPlainObject(parsed)) return parsed;
   const spriteType = parsed.type;
   if (typeof spriteType !== 'string' || spriteType.length === 0) return parsed;
+  // If the brief explicitly provides a malformed `sensors`, leave it alone
+  // and let Zod reject it. Only fall through when `sensors` is missing or a
+  // plain object we can safely merge.
+  if ('sensors' in parsed && !isPlainObject(parsed.sensors)) return parsed;
 
   const loader = opts.loadSpriteTypeDefaults ?? defaultSpriteTypeDefaultsLoader(opts.projectRoot);
   const defaults = loader(spriteType);
