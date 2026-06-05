@@ -1,0 +1,64 @@
+/**
+ * Unit tests for the sprites:synth CLI argument parser.
+ *
+ * The CLI itself is a thin wrapper around `synthesizeBrief`; the only
+ * non-trivial logic is `parseArgs`. Validating it here keeps `main()`
+ * a straight-line wiring layer that doesn't need its own tests.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { parseArgs } from '../../../scripts/sprites/synth-cli.js';
+
+describe('synth-cli parseArgs', () => {
+  it('parses a name on its own with sensible defaults', () => {
+    const args = parseArgs(['scythe']);
+    expect(args).toEqual({
+      name: 'scythe',
+      type: undefined,
+      candidates: 3,
+      allowPartial: false,
+    });
+  });
+
+  it('parses --type and --candidates flags', () => {
+    const args = parseArgs(['devils-yoyo', '--type', 'weapon', '--candidates', '5']);
+    expect(args.name).toBe('devils-yoyo');
+    expect(args.type).toBe('weapon');
+    expect(args.candidates).toBe(5);
+    expect(args.allowPartial).toBe(false);
+  });
+
+  it('parses --allow-partial as a boolean switch', () => {
+    const args = parseArgs(['scythe', '--allow-partial']);
+    expect(args.allowPartial).toBe(true);
+  });
+
+  it('rejects an unknown sprite type', () => {
+    expect(() => parseArgs(['scythe', '--type', 'gadget'])).toThrow(/not one of/);
+  });
+
+  it('rejects non-integer or out-of-range --candidates', () => {
+    expect(() => parseArgs(['scythe', '--candidates', '0'])).toThrow();
+    expect(() => parseArgs(['scythe', '--candidates', '10'])).toThrow();
+    expect(() => parseArgs(['scythe', '--candidates', '2.5'])).toThrow();
+    expect(() => parseArgs(['scythe', '--candidates', 'foo'])).toThrow();
+  });
+
+  it('rejects missing values for --type and --candidates', () => {
+    expect(() => parseArgs(['scythe', '--type'])).toThrow(/--type requires a value/);
+    expect(() => parseArgs(['scythe', '--candidates'])).toThrow(/--candidates requires a value/);
+  });
+
+  it('rejects unknown flags', () => {
+    expect(() => parseArgs(['scythe', '--bogus'])).toThrow(/Unknown flag: --bogus/);
+  });
+
+  it('rejects a second positional argument', () => {
+    expect(() => parseArgs(['scythe', 'extra'])).toThrow(/Unexpected positional/);
+  });
+
+  it('requires a name', () => {
+    expect(() => parseArgs([])).toThrow(/Missing subject name/);
+    expect(() => parseArgs(['--type', 'weapon'])).toThrow(/Missing subject name/);
+  });
+});

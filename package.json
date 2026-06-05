@@ -22,6 +22,7 @@
     "lab": "vite --mode lab",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
+    "sprites:synth": "tsx scripts/sprites/synth-cli.ts",
     "sprites:sync-catalog": "tsx scripts/sprites/sync-catalog.ts",
     "sprites:metadata": "tsx scripts/sprites/metadata-pipeline.ts",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
