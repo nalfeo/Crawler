@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { branchFiles, branchAddedFiles } from "../lib/git.mjs";
 
-// ci-policy.md: feat|fix|chore|lab|docs|refactor|test|perf|ci
+// ci-policy.md: feat|fix|chore|lab|docs|refactor|test|perf|ci|build
 const CONVENTIONAL_TITLE_RE =
     /^(feat|fix|chore|lab|docs|refactor|test|perf|ci|build)(\([^)]+\))?!?: .+/;
 

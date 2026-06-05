@@ -26,10 +26,11 @@ function segmentDeniesForceMain(seg) {
             seg,
         );
 
-    // Refspec form: `+main:something` or `something:+main` (rare) — '+' makes
-    // it a force push regardless of --force flag.
+    // Refspec form: `+main:...` or `+refs/heads/main:...` (rare) — '+' makes
+    // it a force push regardless of --force flag. The optional `refs/heads/`
+    // prefix is the fully-qualified ref form and must not be missed.
     const refspecForce = PROTECTED_BRANCHES.some((b) =>
-        new RegExp(`\\s\\+${b}(:|\\s|$)`).test(seg),
+        new RegExp(`\\s\\+(?:refs/heads/)?${b}(:|\\s|$)`).test(seg),
     );
 
     if (!forceUsed && !refspecForce) return null;

@@ -26,6 +26,16 @@ test("denies refspec force push: +main:main", () => {
     assert.equal(r.decision, "deny");
 });
 
+test("denies fully-qualified refspec force: +refs/heads/main:refs/heads/main", () => {
+    const r = run("git push origin +refs/heads/main:refs/heads/main");
+    assert.equal(r.decision, "deny");
+});
+
+test("denies fully-qualified refspec force on master", () => {
+    const r = run("git push origin +refs/heads/master:refs/heads/master");
+    assert.equal(r.decision, "deny");
+});
+
 test("denies git push --force master", () => {
     const r = run("git push --force origin master");
     assert.equal(r.decision, "deny");

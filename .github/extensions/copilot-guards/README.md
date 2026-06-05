@@ -15,7 +15,7 @@ Loaded automatically because it lives under `.github/extensions/`.
 | `shell-force-push-main`        | `powershell`, `bash`                | **deny** | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.         |
 | `shell-main-branch-delete`     | `powershell`, `bash`                | **deny** | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).              |
 | `shell-gh-pr-create`           | `powershell`, `bash`                | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.      |
-| `shell-rm-rf-repo`             | `powershell`, `bash`                | **deny** | `rm -rf .` / `Remove-Item . -Recurse -Force` / `rm -rf /`, `~`, `..`, absolute paths.                       |
+| `shell-rm-rf-repo`             | `powershell`, `bash`                | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`. |
 | `edit-determinism`             | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored. |
 | `edit-phaser-in-core`          | `edit`, `create` (src/core)         | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                            |
 | `edit-repo-md-junk`            | `create` (`*.md`)                   | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.     |
