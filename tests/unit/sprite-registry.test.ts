@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHEETS, SPRITES, getSheet, getSprite } from '../../src/engine/sprites/index.js';
+import { isValidAnchor } from '../../src/shared/sprite-anchor.js';
 
 describe('sprite registry', () => {
   it('has unique sheet keys', () => {
@@ -76,5 +77,21 @@ describe('sprite registry', () => {
   it('getSprite / getSheet return undefined for unknown ids', () => {
     expect(getSprite('does-not-exist')).toBeUndefined();
     expect(getSheet('does-not-exist')).toBeUndefined();
+  });
+
+  it('every declared anchor lies inside its sprite sheet frame', () => {
+    // Anchors are optional today (no equipped-item renderer consumes them yet),
+    // but any sprite that DOES declare one must point at a real pixel inside
+    // its sheet's frame — otherwise the future renderer would pin off-canvas.
+    for (const sprite of SPRITES) {
+      if (sprite.anchor === undefined) continue;
+      const sheet = getSheet(sprite.sheetKey);
+      expect(sheet, `sheet ${sprite.sheetKey}`).toBeDefined();
+      expect(
+        isValidAnchor(sprite.anchor, sheet!.frameWidth, sheet!.frameHeight),
+        `sprite ${sprite.id} anchor ${JSON.stringify(sprite.anchor)} ` +
+          `outside ${sheet!.frameWidth}x${sheet!.frameHeight}`,
+      ).toBe(true);
+    }
   });
 });

@@ -31,6 +31,9 @@ import type { WeaponTypeValue } from '../shared/constants.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
 
+// Re-export applyDamage for backward compatibility
+export { applyDamage } from './apply-damage.js';
+
 /** Zero all typed-array store slots for a recycled entity ID. */
 export function clearEntityStores(world: GameWorld, eid: number): void {
   const { stores } = world;

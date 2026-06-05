@@ -83,6 +83,8 @@ function getWeaponState(world: GameWorld): WeaponState {
 function normalizeVector(x: number, y: number): { x: number; y: number } {
   const length = Math.hypot(x, y);
 
+  // Callers guard near-zero vectors before invoking this helper.
+  /* c8 ignore next 3 */
   if (length <= 0.0001) {
     return { x: 1, y: 0 };
   }
@@ -109,9 +111,9 @@ function resolveWeaponConfig(world: GameWorld, player: number): WeaponConfig {
   const config = getWeaponConfig(world);
 
   if (hasComponent(world.ecs, player, Stats)) {
-    const attackSpeed = Math.max(0.1, world.stores.stats.attackSpeed[player] ?? 1.0);
-    const rawDamage = world.stores.stats.damage[player];
-    const damage = rawDamage ?? config.baseDamage;
+    const attackSpeed = Math.max(0.1, world.stores.stats.attackSpeed[player]!);
+    const rawDamage = world.stores.stats.damage[player]!;
+    const damage = rawDamage;
     return {
       projectileSpeed: config.projectileSpeed,
       fireRateMs: config.fireRateMs / attackSpeed,
@@ -123,8 +125,8 @@ function resolveWeaponConfig(world: GameWorld, player: number): WeaponConfig {
     return config;
   }
 
-  const baseDamage = world.stores.damage.amount[player] ?? 0;
-  const fireRateMs = world.stores.damage.cooldownMs[player] ?? 0;
+  const baseDamage = world.stores.damage.amount[player]!;
+  const fireRateMs = world.stores.damage.cooldownMs[player]!;
 
   return {
     projectileSpeed: config.projectileSpeed,
@@ -137,7 +139,7 @@ function readLastFireMs(world: GameWorld, player: number): number {
   const state = getWeaponState(world);
 
   if (hasComponent(world.ecs, player, Damage)) {
-    return world.stores.damage.lastFireMs[player] ?? state.lastFireMs;
+    return world.stores.damage.lastFireMs[player]!;
   }
 
   return state.lastFireMs;
@@ -162,8 +164,8 @@ function writeLastFireMs(
 }
 
 function updateAimFromVelocity(world: GameWorld, player: number, state: WeaponState): void {
-  const velocityX = world.stores.velocity.x[player] ?? 0;
-  const velocityY = world.stores.velocity.y[player] ?? 0;
+  const velocityX = world.stores.velocity.x[player]!;
+  const velocityY = world.stores.velocity.y[player]!;
 
   if (Math.hypot(velocityX, velocityY) <= 0.0001) {
     return;
@@ -184,12 +186,8 @@ function getNearestEnemyDirection(
   let nearestDistanceSq = Number.POSITIVE_INFINITY;
 
   for (const enemy of enemies) {
-    if (enemy === undefined) {
-      continue;
-    }
-
-    const deltaX = (world.stores.position.x[enemy] ?? 0) - playerX;
-    const deltaY = (world.stores.position.y[enemy] ?? 0) - playerY;
+    const deltaX = world.stores.position.x[enemy]! - playerX;
+    const deltaY = world.stores.position.y[enemy]! - playerY;
     const distanceSq = deltaX * deltaX + deltaY * deltaY;
 
     if (distanceSq >= nearestDistanceSq || distanceSq <= 0.0001) {
@@ -214,15 +212,15 @@ function fireMeleeAttack(
   // Remove any existing swing — only one active at a time
   const existingSwings = query(world.ecs, [MeleeSwing, Owner]);
   for (const eid of existingSwings) {
-    if (eid !== undefined && (world.stores.owner.eid[eid] ?? 0) === player) {
+    if (world.stores.owner.eid[eid]! === player) {
       clearMeleeSwingHits(world, eid);
       clearEntityStores(world, eid);
       removeEntity(world.ecs, eid);
     }
   }
 
-  const px = world.stores.position.x[player] ?? 0;
-  const py = world.stores.position.y[player] ?? 0;
+  const px = world.stores.position.x[player]!;
+  const py = world.stores.position.y[player]!;
   spawnMeleeSwing(
     world,
     px,
@@ -248,8 +246,8 @@ function fireRangedAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
-  const px = world.stores.position.x[player] ?? 0;
-  const py = world.stores.position.y[player] ?? 0;
+  const px = world.stores.position.x[player]!;
+  const py = world.stores.position.y[player]!;
   spawnProjectile(
     world,
     px,
@@ -267,8 +265,8 @@ function fireMagicAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
-  const px = world.stores.position.x[player] ?? 0;
-  const py = world.stores.position.y[player] ?? 0;
+  const px = world.stores.position.x[player]!;
+  const py = world.stores.position.y[player]!;
   spawnAoeProjectile(
     world,
     px,
@@ -289,8 +287,8 @@ function fireThrownAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
-  const px = world.stores.position.x[player] ?? 0;
-  const py = world.stores.position.y[player] ?? 0;
+  const px = world.stores.position.x[player]!;
+  const py = world.stores.position.y[player]!;
   spawnReturningProjectile(
     world,
     px,
@@ -312,8 +310,8 @@ function fireBeamAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
-  const px = world.stores.position.x[player] ?? 0;
-  const py = world.stores.position.y[player] ?? 0;
+  const px = world.stores.position.x[player]!;
+  const py = world.stores.position.y[player]!;
   spawnBeam(
     world,
     px,
@@ -417,8 +415,8 @@ export function weaponSystem(world: GameWorld): void {
   const state = getWeaponState(world);
   updateAimFromVelocity(world, player, state);
 
-  const playerX = world.stores.position.x[player] ?? 0;
-  const playerY = world.stores.position.y[player] ?? 0;
+  const playerX = world.stores.position.x[player]!;
+  const playerY = world.stores.position.y[player]!;
   const direction = getNearestEnemyDirection(world, playerX, playerY) ?? {
     x: state.aimX,
     y: state.aimY,
@@ -450,7 +448,7 @@ export function weaponSystem(world: GameWorld): void {
 
   // Determine how many projectiles to fire (1 + floor(projectileCount bonus))
   const extraProjectiles = hasComponent(world.ecs, player, Stats)
-    ? Math.floor(world.stores.stats.projectileCount[player] ?? 0)
+    ? Math.floor(world.stores.stats.projectileCount[player]!)
     : 0;
   const totalProjectiles = 1 + extraProjectiles;
 
@@ -490,37 +488,33 @@ export function weaponEntitySystem(world: GameWorld): void {
   const { weapon, owner, position, team } = world.stores;
 
   for (const weid of weaponEntities) {
-    if (weid === undefined) {
-      continue;
-    }
-
-    const ownerEid = owner.eid[weid] ?? 0;
+    const ownerEid = owner.eid[weid]!;
     if (!hasComponent(world.ecs, ownerEid, Position)) {
       continue;
     }
 
-    const cooldownMs = weapon.cooldownMs[weid] ?? 0;
-    const lastFireMs = weapon.lastFireMs[weid] ?? 0;
+    const cooldownMs = weapon.cooldownMs[weid]!;
+    const lastFireMs = weapon.lastFireMs[weid]!;
 
     if (world.elapsedMs - lastFireMs < cooldownMs) {
       continue;
     }
 
-    const px = position.x[ownerEid] ?? 0;
-    const py = position.y[ownerEid] ?? 0;
+    const px = position.x[ownerEid]!;
+    const py = position.y[ownerEid]!;
     const dir = getNearestEnemyDirection(world, px, py) ?? { x: 1, y: 0 };
-    const baseDamage = weapon.baseDamage[weid] ?? 0;
-    const weaponType = weapon.weaponType[weid] ?? 0;
-    const projSpeed = weapon.projectileSpeed[weid] ?? WEAPON.PROJECTILE_SPEED;
+    const baseDamage = weapon.baseDamage[weid]!;
+    const weaponType = weapon.weaponType[weid]!;
+    const projSpeed = weapon.projectileSpeed[weid]!;
 
     switch (weaponType) {
       case WeaponType.RANGED:
         spawnProjectile(world, px, py, dir.x * projSpeed, dir.y * projSpeed, baseDamage);
         break;
       case WeaponType.MELEE: {
-        const range = weapon.range[weid] ?? WEAPON.MELEE_RANGE;
+        const range = weapon.range[weid]!;
         const ownerTeam = hasComponent(world.ecs, ownerEid, Team)
-          ? (team.id[ownerEid] ?? TeamId.PLAYER)
+          ? team.id[ownerEid]!
           : TeamId.PLAYER;
         spawnAreaAttack(
           world,
