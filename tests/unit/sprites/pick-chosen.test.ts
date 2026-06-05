@@ -28,6 +28,9 @@ function makeEntry(overrides: Partial<RunSummaryEntry> = {}): RunSummaryEntry {
     scorecardPath: '/tmp/processed/00.scorecard.json',
     derivedAnchor: null,
     anchorSidecarPath: null,
+    judgeScorecard: null,
+    judgeSkipReason: 'judge-disabled',
+    combinedPassed: true,
     ...overrides,
   };
 }
