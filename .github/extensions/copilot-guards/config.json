@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "_doc": "Guard configuration. Set 'disabled: true' on any guard to turn it off project-wide. Use COPILOT_GUARDS_DISABLE env var (comma-separated guard ids, or '*' for all) for per-session bypass.",
+  "guards": {
+    "shell-force-push-main": { "disabled": false, "severity": "deny" },
+    "shell-main-branch-delete": { "disabled": false, "severity": "deny" },
+    "shell-gh-pr-create": { "disabled": false, "severity": "deny" },
+    "shell-rm-rf-repo": { "disabled": false, "severity": "deny" },
+    "edit-determinism": { "disabled": false, "severity": "deny" },
+    "edit-phaser-in-core": { "disabled": false, "severity": "deny" },
+    "edit-repo-md-junk": { "disabled": false, "severity": "deny" },
+    "edit-guard-self-protection": { "disabled": false, "severity": "ask" },
+    "pr-preflight": { "disabled": false, "severity": "deny" }
+  }
+}
