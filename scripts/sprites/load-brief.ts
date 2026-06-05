@@ -91,6 +91,11 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
   // merged object doesn't already have a `prompt`. We strip `description`
   // from the merged result so the strict full-brief schema doesn't trip
   // on it.
+  //
+  // Safety: if the minimal brief explicitly provides a malformed `sensors`
+  // (e.g. `sensors: null` or `sensors: "oops"`), skip the deep-merge for
+  // that key so Zod reports a clear error instead of us silently inheriting
+  // sprite-type sensor defaults. (Carried over from PR #44.)
   const merged = mergeMinimalIntoDefaults(minimal.data, defaults);
 
   const result = briefSchema.safeParse(merged);
@@ -122,6 +127,28 @@ export function mergeMinimalIntoDefaults(
   defaults: SpriteTypeDefaults | null,
 ): Record<string, unknown> {
   const base = defaults === null ? {} : defaults;
+  // Safety: if the minimal brief explicitly provides a malformed `sensors`
+  // (e.g. `sensors: null` or `sensors: "oops"`), skip the deep-merge for
+  // that key — otherwise we'd silently overwrite the bad value with the
+  // sprite-type sensor defaults and the user would never see their typo.
+  // Pass it through so Zod surfaces a clear validation error. (PR #44.)
+  const sanitizedMinimal: Record<string, unknown> = { ...minimal };
+  if (
+    'sensors' in sanitizedMinimal &&
+    !isPlainObject(sanitizedMinimal.sensors) &&
+    sanitizedMinimal.sensors !== undefined
+  ) {
+    // Force-overwrite defaults.sensors so Zod sees the bad value verbatim.
+    const baseCopy = { ...(base as Record<string, unknown>) };
+    delete baseCopy.sensors;
+    const merged = deepMergeDefaults(baseCopy, sanitizedMinimal);
+    merged.sensors = sanitizedMinimal.sensors;
+    if (merged.prompt === undefined && typeof merged.description === 'string') {
+      merged.prompt = merged.description;
+    }
+    delete merged.description;
+    return merged;
+  }
   const merged = deepMergeDefaults(base as Record<string, unknown>, minimal);
   if (merged.prompt === undefined && typeof merged.description === 'string') {
     merged.prompt = merged.description;
@@ -180,6 +207,10 @@ function stripMetaKeys(value: unknown): unknown {
     out[k] = stripMetaKeys(v);
   }
   return out;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function defaultPaletteLoader(projectRoot?: string): (paletteId: string) => PaletteColors {

@@ -1,5 +1,5 @@
 {
-  "$comment": "Per-type defaults for weapon briefs. Merged into a minimal brief by scripts/sprites/load-brief.ts before Zod validation. Per-leaf scalars from the brief win; arrays REPLACE rather than append. Authors only specify the fields they want to override.",
+  "_comment": "Sprite-type defaults for the weapon family. Merged into every weapon brief by scripts/sprites/load-brief.ts before Zod validation. Per-leaf scalars from the brief win; arrays REPLACE rather than append. A brief can override `centerToleranceX` without restating `derive: true`, etc.",
   "size": { "width": 16, "height": 16 },
   "palette": { "id": "kenney-roguelike" },
   "anchor": { "x": 8, "y": 14 },
@@ -18,7 +18,8 @@
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
   },
   "sensors": {
-    "$comment": "diagonalToleranceDeg is a misnomer: it controls the half-width of the acceptance window around the requested principal-axis orientation (vertical here, diagonal elsewhere). At 16x16 native rendered upsteam to 1024px and back, the 4x4 grid model regularly hits 86-87° instead of dead 90°, so we accept ±5° around vertical. Sensor tightening is a separate axis from prompt strictness — the prompt still asks for 'perfectly vertical'.",
-    "weapon": { "orientation": "vertical", "diagonalToleranceDeg": 5 }
+    "$comment": "diagonalToleranceDeg is a misnomer: it controls the half-width of the acceptance window around the requested principal-axis orientation (vertical here, diagonal elsewhere). At 16x16 native rendered upstream to 1024px and back, the 4x4 grid model regularly hits 86-87° instead of dead 90°, so we accept ±5° around vertical. Sensor tightening is a separate axis from prompt strictness — the prompt still asks for 'perfectly vertical'. anchor.derive opts every weapon into the silhouette-walking anchor sensor (PR #44) so the static-anchor pixel check doesn't reject slender blades.",
+    "weapon": { "orientation": "vertical", "diagonalToleranceDeg": 5 },
+    "anchor": { "derive": true, "bandRows": 4, "centerToleranceX": 3 }
   }
 }

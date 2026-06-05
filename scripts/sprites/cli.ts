@@ -136,6 +136,12 @@ function printSummary(
   runDir: string,
   attempts: number,
   candidates: ReadonlyArray<{ index: number; score: number; outOf: number; passed: boolean }>,
+  chosen: {
+    readonly index: number;
+    readonly score: number;
+    readonly outOf: number;
+    readonly anchor: { readonly x: number; readonly y: number; readonly source: string } | null;
+  } | null,
   durationMs: number,
   diversity: {
     meanHamming: number;
@@ -164,6 +170,14 @@ function printSummary(
   process.stdout.write(
     `variations: ${seedN} seed + ${propN} expanded = ${finalN} final (min=${variations.minVariations})${reason}\n`,
   );
+  if (chosen) {
+    const anchorStr = chosen.anchor
+      ? `anchor=(${chosen.anchor.x},${chosen.anchor.y}) [${chosen.anchor.source}]`
+      : 'anchor=<none>';
+    process.stdout.write(
+      `chosen  : variant ${chosen.index} (${formatScore(chosen.score, chosen.outOf)}), ${anchorStr}\n`,
+    );
+  }
   process.stdout.write('\n');
   process.stdout.write(`  ${pad('rank', 6)}${pad('idx', 6)}${pad('passed', 8)}score\n`);
   candidates.forEach((c, rank) => {
@@ -200,6 +214,7 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
       result.runDir,
       result.attempts,
       result.summary.candidates,
+      result.summary.chosen,
       duration,
       result.summary.diversity,
       result.summary.variations,
@@ -231,6 +246,39 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
         };
       }
       const selectionPath = path.join(result.runDir, 'selection.json');
+      // Resolve the anchor surfaced in selection.json:
+      //   - In derive mode (brief opted into `sensors.anchor.derive`), only
+      //     a per-variant derivedAnchor is valid — `brief.anchor` is
+      //     informational and must NOT be surfaced. If the picked variant
+      //     has no derivedAnchor, anchor is null so downstream tools see the
+      //     failure rather than a wrong static value.
+      //   - In legacy mode, the static `brief.anchor` applies to every
+      //     variant, so it's surfaced regardless of which variant was picked.
+      //   - When the picked variant matches the auto-chosen top, the already
+      //     resolved `chosen.anchor` is preferred so the two artifacts agree.
+      const deriveMode = result.brief.sensors.anchor?.derive === true;
+      let pickedAnchor: {
+        readonly x: number;
+        readonly y: number;
+        readonly source: 'derived' | 'brief';
+      } | null;
+      if (result.summary.chosen && result.summary.chosen.index === picked.index) {
+        pickedAnchor = result.summary.chosen.anchor;
+      } else if (picked.derivedAnchor) {
+        pickedAnchor = {
+          x: picked.derivedAnchor.x,
+          y: picked.derivedAnchor.y,
+          source: 'derived' as const,
+        };
+      } else if (deriveMode) {
+        pickedAnchor = null;
+      } else {
+        pickedAnchor = {
+          x: result.brief.anchor.x,
+          y: result.brief.anchor.y,
+          source: 'brief' as const,
+        };
+      }
       writeFileSync(
         selectionPath,
         `${JSON.stringify(
@@ -242,6 +290,7 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
             outOf: picked.outOf,
             processedPath: picked.processedPath,
             scorecardPath: picked.scorecardPath,
+            anchor: pickedAnchor,
           },
           null,
           2,

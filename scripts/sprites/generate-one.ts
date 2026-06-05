@@ -34,6 +34,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
+import type { Brief } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
 import { computeDiversity } from './diversity.js';
 import { expandVariations } from './expand-variations.js';
@@ -47,6 +48,7 @@ import type { TextProvider } from './provider/text-types.js';
 import {
   ensureRunDirs,
   makeRunId,
+  pickChosen,
   rankCandidates,
   runPaths,
   writeSheet,
@@ -87,6 +89,12 @@ export interface GenerateOneResult {
   readonly summaryPath: string;
   readonly runDir: string;
   readonly attempts: number;
+  /**
+   * The fully-loaded brief used for this run. Exposed so the CLI (and other
+   * orchestrator callers) can make brief-aware decisions — e.g. whether the
+   * brief opted into `sensors.anchor.derive` — without re-reading the YAML.
+   */
+  readonly brief: Brief;
 }
 
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
@@ -174,7 +182,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     const raw = sliced[i]!;
     const processed = postprocess(raw, brief, palette);
     const scorecard = scoreCandidate(processed, brief, palette);
-    const { rawPath, processedPath, scorecardPath } = writeVariant(
+    const { rawPath, processedPath, scorecardPath, anchorSidecarPath } = writeVariant(
       paths,
       i,
       raw,
@@ -189,12 +197,15 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       rawPath,
       processedPath,
       scorecardPath,
+      derivedAnchor: scorecard.derivedAnchor,
+      anchorSidecarPath,
     });
     processedBuffers.push(processed);
   }
 
   const ranked = rankCandidates(entries);
   const diversity = computeDiversity(processedBuffers);
+  const chosen = pickChosen(ranked, brief);
   const summary: RunSummary = {
     brief: brief.name,
     briefPath: loaded.briefPath,
@@ -212,10 +223,11 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       minVariations: brief.minVariations,
       skippedReason: expansion.skippedReason,
     },
+    chosen,
   };
   const summaryPath = writeSummary(paths, summary);
 
-  return { summary, summaryPath, runDir: paths.briefDir, attempts };
+  return { summary, summaryPath, runDir: paths.briefDir, attempts, brief };
 }
 
 function shortPromptHash(prompt: string): string {
