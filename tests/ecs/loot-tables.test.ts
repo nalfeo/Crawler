@@ -11,7 +11,7 @@ import {
 describe('loot-tables', () => {
   describe('rollEntry', () => {
     it('returns null when chance roll fails', () => {
-      // Seed 42 first next() = ~0.374 which is > 0.1 chance
+      // Seed 100 with 0.01 chance — most rolls will miss
       const rng = new SeededRandom(100);
       const entry: LootEntry = { type: 'gold', value: 5, chance: 0.01, min: 1, max: 1 };
       // Run enough times to confirm low chance rarely succeeds

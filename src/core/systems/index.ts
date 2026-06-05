@@ -15,3 +15,5 @@ export { aoeOnImpactPreDamage, aoeOnImpactPostDamage } from './aoeOnImpactSystem
 export { meleeSwingSystem, clearMeleeSwingHits } from './meleeSwingSystem.js';
 export { knockbackSystem } from './knockbackSystem.js';
 export { dropSystem, clearProcessedDeaths } from './dropSystem.js';
+export { fovSystem } from './fovSystem.js';
+export { doorSystem } from './doorSystem.js';

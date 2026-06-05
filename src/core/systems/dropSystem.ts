@@ -38,16 +38,20 @@ function getEnemyLootTables(
   };
 }
 
-/** Track which entities have already been processed for drops to prevent double-spawning. */
-const processedDeaths = new WeakMap<GameWorld, Set<number>>();
+/**
+ * Track which entities have been processed this frame to prevent double-spawning.
+ * Uses per-frame tracking (cleared each frame) to avoid eid recycling issues.
+ */
+const processedDeaths = new WeakMap<GameWorld, { frame: number; eids: Set<number> }>();
 
 function getProcessedDeaths(world: GameWorld): Set<number> {
-  let set = processedDeaths.get(world);
-  if (!set) {
-    set = new Set();
-    processedDeaths.set(world, set);
+  let tracking = processedDeaths.get(world);
+  const currentFrame = world.frameCount;
+  if (!tracking || tracking.frame !== currentFrame) {
+    tracking = { frame: currentFrame, eids: new Set() };
+    processedDeaths.set(world, tracking);
   }
-  return set;
+  return tracking.eids;
 }
 
 function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): void {
@@ -132,8 +136,8 @@ export function dropSystem(world: GameWorld): void {
   }
 }
 
-/** Clear processed deaths tracking (call on floor transition or world reset). */
-export function clearProcessedDeaths(world: GameWorld): void {
-  const set = processedDeaths.get(world);
-  if (set) set.clear();
+/** Clear processed deaths tracking (no-op — tracking is now per-frame). */
+export function clearProcessedDeaths(_world: GameWorld): void {
+  // Per-frame tracking auto-resets on each new frameCount, so this is a no-op.
+  // Kept for API compatibility.
 }

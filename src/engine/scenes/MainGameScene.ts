@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   createGameWorld,
+  dropSystem,
   healthSystem,
   movementSystem,
   playerInputSystem,
@@ -80,6 +81,7 @@ export class MainGameScene extends Phaser.Scene {
 
       playerInputSystem(this.world, this.inputState);
       movementSystem(this.world);
+      dropSystem(this.world);
       healthSystem(this.world);
       projectileCleanupSystem(this.world);
       for (const sys of this.extraSystems) {
