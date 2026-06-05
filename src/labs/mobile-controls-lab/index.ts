@@ -39,7 +39,6 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   }
 
   const settings: MobileControlsLabSettings = {
-    moveMode: 'joystick',
     joystickRadius: 60,
     deadZone: 0.15,
     followSpeed: 5,
