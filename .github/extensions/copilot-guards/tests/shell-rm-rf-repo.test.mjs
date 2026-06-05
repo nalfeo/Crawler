@@ -49,3 +49,18 @@ test("denies PowerShell Remove-Item . -Recurse -Force", () => {
 test("allows PowerShell Remove-Item dist -Recurse -Force", () => {
     assert.equal(run("Remove-Item dist -Recurse -Force").decision, "allow");
 });
+
+test("denies rm --recursive .", () => {
+    // Regression: hasRecursive used to only match short flags like -r/-R,
+    // so `rm --recursive .` slipped past the segment check even though
+    // matches() triggered on the -r substring.
+    assert.equal(run("rm --recursive .").decision, "deny");
+});
+
+test("denies rm --recursive --force /", () => {
+    assert.equal(run("rm --recursive --force /").decision, "deny");
+});
+
+test("allows rm --recursive node_modules", () => {
+    assert.equal(run("rm --recursive node_modules").decision, "allow");
+});

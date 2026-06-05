@@ -121,7 +121,11 @@ function formatDeny(id, reason) {
 }
 
 function formatPrAggregate(denies, asks) {
-    const lines = ["PR preflight failed. Fix the following before retrying create_pull_request:"];
+    const header =
+        denies.length > 0
+            ? "PR preflight failed. Fix the following before retrying create_pull_request:"
+            : "PR preflight needs confirmation before continuing with create_pull_request:";
+    const lines = [header];
     for (const d of denies) {
         lines.push(`  ❌ [${d.id}] ${d.reason}`);
     }

@@ -10,10 +10,15 @@ const WHITESPACE_RE = /[ \t]+/g;
  * Normalize a raw shell command string. Returns an array of "segments"
  * — each segment is one command in a chain, with whitespace collapsed.
  */
+// Strip a wrapper like `bash -c "..."`, `pwsh -NoProfile -Command "..."`,
+// or `bash -lc "..."`. Allows any number of intermediate flag tokens
+// between the program and the command flag.
+const WRAPPER_RE = /^\s*(?:bash|sh|pwsh|powershell)(?:\.exe)?(?:\s+-[A-Za-z][\w-]*)*\s+(?:-c\b|-Command\b|-lc\b|-ic\b|-lic\b|-li\b)\s+/i;
+
 export function normalizeCommand(raw) {
     if (typeof raw !== "string" || raw.length === 0) return [];
     let s = raw.replace(LINE_CONT_RE, " ");
-    s = s.replace(/^\s*(bash|sh|pwsh|powershell)(\.exe)?\s+(-c|-Command|-NoProfile|--)\s+/i, "");
+    s = s.replace(WRAPPER_RE, "");
     // After stripping a `bash -c "..."` wrapper, the remaining command is
     // typically wrapped in a matched pair of quotes. Strip them so
     // tokenize() can see the inner program. Without this, the inner

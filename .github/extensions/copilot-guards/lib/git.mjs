@@ -71,6 +71,26 @@ export function branchFiles(cwd) {
 }
 
 /**
+ * Files ADDED on the current branch since the merge-base with main.
+ * Uses `git diff --name-status` and filters to status 'A' so callers
+ * that need "newly added" semantics (e.g. handoff check) aren't fooled
+ * by edits to pre-existing files.
+ */
+export function branchAddedFiles(cwd) {
+    return cached("branchaddedfiles", cwd, () => {
+        const base = mergeBaseWithMain(cwd);
+        if (!base) return [];
+        const out = git(cwd, ["diff", "--name-status", `${base}...HEAD`]);
+        return out
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .filter((line) => line.startsWith("A\t"))
+            .map((line) => line.slice(2).trim());
+    });
+}
+
+/**
  * Commit subjects on the branch since merge-base with main, excluding merges.
  */
 export function branchCommitSubjects(cwd) {

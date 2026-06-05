@@ -38,6 +38,37 @@ test("isGit sees through bash -c bypass attempt", () => {
     assert.equal(isGit(segs[0]), true);
 });
 
+test("normalizeCommand strips pwsh -NoProfile -Command wrapper", () => {
+    // Regression: previously, only a single flag was allowed between
+    // the program and -Command, so `pwsh -NoProfile -Command '...'`
+    // bypassed every shell guard.
+    const segs = normalizeCommand("pwsh -NoProfile -Command 'git push --force origin main'");
+    assert.equal(segs.length, 1);
+    assert.equal(isGit(segs[0]), true);
+});
+
+test("normalizeCommand strips bash -lc wrapper", () => {
+    // Regression: previously, the wrapper regex only recognized -c
+    // verbatim, so login-shell `bash -lc "..."` bypassed shell guards.
+    const segs = normalizeCommand('bash -lc "git push --force origin main"');
+    assert.equal(segs.length, 1);
+    assert.equal(isGit(segs[0]), true);
+});
+
+test("normalizeCommand strips bash -ic wrapper", () => {
+    const segs = normalizeCommand("bash -ic 'gh pr create'");
+    assert.equal(segs.length, 1);
+    assert.equal(isGh(segs[0]), true);
+});
+
+test("normalizeCommand strips multi-flag pwsh wrapper", () => {
+    const segs = normalizeCommand(
+        "pwsh -NoProfile -NonInteractive -Command 'git push --force'",
+    );
+    assert.equal(segs.length, 1);
+    assert.equal(isGit(segs[0]), true);
+});
+
 test("tokenize respects double quotes", () => {
     const toks = tokenize('git commit -m "hello world"');
     assert.deepEqual(toks, ["git", "commit", "-m", "hello world"]);

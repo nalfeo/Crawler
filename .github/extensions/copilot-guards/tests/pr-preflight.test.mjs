@@ -49,21 +49,37 @@ test("TRIVIAL_PATH_RE classifies docs-only diffs", () => {
 });
 
 test("checkHandoff allows trivial diffs without handoff", () => {
-    assert.equal(checkHandoff(["docs/foo.md", "README.md"]), null);
+    assert.equal(checkHandoff(["docs/foo.md", "README.md"], []), null);
 });
 
 test("checkHandoff requires handoff for code diffs", () => {
-    assert.ok(checkHandoff(["src/core/foo.ts"]));
+    assert.ok(checkHandoff(["src/core/foo.ts"], []));
 });
 
-test("checkHandoff passes when handoff is in diff", () => {
+test("checkHandoff passes when a NEW handoff is added", () => {
     assert.equal(
-        checkHandoff([
-            "src/core/foo.ts",
-            "docs/knowledge/handoffs/2026-06-04-test.md",
-        ]),
+        checkHandoff(
+            ["src/core/foo.ts", "docs/knowledge/handoffs/2026-06-04-test.md"],
+            ["docs/knowledge/handoffs/2026-06-04-test.md"],
+        ),
         null,
     );
+});
+
+test("checkHandoff rejects merely-edited existing handoff", () => {
+    // The handoff file appears in `files` (modified) but NOT in
+    // `addedFiles`. Editing an old handoff must not satisfy the guard.
+    const result = checkHandoff(
+        ["src/core/foo.ts", "docs/knowledge/handoffs/2026-01-01-old.md"],
+        [], // nothing added
+    );
+    assert.ok(result, "expected deny when handoff is edited, not added");
+    assert.match(result, /Editing an existing handoff does not count/);
+});
+
+test("checkHandoff deny message points to full policy path", () => {
+    const result = checkHandoff(["src/core/foo.ts"], []);
+    assert.match(result, /docs\/agent-os\/policies\/memory-policy\.md/);
 });
 
 test("checkForbiddenPaths catches secrets", () => {

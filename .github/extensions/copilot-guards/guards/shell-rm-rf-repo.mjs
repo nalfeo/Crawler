@@ -8,8 +8,6 @@
 
 import { isProgram, normalizeCommand, tokenize } from "../lib/shell.mjs";
 
-const SAFE_TARGET_PREFIXES = ["node_modules", "dist", "build", "coverage", ".vite", "tmp"];
-
 function isDangerousTarget(target) {
     if (!target) return false;
     const raw = target.replace(/\\/g, "/");
@@ -28,8 +26,10 @@ function isDangerousTarget(target) {
 function segmentDeniesRmRf(seg) {
     if (isProgram(seg, "rm")) {
         const tokens = tokenize(seg);
-        // Look for -r/-R/-rf/-fr style flag
-        const hasRecursive = tokens.some((t) => /^-[a-zA-Z]*[rR]/.test(t));
+        // Look for -r/-R/-rf/-fr style flag or long form --recursive
+        const hasRecursive = tokens.some(
+            (t) => /^-[a-zA-Z]*[rR]/.test(t) || t === "--recursive" || t === "--recursive=true",
+        );
         if (!hasRecursive) return null;
         const targets = tokens.slice(1).filter((t) => !t.startsWith("-"));
         for (const tgt of targets) {
@@ -60,7 +60,7 @@ export default {
     matches(toolName, toolArgs) {
         if (toolName !== "powershell" && toolName !== "bash") return false;
         const cmd = String(toolArgs?.command || "");
-        return /\b(rm|Remove-Item|ri)\b/.test(cmd) && /(-r|-R|-Recurse|-rf|-fr)/.test(cmd);
+        return /\b(rm|Remove-Item|ri)\b/.test(cmd) && /(-r|-R|-Recurse|-rf|-fr|--recursive)/.test(cmd);
     },
     check(toolArgs) {
         const cmd = String(toolArgs?.command || "");
@@ -73,4 +73,4 @@ export default {
 };
 
 // Exported for tests.
-export { isDangerousTarget, segmentDeniesRmRf, SAFE_TARGET_PREFIXES };
+export { isDangerousTarget, segmentDeniesRmRf };

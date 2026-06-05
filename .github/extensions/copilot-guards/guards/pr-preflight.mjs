@@ -19,7 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { branchFiles } from "../lib/git.mjs";
+import { branchFiles, branchAddedFiles } from "../lib/git.mjs";
 
 // ci-policy.md: feat|fix|chore|lab|docs|refactor|test|perf|ci
 const CONVENTIONAL_TITLE_RE =
@@ -66,12 +66,12 @@ function checkSemanticTitle(args) {
     return null;
 }
 
-function checkHandoff(files) {
+function checkHandoff(files, addedFiles) {
     const allTrivial = files.length > 0 && files.every((f) => TRIVIAL_PATH_RE.test(f));
     if (allTrivial) return null;
-    const hasHandoff = files.some((f) => HANDOFF_DATED_RE.test(f));
-    if (hasHandoff) return null;
-    return `No handoff file added in this branch. Per memory-policy.md, every session that touches code/config writes a handoff. Create a new \`docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md\` containing: summary, files touched, verification run, unresolved issues, recommended next steps. Skipped automatically for docs-only / dependency-only diffs.`;
+    const hasNewHandoff = addedFiles.some((f) => HANDOFF_DATED_RE.test(f));
+    if (hasNewHandoff) return null;
+    return `No new handoff file added in this branch. Per docs/agent-os/policies/memory-policy.md, every session that touches code/config writes a handoff. Create a new \`docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md\` containing: summary, files touched, verification run, unresolved issues, recommended next steps. Editing an existing handoff does not count. Skipped automatically for docs-only / dependency-only diffs.`;
 }
 
 function checkForbiddenPaths(files) {
@@ -130,8 +130,10 @@ export default {
     async check(toolArgs, ctx) {
         const cwd = ctx?.cwd || process.cwd();
         let files;
+        let addedFiles;
         try {
             files = branchFiles(cwd);
+            addedFiles = branchAddedFiles(cwd);
         } catch (err) {
             return {
                 decision: "allow",
@@ -143,7 +145,7 @@ export default {
         const titleIssue = checkSemanticTitle(toolArgs);
         if (titleIssue) denyParts.push(titleIssue);
 
-        const handoffIssue = checkHandoff(files);
+        const handoffIssue = checkHandoff(files, addedFiles);
         if (handoffIssue) denyParts.push(handoffIssue);
 
         const forbiddenIssue = checkForbiddenPaths(files);
