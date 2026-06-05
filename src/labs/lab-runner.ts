@@ -1,4 +1,9 @@
 import GUI from 'lil-gui';
+import {
+  getGlobalControlsConfig,
+  setGlobalControlsConfig,
+  type MobileMoveMode,
+} from '../engine/controls-config.js';
 import { getLab } from './registry.js';
 
 type CleanupFn = () => void;
@@ -131,6 +136,17 @@ export function runLab(labId: string): void {
   controls.append(header);
 
   const gui = new GUI({ autoPlace: false, container: controls, title: `${lab.name} Controls` });
+  const globalControlsFolder = gui.addFolder('Global Controls');
+  const globalControls = {
+    mobileMoveMode: getGlobalControlsConfig().mobileMoveMode as MobileMoveMode,
+  };
+  globalControlsFolder
+    .add(globalControls, 'mobileMoveMode', ['joystick', 'follow'])
+    .name('Touch Move Mode')
+    .onChange((value: MobileMoveMode) => {
+      setGlobalControlsConfig({ mobileMoveMode: value });
+    });
+  globalControlsFolder.close();
   controls.__labGui = gui;
   activeGui = gui;
 

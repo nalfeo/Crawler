@@ -1,4 +1,5 @@
 import type GUI from 'lil-gui';
+import { getGlobalControlsConfig, setGlobalControlsConfig } from '../../engine/controls-config.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -48,6 +49,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     actionButtonPadding: 32,
     hapticFeedback: true,
     ...(loadLabState<MobileControlsLabSettings>(LAB_ID) ?? {}),
+    moveMode: getGlobalControlsConfig().mobileMoveMode,
   };
 
   // --- DOM setup ---
@@ -113,7 +115,12 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   const ctx = context;
 
   // --- lil-gui ---
-  gui.add(settings, 'moveMode', ['joystick', 'follow']).name('Move Mode');
+  gui
+    .add(settings, 'moveMode', ['joystick', 'follow'])
+    .name('Move Mode')
+    .onChange((value: MoveMode) => {
+      setGlobalControlsConfig({ mobileMoveMode: value });
+    });
 
   const joystickFolder = gui.addFolder('Joystick Settings');
   joystickFolder.add(settings, 'joystickRadius', 30, 120, 5).name('Radius');

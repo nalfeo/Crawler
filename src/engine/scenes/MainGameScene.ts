@@ -26,6 +26,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private inputCapture?: ReturnType<typeof createInputCapture>;
 
+  private playerEid = -1;
+
   private world!: GameWorld;
 
   /** Accumulated real time not yet consumed by fixed-step simulation (ms). */
@@ -43,10 +45,18 @@ export class MainGameScene extends Phaser.Scene {
   create(): void {
     this.world = createGameWorld();
     this.inputState = createInputState();
-    this.inputCapture = createInputCapture(this);
+    this.inputCapture = createInputCapture(this, {
+      getFollowOrigin: () =>
+        this.playerEid < 0
+          ? undefined
+          : {
+              x: this.world.stores.position.x[this.playerEid] ?? 0,
+              y: this.world.stores.position.y[this.playerEid] ?? 0,
+            },
+    });
     this.accumulator = 0;
 
-    spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+    this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
 
     this.bridge = createPhaserBridge(this);
     this.bridge.sync(this.world);
