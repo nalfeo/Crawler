@@ -79,8 +79,8 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
       .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
       .join('\n');
     throw new Error(
-      `Brief at ${absolute} is missing required minimal fields ` +
-        `(type, name, and one of description/prompt):\n${issues}`,
+      `Brief at ${absolute} failed minimal validation ` +
+        `(type, name, and one of description/prompt required):\n${issues}`,
     );
   }
   const loadDefaults = opts.loadTypeDefaults ?? defaultTypeDefaultsLoader(opts.projectRoot);

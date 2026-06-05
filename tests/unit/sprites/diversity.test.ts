@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
-import { computeDiversity, hammingDistance, perceptualHash } from '../../../scripts/sprites/diversity.js';
+import {
+  computeDiversity,
+  hammingDistance,
+  perceptualHash,
+} from '../../../scripts/sprites/diversity.js';
 
 /** Build a 16x16 PNG where `paint(x, y)` returns the RGBA pixel. */
-function build16(paint: (x: number, y: number) => readonly [number, number, number, number]): Buffer {
+function build16(
+  paint: (x: number, y: number) => readonly [number, number, number, number],
+): Buffer {
   const png = new PNG({ width: 16, height: 16 });
   for (let y = 0; y < 16; y++) {
     for (let x = 0; x < 16; x++) {
@@ -26,33 +32,29 @@ describe('perceptualHash', () => {
   it('returns a 32-byte (256-bit) hash for a 16x16 sprite', () => {
     const png = build16(() => TRANSPARENT);
     const hash = perceptualHash(png);
-    expect(hash.length).toBe(32);
+    expect(hash.bits.length).toBe(32);
+    expect(hash.bitLength).toBe(256);
   });
 
   it('produces identical hashes for identical inputs', () => {
     const png = build16((x) => (x < 8 ? WHITE : BLACK));
     const a = perceptualHash(png);
     const b = perceptualHash(png);
-    expect(Array.from(a)).toEqual(Array.from(b));
+    expect(Array.from(a.bits)).toEqual(Array.from(b.bits));
+    expect(a.bitLength).toBe(b.bitLength);
   });
 
   it('treats transparent pixels as luminance 0', () => {
-    // A sprite with one bright dot on a transparent field should have a
-    // hash dominated by zero bits (background) and a small cluster of
-    // set bits where the dot is.
     const png = build16((x, y) => (x === 8 && y === 8 ? WHITE : TRANSPARENT));
     const hash = perceptualHash(png);
     let setBits = 0;
-    for (const byte of hash) {
+    for (const byte of hash.bits) {
       let b = byte;
       while (b) {
         b &= b - 1;
         setBits++;
       }
     }
-    // The mean luminance is tiny (one bright pixel out of 256), so the
-    // threshold sits just above 0 — every transparent pixel contributes
-    // 0 (below threshold) and the one bright pixel contributes >= threshold.
     expect(setBits).toBe(1);
   });
 });

@@ -49,19 +49,29 @@ export interface DiversitySummary {
 
 export type DiversityHashType = 'mean-luma-256';
 
+export interface PerceptualHash {
+  /** Packed bit-vector (LSB-first within each byte). */
+  readonly bits: Uint8Array;
+  /** Number of meaningful bits. Equal to `image.width * image.height`. */
+  readonly bitLength: number;
+}
+
 /**
- * Compute a perceptual hash from a 16x16 (or any-size) sprite PNG.
+ * Compute a perceptual hash from a sprite PNG.
  *
- * Returns a Uint8Array packed bit-vector; each bit is `1` iff that pixel's
- * luminance is `>=` the mean luminance of the sprite. The hash length in
- * bits is always `image.width * image.height`. Callers should pair this
- * with `hammingDistance` and ensure they are comparing hashes of the same
- * underlying size.
+ * Returns a packed bit-vector together with the *true* bit length
+ * (pixel count). Tracking the bit length separately is important because
+ * pixel counts that aren't a multiple of 8 are zero-padded in the packed
+ * Uint8Array — using `bits.length * 8` as the divisor would silently
+ * normalise over the padding bits and skew the resulting Hamming distance.
+ *
+ * Each bit is `1` iff that pixel's luminance is `>=` the mean luminance
+ * of the sprite. Bit order follows raster scan (`y * width + x`).
  */
-export function perceptualHash(png: Buffer): Uint8Array {
+export function perceptualHash(png: Buffer): PerceptualHash {
   const image = decodeSprite(png);
   const pixelCount = image.width * image.height;
-  if (pixelCount === 0) return new Uint8Array(0);
+  if (pixelCount === 0) return { bits: new Uint8Array(0), bitLength: 0 };
 
   const luminance = new Float64Array(pixelCount);
   let sum = 0;
@@ -88,12 +98,18 @@ export function perceptualHash(png: Buffer): Uint8Array {
       bits[byteIdx]! |= 1 << bitIdx;
     }
   }
-  return bits;
+  return { bits, bitLength: pixelCount };
 }
 
 /**
  * Hamming distance between two equal-length bit vectors, normalised to
  * the bit length so the result lives in [0, 1].
+ *
+ * Important: `bitLength` is the *meaningful* bit length (the original
+ * pixel count), not the underlying Uint8Array's byte capacity times 8.
+ * Padding bits in the packed representation are always 0 and would
+ * never differ, but normalising by byte-capacity would still skew the
+ * ratio downward when `bitLength` isn't a multiple of 8.
  */
 export function hammingDistance(a: Uint8Array, b: Uint8Array, bitLength: number): number {
   if (a.length !== b.length) {
@@ -129,14 +145,16 @@ export function hammingDistance(a: Uint8Array, b: Uint8Array, bitLength: number)
 export function computeDiversity(processedPngs: ReadonlyArray<Buffer>): DiversitySummary | null {
   if (processedPngs.length < 2) return null;
   const hashes = processedPngs.map((p) => perceptualHash(p));
-  // All hashes must share the same bit length; if briefs ever mix sprite
-  // sizes within a single run, we'd need to bucket — but for Phase 2 all
-  // sprites in a sheet share the brief's declared size.
-  const bitLength = hashes[0]!.length * 8;
+  // Hashes must share the same meaningful bit length (the decoded
+  // pixel count). Comparing by byte-length alone would let a 15x17 and a
+  // 16x16 hash slip through with the same packed size but different
+  // pixel layouts; here we validate the underlying dimension instead.
+  const bitLength = hashes[0]!.bitLength;
+  if (bitLength === 0) return null;
   for (let i = 1; i < hashes.length; i++) {
-    if (hashes[i]!.length * 8 !== bitLength) {
+    if (hashes[i]!.bitLength !== bitLength) {
       throw new Error(
-        `computeDiversity: sprite ${i} has ${hashes[i]!.length * 8} bits, ` +
+        `computeDiversity: sprite ${i} has ${hashes[i]!.bitLength} bits, ` +
           `expected ${bitLength} bits to match sprite 0`,
       );
     }
@@ -147,7 +165,7 @@ export function computeDiversity(processedPngs: ReadonlyArray<Buffer>): Diversit
   let max = Number.NEGATIVE_INFINITY;
   for (let i = 0; i < hashes.length; i++) {
     for (let j = i + 1; j < hashes.length; j++) {
-      const d = hammingDistance(hashes[i]!, hashes[j]!, bitLength);
+      const d = hammingDistance(hashes[i]!.bits, hashes[j]!.bits, bitLength);
       sum += d;
       if (d < min) min = d;
       if (d > max) max = d;

@@ -63,7 +63,7 @@ describe('loadBrief', () => {
     const briefPath = path.join(root, 'briefs', 'bad.yaml');
     writeFileSync(briefPath, 'type: weapon\nname: BAD_NAME\n');
     expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(
-      /missing required minimal fields|failed validation/,
+      /failed minimal validation|failed validation/,
     );
   });
 
