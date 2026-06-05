@@ -47,7 +47,7 @@ The judge and any other model-driven services run in a small Node sidecar proces
 
 ### 5. Palettes are data, not code
 
-Palettes are committed as plain JSON arrays of `[r, g, b]` triples under `data/palettes/`. They are extracted from reference art by `scripts/sprites/extract-palette.ts` and consumed by post-processing and sensors. No palette ever lives inside a `.ts` constant. This makes palettes diffable, swappable per art-direction experiment, and machine-checkable: the quantize step and the palette-membership sensor read the same JSON.
+Palettes are committed as plain JSON arrays of `[r, g, b]` triples under `data/palettes/`. They are extracted from reference art by `scripts/sprites/extract-palette.ts` and consumed by post-processing and sensors. **Production palettes — the ones the generator, post-processor, and runtime sensors actually consume — never live inside a `.ts` constant.** This makes palettes diffable, swappable per art-direction experiment, and machine-checkable: the quantize step and the palette-membership sensor read the same JSON. (Tiny synthetic palettes inlined in unit/integration tests don't count as production palettes — they exist only to keep fixtures self-contained and to assert pipeline behavior over a known small color set.)
 
 ## Consequences
 
