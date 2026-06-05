@@ -1,0 +1,380 @@
+/**
+ * VLM judge for the sprite generation pipeline (spec §F4).
+ *
+ * Three evaluators, one vision call per variant:
+ *
+ *   - `style_match`   — does the candidate read as same-family as the
+ *                       brief's reference sprites?
+ *   - `brief_match`   — does the candidate match `brief.prompt`?
+ *   - `readability`   — does the candidate read at game scale on a dark
+ *                       floor tile? (composited preview attached)
+ *
+ * Each evaluator returns a 1-5 integer score and a 1-2 sentence
+ * rationale. A variant is `passed` only when ALL evaluators score >= 3
+ * (spec §F4: `< 3 auto-rejects`).
+ *
+ * Hard constitutional rule (§3 — Deterministic CI Only): this module
+ * REFUSES to run when `process.env.CI` is defined. The judge calls a
+ * live Azure deployment, is non-deterministic, and costs credits;
+ * none of those are acceptable in a CI gate. Bypassing requires an
+ * ADR, period.
+ *
+ * Cost discipline: one vision call per variant — all three evaluators
+ * are requested in a single structured-output response, NOT fanned out
+ * into three separate calls. This keeps a typical 8-variant brief well
+ * under the $0.50/run ceiling in spec §"Cost ceiling".
+ *
+ * Inputs are pure-ish (Buffer + brief + style guide string); the only
+ * impurity is the provider call and the optional sidecar write. The
+ * provider is injected so tests run without network.
+ */
+
+import path from 'node:path';
+import { writeFileSync } from 'node:fs';
+import { PNG } from 'pngjs';
+import { z } from 'zod';
+import type { Brief } from './brief-schema.js';
+import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
+
+export const EVALUATORS = ['style_match', 'brief_match', 'readability'] as const;
+export type Evaluator = (typeof EVALUATORS)[number];
+
+/** Per-evaluator result on the 1-5 ordinal scale. */
+export interface EvaluatorResult {
+  readonly score: number;
+  readonly rationale: string;
+}
+
+/**
+ * Standalone judge artifact written to `processed/NN.judge.json`.
+ *
+ * Deliberately NOT shaped like the sensor scorecard (`{ score, outOf,
+ * passed, breakdown }`) — ordinal 1-5 scores aren't comparable with
+ * boolean sensor counts, and reviewers should never sum them. The
+ * dashboard / lab reads the `passed` flag and the per-evaluator scores
+ * directly.
+ */
+export interface JudgeScorecard {
+  readonly variantIndex: number;
+  readonly modelDeployment: string;
+  readonly judgedAt: string;
+  readonly styleMatch: EvaluatorResult;
+  readonly briefMatch: EvaluatorResult;
+  readonly readability: EvaluatorResult;
+  /** True iff every evaluator scored >= 3. */
+  readonly passed: boolean;
+  /** Lowest of the three scores. Convenient for ranking. */
+  readonly minScore: number;
+  /** Evaluator names that auto-rejected (`< 3`). Empty when `passed`. */
+  readonly rejectedBy: ReadonlyArray<Evaluator>;
+  /** Provider usage stats when surfaced. Null when the call didn't return them. */
+  readonly usage: {
+    readonly promptTokens: number;
+    readonly completionTokens: number;
+    readonly totalTokens: number;
+  } | null;
+}
+
+export interface JudgeVariantOptions {
+  /** Processed 16x16 (or whatever `brief.size`) PNG bytes for this variant. */
+  readonly processed: Buffer;
+  /** Reference PNG buffers from the brief (already loaded). */
+  readonly referencePngs: ReadonlyArray<Buffer>;
+  readonly brief: Brief;
+  /** Loaded style guide string — concatenated into the system prompt. */
+  readonly styleGuide: string;
+  readonly provider: VisionProvider;
+  /** Variant index used for the artifact and the prompt. */
+  readonly variantIndex: number;
+  /**
+   * Directory where the judge artifact is written
+   * (`<processedDir>/NN.judge.json`). When omitted, the artifact is NOT
+   * written — useful for tests that only want the scorecard return
+   * value.
+   */
+  readonly processedDir?: string;
+  /** Clock injection for deterministic tests. */
+  readonly now?: () => Date;
+  /**
+   * Env source for the CI guard. Defaults to `process.env`. Tests pass
+   * a literal map so they can exercise the refusal path without
+   * mutating the real environment.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}
+
+/** Zod schema for the model's structured response. Single source of truth. */
+const evaluatorPayloadSchema = z
+  .object({
+    score: z.number().int().min(1).max(5),
+    rationale: z.string().min(1).max(500),
+  })
+  .strict();
+
+export const judgeResponseSchema = z
+  .object({
+    style_match: evaluatorPayloadSchema,
+    brief_match: evaluatorPayloadSchema,
+    readability: evaluatorPayloadSchema,
+  })
+  .strict();
+
+/**
+ * Error thrown when a judge call fails for any non-provider reason —
+ * principally the CI refusal and response-schema validation. Provider
+ * failures still surface as `VisionProviderError` from the underlying
+ * provider so the orchestrator can distinguish "the model returned
+ * garbage" from "the network timed out".
+ */
+export class JudgeError extends Error {
+  override readonly name = 'JudgeError';
+  constructor(
+    readonly kind: 'ci-refused' | 'malformed',
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Judge one variant. Returns the scorecard and (optionally) writes it
+ * to disk next to the existing sensor scorecard. Does NOT mutate the
+ * sensor scorecard.
+ *
+ * Throws `JudgeError('ci-refused')` if `env.CI` is defined. Throws
+ * `VisionProviderError` on provider failures. Throws `JudgeError('malformed')`
+ * when the provider returned valid JSON that fails the evaluator schema.
+ */
+export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeScorecard> {
+  const env = options.env ?? process.env;
+  if (env.CI !== undefined) {
+    throw new JudgeError(
+      'ci-refused',
+      'Per Constitutional §3, judge.ts is local-only — it costs Azure credits and is ' +
+        'non-deterministic. Bypassing requires an ADR. Unset the CI environment variable ' +
+        'to run locally, or disable the judge for this brief.',
+    );
+  }
+
+  const now = options.now ?? (() => new Date());
+  const candidatePreview = upscaleNearestNeighbor(options.processed, 8);
+  const readabilityComposite = composeReadabilityPreview(options.processed);
+
+  // Cap references to 3 to control per-call cost. The spec's example
+  // already uses "three reference PNGs"; more would add tokens without
+  // changing style_match accuracy in any measurable way.
+  const referencePreviews = options.referencePngs
+    .slice(0, 3)
+    .map((png) => ({ png, label: 'reference' as const }));
+
+  const request: EvaluateRequest = {
+    systemInstructions: buildSystemInstructions(options.styleGuide),
+    userPrompt: buildUserPrompt(options.brief, referencePreviews.length),
+    images: [
+      { png: candidatePreview, label: 'candidate' },
+      { png: readabilityComposite, label: 'readability-composite' },
+      ...referencePreviews.map((r, i) => ({ png: r.png, label: `reference-${i + 1}` })),
+    ],
+  };
+
+  const response = await options.provider.evaluate(request);
+
+  const parsed = judgeResponseSchema.safeParse(response.json);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n');
+    throw new JudgeError(
+      'malformed',
+      `Judge response failed schema validation:\n${issues}\nRaw: ${JSON.stringify(response.json).slice(0, 300)}`,
+    );
+  }
+
+  const scorecard = buildScorecard({
+    variantIndex: options.variantIndex,
+    payload: parsed.data,
+    modelDeployment: response.modelDeployment,
+    usage: response.usage,
+    now: now(),
+  });
+
+  if (options.processedDir) {
+    const file = path.join(
+      options.processedDir,
+      `${String(options.variantIndex).padStart(2, '0')}.judge.json`,
+    );
+    writeFileSync(file, `${JSON.stringify(scorecard, null, 2)}\n`);
+  }
+
+  return scorecard;
+}
+
+function buildScorecard(args: {
+  variantIndex: number;
+  payload: z.infer<typeof judgeResponseSchema>;
+  modelDeployment: string;
+  usage: {
+    readonly promptTokens: number;
+    readonly completionTokens: number;
+    readonly totalTokens: number;
+  } | null;
+  now: Date;
+}): JudgeScorecard {
+  const evaluators: ReadonlyArray<readonly [Evaluator, EvaluatorResult]> = [
+    ['style_match', args.payload.style_match],
+    ['brief_match', args.payload.brief_match],
+    ['readability', args.payload.readability],
+  ];
+  const rejectedBy = evaluators.filter(([, r]) => r.score < 3).map(([name]) => name);
+  const minScore = Math.min(...evaluators.map(([, r]) => r.score));
+  return {
+    variantIndex: args.variantIndex,
+    modelDeployment: args.modelDeployment,
+    judgedAt: args.now.toISOString(),
+    styleMatch: args.payload.style_match,
+    briefMatch: args.payload.brief_match,
+    readability: args.payload.readability,
+    passed: rejectedBy.length === 0,
+    minScore,
+    rejectedBy,
+    usage: args.usage,
+  };
+}
+
+function buildSystemInstructions(styleGuide: string): string {
+  return [
+    'You are a strict quality judge for pixel-art sprites generated for a top-down roguelike game.',
+    '',
+    'You will be shown a CANDIDATE sprite (upscaled for legibility), a READABILITY-COMPOSITE',
+    '(the same sprite at 1x size on a dark floor tile, then upscaled), and one or more',
+    'REFERENCE sprites that anchor the target visual style.',
+    '',
+    'Score the candidate on three independent 1-5 ordinal axes:',
+    '',
+    '  1. style_match  — Does the candidate read as same-family as the references?',
+    '                    Match: outline thickness, palette, shading stops, anti-aliasing,',
+    '                    silhouette weight. 5 = indistinguishable from references. 1 = generic',
+    '                    AI pixel art that obviously does not belong with them.',
+    '',
+    '  2. brief_match  — Does the candidate depict the subject described in the brief',
+    '                    (provided in the user prompt)? 5 = unambiguously the requested',
+    '                    subject. 1 = a different subject entirely.',
+    '',
+    '  3. readability  — Inspect the READABILITY-COMPOSITE. Does the silhouette read clearly',
+    '                    at game scale on a dark floor tile? 5 = silhouette pops; the subject',
+    '                    is obvious in one glance. 1 = the sprite blends into the floor or',
+    '                    the silhouette is illegible.',
+    '',
+    'Anything scoring below 3 auto-rejects the variant. Use the full 1-5 scale; do not',
+    'default to 3 for borderline cases — pick 2 (fail) or 4 (pass) and justify briefly.',
+    '',
+    'Rationale per axis: 1-2 sentences max. Be specific (e.g. "outline too thin compared',
+    'to references" not "looks wrong"). No prose outside the JSON.',
+    '',
+    'Style ground truth (the references take precedence when these conflict):',
+    truncate(styleGuide, 1500),
+    '',
+    'Respond with STRICT JSON only — no prose, no markdown — matching this shape:',
+    '{',
+    '  "style_match": { "score": 1-5, "rationale": "..." },',
+    '  "brief_match": { "score": 1-5, "rationale": "..." },',
+    '  "readability": { "score": 1-5, "rationale": "..." }',
+    '}',
+  ].join('\n');
+}
+
+function buildUserPrompt(brief: Brief, referenceCount: number): string {
+  const refList =
+    referenceCount === 0
+      ? 'No reference images attached.'
+      : `${referenceCount} reference image(s) attached, labelled reference-1 .. reference-${referenceCount}.`;
+  return [
+    `BRIEF NAME: ${brief.name}`,
+    `BRIEF TYPE: ${brief.type}`,
+    `BRIEF PROMPT: ${brief.prompt}`,
+    brief.tags.length > 0 ? `BRIEF TAGS: ${brief.tags.join(', ')}` : '',
+    '',
+    'Attached images, in order:',
+    '  1. candidate              — the sprite to evaluate, upscaled 8x',
+    '  2. readability-composite  — the same sprite at 1x on a dark floor tile, upscaled',
+    `  ${refList ? '3+. reference-N            — visual style anchor(s). The candidate must read as same-family.' : ''}`,
+    '',
+    refList,
+    '',
+    'Return your three scores and rationales as the strict JSON object described in the system prompt.',
+  ]
+    .filter((s) => s !== '')
+    .join('\n');
+}
+
+/**
+ * Nearest-neighbor upscale a PNG by an integer factor. Used to make a
+ * 16x16 sprite legible to a vision model (which downsamples internally
+ * anyway, but doesn't reason well about tiny inputs).
+ *
+ * Pure: same bytes in, same bytes out. No PRNG, no clock.
+ */
+function upscaleNearestNeighbor(pngBuffer: Buffer, factor: number): Buffer {
+  if (!Number.isInteger(factor) || factor < 1) {
+    throw new Error(`upscaleNearestNeighbor: factor must be a positive integer, got ${factor}`);
+  }
+  const src = PNG.sync.read(pngBuffer);
+  const dst = new PNG({ width: src.width * factor, height: src.height * factor });
+  for (let y = 0; y < dst.height; y++) {
+    const srcY = Math.floor(y / factor);
+    for (let x = 0; x < dst.width; x++) {
+      const srcX = Math.floor(x / factor);
+      const srcIdx = (srcY * src.width + srcX) * 4;
+      const dstIdx = (y * dst.width + x) * 4;
+      dst.data[dstIdx] = src.data[srcIdx]!;
+      dst.data[dstIdx + 1] = src.data[srcIdx + 1]!;
+      dst.data[dstIdx + 2] = src.data[srcIdx + 2]!;
+      dst.data[dstIdx + 3] = src.data[srcIdx + 3]!;
+    }
+  }
+  return PNG.sync.write(dst);
+}
+
+/**
+ * Compose the readability-preview: the candidate at 1x size on a dark
+ * floor tile, then upscaled so the vision model can see it. The tile
+ * is a flat dark color rather than a real biome asset because (a) the
+ * dungeon's actual floor varies per biome and (b) flat dark is the
+ * worst-case background for silhouette readability — if the sprite
+ * reads on flat #2a2a32, it'll read on any biome tile.
+ *
+ * Pure. Same input PNG -> same output PNG.
+ */
+function composeReadabilityPreview(processedPng: Buffer): Buffer {
+  const src = PNG.sync.read(processedPng);
+  const composite = new PNG({ width: src.width, height: src.height });
+  // Fill with the dark floor color first.
+  const FLOOR_R = 42;
+  const FLOOR_G = 42;
+  const FLOOR_B = 50;
+  for (let i = 0; i < composite.data.length; i += 4) {
+    composite.data[i] = FLOOR_R;
+    composite.data[i + 1] = FLOOR_G;
+    composite.data[i + 2] = FLOOR_B;
+    composite.data[i + 3] = 255;
+  }
+  // Source-over composite: any non-zero-alpha pixel in `src` overwrites
+  // the floor. The post-processor hard-thresholds alpha to {0,255}, so
+  // there's no partial-alpha math to worry about.
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < src.width; x++) {
+      const idx = (y * src.width + x) * 4;
+      if (src.data[idx + 3]! > 0) {
+        composite.data[idx] = src.data[idx]!;
+        composite.data[idx + 1] = src.data[idx + 1]!;
+        composite.data[idx + 2] = src.data[idx + 2]!;
+        composite.data[idx + 3] = 255;
+      }
+    }
+  }
+  return upscaleNearestNeighbor(PNG.sync.write(composite), 8);
+}
+
+function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}

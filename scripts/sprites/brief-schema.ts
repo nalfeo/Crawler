@@ -197,6 +197,36 @@ export const briefSchema = z
      * repetitive, few enough that the model doesn't get overwhelmed.
      */
     minVariations: z.number().int().min(0).max(20).default(4),
+    /**
+     * Opt-in for the local-only VLM judge (spec §F4).
+     *
+     * The judge runs three evaluators (`style_match`, `brief_match`,
+     * `readability`) on each sensor-passing variant via a vision model
+     * and rejects variants where ANY evaluator scores below 3 (on the
+     * 1-5 ordinal scale). Disabled by default so existing briefs and
+     * unattended-but-CI runs are unaffected — flip to `enabled: true`
+     * on briefs where you want unattended quality filtering beyond what
+     * the deterministic sensors catch.
+     *
+     * NEVER enabled in CI: `judge.ts` refuses to run when `process.env.CI`
+     * is defined (Constitutional §3 — non-deterministic + costs Azure
+     * credits). The flag is enforced at the orchestrator boundary even
+     * if a brief sets `enabled: true`.
+     *
+     * `maxVariants` caps how many sensor-passing candidates get judged
+     * per run; the judge ranks sensor-passing variants by sensor score
+     * and keeps the top N. Default is 16 — high enough for a full 4x4
+     * sheet, low enough that an accidental brief with thousands of
+     * variants can't run away with the cost. Set lower (e.g. 4) to
+     * keep cost predictable on large batches.
+     */
+    judge: z
+      .object({
+        enabled: z.boolean().default(false),
+        maxVariants: z.number().int().min(1).max(64).default(16),
+      })
+      .strict()
+      .default({ enabled: false, maxVariants: 16 }),
   })
   .strict()
   .superRefine((brief, ctx) => {

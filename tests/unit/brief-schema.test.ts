@@ -22,6 +22,7 @@ const validBrief: Brief = {
   sensors: {},
   variations: [],
   minVariations: 4,
+  judge: { enabled: false, maxVariants: 16 },
 };
 
 describe('briefSchema', () => {
