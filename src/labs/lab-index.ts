@@ -165,9 +165,8 @@ export function renderLabIndex(): void {
   canvas.replaceChildren();
   controls.replaceChildren();
 
-  // Reset any inline height a previous lab may have set (e.g. sprite-catalog-lab sets
-  // a pixel height). The stylesheet already provides overflow-y:auto for scrolling.
-  canvas.style.height = '100%';
+  // Clear any inline style overrides so #lab-canvas reverts to its stylesheet/flex defaults.
+  canvas.style.cssText = '';
 
   const labs = [...getAllLabs().entries()].sort(([leftId], [rightId]) =>
     leftId.localeCompare(rightId),
