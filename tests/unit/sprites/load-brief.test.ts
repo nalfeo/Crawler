@@ -101,4 +101,84 @@ describe('loadBrief', () => {
       [4, 5, 6],
     ]);
   });
+
+  describe('sprite-type defaults', () => {
+    function setupBriefAndPalette(): string {
+      const briefPath = path.join(root, 'briefs', 'iron-sword.yaml');
+      writeFileSync(briefPath, SAMPLE_BRIEF_YAML);
+      writeFileSync(
+        path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+        JSON.stringify([
+          [0, 0, 0],
+          [255, 255, 255],
+        ]),
+      );
+      return briefPath;
+    }
+
+    it('merges sensors.anchor defaults from data/sprite-types/<type>.json when present', () => {
+      const briefPath = setupBriefAndPalette();
+      mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+      writeFileSync(
+        path.join(root, 'data', 'sprite-types', 'weapon.json'),
+        JSON.stringify({
+          sensors: { anchor: { derive: true, bandRows: 4, centerToleranceX: 3 } },
+        }),
+      );
+
+      const { brief } = loadBrief(briefPath, { projectRoot: root });
+      expect(brief.sensors.anchor).toEqual({ derive: true, bandRows: 4, centerToleranceX: 3 });
+    });
+
+    it('lets the brief override individual sensor sub-keys without restating the rest', () => {
+      const briefPath = path.join(root, 'briefs', 'iron-sword.yaml');
+      writeFileSync(
+        briefPath,
+        `${SAMPLE_BRIEF_YAML}\nsensors:\n  anchor: { centerToleranceX: 8 }\n`,
+      );
+      writeFileSync(
+        path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+        JSON.stringify([
+          [0, 0, 0],
+          [255, 255, 255],
+        ]),
+      );
+      mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+      writeFileSync(
+        path.join(root, 'data', 'sprite-types', 'weapon.json'),
+        JSON.stringify({
+          sensors: { anchor: { derive: true, bandRows: 4, centerToleranceX: 3 } },
+        }),
+      );
+
+      const { brief } = loadBrief(briefPath, { projectRoot: root });
+      // Brief overrides only centerToleranceX; derive + bandRows come from defaults.
+      expect(brief.sensors.anchor).toEqual({ derive: true, bandRows: 4, centerToleranceX: 8 });
+    });
+
+    it('leaves the brief untouched when no defaults file exists', () => {
+      const briefPath = setupBriefAndPalette();
+      const { brief } = loadBrief(briefPath, { projectRoot: root });
+      expect(brief.sensors.anchor).toBeUndefined();
+    });
+
+    it('lets tests inject sprite-type defaults via the loadSpriteTypeDefaults hook', () => {
+      const briefPath = setupBriefAndPalette();
+      const { brief } = loadBrief(briefPath, {
+        projectRoot: root,
+        loadSpriteTypeDefaults: (type) => {
+          expect(type).toBe('weapon');
+          return { sensors: { anchor: { derive: true } } };
+        },
+      });
+      expect(brief.sensors.anchor?.derive).toBe(true);
+    });
+
+    it('throws a useful error when the defaults JSON is malformed', () => {
+      const briefPath = setupBriefAndPalette();
+      mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+      writeFileSync(path.join(root, 'data', 'sprite-types', 'weapon.json'), '{ not valid json');
+      expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/not valid JSON/);
+    });
+  });
 });

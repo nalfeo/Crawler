@@ -44,6 +44,7 @@ import { ProviderError } from './provider/types.js';
 import {
   ensureRunDirs,
   makeRunId,
+  pickChosen,
   rankCandidates,
   runPaths,
   writeSheet,
@@ -143,7 +144,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     const raw = sliced[i]!;
     const processed = postprocess(raw, brief, palette);
     const scorecard = scoreCandidate(processed, brief, palette);
-    const { rawPath, processedPath, scorecardPath } = writeVariant(
+    const { rawPath, processedPath, scorecardPath, anchorSidecarPath } = writeVariant(
       paths,
       i,
       raw,
@@ -158,10 +159,13 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       rawPath,
       processedPath,
       scorecardPath,
+      derivedAnchor: scorecard.derivedAnchor,
+      anchorSidecarPath,
     });
   }
 
   const ranked = rankCandidates(entries);
+  const chosen = pickChosen(ranked, brief);
   const summary: RunSummary = {
     brief: brief.name,
     briefPath: loaded.briefPath,
@@ -171,6 +175,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     attempts,
     variantCount: expected,
     candidates: ranked,
+    chosen,
   };
   const summaryPath = writeSummary(paths, summary);
 

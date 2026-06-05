@@ -134,4 +134,38 @@ describe('scoreCandidate', () => {
     const card2 = scoreCandidate(processed, brief, PALETTE);
     expect(card1.breakdown.map((r) => r.sensor)).toEqual(card2.breakdown.map((r) => r.sensor));
   });
+
+  it('uses anchor-opaque by default and reports derivedAnchor=null', () => {
+    const brief = makeBrief();
+    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    const sensors = card.breakdown.map((r) => r.sensor);
+    expect(sensors).toContain('anchor-opaque');
+    expect(sensors).not.toContain('anchor-derivable');
+    expect(card.derivedAnchor).toBeNull();
+  });
+
+  it('swaps to anchor-derivable when sensors.anchor.derive=true and surfaces the anchor', () => {
+    const brief = makeBrief({
+      sensors: { anchor: { derive: true, bandRows: 4, centerToleranceX: 3 } } as Brief['sensors'],
+    });
+    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    const sensors = card.breakdown.map((r) => r.sensor);
+    expect(sensors).toContain('anchor-derivable');
+    expect(sensors).not.toContain('anchor-opaque');
+    // The good sword fixture has a diagonal blade; the derived grip might not
+    // pass tolerance for this synthetic test, but if it does the value must
+    // be carried up onto the Scorecard. Assert both shape and consistency.
+    const anchorResult = card.breakdown.find((r) => r.sensor === 'anchor-derivable');
+    if (anchorResult?.ok) {
+      expect(card.derivedAnchor).not.toBeNull();
+      // Carried value must equal the sensor's own anchor.
+      expect(card.derivedAnchor).toEqual(
+        (anchorResult as unknown as { anchor: { x: number; y: number } }).anchor,
+      );
+    } else {
+      expect(card.derivedAnchor).toBeNull();
+    }
+  });
 });

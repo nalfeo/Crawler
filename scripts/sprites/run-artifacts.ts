@@ -12,6 +12,8 @@
  *     raw/NN.png             -- raw N-th slice, before postprocessing
  *     processed/NN.png       -- post-processed 16x16 PNG
  *     processed/NN.scorecard.json  -- sensor scorecard for processed/NN.png
+ *     processed/NN.anchor.json     -- derived anchor sidecar (only when the brief opts
+ *                                     into sensors.anchor.derive and derivation succeeded)
  *     summary.json           -- ranked candidates: passed-first, then by sensor score
  *     selection.json         -- written ONLY when the user runs `sprites:run --pick N`
  *
@@ -28,6 +30,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Brief } from './brief-schema.js';
 import type { Scorecard } from './score-candidate.js';
+import type { DerivedAnchor } from './sensors/derive-anchor.js';
 
 export interface RunPaths {
   readonly root: string;
@@ -45,6 +48,44 @@ export interface RunSummaryEntry {
   readonly rawPath: string;
   readonly processedPath: string;
   readonly scorecardPath: string;
+  /**
+   * Anchor derived by the `anchor-derivable` sensor for this variant. Null
+   * when the brief uses the legacy `anchor-opaque` sensor, or when
+   * derivation failed.
+   */
+  readonly derivedAnchor: DerivedAnchor | null;
+  /**
+   * Path to the per-variant anchor sidecar JSON, when `derivedAnchor` is
+   * non-null. Mirrors what gets surfaced in `RunSummary.chosen`.
+   */
+  readonly anchorSidecarPath: string | null;
+}
+
+/**
+ * Source of the anchor surfaced in `RunSummary.chosen.anchor`. `derived`
+ * means the `anchor-derivable` sensor produced it from the silhouette;
+ * `brief` means it came from the static `brief.anchor` pixel.
+ */
+export type ChosenAnchorSource = 'derived' | 'brief';
+
+export interface ChosenAnchor {
+  readonly x: number;
+  readonly y: number;
+  readonly source: ChosenAnchorSource;
+}
+
+export interface ChosenCandidate {
+  readonly index: number;
+  readonly score: number;
+  readonly outOf: number;
+  readonly passed: boolean;
+  /**
+   * Anchor for the chosen variant — derived when the brief opted into
+   * `sensors.anchor.derive`, otherwise the static `brief.anchor` pixel.
+   * Null only if the brief's static anchor is somehow absent (defensive;
+   * the schema requires it today).
+   */
+  readonly anchor: ChosenAnchor | null;
 }
 
 export interface RunSummary {
@@ -57,6 +98,13 @@ export interface RunSummary {
   readonly variantCount: number;
   /** Candidates ranked best-first: passed first, then by sensor score desc. */
   readonly candidates: ReadonlyArray<RunSummaryEntry>;
+  /**
+   * The top-ranked candidate plus its anchor, lifted out of `candidates` so
+   * consumers (CLI summary line, future SpriteDef promotion, lab UI) don't
+   * have to re-rank. Null only when there are no candidates at all, which
+   * shouldn't happen for a well-formed brief.
+   */
+  readonly chosen: ChosenCandidate | null;
 }
 
 /**
@@ -101,7 +149,12 @@ export function writeVariant(
   raw: Buffer,
   processed: Buffer,
   scorecard: Scorecard,
-): { readonly rawPath: string; readonly processedPath: string; readonly scorecardPath: string } {
+): {
+  readonly rawPath: string;
+  readonly processedPath: string;
+  readonly scorecardPath: string;
+  readonly anchorSidecarPath: string | null;
+} {
   const id = String(index).padStart(2, '0');
   const rawPath = path.join(paths.rawDir, `${id}.png`);
   const processedPath = path.join(paths.processedDir, `${id}.png`);
@@ -109,7 +162,19 @@ export function writeVariant(
   writeFileSync(rawPath, raw);
   writeFileSync(processedPath, processed);
   writeFileSync(scorecardPath, `${JSON.stringify(scorecard, null, 2)}\n`);
-  return { rawPath, processedPath, scorecardPath };
+
+  let anchorSidecarPath: string | null = null;
+  if (scorecard.derivedAnchor) {
+    anchorSidecarPath = path.join(paths.processedDir, `${id}.anchor.json`);
+    const sidecar = {
+      x: scorecard.derivedAnchor.x,
+      y: scorecard.derivedAnchor.y,
+      source: 'derived' as const,
+    };
+    writeFileSync(anchorSidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`);
+  }
+
+  return { rawPath, processedPath, scorecardPath, anchorSidecarPath };
 }
 
 /** Write run summary JSON. Returns path. */
@@ -129,4 +194,31 @@ export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSumm
     if (a.score !== b.score) return b.score - a.score;
     return a.index - b.index;
   });
+}
+
+/**
+ * Pick the top-ranked candidate and resolve its anchor:
+ *   - When the variant carries a `derivedAnchor`, surface that with
+ *     `source: 'derived'` (the brief opted into per-variant derivation).
+ *   - Otherwise fall back to the brief's static `anchor` pixel with
+ *     `source: 'brief'`.
+ *
+ * Returns null when `ranked` is empty. Pure.
+ */
+export function pickChosen(
+  ranked: ReadonlyArray<RunSummaryEntry>,
+  brief: Brief,
+): ChosenCandidate | null {
+  const top = ranked[0];
+  if (!top) return null;
+  const anchor: ChosenAnchor = top.derivedAnchor
+    ? { x: top.derivedAnchor.x, y: top.derivedAnchor.y, source: 'derived' }
+    : { x: brief.anchor.x, y: brief.anchor.y, source: 'brief' };
+  return {
+    index: top.index,
+    score: top.score,
+    outOf: top.outOf,
+    passed: top.passed,
+    anchor,
+  };
 }

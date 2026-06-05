@@ -136,6 +136,12 @@ function printSummary(
   runDir: string,
   attempts: number,
   candidates: ReadonlyArray<{ index: number; score: number; outOf: number; passed: boolean }>,
+  chosen: {
+    readonly index: number;
+    readonly score: number;
+    readonly outOf: number;
+    readonly anchor: { readonly x: number; readonly y: number; readonly source: string } | null;
+  } | null,
   durationMs: number,
 ): void {
   process.stdout.write(`\n=== ${briefPath} ===\n`);
@@ -143,6 +149,14 @@ function printSummary(
   process.stdout.write(`attempts: ${attempts}    duration: ${(durationMs / 1000).toFixed(1)}s\n`);
   const passed = candidates.filter((c) => c.passed).length;
   process.stdout.write(`variants: ${candidates.length}    passed: ${passed}\n`);
+  if (chosen) {
+    const anchorStr = chosen.anchor
+      ? `anchor=(${chosen.anchor.x},${chosen.anchor.y}) [${chosen.anchor.source}]`
+      : 'anchor=<none>';
+    process.stdout.write(
+      `chosen  : variant ${chosen.index} (${formatScore(chosen.score, chosen.outOf)}), ${anchorStr}\n`,
+    );
+  }
   process.stdout.write('\n');
   process.stdout.write(`  ${pad('rank', 6)}${pad('idx', 6)}${pad('passed', 8)}score\n`);
   candidates.forEach((c, rank) => {
@@ -163,7 +177,14 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
       repoRoot: process.cwd(),
     });
     const duration = Date.now() - start;
-    printSummary(briefPath, result.runDir, result.attempts, result.summary.candidates, duration);
+    printSummary(
+      briefPath,
+      result.runDir,
+      result.attempts,
+      result.summary.candidates,
+      result.summary.chosen,
+      duration,
+    );
     const ranked = result.summary.candidates;
     const anyPassed = ranked.some((c) => c.passed);
     if (!anyPassed) {
@@ -191,6 +212,21 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
         };
       }
       const selectionPath = path.join(result.runDir, 'selection.json');
+      // When the picked variant matches the auto-chosen top candidate, use the
+      // anchor that's already been resolved (brief vs derived). Otherwise fall
+      // back to the variant's own derivedAnchor, or — for legacy briefs —
+      // null. Downstream tools that need an anchor for a non-top pick can
+      // still find it via the per-variant scorecard.
+      const pickedAnchor =
+        result.summary.chosen && result.summary.chosen.index === picked.index
+          ? result.summary.chosen.anchor
+          : picked.derivedAnchor
+            ? {
+                x: picked.derivedAnchor.x,
+                y: picked.derivedAnchor.y,
+                source: 'derived' as const,
+              }
+            : null;
       writeFileSync(
         selectionPath,
         `${JSON.stringify(
@@ -202,6 +238,7 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
             outOf: picked.outOf,
             processedPath: picked.processedPath,
             scorecardPath: picked.scorecardPath,
+            anchor: pickedAnchor,
           },
           null,
           2,
