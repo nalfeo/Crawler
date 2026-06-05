@@ -8,7 +8,13 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { background: #1a1a2e; color: #e0e0e0; font-family: monospace; }
       #lab-container { width: 100vw; height: 100svh; display: flex; position: relative; overflow: hidden; }
-      #lab-canvas { flex: 1; min-width: 0; min-height: 0; }
+      #lab-canvas {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+      }
 
       #lab-controls {
         width: 300px;
