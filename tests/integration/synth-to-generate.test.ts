@@ -13,24 +13,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 import { generateOne } from '../../scripts/sprites/generate-one.js';
 import { loadBrief } from '../../scripts/sprites/load-brief.js';
 import { synthesizeBrief } from '../../scripts/sprites/synthesize-brief.js';
-import type {
-  GenerateSheetRequest,
-  ImageProvider,
-} from '../../scripts/sprites/provider/types.js';
+import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import type {
   SynthProvider,
   SynthesizeBriefRequest,
@@ -88,11 +78,7 @@ function makeSynthProvider(): SynthProvider {
               { id: 'roguelike-rpg-pack', note: 'silhouette anchor for slender weapons' },
               { id: 'tiny-battle', note: 'secondary palette for steel/wood mix' },
             ],
-            embellishmentSeeds: [
-              'shorter wider blade',
-              'wrapped leather grip',
-              'segmented snath',
-            ],
+            embellishmentSeeds: ['shorter wider blade', 'wrapped leather grip', 'segmented snath'],
             rationale: 'Curved blade silhouette versus the straight-blade alternatives.',
           },
         ],
@@ -110,10 +96,9 @@ describe('sprites:synth → loadBrief → generateOne (integration)', () => {
     mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
     mkdirSync(path.join(root, 'docs', 'agent-os'), { recursive: true });
     mkdirSync(path.join(root, 'briefs', 'draft', 'weapons'), { recursive: true });
-    mkdirSync(
-      path.join(root, 'public', 'assets', 'kenney', 'roguelike-rpg-pack'),
-      { recursive: true },
-    );
+    mkdirSync(path.join(root, 'public', 'assets', 'kenney', 'roguelike-rpg-pack'), {
+      recursive: true,
+    });
     mkdirSync(path.join(root, 'public', 'assets', 'kenney', 'tiny-battle'), {
       recursive: true,
     });

@@ -114,12 +114,13 @@ function createAzureChatProvider(
  */
 export function createSynthProvider(options: CreateProviderOptions = {}): SynthProvider {
   const env = options.env ?? process.env;
-  const which = (env.SPRITES_SYNTH_PROVIDER ?? env.SPRITES_TEXT_PROVIDER ?? 'azure-openai')
-    .toLowerCase();
+  const which = (
+    env.SPRITES_SYNTH_PROVIDER ??
+    env.SPRITES_TEXT_PROVIDER ??
+    'azure-openai'
+  ).toLowerCase();
   if (which !== 'azure-openai') {
-    throw new Error(
-      `Unknown SPRITES_SYNTH_PROVIDER '${which}'. Supported values: azure-openai.`,
-    );
+    throw new Error(`Unknown SPRITES_SYNTH_PROVIDER '${which}'. Supported values: azure-openai.`);
   }
   const endpoint = required(env, 'AZURE_OPENAI_ENDPOINT');
   const apiKey = required(env, 'AZURE_OPENAI_API_KEY');

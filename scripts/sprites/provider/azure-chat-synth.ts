@@ -198,7 +198,9 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
 
 export function buildUserPrompt(request: SynthesizeBriefRequest): string {
   const typeLine =
-    request.type === null ? 'Sprite type: classify from the name.' : `Sprite type: ${request.type}.`;
+    request.type === null
+      ? 'Sprite type: classify from the name.'
+      : `Sprite type: ${request.type}.`;
   return [
     `Subject name: ${request.name}.`,
     typeLine,
@@ -249,9 +251,7 @@ function parseSynthResponse(
       'synthesizer response contained zero candidates. Retry or lower the candidate count.',
     );
   }
-  const candidates: SynthesizedCandidate[] = candidatesRaw.map((c, idx) =>
-    parseCandidate(c, idx),
-  );
+  const candidates: SynthesizedCandidate[] = candidatesRaw.map((c, idx) => parseCandidate(c, idx));
   const inferredType = parseInferredType(obj.inferredType);
   const typeConfidence = parseConfidence(obj.typeConfidence);
   // When the caller passed a type, ignore any classifier output the
@@ -264,10 +264,7 @@ function parseSynthResponse(
 
 function parseCandidate(value: unknown, idx: number): SynthesizedCandidate {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new SynthProviderError(
-      'malformed',
-      `candidates[${idx}] is not an object.`,
-    );
+    throw new SynthProviderError('malformed', `candidates[${idx}] is not an object.`);
   }
   const obj = value as Record<string, unknown>;
   const description = stringField(obj.description, `candidates[${idx}].description`);

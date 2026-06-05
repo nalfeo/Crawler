@@ -66,9 +66,7 @@ function makeFsWrites(): {
   return { hooks: { mkdir, writeFile }, files };
 }
 
-function makeCandidate(
-  overrides: Partial<SynthesizedCandidate> = {},
-): SynthesizedCandidate {
+function makeCandidate(overrides: Partial<SynthesizedCandidate> = {}): SynthesizedCandidate {
   return {
     description:
       'A vertically oriented serrated blade, tip pointing up, hilt centered, with a dark steel silhouette and a brass crossguard.',
@@ -76,11 +74,7 @@ function makeCandidate(
       { id: 'roguelike-rpg-pack', note: 'silhouette anchor for slender blades' },
       { id: 'tiny-battle', note: 'secondary palette for steel/wood mix' },
     ],
-    embellishmentSeeds: [
-      'shorter wider tip',
-      'jagged spine variant',
-      'wrapped leather hilt',
-    ],
+    embellishmentSeeds: ['shorter wider tip', 'jagged spine variant', 'wrapped leather hilt'],
     rationale: 'Distinct silhouette: tall narrow blade with no guard flares.',
     ...overrides,
   };
@@ -146,11 +140,7 @@ describe('synthesizeBrief — happy path', () => {
 
     expect(result.written).toHaveLength(3);
     expect(result.rejected).toHaveLength(0);
-    expect(result.written.map((c) => c.id)).toEqual([
-      'scythe-v1',
-      'scythe-v2',
-      'scythe-v3',
-    ]);
+    expect(result.written.map((c) => c.id)).toEqual(['scythe-v1', 'scythe-v2', 'scythe-v3']);
     expect(result.providerLabel).toBe('azure-openai:gpt-4o-test');
     expect(result.promptHash).toMatch(/^[0-9a-f]{64}$/);
 
@@ -493,10 +483,7 @@ describe('synthesizeBrief — candidate validation', () => {
 describe('synthesizeBrief — partial vs strict policy', () => {
   it('writes nothing when partial=false and any candidate is rejected', async () => {
     const provider = makeProvider(() =>
-      makeWeaponResponse([
-        makeCandidate(),
-        makeCandidate({ description: 'A cool axe.' }),
-      ]),
+      makeWeaponResponse([makeCandidate(), makeCandidate({ description: 'A cool axe.' })]),
     );
     const { hooks, files } = makeFsWrites();
     await expect(
@@ -571,7 +558,7 @@ describe('synthesizeBrief — partial vs strict policy', () => {
 
 describe('normaliseName', () => {
   it('lowercases and kebab-cases', () => {
-    expect(normaliseName('Devil\'s Yoyo')).toBe('devils-yoyo');
+    expect(normaliseName("Devil's Yoyo")).toBe('devils-yoyo');
     expect(normaliseName('  Throwing  Star ')).toBe('throwing-star');
     expect(normaliseName('Baseball_Bat')).toBe('baseball-bat');
   });

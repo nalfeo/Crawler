@@ -46,20 +46,14 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
       const v = argv[++i];
       if (!v) throw new Error('--type requires a value');
       if (!(SPRITE_TYPES as ReadonlyArray<string>).includes(v)) {
-        throw new Error(
-          `--type '${v}' is not one of ${SPRITE_TYPES.join('|')}`,
-        );
+        throw new Error(`--type '${v}' is not one of ${SPRITE_TYPES.join('|')}`);
       }
       type = v as SpriteType;
     } else if (arg === '--candidates') {
       const v = argv[++i];
       if (!v) throw new Error('--candidates requires a value');
       const n = Number(v);
-      if (
-        !Number.isInteger(n) ||
-        n < MIN_CANDIDATES ||
-        n > MAX_CANDIDATES
-      ) {
+      if (!Number.isInteger(n) || n < MIN_CANDIDATES || n > MAX_CANDIDATES) {
         throw new Error(
           `--candidates must be an integer in [${MIN_CANDIDATES}, ${MAX_CANDIDATES}], got '${v}'`,
         );
@@ -80,7 +74,9 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
     }
   }
   if (!name) {
-    throw new Error('Missing subject name. Usage: sprites:synth <name> [--type ...] [--candidates N]');
+    throw new Error(
+      'Missing subject name. Usage: sprites:synth <name> [--type ...] [--candidates N]',
+    );
   }
   return { name, type, candidates, allowPartial };
 }
@@ -149,15 +145,15 @@ async function main(): Promise<number> {
       repoRoot: process.cwd(),
     });
 
-    process.stdout.write(`\nSynthesised ${result.written.length} candidate(s) for '${result.name}' (${result.type}).\n`);
+    process.stdout.write(
+      `\nSynthesised ${result.written.length} candidate(s) for '${result.name}' (${result.type}).\n`,
+    );
     process.stdout.write(`Output dir : ${result.outDir}\n`);
     process.stdout.write(`Sidecar    : ${result.sidecarPath}\n`);
     process.stdout.write(`Provider   : ${result.providerLabel}\n`);
     process.stdout.write(`Prompt hash: ${result.promptHash.slice(0, 12)}…\n\n`);
 
-    process.stdout.write(
-      `  ${pad('id', 24)}${pad('refs', 8)}description\n`,
-    );
+    process.stdout.write(`  ${pad('id', 24)}${pad('refs', 8)}description\n`);
     for (const c of result.written) {
       process.stdout.write(
         `  ${pad(c.id, 24)}${pad(String(c.references.length), 8)}${truncate(c.description, 80)}\n`,

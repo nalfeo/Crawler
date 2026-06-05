@@ -101,10 +101,7 @@ export interface SynthesizeBriefOptions {
    * unit tests bypass disk lookups while still exercising the real
    * allow-list module.
    */
-  readonly referenceCatalogOptions?: Pick<
-    BuildReferenceCatalogOptions,
-    'readPacks' | 'fileExists'
-  >;
+  readonly referenceCatalogOptions?: Pick<BuildReferenceCatalogOptions, 'readPacks' | 'fileExists'>;
   /**
    * Optional override for the per-candidate filesystem re-check. The
    * catalog builder already proves each reference's `spritesheet.png`
@@ -192,11 +189,7 @@ export async function synthesizeBrief(
 
   const name = normaliseName(options.name);
   const requested = options.candidates ?? 3;
-  if (
-    !Number.isInteger(requested) ||
-    requested < MIN_CANDIDATES ||
-    requested > MAX_CANDIDATES
-  ) {
+  if (!Number.isInteger(requested) || requested < MIN_CANDIDATES || requested > MAX_CANDIDATES) {
     throw new SynthesizeBriefError(
       `candidates must be an integer in [${MIN_CANDIDATES}, ${MAX_CANDIDATES}], got ${String(requested)}.`,
     );
@@ -231,11 +224,7 @@ export async function synthesizeBrief(
     referenceCatalog: catalog,
   } as const;
 
-  const promptHash = hashPrompt(
-    buildSystemPrompt(request),
-    buildUserPrompt(request),
-    catalog,
-  );
+  const promptHash = hashPrompt(buildSystemPrompt(request), buildUserPrompt(request), catalog);
 
   const response = await options.provider.synthesizeBrief(request);
 
@@ -328,9 +317,7 @@ export function normaliseName(raw: string): string {
     throw new SynthesizeBriefError('name must not be empty.');
   }
   if (trimmed.length > MAX_NAME_LENGTH) {
-    throw new SynthesizeBriefError(
-      `name '${trimmed}' is longer than ${MAX_NAME_LENGTH} chars.`,
-    );
+    throw new SynthesizeBriefError(`name '${trimmed}' is longer than ${MAX_NAME_LENGTH} chars.`);
   }
   // Lowercase, replace apostrophes with nothing (so "devil's" → "devils"),
   // any non-alphanumeric run becomes a single dash, trim dashes from the ends.
@@ -362,10 +349,7 @@ function isCi(env: Readonly<Record<string, string | undefined>>): boolean {
   return v !== '0' && v.toLowerCase() !== 'false';
 }
 
-function resolveType(
-  callerType: SpriteType | null,
-  response: SynthesizeBriefResponse,
-): SpriteType {
+function resolveType(callerType: SpriteType | null, response: SynthesizeBriefResponse): SpriteType {
   if (callerType !== null) return callerType;
   if (response.inferredType === null || response.typeConfidence === null) {
     throw new SynthesizeBriefError(
@@ -501,11 +485,7 @@ function renderCandidateYaml(candidate: SynthesizedBriefCandidate): string {
   ].join('\n');
 }
 
-function hashPrompt(
-  system: string,
-  user: string,
-  catalog: ReadonlyArray<ReferenceSheet>,
-): string {
+function hashPrompt(system: string, user: string, catalog: ReadonlyArray<ReferenceSheet>): string {
   const h = createHash('sha256');
   h.update(system);
   h.update('\n---\n');

@@ -68,8 +68,7 @@ const PACK_NOTES: Readonly<Record<string, string>> = {
     '16x16 hand-weapons + soldiers + small props; secondary palette and pose anchor for melee weapons.',
   'tiny-dungeon':
     '16x16 dungeon items, weapons, monsters, environment props; use for traps, keys, doors, slimes, rats, small enemies.',
-  'tiny-ski':
-    '16x16 winter-themed characters and props; niche — use only for snow / ski subjects.',
+  'tiny-ski': '16x16 winter-themed characters and props; niche — use only for snow / ski subjects.',
   'tiny-town':
     '16x16 town buildings, civilians, signs, foliage; use for non-combat props, shopkeepers, decorative items.',
 };
