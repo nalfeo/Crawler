@@ -142,6 +142,7 @@ function printSummary(
     minHamming: number;
     maxHamming: number;
     pairCount: number;
+    bitLength: number;
   } | null,
 ): void {
   process.stdout.write(`\n=== ${briefPath} ===\n`);
@@ -160,7 +161,7 @@ function printSummary(
   if (diversity) {
     const fmt = (n: number) => n.toFixed(3);
     process.stdout.write(
-      `\n  diversity: mean=${fmt(diversity.meanHamming)} min=${fmt(diversity.minHamming)} max=${fmt(diversity.maxHamming)} (${diversity.pairCount} pairs, 256-bit pHash)\n`,
+      `\n  diversity: mean=${fmt(diversity.meanHamming)} min=${fmt(diversity.minHamming)} max=${fmt(diversity.maxHamming)} (${diversity.pairCount} pairs, ${diversity.bitLength}-bit pHash)\n`,
     );
   }
 }

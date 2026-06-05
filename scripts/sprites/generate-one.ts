@@ -140,6 +140,10 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
 
   // --- Postprocess + score each variant. ---
   const entries: RunSummaryEntry[] = [];
+  // Keep the post-processed buffers alongside `entries` so the diversity
+  // pass doesn't have to re-read every variant from disk. Same byte
+  // sequences either way — `writeVariant` writes exactly what we hand it.
+  const processedBuffers: Buffer[] = [];
   for (let i = 0; i < sliced.length; i++) {
     const raw = sliced[i]!;
     const processed = postprocess(raw, brief, palette);
@@ -160,10 +164,11 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       processedPath,
       scorecardPath,
     });
+    processedBuffers.push(processed);
   }
 
   const ranked = rankCandidates(entries);
-  const diversity = computeDiversity(entries.map((e) => readFileSync(e.processedPath)));
+  const diversity = computeDiversity(processedBuffers);
   const summary: RunSummary = {
     brief: brief.name,
     briefPath: loaded.briefPath,

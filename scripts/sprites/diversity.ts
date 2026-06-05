@@ -45,6 +45,14 @@ export interface DiversitySummary {
   readonly minHamming: number;
   /** Maximum pairwise distance. */
   readonly maxHamming: number;
+  /**
+   * Meaningful bit length of each per-sprite hash (the pixel count).
+   * Surfaced so callers (CLI, logs, scorecards) can describe the metric
+   * accurately — a 16x16 sheet produces a 256-bit hash, but a 32x32 brief
+   * would produce a 1024-bit hash, and hard-coding either number would
+   * be wrong half the time.
+   */
+  readonly bitLength: number;
 }
 
 export type DiversityHashType = 'mean-luma-256';
@@ -178,5 +186,6 @@ export function computeDiversity(processedPngs: ReadonlyArray<Buffer>): Diversit
     meanHamming: sum / pairCount,
     minHamming: min,
     maxHamming: max,
+    bitLength,
   };
 }
