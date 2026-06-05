@@ -35,6 +35,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
+import { computeDiversity } from './diversity.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { postprocess } from './postprocess.js';
 import { scoreCandidate } from './score-candidate.js';
@@ -162,6 +163,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   }
 
   const ranked = rankCandidates(entries);
+  const diversity = computeDiversity(entries.map((e) => readFileSync(e.processedPath)));
   const summary: RunSummary = {
     brief: brief.name,
     briefPath: loaded.briefPath,
@@ -171,6 +173,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     attempts,
     variantCount: expected,
     candidates: ranked,
+    diversity,
   };
   const summaryPath = writeSummary(paths, summary);
 

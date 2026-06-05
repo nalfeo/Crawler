@@ -137,6 +137,7 @@ function printSummary(
   attempts: number,
   candidates: ReadonlyArray<{ index: number; score: number; outOf: number; passed: boolean }>,
   durationMs: number,
+  diversity: { meanHamming: number; minHamming: number; maxHamming: number; pairCount: number } | null,
 ): void {
   process.stdout.write(`\n=== ${briefPath} ===\n`);
   process.stdout.write(`run dir : ${runDir}\n`);
@@ -151,6 +152,12 @@ function printSummary(
       `  ${pad(String(rank), 6)}${pad(String(c.index), 6)}${pad(tag, 8)}${formatScore(c.score, c.outOf)}\n`,
     );
   });
+  if (diversity) {
+    const fmt = (n: number) => n.toFixed(3);
+    process.stdout.write(
+      `\n  diversity: mean=${fmt(diversity.meanHamming)} min=${fmt(diversity.minHamming)} max=${fmt(diversity.maxHamming)} (${diversity.pairCount} pairs, 256-bit pHash)\n`,
+    );
+  }
 }
 
 async function runOne(briefPath: string, pick: number | undefined): Promise<BriefRunOutcome> {
@@ -163,7 +170,7 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
       repoRoot: process.cwd(),
     });
     const duration = Date.now() - start;
-    printSummary(briefPath, result.runDir, result.attempts, result.summary.candidates, duration);
+    printSummary(briefPath, result.runDir, result.attempts, result.summary.candidates, duration, result.summary.diversity);
     const ranked = result.summary.candidates;
     const anyPassed = ranked.some((c) => c.passed);
     if (!anyPassed) {

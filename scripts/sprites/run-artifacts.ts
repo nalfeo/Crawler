@@ -27,6 +27,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Brief } from './brief-schema.js';
+import type { DiversitySummary } from './diversity.js';
 import type { Scorecard } from './score-candidate.js';
 
 export interface RunPaths {
@@ -57,6 +58,8 @@ export interface RunSummary {
   readonly variantCount: number;
   /** Candidates ranked best-first: passed first, then by sensor score desc. */
   readonly candidates: ReadonlyArray<RunSummaryEntry>;
+  /** Pairwise perceptual-hash diversity across processed variants; null when n < 2. */
+  readonly diversity: DiversitySummary | null;
 }
 
 /**
