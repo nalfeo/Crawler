@@ -1,0 +1,206 @@
+[
+  {
+    "id": "sheet:kenney-roguelike-characters",
+    "kind": "sheet",
+    "label": "kenney-roguelike-characters",
+    "description": "kenney roguelike characters spritesheet for game asset lookup.",
+    "tags": [
+      "characters",
+      "kenney",
+      "sheet"
+    ],
+    "sheetKey": "kenney-roguelike-characters",
+    "path": "/assets/kenney/roguelike-characters/spritesheet.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 0,
+    "spacing": 1,
+    "cols": 54
+  },
+  {
+    "id": "sheet:kenney-roguelike-rpg-pack",
+    "kind": "sheet",
+    "label": "kenney-roguelike-rpg-pack",
+    "description": "Kenney Roguelike RPG pack spritesheet with environment and prop tiles.",
+    "tags": [
+      "tiles",
+      "kenney"
+    ],
+    "sheetKey": "kenney-roguelike-rpg-pack",
+    "path": "/assets/kenney/roguelike-rpg-pack/spritesheet.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 0,
+    "spacing": 1,
+    "cols": 57
+  },
+  {
+    "id": "sheet:kenney-tiny-battle",
+    "kind": "sheet",
+    "label": "kenney-tiny-battle",
+    "description": "Kenney Tiny Battle spritesheet with military-themed units and props.",
+    "tags": [
+      "battle",
+      "kenney"
+    ],
+    "sheetKey": "kenney-tiny-battle",
+    "path": "/assets/kenney/tiny-battle/spritesheet.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 0,
+    "spacing": 1,
+    "cols": 18
+  },
+  {
+    "id": "sheet:kenney-tiny-dungeon",
+    "kind": "sheet",
+    "label": "kenney-tiny-dungeon",
+    "description": "Kenney Tiny Dungeon spritesheet with dungeon units, weapons, and projectiles.",
+    "tags": [
+      "dungeon",
+      "kenney"
+    ],
+    "sheetKey": "kenney-tiny-dungeon",
+    "path": "/assets/kenney/tiny-dungeon/spritesheet.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 0,
+    "spacing": 1,
+    "cols": 12
+  },
+  {
+    "id": "sheet:kenney-tiny-ski",
+    "kind": "sheet",
+    "label": "kenney-tiny-ski",
+    "description": "Kenney Tiny Ski spritesheet for winter-biome entities and objects.",
+    "tags": [
+      "winter",
+      "kenney"
+    ],
+    "sheetKey": "kenney-tiny-ski",
+    "path": "/assets/kenney/tiny-ski/spritesheet.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 0,
+    "spacing": 1,
+    "cols": 12
+  },
+  {
+    "id": "sheet:kenney-tiny-town",
+    "kind": "sheet",
+    "label": "kenney-tiny-town",
+    "description": "Kenney Tiny Town spritesheet with outdoor terrain and civilian assets.",
+    "tags": [
+      "town",
+      "kenney"
+    ],
+    "sheetKey": "kenney-tiny-town",
+    "path": "/assets/kenney/tiny-town/spritesheet.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 0,
+    "spacing": 1,
+    "cols": 12
+  },
+  {
+    "id": "sprite:enemy.brigand",
+    "kind": "sprite",
+    "label": "enemy.brigand",
+    "description": "A brown-cloaked brigand enemy sprite.",
+    "tags": [
+      "enemy",
+      "humanoid"
+    ],
+    "spriteId": "enemy.brigand",
+    "sheetKey": "kenney-roguelike-characters",
+    "frame": 378,
+    "col": 0,
+    "row": 7,
+    "note": "Brown-cloaked humanoid."
+  },
+  {
+    "id": "sprite:enemy.ghost",
+    "kind": "sprite",
+    "label": "enemy.ghost",
+    "description": "A pale ghost enemy sprite.",
+    "tags": [
+      "enemy",
+      "undead"
+    ],
+    "spriteId": "enemy.ghost",
+    "sheetKey": "kenney-roguelike-characters",
+    "frame": 595,
+    "col": 1,
+    "row": 11,
+    "note": "Pale spectral character (last row)."
+  },
+  {
+    "id": "sprite:enemy.goblin",
+    "kind": "sprite",
+    "label": "enemy.goblin",
+    "description": "Green goblin (light variant).",
+    "tags": [
+      "enemy",
+      "goblin",
+      "sprite"
+    ],
+    "spriteId": "enemy.goblin",
+    "sheetKey": "kenney-roguelike-characters",
+    "frame": 162,
+    "col": 0,
+    "row": 3,
+    "note": "Green goblin (light variant).",
+    "animation": {
+      "clips": [
+        "idle",
+        "move"
+      ]
+    }
+  },
+  {
+    "id": "sprite:enemy.orc",
+    "kind": "sprite",
+    "label": "enemy.orc",
+    "description": "Green orc (dark variant).",
+    "tags": [
+      "enemy",
+      "orc",
+      "sprite"
+    ],
+    "spriteId": "enemy.orc",
+    "sheetKey": "kenney-roguelike-characters",
+    "frame": 163,
+    "col": 1,
+    "row": 3,
+    "note": "Green orc (dark variant).",
+    "animation": {
+      "clips": [
+        "idle",
+        "move"
+      ]
+    }
+  },
+  {
+    "id": "sprite:player",
+    "kind": "sprite",
+    "label": "player",
+    "description": "Tan/orange knight, base hero palette.",
+    "tags": [
+      "player",
+      "hero",
+      "sprite"
+    ],
+    "spriteId": "player",
+    "sheetKey": "kenney-roguelike-characters",
+    "frame": 0,
+    "col": 0,
+    "row": 0,
+    "note": "Tan/orange knight, base hero palette.",
+    "animation": {
+      "clips": [
+        "idle",
+        "move"
+      ]
+    }
+  }
+]

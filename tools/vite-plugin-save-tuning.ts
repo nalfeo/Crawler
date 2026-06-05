@@ -10,10 +10,22 @@
  *   or: { "file": "tuning.json", "values": { "player.speed": 4.0, "damage.defaultContactDamage": 8 } }
  */
 import { readFileSync, writeFileSync } from 'fs';
+import type { IncomingMessage, ServerResponse } from 'http';
 import { resolve, relative, isAbsolute } from 'path';
 import type { Plugin } from 'vite';
+import {
+  DEFAULT_CATALOG_PATH,
+  runMetadataPipeline,
+  resolveProvider,
+  type MetadataProviderMode,
+} from '../scripts/sprites/metadata-pipeline.js';
+import {
+  parseSpriteCatalog,
+  type SpriteCatalogRecord,
+} from '../src/shared/sprite-catalog.js';
 
 const DATA_DIR = resolve(__dirname, '../src/shared/data');
+const REPO_ROOT = resolve(__dirname, '..');
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -38,12 +50,43 @@ function isInsideDataDir(filePath: string): boolean {
   return !isAbsolute(rel) && !rel.startsWith('..');
 }
 
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  return (
+    address === '127.0.0.1' ||
+    address === '::1' ||
+    address === '::ffff:127.0.0.1' ||
+    address.startsWith('::ffff:127.0.0.')
+  );
+}
+
+function isLoopbackHostHeader(hostHeader: string | string[] | undefined): boolean {
+  const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  if (!raw) return false;
+  const host = raw.split(':')[0]?.toLowerCase() ?? '';
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
 export function labTuningSavePlugin(): Plugin {
   return {
     name: 'lab-tuning-save',
     apply: 'serve',
     configureServer(server) {
+      const enforceLocalOnly = (req: IncomingMessage, res: ServerResponse): boolean => {
+        const remoteAddress = req.socket.remoteAddress;
+        if (!isLoopbackAddress(remoteAddress) || !isLoopbackHostHeader(req.headers.host)) {
+          res.statusCode = 403;
+          res.end(JSON.stringify({ error: 'Repo writes are local-only.' }));
+          return false;
+        }
+        return true;
+      };
+
       server.middlewares.use('/__save-tuning', (req, res) => {
+        if (!enforceLocalOnly(req, res)) {
+          return;
+        }
+
         if (req.method !== 'POST') {
           res.statusCode = 405;
           res.end(JSON.stringify({ error: 'Method not allowed' }));
@@ -117,6 +160,83 @@ export function labTuningSavePlugin(): Plugin {
             res.end(JSON.stringify({ ok: true, file: payload.file }));
           } catch (err) {
             res.statusCode = 400;
+            res.end(
+              JSON.stringify({
+                error: err instanceof Error ? err.message : 'Unknown error',
+              }),
+            );
+          }
+        });
+      });
+
+      server.middlewares.use('/__sprite-metadata-run', (req, res) => {
+        if (!enforceLocalOnly(req, res)) {
+          return;
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        req.on('end', async () => {
+          try {
+            const payload = JSON.parse(body) as {
+              id: string;
+              provider?: MetadataProviderMode;
+              minScore?: number;
+              force?: boolean;
+              catalogPath?: string;
+            };
+
+            if (!payload.id || payload.id.trim() === '') {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Missing required "id".' }));
+              return;
+            }
+
+            const requestedPath = payload.catalogPath ?? DEFAULT_CATALOG_PATH;
+            const absoluteCatalogPath = resolve(REPO_ROOT, requestedPath);
+            if (!isInsideDataDir(absoluteCatalogPath)) {
+              res.statusCode = 403;
+              res.end(JSON.stringify({ error: 'Catalog path outside data directory.' }));
+              return;
+            }
+
+            const raw = JSON.parse(readFileSync(absoluteCatalogPath, 'utf-8'));
+            const catalog = parseSpriteCatalog(raw);
+            const provider = await resolveProvider(payload.provider ?? 'auto');
+            const result = await runMetadataPipeline(catalog, {
+              provider,
+              ids: [payload.id],
+              force: payload.force ?? true,
+              minScore: payload.minScore,
+            });
+            writeFileSync(absoluteCatalogPath, JSON.stringify(result.updated, null, 2) + '\n', 'utf-8');
+
+            const updatedEntry = result.updated.find(
+              (entry: SpriteCatalogRecord) => entry.id === payload.id,
+            );
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                ok: true,
+                provider: provider.name,
+                changedCount: result.changedCount,
+                processedCount: result.processedCount,
+                rejectedCount: result.rejectedCount,
+                skippedCount: result.skippedCount,
+                entry: updatedEntry,
+              }),
+            );
+          } catch (err) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
             res.end(
               JSON.stringify({
                 error: err instanceof Error ? err.message : 'Unknown error',
