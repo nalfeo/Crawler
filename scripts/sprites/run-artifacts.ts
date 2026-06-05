@@ -28,6 +28,7 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { buildAnchorOverlay } from './anchor-overlay.js';
 import type { Brief } from './brief-schema.js';
 import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
@@ -67,6 +68,15 @@ export interface RunSummaryEntry {
    * non-null. Mirrors what gets surfaced in `RunSummary.chosen`.
    */
   readonly anchorSidecarPath: string | null;
+  /**
+   * Path to the per-variant `anchor-overlay.png`: a 16x16 transparent PNG
+   * with one opaque red pixel at the derived anchor, or fully transparent
+   * when derivation failed. Always written so the gallery can composite a
+   * consistent layer on top of every candidate without special-casing
+   * "no anchor". Empty string only on legacy summary.json artifacts
+   * produced before this field existed.
+   */
+  readonly anchorOverlayPath: string;
   /**
    * VLM judge scorecard for this variant, when the brief opted in
    * (`brief.judge.enabled === true`) AND this variant was actually
@@ -209,11 +219,20 @@ export function writeVariant(
   raw: Buffer,
   processed: Buffer,
   scorecard: Scorecard,
+  options: {
+    /**
+     * Sprite width/height for the anchor overlay PNG. Defaults to 16x16,
+     * which is the only size in the pipeline today. Passed explicitly so
+     * future per-brief sizes don't silently mis-render.
+     */
+    readonly overlaySize?: { readonly width: number; readonly height: number };
+  } = {},
 ): {
   readonly rawPath: string;
   readonly processedPath: string;
   readonly scorecardPath: string;
   readonly anchorSidecarPath: string | null;
+  readonly anchorOverlayPath: string;
 } {
   const id = String(index).padStart(2, '0');
   const rawPath = path.join(paths.rawDir, `${id}.png`);
@@ -234,7 +253,22 @@ export function writeVariant(
     writeFileSync(anchorSidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`);
   }
 
-  return { rawPath, processedPath, scorecardPath, anchorSidecarPath };
+  // Always emit the overlay PNG, even when the anchor is null. A consistent
+  // file-per-variant means the gallery can blindly `<img>` it next to the
+  // sprite without branching on whether derivation succeeded; null-anchor
+  // overlays are fully transparent and so render as a no-op.
+  const overlaySize = options.overlaySize ?? { width: 16, height: 16 };
+  const anchorOverlayPath = path.join(paths.processedDir, `${id}.anchor-overlay.png`);
+  const overlayPng = buildAnchorOverlay({
+    width: overlaySize.width,
+    height: overlaySize.height,
+    anchor: scorecard.derivedAnchor
+      ? { x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y }
+      : null,
+  });
+  writeFileSync(anchorOverlayPath, overlayPng);
+
+  return { rawPath, processedPath, scorecardPath, anchorSidecarPath, anchorOverlayPath };
 }
 
 /** Write run summary JSON. Returns path. */
