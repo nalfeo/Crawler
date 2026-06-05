@@ -188,6 +188,8 @@ interface ResolvedTexture {
   frame?: number;
   /** Base render scale for this texture. */
   scale: number;
+  /** True when the engine fell back to a procedural `__cw_*` texture. */
+  fallback: boolean;
 }
 
 /**
@@ -205,10 +207,11 @@ function resolveTexture(scene: Phaser.Scene, type: string): ResolvedTexture {
         key: sprite.sheetKey,
         frame: sprite.frame,
         scale: KENNEY_SCALE[type] ?? 1,
+        fallback: false,
       };
     }
   }
-  return { key: getProceduralTextureForType(type), scale: 1 };
+  return { key: getProceduralTextureForType(type), scale: 1, fallback: true };
 }
 
 function getProceduralTextureForType(type: string): string {
@@ -438,7 +441,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               : scene.add.image(x, y, resolved.key);
           if (resolved.scale !== 1) {
             img.setScale(resolved.scale);
-          } else {
+          }
+          if (resolved.fallback) {
             logFallback(entityType);
           }
           visual = { obj: img, type: entityType, baseScale: resolved.scale };

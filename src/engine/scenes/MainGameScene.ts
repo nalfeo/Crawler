@@ -83,13 +83,15 @@ export class MainGameScene extends Phaser.Scene {
       }
       return;
     }
+    // Allow a fresh warning if the bridge disappears again later.
     this.warnedMissingBridge = false;
 
+    if (this.previousWorldState !== this.world.state) {
+      logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
+      this.previousWorldState = this.world.state;
+    }
+
     if (this.world.state !== 'playing') {
-      if (this.previousWorldState !== this.world.state) {
-        logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
-        this.previousWorldState = this.world.state;
-      }
       return;
     }
 

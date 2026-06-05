@@ -78,20 +78,28 @@ function initialLevel(): LogLevel {
 
 const rootLogger = log.getLogger(ROOT_LOGGER);
 rootLogger.setLevel(initialLevel(), false);
+const scopedLoggers = new Set<LogLevelLogger>();
 
 export function createLogger(scope: string): Logger {
   const loggerName = `${ROOT_LOGGER}:${scope}`;
   const logger = log.getLogger(loggerName);
   logger.setLevel(rootLogger.getLevel(), false);
+  scopedLoggers.add(logger);
   return logger;
 }
 
 export function setGlobalLogLevel(level: LogLevel): void {
   rootLogger.setLevel(level as LogLevelDesc, false);
+  for (const logger of scopedLoggers) {
+    logger.setLevel(level as LogLevelDesc, false);
+  }
   safeWriteStorageLevel(level);
 }
 
 export function getGlobalLogLevel(): LogLevel {
   const level = rootLogger.getLevel();
-  return levelNames[level] ?? 'info';
+  if (Number.isInteger(level) && level >= 0 && level < levelNames.length) {
+    return levelNames[level];
+  }
+  return 'info';
 }

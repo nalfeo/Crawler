@@ -20,7 +20,7 @@ export function healthSystem(world: GameWorld): void {
     if (currentHealth <= 0) {
       if (hasComponent(world.ecs, eid, Player)) {
         world.state = 'game_over';
-        logger.error('Player health reached zero; transitioning to game_over', {
+        logger.warn('Player health reached zero; transitioning to game_over', {
           eid,
           frameCount: world.frameCount,
           elapsedMs: world.elapsedMs,
