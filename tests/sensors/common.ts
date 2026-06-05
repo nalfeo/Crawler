@@ -76,7 +76,11 @@ export function alphaBinary(image: RgbaImage, opts: { maxReport?: number } = {})
     if (offenders.length >= max) break;
   }
   if (offenders.length > 0) {
-    return fail(sensor, `found ${offenders.length}+ pixels with alpha not in {0, 255}`, offenders);
+    return fail(
+      sensor,
+      `found at least ${offenders.length} pixels with alpha not in {0, 255}`,
+      offenders,
+    );
   }
   return ok(sensor);
 }
@@ -109,7 +113,7 @@ export function paletteMembership(
     if (offenders.length >= max) break;
   }
   if (offenders.length > 0) {
-    return fail(sensor, `${offenders.length}+ opaque pixels are off-palette`, offenders);
+    return fail(sensor, `at least ${offenders.length} opaque pixels are off-palette`, offenders);
   }
   return ok(sensor);
 }

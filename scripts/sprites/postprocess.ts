@@ -142,7 +142,7 @@ function floodFill(
  * Determinism: tie-breaking falls out of integer truncation in a fixed order;
  * no random or floating-point comparisons are used.
  *
- * Exported for direct unit testing.
+ * Internal helper — exercised end-to-end via `postprocess`.
  */
 function downscaleNearest(image: RgbaImage, dstW: number, dstH: number): RgbaImage {
   const { width: srcW, height: srcH, data: src } = image;
