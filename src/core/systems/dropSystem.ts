@@ -3,10 +3,11 @@
  *
  * Runs BEFORE healthSystem so it can read position data before entity removal.
  * Queries enemies at 0 HP, rolls the loot table, and spawns Gold/XpGem/DroppedItem
- * entities at the death position. Also emits 'death' combat events for gore VFX.
+ * entities at the death position. Also emits 'death' combat events for gore VFX
+ * and applies death knockback.
  */
-import { query } from 'bitecs';
-import { Enemy, Health } from '../components.js';
+import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
+import { Enemy, Health, Knockback } from '../components.js';
 import { spawnXpGem, spawnGold, spawnDroppedItem } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
@@ -17,6 +18,13 @@ import {
   type LootTable,
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
+
+/** Base knockback distance for death (pixels). Scales with overkill. */
+const DEATH_KNOCKBACK_BASE = 8;
+/** Max knockback distance on death. */
+const DEATH_KNOCKBACK_MAX = 60;
+/** Knockback speed (pixels per frame-step). */
+const DEATH_KNOCKBACK_SPEED = 6;
 
 /**
  * Resolve which loot tables apply for a given enemy.
@@ -113,6 +121,50 @@ export function dropSystem(world: GameWorld): void {
     // applyDamage stores excess damage on the entity (follow-up).
     const overkill = 0;
 
+    // Find the killing blow direction from the most recent hit event on this entity
+    let killDirX = 0;
+    let killDirY = 0;
+    for (let i = world.combatEvents.length - 1; i >= 0; i--) {
+      const evt = world.combatEvents[i]!;
+      if (evt.targetEid === eid && evt.type === 'hit' && evt.sourceX !== undefined && evt.sourceY !== undefined) {
+        const dx = x - evt.sourceX;
+        const dy = y - evt.sourceY;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 0.01) {
+          killDirX = dx / dist;
+          killDirY = dy / dist;
+        }
+        break;
+      }
+    }
+
+    // Apply death knockback (small impulse in the killing blow direction)
+    const knockbackDist = Math.min(
+      DEATH_KNOCKBACK_MAX,
+      DEATH_KNOCKBACK_BASE + overkill * 2,
+    );
+    if (knockbackDist > 0 && (Math.abs(killDirX) + Math.abs(killDirY)) > 0.01) {
+      if (hasComponent(world.ecs, eid, Knockback)) {
+        setComponent(world.ecs, eid, Knockback, {
+          dirX: killDirX,
+          dirY: killDirY,
+          remaining: knockbackDist,
+          speed: DEATH_KNOCKBACK_SPEED,
+        });
+      } else {
+        addComponent(
+          world.ecs,
+          eid,
+          set(Knockback, {
+            dirX: killDirX,
+            dirY: killDirY,
+            remaining: knockbackDist,
+            speed: DEATH_KNOCKBACK_SPEED,
+          }),
+        );
+      }
+    }
+
     // Resolve and roll loot tables
     const tables = getEnemyLootTables(world, eid);
     const entries = resolveLootTables(
@@ -124,7 +176,7 @@ export function dropSystem(world: GameWorld): void {
     const drops = rollLootTable(entries, world.rng);
     spawnDrops(world, x, y, drops);
 
-    // Emit death combat event for gore VFX
+    // Emit death combat event for gore VFX (with direction info)
     world.combatEvents.push({
       type: 'death',
       x,
@@ -134,6 +186,10 @@ export function dropSystem(world: GameWorld): void {
       timestamp: world.elapsedMs,
       targetEid: eid,
       overkill,
+      knockbackDirX: killDirX,
+      knockbackDirY: killDirY,
+      sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 20 : undefined,
+      sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 20 : undefined,
     });
   }
 }

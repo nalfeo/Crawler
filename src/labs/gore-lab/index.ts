@@ -158,9 +158,9 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
           const collision = collisionSystem(this.world);
           damageSystem(this.world, collision);
-          knockbackSystem(this.world);
 
           dropSystem(this.world);
+          knockbackSystem(this.world);
           healthSystem(this.world);
           lifetimeSystem(this.world);
           projectileCleanupSystem(this.world);
