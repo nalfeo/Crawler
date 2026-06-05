@@ -199,14 +199,18 @@ describe('weaponEntitySystem coverage paths', () => {
     const owner = spawnPlayer(world, 0, 0);
     spawnEnemy(world, 100, 0, 50);
     const weapon = createEntity(world);
-    addComponent(world.ecs, weapon, set(Weapon, {
-      weaponType: 255,
-      baseDamage: 9,
-      cooldownMs: 10,
-      lastFireMs: 0,
-      range: 0,
-      projectileSpeed: 120,
-    }));
+    addComponent(
+      world.ecs,
+      weapon,
+      set(Weapon, {
+        weaponType: 255,
+        baseDamage: 9,
+        cooldownMs: 10,
+        lastFireMs: 0,
+        range: 0,
+        projectileSpeed: 120,
+      }),
+    );
     addComponent(world.ecs, weapon, set(Owner, { eid: owner }));
     world.elapsedMs = 10;
 
