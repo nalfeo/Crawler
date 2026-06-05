@@ -1,0 +1,8 @@
+type: weapon
+name: throwing-star
+description: throwing star
+# Everything else — 16x16 size, kenney-roguelike palette, anchor (derived
+# per-variant), references, 4x4 sheet, vertical orientation — is inherited
+# from data/sprite-types/weapon.json. The LLM variation expander tops the
+# (empty) seed list up to minVariations=4 (default) so the sheet shows a
+# range of throwing-star embellishments.

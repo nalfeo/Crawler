@@ -1,0 +1,24 @@
+type: weapon
+name: baseball-bat
+description: |
+  A wooden baseball bat displayed as a static item icon, oriented strictly
+  vertical (90° on the Y axis), grip/handle at the bottom of the frame,
+  barrel at the top. Single isolated weapon icon in the style of an RPG
+  inventory item — no motion blur, no swing arc, no speed lines, no hands,
+  no athlete, no action pose, no background scenery, no ball, no base, no
+  field. Just the bat: tapered wooden shaft widening from a thin grip at
+  the bottom into a rounded barrel at the top, with a small knob or pommel
+  at the very bottom of the grip. Warm wood-brown shaft with a single
+  darker shadow stop along one side, optional 1px highlight on the opposite
+  side. Silhouette must read as "club / bat" at a glance — clearly not a
+  sword, not a hammer.
+# The model hits a strong "baseball player swinging the bat" prior on the
+# word "bat", which produces ~45° diagonal poses that break the
+# vertical-default contract weapons use for equip-rotation. The verbose
+# item-icon framing above is there to bury that prior. We also bump the
+# per-brief diagonalToleranceDeg from the default 5° to 10° because club
+# silhouettes are slightly less geometrically crisp than sword blades and
+# the model regularly lands at 80-85° from horizontal instead of dead 90°.
+sensors:
+  weapon:
+    diagonalToleranceDeg: 10

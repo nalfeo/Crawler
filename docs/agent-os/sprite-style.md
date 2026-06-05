@@ -18,6 +18,7 @@ The generator MUST follow every constraint below. Each is also enforced by a det
 6. **No text of any kind.** No numbers, no digits, no labels, no captions, no signatures, no watermarks, no UI chrome. The pipeline rejects sheets where the model added a number on each cell — this happens often enough that it must be called out explicitly in the prompt.
 7. **No multiple subjects per cell.** If the brief asks for a sword, the cell shows one sword — not "a sword on a shield" or "a sword next to a coin".
 8. **No anti-aliasing.** Edges are hard. Color transitions are 1-pixel boundaries between palette entries.
+9. **No effects that would normally need animation.** No fire, flames, sparks, embers, smoke, dripping blood or liquid, glow halos, magic auras, lightning, motion lines, swing arcs, speed trails. Sprites are static frames; animated FX are layered on top at render time by separate VFX systems and must not be baked into the base sprite.
 
 ## Visual conventions
 
@@ -55,6 +56,7 @@ The exact text below is what `scripts/sprites/build-prompt.ts` concatenates at t
 > 6. **No text, numbers, digits, labels, captions, watermarks, signatures, or UI chrome anywhere in the image.** This is the single most common failure mode and it makes the output unusable.
 > 7. Silhouette-first composition: the shape must read clearly even with all interior detail removed.
 > 8. Match the visual weight, outline thickness, and color saturation of the reference images attached to this request. The references are the ground truth for style — when in doubt, copy them.
+> 9. **No effects that would normally need animation** — no fire, flames, sparks, embers, smoke, dripping blood or liquid, glow halos, magic auras, lightning, motion lines, swing arcs, speed trails, or any other dynamic FX. Sprites are static frames; animated effects are layered on top at render time by separate VFX systems and must not be baked into the base sprite.
 >
 > --- END STYLE PREAMBLE ---
 
