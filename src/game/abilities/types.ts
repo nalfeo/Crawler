@@ -1,9 +1,9 @@
 import { z } from 'zod';
-import type { AbilityTriggerCondition } from '../../shared/abilities.js';
+import type { AbilityTriggerCondition as SharedAbilityTriggerCondition } from '../../shared/abilities.js';
 import type { CatalogEffect } from '../../shared/progression-effects.js';
 
-export { ACTIVE_ABILITY_SLOT_LIMIT, type AbilityTriggerCondition } from '../../shared/abilities.js';
-export type { AbilityState, AbilityTriggerEvent } from '../../shared/abilities.js';
+export { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
+export type { AbilityState, AbilityTriggerCondition, AbilityTriggerEvent } from '../../shared/abilities.js';
 
 export type AbilityCategory = 'combat' | 'defense' | 'utility';
 
@@ -18,7 +18,7 @@ export interface AbilityDefinitionBase {
 export interface ActiveAbilityDefinition extends AbilityDefinitionBase {
   kind: 'active' | 'spell';
   cooldownFrames: number;
-  trigger: AbilityTriggerCondition;
+  trigger: SharedAbilityTriggerCondition;
   effects: CatalogEffect[];
 }
 
@@ -143,6 +143,7 @@ export const abilityCatalogSchema = z.array(abilityDefinitionSchema).superRefine
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: `Spell ${def.id} must use a manual trigger`,
+        path: ['trigger', 'kind'],
       });
     }
   }

@@ -94,13 +94,14 @@ export function abilitySystem(world: GameWorld): void {
       const def = getAbilityDefinition(passiveId);
       if (def === undefined || def.kind !== 'passive') continue;
 
-      for (let i = 0; i < def.effects.length; i++) {
+      // Include effect index so multi-effect passives keep distinct modifier source ids.
+      def.effects.forEach((effect, i) => {
         applyCatalogEffect(world, {
           sourceType: 'ability',
           sourceId: `${passiveId}:passive:${holderEid}:${i}`,
-          effect: def.effects[i]!,
+          effect,
         });
-      }
+      });
 
       state.appliedPassiveAbilityIds.add(passiveId);
     }

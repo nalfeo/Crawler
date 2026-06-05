@@ -27,12 +27,8 @@ function setupPlayer() {
 describe('abilitySystem', () => {
   it('enforces max 10 active abilities equipped', () => {
     const { world, player } = setupPlayer();
-
-    for (let i = 0; i < ACTIVE_ABILITY_SLOT_LIMIT; i++) {
-      equipActiveAbility(world, player, i % 2 === 0 ? 'battle-focus' : 'arcane-bolt');
-    }
-
     const state = world.abilityStatesByEntity.get(player)!;
+    // Pre-fill slots directly to verify cap enforcement independently of catalog size.
     state.equippedActiveAbilityIds = Array.from({ length: ACTIVE_ABILITY_SLOT_LIMIT }, (_, i) =>
       i < ACTIVE_ABILITY_SLOT_LIMIT - 1 ? `ability-${i}` : 'battle-focus',
     );
@@ -80,9 +76,11 @@ describe('abilitySystem', () => {
     });
 
     world.frameCount = 100;
+    const beforeFirst = world.statModifiers.length;
     abilitySystem(world);
-    const firstActivation = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
-    expect(firstActivation).toHaveLength(1);
+    const afterFirst = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
+    expect(world.statModifiers.length).toBe(beforeFirst + 1);
+    expect(afterFirst).toHaveLength(1);
 
     queueAbilityTrigger(world, {
       holderEid: player,
@@ -92,10 +90,11 @@ describe('abilitySystem', () => {
       skillId: 'swordsmanship',
     });
     world.frameCount = 101;
+    const beforeSecond = world.statModifiers.length;
     abilitySystem(world);
-
-    const secondActivation = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
-    expect(secondActivation).toHaveLength(1);
+    const afterSecond = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
+    expect(world.statModifiers.length).toBe(beforeSecond);
+    expect(afterSecond).toHaveLength(1);
 
     queueAbilityTrigger(world, {
       holderEid: player,
@@ -105,10 +104,11 @@ describe('abilitySystem', () => {
       skillId: 'swordsmanship',
     });
     world.frameCount = 131;
+    const beforeThird = world.statModifiers.length;
     abilitySystem(world);
-
-    const thirdActivation = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
-    expect(thirdActivation).toHaveLength(1);
+    const afterThird = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
+    expect(world.statModifiers.length).toBe(beforeThird);
+    expect(afterThird).toHaveLength(1);
   });
 
   it('clears ability trigger events after processing', () => {

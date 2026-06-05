@@ -19,6 +19,7 @@ export function skillSystem(world: GameWorld): void {
   }
 
   for (const event of events) {
+    // v2 path: holder-scoped skills (players/mobs). v1 compatibility: playerSkills fallback.
     const holderSkills =
       event.holderEid !== undefined ? world.skillStatesByEntity.get(event.holderEid) : undefined;
     const state = holderSkills?.get(event.skillId) ?? world.playerSkills.get(event.skillId);

@@ -36,7 +36,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   const activeOrSpell = allAbilities.filter((a) => a.kind !== 'passive');
   const passives = allAbilities.filter((a) => a.kind === 'passive');
   let world: GameWorld;
-  let player = 0;
+  let player = -1;
 
   function reset() {
     world = createGameWorld({ seed: 777 });
