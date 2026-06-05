@@ -14,6 +14,7 @@ import './labs/knockback-lab/index.js';
 import './labs/lifetime-lab/index.js';
 import './labs/weapons-lab/index.js';
 import './labs/equipment-lab/index.js';
+import './labs/anchor-lab/index.js';
 import './labs/stat-lab/index.js';
 import './labs/stats-lab/index.js';
 import './labs/xp-curve-lab/index.js';
