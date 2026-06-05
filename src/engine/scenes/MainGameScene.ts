@@ -13,9 +13,11 @@ import { GAME } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
+import { createLogger } from '../../shared/logger.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
+const logger = createLogger('engine:main-game-scene');
 
 export class MainGameScene extends Phaser.Scene {
   static readonly KEY = 'MainGameScene';
@@ -28,8 +30,14 @@ export class MainGameScene extends Phaser.Scene {
 
   private world!: GameWorld;
 
+  private previousWorldState: GameWorld['state'] | null = null;
+
   /** Accumulated real time not yet consumed by fixed-step simulation (ms). */
   private accumulator = 0;
+
+  private accumulatorClampCount = 0;
+
+  private warnedMissingBridge = false;
 
   /**
    * Optional game-layer systems injected at construction time.
@@ -45,13 +53,21 @@ export class MainGameScene extends Phaser.Scene {
     this.inputState = createInputState();
     this.inputCapture = createInputCapture(this);
     this.accumulator = 0;
+    this.previousWorldState = this.world.state;
+    this.accumulatorClampCount = 0;
+    this.warnedMissingBridge = false;
 
     spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+    logger.info('Main game scene created', {
+      state: this.world.state,
+      injectedSystems: this.extraSystems.length,
+    });
 
     this.bridge = createPhaserBridge(this);
     this.bridge.sync(this.world);
 
     this.events.once('shutdown', () => {
+      logger.info('Main game scene shutdown');
       this.inputCapture?.destroy();
       this.inputCapture = undefined;
       this.bridge?.destroy();
@@ -61,10 +77,19 @@ export class MainGameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (!this.bridge || !this.inputCapture) {
+      if (!this.warnedMissingBridge) {
+        logger.warn('Skipping update because bridge or input capture is unavailable');
+        this.warnedMissingBridge = true;
+      }
       return;
     }
+    this.warnedMissingBridge = false;
 
     if (this.world.state !== 'playing') {
+      if (this.previousWorldState !== this.world.state) {
+        logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
+        this.previousWorldState = this.world.state;
+      }
       return;
     }
 
@@ -99,6 +124,11 @@ export class MainGameScene extends Phaser.Scene {
     // Cap accumulator to prevent spiral of death after long pauses
     if (this.accumulator > GAME.DELTA_MS * MAX_STEPS_PER_FRAME) {
       this.accumulator = 0;
+      this.accumulatorClampCount += 1;
+      logger.warn('Fixed-step accumulator clamped to avoid spiral of death', {
+        frameCount: this.world.frameCount,
+        clampCount: this.accumulatorClampCount,
+      });
     }
 
     this.bridge.sync(this.world);

@@ -6,9 +6,11 @@ import { spawnPlayer } from '../../core/helpers.js';
 import { statsSystem, spendPoints, addStatModifier } from '../../game/systems/statsSystem.js';
 import { levelSystem } from '../../game/systems/levelSystem.js';
 import { STAT_KEYS, STAT_BASE } from '../../shared/stats.js';
+import { createLogger } from '../../shared/logger.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+const logger = createLogger('labs:stats');
 
 function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
@@ -84,7 +86,7 @@ function createStatsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
             statsSystem(world);
             render();
           } catch (e) {
-            console.warn('Cannot spend points:', e);
+            logger.warn('Cannot spend points in stats lab', { error: e });
           }
         },
       },
