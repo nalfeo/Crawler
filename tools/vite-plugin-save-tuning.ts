@@ -9,7 +9,7 @@
  *   or: { "file": "weapons.json", "id": "sword", "path": "baseDamage", "value": 20 }
  *   or: { "file": "tuning.json", "values": { "player.speed": 4.0, "damage.defaultContactDamage": 8 } }
  */
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, renameSync, writeFileSync } from 'fs';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { resolve, relative, isAbsolute } from 'path';
 import type { Plugin } from 'vite';
@@ -197,7 +197,7 @@ export function labTuningSavePlugin(): Plugin {
                 ),
             );
 
-            // Validate new entries and skip duplicates
+            // Validate new entries and skip duplicates (including intra-request)
             const toAdd: SpriteCatalogRecord[] = [];
             const skipped: string[] = [];
 
@@ -208,13 +208,15 @@ export function labTuningSavePlugin(): Plugin {
                 skipped.push(id);
                 continue;
               }
-              if (
-                record['kind'] === 'sprite' &&
-                existingFrames.has(`${record['sheetKey']}:${record['frame']}`)
-              ) {
+              const frameKey =
+                record['kind'] === 'sprite' ? `${record['sheetKey']}:${record['frame']}` : '';
+              if (frameKey && existingFrames.has(frameKey)) {
                 skipped.push(id);
                 continue;
               }
+              // Update sets to prevent intra-request duplicates
+              existingIds.add(id);
+              if (frameKey) existingFrames.add(frameKey);
               toAdd.push(record as unknown as SpriteCatalogRecord);
             }
 
@@ -233,14 +235,21 @@ export function labTuningSavePlugin(): Plugin {
               return a.id.localeCompare(b.id);
             });
 
-            // Validate full catalog
+            // Validate full catalog and write atomically via temp file + rename
             const validated = parseSpriteCatalog(merged);
-            writeFileSync(catalogPath, JSON.stringify(validated, null, 2) + '\n', 'utf-8');
+            const tmpPath = catalogPath + '.tmp';
+            writeFileSync(tmpPath, JSON.stringify(validated, null, 2) + '\n', 'utf-8');
+            renameSync(tmpPath, catalogPath);
 
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(
-              JSON.stringify({ ok: true, added: toAdd.length, skipped: skipped.length }),
+              JSON.stringify({
+                ok: true,
+                added: toAdd.length,
+                skipped: skipped.length,
+                addedIds: toAdd.map((e) => (e as Record<string, unknown>)['id']),
+              }),
             );
           } catch (err) {
             res.statusCode = 400;

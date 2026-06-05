@@ -550,6 +550,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
           ok?: boolean;
           added?: number;
           skipped?: number;
+          addedIds?: string[];
           error?: string;
         };
         if (!response.ok || !result.ok) {
@@ -558,9 +559,10 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
         }
         parserStatus.textContent = `Added ${result.added} sprite${result.added === 1 ? '' : 's'}, skipped ${result.skipped}.`;
 
-        // Update local entries array with new entries
+        // Only update local state with entries the server actually persisted
+        const addedSet = new Set(result.addedIds ?? []);
         for (const entry of newEntries) {
-          if (!entries.find((e) => e.id === entry.id)) {
+          if (addedSet.has(entry.id) && !entries.find((e) => e.id === entry.id)) {
             entries.push(entry);
           }
         }
