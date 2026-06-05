@@ -65,3 +65,75 @@ The exact text below is what `scripts/sprites/build-prompt.ts` concatenates at t
 - The palette is replaced or extended → update §"Hard constraints" item 2 and bump the ADR.
 
 Avoid wordsmithing the preamble. Every additional sentence is a sentence the model has to track. Add only when a deterministic sensor downstream isn't enough and human review keeps flagging the same complaint.
+
+## Synthesising briefs
+
+Hand-authoring a brief for every weapon, enemy, or prop is tedious. The `sprites:synth` CLI turns a subject name into N reviewable minimal-brief candidates via a single Azure OpenAI structured-output call.
+
+```pwsh
+# Load Azure creds in the SAME powershell call (Windows workaround).
+Get-Content ~\.copilot\session-state\<id>\files\azure-sprite-pipeline.env |
+  ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { Set-Item "Env:$($matches[1])" $matches[2] } };
+npm run sprites:synth -- scythe --type weapon
+```
+
+What you get:
+
+- `generated/brief-candidates/scythe/scythe-v{1,2,3}.yaml` — three minimal briefs with deliberately different silhouettes.
+- `generated/brief-candidates/scythe/synthesis.json` — provider label, prompt hash, per-candidate rationale, raw model response (no API keys or endpoints).
+
+### What the synthesiser does for you
+
+- **Picks references from an allow-list.** The model is shown the list of `public/assets/kenney/*/spritesheet.png` files discovered on disk and picks 2–3 ids per candidate. It never invents reference paths.
+- **Refuses vague adjectives.** `cool / awesome / epic / amazing / nice` are rejected at validation time — every candidate must read as a concrete pose/silhouette/colour description.
+- **Forces visibly distinct candidates.** The system prompt requires each candidate to differ in silhouette from the others (tall narrow vs short wide vs symmetrical, etc.). The CLI prints the rationale next to each candidate.
+- **Classifies type when you omit `--type`.** Only auto-assigns if the model is ≥ 0.9 confident; otherwise it tells you to re-run with `--type`.
+
+### What the synthesiser refuses to do
+
+- Run in CI. Synthesis costs money and is non-deterministic; the CLI throws when `env.CI` is set to a truthy value. Treat it as a local-only tool.
+- Silently rewrite a bad candidate. By default a single rejected candidate aborts the whole run with no files written. Pass `--allow-partial` to keep the valid ones.
+- Write into `briefs/`. Output goes to `generated/brief-candidates/` only; promotion is a manual `mv` (see lifecycle below).
+
+### Promotion lifecycle
+
+The synthesised file is **not** a committed brief. The lifecycle is:
+
+```
+generated/brief-candidates/<name>/<name>-vN.yaml   (synth output, gitignored)
+                ↓ human picks the best
+briefs/draft/<type>s/<name>.yaml                   (review-staged, gitignored)
+                ↓ npm run sprites:run iterates until a variant passes sensors
+briefs/<type>s/<name>.yaml                         (committed)
+```
+
+`briefs/draft/.gitignore` enforces that drafts never get committed by mistake. Only briefs that have actually produced a passing sprite belong in version control.
+
+### Cost discipline
+
+One CLI invocation = one provider call (the structured-output schema returns all N candidates in one response). Repeated iteration on the same subject costs one call per `sprites:synth` you fire, not one per candidate. If you want a fourth candidate after the fact, re-run the command rather than editing the YAML manually.
+
+## Writing prompts for Azure OpenAI chat
+
+This applies to **every** chat-completions prompt in the repo (synth, variations expander, future judge rubric — anything routed through `azure-chat.ts` or `azure-chat-synth.ts`). The image-edits API runs a different filter stack and is more permissive, so prompts that work there will not necessarily work in chat.
+
+Azure OpenAI's `jailbreak` content classifier inspects the **shape** of the prompt, not just the subject. It will return `400 ResponsibleAIPolicyViolation` with `jailbreak: detected: true` even on a totally innocuous subject (a `cauldron`, a `lantern`) if the surrounding instruction text looks like a jailbreak attempt to the classifier. Surfaced first in PR #50 — first cut of the synth system prompt got 400'd on every call until rewritten.
+
+Things the classifier reacts to (avoid):
+
+- **All-caps imperatives**: `HARD RULES`, `MUST`, `NEVER`, `DO NOT`, `FORBIDDEN`.
+- **Numbered "you must" lists** with quoted banned tokens (`"cool", "awesome", "epic"` etc. as a literal forbidden-words list).
+- **Adversarial framing**: "any violation rejects the candidate", "ignore previous instructions", "you are not allowed to".
+- **Role-override boilerplate**: "you are X and only X", aggressive persona pinning.
+
+What works (same semantic content, different shape):
+
+- **Conversational role framing**: "You are an art director writing concept briefs…", "You are a reviewer scoring…". Treat the model as a collaborator, not a constrained subordinate.
+- **Goal-oriented guidance**: describe what a *good* output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
+- **Lower-case "should" / "avoid"** in place of `MUST` / `NEVER`. The semantics are identical to the model but invisible to the filter.
+- **Push enforcement downstream**: document banned tokens in the **validator code** (`BANNED_ADJECTIVES` in `synthesize-brief.ts`), not in the prompt. The prompt nudges the model toward concrete language; the validator catches anything that slips through. This is also more robust — the model occasionally ignores prompt rules even when they aren't filter-tripping.
+
+If you do need to send a quoted banned-word list to the model (rare; usually the validator-side approach is enough), prefer paraphrase: `"prefer concrete language over generic adjectives"` over `"never use cool, awesome, epic, amazing, or nice"`.
+
+Verify any non-trivial prompt change with a **real round-trip** against the deployment — unit tests with a mocked provider will not catch filter trips. The synth integration test uses a stub provider precisely because the real call is content-filter-sensitive and we do not want CI to depend on Azure availability or classifier stability.
+

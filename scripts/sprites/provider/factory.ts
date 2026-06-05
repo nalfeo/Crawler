@@ -12,8 +12,10 @@
 
 import { AzureOpenAIImageProvider } from './azure-openai.js';
 import { AzureOpenAIChatProvider } from './azure-chat.js';
+import { AzureOpenAISynthProvider } from './azure-chat-synth.js';
 import type { ImageProvider } from './types.js';
 import type { TextProvider } from './text-types.js';
+import type { SynthProvider } from './synth-types.js';
 
 export interface CreateProviderOptions {
   /**
@@ -100,6 +102,36 @@ function createAzureChatProvider(
     apiKey,
     apiVersion,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+/**
+ * Build a {@link SynthProvider} for brief synthesis. Unlike the
+ * variation-expansion text provider this one THROWS when the chat
+ * deployment is missing — synthesis is the entire point of the
+ * `sprites:synth` command, so a missing deployment is a configuration
+ * error the user must fix, not a graceful-degrade scenario.
+ */
+export function createSynthProvider(options: CreateProviderOptions = {}): SynthProvider {
+  const env = options.env ?? process.env;
+  const which = (
+    env.SPRITES_SYNTH_PROVIDER ??
+    env.SPRITES_TEXT_PROVIDER ??
+    'azure-openai'
+  ).toLowerCase();
+  if (which !== 'azure-openai') {
+    throw new Error(`Unknown SPRITES_SYNTH_PROVIDER '${which}'. Supported values: azure-openai.`);
+  }
+  const endpoint = required(env, 'AZURE_OPENAI_ENDPOINT');
+  const apiKey = required(env, 'AZURE_OPENAI_API_KEY');
+  const deployment = required(env, 'AZURE_OPENAI_CHAT_DEPLOYMENT');
+  const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
+  return new AzureOpenAISynthProvider({
+    endpoint,
+    deployment,
+    apiKey,
+    apiVersion,
+    ...(options.fetch ? { fetch: options.fetch } : {}),
   });
 }
 
