@@ -1,6 +1,6 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { AreaDamage, Enemy, Health, Owner, Player, Position, Team } from '../components.js';
-import { applyDamage } from '../helpers.js';
+import { applyDamage } from '../apply-damage.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 

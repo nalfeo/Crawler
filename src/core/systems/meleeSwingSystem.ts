@@ -9,7 +9,7 @@ import {
   Position,
   Team,
 } from '../components.js';
-import { applyDamage } from '../helpers.js';
+import { applyDamage } from '../apply-damage.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 

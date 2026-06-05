@@ -11,7 +11,8 @@ import {
   Stats,
   XpGem,
 } from '../components.js';
-import { applyDamage, clearEntityStores } from '../helpers.js';
+import { applyDamage } from '../apply-damage.js';
+import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
