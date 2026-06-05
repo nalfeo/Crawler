@@ -1,9 +1,12 @@
 /**
- * Item Pickup System — auto-picks up DroppedItem entities on Player collision.
+ * Item Pickup System — handles pickup of Gold, XpGem, and DroppedItem entities
+ * on Player collision.
  *
  * Runs after the collision system. For each collision pair where one entity is
- * a Player with Inventory and the other is a DroppedItem, the item is added to
- * the player's InventoryBag and the DroppedItem entity is removed.
+ * a Player and the other is a pickup entity:
+ * - Gold: increments world.playerGold and removes the entity
+ * - XpGem: adds XP/score and removes the entity
+ * - DroppedItem: adds item to player's InventoryBag and removes the entity
  */
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import { DroppedItem, Gold, Inventory, Player, XpGem } from '../components.js';

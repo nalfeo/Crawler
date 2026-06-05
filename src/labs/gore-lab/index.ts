@@ -1,4 +1,5 @@
 import { registerLab, type LabCategory } from '../registry.js';
+import { SeededRandom } from '../../shared/random.js';
 
 interface GoreLabSettings {
   hitGoreEnabled: boolean;
@@ -48,7 +49,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
   const description = document.createElement('p');
   description.textContent =
-    'Click to spawn hit-gore particles, Shift+click for death-gore. Adjust intensity and parameters with controls.';
+    'Use the buttons below to simulate hit-gore and death-gore events. Adjust intensity and parameters with controls.';
   description.style.color = '#cbd5e1';
   description.style.marginBottom = '16px';
 
@@ -85,10 +86,11 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     'padding: 10px 20px; border: 1px solid rgba(148,163,184,0.25); border-radius: 12px; background: rgba(30,41,59,0.96); color: #f8fafc; font-size: 14px; font-weight: 600; cursor: pointer; margin-right: 12px; margin-bottom: 16px;';
 
   hitButton.addEventListener('click', () => {
+    const labRng = new SeededRandom(Date.now());
     const event = {
       type: 'hit' as const,
-      x: 200 + Math.random() * 200,
-      y: 200 + Math.random() * 100,
+      x: 200 + labRng.next() * 200,
+      y: 200 + labRng.next() * 100,
       amount: settings.hitDamage,
       targetType: 'enemy' as const,
       timestamp: performance.now(),
@@ -104,11 +106,12 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
   deathButton.style.cssText = hitButton.style.cssText;
 
   deathButton.addEventListener('click', () => {
-    const angle = Math.random() * Math.PI * 2;
+    const labRng = new SeededRandom(Date.now());
+    const angle = labRng.next() * Math.PI * 2;
     const event = {
       type: 'death' as const,
-      x: 200 + Math.random() * 200,
-      y: 200 + Math.random() * 100,
+      x: 200 + labRng.next() * 200,
+      y: 200 + labRng.next() * 100,
       amount: 50,
       targetType: 'enemy' as const,
       timestamp: performance.now(),

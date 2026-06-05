@@ -5,7 +5,7 @@
  * Queries enemies at 0 HP, rolls the loot table, and spawns Gold/XpGem/DroppedItem
  * entities at the death position. Also emits 'death' combat events for gore VFX.
  */
-import { hasComponent, query } from 'bitecs';
+import { query } from 'bitecs';
 import { Enemy, Health } from '../components.js';
 import { spawnXpGem, spawnGold, spawnDroppedItem } from '../helpers.js';
 import type { GameWorld } from '../world.js';
@@ -92,7 +92,7 @@ function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): 
 }
 
 export function dropSystem(world: GameWorld): void {
-  const entities = query(world.ecs, [Health]);
+  const entities = query(world.ecs, [Enemy, Health]);
   const { health, position } = world.stores;
   const processed = getProcessedDeaths(world);
 
@@ -101,7 +101,6 @@ export function dropSystem(world: GameWorld): void {
 
     const currentHealth = health.current[eid] ?? 0;
     if (currentHealth > 0) continue;
-    if (!hasComponent(world.ecs, eid, Enemy)) continue;
     if (processed.has(eid)) continue;
 
     processed.add(eid);
@@ -109,7 +108,10 @@ export function dropSystem(world: GameWorld): void {
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
     const maxHp = health.max[eid] ?? 0;
-    const overkill = Math.abs(currentHealth);
+    // Overkill tracking: applyDamage clamps HP to 0, so we cannot derive
+    // true overkill here. Currently always 0; will be properly tracked once
+    // applyDamage stores excess damage on the entity (follow-up).
+    const overkill = 0;
 
     // Resolve and roll loot tables
     const tables = getEnemyLootTables(world, eid);

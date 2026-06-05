@@ -65,7 +65,8 @@ export function createGoreVfx(
     spread: number,
     renderElapsedMs: number,
   ): void {
-    const scaledCount = Math.max(1, Math.round(count * cfg.intensity));
+    const scaledCount = Math.round(count * cfg.intensity);
+    if (scaledCount <= 0) return;
     for (let i = 0; i < scaledCount; i++) {
       const angle = Math.atan2(dirY, dirX) + (vfxRandom() - 0.5) * spread;
       const speed = PARTICLE_SPEED * (0.5 + vfxRandom() * 0.8);

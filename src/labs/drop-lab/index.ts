@@ -4,6 +4,7 @@ import { createGameWorld } from '../../core/world.js';
 import { spawnEnemy } from '../../core/helpers.js';
 import { dropSystem } from '../../core/systems/dropSystem.js';
 import { Enemy, Gold, Health, Position, XpGem, DroppedItem } from '../../core/components.js';
+import { SeededRandom } from '../../shared/random.js';
 
 interface DropsLabSettings {
   enemyHp: number;
@@ -70,7 +71,8 @@ function createDropsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     'padding: 10px 20px; border: 1px solid rgba(148,163,184,0.25); border-radius: 12px; background: rgba(30,41,59,0.96); color: #f8fafc; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 16px;';
 
   killButton.addEventListener('click', () => {
-    const world = createGameWorld({ seed: Math.floor(Math.random() * 100000) });
+    const labRng = new SeededRandom(Date.now());
+    const world = createGameWorld({ seed: labRng.nextInt(1, 100000) });
 
     // Spawn enemies
     for (let i = 0; i < settings.spawnCount; i++) {

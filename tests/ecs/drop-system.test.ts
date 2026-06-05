@@ -28,7 +28,7 @@ describe('dropSystem', () => {
 
     const enemies = query(world.ecs, [Enemy]);
     const eid = enemies[0] as number;
-    setComponent(world.ecs, eid, Health, { current: -5, max: 10 });
+    setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
 
     dropSystem(world);
 
@@ -36,7 +36,7 @@ describe('dropSystem', () => {
     expect(deathEvents.length).toBe(1);
     expect(deathEvents[0]!.x).toBe(50);
     expect(deathEvents[0]!.y).toBe(60);
-    expect(deathEvents[0]!.overkill).toBe(5);
+    expect(deathEvents[0]!.overkill).toBe(0);
     expect(deathEvents[0]!.targetType).toBe('enemy');
   });
 

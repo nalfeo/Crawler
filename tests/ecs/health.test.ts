@@ -48,7 +48,7 @@ describe('healthSystem', () => {
     dropSystem(world);
     healthSystem(world);
 
-    // dropSystem spawns XP gems and possibly gold based on loot tables
+    // dropSystem spawns XP gems based on loot tables
     const gems = query(world.ecs, [XpGem, Position]);
     expect(gems.length).toBeGreaterThanOrEqual(1);
   });
