@@ -18,13 +18,28 @@ import process from 'node:process';
 import { buildServer } from './server.js';
 
 const HOST = '127.0.0.1';
-const PORT = 3010;
+const DEFAULT_PORT = 3010;
 const VERSION = '0.1.0-readonly';
+
+function resolvePort(): number {
+  // SPRITES_SIDECAR_PORT lets tests bind to a free port (commonly 0 →
+  // "any") so they never race a real instance on 3010. Production usage
+  // (`npm run sprites:gallery`) leaves it unset and gets the fixed port.
+  const raw = process.env['SPRITES_SIDECAR_PORT'];
+  if (!raw) return DEFAULT_PORT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 65535) {
+    process.stderr.write(`sprites:gallery sidecar: invalid SPRITES_SIDECAR_PORT=${raw}, using ${DEFAULT_PORT}\n`);
+    return DEFAULT_PORT;
+  }
+  return n;
+}
 
 async function main(): Promise<number> {
   const repoRoot = process.cwd();
   const runsDir = path.join(repoRoot, 'generated', 'runs');
   const app = buildServer({ repoRoot, runsDir, version: VERSION, logger: true });
+  const port = resolvePort();
 
   // SIGINT / SIGTERM both trigger a clean Fastify close so the port is
   // released even when the parent (e.g. the gallery launcher) is killed.
@@ -42,14 +57,14 @@ async function main(): Promise<number> {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
 
   try {
-    const url = await app.listen({ host: HOST, port: PORT });
+    const url = await app.listen({ host: HOST, port });
     process.stdout.write(`sprites:gallery sidecar listening on ${url}\n`);
     process.stdout.write(`  repoRoot: ${repoRoot}\n`);
     process.stdout.write(`  runsDir : ${runsDir}\n`);
     process.stdout.write(`  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file\n`);
     return 0;
   } catch (err) {
-    process.stderr.write(`sprites:gallery sidecar: failed to bind ${HOST}:${PORT}\n`);
+    process.stderr.write(`sprites:gallery sidecar: failed to bind ${HOST}:${port}\n`);
     process.stderr.write(`  ${err instanceof Error ? err.message : String(err)}\n`);
     if (err instanceof Error && /EADDRINUSE/.test(err.message)) {
       process.stderr.write(
