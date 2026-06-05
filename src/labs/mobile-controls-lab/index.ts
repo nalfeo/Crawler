@@ -4,12 +4,17 @@ import { loadLabState, saveLabState } from '../lab-persistence.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
+type MoveMode = 'joystick' | 'follow';
+
 interface MobileControlsLabSettings {
+  moveMode: MoveMode;
   joystickRadius: number;
   deadZone: number;
+  followSpeed: number;
+  followArrivalDist: number;
   showDebugOverlay: boolean;
   actionButtonSize: number;
-  opacity: number;
+  actionButtonPadding: number;
   hapticFeedback: boolean;
 }
 
@@ -23,6 +28,8 @@ interface TouchInfo {
 
 const LAB_ID = 'mobile-controls-lab';
 const BACKGROUND_COLOR = '#0d0d14';
+const ACTION_BTN_COLOR = 'rgba(220, 60, 60, 1)';
+const ACTION_BTN_PRESSED_COLOR = 'rgba(255, 90, 90, 1)';
 
 function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
@@ -31,11 +38,14 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   }
 
   const settings: MobileControlsLabSettings = {
+    moveMode: 'joystick',
     joystickRadius: 60,
     deadZone: 0.15,
+    followSpeed: 5,
+    followArrivalDist: 8,
     showDebugOverlay: true,
-    actionButtonSize: 70,
-    opacity: 0.6,
+    actionButtonSize: 72,
+    actionButtonPadding: 32,
     hapticFeedback: true,
     ...(loadLabState<MobileControlsLabSettings>(LAB_ID) ?? {}),
   };
@@ -76,8 +86,9 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
 
   const hint = document.createElement('p');
   hint.innerHTML =
-    'Touch the <b>left half</b> to move (virtual joystick) and the <b>right half</b> to fire. ' +
-    'On desktop, click and drag to emulate touch. Tune deadzone and radius with the controls.';
+    '<b>Joystick mode:</b> drag anywhere outside the action button to move.<br>' +
+    '<b>Follow mode:</b> touch anywhere and the entity moves toward your finger.<br>' +
+    'The <b>action button</b> (bottom-right) fires. Click/drag on desktop to emulate touch.';
   hint.style.marginTop = '16px';
   hint.style.color = '#7ee0ff';
   hint.style.lineHeight = '1.6';
@@ -95,7 +106,6 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   let canvasHeight = 0;
   let animationFrame = 0;
 
-  // Player entity position
   const entity = { x: 0, y: 0 };
 
   const context = canvas.getContext('2d');
@@ -103,24 +113,49 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   const ctx = context;
 
   // --- lil-gui ---
-  gui.add(settings, 'joystickRadius', 30, 120, 5).name('Joystick Radius');
-  gui.add(settings, 'deadZone', 0, 0.5, 0.01).name('Dead Zone');
-  gui.add(settings, 'actionButtonSize', 40, 120, 5).name('Action Btn Size');
-  gui.add(settings, 'opacity', 0.1, 1, 0.05).name('Control Opacity');
+  gui.add(settings, 'moveMode', ['joystick', 'follow']).name('Move Mode');
+
+  const joystickFolder = gui.addFolder('Joystick Settings');
+  joystickFolder.add(settings, 'joystickRadius', 30, 120, 5).name('Radius');
+  joystickFolder.add(settings, 'deadZone', 0, 0.5, 0.01).name('Dead Zone');
+
+  const followFolder = gui.addFolder('Follow Settings');
+  followFolder.add(settings, 'followSpeed', 1, 15, 0.5).name('Speed');
+  followFolder.add(settings, 'followArrivalDist', 2, 30, 1).name('Arrival Dist');
+
+  gui.add(settings, 'actionButtonSize', 50, 120, 2).name('Action Btn Size');
+  gui.add(settings, 'actionButtonPadding', 16, 80, 4).name('Action Btn Pad');
   gui.add(settings, 'showDebugOverlay').name('Debug Overlay');
   gui.add(settings, 'hapticFeedback').name('Haptic Feedback');
   gui.onChange(() => saveLabState(LAB_ID, settings));
 
-  // --- Touch handling ---
-  function classifyZone(clientX: number): 'move' | 'action' {
-    const rect = root.getBoundingClientRect();
-    return clientX < rect.left + rect.width / 2 ? 'move' : 'action';
+  // --- Hit testing for the action button ---
+  function getActionBtnCenter(): { x: number; y: number } {
+    const btnR = settings.actionButtonSize / 2;
+    return {
+      x: canvasWidth - settings.actionButtonPadding - btnR,
+      y: canvasHeight - settings.actionButtonPadding - btnR,
+    };
   }
 
+  function isInsideActionButton(clientX: number, clientY: number): boolean {
+    const rect = root.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+    const btn = getActionBtnCenter();
+    const btnR = settings.actionButtonSize / 2;
+    return Math.hypot(localX - btn.x, localY - btn.y) <= btnR + 10; // small hit margin
+  }
+
+  function classifyZone(clientX: number, clientY: number): 'move' | 'action' {
+    return isInsideActionButton(clientX, clientY) ? 'action' : 'move';
+  }
+
+  // --- Touch handling ---
   function onTouchStart(e: TouchEvent): void {
     for (const touch of e.changedTouches) {
       activeTouches.set(touch.identifier, {
-        zone: classifyZone(touch.clientX),
+        zone: classifyZone(touch.clientX, touch.clientY),
         startX: touch.clientX,
         startY: touch.clientY,
         x: touch.clientX,
@@ -155,7 +190,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     if (e.pointerType === 'touch') return;
     if (e.button !== 0) return;
     activeTouches.set(MOUSE_POINTER_ID, {
-      zone: classifyZone(e.clientX),
+      zone: classifyZone(e.clientX, e.clientY),
       startX: e.clientX,
       startY: e.clientY,
       x: e.clientX,
@@ -189,10 +224,9 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   }
 
   // --- Input processing ---
-  function processInput(): void {
+  function processJoystickInput(): void {
     let rawX = 0;
     let rawY = 0;
-    actionActive = false;
 
     for (const touch of activeTouches.values()) {
       if (touch.zone === 'move') {
@@ -200,23 +234,71 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
         const dy = touch.y - touch.startY;
         rawX = Math.max(-1, Math.min(1, dx / settings.joystickRadius));
         rawY = Math.max(-1, Math.min(1, dy / settings.joystickRadius));
-      } else {
-        actionActive = true;
+        break;
       }
     }
 
-    // Apply dead zone
     const magnitude = Math.hypot(rawX, rawY);
     if (magnitude < settings.deadZone) {
       moveOutput = { x: 0, y: 0 };
     } else {
-      // Remap from [deadZone, 1] to [0, 1]
       const remapped = (magnitude - settings.deadZone) / (1 - settings.deadZone);
       const clamped = Math.min(1, remapped);
       moveOutput = {
         x: (rawX / magnitude) * clamped,
         y: (rawY / magnitude) * clamped,
       };
+    }
+  }
+
+  function processFollowInput(): void {
+    let moveTouch: TouchInfo | undefined;
+    for (const touch of activeTouches.values()) {
+      if (touch.zone === 'move') {
+        moveTouch = touch;
+        break;
+      }
+    }
+
+    if (!moveTouch) {
+      moveOutput = { x: 0, y: 0 };
+      return;
+    }
+
+    // Convert touch position to canvas-local coords
+    const rect = root.getBoundingClientRect();
+    const targetX = moveTouch.x - rect.left;
+    const targetY = moveTouch.y - rect.top;
+
+    const dx = targetX - entity.x;
+    const dy = targetY - entity.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (dist < settings.followArrivalDist) {
+      moveOutput = { x: 0, y: 0 };
+    } else {
+      // Normalize direction, scale by distance for smoother approach
+      const strength = Math.min(1, dist / 100);
+      moveOutput = {
+        x: (dx / dist) * strength,
+        y: (dy / dist) * strength,
+      };
+    }
+  }
+
+  function processInput(): void {
+    actionActive = false;
+    for (const touch of activeTouches.values()) {
+      if (touch.zone === 'action') {
+        actionActive = true;
+        break;
+      }
+    }
+
+    if (settings.moveMode === 'joystick') {
+      processJoystickInput();
+    } else {
+      processFollowInput();
     }
   }
 
@@ -236,8 +318,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     }
   }
 
-  function drawJoystick(): void {
-    // Find the active move touch
+  function drawJoystickOverlay(): void {
     let moveTouch: TouchInfo | undefined;
     for (const touch of activeTouches.values()) {
       if (touch.zone === 'move') {
@@ -254,25 +335,23 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     const thumbX = moveTouch.x - rect.left;
     const thumbY = moveTouch.y - rect.top;
 
-    const alpha = settings.opacity;
-
     // Base circle
     ctx.beginPath();
-    ctx.strokeStyle = `rgba(126, 224, 255, ${alpha * 0.5})`;
+    ctx.strokeStyle = 'rgba(126, 224, 255, 0.4)';
     ctx.lineWidth = 2;
     ctx.arc(baseX, baseY, settings.joystickRadius, 0, Math.PI * 2);
     ctx.stroke();
 
     // Dead zone ring
     ctx.beginPath();
-    ctx.strokeStyle = `rgba(255, 216, 77, ${alpha * 0.4})`;
+    ctx.strokeStyle = 'rgba(255, 216, 77, 0.35)';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.arc(baseX, baseY, settings.joystickRadius * settings.deadZone, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Thumb
+    // Thumb (clamped to radius)
     const dx = thumbX - baseX;
     const dy = thumbY - baseY;
     const dist = Math.hypot(dx, dy);
@@ -282,7 +361,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     const clampedY = baseY + Math.sin(angle) * clampedDist;
 
     ctx.beginPath();
-    ctx.fillStyle = `rgba(126, 224, 255, ${alpha * 0.8})`;
+    ctx.fillStyle = 'rgba(126, 224, 255, 0.85)';
     ctx.shadowColor = '#7ee0ff';
     ctx.shadowBlur = 12;
     ctx.arc(clampedX, clampedY, 16, 0, Math.PI * 2);
@@ -290,72 +369,89 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     ctx.shadowBlur = 0;
   }
 
-  function drawActionButton(): void {
-    // Find active action touch
-    let actionTouch: TouchInfo | undefined;
+  function drawFollowTarget(): void {
+    let moveTouch: TouchInfo | undefined;
     for (const touch of activeTouches.values()) {
-      if (touch.zone === 'action') {
-        actionTouch = touch;
+      if (touch.zone === 'move') {
+        moveTouch = touch;
         break;
       }
     }
 
-    // Draw static action zone indicator (bottom-right)
-    const btnX = canvasWidth - 80;
-    const btnY = canvasHeight - 80;
-    const btnR = settings.actionButtonSize / 2;
-    const alpha = settings.opacity;
+    if (!moveTouch) return;
 
+    const rect = root.getBoundingClientRect();
+    const targetX = moveTouch.x - rect.left;
+    const targetY = moveTouch.y - rect.top;
+
+    // Crosshair at finger position
     ctx.beginPath();
-    ctx.strokeStyle = actionTouch
-      ? `rgba(255, 100, 100, ${alpha})`
-      : `rgba(255, 100, 100, ${alpha * 0.4})`;
-    ctx.fillStyle = actionTouch
-      ? `rgba(255, 100, 100, ${alpha * 0.3})`
-      : `rgba(255, 100, 100, ${alpha * 0.1})`;
-    ctx.lineWidth = 2;
-    ctx.arc(btnX, btnY, btnR, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.strokeStyle = 'rgba(126, 224, 255, 0.6)';
+    ctx.lineWidth = 1.5;
+    const size = 12;
+    ctx.moveTo(targetX - size, targetY);
+    ctx.lineTo(targetX + size, targetY);
+    ctx.moveTo(targetX, targetY - size);
+    ctx.lineTo(targetX, targetY + size);
     ctx.stroke();
 
-    // Label
-    ctx.fillStyle = `rgba(255, 100, 100, ${alpha})`;
-    ctx.font = 'bold 14px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('ACT', btnX, btnY);
-  }
-
-  function drawDivider(): void {
+    // Arrival radius
     ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([6, 6]);
-    ctx.moveTo(canvasWidth / 2, 0);
-    ctx.lineTo(canvasWidth / 2, canvasHeight);
+    ctx.strokeStyle = 'rgba(255, 216, 77, 0.3)';
+    ctx.setLineDash([3, 3]);
+    ctx.arc(targetX, targetY, settings.followArrivalDist, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Zone labels
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.font = '11px monospace';
+    // Line from entity to target
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(126, 224, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
+    ctx.moveTo(entity.x, entity.y);
+    ctx.lineTo(targetX, targetY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  function drawActionButton(): void {
+    const btn = getActionBtnCenter();
+    const btnR = settings.actionButtonSize / 2;
+
+    // Opaque solid button
+    ctx.beginPath();
+    ctx.fillStyle = actionActive ? ACTION_BTN_PRESSED_COLOR : ACTION_BTN_COLOR;
+    ctx.shadowColor = actionActive ? '#ff5a5a' : '#dc3c3c';
+    ctx.shadowBlur = actionActive ? 20 : 8;
+    ctx.arc(btn.x, btn.y, btnR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Border
+    ctx.beginPath();
+    ctx.strokeStyle = actionActive
+      ? 'rgba(255, 255, 255, 0.5)'
+      : 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.arc(btn.x, btn.y, btnR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `bold ${Math.round(btnR * 0.45)}px monospace`;
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText('MOVE', canvasWidth / 4, 10);
-    ctx.fillText('ACTION', (canvasWidth * 3) / 4, 10);
+    ctx.textBaseline = 'middle';
+    ctx.fillText('ATK', btn.x, btn.y);
   }
 
   function drawEntity(): void {
-    // Move entity based on processed input
-    const speed = 4;
+    const speed = settings.moveMode === 'follow' ? settings.followSpeed : 4;
     entity.x += moveOutput.x * speed;
     entity.y += moveOutput.y * speed;
 
-    // Wrap around edges
-    if (entity.x < 0) entity.x += canvasWidth;
-    if (entity.x >= canvasWidth) entity.x -= canvasWidth;
-    if (entity.y < 0) entity.y += canvasHeight;
-    if (entity.y >= canvasHeight) entity.y -= canvasHeight;
+    // Clamp to bounds
+    entity.x = Math.max(0, Math.min(canvasWidth, entity.x));
+    entity.y = Math.max(0, Math.min(canvasHeight, entity.y));
 
     // Draw entity
     ctx.beginPath();
@@ -368,7 +464,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
 
     // Direction indicator
     if (moveOutput.x !== 0 || moveOutput.y !== 0) {
-      const arrowLen = 20;
+      const arrowLen = 22;
       ctx.beginPath();
       ctx.strokeStyle = '#7ee0ff';
       ctx.lineWidth = 2;
@@ -378,6 +474,15 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     }
   }
 
+  function drawModeLabel(): void {
+    const label = settings.moveMode === 'joystick' ? '🕹️ JOYSTICK' : '👆 FOLLOW FINGER';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.font = '11px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(label, canvasWidth / 2, 10);
+  }
+
   function renderFrame(): void {
     processInput();
 
@@ -385,9 +490,15 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     ctx.fillStyle = BACKGROUND_COLOR;
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-    drawDivider();
+    drawModeLabel();
     drawEntity();
-    drawJoystick();
+
+    if (settings.moveMode === 'joystick') {
+      drawJoystickOverlay();
+    } else {
+      drawFollowTarget();
+    }
+
     drawActionButton();
 
     // Debug readout
@@ -400,13 +511,12 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
 
       readout.style.display = 'block';
       readout.textContent = [
+        `mode: ${settings.moveMode}`,
         `move: (${moveOutput.x.toFixed(3)}, ${moveOutput.y.toFixed(3)})`,
         `magnitude: ${magnitude.toFixed(3)}`,
         `angle: ${angle}`,
         `action: ${actionActive ? '🔴 ACTIVE' : '⚪ idle'}`,
         `touches: ${activeTouches.size}`,
-        `deadZone: ${settings.deadZone}`,
-        `radius: ${settings.joystickRadius}px`,
       ].join('\n');
     } else {
       readout.style.display = 'none';
@@ -450,6 +560,6 @@ registerLab('mobile-controls-lab', {
   category: 'Movement & Physics' as LabCategory,
   name: 'Mobile Controls Lab',
   description:
-    'Virtual joystick and action button sandbox for iterating on mobile touch controls.',
+    'Virtual joystick and follow-finger movement with opaque action button for mobile iteration.',
   create: createMobileControlsLab,
 });
