@@ -284,11 +284,11 @@ function buildSystemInstructions(styleGuide: string): string {
 }
 
 function buildUserPrompt(brief: Brief, referenceCount: number): string {
-  const refList =
-    referenceCount === 0
-      ? 'No reference images attached.'
-      : `${referenceCount} reference image(s) attached, labelled reference-1 .. reference-${referenceCount}.`;
-  return [
+  const hasReferences = referenceCount > 0;
+  const refSummary = hasReferences
+    ? `${referenceCount} reference image(s) attached, labelled reference-1 .. reference-${referenceCount}.`
+    : 'No reference images attached.';
+  const lines = [
     `BRIEF NAME: ${brief.name}`,
     `BRIEF TYPE: ${brief.type}`,
     `BRIEF PROMPT: ${brief.prompt}`,
@@ -297,14 +297,19 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
     'Attached images, in order:',
     '  1. candidate              — the sprite to evaluate, upscaled 8x',
     '  2. readability-composite  — the same sprite at 1x on a dark floor tile, upscaled',
-    `  ${refList ? '3+. reference-N            — visual style anchor(s). The candidate must read as same-family.' : ''}`,
+  ];
+  if (hasReferences) {
+    lines.push(
+      '  3+. reference-N            — visual style anchor(s). The candidate must read as same-family.',
+    );
+  }
+  lines.push(
     '',
-    refList,
+    refSummary,
     '',
     'Return your three scores and rationales as the strict JSON object described in the system prompt.',
-  ]
-    .filter((s) => s !== '')
-    .join('\n');
+  );
+  return lines.filter((s) => s !== '').join('\n');
 }
 
 /**

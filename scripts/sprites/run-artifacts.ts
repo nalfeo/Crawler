@@ -123,6 +123,14 @@ export interface ChosenCandidate {
    * (sensor-failed / over the maxVariants cap).
    */
   readonly judgeScorecard: JudgeScorecard | null;
+  /**
+   * Combined sensor + judge gate result for the chosen variant. True iff
+   * sensors passed AND (judge disabled OR judge ran and passed). Mirrored
+   * from the underlying `RunSummaryEntry.combinedPassed` so downstream
+   * consumers don't need to re-derive the formula (and risk getting the
+   * over-cap edge case wrong).
+   */
+  readonly combinedPassed: boolean;
 }
 
 export interface RunSummary {
@@ -253,9 +261,12 @@ export function writeSummary(paths: RunPaths, summary: RunSummary): string {
 export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSummaryEntry[] {
   function bucket(e: RunSummaryEntry): 0 | 1 | 2 {
     if (!e.passed) return 2;
-    // Judge ran and explicitly failed -> bucket 1.
-    if (e.judgeScorecard && !e.judgeScorecard.passed) return 1;
-    return 0;
+    // Use combinedPassed as the source of truth. Sensor-passed-but-not-judged
+    // entries (e.g. judgeSkipReason: 'over-cap') have combinedPassed=false
+    // when judging is enabled, so they correctly fall into bucket 1 instead
+    // of jumping ahead of variants that actually passed the judge gate.
+    if (e.combinedPassed) return 0;
+    return 1;
   }
   return [...entries].sort((a, b) => {
     const ba = bucket(a);
@@ -283,9 +294,12 @@ export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSumm
  *
  * Note: the chosen candidate's `passed` field reflects the SENSOR scorecard
  * only, for backwards compatibility with consumers that pre-date the judge.
- * The combined sensor+judge pipeline-pass for the chosen variant is
- * `chosen.passed && (chosen.judgeScorecard?.passed ?? true)` — the ranking
- * here already puts combined-passing variants first, so when ANY variant
+ * The combined sensor+judge pipeline-pass for the chosen variant is carried
+ * on `chosen.combinedPassed` (mirrored from the underlying entry). Do NOT
+ * derive it from `passed && (judgeScorecard?.passed ?? true)` — that
+ * formula wrongly treats sensor-passing-but-not-judged variants
+ * (`judgeSkipReason: 'over-cap'`) as full pipeline passes. The ranking
+ * already puts combined-passing variants first, so when ANY variant
  * passed the full pipeline, `chosen` will be that variant.
  */
 export function pickChosen(
@@ -310,5 +324,6 @@ export function pickChosen(
     passed: top.passed,
     anchor,
     judgeScorecard: top.judgeScorecard,
+    combinedPassed: top.combinedPassed,
   };
 }
