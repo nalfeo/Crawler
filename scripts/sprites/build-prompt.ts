@@ -138,7 +138,7 @@ function sheetLayoutBlock(
     lines.push('Every cell must contain exactly one variant — no empty cells.');
   }
   lines.push(
-    'Variants should be meaningfully different from one another (color, pose, silhouette detail) while staying on-brief.',
+    'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose / angle within the orientation rule, internal detail density, shading direction, individual material choices that stay inside the palette (e.g. a different brown for a wrapped hilt, a different grey for steel). DO NOT vary along: art style, outline thickness, palette / color family, subject identity, orientation, level of stylization. If the subject description is short or leaves room for interpretation, lean into the variation axes above so the sheet covers the design space rather than producing 16 near-duplicates.',
   );
   return lines.join('\n');
 }
