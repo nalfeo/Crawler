@@ -329,6 +329,40 @@ describe('InputCapture (raw DOM)', () => {
     expect(state.moveY).toBe(0);
   });
 
+  it('follow mode supports vertical and diagonal movement', () => {
+    capture.destroy();
+    setGlobalControlsConfig({ mobileMoveMode: 'follow' });
+    capture = createInputCapture(createMockScene(), {
+      getFollowOrigin: () => ({ x: 100, y: 200 }),
+    });
+
+    startTouch(1, 100, 200);
+    moveTouch(1, 100, 260);
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBeGreaterThan(0);
+
+    moveTouch(1, 160, 260);
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+    expect(state.moveY).toBeGreaterThan(0);
+  });
+
+  it('follow mode stops inside arrival threshold', () => {
+    capture.destroy();
+    setGlobalControlsConfig({ mobileMoveMode: 'follow' });
+    capture = createInputCapture(createMockScene(), {
+      getFollowOrigin: () => ({ x: 100, y: 200 }),
+    });
+
+    startTouch(1, 100, 200);
+    moveTouch(1, 105, 203);
+
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+  });
+
   it('right-side touch enables action and updates pointer', () => {
     startTouch(2, 600, 300);
     moveTouch(2, 620, 340);
