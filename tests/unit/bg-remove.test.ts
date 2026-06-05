@@ -129,4 +129,79 @@ describe('removeBackground', () => {
     const out = removeBackground(img);
     expect(alphaAt(out, 0, 0)).toBe(0);
   });
+
+  // ── Tolerance behaviour (BACKGROUND_COLOR_TOLERANCE_SQ) ────────────────
+  // Real provider PNGs rarely have a perfectly flat background colour —
+  // gpt-image-1 returns near-white with ±1-12 per-channel noise around the
+  // corners. The flood fill uses squared-Euclidean RGB tolerance so these
+  // are still treated as background.
+
+  it('floods near-white pixels that differ from the corner by small per-channel noise', () => {
+    // Corner is pure white; body has ±5 noise per channel — well within the
+    // ~32-channel tolerance and so should be flooded transparent.
+    const img = blank(8, 8, [255, 255, 255]);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        setPixel(img, x, y, 252, 250, 254);
+      }
+    }
+    setPixel(img, 0, 0, 255, 255, 255); // pure-white corner anchor
+    const out = removeBackground(img);
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        expect(alphaAt(out, x, y)).toBe(0);
+      }
+    }
+  });
+
+  it('does not eat a saturated foreground colour that lives well outside tolerance', () => {
+    // Background near-white; a single bright-red pixel in the centre. Red
+    // is ≈ 320 channels away in squared distance per axis from white, so
+    // tolerance must not reach it.
+    const img = blank(8, 8, [250, 250, 250]);
+    setPixel(img, 4, 4, 255, 0, 0);
+    const out = removeBackground(img);
+    expect(alphaAt(out, 4, 4)).toBe(255);
+    expect(alphaAt(out, 0, 0)).toBe(0);
+    expect(alphaAt(out, 7, 7)).toBe(0);
+  });
+
+  it('preserves a bone-white foreground when it has at least a 1-pixel margin from the edge', () => {
+    // Background is dark grey; the foreground is bone-white. With a 1-pixel
+    // dark margin on every edge, the flood fill never reaches the bone
+    // region even though bone is within tolerance of pure white. This is
+    // the realistic case for a skull-mace sprite on a dark canvas.
+    const img = blank(8, 8, [40, 40, 40]);
+    for (let y = 2; y <= 5; y++) {
+      for (let x = 2; x <= 5; x++) {
+        setPixel(img, x, y, 245, 245, 240); // bone-white
+      }
+    }
+    const out = removeBackground(img);
+    for (let y = 2; y <= 5; y++) {
+      for (let x = 2; x <= 5; x++) {
+        expect(alphaAt(out, x, y)).toBe(255);
+      }
+    }
+    // Dark border still goes transparent.
+    expect(alphaAt(out, 0, 0)).toBe(0);
+    expect(alphaAt(out, 7, 7)).toBe(0);
+  });
+
+  it('still eats foreground that touches the edge and is within tolerance of the corner colour (known limitation)', () => {
+    // Documented edge case: if a near-background-coloured foreground pixel
+    // is 4-connected to a corner, the flood reaches it. This is the
+    // intentional behaviour — sprites are composed centred with margin
+    // (see briefs' "single subject centered" rule), and asking the flood
+    // fill to second-guess that is a bigger problem than it solves.
+    const img = blank(8, 8, [255, 255, 255]);
+    // Bone-white foreground that runs to the top edge.
+    setPixel(img, 4, 0, 245, 245, 240);
+    setPixel(img, 4, 1, 245, 245, 240);
+    setPixel(img, 4, 2, 245, 245, 240);
+    const out = removeBackground(img);
+    expect(alphaAt(out, 4, 0)).toBe(0);
+    expect(alphaAt(out, 4, 1)).toBe(0);
+    expect(alphaAt(out, 4, 2)).toBe(0);
+  });
 });
