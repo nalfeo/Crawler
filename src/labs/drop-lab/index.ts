@@ -148,7 +148,7 @@ function createDropsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   };
 }
 
-registerLab('drops-lab', {
+registerLab('drop-lab', {
   category: 'Items & Equipment' as LabCategory,
   name: 'Drops Lab',
   description: 'Test loot table rolls and drop spawning on enemy death.',
