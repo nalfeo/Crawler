@@ -28,8 +28,7 @@ The **Filter** field accepts:
 - A frame number prefix (e.g. `7` matches 7, 70, 71, …)
 - `col,row` (e.g. `1,6`) — exact tile coordinate
 
-## Why a separate lab?
+## Purpose
 
-`sprite-preview-lab` shows only sprites already registered in `SPRITES`.
 Tile Explorer shows raw sheet contents — even tiles we haven't named
 yet — which is what you need when integrating a new pack.
