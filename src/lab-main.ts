@@ -20,6 +20,8 @@ import './labs/xp-curve-lab/index.js';
 import './labs/skill-lab/index.js';
 import './labs/tile-explorer-lab/index.js';
 import './labs/mobile-controls-lab/index.js';
+import './labs/fov-lab/index.js';
+import './labs/door-lab/index.js';
 import { renderLabIndex } from './labs/lab-index.js';
 import { runLab } from './labs/lab-runner.js';
 
