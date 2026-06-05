@@ -9,7 +9,10 @@ const validBrief: Brief = {
   anchor: { x: 16, y: 28 },
   tags: ['blade', 'melee'],
   prompt: 'A pixel-art iron sword on a transparent background, blade pointing up.',
-  references: [{ path: 'docs/refs/sword-1.png', note: 'silhouette inspiration' }],
+  references: [
+    { path: 'docs/refs/sword-1.png', note: 'silhouette inspiration' },
+    { path: 'docs/refs/sword-2.png', note: 'palette anchor' },
+  ],
 };
 
 describe('briefSchema', () => {
@@ -32,7 +35,7 @@ describe('briefSchema', () => {
     expect(result.success).toBe(true);
   });
 
-  it('defaults tags and references to empty arrays', () => {
+  it('defaults tags to an empty array and requires at least 2 references (F2.3)', () => {
     const minimal = {
       type: 'weapon',
       name: 'iron-sword',
@@ -42,10 +45,32 @@ describe('briefSchema', () => {
       prompt: 'p',
     };
     const result = briefSchema.safeParse(minimal);
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.tags).toEqual([]);
-      expect(result.data.references).toEqual([]);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths).toContain('references');
+    }
+
+    const withRefs = briefSchema.safeParse({
+      ...minimal,
+      references: [{ path: 'a.png' }, { path: 'b.png' }],
+    });
+    expect(withRefs.success).toBe(true);
+    if (withRefs.success) {
+      expect(withRefs.data.tags).toEqual([]);
+      expect(withRefs.data.references).toHaveLength(2);
+    }
+  });
+
+  it('rejects a brief with fewer than 2 references (F2.3)', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      references: [{ path: 'docs/refs/sword-1.png' }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths).toContain('references');
     }
   });
 

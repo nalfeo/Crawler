@@ -73,7 +73,9 @@ export const briefSchema = z
     anchor: anchorSchema,
     tags: z.array(z.string().min(1)).default([]),
     prompt: z.string().min(1),
-    references: z.array(referenceSchema).default([]),
+    references: z
+      .array(referenceSchema)
+      .min(2, 'references must contain at least 2 entries (F2.3)'),
   })
   .strict()
   .superRefine((brief, ctx) => {
