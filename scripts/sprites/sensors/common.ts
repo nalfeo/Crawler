@@ -18,7 +18,7 @@
  */
 
 import { PNG } from 'pngjs';
-import type { Brief, PaletteColors, RgbTriple } from '../../scripts/sprites/brief-schema.js';
+import type { Brief, PaletteColors, RgbTriple } from '../brief-schema.js';
 
 export type Pixel = { x: number; y: number };
 
