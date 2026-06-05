@@ -10,6 +10,7 @@ import GUI from 'lil-gui';
 import { FOV } from 'rot-js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { TilePresets } from '../../shared/map-types.js';
+import { SeededRandom } from '../../shared/random.js';
 import { registerLab } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -50,6 +51,7 @@ function createFovLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
   const visible = new Uint8Array(GRID_W * GRID_H);
 
   function buildMap(density: number): TileMap {
+    const rng = new SeededRandom(42);
     const tm = new TileMap(GRID_W, GRID_H);
     // Border walls + random interior walls
     for (let y = 0; y < GRID_H; y++) {
@@ -57,7 +59,7 @@ function createFovLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         const idx = y * GRID_W + x;
         if (x === 0 || x === GRID_W - 1 || y === 0 || y === GRID_H - 1) {
           tm.flags[idx] = TilePresets.WALL;
-        } else if (Math.random() < density) {
+        } else if (rng.next() < density) {
           tm.flags[idx] = TilePresets.WALL;
         } else {
           tm.flags[idx] = TilePresets.FLOOR;

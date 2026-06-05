@@ -17,7 +17,17 @@ export class TileMap {
   constructor(width: number, height: number, initialFlags?: Uint8Array) {
     this.width = width;
     this.height = height;
-    this.flags = initialFlags ?? new Uint8Array(width * height);
+    if (initialFlags) {
+      const expected = width * height;
+      if (initialFlags.length !== expected) {
+        throw new Error(
+          `TileMap: initialFlags length ${initialFlags.length} does not match ${width}×${height} = ${expected}`,
+        );
+      }
+      this.flags = initialFlags;
+    } else {
+      this.flags = new Uint8Array(width * height);
+    }
   }
 
   /** Convert tile coords to flat index. Returns -1 if out of bounds. */

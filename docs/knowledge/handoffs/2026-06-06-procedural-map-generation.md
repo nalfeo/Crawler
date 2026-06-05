@@ -33,7 +33,7 @@ Built the procedural map generation foundation — hybrid tile grid + room graph
 5. **AI floor theming** — extend AI pipeline for biome-themed content
 
 ## Blockers
-- Lab gate check script fails on Windows (bash `pipefail` unsupported). Labs still need to be created for fovSystem and doorSystem.
+- Lab gate check script fails on Windows (bash `pipefail` unsupported) but can be run manually via Git Bash.
 - One pre-existing flaky test in AI provider suite (`retries on bad-grid error`) — unrelated to map work.
 
 ## Branch State

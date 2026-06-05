@@ -114,15 +114,22 @@ describe('FOV System', () => {
     fovSystem(world);
     expect(floorMap.isVisible(10, 10)).toBe(true);
 
-    // Move player far away — old tiles should not remain visible
+    // Place a wall ring around (10,10) so it cannot be seen from far away
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        const idx = (10 + dy) * floorMap.tileMap.width + (10 + dx);
+        floorMap.tileMap.flags[idx] = TilePresets.WALL;
+      }
+    }
+
+    // Move player far away — old tile (10,10) should no longer be visible
     world.stores.position.x[eid] = 64; // tile (2, 2)
     world.stores.position.y[eid] = 64;
 
     fovSystem(world);
     expect(floorMap.isVisible(2, 2)).toBe(true);
-    // The old position (10,10) should still be visible since it's open and within range
-    // But if we move very far, it won't be — the map is small enough that it stays visible
-    // So test that the system ran without error
+    expect(floorMap.isVisible(10, 10)).toBe(false);
   });
 
   it('should handle player at map edge gracefully', () => {
