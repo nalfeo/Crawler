@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { briefSchema, type Brief, SPRITE_TYPES } from '../../scripts/sprites/brief-schema.js';
+import { briefSchema, type Brief, SPRITE_TYPES, variantCount } from '../../scripts/sprites/brief-schema.js';
 
 const validBrief: Brief = {
   type: 'weapon',
@@ -13,6 +13,8 @@ const validBrief: Brief = {
     { path: 'docs/refs/sword-1.png', note: 'silhouette inspiration' },
     { path: 'docs/refs/sword-2.png', note: 'palette anchor' },
   ],
+  generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+  sensors: {},
 };
 
 describe('briefSchema', () => {
@@ -153,6 +155,58 @@ describe('briefSchema', () => {
 
   it('rejects unknown extra fields (strict)', () => {
     const result = briefSchema.safeParse({ ...validBrief, mood: 'fierce' });
+    expect(result.success).toBe(false);
+  });
+
+  it('defaults generation.sheet to a 3x3 grid with 9 variants and no empty cells', () => {
+    const minimal = {
+      type: 'weapon',
+      name: 'iron-sword',
+      size: { width: 16, height: 16 },
+      palette: { id: 'kenney-roguelike' },
+      anchor: { x: 8, y: 14 },
+      prompt: 'p',
+      references: [{ path: 'a.png' }, { path: 'b.png' }],
+    };
+    const result = briefSchema.safeParse(minimal);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.generation.sheet.rows).toBe(3);
+      expect(result.data.generation.sheet.cols).toBe(3);
+      expect(result.data.generation.sheet.emptyCells).toEqual([]);
+      expect(result.data.generation.sheet.nativeCanvas).toBe(1024);
+      expect(variantCount(result.data)).toBe(9);
+    }
+  });
+
+  it('honors brief-declared sheet overrides and reflects empty cells in variantCount', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: { sheet: { rows: 3, cols: 3, emptyCells: [[2, 2]], nativeCanvas: 1024 } },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(variantCount(result.data)).toBe(8);
+    }
+  });
+
+  it('rejects empty-cell coordinates outside the declared grid', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: { sheet: { rows: 2, cols: 2, emptyCells: [[5, 5]] } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message);
+      expect(messages.some((m) => m.includes('outside the 2x2 grid'))).toBe(true);
+    }
+  });
+
+  it('rejects sensors override with an out-of-range opaqueRatio', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      sensors: { opaqueRatio: { min: -0.1 } },
+    });
     expect(result.success).toBe(false);
   });
 });
