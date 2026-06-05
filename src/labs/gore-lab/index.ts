@@ -17,6 +17,26 @@ const DEFAULT_SETTINGS: GoreLabSettings = {
   goreFactor: 0.8,
 };
 
+// Particle physics (mirrors GoreVfx.ts)
+const PARTICLE_LIFETIME_MS = 400;
+const HIT_BASE_PARTICLES = 3;
+const DEATH_BASE_PARTICLES = 12;
+const PARTICLE_SPEED = 80;
+const PARTICLE_SIZE_MIN = 2;
+const PARTICLE_SIZE_MAX = 5;
+const BLOOD_COLORS = ['#cc0000', '#aa0000', '#880000', '#660000', '#990000'];
+const GRAVITY = 60;
+
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  color: string;
+  startMs: number;
+}
+
 interface LabGuiController {
   name(label: string): LabGuiController;
   onChange?(handler: () => void): LabGuiController;
@@ -38,6 +58,23 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
   const settings: GoreLabSettings = { ...DEFAULT_SETTINGS };
 
+  // Create canvas for particle rendering
+  const canvas = document.createElement('canvas');
+  canvas.width = 600;
+  canvas.height = 400;
+  canvas.style.width = '100%';
+  canvas.style.maxWidth = '600px';
+  canvas.style.height = 'auto';
+  canvas.style.aspectRatio = '3 / 2';
+  canvas.style.borderRadius = '12px';
+  canvas.style.border = '1px solid rgba(148, 163, 184, 0.2)';
+  canvas.style.background = '#0a0a12';
+  canvas.style.cursor = 'crosshair';
+  canvas.style.display = 'block';
+  canvas.style.marginBottom = '16px';
+
+  const ctx = canvas.getContext('2d')!;
+
   const root = document.createElement('div');
   root.style.padding = '24px';
   root.style.color = '#f8fafc';
@@ -49,85 +86,135 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
   const description = document.createElement('p');
   description.textContent =
-    'Use the buttons below to simulate hit-gore and death-gore events. Adjust intensity and parameters with controls.';
+    'Click canvas for hit-gore, Shift+click for death-gore burst. Adjust intensity and parameters with controls.';
   description.style.color = '#cbd5e1';
   description.style.marginBottom = '16px';
 
-  // Phaser-lite canvas for particles
-  const info = document.createElement('p');
-  info.textContent =
-    'Note: This lab requires Phaser scene context. Below is a preview of the config and event simulation. Full visual preview available in-game.';
-  info.style.color = '#94a3b8';
-  info.style.fontSize = '13px';
-  info.style.marginBottom = '16px';
+  const particles: Particle[] = [];
+  let rng = new SeededRandom(Date.now());
+  let animId = 0;
+  let lastFrameMs = performance.now();
 
-  const eventLog = document.createElement('pre');
-  eventLog.style.background = 'rgba(15, 23, 42, 0.9)';
-  eventLog.style.border = '1px solid rgba(148, 163, 184, 0.2)';
-  eventLog.style.borderRadius = '12px';
-  eventLog.style.padding = '16px';
-  eventLog.style.fontSize = '13px';
-  eventLog.style.lineHeight = '1.6';
-  eventLog.style.minHeight = '200px';
-  eventLog.style.whiteSpace = 'pre-wrap';
-  eventLog.textContent = 'Click buttons below to simulate gore events.';
-
-  const logs: string[] = [];
-
-  function log(msg: string): void {
-    logs.push(msg);
-    if (logs.length > 30) logs.shift();
-    eventLog.textContent = logs.join('\n');
+  function spawnParticles(
+    x: number,
+    y: number,
+    count: number,
+    dirX: number,
+    dirY: number,
+    spread: number,
+  ): void {
+    const scaledCount = Math.round(count * settings.intensity);
+    if (scaledCount <= 0) return;
+    const now = performance.now();
+    for (let i = 0; i < scaledCount; i++) {
+      const angle = Math.atan2(dirY, dirX) + (rng.next() - 0.5) * spread;
+      const speed = PARTICLE_SPEED * (0.5 + rng.next() * 0.8);
+      const size = PARTICLE_SIZE_MIN + rng.next() * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
+      const color = BLOOD_COLORS[Math.floor(rng.next() * BLOOD_COLORS.length)]!;
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        size,
+        color,
+        startMs: now,
+      });
+    }
   }
 
-  const hitButton = document.createElement('button');
-  hitButton.textContent = 'Simulate Hit Gore';
-  hitButton.style.cssText =
-    'padding: 10px 20px; border: 1px solid rgba(148,163,184,0.25); border-radius: 12px; background: rgba(30,41,59,0.96); color: #f8fafc; font-size: 14px; font-weight: 600; cursor: pointer; margin-right: 12px; margin-bottom: 16px;';
+  function handleClick(e: MouseEvent): void {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const cx = (e.clientX - rect.left) * scaleX;
+    const cy = (e.clientY - rect.top) * scaleY;
 
-  hitButton.addEventListener('click', () => {
-    const labRng = new SeededRandom(Date.now());
-    const event = {
-      type: 'hit' as const,
-      x: 200 + labRng.next() * 200,
-      y: 200 + labRng.next() * 100,
-      amount: settings.hitDamage,
-      targetType: 'enemy' as const,
-      timestamp: performance.now(),
-      weaponGoreFactor: settings.goreFactor,
-    };
-    log(
-      `HIT @ (${event.x.toFixed(0)}, ${event.y.toFixed(0)}) dmg=${event.amount} goreFactor=${event.weaponGoreFactor}`,
-    );
-  });
+    rng = new SeededRandom(Date.now());
 
-  const deathButton = document.createElement('button');
-  deathButton.textContent = 'Simulate Death Gore';
-  deathButton.style.cssText = hitButton.style.cssText;
+    if (e.shiftKey) {
+      // Death gore — large burst
+      const overkillMult = 1 + Math.min(settings.overkillAmount / 20, 3);
+      const count = Math.round(DEATH_BASE_PARTICLES * overkillMult);
+      const angle = rng.next() * Math.PI * 2;
+      spawnParticles(cx, cy, count, Math.cos(angle), Math.sin(angle), Math.PI * 0.8);
+    } else {
+      // Hit gore — small directional splatter
+      if (!settings.hitGoreEnabled) return;
+      if (rng.next() > settings.goreFactor) return;
+      const count = Math.max(
+        1,
+        Math.min(
+          Math.round(HIT_BASE_PARTICLES * settings.goreFactor * (settings.hitDamage / 10)),
+          8,
+        ),
+      );
+      const angle = rng.next() * Math.PI * 2;
+      spawnParticles(cx, cy, count, Math.cos(angle), Math.sin(angle), Math.PI * 0.6);
+    }
+  }
 
-  deathButton.addEventListener('click', () => {
-    const labRng = new SeededRandom(Date.now());
-    const angle = labRng.next() * Math.PI * 2;
-    const event = {
-      type: 'death' as const,
-      x: 200 + labRng.next() * 200,
-      y: 200 + labRng.next() * 100,
-      amount: 50,
-      targetType: 'enemy' as const,
-      timestamp: performance.now(),
-      overkill: settings.overkillAmount,
-      knockbackDirX: Math.cos(angle),
-      knockbackDirY: Math.sin(angle),
-    };
-    const overkillMult = 1 + Math.min(event.overkill / 20, 3);
-    const particleCount = Math.round(12 * overkillMult * settings.intensity);
-    log(
-      `DEATH @ (${event.x.toFixed(0)}, ${event.y.toFixed(0)}) overkill=${event.overkill} → ${particleCount} particles`,
-    );
-  });
+  canvas.addEventListener('click', handleClick);
 
-  root.append(title, description, info, hitButton, deathButton, eventLog);
+  function render(): void {
+    const now = performance.now();
+    const deltaMs = now - lastFrameMs;
+    lastFrameMs = now;
+    const dtSec = deltaMs / 1000;
+
+    // Dark background with slight trail effect
+    ctx.fillStyle = 'rgba(10, 10, 18, 0.3)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Update and draw particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i]!;
+      const age = now - p.startMs;
+      const progress = Math.min(1, age / PARTICLE_LIFETIME_MS);
+
+      if (progress >= 1) {
+        particles.splice(i, 1);
+        continue;
+      }
+
+      // Physics (matches GoreVfx.ts)
+      const decel = 1 - progress * 0.7;
+      p.x += p.vx * dtSec * decel;
+      p.y += p.vy * dtSec * decel;
+      p.vy += GRAVITY * dtSec;
+
+      // Draw
+      const alpha = (1 - progress) * 0.9;
+      const scale = 1 - progress * 0.5;
+      const drawSize = p.size * scale;
+
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - drawSize / 2, p.y - drawSize / 2, drawSize, drawSize);
+    }
+
+    ctx.globalAlpha = 1;
+
+    // Draw crosshair hint when no particles
+    if (particles.length === 0) {
+      ctx.fillStyle = 'rgba(148, 163, 184, 0.3)';
+      ctx.font = '14px Inter, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        'Click for hit-gore • Shift+click for death-gore',
+        canvas.width / 2,
+        canvas.height / 2,
+      );
+    }
+
+    animId = requestAnimationFrame(render);
+  }
+
+  root.append(title, description, canvas);
   canvasHost.append(root);
+
+  // Start animation loop
+  animId = requestAnimationFrame(render);
 
   // GUI controls
   const guiGroup = typeof gui.addFolder === 'function' ? gui.addFolder('Gore Lab') : gui;
@@ -139,6 +226,8 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
   guiGroup.open?.();
 
   return () => {
+    cancelAnimationFrame(animId);
+    canvas.removeEventListener('click', handleClick);
     if (guiGroup !== gui) guiGroup.destroy?.();
     root.remove();
   };
@@ -147,6 +236,6 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 registerLab('gore-lab', {
   category: 'Combat' as LabCategory,
   name: 'Gore Lab',
-  description: 'Preview and tune blood splatter particle effects on hit and death.',
+  description: 'Interactive blood splatter particle preview — click to trigger gore VFX.',
   create: createGoreLab,
 });
