@@ -10,7 +10,28 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.test.ts', 'src/main.ts', 'src/lab-main.ts', 'src/**/index.ts'],
+      exclude: [
+        'src/**/*.test.ts',
+        'src/main.ts',
+        'src/lab-main.ts',
+        'src/engine/scenes/**',
+        'src/engine/InventoryUI.ts',
+        'src/engine/PhaserBridge.ts',
+        'src/engine/CombatVfx.ts',
+        'src/labs/**',
+        'src/shared/combat-events.ts',
+        'src/shared/equipment-types.ts',
+        'src/game/skills/types.ts',
+        'src/engine/index.ts',
+        'src/core/index.ts',
+        'src/game/index.ts',
+        'src/shared/index.ts',
+      ],
+      thresholds: {
+        // Per-file thresholds for files that have been raised to stricter bars.
+        'src/game/weaponSystem.ts': { lines: 90, branches: 80, statements: 90 },
+        'src/game/systems/skillSystem.ts': { lines: 90, branches: 80, statements: 90 },
+      },
     },
     projects: [
       {
