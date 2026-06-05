@@ -1,7 +1,8 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Enemy } from '../../src/core/components.js';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBehaviorEnemy, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import {
   configureEnemySpawner,
   enemySpawnerSystem,
@@ -96,5 +97,69 @@ describe('enemySpawnerSystem', () => {
         5,
       );
     }
+  });
+
+  it('does nothing when no player exists', () => {
+    const world = createTestWorld();
+    configureEnemySpawner(world, { width: 320, height: 180 });
+
+    enemySpawnerSystem(world, createSpawnerConfig());
+
+    expect(query(world.ecs, [Enemy])).toHaveLength(0);
+  });
+
+  it('skips steering enemies that use EnemyBehavior', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 160, 90);
+    const behaviorEnemy = spawnBehaviorEnemy(world, 10, 20, 20, AI_TYPE.CHASE, 2, 100, 0);
+    world.stores.velocity.x[behaviorEnemy] = 0.25;
+    world.stores.velocity.y[behaviorEnemy] = -0.75;
+
+    enemySpawnerSystem(world, {
+      maxEnemies: 3,
+      spawnIntervalMs: 0,
+      enemyHp: 20,
+      enemySpeed: 1,
+    });
+
+    expect(world.stores.velocity.x[behaviorEnemy]).toBeCloseTo(0.25);
+    expect(world.stores.velocity.y[behaviorEnemy]).toBeCloseTo(-0.75);
+  });
+
+  it('enforces spawn interval timing', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 160, 90);
+    configureEnemySpawner(world, { width: 320, height: 180 });
+    const config: SpawnerConfig = {
+      maxEnemies: 3,
+      spawnIntervalMs: 100,
+      enemyHp: 25,
+      enemySpeed: 2,
+    };
+
+    world.elapsedMs = 1000;
+    enemySpawnerSystem(world, config);
+    world.elapsedMs = 1050;
+    enemySpawnerSystem(world, config);
+    world.elapsedMs = 1200;
+    enemySpawnerSystem(world, config);
+
+    expect(query(world.ecs, [Enemy])).toHaveLength(2);
+  });
+
+  it('sets velocity to zero when an enemy is exactly on top of the player', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 32, 48);
+    const enemy = spawnEnemy(world, 32, 48, 20);
+
+    enemySpawnerSystem(world, {
+      maxEnemies: 1,
+      spawnIntervalMs: 0,
+      enemyHp: 20,
+      enemySpeed: 3,
+    });
+
+    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
+    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
 });
