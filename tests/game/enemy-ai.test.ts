@@ -135,9 +135,8 @@ describe('enemyAISystem', () => {
   it('stops swarm enemies when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    // Place swarm enemies far apart so separation doesn't interfere
     const enemy = spawnBehaviorEnemy(world, 180, 0, 20, AI_TYPE.SWARM, 2, 100, 0);
-    spawnBehaviorEnemy(world, 180, 50, 20, AI_TYPE.SWARM, 2, 100, 0);
+    spawnBehaviorEnemy(world, 180, 10, 20, AI_TYPE.SWARM, 2, 100, 0);
 
     enemyAISystem(world);
 
@@ -192,5 +191,45 @@ describe('enemyAISystem', () => {
 
     expect(query(world.ecs, [EnemyProjectile])).toHaveLength(0);
     expect(world.stores.enemyBehavior.lastFireMs[enemy]).toBeCloseTo(900);
+  });
+
+  it('pushes overlapping enemies apart via separation', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 0);
+    // Two chase enemies at the exact same position, within aggro range
+    const enemyA = spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.CHASE, 2, 200, 0);
+    const enemyB = spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.CHASE, 2, 200, 0);
+
+    enemyAISystem(world);
+
+    const vxA = world.stores.velocity.x[enemyA]!;
+    const vyA = world.stores.velocity.y[enemyA]!;
+    const vxB = world.stores.velocity.x[enemyB]!;
+    const vyB = world.stores.velocity.y[enemyB]!;
+
+    // They should have diverging velocities due to separation
+    const divergesX = Math.sign(vxA) !== Math.sign(vxB) || vxA !== vxB;
+    const divergesY = Math.sign(vyA) !== Math.sign(vyB) || vyA !== vyB;
+    expect(divergesX || divergesY).toBe(true);
+
+    // Velocities should be clamped to max speed (2)
+    expect(Math.hypot(vxA, vyA)).toBeLessThanOrEqual(2 + 0.001);
+    expect(Math.hypot(vxB, vyB)).toBeLessThanOrEqual(2 + 0.001);
+  });
+
+  it('does not apply separation to de-aggroed enemies', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Two chase enemies at same position but outside aggro range
+    const enemyA = spawnBehaviorEnemy(world, 200, 0, 20, AI_TYPE.CHASE, 2, 50, 0);
+    const enemyB = spawnBehaviorEnemy(world, 200, 0, 20, AI_TYPE.CHASE, 2, 50, 0);
+
+    enemyAISystem(world);
+
+    // De-aggroed enemies should remain stationary
+    expect(world.stores.velocity.x[enemyA]).toBeCloseTo(0);
+    expect(world.stores.velocity.y[enemyA]).toBeCloseTo(0);
+    expect(world.stores.velocity.x[enemyB]).toBeCloseTo(0);
+    expect(world.stores.velocity.y[enemyB]).toBeCloseTo(0);
   });
 });
