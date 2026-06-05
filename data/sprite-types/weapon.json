@@ -1,5 +1,5 @@
 {
-  "_comment": "Sprite-type defaults for the weapon family. Merged into every weapon brief by scripts/sprites/load-brief.ts before Zod validation. Per-leaf scalars from the brief win; arrays REPLACE rather than append. A brief can override `centerToleranceX` without restating `derive: true`, etc.",
+  "$comment": "Sprite-type defaults for the weapon family. Merged into every weapon brief by scripts/sprites/load-brief.ts before Zod validation. Per-leaf scalars from the brief win; arrays REPLACE rather than append. A brief can override `centerToleranceX` without restating `derive: true`, etc. Use `$`-prefixed metadata keys here — `stripMetaKeys` in the loader only drops `$`-prefixed properties before merge; underscore-prefixed keys would survive into the merged brief and be rejected by the strict schema.",
   "size": { "width": 16, "height": 16 },
   "palette": { "id": "kenney-roguelike" },
   "anchor": { "x": 8, "y": 14 },

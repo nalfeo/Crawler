@@ -15,7 +15,7 @@
  *
  *   - Models sometimes wrap JSON in ```json ... ``` fences or prefix it
  *     with "Sure! Here are the variations:" prose. We strip fences,
- *     locate the first `[`, and parse from there.
+ *     locate the first `{` or `[`, and parse from there.
  *   - We accept either a JSON array of strings or an object with a
  *     top-level `variations` array. Whichever the model picks today.
  *   - Non-string entries are filtered out; whitespace is trimmed;
@@ -98,7 +98,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
     } catch (err) {
       throw new TextProviderError(
         'network',
-        `network error calling Azure chat: ${(err as Error).message}`,
+        `network error calling Azure chat: ${err instanceof Error ? err.message : String(err)}`,
         { cause: err },
       );
     }
@@ -118,7 +118,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
     } catch (err) {
       throw new TextProviderError(
         'malformed',
-        `Azure chat response was not valid JSON: ${(err as Error).message}`,
+        `Azure chat response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
         { cause: err },
       );
     }
@@ -191,13 +191,14 @@ function buildUserPrompt(request: ExpandVariationsRequest): string {
  *   1. Try direct JSON.parse — fast path for well-behaved models.
  *   2. If that fails, strip markdown code fences and try again.
  *   3. As a last resort, locate the first `{` or `[` and try parsing
- *      the rest of the string from there. This succeeds when the JSON
- *      makes up the prefix of the slice (the parser stops at the first
- *      structural mismatch and returns the parsed value); it fails when
- *      the model emits trailing prose that confuses the parser. We do
- *      NOT attempt to find a "matching close" — the brace-walker that
- *      would do that is more code than it's worth for the rare cases
- *      this fallback exists to catch.
+ *      the rest of the string from there. `JSON.parse` requires the
+ *      entire input to be a single valid JSON value with only trailing
+ *      whitespace allowed, so this only succeeds when the model's reply
+ *      ends cleanly at the JSON's closing token. Trailing prose after
+ *      the JSON makes this last-resort path fail. We do NOT attempt to
+ *      find a "matching close" — the brace-walker that would do that
+ *      is more code than it's worth for the rare cases this fallback
+ *      exists to catch.
  *
  * The returned list is trimmed, non-empty-filtered, and de-duplicated
  * case-insensitively in declared order.

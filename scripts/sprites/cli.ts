@@ -195,13 +195,16 @@ function printSummary(
 }
 
 async function runOne(briefPath: string, pick: number | undefined): Promise<BriefRunOutcome> {
-  const provider = createImageProvider();
-  // Text provider is opt-in: returns null when no chat deployment is
-  // configured. The orchestrator handles the null gracefully — runs
-  // still produce sprites, just without LLM-expanded variations.
-  const textProvider = createTextProvider();
   const start = Date.now();
   try {
+    const provider = createImageProvider();
+    // Text provider is opt-in: returns null when no chat deployment is
+    // configured. The orchestrator handles the null gracefully — runs
+    // still produce sprites, just without LLM-expanded variations.
+    // Constructed inside the try so a misconfigured env (e.g. unknown
+    // SPRITES_TEXT_PROVIDER) surfaces as a per-brief failure in --all
+    // batches instead of crashing the whole run before any brief reports.
+    const textProvider = createTextProvider();
     const result = await generateOne({
       briefPath,
       provider,

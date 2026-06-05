@@ -55,8 +55,6 @@ export interface DiversitySummary {
   readonly bitLength: number;
 }
 
-export type DiversityHashType = 'mean-luma-256';
-
 export interface PerceptualHash {
   /** Packed bit-vector (LSB-first within each byte). */
   readonly bits: Uint8Array;
