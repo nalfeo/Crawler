@@ -14,6 +14,19 @@ export function normalizeCommand(raw) {
     if (typeof raw !== "string" || raw.length === 0) return [];
     let s = raw.replace(LINE_CONT_RE, " ");
     s = s.replace(/^\s*(bash|sh|pwsh|powershell)(\.exe)?\s+(-c|-Command|-NoProfile|--)\s+/i, "");
+    // After stripping a `bash -c "..."` wrapper, the remaining command is
+    // typically wrapped in a matched pair of quotes. Strip them so
+    // tokenize() can see the inner program. Without this, the inner
+    // command collapses to a single quoted token and `isGit`/`isGh`
+    // never matches — a trivial bypass for every shell guard.
+    s = s.trim();
+    if (s.length >= 2) {
+        const first = s[0];
+        const last = s[s.length - 1];
+        if ((first === '"' || first === "'") && first === last) {
+            s = s.slice(1, -1);
+        }
+    }
 
     const rawSegments = s.split(/(?:&&|\|\||;|\r?\n|(?<![|])\|(?!\|))/);
 

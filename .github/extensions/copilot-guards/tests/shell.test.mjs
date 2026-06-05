@@ -17,7 +17,25 @@ test("normalizeCommand handles bash line continuations", () => {
 
 test("normalizeCommand strips bash -c wrapper", () => {
     const segs = normalizeCommand('bash -c "git push --force main"');
-    assert.deepEqual(segs, ['"git push --force main"']);
+    assert.deepEqual(segs, ["git push --force main"]);
+});
+
+test("normalizeCommand strips bash -c wrapper and preserves chained segments", () => {
+    const segs = normalizeCommand('bash -c "git status && git push --force main"');
+    assert.deepEqual(segs, ["git status", "git push --force main"]);
+});
+
+test("normalizeCommand strips pwsh -Command wrapper with single quotes", () => {
+    const segs = normalizeCommand("pwsh -Command 'git push --force main'");
+    assert.deepEqual(segs, ["git push --force main"]);
+});
+
+test("isGit sees through bash -c bypass attempt", () => {
+    // Regression: previously, `bash -c "git ..."` left the quoted
+    // command as a single token, defeating every shell guard.
+    const segs = normalizeCommand('bash -c "git push --force origin main"');
+    assert.equal(segs.length, 1);
+    assert.equal(isGit(segs[0]), true);
 });
 
 test("tokenize respects double quotes", () => {

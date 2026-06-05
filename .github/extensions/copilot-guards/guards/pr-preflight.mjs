@@ -19,7 +19,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { branchFiles, branchCommitSubjects } from "../lib/git.mjs";
+import { branchFiles } from "../lib/git.mjs";
 
 // ci-policy.md: feat|fix|chore|lab|docs|refactor|test|perf|ci
 const CONVENTIONAL_TITLE_RE =
@@ -130,10 +130,8 @@ export default {
     async check(toolArgs, ctx) {
         const cwd = ctx?.cwd || process.cwd();
         let files;
-        let _subjects;
         try {
             files = branchFiles(cwd);
-            _subjects = branchCommitSubjects(cwd);
         } catch (err) {
             return {
                 decision: "allow",
