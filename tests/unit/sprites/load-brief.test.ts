@@ -62,7 +62,9 @@ describe('loadBrief', () => {
   it('throws a structured error when the brief fails Zod validation', () => {
     const briefPath = path.join(root, 'briefs', 'bad.yaml');
     writeFileSync(briefPath, 'type: weapon\nname: BAD_NAME\n');
-    expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/missing required minimal fields|failed validation/);
+    expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(
+      /missing required minimal fields|failed validation/,
+    );
   });
 
   it('throws when the referenced palette JSON does not exist', () => {
@@ -122,10 +124,7 @@ describe('loadBrief', () => {
         size: { width: 16, height: 16 },
         palette: { id: 'test-palette' },
         anchor: { x: 8, y: 14 },
-        references: [
-          { path: 'public/assets/ref-a.png' },
-          { path: 'public/assets/ref-b.png' },
-        ],
+        references: [{ path: 'public/assets/ref-a.png' }, { path: 'public/assets/ref-b.png' }],
         sensors: { weapon: { orientation: 'vertical' } },
       }),
     );
@@ -175,10 +174,7 @@ describe('loadBrief', () => {
         size: { width: 16, height: 16 },
         palette: { id: 'test-palette' },
         anchor: { x: 8, y: 14 },
-        references: [
-          { path: 'public/assets/ref-a.png' },
-          { path: 'public/assets/ref-b.png' },
-        ],
+        references: [{ path: 'public/assets/ref-a.png' }, { path: 'public/assets/ref-b.png' }],
         sensors: { weapon: { orientation: 'vertical' } },
       }),
     });

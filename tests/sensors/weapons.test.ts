@@ -11,7 +11,11 @@ import {
   type Pixel,
   type RgbaImage,
 } from '../../scripts/sprites/sensors/common.js';
-import { silhouetteDiagonalAxis, silhouetteOrientationAxis, RAD_PER_DEG } from '../../scripts/sprites/sensors/weapons.js';
+import {
+  silhouetteDiagonalAxis,
+  silhouetteOrientationAxis,
+  RAD_PER_DEG,
+} from '../../scripts/sprites/sensors/weapons.js';
 import { PNG } from 'pngjs';
 
 function makeImage(
@@ -150,9 +154,9 @@ describe('silhouetteOrientationAxis', () => {
     // tolerance 5° accepts it.
     const img = makeImage(32, 64, (x, y) => x === 16 + Math.round(y * Math.tan(3 * RAD_PER_DEG)));
     expect(silhouetteOrientationAxis(img, { orientation: 'vertical' }).ok).toBe(false);
-    expect(
-      silhouetteOrientationAxis(img, { orientation: 'vertical', toleranceDeg: 5 }).ok,
-    ).toBe(true);
+    expect(silhouetteOrientationAxis(img, { orientation: 'vertical', toleranceDeg: 5 }).ok).toBe(
+      true,
+    );
   });
 });
 
