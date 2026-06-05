@@ -10,3 +10,6 @@ coverage/
 # variants, judge scorecards). Approved sprites live under public/assets/
 # generated/ and ARE checked in. See .specify/specs/sprite-generation-pipeline.md.
 generated/
+
+_check-merge.sh
+
