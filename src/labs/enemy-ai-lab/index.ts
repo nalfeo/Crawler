@@ -255,6 +255,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         const halfHeightB = (sprite.height[b] ?? 0) * 0.5;
         const dx = bx - ax;
         const dy = by - ay;
+        // collisionSystem only returns pair IDs, so this lab recomputes overlap depth
+        // to apply a small local separation response for visual feedback.
         const overlapX = halfWidthA + halfWidthB - Math.abs(dx);
         const overlapY = halfHeightA + halfHeightB - Math.abs(dy);
 
@@ -264,11 +266,13 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
         const pushAlongX = overlapX <= overlapY;
         const axisDelta = pushAlongX ? dx : dy;
-        let axisSign = a < b ? 1 : -1;
+        let axisSign: number;
         if (axisDelta > 0) {
           axisSign = 1;
         } else if (axisDelta < 0) {
           axisSign = -1;
+        } else {
+          axisSign = a < b ? 1 : -1;
         }
         const pushDistance = (pushAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
 
