@@ -165,6 +165,12 @@ export function renderLabIndex(): void {
   canvas.replaceChildren();
   controls.replaceChildren();
 
+  // The lab index can be taller than the viewport; #lab-canvas is height-constrained
+  // by its flex parent, so it needs its own scroll when listing all labs. Individual
+  // labs set their own root overflow when they mount, so this doesn't leak into them.
+  canvas.style.overflowY = 'auto';
+  canvas.style.height = '100%';
+
   const labs = [...getAllLabs().entries()].sort(([leftId], [rightId]) =>
     leftId.localeCompare(rightId),
   );
