@@ -37,7 +37,8 @@
   "license": "UNLICENSED",
   "dependencies": {
     "bitecs": "^0.4.0",
-    "phaser": "^4.1.0"
+    "phaser": "^4.1.0",
+    "rot-js": "^2.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
