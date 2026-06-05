@@ -9,6 +9,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov', 'json-summary'],
       include: ['src/**/*.ts'],
+<<<<<<< HEAD
       exclude: [
         'src/**/*.test.ts',
         'src/main.ts',
@@ -33,6 +34,7 @@ export default defineConfig({
         statements: 90,
         // per-file overrides (files that have been raised to the bar)
         'src/game/weaponSystem.ts': { lines: 90, branches: 80, statements: 90 },
+        'src/game/systems/skillSystem.ts': { lines: 90, branches: 80, statements: 90 },
       },
     },
     projects: [
