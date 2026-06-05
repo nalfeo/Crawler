@@ -9,6 +9,7 @@ import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
 import type { InventoryBag } from '../shared/inventory.js';
 import type { CombatEvent } from '../shared/combat-events.js';
+import type { FloorMap } from './map/FloorMap.js';
 import {
   Position,
   Velocity,
@@ -32,6 +33,7 @@ import {
   Trap,
   MeleeSwing,
   Knockback,
+  DoorState,
   BaseStats,
   EffectiveStats,
   createComponentStores,
@@ -71,6 +73,8 @@ export interface GameWorld {
   inventories: Map<number, InventoryBag>;
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
+  /** Procedurally generated floor map — null until floor is loaded. */
+  floorMap: FloorMap | null;
 }
 
 export interface CreateWorldOptions {
@@ -118,6 +122,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Trap, stores.trap);
   wireStore(ecs, MeleeSwing, stores.meleeSwing);
   wireStore(ecs, Knockback, stores.knockback);
+  wireStore(ecs, DoorState, stores.doorState);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
 
@@ -141,6 +146,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     statsDirty: true,
     inventories: new Map(),
     combatEvents: [],
+    floorMap: null,
   };
 }
 
