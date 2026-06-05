@@ -15,6 +15,7 @@ export function applyDamage(
   amount: number,
   x: number,
   y: number,
+  weaponGoreFactor?: number,
 ): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
 
@@ -34,6 +35,7 @@ export function applyDamage(
       targetType,
       timestamp: world.elapsedMs,
       targetEid: target,
+      weaponGoreFactor,
     });
   }
 

@@ -45,6 +45,9 @@ export interface WeaponDef {
   readonly knockback: number;
   /** Number of enemies a projectile can pierce through (0 = destroy on first hit). */
   readonly pierce: number;
+  /** Gore factor 0..1 — how likely/intense blood splatter is on hit.
+   *  Bladed/piercing weapons are high (~0.8–1.0), blunt weapons low (~0.1–0.2). */
+  readonly goreFactor: number;
 }
 
 function def(
@@ -69,6 +72,7 @@ function def(
     shaftDamageMult: 1.0,
     knockback: 0,
     pierce: 0,
+    goreFactor: 0.5,
     ...partial,
   };
 }
@@ -87,6 +91,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       aoeRadius: WEAPON.MELEE_RANGE,
       durationMs: WEAPON.MELEE_DURATION_MS,
       swingArcDeg: 90,
+      goreFactor: 0.9,
     }),
   ],
   [
@@ -101,6 +106,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       aoeRadius: 28,
       durationMs: 150,
       meleeStyle: MeleeStyle.STAB,
+      goreFactor: 1.0,
     }),
   ],
   [
@@ -117,6 +123,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       headRadius: 14,
       shaftDamageMult: 0.5,
       knockback: 30,
+      goreFactor: 0.15,
     }),
   ],
 
@@ -131,6 +138,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       cooldownMs: WEAPON.FIRE_RATE_MS,
       range: 300,
       projectileSpeed: WEAPON.PROJECTILE_SPEED,
+      goreFactor: 0.3,
     }),
   ],
   [
@@ -143,6 +151,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       cooldownMs: 700,
       range: 350,
       projectileSpeed: 6.0,
+      goreFactor: 0.8,
     }),
   ],
   [
@@ -155,6 +164,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       cooldownMs: 1200,
       range: 400,
       projectileSpeed: 8.0,
+      goreFactor: 0.85,
     }),
   ],
 
@@ -174,6 +184,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       headRadius: 10,
       shaftDamageMult: 0,
       knockback: 20,
+      goreFactor: 0.1,
     }),
   ],
   [
@@ -187,6 +198,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       range: 30,
       aoeRadius: 30,
       durationMs: 200,
+      goreFactor: 0.1,
     }),
   ],
 
@@ -202,6 +214,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       range: 250,
       projectileSpeed: 4.0,
       aoeRadius: WEAPON.AOE_RADIUS,
+      goreFactor: 0.0,
     }),
   ],
 
@@ -218,6 +231,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       projectileSpeed: WEAPON.PROJECTILE_SPEED,
       returnSpeed: WEAPON.THROWN_RETURN_SPEED,
       maxRange: WEAPON.THROWN_MAX_RANGE,
+      goreFactor: 0.2,
     }),
   ],
   [
@@ -232,6 +246,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       projectileSpeed: 7.0,
       returnSpeed: 5.0,
       maxRange: 150,
+      goreFactor: 0.95,
     }),
   ],
 
@@ -248,6 +263,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       beamLength: WEAPON.BEAM_LENGTH,
       durationMs: WEAPON.BEAM_DURATION_MS,
       beamTickMs: WEAPON.BEAM_TICK_MS,
+      goreFactor: 0.0,
     }),
   ],
 
@@ -264,6 +280,7 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       trapArmMs: WEAPON.TRAP_ARM_MS,
       trapTriggerRadius: WEAPON.TRAP_TRIGGER_RADIUS,
       trapExplosionRadius: WEAPON.TRAP_EXPLOSION_RADIUS,
+      goreFactor: 0.4,
     }),
   ],
 ]);

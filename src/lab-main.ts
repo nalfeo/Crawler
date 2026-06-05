@@ -26,6 +26,8 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'tile-explorer': '/src/labs/tile-explorer-lab/index.ts',
   'mobile-controls-lab': '/src/labs/mobile-controls-lab/index.ts',
   'sprite-catalog': '/src/labs/sprite-catalog-lab/index.ts',
+  'drop-lab': '/src/labs/drop-lab/index.ts',
+  'gore-lab': '/src/labs/gore-lab/index.ts',
   'fov-lab': '/src/labs/fov-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
 };
