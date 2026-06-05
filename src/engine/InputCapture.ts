@@ -87,10 +87,11 @@ export function createInputCapture(scene: Phaser.Scene): {
   };
 
   // --- Mouse pointer emulation (enables testing mobile UX on desktop) ---
+  // Only left-click (button 0) is emulated as a synthetic touch.
   const onPointerDown = (e: PointerEvent) => {
     if (e.pointerType === 'touch') return; // real touches handled above
-    const id = MOUSE_POINTER_ID_BASE - e.button;
-    activeTouches.set(id, {
+    if (e.button !== 0) return; // only left-click emulates touch
+    activeTouches.set(MOUSE_POINTER_ID_BASE, {
       zone: classifyTouchZone(e.clientX),
       startX: e.clientX,
       startY: e.clientY,
@@ -100,19 +101,16 @@ export function createInputCapture(scene: Phaser.Scene): {
   };
   const onPointerMove = (e: PointerEvent) => {
     if (e.pointerType === 'touch') return;
-    // Check all possible mouse pointer IDs (button may be 0 during move)
-    for (const checkId of [MOUSE_POINTER_ID_BASE, MOUSE_POINTER_ID_BASE - 1, MOUSE_POINTER_ID_BASE - 2]) {
-      const state = activeTouches.get(checkId);
-      if (state) {
-        state.x = e.clientX;
-        state.y = e.clientY;
-      }
+    const state = activeTouches.get(MOUSE_POINTER_ID_BASE);
+    if (state) {
+      state.x = e.clientX;
+      state.y = e.clientY;
     }
   };
   const onPointerUp = (e: PointerEvent) => {
     if (e.pointerType === 'touch') return;
-    const id = MOUSE_POINTER_ID_BASE - e.button;
-    activeTouches.delete(id);
+    if (e.button !== 0) return; // only left-click emulates touch
+    activeTouches.delete(MOUSE_POINTER_ID_BASE);
   };
   const toWorldPoint = (clientX: number, clientY: number): { x: number; y: number } => {
     const canvas = scene.game?.canvas;
