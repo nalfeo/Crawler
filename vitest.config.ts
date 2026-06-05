@@ -30,6 +30,12 @@ export default defineConfig({
         // Per-file thresholds for files that have been raised to stricter bars.
         'src/game/weaponSystem.ts': { lines: 90, branches: 80, statements: 90 },
         'src/game/systems/skillSystem.ts': { lines: 90, branches: 80, statements: 90 },
+        'src/core/systems/meleeSwingSystem.ts': { lines: 90, branches: 80, statements: 90 },
+        'src/core/systems/returningProjectileSystem.ts': {
+          lines: 90,
+          branches: 80,
+          statements: 90,
+        },
         'src/game/enemyAISystem.ts': {
           lines: 90,
           branches: 80,
