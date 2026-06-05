@@ -45,7 +45,7 @@ The exact text below is what `scripts/sprites/build-prompt.ts` concatenates at t
 
 > --- STYLE PREAMBLE (do not deviate) ---
 >
-> You are generating pixel art in the **Kenney roguelike** style for the game *Crawler*. Every output must follow these rules without exception:
+> You are generating pixel art in the **Kenney roguelike** style for the game _Crawler_. Every output must follow these rules without exception:
 >
 > 1. Hard 1-pixel outlines. No anti-aliasing. No partial transparency. Edges are crisp 1-pixel transitions between solid colors.
 > 2. Limited palette: flat fill colors only, no gradients. The downstream pipeline will snap every pixel to a fixed 70-color palette, so subtle hue variation will be lost — use bold, distinct colors.
@@ -129,7 +129,7 @@ Things the classifier reacts to (avoid):
 What works (same semantic content, different shape):
 
 - **Conversational role framing**: "You are an art director writing concept briefs…", "You are a reviewer scoring…". Treat the model as a collaborator, not a constrained subordinate.
-- **Goal-oriented guidance**: describe what a *good* output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
+- **Goal-oriented guidance**: describe what a _good_ output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
 - **Lower-case "should" / "avoid"** in place of `MUST` / `NEVER`. The semantics are identical to the model but invisible to the filter.
 - **Push enforcement downstream**: document banned tokens in the **validator code** (`BANNED_ADJECTIVES` in `synthesize-brief.ts`), not in the prompt. The prompt nudges the model toward concrete language; the validator catches anything that slips through. This is also more robust — the model occasionally ignores prompt rules even when they aren't filter-tripping.
 
@@ -154,7 +154,7 @@ Default is **off** on every sprite type. To opt in, add to the brief (or to `dat
 ```yaml
 judge:
   enabled: true
-  maxVariants: 16   # optional; caps how many sensor-passing variants get judged per run
+  maxVariants: 16 # optional; caps how many sensor-passing variants get judged per run
 ```
 
 When enabled, `generate-one` issues **one** vision call per judged variant — all three evaluators in a single structured-JSON response, by design (cost discipline). Each call hits the deployment in `AZURE_OPENAI_VISION_DEPLOYMENT` from `.env`.
@@ -226,10 +226,51 @@ Things the classifier reacts to (avoid):
 What works (same semantic content, different shape):
 
 - **Conversational role framing**: "You are an art director writing concept briefs…", "You are a reviewer scoring…". Treat the model as a collaborator, not a constrained subordinate.
-- **Goal-oriented guidance**: describe what a *good* output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
+- **Goal-oriented guidance**: describe what a _good_ output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
 - **Lower-case "should" / "avoid"** in place of `MUST` / `NEVER`. The semantics are identical to the model but invisible to the filter.
 - **Push enforcement downstream**: document banned tokens in the **validator code** (`BANNED_ADJECTIVES` in `synthesize-brief.ts`), not in the prompt. The prompt nudges the model toward concrete language; the validator catches anything that slips through. This is also more robust — the model occasionally ignores prompt rules even when they aren't filter-tripping.
 
 If you do need to send a quoted banned-word list to the model (rare; usually the validator-side approach is enough), prefer paraphrase: `"prefer concrete language over generic adjectives"` over `"never use cool, awesome, epic, amazing, or nice"`.
 
 Verify any non-trivial prompt change with a **real round-trip** against the deployment — unit tests with a mocked provider will not catch filter trips. The synth integration test uses a stub provider precisely because the real call is content-filter-sensitive and we do not want CI to depend on Azure availability or classifier stability.
+
+## Reviewing runs in the sprite gallery (spec §F7–F9)
+
+Unattended batch runs produce hundreds of candidates across briefs. The
+gallery lab is the read-only review surface so you can scan them
+without opening each PNG individually.
+
+```pwsh
+# Loads the same env you used for sprites:run, then starts the sidecar
+# (127.0.0.1:3010) and the Vite lab dev server together. Ctrl-C stops both.
+npm run sprites:gallery
+```
+
+Then open `http://localhost:3000/lab.html?lab=sprite-gallery`. (The
+sidecar binds 127.0.0.1 only - it is never reachable from the LAN.)
+
+What the gallery shows, per candidate:
+
+- 16x16 sprite scaled 8x with `image-rendering: pixelated`
+- The per-variant **anchor overlay** composited on top (toggle in the
+  toolbar). Every variant emits `processed/NN.anchor-overlay.png` next
+  to the sprite - a fully transparent PNG with one opaque red pixel at
+  the derived anchor. When derivation failed the overlay is fully
+  transparent so the gallery still has a file to fetch.
+- A colour-coded **sensor** pass/fail badge.
+- A colour-coded **judge** pass/fail badge with the lowest of
+  `style_match` / `brief_match` / `readability` when the brief opts in.
+- The **chosen** variant has a yellow border + badge.
+
+Clicking a tile loads the full per-candidate JSON (sensor scorecard,
+judge breakdown, derived anchor) into the side panel as a collapsible
+tree. Arrow keys nav: left/right between candidates within a brief,
+up/down between briefs.
+
+This PR is strictly **read-only** - no approve / promote / re-roll
+buttons. Mutation flows ship in a follow-up per spec §F9.
+
+If the sidecar is not running (`/api/health` unreachable) the lab
+still renders and shows a fallback banner that explains how to start
+it. This is the "review-only mode" requirement from spec §F9; the lab
+must never hard-fail when the sidecar is down.
