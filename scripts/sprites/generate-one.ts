@@ -248,10 +248,8 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   // means budget is spent on the variants with the best chance of
   // surviving the judge.
   const judgePlan: Map<number, JudgeScorecard | null> = new Map();
-  const judgeSkipReason: Map<
-    number,
-    'judge-disabled' | 'sensor-failed' | 'over-cap' | null
-  > = new Map();
+  const judgeSkipReason: Map<number, 'judge-disabled' | 'sensor-failed' | 'over-cap' | null> =
+    new Map();
   if (judgeEnabled) {
     const sensorPassed = sensorEntries.filter((e) => e.passed);
     const ordered = [...sensorPassed].sort((a, b) => b.score - a.score || a.index - b.index);

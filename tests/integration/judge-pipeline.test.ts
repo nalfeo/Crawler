@@ -24,10 +24,7 @@ import type {
   EvaluateRequest,
   EvaluateResponse,
 } from '../../scripts/sprites/provider/vision-types.js';
-import {
-  buildGoodSwordFixture,
-  buildEmptyFixture,
-} from '../fixtures/sprites/builders.js';
+import { buildGoodSwordFixture, buildEmptyFixture } from '../fixtures/sprites/builders.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -131,7 +128,11 @@ function mockVisionProvider(responses: EvaluateResponse[]): MockVision {
   return { provider, calls };
 }
 
-function scorecard(scores: { style: number; brief: number; readability: number }): EvaluateResponse {
+function scorecard(scores: {
+  style: number;
+  brief: number;
+  readability: number;
+}): EvaluateResponse {
   return {
     json: {
       style_match: { score: scores.style, rationale: `style ${scores.style}` },

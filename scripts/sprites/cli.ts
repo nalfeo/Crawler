@@ -199,7 +199,9 @@ function printSummary(
     `variations: ${seedN} seed + ${propN} expanded = ${finalN} final (min=${variations.minVariations})${reason}\n`,
   );
   if (judgeEnabled) {
-    process.stdout.write(`judge   : enabled (style_match / brief_match / readability, < 3 rejects)\n`);
+    process.stdout.write(
+      `judge   : enabled (style_match / brief_match / readability, < 3 rejects)\n`,
+    );
   }
   if (chosen) {
     const anchorStr = chosen.anchor
@@ -214,7 +216,9 @@ function printSummary(
   }
   process.stdout.write('\n');
   const headerJudge = judgeEnabled ? pad('judge', 18) : '';
-  process.stdout.write(`  ${pad('rank', 6)}${pad('idx', 6)}${pad('passed', 8)}${pad('score', 14)}${headerJudge}\n`);
+  process.stdout.write(
+    `  ${pad('rank', 6)}${pad('idx', 6)}${pad('passed', 8)}${pad('score', 14)}${headerJudge}\n`,
+  );
   candidates.forEach((c, rank) => {
     const tag = c.combinedPassed ? 'PASS' : 'fail';
     let judgeCol = '';
@@ -224,8 +228,12 @@ function printSummary(
         const verdict = j.passed ? 'PASS' : `FAIL[${j.rejectedBy.join(',')}]`;
         judgeCol = `${j.styleMatch.score}/${j.briefMatch.score}/${j.readability.score} ${verdict}`;
       } else {
-        judgeCol = c.judgeSkipReason === 'sensor-failed' ? '— sensor-failed' :
-                   c.judgeSkipReason === 'over-cap' ? '— over-cap' : '—';
+        judgeCol =
+          c.judgeSkipReason === 'sensor-failed'
+            ? '— sensor-failed'
+            : c.judgeSkipReason === 'over-cap'
+              ? '— over-cap'
+              : '—';
       }
     }
     process.stdout.write(
@@ -297,9 +305,7 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
         };
       }
       if (!picked.combinedPassed) {
-        const gate = result.brief.judge.enabled
-          ? 'all sensors and the VLM judge'
-          : 'all sensors';
+        const gate = result.brief.judge.enabled ? 'all sensors and the VLM judge' : 'all sensors';
         return {
           briefPath,
           success: false,

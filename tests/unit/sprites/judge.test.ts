@@ -45,10 +45,7 @@ function makeBrief(): Brief {
     anchor: { x: 8, y: 14 },
     tags: ['blade'],
     prompt: 'A vertical iron sword on a transparent background.',
-    references: [
-      { path: 'docs/refs/sword-1.png' },
-      { path: 'docs/refs/sword-2.png' },
-    ],
+    references: [{ path: 'docs/refs/sword-1.png' }, { path: 'docs/refs/sword-2.png' }],
     generation: { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
     judge: { enabled: true, maxVariants: 16 },
   });
