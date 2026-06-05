@@ -33,12 +33,23 @@ export function resolveHandheldAnchor(anchor?: SpriteAnchor): SpriteAnchor {
 }
 
 /**
- * Validate that an anchor lies inside the given frame. Coordinates must be
- * non-negative integers strictly less than the frame dimension. Returns
- * `false` for non-finite, fractional, or out-of-bounds values.
+ * Validate that an anchor lies inside the given frame. Both the anchor
+ * coordinates AND the frame dimensions must be positive integers; the anchor
+ * must then be non-negative and strictly less than the frame dimension.
+ * Returns `false` for non-finite, fractional, or out-of-bounds values on
+ * either the anchor or the frame (so e.g. `Infinity` as a frame dimension
+ * cannot be used to sneak a bogus anchor through).
  */
-export function isValidAnchor(anchor: SpriteAnchor, frameWidth: number, frameHeight: number): boolean {
+export function isValidAnchor(
+  anchor: SpriteAnchor,
+  frameWidth: number,
+  frameHeight: number,
+): boolean {
   return (
+    Number.isInteger(frameWidth) &&
+    Number.isInteger(frameHeight) &&
+    frameWidth > 0 &&
+    frameHeight > 0 &&
     Number.isInteger(anchor.x) &&
     Number.isInteger(anchor.y) &&
     anchor.x >= 0 &&

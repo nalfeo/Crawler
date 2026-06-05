@@ -67,5 +67,20 @@ describe('SpriteAnchor', () => {
       expect(isValidAnchor({ x: 16, y: 15 }, 16, 32)).toBe(false);
       expect(isValidAnchor({ x: 15, y: 31 }, 16, 32)).toBe(true);
     });
+
+    it('rejects non-finite frame dimensions', () => {
+      // Guards against a bogus frame size (Infinity/NaN) making any anchor
+      // appear "in bounds".
+      expect(isValidAnchor({ x: 8, y: 14 }, Number.POSITIVE_INFINITY, 16)).toBe(false);
+      expect(isValidAnchor({ x: 8, y: 14 }, 16, Number.POSITIVE_INFINITY)).toBe(false);
+      expect(isValidAnchor({ x: 8, y: 14 }, Number.NaN, 16)).toBe(false);
+      expect(isValidAnchor({ x: 8, y: 14 }, 16, Number.NaN)).toBe(false);
+    });
+
+    it('rejects fractional or non-positive frame dimensions', () => {
+      expect(isValidAnchor({ x: 0, y: 0 }, 16.5, 16)).toBe(false);
+      expect(isValidAnchor({ x: 0, y: 0 }, 16, 0)).toBe(false);
+      expect(isValidAnchor({ x: 0, y: 0 }, -16, 16)).toBe(false);
+    });
   });
 });
