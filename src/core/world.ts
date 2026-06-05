@@ -33,6 +33,7 @@ import {
   Trap,
   MeleeSwing,
   Knockback,
+  DoorState,
   BaseStats,
   EffectiveStats,
   createComponentStores,
@@ -121,6 +122,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Trap, stores.trap);
   wireStore(ecs, MeleeSwing, stores.meleeSwing);
   wireStore(ecs, Knockback, stores.knockback);
+  wireStore(ecs, DoorState, stores.doorState);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
 
