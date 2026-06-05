@@ -18,7 +18,7 @@
 
 ## Tools & Workflows
 
-- Use the sprite generation pipeline at `scripts/sprites/` (Zod brief schema, palette extractor, deterministic post-processor) and its sensor suite at `tests/sensors/` to ship pixel-art sprites that satisfy hard invariants (palette membership, alpha-binary, opaque ratio, anchor, silhouette axis). See ADR `docs/knowledge/adr/0003-sprite-generation-pipeline.md` and palette data under `data/palettes/`.
+- Use the sprite generation pipeline at `scripts/sprites/` (Zod brief schema, palette extractor, deterministic post-processor, sensor suite at `scripts/sprites/sensors/`, unit-tested at `tests/sensors/`) to ship pixel-art sprites that satisfy hard invariants (palette membership, alpha-binary, opaque ratio, anchor, silhouette axis). See ADR `docs/knowledge/adr/0003-sprite-generation-pipeline.md` and palette data under `data/palettes/`.
 - Author briefs in YAML and tune the global style preamble in `docs/agent-os/sprite-style.md` _(planned — Phase 2)_.
 - Run the full pipeline interactively via `npm run lab:sprite-forge` (lab + sidecar) or non-interactively via `npm run sprites:run -- <brief>` _(both planned — Phase 2)_.
 - Use `sprite-forge-lab`'s candidate grid, sensor overlays, and judge rationales to compare candidates against existing registry siblings before approving _(planned — Phase 3)_.

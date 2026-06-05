@@ -5,8 +5,13 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { decodeSprite, gatherOpaquePixels, type Pixel, type RgbaImage } from './common.js';
-import { silhouetteDiagonalAxis, RAD_PER_DEG } from './weapons.js';
+import {
+  decodeSprite,
+  gatherOpaquePixels,
+  type Pixel,
+  type RgbaImage,
+} from '../../scripts/sprites/sensors/common.js';
+import { silhouetteDiagonalAxis, RAD_PER_DEG } from '../../scripts/sprites/sensors/weapons.js';
 import { PNG } from 'pngjs';
 
 function makeImage(
