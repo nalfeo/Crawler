@@ -1,0 +1,111 @@
+/**
+ * Sprite pipeline integration test.
+ *
+ * Builds 1024² fixture PNGs deterministically (see ./builders), runs the real
+ * post-processor over each, and asserts that the real sensors produce the
+ * expected verdict.
+ *
+ * No network calls. No filesystem reads outside the source tree.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { postprocess } from '../../scripts/sprites/postprocess.js';
+import type { Brief, PaletteColors } from '../../scripts/sprites/brief-schema.js';
+import { decodeSprite, universalSensors } from '../sensors/common.js';
+import { weaponSensors } from '../sensors/weapons.test.js';
+import {
+  buildGoodSwordFixture,
+  buildEmptyFixture,
+  buildHorizontalBarFixture,
+  buildSolidBlockFixture,
+  buildTinyDotFixture,
+} from '../fixtures/sprites/builders.js';
+
+const PALETTE: PaletteColors = [
+  [0, 0, 0],
+  [192, 192, 200], // blade silver — matches the fixture body color exactly
+  [120, 90, 60], // crossguard brown
+  [200, 170, 50], // pommel gold
+  [255, 255, 255],
+];
+
+const SWORD_BRIEF: Brief = {
+  type: 'weapon',
+  name: 'integration-sword',
+  size: { width: 32, height: 32 },
+  palette: {
+    id: 'integration-test',
+    colors: PALETTE.map((c) => [...c] as [number, number, number]),
+  },
+  anchor: { x: 16, y: 16 },
+  tags: ['blade'],
+  prompt: 'integration test diagonal sword',
+  references: [],
+};
+
+function runAllSensors(
+  rawPng: Buffer,
+  brief: Brief,
+): { passed: string[]; failed: { sensor: string; reason: string }[] } {
+  const processed = postprocess(rawPng, brief, PALETTE);
+  const decoded = decodeSprite(processed);
+  const results = [
+    ...universalSensors(decoded, brief, PALETTE),
+    ...(brief.type === 'weapon' ? weaponSensors(decoded) : []),
+  ];
+  const passed: string[] = [];
+  const failed: { sensor: string; reason: string }[] = [];
+  for (const r of results) {
+    if (r.ok) passed.push(r.sensor);
+    else failed.push({ sensor: r.sensor, reason: r.reason });
+  }
+  return { passed, failed };
+}
+
+describe('weapons pipeline integration', () => {
+  it('good sword fixture passes every sensor', () => {
+    const png = buildGoodSwordFixture();
+    const { passed, failed } = runAllSensors(png, SWORD_BRIEF);
+    expect(failed, `unexpected failures: ${JSON.stringify(failed, null, 2)}`).toEqual([]);
+    // Sanity-check that we actually ran every expected sensor.
+    expect(passed).toContain('dimensions-exact');
+    expect(passed).toContain('alpha-binary');
+    expect(passed).toContain('palette-membership');
+    expect(passed).toContain('opaque-bbox-fits');
+    expect(passed).toContain('opaque-ratio');
+    expect(passed).toContain('anchor-opaque');
+    expect(passed).toContain('silhouette-diagonal-axis');
+  });
+
+  it('empty fixture fails opaque-bbox-fits with the expected reason', () => {
+    const png = buildEmptyFixture();
+    const { failed } = runAllSensors(png, SWORD_BRIEF);
+    const bbox = failed.find((f) => f.sensor === 'opaque-bbox-fits');
+    expect(bbox).toBeDefined();
+    expect(bbox?.reason).toContain('no opaque pixels');
+  });
+
+  it('horizontal bar fixture fails the silhouette diagonal-axis sensor', () => {
+    const png = buildHorizontalBarFixture();
+    const { failed } = runAllSensors(png, SWORD_BRIEF);
+    const silhouette = failed.find((f) => f.sensor === 'silhouette-diagonal-axis');
+    expect(silhouette).toBeDefined();
+    expect(silhouette?.reason).toContain('horizontal');
+  });
+
+  it('solid-block fixture fails opaque-ratio (too high)', () => {
+    const png = buildSolidBlockFixture();
+    const { failed } = runAllSensors(png, SWORD_BRIEF);
+    const ratio = failed.find((f) => f.sensor === 'opaque-ratio');
+    expect(ratio).toBeDefined();
+    expect(ratio?.reason).toMatch(/outside \[0\.1, 0\.65\]/);
+  });
+
+  it('tiny-dot fixture fails opaque-ratio (too low)', () => {
+    const png = buildTinyDotFixture();
+    const { failed } = runAllSensors(png, SWORD_BRIEF);
+    const ratio = failed.find((f) => f.sensor === 'opaque-ratio');
+    expect(ratio).toBeDefined();
+    expect(ratio?.reason).toMatch(/outside \[0\.1, 0\.65\]/);
+  });
+});

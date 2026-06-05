@@ -356,7 +356,6 @@ describe('InputCapture (raw DOM)', () => {
 
 describe('InputCapture architectural guard', () => {
   it('does not import Phaser keyboard types for key tracking', async () => {
-    // @ts-expect-error Node fs module available at runtime but not in tsconfig types
     const { readFileSync } = await import('fs');
     const source = (readFileSync as (p: string, e: string) => string)(
       'src/engine/InputCapture.ts',
