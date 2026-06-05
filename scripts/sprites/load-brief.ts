@@ -1,33 +1,38 @@
 /**
  * Brief loader.
  *
- * Reads a YAML brief from disk, parses it, applies any matching sprite-type
- * defaults from `data/sprite-types/<type>.json`, validates against the Zod
- * schema, and resolves the palette `id` into actual `[r, g, b]` color
- * triples loaded from `data/palettes/<id>.json`.
+ * Reads a YAML brief from disk, merges per-type defaults, validates the
+ * merged result against the Zod schema, and resolves the palette `id` into
+ * actual `[r, g, b]` color triples loaded from `data/palettes/<id>.json`.
  *
- * Sprite-type defaults give a single place to opt every brief of a given
- * sprite type into a sensor or option without editing each brief by hand.
- * Currently only `sensors.*` is merged from the type defaults; individual
- * brief fields (`anchor`, `prompt`, references, ...) are deliberately not
- * defaulted from the type. Brief values *always* win over type defaults
- * (per-key for `sensors.*` sub-objects), so existing briefs that already set
- * a value continue to work unchanged.
+ * Authors write minimal briefs — typically just `type`, `name`, and
+ * `description` — and per-type defaults from `data/sprite-types/<type>.json`
+ * fill in everything else (size, palette, anchor, references, sheet layout,
+ * sensor thresholds). Any field present on the minimal brief overrides the
+ * default at that path. The `description` field becomes the `prompt` if the
+ * author hasn't set `prompt` explicitly.
  *
- * Why a dedicated module: the Zod schema is format-agnostic (it accepts the
- * pre-parsed object), but every consumer (CLI, lab sidecar, tests) wants the
- * same disk-to-validated-brief pipeline. Centralising it here keeps the
- * post-processor / scorer / orchestrator unchanged when we add new palette
- * sources or brief locations later.
+ * Why a dedicated module: every consumer (CLI, lab sidecar, tests) wants
+ * the same disk-to-validated-brief pipeline. Centralising the merge +
+ * validation here keeps the post-processor / scorer / orchestrator
+ * unchanged when we add new defaults, brief locations, or palette sources.
  *
  * Pure-ish: this module touches the filesystem (it has to), but given the
  * same inputs (file contents) it produces identical outputs.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { briefSchema, type Brief, type PaletteColors, type RgbTriple } from './brief-schema.js';
+import {
+  briefSchema,
+  minimalBriefSchema,
+  type Brief,
+  type PaletteColors,
+  type RgbTriple,
+  type SpriteTypeDefaults,
+} from './brief-schema.js';
+import { deepMergeDefaults } from './deep-merge.js';
 
 export interface LoadedBrief {
   readonly brief: Brief;
@@ -52,12 +57,12 @@ export interface LoadBriefOptions {
    */
   readonly loadPalette?: (paletteId: string) => PaletteColors;
   /**
-   * Override sprite-type defaults loading — used by tests to inject
-   * deterministic defaults without writing JSON to disk. When supplied,
-   * this is called with the brief's `type` and must return the defaults
-   * object (or `null` / `undefined` to indicate "no defaults").
+   * Override per-type defaults loading. Used by tests to avoid disk access
+   * and to keep test briefs fully self-contained. When supplied, this is
+   * called with the brief's `type` and must return the defaults object (or
+   * `null` to skip merging — useful for legacy fully-specified briefs).
    */
-  readonly loadSpriteTypeDefaults?: (spriteType: string) => unknown;
+  readonly loadTypeDefaults?: (type: string) => SpriteTypeDefaults | null;
 }
 
 export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): LoadedBrief {
@@ -65,7 +70,33 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
   const raw = readFileSync(absolute, 'utf8');
   const parsed = parseYaml(raw) as unknown;
 
-  const merged = mergeSpriteTypeDefaults(parsed, opts);
+  // Parse the minimal shape first so we get `type` early — we need it to
+  // pick the defaults file. The minimal schema is `.passthrough()`, so any
+  // fully-specified brief still passes this gate without losing fields.
+  const minimal = minimalBriefSchema.safeParse(parsed);
+  if (!minimal.success) {
+    const issues = minimal.error.issues
+      .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n');
+    throw new Error(
+      `Brief at ${absolute} failed minimal validation ` +
+        `(type, name, and one of description/prompt required):\n${issues}`,
+    );
+  }
+  const loadDefaults = opts.loadTypeDefaults ?? defaultTypeDefaultsLoader(opts.projectRoot);
+  const defaults = loadDefaults(minimal.data.type);
+
+  // Merge: defaults underneath, the minimal brief's fields on top. The
+  // minimal brief's `description` is mapped to `prompt` only when the
+  // merged object doesn't already have a `prompt`. We strip `description`
+  // from the merged result so the strict full-brief schema doesn't trip
+  // on it.
+  //
+  // Safety: if the minimal brief explicitly provides a malformed `sensors`
+  // (e.g. `sensors: null` or `sensors: "oops"`), skip the deep-merge for
+  // that key so Zod reports a clear error instead of us silently inheriting
+  // sprite-type sensor defaults. (Carried over from PR #44.)
+  const merged = mergeMinimalIntoDefaults(minimal.data, defaults);
 
   const result = briefSchema.safeParse(merged);
   if (!result.success) {
@@ -80,64 +111,102 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
 }
 
 /**
- * Merge `sensors` defaults from `data/sprite-types/<type>.json` into the
- * parsed brief object before Zod validation. Brief values win on per-key
- * conflict; sensor sub-objects (`sensors.weapon`, `sensors.anchor`, ...)
- * are merged field-by-field so a brief can override a single option without
- * having to restate every other type-default field.
+ * Merge a minimal brief on top of per-type defaults. Pure; exposed so tests
+ * can exercise the merge semantics directly without disk I/O.
  *
- * Non-object inputs (e.g. when the YAML is malformed) are passed through
- * untouched — Zod will reject them downstream with a clearer error than
- * anything we could emit here. The same is true when the brief explicitly
- * provides a `sensors` key whose value is not a plain object (e.g.
- * `sensors: null` or `sensors: "oops"`): we leave it alone so the user sees
- * the schema error instead of silently inheriting sprite-type defaults.
+ * - `description` becomes `prompt` when the merged brief has no explicit
+ *   `prompt`. The `description` field is then stripped because the strict
+ *   `briefSchema` doesn't allow unknown keys.
+ * - `defaults` is treated as immutable.
+ * - When `defaults` is `null` (loader returned no defaults for the type),
+ *   the minimal brief is passed through more or less verbatim. The
+ *   author is then responsible for supplying every required field.
  */
-function mergeSpriteTypeDefaults(parsed: unknown, opts: LoadBriefOptions): unknown {
-  if (!isPlainObject(parsed)) return parsed;
-  const spriteType = parsed.type;
-  if (typeof spriteType !== 'string' || spriteType.length === 0) return parsed;
-  // If the brief explicitly provides a malformed `sensors`, leave it alone
-  // and let Zod reject it. Only fall through when `sensors` is missing or a
-  // plain object we can safely merge.
-  if ('sensors' in parsed && !isPlainObject(parsed.sensors)) return parsed;
-
-  const loader = opts.loadSpriteTypeDefaults ?? defaultSpriteTypeDefaultsLoader(opts.projectRoot);
-  const defaults = loader(spriteType);
-  if (!isPlainObject(defaults)) return parsed;
-
-  const defaultSensors = isPlainObject(defaults.sensors) ? defaults.sensors : {};
-  const briefSensors = isPlainObject(parsed.sensors) ? parsed.sensors : {};
-
-  // Per-key sensor merge: brief sub-objects win field-by-field over defaults.
-  const mergedSensors: Record<string, unknown> = { ...defaultSensors };
-  for (const [key, briefValue] of Object.entries(briefSensors)) {
-    const defaultValue = defaultSensors[key];
-    if (isPlainObject(briefValue) && isPlainObject(defaultValue)) {
-      mergedSensors[key] = { ...defaultValue, ...briefValue };
-    } else {
-      mergedSensors[key] = briefValue;
+export function mergeMinimalIntoDefaults(
+  minimal: Record<string, unknown>,
+  defaults: SpriteTypeDefaults | null,
+): Record<string, unknown> {
+  const base = defaults === null ? {} : defaults;
+  // Safety: if the minimal brief explicitly provides a malformed `sensors`
+  // (e.g. `sensors: null` or `sensors: "oops"`), skip the deep-merge for
+  // that key — otherwise we'd silently overwrite the bad value with the
+  // sprite-type sensor defaults and the user would never see their typo.
+  // Pass it through so Zod surfaces a clear validation error. (PR #44.)
+  const sanitizedMinimal: Record<string, unknown> = { ...minimal };
+  if (
+    'sensors' in sanitizedMinimal &&
+    !isPlainObject(sanitizedMinimal.sensors) &&
+    sanitizedMinimal.sensors !== undefined
+  ) {
+    // Force-overwrite defaults.sensors so Zod sees the bad value verbatim.
+    const baseCopy = { ...(base as Record<string, unknown>) };
+    delete baseCopy.sensors;
+    const merged = deepMergeDefaults(baseCopy, sanitizedMinimal);
+    merged.sensors = sanitizedMinimal.sensors;
+    if (merged.prompt === undefined && typeof merged.description === 'string') {
+      merged.prompt = merged.description;
     }
+    delete merged.description;
+    return merged;
   }
-
-  return { ...parsed, sensors: mergedSensors };
+  const merged = deepMergeDefaults(base as Record<string, unknown>, minimal);
+  if (merged.prompt === undefined && typeof merged.description === 'string') {
+    merged.prompt = merged.description;
+  }
+  delete merged.description;
+  return merged;
 }
 
-function defaultSpriteTypeDefaultsLoader(projectRoot?: string): (spriteType: string) => unknown {
+function defaultTypeDefaultsLoader(
+  projectRoot?: string,
+): (type: string) => SpriteTypeDefaults | null {
   const root = projectRoot ?? process.cwd();
-  return (spriteType: string): unknown => {
-    const file = path.join(root, 'data', 'sprite-types', `${spriteType}.json`);
-    if (!existsSync(file)) return null;
-    const raw = readFileSync(file, 'utf8');
+  return (type: string): SpriteTypeDefaults | null => {
+    const defaultsPath = path.join(root, 'data', 'sprite-types', `${type}.json`);
+    let raw: string;
     try {
-      return JSON.parse(raw);
+      raw = readFileSync(defaultsPath, 'utf8');
     } catch (err) {
+      // No defaults file for this type yet — the brief author is responsible
+      // for supplying every required field; the merged schema validation
+      // will surface anything missing with a clear message.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return null;
       throw new Error(
-        `Sprite-type defaults at ${file} is not valid JSON: ${(err as Error).message}`,
+        `Failed reading sprite-type defaults at ${defaultsPath}: ${(err as Error).message}`,
         { cause: err },
       );
     }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch (err) {
+      throw new Error(
+        `Failed parsing sprite-type defaults at ${defaultsPath}: ${(err as Error).message}`,
+        { cause: err },
+      );
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`Sprite-type defaults at ${defaultsPath} must be a JSON object`);
+    }
+    return stripMetaKeys(parsed as Record<string, unknown>) as SpriteTypeDefaults;
   };
+}
+
+/**
+ * Strip `$`-prefixed metadata keys (JSON-Schema convention for `$comment`,
+ * `$schema`, `$id`, etc.) from defaults so the strict brief schema doesn't
+ * reject them after merge. Applied recursively to nested objects.
+ */
+function stripMetaKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripMetaKeys);
+  if (value === null || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.startsWith('$')) continue;
+    out[k] = stripMetaKeys(v);
+  }
+  return out;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

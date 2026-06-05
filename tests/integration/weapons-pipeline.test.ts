@@ -46,8 +46,10 @@ const SWORD_BRIEF: Brief = {
     { path: 'tests/fixtures/sprites/_ref-a.png' },
     { path: 'tests/fixtures/sprites/_ref-b.png' },
   ],
-  generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+  generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
   sensors: {},
+  variations: [],
+  minVariations: 4,
 };
 
 function runAllSensors(
@@ -58,7 +60,7 @@ function runAllSensors(
   const decoded = decodeSprite(processed);
   const results = [
     ...universalSensors(decoded, brief, PALETTE),
-    ...(brief.type === 'weapon' ? weaponSensors(decoded) : []),
+    ...(brief.type === 'weapon' ? weaponSensors(decoded, { orientation: 'diagonal' }) : []),
   ];
   const passed: string[] = [];
   const failed: { sensor: string; reason: string }[] = [];
@@ -81,7 +83,7 @@ describe('weapons pipeline integration', () => {
     expect(passed).toContain('opaque-bbox-fits');
     expect(passed).toContain('opaque-ratio');
     expect(passed).toContain('anchor-opaque');
-    expect(passed).toContain('silhouette-diagonal-axis');
+    expect(passed).toContain('silhouette-orientation-axis');
   });
 
   it('empty fixture fails opaque-bbox-fits with the expected reason', () => {
@@ -92,10 +94,10 @@ describe('weapons pipeline integration', () => {
     expect(bbox?.reason).toContain('no opaque pixels');
   });
 
-  it('horizontal bar fixture fails the silhouette diagonal-axis sensor', () => {
+  it('horizontal bar fixture fails the silhouette orientation sensor', () => {
     const png = buildHorizontalBarFixture();
     const { failed } = runAllSensors(png, SWORD_BRIEF);
-    const silhouette = failed.find((f) => f.sensor === 'silhouette-diagonal-axis');
+    const silhouette = failed.find((f) => f.sensor === 'silhouette-orientation-axis');
     expect(silhouette).toBeDefined();
     expect(silhouette?.reason).toContain('horizontal');
   });

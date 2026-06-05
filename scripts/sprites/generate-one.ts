@@ -36,12 +36,15 @@ import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import type { Brief } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
+import { computeDiversity } from './diversity.js';
+import { expandVariations } from './expand-variations.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { postprocess } from './postprocess.js';
 import { scoreCandidate } from './score-candidate.js';
 import { sliceSheetFromBrief } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
 import { ProviderError } from './provider/types.js';
+import type { TextProvider } from './provider/text-types.js';
 import {
   ensureRunDirs,
   makeRunId,
@@ -58,6 +61,13 @@ import {
 export interface GenerateOneOptions {
   readonly briefPath: string;
   readonly provider: ImageProvider;
+  /**
+   * Optional text provider for variation expansion. When `null`/omitted
+   * the orchestrator skips the expansion pass (the brief's seed
+   * `variations` flow through untouched) and emits a single warning iff
+   * the brief actually wanted more variations than the seed provides.
+   */
+  readonly textProvider?: TextProvider | null;
   /** Repository root used to resolve the style guide + reference PNGs. */
   readonly repoRoot: string;
   /** Output directory for run artifacts. Defaults to `<repoRoot>/generated`. */
@@ -70,6 +80,8 @@ export interface GenerateOneOptions {
   readonly readReference?: (absolutePath: string) => Buffer;
   /** Optional brief override (avoid re-loading from disk in tests). */
   readonly preloaded?: LoadedBrief;
+  /** Warning sink (mainly for expand-variations). Defaults to console.warn. */
+  readonly warn?: (message: string) => void;
 }
 
 export interface GenerateOneResult {
@@ -94,13 +106,28 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   const now = options.now ?? (() => new Date());
   const readReference = options.readReference ?? ((p) => readFileSync(p));
 
-  const loaded = options.preloaded ?? loadBrief(options.briefPath);
+  const loaded = options.preloaded ?? loadBrief(options.briefPath, { projectRoot: repoRoot });
   const brief = loaded.brief;
   const palette = loaded.palette;
   const expected = variantCount(brief);
 
+  // Expansion runs once per orchestrator invocation, before prompt
+  // construction, because the prompt embeds the final variations list.
+  // Graceful degradation: when no text provider is configured or the
+  // call fails, we use the author's seed unchanged — the run still
+  // produces sprites, just without the LLM-brainstormed extras.
+  const expansion = await expandVariations({
+    brief,
+    provider: options.textProvider ?? null,
+    ...(options.warn ? { warn: options.warn } : {}),
+  });
+  // Shallow brief copy with the resolved variations list so downstream
+  // pure code (build-prompt, run-summary) doesn't need to know an
+  // expansion step happened. Original brief object stays untouched.
+  const effectiveBrief = { ...brief, variations: [...expansion.variations] };
+
   const styleGuide = loadStyleGuide(repoRoot);
-  const prompt = buildSheetPrompt(brief, styleGuide);
+  const prompt = buildSheetPrompt(effectiveBrief, styleGuide);
 
   // Reference PNG paths are repo-relative in briefs; resolve against repoRoot.
   const referencePngs = brief.references.map((ref) =>
@@ -147,6 +174,10 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
 
   // --- Postprocess + score each variant. ---
   const entries: RunSummaryEntry[] = [];
+  // Keep the post-processed buffers alongside `entries` so the diversity
+  // pass doesn't have to re-read every variant from disk. Same byte
+  // sequences either way — `writeVariant` writes exactly what we hand it.
+  const processedBuffers: Buffer[] = [];
   for (let i = 0; i < sliced.length; i++) {
     const raw = sliced[i]!;
     const processed = postprocess(raw, brief, palette);
@@ -169,9 +200,11 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       derivedAnchor: scorecard.derivedAnchor,
       anchorSidecarPath,
     });
+    processedBuffers.push(processed);
   }
 
   const ranked = rankCandidates(entries);
+  const diversity = computeDiversity(processedBuffers);
   const chosen = pickChosen(ranked, brief);
   const summary: RunSummary = {
     brief: brief.name,
@@ -182,6 +215,14 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     attempts,
     variantCount: expected,
     candidates: ranked,
+    diversity,
+    variations: {
+      seed: expansion.seed,
+      proposed: expansion.proposed,
+      final: expansion.variations,
+      minVariations: brief.minVariations,
+      skippedReason: expansion.skippedReason,
+    },
     chosen,
   };
   const summaryPath = writeSummary(paths, summary);

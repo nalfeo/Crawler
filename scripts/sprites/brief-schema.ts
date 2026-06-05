@@ -62,8 +62,14 @@ const referenceSchema = z
   .strict();
 
 /**
- * Optional sheet-mode generation hints. The pipeline defaults to a 3x3 grid
- * with 9 variants, no empty cells. Briefs can override per-asset.
+ * Optional sheet-mode generation hints. The pipeline defaults to a 4x4 grid
+ * with 16 variants, no empty cells. Rationale: a 1024 native canvas split
+ * 4-ways yields 256x256 cells, which downscale cleanly by an integer factor
+ * to 64x64, 32x32, and 16x16 pixel sprites; 16 variants per call gives the
+ * scoring loop enough headroom to reject low-quality candidates without
+ * paying for a second provider round-trip. The slicer requires `nativeCanvas`
+ * to be evenly divisible by both `rows` and `cols`, which the defaults
+ * satisfy by construction.
  *
  * - `rows` x `cols` defines the grid. Variant count equals `rows * cols` minus
  *   the number of declared `emptyCells`.
@@ -75,20 +81,20 @@ const referenceSchema = z
  */
 const sheetSchema = z
   .object({
-    rows: z.number().int().min(1).max(8).default(3),
-    cols: z.number().int().min(1).max(8).default(3),
+    rows: z.number().int().min(1).max(8).default(4),
+    cols: z.number().int().min(1).max(8).default(4),
     emptyCells: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).default([]),
     nativeCanvas: z.number().int().min(256).max(2048).default(1024),
   })
   .strict()
-  .default({ rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 });
+  .default({ rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 });
 
 const generationSchema = z
   .object({
     sheet: sheetSchema,
   })
   .strict()
-  .default({ sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } });
+  .default({ sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } });
 
 /**
  * Optional per-brief sensor threshold overrides. Defaults are baked into
@@ -110,6 +116,7 @@ const sensorOverridesSchema = z
     weapon: z
       .object({
         diagonalToleranceDeg: z.number().min(0).max(45).optional(),
+        orientation: z.enum(['any', 'diagonal', 'vertical', 'horizontal']).optional(),
       })
       .strict()
       .optional(),
@@ -155,6 +162,41 @@ export const briefSchema = z
       .min(2, 'references must contain at least 2 entries (F2.3)'),
     generation: generationSchema,
     sensors: sensorOverridesSchema,
+    /**
+     * Optional discrete on-theme embellishments the model is invited to
+     * distribute across cells (one per cell, never combined). Free-form
+     * natural language so authors can iterate without schema churn.
+     *
+     * Treat this as the *seed* list. At run time the orchestrator may
+     * call a text LLM to top this list up to `minVariations` entries so
+     * authors don't have to brainstorm exhaustively. Author-supplied
+     * entries always survive the expansion pass; the LLM only appends.
+     *
+     * Use this for thematic variety that the continuous "vary along
+     * silhouette / shading / material" axes in the sheet prompt cannot
+     * express — e.g. "spiked iron pommel at the base", "wolf skull
+     * instead of human skull". Set `minVariations: 0` for briefs where
+     * the subject must stay strictly canonical (e.g. icons matching
+     * existing in-game art).
+     */
+    variations: z.array(z.string().trim().min(1)).max(20).default([]),
+    /**
+     * Minimum total variations to feed into the sheet prompt after the
+     * optional LLM expansion pass runs.
+     *
+     *   - `0` disables expansion entirely (canonical sprites: stick to
+     *     the author's `variations` exactly, even if empty).
+     *   - `N > 0` asks the orchestrator to top up `variations` to at
+     *     least N entries by calling the text provider, when one is
+     *     configured. If no text provider is available the run still
+     *     succeeds — the orchestrator emits a warning and proceeds with
+     *     whatever seed `variations` already contained.
+     *
+     * Default of 4 reflects the empirical sweet spot: enough discrete
+     * embellishments to spread across a 4×4 sheet without looking
+     * repetitive, few enough that the model doesn't get overwhelmed.
+     */
+    minVariations: z.number().int().min(0).max(20).default(4),
   })
   .strict()
   .superRefine((brief, ctx) => {
@@ -191,12 +233,82 @@ export const briefSchema = z
         message: `grid produces ${variantCount} variants — must be at least 1`,
       });
     }
+    // The slicer requires nativeCanvas to be evenly divisible by both rows
+    // and cols so every cell is an integer pixel grid. We catch this at
+    // brief-load time so we fail before a (slow, expensive) provider call.
+    const { nativeCanvas } = brief.generation.sheet;
+    if (nativeCanvas % rows !== 0 || nativeCanvas % cols !== 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['generation', 'sheet'],
+        message: `nativeCanvas ${nativeCanvas} is not evenly divisible into a ${rows}x${cols} grid (cells would be ${nativeCanvas / cols}x${nativeCanvas / rows})`,
+      });
+    }
   });
 
 export type Brief = z.infer<typeof briefSchema>;
 // SpriteType inferred via Brief['type']; no separate alias needed yet.
 export type RgbTriple = readonly [number, number, number];
 export type PaletteColors = readonly RgbTriple[];
+
+/**
+ * Minimal on-disk brief shape — what authors actually write in YAML.
+ *
+ * The pipeline is intentionally split into two layers:
+ *  - this `minimalBriefSchema` describes what a human writes in
+ *    `briefs/<type>/<name>.yaml`: just enough to identify the sprite
+ *    (`type` + `name`) and a free-form `description` of what it should
+ *    look like.
+ *  - `briefSchema` (above) describes what the downstream pipeline
+ *    consumes after per-type defaults are merged in.
+ *
+ * Any field on the full `briefSchema` may be overridden inline on a
+ * minimal brief — overrides are deep-merged on top of the per-type
+ * defaults loaded from `data/sprite-types/<type>.json`. We do NOT
+ * validate the override fields here; the merged result is what gets
+ * Zod-validated, so authors get a single coherent error message instead
+ * of two layers of complaints.
+ */
+export const minimalBriefSchema = z
+  .object({
+    type: z.enum(SPRITE_TYPES),
+    name: z
+      .string()
+      .min(1)
+      .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
+    description: z.string().trim().min(1).optional(),
+    // Legacy/fully-specified briefs may set `prompt` directly instead of
+    // `description`. We accept it here as a typed passthrough so the
+    // superRefine below can require one of the two without tripping on
+    // `.passthrough()` losing the field's type.
+    prompt: z.string().trim().min(1).optional(),
+  })
+  .passthrough()
+  .superRefine((data, ctx) => {
+    // The merged brief needs *some* prompt text — either authored as a
+    // minimal `description` (which the loader maps to `prompt`) or as an
+    // explicit legacy `prompt`. Enforce that here so authors get one
+    // clear error at the minimal layer instead of a less actionable
+    // "prompt required" error after the merge.
+    if (!data.description && !data.prompt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['description'],
+        message: 'a brief must provide either `description` or `prompt`',
+      });
+    }
+  });
+
+export type MinimalBrief = z.infer<typeof minimalBriefSchema>;
+
+/**
+ * Per-type defaults loaded from `data/sprite-types/<type>.json`. The
+ * shape is intentionally `unknown` here — we let the deep merge run and
+ * then `briefSchema` validates the final object. This keeps the
+ * defaults file authoring loose (you can omit any field) while still
+ * giving authors a single, helpful validation pass on the merged brief.
+ */
+export type SpriteTypeDefaults = Record<string, unknown>;
 
 /**
  * Variant count produced by a brief's sheet config. Pure derivation; exported

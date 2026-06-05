@@ -29,6 +29,8 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Brief } from './brief-schema.js';
+import type { DiversitySummary } from './diversity.js';
+import type { ExpansionSkipReason } from './expand-variations.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 
@@ -98,6 +100,21 @@ export interface RunSummary {
   readonly variantCount: number;
   /** Candidates ranked best-first: passed first, then by sensor score desc. */
   readonly candidates: ReadonlyArray<RunSummaryEntry>;
+  /** Pairwise perceptual-hash diversity across processed variants; null when n < 2. */
+  readonly diversity: DiversitySummary | null;
+  /**
+   * Resolved variations fed into the sheet prompt. Captures both the
+   * author seed (so reruns are auditable) and any LLM-proposed
+   * additions plus the reason expansion was or wasn't run. Always
+   * present so dashboards don't need null-handling.
+   */
+  readonly variations: {
+    readonly seed: ReadonlyArray<string>;
+    readonly proposed: ReadonlyArray<string>;
+    readonly final: ReadonlyArray<string>;
+    readonly minVariations: number;
+    readonly skippedReason: ExpansionSkipReason | null;
+  };
   /**
    * The top-ranked candidate plus its anchor, lifted out of `candidates` so
    * consumers (CLI summary line, future SpriteDef promotion, lab UI) don't

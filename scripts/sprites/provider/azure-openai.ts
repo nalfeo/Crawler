@@ -69,7 +69,8 @@ export class AzureOpenAIImageProvider implements ImageProvider {
     form.set('prompt', request.prompt);
     form.set('size', `${size}x${size}`);
     form.set('n', '1');
-    form.set('response_format', 'b64_json');
+    // gpt-image-1 always returns base64 and rejects `response_format`; do
+    // not send it. (The original code targeted dall-e-3, which required it.)
 
     // Each reference image is attached as a separate `image[]` part.
     request.referencePngs.forEach((png, idx) => {

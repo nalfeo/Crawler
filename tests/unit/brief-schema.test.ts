@@ -18,8 +18,10 @@ const validBrief: Brief = {
     { path: 'docs/refs/sword-1.png', note: 'silhouette inspiration' },
     { path: 'docs/refs/sword-2.png', note: 'palette anchor' },
   ],
-  generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+  generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
   sensors: {},
+  variations: [],
+  minVariations: 4,
 };
 
 describe('briefSchema', () => {
@@ -79,6 +81,19 @@ describe('briefSchema', () => {
       const paths = result.error.issues.map((i) => i.path.join('.'));
       expect(paths).toContain('references');
     }
+  });
+
+  it('defaults minVariations to 4 and accepts 0 (opt-out) and integers up to 20', () => {
+    const { minVariations: _omit, ...withoutMin } = validBrief;
+    void _omit;
+    const parsed = briefSchema.parse(withoutMin);
+    expect(parsed.minVariations).toBe(4);
+
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 0 }).success).toBe(true);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 20 }).success).toBe(true);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: -1 }).success).toBe(false);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 21 }).success).toBe(false);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 4.5 }).success).toBe(false);
   });
 
   it('accepts every documented sprite type', () => {
@@ -163,7 +178,7 @@ describe('briefSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('defaults generation.sheet to a 3x3 grid with 9 variants and no empty cells', () => {
+  it('defaults generation.sheet to a 4x4 grid with 16 variants and no empty cells', () => {
     const minimal = {
       type: 'weapon',
       name: 'iron-sword',
@@ -176,22 +191,34 @@ describe('briefSchema', () => {
     const result = briefSchema.safeParse(minimal);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.generation.sheet.rows).toBe(3);
-      expect(result.data.generation.sheet.cols).toBe(3);
+      expect(result.data.generation.sheet.rows).toBe(4);
+      expect(result.data.generation.sheet.cols).toBe(4);
       expect(result.data.generation.sheet.emptyCells).toEqual([]);
       expect(result.data.generation.sheet.nativeCanvas).toBe(1024);
-      expect(variantCount(result.data)).toBe(9);
+      expect(variantCount(result.data)).toBe(16);
     }
   });
 
   it('honors brief-declared sheet overrides and reflects empty cells in variantCount', () => {
     const result = briefSchema.safeParse({
       ...validBrief,
-      generation: { sheet: { rows: 3, cols: 3, emptyCells: [[2, 2]], nativeCanvas: 1024 } },
+      generation: { sheet: { rows: 4, cols: 4, emptyCells: [[3, 3]], nativeCanvas: 1024 } },
     });
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(variantCount(result.data)).toBe(8);
+      expect(variantCount(result.data)).toBe(15);
+    }
+  });
+
+  it('rejects a sheet whose nativeCanvas is not divisible by both rows and cols', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message);
+      expect(messages.some((m) => m.includes('not evenly divisible'))).toBe(true);
     }
   });
 
@@ -213,5 +240,28 @@ describe('briefSchema', () => {
       sensors: { opaqueRatio: { min: -0.1 } },
     });
     expect(result.success).toBe(false);
+  });
+
+  it('rejects whitespace-only variations entries (trim happens in the schema)', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      variations: ['real entry', '   '],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths.some((p) => p.startsWith('variations'))).toBe(true);
+    }
+  });
+
+  it('trims surrounding whitespace from valid variations entries', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      variations: ['  spiked pommel  '],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.variations).toEqual(['spiked pommel']);
+    }
   });
 });

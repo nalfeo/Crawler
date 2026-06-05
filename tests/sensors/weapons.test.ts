@@ -11,7 +11,11 @@ import {
   type Pixel,
   type RgbaImage,
 } from '../../scripts/sprites/sensors/common.js';
-import { silhouetteDiagonalAxis, RAD_PER_DEG } from '../../scripts/sprites/sensors/weapons.js';
+import {
+  silhouetteDiagonalAxis,
+  silhouetteOrientationAxis,
+  RAD_PER_DEG,
+} from '../../scripts/sprites/sensors/weapons.js';
 import { PNG } from 'pngjs';
 
 function makeImage(
@@ -33,10 +37,13 @@ function makeImage(
   return { width, height, data };
 }
 
-describe('silhouetteDiagonalAxis', () => {
+describe('silhouetteDiagonalAxis (deprecated shim)', () => {
   it('passes a 45° diagonal line', () => {
     const img = makeImage(32, 32, (x, y) => x === y);
-    expect(silhouetteDiagonalAxis(img)).toEqual({ ok: true, sensor: 'silhouette-diagonal-axis' });
+    expect(silhouetteDiagonalAxis(img)).toEqual({
+      ok: true,
+      sensor: 'silhouette-orientation-axis',
+    });
   });
 
   it('passes a 30° diagonal line', () => {
@@ -90,6 +97,66 @@ describe('silhouetteDiagonalAxis', () => {
     const img = makeImage(8, 8, (x, y) => x === 3 && y === 3);
     const result = silhouetteDiagonalAxis(img);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('silhouetteOrientationAxis', () => {
+  it('default orientation is vertical: passes a vertical bar', () => {
+    const img = makeImage(32, 32, (x, y) => x === 16 && y >= 4 && y <= 28);
+    const result = silhouetteOrientationAxis(img);
+    expect(result.ok).toBe(true);
+  });
+
+  it('default orientation is vertical: fails a 45° diagonal line', () => {
+    const img = makeImage(32, 32, (x, y) => x === y);
+    const result = silhouetteOrientationAxis(img);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain('vertical');
+  });
+
+  it('orientation "any" passes any silhouette, even horizontal', () => {
+    const img = makeImage(32, 32, (x, y) => y === 16 && x >= 4 && x <= 28);
+    const result = silhouetteOrientationAxis(img, { orientation: 'any' });
+    expect(result).toEqual({ ok: true, sensor: 'silhouette-orientation-axis' });
+  });
+
+  it('orientation "any" still fails on an empty image (sentinel for missing data)', () => {
+    const img = makeImage(8, 8, () => false);
+    const result = silhouetteOrientationAxis(img, { orientation: 'any' });
+    expect(result.ok).toBe(false);
+  });
+
+  it('orientation "horizontal" passes a horizontal bar and fails a vertical one', () => {
+    const horiz = makeImage(32, 32, (x, y) => y === 16 && x >= 4 && x <= 28);
+    const vert = makeImage(32, 32, (x, y) => x === 16 && y >= 4 && y <= 28);
+    expect(silhouetteOrientationAxis(horiz, { orientation: 'horizontal' }).ok).toBe(true);
+    expect(silhouetteOrientationAxis(vert, { orientation: 'horizontal' }).ok).toBe(false);
+  });
+
+  it('orientation "vertical" passes a vertical bar and fails a horizontal one', () => {
+    const horiz = makeImage(32, 32, (x, y) => y === 16 && x >= 4 && x <= 28);
+    const vert = makeImage(32, 32, (x, y) => x === 16 && y >= 4 && y <= 28);
+    expect(silhouetteOrientationAxis(vert, { orientation: 'vertical' }).ok).toBe(true);
+    expect(silhouetteOrientationAxis(horiz, { orientation: 'vertical' }).ok).toBe(false);
+  });
+
+  it('orientation "diagonal" fails both vertical and horizontal but passes 45°', () => {
+    const horiz = makeImage(32, 32, (x, y) => y === 16 && x >= 4 && x <= 28);
+    const vert = makeImage(32, 32, (x, y) => x === 16 && y >= 4 && y <= 28);
+    const diag = makeImage(32, 32, (x, y) => x === y);
+    expect(silhouetteOrientationAxis(horiz, { orientation: 'diagonal' }).ok).toBe(false);
+    expect(silhouetteOrientationAxis(vert, { orientation: 'diagonal' }).ok).toBe(false);
+    expect(silhouetteOrientationAxis(diag, { orientation: 'diagonal' }).ok).toBe(true);
+  });
+
+  it('respects an enlarged toleranceDeg for vertical (a slightly-off-axis vertical bar still passes)', () => {
+    // Build a vertical bar with a ~3° lean. Default tolerance 2° rejects it;
+    // tolerance 5° accepts it.
+    const img = makeImage(32, 64, (x, y) => x === 16 + Math.round(y * Math.tan(3 * RAD_PER_DEG)));
+    expect(silhouetteOrientationAxis(img, { orientation: 'vertical' }).ok).toBe(false);
+    expect(silhouetteOrientationAxis(img, { orientation: 'vertical', toleranceDeg: 5 }).ok).toBe(
+      true,
+    );
   });
 });
 

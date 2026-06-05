@@ -25,7 +25,7 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { generateOne } from './generate-one.js';
-import { createImageProvider } from './provider/factory.js';
+import { createImageProvider, createTextProvider } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
 
 interface CliArgs {
@@ -143,12 +143,33 @@ function printSummary(
     readonly anchor: { readonly x: number; readonly y: number; readonly source: string } | null;
   } | null,
   durationMs: number,
+  diversity: {
+    meanHamming: number;
+    minHamming: number;
+    maxHamming: number;
+    pairCount: number;
+    bitLength: number;
+  } | null,
+  variations: {
+    seed: ReadonlyArray<string>;
+    proposed: ReadonlyArray<string>;
+    final: ReadonlyArray<string>;
+    minVariations: number;
+    skippedReason: string | null;
+  },
 ): void {
   process.stdout.write(`\n=== ${briefPath} ===\n`);
   process.stdout.write(`run dir : ${runDir}\n`);
   process.stdout.write(`attempts: ${attempts}    duration: ${(durationMs / 1000).toFixed(1)}s\n`);
   const passed = candidates.filter((c) => c.passed).length;
   process.stdout.write(`variants: ${candidates.length}    passed: ${passed}\n`);
+  const seedN = variations.seed.length;
+  const propN = variations.proposed.length;
+  const finalN = variations.final.length;
+  const reason = variations.skippedReason ? ` [${variations.skippedReason}]` : '';
+  process.stdout.write(
+    `variations: ${seedN} seed + ${propN} expanded = ${finalN} final (min=${variations.minVariations})${reason}\n`,
+  );
   if (chosen) {
     const anchorStr = chosen.anchor
       ? `anchor=(${chosen.anchor.x},${chosen.anchor.y}) [${chosen.anchor.source}]`
@@ -165,15 +186,29 @@ function printSummary(
       `  ${pad(String(rank), 6)}${pad(String(c.index), 6)}${pad(tag, 8)}${formatScore(c.score, c.outOf)}\n`,
     );
   });
+  if (diversity) {
+    const fmt = (n: number) => n.toFixed(3);
+    process.stdout.write(
+      `\n  diversity: mean=${fmt(diversity.meanHamming)} min=${fmt(diversity.minHamming)} max=${fmt(diversity.maxHamming)} (${diversity.pairCount} pairs, ${diversity.bitLength}-bit pHash)\n`,
+    );
+  }
 }
 
 async function runOne(briefPath: string, pick: number | undefined): Promise<BriefRunOutcome> {
-  const provider = createImageProvider();
   const start = Date.now();
   try {
+    const provider = createImageProvider();
+    // Text provider is opt-in: returns null when no chat deployment is
+    // configured. The orchestrator handles the null gracefully — runs
+    // still produce sprites, just without LLM-expanded variations.
+    // Constructed inside the try so a misconfigured env (e.g. unknown
+    // SPRITES_TEXT_PROVIDER) surfaces as a per-brief failure in --all
+    // batches instead of crashing the whole run before any brief reports.
+    const textProvider = createTextProvider();
     const result = await generateOne({
       briefPath,
       provider,
+      textProvider,
       repoRoot: process.cwd(),
     });
     const duration = Date.now() - start;
@@ -184,6 +219,8 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
       result.summary.candidates,
       result.summary.chosen,
       duration,
+      result.summary.diversity,
+      result.summary.variations,
     );
     const ranked = result.summary.candidates;
     const anyPassed = ranked.some((c) => c.passed);

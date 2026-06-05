@@ -1,7 +1,7 @@
 /**
  * Integration test for the generateOne orchestrator.
  *
- * Uses a mock ImageProvider that returns a synthetic 3x3 sheet built from
+ * Uses a mock ImageProvider that returns a synthetic 2x2 sheet built from
  * the same primitives the unit tests use. The whole pipeline runs:
  *   load brief -> build prompt -> mock provider -> slice -> postprocess ->
  *   score -> write artifacts -> rank.
@@ -54,6 +54,11 @@ prompt: An iron sword.
 references:
   - { path: refs/a.png }
   - { path: refs/b.png }
+generation:
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
+sensors:
+  weapon:
+    orientation: diagonal
 `.trim();
 
 /**
@@ -151,9 +156,9 @@ describe('generateOne (integration)', () => {
   const fixedClock = () => new Date('2026-06-04T12:00:00.000Z');
 
   it('runs the full pipeline end-to-end and writes ranked artifacts', async () => {
-    // 9 good sword variants -> all pass -> rank is index-order on score tie.
-    const variants = Array.from({ length: 9 }, () => buildGoodSwordFixture());
-    const sheet = tileVariantsIntoSheet(variants, 3, 3);
+    // 4 good sword variants -> all pass -> rank is index-order on score tie.
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const result = await generateOne({
       briefPath,
       preloaded,
@@ -162,7 +167,7 @@ describe('generateOne (integration)', () => {
       outputRoot,
       now: fixedClock,
     });
-    expect(result.summary.candidates).toHaveLength(9);
+    expect(result.summary.candidates).toHaveLength(4);
     expect(result.summary.candidates.every((c) => c.passed)).toBe(true);
     // Artifacts live where we expect.
     expect(existsSync(path.join(result.runDir, 'sheet-00.png'))).toBe(true);
@@ -178,19 +183,14 @@ describe('generateOne (integration)', () => {
   });
 
   it('ranks passing candidates ahead of failing ones, then by score desc', async () => {
-    // Mix: 3 good + 3 horizontal bars (fail diag axis) + 3 empty (fail bbox).
+    // Mix: 2 good + 1 horizontal bar (fails diag axis) + 1 empty (fails bbox).
     const variants = [
       buildGoodSwordFixture(),
       buildHorizontalBarFixture(),
-      buildEmptyFixture(),
       buildGoodSwordFixture(),
-      buildHorizontalBarFixture(),
-      buildEmptyFixture(),
-      buildGoodSwordFixture(),
-      buildHorizontalBarFixture(),
       buildEmptyFixture(),
     ];
-    const sheet = tileVariantsIntoSheet(variants, 3, 3);
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const result = await generateOne({
       briefPath,
       preloaded,
@@ -200,10 +200,10 @@ describe('generateOne (integration)', () => {
       now: fixedClock,
     });
     const passed = result.summary.candidates.filter((c) => c.passed);
-    expect(passed).toHaveLength(3);
+    expect(passed).toHaveLength(2);
     // All passed candidates come before any failed one in the ranking.
     const firstFailIdx = result.summary.candidates.findIndex((c) => !c.passed);
-    expect(firstFailIdx).toBe(3);
+    expect(firstFailIdx).toBe(2);
   });
 
   it('retries on a bad-grid error and ultimately succeeds within maxAttempts', async () => {
@@ -222,7 +222,7 @@ describe('generateOne (integration)', () => {
     });
     expect(callCount()).toBe(2);
     expect(result.attempts).toBe(2);
-    expect(result.summary.candidates).toHaveLength(9);
+    expect(result.summary.candidates).toHaveLength(4);
   });
 
   it('does not retry on a non-retryable error (auth)', async () => {

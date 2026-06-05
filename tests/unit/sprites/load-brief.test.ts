@@ -53,7 +53,7 @@ describe('loadBrief', () => {
     const loaded = loadBrief(briefPath, { projectRoot: root });
     expect(loaded.brief.name).toBe('iron-sword');
     expect(loaded.brief.type).toBe('weapon');
-    expect(loaded.brief.generation.sheet.rows).toBe(3);
+    expect(loaded.brief.generation.sheet.rows).toBe(4);
     expect(loaded.palette).toHaveLength(3);
     expect(loaded.palette[1]).toEqual([255, 255, 255]);
     expect(loaded.briefPath).toBe(path.resolve(briefPath));
@@ -62,7 +62,17 @@ describe('loadBrief', () => {
   it('throws a structured error when the brief fails Zod validation', () => {
     const briefPath = path.join(root, 'briefs', 'bad.yaml');
     writeFileSync(briefPath, 'type: weapon\nname: BAD_NAME\n');
-    expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/failed validation/);
+    expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(
+      /failed minimal validation|failed validation/,
+    );
+  });
+
+  it('rejects whitespace-only description at the minimal layer', () => {
+    const briefPath = path.join(root, 'briefs', 'blank.yaml');
+    writeFileSync(briefPath, 'type: weapon\nname: blank\ndescription: "   "\n');
+    expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(
+      /failed minimal validation|failed validation/,
+    );
   });
 
   it('throws when the referenced palette JSON does not exist', () => {
@@ -102,7 +112,136 @@ describe('loadBrief', () => {
     ]);
   });
 
-  describe('sprite-type defaults', () => {
+  it('merges a minimal brief on top of per-type defaults from disk', () => {
+    // Brief only supplies type/name/description. Everything else must come
+    // from data/sprite-types/<type>.json.
+    const briefPath = path.join(root, 'briefs', 'skull-mace.yaml');
+    writeFileSync(
+      briefPath,
+      [
+        'type: weapon',
+        'name: skull-mace',
+        'description: |',
+        '  A skull on a stick, vertical, bone-white head, dark wrapped haft.',
+      ].join('\n'),
+    );
+    mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'data', 'sprite-types', 'weapon.json'),
+      JSON.stringify({
+        size: { width: 16, height: 16 },
+        palette: { id: 'test-palette' },
+        anchor: { x: 8, y: 14 },
+        references: [{ path: 'public/assets/ref-a.png' }, { path: 'public/assets/ref-b.png' }],
+        sensors: { weapon: { orientation: 'vertical' } },
+      }),
+    );
+
+    const loaded = loadBrief(briefPath, {
+      projectRoot: root,
+      loadPalette: () => [
+        [0, 0, 0],
+        [255, 255, 255],
+      ],
+    });
+    expect(loaded.brief.name).toBe('skull-mace');
+    expect(loaded.brief.size).toEqual({ width: 16, height: 16 });
+    expect(loaded.brief.anchor).toEqual({ x: 8, y: 14 });
+    expect(loaded.brief.references).toHaveLength(2);
+    // description -> prompt
+    expect(loaded.brief.prompt).toContain('skull on a stick');
+    expect(loaded.brief.sensors.weapon?.orientation).toBe('vertical');
+    // 4x4 sheet is the schema default; defaults file omits generation, so
+    // the Zod default fills in.
+    expect(loaded.brief.generation.sheet.rows).toBe(4);
+    expect(loaded.brief.generation.sheet.cols).toBe(4);
+  });
+
+  it('lets a minimal brief override a per-type default', () => {
+    // Iron-sword wants diagonal orientation even though the type default is
+    // vertical.
+    const briefPath = path.join(root, 'briefs', 'iron-sword.yaml');
+    writeFileSync(
+      briefPath,
+      [
+        'type: weapon',
+        'name: iron-sword',
+        'description: An iron sword in side profile, blade up-right.',
+        'sensors:',
+        '  weapon:',
+        '    orientation: diagonal',
+      ].join('\n'),
+    );
+    const loaded = loadBrief(briefPath, {
+      projectRoot: root,
+      loadPalette: () => [
+        [0, 0, 0],
+        [255, 255, 255],
+      ],
+      loadTypeDefaults: () => ({
+        size: { width: 16, height: 16 },
+        palette: { id: 'test-palette' },
+        anchor: { x: 8, y: 14 },
+        references: [{ path: 'public/assets/ref-a.png' }, { path: 'public/assets/ref-b.png' }],
+        sensors: { weapon: { orientation: 'vertical' } },
+      }),
+    });
+    expect(loaded.brief.sensors.weapon?.orientation).toBe('diagonal');
+  });
+
+  it('treats a minimal-brief references array as a full replacement, not a concat', () => {
+    const briefPath = path.join(root, 'briefs', 'r.yaml');
+    writeFileSync(
+      briefPath,
+      [
+        'type: weapon',
+        'name: replacing',
+        'description: A brief that wants only one specific reference set.',
+        'references:',
+        '  - { path: public/assets/only-one.png }',
+        '  - { path: public/assets/only-two.png }',
+      ].join('\n'),
+    );
+    const loaded = loadBrief(briefPath, {
+      projectRoot: root,
+      loadPalette: () => [
+        [0, 0, 0],
+        [255, 255, 255],
+      ],
+      loadTypeDefaults: () => ({
+        size: { width: 16, height: 16 },
+        palette: { id: 'test-palette' },
+        anchor: { x: 8, y: 14 },
+        references: [
+          { path: 'public/assets/default-a.png' },
+          { path: 'public/assets/default-b.png' },
+          { path: 'public/assets/default-c.png' },
+        ],
+      }),
+    });
+    expect(loaded.brief.references.map((r) => r.path)).toEqual([
+      'public/assets/only-one.png',
+      'public/assets/only-two.png',
+    ]);
+  });
+
+  it('still accepts a fully-specified brief with no type defaults file', () => {
+    // Backward compat: a brief that supplies every field works even when
+    // data/sprite-types/<type>.json is absent.
+    const briefPath = path.join(root, 'briefs', 'full.yaml');
+    writeFileSync(briefPath, SAMPLE_BRIEF_YAML);
+    writeFileSync(
+      path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+      JSON.stringify([
+        [0, 0, 0],
+        [255, 255, 255],
+      ]),
+    );
+    const loaded = loadBrief(briefPath, { projectRoot: root });
+    expect(loaded.brief.name).toBe('iron-sword');
+  });
+
+  describe('sprite-type sensor defaults (PR #44)', () => {
     function setupBriefAndPalette(): string {
       const briefPath = path.join(root, 'briefs', 'iron-sword.yaml');
       writeFileSync(briefPath, SAMPLE_BRIEF_YAML);
@@ -162,13 +301,13 @@ describe('loadBrief', () => {
       expect(brief.sensors.anchor).toBeUndefined();
     });
 
-    it('lets tests inject sprite-type defaults via the loadSpriteTypeDefaults hook', () => {
+    it('lets tests inject sprite-type defaults via the loadTypeDefaults hook', () => {
       const briefPath = setupBriefAndPalette();
       const { brief } = loadBrief(briefPath, {
         projectRoot: root,
-        loadSpriteTypeDefaults: (type) => {
+        loadTypeDefaults: (type) => {
           expect(type).toBe('weapon');
-          return { sensors: { anchor: { derive: true } } };
+          return { sensors: { anchor: { derive: true } } } as never;
         },
       });
       expect(brief.sensors.anchor?.derive).toBe(true);
@@ -178,7 +317,7 @@ describe('loadBrief', () => {
       const briefPath = setupBriefAndPalette();
       mkdirSync(path.join(root, 'data', 'sprite-types'), { recursive: true });
       writeFileSync(path.join(root, 'data', 'sprite-types', 'weapon.json'), '{ not valid json');
-      expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/not valid JSON/);
+      expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/parsing sprite-type/);
     });
 
     it('does not mask a malformed brief sensors block by replacing it with defaults', () => {

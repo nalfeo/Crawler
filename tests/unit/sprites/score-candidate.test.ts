@@ -43,6 +43,11 @@ function makeBrief(overrides: Partial<Brief> = {}): Brief {
       { path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' },
       { path: 'public/assets/kenney/roguelike-rpg-pack/spritesheet.png' },
     ],
+    // The "good sword" fixture used by these tests is a diagonal silhouette;
+    // pin the brief to diagonal orientation so the default vertical-only
+    // sensor doesn't reject it. Tests that exercise other orientations
+    // override this field explicitly.
+    sensors: { weapon: { orientation: 'diagonal' } },
     ...overrides,
   });
 }
@@ -75,12 +80,12 @@ describe('scoreCandidate', () => {
     expect(fails).toContain('opaque-ratio');
   });
 
-  it('a horizontal-bar fixture fails the weapon diagonal-axis sensor', () => {
+  it('a horizontal-bar fixture fails the weapon orientation sensor', () => {
     const brief = makeBrief();
     const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
     const card = scoreCandidate(processed, brief, PALETTE);
     const fails = card.breakdown.filter((r) => !r.ok).map((r) => r.sensor);
-    expect(fails).toContain('silhouette-diagonal-axis');
+    expect(fails).toContain('silhouette-orientation-axis');
   });
 
   it('a tiny-dot fixture fails the opaque-ratio sensor (below min)', () => {
@@ -97,7 +102,7 @@ describe('scoreCandidate', () => {
     const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
     const card = scoreCandidate(processed, brief, PALETTE);
     const sensors = card.breakdown.map((r) => r.sensor);
-    expect(sensors).not.toContain('silhouette-diagonal-axis');
+    expect(sensors).not.toContain('silhouette-orientation-axis');
   });
 
   it('honors a brief override that relaxes the opaque-ratio max', () => {
@@ -117,14 +122,45 @@ describe('scoreCandidate', () => {
     // bar should fail because the cone around horizontal grows.
     const brief = makeBrief({
       sensors: {
-        weapon: { diagonalToleranceDeg: 30 },
+        weapon: { orientation: 'diagonal', diagonalToleranceDeg: 30 },
       } as Brief['sensors'],
     });
     const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
     const card = scoreCandidate(processed, brief, PALETTE);
     // The good sword's axis is near 45°, which is outside even a 30° cone
     // around horizontal/vertical, so it should still pass.
-    expect(card.breakdown.find((r) => r.sensor === 'silhouette-diagonal-axis')?.ok).toBe(true);
+    expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(true);
+  });
+
+  it('defaults the weapon orientation to vertical when the brief omits it', () => {
+    // A diagonal sword fixture should FAIL the default vertical-only check.
+    const brief = makeBrief({
+      sensors: { weapon: {} } as Brief['sensors'], // explicit empty weapon block
+    });
+    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    const orient = card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis');
+    expect(orient?.ok).toBe(false);
+  });
+
+  it('orientation "any" passes regardless of measured axis', () => {
+    const brief = makeBrief({
+      sensors: { weapon: { orientation: 'any' } } as Brief['sensors'],
+    });
+    const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    const orient = card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis');
+    expect(orient?.ok).toBe(true);
+  });
+
+  it('orientation "horizontal" passes a horizontal bar', () => {
+    const brief = makeBrief({
+      sensors: { weapon: { orientation: 'horizontal' } } as Brief['sensors'],
+    });
+    const processed = postprocess(buildHorizontalBarFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    const orient = card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis');
+    expect(orient?.ok).toBe(true);
   });
 
   it('produces a stable breakdown order for a given brief type', () => {

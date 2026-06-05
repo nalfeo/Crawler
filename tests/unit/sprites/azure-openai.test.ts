@@ -174,7 +174,9 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
     expect(form.get('prompt')).toBe('A test sheet prompt');
     expect(form.get('size')).toBe('256x256');
     expect(form.get('n')).toBe('1');
-    expect(form.get('response_format')).toBe('b64_json');
+    // gpt-image-1 always returns base64 and rejects `response_format`; we
+    // must NOT send the field. (dall-e-3 required it; gpt-image-1 errors on it.)
+    expect(form.has('response_format')).toBe(false);
     expect(form.getAll('image[]')).toHaveLength(2);
   });
 });

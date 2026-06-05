@@ -67,11 +67,22 @@ function encodePng(image: RgbaImage): Buffer {
 
 /**
  * Mark every pixel reachable from any of the 4 corners (4-connected flood fill,
- * matching the corner pixel's RGB exactly) with alpha 0. Disconnected interior
- * pixels of the same color are preserved.
+ * matching the corner pixel's RGB within `BACKGROUND_COLOR_TOLERANCE_SQ` in
+ * squared Euclidean RGB distance) with alpha 0. Disconnected interior pixels
+ * of the same color are preserved.
+ *
+ * The tolerance exists because model-generated PNGs rarely have a perfectly
+ * uniform background — gpt-image-1 returns near-white with single-channel
+ * deviations of 1-12 around the corners, which an exact-RGB flood fill misses
+ * entirely (resulting in 100%-opaque sprites). 32 channels (≈ 12%) of squared
+ * tolerance is conservative enough to leave saturated foreground intact
+ * because foreground colors are typically ≥ ~80 channels away from white,
+ * black, or magenta in any axis.
  *
  * Exported for direct unit testing.
  */
+export const BACKGROUND_COLOR_TOLERANCE_SQ = 32 * 32; // squared Euclidean RGB tolerance
+
 export function removeBackground(image: RgbaImage): RgbaImage {
   const { width, height } = image;
   const out = new Uint8Array(image.data);
@@ -126,9 +137,10 @@ function floodFill(
     const linear = y * width + x;
     if (visited[linear]) continue;
     const idx = linear * 4;
-    if ((data[idx] ?? 0) !== r) continue;
-    if ((data[idx + 1] ?? 0) !== g) continue;
-    if ((data[idx + 2] ?? 0) !== b) continue;
+    const dr = (data[idx] ?? 0) - r;
+    const dg = (data[idx + 1] ?? 0) - g;
+    const db = (data[idx + 2] ?? 0) - b;
+    if (dr * dr + dg * dg + db * db > BACKGROUND_COLOR_TOLERANCE_SQ) continue;
     visited[linear] = 1;
     data[idx + 3] = 0;
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);

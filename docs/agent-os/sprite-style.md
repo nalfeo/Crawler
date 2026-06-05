@@ -26,12 +26,12 @@ These are softer guidelines — the model should follow them, but downstream sen
 - **Outline:** one-pixel-wide dark outline on the silhouette. Pure black is fine; a near-black palette entry is preferred.
 - **Shading:** two stops inside the silhouette — a base mid-tone covering most of the shape, plus a darker shadow stop on the lower-right side. Highlights, if any, are 1-pixel pops in the upper-left. Avoid more than three stops total per material — Kenney sprites are deliberately flat.
 - **Silhouette first:** the shape should read clearly at 16×16 even with all interior detail removed. Test mentally: "if I painted the whole sprite black, would I still know what it is?"
-- **Orientation:** weapons point up-and-to-the-right (grip at lower-left, business end at upper-right) unless the brief overrides. Characters face the viewer. Items sit grounded as if on a surface.
+- **Orientation:** weapons stand **vertical** by default — held upright with the grip at the bottom and the business end at the top. This is what `data/sprite-types/weapon.json` sets, so the in-game renderer can rotate any weapon around a single known axis. Briefs that genuinely need a side-profile / diagonal shape (e.g. `iron-sword.yaml`) override with `sensors.weapon.orientation: diagonal`. Characters face the viewer. Items sit grounded as if on a surface.
 - **Anchor pixel:** every brief declares an `anchor` (typically the grip on a weapon, the feet on a character, the base on an item). That pixel must be opaque in the final 16×16 sprite — the engine uses it to attach effects, hands, etc.
 
 ## Sheet-mode layout
 
-Default sheet-mode generation asks for a **3×3 grid of 9 distinct variants** on a 1024×1024 canvas (configurable per brief). Each variant occupies one cell. Constraints for the grid:
+Default sheet-mode generation asks for a **4×4 grid of 16 distinct variants** on a 1024×1024 canvas (configurable per brief). 1024 ÷ 4 = 256, so every cell is a clean integer 256×256 — the post-processor nearest-neighbor downscales by ×16 / ×8 / ×4 to 16×16, 32×32, or 64×64 with no resampling artefacts. 16 variants per call gives the scoring loop plenty of headroom to reject low-quality candidates without paying for a second provider round-trip. Each variant occupies one cell. Constraints for the grid:
 
 - Cells are equal-sized squares, arranged left-to-right, top-to-bottom.
 - Each variant fits **fully** within its cell — no cropping, no overflow into the adjacent cell.

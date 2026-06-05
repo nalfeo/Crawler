@@ -1,0 +1,26 @@
+type: weapon
+name: skull-mace
+description: |
+  A grim one-handed mace held vertically, head at the top, haft straight
+  down. The head is a small bleached skull mounted on top of a short
+  straight haft — eye sockets and nasal cavity read as two dark dots and
+  a slit even at 16x16. Wrapped grip with a simple band or pommel at the
+  base. Bone-white skull with cool grey shadow on the underside; dark
+  brown wrapped haft; muted grey/iron pommel and band. Single thin
+  highlight along the top of the skull and one edge of the haft. No
+  glow, no flames, no blood, no chains, no enchantment. The silhouette
+  must read as "skull on a stick" at a glance and clearly not be a sword.
+# Vertical orientation, 4x4 sheet, palette, references, anchor — all
+# inherited from data/sprite-types/weapon.json. This brief only contains
+# the bits that make a skull mace specifically a skull mace.
+#
+# `variations` is the author seed list — at most a couple of strong cues
+# we want to guarantee show up in the sheet. `minVariations: 8` tells
+# the runner to top this list up to 8 via the configured text provider
+# (Azure chat completions); when no chat deployment is configured the
+# seed flows through unchanged and the run still completes.
+variations:
+  - wolf or ram skull replacing the human skull
+  - spiked iron pommel at the base of the haft
+minVariations: 8
+
