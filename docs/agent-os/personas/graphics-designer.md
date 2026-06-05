@@ -14,6 +14,7 @@
 - Produce and iterate on sprites, tiles, VFX, and animation passes with readability checks in motion.
 - Validate contrast, silhouette, and hierarchy against representative combat scenarios.
 - Collaborate with UX and gameplay stakeholders on threat visibility and reward signaling.
+- Use the sprite generation pipeline at `scripts/sprites/` (Zod brief schema, palette extractor, deterministic post-processor) and its sensor suite at `tests/sensors/` to ship pixel-art sprites that satisfy hard invariants (palette membership, alpha-binary, opaque ratio, anchor, silhouette axis). See ADR `docs/knowledge/adr/0003-sprite-generation-pipeline.md` and palette data under `data/palettes/`. Future phases will add `scripts/sprites/generate.ts`, `judge.ts`, and a `sprite-forge-lab`.
 
 ## Quality Criteria
 - Visual hierarchy is maintained, with player elements bright and enemies darker by default.

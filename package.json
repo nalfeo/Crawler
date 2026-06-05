@@ -9,10 +9,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/ tests/ --max-warnings 0",
-    "lint:fix": "eslint src/ tests/ --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "lint": "eslint src/ tests/ scripts/ --max-warnings 0",
+    "lint:fix": "eslint src/ tests/ scripts/ --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\"",
     "lint:dead-code": "knip",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -20,6 +20,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "lab": "vite --mode lab",
+    "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
     "verify": "bash scripts/agent/verify.sh"
   },
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
+    "@types/pngjs": "^6.0.5",
     "@vitejs/plugin-legacy": "^8.0.2",
     "@vitest/coverage-v8": "^4.1.8",
     "eslint": "^10.4.1",
@@ -45,10 +47,13 @@
     "globals": "^17.6.0",
     "knip": "^6.15.0",
     "lil-gui": "^0.21.0",
+    "pngjs": "^7.0.0",
     "prettier": "^3.8.3",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.60.1",
     "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "zod": "^4.4.3"
   }
 }
