@@ -137,9 +137,7 @@ describe('AzureOpenAIChatProvider.expandVariations', () => {
     const stubFetch: typeof fetch = async () =>
       jsonResponse(
         200,
-        chatCompletion(
-          JSON.stringify({ variations: ['  alpha ', 'ALPHA', '', '   ', 'beta'] }),
-        ),
+        chatCompletion(JSON.stringify({ variations: ['  alpha ', 'ALPHA', '', '   ', 'beta'] })),
       );
     const provider = new AzureOpenAIChatProvider({ ...baseOptions, fetch: stubFetch });
 

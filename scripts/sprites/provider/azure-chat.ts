@@ -25,11 +25,7 @@
  * drifts that text models inevitably exhibit.
  */
 
-import type {
-  ExpandVariationsRequest,
-  TextProvider,
-  TextProviderErrorKind,
-} from './text-types.js';
+import type { ExpandVariationsRequest, TextProvider, TextProviderErrorKind } from './text-types.js';
 import { TextProviderError } from './text-types.js';
 
 export interface AzureOpenAIChatProviderOptions {
@@ -155,7 +151,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
 
 const SYSTEM_PROMPT = [
   'You design visual variations for 16x16 pixel-art sprites in the Kenney roguelike palette.',
-  'Each variation is a discrete, on-theme embellishment that keeps the subject\'s identity intact.',
+  "Each variation is a discrete, on-theme embellishment that keeps the subject's identity intact.",
   'Variations must be visually distinct from each other, free of fine detail that cannot render at 16x16, and described concisely (4-12 words).',
   'Output STRICT JSON only: an object with a single key "variations" whose value is an array of strings. No prose, no markdown.',
 ].join(' ');
@@ -172,11 +168,17 @@ function buildUserPrompt(request: ExpandVariationsRequest): string {
     for (const v of existing) lines.push(`- ${v}`);
   }
   lines.push('');
-  lines.push(`Propose exactly ${count} additional on-theme embellishment(s) following these rules:`);
+  lines.push(
+    `Propose exactly ${count} additional on-theme embellishment(s) following these rules:`,
+  );
   lines.push(`- Keep the subject's silhouette family and role unchanged.`);
   lines.push(`- Each entry stands alone — do not combine multiple ideas with "and".`);
-  lines.push(`- Stay renderable at 16x16: avoid fine text, complex gradients, tiny secondary objects.`);
-  lines.push(`- Be evocative, not prescriptive (e.g. "wolf skull replacing the human skull" not "use color #abc").`);
+  lines.push(
+    `- Stay renderable at 16x16: avoid fine text, complex gradients, tiny secondary objects.`,
+  );
+  lines.push(
+    `- Be evocative, not prescriptive (e.g. "wolf skull replacing the human skull" not "use color #abc").`,
+  );
   lines.push('');
   lines.push(`Return JSON: {"variations": ["...", "..."]}`);
   return lines.join('\n');

@@ -57,11 +57,7 @@ export interface ExpandVariationsResult {
   readonly skippedReason: ExpansionSkipReason | null;
 }
 
-export type ExpansionSkipReason =
-  | 'disabled'
-  | 'sufficient'
-  | 'no-provider'
-  | 'provider-failed';
+export type ExpansionSkipReason = 'disabled' | 'sufficient' | 'no-provider' | 'provider-failed';
 
 export async function expandVariations(
   options: ExpandVariationsOptions,

@@ -37,7 +37,9 @@ function makeBrief(overrides: Partial<Brief> = {}): Brief {
   });
 }
 
-function stub(impl: (req: ExpandVariationsRequest) => Promise<ReadonlyArray<string>>): TextProvider {
+function stub(
+  impl: (req: ExpandVariationsRequest) => Promise<ReadonlyArray<string>>,
+): TextProvider {
   return { expandVariations: vi.fn(impl) };
 }
 
