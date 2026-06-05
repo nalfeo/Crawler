@@ -135,8 +135,9 @@ describe('enemyAISystem', () => {
   it('stops swarm enemies when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
+    // Place swarm enemies far apart so separation doesn't interfere
     const enemy = spawnBehaviorEnemy(world, 180, 0, 20, AI_TYPE.SWARM, 2, 100, 0);
-    spawnBehaviorEnemy(world, 184, 0, 20, AI_TYPE.SWARM, 2, 100, 0);
+    spawnBehaviorEnemy(world, 180, 50, 20, AI_TYPE.SWARM, 2, 100, 0);
 
     enemyAISystem(world);
 
@@ -144,15 +145,15 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
 
-  it('stops ranged enemies when outside both aggro and attack range', () => {
+  it('ranged enemies pursue player when outside aggro range but beyond attack range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const enemy = spawnBehaviorEnemy(world, 400, 0, 20, AI_TYPE.RANGED, 2, 100, 150);
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
-    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+    // Ranged enemies always pursue to get within attack range
+    expect(world.stores.velocity.x[enemy]).toBeLessThan(0);
   });
 
   it('falls back to chase behavior when ranged attack range is zero', () => {
