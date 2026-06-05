@@ -5,10 +5,10 @@ echo "🔍 Step 1/7: Type checking..."
 npx tsc --noEmit
 
 echo "🔍 Step 2/7: Linting..."
-npx eslint src/ tests/ --max-warnings 0
+npx eslint src/ tests/ scripts/ --max-warnings 0
 
 echo "🔍 Step 3/7: Format checking..."
-npx prettier --check "src/**/*.ts" "tests/**/*.ts"
+npx prettier --check "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"
 
 echo "🔍 Step 4/7: Dead code detection..."
 npx knip || echo "⚠️  Knip found unused exports (non-blocking for now)"
