@@ -230,15 +230,30 @@ function applySeparation(
       const dy = ay - by;
       const dist = Math.hypot(dx, dy);
 
-      if (dist >= minDistance || dist <= EPSILON) {
+      if (dist >= minDistance) {
         continue;
       }
 
-      // Penetration depth as fraction of overlap beyond allowed threshold
-      const penetration = (minDistance - dist) / minDistance;
+      // Deterministic fallback when centers coincide to avoid division-by-zero
+      let nx: number;
+      let ny: number;
+      let penetration: number;
+
+      if (dist <= EPSILON) {
+        // Use entity indices for a stable, deterministic push direction
+        nx = i % 2 === 0 ? 1 : -1;
+        ny = j % 2 === 0 ? 1 : -1;
+        const len = Math.hypot(nx, ny);
+        nx /= len;
+        ny /= len;
+        penetration = 1; // full overlap
+      } else {
+        penetration = (minDistance - dist) / minDistance;
+        nx = dx / dist;
+        ny = dy / dist;
+      }
+
       const force = penetration * SEPARATION_FORCE;
-      const nx = dx / dist;
-      const ny = dy / dist;
 
       // Push each entity in opposite directions
       velocity.x[a] = (velocity.x[a] ?? 0) + nx * force;
