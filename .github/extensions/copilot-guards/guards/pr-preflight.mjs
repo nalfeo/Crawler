@@ -55,8 +55,38 @@ function isLayerHit(files, re) {
     return files.some((f) => re.test(f));
 }
 
+function extractTitle(args) {
+    if (!args) return "";
+    if (typeof args === "string") {
+        const trimmed = args.trim();
+        if (!trimmed) return "";
+        try {
+            return extractTitle(JSON.parse(trimmed));
+        } catch {
+            return "";
+        }
+    }
+    if (typeof args !== "object") return "";
+    const obj = args;
+    const candidates = [
+        obj.title,
+        obj.pr_title,
+        obj.pull_request_title,
+        obj?.input?.title,
+        obj?.parameters?.title,
+        obj?.arguments?.title,
+        obj?.request?.title,
+    ];
+    for (const candidate of candidates) {
+        if (typeof candidate === "string" && candidate.trim()) {
+            return candidate.trim();
+        }
+    }
+    return "";
+}
+
 function checkSemanticTitle(args) {
-    const title = String(args?.title || "").trim();
+    const title = extractTitle(args);
     if (!title) {
         return "PR title is empty. Use a conventional-commit-style title: `<type>(scope?): <subject>` where type is one of feat|fix|chore|lab|docs|refactor|test|perf|ci|build.";
     }
@@ -92,10 +122,11 @@ function checkForbiddenPaths(files) {
 function checkLabGate(files, cwd) {
     const shouldRun = files.some((f) => LAB_GATE_TRIGGER_RE.test(f));
     if (!shouldRun) return null;
-    const script = join(cwd, "scripts", "agent", "lab-gate-check.sh");
-    if (!existsSync(script)) return null;
+    const scriptRel = "scripts/agent/lab-gate-check.sh";
+    const scriptAbs = join(cwd, "scripts", "agent", "lab-gate-check.sh");
+    if (!existsSync(scriptAbs)) return null;
     try {
-        execFileSync("bash", [script], {
+        execFileSync("bash", [scriptRel], {
             cwd,
             encoding: "utf-8",
             stdio: ["ignore", "pipe", "pipe"],
