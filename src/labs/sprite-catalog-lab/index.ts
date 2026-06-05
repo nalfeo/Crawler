@@ -1,6 +1,12 @@
 import type GUI from 'lil-gui';
 import catalogJson from '../../shared/data/sprite-catalog.json';
-import { parseSpriteCatalog, type SpriteCatalogRecord } from '../../shared/sprite-catalog.js';
+import {
+  ensureSentence,
+  parseSpriteCatalog,
+  type SpriteCatalogEntry,
+  type SpriteCatalogRecord,
+  type SpriteSheetCatalogEntry,
+} from '../../shared/sprite-catalog.js';
 import { getRepoWriteCapability, saveTuning } from '../lab-tuning.js';
 import { registerLab } from '../registry.js';
 
@@ -9,6 +15,7 @@ type AiProviderMode = 'auto' | 'heuristic' | 'openai';
 
 const LAB_ID = 'sprite-catalog';
 const CATALOG_FILE = 'sprite-catalog.json';
+const PREVIEW_SCALE = 6;
 
 interface AiRunResult {
   ok: boolean;
@@ -17,6 +24,12 @@ interface AiRunResult {
   rejectedCount?: number;
   entry?: unknown;
   error?: string;
+}
+
+interface SheetImageCache {
+  image: HTMLImageElement;
+  loaded: boolean;
+  error: boolean;
 }
 
 function createBadge(text: string): HTMLSpanElement {
@@ -38,6 +51,46 @@ function splitCommaValue(value: string): string[] {
     .filter((item) => item !== '');
 }
 
+function loadSheetImage(path: string): SheetImageCache {
+  const entry: SheetImageCache = { image: new Image(), loaded: false, error: false };
+  entry.image.addEventListener('load', () => {
+    entry.loaded = true;
+  });
+  entry.image.addEventListener('error', () => {
+    entry.error = true;
+  });
+  entry.image.src = path;
+  return entry;
+}
+
+/**
+ * Draw a single sprite frame onto a canvas, clipping from the sheet image.
+ */
+function drawSpriteFrame(
+  canvas: HTMLCanvasElement,
+  image: HTMLImageElement,
+  col: number,
+  row: number,
+  frameWidth: number,
+  frameHeight: number,
+  margin: number,
+  spacing: number,
+  scale: number,
+): void {
+  canvas.width = frameWidth * scale;
+  canvas.height = frameHeight * scale;
+  canvas.style.width = `${frameWidth * scale}px`;
+  canvas.style.height = `${frameHeight * scale}px`;
+  canvas.style.imageRendering = 'pixelated';
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const sx = margin + col * (frameWidth + spacing);
+  const sy = margin + row * (frameHeight + spacing);
+  ctx.drawImage(image, sx, sy, frameWidth, frameHeight, 0, 0, canvas.width, canvas.height);
+}
+
 function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
   if (!gui) {
@@ -47,6 +100,24 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   const entries = parseSpriteCatalog(catalogJson).map((entry) => ({ ...entry }));
   let selectedId = entries[0]?.id;
   let aiProvider: AiProviderMode = 'auto';
+
+  // Sheet image cache
+  const sheetImages = new Map<string, SheetImageCache>();
+  function getSheetImage(path: string): SheetImageCache {
+    let cached = sheetImages.get(path);
+    if (!cached) {
+      cached = loadSheetImage(path);
+      sheetImages.set(path, cached);
+    }
+    return cached;
+  }
+
+  // Helper to find the sheet entry for a sprite
+  function getSheetForSprite(sprite: SpriteCatalogEntry): SpriteSheetCatalogEntry | undefined {
+    return entries.find((e) => e.kind === 'sheet' && e.sheetKey === sprite.sheetKey) as
+      | SpriteSheetCatalogEntry
+      | undefined;
+  }
 
   const root = document.createElement('div');
   root.style.display = 'grid';
@@ -218,6 +289,298 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     return labeledInput(label, pre);
   }
 
+  /**
+   * Create a sprite preview canvas for the detail panel.
+   * Shows the actual sprite image from the sheet.
+   */
+  function createSpritePreview(
+    sprite: SpriteCatalogEntry,
+    sheet: SpriteSheetCatalogEntry,
+  ): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '16px';
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.alignItems = 'flex-start';
+    wrap.style.gap = '8px';
+
+    const previewLabel = document.createElement('label');
+    previewLabel.textContent = 'Sprite Preview';
+    previewLabel.style.fontSize = '12px';
+    previewLabel.style.color = '#cbd5f5';
+    previewLabel.style.fontWeight = '600';
+
+    const canvas = document.createElement('canvas');
+    canvas.style.background =
+      'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
+    canvas.style.borderRadius = '8px';
+    canvas.style.border = '1px solid rgba(255,255,255,0.15)';
+
+    const sheetImg = getSheetImage(sheet.path);
+
+    const drawPreview = (): void => {
+      drawSpriteFrame(
+        canvas,
+        sheetImg.image,
+        sprite.col,
+        sprite.row,
+        sheet.frameWidth,
+        sheet.frameHeight,
+        sheet.margin,
+        sheet.spacing,
+        PREVIEW_SCALE,
+      );
+    };
+
+    if (sheetImg.loaded) {
+      drawPreview();
+    } else if (!sheetImg.error) {
+      sheetImg.image.addEventListener('load', drawPreview, { once: true });
+    }
+
+    wrap.append(previewLabel, canvas);
+    return wrap;
+  }
+
+  /**
+   * Create a sheet overview preview — renders a small version of the full sheet.
+   */
+  function createSheetOverview(sheet: SpriteSheetCatalogEntry): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '16px';
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.alignItems = 'flex-start';
+    wrap.style.gap = '8px';
+
+    const previewLabel = document.createElement('label');
+    previewLabel.textContent = 'Sheet Preview';
+    previewLabel.style.fontSize = '12px';
+    previewLabel.style.color = '#cbd5f5';
+    previewLabel.style.fontWeight = '600';
+
+    const img = document.createElement('img');
+    img.src = sheet.path;
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '200px';
+    img.style.imageRendering = 'pixelated';
+    img.style.borderRadius = '8px';
+    img.style.border = '1px solid rgba(255,255,255,0.15)';
+    img.style.background = 'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
+
+    wrap.append(previewLabel, img);
+    return wrap;
+  }
+
+  /**
+   * Create the sheet parser grid — shows all frames and lets users select and
+   * add them to the catalog.
+   */
+  function createSheetParser(sheet: SpriteSheetCatalogEntry): HTMLDivElement {
+    const container = document.createElement('div');
+    container.style.marginTop = '16px';
+    container.style.borderTop = '1px solid rgba(255,255,255,0.1)';
+    container.style.paddingTop = '16px';
+
+    const heading = document.createElement('h3');
+    heading.textContent = 'Parse Sheet → Catalog';
+    heading.style.margin = '0 0 8px 0';
+    heading.style.fontSize = '15px';
+
+    const desc = document.createElement('p');
+    desc.textContent =
+      'Click frames to select them, then add to catalog. Already-cataloged frames are highlighted.';
+    desc.style.fontSize = '12px';
+    desc.style.color = '#94a3b8';
+    desc.style.marginBottom = '12px';
+
+    const parserStatus = document.createElement('p');
+    parserStatus.style.fontSize = '12px';
+    parserStatus.style.color = '#7ee0ff';
+    parserStatus.style.minHeight = '18px';
+
+    const selectedFrames = new Set<number>();
+
+    // Find which frames are already in the catalog for this sheet
+    const catalogedFrames = new Set(
+      entries
+        .filter((e) => e.kind === 'sprite' && e.sheetKey === sheet.sheetKey)
+        .map((e) => (e as SpriteCatalogEntry).frame),
+    );
+
+    const grid = document.createElement('div');
+    grid.style.display = 'grid';
+    grid.style.gap = '4px';
+    grid.style.maxHeight = '400px';
+    grid.style.overflow = 'auto';
+    grid.style.padding = '8px';
+    grid.style.borderRadius = '8px';
+    grid.style.background = 'rgba(15, 23, 42, 0.6)';
+    grid.style.border = '1px solid rgba(255,255,255,0.08)';
+
+    const sheetImg = getSheetImage(sheet.path);
+
+    const cellSize = 3;
+    const cellPx = sheet.frameWidth * cellSize;
+    grid.style.gridTemplateColumns = `repeat(auto-fill, minmax(${cellPx + 8}px, max-content))`;
+
+    const buildGrid = (): void => {
+      const totalRows = Math.floor(
+        (sheetImg.image.naturalHeight - sheet.margin * 2 + sheet.spacing) /
+          (sheet.frameHeight + sheet.spacing),
+      );
+      const totalFrames = sheet.cols * totalRows;
+
+      for (let frame = 0; frame < totalFrames; frame++) {
+        const col = frame % sheet.cols;
+        const row = Math.floor(frame / sheet.cols);
+        const isCataloged = catalogedFrames.has(frame);
+
+        const cell = document.createElement('div');
+        cell.style.display = 'flex';
+        cell.style.flexDirection = 'column';
+        cell.style.alignItems = 'center';
+        cell.style.gap = '2px';
+        cell.style.cursor = 'pointer';
+        cell.style.padding = '3px';
+        cell.style.borderRadius = '4px';
+        cell.style.border = isCataloged
+          ? '2px solid rgba(52, 211, 153, 0.6)'
+          : '1px solid rgba(255,255,255,0.08)';
+        cell.title = isCataloged
+          ? `Frame ${frame} (already in catalog)`
+          : `Frame ${frame} (col ${col}, row ${row}) — click to select`;
+
+        const canvas = document.createElement('canvas');
+        drawSpriteFrame(
+          canvas,
+          sheetImg.image,
+          col,
+          row,
+          sheet.frameWidth,
+          sheet.frameHeight,
+          sheet.margin,
+          sheet.spacing,
+          cellSize,
+        );
+
+        const label = document.createElement('span');
+        label.textContent = String(frame);
+        label.style.fontSize = '9px';
+        label.style.color = isCataloged ? '#34d399' : '#64748b';
+
+        cell.append(canvas, label);
+
+        cell.addEventListener('click', () => {
+          if (isCataloged) return;
+          if (selectedFrames.has(frame)) {
+            selectedFrames.delete(frame);
+            cell.style.background = '';
+            cell.style.border = '1px solid rgba(255,255,255,0.08)';
+          } else {
+            selectedFrames.add(frame);
+            cell.style.background = 'rgba(126, 224, 255, 0.2)';
+            cell.style.border = '2px solid rgba(126, 224, 255, 0.6)';
+          }
+          parserStatus.textContent = `${selectedFrames.size} frame${selectedFrames.size === 1 ? '' : 's'} selected.`;
+        });
+
+        grid.append(cell);
+      }
+    };
+
+    if (sheetImg.loaded) {
+      buildGrid();
+    } else if (!sheetImg.error) {
+      sheetImg.image.addEventListener('load', buildGrid, { once: true });
+    }
+
+    // Add to catalog button
+    const addButton = document.createElement('button');
+    addButton.type = 'button';
+    addButton.textContent = writeCapability.enabled
+      ? 'Add selected to catalog'
+      : `Read-only (${writeCapability.reason})`;
+    addButton.disabled = !writeCapability.enabled;
+    addButton.style.marginTop = '12px';
+    addButton.style.padding = '10px 16px';
+    addButton.style.borderRadius = '8px';
+    addButton.style.border = '1px solid rgba(126,224,255,0.45)';
+    addButton.style.background = writeCapability.enabled
+      ? 'rgba(126, 224, 255, 0.2)'
+      : 'rgba(148,163,184,0.18)';
+    addButton.style.color = '#e2e8f0';
+    addButton.style.cursor = writeCapability.enabled ? 'pointer' : 'not-allowed';
+
+    addButton.addEventListener('click', async () => {
+      if (!writeCapability.enabled || selectedFrames.size === 0) {
+        parserStatus.textContent = 'No frames selected.';
+        return;
+      }
+
+      const newEntries: SpriteCatalogEntry[] = [];
+      for (const frame of selectedFrames) {
+        const col = frame % sheet.cols;
+        const row = Math.floor(frame / sheet.cols);
+        const spriteId = `${sheet.sheetKey}.frame.${frame}`;
+        newEntries.push({
+          id: `sprite:${spriteId}`,
+          kind: 'sprite',
+          label: spriteId,
+          description: ensureSentence(
+            `Sprite from ${sheet.sheetKey} at frame ${frame} (col ${col}, row ${row})`,
+          ),
+          tags: ['generated', sheet.sheetKey],
+          spriteId,
+          sheetKey: sheet.sheetKey,
+          frame,
+          col,
+          row,
+        });
+      }
+
+      parserStatus.textContent = `Adding ${newEntries.length} sprites to catalog...`;
+      try {
+        const response = await fetch('/__sprite-catalog-add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ entries: newEntries }),
+        });
+        const result = (await response.json()) as {
+          ok?: boolean;
+          added?: number;
+          skipped?: number;
+          addedIds?: string[];
+          error?: string;
+        };
+        if (!response.ok || !result.ok) {
+          parserStatus.textContent = `Failed: ${result.error ?? `HTTP ${response.status}`}`;
+          return;
+        }
+        parserStatus.textContent = `Added ${result.added} sprite${result.added === 1 ? '' : 's'}, skipped ${result.skipped}.`;
+
+        // Only update local state with entries the server actually persisted
+        const addedSet = new Set(result.addedIds ?? []);
+        for (const entry of newEntries) {
+          if (addedSet.has(entry.id) && !entries.find((e) => e.id === entry.id)) {
+            entries.push(entry);
+          }
+        }
+        entries.sort((a, b) => {
+          const kindCmp = (a.kind === 'sheet' ? 0 : 1) - (b.kind === 'sheet' ? 0 : 1);
+          if (kindCmp !== 0) return kindCmp;
+          return a.id.localeCompare(b.id);
+        });
+        renderList();
+      } catch (err) {
+        parserStatus.textContent = `Error: ${err instanceof Error ? err.message : 'unknown'}`;
+      }
+    });
+
+    container.append(heading, desc, parserStatus, grid, addButton);
+    return container;
+  }
+
   async function saveEntry(
     entry: SpriteCatalogRecord,
     description: string,
@@ -357,6 +720,16 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     kindLine.append(createBadge(selected.kind), createBadge(selected.sheetKey));
     detailPanel.append(kindLine);
 
+    // Sprite preview image
+    if (selected.kind === 'sprite') {
+      const sheet = getSheetForSprite(selected);
+      if (sheet) {
+        detailPanel.append(createSpritePreview(selected, sheet));
+      }
+    } else {
+      detailPanel.append(createSheetOverview(selected));
+    }
+
     const descriptionInput = document.createElement('input');
     descriptionInput.value = selected.description;
     descriptionInput.style.padding = '10px';
@@ -454,6 +827,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
       return;
     }
 
+    // Sheet entry
     detailPanel.append(
       readOnlyField(
         'Generated sheet data',
@@ -501,6 +875,9 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
       await runAiForEntry(selected);
     });
     detailPanel.append(aiButton);
+
+    // Sheet parser section
+    detailPanel.append(createSheetParser(selected));
   }
 
   filterInput.addEventListener('input', () => {
@@ -519,6 +896,6 @@ registerLab(LAB_ID, {
   category: 'Meta',
   name: 'Sprite Catalog',
   description:
-    'Edit one-sentence sprite/sheet metadata, tile connectivity, and animation clip references with local-only repo write-back.',
+    'Browse sprites with live image preview, parse sheets into individual catalog entries, and edit metadata with local write-back.',
   create: createSpriteCatalogLab,
 });
