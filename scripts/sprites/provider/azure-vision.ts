@@ -58,14 +58,14 @@ interface ChatResponse {
 
 export class AzureOpenAIVisionProvider implements VisionProvider {
   private readonly endpoint: string;
-  private readonly deployment: string;
+  readonly modelDeployment: string;
   private readonly apiKey: string;
   private readonly apiVersion: string;
   private readonly fetchImpl: typeof fetch;
 
   constructor(opts: AzureOpenAIVisionProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
-    this.deployment = opts.deployment;
+    this.modelDeployment = opts.deployment;
     this.apiKey = opts.apiKey;
     this.apiVersion = opts.apiVersion;
     this.fetchImpl = opts.fetch ?? fetch;
@@ -73,7 +73,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
 
   async evaluate(request: EvaluateRequest): Promise<EvaluateResponse> {
     const url = `${this.endpoint}/openai/deployments/${encodeURIComponent(
-      this.deployment,
+      this.modelDeployment,
     )}/chat/completions?api-version=${encodeURIComponent(this.apiVersion)}`;
 
     const userContent: Array<unknown> = [{ type: 'text', text: request.userPrompt }];
@@ -157,7 +157,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
     return {
       json,
       usage: extractUsage(payload),
-      modelDeployment: this.deployment,
+      modelDeployment: this.modelDeployment,
     };
   }
 }

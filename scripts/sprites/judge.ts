@@ -34,7 +34,20 @@ import { writeFileSync } from 'node:fs';
 import { PNG } from 'pngjs';
 import { z } from 'zod';
 import type { Brief } from './brief-schema.js';
+import { JudgeCache } from './judge-cache.js';
 import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js';
+
+/**
+ * Version of the system prompt + user prompt structure built below.
+ * Bump whenever ANY of these change:
+ *   - the evaluator definitions or scoring rubric,
+ *   - the image labelling or attachment order,
+ *   - the response schema.
+ *
+ * The judge cache mixes this into its hash key so a prompt change
+ * automatically invalidates old verdicts without manual cache clears.
+ */
+export const PROMPT_TEMPLATE_VERSION = 'v1';
 
 export const EVALUATORS = ['style_match', 'brief_match', 'readability'] as const;
 export type Evaluator = (typeof EVALUATORS)[number];
@@ -101,6 +114,21 @@ export interface JudgeVariantOptions {
    * mutating the real environment.
    */
   readonly env?: Readonly<Record<string, string | undefined>>;
+  /**
+   * Optional cache. When supplied, the judge computes a hash of
+   * `(modelDeployment, prompt template version, variant bytes,
+   * reference bytes, brief.prompt)` and short-circuits the provider
+   * call on a hit. Misses store the resulting scorecard for next
+   * time. Pass `null`/omit to disable caching for this call.
+   */
+  readonly cache?: JudgeCache | null;
+  /**
+   * Variant PNG file path used as `meta.variantPath` when populating
+   * the cache. Only used as a human-readable breadcrumb in the
+   * sidecar `meta.json`; no functional impact. Defaults to a synthetic
+   * path derived from `variantIndex`.
+   */
+  readonly variantPath?: string;
 }
 
 /** Zod schema for the model's structured response. Single source of truth. */
@@ -157,6 +185,36 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
   }
 
   const now = options.now ?? (() => new Date());
+
+  // Cache lookup runs BEFORE building previews / images — a hit
+  // avoids both the provider call AND the (cheap-but-not-free) PNG
+  // composition work. The orchestrator only calls judgeVariant when
+  // `brief.judge.enabled === true`, so the cache will never be
+  // queried for a judge-disabled brief.
+  const cacheKey = options.cache
+    ? options.cache.computeKey({
+        modelDeployment: options.provider.modelDeployment,
+        promptTemplateVersion: PROMPT_TEMPLATE_VERSION,
+        variantPng: options.processed,
+        referencePngs: options.referencePngs,
+        briefMatchInstructions: options.brief.prompt,
+      })
+    : null;
+  if (options.cache && cacheKey) {
+    const hit = options.cache.get(cacheKey);
+    if (hit) {
+      // Re-stamp variantIndex so the cached card looks correct for THIS
+      // run — same model verdict, but slot in the right index for the
+      // sidecar/summary. Everything else (scores, rationales, usage,
+      // model) is replayed verbatim from cache.
+      const replayed: JudgeScorecard = { ...hit, variantIndex: options.variantIndex };
+      if (options.processedDir) {
+        writeSidecar(options.processedDir, options.variantIndex, replayed);
+      }
+      return replayed;
+    }
+  }
+
   const candidatePreview = upscaleNearestNeighbor(options.processed, 8);
   const readabilityComposite = composeReadabilityPreview(options.processed);
 
@@ -199,14 +257,22 @@ export async function judgeVariant(options: JudgeVariantOptions): Promise<JudgeS
   });
 
   if (options.processedDir) {
-    const file = path.join(
-      options.processedDir,
-      `${String(options.variantIndex).padStart(2, '0')}.judge.json`,
-    );
-    writeFileSync(file, `${JSON.stringify(scorecard, null, 2)}\n`);
+    writeSidecar(options.processedDir, options.variantIndex, scorecard);
+  }
+
+  if (options.cache && cacheKey) {
+    options.cache.put(cacheKey, scorecard, {
+      variantPath: options.variantPath ?? `<variant-${options.variantIndex}>`,
+      briefId: options.brief.name,
+    });
   }
 
   return scorecard;
+}
+
+function writeSidecar(processedDir: string, variantIndex: number, card: JudgeScorecard): void {
+  const file = path.join(processedDir, `${String(variantIndex).padStart(2, '0')}.judge.json`);
+  writeFileSync(file, `${JSON.stringify(card, null, 2)}\n`);
 }
 
 function buildScorecard(args: {
