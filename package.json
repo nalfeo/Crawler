@@ -21,6 +21,7 @@
     "test:e2e": "vitest run --project e2e",
     "lab": "vite --mode lab",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
+    "sprites:run": "tsx scripts/sprites/cli.ts",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
     "verify": "bash scripts/agent/verify.sh"
   },
