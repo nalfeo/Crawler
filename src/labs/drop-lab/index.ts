@@ -124,9 +124,7 @@ function createDropsLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     }
 
     for (const evt of deathEvents) {
-      lines.push(
-        `  Death @ (${evt.x.toFixed(0)}, ${evt.y.toFixed(0)}) overkill=${evt.overkill}`,
-      );
+      lines.push(`  Death @ (${evt.x.toFixed(0)}, ${evt.y.toFixed(0)}) overkill=${evt.overkill}`);
     }
 
     output.textContent = lines.join('\n');

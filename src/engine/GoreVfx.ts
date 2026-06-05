@@ -69,8 +69,7 @@ export function createGoreVfx(
     for (let i = 0; i < scaledCount; i++) {
       const angle = Math.atan2(dirY, dirX) + (vfxRandom() - 0.5) * spread;
       const speed = PARTICLE_SPEED * (0.5 + vfxRandom() * 0.8);
-      const size =
-        PARTICLE_SIZE_MIN + vfxRandom() * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
+      const size = PARTICLE_SIZE_MIN + vfxRandom() * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
       const color = BLOOD_COLORS[Math.floor(vfxRandom() * BLOOD_COLORS.length)]!;
 
       const rect = scene.add.rectangle(x, y, size, size, color);

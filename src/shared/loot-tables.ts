@@ -82,9 +82,7 @@ export function rollLootTable(entries: readonly LootEntry[], rng: SeededRandom):
  * Merge entries from multiple loot table layers into a single entry list.
  * All provided tables contribute entries; `undefined` layers are skipped.
  */
-export function resolveLootTables(
-  ...tables: (LootTable | undefined)[]
-): LootEntry[] {
+export function resolveLootTables(...tables: (LootTable | undefined)[]): LootEntry[] {
   const merged: LootEntry[] = [];
   for (const table of tables) {
     if (table) merged.push(...table.entries);
@@ -137,9 +135,7 @@ export const LOOT_TABLES = {
   // Floor-level tables
   FLOOR_1: {
     id: 'floor_1',
-    entries: [
-      { type: 'item' as const, itemId: 'pebble', value: 1, chance: 0.02, min: 1, max: 1 },
-    ],
+    entries: [{ type: 'item' as const, itemId: 'pebble', value: 1, chance: 0.02, min: 1, max: 1 }],
   } satisfies LootTable,
 } as const;
 
