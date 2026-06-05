@@ -1,7 +1,7 @@
-import { query, removeEntity, setComponent } from 'bitecs';
+import { hasComponent, query, removeEntity, setComponent } from 'bitecs';
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
-import { Enemy, EnemyBehavior, Health } from '../../core/components.js';
+import { Enemy, EnemyBehavior, Health, Player, Position, Sprite } from '../../core/components.js';
 import {
   clearEntityStores,
   collisionSystem,
@@ -39,6 +39,7 @@ const MAX_STEPS_PER_FRAME = 4;
 const PLAYER_HEALTH = 1_000;
 const SWARM_RADIUS = 56;
 const LAB_ID = 'enemy-ai-lab';
+const COLLISION_EPSILON = 0.0001;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -202,6 +203,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         enemyAISystem(this.world);
         movementSystem(this.world);
         const collisions = collisionSystem(this.world);
+        this.resolveEnemyCollisions(collisions.pairs);
         damageSystem(this.world, collisions);
         healthSystem(this.world);
         projectileCleanupSystem(this.world);
@@ -216,6 +218,77 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
       this.bridge.sync(this.world);
       this.updateInfo();
+    }
+
+    private resolveEnemyCollisions(pairs: Array<{ a: number; b: number }>): void {
+      const { position, sprite } = this.world.stores;
+
+      for (const pair of pairs) {
+        const { a, b } = pair;
+        const aIsEnemy = hasComponent(this.world.ecs, a, Enemy);
+        const bIsEnemy = hasComponent(this.world.ecs, b, Enemy);
+        const aIsPlayer = hasComponent(this.world.ecs, a, Player);
+        const bIsPlayer = hasComponent(this.world.ecs, b, Player);
+        const isEnemyVsEnemy = aIsEnemy && bIsEnemy;
+        const isEnemyVsPlayer = (aIsEnemy && bIsPlayer) || (bIsEnemy && aIsPlayer);
+
+        if (!isEnemyVsEnemy && !isEnemyVsPlayer) {
+          continue;
+        }
+
+        if (
+          !hasComponent(this.world.ecs, a, Position) ||
+          !hasComponent(this.world.ecs, b, Position) ||
+          !hasComponent(this.world.ecs, a, Sprite) ||
+          !hasComponent(this.world.ecs, b, Sprite)
+        ) {
+          continue;
+        }
+
+        const ax = position.x[a] ?? 0;
+        const ay = position.y[a] ?? 0;
+        const bx = position.x[b] ?? 0;
+        const by = position.y[b] ?? 0;
+        const halfWidthA = (sprite.width[a] ?? 0) * 0.5;
+        const halfHeightA = (sprite.height[a] ?? 0) * 0.5;
+        const halfWidthB = (sprite.width[b] ?? 0) * 0.5;
+        const halfHeightB = (sprite.height[b] ?? 0) * 0.5;
+        const dx = bx - ax;
+        const dy = by - ay;
+        const overlapX = halfWidthA + halfWidthB - Math.abs(dx);
+        const overlapY = halfHeightA + halfHeightB - Math.abs(dy);
+
+        if (overlapX <= 0 || overlapY <= 0) {
+          continue;
+        }
+
+        const pushAlongX = overlapX <= overlapY;
+        const separation = (pushAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
+        const axisSign =
+          (pushAlongX ? dx : dy) > 0 ? 1 : (pushAlongX ? dx : dy) < 0 ? -1 : a < b ? 1 : -1;
+
+        if (isEnemyVsPlayer) {
+          const enemyEid = aIsEnemy ? a : b;
+          const enemyDirection = enemyEid === a ? -axisSign : axisSign;
+          if (pushAlongX) {
+            position.x[enemyEid] = (position.x[enemyEid] ?? 0) + enemyDirection * separation;
+          } else {
+            position.y[enemyEid] = (position.y[enemyEid] ?? 0) + enemyDirection * separation;
+          }
+          continue;
+        }
+
+        const pushA = -axisSign * separation * 0.5;
+        const pushB = axisSign * separation * 0.5;
+
+        if (pushAlongX) {
+          position.x[a] = ax + pushA;
+          position.x[b] = bx + pushB;
+        } else {
+          position.y[a] = ay + pushA;
+          position.y[b] = by + pushB;
+        }
+      }
     }
 
     private clearEnemies(): void {
