@@ -81,6 +81,13 @@ export interface VisionUsage {
 }
 
 export interface VisionProvider {
+  /**
+   * Deployment name this provider hits. Echoed for traceability and
+   * used by the judge cache as part of its hash key — a verdict from
+   * model A must NEVER replay for model B. Mock providers in tests
+   * pick any deterministic string.
+   */
+  readonly modelDeployment: string;
   evaluate(request: EvaluateRequest): Promise<EvaluateResponse>;
 }
 

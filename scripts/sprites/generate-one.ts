@@ -36,8 +36,10 @@ import path from 'node:path';
 import { variantCount } from './brief-schema.js';
 import type { Brief } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
+import type { JudgeBudget } from './cost-tracker.js';
 import { computeDiversity } from './diversity.js';
 import { expandVariations } from './expand-variations.js';
+import type { JudgeCache } from './judge-cache.js';
 import { judgeVariant, type JudgeScorecard } from './judge.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
 import { postprocess } from './postprocess.js';
@@ -81,6 +83,25 @@ export interface GenerateOneOptions {
    * Omitted/null is fine for any brief with `judge.enabled: false`.
    */
   readonly visionProvider?: VisionProvider | null;
+  /**
+   * Optional cross-run cost ceiling. When supplied, each judge call
+   * is gated by `JudgeBudget.wouldExceed()` and the budget records
+   * actual spend after a successful call. Variants gated out by the
+   * budget appear with `judgeSkipReason: 'over-budget'`.
+   *
+   * Omit to disable the cost gate entirely (current behavior for
+   * one-off single-brief runs). The CLI auto-constructs a budget
+   * with cap=Infinity when neither flag nor env var is set, which is
+   * functionally equivalent to omitting.
+   */
+  readonly judgeBudget?: JudgeBudget | null;
+  /**
+   * Optional VLM-judge cache. When supplied, judge calls go through
+   * the cache; on hit, no provider call is made. The orchestrator
+   * never instantiates the cache itself — the CLI does, so test
+   * harnesses can run without ever touching the filesystem cache.
+   */
+  readonly judgeCache?: JudgeCache | null;
   /** Repository root used to resolve the style guide + reference PNGs. */
   readonly repoRoot: string;
   /** Output directory for run artifacts. Defaults to `<repoRoot>/generated`. */
@@ -247,8 +268,10 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   // means budget is spent on the variants with the best chance of
   // surviving the judge.
   const judgePlan: Map<number, JudgeScorecard | null> = new Map();
-  const judgeSkipReason: Map<number, 'judge-disabled' | 'sensor-failed' | 'over-cap' | null> =
-    new Map();
+  const judgeSkipReason: Map<
+    number,
+    'judge-disabled' | 'sensor-failed' | 'over-cap' | 'over-budget' | null
+  > = new Map();
   if (judgeEnabled) {
     const sensorPassed = sensorEntries.filter((e) => e.passed);
     const ordered = [...sensorPassed].sort((a, b) => b.score - a.score || a.index - b.index);
@@ -269,6 +292,23 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     const visionProvider = options.visionProvider!;
     for (const e of sensorEntries) {
       if (!e.passed || !eligible.has(e.index)) continue;
+      // Budget gate runs BEFORE the call. On exhaustion, we don't even
+      // build previews — keeps the skip path cheap so a runaway batch
+      // doesn't waste CPU after the budget is blown.
+      // Cache hits bypass cost entirely; we let those through even
+      // when the budget says "over", because a cache hit costs $0 of
+      // Azure spend.
+      if (options.judgeBudget && options.judgeBudget.wouldExceed() && !options.judgeCache) {
+        options.judgeBudget.recordSkip();
+        const warn = options.warn ?? ((msg: string) => process.stderr.write(`${msg}\n`));
+        warn(
+          `judge-budget exhausted: skipping variant ${e.index} (${options.judgeBudget.format()})`,
+        );
+        judgePlan.set(e.index, null);
+        judgeSkipReason.set(e.index, 'over-budget');
+        continue;
+      }
+      const cacheMissesBefore = options.judgeCache?.stats.misses ?? 0;
       const scorecard = await judgeVariant({
         processed: e.processed,
         referencePngs,
@@ -277,8 +317,22 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         provider: visionProvider,
         variantIndex: e.index,
         processedDir: paths.processedDir,
+        variantPath: e.processedPath,
+        ...(options.judgeCache ? { cache: options.judgeCache } : {}),
         ...(options.now ? { now: options.now } : {}),
       });
+      // Detect whether the call actually went to Azure. With no cache,
+      // every call is fresh spend. With a cache, only misses count —
+      // hits replay a cached scorecard at zero cost.
+      const newAzureCall = options.judgeCache
+        ? options.judgeCache.stats.misses > cacheMissesBefore
+        : true;
+      // Only bill the budget for actual Azure calls. Cache hits cost
+      // $0 of new spend even though the replayed scorecard still
+      // carries the original `usage`.
+      if (newAzureCall && options.judgeBudget && scorecard.usage) {
+        options.judgeBudget.recordCall(scorecard.usage);
+      }
       judgePlan.set(e.index, scorecard);
       judgeSkipReason.set(e.index, null);
     }
@@ -314,6 +368,8 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   const ranked = rankCandidates(entries);
   const diversity = computeDiversity(processedBuffers);
   const chosen = pickChosen(ranked, brief);
+  const budgetSnap = judgeEnabled && options.judgeBudget ? options.judgeBudget.snapshot() : null;
+  const cacheStats = judgeEnabled && options.judgeCache ? { ...options.judgeCache.stats } : null;
   const summary: RunSummary = {
     brief: brief.name,
     briefPath: loaded.briefPath,
@@ -332,6 +388,20 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       skippedReason: expansion.skippedReason,
     },
     chosen,
+    judgeBudget: budgetSnap
+      ? {
+          budgetUsd: budgetSnap.budgetUsd,
+          spentUsd: budgetSnap.spentUsd,
+          remainingUsd:
+            typeof budgetSnap.remainingUsd === 'number'
+              ? budgetSnap.remainingUsd
+              : Number.POSITIVE_INFINITY,
+          callCount: budgetSnap.callCount,
+          callsThisRun: budgetSnap.callsThisRun,
+          callsSkippedDueToBudget: budgetSnap.callsSkippedDueToBudget,
+        }
+      : null,
+    judgeCache: cacheStats,
   };
   const summaryPath = writeSummary(paths, summary);
 

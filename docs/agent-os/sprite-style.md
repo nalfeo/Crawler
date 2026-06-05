@@ -274,3 +274,61 @@ If the sidecar is not running (`/api/health` unreachable) the lab
 still renders and shows a fallback banner that explains how to start
 it. This is the "review-only mode" requirement from spec §F9; the lab
 must never hard-fail when the sidecar is down.
+
+---
+
+## Judge cost knobs (Phase 3)
+
+The VLM judge is the most expensive single call in the pipeline. Two
+mechanisms keep cost predictable across batch runs:
+
+### Budget ceiling — `JudgeBudget`
+
+A USD cap on judge spend that **persists across CLI invocations** via
+`generated/.cost-state.json`. Once spend would push past the cap, the
+remaining variants in the run are not judged (ranking falls back to
+sensors-only) and the next CLI invocation honours the same persisted
+spend.
+
+- `--judge-budget-usd <n>` — per-batch cap. Default is `Infinity` for
+  single-brief `sprites:run` so existing behaviour is preserved. The
+  batch CLI (Phase 3 build 6) passes a concrete cap.
+- `SPRITES_JUDGE_BUDGET_USD` — env fallback used when the flag is not
+  provided. Useful for CI.
+- `--reset-budget` — wipes the persisted state file before the run, so
+  the new cap starts from zero spend.
+
+The pricing table lives in `scripts/sprites/cost-tracker.ts`
+(`PRICING`). Update it when Azure publishes new rates or when you add
+a new deployment. The `resolveRates` lookup is substring-based against
+the deployment name and falls back to a conservative high-rate row if
+the deployment is unknown, so a misconfigured name fails _closed_
+(under-judges) rather than over-spends.
+
+### Vision-call cache — `JudgeCache`
+
+A filesystem cache at `generated/.judge-cache/` keyed by:
+
+```
+sha256(modelDeployment | promptTemplateVersion | variantPNGBytes
+     | referencePNGsBytes | briefMatchInstructions)
+```
+
+On hit the Azure call is skipped entirely and the cached scorecard is
+replayed. On miss the call runs and the result is stored. The cache
+contains **only `JudgeScorecard` JSON** — never images. Caching
+generated images would cache luck, not quality.
+
+- `--no-judge-cache` — disable for one run (e.g. after editing the
+  rubric/`PROMPT_TEMPLATE_VERSION` bump is preferred, but this is the
+  manual override).
+- `--prune-judge-cache <hours>` — housekeeping: drop entries older
+  than N hours.
+- `--cache-max-entries <n>` — LRU cap. Default 1000. Eviction is by
+  file mtime so reads on a hit refresh the entry.
+
+Cache lookup is guarded by `judge.enabled` — a brief with the judge
+turned off does not even compute the key, let alone touch the cache.
+
+Both modules are pure-ish (filesystem ops at the edges, no network)
+and unit-testable without mocking Azure.

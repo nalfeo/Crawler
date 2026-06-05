@@ -44,6 +44,8 @@ export interface RunPaths {
   readonly processedDir: string;
 }
 
+export type JudgeSkipReason = 'judge-disabled' | 'sensor-failed' | 'over-cap' | 'over-budget';
+
 export interface RunSummaryEntry {
   readonly index: number;
   readonly score: number;
@@ -92,7 +94,7 @@ export interface RunSummaryEntry {
    */
   readonly judgeScorecard: JudgeScorecard | null;
   /** See `judgeScorecard`. */
-  readonly judgeSkipReason: 'judge-disabled' | 'sensor-failed' | 'over-cap' | null;
+  readonly judgeSkipReason: JudgeSkipReason | null;
   /**
    * The pipeline-level pass. With judge disabled, equals `passed`. With
    * judge enabled, requires BOTH `passed` (sensors) AND
@@ -175,6 +177,31 @@ export interface RunSummary {
    * shouldn't happen for a well-formed brief.
    */
   readonly chosen: ChosenCandidate | null;
+  /**
+   * Cost-tracking snapshot for this run. Null when the judge wasn't
+   * enabled (no calls to bill). When present, surfaces both per-run
+   * counters and the persisted cross-run totals so reviewers can see
+   * how close the batch is to the configured ceiling without opening
+   * `generated/.cost-state.json`.
+   */
+  readonly judgeBudget: {
+    readonly budgetUsd: number;
+    readonly spentUsd: number;
+    readonly remainingUsd: number;
+    readonly callCount: number;
+    readonly callsThisRun: number;
+    readonly callsSkippedDueToBudget: number;
+  } | null;
+  /**
+   * Cache-hit accounting for the judge cache. Null when the judge
+   * wasn't enabled. `bypassed` is non-zero when caching was disabled
+   * for the run via `--no-judge-cache`.
+   */
+  readonly judgeCache: {
+    readonly hits: number;
+    readonly misses: number;
+    readonly bypassed: number;
+  } | null;
 }
 
 /**
