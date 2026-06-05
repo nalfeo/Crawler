@@ -10,6 +10,10 @@ import { normalizeInputDirection, type InputState } from '../shared/input.js';
  * Touch listeners bind to the Phaser canvas (when available) so only
  * touches that start on the game surface are captured — lab UI panels
  * and other overlays remain scrollable.
+ *
+ * Mouse pointer events are mapped through the same virtual-joystick logic
+ * so developers can test the mobile touch experience on desktop without a
+ * touch screen (left-half = move joystick, right-half = action).
  */
 export function createInputCapture(scene: Phaser.Scene): {
   /** Read current hardware state into the InputState */
@@ -25,6 +29,9 @@ export function createInputCapture(scene: Phaser.Scene): {
   const touchStartOptions: AddEventListenerOptions = { passive: true };
   const touchMoveOptions: AddEventListenerOptions = { passive: false };
   const touchEndOptions: AddEventListenerOptions = { passive: true };
+
+  // Synthetic pointer ID for mouse-based touch emulation (avoids collision with real touch ids)
+  const MOUSE_POINTER_ID_BASE = -100;
 
   // Touch target: prefer canvas so lab UI stays interactive
   const touchTarget: EventTarget = scene.game?.canvas ?? window;
@@ -78,6 +85,49 @@ export function createInputCapture(scene: Phaser.Scene): {
       activeTouches.delete(touch.identifier);
     }
   };
+
+  // --- Mouse pointer emulation (enables testing mobile UX on desktop) ---
+  // Only left-click (button 0) is emulated as a synthetic touch.
+  // Pointer capture keeps events routed to the canvas even if the drag leaves it.
+  const onPointerDown = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') return; // real touches handled above
+    if (e.button !== 0) return; // only left-click emulates touch
+    activeTouches.set(MOUSE_POINTER_ID_BASE, {
+      zone: classifyTouchZone(e.clientX),
+      startX: e.clientX,
+      startY: e.clientY,
+      x: e.clientX,
+      y: e.clientY,
+    });
+    if ((e.target as Element)?.setPointerCapture) {
+      (e.target as Element).setPointerCapture(e.pointerId);
+    }
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    const state = activeTouches.get(MOUSE_POINTER_ID_BASE);
+    if (state) {
+      state.x = e.clientX;
+      state.y = e.clientY;
+    }
+  };
+  const onPointerUp = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    if (e.button !== 0) return; // only left-click emulates touch
+    activeTouches.delete(MOUSE_POINTER_ID_BASE);
+    if ((e.target as Element)?.releasePointerCapture) {
+      try {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+  };
+  const onPointerCancel = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    // Always clear synthetic touch on cancel regardless of button
+    activeTouches.delete(MOUSE_POINTER_ID_BASE);
+  };
   const toWorldPoint = (clientX: number, clientY: number): { x: number; y: number } => {
     const canvas = scene.game?.canvas;
     if (!canvas) {
@@ -104,6 +154,10 @@ export function createInputCapture(scene: Phaser.Scene): {
   touchTarget.addEventListener('touchmove', onTouchMove as EventListener, touchMoveOptions);
   touchTarget.addEventListener('touchend', onTouchEnd as EventListener, touchEndOptions);
   touchTarget.addEventListener('touchcancel', onTouchEnd as EventListener, touchEndOptions);
+  touchTarget.addEventListener('pointerdown', onPointerDown as EventListener);
+  touchTarget.addEventListener('pointermove', onPointerMove as EventListener);
+  touchTarget.addEventListener('pointerup', onPointerUp as EventListener);
+  touchTarget.addEventListener('pointercancel', onPointerCancel as EventListener);
 
   return {
     poll(state: InputState): void {
@@ -166,6 +220,10 @@ export function createInputCapture(scene: Phaser.Scene): {
       touchTarget.removeEventListener('touchmove', onTouchMove as EventListener, touchMoveOptions);
       touchTarget.removeEventListener('touchend', onTouchEnd as EventListener, touchEndOptions);
       touchTarget.removeEventListener('touchcancel', onTouchEnd as EventListener, touchEndOptions);
+      touchTarget.removeEventListener('pointerdown', onPointerDown as EventListener);
+      touchTarget.removeEventListener('pointermove', onPointerMove as EventListener);
+      touchTarget.removeEventListener('pointerup', onPointerUp as EventListener);
+      touchTarget.removeEventListener('pointercancel', onPointerCancel as EventListener);
       keysDown.clear();
       activeTouches.clear();
     },
