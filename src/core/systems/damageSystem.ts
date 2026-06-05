@@ -112,7 +112,13 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
-    applyDamage(world, enemy, amount, world.stores.position.x[enemy] ?? 0, world.stores.position.y[enemy] ?? 0);
+    applyDamage(
+      world,
+      enemy,
+      amount,
+      world.stores.position.x[enemy] ?? 0,
+      world.stores.position.y[enemy] ?? 0,
+    );
 
     // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
@@ -155,7 +161,13 @@ function applyPlayerEnemyHit(
 
   const raw = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
   const amount = applyArmorReduction(world, player, raw);
-  applyDamage(world, player, amount, world.stores.position.x[player] ?? 0, world.stores.position.y[player] ?? 0);
+  applyDamage(
+    world,
+    player,
+    amount,
+    world.stores.position.x[player] ?? 0,
+    world.stores.position.y[player] ?? 0,
+  );
   hitTimestamps[player] = world.elapsedMs;
 }
 
@@ -180,7 +192,13 @@ function applyEnemyProjectileHit(
 
   const raw = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
   const amount = applyArmorReduction(world, player, raw);
-  applyDamage(world, player, amount, world.stores.position.x[player] ?? 0, world.stores.position.y[player] ?? 0);
+  applyDamage(
+    world,
+    player,
+    amount,
+    world.stores.position.x[player] ?? 0,
+    world.stores.position.y[player] ?? 0,
+  );
   hitTimestamps[player] = world.elapsedMs;
 
   destroyEntity(world, projectile);
