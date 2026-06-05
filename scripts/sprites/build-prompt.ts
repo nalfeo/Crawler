@@ -1,0 +1,154 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { Brief } from './brief-schema.js';
+import { variantCount } from './brief-schema.js';
+
+/**
+ * Pure prompt builders for the sprite generation pipeline.
+ *
+ * The style preamble is the single source of truth for cross-brief visual
+ * constraints. It lives in docs/agent-os/sprite-style.md (between the
+ * "--- STYLE PREAMBLE (do not deviate) ---" and "--- END STYLE PREAMBLE ---"
+ * markers in a blockquote) so that designers can edit it without touching code,
+ * and so that every brief-specific prompt starts from the same hard rules.
+ *
+ * These functions are pure given the styleGuide string; loading the style
+ * guide from disk is done by `loadStyleGuide()` (impure) so callers in tests
+ * can pass synthetic preambles without touching the filesystem.
+ */
+
+const STYLE_GUIDE_RELATIVE_PATH = 'docs/agent-os/sprite-style.md';
+const PREAMBLE_START = '--- STYLE PREAMBLE (do not deviate) ---';
+const PREAMBLE_END = '--- END STYLE PREAMBLE ---';
+
+/**
+ * Read and parse the style guide markdown file.
+ *
+ * Looks for the verbatim block between the START and END markers, strips the
+ * leading "> " blockquote prefix, and returns the result as a single string.
+ * Throws if the markers are missing or out of order — that's a developer
+ * error in the style guide, not a runtime input bug.
+ *
+ * @param repoRoot - Absolute path to the repository root.
+ * @param read - File reader, injectable for tests.
+ */
+export function loadStyleGuide(
+  repoRoot: string,
+  read: (path: string) => string = (p) => readFileSync(p, 'utf8'),
+): string {
+  const path = resolve(repoRoot, STYLE_GUIDE_RELATIVE_PATH);
+  const md = read(path);
+  return extractPreamble(md);
+}
+
+export function extractPreamble(markdown: string): string {
+  const startIdx = markdown.indexOf(PREAMBLE_START);
+  const endIdx = markdown.indexOf(PREAMBLE_END);
+  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) {
+    throw new Error(
+      `Style guide is missing the preamble markers. Expected '${PREAMBLE_START}' followed by '${PREAMBLE_END}' in ${STYLE_GUIDE_RELATIVE_PATH}.`,
+    );
+  }
+  const slice = markdown.slice(startIdx, endIdx + PREAMBLE_END.length);
+  return slice
+    .split('\n')
+    .map((line) => line.replace(/^>\s?/, ''))
+    .map((line) => line.trimEnd())
+    .filter((line, idx, arr) => !(line === '' && arr[idx - 1] === ''))
+    .join('\n')
+    .trim();
+}
+
+/**
+ * Build a prompt for a single-variant (non-sheet) generation.
+ *
+ * Phase 2 always uses sheet mode in the orchestrator, but the single-variant
+ * builder is kept available for ad-hoc tools and future single-image refinement
+ * passes. Sharing the same structure with the sheet builder also makes it
+ * trivial to diff "what's different about sheet mode?" in tests.
+ */
+export function buildPrompt(brief: Brief, styleGuide: string): string {
+  return [styleGuide, '', briefSubjectBlock(brief), '', singleConstraintsBlock()].join('\n');
+}
+
+/**
+ * Build a prompt for a multi-variant sheet generation.
+ *
+ * The generator is told the exact grid shape (rows × cols), the exact total
+ * variant count, and the cells (if any) that must be left empty. We also
+ * repeat the per-variant constraints (no clipping, square, no text) at the
+ * end of the prompt because models in our manual e2e ignored them when they
+ * appeared only at the top.
+ */
+export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: number): string {
+  const rows = brief.generation.sheet.rows;
+  const cols = brief.generation.sheet.cols;
+  const emptyCells = brief.generation.sheet.emptyCells;
+  const count = variants ?? variantCount(brief);
+  return [
+    styleGuide,
+    '',
+    briefSubjectBlock(brief),
+    '',
+    sheetLayoutBlock(rows, cols, count, emptyCells),
+    '',
+    sheetConstraintsBlock(),
+  ].join('\n');
+}
+
+function briefSubjectBlock(brief: Brief): string {
+  const lines: string[] = ['## Subject', brief.prompt.trim()];
+  if (brief.tags.length > 0) {
+    lines.push('', `Tags: ${brief.tags.join(', ')}`);
+  }
+  return lines.join('\n');
+}
+
+function singleConstraintsBlock(): string {
+  return [
+    '## Output requirements',
+    '- Exactly one subject, centered in a square frame.',
+    '- Subject must not be clipped at any edge — leave at least 10% margin on all sides.',
+    '- Transparent background or solid neutral fill (pure white, pure black, or pure magenta). No decorative borders, gradients, or scene elements.',
+    '- No text, numbers, digits, captions, watermarks, signatures, or UI overlays anywhere in the image.',
+  ].join('\n');
+}
+
+function sheetLayoutBlock(
+  rows: number,
+  cols: number,
+  count: number,
+  emptyCells: ReadonlyArray<readonly [number, number]>,
+): string {
+  const lines: string[] = [];
+  lines.push('## Sheet layout');
+  lines.push(
+    `Generate exactly ${count} variants on a single sheet, arranged in a regular ${rows}×${cols} grid (${rows} rows, ${cols} columns).`,
+  );
+  lines.push(
+    'Each grid cell must be the same size, perfectly square, and the variants must be laid out left-to-right, top-to-bottom in reading order.',
+  );
+  if (emptyCells.length > 0) {
+    const coords = emptyCells.map(([r, c]) => `(row ${r + 1}, col ${c + 1})`).join(', ');
+    lines.push(
+      `Leave these cells fully empty (transparent / background only, no subject): ${coords}.`,
+    );
+  } else {
+    lines.push('Every cell must contain exactly one variant — no empty cells.');
+  }
+  lines.push(
+    'Variants should be meaningfully different from one another (color, pose, silhouette detail) while staying on-brief.',
+  );
+  return lines.join('\n');
+}
+
+function sheetConstraintsBlock(): string {
+  return [
+    '## Per-variant requirements (apply to every cell)',
+    '- Each variant must fit fully within its grid cell — none cut off at any edge. Leave at least a 10% margin between the subject and the cell edge.',
+    '- All variants are square, share the same dimensions, and use the same orientation and scale.',
+    '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
+    '- Use a transparent background, or a single flat neutral background color (pure white, pure black, or pure magenta) consistently across the whole sheet. No per-cell background variation, no decorative borders between cells.',
+    '- Do not draw a frame, header, or footer around the grid.',
+  ].join('\n');
+}
