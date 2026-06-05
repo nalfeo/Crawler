@@ -24,11 +24,7 @@
  */
 
 import { PNG } from 'pngjs';
-import type {
-  GenerateSheetRequest,
-  ImageProvider,
-  ProviderErrorKind,
-} from './types.js';
+import type { GenerateSheetRequest, ImageProvider, ProviderErrorKind } from './types.js';
 import { ProviderError } from './types.js';
 
 export interface AzureOpenAIImageProviderOptions {
@@ -77,7 +73,11 @@ export class AzureOpenAIImageProvider implements ImageProvider {
 
     // Each reference image is attached as a separate `image[]` part.
     request.referencePngs.forEach((png, idx) => {
-      form.append('image[]', new Blob([new Uint8Array(png)], { type: 'image/png' }), `ref-${idx}.png`);
+      form.append(
+        'image[]',
+        new Blob([new Uint8Array(png)], { type: 'image/png' }),
+        `ref-${idx}.png`,
+      );
     });
 
     let response: Response;
@@ -136,9 +136,13 @@ export class AzureOpenAIImageProvider implements ImageProvider {
     try {
       PNG.sync.read(sheet);
     } catch (err) {
-      throw new ProviderError('non-png', `provider returned undecodable PNG: ${(err as Error).message}`, {
-        cause: err,
-      });
+      throw new ProviderError(
+        'non-png',
+        `provider returned undecodable PNG: ${(err as Error).message}`,
+        {
+          cause: err,
+        },
+      );
     }
 
     return sheet;

@@ -18,10 +18,7 @@ import path from 'node:path';
 import { PNG } from 'pngjs';
 import { generateOne } from '../../scripts/sprites/generate-one.js';
 import { loadBrief, type LoadedBrief } from '../../scripts/sprites/load-brief.js';
-import type {
-  GenerateSheetRequest,
-  ImageProvider,
-} from '../../scripts/sprites/provider/types.js';
+import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import { ProviderError } from '../../scripts/sprites/provider/types.js';
 import {
   buildGoodSwordFixture,
@@ -73,7 +70,9 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
   for (let i = 0; i < variants.length; i++) {
     const cell = PNG.sync.read(variants[i]!);
     if (cell.width !== cellSize || cell.height !== cellSize) {
-      throw new Error(`tileVariants: variant ${i} is ${cell.width}x${cell.height}, expected 1024x1024`);
+      throw new Error(
+        `tileVariants: variant ${i} is ${cell.width}x${cell.height}, expected 1024x1024`,
+      );
     }
     const r = Math.floor(i / cols);
     const c = i % cols;
@@ -94,7 +93,10 @@ function makeMockProvider(sheet: Buffer): ImageProvider {
   };
 }
 
-function makeFailingProvider(error: ProviderError, succeedsAfter = -1): {
+function makeFailingProvider(
+  error: ProviderError,
+  succeedsAfter = -1,
+): {
   provider: ImageProvider;
   callCount: () => number;
 } {
@@ -228,8 +230,8 @@ describe('generateOne (integration)', () => {
     await expect(
       generateOne({
         briefPath,
-      preloaded,
-      provider,
+        preloaded,
+        provider,
         repoRoot: root,
         outputRoot,
         maxAttempts: 3,
@@ -240,12 +242,14 @@ describe('generateOne (integration)', () => {
   });
 
   it('exhausts maxAttempts on a persistent retryable error and surfaces the kind', async () => {
-    const { provider, callCount } = makeFailingProvider(new ProviderError('bad-grid', 'persistent'));
+    const { provider, callCount } = makeFailingProvider(
+      new ProviderError('bad-grid', 'persistent'),
+    );
     await expect(
       generateOne({
         briefPath,
-      preloaded,
-      provider,
+        preloaded,
+        provider,
         repoRoot: root,
         outputRoot,
         maxAttempts: 2,

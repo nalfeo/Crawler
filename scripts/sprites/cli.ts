@@ -56,7 +56,8 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
       const value = argv[++i];
       if (!value) throw new Error('--pick requires a variant index');
       const n = Number(value);
-      if (!Number.isInteger(n) || n < 0) throw new Error(`--pick must be a non-negative integer, got ${value}`);
+      if (!Number.isInteger(n) || n < 0)
+        throw new Error(`--pick must be a non-negative integer, got ${value}`);
       pick = n;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
@@ -130,7 +131,13 @@ function formatScore(score: number, outOf: number): string {
   return `${score}/${outOf} (${pct}%)`;
 }
 
-function printSummary(briefPath: string, runDir: string, attempts: number, candidates: ReadonlyArray<{ index: number; score: number; outOf: number; passed: boolean }>, durationMs: number): void {
+function printSummary(
+  briefPath: string,
+  runDir: string,
+  attempts: number,
+  candidates: ReadonlyArray<{ index: number; score: number; outOf: number; passed: boolean }>,
+  durationMs: number,
+): void {
   process.stdout.write(`\n=== ${briefPath} ===\n`);
   process.stdout.write(`run dir : ${runDir}\n`);
   process.stdout.write(`attempts: ${attempts}    duration: ${(durationMs / 1000).toFixed(1)}s\n`);
@@ -238,7 +245,9 @@ async function main(): Promise<number> {
     }
     return 1;
   }
-  process.stdout.write(`\nAll ${outcomes.length} brief${outcomes.length === 1 ? '' : 's'} succeeded.\n`);
+  process.stdout.write(
+    `\nAll ${outcomes.length} brief${outcomes.length === 1 ? '' : 's'} succeeded.\n`,
+  );
   return 0;
 }
 
@@ -250,7 +259,9 @@ if (invokedPath === thisPath) {
   main().then(
     (code) => process.exit(code),
     (err: unknown) => {
-      process.stderr.write(`fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+      process.stderr.write(
+        `fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+      );
       process.exit(1);
     },
   );

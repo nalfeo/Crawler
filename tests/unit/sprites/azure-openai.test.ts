@@ -11,10 +11,7 @@ import { PNG } from 'pngjs';
 import { AzureOpenAIImageProvider } from '../../../scripts/sprites/provider/azure-openai.js';
 import { ProviderError } from '../../../scripts/sprites/provider/types.js';
 import { createImageProvider } from '../../../scripts/sprites/provider/factory.js';
-import {
-  briefSchema,
-  type Brief,
-} from '../../../scripts/sprites/brief-schema.js';
+import { briefSchema, type Brief } from '../../../scripts/sprites/brief-schema.js';
 
 function makeBrief(): Brief {
   return briefSchema.parse({
@@ -184,9 +181,9 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
 
 describe('createImageProvider (factory)', () => {
   it('throws a clear error when AZURE_OPENAI_ENDPOINT is missing', () => {
-    expect(() =>
-      createImageProvider({ env: { AZURE_OPENAI_API_KEY: 'x' } }),
-    ).toThrow(/AZURE_OPENAI_ENDPOINT/);
+    expect(() => createImageProvider({ env: { AZURE_OPENAI_API_KEY: 'x' } })).toThrow(
+      /AZURE_OPENAI_ENDPOINT/,
+    );
   });
 
   it('throws a clear error when AZURE_OPENAI_API_KEY is missing', () => {

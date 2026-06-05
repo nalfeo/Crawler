@@ -73,13 +73,7 @@ export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
   });
 }
 
-function extractCell(
-  sheet: PNG,
-  x0: number,
-  y0: number,
-  width: number,
-  height: number,
-): Buffer {
+function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: number): Buffer {
   const cell = new PNG({ width, height });
   // Copy row-by-row from the sheet into the cell. We do this manually rather
   // than using pngjs's bitblt because bitblt's signature differs subtly

@@ -123,9 +123,7 @@ export function writeSummary(paths: RunPaths, summary: RunSummary): string {
  * Rank candidates: passed-first, then by score descending, with stable tie-break
  * on index ascending. Pure.
  */
-export function rankCandidates(
-  entries: ReadonlyArray<RunSummaryEntry>,
-): RunSummaryEntry[] {
+export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSummaryEntry[] {
   return [...entries].sort((a, b) => {
     if (a.passed !== b.passed) return a.passed ? -1 : 1;
     if (a.score !== b.score) return b.score - a.score;

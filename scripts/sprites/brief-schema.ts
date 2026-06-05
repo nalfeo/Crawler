@@ -77,9 +77,7 @@ const sheetSchema = z
   .object({
     rows: z.number().int().min(1).max(8).default(3),
     cols: z.number().int().min(1).max(8).default(3),
-    emptyCells: z
-      .array(z.tuple([z.number().int().min(0), z.number().int().min(0)]))
-      .default([]),
+    emptyCells: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).default([]),
     nativeCanvas: z.number().int().min(256).max(2048).default(1024),
   })
   .strict()

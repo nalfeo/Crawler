@@ -119,7 +119,11 @@ function reEvaluateOpaqueRatio(
   const min = overrides.min ?? 0.1;
   const max = overrides.max ?? 0.65;
   if (ratio < min || ratio > max) {
-    return { ok: false, sensor, reason: `opaque ratio ${ratio.toFixed(3)} outside [${min}, ${max}]` };
+    return {
+      ok: false,
+      sensor,
+      reason: `opaque ratio ${ratio.toFixed(3)} outside [${min}, ${max}]`,
+    };
   }
   return { ok: true, sensor };
 }

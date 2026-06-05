@@ -18,12 +18,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import {
-  briefSchema,
-  type Brief,
-  type PaletteColors,
-  type RgbTriple,
-} from './brief-schema.js';
+import { briefSchema, type Brief, type PaletteColors, type RgbTriple } from './brief-schema.js';
 
 export interface LoadedBrief {
   readonly brief: Brief;

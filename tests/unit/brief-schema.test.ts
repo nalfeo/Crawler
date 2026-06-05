@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { briefSchema, type Brief, SPRITE_TYPES, variantCount } from '../../scripts/sprites/brief-schema.js';
+import {
+  briefSchema,
+  type Brief,
+  SPRITE_TYPES,
+  variantCount,
+} from '../../scripts/sprites/brief-schema.js';
 
 const validBrief: Brief = {
   type: 'weapon',

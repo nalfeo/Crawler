@@ -8,7 +8,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { briefSchema, type Brief, type PaletteColors } from '../../../scripts/sprites/brief-schema.js';
+import {
+  briefSchema,
+  type Brief,
+  type PaletteColors,
+} from '../../../scripts/sprites/brief-schema.js';
 import { postprocess } from '../../../scripts/sprites/postprocess.js';
 import { scoreCandidate } from '../../../scripts/sprites/score-candidate.js';
 import {
