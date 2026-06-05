@@ -1,12 +1,15 @@
 /**
- * Item Pickup System — auto-picks up DroppedItem entities on Player collision.
+ * Item Pickup System — handles pickup of Gold, XpGem, and DroppedItem entities
+ * on Player collision.
  *
  * Runs after the collision system. For each collision pair where one entity is
- * a Player with Inventory and the other is a DroppedItem, the item is added to
- * the player's InventoryBag and the DroppedItem entity is removed.
+ * a Player and the other is a pickup entity:
+ * - Gold: increments world.playerGold and removes the entity
+ * - XpGem: adds XP/score and removes the entity
+ * - DroppedItem: adds item to player's InventoryBag and removes the entity
  */
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
-import { DroppedItem, Inventory, Player } from '../components.js';
+import { DroppedItem, Gold, Inventory, Player, XpGem } from '../components.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 import { addItem } from '../../shared/inventory.js';
@@ -19,34 +22,50 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
     }
 
     let playerEid: number | undefined;
-    let itemEid: number | undefined;
+    let otherEid: number | undefined;
 
-    if (
-      hasComponent(world.ecs, pair.a, Player) &&
-      hasComponent(world.ecs, pair.a, Inventory) &&
-      hasComponent(world.ecs, pair.b, DroppedItem)
-    ) {
+    if (hasComponent(world.ecs, pair.a, Player)) {
       playerEid = pair.a;
-      itemEid = pair.b;
-    } else if (
-      hasComponent(world.ecs, pair.b, Player) &&
-      hasComponent(world.ecs, pair.b, Inventory) &&
-      hasComponent(world.ecs, pair.a, DroppedItem)
-    ) {
+      otherEid = pair.b;
+    } else if (hasComponent(world.ecs, pair.b, Player)) {
       playerEid = pair.b;
-      itemEid = pair.a;
+      otherEid = pair.a;
     }
 
-    if (playerEid === undefined || itemEid === undefined) continue;
+    if (playerEid === undefined || otherEid === undefined) continue;
 
-    const bag = world.inventories.get(playerEid);
-    if (!bag) continue;
-
-    const itemIndex = world.stores.droppedItem.itemIndex[itemEid] ?? 0;
-    const def = getItemByIndex(itemIndex);
-    if (def) {
-      addItem(bag, def.id, 1);
+    // Gold pickup
+    if (hasComponent(world.ecs, otherEid, Gold)) {
+      const goldValue = world.stores.gold.value[otherEid] ?? 0;
+      world.playerGold += goldValue;
+      removeEntity(world.ecs, otherEid);
+      continue;
     }
-    removeEntity(world.ecs, itemEid);
+
+    // XP gem pickup
+    if (hasComponent(world.ecs, otherEid, XpGem)) {
+      const gemValue = world.stores.xpGem.value[otherEid] ?? 0;
+      const currentScore = world.stores.broadcastScore.current[playerEid] ?? 0;
+      world.stores.broadcastScore.current[playerEid] = currentScore + gemValue;
+      world.playerLevel.xp += gemValue;
+      removeEntity(world.ecs, otherEid);
+      continue;
+    }
+
+    // Dropped item pickup
+    if (
+      hasComponent(world.ecs, otherEid, DroppedItem) &&
+      hasComponent(world.ecs, playerEid, Inventory)
+    ) {
+      const bag = world.inventories.get(playerEid);
+      if (!bag) continue;
+
+      const itemIndex = world.stores.droppedItem.itemIndex[otherEid] ?? 0;
+      const def = getItemByIndex(itemIndex);
+      if (def) {
+        addItem(bag, def.id, 1);
+      }
+      removeEntity(world.ecs, otherEid);
+    }
   }
 }

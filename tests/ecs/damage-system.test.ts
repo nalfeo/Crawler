@@ -31,16 +31,18 @@ describe('damageSystem', () => {
     expect(world.stores.health.current[player]).toBe(95);
   });
 
-  it('destroys xp gems and adds their value to the player score when collected', () => {
+  it('xp gem collection is handled by itemPickupSystem (not damageSystem)', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     const gem = spawnXpGem(world, 4, 0, 7);
 
     addComponent(world.ecs, player, set(BroadcastScore, { current: 0 }));
+
+    // damageSystem no longer handles XP gem collection — it's in itemPickupSystem
     damageSystem(world, collisionSystem(world));
 
-    expect(entityExists(world.ecs, gem)).toBe(false);
-    expect(world.stores.broadcastScore.current[player]).toBe(7);
+    // Gem should still exist (damageSystem doesn't pick it up anymore)
+    expect(entityExists(world.ecs, gem)).toBe(true);
   });
 
   it('destroys projectiles after they hit enemies', () => {

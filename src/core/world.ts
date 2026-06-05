@@ -36,6 +36,7 @@ import {
   DoorState,
   BaseStats,
   EffectiveStats,
+  Gold,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -73,6 +74,8 @@ export interface GameWorld {
   inventories: Map<number, InventoryBag>;
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
+  /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
+  playerGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
   floorMap: FloorMap | null;
 }
@@ -125,6 +128,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, DoorState, stores.doorState);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
+  wireStore(ecs, Gold, stores.gold);
 
   return {
     ecs,
@@ -146,6 +150,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     statsDirty: true,
     inventories: new Map(),
     combatEvents: [],
+    playerGold: 0,
     floorMap: null,
   };
 }

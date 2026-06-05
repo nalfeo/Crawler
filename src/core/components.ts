@@ -60,6 +60,8 @@ export const Trap = {};
 export const MeleeSwing = {};
 /** Smooth knockback impulse — decays over time. */
 export const Knockback = {};
+/** Dropped gold entity that awards currency on pickup. */
+export const Gold = {};
 /** Door entity — tracks open/closed state and tile position. */
 export const DoorState = {};
 
@@ -165,6 +167,9 @@ export function createComponentStores() {
       dirY: new Float32Array(MAX_ENTITIES),
       remaining: new Float32Array(MAX_ENTITIES),
       speed: new Float32Array(MAX_ENTITIES),
+    },
+    gold: {
+      value: new Float32Array(MAX_ENTITIES),
     },
     doorState: {
       tileX: new Uint16Array(MAX_ENTITIES),
