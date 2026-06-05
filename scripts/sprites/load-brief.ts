@@ -1,15 +1,21 @@
 /**
  * Brief loader.
  *
- * Reads a YAML brief from disk, parses it, validates against the Zod schema,
- * and resolves the palette `id` into actual `[r, g, b]` color triples loaded
- * from `data/palettes/<id>.json`.
+ * Reads a YAML brief from disk, merges per-type defaults, validates the
+ * merged result against the Zod schema, and resolves the palette `id` into
+ * actual `[r, g, b]` color triples loaded from `data/palettes/<id>.json`.
  *
- * Why a dedicated module: the Zod schema is format-agnostic (it accepts the
- * pre-parsed object), but every consumer (CLI, lab sidecar, tests) wants the
- * same disk-to-validated-brief pipeline. Centralising it here keeps the
- * post-processor / scorer / orchestrator unchanged when we add new palette
- * sources or brief locations later.
+ * Authors write minimal briefs — typically just `type`, `name`, and
+ * `description` — and per-type defaults from `data/sprite-types/<type>.json`
+ * fill in everything else (size, palette, anchor, references, sheet layout,
+ * sensor thresholds). Any field present on the minimal brief overrides the
+ * default at that path. The `description` field becomes the `prompt` if the
+ * author hasn't set `prompt` explicitly.
+ *
+ * Why a dedicated module: every consumer (CLI, lab sidecar, tests) wants
+ * the same disk-to-validated-brief pipeline. Centralising the merge +
+ * validation here keeps the post-processor / scorer / orchestrator
+ * unchanged when we add new defaults, brief locations, or palette sources.
  *
  * Pure-ish: this module touches the filesystem (it has to), but given the
  * same inputs (file contents) it produces identical outputs.
@@ -18,7 +24,15 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { briefSchema, type Brief, type PaletteColors, type RgbTriple } from './brief-schema.js';
+import {
+  briefSchema,
+  minimalBriefSchema,
+  type Brief,
+  type PaletteColors,
+  type RgbTriple,
+  type SpriteTypeDefaults,
+} from './brief-schema.js';
+import { deepMergeDefaults } from './deep-merge.js';
 
 export interface LoadedBrief {
   readonly brief: Brief;
@@ -30,9 +44,10 @@ export interface LoadedBrief {
 
 export interface LoadBriefOptions {
   /**
-   * Project root for resolving `data/palettes/<id>.json`. Defaults to
-   * `process.cwd()` which is correct when the CLI is invoked through
-   * `npm run sprites:run` from the repo root.
+   * Project root for resolving `data/palettes/<id>.json` and
+   * `data/sprite-types/<type>.json`. Defaults to `process.cwd()` which is
+   * correct when the CLI is invoked through `npm run sprites:run` from the
+   * repo root.
    */
   readonly projectRoot?: string;
   /**
@@ -41,13 +56,44 @@ export interface LoadBriefOptions {
    * id and must return the resolved colors.
    */
   readonly loadPalette?: (paletteId: string) => PaletteColors;
+  /**
+   * Override per-type defaults loading. Used by tests to avoid disk access
+   * and to keep test briefs fully self-contained. When supplied, this is
+   * called with the brief's `type` and must return the defaults object (or
+   * `null` to skip merging — useful for legacy fully-specified briefs).
+   */
+  readonly loadTypeDefaults?: (type: string) => SpriteTypeDefaults | null;
 }
 
 export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): LoadedBrief {
   const absolute = path.resolve(briefPath);
   const raw = readFileSync(absolute, 'utf8');
   const parsed = parseYaml(raw) as unknown;
-  const result = briefSchema.safeParse(parsed);
+
+  // Parse the minimal shape first so we get `type` early — we need it to
+  // pick the defaults file. The minimal schema is `.passthrough()`, so any
+  // fully-specified brief still passes this gate without losing fields.
+  const minimal = minimalBriefSchema.safeParse(parsed);
+  if (!minimal.success) {
+    const issues = minimal.error.issues
+      .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
+      .join('\n');
+    throw new Error(
+      `Brief at ${absolute} is missing required minimal fields ` +
+        `(type, name, description):\n${issues}`,
+    );
+  }
+  const loadDefaults = opts.loadTypeDefaults ?? defaultTypeDefaultsLoader(opts.projectRoot);
+  const defaults = loadDefaults(minimal.data.type);
+
+  // Merge: defaults underneath, the minimal brief's fields on top. The
+  // minimal brief's `description` is mapped to `prompt` only when the
+  // merged object doesn't already have a `prompt`. We strip `description`
+  // from the merged result so the strict full-brief schema doesn't trip
+  // on it.
+  const merged = mergeMinimalIntoDefaults(minimal.data, defaults);
+
+  const result = briefSchema.safeParse(merged);
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join('.') || '<root>'}: ${i.message}`)
@@ -57,6 +103,59 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
   const brief = result.data;
   const palette = (opts.loadPalette ?? defaultPaletteLoader(opts.projectRoot))(brief.palette.id);
   return { brief, palette, briefPath: absolute };
+}
+
+/**
+ * Merge a minimal brief on top of per-type defaults. Pure; exposed so tests
+ * can exercise the merge semantics directly without disk I/O.
+ *
+ * - `description` becomes `prompt` when the merged brief has no explicit
+ *   `prompt`. The `description` field is then stripped because the strict
+ *   `briefSchema` doesn't allow unknown keys.
+ * - `defaults` is treated as immutable.
+ * - When `defaults` is `null` (loader returned no defaults for the type),
+ *   the minimal brief is passed through more or less verbatim. The
+ *   author is then responsible for supplying every required field.
+ */
+export function mergeMinimalIntoDefaults(
+  minimal: Record<string, unknown>,
+  defaults: SpriteTypeDefaults | null,
+): Record<string, unknown> {
+  const base = defaults === null ? {} : defaults;
+  const merged = deepMergeDefaults(base as Record<string, unknown>, minimal);
+  if (merged.prompt === undefined && typeof merged.description === 'string') {
+    merged.prompt = merged.description;
+  }
+  delete merged.description;
+  return merged;
+}
+
+function defaultTypeDefaultsLoader(
+  projectRoot?: string,
+): (type: string) => SpriteTypeDefaults | null {
+  const root = projectRoot ?? process.cwd();
+  return (type: string): SpriteTypeDefaults | null => {
+    const defaultsPath = path.join(root, 'data', 'sprite-types', `${type}.json`);
+    let raw: string;
+    try {
+      raw = readFileSync(defaultsPath, 'utf8');
+    } catch (err) {
+      // No defaults file for this type yet — the brief author is responsible
+      // for supplying every required field; the merged schema validation
+      // will surface anything missing with a clear message.
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return null;
+      throw new Error(
+        `Failed reading sprite-type defaults at ${defaultsPath}: ${(err as Error).message}`,
+        { cause: err },
+      );
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`Sprite-type defaults at ${defaultsPath} must be a JSON object`);
+    }
+    return parsed as SpriteTypeDefaults;
+  };
 }
 
 function defaultPaletteLoader(projectRoot?: string): (paletteId: string) => PaletteColors {

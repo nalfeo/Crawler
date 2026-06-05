@@ -196,6 +196,46 @@ export type RgbTriple = readonly [number, number, number];
 export type PaletteColors = readonly RgbTriple[];
 
 /**
+ * Minimal on-disk brief shape — what authors actually write in YAML.
+ *
+ * The pipeline is intentionally split into two layers:
+ *  - this `minimalBriefSchema` describes what a human writes in
+ *    `briefs/<type>/<name>.yaml`: just enough to identify the sprite
+ *    (`type` + `name`) and a free-form `description` of what it should
+ *    look like.
+ *  - `briefSchema` (above) describes what the downstream pipeline
+ *    consumes after per-type defaults are merged in.
+ *
+ * Any field on the full `briefSchema` may be overridden inline on a
+ * minimal brief — overrides are deep-merged on top of the per-type
+ * defaults loaded from `data/sprite-types/<type>.json`. We do NOT
+ * validate the override fields here; the merged result is what gets
+ * Zod-validated, so authors get a single coherent error message instead
+ * of two layers of complaints.
+ */
+export const minimalBriefSchema = z
+  .object({
+    type: z.enum(SPRITE_TYPES),
+    name: z
+      .string()
+      .min(1)
+      .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
+    description: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+export type MinimalBrief = z.infer<typeof minimalBriefSchema>;
+
+/**
+ * Per-type defaults loaded from `data/sprite-types/<type>.json`. The
+ * shape is intentionally `unknown` here — we let the deep merge run and
+ * then `briefSchema` validates the final object. This keeps the
+ * defaults file authoring loose (you can omit any field) while still
+ * giving authors a single, helpful validation pass on the merged brief.
+ */
+export type SpriteTypeDefaults = Record<string, unknown>;
+
+/**
  * Variant count produced by a brief's sheet config. Pure derivation; exported
  * because slicer and prompt builder both need it.
  */

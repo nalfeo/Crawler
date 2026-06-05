@@ -97,11 +97,12 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
 }
 
 function briefSubjectBlock(brief: Brief): string {
-  const lines: string[] = ['## Subject', brief.prompt.trim()];
-  if (brief.tags.length > 0) {
-    lines.push('', `Tags: ${brief.tags.join(', ')}`);
-  }
-  return lines.join('\n');
+  // Tags are intentionally NOT emitted into the prompt: they're an
+  // internal taxonomy used downstream (filtering briefs, grouping
+  // generations) and the model handles natural-language descriptions
+  // better than comma-separated keywords. Authors should put any
+  // visual detail in the description / prompt itself.
+  return ['## Subject', brief.prompt.trim()].join('\n');
 }
 
 function singleConstraintsBlock(): string {

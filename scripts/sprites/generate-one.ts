@@ -86,7 +86,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   const now = options.now ?? (() => new Date());
   const readReference = options.readReference ?? ((p) => readFileSync(p));
 
-  const loaded = options.preloaded ?? loadBrief(options.briefPath);
+  const loaded = options.preloaded ?? loadBrief(options.briefPath, { projectRoot: repoRoot });
   const brief = loaded.brief;
   const palette = loaded.palette;
   const expected = variantCount(brief);

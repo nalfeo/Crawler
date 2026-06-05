@@ -1,10 +1,6 @@
 type: weapon
 name: skull-mace
-size: { width: 16, height: 16 }
-palette: { id: kenney-roguelike }
-anchor: { x: 8, y: 14 }
-tags: [weapon, mace, blunt, skull, bone, dark, uncommon]
-prompt: |
+description: |
   A grim one-handed mace held vertically, head at the top, haft straight
   down. The head is a small bleached skull mounted on top of a short
   straight haft — eye sockets and nasal cavity read as two dark dots and
@@ -14,12 +10,6 @@ prompt: |
   highlight along the top of the skull and one edge of the haft. No
   glow, no flames, no blood, no chains, no enchantment. The silhouette
   must read as "skull on a stick" at a glance and clearly not be a sword.
-references:
-  # Spritesheet references from the same Kenney roguelike packs the
-  # iron-sword brief uses, so the model anchors on the existing weapon
-  # palette and brush style. The post-processor still quantises every
-  # variant back to the kenney-roguelike palette regardless.
-  - path: public/assets/kenney/roguelike-rpg-pack/spritesheet.png
-    note: roguelike RPG weapon sheet for silhouette + palette anchoring
-  - path: public/assets/kenney/tiny-battle/spritesheet.png
-    note: secondary palette/style anchor with hand-weapon shapes
+# Vertical orientation, 4x4 sheet, palette, references, anchor — all
+# inherited from data/sprite-types/weapon.json. This brief only contains
+# the bits that make a skull mace specifically a skull mace.

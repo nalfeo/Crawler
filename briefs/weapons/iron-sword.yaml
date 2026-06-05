@@ -1,26 +1,16 @@
 type: weapon
 name: iron-sword
-size: { width: 16, height: 16 }
-palette: { id: kenney-roguelike }
-anchor: { x: 8, y: 14 }
-tags: [weapon, sword, melee, iron, common]
-prompt: |
+description: |
   A simple iron sword in side-profile, blade angled up-and-right at
   roughly 45 degrees. Straight double-edged blade with a small crossguard
   and a short wrapped grip. Cool grey steel blade with a thin highlight
   along one edge; dark brown wrap on the hilt; small gold pommel. No
   glow, no enchantment, no engraving, no scabbard. Silhouette must read
   as a sword at a glance.
-references:
-  # Two spritesheet references from the Kenney roguelike RPG pack. The
-  # provider sends them as composition / palette anchors; the post-
-  # processor still quantises every variant back to the kenney-roguelike
-  # palette. Replace with cropped single-sword PNGs once the asset
-  # pipeline supports them.
-  - path: public/assets/kenney/roguelike-rpg-pack/spritesheet.png
-    note: roguelike RPG weapon sheet for silhouette + palette anchoring
-  - path: public/assets/kenney/tiny-battle/spritesheet.png
-    note: secondary palette/style anchor with hand-weapon shapes
+# Iron-sword is intentionally side-profile / diagonal, so we override the
+# weapon-default vertical orientation. Everything else (16x16, palette,
+# anchor, references, 4x4 sheet) is inherited from
+# data/sprite-types/weapon.json.
 sensors:
   weapon:
     orientation: diagonal
