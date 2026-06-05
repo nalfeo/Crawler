@@ -255,7 +255,7 @@ export function renderLabIndex(): void {
   search.style.border = '1px solid rgba(255, 255, 255, 0.2)';
   search.style.borderRadius = '10px';
   search.style.color = '#e0e0e0';
-  search.style.fontSize = compact ? '14px' : '13px';
+  search.style.fontSize = compact ? '13px' : '14px';
 
   const list = document.createElement('div');
   list.style.display = 'grid';
