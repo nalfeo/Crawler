@@ -8,6 +8,7 @@
 import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
 import type { InventoryBag } from '../shared/inventory.js';
+import type { CombatEvent } from '../shared/combat-events.js';
 import {
   Position,
   Velocity,
@@ -68,6 +69,8 @@ export interface GameWorld {
   statsDirty: boolean;
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
   inventories: Map<number, InventoryBag>;
+  /** Combat events emitted this frame — consumed and drained by the render layer. */
+  combatEvents: CombatEvent[];
 }
 
 export interface CreateWorldOptions {
@@ -137,6 +140,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     skillUsageEvents: [],
     statsDirty: true,
     inventories: new Map(),
+    combatEvents: [],
   };
 }
 

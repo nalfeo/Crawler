@@ -13,11 +13,15 @@ import {
 } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
+import type { CombatEvent } from '../../shared/combat-events.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
 const PLAYER_INVINCIBILITY_MS = 250;
 const MAX_TRACKED_ENTITIES = 10_000;
+
+/** Throttle: emit at most one 'blocked' event per invincibility window. */
+const lastBlockedEventMs = new WeakMap<GameWorld, number>();
 
 const playerHitTimestamps = new WeakMap<GameWorld, Float64Array>();
 
@@ -80,6 +84,26 @@ function applyArmorReduction(world: GameWorld, player: number, rawDamage: number
   return Math.max(1, rawDamage - armor);
 }
 
+function emitCombatEvent(world: GameWorld, event: CombatEvent): void {
+  world.combatEvents.push(event);
+}
+
+/** Emit a throttled 'blocked' event (max one per invincibility window). */
+function emitBlockedEvent(world: GameWorld, player: number): void {
+  const last = lastBlockedEventMs.get(world) ?? -Infinity;
+  if (world.elapsedMs - last < PLAYER_INVINCIBILITY_MS) return;
+  lastBlockedEventMs.set(world, world.elapsedMs);
+  emitCombatEvent(world, {
+    type: 'blocked',
+    x: world.stores.position.x[player] ?? 0,
+    y: world.stores.position.y[player] ?? 0,
+    amount: 0,
+    targetType: 'player',
+    timestamp: world.elapsedMs,
+    targetEid: player,
+  });
+}
+
 function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
   // If this is the first hit for this projectile, clear stale hit tracking
   // from any previous entity that used the same recycled ECS ID.
@@ -98,6 +122,17 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
     // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
+
+    // Emit combat event for VFX
+    emitCombatEvent(world, {
+      type: 'hit',
+      x: world.stores.position.x[enemy] ?? 0,
+      y: world.stores.position.y[enemy] ?? 0,
+      amount,
+      targetType: 'enemy',
+      timestamp: world.elapsedMs,
+      targetEid: enemy,
+    });
   }
 
   hitSet.add(enemy);
@@ -131,6 +166,7 @@ function applyPlayerEnemyHit(
   const lastHitMs = hitTimestamps[player] ?? -Infinity;
 
   if (world.elapsedMs - lastHitMs < PLAYER_INVINCIBILITY_MS) {
+    emitBlockedEvent(world, player);
     return;
   }
 
@@ -139,6 +175,16 @@ function applyPlayerEnemyHit(
   const currentHealth = world.stores.health.current[player] ?? 0;
   world.stores.health.current[player] = Math.max(0, currentHealth - amount);
   hitTimestamps[player] = world.elapsedMs;
+
+  emitCombatEvent(world, {
+    type: 'hit',
+    x: world.stores.position.x[player] ?? 0,
+    y: world.stores.position.y[player] ?? 0,
+    amount,
+    targetType: 'player',
+    timestamp: world.elapsedMs,
+    targetEid: player,
+  });
 }
 
 function applyEnemyProjectileHit(
@@ -155,6 +201,7 @@ function applyEnemyProjectileHit(
   const lastHitMs = hitTimestamps[player] ?? -Infinity;
 
   if (world.elapsedMs - lastHitMs < PLAYER_INVINCIBILITY_MS) {
+    emitBlockedEvent(world, player);
     destroyEntity(world, projectile);
     return;
   }
@@ -164,6 +211,16 @@ function applyEnemyProjectileHit(
   const currentHealth = world.stores.health.current[player] ?? 0;
   world.stores.health.current[player] = Math.max(0, currentHealth - amount);
   hitTimestamps[player] = world.elapsedMs;
+
+  emitCombatEvent(world, {
+    type: 'hit',
+    x: world.stores.position.x[player] ?? 0,
+    y: world.stores.position.y[player] ?? 0,
+    amount,
+    targetType: 'player',
+    timestamp: world.elapsedMs,
+    targetEid: player,
+  });
 
   destroyEntity(world, projectile);
 }
