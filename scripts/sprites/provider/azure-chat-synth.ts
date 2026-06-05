@@ -154,16 +154,13 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const wantClassify = request.type === null;
   const referenceList = formatCatalogForPrompt(request.referenceCatalog);
   const lines: string[] = [
-    'You are a sprite-brief synthesizer for the game Crawler. Crawler uses 16x16 pixel-art sprites in the Kenney roguelike style. Your job is to turn a subject name into multiple distinct candidate briefs that a human will then pick from.',
+    'You are an art director writing concept briefs for tiny 16x16 pixel-art sprites in the Kenney roguelike style for an indie game called Crawler. Given a subject name, write multiple short concept briefs that a human collaborator will then pick from to send to an illustrator.',
     '',
-    'HARD RULES (any violation rejects the candidate):',
-    '1. Each candidate description MUST be concrete — describe pose, silhouette, orientation, and dominant colour. Vague adjectives such as "cool", "awesome", "epic", "amazing", or "nice" are forbidden.',
-    '2. The three candidates MUST be visibly distinct from one another. Different silhouettes, different proportions, different on-theme embellishments — not three palette swaps of the same drawing.',
-    '3. Every candidate description MUST mention an explicit pose / orientation hint (e.g. "held vertically", "side-profile angled 45 degrees up-right", "facing the camera"). Default for weapons is vertical with the grip at the bottom.',
-    '4. Every candidate description MUST mention a dominant colour hint by name (e.g. "iron steel with brown wrap", "deep crimson cloth"). NEVER use hex codes — the downstream palette quantiser will pick exact RGB values.',
-    '5. References MUST be chosen from the catalog below by id only. Do NOT invent paths. Pick 2-3 ids per candidate. Each reference id must come with a one-sentence note explaining why it grounds this specific candidate.',
-    '6. embellishmentSeeds MUST be 3-5 short discrete on-theme ideas (4-12 words each) that the downstream variation expander can build on. Each entry stands alone — do not combine with "and". No vague adjectives.',
-    '7. rationale MUST be one sentence explaining how this candidate\'s silhouette differs from the other candidates in the response.',
+    'A good brief is concrete. It names the pose, the silhouette, the orientation, and the dominant colour by name (no hex codes — leave RGB choices to the illustrator). Strong briefs use specific verbs and nouns; weak briefs use generic adjectives like "cool" or "nice", so prefer concrete language.',
+    '',
+    'Aim for visibly distinct candidates. Each candidate should differ in silhouette, proportion, and on-theme detail from the others — not just colour swaps. For weapons, the default orientation is vertical with the grip at the bottom.',
+    '',
+    'Each candidate also picks 2-3 reference spritesheets from the catalog below, by id (use ids from the catalog exactly; do not invent paths), with a one-sentence note for each saying why it grounds that particular candidate. And 3-5 short, discrete embellishment ideas (4-12 words each, no compound "and" entries), which the downstream variation expander will build on. And one sentence of rationale describing how this candidate differs from the others.',
     '',
     `Allowed sprite types: ${SPRITE_TYPES.join(', ')}.`,
     '',
@@ -173,16 +170,16 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   ];
   if (wantClassify) {
     lines.push(
-      'CLASSIFICATION: the caller did not supply a type. In your response set `inferredType` to one of the allowed sprite types and `typeConfidence` to a number in [0,1] expressing how sure you are. If you are not at least 0.9 confident, still answer with your best guess and a low confidence — the caller will fail closed and ask the user for the type.',
+      'Classification: the caller did not supply a type. In your response set inferredType to one of the allowed sprite types and typeConfidence to a number in [0,1] expressing how sure you are. If you are unsure, still answer with your best guess and a low confidence; the caller will fall back to asking the user.',
     );
   } else {
     lines.push(
-      `CLASSIFICATION: the caller supplied type='${request.type ?? ''}'. Set inferredType to null and typeConfidence to null.`,
+      `Classification: the caller supplied type='${request.type ?? ''}'. Set inferredType to null and typeConfidence to null.`,
     );
   }
   lines.push(
     '',
-    'OUTPUT FORMAT: strict JSON object only. No prose, no markdown. Shape:',
+    'Return a single JSON object only (no markdown, no commentary). Shape:',
     '{',
     '  "inferredType": "<sprite-type or null>",',
     '  "typeConfidence": <number 0..1 or null>,',
@@ -201,13 +198,11 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
 
 export function buildUserPrompt(request: SynthesizeBriefRequest): string {
   const typeLine =
-    request.type === null ? 'SPRITE TYPE: <classify from the name>' : `SPRITE TYPE: ${request.type}`;
+    request.type === null ? 'Sprite type: classify from the name.' : `Sprite type: ${request.type}.`;
   return [
-    `SUBJECT NAME: ${request.name}`,
+    `Subject name: ${request.name}.`,
     typeLine,
-    `CANDIDATE COUNT: ${request.candidates}`,
-    '',
-    `Produce exactly ${request.candidates} candidate(s). Each must follow every hard rule in the system prompt.`,
+    `Please return exactly ${request.candidates} candidate brief(s).`,
   ].join('\n');
 }
 
