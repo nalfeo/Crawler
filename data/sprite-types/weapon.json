@@ -1,0 +1,7 @@
+{
+  "_comment": "Sprite-type defaults for the weapon family. Merged into every weapon brief by scripts/sprites/load-brief.ts before Zod validation. Brief values win field-by-field — a brief can override `centerToleranceX` without restating `derive: true`, etc.",
+  "sensors": {
+    "weapon": { "diagonalToleranceDeg": 5 },
+    "anchor": { "derive": true, "bandRows": 4, "centerToleranceX": 3 }
+  }
+}

@@ -1,5 +1,21 @@
 import type { Brief, PaletteColors } from './brief-schema.js';
-import { decodeSprite, universalSensors, type SensorResult } from './sensors/common.js';
+import {
+  alphaBinary,
+  anchorOpaque,
+  decodeSprite,
+  dimensionsExact,
+  opaqueBboxFits,
+  opaqueRatio,
+  paletteMembership,
+  type RgbaImage,
+  type SensorResult,
+} from './sensors/common.js';
+import {
+  ANCHOR_DERIVABLE_SENSOR,
+  anchorDerivable,
+  isAnchorDerivableOk,
+} from './sensors/anchor-derivable.js';
+import type { DerivedAnchor } from './sensors/derive-anchor.js';
 import { weaponSensors } from './sensors/weapons.js';
 
 /**
@@ -16,6 +32,9 @@ import { weaponSensors } from './sensors/weapons.js';
  * - `passed` = every sensor returned `ok: true` (no failures at all).
  * - `breakdown` is the full per-sensor result list, preserved in order, so
  *   reviewers can see exactly which check failed and why.
+ * - `derivedAnchor` is the per-variant grip pixel found by the
+ *   `anchor-derivable` sensor — `null` when the brief uses the legacy
+ *   `anchor-opaque` sensor, or when derivation failed.
  *
  * There is no subjective "looks good" score in Phase 2. Phase 3's
  * `sprite-forge-lab` will layer that on top of this baseline.
@@ -30,6 +49,12 @@ export interface Scorecard {
   readonly passed: boolean;
   /** Per-sensor results, in the order the sensors ran. */
   readonly breakdown: ReadonlyArray<SensorResult>;
+  /**
+   * Anchor derived from the silhouette by the `anchor-derivable` sensor.
+   * Null when the brief uses the legacy `anchor-opaque` sensor, or when
+   * `anchor-derivable` failed (the failure is still recorded in `breakdown`).
+   */
+  readonly derivedAnchor: DerivedAnchor | null;
 }
 
 /**
@@ -47,8 +72,9 @@ export function scoreCandidate(
   const image = decodeSprite(processedPng);
   const breakdown: SensorResult[] = [];
 
-  // Universal sensors. opaqueRatio honors the brief override; everything
-  // else is parameter-free.
+  // Universal sensors. opaqueRatio honors the brief override; the anchor
+  // sensor is swapped between `anchor-opaque` (static brief pixel) and
+  // `anchor-derivable` (derived per variant) based on `brief.sensors.anchor`.
   for (const result of runUniversal(image, brief, palette)) {
     breakdown.push(result);
   }
@@ -65,65 +91,61 @@ export function scoreCandidate(
 
   const score = breakdown.filter((r) => r.ok).length;
   const outOf = breakdown.length;
+
+  // Lift the derived anchor out of the breakdown so consumers don't have to
+  // know which slot it occupies. Null when anchor-derivable failed or when
+  // the brief uses the legacy anchor-opaque sensor.
+  let derivedAnchor: DerivedAnchor | null = null;
+  for (const result of breakdown) {
+    if (isAnchorDerivableOk(result)) {
+      derivedAnchor = result.anchor;
+      break;
+    }
+  }
+
   return {
     score,
     outOf,
     passed: score === outOf,
     breakdown,
+    derivedAnchor,
   };
 }
 
 /**
  * Run universal sensors with brief overrides applied to the ones that accept
- * options. Returns results in the same canonical order as
- * `universalSensors()` from `./sensors/common.ts`.
+ * options. Returns results in the same canonical order as the legacy
+ * `universalSensors()` helper, but with the anchor slot swapped to
+ * `anchor-derivable` when the brief opts in via `sensors.anchor.derive`.
  */
-function runUniversal(
-  image: ReturnType<typeof decodeSprite>,
-  brief: Brief,
-  palette: PaletteColors,
-): SensorResult[] {
-  // For Phase 2, the only universal sensor with brief-overridable thresholds
-  // is `opaqueRatio`. Rather than dispatch each sensor individually here,
-  // we run them through the shared helper and then re-evaluate opaqueRatio
-  // with the brief's overrides when the brief actually sets them.
-  const baseline = universalSensors(image, brief, palette);
-  const overrides = brief.sensors.opaqueRatio;
-  if (!overrides || (overrides.min === undefined && overrides.max === undefined)) {
-    return baseline;
-  }
-  // Replace the baseline opaqueRatio result with one using the overrides.
-  return baseline.map((result) => {
-    if (result.sensor !== 'opaque-ratio') return result;
-    return reEvaluateOpaqueRatio(image, overrides);
-  });
+function runUniversal(image: RgbaImage, brief: Brief, palette: PaletteColors): SensorResult[] {
+  return [
+    dimensionsExact(image, brief),
+    alphaBinary(image),
+    paletteMembership(image, palette),
+    opaqueBboxFits(image),
+    resolveOpaqueRatio(image, brief),
+    resolveAnchorSensor(image, brief),
+  ];
 }
 
-function reEvaluateOpaqueRatio(
-  image: ReturnType<typeof decodeSprite>,
-  overrides: { min?: number; max?: number },
-): SensorResult {
-  // Inline the math to avoid leaking opaqueRatio's defaults when only one
-  // bound is overridden.
-  const sensor = 'opaque-ratio';
-  const total = image.width * image.height;
-  if (total === 0) return { ok: false, sensor, reason: 'image has zero pixels' };
-  let count = 0;
-  for (let y = 0; y < image.height; y++) {
-    for (let x = 0; x < image.width; x++) {
-      const a = image.data[(y * image.width + x) * 4 + 3] ?? 0;
-      if (a !== 0) count++;
-    }
+function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {
+  const overrides = brief.sensors.opaqueRatio;
+  if (!overrides || (overrides.min === undefined && overrides.max === undefined)) {
+    return opaqueRatio(image);
   }
-  const ratio = count / total;
-  const min = overrides.min ?? 0.1;
-  const max = overrides.max ?? 0.65;
-  if (ratio < min || ratio > max) {
-    return {
-      ok: false,
-      sensor,
-      reason: `opaque ratio ${ratio.toFixed(3)} outside [${min}, ${max}]`,
-    };
-  }
-  return { ok: true, sensor };
+  return opaqueRatio(image, { min: overrides.min, max: overrides.max });
 }
+
+function resolveAnchorSensor(image: RgbaImage, brief: Brief): SensorResult {
+  const anchorOpts = brief.sensors.anchor;
+  if (anchorOpts?.derive) {
+    return anchorDerivable(image, {
+      bandRows: anchorOpts.bandRows,
+      centerToleranceX: anchorOpts.centerToleranceX,
+    });
+  }
+  return anchorOpaque(image, brief);
+}
+
+export { ANCHOR_DERIVABLE_SENSOR };

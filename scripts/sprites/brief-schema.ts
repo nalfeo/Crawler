@@ -113,6 +113,27 @@ const sensorOverridesSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Per-variant derived anchor opt-in. When `derive: true`, the scorer
+     * replaces the static `anchor-opaque` sensor with `anchor-derivable`,
+     * which finds the bottom-center grip pixel from the silhouette instead
+     * of asserting a single pre-declared pixel. The brief's `anchor` field
+     * becomes informational in that mode.
+     *
+     * - `bandRows`: how many rows up from the bottom edge are eligible for
+     *   the grip. Default 4. Range 1-8.
+     * - `centerToleranceX`: max horizontal distance (px) between the
+     *   chosen grip-run midpoint and frame center before the variant is
+     *   rejected. Default 3. Range 0-8.
+     */
+    anchor: z
+      .object({
+        derive: z.boolean().default(false),
+        bandRows: z.number().int().min(1).max(8).default(4),
+        centerToleranceX: z.number().int().min(0).max(8).default(3),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .default({});
