@@ -10,6 +10,14 @@ export default defineConfig({
       reporter: ['text', 'lcov', 'json-summary'],
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'src/main.ts', 'src/lab-main.ts', 'src/**/index.ts'],
+      thresholds: {
+        'src/core/systems/meleeSwingSystem.ts': { lines: 90, branches: 80, statements: 90 },
+        'src/core/systems/returningProjectileSystem.ts': {
+          lines: 90,
+          branches: 80,
+          statements: 90,
+        },
+      },
     },
     projects: [
       {
