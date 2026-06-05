@@ -31,6 +31,34 @@ and can be overridden inline if a particular brief needs to.
 
 ## Where briefs live
 
+Briefs flow through three stages:
+
+```
+generated/brief-candidates/<name>/    ← synth output (gitignored)
+  <name>-v1.yaml
+  <name>-v2.yaml
+  <name>-v3.yaml
+  synthesis.json
+
+briefs/draft/<type>s/<name>.yaml      ← human picked one (gitignored)
+
+briefs/<type>s/<name>.yaml            ← passes sensors, committed
+```
+
+1. **`npm run sprites:synth -- <name> --type <type>`** asks the model
+   for N candidate minimal briefs and writes them under
+   `generated/brief-candidates/<name>/` together with a `synthesis.json`
+   sidecar (provider label, prompt hash, rationale per candidate). The
+   directory is gitignored — these are throw-away artefacts.
+2. The author reviews the candidates and moves the best one into
+   `briefs/draft/<type>s/<name>.yaml`. The `briefs/draft/` directory is
+   gitignored (see `briefs/draft/.gitignore`) so a half-formed brief
+   doesn't get committed by mistake.
+3. The author runs `npm run sprites:run -- --brief briefs/draft/<type>s/<name>.yaml`
+   and iterates on the description until a variant passes the sensors.
+4. Only then does the brief get moved to `briefs/<type>s/<name>.yaml`
+   and committed.
+
 ```
 briefs/
   weapons/
@@ -40,8 +68,8 @@ briefs/
     ...
 ```
 
-Subdirectories are informational; the loader doesn't care. `type:` is the
-source of truth for which defaults file to merge.
+Subdirectories under `briefs/` are informational; the loader doesn't
+care. `type:` is the source of truth for which defaults file to merge.
 
 ## Per-type defaults
 
