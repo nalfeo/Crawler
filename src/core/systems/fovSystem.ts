@@ -35,9 +35,14 @@ export function fovSystem(world: GameWorld): void {
   const lightPasses = floorMap.tileMap.createLightPassesCallback();
   const fov = new FOV.RecursiveShadowcasting(lightPasses);
 
-  fov.compute(tile.x, tile.y, DEFAULT_FOV_RADIUS, (_x: number, _y: number, _r: number, visibility: number) => {
-    if (visibility > 0) {
-      floorMap.setVisible(_x, _y);
-    }
-  });
+  fov.compute(
+    tile.x,
+    tile.y,
+    DEFAULT_FOV_RADIUS,
+    (_x: number, _y: number, _r: number, visibility: number) => {
+      if (visibility > 0) {
+        floorMap.setVisible(_x, _y);
+      }
+    },
+  );
 }

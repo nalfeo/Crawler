@@ -131,22 +131,36 @@ function createFovLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     }
   });
 
-  gui.add(settings, 'fovRadius', 3, 30, 1).name('FOV Radius').onChange(() => {
-    saveLabState(LAB_ID, settings);
-    refresh();
-  });
-  gui.add(settings, 'wallDensity', 0, 0.5, 0.01).name('Wall Density').onChange(() => {
-    tileMap = buildMap(settings.wallDensity);
-    saveLabState(LAB_ID, settings);
-    refresh();
-  });
-  gui.add({ regenerate: () => {
-    tileMap = buildMap(settings.wallDensity);
-    refresh();
-  }}, 'regenerate').name('Regenerate Map');
+  gui
+    .add(settings, 'fovRadius', 3, 30, 1)
+    .name('FOV Radius')
+    .onChange(() => {
+      saveLabState(LAB_ID, settings);
+      refresh();
+    });
+  gui
+    .add(settings, 'wallDensity', 0, 0.5, 0.01)
+    .name('Wall Density')
+    .onChange(() => {
+      tileMap = buildMap(settings.wallDensity);
+      saveLabState(LAB_ID, settings);
+      refresh();
+    });
+  gui
+    .add(
+      {
+        regenerate: () => {
+          tileMap = buildMap(settings.wallDensity);
+          refresh();
+        },
+      },
+      'regenerate',
+    )
+    .name('Regenerate Map');
 
   const hint = document.createElement('p');
-  hint.textContent = 'Click to move player. Tune FOV radius and wall density. Green = player, lit tiles = visible.';
+  hint.textContent =
+    'Click to move player. Tune FOV radius and wall density. Green = player, lit tiles = visible.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';
@@ -163,6 +177,7 @@ function createFovLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
 registerLab('fov-lab', {
   category: 'Movement & Physics',
   name: 'FOV Lab',
-  description: 'Visualize recursive shadowcasting FOV with interactive wall placement and radius tuning.',
+  description:
+    'Visualize recursive shadowcasting FOV with interactive wall placement and radius tuning.',
   create: createFovLab,
 });

@@ -32,7 +32,12 @@ export class RoomGraph {
   }
 
   /** Add a room and return its assigned ID. */
-  add(bounds: RoomBounds, doors: DoorLocation[] = [], neighbors: number[] = [], label?: string): number {
+  add(
+    bounds: RoomBounds,
+    doors: DoorLocation[] = [],
+    neighbors: number[] = [],
+    label?: string,
+  ): number {
     const id = this.rooms.length;
     this.rooms.push({ id, bounds, doors, neighbors, label });
     this.spatialCache = null; // invalidate cache
@@ -51,9 +56,7 @@ export class RoomGraph {
   getConnectedRooms(roomId: number): readonly RoomData[] {
     const room = this.rooms[roomId];
     if (!room) return [];
-    return room.neighbors
-      .map((id) => this.rooms[id])
-      .filter((r): r is RoomData => r !== undefined);
+    return room.neighbors.map((id) => this.rooms[id]).filter((r): r is RoomData => r !== undefined);
   }
 
   /** Get all door locations across all rooms. */

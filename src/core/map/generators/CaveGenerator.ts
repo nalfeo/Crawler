@@ -102,11 +102,7 @@ export class CaveGenerator implements MapGenerator {
     return new FloorMap(config, tileMap, roomGraph, terrain, playerSpawn);
   }
 
-  private findSpawnNearCenter(
-    tileMap: TileMap,
-    w: number,
-    h: number,
-  ): { x: number; y: number } {
+  private findSpawnNearCenter(tileMap: TileMap, w: number, h: number): { x: number; y: number } {
     const cx = Math.floor(w / 2);
     const cy = Math.floor(h / 2);
 

@@ -110,7 +110,11 @@ function createDoorLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
           ctx.font = `${CELL_SIZE * 0.5}px monospace`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(isPassable ? '▪' : '▫', x * CELL_SIZE + CELL_SIZE / 2, y * CELL_SIZE + CELL_SIZE / 2);
+          ctx.fillText(
+            isPassable ? '▪' : '▫',
+            x * CELL_SIZE + CELL_SIZE / 2,
+            y * CELL_SIZE + CELL_SIZE / 2,
+          );
         }
       }
     }
@@ -148,18 +152,33 @@ function createDoorLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     render();
   });
 
-  gui.add({ closeAll: () => {
-    for (const d of doorPositions) tileMap.closeDoor(d.x, d.y);
-    render();
-  }}, 'closeAll').name('Close All Doors');
+  gui
+    .add(
+      {
+        closeAll: () => {
+          for (const d of doorPositions) tileMap.closeDoor(d.x, d.y);
+          render();
+        },
+      },
+      'closeAll',
+    )
+    .name('Close All Doors');
 
-  gui.add({ openAll: () => {
-    for (const d of doorPositions) tileMap.openDoor(d.x, d.y);
-    render();
-  }}, 'openAll').name('Open All Doors');
+  gui
+    .add(
+      {
+        openAll: () => {
+          for (const d of doorPositions) tileMap.openDoor(d.x, d.y);
+          render();
+        },
+      },
+      'openAll',
+    )
+    .name('Open All Doors');
 
   const hint = document.createElement('p');
-  hint.textContent = 'Click doors (orange) to toggle. Click floor to move player. Watch LOS change through doors.';
+  hint.textContent =
+    'Click doors (orange) to toggle. Click floor to move player. Watch LOS change through doors.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';
@@ -176,6 +195,7 @@ function createDoorLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 registerLab('door-lab', {
   category: 'Movement & Physics',
   name: 'Door Lab',
-  description: 'Interactive door toggle with real-time FOV/LOS visualization through open and closed doors.',
+  description:
+    'Interactive door toggle with real-time FOV/LOS visualization through open and closed doors.',
   create: createDoorLab,
 });

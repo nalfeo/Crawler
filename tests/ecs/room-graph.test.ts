@@ -99,11 +99,7 @@ describe('RoomGraph', () => {
       const door = { x: 10, y: 5, connectsTo: 1 };
       graph.add({ x: 0, y: 0, width: 10, height: 10 }, [door], [1]);
       // Same door referenced by connected room
-      graph.add(
-        { x: 11, y: 0, width: 10, height: 10 },
-        [{ x: 10, y: 5, connectsTo: 0 }],
-        [0],
-      );
+      graph.add({ x: 11, y: 0, width: 10, height: 10 }, [{ x: 10, y: 5, connectsTo: 0 }], [0]);
 
       const doors = graph.getAllDoors();
       expect(doors).toHaveLength(1); // deduplicated
