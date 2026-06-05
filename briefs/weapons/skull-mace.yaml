@@ -23,6 +23,3 @@ references:
     note: roguelike RPG weapon sheet for silhouette + palette anchoring
   - path: public/assets/kenney/tiny-battle/spritesheet.png
     note: secondary palette/style anchor with hand-weapon shapes
-sensors:
-  weapon:
-    diagonalToleranceDeg: 5

@@ -56,6 +56,9 @@ references:
   - { path: refs/b.png }
 generation:
   sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
+sensors:
+  weapon:
+    orientation: diagonal
 `.trim();
 
 /**

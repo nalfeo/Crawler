@@ -23,4 +23,5 @@ references:
     note: secondary palette/style anchor with hand-weapon shapes
 sensors:
   weapon:
+    orientation: diagonal
     diagonalToleranceDeg: 3

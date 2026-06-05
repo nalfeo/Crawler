@@ -58,6 +58,7 @@ export function scoreCandidate(
     const opts = brief.sensors.weapon ?? {};
     for (const result of weaponSensors(image, {
       diagonalToleranceDeg: opts.diagonalToleranceDeg,
+      orientation: opts.orientation,
     })) {
       breakdown.push(result);
     }

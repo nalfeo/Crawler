@@ -116,6 +116,7 @@ const sensorOverridesSchema = z
     weapon: z
       .object({
         diagonalToleranceDeg: z.number().min(0).max(45).optional(),
+        orientation: z.enum(['any', 'diagonal', 'vertical', 'horizontal']).optional(),
       })
       .strict()
       .optional(),
