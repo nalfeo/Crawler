@@ -1,5 +1,6 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { Enemy, Health, LineDamage, Owner, Player, Position, Team } from '../components.js';
+import type { CombatEvent } from '../../shared/combat-events.js';
 import type { GameWorld } from '../world.js';
 
 /** Distance from a point to a line segment. */
@@ -93,6 +94,19 @@ export function beamSystem(world: GameWorld): void {
       if (distSq <= hitDistSq) {
         const current = health.current[target] ?? 0;
         health.current[target] = Math.max(0, current - damage);
+
+        const targetType: CombatEvent['targetType'] = hasComponent(world.ecs, target, Player)
+          ? 'player'
+          : 'enemy';
+        world.combatEvents.push({
+          type: 'hit',
+          x: position.x[target] ?? 0,
+          y: position.y[target] ?? 0,
+          amount: damage,
+          targetType,
+          timestamp: world.elapsedMs,
+          targetEid: target,
+        });
       }
     }
   }

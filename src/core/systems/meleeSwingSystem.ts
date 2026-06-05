@@ -9,6 +9,7 @@ import {
   Position,
   Team,
 } from '../components.js';
+import type { CombatEvent } from '../../shared/combat-events.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 
@@ -166,6 +167,19 @@ export function meleeSwingSystem(world: GameWorld): void {
         const current = health.current[target] ?? 0;
         health.current[target] = Math.max(0, current - hitDamage);
         hitSet.add(target);
+
+        const targetType: CombatEvent['targetType'] = hasComponent(world.ecs, target, Player)
+          ? 'player'
+          : 'enemy';
+        world.combatEvents.push({
+          type: 'hit',
+          x: tx,
+          y: ty,
+          amount: hitDamage,
+          targetType,
+          timestamp: world.elapsedMs,
+          targetEid: target,
+        });
 
         // Apply knockback as smooth impulse via Knockback component
         if (knockback > 0) {
