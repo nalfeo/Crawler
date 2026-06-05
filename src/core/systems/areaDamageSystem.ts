@@ -1,5 +1,6 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { AreaDamage, Enemy, Health, Owner, Player, Position, Team } from '../components.js';
+import { applyDamage } from '../apply-damage.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 
@@ -30,7 +31,7 @@ export function clearAreaDamageHits(world: GameWorld, eid: number): void {
 /** Deals damage to enemies within AreaDamage radius. Uses spatial grid for broad-phase. */
 export function areaDamageSystem(world: GameWorld, collisionResult: CollisionResult): void {
   const areaEntities = query(world.ecs, [AreaDamage, Position]);
-  const { position, areaDamage, team, health } = world.stores;
+  const { position, areaDamage, team } = world.stores;
 
   for (const eid of areaEntities) {
     if (eid === undefined || !entityExists(world.ecs, eid)) {
@@ -98,8 +99,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
         continue;
       }
 
-      const current = health.current[target] ?? 0;
-      health.current[target] = Math.max(0, current - damage);
+      applyDamage(world, target, damage, position.x[target] ?? 0, position.y[target] ?? 0);
 
       if (hitSet !== undefined) {
         hitSet.add(target);

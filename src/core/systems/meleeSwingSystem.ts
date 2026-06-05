@@ -9,6 +9,7 @@ import {
   Position,
   Team,
 } from '../components.js';
+import { applyDamage } from '../apply-damage.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 
@@ -76,7 +77,7 @@ export function clearMeleeSwingHits(world: GameWorld, eid: number): void {
  */
 export function meleeSwingSystem(world: GameWorld): void {
   const swings = query(world.ecs, [MeleeSwing, Position]);
-  const { position, meleeSwing, team, health } = world.stores;
+  const { position, meleeSwing, team } = world.stores;
   const hitDistSq = BLADE_HIT_HALF_WIDTH * BLADE_HIT_HALF_WIDTH;
 
   for (const eid of swings) {
@@ -163,8 +164,7 @@ export function meleeSwingSystem(world: GameWorld): void {
       }
 
       if (hitDamage > 0) {
-        const current = health.current[target] ?? 0;
-        health.current[target] = Math.max(0, current - hitDamage);
+        applyDamage(world, target, hitDamage, tx, ty);
         hitSet.add(target);
 
         // Apply knockback as smooth impulse via Knockback component
