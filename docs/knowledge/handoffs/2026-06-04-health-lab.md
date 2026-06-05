@@ -9,6 +9,7 @@
 Replaced the `src/labs/health-lab/index.ts` scaffold with a standalone DOM-based health system visualizer.
 
 ### Implemented
+
 - 5 entity cards with one Player and four Enemies
 - Animated health bars with numeric overlays and threshold coloring
 - Per-entity actions: damage, heavy damage, heal, kill
@@ -20,6 +21,7 @@ Replaced the `src/labs/health-lab/index.ts` scaffold with a standalone DOM-based
 ## Validation
 
 Validated with temporary npm toolchains due local `node_modules` corruption/locked Rolldown binary preventing normal `npm run verify:fast` execution:
+
 - `npm exec --yes --package=typescript@6.0.3 --package=@types/node@25.9.1 --package=bitecs@0.4.0 --package=phaser@4.1.0 --package=lil-gui@0.21.0 --package=vite@8.0.16 --package=vitest@4.1.8 -- tsc --noEmit`
 - `npm exec --yes --package=eslint@10.4.1 --package=@eslint/js@10.0.1 --package=typescript-eslint@8.60.1 --package=globals@17.6.0 -- eslint src/ tests/ --max-warnings 0`
 - `npm exec --yes --package=typescript@6.0.3 --package=vite@8.0.16 --package=@vitejs/plugin-legacy@8.0.2 --package=phaser@4.1.0 --package=bitecs@0.4.0 --package=lil-gui@0.21.0 -- vite build`

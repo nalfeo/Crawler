@@ -22,8 +22,8 @@ Sandbox for developing and testing the inventory system UX.
 
 ## Controls
 
-| Control | Action |
-|---------|--------|
-| WASD / Arrows | Move player |
-| Tab / I | Toggle inventory |
-| lil-gui | Spawn items, control spawn rate |
+| Control       | Action                          |
+| ------------- | ------------------------------- |
+| WASD / Arrows | Move player                     |
+| Tab / I       | Toggle inventory                |
+| lil-gui       | Spawn items, control spawn rate |

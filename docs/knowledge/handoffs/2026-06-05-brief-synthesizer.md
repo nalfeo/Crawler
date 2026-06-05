@@ -18,7 +18,7 @@ PR: `feat(sprites): brief synthesizer + reference selector`. Branch `nalfeo/brie
 - Replaced dynamic `require('node:fs')` with top-level `statSync` import (ESLint rule + ESM).
 - Added separate `referenceFileExistsAtSynthesisTime` option distinct from the catalog's `fileExists` hook, so tests can exercise the "deleted between catalog-build and validation" defence without polluting catalog discovery.
 - Dropped a confusing `sourceIndex` field from the sidecar; `written[i].id` already encodes ordering.
-- Removed an unreachable path-traversal guard in `normaliseName`: the non-alphanumeric → `-` collapse already neutralises `..` / `/` / `\`. Tests now assert *safe normalisation* (e.g. `'../etc/passwd'` → `'etc-passwd'`) rather than rejection.
+- Removed an unreachable path-traversal guard in `normaliseName`: the non-alphanumeric → `-` collapse already neutralises `..` / `/` / `\`. Tests now assert _safe normalisation_ (e.g. `'../etc/passwd'` → `'etc-passwd'`) rather than rejection.
 
 ## Draft-policy decision
 
@@ -26,7 +26,7 @@ Defaulted to the policy hinted in the task: `briefs/draft/` is **gitignored**, o
 
 ## Pipeline gap I noticed during the real run
 
-Synth caps `embellishmentSeeds` at 3-5 per candidate, but the variation expander's default `minVariations` for weapons is 4 (per `data/sprite-types/weapon.json`). On a synth that produces 3 seeds (well within `MIN_SEEDS`), the expander then has to manufacture a fourth from thin air. In the integration test you can see the warning `expand-variations: text provider not configured`. If we tighten synth's `MIN_SEEDS` to 4 we de-couple from the expander, but the cleaner fix is probably to make the synth aware of the merged sprite-type defaults so it generates *at least* `minVariations` seeds.
+Synth caps `embellishmentSeeds` at 3-5 per candidate, but the variation expander's default `minVariations` for weapons is 4 (per `data/sprite-types/weapon.json`). On a synth that produces 3 seeds (well within `MIN_SEEDS`), the expander then has to manufacture a fourth from thin air. In the integration test you can see the warning `expand-variations: text provider not configured`. If we tighten synth's `MIN_SEEDS` to 4 we de-couple from the expander, but the cleaner fix is probably to make the synth aware of the merged sprite-type defaults so it generates _at least_ `minVariations` seeds.
 
 ## Real synth example
 

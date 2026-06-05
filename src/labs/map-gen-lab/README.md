@@ -20,18 +20,18 @@ Visual sandbox for the procedural floor generation system.
 
 ## Visual Legend
 
-| Color | Meaning |
-|-------|---------|
-| Dark grey | Stone wall |
-| Medium grey | Stone floor |
-| Dark blue | Corridor |
-| Orange dot | Door |
+| Color           | Meaning                |
+| --------------- | ---------------------- |
+| Dark grey       | Stone wall             |
+| Medium grey     | Stone floor            |
+| Dark blue       | Corridor               |
+| Orange dot      | Door                   |
 | Colored overlay | Room bounds (numbered) |
-| Green dot | Player spawn |
-| Purple | Cave floor/wall |
-| Dark green | Grass/forest |
-| Red | Lava |
-| Blue | Water |
+| Green dot       | Player spawn           |
+| Purple          | Cave floor/wall        |
+| Dark green      | Grass/forest           |
+| Red             | Lava                   |
+| Blue            | Water                  |
 
 ## Parameters
 

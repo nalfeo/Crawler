@@ -8,12 +8,12 @@
 
 Implemented a 4-tier release pipeline for GitHub Pages deployment:
 
-| Tier  | URL                                         | Trigger                  | Labs |
-|-------|---------------------------------------------|--------------------------|------|
-| Local | `localhost:3000`                            | `npm run dev` / `lab`    | Yes  |
-| Dev   | `nalfeo.github.io/Crawler/dev/`             | Auto on merge + CI pass  | Yes  |
-| Beta  | `nalfeo.github.io/Crawler/beta/`            | Auto on merge + CI pass  | No   |
-| Prod  | `nalfeo.github.io/Crawler/`                 | Manual promote           | No   |
+| Tier  | URL                              | Trigger                 | Labs |
+| ----- | -------------------------------- | ----------------------- | ---- |
+| Local | `localhost:3000`                 | `npm run dev` / `lab`   | Yes  |
+| Dev   | `nalfeo.github.io/Crawler/dev/`  | Auto on merge + CI pass | Yes  |
+| Beta  | `nalfeo.github.io/Crawler/beta/` | Auto on merge + CI pass | No   |
+| Prod  | `nalfeo.github.io/Crawler/`      | Manual promote          | No   |
 
 ## Files Changed
 
@@ -32,6 +32,7 @@ Implemented a 4-tier release pipeline for GitHub Pages deployment:
 ## Setup Required
 
 After merge, enable GitHub Pages in repo settings:
+
 - Source: GitHub Actions
 - No need to configure a branch
 

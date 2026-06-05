@@ -13,11 +13,11 @@ deny wins for shell/edit, PR guards aggregate into a single combined report.
 
 ## What ships
 
-| Category | Guards |
-| --- | --- |
-| Shell | `shell-force-push-main`, `shell-main-branch-delete`, `shell-gh-pr-create`, `shell-rm-rf-repo` |
-| Edit  | `edit-determinism`, `edit-phaser-in-core`, `edit-repo-md-junk`, `edit-guard-self-protection` |
-| PR    | `pr-preflight` (semantic title, handoff, lab-gate, forbidden paths, cross-system ADR warning) |
+| Category | Guards                                                                                        |
+| -------- | --------------------------------------------------------------------------------------------- |
+| Shell    | `shell-force-push-main`, `shell-main-branch-delete`, `shell-gh-pr-create`, `shell-rm-rf-repo` |
+| Edit     | `edit-determinism`, `edit-phaser-in-core`, `edit-repo-md-junk`, `edit-guard-self-protection`  |
+| PR       | `pr-preflight` (semantic title, handoff, lab-gate, forbidden paths, cross-system ADR warning) |
 
 Full descriptions, bypass mechanisms, and "NOT enforced" rationale in
 `.github/extensions/copilot-guards/README.md`.
@@ -44,6 +44,7 @@ Full descriptions, bypass mechanisms, and "NOT enforced" rationale in
 ## Rubber-duck findings incorporated
 
 The pre-build critique caught:
+
 - Handoff check must verify a NEW handoff file in the branch diff, not just that any handoff exists (repo already has many).
 - Aggregate PR guards into one report so the agent fixes everything in one round.
 - Use the full conventional-commit allowlist from `docs/agent-os/policies/ci-policy.md`, not a guessed subset.
@@ -56,6 +57,7 @@ The pre-build critique caught:
 ## Bypass
 
 Documented escape hatches (always logged):
+
 - `COPILOT_GUARDS_DISABLE=guard-id,other-id` (specific) or `=*` (all)
 - `COPILOT_GUARDS_EDIT=1` short-circuits the self-protection guard
 - `config.json` → `"disabled": true` per guard for repo-wide opt-out (committed)

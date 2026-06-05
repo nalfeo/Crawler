@@ -1,19 +1,23 @@
 # ADR 0004: Chronicle as Agent-OS Telemetry Backend
 
 ## Status
+
 Accepted
 
 ## Date
+
 2026-06-05
 
 ## Context
 
 The Crawler agent-OS has three infrastructure layers that operate without feedback:
+
 1. Pre-tool hooks (copilot-guards) — 9 guards enforcing conventions
 2. Instruction files — 4 glob-matched `.instructions.md` files
 3. Memory system — 3-tier constitution → policies/ADRs → handoffs
 
 Without telemetry, we cannot answer:
+
 - Which guards are useful vs. dead weight?
 - Which guards produce false positives?
 - Which memory docs should be promoted or archived?
@@ -36,6 +40,7 @@ Use **Chronicle** (`session_store_sql`) as the telemetry backend for agent-OS se
 ## Consequences
 
 ### Positive
+
 - Evidence-based memory governance (no more guessing which docs are stale)
 - Guard effectiveness becomes measurable (fire-rate, false positives, dead guards)
 - Feedback loop enables Hashimoto's Loop (observe → classify → fix → test → audit)
@@ -43,11 +48,13 @@ Use **Chronicle** (`session_store_sql`) as the telemetry backend for agent-OS se
 - Reports are GitHub issues — visible, trackable, actionable
 
 ### Negative
+
 - `session.log()` output may not be fully queryable in chronicle (needs empirical verification)
 - Adds ~5 async log calls per tool invocation in the guard path (minimal latency impact since they're fire-and-forget)
 - Daily issues could become noisy if thresholds are too sensitive
 
 ### Risks
+
 - Chronicle data retention policy is controlled by GitHub, not us — old events may age out
 - If `session.log()` doesn't land in queryable columns, we'll need a fallback (local JSON append file)
 - Analysis queries may need tuning as data volume grows

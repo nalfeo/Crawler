@@ -38,4 +38,3 @@ Raised targeted coverage for enemy AI and spawner systems, then locked per-file 
 - `npx eslint src/ tests/ scripts/ --max-warnings 0`
 - `npx vitest run --project unit --reporter=verbose` (421 tests passed)
 - `npx vitest run --project unit --coverage --reporter=dot`
-

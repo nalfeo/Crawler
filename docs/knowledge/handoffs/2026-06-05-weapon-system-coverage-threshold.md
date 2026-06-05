@@ -30,4 +30,3 @@
 - `npm run lint` ✅
 - `npx vitest run --project unit` ✅
 - `npx vitest run --project unit --coverage` ❌ (fails global branch threshold at repo level; weaponSystem threshold passes)
-

@@ -1,12 +1,15 @@
 # Session Handoff: Procedural Map Generation Foundation
 
 ## Date
+
 2026-06-06
 
 ## What Was Done
+
 Built the procedural map generation foundation — hybrid tile grid + room graph architecture with FOV, doors, and wall collision.
 
 ### Files Created
+
 - `src/shared/map-types.ts` — TileFlags bitfield, BiomeType enum, TerrainType, MapConfig, RoomData
 - `src/core/map/TileMap.ts` — Flat Uint8Array grid with bitflag queries
 - `src/core/map/RoomGraph.ts` — Room semantic overlay with spatial cache
@@ -19,6 +22,7 @@ Built the procedural map generation foundation — hybrid tile grid + room graph
 - `src/core/systems/doorSystem.ts` — DoorState → tile flag sync
 
 ### Files Modified
+
 - `src/core/world.ts` — Added `floorMap: FloorMap | null` + DoorState wiring
 - `src/core/components.ts` — Added DoorState component + store
 - `src/core/systems/index.ts` — Exported fovSystem, doorSystem
@@ -26,6 +30,7 @@ Built the procedural map generation foundation — hybrid tile grid + room graph
 - `package.json` — Added rot-js, @mikewesthad/dungeon dependencies
 
 ## What's Next
+
 1. **Phaser TilemapRenderer** (`src/engine/TilemapRenderer.ts`) — render FloorMap as Phaser tilemap with fog-of-war
 2. **Room-based enemy spawning** — update enemySpawnerSystem for valid floor tiles
 3. **Map generation lab** (`src/labs/map-gen-lab/`) — visual sandbox
@@ -33,15 +38,18 @@ Built the procedural map generation foundation — hybrid tile grid + room graph
 5. **AI floor theming** — extend AI pipeline for biome-themed content
 
 ## Blockers
+
 - Lab gate check script fails on Windows (bash `pipefail` unsupported) but can be run manually via Git Bash.
 - One pre-existing flaky test in AI provider suite (`retries on bad-grid error`) — unrelated to map work.
 
 ## Branch State
+
 - Branch: `nalfeo/procedural-map-generation`
 - All tests passing: yes (168/168 ECS tests, 1 pre-existing flaky AI test)
 - PR created: pending
 
 ## Test Results
+
 - TileMap: 21 tests ✅
 - RoomGraph: 15 tests ✅
 - FloorMap: 11 tests ✅
@@ -53,6 +61,7 @@ Built the procedural map generation foundation — hybrid tile grid + room graph
 - Lint: clean
 
 ## Key Decisions Made
+
 1. **Hybrid tile grid + room graph** — tiles for O(1) physics/LOS, rooms for AI/spawning
 2. **Tiles are NOT ECS entities** — Uint8Array on GameWorld, not 40K entities
 3. **rot-js determinism** — use `ROT.RNG.setSeed()`, not `Math.random` override (rot-js uses its own Alea RNG internally)
