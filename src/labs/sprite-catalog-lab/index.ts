@@ -114,9 +114,9 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
 
   // Helper to find the sheet entry for a sprite
   function getSheetForSprite(sprite: SpriteCatalogEntry): SpriteSheetCatalogEntry | undefined {
-    return entries.find(
-      (e) => e.kind === 'sheet' && e.sheetKey === sprite.sheetKey,
-    ) as SpriteSheetCatalogEntry | undefined;
+    return entries.find((e) => e.kind === 'sheet' && e.sheetKey === sprite.sheetKey) as
+      | SpriteSheetCatalogEntry
+      | undefined;
   }
 
   const root = document.createElement('div');
@@ -366,8 +366,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     img.style.imageRendering = 'pixelated';
     img.style.borderRadius = '8px';
     img.style.border = '1px solid rgba(255,255,255,0.15)';
-    img.style.background =
-      'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
+    img.style.background = 'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
 
     wrap.append(previewLabel, img);
     return wrap;
