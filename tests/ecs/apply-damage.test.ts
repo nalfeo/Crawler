@@ -10,7 +10,6 @@ describe('applyDamage', () => {
     const world = createTestWorld();
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
-    world.stores.health.current[eid] = 100;
 
     const dealt = applyDamage(world, eid, 30, 10, 20);
 
@@ -22,7 +21,6 @@ describe('applyDamage', () => {
     const world = createTestWorld();
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 15, max: 100 }));
-    world.stores.health.current[eid] = 15;
 
     const dealt = applyDamage(world, eid, 50, 0, 0);
 
@@ -34,7 +32,6 @@ describe('applyDamage', () => {
     const world = createTestWorld();
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 10, max: 100 }));
-    world.stores.health.current[eid] = 10;
 
     applyDamage(world, eid, 25, 5, 7);
 
@@ -52,7 +49,6 @@ describe('applyDamage', () => {
     const world = createTestWorld();
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 0, max: 100 }));
-    world.stores.health.current[eid] = 0;
 
     const dealt = applyDamage(world, eid, 10, 0, 0);
 
@@ -65,7 +61,6 @@ describe('applyDamage', () => {
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
     addComponent(world.ecs, eid, Player);
-    world.stores.health.current[eid] = 50;
 
     applyDamage(world, eid, 10, 1, 2);
 
@@ -76,7 +71,6 @@ describe('applyDamage', () => {
     const world = createTestWorld();
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
-    world.stores.health.current[eid] = 50;
 
     applyDamage(world, eid, 10, 1, 2);
 
@@ -88,10 +82,33 @@ describe('applyDamage', () => {
     world.elapsedMs = 12345;
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
-    world.stores.health.current[eid] = 50;
 
     applyDamage(world, eid, 5, 0, 0);
 
     expect(world.combatEvents[0]!.timestamp).toBe(12345);
+  });
+
+  it('treats negative amount as a no-op', () => {
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
+
+    const dealt = applyDamage(world, eid, -10, 0, 0);
+
+    expect(dealt).toBe(0);
+    expect(world.stores.health.current[eid]).toBe(50);
+    expect(world.combatEvents).toHaveLength(0);
+  });
+
+  it('treats NaN amount as a no-op', () => {
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
+
+    const dealt = applyDamage(world, eid, NaN, 0, 0);
+
+    expect(dealt).toBe(0);
+    expect(world.stores.health.current[eid]).toBe(50);
+    expect(world.combatEvents).toHaveLength(0);
   });
 });

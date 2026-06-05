@@ -16,9 +16,11 @@ export function applyDamage(
   x: number,
   y: number,
 ): number {
+  if (!Number.isFinite(amount) || amount <= 0) return 0;
+
   const current = world.stores.health.current[target] ?? 0;
   const dealt = Math.min(current, amount);
-  world.stores.health.current[target] = Math.max(0, current - amount);
+  world.stores.health.current[target] = current - dealt;
 
   if (dealt > 0) {
     const targetType: CombatEvent['targetType'] = hasComponent(world.ecs, target, Player)
