@@ -23,7 +23,6 @@ interface AnchorSettings {
   swingPeriodMs: number;
   staticAngleDeg: number;
   showGrid: boolean;
-  showAnchorTrail: boolean;
   showHand: boolean;
 }
 
@@ -79,7 +78,6 @@ function createAnchorLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     swingPeriodMs: 800,
     staticAngleDeg: 0,
     showGrid: true,
-    showAnchorTrail: false,
     showHand: true,
   };
 
