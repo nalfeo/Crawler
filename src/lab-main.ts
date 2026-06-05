@@ -30,6 +30,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'gore-lab': '/src/labs/gore-lab/index.ts',
   'fov-lab': '/src/labs/fov-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
+  'map-gen-lab': '/src/labs/map-gen-lab/index.ts',
 };
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;
