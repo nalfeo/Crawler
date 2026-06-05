@@ -263,23 +263,28 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         }
 
         const pushAlongX = overlapX <= overlapY;
-        const separation = (pushAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
-        const axisSign =
-          (pushAlongX ? dx : dy) > 0 ? 1 : (pushAlongX ? dx : dy) < 0 ? -1 : a < b ? 1 : -1;
+        const axisDelta = pushAlongX ? dx : dy;
+        let axisSign = a < b ? 1 : -1;
+        if (axisDelta > 0) {
+          axisSign = 1;
+        } else if (axisDelta < 0) {
+          axisSign = -1;
+        }
+        const pushDistance = (pushAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
 
         if (isEnemyVsPlayer) {
           const enemyEid = aIsEnemy ? a : b;
           const enemyDirection = enemyEid === a ? -axisSign : axisSign;
           if (pushAlongX) {
-            position.x[enemyEid] = (position.x[enemyEid] ?? 0) + enemyDirection * separation;
+            position.x[enemyEid] = (position.x[enemyEid] ?? 0) + enemyDirection * pushDistance;
           } else {
-            position.y[enemyEid] = (position.y[enemyEid] ?? 0) + enemyDirection * separation;
+            position.y[enemyEid] = (position.y[enemyEid] ?? 0) + enemyDirection * pushDistance;
           }
           continue;
         }
 
-        const pushA = -axisSign * separation * 0.5;
-        const pushB = axisSign * separation * 0.5;
+        const pushA = -axisSign * pushDistance * 0.5;
+        const pushB = axisSign * pushDistance * 0.5;
 
         if (pushAlongX) {
           position.x[a] = ax + pushA;
