@@ -19,7 +19,6 @@ import {
 } from './common.js';
 
 const RAD_PER_DEG = Math.PI / 180;
-const DIAGONAL_TOLERANCE_RAD = 2 * RAD_PER_DEG;
 
 /**
  * Check that the silhouette has at least one diagonal axis of variation: the
@@ -30,8 +29,13 @@ const DIAGONAL_TOLERANCE_RAD = 2 * RAD_PER_DEG;
  * not weapons. Forcing diagonal variance catches "pile of pixels" failures
  * that pass every universal sensor.
  */
-export function silhouetteDiagonalAxis(image: RgbaImage): SensorResult {
+export function silhouetteDiagonalAxis(
+  image: RgbaImage,
+  opts: { toleranceDeg?: number } = {},
+): SensorResult {
   const sensor = 'silhouette-diagonal-axis';
+  const toleranceDeg = opts.toleranceDeg ?? 2;
+  const toleranceRad = toleranceDeg * RAD_PER_DEG;
   const opaque = gatherOpaquePixels(image);
   if (opaque.length === 0) {
     return { ok: false, sensor, reason: 'no opaque pixels' };
@@ -47,25 +51,28 @@ export function silhouetteDiagonalAxis(image: RgbaImage): SensorResult {
     Math.abs(angle + Math.PI),
   );
   const distFromVertical = Math.min(Math.abs(angle - halfPi), Math.abs(angle + halfPi));
-  if (distFromHorizontal < DIAGONAL_TOLERANCE_RAD) {
+  if (distFromHorizontal < toleranceRad) {
     return {
       ok: false,
       sensor,
-      reason: `principal axis ${(angle / RAD_PER_DEG).toFixed(2)}° is within ±2° of horizontal`,
+      reason: `principal axis ${(angle / RAD_PER_DEG).toFixed(2)}° is within ±${toleranceDeg}° of horizontal`,
     };
   }
-  if (distFromVertical < DIAGONAL_TOLERANCE_RAD) {
+  if (distFromVertical < toleranceRad) {
     return {
       ok: false,
       sensor,
-      reason: `principal axis ${(angle / RAD_PER_DEG).toFixed(2)}° is within ±2° of vertical`,
+      reason: `principal axis ${(angle / RAD_PER_DEG).toFixed(2)}° is within ±${toleranceDeg}° of vertical`,
     };
   }
   return { ok: true, sensor };
 }
 
-export function weaponSensors(image: RgbaImage): SensorResult[] {
-  return [silhouetteDiagonalAxis(image)];
+export function weaponSensors(
+  image: RgbaImage,
+  opts: { diagonalToleranceDeg?: number } = {},
+): SensorResult[] {
+  return [silhouetteDiagonalAxis(image, { toleranceDeg: opts.diagonalToleranceDeg })];
 }
 
 export { RAD_PER_DEG };

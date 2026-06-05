@@ -1,0 +1,180 @@
+import { describe, it, expect } from 'vitest';
+import { TileMap } from '../../src/core/map/TileMap';
+import { TilePresets, TileFlags } from '../../src/shared/map-types';
+
+describe('TileMap', () => {
+  it('should create with correct dimensions', () => {
+    const map = new TileMap(10, 20);
+    expect(map.width).toBe(10);
+    expect(map.height).toBe(20);
+    expect(map.flags.length).toBe(200);
+  });
+
+  it('should default all tiles to 0 (wall)', () => {
+    const map = new TileMap(5, 5);
+    for (let i = 0; i < 25; i++) {
+      expect(map.flags[i]).toBe(0);
+    }
+  });
+
+  it('should accept initial flags', () => {
+    const flags = new Uint8Array(4);
+    flags[0] = TilePresets.FLOOR;
+    const map = new TileMap(2, 2, flags);
+    expect(map.isPassable(0, 0)).toBe(true);
+    expect(map.isPassable(1, 0)).toBe(false);
+  });
+
+  describe('index', () => {
+    it('should return correct flat index', () => {
+      const map = new TileMap(10, 10);
+      expect(map.index(0, 0)).toBe(0);
+      expect(map.index(5, 3)).toBe(35);
+      expect(map.index(9, 9)).toBe(99);
+    });
+
+    it('should return -1 for out of bounds', () => {
+      const map = new TileMap(10, 10);
+      expect(map.index(-1, 0)).toBe(-1);
+      expect(map.index(0, -1)).toBe(-1);
+      expect(map.index(10, 0)).toBe(-1);
+      expect(map.index(0, 10)).toBe(-1);
+    });
+  });
+
+  describe('inBounds', () => {
+    it('should return true for valid coords', () => {
+      const map = new TileMap(10, 10);
+      expect(map.inBounds(0, 0)).toBe(true);
+      expect(map.inBounds(9, 9)).toBe(true);
+    });
+
+    it('should return false for out of bounds', () => {
+      const map = new TileMap(10, 10);
+      expect(map.inBounds(-1, 0)).toBe(false);
+      expect(map.inBounds(10, 0)).toBe(false);
+    });
+  });
+
+  describe('tile queries', () => {
+    it('should check passability correctly', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(2, 2, TilePresets.FLOOR);
+      expect(map.isPassable(2, 2)).toBe(true);
+      expect(map.isPassable(0, 0)).toBe(false); // wall
+    });
+
+    it('should check transparency correctly', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(2, 2, TilePresets.WINDOW); // transparent but not passable
+      expect(map.isTransparent(2, 2)).toBe(true);
+      expect(map.isPassable(2, 2)).toBe(false);
+    });
+
+    it('should check door status correctly', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(2, 2, TilePresets.DOOR_CLOSED);
+      expect(map.isDoor(2, 2)).toBe(true);
+      expect(map.isPassable(2, 2)).toBe(false);
+      expect(map.isTransparent(2, 2)).toBe(false);
+    });
+
+    it('should check liquid status correctly', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(2, 2, TilePresets.SHALLOW_WATER);
+      expect(map.isLiquid(2, 2)).toBe(true);
+      expect(map.isPassable(2, 2)).toBe(true);
+    });
+
+    it('should return false for out-of-bounds queries', () => {
+      const map = new TileMap(5, 5);
+      expect(map.isPassable(-1, 0)).toBe(false);
+      expect(map.isTransparent(5, 5)).toBe(false);
+      expect(map.isDoor(0, -1)).toBe(false);
+      expect(map.isLiquid(10, 10)).toBe(false);
+    });
+  });
+
+  describe('doors', () => {
+    it('should open a door (passable + transparent + door)', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(2, 2, TilePresets.DOOR_CLOSED);
+      map.openDoor(2, 2);
+      expect(map.isPassable(2, 2)).toBe(true);
+      expect(map.isTransparent(2, 2)).toBe(true);
+      expect(map.isDoor(2, 2)).toBe(true);
+      expect(map.flags[map.index(2, 2)]).toBe(TilePresets.DOOR_OPEN);
+    });
+
+    it('should close a door (not passable + not transparent + door)', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(2, 2, TilePresets.DOOR_OPEN);
+      map.closeDoor(2, 2);
+      expect(map.isPassable(2, 2)).toBe(false);
+      expect(map.isTransparent(2, 2)).toBe(false);
+      expect(map.isDoor(2, 2)).toBe(true);
+      expect(map.flags[map.index(2, 2)]).toBe(TilePresets.DOOR_CLOSED);
+    });
+
+    it('should no-op for out-of-bounds door operations', () => {
+      const map = new TileMap(5, 5);
+      map.openDoor(-1, 0); // should not throw
+      map.closeDoor(5, 5); // should not throw
+    });
+  });
+
+  describe('fill operations', () => {
+    it('should fill entire map', () => {
+      const map = new TileMap(5, 5);
+      map.fill(TilePresets.FLOOR);
+      for (let y = 0; y < 5; y++) {
+        for (let x = 0; x < 5; x++) {
+          expect(map.isPassable(x, y)).toBe(true);
+        }
+      }
+    });
+
+    it('should fill a rectangular region', () => {
+      const map = new TileMap(10, 10);
+      map.fillRect(2, 2, 3, 3, TilePresets.FLOOR);
+      expect(map.isPassable(2, 2)).toBe(true);
+      expect(map.isPassable(4, 4)).toBe(true);
+      expect(map.isPassable(1, 1)).toBe(false); // outside rect
+      expect(map.isPassable(5, 5)).toBe(false); // outside rect
+    });
+  });
+
+  describe('lightPasses callback', () => {
+    it('should return a function compatible with rot-js FOV', () => {
+      const map = new TileMap(5, 5);
+      map.setFlags(2, 2, TilePresets.FLOOR);
+      const cb = map.createLightPassesCallback();
+      expect(typeof cb).toBe('function');
+      expect(cb(2, 2)).toBe(true);
+      expect(cb(0, 0)).toBe(false);
+    });
+  });
+
+  describe('tile flag bitfield correctness', () => {
+    it('should have non-overlapping flags', () => {
+      expect(TileFlags.PASSABLE & TileFlags.TRANSPARENT).toBe(0);
+      expect(TileFlags.PASSABLE & TileFlags.DOOR).toBe(0);
+      expect(TileFlags.PASSABLE & TileFlags.LIQUID).toBe(0);
+      expect(TileFlags.TRANSPARENT & TileFlags.DOOR).toBe(0);
+      expect(TileFlags.TRANSPARENT & TileFlags.LIQUID).toBe(0);
+      expect(TileFlags.DOOR & TileFlags.LIQUID).toBe(0);
+    });
+
+    it('DOOR_OPEN should have PASSABLE + TRANSPARENT + DOOR', () => {
+      expect(TilePresets.DOOR_OPEN & TileFlags.PASSABLE).not.toBe(0);
+      expect(TilePresets.DOOR_OPEN & TileFlags.TRANSPARENT).not.toBe(0);
+      expect(TilePresets.DOOR_OPEN & TileFlags.DOOR).not.toBe(0);
+    });
+
+    it('DOOR_CLOSED should have only DOOR', () => {
+      expect(TilePresets.DOOR_CLOSED & TileFlags.PASSABLE).toBe(0);
+      expect(TilePresets.DOOR_CLOSED & TileFlags.TRANSPARENT).toBe(0);
+      expect(TilePresets.DOOR_CLOSED & TileFlags.DOOR).not.toBe(0);
+    });
+  });
+});

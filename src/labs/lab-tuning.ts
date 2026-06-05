@@ -22,6 +22,32 @@ export interface SaveResult {
   error?: string;
 }
 
+export interface RepoWriteCapability {
+  enabled: boolean;
+  reason?: string;
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+}
+
+export function getRepoWriteCapability(): RepoWriteCapability {
+  const { hostname } = window.location;
+  if (!isLoopbackHostname(hostname)) {
+    return {
+      enabled: false,
+      reason: `repo writes are local-only (current host: ${hostname})`,
+    };
+  }
+
+  return { enabled: true };
+}
+
 /** Save a single tuning value to a data file. */
 export async function saveTuning(
   file: string,
@@ -29,6 +55,11 @@ export async function saveTuning(
   value: unknown,
   id?: string,
 ): Promise<SaveResult> {
+  const capability = getRepoWriteCapability();
+  if (!capability.enabled) {
+    return { ok: false, error: capability.reason };
+  }
+
   try {
     const body: Record<string, unknown> = { file, path, value };
     if (id) body['id'] = id;
@@ -50,6 +81,11 @@ export async function saveTuningBatch(
   values: Record<string, unknown>,
   id?: string,
 ): Promise<SaveResult> {
+  const capability = getRepoWriteCapability();
+  if (!capability.enabled) {
+    return { ok: false, error: capability.reason };
+  }
+
   try {
     const body: Record<string, unknown> = { file, values };
     if (id) body['id'] = id;

@@ -31,16 +31,18 @@ describe('damageSystem', () => {
     expect(world.stores.health.current[player]).toBe(95);
   });
 
-  it('destroys xp gems and adds their value to the player score when collected', () => {
+  it('xp gem collection is handled by itemPickupSystem (not damageSystem)', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     const gem = spawnXpGem(world, 4, 0, 7);
 
     addComponent(world.ecs, player, set(BroadcastScore, { current: 0 }));
+
+    // damageSystem no longer handles XP gem collection — it's in itemPickupSystem
     damageSystem(world, collisionSystem(world));
 
-    expect(entityExists(world.ecs, gem)).toBe(false);
-    expect(world.stores.broadcastScore.current[player]).toBe(7);
+    // Gem should still exist (damageSystem doesn't pick it up anymore)
+    expect(entityExists(world.ecs, gem)).toBe(true);
   });
 
   it('destroys projectiles after they hit enemies', () => {
@@ -55,5 +57,60 @@ describe('damageSystem', () => {
     damageSystem(world, collisionSystem(world));
 
     expect(entityExists(world.ecs, projectile)).toBe(false);
+  });
+
+  it('emits a hit combat event when a projectile damages an enemy', () => {
+    const world = createTestWorld();
+    const projectile = createEntity(world);
+    spawnEnemy(world, 8, 0, 25);
+
+    addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
+    addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+    addComponent(world.ecs, projectile, Projectile);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
+      type: 'hit',
+      amount: 10,
+      targetType: 'enemy',
+    });
+  });
+
+  it('emits a hit combat event when an enemy damages the player', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 8, 0, 25);
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
+      type: 'hit',
+      targetType: 'player',
+    });
+    expect(world.combatEvents[0]!.amount).toBeGreaterThan(0);
+  });
+
+  it('emits a blocked combat event when player is invincible', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 8, 0, 25);
+
+    // First hit applies damage
+    damageSystem(world, collisionSystem(world));
+    world.combatEvents.length = 0;
+
+    // Second hit within invincibility window should be blocked
+    world.elapsedMs += 100; // less than 250ms invincibility
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
+      type: 'blocked',
+      amount: 0,
+      targetType: 'player',
+    });
   });
 });

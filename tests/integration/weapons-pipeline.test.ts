@@ -11,8 +11,8 @@
 import { describe, it, expect } from 'vitest';
 import { postprocess } from '../../scripts/sprites/postprocess.js';
 import type { Brief, PaletteColors } from '../../scripts/sprites/brief-schema.js';
-import { decodeSprite, universalSensors } from '../sensors/common.js';
-import { weaponSensors } from '../sensors/weapons.js';
+import { decodeSprite, universalSensors } from '../../scripts/sprites/sensors/common.js';
+import { weaponSensors } from '../../scripts/sprites/sensors/weapons.js';
 import {
   buildGoodSwordFixture,
   buildEmptyFixture,
@@ -46,6 +46,8 @@ const SWORD_BRIEF: Brief = {
     { path: 'tests/fixtures/sprites/_ref-a.png' },
     { path: 'tests/fixtures/sprites/_ref-b.png' },
   ],
+  generation: { sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } },
+  sensors: {},
 };
 
 function runAllSensors(

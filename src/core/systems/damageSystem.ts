@@ -9,8 +9,8 @@ import {
   Projectile,
   Returning,
   Stats,
-  XpGem,
 } from '../components.js';
+import { applyDamage } from '../apply-damage.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
@@ -18,6 +18,9 @@ const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
 const PLAYER_INVINCIBILITY_MS = 250;
 const MAX_TRACKED_ENTITIES = 10_000;
+
+/** Throttle: emit at most one 'blocked' event per invincibility window. */
+const lastBlockedEventMs = new WeakMap<GameWorld, number>();
 
 const playerHitTimestamps = new WeakMap<GameWorld, Float64Array>();
 
@@ -80,6 +83,22 @@ function applyArmorReduction(world: GameWorld, player: number, rawDamage: number
   return Math.max(1, rawDamage - armor);
 }
 
+/** Emit a throttled 'blocked' event (max one per invincibility window). */
+function emitBlockedEvent(world: GameWorld, player: number): void {
+  const last = lastBlockedEventMs.get(world) ?? -Infinity;
+  if (world.elapsedMs - last < PLAYER_INVINCIBILITY_MS) return;
+  lastBlockedEventMs.set(world, world.elapsedMs);
+  world.combatEvents.push({
+    type: 'blocked',
+    x: world.stores.position.x[player] ?? 0,
+    y: world.stores.position.y[player] ?? 0,
+    amount: 0,
+    targetType: 'player',
+    timestamp: world.elapsedMs,
+    targetEid: player,
+  });
+}
+
 function applyProjectileHit(world: GameWorld, projectile: number, enemy: number): void {
   // If this is the first hit for this projectile, clear stale hit tracking
   // from any previous entity that used the same recycled ECS ID.
@@ -93,8 +112,13 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
-    const currentHealth = world.stores.health.current[enemy] ?? 0;
-    world.stores.health.current[enemy] = Math.max(0, currentHealth - amount);
+    applyDamage(
+      world,
+      enemy,
+      amount,
+      world.stores.position.x[enemy] ?? 0,
+      world.stores.position.y[enemy] ?? 0,
+    );
 
     // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
     world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
@@ -131,13 +155,19 @@ function applyPlayerEnemyHit(
   const lastHitMs = hitTimestamps[player] ?? -Infinity;
 
   if (world.elapsedMs - lastHitMs < PLAYER_INVINCIBILITY_MS) {
+    emitBlockedEvent(world, player);
     return;
   }
 
   const raw = getDamageAmount(world, enemy, DEFAULT_CONTACT_DAMAGE);
   const amount = applyArmorReduction(world, player, raw);
-  const currentHealth = world.stores.health.current[player] ?? 0;
-  world.stores.health.current[player] = Math.max(0, currentHealth - amount);
+  applyDamage(
+    world,
+    player,
+    amount,
+    world.stores.position.x[player] ?? 0,
+    world.stores.position.y[player] ?? 0,
+  );
   hitTimestamps[player] = world.elapsedMs;
 }
 
@@ -155,28 +185,23 @@ function applyEnemyProjectileHit(
   const lastHitMs = hitTimestamps[player] ?? -Infinity;
 
   if (world.elapsedMs - lastHitMs < PLAYER_INVINCIBILITY_MS) {
+    emitBlockedEvent(world, player);
     destroyEntity(world, projectile);
     return;
   }
 
   const raw = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
   const amount = applyArmorReduction(world, player, raw);
-  const currentHealth = world.stores.health.current[player] ?? 0;
-  world.stores.health.current[player] = Math.max(0, currentHealth - amount);
+  applyDamage(
+    world,
+    player,
+    amount,
+    world.stores.position.x[player] ?? 0,
+    world.stores.position.y[player] ?? 0,
+  );
   hitTimestamps[player] = world.elapsedMs;
 
   destroyEntity(world, projectile);
-}
-
-function collectXpGem(world: GameWorld, player: number, gem: number): void {
-  const currentScore = world.stores.broadcastScore.current[player] ?? 0;
-  const gemValue = world.stores.xpGem.value[gem] ?? 0;
-  world.stores.broadcastScore.current[player] = currentScore + gemValue;
-
-  // Accumulate XP into the level system
-  world.playerLevel.xp += gemValue;
-
-  destroyEntity(world, gem);
 }
 
 export function damageSystem(world: GameWorld, collisionResult: CollisionResult): void {
@@ -226,16 +251,6 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
 
     if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, Enemy)) {
       applyPlayerEnemyHit(world, b, a, hitTimestamps);
-      continue;
-    }
-
-    if (hasComponent(world.ecs, a, Player) && hasComponent(world.ecs, b, XpGem)) {
-      collectXpGem(world, a, b);
-      continue;
-    }
-
-    if (hasComponent(world.ecs, b, Player) && hasComponent(world.ecs, a, XpGem)) {
-      collectXpGem(world, b, a);
     }
   }
 }

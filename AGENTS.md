@@ -64,6 +64,12 @@
 6. **Handoff required**: Write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session
 7. **ADR required**: Any decision affecting 2+ systems needs an ADR
 
+> Several of these rules are now **hard-enforced** at the tool-call boundary by
+> the `copilot-guards` extension. See
+> [`.github/extensions/copilot-guards/README.md`](.github/extensions/copilot-guards/README.md)
+> for the full list, bypass mechanism, and rationale for items that are NOT
+> enforced.
+
 ## Tech Stack
 
 TypeScript (strict) · Phaser 3 · bitecs 0.4 · Vite · Vitest · fast-check · ESLint · Prettier · GitHub Actions

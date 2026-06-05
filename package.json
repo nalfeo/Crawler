@@ -21,6 +21,9 @@
     "test:e2e": "vitest run --project e2e",
     "lab": "vite --mode lab",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
+    "sprites:run": "tsx scripts/sprites/cli.ts",
+    "sprites:sync-catalog": "tsx scripts/sprites/sync-catalog.ts",
+    "sprites:metadata": "tsx scripts/sprites/metadata-pipeline.ts",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
     "verify": "bash scripts/agent/verify.sh"
   },
@@ -34,7 +37,8 @@
   "license": "UNLICENSED",
   "dependencies": {
     "bitecs": "^0.4.0",
-    "phaser": "^4.1.0"
+    "phaser": "^4.1.0",
+    "rot-js": "^2.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -54,6 +58,7 @@
     "typescript-eslint": "^8.60.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.8",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   }
 }

@@ -27,7 +27,7 @@ function normalize(x: number, y: number): { x: number; y: number; length: number
 }
 
 function getEnemySpeed(world: GameWorld, eid: number): number {
-  const speed = world.stores.enemyBehavior.speed[eid] ?? 0;
+  const speed = world.stores.enemyBehavior.speed[eid]!;
   return speed > 0 ? speed : DEFAULT_ENEMY_SPEED;
 }
 
@@ -69,8 +69,8 @@ function applySwarmBehavior(
   }
 
   const { position } = world.stores;
-  const enemyX = position.x[eid] ?? 0;
-  const enemyY = position.y[eid] ?? 0;
+  const enemyX = position.x[eid]!;
+  const enemyY = position.y[eid]!;
   const toPlayer = normalize(playerDx, playerDy);
   let separationX = 0;
   let separationY = 0;
@@ -83,8 +83,8 @@ function applySwarmBehavior(
       continue;
     }
 
-    const otherX = position.x[other] ?? 0;
-    const otherY = position.y[other] ?? 0;
+    const otherX = position.x[other]!;
+    const otherY = position.y[other]!;
     const offsetX = enemyX - otherX;
     const offsetY = enemyY - otherY;
     const distance = Math.hypot(offsetX, offsetY);
@@ -126,9 +126,9 @@ function tryFireEnemyProjectile(
   toPlayerY: number,
 ): void {
   const { enemyBehavior, position } = world.stores;
-  const cooldown = enemyBehavior.fireCooldownMs[eid] ?? 0;
+  const cooldown = enemyBehavior.fireCooldownMs[eid]!;
   const effectiveCooldown = cooldown > 0 ? cooldown : ENEMY_PROJECTILE.FIRE_COOLDOWN_MS;
-  const lastFire = enemyBehavior.lastFireMs[eid] ?? 0;
+  const lastFire = enemyBehavior.lastFireMs[eid]!;
 
   // lastFireMs=0 means "never fired" — allow immediate first shot
   if (lastFire > 0 && world.elapsedMs - lastFire < effectiveCooldown) {
@@ -140,8 +140,8 @@ function tryFireEnemyProjectile(
     return;
   }
 
-  const enemyX = position.x[eid] ?? 0;
-  const enemyY = position.y[eid] ?? 0;
+  const enemyX = position.x[eid]!;
+  const enemyY = position.y[eid]!;
   const spawnX = enemyX + direction.x * ENEMY_PROJECTILE.MUZZLE_OFFSET;
   const spawnY = enemyY + direction.y * ENEMY_PROJECTILE.MUZZLE_OFFSET;
 
@@ -212,21 +212,21 @@ export function enemyAISystem(world: GameWorld): void {
   }
 
   const { enemyBehavior, position } = world.stores;
-  const playerX = position.x[playerEid] ?? 0;
-  const playerY = position.y[playerEid] ?? 0;
+  const playerX = position.x[playerEid]!;
+  const playerY = position.y[playerEid]!;
   const swarmEntities = Array.from(enemies).filter(
     (eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM,
   );
 
   for (const eid of enemies) {
-    const enemyX = position.x[eid] ?? 0;
-    const enemyY = position.y[eid] ?? 0;
+    const enemyX = position.x[eid]!;
+    const enemyY = position.y[eid]!;
     const playerDx = playerX - enemyX;
     const playerDy = playerY - enemyY;
     const distanceToPlayer = Math.hypot(playerDx, playerDy);
-    const behaviorType = enemyBehavior.type[eid] ?? AI_TYPE.CHASE;
-    const aggroRange = enemyBehavior.aggroRange[eid] ?? 0;
-    const attackRange = enemyBehavior.attackRange[eid] ?? 0;
+    const behaviorType = enemyBehavior.type[eid]!;
+    const aggroRange = enemyBehavior.aggroRange[eid]!;
+    const attackRange = enemyBehavior.attackRange[eid]!;
     const speed = getEnemySpeed(world, eid);
 
     switch (behaviorType) {

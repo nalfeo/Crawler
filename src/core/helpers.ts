@@ -7,6 +7,7 @@ import {
   Enemy,
   EnemyBehavior,
   EnemyProjectile,
+  Gold,
   Health,
   Inventory,
   Lifetime,
@@ -29,6 +30,9 @@ import type { GameWorld } from './world.js';
 import type { WeaponTypeValue } from '../shared/constants.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
+
+// Re-export applyDamage for backward compatibility
+export { applyDamage } from './apply-damage.js';
 
 /** Zero all typed-array store slots for a recycled entity ID. */
 export function clearEntityStores(world: GameWorld, eid: number): void {
@@ -106,6 +110,16 @@ export function spawnXpGem(world: GameWorld, x: number, y: number, value: number
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(XpGem, { value }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+
+  return eid;
+}
+
+export function spawnGold(world: GameWorld, x: number, y: number, value: number): number {
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(Gold, { value }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
 
   return eid;

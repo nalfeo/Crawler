@@ -9,11 +9,20 @@
  *   or: { "file": "weapons.json", "id": "sword", "path": "baseDamage", "value": 20 }
  *   or: { "file": "tuning.json", "values": { "player.speed": 4.0, "damage.defaultContactDamage": 8 } }
  */
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, renameSync, writeFileSync } from 'fs';
+import type { IncomingMessage, ServerResponse } from 'http';
 import { resolve, relative, isAbsolute } from 'path';
 import type { Plugin } from 'vite';
+import {
+  DEFAULT_CATALOG_PATH,
+  runMetadataPipeline,
+  resolveProvider,
+  type MetadataProviderMode,
+} from '../scripts/sprites/metadata-pipeline.js';
+import { parseSpriteCatalog, type SpriteCatalogRecord } from '../src/shared/sprite-catalog.js';
 
 const DATA_DIR = resolve(__dirname, '../src/shared/data');
+const REPO_ROOT = resolve(__dirname, '..');
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -38,12 +47,43 @@ function isInsideDataDir(filePath: string): boolean {
   return !isAbsolute(rel) && !rel.startsWith('..');
 }
 
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  return (
+    address === '127.0.0.1' ||
+    address === '::1' ||
+    address === '::ffff:127.0.0.1' ||
+    address.startsWith('::ffff:127.0.0.')
+  );
+}
+
+function isLoopbackHostHeader(hostHeader: string | string[] | undefined): boolean {
+  const raw = Array.isArray(hostHeader) ? hostHeader[0] : hostHeader;
+  if (!raw) return false;
+  const host = raw.split(':')[0]?.toLowerCase() ?? '';
+  return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
 export function labTuningSavePlugin(): Plugin {
   return {
     name: 'lab-tuning-save',
     apply: 'serve',
     configureServer(server) {
+      const enforceLocalOnly = (req: IncomingMessage, res: ServerResponse): boolean => {
+        const remoteAddress = req.socket.remoteAddress;
+        if (!isLoopbackAddress(remoteAddress) || !isLoopbackHostHeader(req.headers.host)) {
+          res.statusCode = 403;
+          res.end(JSON.stringify({ error: 'Repo writes are local-only.' }));
+          return false;
+        }
+        return true;
+      };
+
       server.middlewares.use('/__save-tuning', (req, res) => {
+        if (!enforceLocalOnly(req, res)) {
+          return;
+        }
+
         if (req.method !== 'POST') {
           res.statusCode = 405;
           res.end(JSON.stringify({ error: 'Method not allowed' }));
@@ -78,17 +118,13 @@ export function labTuningSavePlugin(): Plugin {
 
             if (Array.isArray(data) && !payload.id) {
               res.statusCode = 400;
-              res.end(
-                JSON.stringify({ error: 'Array-based files require an "id" field' }),
-              );
+              res.end(JSON.stringify({ error: 'Array-based files require an "id" field' }));
               return;
             }
 
             if (Array.isArray(data) && payload.id) {
               // Array-based file (weapons.json): find by id and patch
-              const item = (data as Record<string, unknown>[]).find(
-                (d) => d['id'] === payload.id,
-              );
+              const item = (data as Record<string, unknown>[]).find((d) => d['id'] === payload.id);
               if (!item) {
                 res.statusCode = 404;
                 res.end(JSON.stringify({ error: `Item "${payload.id}" not found` }));
@@ -117,6 +153,197 @@ export function labTuningSavePlugin(): Plugin {
             res.end(JSON.stringify({ ok: true, file: payload.file }));
           } catch (err) {
             res.statusCode = 400;
+            res.end(
+              JSON.stringify({
+                error: err instanceof Error ? err.message : 'Unknown error',
+              }),
+            );
+          }
+        });
+      });
+
+      server.middlewares.use('/__sprite-catalog-add', (req, res) => {
+        if (!enforceLocalOnly(req, res)) {
+          return;
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        req.on('end', () => {
+          try {
+            const payload = JSON.parse(body) as { entries: unknown[] };
+            if (!Array.isArray(payload.entries) || payload.entries.length === 0) {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Missing or empty "entries" array.' }));
+              return;
+            }
+
+            const catalogPath = resolve(DATA_DIR, 'sprite-catalog.json');
+            const raw = JSON.parse(readFileSync(catalogPath, 'utf-8'));
+            const catalog = parseSpriteCatalog(raw);
+            const existingIds = new Set(catalog.map((e: SpriteCatalogRecord) => e.id));
+            const existingFrames = new Set(
+              catalog
+                .filter((e: SpriteCatalogRecord) => e.kind === 'sprite')
+                .map((e: SpriteCatalogRecord) =>
+                  e.kind === 'sprite' ? `${e.sheetKey}:${e.frame}` : '',
+                ),
+            );
+
+            // Validate new entries and skip duplicates (including intra-request)
+            const toAdd: SpriteCatalogRecord[] = [];
+            const skipped: string[] = [];
+
+            for (const entry of payload.entries) {
+              const record = entry as Record<string, unknown>;
+              const id = record['id'] as string;
+              if (existingIds.has(id)) {
+                skipped.push(id);
+                continue;
+              }
+              const frameKey =
+                record['kind'] === 'sprite' ? `${record['sheetKey']}:${record['frame']}` : '';
+              if (frameKey && existingFrames.has(frameKey)) {
+                skipped.push(id);
+                continue;
+              }
+              // Update sets to prevent intra-request duplicates
+              existingIds.add(id);
+              if (frameKey) existingFrames.add(frameKey);
+              toAdd.push(record as unknown as SpriteCatalogRecord);
+            }
+
+            if (toAdd.length === 0) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ ok: true, added: 0, skipped: skipped.length }));
+              return;
+            }
+
+            const merged = [...catalog, ...toAdd];
+            // Sort: sheets first, then sprites alphabetically
+            merged.sort((a, b) => {
+              const kindCmp = (a.kind === 'sheet' ? 0 : 1) - (b.kind === 'sheet' ? 0 : 1);
+              if (kindCmp !== 0) return kindCmp;
+              return a.id.localeCompare(b.id);
+            });
+
+            // Validate full catalog and write atomically via temp file + rename
+            const validated = parseSpriteCatalog(merged);
+            const tmpPath = catalogPath + '.tmp';
+            writeFileSync(tmpPath, JSON.stringify(validated, null, 2) + '\n', 'utf-8');
+            renameSync(tmpPath, catalogPath);
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                ok: true,
+                added: toAdd.length,
+                skipped: skipped.length,
+                addedIds: toAdd.map((e) => (e as Record<string, unknown>)['id']),
+              }),
+            );
+          } catch (err) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                error: err instanceof Error ? err.message : 'Unknown error',
+              }),
+            );
+          }
+        });
+      });
+
+      server.middlewares.use('/__sprite-metadata-run', (req, res) => {
+        if (!enforceLocalOnly(req, res)) {
+          return;
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        req.on('end', async () => {
+          try {
+            const payload = JSON.parse(body) as {
+              id: string;
+              provider?: MetadataProviderMode;
+              minScore?: number;
+              force?: boolean;
+              catalogPath?: string;
+            };
+
+            if (!payload.id || payload.id.trim() === '') {
+              res.statusCode = 400;
+              res.end(JSON.stringify({ error: 'Missing required "id".' }));
+              return;
+            }
+
+            const requestedPath = payload.catalogPath ?? DEFAULT_CATALOG_PATH;
+            const absoluteCatalogPath = resolve(REPO_ROOT, requestedPath);
+            if (!isInsideDataDir(absoluteCatalogPath)) {
+              res.statusCode = 403;
+              res.end(JSON.stringify({ error: 'Catalog path outside data directory.' }));
+              return;
+            }
+
+            const raw = JSON.parse(readFileSync(absoluteCatalogPath, 'utf-8'));
+            const catalog = parseSpriteCatalog(raw);
+            const existingEntry = catalog.find(
+              (entry: SpriteCatalogRecord) => entry.id === payload.id,
+            );
+            if (!existingEntry) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: `Catalog entry "${payload.id}" not found.` }));
+              return;
+            }
+            const provider = await resolveProvider(payload.provider ?? 'auto');
+            const result = await runMetadataPipeline(catalog, {
+              provider,
+              ids: [payload.id],
+              force: payload.force ?? true,
+              minScore: payload.minScore,
+            });
+            writeFileSync(
+              absoluteCatalogPath,
+              JSON.stringify(result.updated, null, 2) + '\n',
+              'utf-8',
+            );
+
+            const updatedEntry = result.updated.find(
+              (entry: SpriteCatalogRecord) => entry.id === payload.id,
+            );
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                ok: true,
+                provider: provider.name,
+                changedCount: result.changedCount,
+                processedCount: result.processedCount,
+                rejectedCount: result.rejectedCount,
+                skippedCount: result.skippedCount,
+                entry: updatedEntry,
+              }),
+            );
+          } catch (err) {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json');
             res.end(
               JSON.stringify({
                 error: err instanceof Error ? err.message : 'Unknown error',

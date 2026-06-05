@@ -8,6 +8,8 @@
 import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
 import type { InventoryBag } from '../shared/inventory.js';
+import type { CombatEvent } from '../shared/combat-events.js';
+import type { FloorMap } from './map/FloorMap.js';
 import {
   Position,
   Velocity,
@@ -31,8 +33,10 @@ import {
   Trap,
   MeleeSwing,
   Knockback,
+  DoorState,
   BaseStats,
   EffectiveStats,
+  Gold,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -68,6 +72,12 @@ export interface GameWorld {
   statsDirty: boolean;
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
   inventories: Map<number, InventoryBag>;
+  /** Combat events emitted this frame — consumed and drained by the render layer. */
+  combatEvents: CombatEvent[];
+  /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
+  playerGold: number;
+  /** Procedurally generated floor map — null until floor is loaded. */
+  floorMap: FloorMap | null;
 }
 
 export interface CreateWorldOptions {
@@ -115,8 +125,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Trap, stores.trap);
   wireStore(ecs, MeleeSwing, stores.meleeSwing);
   wireStore(ecs, Knockback, stores.knockback);
+  wireStore(ecs, DoorState, stores.doorState);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
+  wireStore(ecs, Gold, stores.gold);
 
   return {
     ecs,
@@ -137,6 +149,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     skillUsageEvents: [],
     statsDirty: true,
     inventories: new Map(),
+    combatEvents: [],
+    playerGold: 0,
+    floorMap: null,
   };
 }
 

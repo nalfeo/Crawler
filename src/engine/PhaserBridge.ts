@@ -17,6 +17,7 @@ import {
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
+import { createCombatVfx } from './CombatVfx.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -240,6 +241,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
+  const combatVfx = createCombatVfx(scene);
 
   return {
     sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
@@ -573,6 +575,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         arcGraphics.delete(eid);
         arcSpawnMs.delete(eid);
       }
+
+      // Process combat VFX (floating damage numbers)
+      combatVfx.update(world, renderElapsedMs);
     },
 
     destroy(): void {
@@ -591,6 +596,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
       arcGraphics.clear();
       arcSpawnMs.clear();
+      combatVfx.destroy();
     },
   };
 }
