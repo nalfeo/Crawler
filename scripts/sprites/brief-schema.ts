@@ -146,14 +146,36 @@ export const briefSchema = z
      * distribute across cells (one per cell, never combined). Free-form
      * natural language so authors can iterate without schema churn.
      *
+     * Treat this as the *seed* list. At run time the orchestrator may
+     * call a text LLM to top this list up to `minVariations` entries so
+     * authors don't have to brainstorm exhaustively. Author-supplied
+     * entries always survive the expansion pass; the LLM only appends.
+     *
      * Use this for thematic variety that the continuous "vary along
      * silhouette / shading / material" axes in the sheet prompt cannot
      * express — e.g. "spiked iron pommel at the base", "wolf skull
-     * instead of human skull". Leave empty/undefined for briefs where
+     * instead of human skull". Set `minVariations: 0` for briefs where
      * the subject must stay strictly canonical (e.g. icons matching
      * existing in-game art).
      */
     variations: z.array(z.string().min(1)).max(20).default([]),
+    /**
+     * Minimum total variations to feed into the sheet prompt after the
+     * optional LLM expansion pass runs.
+     *
+     *   - `0` disables expansion entirely (canonical sprites: stick to
+     *     the author's `variations` exactly, even if empty).
+     *   - `N > 0` asks the orchestrator to top up `variations` to at
+     *     least N entries by calling the text provider, when one is
+     *     configured. If no text provider is available the run still
+     *     succeeds — the orchestrator emits a warning and proceeds with
+     *     whatever seed `variations` already contained.
+     *
+     * Default of 4 reflects the empirical sweet spot: enough discrete
+     * embellishments to spread across a 4×4 sheet without looking
+     * repetitive, few enough that the model doesn't get overwhelmed.
+     */
+    minVariations: z.number().int().min(0).max(20).default(4),
   })
   .strict()
   .superRefine((brief, ctx) => {

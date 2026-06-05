@@ -21,6 +21,7 @@ const validBrief: Brief = {
   generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
   sensors: {},
   variations: [],
+  minVariations: 4,
 };
 
 describe('briefSchema', () => {
@@ -80,6 +81,19 @@ describe('briefSchema', () => {
       const paths = result.error.issues.map((i) => i.path.join('.'));
       expect(paths).toContain('references');
     }
+  });
+
+  it('defaults minVariations to 4 and accepts 0 (opt-out) and integers up to 20', () => {
+    const { minVariations: _omit, ...withoutMin } = validBrief;
+    void _omit;
+    const parsed = briefSchema.parse(withoutMin);
+    expect(parsed.minVariations).toBe(4);
+
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 0 }).success).toBe(true);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 20 }).success).toBe(true);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: -1 }).success).toBe(false);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 21 }).success).toBe(false);
+    expect(briefSchema.safeParse({ ...validBrief, minVariations: 4.5 }).success).toBe(false);
   });
 
   it('accepts every documented sprite type', () => {

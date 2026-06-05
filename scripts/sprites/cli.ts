@@ -25,7 +25,7 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { generateOne } from './generate-one.js';
-import { createImageProvider } from './provider/factory.js';
+import { createImageProvider, createTextProvider } from './provider/factory.js';
 import { ProviderError } from './provider/types.js';
 
 interface CliArgs {
@@ -144,12 +144,26 @@ function printSummary(
     pairCount: number;
     bitLength: number;
   } | null,
+  variations: {
+    seed: ReadonlyArray<string>;
+    proposed: ReadonlyArray<string>;
+    final: ReadonlyArray<string>;
+    minVariations: number;
+    skippedReason: string | null;
+  },
 ): void {
   process.stdout.write(`\n=== ${briefPath} ===\n`);
   process.stdout.write(`run dir : ${runDir}\n`);
   process.stdout.write(`attempts: ${attempts}    duration: ${(durationMs / 1000).toFixed(1)}s\n`);
   const passed = candidates.filter((c) => c.passed).length;
   process.stdout.write(`variants: ${candidates.length}    passed: ${passed}\n`);
+  const seedN = variations.seed.length;
+  const propN = variations.proposed.length;
+  const finalN = variations.final.length;
+  const reason = variations.skippedReason ? ` [${variations.skippedReason}]` : '';
+  process.stdout.write(
+    `variations: ${seedN} seed + ${propN} expanded = ${finalN} final (min=${variations.minVariations})${reason}\n`,
+  );
   process.stdout.write('\n');
   process.stdout.write(`  ${pad('rank', 6)}${pad('idx', 6)}${pad('passed', 8)}score\n`);
   candidates.forEach((c, rank) => {
@@ -168,11 +182,16 @@ function printSummary(
 
 async function runOne(briefPath: string, pick: number | undefined): Promise<BriefRunOutcome> {
   const provider = createImageProvider();
+  // Text provider is opt-in: returns null when no chat deployment is
+  // configured. The orchestrator handles the null gracefully — runs
+  // still produce sprites, just without LLM-expanded variations.
+  const textProvider = createTextProvider();
   const start = Date.now();
   try {
     const result = await generateOne({
       briefPath,
       provider,
+      textProvider,
       repoRoot: process.cwd(),
     });
     const duration = Date.now() - start;
@@ -183,6 +202,7 @@ async function runOne(briefPath: string, pick: number | undefined): Promise<Brie
       result.summary.candidates,
       duration,
       result.summary.diversity,
+      result.summary.variations,
     );
     const ranked = result.summary.candidates;
     const anyPassed = ranked.some((c) => c.passed);

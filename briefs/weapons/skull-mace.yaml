@@ -14,14 +14,13 @@ description: |
 # inherited from data/sprite-types/weapon.json. This brief only contains
 # the bits that make a skull mace specifically a skull mace.
 #
-# Variations are discrete on-theme embellishments the model rotates
-# through cells (one per cell, never combined). Keep entries short and
-# evocative; do NOT redescribe the canonical subject here.
+# `variations` is the author seed list — at most a couple of strong cues
+# we want to guarantee show up in the sheet. `minVariations: 8` tells
+# the runner to top this list up to 8 via the configured text provider
+# (Azure chat completions); when no chat deployment is configured the
+# seed flows through unchanged and the run still completes.
 variations:
-  - spiked iron pommel at the base of the haft
   - wolf or ram skull replacing the human skull
-  - small chain wrapping the haft below the skull
-  - battle-damaged skull with a chipped tooth or cracked cranium
-  - twin small skulls stacked on top of the haft instead of one large skull
-  - rune-etched iron band beneath the skull
-  - elongated jaw extending past the bottom of the skull
+  - spiked iron pommel at the base of the haft
+minVariations: 8
+

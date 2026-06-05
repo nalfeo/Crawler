@@ -17,3 +17,8 @@ sensors:
   weapon:
     orientation: diagonal
     diagonalToleranceDeg: 3
+# Iron-sword is the canonical sword — we want all 16 cells to depict the
+# same straight, unembellished blade, so we opt out of LLM variation
+# expansion entirely. `minVariations: 0` keeps the (empty) seed list
+# intact regardless of whether a chat deployment is configured.
+minVariations: 0
