@@ -158,7 +158,7 @@ export const briefSchema = z
      * the subject must stay strictly canonical (e.g. icons matching
      * existing in-game art).
      */
-    variations: z.array(z.string().min(1)).max(20).default([]),
+    variations: z.array(z.string().trim().min(1)).max(20).default([]),
     /**
      * Minimum total variations to feed into the sheet prompt after the
      * optional LLM expansion pass runs.
@@ -255,12 +255,12 @@ export const minimalBriefSchema = z
       .string()
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
-    description: z.string().min(1).optional(),
+    description: z.string().trim().min(1).optional(),
     // Legacy/fully-specified briefs may set `prompt` directly instead of
     // `description`. We accept it here as a typed passthrough so the
     // superRefine below can require one of the two without tripping on
     // `.passthrough()` losing the field's type.
-    prompt: z.string().min(1).optional(),
+    prompt: z.string().trim().min(1).optional(),
   })
   .passthrough()
   .superRefine((data, ctx) => {

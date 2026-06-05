@@ -123,6 +123,12 @@ describe('expandVariations', () => {
     expect(result.variations).toEqual(['seed']);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toMatch(/no text provider/i);
+    // Warning should call out all three null-provider causes so users
+    // don't chase the wrong env var (review thread #28-3364080390).
+    expect(warn.mock.calls[0]?.[0]).toMatch(/AZURE_OPENAI_ENDPOINT/);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/AZURE_OPENAI_API_KEY/);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/AZURE_OPENAI_CHAT_DEPLOYMENT/);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/SPRITES_TEXT_PROVIDER/);
   });
 
   it('warns and degrades when the provider throws', async () => {

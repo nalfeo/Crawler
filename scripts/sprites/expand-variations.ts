@@ -88,7 +88,7 @@ export async function expandVariations(
 
   if (provider === null) {
     warn(
-      `expand-variations: brief '${brief.name}' wants minVariations=${brief.minVariations} but only ${seed.length} seed entries are present and no text provider is configured (set AZURE_OPENAI_CHAT_DEPLOYMENT). Proceeding with the seed unchanged.`,
+      `expand-variations: brief '${brief.name}' wants minVariations=${brief.minVariations} but only ${seed.length} seed entries are present and no text provider is configured. To enable LLM expansion, set SPRITES_TEXT_PROVIDER=azure-openai (default) and provide all of AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_CHAT_DEPLOYMENT; or set SPRITES_TEXT_PROVIDER=none to silence this warning. Proceeding with the seed unchanged.`,
     );
     return {
       variations: seed,

@@ -241,4 +241,27 @@ describe('briefSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('rejects whitespace-only variations entries (trim happens in the schema)', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      variations: ['real entry', '   '],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths.some((p) => p.startsWith('variations'))).toBe(true);
+    }
+  });
+
+  it('trims surrounding whitespace from valid variations entries', () => {
+    const result = briefSchema.safeParse({
+      ...validBrief,
+      variations: ['  spiked pommel  '],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.variations).toEqual(['spiked pommel']);
+    }
+  });
 });

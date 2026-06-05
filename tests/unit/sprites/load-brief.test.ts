@@ -67,6 +67,14 @@ describe('loadBrief', () => {
     );
   });
 
+  it('rejects whitespace-only description at the minimal layer', () => {
+    const briefPath = path.join(root, 'briefs', 'blank.yaml');
+    writeFileSync(briefPath, 'type: weapon\nname: blank\ndescription: "   "\n');
+    expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(
+      /failed minimal validation|failed validation/,
+    );
+  });
+
   it('throws when the referenced palette JSON does not exist', () => {
     const briefPath = path.join(root, 'briefs', 'iron-sword.yaml');
     writeFileSync(briefPath, SAMPLE_BRIEF_YAML);

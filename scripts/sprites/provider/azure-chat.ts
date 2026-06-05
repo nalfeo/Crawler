@@ -191,7 +191,13 @@ function buildUserPrompt(request: ExpandVariationsRequest): string {
  *   1. Try direct JSON.parse — fast path for well-behaved models.
  *   2. If that fails, strip markdown code fences and try again.
  *   3. As a last resort, locate the first `{` or `[` and try parsing
- *      from there to the matching close.
+ *      the rest of the string from there. This succeeds when the JSON
+ *      makes up the prefix of the slice (the parser stops at the first
+ *      structural mismatch and returns the parsed value); it fails when
+ *      the model emits trailing prose that confuses the parser. We do
+ *      NOT attempt to find a "matching close" — the brace-walker that
+ *      would do that is more code than it's worth for the rare cases
+ *      this fallback exists to catch.
  *
  * The returned list is trimmed, non-empty-filtered, and de-duplicated
  * case-insensitively in declared order.
