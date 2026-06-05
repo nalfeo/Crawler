@@ -8,9 +8,11 @@ description: |
   glow, no enchantment, no engraving, no scabbard. Silhouette must read
   as a sword at a glance.
 # Iron-sword is intentionally side-profile / diagonal, so we override the
-# weapon-default vertical orientation. Everything else (16x16, palette,
-# anchor, references, 4x4 sheet) is inherited from
-# data/sprite-types/weapon.json.
+# weapon-default vertical orientation. A 45-degree blade pointing up-and-right
+# puts the grip in the bottom-left quadrant rather than bottom-center, so we
+# also have to override the default (8, 14) anchor. Everything else (16x16,
+# palette, references, 4x4 sheet) is inherited from data/sprite-types/weapon.json.
+anchor: { x: 5, y: 12 }
 sensors:
   weapon:
     orientation: diagonal
