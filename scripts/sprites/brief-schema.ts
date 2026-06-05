@@ -61,6 +61,62 @@ const referenceSchema = z
   })
   .strict();
 
+/**
+ * Optional sheet-mode generation hints. The pipeline defaults to a 3x3 grid
+ * with 9 variants, no empty cells. Briefs can override per-asset.
+ *
+ * - `rows` x `cols` defines the grid. Variant count equals `rows * cols` minus
+ *   the number of declared `emptyCells`.
+ * - `emptyCells` lists `[row, col]` coordinates (0-based) the model should
+ *   leave deliberately empty — useful when a brief wants 8 variants in a 3x3.
+ *   Defaults to none.
+ * - `nativeCanvas` is the requested square pixel side of the *whole sheet*
+ *   sent to the provider. Defaults to 1024.
+ */
+const sheetSchema = z
+  .object({
+    rows: z.number().int().min(1).max(8).default(3),
+    cols: z.number().int().min(1).max(8).default(3),
+    emptyCells: z.array(z.tuple([z.number().int().min(0), z.number().int().min(0)])).default([]),
+    nativeCanvas: z.number().int().min(256).max(2048).default(1024),
+  })
+  .strict()
+  .default({ rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 });
+
+const generationSchema = z
+  .object({
+    sheet: sheetSchema,
+  })
+  .strict()
+  .default({ sheet: { rows: 3, cols: 3, emptyCells: [], nativeCanvas: 1024 } });
+
+/**
+ * Optional per-brief sensor threshold overrides. Defaults are baked into
+ * `scripts/sprites/score-candidate.ts`; briefs only need to set fields they
+ * actually want to relax or tighten.
+ *
+ * Nested by sensor family so adding new groups (items, enemies, tiles, vfx)
+ * is additive without restructuring existing briefs.
+ */
+const sensorOverridesSchema = z
+  .object({
+    opaqueRatio: z
+      .object({
+        min: z.number().min(0).max(1).optional(),
+        max: z.number().min(0).max(1).optional(),
+      })
+      .strict()
+      .optional(),
+    weapon: z
+      .object({
+        diagonalToleranceDeg: z.number().min(0).max(45).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .default({});
+
 export const briefSchema = z
   .object({
     type: z.enum(SPRITE_TYPES),
@@ -76,6 +132,8 @@ export const briefSchema = z
     references: z
       .array(referenceSchema)
       .min(2, 'references must contain at least 2 entries (F2.3)'),
+    generation: generationSchema,
+    sensors: sensorOverridesSchema,
   })
   .strict()
   .superRefine((brief, ctx) => {
@@ -93,9 +151,37 @@ export const briefSchema = z
         message: `anchor.y (${brief.anchor.y}) must be < size.height (${brief.size.height})`,
       });
     }
+    // Validate empty-cell coordinates fit inside the declared grid.
+    const { rows, cols, emptyCells } = brief.generation.sheet;
+    for (const [r, c] of emptyCells) {
+      if (r >= rows || c >= cols) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['generation', 'sheet', 'emptyCells'],
+          message: `empty cell [${r}, ${c}] is outside the ${rows}x${cols} grid`,
+        });
+      }
+    }
+    const variantCount = rows * cols - emptyCells.length;
+    if (variantCount < 1) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['generation', 'sheet'],
+        message: `grid produces ${variantCount} variants — must be at least 1`,
+      });
+    }
   });
 
 export type Brief = z.infer<typeof briefSchema>;
 // SpriteType inferred via Brief['type']; no separate alias needed yet.
 export type RgbTriple = readonly [number, number, number];
 export type PaletteColors = readonly RgbTriple[];
+
+/**
+ * Variant count produced by a brief's sheet config. Pure derivation; exported
+ * because slicer and prompt builder both need it.
+ */
+export function variantCount(brief: Brief): number {
+  const { rows, cols, emptyCells } = brief.generation.sheet;
+  return rows * cols - emptyCells.length;
+}

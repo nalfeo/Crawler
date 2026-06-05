@@ -21,6 +21,7 @@
     "test:e2e": "vitest run --project e2e",
     "lab": "vite --mode lab",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
+    "sprites:run": "tsx scripts/sprites/cli.ts",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
     "verify": "bash scripts/agent/verify.sh"
   },
@@ -54,6 +55,7 @@
     "typescript-eslint": "^8.60.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.8",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   }
 }
