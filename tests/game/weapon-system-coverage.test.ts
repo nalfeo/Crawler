@@ -121,7 +121,7 @@ describe('weaponSystem coverage paths', () => {
     expect(projectile).toBeDefined();
     expect(world.stores.damage.amount[projectile!]).toBe(21);
     expect(world.stores.damage.cooldownMs[player]).toBe(40);
-    expect(world.stores.damage.cooldownMs[player]).toBe(40);
+    expect(world.stores.damage.lastFireMs[player]).toBe(40);
   });
 
   it('handles unknown active weapon types without spawning an attack', () => {
