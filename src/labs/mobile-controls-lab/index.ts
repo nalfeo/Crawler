@@ -429,9 +429,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
 
     // Border
     ctx.beginPath();
-    ctx.strokeStyle = actionActive
-      ? 'rgba(255, 255, 255, 0.5)'
-      : 'rgba(255, 255, 255, 0.2)';
+    ctx.strokeStyle = actionActive ? 'rgba(255, 255, 255, 0.5)' : 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 2;
     ctx.arc(btn.x, btn.y, btnR, 0, Math.PI * 2);
     ctx.stroke();
