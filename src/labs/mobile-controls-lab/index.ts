@@ -239,7 +239,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     }
 
     const magnitude = Math.hypot(rawX, rawY);
-    if (magnitude < settings.deadZone) {
+    if (magnitude === 0 || magnitude < settings.deadZone) {
       moveOutput = { x: 0, y: 0 };
     } else {
       const remapped = (magnitude - settings.deadZone) / (1 - settings.deadZone);

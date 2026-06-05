@@ -1,29 +1,34 @@
 # Mobile Controls Lab
 
-Sandbox for iterating on the virtual joystick and action button used on mobile/touch devices.
+Sandbox for iterating on mobile touch controls — virtual joystick, follow-finger movement, and an opaque action button.
 
 ## What it tests
 
-- Virtual joystick movement (left-half of screen)
-- Action button firing (right-half of screen)
-- Dead zone tuning — threshold below which input is ignored
+- Two movement modes: virtual joystick or follow-finger
+- Opaque action button (bottom-right, hit-tested by radius)
+- Dead zone tuning — threshold below which joystick input is ignored
 - Joystick radius — how far you need to drag for full deflection
+- Follow-finger speed and arrival distance
 - Mouse-emulated touch — click-drag on desktop to simulate mobile
 
 ## How to use
 
-1. `npm run lab` → navigate to `?lab=mobile-controls-lab`
-2. Touch/click the left half and drag to move the entity
-3. Touch/click the right half to trigger the action
-4. Adjust dead zone, radius, opacity, and button size via lil-gui controls
+1. `npm run lab` → navigate to `/lab.html?lab=mobile-controls-lab`
+2. Touch/click anywhere outside the action button and drag to move
+3. Touch/click the red action button (bottom-right) to fire
+4. Switch between "joystick" and "follow" modes in the lil-gui dropdown
+5. Tune parameters in the settings panel on the right
 
 ## Tunable parameters
 
-| Parameter        | Range    | Description                                  |
-| ---------------- | -------- | -------------------------------------------- |
-| Joystick Radius  | 30–120px | Distance for full-deflection virtual stick   |
-| Dead Zone        | 0–0.5    | Input magnitude below which output is zeroed |
-| Action Btn Size  | 40–120px | Visual size of the action button indicator   |
-| Control Opacity  | 0.1–1.0  | Transparency of on-screen controls           |
-| Debug Overlay    | on/off   | Show/hide numerical readouts                 |
-| Haptic Feedback  | on/off   | Vibrate on touch start (mobile only)         |
+| Parameter       | Range    | Description                                    |
+| --------------- | -------- | ---------------------------------------------- |
+| Move Mode       | dropdown | Switch between "joystick" and "follow" modes   |
+| Radius          | 30-120px | Joystick: distance for full deflection         |
+| Dead Zone       | 0-0.5    | Joystick: magnitude below which output is zero |
+| Speed           | 1-15     | Follow: movement speed toward finger           |
+| Arrival Dist    | 2-30px   | Follow: distance at which entity stops         |
+| Action Btn Size | 50-120px | Visual/hit size of the action button           |
+| Action Btn Pad  | 16-80px  | Padding from screen edge                       |
+| Debug Overlay   | on/off   | Show/hide numerical readouts                   |
+| Haptic Feedback | on/off   | Vibrate on touch start (mobile only)           |
