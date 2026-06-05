@@ -1,6 +1,6 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { Enemy, Health, LineDamage, Owner, Player, Position, Team } from '../components.js';
-import type { CombatEvent } from '../../shared/combat-events.js';
+import { applyDamage } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
 /** Distance from a point to a line segment. */
@@ -35,7 +35,7 @@ const BEAM_HIT_HALF_WIDTH = 8;
 /** Applies line/beam damage using segment-vs-point checks. */
 export function beamSystem(world: GameWorld): void {
   const beams = query(world.ecs, [LineDamage, Position]);
-  const { position, lineDamage, team, health } = world.stores;
+  const { position, lineDamage, team } = world.stores;
 
   for (const eid of beams) {
     if (eid === undefined || !entityExists(world.ecs, eid)) {
@@ -92,21 +92,7 @@ export function beamSystem(world: GameWorld): void {
       const distSq = pointToSegmentDistSq(tx, ty, ax, ay, bx, by);
 
       if (distSq <= hitDistSq) {
-        const current = health.current[target] ?? 0;
-        health.current[target] = Math.max(0, current - damage);
-
-        const targetType: CombatEvent['targetType'] = hasComponent(world.ecs, target, Player)
-          ? 'player'
-          : 'enemy';
-        world.combatEvents.push({
-          type: 'hit',
-          x: position.x[target] ?? 0,
-          y: position.y[target] ?? 0,
-          amount: damage,
-          targetType,
-          timestamp: world.elapsedMs,
-          targetEid: target,
-        });
+        applyDamage(world, target, damage, position.x[target] ?? 0, position.y[target] ?? 0);
       }
     }
   }

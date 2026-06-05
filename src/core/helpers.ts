@@ -1,4 +1,4 @@
-import { addComponent, addEntity, set } from 'bitecs';
+import { addComponent, addEntity, hasComponent, set } from 'bitecs';
 import { createInventoryBag } from '../shared/inventory.js';
 import {
   AoeOnImpact,
@@ -25,6 +25,7 @@ import {
   XpGem,
   DroppedItem,
 } from './components.js';
+import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
 import type { WeaponTypeValue } from '../shared/constants.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
@@ -40,6 +41,38 @@ export function clearEntityStores(world: GameWorld, eid: number): void {
       }
     }
   }
+}
+
+/**
+ * Single choke point for all damage application.
+ * Reduces target HP and emits a CombatEvent for VFX.
+ * Returns the actual damage dealt (clamped to remaining HP).
+ */
+export function applyDamage(
+  world: GameWorld,
+  target: number,
+  amount: number,
+  x: number,
+  y: number,
+): number {
+  const current = world.stores.health.current[target] ?? 0;
+  const dealt = Math.min(current, amount);
+  world.stores.health.current[target] = Math.max(0, current - amount);
+
+  const targetType: CombatEvent['targetType'] = hasComponent(world.ecs, target, Player)
+    ? 'player'
+    : 'enemy';
+  world.combatEvents.push({
+    type: 'hit',
+    x,
+    y,
+    amount,
+    targetType,
+    timestamp: world.elapsedMs,
+    targetEid: target,
+  });
+
+  return dealt;
 }
 
 /** Create an entity with zeroed store slots (safe against ID recycling). */
