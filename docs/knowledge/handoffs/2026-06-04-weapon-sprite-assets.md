@@ -23,8 +23,6 @@ wired through to the renderer for the player and enemies.
   back to the existing procedural `__cw_*` texture. Player and enemy
   visuals are scaled (1.6× / 1.4×) so the 16×16 source matches the
   prior procedural footprint.
-- `src/labs/sprite-preview-lab/` — visual catalogue of every
-  registered sprite (`?lab=sprite-preview`)
 - `tests/unit/sprite-registry.test.ts` — registry invariants
 - Extended `tests/unit/phaser-bridge.test.ts` — covers both the
   Kenney-loaded and procedural-fallback render paths

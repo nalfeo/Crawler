@@ -51,7 +51,7 @@ export interface SpriteDef {
   readonly sheetKey: string;
   /** Frame index inside the sheet. */
   readonly frame: number;
-  /** Optional human-readable note rendered in the sprite-preview lab. */
+  /** Optional human-readable note for documentation purposes. */
   readonly note?: string;
 }
 

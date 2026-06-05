@@ -18,7 +18,6 @@ import './labs/stat-lab/index.js';
 import './labs/stats-lab/index.js';
 import './labs/xp-curve-lab/index.js';
 import './labs/skill-lab/index.js';
-import './labs/sprite-preview-lab/index.js';
 import './labs/tile-explorer-lab/index.js';
 import { renderLabIndex } from './labs/lab-index.js';
 import { runLab } from './labs/lab-runner.js';
