@@ -248,9 +248,14 @@ export function writeSummary(paths: RunPaths, summary: RunSummary): string {
  * Rank candidates with the combined sensor + judge pipeline gate.
  *
  * Three buckets, in priority order:
- *   1. Sensor passed AND (judge disabled OR judge passed)  — full pipeline pass
- *   2. Sensor passed, judge ran and failed                 — sensor-good slop
- *   3. Sensor failed (judge never runs on these)           — reject pile
+ *   1. Sensor passed AND combined pipeline passed                  — full pass
+ *   2. Sensor passed, combined pipeline failed                     — includes
+ *      both judge-failed variants AND sensor-passed-but-not-judged
+ *      variants (e.g. `judgeSkipReason: 'over-cap'`). These are
+ *      "sensor-good but the full pipeline didn't clear them" and
+ *      must rank below bucket 1 so over-cap entries can't sneak
+ *      ahead of variants that actually passed the judge gate.
+ *   3. Sensor failed (judge never runs on these)                   — reject pile
  *
  * Within bucket 1 (when judge ran), tie on judge `minScore` desc, then
  * sensor score desc, then index asc. Within bucket 1 (judge disabled)
