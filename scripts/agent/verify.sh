@@ -12,6 +12,7 @@ tsc_status=0
 eslint_status=0
 wait $TSC_PID || tsc_status=$?
 wait $ESLINT_PID || eslint_status=$?
+trap - EXIT
 
 if [ "$tsc_status" -ne 0 ]; then
   exit "$tsc_status"
