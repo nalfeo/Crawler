@@ -1,5 +1,5 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
-import { Enemy, Health, Player } from '../components.js';
+import { DeathTimer, Enemy, Health, Player } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 
@@ -15,6 +15,11 @@ export function healthSystem(world: GameWorld): void {
     const currentHealth = health.current[eid] ?? 0;
 
     if (currentHealth <= 0) {
+      // Skip entities with DeathTimer — they're handled by deathTimerSystem
+      if (hasComponent(world.ecs, eid, DeathTimer)) {
+        continue;
+      }
+
       if (hasComponent(world.ecs, eid, Player)) {
         world.state = 'game_over';
       } else {

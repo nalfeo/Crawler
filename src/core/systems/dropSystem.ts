@@ -7,7 +7,7 @@
  * and applies death knockback.
  */
 import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
-import { Enemy, Health, Knockback } from '../components.js';
+import { DeathTimer, Enemy, Health, Knockback } from '../components.js';
 import { spawnXpGem, spawnGold, spawnDroppedItem } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
@@ -25,6 +25,8 @@ const DEATH_KNOCKBACK_BASE = 8;
 const DEATH_KNOCKBACK_MAX = 60;
 /** Knockback speed (pixels per frame-step). */
 const DEATH_KNOCKBACK_SPEED = 6;
+/** How long a dead entity persists before removal (ms). */
+const DEATH_LINGER_MS = 300;
 
 /**
  * Resolve which loot tables apply for a given enemy.
@@ -110,6 +112,8 @@ export function dropSystem(world: GameWorld): void {
     const currentHealth = health.current[eid] ?? 0;
     if (currentHealth > 0) continue;
     if (processed.has(eid)) continue;
+    // Skip entities already in death linger (processed on a prior frame)
+    if (hasComponent(world.ecs, eid, DeathTimer)) continue;
 
     processed.add(eid);
 
@@ -191,6 +195,9 @@ export function dropSystem(world: GameWorld): void {
       sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 20 : undefined,
       sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 20 : undefined,
     });
+
+    // Add death linger timer so entity persists for knockback/death animation
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: DEATH_LINGER_MS }));
   }
 }
 

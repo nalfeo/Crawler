@@ -18,6 +18,7 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { dropSystem } from '../../core/systems/dropSystem.js';
+import { deathTimerSystem } from '../../core/systems/deathTimerSystem.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { createGoreVfx } from '../../engine/GoreVfx.js';
@@ -161,6 +162,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
           dropSystem(this.world);
           knockbackSystem(this.world);
+          deathTimerSystem(this.world);
           healthSystem(this.world);
           lifetimeSystem(this.world);
           projectileCleanupSystem(this.world);
