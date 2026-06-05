@@ -59,8 +59,9 @@ export interface SpriteDef {
    * Optional 2D pixel anchor in the sprite's native frame. Marks the pixel that
    * pins to a holder — typically the grip on a hand-held weapon. Coordinates
    * are integers in `[0, frameWidth)` × `[0, frameHeight)`. When omitted, the
-   * renderer should fall back to {@link DEFAULT_HANDHELD_SPRITE_ANCHOR} for
-   * hand-held 16x16 sprites via `resolveHandheldAnchor()`.
+   * renderer should fall back to the bottom-center default (8, 14) for
+   * hand-held 16x16 sprites via `resolveHandheldAnchor()` from
+   * `src/shared/sprite-anchor`.
    *
    * No runtime consumer reads this yet — equipped-item rendering is still on
    * the roadmap. The field exists so sprite-registry data can declare anchors

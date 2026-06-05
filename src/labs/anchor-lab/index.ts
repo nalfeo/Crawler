@@ -382,20 +382,29 @@ function createAnchorLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     const a = defaultAnchorFor(s);
     settings.anchorX = a.x;
     settings.anchorY = a.y;
+    updateAnchorSliderRanges();
     clampAnchorToSheet();
     refreshGui();
     updateStatusAndJson();
   });
 
-  // Resolve max anchor range from first sheet; sprites here are all 16x16
-  // but we recompute on sprite change just in case.
+  // Anchor slider ranges are recomputed via updateAnchorSliderRanges() whenever
+  // the active sprite changes, so frames larger than 16x16 still get full reach.
   const initialSheet = getSheet(firstSprite.sheetKey);
-  const maxX = (initialSheet?.frameWidth ?? 16) - 1;
-  const maxY = (initialSheet?.frameHeight ?? 16) - 1;
+  const initialMaxX = (initialSheet?.frameWidth ?? 16) - 1;
+  const initialMaxY = (initialSheet?.frameHeight ?? 16) - 1;
 
   const anchorFolder = gui.addFolder('Anchor');
-  const xCtrl = anchorFolder.add(settings, 'anchorX', 0, maxX, 1).name('x');
-  const yCtrl = anchorFolder.add(settings, 'anchorY', 0, maxY, 1).name('y');
+  const xCtrl = anchorFolder.add(settings, 'anchorX', 0, initialMaxX, 1).name('x');
+  const yCtrl = anchorFolder.add(settings, 'anchorY', 0, initialMaxY, 1).name('y');
+
+  function updateAnchorSliderRanges(): void {
+    const sheet = currentSheet();
+    const maxX = (sheet?.frameWidth ?? 16) - 1;
+    const maxY = (sheet?.frameHeight ?? 16) - 1;
+    xCtrl.max(maxX);
+    yCtrl.max(maxY);
+  }
   xCtrl.onChange(() => updateStatusAndJson());
   yCtrl.onChange(() => updateStatusAndJson());
   anchorFolder
