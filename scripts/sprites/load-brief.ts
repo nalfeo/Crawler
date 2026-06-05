@@ -154,8 +154,24 @@ function defaultTypeDefaultsLoader(
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       throw new Error(`Sprite-type defaults at ${defaultsPath} must be a JSON object`);
     }
-    return parsed as SpriteTypeDefaults;
+    return stripMetaKeys(parsed as Record<string, unknown>) as SpriteTypeDefaults;
   };
+}
+
+/**
+ * Strip `$`-prefixed metadata keys (JSON-Schema convention for `$comment`,
+ * `$schema`, `$id`, etc.) from defaults so the strict brief schema doesn't
+ * reject them after merge. Applied recursively to nested objects.
+ */
+function stripMetaKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripMetaKeys);
+  if (value === null || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.startsWith('$')) continue;
+    out[k] = stripMetaKeys(v);
+  }
+  return out;
 }
 
 function defaultPaletteLoader(projectRoot?: string): (paletteId: string) => PaletteColors {
