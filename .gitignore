@@ -3,7 +3,8 @@ dist/
 coverage/
 *.local
 .DS_Store
-*.tsbuildinfo
+.tsbuildinfo
+.vitest-cache/
 
 # Sprite-generation pipeline scratch artifacts (raw candidates, processed
 # variants, judge scorecards). Approved sprites live under public/assets/
