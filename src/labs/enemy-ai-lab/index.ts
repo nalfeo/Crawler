@@ -264,22 +264,17 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           continue;
         }
 
-        const pushAlongX = overlapX <= overlapY;
-        const axisDelta = pushAlongX ? dx : dy;
-        let axisSign: number;
-        if (axisDelta > 0) {
-          axisSign = 1;
-        } else if (axisDelta < 0) {
-          axisSign = -1;
-        } else {
-          axisSign = a < b ? 1 : -1;
-        }
-        const pushDistance = (pushAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
+        const resolveAlongX = overlapX <= overlapY;
+        const axisDelta = resolveAlongX ? dx : dy;
+        const axisSign = axisDelta !== 0 ? Math.sign(axisDelta) : a < b ? 1 : -1;
+        const pushDistance = (resolveAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
 
+        // Keep player movement authoritative in this lab: only push enemies out of player overlap.
+        // For enemy-vs-enemy overlap, split correction evenly so both agents react.
         if (isEnemyVsPlayer) {
           const enemyEid = aIsEnemy ? a : b;
           const enemyDirection = enemyEid === a ? -axisSign : axisSign;
-          if (pushAlongX) {
+          if (resolveAlongX) {
             position.x[enemyEid] = (position.x[enemyEid] ?? 0) + enemyDirection * pushDistance;
           } else {
             position.y[enemyEid] = (position.y[enemyEid] ?? 0) + enemyDirection * pushDistance;
@@ -290,7 +285,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         const pushA = -axisSign * pushDistance * 0.5;
         const pushB = axisSign * pushDistance * 0.5;
 
-        if (pushAlongX) {
+        if (resolveAlongX) {
           position.x[a] = ax + pushA;
           position.x[b] = bx + pushB;
         } else {
