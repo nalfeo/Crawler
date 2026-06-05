@@ -58,19 +58,21 @@ function envValue(key: string): string | undefined {
 }
 
 function queryParamLevel(): LogLevel | undefined {
-  if (typeof window === 'undefined') {
+  if (typeof window === 'undefined' || !window.location) {
     return undefined;
   }
-  return toLogLevel(new URLSearchParams(window.location.search).get('logLevel') ?? undefined);
+  return toLogLevel(new URLSearchParams(window.location.search ?? '').get('logLevel') ?? undefined);
 }
 
 function initialLevel(): LogLevel {
+  const isTestEnv =
+    envValue('VITEST') === 'true' || envValue('NODE_ENV') === 'test' || envValue('CI') === 'true';
   return (
     queryParamLevel() ??
     safeReadStorageLevel() ??
     toLogLevel(envValue('VITE_LOG_LEVEL')) ??
     toLogLevel(envValue('LOG_LEVEL')) ??
-    'info'
+    (isTestEnv ? 'warn' : 'info')
   );
 }
 
