@@ -52,3 +52,9 @@ export type {
 } from './skills.js';
 export * from './items.js';
 export * from './inventory.js';
+export {
+  DEFAULT_HANDHELD_SPRITE_ANCHOR,
+  resolveHandheldAnchor,
+  isValidAnchor,
+} from './sprite-anchor.js';
+export type { SpriteAnchor } from './sprite-anchor.js';

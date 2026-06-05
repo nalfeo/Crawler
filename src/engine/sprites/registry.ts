@@ -20,6 +20,10 @@
  *   become loadable.
  */
 
+import type { SpriteAnchor } from '../../shared/sprite-anchor.js';
+
+export type { SpriteAnchor } from '../../shared/sprite-anchor.js';
+
 /**
  * Geometry of a Kenney spritesheet, fed verbatim to Phaser's
  * `load.spritesheet()` config plus our own `cols` for index math.
@@ -51,6 +55,19 @@ export interface SpriteDef {
   readonly sheetKey: string;
   /** Frame index inside the sheet. */
   readonly frame: number;
+  /**
+   * Optional 2D pixel anchor in the sprite's native frame. Marks the pixel that
+   * pins to a holder — typically the grip on a hand-held weapon. Coordinates
+   * are integers in `[0, frameWidth)` × `[0, frameHeight)`. When omitted, the
+   * renderer should fall back to {@link DEFAULT_HANDHELD_SPRITE_ANCHOR} for
+   * hand-held 16x16 sprites via `resolveHandheldAnchor()`.
+   *
+   * No runtime consumer reads this yet — equipped-item rendering is still on
+   * the roadmap. The field exists so sprite-registry data can declare anchors
+   * alongside the (sheet, frame) they describe, matching the brief schema in
+   * the sprite-generation pipeline.
+   */
+  readonly anchor?: SpriteAnchor;
   /** Optional human-readable note for documentation purposes. */
   readonly note?: string;
 }
