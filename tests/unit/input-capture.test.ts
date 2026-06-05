@@ -470,6 +470,28 @@ describe('InputCapture (raw DOM)', () => {
     expect(state.moveX).toBe(0);
     expect(state.moveY).toBe(0);
   });
+
+  it('pointercancel clears synthetic touch regardless of button value', () => {
+    // Start a left-click drag on action zone
+    dispatchCanvasPointer('pointerdown', {
+      clientX: 600,
+      clientY: 300,
+      button: 0,
+      pointerType: 'mouse',
+    });
+    capture.poll(state);
+    expect(state.action).toBe(true);
+
+    // Cancel fires with potentially non-zero button
+    dispatchCanvasPointer('pointercancel', {
+      clientX: 600,
+      clientY: 300,
+      button: -1,
+      pointerType: 'mouse',
+    });
+    capture.poll(state);
+    expect(state.action).toBe(false);
+  });
 });
 
 describe('InputCapture architectural guard', () => {

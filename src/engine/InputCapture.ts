@@ -88,6 +88,7 @@ export function createInputCapture(scene: Phaser.Scene): {
 
   // --- Mouse pointer emulation (enables testing mobile UX on desktop) ---
   // Only left-click (button 0) is emulated as a synthetic touch.
+  // Pointer capture keeps events routed to the canvas even if the drag leaves it.
   const onPointerDown = (e: PointerEvent) => {
     if (e.pointerType === 'touch') return; // real touches handled above
     if (e.button !== 0) return; // only left-click emulates touch
@@ -98,6 +99,9 @@ export function createInputCapture(scene: Phaser.Scene): {
       x: e.clientX,
       y: e.clientY,
     });
+    if ((e.target as Element)?.setPointerCapture) {
+      (e.target as Element).setPointerCapture(e.pointerId);
+    }
   };
   const onPointerMove = (e: PointerEvent) => {
     if (e.pointerType === 'touch') return;
@@ -110,6 +114,18 @@ export function createInputCapture(scene: Phaser.Scene): {
   const onPointerUp = (e: PointerEvent) => {
     if (e.pointerType === 'touch') return;
     if (e.button !== 0) return; // only left-click emulates touch
+    activeTouches.delete(MOUSE_POINTER_ID_BASE);
+    if ((e.target as Element)?.releasePointerCapture) {
+      try {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+  };
+  const onPointerCancel = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') return;
+    // Always clear synthetic touch on cancel regardless of button
     activeTouches.delete(MOUSE_POINTER_ID_BASE);
   };
   const toWorldPoint = (clientX: number, clientY: number): { x: number; y: number } => {
@@ -141,7 +157,7 @@ export function createInputCapture(scene: Phaser.Scene): {
   touchTarget.addEventListener('pointerdown', onPointerDown as EventListener);
   touchTarget.addEventListener('pointermove', onPointerMove as EventListener);
   touchTarget.addEventListener('pointerup', onPointerUp as EventListener);
-  touchTarget.addEventListener('pointercancel', onPointerUp as EventListener);
+  touchTarget.addEventListener('pointercancel', onPointerCancel as EventListener);
 
   return {
     poll(state: InputState): void {
@@ -207,7 +223,7 @@ export function createInputCapture(scene: Phaser.Scene): {
       touchTarget.removeEventListener('pointerdown', onPointerDown as EventListener);
       touchTarget.removeEventListener('pointermove', onPointerMove as EventListener);
       touchTarget.removeEventListener('pointerup', onPointerUp as EventListener);
-      touchTarget.removeEventListener('pointercancel', onPointerUp as EventListener);
+      touchTarget.removeEventListener('pointercancel', onPointerCancel as EventListener);
       keysDown.clear();
       activeTouches.clear();
     },
