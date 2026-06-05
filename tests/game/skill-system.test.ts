@@ -69,7 +69,11 @@ describe('skillSystem', () => {
   it('ignores events when skill state exists but skill definition is missing', () => {
     const { world } = setupPlayerWithSkillState('missing-definition');
     const state = world.playerSkills.get('missing-definition')!;
-    world.skillUsageEvents.push({ skillId: 'missing-definition', metric: 'hits_landed', amount: 100 });
+    world.skillUsageEvents.push({
+      skillId: 'missing-definition',
+      metric: 'hits_landed',
+      amount: 100,
+    });
     skillSystem(world);
     expect(state.level).toBe(0);
     expect(state.usage).toBe(0);
