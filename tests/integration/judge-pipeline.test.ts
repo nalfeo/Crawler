@@ -112,6 +112,7 @@ function mockVisionProvider(responses: EvaluateResponse[]): MockVision {
   const calls: CapturedCall[] = [];
   let i = 0;
   const provider: VisionProvider = {
+    modelDeployment: 'mock-vision-deployment',
     async evaluate(req: EvaluateRequest): Promise<EvaluateResponse> {
       calls.push({
         imageLabels: req.images.map((img) => img.label),

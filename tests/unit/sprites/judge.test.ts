@@ -91,6 +91,7 @@ interface CapturedCall {
 function stubProvider(args: StubArgs): { provider: VisionProvider; calls: CapturedCall[] } {
   const calls: CapturedCall[] = [];
   const provider: VisionProvider = {
+    modelDeployment: args.modelDeployment ?? 'gpt-4o-vision',
     evaluate: async (request: EvaluateRequest): Promise<EvaluateResponse> => {
       calls.push({ request });
       return {
@@ -105,6 +106,7 @@ function stubProvider(args: StubArgs): { provider: VisionProvider; calls: Captur
 
 function throwingProvider(err: unknown): VisionProvider {
   return {
+    modelDeployment: 'gpt-4o-vision',
     evaluate: async () => {
       throw err;
     },

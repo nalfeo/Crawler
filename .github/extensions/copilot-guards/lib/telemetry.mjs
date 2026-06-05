@@ -25,14 +25,14 @@
  * @param {TelemetryEvent} event
  */
 export async function emitGuardTelemetry(log, event) {
-    try {
-        const payload = {
-            _type: "guard-telemetry",
-            ts: new Date().toISOString(),
-            ...event,
-        };
-        await log(`[guard-telemetry] ${JSON.stringify(payload)}`, { level: "info" });
-    } catch {
-        /* telemetry must never break the dispatcher */
-    }
+  try {
+    const payload = {
+      _type: 'guard-telemetry',
+      ts: new Date().toISOString(),
+      ...event,
+    };
+    await log(`[guard-telemetry] ${JSON.stringify(payload)}`, { level: 'info' });
+  } catch {
+    /* telemetry must never break the dispatcher */
+  }
 }

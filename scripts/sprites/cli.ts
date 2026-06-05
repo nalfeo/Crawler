@@ -24,7 +24,9 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { JudgeBudget } from './cost-tracker.js';
 import { generateOne } from './generate-one.js';
+import { JudgeCache } from './judge-cache.js';
 import {
   createImageProvider,
   createTextProvider,
@@ -36,6 +38,11 @@ interface CliArgs {
   readonly briefs: ReadonlyArray<string>;
   readonly all: boolean;
   readonly pick: number | undefined;
+  readonly judgeBudgetUsd: number | undefined;
+  readonly resetBudget: boolean;
+  readonly noJudgeCache: boolean;
+  readonly pruneJudgeCacheHours: number | undefined;
+  readonly cacheMaxEntries: number | undefined;
 }
 
 interface BriefRunOutcome {
@@ -48,6 +55,11 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   const briefs: string[] = [];
   let all = false;
   let pick: number | undefined;
+  let judgeBudgetUsd: number | undefined;
+  let resetBudget = false;
+  let noJudgeCache = false;
+  let pruneJudgeCacheHours: number | undefined;
+  let cacheMaxEntries: number | undefined;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--brief') {
@@ -63,6 +75,31 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
       if (!Number.isInteger(n) || n < 0)
         throw new Error(`--pick must be a non-negative integer, got ${value}`);
       pick = n;
+    } else if (arg === '--judge-budget-usd') {
+      const value = argv[++i];
+      if (!value) throw new Error('--judge-budget-usd requires a number');
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0)
+        throw new Error(`--judge-budget-usd must be a non-negative number, got ${value}`);
+      judgeBudgetUsd = n;
+    } else if (arg === '--reset-budget') {
+      resetBudget = true;
+    } else if (arg === '--no-judge-cache') {
+      noJudgeCache = true;
+    } else if (arg === '--prune-judge-cache') {
+      const value = argv[++i];
+      if (!value) throw new Error('--prune-judge-cache requires an hour count');
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0)
+        throw new Error(`--prune-judge-cache must be a non-negative number, got ${value}`);
+      pruneJudgeCacheHours = n;
+    } else if (arg === '--cache-max-entries') {
+      const value = argv[++i];
+      if (!value) throw new Error('--cache-max-entries requires a count');
+      const n = Number(value);
+      if (!Number.isInteger(n) || n < 1)
+        throw new Error(`--cache-max-entries must be a positive integer, got ${value}`);
+      cacheMaxEntries = n;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -76,13 +113,22 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
   if (all && briefs.length > 0) {
     throw new Error('--all and --brief are mutually exclusive');
   }
-  if (!all && briefs.length === 0) {
+  if (!all && briefs.length === 0 && pruneJudgeCacheHours === undefined) {
     throw new Error('No brief specified. Use --brief <path> or --all.');
   }
   if (pick !== undefined && (all || briefs.length !== 1)) {
     throw new Error('--pick requires exactly one --brief');
   }
-  return { briefs, all, pick };
+  return {
+    briefs,
+    all,
+    pick,
+    judgeBudgetUsd,
+    resetBudget,
+    noJudgeCache,
+    pruneJudgeCacheHours,
+    cacheMaxEntries,
+  };
 }
 
 function printHelp(): void {
@@ -96,10 +142,17 @@ function printHelp(): void {
       '  npm run sprites:run -- --brief <path> --pick <variantIndex>',
       '',
       'Options:',
-      '  --brief <path>   Path to a YAML brief. Repeatable.',
-      '  --all            Run every brief under briefs/**/*.yaml.',
-      '  --pick <n>       Mark variant n as the chosen output (writes selection.json).',
-      '  --help, -h       Show this help.',
+      '  --brief <path>             Path to a YAML brief. Repeatable.',
+      '  --all                      Run every brief under briefs/**/*.yaml.',
+      '  --pick <n>                 Mark variant n as the chosen output (writes selection.json).',
+      '  --judge-budget-usd <n>     Cross-run USD ceiling on VLM judge spend (default: unlimited).',
+      '                             Also reads SPRITES_JUDGE_BUDGET_USD when unset.',
+      '  --reset-budget             Clear the persisted cost-state.json before running.',
+      '  --no-judge-cache           Disable the vision-call cache for this run.',
+      '  --cache-max-entries <n>    Max cached judge scorecards (default: 1000).',
+      '  --prune-judge-cache <h>    Delete cache entries older than <h> hours, then continue.',
+      '                             May be used standalone (no --brief/--all) as a housekeeping pass.',
+      '  --help, -h                 Show this help.',
       '',
       'Provider configuration is read from environment:',
       '  AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY (required)',
@@ -153,7 +206,7 @@ function printSummary(
       readonly readability: { readonly score: number };
       readonly rejectedBy: ReadonlyArray<string>;
     } | null;
-    judgeSkipReason: 'judge-disabled' | 'sensor-failed' | 'over-cap' | null;
+    judgeSkipReason: 'judge-disabled' | 'sensor-failed' | 'over-cap' | 'over-budget' | null;
   }>,
   chosen: {
     readonly index: number;
@@ -233,7 +286,9 @@ function printSummary(
             ? '— sensor-failed'
             : c.judgeSkipReason === 'over-cap'
               ? '— over-cap'
-              : '—';
+              : c.judgeSkipReason === 'over-budget'
+                ? '— over-budget'
+                : '—';
       }
     }
     process.stdout.write(
@@ -248,28 +303,24 @@ function printSummary(
   }
 }
 
-async function runOne(briefPath: string, pick: number | undefined): Promise<BriefRunOutcome> {
+async function runOne(
+  briefPath: string,
+  pick: number | undefined,
+  judgeBudget: JudgeBudget | null,
+  judgeCache: JudgeCache | null,
+): Promise<BriefRunOutcome> {
   const start = Date.now();
   try {
     const provider = createImageProvider();
-    // Text provider is opt-in: returns null when no chat deployment is
-    // configured. The orchestrator handles the null gracefully — runs
-    // still produce sprites, just without LLM-expanded variations.
-    // Constructed inside the try so a misconfigured env (e.g. unknown
-    // SPRITES_TEXT_PROVIDER) surfaces as a per-brief failure in --all
-    // batches instead of crashing the whole run before any brief reports.
     const textProvider = createTextProvider();
-    // Vision provider for the local-only VLM judge. Returns null when
-    // AZURE_OPENAI_VISION_DEPLOYMENT is unset; that's fine for briefs
-    // with judge.enabled=false. The orchestrator throws if a brief
-    // opted into the judge but no provider is available — silent skip
-    // would defeat the gate.
     const visionProvider = createVisionProvider();
     const result = await generateOne({
       briefPath,
       provider,
       textProvider,
       visionProvider,
+      judgeBudget,
+      judgeCache,
       repoRoot: process.cwd(),
     });
     const duration = Date.now() - start;
@@ -387,12 +438,58 @@ async function main(): Promise<number> {
     printHelp();
     return 2;
   }
+
+  // Construct cross-run budget and cache once, before any brief runs.
+  // Both are scoped to `<cwd>/generated/` to match the spec and to
+  // keep the .gitignore rule (`generated/`) covering them by default.
+  const generatedDir = path.join(process.cwd(), 'generated');
+  const envBudget = process.env.SPRITES_JUDGE_BUDGET_USD
+    ? Number(process.env.SPRITES_JUDGE_BUDGET_USD)
+    : undefined;
+  const budgetUsd =
+    args.judgeBudgetUsd ??
+    (envBudget !== undefined && Number.isFinite(envBudget) && envBudget >= 0
+      ? envBudget
+      : Number.POSITIVE_INFINITY);
+  const judgeBudget = new JudgeBudget({
+    budgetUsd,
+    modelDeployment: process.env.AZURE_OPENAI_VISION_DEPLOYMENT ?? 'unknown',
+    stateFile: path.join(generatedDir, '.cost-state.json'),
+    reset: args.resetBudget,
+  });
+  const judgeCache = new JudgeCache({
+    cacheDir: path.join(generatedDir, '.judge-cache'),
+    enabled: !args.noJudgeCache,
+    ...(args.cacheMaxEntries !== undefined ? { maxEntries: args.cacheMaxEntries } : {}),
+  });
+  if (args.pruneJudgeCacheHours !== undefined) {
+    const deleted = judgeCache.prune(args.pruneJudgeCacheHours);
+    process.stdout.write(
+      `judge-cache: pruned ${deleted} entr${deleted === 1 ? 'y' : 'ies'} older than ${args.pruneJudgeCacheHours}h\n`,
+    );
+  }
+
+  if (args.briefs.length === 0 && !args.all) {
+    // Standalone housekeeping pass: nothing else to do.
+    return 0;
+  }
+
   const briefs = await resolveBriefs(args);
   process.stdout.write(`sprites:run — ${briefs.length} brief${briefs.length === 1 ? '' : 's'}\n`);
+  if (Number.isFinite(budgetUsd)) {
+    process.stdout.write(`  judge-budget: $${budgetUsd.toFixed(4)} cap, ${judgeBudget.format()}\n`);
+  }
+  if (!judgeCache.enabled) {
+    process.stdout.write(`  judge-cache: disabled (--no-judge-cache)\n`);
+  }
   const outcomes: BriefRunOutcome[] = [];
   for (const briefPath of briefs) {
-    outcomes.push(await runOne(briefPath, args.pick));
+    outcomes.push(await runOne(briefPath, args.pick, judgeBudget, judgeCache));
   }
+  // Final budget + cache summary for batch visibility.
+  process.stdout.write(`\n${judgeBudget.format()}\n`);
+  const cs = judgeCache.stats;
+  process.stdout.write(`judge-cache: ${cs.hits} hit, ${cs.misses} miss, ${cs.bypassed} bypassed\n`);
   const failed = outcomes.filter((o) => !o.success);
   if (failed.length > 0) {
     process.stderr.write('\nFailures:\n');

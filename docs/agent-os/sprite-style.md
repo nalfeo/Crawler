@@ -45,7 +45,7 @@ The exact text below is what `scripts/sprites/build-prompt.ts` concatenates at t
 
 > --- STYLE PREAMBLE (do not deviate) ---
 >
-> You are generating pixel art in the **Kenney roguelike** style for the game *Crawler*. Every output must follow these rules without exception:
+> You are generating pixel art in the **Kenney roguelike** style for the game _Crawler_. Every output must follow these rules without exception:
 >
 > 1. Hard 1-pixel outlines. No anti-aliasing. No partial transparency. Edges are crisp 1-pixel transitions between solid colors.
 > 2. Limited palette: flat fill colors only, no gradients. The downstream pipeline will snap every pixel to a fixed 70-color palette, so subtle hue variation will be lost — use bold, distinct colors.
@@ -129,7 +129,7 @@ Things the classifier reacts to (avoid):
 What works (same semantic content, different shape):
 
 - **Conversational role framing**: "You are an art director writing concept briefs…", "You are a reviewer scoring…". Treat the model as a collaborator, not a constrained subordinate.
-- **Goal-oriented guidance**: describe what a *good* output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
+- **Goal-oriented guidance**: describe what a _good_ output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
 - **Lower-case "should" / "avoid"** in place of `MUST` / `NEVER`. The semantics are identical to the model but invisible to the filter.
 - **Push enforcement downstream**: document banned tokens in the **validator code** (`BANNED_ADJECTIVES` in `synthesize-brief.ts`), not in the prompt. The prompt nudges the model toward concrete language; the validator catches anything that slips through. This is also more robust — the model occasionally ignores prompt rules even when they aren't filter-tripping.
 
@@ -154,7 +154,7 @@ Default is **off** on every sprite type. To opt in, add to the brief (or to `dat
 ```yaml
 judge:
   enabled: true
-  maxVariants: 16   # optional; caps how many sensor-passing variants get judged per run
+  maxVariants: 16 # optional; caps how many sensor-passing variants get judged per run
 ```
 
 When enabled, `generate-one` issues **one** vision call per judged variant — all three evaluators in a single structured-JSON response, by design (cost discipline). Each call hits the deployment in `AZURE_OPENAI_VISION_DEPLOYMENT` from `.env`.
@@ -226,10 +226,68 @@ Things the classifier reacts to (avoid):
 What works (same semantic content, different shape):
 
 - **Conversational role framing**: "You are an art director writing concept briefs…", "You are a reviewer scoring…". Treat the model as a collaborator, not a constrained subordinate.
-- **Goal-oriented guidance**: describe what a *good* output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
+- **Goal-oriented guidance**: describe what a _good_ output looks like ("a good brief is concrete; it names the pose, the silhouette…"). The model infers the inverse without you having to enumerate banned tokens.
 - **Lower-case "should" / "avoid"** in place of `MUST` / `NEVER`. The semantics are identical to the model but invisible to the filter.
 - **Push enforcement downstream**: document banned tokens in the **validator code** (`BANNED_ADJECTIVES` in `synthesize-brief.ts`), not in the prompt. The prompt nudges the model toward concrete language; the validator catches anything that slips through. This is also more robust — the model occasionally ignores prompt rules even when they aren't filter-tripping.
 
 If you do need to send a quoted banned-word list to the model (rare; usually the validator-side approach is enough), prefer paraphrase: `"prefer concrete language over generic adjectives"` over `"never use cool, awesome, epic, amazing, or nice"`.
 
 Verify any non-trivial prompt change with a **real round-trip** against the deployment — unit tests with a mocked provider will not catch filter trips. The synth integration test uses a stub provider precisely because the real call is content-filter-sensitive and we do not want CI to depend on Azure availability or classifier stability.
+
+---
+
+## Judge cost knobs (Phase 3)
+
+The VLM judge is the most expensive single call in the pipeline. Two
+mechanisms keep cost predictable across batch runs:
+
+### Budget ceiling — `JudgeBudget`
+
+A USD cap on judge spend that **persists across CLI invocations** via
+`generated/.cost-state.json`. Once spend would push past the cap, the
+remaining variants in the run are not judged (ranking falls back to
+sensors-only) and the next CLI invocation honours the same persisted
+spend.
+
+- `--judge-budget-usd <n>` — per-batch cap. Default is `Infinity` for
+  single-brief `sprites:run` so existing behaviour is preserved. The
+  batch CLI (Phase 3 build 6) passes a concrete cap.
+- `SPRITES_JUDGE_BUDGET_USD` — env fallback used when the flag is not
+  provided. Useful for CI.
+- `--reset-budget` — wipes the persisted state file before the run, so
+  the new cap starts from zero spend.
+
+The pricing table lives in `scripts/sprites/cost-tracker.ts`
+(`PRICING`). Update it when Azure publishes new rates or when you add
+a new deployment. The `resolveRates` lookup is substring-based against
+the deployment name and falls back to a conservative high-rate row if
+the deployment is unknown, so a misconfigured name fails _closed_
+(under-judges) rather than over-spends.
+
+### Vision-call cache — `JudgeCache`
+
+A filesystem cache at `generated/.judge-cache/` keyed by:
+
+```
+sha256(modelDeployment | promptTemplateVersion | variantPNGBytes
+     | referencePNGsBytes | briefMatchInstructions)
+```
+
+On hit the Azure call is skipped entirely and the cached scorecard is
+replayed. On miss the call runs and the result is stored. The cache
+contains **only `JudgeScorecard` JSON** — never images. Caching
+generated images would cache luck, not quality.
+
+- `--no-judge-cache` — disable for one run (e.g. after editing the
+  rubric/`PROMPT_TEMPLATE_VERSION` bump is preferred, but this is the
+  manual override).
+- `--prune-judge-cache <hours>` — housekeeping: drop entries older
+  than N hours.
+- `--cache-max-entries <n>` — LRU cap. Default 1000. Eviction is by
+  file mtime so reads on a hit refresh the entry.
+
+Cache lookup is guarded by `judge.enabled` — a brief with the judge
+turned off does not even compute the key, let alone touch the cache.
+
+Both modules are pure-ish (filesystem ops at the edges, no network)
+and unit-testable without mocking Azure.

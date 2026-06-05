@@ -39,7 +39,7 @@ Sensors gate every sprite. The judge tunes the corpus. Sensors must be determini
 
 ### 3. Sensor vs. evaluator boundary
 
-A function is a **sensor** when its result is reproducible bit-for-bit from the same input. It returns `{ok, sensor, reason?, pixels?}` and never depends on a model, a clock, or randomness. A function is an **evaluator** the moment it asks "is this *good*?" instead of "is this *valid*?". Evaluators may use models and prose; sensors may not. Mixing the two in one file is forbidden — sensor implementations live under `scripts/sprites/sensors/` so they are reusable by both the runtime scorer and the test suite; their unit tests live under `tests/sensors/`. Evaluators will live behind the sidecar.
+A function is a **sensor** when its result is reproducible bit-for-bit from the same input. It returns `{ok, sensor, reason?, pixels?}` and never depends on a model, a clock, or randomness. A function is an **evaluator** the moment it asks "is this _good_?" instead of "is this _valid_?". Evaluators may use models and prose; sensors may not. Mixing the two in one file is forbidden — sensor implementations live under `scripts/sprites/sensors/` so they are reusable by both the runtime scorer and the test suite; their unit tests live under `tests/sensors/`. Evaluators will live behind the sidecar.
 
 > History: Phase 1 originally co-located the sensor implementations with their tests under `tests/sensors/`. Phase 2 moved the implementations into `scripts/sprites/sensors/` so the deterministic scorer (`scripts/sprites/score-candidate.ts`) does not import from a `tests/` tree. The contract — pure functions returning `SensorResult` — is unchanged.
 
@@ -74,7 +74,7 @@ Palettes are committed as plain JSON arrays of `[r, g, b]` triples under `data/p
 ## Alternatives Considered
 
 - **Stable Diffusion locally / ComfyUI**: rejected for Phase 1. More moving parts (model weights, GPU dependency, version drift) for unclear quality gains on tiny prompt-locked subjects.
-- **Pure hand-authoring**: rejected as the *only* path; still permitted as an escape hatch for one-off hero assets.
+- **Pure hand-authoring**: rejected as the _only_ path; still permitted as an escape hatch for one-off hero assets.
 - **In-engine procedural generation (shape primitives + noise)**: viable for VFX, not for weapons or characters; out of scope.
 - **Putting the judge in CI**: rejected. Model-graded checks are non-deterministic; flaky CI is worse than no CI signal.
 - **Inlining palettes as TS constants**: rejected for the reasons in Decision 5.

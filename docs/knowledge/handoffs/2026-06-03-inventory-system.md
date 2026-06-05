@@ -9,6 +9,7 @@
 Built a full inventory system across all layers:
 
 ### New files
+
 - `src/shared/items.ts` — Item data model with `KnownTag | CustomTag` system and 100-item catalog
 - `src/shared/inventory.ts` — Pure inventory manager (add/remove/stack/search/sort/filter/tabs)
 - `src/core/systems/itemPickupSystem.ts` — Auto-pickup on Player↔DroppedItem collision
@@ -19,6 +20,7 @@ Built a full inventory system across all layers:
 - `tests/unit/items.test.ts` — 17 catalog validation tests
 
 ### Modified files
+
 - `src/core/components.ts` — Added `Inventory` tag, `DroppedItem` store (`itemIndex`)
 - `src/core/world.ts` — Added `inventories: Map<number, InventoryBag>` to GameWorld
 - `src/core/helpers.ts` — Added `spawnDroppedItem`, updated `spawnPlayer` with Inventory

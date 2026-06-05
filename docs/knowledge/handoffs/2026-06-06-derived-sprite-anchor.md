@@ -20,6 +20,7 @@ Fully backward-compatible for any brief that doesn't opt in.
 ## Files touched
 
 **New**
+
 - `scripts/sprites/sensors/derive-anchor.ts` — pure algorithm
 - `scripts/sprites/sensors/anchor-derivable.ts` — sensor wrapper +
   `isAnchorDerivableOk` type guard
@@ -28,6 +29,7 @@ Fully backward-compatible for any brief that doesn't opt in.
 - `tests/unit/sprites/anchor-derivable.test.ts` (7 tests)
 
 **Modified**
+
 - `scripts/sprites/brief-schema.ts` — added `sensors.anchor` block
 - `scripts/sprites/score-candidate.ts` — routes anchor sensor based on brief
   opt-in; surfaces `derivedAnchor` on `Scorecard`

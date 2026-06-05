@@ -13,7 +13,9 @@ No additional infrastructure required. All analysis is read-only queries against
 ## What Gets Tracked
 
 ### Guard Telemetry (active emission)
+
 The `copilot-guards` extension emits a structured `[guard-telemetry]` log event on every guard decision:
+
 - `guard_id` — which guard fired
 - `tool_name` — which tool triggered it
 - `decision` — deny, ask, allow, skip, bypass, crash
@@ -21,10 +23,12 @@ The `copilot-guards` extension emits a structured `[guard-telemetry]` log event 
 - `bypass_used` / `bypass_reason` — if disabled via env or config
 
 ### Memory Access (passive, from session_files)
+
 - Which `docs/knowledge/**` files are accessed per session
 - Which instruction files matched (via file pattern correlation)
 
 ### Session Patterns (passive, from events/turns)
+
 - Session count per day
 - Tool usage distribution
 - Turn count / token usage trends
@@ -37,14 +41,14 @@ The `copilot-guards` extension emits a structured `[guard-telemetry]` log event 
 
 ## Thresholds
 
-| Signal | Threshold | Action |
-| --- | --- | --- |
-| Dead guard | 0 fires in 14 days | Flag for review → disable or remove |
-| High false-positive guard | >30% deny-then-retry pattern | Flag for tuning (loosen or reword) |
-| Stale handoff | >30 days old, 0 session references | Flag for archival |
-| Promotion candidate (T3→T2) | 3+ unique sessions accessing the doc | Flag for promotion |
-| Promotion candidate (T2→T1) | Referenced in 5+ sessions AND violations occur without it | Rare; requires human judgment |
-| Crash-prone guard | 3+ crashes in 7 days | Investigate; consider failOpen or fix |
+| Signal                      | Threshold                                                 | Action                                |
+| --------------------------- | --------------------------------------------------------- | ------------------------------------- |
+| Dead guard                  | 0 fires in 14 days                                        | Flag for review → disable or remove   |
+| High false-positive guard   | >30% deny-then-retry pattern                              | Flag for tuning (loosen or reword)    |
+| Stale handoff               | >30 days old, 0 session references                        | Flag for archival                     |
+| Promotion candidate (T3→T2) | 3+ unique sessions accessing the doc                      | Flag for promotion                    |
+| Promotion candidate (T2→T1) | Referenced in 5+ sessions AND violations occur without it | Rare; requires human judgment         |
+| Crash-prone guard           | 3+ crashes in 7 days                                      | Investigate; consider failOpen or fix |
 
 ## Governance
 
@@ -56,6 +60,7 @@ The `copilot-guards` extension emits a structured `[guard-telemetry]` log event 
 ## Report Delivery
 
 Reports are filed as GitHub issues on `nalfeo/Crawler` with labels `agent-os` and `telemetry`. This makes recommendations:
+
 - Visible in the repo
 - Actionable (can be assigned, commented on, closed)
 - Trackable over time (issue history = telemetry history)
@@ -63,6 +68,7 @@ Reports are filed as GitHub issues on `nalfeo/Crawler` with labels `agent-os` an
 ## Relationship to Memory Policy
 
 This policy extends the Memory Policy's retirement rules with evidence-based signals:
+
 - Memory Policy says "archive handoffs >30 days" — telemetry confirms which ones are actually stale
 - Memory Policy says "promote after 3+ sessions reference it" — telemetry provides the count
 - Memory Policy says "nothing is deleted, only archived" — telemetry respects this (flags, never deletes)

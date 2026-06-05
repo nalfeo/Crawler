@@ -7,17 +7,20 @@ Designed and implemented the first phase of a telemetry feedback loop for the Cr
 ## What Ships
 
 ### Guard Telemetry Emission
+
 - New `lib/telemetry.mjs` — structured JSON emission helper
 - Modified `lib/dispatcher.mjs` — emits `[guard-telemetry]` log on every guard decision (deny, ask, allow, skip, bypass, crash)
 - 4 new tests in `tests/telemetry.test.mjs`; all 119 extension tests pass
 
 ### Daily Analysis Workflow
+
 - Copilot CLI scheduled workflow (daily at 08:00, skips if no new sessions)
 - Queries chronicle for guard fire-rate, memory freshness, instruction effectiveness
 - Files a GitHub issue with labels `agent-os` + `telemetry` containing the report
 - Workflow submitted for user review via save_workflow dialog
 
 ### Policy & Architecture Docs
+
 - `docs/agent-os/policies/telemetry-policy.md` — thresholds, cadence, governance
 - `docs/knowledge/adr/0004-chronicle-telemetry.md` — decision record
 
