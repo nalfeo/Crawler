@@ -79,33 +79,39 @@ export function meleeSwingSystem(world: GameWorld): void {
   const swings = query(world.ecs, [MeleeSwing, Position]);
   const { position, meleeSwing, team } = world.stores;
   const hitDistSq = BLADE_HIT_HALF_WIDTH * BLADE_HIT_HALF_WIDTH;
+  const storeSize = position.x.length;
 
   for (const eid of swings) {
-    if (eid === undefined || !entityExists(world.ecs, eid)) continue;
+    if (!entityExists(world.ecs, eid) || eid >= storeSize) continue;
 
     // Follow owner position
     if (hasComponent(world.ecs, eid, Owner)) {
-      const ownerEid = world.stores.owner.eid[eid] ?? 0;
-      if (entityExists(world.ecs, ownerEid) && hasComponent(world.ecs, ownerEid, Position)) {
-        position.x[eid] = position.x[ownerEid] ?? 0;
-        position.y[eid] = position.y[ownerEid] ?? 0;
+      const ownerEid = world.stores.owner.eid[eid]!;
+      if (
+        ownerEid >= 0 &&
+        ownerEid < storeSize &&
+        entityExists(world.ecs, ownerEid) &&
+        hasComponent(world.ecs, ownerEid, Position)
+      ) {
+        position.x[eid] = position.x[ownerEid]!;
+        position.y[eid] = position.y[ownerEid]!;
       }
     }
 
-    const px = position.x[eid] ?? 0;
-    const py = position.y[eid] ?? 0;
-    const bladeLength = meleeSwing.bladeLength[eid] ?? 0;
-    const arcCenter = meleeSwing.arcCenterRad[eid] ?? 0;
-    const arcHalf = meleeSwing.arcHalfRad[eid] ?? 0;
-    const damage = meleeSwing.damage[eid] ?? 0;
-    const spawnAt = meleeSwing.spawnAtMs[eid] ?? 0;
-    const duration = meleeSwing.durationMs[eid] ?? 1;
-    const style = meleeSwing.style[eid] ?? 0;
-    const headRadius = meleeSwing.headRadius[eid] ?? 0;
-    const shaftDamageMult = meleeSwing.shaftDamageMult[eid] ?? 1;
-    const knockback = meleeSwing.knockback[eid] ?? 0;
-    const swingTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
-    const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? 0) : -1;
+    const px = position.x[eid]!;
+    const py = position.y[eid]!;
+    const bladeLength = meleeSwing.bladeLength[eid]!;
+    const arcCenter = meleeSwing.arcCenterRad[eid]!;
+    const arcHalf = meleeSwing.arcHalfRad[eid]!;
+    const damage = meleeSwing.damage[eid]!;
+    const spawnAt = meleeSwing.spawnAtMs[eid]!;
+    const duration = meleeSwing.durationMs[eid]!;
+    const style = meleeSwing.style[eid]!;
+    const headRadius = meleeSwing.headRadius[eid]!;
+    const shaftDamageMult = meleeSwing.shaftDamageMult[eid]!;
+    const knockback = meleeSwing.knockback[eid]!;
+    const swingTeam = hasComponent(world.ecs, eid, Team) ? team.id[eid]! : -1;
+    const ownerEid = hasComponent(world.ecs, eid, Owner) ? world.stores.owner.eid[eid]! : -1;
 
     const elapsed = world.elapsedMs - spawnAt;
     const progress = Math.min(1, Math.max(0, elapsed / duration));
@@ -132,17 +138,17 @@ export function meleeSwingSystem(world: GameWorld): void {
     // Check all Health entities for collision
     const targets = query(world.ecs, [Health, Position]);
     for (const target of targets) {
-      if (target === undefined || target === eid || target === ownerEid) continue;
+      if (target >= storeSize || target === eid || target === ownerEid) continue;
       if (!entityExists(world.ecs, target)) continue;
       if (!hasComponent(world.ecs, target, Enemy) && !hasComponent(world.ecs, target, Player))
         continue;
       if (swingTeam >= 0 && hasComponent(world.ecs, target, Team)) {
-        if ((team.id[target] ?? 0) === swingTeam) continue;
+        if (target < team.id.length && team.id[target] === swingTeam) continue;
       }
       if (hitSet.has(target)) continue;
 
-      const tx = position.x[target] ?? 0;
-      const ty = position.y[target] ?? 0;
+      const tx = position.x[target]!;
+      const ty = position.y[target]!;
 
       // Check head hit first (circle around tip)
       let hitDamage = 0;
