@@ -188,7 +188,7 @@ interface ResolvedTexture {
   frame?: number;
   /** Base render scale for this texture. */
   scale: number;
-  /** True when the engine fell back to a procedural `__cw_*` texture. */
+  /** True when the engine fell back to a procedural __cw_* texture. */
   fallback: boolean;
 }
 

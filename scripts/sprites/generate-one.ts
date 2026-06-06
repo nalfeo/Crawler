@@ -117,7 +117,7 @@ export interface GenerateOneOptions {
   readonly readReference?: (absolutePath: string) => Buffer;
   /** Optional brief override (avoid re-loading from disk in tests). */
   readonly preloaded?: LoadedBrief;
-  /** Warning sink (mainly for expand-variations). Defaults to shared logger.warn. */
+  /** Warning sink (mainly for expand-variations). Defaults to logger.warn. */
   readonly warn?: (message: string) => void;
 }
 
@@ -304,7 +304,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       // Azure spend.
       if (options.judgeBudget && options.judgeBudget.wouldExceed() && !options.judgeCache) {
         options.judgeBudget.recordSkip();
-        const warn = options.warn ?? ((msg: string) => logger.warn(msg));
+        const warn = options.warn ?? logger.warn.bind(logger);
         warn(
           `judge-budget exhausted: skipping variant ${e.index} (${options.judgeBudget.format()})`,
         );

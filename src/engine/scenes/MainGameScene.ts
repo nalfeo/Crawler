@@ -37,7 +37,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private accumulatorClampCount = 0;
 
-  private warnedMissingBridge = false;
+  private warnedMissingDependencies = false;
 
   /**
    * Optional game-layer systems injected at construction time.
@@ -55,7 +55,7 @@ export class MainGameScene extends Phaser.Scene {
     this.accumulator = 0;
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
-    this.warnedMissingBridge = false;
+    this.warnedMissingDependencies = false;
 
     spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     logger.info('Main game scene created', {
@@ -77,14 +77,13 @@ export class MainGameScene extends Phaser.Scene {
 
   update(_time: number, delta: number): void {
     if (!this.bridge || !this.inputCapture) {
-      if (!this.warnedMissingBridge) {
+      if (!this.warnedMissingDependencies) {
         logger.warn('Skipping update because bridge or input capture is unavailable');
-        this.warnedMissingBridge = true;
+        this.warnedMissingDependencies = true;
       }
       return;
-    }
-    if (this.warnedMissingBridge) {
-      this.warnedMissingBridge = false;
+    } else if (this.warnedMissingDependencies) {
+      this.warnedMissingDependencies = false;
     }
 
     if (this.previousWorldState !== this.world.state) {

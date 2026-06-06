@@ -37,7 +37,7 @@ export interface ExpandVariationsOptions {
    */
   readonly provider: TextProvider | null;
   /**
-   * Warning sink. Defaults to the shared logger's warn method. Tests inject a buffer so
+   * Warning sink. Defaults to logger.warn. Tests inject a buffer so
    * they can assert on the warnings without polluting stderr.
    */
   readonly warn?: (message: string) => void;
@@ -66,7 +66,7 @@ export async function expandVariations(
   options: ExpandVariationsOptions,
 ): Promise<ExpandVariationsResult> {
   const { brief, provider } = options;
-  const warn = options.warn ?? ((m) => logger.warn(m));
+  const warn = options.warn ?? logger.warn.bind(logger);
   const seed: ReadonlyArray<string> = brief.variations;
 
   if (brief.minVariations === 0) {

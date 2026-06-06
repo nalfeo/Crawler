@@ -64,7 +64,10 @@ function queryParamLevel(): LogLevel | undefined {
   return toLogLevel(new URLSearchParams(window.location.search ?? '').get('logLevel') ?? undefined);
 }
 
-function isTestEnvironment(): boolean {
+/**
+ * CI defaults to warn-level logs to keep automated output concise.
+ */
+function isQuietLoggingEnvironment(): boolean {
   return (
     envValue('VITEST') === 'true' || envValue('NODE_ENV') === 'test' || envValue('CI') === 'true'
   );
@@ -76,7 +79,7 @@ function initialLevel(): LogLevel {
     safeReadStorageLevel() ??
     toLogLevel(envValue('VITE_LOG_LEVEL')) ??
     toLogLevel(envValue('LOG_LEVEL')) ??
-    (isTestEnvironment() ? 'warn' : 'info')
+    (isQuietLoggingEnvironment() ? 'warn' : 'info')
   );
 }
 
