@@ -62,7 +62,23 @@ describe('thrown weapons', () => {
     const knife = getWeaponDef('throwing-knife')!;
     const boomerang = getWeaponDef('boomerang')!;
     expect(knife.projectileSpeed).toBeGreaterThan(boomerang.projectileSpeed);
-    expect(knife.maxRange).toBeLessThan(boomerang.maxRange);
+    expect(knife.range).toBeLessThan(boomerang.maxRange);
+  });
+
+  it('throwing knife does not spawn a returning projectile by default', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 20);
+    const def = getWeaponDef('throwing-knife')!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+
+    weaponSystem(world);
+
+    const projectiles = Array.from(query(world.ecs, [Projectile]));
+    const returning = Array.from(query(world.ecs, [Returning]));
+    expect(projectiles).toHaveLength(1);
+    expect(returning).toHaveLength(0);
   });
 
   it('boomerang returns after hitting its final outbound target (1 + pierce)', () => {
