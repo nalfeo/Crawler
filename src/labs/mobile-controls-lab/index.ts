@@ -121,6 +121,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   gui
     .add(settings, 'moveMode', ['joystick', 'follow'])
     .name('Move Mode')
+    .listen()
     .onChange((value: MoveMode) => {
       setGlobalControlsConfig({ mobileMoveMode: value });
     });
@@ -503,6 +504,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   }
 
   function renderFrame(): void {
+    settings.moveMode = getGlobalControlsConfig().mobileMoveMode;
     processInput();
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);

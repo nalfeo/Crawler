@@ -46,7 +46,7 @@ function persistConfig(config: GlobalControlsConfig): void {
 }
 
 export function getGlobalControlsConfig(): GlobalControlsConfig {
-  return currentConfig;
+  return { ...currentConfig };
 }
 
 export function setGlobalControlsConfig(next: Partial<GlobalControlsConfig>): GlobalControlsConfig {
