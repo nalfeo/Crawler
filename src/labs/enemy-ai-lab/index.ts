@@ -245,14 +245,14 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           continue;
         }
 
-        const ax = position.x[a] ?? 0;
-        const ay = position.y[a] ?? 0;
-        const bx = position.x[b] ?? 0;
-        const by = position.y[b] ?? 0;
-        const halfWidthA = (sprite.width[a] ?? 0) * 0.5;
-        const halfHeightA = (sprite.height[a] ?? 0) * 0.5;
-        const halfWidthB = (sprite.width[b] ?? 0) * 0.5;
-        const halfHeightB = (sprite.height[b] ?? 0) * 0.5;
+        const ax = position.x[a]!;
+        const ay = position.y[a]!;
+        const bx = position.x[b]!;
+        const by = position.y[b]!;
+        const halfWidthA = sprite.width[a]! * 0.5;
+        const halfHeightA = sprite.height[a]! * 0.5;
+        const halfWidthB = sprite.width[b]! * 0.5;
+        const halfHeightB = sprite.height[b]! * 0.5;
         const dx = bx - ax;
         const dy = by - ay;
         // collisionSystem only returns pair IDs, so this lab recomputes overlap depth
@@ -266,6 +266,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
         const resolveAlongX = overlapX <= overlapY;
         const axisDelta = resolveAlongX ? dx : dy;
+        // When centers are exactly aligned on the resolution axis, use a stable ID-based
+        // tie-breaker so separation stays deterministic and avoids frame-to-frame jitter.
         const axisSign = axisDelta !== 0 ? Math.sign(axisDelta) : a < b ? 1 : -1;
         const pushDistance = (resolveAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
 
@@ -275,9 +277,9 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           const enemyEid = aIsEnemy ? a : b;
           const enemyDirection = enemyEid === a ? -axisSign : axisSign;
           if (resolveAlongX) {
-            position.x[enemyEid] = (position.x[enemyEid] ?? 0) + enemyDirection * pushDistance;
+            position.x[enemyEid]! += enemyDirection * pushDistance;
           } else {
-            position.y[enemyEid] = (position.y[enemyEid] ?? 0) + enemyDirection * pushDistance;
+            position.y[enemyEid]! += enemyDirection * pushDistance;
           }
           continue;
         }
