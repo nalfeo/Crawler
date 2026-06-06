@@ -2,6 +2,7 @@ import GUI from 'lil-gui';
 import {
   getGlobalControlsConfig,
   setGlobalControlsConfig,
+  type MobileMoveMode,
 } from '../engine/controls-config.js';
 import { getLab } from './registry.js';
 

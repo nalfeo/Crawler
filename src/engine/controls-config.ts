@@ -52,10 +52,7 @@ export function getGlobalControlsConfig(): GlobalControlsConfig {
 export function setGlobalControlsConfig(next: Partial<GlobalControlsConfig>): GlobalControlsConfig {
   currentConfig = {
     ...currentConfig,
-    mobileMoveMode:
-      next.mobileMoveMode === undefined
-        ? currentConfig.mobileMoveMode
-        : normalizeMoveMode(next.mobileMoveMode),
+    mobileMoveMode: normalizeMoveMode(next.mobileMoveMode ?? currentConfig.mobileMoveMode),
   };
   persistConfig(currentConfig);
   return currentConfig;

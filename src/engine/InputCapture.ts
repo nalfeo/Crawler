@@ -185,8 +185,10 @@ export function createInputCapture(
       const hasKeyboardInput = keyboardMoveX !== 0 || keyboardMoveY !== 0;
       const moveMode = getGlobalControlsConfig().mobileMoveMode;
       const followOrigin =
-        options.getFollowOrigin?.() ??
-        scene.cameras.main.getWorldPoint(scene.scale.width / 2, scene.scale.height / 2);
+        moveMode === 'follow'
+          ? (options.getFollowOrigin?.() ??
+            scene.cameras.main.getWorldPoint(scene.scale.width / 2, scene.scale.height / 2))
+          : undefined;
 
       for (const touch of activeTouches.values()) {
         if (touch.zone === 'move' && !hasMoveTouch) {

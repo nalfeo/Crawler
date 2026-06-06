@@ -32,9 +32,8 @@ describe('global controls config', () => {
 
   it('persists follow mode updates', async () => {
     vi.resetModules();
-    const { getGlobalControlsConfig, setGlobalControlsConfig } = await import(
-      '../../src/engine/controls-config.js'
-    );
+    const { getGlobalControlsConfig, setGlobalControlsConfig } =
+      await import('../../src/engine/controls-config.js');
 
     setGlobalControlsConfig({ mobileMoveMode: 'follow' });
     expect(getGlobalControlsConfig().mobileMoveMode).toBe('follow');

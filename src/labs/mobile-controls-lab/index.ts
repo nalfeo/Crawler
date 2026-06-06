@@ -19,6 +19,8 @@ interface MobileControlsLabSettings {
   hapticFeedback: boolean;
 }
 
+type PersistedMobileControlsLabSettings = Omit<MobileControlsLabSettings, 'moveMode'>;
+
 interface TouchInfo {
   zone: 'move' | 'action';
   startX: number;
@@ -38,8 +40,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const persistedSettings = loadLabState<MobileControlsLabSettings>(LAB_ID) ?? undefined;
-  const { moveMode: _persistedMoveMode, ...persistedNonModeSettings } = persistedSettings ?? {};
+  const persistedSettings = loadLabState<PersistedMobileControlsLabSettings>(LAB_ID) ?? {};
 
   const settings: MobileControlsLabSettings = {
     joystickRadius: 60,
@@ -50,7 +51,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     actionButtonSize: 72,
     actionButtonPadding: 32,
     hapticFeedback: true,
-    ...persistedNonModeSettings,
+    ...persistedSettings,
     moveMode: getGlobalControlsConfig().mobileMoveMode,
   };
 
@@ -137,8 +138,16 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   gui.add(settings, 'showDebugOverlay').name('Debug Overlay');
   gui.add(settings, 'hapticFeedback').name('Haptic Feedback');
   gui.onChange(() => {
-    const { moveMode: _moveMode, ...persistedWithoutMode } = settings;
-    saveLabState(LAB_ID, persistedWithoutMode);
+    saveLabState(LAB_ID, {
+      joystickRadius: settings.joystickRadius,
+      deadZone: settings.deadZone,
+      followSpeed: settings.followSpeed,
+      followArrivalDist: settings.followArrivalDist,
+      showDebugOverlay: settings.showDebugOverlay,
+      actionButtonSize: settings.actionButtonSize,
+      actionButtonPadding: settings.actionButtonPadding,
+      hapticFeedback: settings.hapticFeedback,
+    });
   });
 
   // --- Hit testing for the action button ---
