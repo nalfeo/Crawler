@@ -3,7 +3,11 @@ import type { AbilityTriggerCondition as SharedAbilityTriggerCondition } from '.
 import type { CatalogEffect } from '../../shared/progression-effects.js';
 
 export { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
-export type { AbilityState, AbilityTriggerCondition, AbilityTriggerEvent } from '../../shared/abilities.js';
+export type {
+  AbilityState,
+  AbilityTriggerCondition,
+  AbilityTriggerEvent,
+} from '../../shared/abilities.js';
 
 export type AbilityCategory = 'combat' | 'defense' | 'utility';
 
@@ -97,7 +101,10 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
 
 const baseAbilitySchema = z
   .object({
-    id: z.string().trim().regex(/^[a-z0-9-]+$/),
+    id: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9-]+$/),
     name: z.string().trim().min(1),
     description: z.string().trim().min(1),
     category: z.enum(['combat', 'defense', 'utility']),
@@ -126,25 +133,27 @@ export const abilityDefinitionSchema: z.ZodType<AbilityDefinition> = z.discrimin
   passiveAbilitySchema,
 ]);
 
-export const abilityCatalogSchema = z.array(abilityDefinitionSchema).superRefine((definitions, ctx) => {
-  const ids = new Set<string>();
-  for (const def of definitions) {
-    if (ids.has(def.id)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Duplicate ability id: ${def.id}`,
-      });
+export const abilityCatalogSchema = z
+  .array(abilityDefinitionSchema)
+  .superRefine((definitions, ctx) => {
+    const ids = new Set<string>();
+    for (const def of definitions) {
+      if (ids.has(def.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate ability id: ${def.id}`,
+        });
+      }
+      ids.add(def.id);
     }
-    ids.add(def.id);
-  }
 
-  for (const def of definitions) {
-    if (def.kind === 'spell' && def.trigger.kind !== 'manual') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Spell ${def.id} must use a manual trigger`,
-        path: ['trigger', 'kind'],
-      });
+    for (const def of definitions) {
+      if (def.kind === 'spell' && def.trigger.kind !== 'manual') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Spell ${def.id} must use a manual trigger`,
+          path: ['trigger', 'kind'],
+        });
+      }
     }
-  }
-});
+  });

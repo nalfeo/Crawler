@@ -47,7 +47,9 @@ describe('abilitySystem', () => {
     grantPassiveAbility(world, player, 'veteran-instinct');
     abilitySystem(world);
 
-    const applied = world.statModifiers.filter((m) => m.sourceId.startsWith('veteran-instinct:passive'));
+    const applied = world.statModifiers.filter((m) =>
+      m.sourceId.startsWith('veteran-instinct:passive'),
+    );
     expect(applied).toHaveLength(2);
 
     const before = world.statModifiers.length;
@@ -78,7 +80,9 @@ describe('abilitySystem', () => {
     world.frameCount = 100;
     const beforeFirst = world.statModifiers.length;
     abilitySystem(world);
-    const afterFirst = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
+    const afterFirst = world.statModifiers.filter(
+      (m) => m.sourceId === `battle-focus:active:${player}`,
+    );
     expect(world.statModifiers.length).toBe(beforeFirst + 1);
     expect(afterFirst).toHaveLength(1);
 
@@ -92,7 +96,9 @@ describe('abilitySystem', () => {
     world.frameCount = 101;
     const beforeSecond = world.statModifiers.length;
     abilitySystem(world);
-    const afterSecond = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
+    const afterSecond = world.statModifiers.filter(
+      (m) => m.sourceId === `battle-focus:active:${player}`,
+    );
     expect(world.statModifiers.length).toBe(beforeSecond);
     expect(afterSecond).toHaveLength(1);
 
@@ -106,7 +112,9 @@ describe('abilitySystem', () => {
     world.frameCount = 131;
     const beforeThird = world.statModifiers.length;
     abilitySystem(world);
-    const afterThird = world.statModifiers.filter((m) => m.sourceId === `battle-focus:active:${player}`);
+    const afterThird = world.statModifiers.filter(
+      (m) => m.sourceId === `battle-focus:active:${player}`,
+    );
     expect(world.statModifiers.length).toBe(beforeThird);
     expect(afterThird).toHaveLength(1);
   });

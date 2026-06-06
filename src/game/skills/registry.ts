@@ -2,7 +2,12 @@ import { z } from 'zod';
 import { SKILL_HARD_CAP } from '../../shared/skills.js';
 import type { SkillDefinition } from './types.js';
 
-const skillMilestoneLevelSchema = z.union([z.literal(5), z.literal(10), z.literal(15), z.literal(20)]);
+const skillMilestoneLevelSchema = z.union([
+  z.literal(5),
+  z.literal(10),
+  z.literal(15),
+  z.literal(20),
+]);
 
 const statKeySchema = z.enum([
   'maxHp',
@@ -20,7 +25,11 @@ const milestoneEffectSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('stat_multiply'), stat: statKeySchema, value: z.number() }).strict(),
   z.object({ type: z.literal('extra_projectile'), count: z.number() }).strict(),
   z
-    .object({ type: z.literal('aura'), radius: z.number().positive(), dpsPercentOfDamage: z.number().positive() })
+    .object({
+      type: z.literal('aura'),
+      radius: z.number().positive(),
+      dpsPercentOfDamage: z.number().positive(),
+    })
     .strict(),
 ]);
 
@@ -39,7 +48,10 @@ const perLevelBonusSchema = z
 
 const skillSchema: z.ZodType<SkillDefinition> = z
   .object({
-    id: z.string().trim().regex(/^[a-z0-9-]+$/),
+    id: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9-]+$/),
     name: z.string().trim().min(1),
     description: z.string().trim().min(1),
     category: z.enum(['combat', 'defense', 'utility']),

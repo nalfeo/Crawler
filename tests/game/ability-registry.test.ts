@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getAllAbilityDefinitions, getAbilityDefinition, parseAbilityCatalog } from '../../src/game/abilities/registry.js';
+import {
+  getAllAbilityDefinitions,
+  getAbilityDefinition,
+  parseAbilityCatalog,
+} from '../../src/game/abilities/registry.js';
 
 describe('ability registry', () => {
   it('returns undefined for unknown ability id', () => {
