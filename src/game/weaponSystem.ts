@@ -289,17 +289,30 @@ function fireThrownAttack(
 ): void {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
-  spawnReturningProjectile(
+  if (def.returnSpeed > 0 && def.maxRange > 0) {
+    spawnReturningProjectile(
+      world,
+      px,
+      py,
+      dir.x * def.projectileSpeed,
+      dir.y * def.projectileSpeed,
+      def.baseDamage,
+      player,
+      def.returnSpeed,
+      def.maxRange,
+      TeamId.PLAYER,
+      def.pierce,
+    );
+    return;
+  }
+
+  spawnProjectile(
     world,
     px,
     py,
     dir.x * def.projectileSpeed,
     dir.y * def.projectileSpeed,
     def.baseDamage,
-    player,
-    def.returnSpeed,
-    def.maxRange,
-    TeamId.PLAYER,
     def.pierce,
   );
 }
