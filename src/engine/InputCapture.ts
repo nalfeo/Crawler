@@ -79,7 +79,9 @@ export function createInputCapture(scene: Phaser.Scene): {
     for (const touch of e.changedTouches) {
       const state = activeTouches.get(touch.identifier);
       if (!state) {
-        logger.warn('Received touchmove for unknown touch identifier', { identifier: touch.identifier });
+        logger.warn('Received touchmove for unknown touch identifier', {
+          identifier: touch.identifier,
+        });
         continue;
       }
 

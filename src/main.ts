@@ -2,7 +2,12 @@ import Phaser from 'phaser';
 import { BootScene, MainGameScene } from './engine/index.js';
 import { GAME } from './shared/constants.js';
 import { levelSystem, skillSystem, statsSystem } from './game/systems/index.js';
-import { createLogger, getGlobalLogLevel, setGlobalLogLevel, type LogLevel } from './shared/logger.js';
+import {
+  createLogger,
+  getGlobalLogLevel,
+  setGlobalLogLevel,
+  type LogLevel,
+} from './shared/logger.js';
 
 const logger = createLogger('main');
 
