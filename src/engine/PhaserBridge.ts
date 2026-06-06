@@ -162,7 +162,7 @@ function getEntityType(world: GameWorld, eid: number): string {
 /**
  * Mapping from entity type to a logical sprite ID in the registry.
  * Types that omit a mapping always render with the procedural
- * `__cw_*` texture. Types whose mapping resolves but whose sheet
+ * __cw_* texture. Types whose mapping resolves but whose sheet
  * failed to load also fall back to the procedural texture, so the
  * renderer is robust to missing sprite packs.
  */
@@ -268,14 +268,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         spriteId,
         sheetKey: sprite?.sheetKey,
       });
-      return;
+    } else {
+      if (missingTypeWarnings.has(type)) {
+        return;
+      }
+      missingTypeWarnings.add(type);
+      logger.debug('Using procedural texture for entity type without sprite mapping', { type });
     }
-
-    if (missingTypeWarnings.has(type)) {
-      return;
-    }
-    missingTypeWarnings.add(type);
-    logger.debug('Using procedural texture for entity type without sprite mapping', { type });
   }
 
   return {
