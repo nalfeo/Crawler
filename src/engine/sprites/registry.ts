@@ -80,9 +80,13 @@ const KENNEY_TINY_BATTLE = 'kenney-tiny-battle';
 const KENNEY_TINY_SKI = 'kenney-tiny-ski';
 const KENNEY_ROGUELIKE_RPG = 'kenney-roguelike-rpg-pack';
 
+type ImportMetaWithEnv = ImportMeta & { env?: { BASE_URL?: string } };
+const ENV_BASE_PATH = (import.meta as ImportMetaWithEnv).env?.BASE_URL;
+const BROWSER_BASE_PATH =
+  typeof document === 'undefined' ? undefined : new URL('.', document.baseURI).pathname;
+
 function withBasePath(path: string): string {
-  const envBase = (import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL;
-  const base = envBase ?? (typeof document === 'undefined' ? '/' : new URL('.', document.baseURI).pathname);
+  const base = ENV_BASE_PATH ?? BROWSER_BASE_PATH ?? '/';
   const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
   if (base === '/') {
     return `/${normalizedPath}`;
