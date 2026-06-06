@@ -291,7 +291,8 @@ export function renderLabIndex(): void {
         ? `${filteredLabs.length} filtered lab${filteredLabs.length === 1 ? '' : 's'} in ${visibleCategories.length} ${visibleCategories.length === 1 ? 'group' : 'groups'}`
         : `${filteredLabs.length} lab${filteredLabs.length === 1 ? '' : 's'} in ${visibleCategories.length} ${visibleCategories.length === 1 ? 'group' : 'groups'}`;
     const allCollapsed =
-      visibleCategories.length > 0 && visibleCategories.every((category) => collapsed.has(category));
+      visibleCategories.length > 0 &&
+      visibleCategories.every((category) => collapsed.has(category));
     toggleAll.textContent = allCollapsed ? 'Expand All' : 'Collapse All';
     toggleAll.disabled = visibleCategories.length === 0;
     toggleAll.style.opacity = toggleAll.disabled ? '0.6' : '1';
@@ -302,9 +303,7 @@ export function renderLabIndex(): void {
     if (filteredLabs.length === 0) {
       const empty = document.createElement('div');
       empty.textContent =
-        normalizedQuery.length > 0
-          ? 'No labs matched your filter.'
-          : 'No labs are registered yet.';
+        normalizedQuery.length > 0 ? 'No labs matched your filter.' : 'No labs are registered yet.';
       empty.style.padding = '24px';
       empty.style.border = '1px solid rgba(255, 255, 255, 0.08)';
       empty.style.borderRadius = '16px';
@@ -344,7 +343,7 @@ export function renderLabIndex(): void {
       if (chevron) chevron.textContent = allClosed ? '▾' : '▸';
     }
     if (allClosed) {
-      collapsed.clear();
+      for (const cat of visibleCategories) collapsed.delete(cat);
     } else {
       for (const cat of visibleCategories) collapsed.add(cat);
     }
