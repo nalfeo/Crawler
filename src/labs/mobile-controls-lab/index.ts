@@ -38,6 +38,9 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
+  const persistedSettings = loadLabState<MobileControlsLabSettings>(LAB_ID) ?? undefined;
+  const { moveMode: _persistedMoveMode, ...persistedNonModeSettings } = persistedSettings ?? {};
+
   const settings: MobileControlsLabSettings = {
     joystickRadius: 60,
     deadZone: 0.15,
@@ -47,7 +50,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     actionButtonSize: 72,
     actionButtonPadding: 32,
     hapticFeedback: true,
-    ...(loadLabState<MobileControlsLabSettings>(LAB_ID) ?? {}),
+    ...persistedNonModeSettings,
     moveMode: getGlobalControlsConfig().mobileMoveMode,
   };
 
@@ -133,7 +136,10 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   gui.add(settings, 'actionButtonPadding', 16, 80, 4).name('Action Btn Pad');
   gui.add(settings, 'showDebugOverlay').name('Debug Overlay');
   gui.add(settings, 'hapticFeedback').name('Haptic Feedback');
-  gui.onChange(() => saveLabState(LAB_ID, settings));
+  gui.onChange(() => {
+    const { moveMode: _moveMode, ...persistedWithoutMode } = settings;
+    saveLabState(LAB_ID, persistedWithoutMode);
+  });
 
   // --- Hit testing for the action button ---
   function getActionBtnCenter(): { x: number; y: number } {

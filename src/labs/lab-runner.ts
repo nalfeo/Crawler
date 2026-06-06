@@ -2,7 +2,6 @@ import GUI from 'lil-gui';
 import {
   getGlobalControlsConfig,
   setGlobalControlsConfig,
-  type MobileMoveMode,
 } from '../engine/controls-config.js';
 import { getLab } from './registry.js';
 
@@ -138,7 +137,7 @@ export function runLab(labId: string): void {
   const gui = new GUI({ autoPlace: false, container: controls, title: `${lab.name} Controls` });
   const globalControlsFolder = gui.addFolder('Global Controls');
   const globalControls = {
-    mobileMoveMode: getGlobalControlsConfig().mobileMoveMode as MobileMoveMode,
+    mobileMoveMode: getGlobalControlsConfig().mobileMoveMode,
   };
   globalControlsFolder
     .add(globalControls, 'mobileMoveMode', ['joystick', 'follow'])

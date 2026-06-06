@@ -12,7 +12,7 @@ const DEFAULT_CONFIG: GlobalControlsConfig = {
 
 let currentConfig = loadConfig();
 
-function sanitizeMoveMode(value: unknown): MobileMoveMode {
+function normalizeMoveMode(value: unknown): MobileMoveMode {
   return value === 'follow' ? 'follow' : 'joystick';
 }
 
@@ -26,7 +26,7 @@ function loadConfig(): GlobalControlsConfig {
     if (raw === null) return { ...DEFAULT_CONFIG };
     const parsed = JSON.parse(raw) as Partial<GlobalControlsConfig>;
     return {
-      mobileMoveMode: sanitizeMoveMode(parsed.mobileMoveMode),
+      mobileMoveMode: normalizeMoveMode(parsed.mobileMoveMode),
     };
   } catch {
     return { ...DEFAULT_CONFIG };
@@ -55,7 +55,7 @@ export function setGlobalControlsConfig(next: Partial<GlobalControlsConfig>): Gl
     mobileMoveMode:
       next.mobileMoveMode === undefined
         ? currentConfig.mobileMoveMode
-        : sanitizeMoveMode(next.mobileMoveMode),
+        : normalizeMoveMode(next.mobileMoveMode),
   };
   persistConfig(currentConfig);
   return currentConfig;
