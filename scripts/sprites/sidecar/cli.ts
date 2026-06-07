@@ -15,6 +15,7 @@
 
 import path from 'node:path';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 import { buildServer } from './server.js';
 
 const HOST = '127.0.0.1';
@@ -80,8 +81,8 @@ async function main(): Promise<number> {
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
-const thisPath = path.resolve(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
-if (invokedPath === thisPath) {
+const isDirectInvocation = invokedPath !== '' && import.meta.url === pathToFileURL(invokedPath).href;
+if (isDirectInvocation) {
   main().then(
     (code) => {
       if (code !== 0) process.exit(code);

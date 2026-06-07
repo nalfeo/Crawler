@@ -251,8 +251,7 @@ function createGalleryGrid(
       const idx = typeof cand.index === 'number' ? cand.index : ci;
       const padded = String(idx).padStart(2, '0');
       const passed = cand.passed === true;
-      const combinedPassed =
-        cand.combinedPassed === true || (passed && cand.judgeScorecard == null);
+      const combinedPassed = cand.combinedPassed === true;
       const isChosen = run.chosenIndex === idx;
       const judge = cand.judgeScorecard as Record<string, unknown> | null | undefined;
 

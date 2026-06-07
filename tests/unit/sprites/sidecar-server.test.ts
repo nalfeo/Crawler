@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
@@ -131,6 +131,23 @@ describe('listRuns', () => {
     expect(out[0]!.candidateCount).toBeNull();
     expect(out[0]!.hasJudge).toBe(false);
   });
+
+  it('skips entries that disappear between readdir/stat (race-safe)', () => {
+    const runsDir = path.join(root, 'runs');
+    writeMinimalRun(runsDir, 'iron-sword', '2026-06-04T11-00-00-aaaaaaaa');
+    mkdirSync(path.join(runsDir, 'cloth-shirt'), { recursive: true });
+    try {
+      symlinkSync(path.join(root, 'missing-target'), path.join(runsDir, 'cloth-shirt', 'broken-run'));
+    } catch {
+      // Some environments (notably Windows without privileges) disallow symlinks.
+      // If so, skip this specific race-shape test.
+      return;
+    }
+
+    const out = listRuns(runsDir);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.runId).toBe('2026-06-04T11-00-00-aaaaaaaa');
+  });
 });
 
 describe('buildServer routes (inject)', () => {
@@ -156,6 +173,22 @@ describe('buildServer routes (inject)', () => {
     expect(body.status).toBe('ok');
     expect(body.version).toBe('test');
     expect(body.runsDir).toContain('runs');
+  });
+
+  it('CORS allows loopback origins only', async () => {
+    const ok = await app.inject({
+      method: 'GET',
+      url: '/api/health',
+      headers: { origin: 'http://localhost:3002' },
+    });
+    expect(ok.headers['access-control-allow-origin']).toBe('http://localhost:3002');
+
+    const blocked = await app.inject({
+      method: 'GET',
+      url: '/api/health',
+      headers: { origin: 'https://evil.example' },
+    });
+    expect(blocked.headers['access-control-allow-origin']).toBeUndefined();
   });
 
   it('GET /api/runs lists the seeded run', async () => {

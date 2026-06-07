@@ -76,13 +76,11 @@ const ALLOWED_EXTENSIONS: Readonly<Record<string, string>> = {
 export function buildServer(deps: SidecarDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
 
-  // Permissive CORS for the lab dev server on localhost. We bind to 127.0.0.1
-  // anyway so the only callers are local browsers, but Vite serves the lab
-  // from a different port (e.g. 3002), so without CORS the browser refuses
-  // the cross-origin fetch. Origin reflection is safe given the bind.
+  // Vite serves the lab from a different loopback port, so allow CORS only
+  // for loopback origins (localhost/127.0.0.1/::1).
   app.addHook('onRequest', async (req, reply) => {
     const origin = req.headers.origin;
-    if (typeof origin === 'string') {
+    if (typeof origin === 'string' && isAllowedOrigin(origin)) {
       reply.header('Access-Control-Allow-Origin', origin);
       reply.header('Vary', 'Origin');
     }
@@ -194,10 +192,10 @@ export function listRuns(runsDir: string): RunListEntry[] {
   const entries: RunListEntry[] = [];
   for (const briefId of safeReaddir(runsDir)) {
     const briefDir = path.join(runsDir, briefId);
-    if (!statSync(briefDir).isDirectory()) continue;
+    if (!safeIsDirectory(briefDir)) continue;
     for (const runId of safeReaddir(briefDir)) {
       const runDir = path.join(briefDir, runId);
-      if (!statSync(runDir).isDirectory()) continue;
+      if (!safeIsDirectory(runDir)) continue;
       const summaryPath = path.join(runDir, 'summary.json');
       let summary: RunSummaryShape | null = null;
       if (existsSync(summaryPath)) {
@@ -231,6 +229,26 @@ function safeReaddir(dir: string): string[] {
     return readdirSync(dir);
   } catch {
     return [];
+  }
+}
+
+function safeIsDirectory(target: string): boolean {
+  try {
+    return statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    return parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1' || parsed.hostname === '::1';
+  } catch {
+    return false;
   }
 }
 
