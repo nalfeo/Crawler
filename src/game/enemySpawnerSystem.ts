@@ -58,8 +58,8 @@ function setVelocityTowardPlayer(
   targetY: number,
   enemySpeed: number,
 ): void {
-  const enemyX = world.stores.position.x[enemy] ?? 0;
-  const enemyY = world.stores.position.y[enemy] ?? 0;
+  const enemyX = world.stores.position.x[enemy]!;
+  const enemyY = world.stores.position.y[enemy]!;
   const deltaX = targetX - enemyX;
   const deltaY = targetY - enemyY;
   const distance = Math.hypot(deltaX, deltaY);
@@ -106,13 +106,13 @@ function applySeparation(
 
   for (let i = 0; i < simpleEnemies.length; i += 1) {
     const a = simpleEnemies[i]!;
-    const ax = position.x[a] ?? 0;
-    const ay = position.y[a] ?? 0;
+    const ax = position.x[a]!;
+    const ay = position.y[a]!;
 
     for (let j = i + 1; j < simpleEnemies.length; j += 1) {
       const b = simpleEnemies[j]!;
-      const bx = position.x[b] ?? 0;
-      const by = position.y[b] ?? 0;
+      const bx = position.x[b]!;
+      const by = position.y[b]!;
 
       const dx = ax - bx;
       const dy = ay - by;
@@ -140,17 +140,17 @@ function applySeparation(
       }
 
       const force = penetration * SEPARATION_FORCE;
-      velocity.x[a] = (velocity.x[a] ?? 0) + nx * force;
-      velocity.y[a] = (velocity.y[a] ?? 0) + ny * force;
-      velocity.x[b] = (velocity.x[b] ?? 0) - nx * force;
-      velocity.y[b] = (velocity.y[b] ?? 0) - ny * force;
+      velocity.x[a] = velocity.x[a]! + nx * force;
+      velocity.y[a] = velocity.y[a]! + ny * force;
+      velocity.x[b] = velocity.x[b]! - nx * force;
+      velocity.y[b] = velocity.y[b]! - ny * force;
     }
   }
 
   // Clamp each enemy's velocity to its configured speed
   for (const eid of simpleEnemies) {
-    const vx = velocity.x[eid] ?? 0;
-    const vy = velocity.y[eid] ?? 0;
+    const vx = velocity.x[eid]!;
+    const vy = velocity.y[eid]!;
     const mag = Math.hypot(vx, vy);
 
     if (mag > enemySpeed && mag > EPSILON) {
@@ -180,8 +180,8 @@ export function enemySpawnerSystem(world: GameWorld, config: SpawnerConfig): voi
     return;
   }
 
-  const playerX = world.stores.position.x[player] ?? 0;
-  const playerY = world.stores.position.y[player] ?? 0;
+  const playerX = world.stores.position.x[player]!;
+  const playerY = world.stores.position.y[player]!;
   const enemies = query(world.ecs, [Enemy, Position, Velocity]);
   const simpleEnemies: number[] = [];
 

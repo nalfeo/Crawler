@@ -162,4 +162,52 @@ describe('enemySpawnerSystem', () => {
     expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
+
+  it('separates overlapping simple enemies spawned at the exact same position', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    const a = spawnEnemy(world, 32, 32, 20);
+    const b = spawnEnemy(world, 32, 32, 20);
+
+    enemySpawnerSystem(world, {
+      maxEnemies: 10,
+      spawnIntervalMs: Number.POSITIVE_INFINITY,
+      enemyHp: 20,
+      enemySpeed: 1,
+    });
+
+    expect(
+      Math.hypot(world.stores.velocity.x[a] ?? 0, world.stores.velocity.y[a] ?? 0),
+    ).toBeGreaterThan(0);
+    expect(
+      Math.hypot(world.stores.velocity.x[b] ?? 0, world.stores.velocity.y[b] ?? 0),
+    ).toBeGreaterThan(0);
+    expect(
+      Math.hypot(world.stores.velocity.x[a] ?? 0, world.stores.velocity.y[a] ?? 0),
+    ).toBeLessThanOrEqual(1.00001);
+    expect(
+      Math.hypot(world.stores.velocity.x[b] ?? 0, world.stores.velocity.y[b] ?? 0),
+    ).toBeLessThanOrEqual(1.00001);
+  });
+
+  it('applies separation force for near-overlap (non-zero distance) and keeps speed capped', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    const a = spawnEnemy(world, 20, 20, 20);
+    const b = spawnEnemy(world, 24, 20, 20);
+
+    enemySpawnerSystem(world, {
+      maxEnemies: 10,
+      spawnIntervalMs: Number.POSITIVE_INFINITY,
+      enemyHp: 20,
+      enemySpeed: 0.5,
+    });
+
+    const aMag = Math.hypot(world.stores.velocity.x[a] ?? 0, world.stores.velocity.y[a] ?? 0);
+    const bMag = Math.hypot(world.stores.velocity.x[b] ?? 0, world.stores.velocity.y[b] ?? 0);
+    expect(aMag).toBeGreaterThan(0);
+    expect(bMag).toBeGreaterThan(0);
+    expect(aMag).toBeLessThanOrEqual(0.50001);
+    expect(bMag).toBeLessThanOrEqual(0.50001);
+  });
 });
