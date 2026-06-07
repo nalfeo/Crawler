@@ -1,7 +1,7 @@
-import { query, removeEntity, setComponent } from 'bitecs';
+import { hasComponent, query, removeEntity, setComponent } from 'bitecs';
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
-import { Enemy, EnemyBehavior, Health } from '../../core/components.js';
+import { Enemy, EnemyBehavior, Health, Player, Position, Sprite } from '../../core/components.js';
 import {
   clearEntityStores,
   collisionSystem,
@@ -39,6 +39,7 @@ const MAX_STEPS_PER_FRAME = 4;
 const PLAYER_HEALTH = 1_000;
 const SWARM_RADIUS = 56;
 const LAB_ID = 'enemy-ai-lab';
+const COLLISION_EPSILON = 0.0001;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -123,7 +124,15 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.accumulator = 0;
       this.world = createGameWorld({ seed: 2027 });
       this.inputState = createInputState();
-      this.inputCapture = createInputCapture(this);
+      this.inputCapture = createInputCapture(this, {
+        getFollowOrigin: () =>
+          this.playerEid < 0
+            ? undefined
+            : {
+                x: this.world.stores.position.x[this.playerEid] ?? 0,
+                y: this.world.stores.position.y[this.playerEid] ?? 0,
+              },
+      });
       this.playerEid = spawnPlayer(
         this.world,
         this.getViewportWidth() / 2,
@@ -202,6 +211,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         enemyAISystem(this.world);
         movementSystem(this.world);
         const collisions = collisionSystem(this.world);
+        this.resolveEnemyCollisions(collisions.pairs);
         damageSystem(this.world, collisions);
         healthSystem(this.world);
         projectileCleanupSystem(this.world);
@@ -216,6 +226,83 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
       this.bridge.sync(this.world);
       this.updateInfo();
+    }
+
+    private resolveEnemyCollisions(pairs: Array<{ a: number; b: number }>): void {
+      const { position, sprite } = this.world.stores;
+
+      for (const pair of pairs) {
+        const { a, b } = pair;
+        const aIsEnemy = hasComponent(this.world.ecs, a, Enemy);
+        const bIsEnemy = hasComponent(this.world.ecs, b, Enemy);
+        const aIsPlayer = hasComponent(this.world.ecs, a, Player);
+        const bIsPlayer = hasComponent(this.world.ecs, b, Player);
+        const isEnemyVsEnemy = aIsEnemy && bIsEnemy;
+        const isEnemyVsPlayer = (aIsEnemy && bIsPlayer) || (bIsEnemy && aIsPlayer);
+
+        if (!isEnemyVsEnemy && !isEnemyVsPlayer) {
+          continue;
+        }
+
+        if (
+          !hasComponent(this.world.ecs, a, Position) ||
+          !hasComponent(this.world.ecs, b, Position) ||
+          !hasComponent(this.world.ecs, a, Sprite) ||
+          !hasComponent(this.world.ecs, b, Sprite)
+        ) {
+          continue;
+        }
+
+        const ax = position.x[a]!;
+        const ay = position.y[a]!;
+        const bx = position.x[b]!;
+        const by = position.y[b]!;
+        const halfWidthA = sprite.width[a]! * 0.5;
+        const halfHeightA = sprite.height[a]! * 0.5;
+        const halfWidthB = sprite.width[b]! * 0.5;
+        const halfHeightB = sprite.height[b]! * 0.5;
+        const dx = bx - ax;
+        const dy = by - ay;
+        // collisionSystem only returns pair IDs, so this lab recomputes overlap depth
+        // to apply a small local separation response for visual feedback.
+        const overlapX = halfWidthA + halfWidthB - Math.abs(dx);
+        const overlapY = halfHeightA + halfHeightB - Math.abs(dy);
+
+        if (overlapX <= 0 || overlapY <= 0) {
+          continue;
+        }
+
+        const resolveAlongX = overlapX <= overlapY;
+        const axisDelta = resolveAlongX ? dx : dy;
+        // When centers are exactly aligned on the resolution axis, use a stable ID-based
+        // tie-breaker so separation stays deterministic and avoids frame-to-frame jitter.
+        const axisSign = axisDelta !== 0 ? Math.sign(axisDelta) : a < b ? 1 : -1;
+        const pushDistance = (resolveAlongX ? overlapX : overlapY) + COLLISION_EPSILON;
+
+        // Keep player movement authoritative in this lab: only push enemies out of player overlap.
+        // For enemy-vs-enemy overlap, split correction evenly so both agents react.
+        if (isEnemyVsPlayer) {
+          const enemyEid = aIsEnemy ? a : b;
+          const enemyDirection = enemyEid === a ? -axisSign : axisSign;
+          if (resolveAlongX) {
+            position.x[enemyEid]! += enemyDirection * pushDistance;
+          } else {
+            position.y[enemyEid]! += enemyDirection * pushDistance;
+          }
+          continue;
+        }
+
+        const pushA = -axisSign * pushDistance * 0.5;
+        const pushB = axisSign * pushDistance * 0.5;
+
+        if (resolveAlongX) {
+          position.x[a] = ax + pushA;
+          position.x[b] = bx + pushB;
+        } else {
+          position.y[a] = ay + pushA;
+          position.y[b] = by + pushB;
+        }
+      }
     }
 
     private clearEnemies(): void {
