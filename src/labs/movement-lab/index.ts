@@ -196,7 +196,15 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       this.accumulator = 0;
       this.world = createGameWorld({ seed: 1337 });
       this.inputState = createInputState();
-      this.inputCapture = createInputCapture(this);
+      this.inputCapture = createInputCapture(this, {
+        getFollowOrigin: () =>
+          this.playerEid < 0
+            ? undefined
+            : {
+                x: this.world.stores.position.x[this.playerEid] ?? 0,
+                y: this.world.stores.position.y[this.playerEid] ?? 0,
+              },
+      });
 
       this.cameras.main.setBackgroundColor('#050816');
 
