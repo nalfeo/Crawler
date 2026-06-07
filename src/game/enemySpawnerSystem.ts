@@ -3,6 +3,9 @@ import { Enemy, EnemyBehavior, Player, Position, Velocity } from '../core/compon
 import { spawnEnemy } from '../core/helpers.js';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
+import { createLogger } from '../shared/logger.js';
+
+const logger = createLogger('game:enemy-spawner');
 
 const ENEMY_RADIUS = 8; // half of the default 16×16 enemy sprite
 const MAX_OVERLAP_FRACTION = 0.25;
@@ -163,12 +166,17 @@ export function configureEnemySpawner(world: GameWorld, bounds: SpawnerBounds): 
     width: Math.max(1, bounds.width),
     height: Math.max(1, bounds.height),
   });
+  logger.info('Configured enemy spawner bounds', {
+    width: Math.max(1, bounds.width),
+    height: Math.max(1, bounds.height),
+  });
 }
 
 export function enemySpawnerSystem(world: GameWorld, config: SpawnerConfig): void {
   const player = getPlayerEntity(world);
 
   if (player === undefined) {
+    logger.warn('Enemy spawner skipped tick because player entity is missing');
     return;
   }
 
@@ -208,4 +216,11 @@ export function enemySpawnerSystem(world: GameWorld, config: SpawnerConfig): voi
   const enemy = spawnEnemy(world, spawnPoint.x, spawnPoint.y, config.enemyHp);
   setVelocityTowardPlayer(world, enemy, playerX, playerY, config.enemySpeed);
   state.lastSpawnMs = world.elapsedMs;
+  logger.debug('Spawned enemy', {
+    enemy,
+    x: spawnPoint.x,
+    y: spawnPoint.y,
+    enemyHp: config.enemyHp,
+    elapsedMs: world.elapsedMs,
+  });
 }

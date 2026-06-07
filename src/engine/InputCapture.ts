@@ -1,6 +1,9 @@
 import type Phaser from 'phaser';
 import { getGlobalControlsConfig } from './controls-config.js';
 import { normalizeInputDirection, type InputState } from '../shared/input.js';
+import { createLogger } from '../shared/logger.js';
+
+const logger = createLogger('engine:input-capture');
 
 interface InputCaptureOptions {
   getFollowOrigin?: () => { x: number; y: number } | undefined;
@@ -45,6 +48,9 @@ export function createInputCapture(
 
   // Touch target: prefer canvas so lab UI stays interactive
   const touchTarget: EventTarget = scene.game?.canvas ?? window;
+  if (!scene.game?.canvas) {
+    logger.warn('Input capture is using window as touch target (canvas unavailable)');
+  }
 
   const onKeyDown = (e: KeyboardEvent) => {
     keysDown.add(e.code);
@@ -56,6 +62,7 @@ export function createInputCapture(
   const onBlur = () => {
     keysDown.clear();
     activeTouches.clear();
+    logger.debug('Window blur cleared keyboard and touch state');
   };
 
   const classifyTouchZone = (clientX: number): 'move' | 'action' => {
@@ -82,6 +89,9 @@ export function createInputCapture(
     for (const touch of e.changedTouches) {
       const state = activeTouches.get(touch.identifier);
       if (!state) {
+        logger.warn('Received touchmove for unknown touch identifier', {
+          identifier: touch.identifier,
+        });
         continue;
       }
 
@@ -168,6 +178,7 @@ export function createInputCapture(
   touchTarget.addEventListener('pointermove', onPointerMove as EventListener);
   touchTarget.addEventListener('pointerup', onPointerUp as EventListener);
   touchTarget.addEventListener('pointercancel', onPointerCancel as EventListener);
+  logger.info('Input capture listeners attached');
 
   return {
     poll(state: InputState): void {
@@ -255,6 +266,7 @@ export function createInputCapture(
       touchTarget.removeEventListener('pointercancel', onPointerCancel as EventListener);
       keysDown.clear();
       activeTouches.clear();
+      logger.info('Input capture listeners removed');
     },
   };
 }

@@ -2,6 +2,17 @@
 
 A DCC inspired prototype vampire survivor-like.
 
+## Logging
+
+Crawler uses [`loglevel`](https://github.com/pimterry/loglevel) with scoped loggers (`info`, `warn`, `error`, etc.).
+
+- Default level: `info`
+- Configure via env: `VITE_LOG_LEVEL` (browser) or `LOG_LEVEL` (scripts)
+- Override in browser query string: `?logLevel=debug`
+- Toggle at runtime in the browser console:
+  - `window.crawlerLogs.setLevel('debug')`
+  - `window.crawlerLogs.getLevel()`
+
 ## Play
 
 | Channel   | Link                                                  |

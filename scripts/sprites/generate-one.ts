@@ -49,6 +49,7 @@ import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
 import { ProviderError } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
 import type { VisionProvider } from './provider/vision-types.js';
+import { createLogger } from '../../src/shared/logger.js';
 import {
   ensureRunDirs,
   makeRunId,
@@ -61,6 +62,8 @@ import {
   type RunSummary,
   type RunSummaryEntry,
 } from './run-artifacts.js';
+
+const logger = createLogger('infra:generate-one');
 
 export interface GenerateOneOptions {
   readonly briefPath: string;
@@ -114,7 +117,7 @@ export interface GenerateOneOptions {
   readonly readReference?: (absolutePath: string) => Buffer;
   /** Optional brief override (avoid re-loading from disk in tests). */
   readonly preloaded?: LoadedBrief;
-  /** Warning sink (mainly for expand-variations). Defaults to console.warn. */
+  /** Warning sink (mainly for expand-variations). Defaults to logger.warn. */
   readonly warn?: (message: string) => void;
 }
 
@@ -301,7 +304,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       // Azure spend.
       if (options.judgeBudget && options.judgeBudget.wouldExceed() && !options.judgeCache) {
         options.judgeBudget.recordSkip();
-        const warn = options.warn ?? ((msg: string) => process.stderr.write(`${msg}\n`));
+        const warn = options.warn ?? logger.warn.bind(logger);
         warn(
           `judge-budget exhausted: skipping variant ${e.index} (${options.judgeBudget.format()})`,
         );
