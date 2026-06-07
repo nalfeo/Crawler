@@ -31,6 +31,7 @@ import path from 'node:path';
 import type { Brief } from './brief-schema.js';
 import type { DiversitySummary } from './diversity.js';
 import type { ExpansionSkipReason } from './expand-variations.js';
+import type { JudgeScorecard } from './judge.js';
 import type { Scorecard } from './score-candidate.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
 
@@ -42,10 +43,17 @@ export interface RunPaths {
   readonly processedDir: string;
 }
 
+export type JudgeSkipReason = 'judge-disabled' | 'sensor-failed' | 'over-cap' | 'over-budget';
+
 export interface RunSummaryEntry {
   readonly index: number;
   readonly score: number;
   readonly outOf: number;
+  /**
+   * Sensor-only passed flag. Reflects the deterministic scorecard. The
+   * full pipeline-pass decision (sensor AND judge when judge is enabled)
+   * is `combinedPassed` — consumers should rank on that, not on `passed`.
+   */
   readonly passed: boolean;
   readonly rawPath: string;
   readonly processedPath: string;
@@ -61,6 +69,29 @@ export interface RunSummaryEntry {
    * non-null. Mirrors what gets surfaced in `RunSummary.chosen`.
    */
   readonly anchorSidecarPath: string | null;
+  /**
+   * VLM judge scorecard for this variant, when the brief opted in
+   * (`brief.judge.enabled === true`) AND this variant was actually
+   * judged. Three reasons this is null:
+   *   1. judge disabled — no judging happens
+   *   2. judge enabled but this variant failed sensors — we don't waste
+   *      vision credits on sensor-failed variants
+   *   3. judge enabled but this variant was outside `judge.maxVariants`
+   *      after ranking sensor-passing variants by sensor score
+   *
+   * `judgeSkipReason` disambiguates 2 vs 3 vs null-for-other-reasons so
+   * dashboards can explain WHY a variant has no judge verdict.
+   */
+  readonly judgeScorecard: JudgeScorecard | null;
+  /** See `judgeScorecard`. */
+  readonly judgeSkipReason: JudgeSkipReason | null;
+  /**
+   * The pipeline-level pass. With judge disabled, equals `passed`. With
+   * judge enabled, requires BOTH `passed` (sensors) AND
+   * `judgeScorecard?.passed === true`. Use this for ranking, picking,
+   * and the CLI "any passed" check.
+   */
+  readonly combinedPassed: boolean;
 }
 
 /**
@@ -88,6 +119,20 @@ export interface ChosenCandidate {
    * the schema requires it today).
    */
   readonly anchor: ChosenAnchor | null;
+  /**
+   * Judge scorecard for the chosen variant, when the judge ran. Null
+   * means either the brief didn't opt in or this variant wasn't judged
+   * (sensor-failed / over the maxVariants cap).
+   */
+  readonly judgeScorecard: JudgeScorecard | null;
+  /**
+   * Combined sensor + judge gate result for the chosen variant. True iff
+   * sensors passed AND (judge disabled OR judge ran and passed). Mirrored
+   * from the underlying `RunSummaryEntry.combinedPassed` so downstream
+   * consumers don't need to re-derive the formula (and risk getting the
+   * over-cap edge case wrong).
+   */
+  readonly combinedPassed: boolean;
 }
 
 export interface RunSummary {
@@ -122,6 +167,31 @@ export interface RunSummary {
    * shouldn't happen for a well-formed brief.
    */
   readonly chosen: ChosenCandidate | null;
+  /**
+   * Cost-tracking snapshot for this run. Null when the judge wasn't
+   * enabled (no calls to bill). When present, surfaces both per-run
+   * counters and the persisted cross-run totals so reviewers can see
+   * how close the batch is to the configured ceiling without opening
+   * `generated/.cost-state.json`.
+   */
+  readonly judgeBudget: {
+    readonly budgetUsd: number;
+    readonly spentUsd: number;
+    readonly remainingUsd: number;
+    readonly callCount: number;
+    readonly callsThisRun: number;
+    readonly callsSkippedDueToBudget: number;
+  } | null;
+  /**
+   * Cache-hit accounting for the judge cache. Null when the judge
+   * wasn't enabled. `bypassed` is non-zero when caching was disabled
+   * for the run via `--no-judge-cache`.
+   */
+  readonly judgeCache: {
+    readonly hits: number;
+    readonly misses: number;
+    readonly bypassed: number;
+  } | null;
 }
 
 /**
@@ -202,12 +272,42 @@ export function writeSummary(paths: RunPaths, summary: RunSummary): string {
 }
 
 /**
- * Rank candidates: passed-first, then by score descending, with stable tie-break
- * on index ascending. Pure.
+ * Rank candidates with the combined sensor + judge pipeline gate.
+ *
+ * Three buckets, in priority order:
+ *   1. Sensor passed AND combined pipeline passed                  — full pass
+ *   2. Sensor passed, combined pipeline failed                     — includes
+ *      both judge-failed variants AND sensor-passed-but-not-judged
+ *      variants (e.g. `judgeSkipReason: 'over-cap'`). These are
+ *      "sensor-good but the full pipeline didn't clear them" and
+ *      must rank below bucket 1 so over-cap entries can't sneak
+ *      ahead of variants that actually passed the judge gate.
+ *   3. Sensor failed (judge never runs on these)                   — reject pile
+ *
+ * Within bucket 1 (when judge ran), tie on judge `minScore` desc, then
+ * sensor score desc, then index asc. Within bucket 1 (judge disabled)
+ * and within the other buckets, tie on sensor score desc, then index asc.
+ *
+ * Pure.
  */
 export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSummaryEntry[] {
+  function bucket(e: RunSummaryEntry): 0 | 1 | 2 {
+    if (!e.passed) return 2;
+    // Use combinedPassed as the source of truth. Sensor-passed-but-not-judged
+    // entries (e.g. judgeSkipReason: 'over-cap') have combinedPassed=false
+    // when judging is enabled, so they correctly fall into bucket 1 instead
+    // of jumping ahead of variants that actually passed the judge gate.
+    if (e.combinedPassed) return 0;
+    return 1;
+  }
   return [...entries].sort((a, b) => {
-    if (a.passed !== b.passed) return a.passed ? -1 : 1;
+    const ba = bucket(a);
+    const bb = bucket(b);
+    if (ba !== bb) return ba - bb;
+    // Same bucket: prefer higher judge minScore when both have one.
+    const ja = a.judgeScorecard?.minScore;
+    const jb = b.judgeScorecard?.minScore;
+    if (ja !== undefined && jb !== undefined && ja !== jb) return jb - ja;
     if (a.score !== b.score) return b.score - a.score;
     return a.index - b.index;
   });
@@ -223,6 +323,16 @@ export function rankCandidates(entries: ReadonlyArray<RunSummaryEntry>): RunSumm
  *     downstream consumers see the failure instead of a wrong static value.
  *
  * Returns null when `ranked` is empty. Pure.
+ *
+ * Note: the chosen candidate's `passed` field reflects the SENSOR scorecard
+ * only, for backwards compatibility with consumers that pre-date the judge.
+ * The combined sensor+judge pipeline-pass for the chosen variant is carried
+ * on `chosen.combinedPassed` (mirrored from the underlying entry). Do NOT
+ * derive it from `passed && (judgeScorecard?.passed ?? true)` — that
+ * formula wrongly treats sensor-passing-but-not-judged variants
+ * (`judgeSkipReason: 'over-cap'`) as full pipeline passes. The ranking
+ * already puts combined-passing variants first, so when ANY variant
+ * passed the full pipeline, `chosen` will be that variant.
  */
 export function pickChosen(
   ranked: ReadonlyArray<RunSummaryEntry>,
@@ -245,5 +355,7 @@ export function pickChosen(
     outOf: top.outOf,
     passed: top.passed,
     anchor,
+    judgeScorecard: top.judgeScorecard,
+    combinedPassed: top.combinedPassed,
   };
 }

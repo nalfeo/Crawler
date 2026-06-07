@@ -18,6 +18,7 @@ import {
 import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
+import { createLogger } from '../shared/logger.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -31,10 +32,14 @@ const TEX_MELEE = '__cw_melee';
 const TEX_TRAP_ARMED = '__cw_trap_armed';
 const TEX_TRAP_ARMING = '__cw_trap_arming';
 const TEX_EXPLOSION = '__cw_explosion';
+const logger = createLogger('engine:phaser-bridge');
 
 function generateTextures(scene: Phaser.Scene): void {
   // Skip texture generation when running in test mocks without a texture manager
-  if (!scene.textures || !scene.add.graphics) return;
+  if (!scene.textures || !scene.add.graphics) {
+    logger.debug('Skipping procedural texture generation; texture manager unavailable');
+    return;
+  }
   if (scene.textures.exists(TEX_PLAYER)) return;
 
   const g = scene.add.graphics();
@@ -129,6 +134,7 @@ function generateTextures(scene: Phaser.Scene): void {
   g.generateTexture(TEX_EXPLOSION, 66, 66);
 
   g.destroy();
+  logger.info('Generated procedural fallback textures');
 }
 
 interface EntityVisual {
@@ -156,7 +162,7 @@ function getEntityType(world: GameWorld, eid: number): string {
 /**
  * Mapping from entity type to a logical sprite ID in the registry.
  * Types that omit a mapping always render with the procedural
- * `__cw_*` texture. Types whose mapping resolves but whose sheet
+ * __cw_* texture. Types whose mapping resolves but whose sheet
  * failed to load also fall back to the procedural texture, so the
  * renderer is robust to missing sprite packs.
  */
@@ -182,6 +188,8 @@ interface ResolvedTexture {
   frame?: number;
   /** Base render scale for this texture. */
   scale: number;
+  /** True when the engine fell back to a procedural __cw_* texture. */
+  fallback: boolean;
 }
 
 /**
@@ -199,10 +207,11 @@ function resolveTexture(scene: Phaser.Scene, type: string): ResolvedTexture {
         key: sprite.sheetKey,
         frame: sprite.frame,
         scale: KENNEY_SCALE[type] ?? 1,
+        fallback: false,
       };
     }
   }
-  return { key: getProceduralTextureForType(type), scale: 1 };
+  return { key: getProceduralTextureForType(type), scale: 1, fallback: true };
 }
 
 function getProceduralTextureForType(type: string): string {
@@ -242,6 +251,31 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
   const combatVfx = createCombatVfx(scene);
+  const missingSpriteWarnings = new Set<string>();
+  const missingTypeWarnings = new Set<string>();
+
+  function logFallback(type: string): void {
+    const spriteId = ENTITY_KENNEY_SPRITE[type];
+    if (spriteId !== undefined) {
+      const warningKey = `${type}:${spriteId}`;
+      if (missingSpriteWarnings.has(warningKey)) {
+        return;
+      }
+      missingSpriteWarnings.add(warningKey);
+      const sprite = getSprite(spriteId);
+      logger.warn('Falling back to procedural texture; sprite sheet unavailable', {
+        type,
+        spriteId,
+        sheetKey: sprite?.sheetKey,
+      });
+    } else {
+      if (missingTypeWarnings.has(type)) {
+        return;
+      }
+      missingTypeWarnings.add(type);
+      logger.debug('Using procedural texture for entity type without sprite mapping', { type });
+    }
+  }
 
   return {
     sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
@@ -406,6 +440,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               : scene.add.image(x, y, resolved.key);
           if (resolved.scale !== 1) {
             img.setScale(resolved.scale);
+          }
+          if (resolved.fallback) {
+            logFallback(entityType);
           }
           visual = { obj: img, type: entityType, baseScale: resolved.scale };
           visuals.set(eid, visual);

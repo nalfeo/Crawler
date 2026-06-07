@@ -5,9 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Crawler Labs</title>
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #1a1a2e; color: #e0e0e0; font-family: monospace; }
-      #lab-container { width: 100vw; height: 100svh; display: flex; position: relative; overflow: hidden; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #1a1a2e;
+        color: #e0e0e0;
+        font-family: monospace;
+      }
+      #lab-container {
+        width: 100vw;
+        height: 100svh;
+        display: flex;
+        position: relative;
+        overflow: hidden;
+      }
       #lab-canvas {
         flex: 1;
         min-width: 0;
@@ -22,7 +36,9 @@
         padding: 16px;
         background: #16213e;
         overflow-y: auto;
-        transition: width 0.25s ease, padding 0.25s ease;
+        transition:
+          width 0.25s ease,
+          padding 0.25s ease;
       }
       #lab-controls.collapsed {
         width: 0;
@@ -58,12 +74,18 @@
 
       /* On narrow screens in portrait, stack canvas above controls */
       @media (max-width: 600px) and (orientation: portrait) {
-        #lab-container { flex-direction: column; }
-        #lab-canvas { flex: 1; }
+        #lab-container {
+          flex-direction: column;
+        }
+        #lab-canvas {
+          flex: 1;
+        }
         #lab-controls {
           width: 100%;
           max-height: 40vh;
-          transition: max-height 0.25s ease, padding 0.25s ease;
+          transition:
+            max-height 0.25s ease,
+            padding 0.25s ease;
         }
         #lab-controls.collapsed {
           width: 100%;
@@ -93,7 +115,9 @@
   <body>
     <div id="lab-container">
       <div id="lab-canvas"></div>
-      <button id="controls-toggle" aria-label="Collapse config panel" aria-expanded="true">›</button>
+      <button id="controls-toggle" aria-label="Collapse config panel" aria-expanded="true">
+        ›
+      </button>
       <div id="lab-controls"></div>
     </div>
     <script type="module" src="/src/lab-main.ts"></script>
@@ -107,7 +131,10 @@
           controls.classList.toggle('collapsed', collapsed);
           toggle.classList.toggle('collapsed', collapsed);
           toggle.setAttribute('aria-expanded', String(!collapsed));
-          toggle.setAttribute('aria-label', collapsed ? 'Expand config panel' : 'Collapse config panel');
+          toggle.setAttribute(
+            'aria-label',
+            collapsed ? 'Expand config panel' : 'Collapse config panel',
+          );
           toggle.textContent = collapsed ? '‹' : '›';
         }
 

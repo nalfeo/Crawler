@@ -1,11 +1,13 @@
 # CI Policy
 
 ## Core Principles
+
 - All CI gates are deterministic. No LLM-as-judge checks are allowed.
 - Gates are ordered by speed so failures happen as early and cheaply as possible.
 - Every blocking gate must fail with a clear, actionable error message.
 
 ## Canonical Gate Stack
+
 Run the gate stack in this order:
 
 1. **Typecheck** — `npm run typecheck`
@@ -23,7 +25,9 @@ Run the gate stack in this order:
 13. **Dependency audit** — `npm audit --audit-level=high`
 
 ## Coverage Thresholds
+
 Minimum line coverage targets:
+
 - `src/core/`: 90%
 - `src/game/`: 90%
 - `src/shared/`: 90%
@@ -34,7 +38,9 @@ Minimum line coverage targets:
 If a directory threshold is not yet enforced mechanically, the next CI upgrade should add deterministic enforcement rather than lowering the target.
 
 ## Conventional Commit Enforcement
+
 Allowed change types are:
+
 - `feat:`
 - `fix:`
 - `chore:`
@@ -48,7 +54,9 @@ Allowed change types are:
 Pull requests must also use a semantic title that matches the same intent family.
 
 ## Branch Protection Rules
+
 Protect `main` with the following rules:
+
 - Require all blocking CI checks to pass before merge
 - Require the semantic PR / commit check to pass
 - Require the branch to be up to date with `main` before merging
@@ -58,4 +66,5 @@ Protect `main` with the following rules:
 - Prefer squash merge or other linear-history-friendly merge settings
 
 ## Non-Negotiable
+
 No CI step may call an LLM service, use subjective grading, or depend on non-deterministic runtime behavior.

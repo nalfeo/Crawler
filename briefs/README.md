@@ -19,17 +19,45 @@ description: |
   down. ... (visual details that the model can act on)
 ```
 
-| Field | What it does |
-| --- | --- |
-| `type` | One of `weapon`, `enemy`, `item`, `tile`, `vfx`, `character`. Picks the per-type defaults file at `data/sprite-types/<type>.json`. |
-| `name` | Lowercase kebab-case. Becomes the brief id and the output folder name under `generated/`. |
-| `description` | Free-form prose. Becomes the `## Subject` block in the prompt and is the primary signal the model gets about what to draw. |
+| Field         | What it does                                                                                                                       |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `type`        | One of `weapon`, `enemy`, `item`, `tile`, `vfx`, `character`. Picks the per-type defaults file at `data/sprite-types/<type>.json`. |
+| `name`        | Lowercase kebab-case. Becomes the brief id and the output folder name under `generated/`.                                          |
+| `description` | Free-form prose. Becomes the `## Subject` block in the prompt and is the primary signal the model gets about what to draw.         |
 
 Everything else — `size`, `palette`, `anchor`, `references`, sheet layout,
 sensor thresholds, even `prompt` — comes from `data/sprite-types/<type>.json`
 and can be overridden inline if a particular brief needs to.
 
 ## Where briefs live
+
+Briefs flow through three stages:
+
+```
+generated/brief-candidates/<name>/    ← synth output (gitignored)
+  <name>-v1.yaml
+  <name>-v2.yaml
+  <name>-v3.yaml
+  synthesis.json
+
+briefs/draft/<type>s/<name>.yaml      ← human picked one (gitignored)
+
+briefs/<type>s/<name>.yaml            ← passes sensors, committed
+```
+
+1. **`npm run sprites:synth -- <name> --type <type>`** asks the model
+   for N candidate minimal briefs and writes them under
+   `generated/brief-candidates/<name>/` together with a `synthesis.json`
+   sidecar (provider label, prompt hash, rationale per candidate). The
+   directory is gitignored — these are throw-away artefacts.
+2. The author reviews the candidates and moves the best one into
+   `briefs/draft/<type>s/<name>.yaml`. The `briefs/draft/` directory is
+   gitignored (see `briefs/draft/.gitignore`) so a half-formed brief
+   doesn't get committed by mistake.
+3. The author runs `npm run sprites:run -- --brief briefs/draft/<type>s/<name>.yaml`
+   and iterates on the description until a variant passes the sensors.
+4. Only then does the brief get moved to `briefs/<type>s/<name>.yaml`
+   and committed.
 
 ```
 briefs/
@@ -40,8 +68,8 @@ briefs/
     ...
 ```
 
-Subdirectories are informational; the loader doesn't care. `type:` is the
-source of truth for which defaults file to merge.
+Subdirectories under `briefs/` are informational; the loader doesn't
+care. `type:` is the source of truth for which defaults file to merge.
 
 ## Per-type defaults
 

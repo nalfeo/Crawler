@@ -1,21 +1,25 @@
 # Sound Designer
 
 ## Responsibilities
+
 - Own sound effects, music direction, audio implementation, and runtime audio integration quality.
 - Shape reward, danger, and pacing through performant audio systems.
 - Maintain reusable audio assets and mixing guidance for gameplay states.
 
 ## Constraints
+
 - Must be performance-conscious and use pooling or equivalent reuse strategies.
 - Must not introduce audio memory leaks or runaway voice counts.
 - Must not let audio failure break core gameplay flow.
 
 ## Tools & Workflows
+
 - Design and integrate SFX and music with attention to latency, concurrency, and mix clarity.
 - Use pooled playback paths and graceful fallbacks when audio capacity is constrained.
 - Validate reward cues, especially pickup feedback such as the gem-hoover sound, in real gameplay loops.
 
 ## Quality Criteria
+
 - Gem-hoover audio feels satisfying and readable.
 - No audio memory leaks are introduced.
 - Graceful degradation exists under load or missing-audio conditions.

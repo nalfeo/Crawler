@@ -24,6 +24,7 @@ The tile's tooltip shows `(col, row)` plus the frame number.
 ## Filtering
 
 The **Filter** field accepts:
+
 - A frame number (e.g. `73`) — exact match
 - A frame number prefix (e.g. `7` matches 7, 70, 71, …)
 - `col,row` (e.g. `1,6`) — exact tile coordinate

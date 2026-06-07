@@ -24,6 +24,7 @@ import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import type { GameWorld } from '../core/world.js';
 import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
+import { createLogger } from '../shared/logger.js';
 
 export interface WeaponConfig {
   projectileSpeed: number;
@@ -43,6 +44,7 @@ interface WeaponState {
 
 const weaponConfigs = new WeakMap<GameWorld, WeaponConfig>();
 const weaponStates = new WeakMap<GameWorld, WeaponState>();
+const logger = createLogger('game:weapon-system');
 
 function createDefaultConfig(): WeaponConfig {
   return {
@@ -289,17 +291,30 @@ function fireThrownAttack(
 ): void {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
-  spawnReturningProjectile(
+  if (def.returnSpeed > 0 && def.maxRange > 0) {
+    spawnReturningProjectile(
+      world,
+      px,
+      py,
+      dir.x * def.projectileSpeed,
+      dir.y * def.projectileSpeed,
+      def.baseDamage,
+      player,
+      def.returnSpeed,
+      def.maxRange,
+      TeamId.PLAYER,
+      def.pierce,
+    );
+    return;
+  }
+
+  spawnProjectile(
     world,
     px,
     py,
     dir.x * def.projectileSpeed,
     dir.y * def.projectileSpeed,
     def.baseDamage,
-    player,
-    def.returnSpeed,
-    def.maxRange,
-    TeamId.PLAYER,
     def.pierce,
   );
 }
@@ -378,6 +393,7 @@ export function configureWeaponSystem(world: GameWorld, config: Partial<WeaponCo
     ...getWeaponConfig(world),
     ...config,
   });
+  logger.info('Configured weapon system', { ...getWeaponConfig(world) });
 }
 
 /** Set the active weapon definition for the weapon system. */
@@ -386,18 +402,26 @@ export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
   if (state.activeWeaponId === weaponDef.id) {
     // Update def for live tuning without resetting cooldown
     state.activeWeaponDef = weaponDef;
+    logger.debug('Updated active weapon tuning in place', { weaponId: weaponDef.id });
     return;
   }
   state.activeWeaponId = weaponDef.id;
   state.activeWeaponDef = weaponDef;
   state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
+  logger.info('Equipped active weapon', {
+    weaponId: weaponDef.id,
+    weaponType: weaponDef.weaponType,
+    cooldownMs: weaponDef.cooldownMs,
+  });
 }
 
 /** Clear the active weapon, reverting to legacy projectile mode. */
 export function clearActiveWeapon(world: GameWorld): void {
   const state = getWeaponState(world);
+  const previousWeaponId = state.activeWeaponId;
   state.activeWeaponId = undefined;
   state.activeWeaponDef = undefined;
+  logger.info('Cleared active weapon; returning to legacy projectile mode', { previousWeaponId });
 }
 
 /** Get the active weapon definition, if any. */
@@ -435,6 +459,11 @@ export function weaponSystem(world: GameWorld): void {
     state.aimX = direction.x;
     state.aimY = direction.y;
     state.lastFireMs = world.elapsedMs;
+    logger.debug('Fired active weapon attack', {
+      weaponId: def.id,
+      weaponType: def.weaponType,
+      elapsedMs: world.elapsedMs,
+    });
     return;
   }
 
@@ -480,6 +509,11 @@ export function weaponSystem(world: GameWorld): void {
   state.aimX = direction.x;
   state.aimY = direction.y;
   writeLastFireMs(world, player, config, world.elapsedMs);
+  logger.debug('Fired legacy projectile volley', {
+    projectileCount: totalProjectiles,
+    baseDamage: config.baseDamage,
+    elapsedMs: world.elapsedMs,
+  });
 }
 
 /** Process weapon entities (for multi-weapon support). */

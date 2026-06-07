@@ -1,4 +1,5 @@
 import type GUI from 'lil-gui';
+import { getGlobalControlsConfig, setGlobalControlsConfig } from '../../engine/controls-config.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -17,6 +18,8 @@ interface MobileControlsLabSettings {
   actionButtonPadding: number;
   hapticFeedback: boolean;
 }
+
+type PersistedMobileControlsLabSettings = Omit<MobileControlsLabSettings, 'moveMode'>;
 
 interface TouchInfo {
   zone: 'move' | 'action';
@@ -37,8 +40,9 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
+  const persistedSettings = loadLabState<PersistedMobileControlsLabSettings>(LAB_ID) ?? {};
+
   const settings: MobileControlsLabSettings = {
-    moveMode: 'joystick',
     joystickRadius: 60,
     deadZone: 0.15,
     followSpeed: 5,
@@ -47,7 +51,8 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
     actionButtonSize: 72,
     actionButtonPadding: 32,
     hapticFeedback: true,
-    ...(loadLabState<MobileControlsLabSettings>(LAB_ID) ?? {}),
+    ...persistedSettings,
+    moveMode: getGlobalControlsConfig().mobileMoveMode,
   };
 
   // --- DOM setup ---
@@ -113,7 +118,13 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   const ctx = context;
 
   // --- lil-gui ---
-  gui.add(settings, 'moveMode', ['joystick', 'follow']).name('Move Mode');
+  gui
+    .add(settings, 'moveMode', ['joystick', 'follow'])
+    .name('Move Mode')
+    .listen()
+    .onChange((value: MoveMode) => {
+      setGlobalControlsConfig({ mobileMoveMode: value });
+    });
 
   const joystickFolder = gui.addFolder('Joystick Settings');
   joystickFolder.add(settings, 'joystickRadius', 30, 120, 5).name('Radius');
@@ -127,7 +138,18 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   gui.add(settings, 'actionButtonPadding', 16, 80, 4).name('Action Btn Pad');
   gui.add(settings, 'showDebugOverlay').name('Debug Overlay');
   gui.add(settings, 'hapticFeedback').name('Haptic Feedback');
-  gui.onChange(() => saveLabState(LAB_ID, settings));
+  gui.onChange(() => {
+    saveLabState(LAB_ID, {
+      joystickRadius: settings.joystickRadius,
+      deadZone: settings.deadZone,
+      followSpeed: settings.followSpeed,
+      followArrivalDist: settings.followArrivalDist,
+      showDebugOverlay: settings.showDebugOverlay,
+      actionButtonSize: settings.actionButtonSize,
+      actionButtonPadding: settings.actionButtonPadding,
+      hapticFeedback: settings.hapticFeedback,
+    });
+  });
 
   // --- Hit testing for the action button ---
   function getActionBtnCenter(): { x: number; y: number } {
@@ -482,6 +504,7 @@ function createMobileControlsLab(canvasHost: HTMLElement, controls: HTMLElement)
   }
 
   function renderFrame(): void {
+    settings.moveMode = getGlobalControlsConfig().mobileMoveMode;
     processInput();
 
     ctx.clearRect(0, 0, canvasWidth, canvasHeight);

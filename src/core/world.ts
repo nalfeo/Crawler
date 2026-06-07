@@ -9,6 +9,7 @@ import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
 import type { InventoryBag } from '../shared/inventory.js';
 import type { CombatEvent } from '../shared/combat-events.js';
+import { createLogger } from '../shared/logger.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
   Position,
@@ -42,6 +43,8 @@ import {
   type ComponentStores,
 } from './components.js';
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
+
+const logger = createLogger('core:world');
 
 export interface GameWorld {
   /** The bitecs ECS world instance */
@@ -132,7 +135,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
   wireStore(ecs, Gold, stores.gold);
 
-  return {
+  const world: GameWorld = {
     ecs,
     stores,
     rng: new SeededRandom(options.seed ?? 42),
@@ -155,6 +158,12 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerGold: 0,
     floorMap: null,
   };
+  logger.info('Created game world', {
+    seed: options.seed ?? 42,
+    floor: world.floor,
+    state: world.state,
+  });
+  return world;
 }
 
 // Re-export set for convenience in systems

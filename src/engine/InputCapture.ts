@@ -1,5 +1,13 @@
 import type Phaser from 'phaser';
+import { getGlobalControlsConfig } from './controls-config.js';
 import { normalizeInputDirection, type InputState } from '../shared/input.js';
+import { createLogger } from '../shared/logger.js';
+
+const logger = createLogger('engine:input-capture');
+
+interface InputCaptureOptions {
+  getFollowOrigin?: () => { x: number; y: number } | undefined;
+}
 
 /**
  * Raw DOM keyboard tracker that listens on `window`.
@@ -15,7 +23,10 @@ import { normalizeInputDirection, type InputState } from '../shared/input.js';
  * so developers can test the mobile touch experience on desktop without a
  * touch screen (left-half = move joystick, right-half = action).
  */
-export function createInputCapture(scene: Phaser.Scene): {
+export function createInputCapture(
+  scene: Phaser.Scene,
+  options: InputCaptureOptions = {},
+): {
   /** Read current hardware state into the InputState */
   poll(state: InputState): void;
   destroy(): void;
@@ -26,6 +37,8 @@ export function createInputCapture(scene: Phaser.Scene): {
     { zone: 'move' | 'action'; startX: number; startY: number; x: number; y: number }
   >();
   const JOYSTICK_RADIUS_PX = 60;
+  const FOLLOW_ARRIVAL_DIST_PX = 8;
+  const FOLLOW_MAX_STRENGTH_DIST_PX = 100;
   const touchStartOptions: AddEventListenerOptions = { passive: true };
   const touchMoveOptions: AddEventListenerOptions = { passive: false };
   const touchEndOptions: AddEventListenerOptions = { passive: true };
@@ -35,6 +48,9 @@ export function createInputCapture(scene: Phaser.Scene): {
 
   // Touch target: prefer canvas so lab UI stays interactive
   const touchTarget: EventTarget = scene.game?.canvas ?? window;
+  if (!scene.game?.canvas) {
+    logger.warn('Input capture is using window as touch target (canvas unavailable)');
+  }
 
   const onKeyDown = (e: KeyboardEvent) => {
     keysDown.add(e.code);
@@ -46,6 +62,7 @@ export function createInputCapture(scene: Phaser.Scene): {
   const onBlur = () => {
     keysDown.clear();
     activeTouches.clear();
+    logger.debug('Window blur cleared keyboard and touch state');
   };
 
   const classifyTouchZone = (clientX: number): 'move' | 'action' => {
@@ -72,6 +89,9 @@ export function createInputCapture(scene: Phaser.Scene): {
     for (const touch of e.changedTouches) {
       const state = activeTouches.get(touch.identifier);
       if (!state) {
+        logger.warn('Received touchmove for unknown touch identifier', {
+          identifier: touch.identifier,
+        });
         continue;
       }
 
@@ -158,6 +178,7 @@ export function createInputCapture(scene: Phaser.Scene): {
   touchTarget.addEventListener('pointermove', onPointerMove as EventListener);
   touchTarget.addEventListener('pointerup', onPointerUp as EventListener);
   touchTarget.addEventListener('pointercancel', onPointerCancel as EventListener);
+  logger.info('Input capture listeners attached');
 
   return {
     poll(state: InputState): void {
@@ -173,14 +194,33 @@ export function createInputCapture(scene: Phaser.Scene): {
       let actionTouchPosition: { x: number; y: number } | undefined;
       let hasMoveTouch = false;
       const hasKeyboardInput = keyboardMoveX !== 0 || keyboardMoveY !== 0;
+      const moveMode = getGlobalControlsConfig().mobileMoveMode;
+      const followOrigin =
+        moveMode === 'follow'
+          ? (options.getFollowOrigin?.() ??
+            scene.cameras.main.getWorldPoint(scene.scale.width / 2, scene.scale.height / 2))
+          : undefined;
 
       for (const touch of activeTouches.values()) {
         if (touch.zone === 'move' && !hasMoveTouch) {
-          // First movement touch wins to keep movement stable with accidental multi-touch.
-          const deltaX = touch.x - touch.startX;
-          const deltaY = touch.y - touch.startY;
-          touchMoveX = Math.max(-1, Math.min(1, deltaX / JOYSTICK_RADIUS_PX));
-          touchMoveY = Math.max(-1, Math.min(1, deltaY / JOYSTICK_RADIUS_PX));
+          if (moveMode === 'joystick') {
+            // First movement touch wins to keep movement stable with accidental multi-touch.
+            const deltaX = touch.x - touch.startX;
+            const deltaY = touch.y - touch.startY;
+            touchMoveX = Math.max(-1, Math.min(1, deltaX / JOYSTICK_RADIUS_PX));
+            touchMoveY = Math.max(-1, Math.min(1, deltaY / JOYSTICK_RADIUS_PX));
+          } else if (followOrigin) {
+            const touchPoint = toWorldPoint(touch.x, touch.y);
+            const deltaX = touchPoint.x - followOrigin.x;
+            const deltaY = touchPoint.y - followOrigin.y;
+            const distance = Math.hypot(deltaX, deltaY);
+
+            if (distance >= FOLLOW_ARRIVAL_DIST_PX) {
+              const strength = Math.min(1, distance / FOLLOW_MAX_STRENGTH_DIST_PX);
+              touchMoveX = (deltaX / distance) * strength;
+              touchMoveY = (deltaY / distance) * strength;
+            }
+          }
           hasMoveTouch = true;
         } else if (touch.zone === 'action') {
           touchAction = true;
@@ -226,6 +266,7 @@ export function createInputCapture(scene: Phaser.Scene): {
       touchTarget.removeEventListener('pointercancel', onPointerCancel as EventListener);
       keysDown.clear();
       activeTouches.clear();
+      logger.info('Input capture listeners removed');
     },
   };
 }

@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { pickChosen, type RunSummaryEntry } from '../../../scripts/sprites/run-artifacts.js';
+import {
+  pickChosen,
+  rankCandidates,
+  type RunSummaryEntry,
+} from '../../../scripts/sprites/run-artifacts.js';
 import type { Brief } from '../../../scripts/sprites/brief-schema.js';
+import type { JudgeScorecard } from '../../../scripts/sprites/judge.js';
 
 function makeBrief(overrides: Partial<Brief> = {}): Brief {
   const base: Brief = {
@@ -28,6 +33,9 @@ function makeEntry(overrides: Partial<RunSummaryEntry> = {}): RunSummaryEntry {
     scorecardPath: '/tmp/processed/00.scorecard.json',
     derivedAnchor: null,
     anchorSidecarPath: null,
+    judgeScorecard: null,
+    judgeSkipReason: 'judge-disabled',
+    combinedPassed: true,
     ...overrides,
   };
 }
@@ -77,5 +85,65 @@ describe('pickChosen', () => {
     const result = pickChosen([top, next], brief);
     expect(result?.index).toBe(3);
     expect(result?.anchor).toEqual({ x: 7, y: 14, source: 'derived' });
+  });
+
+  it('mirrors combinedPassed from the top entry onto the chosen candidate', () => {
+    // Sensor-passed but judge ran and failed: combinedPassed=false.
+    const failingJudge: JudgeScorecard = {
+      variantIndex: 0,
+      styleMatch: { score: 5, rationale: 'ok' },
+      briefMatch: { score: 5, rationale: 'ok' },
+      readability: { score: 2, rationale: 'unreadable' },
+      passed: false,
+      minScore: 2,
+      rejectedBy: ['readability'],
+      judgedAt: '2026-06-07T00:00:00.000Z',
+      modelDeployment: 'test',
+      usage: null,
+    };
+    const top = makeEntry({ judgeScorecard: failingJudge, combinedPassed: false });
+    const result = pickChosen([top], makeBrief());
+    expect(result?.passed).toBe(true); // sensor-only
+    expect(result?.combinedPassed).toBe(false); // gate result
+    expect(result?.judgeScorecard).toBe(failingJudge);
+  });
+});
+
+describe('rankCandidates', () => {
+  it('treats sensor-passed but over-cap (judgeScorecard: null) entries as bucket 1', () => {
+    // Regression: prior bucket logic checked `e.judgeScorecard && !e.judgeScorecard.passed`,
+    // which falsely promoted over-cap entries (judgeScorecard: null, combinedPassed: false)
+    // into bucket 0 alongside fully-judged passers. pickChosen could then return
+    // a variant that never went through the judge gate.
+    const judged: JudgeScorecard = {
+      variantIndex: 0,
+      styleMatch: { score: 4, rationale: 'ok' },
+      briefMatch: { score: 4, rationale: 'ok' },
+      readability: { score: 4, rationale: 'ok' },
+      passed: true,
+      minScore: 4,
+      rejectedBy: [],
+      judgedAt: '2026-06-07T00:00:00.000Z',
+      modelDeployment: 'test',
+      usage: null,
+    };
+    const overCap = makeEntry({
+      index: 0,
+      score: 7, // higher sensor score
+      judgeScorecard: null,
+      judgeSkipReason: 'over-cap',
+      combinedPassed: false,
+    });
+    const judgedPasser = makeEntry({
+      index: 1,
+      score: 5, // lower sensor score
+      judgeScorecard: judged,
+      judgeSkipReason: null,
+      combinedPassed: true,
+    });
+    const ranked = rankCandidates([overCap, judgedPasser]);
+    // The combined-passer must come first, despite its lower sensor score.
+    expect(ranked.map((e) => e.index)).toEqual([1, 0]);
+    expect(pickChosen(ranked, makeBrief())?.combinedPassed).toBe(true);
   });
 });

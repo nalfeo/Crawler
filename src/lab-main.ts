@@ -7,7 +7,6 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'collision-lab': '/src/labs/collision-lab/index.ts',
   'damage-lab': '/src/labs/damage-lab/index.ts',
   'health-lab': '/src/labs/health-lab/index.ts',
-  'hello-world': '/src/labs/hello-world/index.ts',
   'movement-lab': '/src/labs/movement-lab/index.ts',
   'playerinput-lab': '/src/labs/playerinput-lab/index.ts',
   'projectilecleanup-lab': '/src/labs/projectilecleanup-lab/index.ts',
@@ -30,6 +29,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'gore-lab': '/src/labs/gore-lab/index.ts',
   'fov-lab': '/src/labs/fov-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
+  'map-gen-lab': '/src/labs/map-gen-lab/index.ts',
 };
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;

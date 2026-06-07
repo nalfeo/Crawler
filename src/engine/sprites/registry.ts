@@ -80,10 +80,25 @@ const KENNEY_TINY_BATTLE = 'kenney-tiny-battle';
 const KENNEY_TINY_SKI = 'kenney-tiny-ski';
 const KENNEY_ROGUELIKE_RPG = 'kenney-roguelike-rpg-pack';
 
+type ImportMetaWithEnv = ImportMeta & { env?: { BASE_URL?: string } };
+const ENV_BASE_PATH = (import.meta as ImportMetaWithEnv).env?.BASE_URL;
+const BROWSER_BASE_PATH =
+  typeof document === 'undefined' ? undefined : new URL('.', document.baseURI).pathname;
+
+function withBasePath(path: string): string {
+  const base = ENV_BASE_PATH ?? BROWSER_BASE_PATH ?? '/';
+  const normalizedPath = path.startsWith('/') ? path.slice(1) : path;
+  if (base === '/') {
+    return `/${normalizedPath}`;
+  }
+  const normalizedBase = base.endsWith('/') ? base : `${base}/`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
 export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
   {
     key: KENNEY_ROGUELIKE_CHARS,
-    path: '/assets/kenney/roguelike-characters/spritesheet.png',
+    path: withBasePath('/assets/kenney/roguelike-characters/spritesheet.png'),
     frameWidth: 16,
     frameHeight: 16,
     margin: 0,
@@ -93,7 +108,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
   },
   {
     key: KENNEY_TINY_DUNGEON,
-    path: '/assets/kenney/tiny-dungeon/spritesheet.png',
+    path: withBasePath('/assets/kenney/tiny-dungeon/spritesheet.png'),
     frameWidth: 16,
     frameHeight: 16,
     margin: 0,
@@ -105,7 +120,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
   },
   {
     key: KENNEY_TINY_TOWN,
-    path: '/assets/kenney/tiny-town/spritesheet.png',
+    path: withBasePath('/assets/kenney/tiny-town/spritesheet.png'),
     frameWidth: 16,
     frameHeight: 16,
     margin: 0,
@@ -117,7 +132,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
   },
   {
     key: KENNEY_TINY_BATTLE,
-    path: '/assets/kenney/tiny-battle/spritesheet.png',
+    path: withBasePath('/assets/kenney/tiny-battle/spritesheet.png'),
     frameWidth: 16,
     frameHeight: 16,
     margin: 0,
@@ -129,7 +144,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
   },
   {
     key: KENNEY_TINY_SKI,
-    path: '/assets/kenney/tiny-ski/spritesheet.png',
+    path: withBasePath('/assets/kenney/tiny-ski/spritesheet.png'),
     frameWidth: 16,
     frameHeight: 16,
     margin: 0,
@@ -139,7 +154,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
   },
   {
     key: KENNEY_ROGUELIKE_RPG,
-    path: '/assets/kenney/roguelike-rpg-pack/spritesheet.png',
+    path: withBasePath('/assets/kenney/roguelike-rpg-pack/spritesheet.png'),
     frameWidth: 16,
     frameHeight: 16,
     margin: 0,

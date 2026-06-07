@@ -50,6 +50,7 @@ const SWORD_BRIEF: Brief = {
   sensors: {},
   variations: [],
   minVariations: 4,
+  judge: { enabled: false, maxVariants: 16 },
 };
 
 function runAllSensors(

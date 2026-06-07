@@ -12,8 +12,12 @@
 
 import { AzureOpenAIImageProvider } from './azure-openai.js';
 import { AzureOpenAIChatProvider } from './azure-chat.js';
+import { AzureOpenAISynthProvider } from './azure-chat-synth.js';
+import { AzureOpenAIVisionProvider } from './azure-vision.js';
 import type { ImageProvider } from './types.js';
 import type { TextProvider } from './text-types.js';
+import type { SynthProvider } from './synth-types.js';
+import type { VisionProvider } from './vision-types.js';
 
 export interface CreateProviderOptions {
   /**
@@ -65,6 +69,33 @@ export function createTextProvider(options: CreateProviderOptions = {}): TextPro
   );
 }
 
+/**
+ * Build a {@link VisionProvider} for the local-only VLM judge.
+ *
+ * Returns `null` when no vision deployment is configured. Unlike the
+ * text provider, the orchestrator does NOT silently degrade when the
+ * judge is requested but unavailable — it throws. That decision lives
+ * in `generate-one.ts` so the factory stays a thin wiring layer; here
+ * we just answer "is a vision provider available right now?".
+ *
+ * Sprite-judge calls hit a separate vision-capable Azure deployment
+ * (`AZURE_OPENAI_VISION_DEPLOYMENT`) which may not be provisioned on
+ * every developer machine. Returning null lets callers that don't need
+ * the judge (most briefs default to `judge.enabled: false`) skip the
+ * check entirely.
+ */
+export function createVisionProvider(options: CreateProviderOptions = {}): VisionProvider | null {
+  const env = options.env ?? process.env;
+  const which = (env.SPRITES_VISION_PROVIDER ?? 'azure-openai').toLowerCase();
+  if (which === 'none') return null;
+  if (which === 'azure-openai') {
+    return createAzureVisionProvider(env, options.fetch);
+  }
+  throw new Error(
+    `Unknown SPRITES_VISION_PROVIDER '${which}'. Supported values: azure-openai, none.`,
+  );
+}
+
 function createAzureProvider(
   env: Readonly<Record<string, string | undefined>>,
   fetchImpl?: typeof fetch,
@@ -95,6 +126,59 @@ function createAzureChatProvider(
   if (!endpoint || !apiKey) return null;
   const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
   return new AzureOpenAIChatProvider({
+    endpoint,
+    deployment,
+    apiKey,
+    apiVersion,
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+/**
+ * Build a {@link SynthProvider} for brief synthesis. Unlike the
+ * variation-expansion text provider this one THROWS when the chat
+ * deployment is missing — synthesis is the entire point of the
+ * `sprites:synth` command, so a missing deployment is a configuration
+ * error the user must fix, not a graceful-degrade scenario.
+ */
+export function createSynthProvider(options: CreateProviderOptions = {}): SynthProvider {
+  const env = options.env ?? process.env;
+  const which = (
+    env.SPRITES_SYNTH_PROVIDER ??
+    env.SPRITES_TEXT_PROVIDER ??
+    'azure-openai'
+  ).toLowerCase();
+  if (which !== 'azure-openai') {
+    throw new Error(`Unknown SPRITES_SYNTH_PROVIDER '${which}'. Supported values: azure-openai.`);
+  }
+  const endpoint = required(env, 'AZURE_OPENAI_ENDPOINT');
+  const apiKey = required(env, 'AZURE_OPENAI_API_KEY');
+  const deployment = required(env, 'AZURE_OPENAI_CHAT_DEPLOYMENT');
+  const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
+  return new AzureOpenAISynthProvider({
+    endpoint,
+    deployment,
+    apiKey,
+    apiVersion,
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+}
+
+function createAzureVisionProvider(
+  env: Readonly<Record<string, string | undefined>>,
+  fetchImpl?: typeof fetch,
+): VisionProvider | null {
+  // Vision deployment is the gate: if the user hasn't named one, the
+  // judge is unavailable. Endpoint/key check matches the chat provider —
+  // we don't want to throw at factory time just because someone is
+  // running a brief that doesn't even use the judge.
+  const deployment = env.AZURE_OPENAI_VISION_DEPLOYMENT;
+  if (!deployment) return null;
+  const endpoint = env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = env.AZURE_OPENAI_API_KEY;
+  if (!endpoint || !apiKey) return null;
+  const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
+  return new AzureOpenAIVisionProvider({
     endpoint,
     deployment,
     apiKey,

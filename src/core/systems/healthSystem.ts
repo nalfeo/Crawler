@@ -2,6 +2,9 @@ import { hasComponent, query, removeEntity } from 'bitecs';
 import { DeathTimer, Enemy, Health, Player } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
+import { createLogger } from '../../shared/logger.js';
+
+const logger = createLogger('core:health-system');
 
 export function healthSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Health]);
@@ -22,6 +25,11 @@ export function healthSystem(world: GameWorld): void {
 
       if (hasComponent(world.ecs, eid, Player)) {
         world.state = 'game_over';
+        logger.warn('Player health reached zero; transitioning to game_over', {
+          eid,
+          frameCount: world.frameCount,
+          elapsedMs: world.elapsedMs,
+        });
       } else {
         // Drops are handled by dropSystem which runs before healthSystem.
         // We only handle entity cleanup here.
@@ -31,6 +39,7 @@ export function healthSystem(world: GameWorld): void {
 
         clearEntityStores(world, eid);
         removeEntity(world.ecs, eid);
+        logger.debug('Removed dead entity', { eid, frameCount: world.frameCount });
       }
     }
   }
