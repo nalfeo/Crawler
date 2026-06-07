@@ -172,6 +172,7 @@ describe('generateOne + VLM judge (integration)', () => {
   });
 
   const fixedClock = () => new Date('2026-06-05T12:00:00.000Z');
+  const nonCiJudgeEnv: NodeJS.ProcessEnv = {};
 
   it('judges only sensor-passing variants and picks the highest judge minScore', async () => {
     setupBrief('  enabled: true\n  maxVariants: 16');
@@ -197,6 +198,7 @@ describe('generateOne + VLM judge (integration)', () => {
       preloaded,
       provider: makeMockProvider(sheet),
       visionProvider,
+      judgeEnv: nonCiJudgeEnv,
       repoRoot: root,
       outputRoot,
       now: fixedClock,
@@ -292,6 +294,7 @@ describe('generateOne + VLM judge (integration)', () => {
       preloaded,
       provider: makeMockProvider(sheet),
       visionProvider,
+      judgeEnv: nonCiJudgeEnv,
       repoRoot: root,
       outputRoot,
       now: fixedClock,

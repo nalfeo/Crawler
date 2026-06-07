@@ -113,6 +113,8 @@ export interface GenerateOneOptions {
   readonly maxAttempts?: number;
   /** Clock injection for deterministic tests. */
   readonly now?: () => Date;
+  /** Optional env override passed through to the VLM judge. */
+  readonly judgeEnv?: NodeJS.ProcessEnv;
   /** Reference PNG loader injection; defaults to `fs.readFileSync`. */
   readonly readReference?: (absolutePath: string) => Buffer;
   /** Optional brief override (avoid re-loading from disk in tests). */
@@ -319,6 +321,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         brief,
         styleGuide,
         provider: visionProvider,
+        ...(options.judgeEnv ? { env: options.judgeEnv } : {}),
         variantIndex: e.index,
         processedDir: paths.processedDir,
         variantPath: e.processedPath,

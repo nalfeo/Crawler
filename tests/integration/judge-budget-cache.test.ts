@@ -179,6 +179,7 @@ function setupHarness(): Harness {
 }
 
 const fixedClock = () => new Date('2026-06-05T12:00:00.000Z');
+const nonCiJudgeEnv: NodeJS.ProcessEnv = {};
 
 describe('generateOne + JudgeBudget (integration)', () => {
   let harness: Harness;
@@ -209,6 +210,7 @@ describe('generateOne + JudgeBudget (integration)', () => {
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
       visionProvider: provider,
+      judgeEnv: nonCiJudgeEnv,
       judgeBudget: budget,
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
@@ -247,6 +249,7 @@ describe('generateOne + JudgeBudget (integration)', () => {
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
       visionProvider: provider,
+      judgeEnv: nonCiJudgeEnv,
       judgeBudget: budget,
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
@@ -281,6 +284,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
       visionProvider: run1.provider,
+      judgeEnv: nonCiJudgeEnv,
       judgeCache: cache,
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
@@ -296,6 +300,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
       visionProvider: run2.provider,
+      judgeEnv: nonCiJudgeEnv,
       judgeCache: cache,
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
@@ -334,6 +339,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
       visionProvider: seedProv.provider,
+      judgeEnv: nonCiJudgeEnv,
       judgeBudget: seedBudget,
       judgeCache: cache,
       repoRoot: harness.root,
@@ -356,6 +362,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
       visionProvider: replay.provider,
+      judgeEnv: nonCiJudgeEnv,
       judgeBudget: zeroBudget,
       judgeCache: cache,
       repoRoot: harness.root,
