@@ -17,6 +17,9 @@ import {
   type LootTable,
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
+import { createLogger } from '../../shared/logger.js';
+
+const logger = createLogger('core:drop-system');
 
 /**
  * Resolve which loot tables apply for a given enemy.
@@ -55,6 +58,13 @@ function getProcessedDeaths(world: GameWorld): Set<number> {
 }
 
 function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): void {
+  logger.debug('Spawning drops', {
+    dropCount: drops.length,
+    x,
+    y,
+    frameCount: world.frameCount,
+  });
+
   for (const drop of drops) {
     // Scatter drops slightly around the death position
     const offsetX = (world.rng.next() - 0.5) * 20;
@@ -101,7 +111,13 @@ export function dropSystem(world: GameWorld): void {
 
     const currentHealth = health.current[eid] ?? 0;
     if (currentHealth > 0) continue;
-    if (processed.has(eid)) continue;
+    if (processed.has(eid)) {
+      logger.warn('Skipping duplicate death processing for enemy in same frame', {
+        eid,
+        frameCount: world.frameCount,
+      });
+      continue;
+    }
 
     processed.add(eid);
 
@@ -123,6 +139,13 @@ export function dropSystem(world: GameWorld): void {
     );
     const drops = rollLootTable(entries, world.rng);
     spawnDrops(world, x, y, drops);
+    logger.info('Processed enemy death drops', {
+      eid,
+      x,
+      y,
+      dropCount: drops.length,
+      floor: world.floor,
+    });
 
     // Emit death combat event for gore VFX
     world.combatEvents.push({

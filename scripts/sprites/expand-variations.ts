@@ -24,6 +24,9 @@
 import type { Brief } from './brief-schema.js';
 import type { TextProvider } from './provider/text-types.js';
 import { TextProviderError } from './provider/text-types.js';
+import { createLogger } from '../../src/shared/logger.js';
+
+const logger = createLogger('infra:expand-variations');
 
 export interface ExpandVariationsOptions {
   readonly brief: Brief;
@@ -34,7 +37,7 @@ export interface ExpandVariationsOptions {
    */
   readonly provider: TextProvider | null;
   /**
-   * Warning sink. Defaults to `console.warn`. Tests inject a buffer so
+   * Warning sink. Defaults to logger.warn. Tests inject a buffer so
    * they can assert on the warnings without polluting stderr.
    */
   readonly warn?: (message: string) => void;
@@ -63,7 +66,7 @@ export async function expandVariations(
   options: ExpandVariationsOptions,
 ): Promise<ExpandVariationsResult> {
   const { brief, provider } = options;
-  const warn = options.warn ?? ((m) => console.warn(m));
+  const warn = options.warn ?? logger.warn.bind(logger);
   const seed: ReadonlyArray<string> = brief.variations;
 
   if (brief.minVariations === 0) {

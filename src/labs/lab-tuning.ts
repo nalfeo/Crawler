@@ -17,6 +17,10 @@
  *   saveTuning('weapons.json', 'baseDamage', 20, 'sword');
  */
 
+import { createLogger } from '../shared/logger.js';
+
+const logger = createLogger('labs:tuning');
+
 export interface SaveResult {
   ok: boolean;
   error?: string;
@@ -115,9 +119,9 @@ export function addSaveButton(
       const { file, values, id } = getValues();
       const result = await saveTuningBatch(file, values, id);
       if (result.ok) {
-        console.log(`[lab-tuning] Saved to ${file}`, values);
+        logger.info('Saved tuning values', { file, values });
       } else {
-        console.error(`[lab-tuning] Save failed:`, result.error);
+        logger.error('Failed to save tuning values', { file, error: result.error });
       }
     },
   };
