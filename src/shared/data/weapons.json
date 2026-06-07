@@ -133,8 +133,8 @@
     "cooldownMs": 350,
     "range": 150,
     "projectileSpeed": 7.0,
-    "returnSpeed": 5.0,
-    "maxRange": 150,
+    "returnSpeed": 0,
+    "maxRange": 0,
     "knockback": 0,
     "pierce": 0
   },

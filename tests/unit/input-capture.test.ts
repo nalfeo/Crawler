@@ -166,6 +166,7 @@ function dispatchCanvasPointer(
 
 describe('InputCapture (raw DOM)', () => {
   let createInputCapture: typeof import('../../src/engine/InputCapture.js').createInputCapture;
+  let setGlobalControlsConfig: typeof import('../../src/engine/controls-config.js').setGlobalControlsConfig;
   let capture: ReturnType<typeof createInputCapture>;
   let state: InputState;
 
@@ -173,7 +174,10 @@ describe('InputCapture (raw DOM)', () => {
     // Dynamic import AFTER window mock is installed
     vi.resetModules();
     const mod = await import('../../src/engine/InputCapture.js');
+    const controlsConfig = await import('../../src/engine/controls-config.js');
     createInputCapture = mod.createInputCapture;
+    setGlobalControlsConfig = controlsConfig.setGlobalControlsConfig;
+    setGlobalControlsConfig({ mobileMoveMode: 'joystick' });
     capture = createInputCapture(createMockScene());
     state = createInputState();
   });
@@ -305,6 +309,55 @@ describe('InputCapture (raw DOM)', () => {
     expect(state.moveY).toBe(0);
 
     endTouch(1, 160, 200);
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+  });
+
+  it('follow mode moves toward touch from the provided origin', () => {
+    capture.destroy();
+    setGlobalControlsConfig({ mobileMoveMode: 'follow' });
+    capture = createInputCapture(createMockScene(), {
+      getFollowOrigin: () => ({ x: 100, y: 200 }),
+    });
+
+    startTouch(1, 100, 200);
+    moveTouch(1, 160, 200);
+
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+    expect(state.moveY).toBe(0);
+  });
+
+  it('follow mode supports vertical and diagonal movement', () => {
+    capture.destroy();
+    setGlobalControlsConfig({ mobileMoveMode: 'follow' });
+    capture = createInputCapture(createMockScene(), {
+      getFollowOrigin: () => ({ x: 100, y: 200 }),
+    });
+
+    startTouch(1, 100, 200);
+    moveTouch(1, 100, 260);
+    capture.poll(state);
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBeGreaterThan(0);
+
+    moveTouch(1, 160, 260);
+    capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
+    expect(state.moveY).toBeGreaterThan(0);
+  });
+
+  it('follow mode stops inside arrival threshold', () => {
+    capture.destroy();
+    setGlobalControlsConfig({ mobileMoveMode: 'follow' });
+    capture = createInputCapture(createMockScene(), {
+      getFollowOrigin: () => ({ x: 100, y: 200 }),
+    });
+
+    startTouch(1, 100, 200);
+    moveTouch(1, 105, 203);
+
     capture.poll(state);
     expect(state.moveX).toBe(0);
     expect(state.moveY).toBe(0);

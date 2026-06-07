@@ -28,6 +28,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private inputCapture?: ReturnType<typeof createInputCapture>;
 
+  private playerEid = -1;
+
   private world!: GameWorld;
 
   private previousWorldState: GameWorld['state'] | null = null;
@@ -51,13 +53,21 @@ export class MainGameScene extends Phaser.Scene {
   create(): void {
     this.world = createGameWorld();
     this.inputState = createInputState();
-    this.inputCapture = createInputCapture(this);
+    this.inputCapture = createInputCapture(this, {
+      getFollowOrigin: () =>
+        this.playerEid < 0
+          ? undefined
+          : {
+              x: this.world.stores.position.x[this.playerEid] ?? 0,
+              y: this.world.stores.position.y[this.playerEid] ?? 0,
+            },
+    });
     this.accumulator = 0;
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
     this.warnedMissingDependencies = false;
 
-    spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+    this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     logger.info('Main game scene created', {
       state: this.world.state,
       injectedSystems: this.extraSystems.length,
