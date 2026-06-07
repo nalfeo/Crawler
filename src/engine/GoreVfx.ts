@@ -11,12 +11,12 @@ import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from '../core/world.js';
 
-const PARTICLE_LIFETIME_MS = 400;
-const HIT_BASE_PARTICLES = 3;
-const DEATH_BASE_PARTICLES = 12;
-const PARTICLE_SPEED = 80;
+const PARTICLE_LIFETIME_MS = 500;
+const HIT_BASE_PARTICLES = 4;
+const DEATH_BASE_PARTICLES = 16;
+const PARTICLE_SPEED = 120;
 const PARTICLE_SIZE_MIN = 2;
-const PARTICLE_SIZE_MAX = 5;
+const PARTICLE_SIZE_MAX = 6;
 const BLOOD_COLORS = [0xcc0000, 0xaa0000, 0x880000, 0x660000, 0x990000];
 
 interface GoreParticle {
@@ -96,15 +96,34 @@ export function createGoreVfx(
     const count = Math.round(HIT_BASE_PARTICLES * goreFactor * (event.amount / 10));
     const particleCount = Math.max(1, Math.min(count, 8));
 
-    // Spray in a random direction (no source info on hit events)
-    const angle = vfxRandom() * Math.PI * 2;
+    // Compute direction: blood sprays AWAY from the source
+    let dirX: number;
+    let dirY: number;
+    if (
+      event.sourceX !== undefined &&
+      event.sourceY !== undefined &&
+      (Math.abs(event.x - event.sourceX) > 0.01 || Math.abs(event.y - event.sourceY) > 0.01)
+    ) {
+      // Direction from source to target (blood goes same way the force travels)
+      const dx = event.x - event.sourceX;
+      const dy = event.y - event.sourceY;
+      const dist = Math.hypot(dx, dy);
+      dirX = dx / dist;
+      dirY = dy / dist;
+    } else {
+      // Fallback: random direction when no source info
+      const angle = vfxRandom() * Math.PI * 2;
+      dirX = Math.cos(angle);
+      dirY = Math.sin(angle);
+    }
+
     spawnParticles(
       event.x,
       event.y,
       particleCount,
-      Math.cos(angle),
-      Math.sin(angle),
-      Math.PI * 0.6,
+      dirX,
+      dirY,
+      Math.PI * 1.0,
       renderElapsedMs,
     );
   }
@@ -114,9 +133,24 @@ export function createGoreVfx(
     const overkillMult = 1 + Math.min(overkill / 20, 3);
     const count = Math.round(DEATH_BASE_PARTICLES * overkillMult);
 
-    const dirX = event.knockbackDirX ?? 0;
-    const dirY = event.knockbackDirY ?? 0;
-    const hasDir = Math.abs(dirX) + Math.abs(dirY) > 0.01;
+    // Prefer explicit knockback direction, fall back to source→target direction
+    let dirX = event.knockbackDirX ?? 0;
+    let dirY = event.knockbackDirY ?? 0;
+    let hasDir = Math.abs(dirX) + Math.abs(dirY) > 0.01;
+
+    if (
+      !hasDir &&
+      event.sourceX !== undefined &&
+      event.sourceY !== undefined &&
+      (Math.abs(event.x - event.sourceX) > 0.01 || Math.abs(event.y - event.sourceY) > 0.01)
+    ) {
+      const dx = event.x - event.sourceX;
+      const dy = event.y - event.sourceY;
+      const dist = Math.hypot(dx, dy);
+      dirX = dx / dist;
+      dirY = dy / dist;
+      hasDir = true;
+    }
 
     spawnParticles(
       event.x,
@@ -124,7 +158,7 @@ export function createGoreVfx(
       count,
       hasDir ? dirX : 0,
       hasDir ? dirY : -1,
-      hasDir ? Math.PI * 0.8 : Math.PI * 2,
+      hasDir ? Math.PI * 1.2 : Math.PI * 2,
       renderElapsedMs,
     );
   }

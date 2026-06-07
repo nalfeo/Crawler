@@ -118,6 +118,9 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       amount,
       world.stores.position.x[enemy] ?? 0,
       world.stores.position.y[enemy] ?? 0,
+      undefined,
+      world.stores.position.x[projectile] ?? 0,
+      world.stores.position.y[projectile] ?? 0,
     );
 
     // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
@@ -167,6 +170,9 @@ function applyPlayerEnemyHit(
     amount,
     world.stores.position.x[player] ?? 0,
     world.stores.position.y[player] ?? 0,
+    undefined,
+    world.stores.position.x[enemy] ?? 0,
+    world.stores.position.y[enemy] ?? 0,
   );
   hitTimestamps[player] = world.elapsedMs;
 }
@@ -198,6 +204,9 @@ function applyEnemyProjectileHit(
     amount,
     world.stores.position.x[player] ?? 0,
     world.stores.position.y[player] ?? 0,
+    undefined,
+    world.stores.position.x[projectile] ?? 0,
+    world.stores.position.y[projectile] ?? 0,
   );
   hitTimestamps[player] = world.elapsedMs;
 

@@ -23,4 +23,7 @@ export interface CombatEvent {
   knockbackDirY?: number;
   /** Weapon gore factor 0..1 from the weapon that dealt the blow (hit events). */
   weaponGoreFactor?: number;
+  /** Source position of the damage (attacker/projectile). Used for directional gore on hits. */
+  sourceX?: number;
+  sourceY?: number;
 }
