@@ -4,6 +4,7 @@ import { Health, Player, Position, XpGem } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { healthSystem } from '../../src/core/systems/healthSystem.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
+import { deathTimerSystem } from '../../src/core/systems/deathTimerSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('healthSystem', () => {
@@ -17,13 +18,21 @@ describe('healthSystem', () => {
     expect(world.state).toBe('playing');
   });
 
-  it('removes entities with health at or below zero', () => {
+  it('removes entities with health at or below zero (after death timer expires)', () => {
     const world = createTestWorld();
     const eid = spawnEnemy(world, 100, 200, 25);
 
     setComponent(world.ecs, eid, Health, { current: 0, max: 25 });
     dropSystem(world);
     healthSystem(world);
+
+    // Entity has DeathTimer now — healthSystem skips it
+    expect(entityExists(world.ecs, eid)).toBe(true);
+
+    // Run deathTimerSystem enough frames to expire the 300ms timer (~18 frames at 16.67ms)
+    for (let i = 0; i < 20; i++) {
+      deathTimerSystem(world);
+    }
 
     expect(entityExists(world.ecs, eid)).toBe(false);
   });

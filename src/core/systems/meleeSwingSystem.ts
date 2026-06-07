@@ -170,7 +170,7 @@ export function meleeSwingSystem(world: GameWorld): void {
       }
 
       if (hitDamage > 0) {
-        applyDamage(world, target, hitDamage, tx, ty);
+        applyDamage(world, target, hitDamage, tx, ty, undefined, px, py);
         hitSet.add(target);
 
         // Apply knockback as smooth impulse via Knockback component

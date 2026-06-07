@@ -36,6 +36,7 @@ import {
   MeleeSwing,
   Knockback,
   DoorState,
+  DeathTimer,
   BaseStats,
   EffectiveStats,
   Gold,
@@ -136,6 +137,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, MeleeSwing, stores.meleeSwing);
   wireStore(ecs, Knockback, stores.knockback);
   wireStore(ecs, DoorState, stores.doorState);
+  wireStore(ecs, DeathTimer, stores.deathTimer);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
   wireStore(ecs, Gold, stores.gold);

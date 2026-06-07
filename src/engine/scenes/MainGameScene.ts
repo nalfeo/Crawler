@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   createGameWorld,
+  deathTimerSystem,
   dropSystem,
   healthSystem,
   movementSystem,
@@ -118,7 +119,9 @@ export class MainGameScene extends Phaser.Scene {
 
       playerInputSystem(this.world, this.inputState);
       movementSystem(this.world);
+      // Keep drop/death-timer/health order so death linger + knockback are visible.
       dropSystem(this.world);
+      deathTimerSystem(this.world);
       healthSystem(this.world);
       projectileCleanupSystem(this.world);
       for (const sys of this.extraSystems) {
