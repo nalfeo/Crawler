@@ -68,6 +68,7 @@ describe('abilitySystem', () => {
   it('triggers active ability when conditions match and enforces cooldown', () => {
     const { world, player } = setupPlayer();
     equipActiveAbility(world, player, 'battle-focus');
+    const state = world.abilityStatesByEntity.get(player)!;
 
     queueAbilityTrigger(world, {
       holderEid: player,
@@ -101,6 +102,7 @@ describe('abilitySystem', () => {
     );
     expect(world.statModifiers.length).toBe(beforeSecond);
     expect(afterSecond).toHaveLength(1);
+    expect(state.cooldownByAbilityId.get('battle-focus')).toBe(100);
 
     queueAbilityTrigger(world, {
       holderEid: player,
@@ -117,6 +119,7 @@ describe('abilitySystem', () => {
     );
     expect(world.statModifiers.length).toBe(beforeThird);
     expect(afterThird).toHaveLength(1);
+    expect(state.cooldownByAbilityId.get('battle-focus')).toBe(131);
   });
 
   it('clears ability trigger events after processing', () => {

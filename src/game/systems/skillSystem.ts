@@ -1,4 +1,5 @@
 import type { GameWorld } from '../../core/world.js';
+import type { StatKey } from '../../shared/stats.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
@@ -41,13 +42,17 @@ export function skillSystem(world: GameWorld): void {
 
       state.level = nextLevel;
       world.statsDirty = true;
+      const sourceId =
+        event.holderEid === undefined
+          ? `${def.id}:level:${nextLevel}`
+          : `${def.id}:level:${nextLevel}:${event.holderEid}`;
 
       for (const [statKey, bonus] of Object.entries(def.perLevelBonus)) {
         if (bonus === undefined || bonus === 0) continue;
         addStatModifier(world, {
           sourceType: 'skill',
-          sourceId: `${def.id}:level:${nextLevel}`,
-          stat: statKey as import('../../shared/stats.js').StatKey,
+          sourceId,
+          stat: statKey as StatKey,
           op: 'add',
           value: bonus,
         });
@@ -58,7 +63,7 @@ export function skillSystem(world: GameWorld): void {
         !state.triggeredMilestones.has(state.level)
       ) {
         state.triggeredMilestones.add(state.level);
-        applyMilestone(world, def.id, state.level);
+        applyMilestone(world, def.id, state.level, event.holderEid);
       }
     }
   }
@@ -66,7 +71,7 @@ export function skillSystem(world: GameWorld): void {
   events.length = 0;
 }
 
-function applyMilestone(world: GameWorld, skillId: string, level: number): void {
+function applyMilestone(world: GameWorld, skillId: string, level: number, holderEid?: number): void {
   const def = getSkillDefinition(skillId);
   if (def === undefined) return;
 
@@ -75,7 +80,10 @@ function applyMilestone(world: GameWorld, skillId: string, level: number): void 
 
   applyCatalogEffect(world, {
     sourceType: 'skill',
-    sourceId: `${skillId}:milestone:${level}`,
+    sourceId:
+      holderEid === undefined
+        ? `${skillId}:milestone:${level}`
+        : `${skillId}:milestone:${level}:${holderEid}`,
     effect: milestone.effect,
   });
 }

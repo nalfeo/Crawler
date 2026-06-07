@@ -199,5 +199,27 @@ describe('skillSystem', () => {
     });
     skillSystem(world);
     expect(state.level).toBe(1);
+    expect(
+      world.statModifiers.some((m) => m.sourceId === `swordsmanship:level:1:${player}`),
+    ).toBe(true);
+  });
+
+  it('keys holder milestone modifiers by holder eid', () => {
+    const { world, player } = setupPlayerWithSkill();
+    const state = world.playerSkills.get('swordsmanship')!;
+    state.level = 0;
+    state.usage = 0;
+
+    world.skillUsageEvents.push({
+      holderEid: player,
+      skillId: 'swordsmanship',
+      metric: 'hits_landed',
+      amount: 100,
+    });
+    skillSystem(world);
+
+    expect(world.statModifiers.some((m) => m.sourceId === `swordsmanship:milestone:5:${player}`)).toBe(
+      true,
+    );
   });
 });

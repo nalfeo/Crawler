@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SKILL_HARD_CAP } from '../../shared/skills.js';
+import { STAT_KEYS } from '../../shared/stats.js';
 import type { SkillDefinition } from './types.js';
 
 const skillMilestoneLevelSchema = z.union([
@@ -9,16 +10,7 @@ const skillMilestoneLevelSchema = z.union([
   z.literal(20),
 ]);
 
-const statKeySchema = z.enum([
-  'maxHp',
-  'moveSpeed',
-  'damage',
-  'armor',
-  'attackSpeed',
-  'pickupRange',
-  'projectileCount',
-  'projectileSpeed',
-]);
+const statKeySchema = z.enum(STAT_KEYS);
 
 const milestoneEffectSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('stat_add'), stat: statKeySchema, value: z.number() }).strict(),
