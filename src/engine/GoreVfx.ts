@@ -117,15 +117,7 @@ export function createGoreVfx(
       dirY = Math.sin(angle);
     }
 
-    spawnParticles(
-      event.x,
-      event.y,
-      particleCount,
-      dirX,
-      dirY,
-      Math.PI * 1.0,
-      renderElapsedMs,
-    );
+    spawnParticles(event.x, event.y, particleCount, dirX, dirY, Math.PI * 1.0, renderElapsedMs);
   }
 
   function handleDeathEvent(event: CombatEvent, renderElapsedMs: number): void {
