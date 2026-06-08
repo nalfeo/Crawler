@@ -118,8 +118,21 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
       }
-      const json = JSON.parse(readFileSync(summaryPath, 'utf8'));
-      return json;
+      let raw: string;
+      try {
+        raw = readFileSync(summaryPath, 'utf8');
+      } catch {
+        // TOCTOU: summary may have been deleted between existsSync and readFileSync.
+        reply.code(404);
+        return { error: 'run-not-found', briefId, runId };
+      }
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // Corrupt or mid-write JSON (e.g. concurrent sprites:run).
+        reply.code(500);
+        return { error: 'summary-invalid', briefId, runId };
+      }
     },
   );
 
