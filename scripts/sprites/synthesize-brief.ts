@@ -34,7 +34,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 
@@ -65,6 +65,13 @@ const MAX_REFS_PER_CANDIDATE = 3;
 const MIN_SEEDS_PER_CANDIDATE = 3;
 const MAX_SEEDS_PER_CANDIDATE = 5;
 const MIN_TYPE_CONFIDENCE = 0.9;
+/**
+ * Schema default for `minVariations` (see `briefSchema` in
+ * `brief-schema.ts`). Used as the fallback when a sprite-type defaults
+ * file doesn't override it. Kept in sync with the Zod default by hand;
+ * the schema is the source of truth.
+ */
+const DEFAULT_MIN_VARIATIONS = 4;
 
 export interface SynthesizeBriefOptions {
   /** Subject name. Will be normalised to kebab-case. */
@@ -117,6 +124,14 @@ export interface SynthesizeBriefOptions {
    * sink; production uses real `fs`.
    */
   readonly fsWrites?: FsWriteHooks;
+  /**
+   * Optional override for resolving a sprite type's `minVariations`
+   * default. Production reads `data/sprite-types/<type>.json` from
+   * `repoRoot`; tests inject a literal map so they stay hermetic.
+   * Returning `null` means "no override" and the schema default of
+   * `${DEFAULT_MIN_VARIATIONS}` is used.
+   */
+  readonly loadMinVariations?: (type: SpriteType) => number | null;
 }
 
 export interface FsWriteHooks {
@@ -217,11 +232,15 @@ export async function synthesizeBrief(
     defaultFileExistsAtSynthesisTime;
 
   const callerType = options.type ?? null;
+  const loadMinVariations = options.loadMinVariations ?? defaultLoadMinVariations(options.repoRoot);
+  const { effectiveMinSeeds, effectiveMaxSeeds } = resolveSeedBounds(callerType, loadMinVariations);
   const request = {
     name,
     type: callerType,
     candidates: requested,
     referenceCatalog: catalog,
+    effectiveMinSeeds,
+    effectiveMaxSeeds,
   } as const;
 
   const promptHash = hashPrompt(buildSystemPrompt(request), buildUserPrompt(request), catalog);
@@ -230,8 +249,29 @@ export async function synthesizeBrief(
 
   const type = resolveType(callerType, response);
 
+  // If the caller didn't supply a type, the up-front seed bounds were
+  // computed across ALL sprite types (we conservatively pick the max).
+  // Now that we know the actual inferred type, re-derive the bounds so
+  // validation reports the right range in error messages and so a
+  // candidate that satisfies the inferred type's needs isn't rejected
+  // because some OTHER type happens to want even more seeds.
+  const finalBounds =
+    callerType === null
+      ? resolveSeedBoundsForType(type, loadMinVariations)
+      : { effectiveMinSeeds, effectiveMaxSeeds };
+
   const evaluated = response.candidates.map((c, i) =>
-    evaluateCandidate(c, i + 1, catalog, options.repoRoot, name, type, referenceFileExists),
+    evaluateCandidate(
+      c,
+      i + 1,
+      catalog,
+      options.repoRoot,
+      name,
+      type,
+      referenceFileExists,
+      finalBounds.effectiveMinSeeds,
+      finalBounds.effectiveMaxSeeds,
+    ),
   );
 
   const accepted = evaluated.filter(
@@ -380,6 +420,8 @@ function evaluateCandidate(
   name: string,
   type: SpriteType,
   fileExists: (absolutePath: string) => boolean,
+  effectiveMinSeeds: number,
+  effectiveMaxSeeds: number,
 ): EvaluatedCandidate {
   // Banned-adjective check is the cheapest and the most reliably wrong
   // signal: fail fast.
@@ -402,13 +444,14 @@ function evaluateCandidate(
     );
   }
   if (
-    source.embellishmentSeeds.length < MIN_SEEDS_PER_CANDIDATE ||
-    source.embellishmentSeeds.length > MAX_SEEDS_PER_CANDIDATE
+    source.embellishmentSeeds.length < effectiveMinSeeds ||
+    source.embellishmentSeeds.length > effectiveMaxSeeds
   ) {
     return reject(
       index,
-      `embellishmentSeeds must be ${MIN_SEEDS_PER_CANDIDATE}-${MAX_SEEDS_PER_CANDIDATE} ` +
-        `entries, got ${source.embellishmentSeeds.length}.`,
+      `embellishmentSeeds must be ${effectiveMinSeeds}-${effectiveMaxSeeds} ` +
+        `entries (sprite-type '${type}' wants at least ${effectiveMinSeeds}), ` +
+        `got ${source.embellishmentSeeds.length}.`,
     );
   }
   const seenIds = new Set<string>();
@@ -527,6 +570,92 @@ function defaultFileExistsAtSynthesisTime(absolutePath: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Resolve the effective `embellishmentSeeds` window for a single
+ * sprite type. The lower bound is `max(MIN_SEEDS_PER_CANDIDATE,
+ * type.minVariations)` so synth never produces fewer seeds than the
+ * downstream expander expects from the brief schema. The upper bound
+ * grows to match if the type wants more than the static cap; otherwise
+ * the static cap holds. (No type ships with minVariations > 5 today,
+ * but the schema allows up to 20.)
+ */
+function resolveSeedBoundsForType(
+  type: SpriteType,
+  loadMinVariations: (type: SpriteType) => number | null,
+): { effectiveMinSeeds: number; effectiveMaxSeeds: number } {
+  // `null` means "no override on disk", so fall back to the schema's
+  // own default. An explicit `0` (the "stay strictly canonical" opt-out
+  // — see `brief-schema.ts`) is honoured: it can never push the synth
+  // lower bound below MIN_SEEDS_PER_CANDIDATE because of the max() guard,
+  // but we don't want it to bump the bound up to the schema default
+  // either.
+  const raw = loadMinVariations(type);
+  const wanted = raw ?? DEFAULT_MIN_VARIATIONS;
+  const min = Math.max(MIN_SEEDS_PER_CANDIDATE, wanted);
+  const max = Math.max(MAX_SEEDS_PER_CANDIDATE, min);
+  return { effectiveMinSeeds: min, effectiveMaxSeeds: max };
+}
+
+/**
+ * Resolve the seed window used to prompt the model. When the caller
+ * supplied a type we use that type's bounds. When the caller did NOT
+ * supply a type (classification mode) we pick the widest min across
+ * all sprite types so the response is guaranteed to satisfy whichever
+ * type the model ends up inferring. The bounds are recomputed against
+ * the actual inferred type at validation time.
+ */
+function resolveSeedBounds(
+  callerType: SpriteType | null,
+  loadMinVariations: (type: SpriteType) => number | null,
+): { effectiveMinSeeds: number; effectiveMaxSeeds: number } {
+  if (callerType !== null) {
+    return resolveSeedBoundsForType(callerType, loadMinVariations);
+  }
+  let min = MIN_SEEDS_PER_CANDIDATE;
+  let max = MAX_SEEDS_PER_CANDIDATE;
+  for (const t of SPRITE_TYPES) {
+    const bounds = resolveSeedBoundsForType(t, loadMinVariations);
+    if (bounds.effectiveMinSeeds > min) min = bounds.effectiveMinSeeds;
+    if (bounds.effectiveMaxSeeds > max) max = bounds.effectiveMaxSeeds;
+  }
+  return { effectiveMinSeeds: min, effectiveMaxSeeds: max };
+}
+
+/**
+ * Default loader that reads `data/sprite-types/<type>.json` from the
+ * repo root and returns the `minVariations` field, or `null` when the
+ * file is missing or the field is unset. Caller maps `null` to the
+ * schema default of {@link DEFAULT_MIN_VARIATIONS}.
+ */
+function defaultLoadMinVariations(repoRoot: string): (type: SpriteType) => number | null {
+  return (type) => {
+    const defaultsPath = path.join(repoRoot, 'data', 'sprite-types', `${type}.json`);
+    let raw: string;
+    try {
+      raw = readFileSync(defaultsPath, 'utf8');
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') return null;
+      // Other read failures should not abort synthesis — log via the
+      // returned null and let the schema default take over. Synthesis
+      // is local-only and cheap to retry; a noisy throw here would be
+      // worse than silent fallback for a sprite-type that exists on
+      // disk but has a transient read error.
+      return null;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    const v = (parsed as Record<string, unknown>).minVariations;
+    if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) return null;
+    return v;
+  };
 }
 
 /** Re-exported for the CLI so it can print the canonical sprite type list. */

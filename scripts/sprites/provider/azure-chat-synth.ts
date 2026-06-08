@@ -160,7 +160,7 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
     '',
     'Aim for visibly distinct candidates. Each candidate should differ in silhouette, proportion, and on-theme detail from the others — not just colour swaps. For weapons, the default orientation is vertical with the grip at the bottom.',
     '',
-    'Each candidate also picks 2-3 reference spritesheets from the catalog below, by id (use ids from the catalog exactly; do not invent paths), with a one-sentence note for each saying why it grounds that particular candidate. And 3-5 short, discrete embellishment ideas (4-12 words each, no compound "and" entries), which the downstream variation expander will build on. And one sentence of rationale describing how this candidate differs from the others.',
+    `Each candidate also picks 2-3 reference spritesheets from the catalog below, by id (use ids from the catalog exactly; do not invent paths), with a one-sentence note for each saying why it grounds that particular candidate. And ${request.effectiveMinSeeds}-${request.effectiveMaxSeeds} short, discrete embellishment ideas (4-12 words each, no compound "and" entries), which the downstream variation expander will build on. And one sentence of rationale describing how this candidate differs from the others.`,
     '',
     `Allowed sprite types: ${SPRITE_TYPES.join(', ')}.`,
     '',
