@@ -16,7 +16,7 @@ session added a real workflow so the check can be re-enabled.
   footer line length since handoff and ADR bodies legitimately wrap past
   100 cols.
 - `.github/workflows/commit-lint.yml` (new) — runs on `pull_request:
-  [opened, synchronize, reopened, edited]`. Validates the PR's commit
+[opened, synchronize, reopened, edited]`. Validates the PR's commit
   range (`base.sha..head.sha`).
 - `package.json` / `package-lock.json` — added `@commitlint/cli` and
   `@commitlint/config-conventional` as devDependencies.
