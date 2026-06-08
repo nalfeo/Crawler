@@ -13,6 +13,9 @@ declare -A SHARED_LAB_MAP=(
   [aoeonimpact]="weapons-lab"
   [areadamage]="weapons-lab"
   [returningprojectile]="weapons-lab"
+  # DeathTimer is post-death cleanup (counts down before removeEntity),
+  # exercised through the health-lab death-flow scenarios.
+  [deathtimer]="health-lab"
 )
 
 echo "🔬 Lab Gate Check: Verifying every system has a lab..."
