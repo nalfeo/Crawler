@@ -1,0 +1,69 @@
+id: rat-themed-dungeon-floor
+title: Rat Themed Dungeon Floor
+summary: >
+  Art breakdown for a sewer-like floor where all enemies, props, and terrain
+  cues are rat-themed. Use this plan to track which requirements are still on
+  placeholders versus represented with shipped sprite assets.
+assets:
+  - id: rat-junk-critters
+    type: enemy
+    label: Rat Junk Critters
+    brief: >
+      Tiny trash-rummaging rat swarmlings that read as low-threat ambient mobs.
+      Silhouette should prioritize speed and numbers over detail.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.rat-junk-critters
+
+  - id: rat-bruiser
+    type: enemy
+    label: Rat Bruiser
+    brief: >
+      Mid-sized sewer enforcer rat with patchwork armor and a heavy rusted
+      improvised weapon. Should read as frontline melee pressure.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.rat-bruiser
+
+  - id: rat-man-mage
+    type: enemy
+    label: Rat Man Mage
+    brief: >
+      Upright rat cultist caster in tattered robes with a glowing scrap-focus.
+      Distinct silhouette from bruiser to improve threat readability.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.rat-man-mage
+
+  - id: rat-king
+    type: enemy
+    label: Rat King Boss
+    brief: >
+      Boss-scale rat monarch wrapped in cables, debris crown, and stitched
+      cloak. Should be readable as a floor boss at a glance.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.rat-king
+
+  - id: sewer-grate-floor-tile
+    type: tile
+    label: Sewer Grate Floor Tile
+    brief: >
+      Grimy floor tile variant with rusted grates and damp stains for the rat
+      biome. Keep contrast friendly for combat readability.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: tile.sewer-grate-floor
+
+  - id: rat-nest-props
+    type: item
+    label: Rat Nest Prop Cluster
+    brief: >
+      Prop cluster of bones, cloth scraps, and junk piles used as set dressing
+      around spawns and choke points.
+    placeholderInUse: true
