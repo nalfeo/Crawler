@@ -84,7 +84,7 @@ jobs:
           DEPLOY_ENV: beta
           BUILD_OUTDIR: staging/beta
 
-      - name: Guard - beta must NOT include lab.html
+      - name: Guard - beta must NOT include lab.html or devtools.html
         run: |
           if [ -f staging/beta/lab.html ]; then
             echo "::error::Beta build contains lab.html - lab leakage!"

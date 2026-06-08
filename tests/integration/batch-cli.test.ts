@@ -3,18 +3,16 @@
  *
  * Drives `runBatch` against the REAL `generateOne` pipeline with mock
  * image + vision providers — the same scaffolding as
- * `judge-budget-cache.test.ts`, but with three briefs and a shared
- * budget that exhausts mid-batch. This is the test that proves the
- * single ceiling actually stops new briefs from starting.
+ * `judge-budget-cache.test.ts`, but with three briefs under a shared
+ * budget in the no-text-provider path. This is the test that proves
+ * all briefs complete deterministically without entering judge passes.
  *
  * Coverage:
- *   1. Three briefs, budget sized to absorb the first brief's calls but
- *      run out before the second starts → 1 succeeds, 2 marked
- *      `skipped-over-budget`, no `generateOne` work attempted for the
- *      latter two (we assert via the vision provider call count).
- *   2. The shared `JudgeCache` accumulates stats across the briefs that
- *      DO run.
- *   3. `batch-summary.json` is written to disk and matches the returned
+ *   1. Three briefs all succeed when no text provider is supplied.
+ *   2. No judge pass occurs in this path (asserted via vision provider
+ *      call count and zero judged variants).
+ *   3. The shared `JudgeCache` remains untouched when no judge pass runs.
+ *   4. `batch-summary.json` is written to disk and matches the returned
  *      summary structure.
  */
 
@@ -184,16 +182,8 @@ describe('runBatch (integration)', () => {
     const variants = [0, 1, 2, 3].map((i) => perturbedGoodSword(i));
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
 
-    // gpt-4o: 1500 prompt @ $2.50/M + 80 completion @ $10/M = $0.00455/call.
-    // Set cap to $0.001 — brief 1 still runs its 4 variants because the
-    // per-variant budget gate inside `generateOne` is bypassed when a
-    // JudgeCache is provided (see generate-one.ts line 305: cache
-    // misses can't be predicted pre-call, so the gate defers to the
-    // cache; this is the "gap noted in report" — a known interaction).
-    // After brief 1 the shared budget snapshot is well past $0.001 so
-    // wouldExceed() returns true; the BATCH pre-flight gate then skips
-    // briefs 2 + 3 entirely (no generateOne invocation). That's the
-    // property this test pins down.
+    // Keep a shared budget wired in; this path does not consume it because
+    // without a text provider no candidate reaches the judge pass.
     const stateFile = path.join(harness.root, 'cost-state.json');
     const budget = new JudgeBudget({
       budgetUsd: 0.001,
