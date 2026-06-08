@@ -236,11 +236,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       this.accumulator = 0;
       this.respawnTimer = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
-      spawnPlayer(
-        this.world,
-        this.getSimWidth() / 2,
-        this.getSimHeight() / 2 + 60,
-      );
+      spawnPlayer(this.world, this.getSimWidth() / 2, this.getSimHeight() / 2 + 60);
       this.spawnTargetEnemy();
       this.applyActiveWeapon();
       this.bridge?.sync(this.world);

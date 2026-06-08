@@ -213,6 +213,7 @@ describe('generateOne + JudgeBudget (integration)', () => {
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
       now: fixedClock,
+      env: {},
     });
 
     // First variant judged, the next three skipped over-budget.
@@ -251,6 +252,7 @@ describe('generateOne + JudgeBudget (integration)', () => {
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
       now: fixedClock,
+      env: {},
     });
 
     expect(callCount()).toBe(4);
@@ -285,6 +287,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
       now: fixedClock,
+      env: {},
     });
     expect(run1.callCount()).toBe(4);
     expect(result1.summary.judgeCache).toEqual({ hits: 0, misses: 4, bypassed: 0 });
@@ -300,6 +303,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
       now: fixedClock,
+      env: {},
     });
     expect(run2.callCount()).toBe(0);
     // The cache instance was reused, so its stats accumulate across runs.
@@ -339,6 +343,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
       now: fixedClock,
+      env: {},
     });
     expect(seedProv.callCount()).toBe(4);
 
@@ -361,6 +366,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       repoRoot: harness.root,
       outputRoot: harness.outputRoot,
       now: fixedClock,
+      env: {},
     });
     expect(replay.callCount()).toBe(0);
     expect(result.summary.judgeBudget!.spentUsd).toBe(0);
