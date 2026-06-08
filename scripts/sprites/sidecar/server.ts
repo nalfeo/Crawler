@@ -136,7 +136,21 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
-      if (!existsSync(target) || !statSync(target).isFile()) {
+      if (!existsSync(target)) {
+        reply.code(404);
+        return { error: 'file-not-found', filename };
+      }
+      // Single statSync after existsSync, then catch ENOENT racing the
+      // existsSync->statSync window. Belt-and-braces against TOCTOU when
+      // a run is mid-write or being cleaned up.
+      let stat;
+      try {
+        stat = statSync(target);
+      } catch {
+        reply.code(404);
+        return { error: 'file-not-found', filename };
+      }
+      if (!stat.isFile()) {
         reply.code(404);
         return { error: 'file-not-found', filename };
       }

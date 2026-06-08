@@ -3,9 +3,11 @@
  *
  * Spawns two foreground child processes — the read-only sidecar and the
  * Vite lab dev server — and forwards SIGINT/SIGTERM to both so Ctrl-C
- * tears down the whole stack cleanly. The launcher itself exits as soon
- * as either child exits, on the assumption that "one half is dead" is a
- * useless state for review.
+ * tears down the whole stack cleanly. When either child exits the
+ * launcher initiates shutdown of the other child, then exits itself
+ * after the remaining child closes (or after a 4-second hard fallback
+ * if it ignores SIGINT) — "one half is dead" is a useless state for
+ * review.
  *
  * Intentionally avoids `concurrently` / `npm-run-all` — they obscure
  * child PIDs and signal forwarding gets flaky on Windows. Vanilla
