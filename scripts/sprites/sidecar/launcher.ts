@@ -62,6 +62,11 @@ function runLauncher(): void {
   function shutdown(reason: string, exitCode: number): void {
     if (shuttingDown) return;
     shuttingDown = true;
+    // Record the intended status immediately so that if both children
+    // exit cleanly before the 4s hard-fallback timer fires, Node's
+    // natural exit still surfaces the correct code (`.unref()` on the
+    // timer otherwise lets the process exit 0 and lose this signal).
+    process.exitCode = exitCode;
     process.stdout.write(`\n[launcher] ${reason} — stopping children…\n`);
     for (const child of children) {
       if (child.exitCode == null && !child.killed) {

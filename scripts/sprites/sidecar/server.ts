@@ -87,7 +87,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     if (req.method === 'OPTIONS') {
       reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
       reply.header('Access-Control-Allow-Headers', 'Content-Type');
-      reply.code(204).send();
+      // `return reply` short-circuits Fastify routing after the preflight
+      // is sent so the request can't fall through to a route handler and
+      // trigger a "Reply already sent" warning.
+      return reply.code(204).send();
     }
   });
 
