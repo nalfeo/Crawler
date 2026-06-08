@@ -1,6 +1,6 @@
 import { query, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Enemy, Gold, Health, Position, XpGem } from '../../src/core/components.js';
+import { DeathTimer, Enemy, Gold, Health, Position, XpGem } from '../../src/core/components.js';
 import { spawnEnemy } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -87,5 +87,22 @@ describe('dropSystem', () => {
     const run1 = runDrop(42);
     const run2 = runDrop(42);
     expect(run1).toEqual(run2);
+  });
+
+  it('can suppress loot while preserving death linger timing', () => {
+    const world = createTestWorld();
+    spawnEnemy(world, 100, 200, 10);
+
+    const enemies = query(world.ecs, [Enemy]);
+    const eid = enemies[0] as number;
+    setComponent(world.ecs, eid, Health, { current: 0, max: 10 });
+
+    dropSystem(world, { spawnLoot: false, deathLingerMs: 900 });
+
+    expect(query(world.ecs, [XpGem]).length).toBe(0);
+    expect(query(world.ecs, [Gold]).length).toBe(0);
+    expect(world.stores.deathTimer.remainingMs[eid]).toBe(900);
+    expect(query(world.ecs, [DeathTimer])).toContain(eid);
+    expect(world.combatEvents.filter((event) => event.type === 'death')).toHaveLength(1);
   });
 });

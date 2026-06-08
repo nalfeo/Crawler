@@ -3,6 +3,7 @@ import type Phaser from 'phaser';
 import {
   AoeOnImpact,
   AreaDamage,
+  DeathTimer,
   Enemy,
   EnemyProjectile,
   LineDamage,
@@ -32,6 +33,8 @@ const TEX_MELEE = '__cw_melee';
 const TEX_TRAP_ARMED = '__cw_trap_armed';
 const TEX_TRAP_ARMING = '__cw_trap_arming';
 const TEX_EXPLOSION = '__cw_explosion';
+const TEX_DEAD_SKULL = '__cw_dead_skull';
+const DEAD_SKULL_Y_OFFSET = 18;
 const logger = createLogger('engine:phaser-bridge');
 
 function generateTextures(scene: Phaser.Scene): void {
@@ -132,6 +135,20 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0xffaa00, 0.2);
   g.fillCircle(32, 32, 20);
   g.generateTexture(TEX_EXPLOSION, 66, 66);
+
+  // Dead marker — simple skull icon for corpse linger window
+  g.clear();
+  g.fillStyle(0xf8fafc, 0.95);
+  g.fillCircle(8, 7, 5);
+  g.fillRect(4, 9, 8, 5);
+  g.fillRect(6, 14, 1, 2);
+  g.fillRect(8, 14, 1, 2);
+  g.fillRect(10, 14, 1, 2);
+  g.fillStyle(0x0b1020, 1);
+  g.fillCircle(6, 6, 1);
+  g.fillCircle(10, 6, 1);
+  g.fillRect(7, 9, 2, 1);
+  g.generateTexture(TEX_DEAD_SKULL, 16, 16);
 
   g.destroy();
   logger.info('Generated procedural fallback textures');
@@ -246,6 +263,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   generateTextures(scene);
 
   const visuals = new Map<number, EntityVisual>();
+  const deathMarkers = new Map<number, Phaser.GameObjects.Image>();
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
@@ -452,6 +470,20 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         img.setVisible(true);
         img.setPosition(x, y);
 
+        const isDeadEnemy = entityType === 'enemy' && hasComponent(world.ecs, eid, DeathTimer);
+        let deathMarker = deathMarkers.get(eid);
+        if (isDeadEnemy) {
+          if (!deathMarker) {
+            deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, TEX_DEAD_SKULL);
+            deathMarkers.set(eid, deathMarker);
+          }
+          deathMarker.setVisible(true);
+          deathMarker.setPosition(x, y - DEAD_SKULL_Y_OFFSET);
+          deathMarker.setAlpha(0.95);
+        } else if (deathMarker) {
+          deathMarker.setVisible(false);
+        }
+
         // Per-type updates
         switch (entityType) {
           case 'proj':
@@ -596,6 +628,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visuals.delete(eid);
       }
 
+      for (const [eid, marker] of deathMarkers) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        marker.destroy();
+        deathMarkers.delete(eid);
+      }
+
       for (const [eid, bg] of beamGraphics) {
         if (activeEntities.has(eid)) {
           continue;
@@ -622,6 +662,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
       }
       visuals.clear();
+
+      for (const marker of deathMarkers.values()) {
+        marker.destroy();
+      }
+      deathMarkers.clear();
 
       for (const bg of beamGraphics.values()) {
         bg.destroy();
