@@ -470,8 +470,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         img.setVisible(true);
         img.setPosition(x, y);
 
-        const isDeadEnemy =
-          entityType === 'enemy' && hasComponent(world.ecs, eid, Enemy) && hasComponent(world.ecs, eid, DeathTimer);
+        const isDeadEnemy = entityType === 'enemy' && hasComponent(world.ecs, eid, DeathTimer);
         let deathMarker = deathMarkers.get(eid);
         if (isDeadEnemy) {
           if (!deathMarker) {
