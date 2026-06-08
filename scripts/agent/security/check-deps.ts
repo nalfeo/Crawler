@@ -21,7 +21,15 @@ interface PackageJson {
 }
 
 // Trusted scopes / unscoped first-party Node ecosystem packages.
-const TRUSTED_SCOPES = ['@types/', '@typescript-eslint/', '@eslint/', '@vitejs/', '@vitest/'];
+const TRUSTED_SCOPES = [
+  '@types/',
+  '@typescript-eslint/',
+  '@eslint/',
+  '@vitejs/',
+  '@vitest/',
+  '@commitlint/',
+  '@fastify/',
+];
 
 const TRUSTED_PACKAGES = new Set<string>([
   // Game runtime
@@ -44,6 +52,7 @@ const TRUSTED_PACKAGES = new Set<string>([
   'pngjs',
   'yaml',
   'zod',
+  'fastify',
 ]);
 
 function isTrusted(name: string): boolean {
