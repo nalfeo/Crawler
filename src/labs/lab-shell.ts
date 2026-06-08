@@ -81,10 +81,7 @@ export function shouldAllowViewportPreset(): boolean {
   return window.matchMedia(DESKTOP_POINTER_QUERY).matches;
 }
 
-export function setControlsCollapsedState(
-  elements: LabShellElements,
-  collapsed: boolean,
-): void {
+export function setControlsCollapsedState(elements: LabShellElements, collapsed: boolean): void {
   elements.controlsPanel.classList.toggle(CONTROLS_COLLAPSED_CLASS, collapsed);
   elements.controlsToggle.classList.toggle(CONTROLS_COLLAPSED_CLASS, collapsed);
   elements.controlsToggle.setAttribute('aria-expanded', String(!collapsed));
