@@ -23,7 +23,7 @@ All steps must pass. No `continue-on-error`.
 - Integration tests
 - Security audit
 
-All steps use `continue-on-error: true`. Reports status but never blocks merge.
+Job-level `continue-on-error: true` keeps individual step failures visible in the checks UI while ensuring the job as a whole is non-blocking for merge.
 
 ### `merge-gate` (Single status check)
 - Depends on `ci` and `commit-lint` jobs
