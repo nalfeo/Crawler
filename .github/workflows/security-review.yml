@@ -1,0 +1,89 @@
+name: Security Review Loop
+
+on:
+  schedule:
+    # Daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  security-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUTOMATION_REPORT_DIR: ${{ github.workspace }}/.automation-reports
+      AUTOMATION_TITLE: 'security-review: scheduled report'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare report directory
+        run: mkdir -p "$AUTOMATION_REPORT_DIR"
+
+      # On PR runs these checks are blocking (no continue-on-error). On
+      # scheduled runs we collect everything and file an issue instead, so
+      # we use a single `fail-fast: false` matrix-like pattern: we always run
+      # each step and only fail the job at the end on PRs.
+      - name: npm audit
+        id: audit
+        run: npm audit --audit-level=high
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+      - name: Scan for committed secrets
+        id: secrets
+        run: bash scripts/agent/security/scan-secrets.sh
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+      - name: CODEOWNERS coverage
+        id: owners
+        run: npx tsx scripts/agent/security/check-codeowners.ts
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+      - name: Dependency allowlist
+        id: deps
+        run: npx tsx scripts/agent/security/check-deps.ts
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+      - name: Dynamic-execution patterns
+        id: dynamic
+        run: bash scripts/agent/security/check-dynamic-patterns.sh
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+      - name: AI prompt-injection scan
+        id: aiprompts
+        run: npx tsx scripts/agent/security/check-ai-prompts.ts
+        continue-on-error: ${{ github.event_name != 'pull_request' }}
+
+      - name: Aggregate report
+        id: aggregate
+        if: github.event_name != 'pull_request'
+        run: |
+          set +e
+          npx tsx scripts/agent/shared/aggregate-report.ts > report.md
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      - name: File tracking issue
+        if: github.event_name != 'pull_request' && steps.aggregate.outputs.exitcode != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "security-review: $(date -u +%Y-%m-%d) findings" \
+            --label automation,security \
+            --body-file report.md
