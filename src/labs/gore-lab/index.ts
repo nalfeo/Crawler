@@ -37,6 +37,7 @@ interface GoreLabSettings {
   intensity: number;
   hitGoreEnabled: boolean;
   enemyHp: number;
+  corpseLingerMs: number;
   respawnDelayMs: number;
   activeWeapon: string;
 }
@@ -53,6 +54,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     intensity: 1.0,
     hitGoreEnabled: true,
     enemyHp: 30,
+    corpseLingerMs: 1000,
     respawnDelayMs: 1000,
     activeWeapon: WEAPON_IDS[0] ?? 'sword',
   };
@@ -159,7 +161,10 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
           const collision = collisionSystem(this.world);
           damageSystem(this.world, collision);
 
-          dropSystem(this.world);
+          dropSystem(this.world, {
+            spawnLoot: false,
+            deathLingerMs: settings.corpseLingerMs,
+          });
           knockbackSystem(this.world);
           deathTimerSystem(this.world);
           healthSystem(this.world);
@@ -272,6 +277,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
   gui.add(settings, 'intensity', 0, 3, 0.1).name('Gore Intensity');
   gui.add(settings, 'hitGoreEnabled').name('Hit Gore');
   gui.add(settings, 'enemyHp', 5, 200, 1).name('Enemy HP');
+  gui.add(settings, 'corpseLingerMs', 100, 3000, 50).name('Corpse Linger (ms)');
   gui.add(settings, 'respawnDelayMs', 200, 5000, 100).name('Respawn Delay (ms)');
 
   const getSize = () => ({
@@ -281,7 +287,8 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
   const initialSize = getSize();
   const config: Phaser.Types.Core.GameConfig = {
-    type: Phaser.AUTO,
+    // Canvas renderer is more reliable in embedded side-panel browsers.
+    type: Phaser.CANVAS,
     parent: gameHost,
     width: initialSize.width,
     height: initialSize.height,

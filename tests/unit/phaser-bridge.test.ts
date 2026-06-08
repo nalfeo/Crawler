@@ -1,7 +1,7 @@
 import { addComponent, addEntity, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
-import { Player, Position, Sprite } from '../../src/core/components.js';
+import { DeathTimer, Enemy, Player, Position, Sprite } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
@@ -184,5 +184,36 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toBe('kenney-roguelike-characters');
     expect(images[0]?.frame).toBe(0); // player at (0, 0)
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
+  });
+
+  it('adds a skull marker above enemies during their death linger window', () => {
+    const { scene, images } = createSceneStub();
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 12, y: 34 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 300 }));
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    expect(images[1]).toMatchObject({
+      x: 12,
+      y: 16,
+      textureKey: '__cw_dead_skull',
+      destroyed: false,
+    });
+
+    removeEntity(world.ecs, eid);
+    bridge.sync(world);
+
+    expect(images[0]?.destroyed).toBe(true);
+    expect(images[1]?.destroyed).toBe(true);
   });
 });
