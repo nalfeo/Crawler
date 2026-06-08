@@ -1,0 +1,159 @@
+/**
+ * Generated sprite asset registry — engine-portable contract for the
+ * approved-sprite manifest produced by the sprite-generation pipeline.
+ *
+ * The pipeline writes `public/assets/generated/manifest.json` whose schema
+ * is owned by `scripts/sprites/approve.ts`. This module is the
+ * engine-facing mirror: it parses the manifest, validates it, and exposes
+ * a `lookup(briefId)` registry that game/engine code can consult to find
+ * a generated sprite without touching files or Phaser directly.
+ *
+ * Layer rule: lives in `src/shared/` so engine and any future game-layer
+ * consumer can import the types without pulling in Phaser. Phaser-side
+ * loader glue lives in `src/engine/generatedAssets/`.
+ */
+import { z } from 'zod';
+
+/**
+ * Default anchor used when a manifest entry's `anchor` is `null` — i.e.
+ * anchor derivation failed during approval but the variant shipped anyway.
+ * Sprite center for the canonical 16×16 frame. Consumers that know the
+ * sprite is hand-held should prefer `DEFAULT_HANDHELD_SPRITE_ANCHOR` from
+ * `sprite-anchor.ts` (bottom-center). This default is the safer fallback
+ * for arbitrary item icons.
+ */
+export const DEFAULT_GENERATED_ANCHOR: { readonly x: number; readonly y: number } = Object.freeze({
+  x: 8,
+  y: 8,
+});
+
+const anchorSchema = z
+  .object({
+    x: z.number().int(),
+    y: z.number().int(),
+    source: z.enum(['derived', 'brief']),
+  })
+  .strict();
+
+/**
+ * Manifest entry schema. Mirrors `ManifestEntry` from
+ * `scripts/sprites/approve.ts`. Kept loose (`.passthrough()`) on unknown
+ * fields so adding fields on the approve side does not require a coordinated
+ * engine update.
+ */
+export const manifestEntrySchema = z
+  .object({
+    briefId: z.string().min(1),
+    spriteName: z.string().min(1),
+    /** Path relative to `public/assets/`, forward-slashed. */
+    assetPath: z.string().min(1),
+    approvedAt: z.string().min(1),
+    sourceRun: z.string().min(1),
+    variantIndex: z.number().int().min(0),
+    anchor: anchorSchema.nullable(),
+    sensorScore: z.string().min(1),
+    judgeScore: z.string().nullable(),
+  })
+  .passthrough();
+
+export const GENERATED_MANIFEST_VERSION = 1 as const;
+
+export const generatedManifestSchema = z
+  .object({
+    version: z.literal(GENERATED_MANIFEST_VERSION),
+    entries: z.record(z.string(), manifestEntrySchema),
+  })
+  .strict();
+
+export type ManifestEntry = z.infer<typeof manifestEntrySchema>;
+export type GeneratedManifest = z.infer<typeof generatedManifestSchema>;
+
+/**
+ * Engine-facing view of one manifest entry. Resolves the anchor against
+ * `DEFAULT_GENERATED_ANCHOR` when the manifest has none, and exposes the
+ * Phaser texture key the loader should use (== `spriteName` by contract).
+ */
+export interface GeneratedSpriteEntry {
+  readonly briefId: string;
+  /** Phaser texture key. Same as the manifest `spriteName`. */
+  readonly textureKey: string;
+  /** `public/`-relative asset path, forward-slashed. */
+  readonly assetPath: string;
+  readonly anchor: { readonly x: number; readonly y: number };
+  /** True when the original manifest entry's anchor was null. */
+  readonly anchorIsDefault: boolean;
+  readonly approvedAt: string;
+  readonly sourceRun: string;
+  readonly variantIndex: number;
+  readonly sensorScore: string;
+  readonly judgeScore: string | null;
+}
+
+/** Engine-portable lookup view over a parsed manifest. */
+export interface GeneratedSpriteRegistry {
+  readonly version: typeof GENERATED_MANIFEST_VERSION;
+  lookup(briefId: string): GeneratedSpriteEntry | null;
+  entries(): readonly GeneratedSpriteEntry[];
+  has(briefId: string): boolean;
+  readonly size: number;
+}
+
+/**
+ * Parse + validate a raw manifest payload. Throws ZodError on malformed
+ * input. Callers that want soft-fail behaviour should catch and fall back
+ * to an empty registry — see `tryLoadGeneratedManifest`.
+ */
+export function parseGeneratedManifest(raw: unknown): GeneratedManifest {
+  return generatedManifestSchema.parse(raw);
+}
+
+/**
+ * Build a registry over an already-parsed manifest. Pure: no IO, no
+ * globals; safe to call from any layer.
+ */
+export function loadGeneratedManifest(manifest: GeneratedManifest): GeneratedSpriteRegistry {
+  const resolved = new Map<string, GeneratedSpriteEntry>();
+  for (const [briefId, entry] of Object.entries(manifest.entries)) {
+    // Trust the manifest's own briefId field over the map key when they
+    // disagree — the writer (approve.ts) computes both from the same source.
+    const key = entry.briefId || briefId;
+    resolved.set(key, toRegistryEntry(entry));
+  }
+  return {
+    version: GENERATED_MANIFEST_VERSION,
+    size: resolved.size,
+    has: (briefId) => resolved.has(briefId),
+    lookup: (briefId) => resolved.get(briefId) ?? null,
+    entries: () => Array.from(resolved.values()),
+  };
+}
+
+/**
+ * Convenience: parse-then-load. Throws on malformed input.
+ */
+export function buildGeneratedSpriteRegistry(raw: unknown): GeneratedSpriteRegistry {
+  return loadGeneratedManifest(parseGeneratedManifest(raw));
+}
+
+/** Empty registry — handy for tests and the "manifest missing" boot path. */
+export function emptyGeneratedSpriteRegistry(): GeneratedSpriteRegistry {
+  return loadGeneratedManifest({ version: GENERATED_MANIFEST_VERSION, entries: {} });
+}
+
+function toRegistryEntry(entry: ManifestEntry): GeneratedSpriteEntry {
+  const anchor = entry.anchor
+    ? { x: entry.anchor.x, y: entry.anchor.y }
+    : { ...DEFAULT_GENERATED_ANCHOR };
+  return {
+    briefId: entry.briefId,
+    textureKey: entry.spriteName,
+    assetPath: entry.assetPath,
+    anchor,
+    anchorIsDefault: entry.anchor === null,
+    approvedAt: entry.approvedAt,
+    sourceRun: entry.sourceRun,
+    variantIndex: entry.variantIndex,
+    sensorScore: entry.sensorScore,
+    judgeScore: entry.judgeScore,
+  };
+}

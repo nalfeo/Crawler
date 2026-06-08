@@ -20,6 +20,11 @@ import {
   type SortField,
 } from '../shared/inventory.js';
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
+import {
+  emptyGeneratedSpriteRegistry,
+  type GeneratedSpriteRegistry,
+} from '../shared/generated-assets.js';
+import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -95,6 +100,18 @@ export function createInventoryUI(
   let currentSortBy: SortField = 'rarity';
   const tabPrefs: TabPreferences = createTabPreferences();
   let playerEid = -1;
+
+  /**
+   * Resolve the generated sprite registry on demand. The boot scene sets
+   * it before MainGameScene starts; reading it lazily makes the UI robust
+   * to construction in tests where the boot scene never ran.
+   */
+  const getGeneratedRegistry = (): GeneratedSpriteRegistry => {
+    const registry = scene.game?.registry?.get(GENERATED_SPRITE_REGISTRY_KEY) as
+      | GeneratedSpriteRegistry
+      | undefined;
+    return registry ?? emptyGeneratedSpriteRegistry();
+  };
 
   // Container for the entire UI
   const container = scene.add.container(0, 0);
@@ -364,13 +381,32 @@ export function createInventoryUI(
         clearTooltip();
       });
 
-      // Item icon placeholder (first 2 chars of name)
-      const iconText = crispText(cellX, cellY - 6, def.name.substring(0, 2).toUpperCase(), {
-        fontFamily: FONT_FAMILY,
-        fontSize: '16px',
-        color: `#${rarityColor.toString(16).padStart(6, '0')}`,
-      });
-      iconText.setOrigin(0.5, 0.5);
+      // Item icon: prefer the approved generated sprite when the item's
+      // id matches a manifest entry's briefId and Phaser has loaded the
+      // texture. Falls back to the 2-character placeholder otherwise.
+      const generatedEntry = getGeneratedRegistry().lookup(def.id);
+      const generatedTextureLoaded =
+        generatedEntry !== null && scene.textures?.exists(generatedEntry.textureKey) === true;
+
+      let iconObject: Phaser.GameObjects.GameObject;
+      if (generatedEntry && generatedTextureLoaded) {
+        // Sprites are 16x16; scale to fit ~75% of the cell so the rarity
+        // border stays visible around the edges.
+        const iconScale = Math.max(1, Math.round((CELL_SIZE * 0.75) / 16));
+        const iconImage = scene.add.image(cellX, cellY - 6, generatedEntry.textureKey);
+        iconImage.setOrigin(0.5, 0.5);
+        iconImage.setScale(iconScale);
+        iconObject = iconImage;
+      } else {
+        // Item icon placeholder (first 2 chars of name)
+        const iconText = crispText(cellX, cellY - 6, def.name.substring(0, 2).toUpperCase(), {
+          fontFamily: FONT_FAMILY,
+          fontSize: '16px',
+          color: `#${rarityColor.toString(16).padStart(6, '0')}`,
+        });
+        iconText.setOrigin(0.5, 0.5);
+        iconObject = iconText;
+      }
 
       // Stack count
       if (slot.quantity > 1) {
@@ -390,8 +426,8 @@ export function createInventoryUI(
       }
 
       container.add(cellBg);
-      container.add(iconText);
-      cellObjects.push(cellBg, iconText);
+      container.add(iconObject);
+      cellObjects.push(cellBg, iconObject);
     }
 
     // Item count footer
