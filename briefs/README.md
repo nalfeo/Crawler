@@ -7,6 +7,16 @@ the pipeline; everything downstream — prompt construction, provider call,
 slicing, post-processing, sensor scoring, selection — is determined by the
 brief.
 
+For cross-asset planning (for example, a full floor theme like "rat-themed
+dungeon"), use art-plan files under `plans/floor-art/*.art.yaml` and run:
+
+```bash
+npm run sprites:asset-plan -- --plan plans/floor-art/rat-themed-dungeon-floor.art.yaml
+```
+
+The tracker reports per-asset lifecycle status (planned, brief-ready,
+approved, integrated) and unresolved placeholders.
+
 ## Minimal shape
 
 Authors only need three fields:

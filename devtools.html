@@ -18,16 +18,18 @@
       }
       #devtools-root {
         min-height: 100svh;
-        display: grid;
-        place-items: center;
+        display: block;
         padding: 24px;
       }
       .panel {
-        width: min(720px, 100%);
+        width: min(1400px, 100%);
         background: #0f172a;
         border: 1px solid rgba(229, 231, 235, 0.2);
         border-radius: 12px;
         padding: 20px;
+      }
+      .devtools-shell {
+        margin: 0 auto;
       }
       h1 {
         font-size: 1.25rem;
@@ -35,6 +37,24 @@
       }
       p {
         line-height: 1.5;
+      }
+      .asset-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .asset-table th,
+      .asset-table td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(229, 231, 235, 0.1);
+        vertical-align: top;
+      }
+      .asset-table thead th {
+        position: sticky;
+        top: 0;
+        background: #111827;
+        z-index: 1;
       }
     </style>
   </head>
