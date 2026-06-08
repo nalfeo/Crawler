@@ -34,9 +34,9 @@ run_grep() {
   fi
 }
 
-run_grep "Bare eval()" '\beval\(' "error"
-run_grep "new Function(" '\bnew Function\(' "error"
-run_grep "Dynamic import() with non-literal" "\bimport\([^'\"]" "warn"
+run_grep "Bare eval()"                   '(^|[^A-Za-z0-9_$.])eval\('                    "error"
+run_grep "new Function("                 '(^|[^A-Za-z0-9_$.])new[[:space:]]+Function\(' "error"
+run_grep "Dynamic import() with non-literal" "(^|[^A-Za-z0-9_$.])import\([^'\"]"        "warn"
 
 if [ "$FAILED" -ne 0 ]; then
   echo ""

@@ -68,21 +68,24 @@ async function main(): Promise<void> {
     if (!looksLikePromptFile) continue;
     const lines = text.split('\n');
     lines.forEach((line, idx) => {
-      const interp = interpRe.exec(line);
-      if (!interp) return;
+      // `matchAll` returns an iterator with fresh state per call — unlike
+      // `exec` on a /g regex, which shares `lastIndex` across invocations.
+      // This guarantees we visit every interpolation on every line.
+      const matches = Array.from(line.matchAll(interpRe));
+      if (matches.length === 0) return;
       // Heuristic guard: require the line to mention something prompt-shaped too.
       const lower = line.toLowerCase();
       if (!PROMPT_HINTS.some((h) => lower.includes(h))) return;
       // Allow lines that pass through an obvious sanitizer.
       if (/sanitize|escapePrompt|stripUnsafe/.test(line)) return;
-      report.warn(`Possible unsanitized prompt interpolation: ${interp[0]}`, {
-        file: rel,
-        line: idx + 1,
-        remediation:
-          'Validate / sanitize interpolated values before they reach the prompt, or use a parameterized prompt template.',
-      });
-      // Reset regex lastIndex per line
-      interpRe.lastIndex = 0;
+      for (const m of matches) {
+        report.warn(`Possible unsanitized prompt interpolation: ${m[0]}`, {
+          file: rel,
+          line: idx + 1,
+          remediation:
+            'Validate / sanitize interpolated values before they reach the prompt, or use a parameterized prompt template.',
+        });
+      }
     });
   }
   report.finish();

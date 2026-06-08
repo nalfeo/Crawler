@@ -78,8 +78,12 @@ The loops live in **separate workflows** from `ci.yml` because:
 ### Risks
 
 - A noisy false-positive in one of the regex / heuristic checks could spam
-  issues. Mitigation: each check exits 0 on warning-only findings; only
-  `error` severity triggers a tracking issue.
+  issues. Mitigation: each check emits findings at one of three severities —
+  `info`/`skip` (silent), `warn` (visible, triggers issue), `error` (visible,
+  triggers issue, fails PR runs for `security-review`). The aggregator
+  surfaces every `warn` and `error` in the weekly tracking issue so the loop
+  is honest about what it sees; severities can be tuned per script as we
+  learn which checks are reliably high-signal.
 - The `governor-playthroughs.ts` and `balance-regression.ts` scripts depend on
   a headless Governor harness that doesn't exist yet. They SKIP cleanly until
   the harness ships. Tracked as a follow-up.

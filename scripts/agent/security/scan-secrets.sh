@@ -20,9 +20,11 @@ EXCLUDES=(
   ':!**/*.lock'
   ':!package-lock.json'
   ':!yarn.lock'
+  # Only exclude this script directory — the patterns themselves below
+  # would otherwise self-match. Everything else (handoffs, ADRs, docs)
+  # stays in scope; those are exactly the places a real secret would
+  # get pasted by accident.
   ':!scripts/agent/security/**'
-  ':!docs/knowledge/handoffs/**'
-  ':!docs/knowledge/adr/**'
 )
 
 # Pattern => human label

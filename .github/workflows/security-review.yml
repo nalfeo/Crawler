@@ -41,12 +41,12 @@ jobs:
       # each step and only fail the job at the end on PRs.
       - name: npm audit
         id: audit
-        run: npm audit --audit-level=high
+        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: Scan for committed secrets
         id: secrets
-        run: bash scripts/agent/security/scan-secrets.sh
+        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-scan-secrets -- bash scripts/agent/security/scan-secrets.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: CODEOWNERS coverage
@@ -61,7 +61,7 @@ jobs:
 
       - name: Dynamic-execution patterns
         id: dynamic
-        run: bash scripts/agent/security/check-dynamic-patterns.sh
+        run: npx tsx scripts/agent/shared/wrap-step.ts --name security-dynamic-patterns -- bash scripts/agent/security/check-dynamic-patterns.sh
         continue-on-error: ${{ github.event_name != 'pull_request' }}
 
       - name: AI prompt-injection scan
