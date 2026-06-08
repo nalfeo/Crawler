@@ -23,6 +23,7 @@ function setupPlayerWithSkill() {
     triggeredMilestones: new Set(),
   };
   world.playerSkills.set('swordsmanship', state);
+  world.skillStatesByEntity.set(player, new Map([['swordsmanship', state]]));
   return { world, player };
 }
 
@@ -41,6 +42,7 @@ function setupPlayerWithSkillState(skillId: string) {
     triggeredMilestones: new Set(),
   };
   world.playerSkills.set(skillId, state);
+  world.skillStatesByEntity.set(player, new Map([[skillId, state]]));
   return { world, player };
 }
 
@@ -181,5 +183,43 @@ describe('skillSystem', () => {
     expect(auraModifier!.stat).toBe('damage');
     expect(auraModifier!.op).toBe('add');
     expect(auraModifier!.value).toBe(0);
+  });
+
+  it('uses per-entity skill states when holder eid is provided', () => {
+    const { world, player } = setupPlayerWithSkill();
+    const state = world.playerSkills.get('swordsmanship')!;
+    state.level = 0;
+    state.usage = 0;
+
+    world.skillUsageEvents.push({
+      holderEid: player,
+      skillId: 'swordsmanship',
+      metric: 'hits_landed',
+      amount: 10,
+    });
+    skillSystem(world);
+    expect(state.level).toBe(1);
+    expect(world.statModifiers.some((m) => m.sourceId === `swordsmanship:level:1:${player}`)).toBe(
+      true,
+    );
+  });
+
+  it('keys holder milestone modifiers by holder eid', () => {
+    const { world, player } = setupPlayerWithSkill();
+    const state = world.playerSkills.get('swordsmanship')!;
+    state.level = 0;
+    state.usage = 0;
+
+    world.skillUsageEvents.push({
+      holderEid: player,
+      skillId: 'swordsmanship',
+      metric: 'hits_landed',
+      amount: 100,
+    });
+    skillSystem(world);
+
+    expect(
+      world.statModifiers.some((m) => m.sourceId === `swordsmanship:milestone:5:${player}`),
+    ).toBe(true);
   });
 });

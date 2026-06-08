@@ -1,7 +1,10 @@
 import type { GameWorld } from '../../core/world.js';
+import type { StatKey } from '../../shared/stats.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
+import { applyCatalogEffect } from './progressionEffects.js';
+import { queueAbilityTrigger } from './abilitySystem.js';
 
 /**
  * Processes skill usage events each frame.
@@ -18,20 +21,30 @@ export function skillSystem(world: GameWorld): void {
   }
 
   for (const event of events) {
-    const state = world.playerSkills.get(event.skillId);
+    // v2 path: holder-scoped skills (players/mobs). v1 compatibility: playerSkills fallback.
+    const holderSkills =
+      event.holderEid !== undefined ? world.skillStatesByEntity.get(event.holderEid) : undefined;
+    const state = holderSkills?.get(event.skillId) ?? world.playerSkills.get(event.skillId);
     if (state === undefined) continue;
 
     const def = getSkillDefinition(event.skillId);
     if (def === undefined) continue;
 
-    // Only apply events that match the skill's declared usage metric
     if (event.metric !== def.usageMetric) continue;
 
     state.usage += event.amount;
 
+    // Forward skill usage to ability system so abilities with skill_usage triggers fire
+    queueAbilityTrigger(world, {
+      holderEid: event.holderEid,
+      kind: 'skill_usage',
+      metric: event.metric,
+      skillId: event.skillId,
+      amount: event.amount,
+    });
+
     const effectiveCap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
 
-    // Level up while thresholds are crossed and we haven't hit the cap
     while (state.level < effectiveCap) {
       const nextLevel = state.level + 1;
       const threshold = def.usageThresholds[nextLevel - 1];
@@ -39,26 +52,28 @@ export function skillSystem(world: GameWorld): void {
 
       state.level = nextLevel;
       world.statsDirty = true;
+      const sourceId =
+        event.holderEid === undefined
+          ? `${def.id}:level:${nextLevel}`
+          : `${def.id}:level:${nextLevel}:${event.holderEid}`;
 
-      // Apply per-level stat bonuses as permanent add modifiers
       for (const [statKey, bonus] of Object.entries(def.perLevelBonus)) {
         if (bonus === undefined || bonus === 0) continue;
         addStatModifier(world, {
           sourceType: 'skill',
-          sourceId: `${def.id}:level:${nextLevel}`,
-          stat: statKey as import('../../shared/stats.js').StatKey,
+          sourceId,
+          stat: statKey as StatKey,
           op: 'add',
           value: bonus,
         });
       }
 
-      // Fire milestones at levels 5, 10, 15, 20 — once only
       if (
         (state.level === 5 || state.level === 10 || state.level === 15 || state.level === 20) &&
         !state.triggeredMilestones.has(state.level)
       ) {
         state.triggeredMilestones.add(state.level);
-        applyMilestone(world, def.id, state.level);
+        applyMilestone(world, def.id, state.level, event.holderEid);
       }
     }
   }
@@ -66,57 +81,24 @@ export function skillSystem(world: GameWorld): void {
   events.length = 0;
 }
 
-function applyMilestone(world: GameWorld, skillId: string, level: number): void {
+function applyMilestone(
+  world: GameWorld,
+  skillId: string,
+  level: number,
+  holderEid?: number,
+): void {
   const def = getSkillDefinition(skillId);
   if (def === undefined) return;
 
   const milestone = def.milestones.find((m) => m.level === level);
   if (milestone === undefined) return;
 
-  const effect = milestone.effect;
-  const sourceId = `${skillId}:milestone:${level}`;
-
-  switch (effect.type) {
-    case 'stat_add':
-      addStatModifier(world, {
-        sourceType: 'skill',
-        sourceId,
-        stat: effect.stat,
-        op: 'add',
-        value: effect.value,
-      });
-      break;
-
-    case 'stat_multiply':
-      addStatModifier(world, {
-        sourceType: 'skill',
-        sourceId,
-        stat: effect.stat,
-        op: 'multiply',
-        value: effect.value,
-      });
-      break;
-
-    case 'extra_projectile':
-      addStatModifier(world, {
-        sourceType: 'skill',
-        sourceId,
-        stat: 'projectileCount',
-        op: 'add',
-        value: effect.count,
-      });
-      break;
-
-    case 'aura':
-      // Aura effect is stored as metadata — actual aura system reads modifiers later (v2)
-      // For now, record it as a placeholder modifier so tests can verify it fired
-      addStatModifier(world, {
-        sourceType: 'skill',
-        sourceId,
-        stat: 'damage',
-        op: 'add',
-        value: 0,
-      });
-      break;
-  }
+  applyCatalogEffect(world, {
+    sourceType: 'skill',
+    sourceId:
+      holderEid === undefined
+        ? `${skillId}:milestone:${level}`
+        : `${skillId}:milestone:${level}:${holderEid}`,
+    effect: milestone.effect,
+  });
 }

@@ -1,7 +1,109 @@
+import { z } from 'zod';
+import { SKILL_HARD_CAP } from '../../shared/skills.js';
+import { STAT_KEYS } from '../../shared/stats.js';
 import type { SkillDefinition } from './types.js';
 
+const skillMilestoneLevelSchema = z.union([
+  z.literal(5),
+  z.literal(10),
+  z.literal(15),
+  z.literal(20),
+]);
+
+const statKeySchema = z.enum(STAT_KEYS);
+
+const milestoneEffectSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('stat_add'), stat: statKeySchema, value: z.number() }).strict(),
+  z.object({ type: z.literal('stat_multiply'), stat: statKeySchema, value: z.number() }).strict(),
+  z.object({ type: z.literal('extra_projectile'), count: z.number() }).strict(),
+  z
+    .object({
+      type: z.literal('aura'),
+      radius: z.number().positive(),
+      dpsPercentOfDamage: z.number().positive(),
+    })
+    .strict(),
+]);
+
+const perLevelBonusSchema = z
+  .object(Object.fromEntries(STAT_KEYS.map((key) => [key, z.number().optional()])))
+  .strict();
+
+const skillSchema: z.ZodType<SkillDefinition> = z
+  .object({
+    id: z
+      .string()
+      .trim()
+      .regex(/^[a-z0-9-]+$/),
+    name: z.string().trim().min(1),
+    description: z.string().trim().min(1),
+    category: z.enum(['combat', 'defense', 'utility']),
+    usageMetric: z.enum(['hits_landed', 'damage_dealt', 'distance_dodged_near_threat']),
+    usageThresholds: z.array(z.number().int().positive()),
+    perLevelBonus: perLevelBonusSchema,
+    milestones: z
+      .array(
+        z
+          .object({
+            level: skillMilestoneLevelSchema,
+            name: z.string().trim().min(1),
+            description: z.string().trim().min(1),
+            effect: milestoneEffectSchema,
+          })
+          .strict(),
+      )
+      .length(4),
+    flavorText: z.string().trim().min(1).optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.usageThresholds.length !== SKILL_HARD_CAP) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `usageThresholds must have exactly ${SKILL_HARD_CAP} entries`,
+        path: ['usageThresholds'],
+      });
+    }
+
+    for (let i = 1; i < value.usageThresholds.length; i++) {
+      if (value.usageThresholds[i]! <= value.usageThresholds[i - 1]!) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'usageThresholds must be strictly increasing',
+          path: ['usageThresholds', i],
+        });
+      }
+    }
+
+    const levels = value.milestones.map((m) => m.level).sort((a, b) => a - b);
+    const expected = [5, 10, 15, 20];
+    for (let i = 0; i < expected.length; i++) {
+      if (levels[i] !== expected[i]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'milestones must contain levels 5,10,15,20 exactly once',
+          path: ['milestones'],
+        });
+        break;
+      }
+    }
+  });
+
+const skillCatalogSchema = z.array(skillSchema).superRefine((skills, ctx) => {
+  const ids = new Set<string>();
+  for (const skill of skills) {
+    if (ids.has(skill.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate skill id: ${skill.id}`,
+      });
+    }
+    ids.add(skill.id);
+  }
+});
+
 /** Real skills — all silly-skill content deferred to v2. */
-const SKILL_DEFINITIONS: SkillDefinition[] = [
+const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
   {
     id: 'swordsmanship',
     name: 'Swordsmanship',
@@ -122,6 +224,13 @@ const SKILL_DEFINITIONS: SkillDefinition[] = [
   },
 ];
 
+export function parseSkillCatalog(raw: unknown): SkillDefinition[] {
+  return skillCatalogSchema.parse(raw);
+}
+
+const parsed = parseSkillCatalog(SKILL_DEFINITIONS_RAW);
+const SKILL_DEFINITIONS = Object.freeze(parsed.map((skill) => Object.freeze({ ...skill })));
+
 const registry = new Map<string, SkillDefinition>();
 for (const skill of SKILL_DEFINITIONS) {
   registry.set(skill.id, skill);
@@ -131,6 +240,6 @@ export function getSkillDefinition(id: string): SkillDefinition | undefined {
   return registry.get(id);
 }
 
-export function getAllSkillDefinitions(): SkillDefinition[] {
+export function getAllSkillDefinitions(): readonly SkillDefinition[] {
   return SKILL_DEFINITIONS;
 }
