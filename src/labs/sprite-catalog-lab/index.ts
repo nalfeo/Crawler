@@ -98,7 +98,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   }
 
   const entries = parseSpriteCatalog(catalogJson).map((entry) => ({ ...entry }));
-  
+
   let selectedId = entries[0]?.id;
   let aiProvider: AiProviderMode = 'auto';
   let filterMode: 'all' | 'sheets' | 'sprites' = 'all';
@@ -169,7 +169,8 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     btn.style.fontSize = '12px';
     btn.style.border = '1px solid rgba(255,255,255,0.18)';
     btn.style.cursor = 'pointer';
-    btn.style.background = filterMode === mode ? 'rgba(126, 224, 255, 0.25)' : 'rgba(15, 23, 42, 0.5)';
+    btn.style.background =
+      filterMode === mode ? 'rgba(126, 224, 255, 0.25)' : 'rgba(15, 23, 42, 0.5)';
     btn.style.color = filterMode === mode ? '#7ee0ff' : '#cbd5e1';
     btn.addEventListener('click', () => {
       filterMode = mode as typeof filterMode;
@@ -246,22 +247,22 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   function renderList(): void {
     // Preserve scroll position
     const scrollTop = listBody.scrollTop;
-    
+
     listBody.replaceChildren();
     const filter = filterInput.value.trim().toLowerCase();
     const filtered = entries.filter((entry) => {
       // Apply kind filter
       if (filterMode === 'sheets' && entry.kind !== 'sheet') return false;
       if (filterMode === 'sprites' && entry.kind !== 'sprite') return false;
-      
+
       // For sheets, filter out those with no cataloged sprites
       if (filterMode === 'sheets' && entry.kind === 'sheet') {
         const hasSprites = entries.some(
-          (e) => e.kind === 'sprite' && e.sheetKey === entry.sheetKey
+          (e) => e.kind === 'sprite' && e.sheetKey === entry.sheetKey,
         );
         if (!hasSprites) return false;
       }
-      
+
       if (filter === '') return true;
       const tagMatch = entry.tags.some((tag) => tag.toLowerCase().includes(filter));
       const fieldMatch =
@@ -313,7 +314,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
       });
       listBody.append(button);
     }
-    
+
     // Restore scroll position
     listBody.scrollTop = scrollTop;
   }
@@ -350,7 +351,9 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   /**
    * Create a sprite preview for generated (individual PNG) sprites.
    */
-  function createGeneratedSpritePreview(sprite: SpriteCatalogEntry & { assetPath?: string }): HTMLDivElement {
+  function createGeneratedSpritePreview(
+    sprite: SpriteCatalogEntry & { assetPath?: string },
+  ): HTMLDivElement {
     const wrap = document.createElement('div');
     wrap.style.marginBottom = '16px';
     wrap.style.display = 'flex';
@@ -365,8 +368,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     previewLabel.style.fontWeight = '600';
 
     const img = document.createElement('img');
-    img.style.background =
-      'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
+    img.style.background = 'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
     img.style.borderRadius = '8px';
     img.style.border = '1px solid rgba(255,255,255,0.15)';
     img.style.imageRendering = 'pixelated';
@@ -984,30 +986,35 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   // Fetch and merge approved generated sprites from the manifest (async, fire and forget)
   fetch('/assets/generated/manifest.json')
     .then((res) => res.json())
-    .then((manifest: {
-      version?: number;
-      entries?: Record<string, { briefId: string; spriteName: string; assetPath: string; [key: string]: unknown }>;
-    }) => {
-      if (manifest.entries) {
-        for (const [key, entry] of Object.entries(manifest.entries)) {
-          entries.push({
-            id: `generated:${key}`,
-            kind: 'sprite',
-            label: entry.spriteName ?? key,
-            description: `Generated sprite from brief: ${entry.briefId}`,
-            tags: ['generated', 'pipeline-approved'],
-            spriteId: entry.spriteName ?? key,
-            sheetKey: 'generated-manifest',
-           assetPath: entry.assetPath,
-           frame: 0,
-           col: 0,
-           row: 0,
-         } as unknown as SpriteCatalogEntry);
-       }
-        // Trigger UI refresh if we've loaded generated sprites
-        renderList();
-      }
-    })
+    .then(
+      (manifest: {
+        version?: number;
+        entries?: Record<
+          string,
+          { briefId: string; spriteName: string; assetPath: string; [key: string]: unknown }
+        >;
+      }) => {
+        if (manifest.entries) {
+          for (const [key, entry] of Object.entries(manifest.entries)) {
+            entries.push({
+              id: `generated:${key}`,
+              kind: 'sprite',
+              label: entry.spriteName ?? key,
+              description: `Generated sprite from brief: ${entry.briefId}`,
+              tags: ['generated', 'pipeline-approved'],
+              spriteId: entry.spriteName ?? key,
+              sheetKey: 'generated-manifest',
+              assetPath: entry.assetPath,
+              frame: 0,
+              col: 0,
+              row: 0,
+            } as unknown as SpriteCatalogEntry);
+          }
+          // Trigger UI refresh if we've loaded generated sprites
+          renderList();
+        }
+      },
+    )
     .catch(() => {
       // Silently ignore manifest load errors
     });

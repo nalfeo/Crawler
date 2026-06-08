@@ -251,7 +251,12 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
  * file is small and tracked in git; pretty-printing with stable key order
  * keeps diffs reviewable.
  */
-function upsertManifest(fs: ApproveFs, manifestPath: string, entry: ManifestEntry, entryKey: string): void {
+function upsertManifest(
+  fs: ApproveFs,
+  manifestPath: string,
+  entry: ManifestEntry,
+  entryKey: string,
+): void {
   let current: Manifest;
   if (fs.existsSync(manifestPath)) {
     try {
@@ -294,9 +299,14 @@ function upsertManifest(fs: ApproveFs, manifestPath: string, entry: ManifestEntr
  * Convert manifest entry to catalog entry and upsert into catalog.json.
  * Catalog entries need additional fields for the game, so we construct the full entry here.
  */
-function upsertCatalog(fs: ApproveFs, catalogPath: string, manifestEntry: ManifestEntry, catalogId: string): void {
+function upsertCatalog(
+  fs: ApproveFs,
+  catalogPath: string,
+  manifestEntry: ManifestEntry,
+  catalogId: string,
+): void {
   let catalog: Array<Record<string, unknown>>;
-  
+
   if (fs.existsSync(catalogPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));

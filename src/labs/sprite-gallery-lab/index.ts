@@ -227,7 +227,11 @@ function createGalleryGrid(
   host: HTMLElement,
   runs: SidecarRunListEntry[],
   details: Map<string, Record<string, unknown>>,
-  state: { showOverlay: boolean; onSelect: (ref: CandidateRef) => void; onDismiss?: (briefId: string, runId: string) => void },
+  state: {
+    showOverlay: boolean;
+    onSelect: (ref: CandidateRef) => void;
+    onDismiss?: (briefId: string, runId: string) => void;
+  },
 ): CreatedGallery {
   host.replaceChildren();
   const candidates: CandidateRef[] = [];

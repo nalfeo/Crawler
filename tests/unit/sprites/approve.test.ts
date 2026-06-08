@@ -247,7 +247,7 @@ describe('approveVariant', () => {
     // Two entries now: one for each variant of the same brief
     const entryKeys = Object.keys(manifest.entries).sort();
     expect(entryKeys).toEqual([`iron-sword-var-0`, `iron-sword-var-3`]);
-    
+
     expect(manifest.entries[`iron-sword-var-0`]).toEqual(first_entry);
     expect(manifest.entries[`iron-sword-var-0`]!.sourceRun).toContain('aaaaaaaa');
     expect(manifest.entries[`iron-sword-var-0`]!.variantIndex).toBe(0);
