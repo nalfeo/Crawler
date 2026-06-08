@@ -101,6 +101,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   
   let selectedId = entries[0]?.id;
   let aiProvider: AiProviderMode = 'auto';
+  let filterMode: 'all' | 'sheets' | 'sprites' = 'all';
 
   // Sheet image cache
   const sheetImages = new Map<string, SheetImageCache>();
@@ -136,7 +137,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   listPanel.style.background = 'rgba(8, 12, 24, 0.6)';
   listPanel.style.overflow = 'hidden';
   listPanel.style.display = 'grid';
-  listPanel.style.gridTemplateRows = 'auto auto 1fr';
+  listPanel.style.gridTemplateRows = 'auto auto auto 1fr';
 
   const listTitle = document.createElement('h2');
   listTitle.textContent = 'Sprite Catalog';
@@ -144,6 +145,44 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   listTitle.style.margin = '0';
   listTitle.style.fontSize = '18px';
   listTitle.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+
+  // Filter toggle buttons
+  const filterButtonsContainer = document.createElement('div');
+  filterButtonsContainer.style.display = 'flex';
+  filterButtonsContainer.style.gap = '6px';
+  filterButtonsContainer.style.padding = '12px 14px';
+  filterButtonsContainer.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+  filterButtonsContainer.style.flexWrap = 'wrap';
+
+  const filterModes = [
+    { mode: 'all', label: 'All' },
+    { mode: 'sheets', label: 'Sheets' },
+    { mode: 'sprites', label: 'Sprites' },
+  ];
+
+  for (const { mode, label } of filterModes) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.style.padding = '6px 12px';
+    btn.style.borderRadius = '6px';
+    btn.style.fontSize = '12px';
+    btn.style.border = '1px solid rgba(255,255,255,0.18)';
+    btn.style.cursor = 'pointer';
+    btn.style.background = filterMode === mode ? 'rgba(126, 224, 255, 0.25)' : 'rgba(15, 23, 42, 0.5)';
+    btn.style.color = filterMode === mode ? '#7ee0ff' : '#cbd5e1';
+    btn.addEventListener('click', () => {
+      filterMode = mode as typeof filterMode;
+      // Update all filter buttons
+      filterButtonsContainer.querySelectorAll('button').forEach((b, i) => {
+        const isActive = i === filterModes.findIndex((fm) => fm.mode === mode);
+        b.style.background = isActive ? 'rgba(126, 224, 255, 0.25)' : 'rgba(15, 23, 42, 0.5)';
+        b.style.color = isActive ? '#7ee0ff' : '#cbd5e1';
+      });
+      renderList();
+    });
+    filterButtonsContainer.append(btn);
+  }
 
   const filterInput = document.createElement('input');
   filterInput.placeholder = 'Filter by id, sheet, or tag';
@@ -158,7 +197,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   listBody.style.overflow = 'auto';
   listBody.style.padding = '0 8px 8px';
 
-  listPanel.append(listTitle, filterInput, listBody);
+  listPanel.append(listTitle, filterButtonsContainer, filterInput, listBody);
 
   const detailPanel = document.createElement('section');
   detailPanel.style.border = '1px solid rgba(255,255,255,0.12)';
@@ -205,9 +244,24 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   }
 
   function renderList(): void {
+    // Preserve scroll position
+    const scrollTop = listBody.scrollTop;
+    
     listBody.replaceChildren();
     const filter = filterInput.value.trim().toLowerCase();
     const filtered = entries.filter((entry) => {
+      // Apply kind filter
+      if (filterMode === 'sheets' && entry.kind !== 'sheet') return false;
+      if (filterMode === 'sprites' && entry.kind !== 'sprite') return false;
+      
+      // For sheets, filter out those with no cataloged sprites
+      if (filterMode === 'sheets' && entry.kind === 'sheet') {
+        const hasSprites = entries.some(
+          (e) => e.kind === 'sprite' && e.sheetKey === entry.sheetKey
+        );
+        if (!hasSprites) return false;
+      }
+      
       if (filter === '') return true;
       const tagMatch = entry.tags.some((tag) => tag.toLowerCase().includes(filter));
       const fieldMatch =
@@ -259,6 +313,9 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
       });
       listBody.append(button);
     }
+    
+    // Restore scroll position
+    listBody.scrollTop = scrollTop;
   }
 
   function labeledInput(labelText: string, input: HTMLElement): HTMLDivElement {

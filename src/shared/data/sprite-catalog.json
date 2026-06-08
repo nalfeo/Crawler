@@ -106,17 +106,24 @@
     "id": "sprite:enemy.brigand",
     "kind": "sprite",
     "label": "enemy.brigand",
-    "description": "A brown-cloaked brigand enemy sprite.",
+    "description": "Brown-cloaked humanoid.",
     "tags": [
       "enemy",
-      "humanoid"
+      "humanoid",
+      "sprite"
     ],
     "spriteId": "enemy.brigand",
     "sheetKey": "kenney-roguelike-characters",
     "frame": 378,
     "col": 0,
     "row": 7,
-    "note": "Brown-cloaked humanoid."
+    "note": "Brown-cloaked humanoid.",
+    "animation": {
+      "clips": [
+        "idle",
+        "move"
+      ]
+    }
   },
   {
     "id": "sprite:enemy.ghost",
