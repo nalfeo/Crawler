@@ -8,6 +8,7 @@ on:
 
 jobs:
   ci:
+    name: Required checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,44 +21,63 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Gate 1: Type safety (~5s)
       - name: Typecheck
         run: npm run typecheck
 
-      # Gate 2: Code style (~10s)
       - name: Lint
         run: npm run lint
 
-      # Gate 3: Format check (~5s)
       - name: Format check
         run: npm run format:check
 
-      # Gate 4: Dead code (~10s)
-      - name: Dead code detection
-        run: npm run lint:dead-code
-        continue-on-error: true # Non-blocking initially, will become blocking
-
-      # Gate 5: Lab gate check (~5s)
       - name: Lab gate check
         run: bash scripts/agent/lab-gate-check.sh
 
-      # Gate 6: Unit tests + coverage (~30s)
       - name: Unit tests
         run: npx vitest run --project unit --reporter=verbose
 
-      # Gate 7: Integration tests (~60s)
-      - name: Integration tests
-        run: npx vitest run --project integration --reporter=verbose
-        continue-on-error: true # No integration tests yet
-
-      # Gate 8: Build (~10s)
       - name: Build
         run: npm run build
 
-      # Gate 9: Dependency audit
+  ci-advisory:
+    name: Advisory checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dead code detection
+        run: npm run lint:dead-code
+        continue-on-error: true
+
+      - name: Integration tests
+        run: npx vitest run --project integration --reporter=verbose
+        continue-on-error: true
+
       - name: Security audit
         run: npm audit --audit-level=high
-        continue-on-error: true # Advisory initially
+        continue-on-error: true
+
+  merge-gate:
+    name: Merge gate
+    runs-on: ubuntu-latest
+    needs: [ci]
+    if: always()
+    steps:
+      - name: Check required jobs
+        run: |
+          if [ "${{ needs.ci.result }}" != "success" ]; then
+            echo "❌ Required CI checks failed"
+            exit 1
+          fi
+          echo "✅ All required checks passed"
 
   commit-lint:
     runs-on: ubuntu-latest
