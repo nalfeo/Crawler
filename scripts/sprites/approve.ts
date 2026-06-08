@@ -324,7 +324,7 @@ function upsertCatalog(
     id: `generated:${catalogId}`,
     kind: 'sprite',
     label: manifestEntry.spriteName,
-    description: `Generated sprite from brief: ${manifestEntry.briefId}`,
+    description: `Generated sprite from brief: ${manifestEntry.briefId}.`,
     tags: ['generated', 'pipeline-approved'],
     spriteId: manifestEntry.spriteName,
     sheetKey: 'generated-manifest',

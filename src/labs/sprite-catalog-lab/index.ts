@@ -1000,7 +1000,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
               id: `generated:${key}`,
               kind: 'sprite',
               label: entry.spriteName ?? key,
-              description: `Generated sprite from brief: ${entry.briefId}`,
+              description: `Generated sprite from brief: ${entry.briefId}.`,
               tags: ['generated', 'pipeline-approved'],
               spriteId: entry.spriteName ?? key,
               sheetKey: 'generated-manifest',
