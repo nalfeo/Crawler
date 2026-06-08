@@ -61,7 +61,10 @@ A typical lab entry point registration looks like this:
 
 ```ts
 import { registerLab } from '../registry.js';
-import { createMovementLab } from './create-movement-lab.js';
+
+function createMovementLab(parent: HTMLElement): void {
+  // Lab setup logic lives in index.ts in current labs.
+}
 
 registerLab('movement-lab', {
   name: 'Movement Lab',
