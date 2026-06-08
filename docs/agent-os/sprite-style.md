@@ -159,6 +159,8 @@ judge:
 
 When enabled, `generate-one` issues **one** vision call per judged variant — all three evaluators in a single structured-JSON response, by design (cost discipline). Each call hits the deployment in `AZURE_OPENAI_VISION_DEPLOYMENT` from `.env`.
 
+> **Env alias.** Synth and variation expansion read `AZURE_OPENAI_CHAT_DEPLOYMENT`, but the provider factory falls back to `AZURE_OPENAI_VISION_DEPLOYMENT` (with a one-shot warning) when the chat var is missing. The deployments we provision today are the same gpt-4o-class model serving both endpoints, so this fallback is safe. To silence the warning, mirror your vision deployment value into `AZURE_OPENAI_CHAT_DEPLOYMENT` in the env file.
+
 Per-variant cost on `gpt-4o`-class vision deployments is dominated by the candidate + 2–3 reference images (~1.5–2K prompt tokens) plus a small JSON completion (~80–150 completion tokens). With `maxVariants: 16` and a 4×4 grid that's at most 16 vision calls per `generate-one` invocation.
 
 ### Why this is **never** in CI

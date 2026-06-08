@@ -20,6 +20,16 @@ export interface SynthesizeBriefRequest {
   readonly candidates: number;
   /** The allow-list the model must pick reference ids from. */
   readonly referenceCatalog: ReadonlyArray<ReferenceSheet>;
+  /**
+   * Inclusive lower bound for `embellishmentSeeds` per candidate. The
+   * synthesizer derives this from the sprite-type's `minVariations`
+   * default (`data/sprite-types/<type>.json`) so the downstream
+   * expand-variations pass doesn't have to manufacture extra entries
+   * from a text provider that may not be configured.
+   */
+  readonly effectiveMinSeeds: number;
+  /** Inclusive upper bound for `embellishmentSeeds` per candidate. */
+  readonly effectiveMaxSeeds: number;
 }
 
 export interface SynthesizedReference {
