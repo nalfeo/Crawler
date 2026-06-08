@@ -48,6 +48,8 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
       break;
 
     case 'aura':
+      // TODO: Aura effects carry radius/dpsPercentOfDamage but are not yet implemented.
+      // This no-op modifier registers the source so the aura system (future) can query active auras.
       addStatModifier(world, {
         sourceType,
         sourceId,

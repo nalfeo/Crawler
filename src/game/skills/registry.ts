@@ -26,16 +26,7 @@ const milestoneEffectSchema = z.discriminatedUnion('type', [
 ]);
 
 const perLevelBonusSchema = z
-  .object({
-    maxHp: z.number().optional(),
-    moveSpeed: z.number().optional(),
-    damage: z.number().optional(),
-    armor: z.number().optional(),
-    attackSpeed: z.number().optional(),
-    pickupRange: z.number().optional(),
-    projectileCount: z.number().optional(),
-    projectileSpeed: z.number().optional(),
-  })
+  .object(Object.fromEntries(STAT_KEYS.map((key) => [key, z.number().optional()])))
   .strict();
 
 const skillSchema: z.ZodType<SkillDefinition> = z
