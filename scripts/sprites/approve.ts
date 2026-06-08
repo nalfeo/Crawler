@@ -142,7 +142,7 @@ export interface ApproveVariantOptions {
   readonly variantIndex: number;
   /** Absolute path to `public/assets/generated/manifest.json`. Created if missing. */
   readonly manifestPath: string;
-  /** Absolute path to `src/shared/data/catalog.json`. Updated with approved sprite. */
+  /** Absolute path to `src/shared/data/sprite-catalog.json`. Updated with approved sprite. */
   readonly catalogPath: string;
   /** Absolute path to `public/assets/` (parent of `generated/`). */
   readonly publicAssetsDir: string;

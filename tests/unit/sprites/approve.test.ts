@@ -118,7 +118,7 @@ describe('approveVariant', () => {
     repoRoot = mkdtempSync(path.join(tmpdir(), 'crawler-approve-'));
     publicAssetsDir = path.join(repoRoot, 'public', 'assets');
     manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
-    catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'catalog.json');
+    catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
   });
 
   afterEach(() => {

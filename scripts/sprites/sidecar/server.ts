@@ -50,8 +50,8 @@ export interface SidecarDeps {
    */
   readonly manifestPath?: string;
   /**
-   * Absolute path to `src/shared/data/catalog.json`. Defaults to
-   * `<repoRoot>/src/shared/data/catalog.json`.
+   * Absolute path to `src/shared/data/sprite-catalog.json`. Defaults to
+   * `<repoRoot>/src/shared/data/sprite-catalog.json`.
    */
   readonly catalogPath?: string;
   /**
@@ -293,7 +293,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const manifestPath =
       deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
     const catalogPath =
-      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'catalog.json');
+      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
     let entry: ManifestEntry;
     try {
