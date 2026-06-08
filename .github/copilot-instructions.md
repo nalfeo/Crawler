@@ -25,6 +25,10 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 - Write conventional commits: `feat:`, `fix:`, `chore:`, `lab:`, `docs:`
 - Write a handoff file before ending your session
 
+## Merge Policy
+
+- When authorized to merge a PR (via `/agent-merge` or explicit instruction), always use `gh pr merge --auto --squash` to enable GitHub's auto-merge. This completes the merge automatically once all required checks pass — do not poll or wait manually.
+
 ## Test Strategy
 
 - Unit tests for all pure functions (damage calc, loot tables, XP curves)
