@@ -514,8 +514,18 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         if (entityType === 'enemy' && world.floorMap) {
           const tile = world.floorMap.pixelToTile(x, y);
           isVisible = world.floorMap.isVisible(tile.x, tile.y);
+          if (!isVisible && world.debugFlags.showAllRooms) {
+            // Debug: show enemies in closed rooms dimly — does NOT affect game FOV
+            img.setVisible(true);
+            img.setAlpha(0.3);
+          } else {
+            img.setAlpha(1);
+            img.setVisible(isVisible);
+          }
+        } else {
+          img.setAlpha(1);
+          img.setVisible(isVisible);
         }
-        img.setVisible(isVisible);
         img.setPosition(x, y);
 
         const isDeadEnemy = entityType === 'enemy' && hasComponent(world.ecs, eid, DeathTimer);

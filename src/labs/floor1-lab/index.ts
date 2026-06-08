@@ -259,6 +259,16 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     )
     .name('Restart');
 
+  const debugFolder = gui.addFolder('Debug');
+  const debugState = { showAllRooms: false };
+  debugFolder
+    .add(debugState, 'showAllRooms')
+    .name('Show all rooms (dim)')
+    .onChange((v: boolean) => {
+      const scene = game?.scene.getScene(MainGameScene.KEY) as MainGameScene | undefined;
+      scene?.setDebugFlag('showAllRooms', v);
+    });
+
   createGame();
 
   return () => {

@@ -92,6 +92,11 @@ export interface GameWorld {
   floorMap: FloorMap | null;
   /** Floor 1 tutorial scenario state. */
   floor1: Floor1ScenarioState | null;
+  /** Debug flags — lab/dev use only. Never read in production game logic. */
+  debugFlags: {
+    /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
+    showAllRooms: boolean;
+  };
 }
 
 export interface CreateWorldOptions {
@@ -171,6 +176,9 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerGold: 0,
     floorMap: null,
     floor1: null,
+    debugFlags: {
+      showAllRooms: false,
+    },
   };
   logger.info('Created game world', {
     seed: options.seed ?? 42,

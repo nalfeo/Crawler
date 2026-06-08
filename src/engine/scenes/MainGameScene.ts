@@ -278,6 +278,16 @@ export class MainGameScene extends Phaser.Scene {
     this.updateOverlayText();
   }
 
+  /** Set a debug flag at runtime. Safe to call any time after create(). */
+  setDebugFlag<K extends keyof GameWorld['debugFlags']>(
+    key: K,
+    value: GameWorld['debugFlags'][K],
+  ): void {
+    if (this.world) {
+      this.world.debugFlags[key] = value;
+    }
+  }
+
   private initializeUi(): void {
     this.objectiveText = this.add
       .text(16, 16, '', {
