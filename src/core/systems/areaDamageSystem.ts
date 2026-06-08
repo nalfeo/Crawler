@@ -99,7 +99,16 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
         continue;
       }
 
-      applyDamage(world, target, damage, position.x[target] ?? 0, position.y[target] ?? 0, undefined, x, y);
+      applyDamage(
+        world,
+        target,
+        damage,
+        position.x[target] ?? 0,
+        position.y[target] ?? 0,
+        undefined,
+        x,
+        y,
+      );
 
       if (hitSet !== undefined) {
         hitSet.add(target);
