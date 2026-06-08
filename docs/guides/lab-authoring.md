@@ -13,21 +13,19 @@ src/labs/<system>-lab/
 Examples:
 
 - `movement` → `src/labs/movement-lab/`
-- `lootDrops` → `src/labs/lootdrops-lab/`
+- `drop` → `src/labs/drop-lab/`
 
 ## 2. Create the required files
 
-Every lab must include these files:
+Every lab must include `index.ts`. A lab `README.md` is strongly recommended.
 
 ```text
 src/labs/<system>-lab/
 ├── index.ts
-├── config.ts
-└── README.md
+└── README.md (recommended)
 ```
 
-- `index.ts` is the lab entry point
-- `config.ts` defines the tunable parameters exposed through lil-gui
+- `index.ts` is the lab entry point and calls `registerLab(...)`
 - `README.md` explains what the lab demonstrates and how to use it
 
 ## 3. Define the lab config
@@ -57,22 +55,30 @@ Typical responsibilities include seeding the world, spawning representative enti
 
 ## 5. Register the lab in the framework
 
-Register the new lab in the lab framework registry used by `src/lab-main.ts`.
+Register the new lab in the loader path map used by `src/lab-main.ts`, then register its metadata in `src/labs/registry.ts` via `registerLab(...)`.
 
-A typical registry entry looks like this:
+A typical lab entry point registration looks like this:
 
 ```ts
-import { mountMovementLab } from '../movement-lab/index.js';
+import { registerLab } from '../registry.js';
 
-export const labs = {
-  movement: mountMovementLab,
-};
+function createMovementLab(canvas: HTMLElement, controls: HTMLElement): (() => void) | void {
+  // Lab setup logic lives in index.ts in current labs.
+  // Return a cleanup callback if the lab allocates resources.
+}
+
+registerLab('movement-lab', {
+  name: 'Movement Lab',
+  description: 'Prototype movement tuning.',
+  category: 'Movement & Physics',
+  create: createMovementLab,
+});
 ```
 
 The key must match the URL used by the lab loader:
 
 ```text
-?lab=movement
+?lab=movement-lab
 ```
 
 ## 6. Add lil-gui controls
@@ -115,8 +121,9 @@ Minimum verification:
 ## 9. Final checklist
 
 - Lab folder exists in `src/labs/`
-- `index.ts`, `config.ts`, and `README.md` are present
-- Lab is registered in the framework
+- `index.ts` is present (`README.md` recommended)
+- Lab is listed in `LAB_MODULE_PATHS` in `src/lab-main.ts`
+- Lab calls `registerLab(...)` from its `index.ts`
 - Lab loads via `?lab=<name>`
 - lil-gui controls are useful and safe
 - The paired system can now satisfy the lab gate policy

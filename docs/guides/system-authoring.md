@@ -8,11 +8,14 @@ Before shipping the system, reserve or create its lab in `src/labs/<system>-lab/
 
 ## 2. Add or update components
 
-Define components using the bitecs 0.4 plain-object schema style.
+Define components using bitecs tag components plus typed-array stores.
 
 ```ts
-export const Burn = { dps: 0, remainingMs: 0 };
+export const Burn = {};
 export const Burning = {};
+
+// Store shape lives in createComponentStores():
+// burn: { dps: new Float32Array(MAX_ENTITIES), remainingMs: new Float32Array(MAX_ENTITIES) }
 ```
 
 Guidelines:
@@ -48,24 +51,25 @@ export function burnSystem(world: GameWorld): void {
 
 Rules:
 
-- Signature is `(world: GameWorld) => void`
+- Most systems use `(world: GameWorld) => void`
+- Pipeline systems may accept deterministic inputs and/or return deterministic outputs
 - Read time from `world.elapsedMs` or frame progression, not `Date.now()`
 - Read randomness from `world.rng`, not `Math.random()`
 - Keep the system deterministic and side-effect-light
 
 ## 4. Register the system in the runner
 
-Add the system to the canonical system runner so it executes in the intended order.
+Wire the system into the execution path that owns it (typically the engine scene update flow and any relevant lab entrypoint), and keep ordering explicit.
 
 Typical pattern:
 
 ```ts
 import { burnSystem } from './burnSystem.js';
-
-export const coreSystems = [burnSystem];
+// Called from the scene or orchestration loop:
+burnSystem(world);
 ```
 
-If a runner file does not exist yet, create a single explicit registry rather than scattering system startup across the codebase.
+Export through the nearest barrel (`src/core/systems/index.ts` or `src/game/systems/index.ts`) when that improves discoverability.
 
 ## 5. Write unit tests
 
@@ -105,8 +109,7 @@ Examples:
 Build `src/labs/<system>-lab/` with:
 
 - `index.ts`
-- `config.ts`
-- `README.md`
+- `README.md` (recommended)
 
 Expose meaningful lil-gui controls so designers can inspect the new system under different seeds and parameters.
 
