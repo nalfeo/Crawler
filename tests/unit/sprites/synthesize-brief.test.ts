@@ -74,7 +74,14 @@ function makeCandidate(overrides: Partial<SynthesizedCandidate> = {}): Synthesiz
       { id: 'roguelike-rpg-pack', note: 'silhouette anchor for slender blades' },
       { id: 'tiny-battle', note: 'secondary palette for steel/wood mix' },
     ],
-    embellishmentSeeds: ['shorter wider tip', 'jagged spine variant', 'wrapped leather hilt'],
+    // 4 seeds matches weapon's minVariations=4 default. Tests that
+    // specifically exercise lower bounds pass an explicit override.
+    embellishmentSeeds: [
+      'shorter wider tip',
+      'jagged spine variant',
+      'wrapped leather hilt',
+      'spiked iron pommel',
+    ],
     rationale: 'Distinct silhouette: tall narrow blade with no guard flares.',
     ...overrides,
   };
@@ -446,8 +453,94 @@ describe('synthesizeBrief — candidate validation', () => {
         env: {},
         referenceCatalogOptions: makeCatalogHooks(),
         fsWrites: makeFsWrites().hooks,
+        // Hold the type to the static 3-5 window so this test isolates
+        // the seed-count rule from the sprite-type minVariations rule
+        // (covered separately below).
+        loadMinVariations: () => 0,
       }),
     ).rejects.toThrow(/embellishmentSeeds must be 3-5/);
+  });
+
+  it('honours the sprite-type minVariations as the lower seed bound', async () => {
+    // weapon defaults to minVariations: 4 (from the brief schema). When
+    // synth produces only 3 seeds it should be rejected, not silently
+    // accepted (which would force expand-variations to manufacture a
+    // 4th from thin air later in the pipeline).
+    const provider = makeProvider(() =>
+      makeWeaponResponse([
+        makeCandidate({
+          embellishmentSeeds: ['jagged spine variant', 'wrapped leather hilt', 'shorter wider tip'],
+        }),
+      ]),
+    );
+    await expect(
+      synthesizeBrief({
+        name: 'scythe',
+        type: 'weapon',
+        candidates: 1,
+        provider,
+        repoRoot: REPO_ROOT,
+        env: {},
+        referenceCatalogOptions: makeCatalogHooks(),
+        fsWrites: makeFsWrites().hooks,
+        // weapon-shaped sprite-type defaults: minVariations=4.
+        loadMinVariations: (t) => (t === 'weapon' ? 4 : null),
+      }),
+    ).rejects.toThrow(/embellishmentSeeds must be 4-5/);
+  });
+
+  it('accepts >=minVariations seeds when the sprite-type wants more than the static floor', async () => {
+    const provider = makeProvider(() =>
+      makeWeaponResponse([
+        makeCandidate({
+          embellishmentSeeds: [
+            'jagged spine variant',
+            'wrapped leather hilt',
+            'shorter wider tip',
+            'spiked iron pommel',
+          ],
+        }),
+      ]),
+    );
+    const result = await synthesizeBrief({
+      name: 'scythe',
+      type: 'weapon',
+      candidates: 1,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      referenceCatalogOptions: makeCatalogHooks(),
+      fsWrites: makeFsWrites().hooks,
+      loadMinVariations: (t) => (t === 'weapon' ? 4 : null),
+    });
+    expect(result.written).toHaveLength(1);
+  });
+
+  it('passes the effective seed window into the synth request so the prompt asks for the right range', async () => {
+    let captured: number | null = null;
+    let capturedMax: number | null = null;
+    const provider = makeProvider((req) => {
+      captured = req.effectiveMinSeeds;
+      capturedMax = req.effectiveMaxSeeds;
+      return makeWeaponResponse([
+        makeCandidate({
+          embellishmentSeeds: ['a', 'b', 'c', 'd'],
+        }),
+      ]);
+    });
+    await synthesizeBrief({
+      name: 'scythe',
+      type: 'weapon',
+      candidates: 1,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      referenceCatalogOptions: makeCatalogHooks(),
+      fsWrites: makeFsWrites().hooks,
+      loadMinVariations: (t) => (t === 'weapon' ? 4 : null),
+    });
+    expect(captured).toBe(4);
+    expect(capturedMax).toBe(5);
   });
 
   it('rejects a candidate whose reference resolves to a missing file on disk', async () => {

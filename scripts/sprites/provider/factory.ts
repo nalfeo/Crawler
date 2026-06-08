@@ -29,10 +29,67 @@ export interface CreateProviderOptions {
    * Optional fetch override forwarded to the underlying provider.
    */
   readonly fetch?: typeof fetch;
+  /**
+   * Optional sink for diagnostic messages (e.g. the chat-deployment
+   * alias fallback). Defaults to `console.warn`. Tests inject a
+   * `vi.fn()` to assert behaviour without touching the real console.
+   */
+  readonly warn?: (message: string) => void;
 }
 
 const DEFAULT_AZURE_API_VERSION = '2025-04-01-preview';
 const DEFAULT_AZURE_DEPLOYMENT = 'gpt-image-1';
+
+/**
+ * Resolve the Azure OpenAI **chat** deployment from the environment,
+ * with a graceful fallback to the **vision** deployment.
+ *
+ * Why the alias exists: every Azure OpenAI deployment we provision
+ * today is the same `gpt-4o`-class model and serves both chat and
+ * vision requests. Several developer `.env` files set only
+ * `AZURE_OPENAI_VISION_DEPLOYMENT` (judge.ts is the loudest consumer)
+ * which left synth and the variation expander dead in the water with
+ * a confusing "Missing required env var AZURE_OPENAI_CHAT_DEPLOYMENT"
+ * error. Falling back is safe because the deployments are
+ * functionally identical for our prompts, and we emit a one-shot
+ * warning so the user knows to add the alias to their env file when
+ * convenient.
+ *
+ * Returns `null` when neither variable is set.
+ */
+function resolveChatDeployment(
+  env: Readonly<Record<string, string | undefined>>,
+  warn: (message: string) => void,
+): { deployment: string; fromFallback: boolean } | null {
+  const chat = env.AZURE_OPENAI_CHAT_DEPLOYMENT;
+  if (chat) return { deployment: chat, fromFallback: false };
+  const vision = env.AZURE_OPENAI_VISION_DEPLOYMENT;
+  if (!vision) return null;
+  warnChatDeploymentFallbackOnce(vision, warn);
+  return { deployment: vision, fromFallback: true };
+}
+
+/**
+ * Module-level guard so we only emit the chat-deployment alias
+ * warning once per unique deployment, no matter how many provider
+ * objects we construct. Exported under a `__` prefix for test resets;
+ * intentionally not part of the public surface.
+ */
+const warnedFallbackDeployments = new Set<string>();
+export function __resetChatDeploymentFallbackWarnings(): void {
+  warnedFallbackDeployments.clear();
+}
+function warnChatDeploymentFallbackOnce(deployment: string, warn: (message: string) => void): void {
+  if (warnedFallbackDeployments.has(deployment)) return;
+  warnedFallbackDeployments.add(deployment);
+  warn(
+    `AZURE_OPENAI_CHAT_DEPLOYMENT is not set; falling back to ` +
+      `AZURE_OPENAI_VISION_DEPLOYMENT='${deployment}'. ` +
+      `These typically point at the same gpt-4o-class deployment; add ` +
+      `AZURE_OPENAI_CHAT_DEPLOYMENT='${deployment}' to your env file to ` +
+      `silence this warning. See docs/agent-os/sprite-style.md for details.`,
+  );
+}
 
 export function createImageProvider(options: CreateProviderOptions = {}): ImageProvider {
   const env = options.env ?? process.env;
@@ -59,10 +116,11 @@ export function createImageProvider(options: CreateProviderOptions = {}): ImageP
  */
 export function createTextProvider(options: CreateProviderOptions = {}): TextProvider | null {
   const env = options.env ?? process.env;
+  const warn = options.warn ?? defaultWarn;
   const which = (env.SPRITES_TEXT_PROVIDER ?? 'azure-openai').toLowerCase();
   if (which === 'none') return null;
   if (which === 'azure-openai') {
-    return createAzureChatProvider(env, options.fetch);
+    return createAzureChatProvider(env, warn, options.fetch);
   }
   throw new Error(
     `Unknown SPRITES_TEXT_PROVIDER '${which}'. Supported values: azure-openai, none.`,
@@ -115,19 +173,21 @@ function createAzureProvider(
 
 function createAzureChatProvider(
   env: Readonly<Record<string, string | undefined>>,
+  warn: (message: string) => void,
   fetchImpl?: typeof fetch,
 ): TextProvider | null {
-  // Chat deployment is the gate: if the user hasn't named one, treat
-  // text expansion as unavailable rather than failing the whole run.
-  const deployment = env.AZURE_OPENAI_CHAT_DEPLOYMENT;
-  if (!deployment) return null;
+  // Chat deployment is the gate: if the user hasn't named one (and
+  // there's no vision-deployment alias to fall back to), treat text
+  // expansion as unavailable rather than failing the whole run.
+  const resolved = resolveChatDeployment(env, warn);
+  if (!resolved) return null;
   const endpoint = env.AZURE_OPENAI_ENDPOINT;
   const apiKey = env.AZURE_OPENAI_API_KEY;
   if (!endpoint || !apiKey) return null;
   const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
   return new AzureOpenAIChatProvider({
     endpoint,
-    deployment,
+    deployment: resolved.deployment,
     apiKey,
     apiVersion,
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
@@ -143,6 +203,7 @@ function createAzureChatProvider(
  */
 export function createSynthProvider(options: CreateProviderOptions = {}): SynthProvider {
   const env = options.env ?? process.env;
+  const warn = options.warn ?? defaultWarn;
   const which = (
     env.SPRITES_SYNTH_PROVIDER ??
     env.SPRITES_TEXT_PROVIDER ??
@@ -153,11 +214,19 @@ export function createSynthProvider(options: CreateProviderOptions = {}): SynthP
   }
   const endpoint = required(env, 'AZURE_OPENAI_ENDPOINT');
   const apiKey = required(env, 'AZURE_OPENAI_API_KEY');
-  const deployment = required(env, 'AZURE_OPENAI_CHAT_DEPLOYMENT');
+  const resolved = resolveChatDeployment(env, warn);
+  if (!resolved) {
+    throw new Error(
+      `Missing required env var 'AZURE_OPENAI_CHAT_DEPLOYMENT' (or its ` +
+        `'AZURE_OPENAI_VISION_DEPLOYMENT' alias). Set one of them before ` +
+        `running the sprite synthesiser. See docs/agent-os/sprite-style.md ` +
+        `for the expected list.`,
+    );
+  }
   const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
   return new AzureOpenAISynthProvider({
     endpoint,
-    deployment,
+    deployment: resolved.deployment,
     apiKey,
     apiVersion,
     ...(options.fetch ? { fetch: options.fetch } : {}),
@@ -196,4 +265,8 @@ function required(env: Readonly<Record<string, string | undefined>>, name: strin
     );
   }
   return v;
+}
+
+function defaultWarn(message: string): void {
+  console.warn(message);
 }
