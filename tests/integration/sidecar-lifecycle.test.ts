@@ -18,7 +18,7 @@ import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CLI_PATH = path.join(REPO_ROOT, 'scripts', 'sprites', 'sidecar', 'cli.ts');
 
 const isWindows = process.platform === 'win32';
