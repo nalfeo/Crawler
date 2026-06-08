@@ -388,8 +388,12 @@ gallery's input contract. Schema:
 
 - `0` — batch completed. Skipped-over-budget briefs are by-design and
   do NOT fail the run.
-- `1` — at least one brief threw (status `failed`), CLI args invalid,
-  or budget wiring rejected.
+- `1` — runtime failure: at least one brief threw (status `failed`),
+  or provider creation failed before the batch could start.
+- `2` — configuration/usage error: invalid CLI args, brief resolution
+  failed (no briefs matched, glob error), or budget wiring rejected
+  (e.g. missing `--judge-budget-usd` and `SPRITES_JUDGE_BUDGET_USD`
+  without `--no-budget`).
 
 ### Known interaction: cache bypasses per-variant budget gate
 
