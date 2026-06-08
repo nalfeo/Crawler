@@ -51,8 +51,13 @@ child.stderr.on('data', (d: Buffer) => {
   stderrBuf += s;
   process.stderr.write(s);
 });
-child.on('close', (code) => {
-  const status = code ?? 0;
+child.on('close', (code, signal) => {
+  // Node sets code=null when the child is terminated by a signal (SIGKILL
+  // from OOM killer, SIGTERM from runner timeout, etc.). Treating that as
+  // success would silently swallow CI failures, so default unknown exits to
+  // 1 and surface the signal in the message.
+  const status = code ?? 1;
+  const killedBySignal = code === null && signal !== null;
   const dir = process.env.AUTOMATION_REPORT_DIR;
   if (dir) {
     try {
@@ -71,7 +76,7 @@ child.on('close', (code) => {
             {
               severity: 'error' as const,
               message:
-                `Command failed (exit ${status}): \`${cmdline}\`\n\n` +
+                `Command failed (${killedBySignal ? `killed by ${signal}` : `exit ${status}`}): \`${cmdline}\`\n\n` +
                 '```\n' +
                 (combined || '(no output)') +
                 '\n```',
