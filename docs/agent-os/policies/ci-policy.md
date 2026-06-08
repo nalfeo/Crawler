@@ -65,6 +65,29 @@ Protect `main` with the following rules:
 - Block force-pushes and branch deletion on `main`
 - Prefer squash merge or other linear-history-friendly merge settings
 
+## Looping Automation Workflows
+
+In addition to the per-PR `ci.yml` gate stack, three scheduled workflows run
+deterministic, self-driving health checks:
+
+| Workflow                              | Cadence              | Purpose                                                  |
+| ------------------------------------- | -------------------- | -------------------------------------------------------- |
+| `.github/workflows/docs-update.yml`   | Weekly (Mon 09:00 UTC) | Path/ADR consistency, handoff archive, command sync     |
+| `.github/workflows/security-review.yml` | Daily 06:00 UTC + PR | `npm audit`, secret scan, CODEOWNERS, dep allowlist, prompt-injection |
+| `.github/workflows/test-health.yml`   | Weekly (Mon 09:30 UTC) | Coverage trend, untested systems, extended property, balance regression |
+
+Rules for these loops:
+
+- Every check is a script with an exit code under `scripts/agent/{docs,security,health}/`.
+- Side-effects (handoff archive, metrics file updates) ship as auto-PRs, never
+  as direct pushes to `main`.
+- Findings are aggregated into a single tracking issue per scheduled run via
+  `scripts/agent/shared/aggregate-report.ts`.
+- `security-review.yml` is a **required check on PRs** (hard fail). On scheduled
+  runs it files an issue instead so the loop never silently swallows a finding.
+
+See ADR `docs/knowledge/adr/0007-automation-loops.md` for rationale.
+
 ## Non-Negotiable
 
 No CI step may call an LLM service, use subjective grading, or depend on non-deterministic runtime behavior.

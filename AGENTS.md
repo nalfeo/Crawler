@@ -26,6 +26,9 @@
 | Dead code         | `npm run lint:dead-code`   |
 | Fast verify       | `npm run verify:fast`      |
 | Full verify       | `npm run verify`           |
+| Docs loop (local) | `npm run docs:check`       |
+| Security loop     | `npm run security:check`   |
+| Health loop       | `npm run health:check`     |
 
 ## Architecture
 
@@ -52,6 +55,8 @@
 | Session handoffs       | `docs/knowledge/handoffs/*.md`    |
 | Guides                 | `docs/guides/*.md`                |
 | CI config              | `.github/workflows/`              |
+| Automation loop scripts | `scripts/agent/`                 |
+| Health metrics          | `docs/knowledge/metrics/`        |
 | SpecKit constitution   | `.specify/memory/constitution.md` |
 
 ## Rules
