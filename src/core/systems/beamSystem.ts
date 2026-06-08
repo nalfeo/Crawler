@@ -92,7 +92,16 @@ export function beamSystem(world: GameWorld): void {
       const distSq = pointToSegmentDistSq(tx, ty, ax, ay, bx, by);
 
       if (distSq <= hitDistSq) {
-        applyDamage(world, target, damage, position.x[target] ?? 0, position.y[target] ?? 0, undefined, ax, ay);
+        applyDamage(
+          world,
+          target,
+          damage,
+          position.x[target] ?? 0,
+          position.y[target] ?? 0,
+          undefined,
+          ax,
+          ay,
+        );
       }
     }
   }
