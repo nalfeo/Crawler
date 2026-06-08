@@ -199,9 +199,9 @@ describe('skillSystem', () => {
     });
     skillSystem(world);
     expect(state.level).toBe(1);
-    expect(
-      world.statModifiers.some((m) => m.sourceId === `swordsmanship:level:1:${player}`),
-    ).toBe(true);
+    expect(world.statModifiers.some((m) => m.sourceId === `swordsmanship:level:1:${player}`)).toBe(
+      true,
+    );
   });
 
   it('keys holder milestone modifiers by holder eid', () => {
@@ -218,8 +218,8 @@ describe('skillSystem', () => {
     });
     skillSystem(world);
 
-    expect(world.statModifiers.some((m) => m.sourceId === `swordsmanship:milestone:5:${player}`)).toBe(
-      true,
-    );
+    expect(
+      world.statModifiers.some((m) => m.sourceId === `swordsmanship:milestone:5:${player}`),
+    ).toBe(true);
   });
 });

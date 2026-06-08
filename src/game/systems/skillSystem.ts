@@ -71,7 +71,12 @@ export function skillSystem(world: GameWorld): void {
   events.length = 0;
 }
 
-function applyMilestone(world: GameWorld, skillId: string, level: number, holderEid?: number): void {
+function applyMilestone(
+  world: GameWorld,
+  skillId: string,
+  level: number,
+  holderEid?: number,
+): void {
   const def = getSkillDefinition(skillId);
   if (def === undefined) return;
 
