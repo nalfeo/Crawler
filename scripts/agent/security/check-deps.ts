@@ -21,7 +21,14 @@ interface PackageJson {
 }
 
 // Trusted scopes / unscoped first-party Node ecosystem packages.
-const TRUSTED_SCOPES = ['@types/', '@typescript-eslint/', '@eslint/', '@vitejs/', '@vitest/'];
+const TRUSTED_SCOPES = [
+  '@types/',
+  '@typescript-eslint/',
+  '@eslint/',
+  '@vitejs/',
+  '@vitest/',
+  '@commitlint/',
+];
 
 const TRUSTED_PACKAGES = new Set<string>([
   // Game runtime
