@@ -50,6 +50,11 @@ export interface SidecarDeps {
    */
   readonly manifestPath?: string;
   /**
+   * Absolute path to `src/shared/data/catalog.json`. Defaults to
+   * `<repoRoot>/src/shared/data/catalog.json`.
+   */
+  readonly catalogPath?: string;
+  /**
    * Environment snapshot the approve route consults for the CI refusal.
    * Defaults to `process.env`. Inject `{}` (or `{ CI: undefined }`) in
    * tests to exercise the non-CI path even when the host runs in CI.
@@ -287,6 +292,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
     const manifestPath =
       deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const catalogPath =
+      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'catalog.json');
 
     let entry: ManifestEntry;
     try {
@@ -294,6 +301,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         runDir,
         variantIndex,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot: deps.repoRoot,
       });

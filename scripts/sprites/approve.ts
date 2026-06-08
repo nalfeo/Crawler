@@ -142,6 +142,8 @@ export interface ApproveVariantOptions {
   readonly variantIndex: number;
   /** Absolute path to `public/assets/generated/manifest.json`. Created if missing. */
   readonly manifestPath: string;
+  /** Absolute path to `src/shared/data/catalog.json`. Updated with approved sprite. */
+  readonly catalogPath: string;
   /** Absolute path to `public/assets/` (parent of `generated/`). */
   readonly publicAssetsDir: string;
   /** Absolute path to the repo root, used to compute `sourceRun` relative path. */
@@ -240,6 +242,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
+  upsertCatalog(fs, options.catalogPath, entry, variantId);
   return entry;
 }
 
@@ -285,6 +288,49 @@ function upsertManifest(fs: ApproveFs, manifestPath: string, entry: ManifestEntr
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   const next: Manifest = { version: MANIFEST_VERSION, entries: sorted };
   fs.writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+/**
+ * Convert manifest entry to catalog entry and upsert into catalog.json.
+ * Catalog entries need additional fields for the game, so we construct the full entry here.
+ */
+function upsertCatalog(fs: ApproveFs, catalogPath: string, manifestEntry: ManifestEntry, catalogId: string): void {
+  let catalog: Array<Record<string, unknown>>;
+  
+  if (fs.existsSync(catalogPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+      catalog = Array.isArray(raw) ? raw : [];
+    } catch (_err) {
+      console.warn(`Could not parse catalog (${catalogPath}), starting fresh`);
+      catalog = [];
+    }
+  } else {
+    catalog = [];
+  }
+
+  // Create catalog entry from manifest entry
+  const catalogEntry: Record<string, unknown> = {
+    id: `generated:${catalogId}`,
+    kind: 'sprite',
+    label: manifestEntry.spriteName,
+    description: `Generated sprite from brief: ${manifestEntry.briefId}`,
+    tags: ['generated', 'pipeline-approved'],
+    spriteId: manifestEntry.spriteName,
+    sheetKey: 'generated-manifest',
+    assetPath: manifestEntry.assetPath,
+    frame: 0,
+    col: 0,
+    row: 0,
+  };
+
+  // Remove existing entry with same ID if present, then add new one
+  const filtered = catalog.filter((e) => e.id !== catalogEntry.id);
+  filtered.push(catalogEntry);
+
+  // Write updated catalog
+  fs.mkdirSync(path.dirname(catalogPath), { recursive: true });
+  fs.writeFileSync(catalogPath, `${JSON.stringify(filtered, null, 2)}\n`);
 }
 
 function parseSummary(raw: string, summaryPath: string): RunSummaryShape {

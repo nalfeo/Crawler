@@ -101,6 +101,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
   const repoRoot = cwd;
   const publicAssetsDir = path.join(repoRoot, 'public', 'assets');
   const manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+  const catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'catalog.json');
   const runDir = path.isAbsolute(parsed.runDir)
     ? parsed.runDir
     : path.join(repoRoot, parsed.runDir);
@@ -110,6 +111,7 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
       runDir,
       variantIndex: parsed.variantIndex,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
     });

@@ -111,12 +111,14 @@ describe('approveVariant', () => {
   let repoRoot: string;
   let publicAssetsDir: string;
   let manifestPath: string;
+  let catalogPath: string;
   const fixedNow = () => new Date('2026-06-08T15:30:00.000Z');
 
   beforeEach(() => {
     repoRoot = mkdtempSync(path.join(tmpdir(), 'crawler-approve-'));
     publicAssetsDir = path.join(repoRoot, 'public', 'assets');
     manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+    catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'catalog.json');
   });
 
   afterEach(() => {
@@ -132,6 +134,7 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 1,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
@@ -197,6 +200,7 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
@@ -219,6 +223,7 @@ describe('approveVariant', () => {
       runDir: first.runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: () => new Date('2026-06-08T10:00:00.000Z'),
@@ -232,6 +237,7 @@ describe('approveVariant', () => {
       runDir: second.runDir,
       variantIndex: 3,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: () => new Date('2026-06-08T14:00:00.000Z'),
@@ -266,6 +272,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 9,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -276,6 +283,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 9,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -296,6 +304,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 1,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -311,6 +320,7 @@ describe('approveVariant', () => {
         runDir: empty,
         variantIndex: 0,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -327,6 +337,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 0,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -343,6 +354,7 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
@@ -359,6 +371,7 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
