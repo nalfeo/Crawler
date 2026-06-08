@@ -1,0 +1,15 @@
+{
+  "script": "docs-check-paths",
+  "startedAt": "2026-06-08T13:08:30.057Z",
+  "finishedAt": "2026-06-08T13:08:30.061Z",
+  "findings": [
+    {
+      "severity": "error",
+      "message": "Doc path does not exist on disk: `/agent-merge`",
+      "file": ".github/copilot-instructions.md",
+      "line": 30,
+      "remediation": "Update the doc to point at the new path, delete the stale reference, or add the file."
+    }
+  ],
+  "blocking": 1
+}

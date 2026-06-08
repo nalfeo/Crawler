@@ -1,0 +1,52 @@
+{
+  "script": "docs-check-readme-commands",
+  "startedAt": "2026-06-08T13:08:31.213Z",
+  "finishedAt": "2026-06-08T13:08:31.214Z",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run lint:fix`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run format:check`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run test:watch`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:extract-palette`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:run`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:gallery`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:approve`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:synth`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:batch`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:sync-catalog`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:metadata`"
+    }
+  ],
+  "blocking": 0
+}

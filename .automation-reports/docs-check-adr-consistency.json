@@ -1,0 +1,14 @@
+{
+  "script": "docs-check-adr-consistency",
+  "startedAt": "2026-06-08T13:08:30.618Z",
+  "finishedAt": "2026-06-08T13:08:30.620Z",
+  "findings": [
+    {
+      "severity": "warn",
+      "message": "ADR is missing a \"## Status\" section.",
+      "file": "docs/knowledge/adr/0006-drops-system-architecture.md",
+      "remediation": "Add a Status section per docs/knowledge/adr/TEMPLATE.md."
+    }
+  ],
+  "blocking": 0
+}

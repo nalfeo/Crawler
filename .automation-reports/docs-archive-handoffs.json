@@ -1,0 +1,12 @@
+{
+  "script": "docs-archive-handoffs",
+  "startedAt": "2026-06-08T13:08:33.115Z",
+  "finishedAt": "2026-06-08T13:08:33.116Z",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Archived 2025-07-22-stats-skills-levels.md (age 321d)."
+    }
+  ],
+  "blocking": 0
+}
