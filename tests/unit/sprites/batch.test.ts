@@ -67,6 +67,7 @@ function fakeRunSummary(brief: string, runId: string): RunSummary {
         scorecardPath: 'processed/00.scorecard.json',
         derivedAnchor: null,
         anchorSidecarPath: null,
+        anchorOverlayPath: 'processed/00.anchor-overlay.png',
         judgeScorecard: {
           variantIndex: 0,
           modelDeployment: 'mock',
@@ -92,6 +93,7 @@ function fakeRunSummary(brief: string, runId: string): RunSummary {
         scorecardPath: 'processed/01.scorecard.json',
         derivedAnchor: null,
         anchorSidecarPath: null,
+        anchorOverlayPath: 'processed/01.anchor-overlay.png',
         judgeScorecard: {
           variantIndex: 1,
           modelDeployment: 'mock',
@@ -117,6 +119,7 @@ function fakeRunSummary(brief: string, runId: string): RunSummary {
         scorecardPath: 'processed/02.scorecard.json',
         derivedAnchor: null,
         anchorSidecarPath: null,
+        anchorOverlayPath: 'processed/02.anchor-overlay.png',
         judgeScorecard: null,
         judgeSkipReason: 'over-cap',
         combinedPassed: false,
@@ -131,6 +134,7 @@ function fakeRunSummary(brief: string, runId: string): RunSummary {
         scorecardPath: 'processed/03.scorecard.json',
         derivedAnchor: null,
         anchorSidecarPath: null,
+        anchorOverlayPath: 'processed/03.anchor-overlay.png',
         judgeScorecard: null,
         judgeSkipReason: 'over-budget',
         combinedPassed: false,

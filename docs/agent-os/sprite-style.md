@@ -234,6 +234,47 @@ If you do need to send a quoted banned-word list to the model (rare; usually the
 
 Verify any non-trivial prompt change with a **real round-trip** against the deployment — unit tests with a mocked provider will not catch filter trips. The synth integration test uses a stub provider precisely because the real call is content-filter-sensitive and we do not want CI to depend on Azure availability or classifier stability.
 
+## Reviewing runs in the sprite gallery (spec §F7–F9)
+
+Unattended batch runs produce hundreds of candidates across briefs. The
+gallery lab is the read-only review surface so you can scan them
+without opening each PNG individually.
+
+```pwsh
+# Loads the same env you used for sprites:run, then starts the sidecar
+# (127.0.0.1:3010) and the Vite lab dev server together. Ctrl-C stops both.
+npm run sprites:gallery
+```
+
+Then open `http://localhost:3000/lab.html?lab=sprite-gallery`. (The
+sidecar binds 127.0.0.1 only - it is never reachable from the LAN.)
+
+What the gallery shows, per candidate:
+
+- 16x16 sprite scaled 8x with `image-rendering: pixelated`
+- The per-variant **anchor overlay** composited on top (toggle in the
+  toolbar). Every variant emits `processed/NN.anchor-overlay.png` next
+  to the sprite - a fully transparent PNG with one opaque red pixel at
+  the derived anchor. When derivation failed the overlay is fully
+  transparent so the gallery still has a file to fetch.
+- A colour-coded **sensor** pass/fail badge.
+- A colour-coded **judge** pass/fail badge with the lowest of
+  `style_match` / `brief_match` / `readability` when the brief opts in.
+- The **chosen** variant has a yellow border + badge.
+
+Clicking a tile loads the full per-candidate JSON (sensor scorecard,
+judge breakdown, derived anchor) into the side panel as a collapsible
+tree. Arrow keys nav: left/right between candidates within a brief,
+up/down between briefs.
+
+This PR is strictly **read-only** - no approve / promote / re-roll
+buttons. Mutation flows ship in a follow-up per spec §F9.
+
+If the sidecar is not running (`/api/health` unreachable) the lab
+still renders and shows a fallback banner that explains how to start
+it. This is the "review-only mode" requirement from spec §F9; the lab
+must never hard-fail when the sidecar is down.
+
 ---
 
 ## Judge cost knobs (Phase 3)

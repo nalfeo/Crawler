@@ -176,6 +176,11 @@ describe('generateOne (integration)', () => {
       expect(existsSync(candidate.rawPath)).toBe(true);
       expect(existsSync(candidate.processedPath)).toBe(true);
       expect(existsSync(candidate.scorecardPath)).toBe(true);
+      // Every variant gets an anchor-overlay PNG, even when derivation
+      // produced no anchor. The file always exists so the gallery can
+      // composite it without branching on whether an anchor was found.
+      expect(candidate.anchorOverlayPath).toMatch(/\.anchor-overlay\.png$/);
+      expect(existsSync(candidate.anchorOverlayPath)).toBe(true);
       const card = JSON.parse(readFileSync(candidate.scorecardPath, 'utf8'));
       expect(card.passed).toBe(true);
     }

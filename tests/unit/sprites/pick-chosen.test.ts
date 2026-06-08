@@ -33,6 +33,7 @@ function makeEntry(overrides: Partial<RunSummaryEntry> = {}): RunSummaryEntry {
     scorecardPath: '/tmp/processed/00.scorecard.json',
     derivedAnchor: null,
     anchorSidecarPath: null,
+    anchorOverlayPath: '/tmp/processed/00.anchor-overlay.png',
     judgeScorecard: null,
     judgeSkipReason: 'judge-disabled',
     combinedPassed: true,

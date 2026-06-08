@@ -30,11 +30,11 @@ without requiring a human to remember to look.
 
 Add three GitHub Actions workflows under `.github/workflows/`:
 
-| Workflow                | Cadence                  | Failure surface                                                                 |
-| ----------------------- | ------------------------ | ------------------------------------------------------------------------------- |
-| `docs-update.yml`       | Weekly + `workflow_dispatch` | Tracking issue on findings; auto-PR for handoff archival                       |
-| `security-review.yml`   | Daily + PR + `workflow_dispatch` | Hard-fail on PRs (required check); tracking issue on scheduled runs        |
-| `test-health.yml`       | Weekly + `workflow_dispatch` | Tracking issue on findings; auto-PR for metrics file updates                  |
+| Workflow              | Cadence                          | Failure surface                                                     |
+| --------------------- | -------------------------------- | ------------------------------------------------------------------- |
+| `docs-update.yml`     | Weekly + `workflow_dispatch`     | Tracking issue on findings; auto-PR for handoff archival            |
+| `security-review.yml` | Daily + PR + `workflow_dispatch` | Hard-fail on PRs (required check); tracking issue on scheduled runs |
+| `test-health.yml`     | Weekly + `workflow_dispatch`     | Tracking issue on findings; auto-PR for metrics file updates        |
 
 Each check is a deterministic, exit-code-driven script under
 `scripts/agent/{docs,security,health}/`. Per-script summaries are written to
@@ -65,7 +65,7 @@ The loops live in **separate workflows** from `ci.yml` because:
 - Drift, regressions, and security hygiene issues surface continuously instead
   of when someone happens to notice.
 - Each loop is debuggable locally via `npm run docs:check`, `npm run
-  security:check`, `npm run health:check`.
+security:check`, `npm run health:check`.
 - The same scripts run in both contexts — no CI-only code paths.
 
 ### Negative

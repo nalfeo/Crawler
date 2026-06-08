@@ -46,18 +46,18 @@
 
 ## Key Files
 
-| What                   | Where                             |
-| ---------------------- | --------------------------------- |
-| Agent personas         | `docs/agent-os/personas/*.md`     |
-| Policies               | `docs/agent-os/policies/*.md`     |
-| Architecture decisions | `docs/knowledge/adr/*.md`         |
-| Game design            | `docs/knowledge/game-design/*.md` |
-| Session handoffs       | `docs/knowledge/handoffs/*.md`    |
-| Guides                 | `docs/guides/*.md`                |
-| CI config              | `.github/workflows/`              |
-| Automation loop scripts | `scripts/agent/`                 |
-| Health metrics          | `docs/knowledge/metrics/`        |
-| SpecKit constitution   | `.specify/memory/constitution.md` |
+| What                    | Where                             |
+| ----------------------- | --------------------------------- |
+| Agent personas          | `docs/agent-os/personas/*.md`     |
+| Policies                | `docs/agent-os/policies/*.md`     |
+| Architecture decisions  | `docs/knowledge/adr/*.md`         |
+| Game design             | `docs/knowledge/game-design/*.md` |
+| Session handoffs        | `docs/knowledge/handoffs/*.md`    |
+| Guides                  | `docs/guides/*.md`                |
+| CI config               | `.github/workflows/`              |
+| Automation loop scripts | `scripts/agent/`                  |
+| Health metrics          | `docs/knowledge/metrics/`         |
+| SpecKit constitution    | `.specify/memory/constitution.md` |
 
 ## Rules
 
