@@ -6,8 +6,10 @@
     Fetches credentials from the project's Azure OpenAI resource using the
     Azure CLI and writes them to .env.local (git-ignored).
 
-    Cloud/CI environments are skipped automatically — use KeyVault or GitHub
+    Cloud/CI environments are skipped automatically -- use KeyVault or GitHub
     Secrets for those instead.
+
+    Variable names are documented in scripts/azure-env.example.
 
 .NOTES
     Prerequisites:
