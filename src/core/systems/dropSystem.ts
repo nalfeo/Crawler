@@ -146,7 +146,12 @@ export function dropSystem(world: GameWorld): void {
     let killDirY = 0;
     for (let i = world.combatEvents.length - 1; i >= 0; i--) {
       const evt = world.combatEvents[i]!;
-      if (evt.targetEid === eid && evt.type === 'hit' && evt.sourceX !== undefined && evt.sourceY !== undefined) {
+      if (
+        evt.targetEid === eid &&
+        evt.type === 'hit' &&
+        evt.sourceX !== undefined &&
+        evt.sourceY !== undefined
+      ) {
         const dx = x - evt.sourceX;
         const dy = y - evt.sourceY;
         const dist = Math.hypot(dx, dy);
@@ -159,11 +164,8 @@ export function dropSystem(world: GameWorld): void {
     }
 
     // Apply death knockback (small impulse in the killing blow direction)
-    const knockbackDist = Math.min(
-      DEATH_KNOCKBACK_MAX,
-      DEATH_KNOCKBACK_BASE + overkill * 2,
-    );
-    if (knockbackDist > 0 && (Math.abs(killDirX) + Math.abs(killDirY)) > 0.01) {
+    const knockbackDist = Math.min(DEATH_KNOCKBACK_MAX, DEATH_KNOCKBACK_BASE + overkill * 2);
+    if (knockbackDist > 0 && Math.abs(killDirX) + Math.abs(killDirY) > 0.01) {
       if (hasComponent(world.ecs, eid, Knockback)) {
         setComponent(world.ecs, eid, Knockback, {
           dirX: killDirX,
