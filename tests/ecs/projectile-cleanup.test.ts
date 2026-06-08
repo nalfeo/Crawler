@@ -1,8 +1,29 @@
 import { entityExists } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { spawnProjectile } from '../../src/core/helpers.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
 import { projectileCleanupSystem } from '../../src/core/systems/projectileCleanupSystem.js';
+import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+function makeOpenMap(): FloorMap {
+  const config: MapConfig = {
+    widthTiles: 20,
+    heightTiles: 20,
+    tileSizePx: 32,
+    biome: BiomeType.ARENA,
+    seed: 42,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(20, 20);
+  tileMap.fill(TilePresets.FLOOR);
+  return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(400), { x: 10, y: 10 });
+}
 
 describe('projectileCleanupSystem', () => {
   it('removes projectiles that leave game bounds', () => {
@@ -26,5 +47,20 @@ describe('projectileCleanupSystem', () => {
     projectileCleanupSystem(world);
 
     expect(entityExists(world.ecs, nearEdge)).toBe(true);
+  });
+
+  it('removes projectiles that hit impassable map tiles', () => {
+    const world = createTestWorld();
+    const floorMap = makeOpenMap();
+    world.floorMap = floorMap;
+    // Wall at tile (8, 8) -> projectile at pixel center should be culled.
+    floorMap.tileMap.setFlags(8, 8, TilePresets.WALL);
+    const inWall = spawnProjectile(world, 8 * 32 + 16, 8 * 32 + 16, 0, 0, 10);
+    const inFloor = spawnProjectile(world, 9 * 32 + 16, 8 * 32 + 16, 0, 0, 10);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, inWall)).toBe(false);
+    expect(entityExists(world.ecs, inFloor)).toBe(true);
   });
 });

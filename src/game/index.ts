@@ -10,6 +10,13 @@ export {
   getActiveWeapon,
 } from './weaponSystem.js';
 export type { WeaponConfig } from './weaponSystem.js';
+export {
+  initializeFloor1Scenario,
+  selectFloor1StarterWeapon,
+  floor1PlayerStatSystem,
+  floor1EnemyDirectorSystem,
+  floor1ObjectiveSystem,
+} from './floor1Scenario.js';
 export { levelSystem } from './systems/levelSystem.js';
 export {
   statsSystem,

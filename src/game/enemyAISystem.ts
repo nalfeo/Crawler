@@ -20,6 +20,8 @@ const SWARM_COHESION_WEIGHT = 0.2;
 const MAX_OVERLAP_FRACTION = 0.25;
 const SEPARATION_FORCE = 2.0;
 const ENEMY_RADIUS = 8; // half of 16x16 sprite
+const NAVIGATION_LOOKAHEAD_PX = 24;
+const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
 
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
   setComponent(world.ecs, eid, Velocity, { x, y });
@@ -39,8 +41,80 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   return speed > 0 ? speed : DEFAULT_ENEMY_SPEED;
 }
 
+function rotate(x: number, y: number, angle: number): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  };
+}
+
+function setNavigatingVelocity(
+  world: GameWorld,
+  eid: number,
+  desiredX: number,
+  desiredY: number,
+  speed: number,
+): void {
+  const desired = normalize(desiredX, desiredY);
+  if (desired.length <= EPSILON) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    setVelocity(world, eid, desired.x * speed, desired.y * speed);
+    return;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+
+  for (const offset of NAVIGATION_ANGLE_OFFSETS) {
+    const candidate = rotate(desired.x, desired.y, offset);
+    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
+    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
+    if (floorMap.isPassableAt(sampleX, sampleY)) {
+      setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
+      return;
+    }
+  }
+
+  setVelocity(world, eid, 0, 0);
+}
+
 function isAggroActive(aggroRange: number, distanceToPlayer: number): boolean {
   return aggroRange <= 0 || distanceToPlayer <= aggroRange;
+}
+
+function isEnemyRoomDoorOpen(world: GameWorld, eid: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return true;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const tile = floorMap.pixelToTile(enemyX, enemyY);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return true;
+  }
+
+  const room = floorMap.roomGraph.get(roomId);
+  if (!room || room.doors.length === 0) {
+    return true;
+  }
+
+  for (const door of room.doors) {
+    if (floorMap.tileMap.isPassable(door.x, door.y)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function applyChaseBehavior(
@@ -57,8 +131,7 @@ function applyChaseBehavior(
     return;
   }
 
-  const direction = normalize(playerDx, playerDy);
-  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  setNavigatingVelocity(world, eid, playerDx, playerDy, speed);
 }
 
 function applySwarmBehavior(
@@ -123,8 +196,7 @@ function applySwarmBehavior(
     steerY += cohesion.y * SWARM_COHESION_WEIGHT;
   }
 
-  const direction = normalize(steerX, steerY);
-  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  setNavigatingVelocity(world, eid, steerX, steerY, speed);
 }
 
 function tryFireEnemyProjectile(
@@ -171,13 +243,17 @@ function applyRangedBehavior(
   playerDx: number,
   playerDy: number,
   distanceToPlayer: number,
-  _aggroRange: number,
+  aggroRange: number,
   attackRange: number,
   speed: number,
 ): void {
+  if (!isAggroActive(aggroRange, distanceToPlayer)) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
   if (attackRange <= EPSILON) {
-    const direction = normalize(playerDx, playerDy);
-    setVelocity(world, eid, direction.x * speed, direction.y * speed);
+    setNavigatingVelocity(world, eid, playerDx, playerDy, speed);
     return;
   }
 
@@ -185,7 +261,7 @@ function applyRangedBehavior(
   const toPlayer = normalize(playerDx, playerDy);
 
   if (distanceToPlayer > attackRange) {
-    setVelocity(world, eid, toPlayer.x * speed, toPlayer.y * speed);
+    setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     return;
   }
 
@@ -193,14 +269,14 @@ function applyRangedBehavior(
   tryFireEnemyProjectile(world, eid, playerDx, playerDy);
 
   if (distanceToPlayer < retreatDistance && distanceToPlayer > EPSILON) {
-    setVelocity(world, eid, -toPlayer.x * speed, -toPlayer.y * speed);
+    setNavigatingVelocity(world, eid, -toPlayer.x, -toPlayer.y, speed);
     return;
   }
 
   const tangentX = -toPlayer.y;
   const tangentY = toPlayer.x;
   const tangent = normalize(tangentX, tangentY);
-  setVelocity(world, eid, tangent.x * speed, tangent.y * speed);
+  setNavigatingVelocity(world, eid, tangent.x, tangent.y, speed);
 }
 
 /**
@@ -310,6 +386,14 @@ export function enemyAISystem(world: GameWorld): void {
     const aggroRange = enemyBehavior.aggroRange[eid]!;
     const attackRange = enemyBehavior.attackRange[eid]!;
     const speed = getEnemySpeed(world, eid);
+    const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
+    const inAggroRange = isAggroActive(aggroRange, distanceToPlayer);
+    const canDetectPlayer = hasOpenRoomDoor && inAggroRange;
+
+    if (!canDetectPlayer) {
+      setVelocity(world, eid, 0, 0);
+      continue;
+    }
 
     switch (behaviorType) {
       case AI_TYPE.SWARM:
@@ -323,9 +407,7 @@ export function enemyAISystem(world: GameWorld): void {
           aggroRange,
           speed,
         );
-        if (isAggroActive(aggroRange, distanceToPlayer)) {
-          activeEnemies.push(eid);
-        }
+        activeEnemies.push(eid);
         break;
       case AI_TYPE.RANGED:
         applyRangedBehavior(
@@ -338,15 +420,12 @@ export function enemyAISystem(world: GameWorld): void {
           attackRange,
           speed,
         );
-        // Ranged enemies are always actively steered
         activeEnemies.push(eid);
         break;
       case AI_TYPE.CHASE:
       default:
         applyChaseBehavior(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
-        if (isAggroActive(aggroRange, distanceToPlayer)) {
-          activeEnemies.push(eid);
-        }
+        activeEnemies.push(eid);
         break;
     }
   }

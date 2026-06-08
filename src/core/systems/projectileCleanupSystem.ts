@@ -18,6 +18,7 @@ const BOUNDS = {
 export function projectileCleanupSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Projectile, Position]);
   const { position } = world.stores;
+  const floorMap = world.floorMap;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) {
@@ -26,6 +27,12 @@ export function projectileCleanupSystem(world: GameWorld): void {
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
+
+    if (floorMap && !floorMap.isPassableAt(x, y)) {
+      clearEntityStores(world, eid);
+      removeEntity(world.ecs, eid);
+      continue;
+    }
 
     if (x < BOUNDS.minX || x > BOUNDS.maxX || y < BOUNDS.minY || y > BOUNDS.maxY) {
       clearEntityStores(world, eid);
