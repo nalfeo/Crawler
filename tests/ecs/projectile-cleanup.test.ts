@@ -49,7 +49,7 @@ describe('projectileCleanupSystem', () => {
     expect(entityExists(world.ecs, nearEdge)).toBe(true);
   });
 
-  it('removes projectiles that hit impassable map tiles', () => {
+  it('removes projectiles that hit impassable map tiles (stationary in wall)', () => {
     const world = createTestWorld();
     const floorMap = makeOpenMap();
     world.floorMap = floorMap;
@@ -62,5 +62,26 @@ describe('projectileCleanupSystem', () => {
 
     expect(entityExists(world.ecs, inWall)).toBe(false);
     expect(entityExists(world.ecs, inFloor)).toBe(true);
+  });
+
+  it('removes projectiles whose next position is fully blocked by a wall', () => {
+    const world = createTestWorld();
+    const floorMap = makeOpenMap();
+    world.floorMap = floorMap;
+    // Wall at tile (10, 10). Projectile is on tile (9, 10) moving right (+vx)
+    // into the wall — all three slide candidates blocked.
+    floorMap.tileMap.setFlags(10, 10, TilePresets.WALL);
+    const tileSize = 32;
+    // Place projectile 1 pixel before the wall boundary, velocity = 5 px/frame (enters wall).
+    const projX = 10 * tileSize - 1; // pixel just before wall tile
+    const projY = 10 * tileSize + 16; // vertically centred in wall tile row
+    const headingIntoWall = spawnProjectile(world, projX, projY, 5, 0, 10);
+    // Another projectile moving away from the wall — should survive.
+    const movingAway = spawnProjectile(world, projX, projY, -5, 0, 10);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, headingIntoWall)).toBe(false);
+    expect(entityExists(world.ecs, movingAway)).toBe(true);
   });
 });
