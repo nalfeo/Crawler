@@ -9,6 +9,7 @@ import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
 import type { InventoryBag } from '../shared/inventory.js';
 import type { CombatEvent } from '../shared/combat-events.js';
+import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
@@ -70,8 +71,14 @@ export interface GameWorld {
   statModifiers: StatModifier[];
   /** Per-skill state keyed by skill id. */
   playerSkills: Map<string, SkillState>;
+  /** Per-entity skill state keyed by holder eid, then by skill id. */
+  skillStatesByEntity: Map<number, Map<string, SkillState>>;
   /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
   skillUsageEvents: SkillUsageEvent[];
+  /** Per-entity ability state keyed by holder eid. */
+  abilityStatesByEntity: Map<number, AbilityState>;
+  /** Trigger events emitted this frame — cleared at end of abilitySystem. */
+  abilityTriggerEvents: AbilityTriggerEvent[];
   /** Dirty flag: true when stats need recomputing. Set by level-up, modifier change, etc. */
   statsDirty: boolean;
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
@@ -151,7 +158,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     },
     statModifiers: [],
     playerSkills: new Map(),
+    skillStatesByEntity: new Map(),
     skillUsageEvents: [],
+    abilityStatesByEntity: new Map(),
+    abilityTriggerEvents: [],
     statsDirty: true,
     inventories: new Map(),
     combatEvents: [],

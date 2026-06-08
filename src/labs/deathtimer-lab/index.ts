@@ -1,5 +1,6 @@
 import type GUI from 'lil-gui';
 import { SeededRandom } from '../../shared/random.js';
+import { GAME } from '../../shared/constants.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -8,25 +9,19 @@ interface DeathTimerEntity {
   id: number;
   x: number;
   y: number;
-  totalMs: number;
   remainingMs: number;
+  totalMs: number;
 }
 
 interface DeathTimerLabSettings {
-  timerMs: number;
-  spawnRate: number;
-  maxEntities: number;
+  deathTimerMs: number;
+  spawnCount: number;
   paused: boolean;
 }
 
 const BACKGROUND = '#0d0d14';
 const ENTITY_RADIUS = 14;
-const FADE_COLOR_START = 'rgba(255, 80, 80, 0.9)';
-const FADE_COLOR_END = 'rgba(60, 60, 60, 0.3)';
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
+const LAB_SEED = 0xdead_7174;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -54,160 +49,154 @@ function createDeathTimerLab(canvasHost: HTMLElement, controls: HTMLElement): ()
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Entities fade and shrink as their death timer counts down. When the timer expires, they are removed with a burst effect.';
+    'Spawn dying entities and watch them count down to removal. Visualizes the deathTimerSystem delay mechanic.';
   hint.style.marginTop = '16px';
-  hint.style.color = '#ff9e9e';
+  hint.style.color = '#9fe7ff';
   hint.style.lineHeight = '1.6';
   controls.append(hint);
 
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Failed to acquire 2D context for deathtimer lab.');
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Failed to acquire 2D context for death timer lab.');
   }
 
-  const random = new SeededRandom(0xdead_7171);
+  const random = new SeededRandom(LAB_SEED);
   const settings: DeathTimerLabSettings = {
-    timerMs: 2000,
-    spawnRate: 2,
-    maxEntities: 20,
+    deathTimerMs: GAME.DELTA_MS * 60,
+    spawnCount: 5,
     paused: false,
   };
 
   const entities: DeathTimerEntity[] = [];
   let nextId = 1;
-  let spawnBudget = 0;
   let removedCount = 0;
-  let lastFrameTime = performance.now();
   let frameHandle = 0;
+  let lastFrameTimeMs = performance.now();
   let width = 1;
   let height = 1;
 
-  const syncSize = () => {
-    const w = Math.max(1, Math.floor(root.clientWidth));
-    const h = Math.max(1, Math.floor(root.clientHeight));
+  const syncCanvasSize = () => {
+    const nextWidth = Math.max(1, Math.floor(root.clientWidth));
+    const nextHeight = Math.max(1, Math.floor(root.clientHeight));
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const pw = Math.max(1, Math.floor(w * dpr));
-    const ph = Math.max(1, Math.floor(h * dpr));
-    if (canvas.width !== pw || canvas.height !== ph) {
-      canvas.width = pw;
-      canvas.height = ph;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    }
-    width = w;
-    height = h;
-  };
+    const pixelWidth = Math.max(1, Math.floor(nextWidth * dpr));
+    const pixelHeight = Math.max(1, Math.floor(nextHeight * dpr));
 
-  const spawnEntity = () => {
-    if (entities.length >= settings.maxEntities) return;
-    const margin = ENTITY_RADIUS + 30;
-    entities.push({
-      id: nextId++,
-      x: lerp(margin, Math.max(margin, width - margin), random.next()),
-      y: lerp(margin + 40, Math.max(margin + 40, height - margin), random.next()),
-      totalMs: settings.timerMs,
-      remainingMs: settings.timerMs,
-    });
-  };
-
-  const update = (deltaMs: number) => {
-    if (settings.paused) return;
-
-    spawnBudget += (deltaMs / 1000) * settings.spawnRate;
-    while (spawnBudget >= 1 && entities.length < settings.maxEntities) {
-      spawnEntity();
-      spawnBudget -= 1;
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
 
-    for (let i = entities.length - 1; i >= 0; i--) {
-      const e = entities[i];
-      if (!e) continue;
-      e.remainingMs -= deltaMs;
-      if (e.remainingMs <= 0) {
-        entities.splice(i, 1);
-        removedCount++;
-      }
+    width = nextWidth;
+    height = nextHeight;
+  };
+
+  const spawnBatch = () => {
+    for (let i = 0; i < settings.spawnCount; i++) {
+      entities.push({
+        id: nextId++,
+        x: 40 + random.next() * (width - 80),
+        y: 60 + random.next() * (height - 120),
+        remainingMs: settings.deathTimerMs,
+        totalMs: settings.deathTimerMs,
+      });
     }
   };
 
-  const render = () => {
-    ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = BACKGROUND;
-    ctx.fillRect(0, 0, width, height);
-
-    for (const e of entities) {
-      const progress = clamp(1 - e.remainingMs / Math.max(1, e.totalMs), 0, 1);
-      const scale = lerp(1, 0.3, progress);
-      const alpha = lerp(1, 0.2, progress);
-      const radius = ENTITY_RADIUS * scale;
-
-      ctx.save();
-      ctx.globalAlpha = alpha;
-
-      // Outer glow fades from red to grey
-      ctx.beginPath();
-      ctx.fillStyle = progress < 0.5 ? FADE_COLOR_START : FADE_COLOR_END;
-      ctx.arc(e.x, e.y, radius + 4, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Inner body
-      ctx.beginPath();
-      ctx.fillStyle = `rgba(255, ${Math.round(lerp(200, 60, progress))}, ${Math.round(lerp(200, 60, progress))}, 1)`;
-      ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Timer text
-      ctx.fillStyle = '#fff';
-      ctx.font = '11px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(`${Math.max(0, Math.ceil(e.remainingMs))}`, e.x, e.y);
-
-      ctx.restore();
-    }
-
-    // HUD
-    ctx.fillStyle = '#ff9e9e';
-    ctx.font = '14px monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`Active: ${entities.length} | Removed: ${removedCount}`, 16, 16);
-
-    if (settings.paused) {
-      ctx.fillStyle = 'rgba(255, 230, 140, 0.95)';
-      ctx.fillText('PAUSED', 16, 36);
-    }
+  const clearAll = () => {
+    entities.length = 0;
+    removedCount = 0;
+    nextId = 1;
   };
 
   const tick = (now: number) => {
-    syncSize();
-    const deltaMs = Math.min(now - lastFrameTime, 50);
-    lastFrameTime = now;
-    update(deltaMs);
-    render();
+    syncCanvasSize();
+    const deltaMs = Math.min(now - lastFrameTimeMs, 50);
+    lastFrameTimeMs = now;
+
+    if (!settings.paused) {
+      for (let i = entities.length - 1; i >= 0; i--) {
+        const entity = entities[i]!;
+        entity.remainingMs -= deltaMs;
+        if (entity.remainingMs <= 0) {
+          entities.splice(i, 1);
+          removedCount++;
+        }
+      }
+    }
+
+    // Render
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = BACKGROUND;
+    context.fillRect(0, 0, width, height);
+
+    // HUD
+    context.fillStyle = '#22d3ee';
+    context.font = '16px monospace';
+    context.textAlign = 'left';
+    context.textBaseline = 'top';
+    context.fillText(`Dying: ${entities.length} | Removed: ${removedCount}`, 20, 20);
+
+    if (settings.paused) {
+      context.fillStyle = 'rgba(255, 230, 140, 0.95)';
+      context.fillText('PAUSED', 20, 42);
+    }
+
+    // Draw entities
+    for (const entity of entities) {
+      const ratio = clamp(entity.remainingMs / entity.totalMs, 0, 1);
+      const alpha = 0.3 + ratio * 0.7;
+
+      // Skull/death circle
+      context.globalAlpha = alpha;
+      context.beginPath();
+      context.fillStyle = '#ff4444';
+      context.arc(entity.x, entity.y, ENTITY_RADIUS * ratio, 0, Math.PI * 2);
+      context.fill();
+
+      // Ring showing countdown
+      context.strokeStyle = `rgba(255, 80, 80, ${alpha})`;
+      context.lineWidth = 3;
+      context.beginPath();
+      context.arc(
+        entity.x,
+        entity.y,
+        ENTITY_RADIUS + 4,
+        -Math.PI / 2,
+        -Math.PI / 2 + ratio * Math.PI * 2,
+      );
+      context.stroke();
+
+      context.globalAlpha = 1;
+
+      // Timer text
+      context.fillStyle = '#ffffff';
+      context.font = '10px monospace';
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(`${Math.ceil(entity.remainingMs)}`, entity.x, entity.y);
+    }
+
     frameHandle = window.requestAnimationFrame(tick);
   };
 
   const actions = {
-    spawnOne: () => spawnEntity(),
-    clearAll: () => {
-      entities.length = 0;
-      removedCount = 0;
-      spawnBudget = 0;
-    },
+    spawnDying: spawnBatch,
+    clearAll,
   };
 
-  gui.add(settings, 'timerMs', 200, 5000, 100).name('Timer (ms)');
-  gui.add(settings, 'spawnRate', 0.5, 10, 0.5).name('Spawn Rate');
-  gui.add(settings, 'maxEntities', 5, 50, 1).name('Max Entities');
+  gui.add(settings, 'deathTimerMs', 100, 5000, 50).name('Timer (ms)');
+  gui.add(settings, 'spawnCount', 1, 20, 1).name('Spawn count');
   gui.add(settings, 'paused').name('Paused');
-  gui.add(actions, 'spawnOne').name('Spawn One');
+  gui.add(actions, 'spawnDying').name('Spawn Dying');
   gui.add(actions, 'clearAll').name('Clear All');
 
-  const handleResize = () => syncSize();
+  const handleResize = () => syncCanvasSize();
   window.addEventListener('resize', handleResize);
 
-  syncSize();
-  render();
+  syncCanvasSize();
+  spawnBatch();
   frameHandle = window.requestAnimationFrame(tick);
 
   return () => {
@@ -221,6 +210,6 @@ function createDeathTimerLab(canvasHost: HTMLElement, controls: HTMLElement): ()
 registerLab('deathtimer-lab', {
   category: 'Entities' as LabCategory,
   name: 'Death Timer',
-  description: 'Visualize delayed entity removal with countdown fade and shrink effects.',
+  description: 'Visualize the death-timer countdown that delays entity removal after death.',
   create: createDeathTimerLab,
 });
