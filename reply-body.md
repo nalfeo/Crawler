@@ -1,1 +1,0 @@
-Updated the PR title to `feat: add abilities system with registry, ECS runtime, and progression effects` to accurately reflect the full scope of changes.
