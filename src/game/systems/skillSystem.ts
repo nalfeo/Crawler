@@ -4,6 +4,7 @@ import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../skills/types.js';
 import { getSkillDefinition } from '../skills/registry.js';
 import { addStatModifier } from './statsSystem.js';
 import { applyCatalogEffect } from './progressionEffects.js';
+import { queueAbilityTrigger } from './abilitySystem.js';
 
 /**
  * Processes skill usage events each frame.
@@ -32,6 +33,15 @@ export function skillSystem(world: GameWorld): void {
     if (event.metric !== def.usageMetric) continue;
 
     state.usage += event.amount;
+
+    // Forward skill usage to ability system so abilities with skill_usage triggers fire
+    queueAbilityTrigger(world, {
+      holderEid: event.holderEid,
+      kind: 'skill_usage',
+      metric: event.metric,
+      skillId: event.skillId,
+      amount: event.amount,
+    });
 
     const effectiveCap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
 

@@ -1,9 +1,10 @@
 import type { CatalogEffect } from '../../shared/progression-effects.js';
+import type { StatModifier } from '../../shared/skills.js';
 import type { GameWorld } from '../../core/world.js';
 import { addStatModifier } from './statsSystem.js';
 
 interface ApplyCatalogEffectOptions {
-  sourceType: 'skill' | 'floor' | 'buff' | 'ability';
+  sourceType: StatModifier['sourceType'];
   sourceId: string;
   effect: CatalogEffect;
   expiresFrame?: number;
