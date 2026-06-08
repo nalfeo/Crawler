@@ -20,6 +20,7 @@
     "test:integration": "vitest run --project integration",
     "test:e2e": "vitest run --project e2e",
     "lab": "vite --mode lab",
+    "devtools": "vite --mode devtools",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
