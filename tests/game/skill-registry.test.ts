@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { getAllSkillDefinitions, getSkillDefinition } from '../../src/game/skills/registry.js';
+import {
+  getAllSkillDefinitions,
+  getSkillDefinition,
+  parseSkillCatalog,
+} from '../../src/game/skills/registry.js';
 import { SKILL_HARD_CAP } from '../../src/game/skills/types.js';
 
 describe('skill registry', () => {
@@ -62,5 +66,18 @@ describe('skill registry', () => {
         expect(Number.isInteger(threshold)).toBe(true);
       }
     }
+  });
+
+  it('rejects duplicate skill IDs', () => {
+    const base = getAllSkillDefinitions()[0]!;
+    expect(() =>
+      parseSkillCatalog([
+        base,
+        {
+          ...base,
+          name: 'Duplicate Name',
+        },
+      ]),
+    ).toThrow(/duplicate/i);
   });
 });
