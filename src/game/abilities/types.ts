@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AbilityTriggerCondition as SharedAbilityTriggerCondition } from '../../shared/abilities.js';
 import type { CatalogEffect } from '../../shared/progression-effects.js';
+import { STAT_KEYS } from '../../shared/stats.js';
 
 export { ACTIVE_ABILITY_SLOT_LIMIT } from '../../shared/abilities.js';
 export type {
@@ -51,36 +52,20 @@ const triggerConditionSchema = z
     }
   });
 
+const statKeySchema = z.enum(STAT_KEYS);
+
 const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('stat_add'),
-      stat: z.enum([
-        'maxHp',
-        'moveSpeed',
-        'damage',
-        'armor',
-        'attackSpeed',
-        'pickupRange',
-        'projectileCount',
-        'projectileSpeed',
-      ]),
+      stat: statKeySchema,
       value: z.number(),
     })
     .strict(),
   z
     .object({
       type: z.literal('stat_multiply'),
-      stat: z.enum([
-        'maxHp',
-        'moveSpeed',
-        'damage',
-        'armor',
-        'attackSpeed',
-        'pickupRange',
-        'projectileCount',
-        'projectileSpeed',
-      ]),
+      stat: statKeySchema,
       value: z.number(),
     })
     .strict(),

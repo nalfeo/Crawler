@@ -119,7 +119,10 @@ describe('abilitySystem', () => {
     );
     expect(world.statModifiers.length).toBe(beforeThird);
     expect(afterThird).toHaveLength(1);
+    // Verify the trigger actually fired after cooldown by checking the cooldown timestamp updated
     expect(state.cooldownByAbilityId.get('battle-focus')).toBe(131);
+    // Confirm cooldown advanced from the previous value (100 → 131)
+    expect(state.cooldownByAbilityId.get('battle-focus')).toBeGreaterThan(100);
   });
 
   it('clears ability trigger events after processing', () => {
