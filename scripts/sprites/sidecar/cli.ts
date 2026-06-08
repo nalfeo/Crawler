@@ -81,7 +81,8 @@ async function main(): Promise<number> {
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
-const isDirectInvocation = invokedPath !== '' && import.meta.url === pathToFileURL(invokedPath).href;
+const isDirectInvocation =
+  invokedPath !== '' && import.meta.url === pathToFileURL(invokedPath).href;
 if (isDirectInvocation) {
   main().then(
     (code) => {

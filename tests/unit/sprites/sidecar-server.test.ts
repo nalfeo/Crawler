@@ -137,7 +137,10 @@ describe('listRuns', () => {
     writeMinimalRun(runsDir, 'iron-sword', '2026-06-04T11-00-00-aaaaaaaa');
     mkdirSync(path.join(runsDir, 'cloth-shirt'), { recursive: true });
     try {
-      symlinkSync(path.join(root, 'missing-target'), path.join(runsDir, 'cloth-shirt', 'broken-run'));
+      symlinkSync(
+        path.join(root, 'missing-target'),
+        path.join(runsDir, 'cloth-shirt', 'broken-run'),
+      );
     } catch {
       // Some environments (notably Windows without privileges) disallow symlinks.
       // If so, skip this specific race-shape test.
