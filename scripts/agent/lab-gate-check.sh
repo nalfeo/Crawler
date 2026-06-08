@@ -13,6 +13,7 @@ declare -A SHARED_LAB_MAP=(
   [aoeonimpact]="weapons-lab"
   [areadamage]="weapons-lab"
   [returningprojectile]="weapons-lab"
+  [deathtimer]="gore-lab"
 )
 
 echo "🔬 Lab Gate Check: Verifying every system has a lab..."
