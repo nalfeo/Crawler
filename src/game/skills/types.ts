@@ -1,4 +1,5 @@
 import type { StatKey } from '../../shared/stats.js';
+import type { CatalogEffect } from '../../shared/progression-effects.js';
 import type { UsageMetric } from '../../shared/skills.js';
 export {
   SKILL_NATURAL_CAP,
@@ -10,11 +11,7 @@ export {
   type PlayerLevel,
 } from '../../shared/skills.js';
 
-export type MilestoneEffect =
-  | { type: 'stat_add'; stat: StatKey; value: number }
-  | { type: 'stat_multiply'; stat: StatKey; value: number }
-  | { type: 'extra_projectile'; count: number }
-  | { type: 'aura'; radius: number; dpsPercentOfDamage: number };
+export type MilestoneEffect = CatalogEffect;
 
 export interface SkillMilestone {
   level: 5 | 10 | 15 | 20;
@@ -29,29 +26,7 @@ export interface SkillDefinition {
   description: string;
   category: 'combat' | 'defense' | 'utility';
   usageMetric: UsageMetric;
-  /** Strictly increasing, length MUST equal SKILL_HARD_CAP (20). */
-  usageThresholds: [
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-  ];
+  usageThresholds: number[];
   perLevelBonus: Partial<Record<StatKey, number>>;
   milestones: SkillMilestone[];
   flavorText?: string;

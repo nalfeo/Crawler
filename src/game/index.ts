@@ -18,7 +18,17 @@ export {
   removeStatModifiers,
 } from './systems/statsSystem.js';
 export { skillSystem } from './systems/skillSystem.js';
+export {
+  abilitySystem,
+  createAbilityState,
+  equipActiveAbility,
+  memorizeSpell,
+  grantPassiveAbility,
+  queueAbilityTrigger,
+  getOrCreateAbilityState,
+} from './systems/abilitySystem.js';
 export { getSkillDefinition, getAllSkillDefinitions } from './skills/registry.js';
+export { getAbilityDefinition, getAllAbilityDefinitions } from './abilities/registry.js';
 export type {
   SkillDefinition,
   SkillState,
@@ -28,3 +38,13 @@ export type {
   UsageMetric,
 } from './skills/types.js';
 export { SKILL_NATURAL_CAP, SKILL_HARD_CAP } from './skills/types.js';
+export type {
+  AbilityDefinition,
+  ActiveAbilityDefinition,
+  PassiveAbilityDefinition,
+  AbilityCategory,
+  AbilityState,
+  AbilityTriggerCondition,
+  AbilityTriggerEvent,
+} from './abilities/types.js';
+export { ACTIVE_ABILITY_SLOT_LIMIT } from './abilities/types.js';

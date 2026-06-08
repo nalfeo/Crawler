@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BootScene, MainGameScene } from './engine/index.js';
 import { GAME } from './shared/constants.js';
-import { levelSystem, skillSystem, statsSystem } from './game/systems/index.js';
+import { abilitySystem, levelSystem, skillSystem, statsSystem } from './game/systems/index.js';
 import {
   createLogger,
   getGlobalLogLevel,
@@ -33,7 +33,7 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, new MainGameScene([levelSystem, skillSystem, statsSystem])],
+  scene: [BootScene, new MainGameScene([levelSystem, skillSystem, abilitySystem, statsSystem])],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
