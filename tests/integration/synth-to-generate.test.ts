@@ -78,7 +78,12 @@ function makeSynthProvider(): SynthProvider {
               { id: 'roguelike-rpg-pack', note: 'silhouette anchor for slender weapons' },
               { id: 'tiny-battle', note: 'secondary palette for steel/wood mix' },
             ],
-            embellishmentSeeds: ['shorter wider blade', 'wrapped leather grip', 'segmented snath'],
+            embellishmentSeeds: [
+              'shorter wider blade',
+              'wrapped leather grip',
+              'segmented snath',
+              'brass ferrule at grip end',
+            ],
             rationale: 'Curved blade silhouette versus the straight-blade alternatives.',
           },
         ],

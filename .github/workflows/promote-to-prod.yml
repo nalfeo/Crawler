@@ -74,12 +74,26 @@ jobs:
           DEPLOY_ENV: dev
           BUILD_OUTDIR: staging/dev
 
+      - name: Guard - dev must NOT include devtools.html
+        run: |
+          if [ -f staging/dev/devtools.html ]; then
+            echo "::error::Dev build contains devtools.html - local-only leakage!"
+            exit 1
+          fi
+
       # --- Build Beta from main HEAD ---
       - name: Build beta
         run: npm run build
         env:
           DEPLOY_ENV: beta
           BUILD_OUTDIR: staging/beta
+
+      - name: Guard - beta must NOT include devtools.html
+        run: |
+          if [ -f staging/beta/devtools.html ]; then
+            echo "::error::Beta build contains devtools.html - local-only leakage!"
+            exit 1
+          fi
 
       # --- Build Prod from promoted SHA ---
       - name: Checkout promoted commit
@@ -94,10 +108,14 @@ jobs:
           DEPLOY_ENV: prod
           BUILD_OUTDIR: staging/prod
 
-      - name: Guard - prod must NOT include lab.html
+      - name: Guard - prod must NOT include lab.html or devtools.html
         run: |
           if [ -f staging/prod/lab.html ]; then
             echo "::error::Prod build contains lab.html - lab leakage!"
+            exit 1
+          fi
+          if [ -f staging/prod/devtools.html ]; then
+            echo "::error::Prod build contains devtools.html - local-only leakage!"
             exit 1
           fi
 
