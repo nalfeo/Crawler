@@ -1,5 +1,6 @@
 import './labs/index.js';
 import { renderLabIndex } from './labs/lab-index.js';
+import { initLabShell } from './labs/lab-shell.js';
 import { runLab } from './labs/lab-runner.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
@@ -94,6 +95,7 @@ async function loadAllLabs(): Promise<void> {
 
 async function main(): Promise<void> {
   const labId = new URLSearchParams(window.location.search).get('lab');
+  initLabShell({ hasActiveLab: Boolean(labId) });
 
   if (labId) {
     await loadLabModule(labId);

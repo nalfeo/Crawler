@@ -31,6 +31,11 @@ const DEATH_KNOCKBACK_SPEED = 6;
 /** How long a dead entity persists before removal (ms). */
 const DEATH_LINGER_MS = 300;
 
+export interface DropSystemOptions {
+  readonly spawnLoot?: boolean;
+  readonly deathLingerMs?: number;
+}
+
 /**
  * Resolve which loot tables apply for a given enemy.
  * Currently uses BASIC_MELEE for all enemies + floor-level table.
@@ -111,10 +116,12 @@ function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): 
   }
 }
 
-export function dropSystem(world: GameWorld): void {
+export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): void {
   const entities = query(world.ecs, [Enemy, Health]);
   const { health, position } = world.stores;
   const processed = getProcessedDeaths(world);
+  const spawnLoot = options.spawnLoot ?? true;
+  const deathLingerMs = options.deathLingerMs ?? DEATH_LINGER_MS;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -187,23 +194,25 @@ export function dropSystem(world: GameWorld): void {
       }
     }
 
-    // Resolve and roll loot tables
-    const tables = getEnemyLootTables(world, eid);
-    const entries = resolveLootTables(
-      tables.entityTable,
-      tables.typeTable,
-      tables.areaTable,
-      tables.floorTable,
-    );
-    const drops = rollLootTable(entries, world.rng);
-    spawnDrops(world, x, y, drops);
-    logger.info('Processed enemy death drops', {
-      eid,
-      x,
-      y,
-      dropCount: drops.length,
-      floor: world.floor,
-    });
+    if (spawnLoot) {
+      // Resolve and roll loot tables
+      const tables = getEnemyLootTables(world, eid);
+      const entries = resolveLootTables(
+        tables.entityTable,
+        tables.typeTable,
+        tables.areaTable,
+        tables.floorTable,
+      );
+      const drops = rollLootTable(entries, world.rng);
+      spawnDrops(world, x, y, drops);
+      logger.info('Processed enemy death drops', {
+        eid,
+        x,
+        y,
+        dropCount: drops.length,
+        floor: world.floor,
+      });
+    }
 
     // Emit death combat event for gore VFX (with direction info)
     world.combatEvents.push({
@@ -222,7 +231,7 @@ export function dropSystem(world: GameWorld): void {
     });
 
     // Add death linger timer so entity persists for knockback/death animation
-    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: DEATH_LINGER_MS }));
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: deathLingerMs }));
   }
 }
 
