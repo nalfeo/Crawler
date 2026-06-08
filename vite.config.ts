@@ -12,6 +12,19 @@ const basePaths: Record<string, string> = {
 export default defineConfig(({ mode }) => {
   const deployEnv = process.env.DEPLOY_ENV ?? 'local';
   const includeLabs = deployEnv === 'dev' || mode === 'lab';
+  const includeDevTools = deployEnv === 'local' && mode === 'devtools';
+
+  const input: Record<string, string> = {
+    index: resolve(__dirname, 'index.html'),
+  };
+
+  if (includeLabs) {
+    input.lab = resolve(__dirname, 'lab.html');
+  }
+
+  if (includeDevTools) {
+    input.devtools = resolve(__dirname, 'devtools.html');
+  }
 
   return {
     base: basePaths[deployEnv] ?? '/',
@@ -21,19 +34,12 @@ export default defineConfig(({ mode }) => {
       outDir: process.env.BUILD_OUTDIR ?? 'dist',
       emptyOutDir: true,
       rollupOptions: {
-        input: includeLabs
-          ? {
-              index: resolve(__dirname, 'index.html'),
-              lab: resolve(__dirname, 'lab.html'),
-            }
-          : {
-              index: resolve(__dirname, 'index.html'),
-            },
+        input,
       },
     },
     server: {
       port: 3000,
-      open: mode === 'lab' ? '/lab.html' : '/',
+      open: mode === 'lab' ? '/lab.html' : mode === 'devtools' ? '/devtools.html' : '/',
     },
   };
 });
