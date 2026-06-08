@@ -26,12 +26,13 @@ All steps must pass. No `continue-on-error`.
 All steps use `continue-on-error: true`. Reports status but never blocks merge.
 
 ### `merge-gate` (Single status check)
-- Depends only on `ci` job
-- Uses `if: always()` so it runs even if advisory fails
+- Depends on `ci` and `commit-lint` jobs
+- Uses `if: always()` so it runs and explicitly reports failure even when a dependency fails (otherwise GitHub would skip it, leaving branch protection with an indeterminate pending/skipped check)
 - Provides one clear pass/fail signal for branch protection and agent merge
 
 ### `commit-lint` (Unchanged)
 - Runs on PRs only, validates conventional commit types
+- Included in `merge-gate` needs; skipped result on push events is tolerated
 
 ## Why
 

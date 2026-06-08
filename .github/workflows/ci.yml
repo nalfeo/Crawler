@@ -42,6 +42,7 @@ jobs:
   ci-advisory:
     name: Advisory checks
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -55,26 +56,28 @@ jobs:
 
       - name: Dead code detection
         run: npm run lint:dead-code
-        continue-on-error: true
 
       - name: Integration tests
         run: npx vitest run --project integration --reporter=verbose
-        continue-on-error: true
 
       - name: Security audit
         run: npm audit --audit-level=high
-        continue-on-error: true
 
   merge-gate:
     name: Merge gate
     runs-on: ubuntu-latest
-    needs: [ci]
+    needs: [ci, commit-lint]
     if: always()
     steps:
       - name: Check required jobs
         run: |
           if [ "${{ needs.ci.result }}" != "success" ]; then
             echo "❌ Required CI checks failed"
+            exit 1
+          fi
+          # commit-lint is skipped on push events; only fail if it ran and failed
+          if [ "${{ needs.commit-lint.result }}" = "failure" ]; then
+            echo "❌ Commit lint failed"
             exit 1
           fi
           echo "✅ All required checks passed"
