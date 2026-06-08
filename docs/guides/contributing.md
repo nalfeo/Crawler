@@ -38,6 +38,8 @@ Accepted prefixes:
 - `test:`
 - `perf:`
 - `ci:`
+- `build:`
+- `revert:`
 
 Choose the narrowest accurate type.
 
