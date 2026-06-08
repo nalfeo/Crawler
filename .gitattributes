@@ -1,5 +1,16 @@
-# Shell scripts must always check out with LF endings.
-# Without this, Windows users with core.autocrlf=true get CRLF and
-# scripts like scripts/agent/lab-gate-check.sh fail in bash with
-# "invalid option name" on `set -euo pipefail`.
-*.sh text eol=lf
+# Force LF line endings for shell scripts so they run on POSIX (CI runners,
+# bash on Windows, WSL). Without this, Windows checkouts can introduce CRLF
+# which makes bash choke on `set -euo pipefail` and similar lines.
+*.sh        text eol=lf
+*.bash      text eol=lf
+
+# Keep cross-platform text files normalized.
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.json      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.md        text eol=lf

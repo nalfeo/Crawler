@@ -6,3 +6,5 @@
 /AGENTS.md @nalfeo
 /.specify/ @nalfeo
 /docs/agent-os/policies/ @nalfeo
+/scripts/agent/ @nalfeo
+/docs/knowledge/metrics/ @nalfeo
