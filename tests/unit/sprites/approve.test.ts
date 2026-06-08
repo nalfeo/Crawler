@@ -378,4 +378,37 @@ describe('approveVariant', () => {
     });
     expect(entry.anchor).toBeNull();
   });
+
+  it('persists approved sprite to both manifest and catalog', () => {
+    const { runDir, briefId } = writeFakeRun(repoRoot, {
+      variantIndices: [0, 1],
+      chosenIndex: 1,
+    });
+    approveVariant({
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+
+    // Verify manifest has the entry
+    const manifest: Manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const variantId = `${briefId}-var-1`;
+    expect(manifest.entries).toHaveProperty(variantId);
+
+    // Verify catalog has the entry with correct structure
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
+    const catalogEntry = catalog.find((e) => e.id === `generated:${variantId}`);
+    expect(catalogEntry).toBeDefined();
+    expect(catalogEntry).toMatchObject({
+      kind: 'sprite',
+      label: briefId,
+      spriteId: briefId,
+      sheetKey: 'generated-manifest',
+      tags: expect.arrayContaining(['generated', 'pipeline-approved']),
+    });
+  });
 });
