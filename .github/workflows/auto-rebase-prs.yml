@@ -17,7 +17,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🔄 Fetching open PRs..."
-          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number,headRefName --jq '.[].number')
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json number --jq '.[].number')
 
           if [ -z "$prs" ]; then
             echo "No open PRs to update."
@@ -26,15 +26,35 @@ jobs:
 
           for pr in $prs; do
             echo "Updating PR #$pr with latest main..."
-            if gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/update-branch" \
+
+            # Try to update the branch (merge main in)
+            response=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/update-branch" \
               --method PUT \
-              --field expected_head_sha="" 2>/dev/null; then
-              echo "  ✅ PR #$pr updated"
+              --field expected_head_sha="" 2>&1) && status=0 || status=$?
+
+            if [ $status -eq 0 ]; then
+              echo "  ✅ PR #$pr updated successfully"
+
+              # Request Copilot code review
+              echo "  🤖 Requesting Copilot code review..."
+              gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/requested_reviewers" \
+                --method POST \
+                --field "reviewers[]=copilot-pull-request-reviewer" 2>/dev/null \
+                && echo "  ✅ Copilot review requested" \
+                || echo "  ⚠️  Could not request Copilot review"
             else
-              echo "  ⚠️  PR #$pr skipped (conflict or already up to date)"
+              echo "  ❌ PR #$pr has merge conflicts"
+
+              # Ask Copilot to resolve the conflicts
+              echo "  🤖 Asking Copilot to resolve conflicts..."
+              gh pr comment "$pr" \
+                --repo "$GITHUB_REPOSITORY" \
+                --body "@copilot resolve the merge conflicts with main and keep the intent of this PR's changes." 2>/dev/null \
+                && echo "  ✅ Copilot asked to resolve conflicts" \
+                || echo "  ⚠️  Could not comment on PR"
             fi
-            # Small delay to avoid rate limits
-            sleep 1
+
+            sleep 2
           done
 
-          echo "✅ Done updating PR branches."
+          echo "✅ Done processing PR branches."
