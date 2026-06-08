@@ -47,6 +47,8 @@
     "rot-js": "^2.2.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.0.2",
+    "@commitlint/config-conventional": "^21.0.2",
     "@eslint/js": "^10.0.1",
     "@types/node": "^25.9.1",
     "@types/pngjs": "^6.0.5",
