@@ -83,7 +83,11 @@ describe.skipIf(isWindows)('sidecar CLI lifecycle', () => {
 
   it('starts, serves /api/health, and releases its port on SIGTERM', async () => {
     const port = await pickFreePort();
-    child = spawn('npx', ['tsx', CLI_PATH], {
+    // Spawn tsx directly (not via `npx`) so SIGTERM goes to the Node
+    // process running cli.ts, not to an npm wrapper that may not forward
+    // signals reliably on Linux runners.
+    const tsxBin = path.join(REPO_ROOT, 'node_modules', '.bin', isWindows ? 'tsx.cmd' : 'tsx');
+    child = spawn(tsxBin, [CLI_PATH], {
       cwd: REPO_ROOT,
       env: { ...process.env, SPRITES_SIDECAR_PORT: String(port) },
       stdio: ['ignore', 'pipe', 'pipe'],
