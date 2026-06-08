@@ -22,21 +22,27 @@ jobs:
         run: npm ci
 
       - name: Typecheck
+        if: ${{ !cancelled() }}
         run: npm run typecheck
 
       - name: Lint
+        if: ${{ !cancelled() }}
         run: npm run lint
 
       - name: Format check
+        if: ${{ !cancelled() }}
         run: npm run format:check
 
       - name: Lab gate check
+        if: ${{ !cancelled() }}
         run: bash scripts/agent/lab-gate-check.sh
 
       - name: Unit tests
+        if: ${{ !cancelled() }}
         run: npx vitest run --project unit --reporter=verbose
 
       - name: Build
+        if: ${{ !cancelled() }}
         run: npm run build
 
   ci-advisory:
