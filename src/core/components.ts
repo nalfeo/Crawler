@@ -64,6 +64,8 @@ export const Knockback = {};
 export const Gold = {};
 /** Door entity — tracks open/closed state and tile position. */
 export const DoorState = {};
+/** Marks a dying entity — delays removal so knockback/death animations can play. */
+export const DeathTimer = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -175,6 +177,9 @@ export function createComponentStores() {
       tileX: new Uint16Array(MAX_ENTITIES),
       tileY: new Uint16Array(MAX_ENTITIES),
       isOpen: new Uint8Array(MAX_ENTITIES), // 0 = closed, 1 = open
+    },
+    deathTimer: {
+      remainingMs: new Float32Array(MAX_ENTITIES),
     },
     baseStats: {
       strength: new Float32Array(MAX_ENTITIES),
