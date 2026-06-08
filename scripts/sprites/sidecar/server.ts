@@ -1,11 +1,12 @@
 /**
- * Fastify-based read-only sidecar for the sprite gallery lab.
+ * Fastify-based sidecar for the sprite gallery lab.
  *
- * Responsibilities (this PR — read-only):
+ * Responsibilities:
  *   - GET  /api/health                                                       — readiness probe
  *   - GET  /api/runs                                                         — list all runs
  *   - GET  /api/runs/:briefId/:runId                                         — full RunSummary JSON
  *   - GET  /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
+ *   - POST /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
  *
  * Security contract (spec §F8):
  *   - The HTTP server MUST bind to 127.0.0.1 only. Binding is the CLI's job
@@ -14,6 +15,9 @@
  *   - The static-file route MUST validate that the resolved path stays
  *     inside the configured runsDir. A request like `../../etc/passwd`
  *     would otherwise expose the whole filesystem.
+ *   - The approve route MUST refuse when `process.env.CI` is set
+ *     (Constitutional §3 — no LLM-as-judge / no checked-in mutation from
+ *     CI gates). Same pattern as `judge.ts`.
  *
  * No business logic lives here. The sidecar is a thin HTTP shell over file
  * IO — every meaningful piece is implemented (and unit-tested) in the
@@ -23,6 +27,7 @@
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { approveVariant, ApproveError, type ManifestEntry } from '../approve.js';
 
 export interface SidecarDeps {
   /** Repository root — used in /api/health for operator visibility. */
@@ -33,6 +38,23 @@ export interface SidecarDeps {
   readonly version: string;
   /** Optional logger toggle. Defaults to off for tests, on for CLI. */
   readonly logger?: boolean;
+  /**
+   * Absolute path to `public/assets/` (parent of `generated/`). Required
+   * for the approve route's PNG copy destination. Defaults to
+   * `<repoRoot>/public/assets`. Exposed so tests can point at a tmp dir.
+   */
+  readonly publicAssetsDir?: string;
+  /**
+   * Absolute path to `public/assets/generated/manifest.json`. Defaults to
+   * `<publicAssetsDir>/generated/manifest.json`.
+   */
+  readonly manifestPath?: string;
+  /**
+   * Environment snapshot the approve route consults for the CI refusal.
+   * Defaults to `process.env`. Inject `{}` (or `{ CI: undefined }`) in
+   * tests to exercise the non-CI path even when the host runs in CI.
+   */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export interface RunListEntry {
@@ -85,7 +107,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.header('Vary', 'Origin');
     }
     if (req.method === 'OPTIONS') {
-      reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       reply.header('Access-Control-Allow-Headers', 'Content-Type');
       // `return reply` short-circuits Fastify routing after the preflight
       // is sent so the request can't fall through to a route handler and
@@ -174,6 +196,84 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return reply.send(createReadStream(target));
     },
   );
+
+  app.post<{
+    Params: { briefId: string; runId: string };
+    Body: { variantIndex?: unknown };
+  }>('/api/runs/:briefId/:runId/approve', async (req, reply) => {
+    // Constitutional §3 (Deterministic CI Only): the approve route mutates
+    // checked-in repo state. We refuse from CI for the same reason
+    // judge.ts does — checked-in mutations from a CI gate would let the
+    // sidecar become an oracle that drifts away from local repro.
+    const env = deps.env ?? process.env;
+    if (env.CI !== undefined) {
+      reply.code(403);
+      return {
+        error: 'ci-refused',
+        message:
+          'Per Constitutional §3, the sprite-pipeline approve endpoint is local-only. ' +
+          'It mutates checked-in assets under public/assets/generated/ and the manifest. ' +
+          'Run the gallery sidecar locally (npm run sprites:gallery) to approve.',
+      };
+    }
+
+    const { briefId, runId } = req.params;
+    const runDir = safeJoin(deps.runsDir, [briefId, runId]);
+    if (runDir === null) {
+      reply.code(403);
+      return { error: 'forbidden-path' };
+    }
+    if (!existsSync(path.join(runDir, 'summary.json'))) {
+      reply.code(404);
+      return { error: 'run-not-found', briefId, runId };
+    }
+
+    const body = (req.body ?? {}) as { variantIndex?: unknown };
+    const variantIndex = body.variantIndex;
+    if (typeof variantIndex !== 'number' || !Number.isInteger(variantIndex) || variantIndex < 0) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'body.variantIndex must be a non-negative integer',
+      };
+    }
+
+    const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
+    const manifestPath =
+      deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+
+    let entry: ManifestEntry;
+    try {
+      entry = approveVariant({
+        runDir,
+        variantIndex,
+        manifestPath,
+        publicAssetsDir,
+        repoRoot: deps.repoRoot,
+      });
+    } catch (err) {
+      if (err instanceof ApproveError) {
+        // variant-not-found / processed-missing -> 404 (resource missing).
+        // summary-invalid / manifest-invalid    -> 500 (server-side data corruption).
+        // run-not-found                          -> 404.
+        const status =
+          err.kind === 'variant-not-found' ||
+          err.kind === 'processed-missing' ||
+          err.kind === 'run-not-found'
+            ? 404
+            : 500;
+        reply.code(status);
+        return { error: err.kind, message: err.message };
+      }
+      reply.code(500);
+      return {
+        error: 'approve-failed',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+
+    return entry;
+  });
 
   return app;
 }

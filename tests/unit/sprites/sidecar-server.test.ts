@@ -8,7 +8,15 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
@@ -273,6 +281,190 @@ describe('buildServer routes (inject)', () => {
       url: '/api/runs/iron-sword/2026-06-04T12-00-00-deadbeef/processed/99.png',
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('POST /api/runs/:briefId/:runId/approve', () => {
+  let root: string;
+  let runsDir: string;
+  let publicAssetsDir: string;
+  let manifestPath: string;
+  let app: FastifyInstance;
+  const briefId = 'iron-sword';
+  const runId = '2026-06-08T12-00-00-deadbeef';
+
+  function writeFullRun(): void {
+    const runDir = path.join(runsDir, briefId, runId);
+    mkdirSync(path.join(runDir, 'processed'), { recursive: true });
+    writeFileSync(path.join(runDir, 'processed', '01.png'), Buffer.from('PNG-01'));
+    writeFileSync(
+      path.join(runDir, 'processed', '01.scorecard.json'),
+      JSON.stringify({ score: 7, outOf: 7, passed: true, breakdown: [], derivedAnchor: null }),
+    );
+    writeFileSync(
+      path.join(runDir, 'summary.json'),
+      JSON.stringify({
+        brief: briefId,
+        runId,
+        promptHash: 'deadbeef',
+        candidates: [
+          {
+            index: 0,
+            score: 6,
+            outOf: 7,
+            passed: false,
+            combinedPassed: false,
+            derivedAnchor: null,
+            judgeScorecard: null,
+          },
+          {
+            index: 1,
+            score: 7,
+            outOf: 7,
+            passed: true,
+            combinedPassed: true,
+            derivedAnchor: null,
+            judgeScorecard: { passed: true, minScore: 4 },
+          },
+        ],
+        chosen: {
+          index: 1,
+          score: 7,
+          outOf: 7,
+          passed: true,
+          combinedPassed: true,
+          anchor: { x: 8, y: 13, source: 'brief' },
+          judgeScorecard: { passed: true, minScore: 4 },
+        },
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-approve-srv-'));
+    runsDir = path.join(root, 'runs');
+    publicAssetsDir = path.join(root, 'public', 'assets');
+    manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+    writeFullRun();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      // Inject an env without CI so the test doesn't accidentally hit the
+      // CI refusal when run on a CI host.
+      env: {},
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('approves a valid variant: writes the PNG and returns the manifest entry', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.briefId).toBe(briefId);
+    expect(body.variantIndex).toBe(1);
+    expect(body.assetPath).toBe(`generated/${briefId}.png`);
+    expect(body.sensorScore).toBe('7/7');
+    expect(body.judgeScore).toBe('4');
+
+    // The asset was actually copied to the public dir.
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}.png`);
+    expect(readFileSync(assetAbs).toString()).toBe('PNG-01');
+    // Manifest was created on disk too.
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    expect(manifest.entries[briefId].variantIndex).toBe(1);
+  });
+
+  it('refuses with 403 when process.env.CI is set', async () => {
+    // Build a fresh app with CI in the env snapshot.
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: { CI: 'true' },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('ci-refused');
+    // No asset should have been written.
+    expect(existsSync(path.join(publicAssetsDir, 'generated', `${briefId}.png`))).toBe(false);
+  });
+
+  it('returns 403 when briefId attempts traversal', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/runs/..%2F..%2Fetc/run/approve',
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 0 },
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('returns 404 when the variant index does not exist in summary.json', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 99 },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('variant-not-found');
+  });
+
+  it('returns 404 when the run directory has no summary.json', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/does-not-exist/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 0 },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('run-not-found');
+  });
+
+  it('returns 400 when variantIndex is missing or not a non-negative integer', async () => {
+    const noBody = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    expect(noBody.statusCode).toBe(400);
+
+    const negative = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: -1 },
+    });
+    expect(negative.statusCode).toBe(400);
+
+    const stringy = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: '1' },
+    });
+    expect(stringy.statusCode).toBe(400);
   });
 });
 
