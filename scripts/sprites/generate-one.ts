@@ -119,6 +119,8 @@ export interface GenerateOneOptions {
   readonly preloaded?: LoadedBrief;
   /** Warning sink (mainly for expand-variations). Defaults to logger.warn. */
   readonly warn?: (message: string) => void;
+  /** Environment override used by local-only judge checks (primarily tests). */
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export interface GenerateOneResult {
@@ -324,6 +326,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         variantPath: e.processedPath,
         ...(options.judgeCache ? { cache: options.judgeCache } : {}),
         ...(options.now ? { now: options.now } : {}),
+        ...(options.env ? { env: options.env } : {}),
       });
       // Detect whether the call actually went to Azure. With no cache,
       // every call is fresh spend. With a cache, only misses count —
