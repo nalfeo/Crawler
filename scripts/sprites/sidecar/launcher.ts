@@ -85,7 +85,11 @@ function runLauncher(): void {
   for (const spec of CHILDREN) {
     const child = spawn(spec.command, [...spec.args], {
       cwd: REPO_ROOT,
-      shell: true,
+      // Windows needs the shell wrapper to resolve `.cmd` shims (npx.cmd,
+      // tsx.cmd, vite.cmd). On POSIX we spawn the binary directly so the
+      // child PID is the real process and SIGINT reaches it instead of
+      // being absorbed by an intermediate `sh -c`.
+      shell: process.platform === 'win32',
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
     });

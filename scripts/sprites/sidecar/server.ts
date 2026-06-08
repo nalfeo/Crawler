@@ -105,7 +105,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     async (req, reply) => {
       const { briefId, runId } = req.params;
       const summaryPath = safeJoin(deps.runsDir, [briefId, runId, 'summary.json']);
-      if (summaryPath === null || !existsSync(summaryPath)) {
+      if (summaryPath === null) {
+        // safeJoin rejected a traversal attempt — mirror the static-file
+        // route's 403 so probes are distinguishable from "missing run".
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
+      if (!existsSync(summaryPath)) {
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
       }

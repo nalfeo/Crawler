@@ -636,12 +636,14 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     const cur = state.selected ?? state.grid.candidates[0]!;
     let next: CandidateRef | null = null;
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      const flat = state.grid.candidates.findIndex(
-        (c) => c.briefIndex === cur.briefIndex && c.candidateIndex === cur.candidateIndex,
-      );
+      // Constrain horizontal nav to the current brief so ←/→ never jumps
+      // to a sibling brief — the documented contract is "candidates within
+      // the focused brief". Vertical nav (↓/↑) handles brief switching.
+      const withinBrief = state.grid.candidates.filter((c) => c.briefIndex === cur.briefIndex);
+      const localIndex = withinBrief.findIndex((c) => c.candidateIndex === cur.candidateIndex);
       const delta = event.key === 'ArrowRight' ? 1 : -1;
-      const target = Math.max(0, Math.min(state.grid.candidates.length - 1, flat + delta));
-      next = state.grid.candidates[target] ?? null;
+      const target = Math.max(0, Math.min(withinBrief.length - 1, localIndex + delta));
+      next = withinBrief[target] ?? null;
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       const delta = event.key === 'ArrowDown' ? 1 : -1;
       const targetBrief = Math.max(0, Math.min(state.grid.briefCount - 1, cur.briefIndex + delta));

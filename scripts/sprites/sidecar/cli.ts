@@ -53,8 +53,20 @@ async function main(): Promise<number> {
     if (shuttingDown) return;
     shuttingDown = true;
     process.stderr.write(`sprites:gallery sidecar: received ${signal}, closing\n`);
-    await app.close();
-    process.exit(0);
+    try {
+      await app.close();
+      process.exit(0);
+    } catch (err) {
+      // If Fastify's own teardown rejects we still want a deterministic
+      // exit — leaving the rejection unhandled would let the process
+      // linger with the port held.
+      process.stderr.write(
+        `sprites:gallery sidecar: error during close: ${
+          err instanceof Error ? err.message : String(err)
+        }\n`,
+      );
+      process.exit(1);
+    }
   }
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));

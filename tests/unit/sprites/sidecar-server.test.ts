@@ -222,6 +222,16 @@ describe('buildServer routes (inject)', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it('GET /api/runs/:brief/:run returns 403 when params attempt traversal', async () => {
+    // safeJoin rejects `..` outright. Returning 403 mirrors the
+    // static-file route so probes are distinguishable from "missing run".
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/runs/..%2F..%2Fetc/run',
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
   it('GET processed/:filename streams the PNG with correct mime', async () => {
     const res = await app.inject({
       method: 'GET',
