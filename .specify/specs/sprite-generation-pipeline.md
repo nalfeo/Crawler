@@ -29,25 +29,25 @@ A YAML brief in `briefs/<type>/<name>.yaml` is the only input needed to run the 
 
 **F2.1 Provider abstraction.** Generator is a strategy interface `ImageProvider` with two implementations: `OpenAIImageProvider` (default, `gpt-image-1`) and `MAIImageProvider` (`MAI-Image-2.5`, behind a feature flag). Selection via `SPRITE_GEN_PROVIDER=openai|mai` env var. Both use the OpenAI-compatible REST surface — the only differences are endpoint, deployment name, and credentials. This insulates downstream stages from provider churn.
 
-**F2.2 Sheet-mode generation (default).** Instead of N=8 separate API calls, the generator requests **one 1024×1024 PNG containing a 3×3 grid of distinct candidates** (8 sprites + 1 deliberately-empty cell). Empirically this is ~5× cheaper and ~7× faster than 8 single-image calls (~$0.06 vs ~$0.34 per run, ~17s vs ~3min). For higher diversity, the orchestrator may issue 2–3 sheet requests with varied per-cell hints.
+**F2.2 Sheet-mode generation (default).** Instead of many single-image API calls, the generator requests **one 1024×1024 PNG containing a grid of distinct candidates** (current default: 4×4 = 16 variants via sprite-type generation settings). For higher diversity, the orchestrator may issue multiple sheet requests with varied per-cell hints.
 
 **F2.3 Prompt template.** The request prompt is composed from:
 
 1. **Brief content** — `brief.prompt`, `brief.size`, type, plus per-cell variation hints if multi-sheet.
-2. **Global style preamble** — `docs/agent-os/sprite-style.md` _(planned — Phase 2 will create this file)_, loaded once. Concrete, derived from analyzing actual Kenney sprites: outline thickness, shading rules, anti-aliasing prohibitions, color count per sprite, silhouette conventions.
+2. **Global style preamble** — `docs/agent-os/sprite-style.md`, loaded once. Concrete, derived from analyzing actual Kenney sprites: outline thickness, shading rules, anti-aliasing prohibitions, color count per sprite, silhouette conventions.
 3. **Reference images (MANDATORY)** — passed to the `images/edits` endpoint via multipart `image` field. Resolved from `brief.references`, which **must** include at least 2 exemplar sprites of the same family from existing assets, scaled up via nearest-neighbor (≥256×256) so the model can see pixel detail. Brief validation rejects any brief with fewer than 2 references. Empirically, references are doing ~90% of style fidelity work — a v3 A/B test (refs vs no-refs) showed the no-refs output produced "generic AI pixel art" while the refs output produced sprites that read as same-family Kenney tiny-dungeon weapons. References are non-optional.
 4. **Layout block (sheet-mode only)** — explicit grid dimensions, square cell requirement, empty-cell location, per-cell margin (≥10%), no clipping.
 5. **Negative constraints (sheet-mode only)** — explicit `NO numbers, NO digits, NO labels, NO text, NO captions, NO watermarks, NO clipping, NO overlap with cell borders`. These are non-negotiable in the template; empirically they are the difference between a usable sheet and one that needs OCR-style cleanup.
 
-The full template lives at `scripts/sprites/prompt-template.md` and is unit-tested for stable substitution. Because references are required, the generator always hits `images/edits` (not `images/generations`).
+The style and prompt constraints live in `docs/agent-os/sprite-style.md`. Because references are required, the generator always hits `images/edits` (not `images/generations`).
 
 **F2.4 Slicing (post-generator, pre-postprocessor).** A new pipeline stage `scripts/sprites/slice-sheet.ts`:
 
-- Takes the 1024×1024 sheet PNG and detects the 3×3 cell grid (assumes equal-size cells with ≥1px gutter; configurable).
-- Emits 8 cell PNGs `generated/raw/<name>/NN.png` at ~341×341 each. Discards the empty 9th cell (verified by opaque-pixel ratio < 5%).
+- Takes the 1024×1024 sheet PNG and detects the configured cell grid (current default: 4×4; equal-size cells with ≥1px gutter).
+- Emits sliced cell PNGs to `generated/runs/<brief-id>/<run-id>/raw/NN.png`.
 - If grid detection fails (e.g., model didn't follow layout), the entire sheet is rejected and the run is retried up to 2× with a stricter layout reminder appended to the prompt.
 
-**F2.5 Module shape.** Generator + slicer remain **pure modules** — no shared mutable state, no environment assumptions beyond provider env vars. CLI entry points: `npm run sprites:generate -- --brief briefs/weapons/iron-sword.yaml [--sheets 1] [--provider openai|mai]`.
+**F2.5 Module shape.** Generator + slicer remain **pure modules** — no shared mutable state, no environment assumptions beyond provider env vars. CLI entry point: `npm run sprites:run -- --brief briefs/weapons/iron-sword.yaml`.
 
 #### F3. Post-processor (the deterministic conformance step)
 
@@ -58,7 +58,7 @@ Runs locally, no network. For each raw candidate:
 3. **Palette quantize** — every opaque pixel snapped to the nearest entry in the palette referenced by `brief.palette`. Distance metric is Euclidean RGB (revisit later if results warrant).
 4. **Alpha hard-threshold** — alpha values not in `{0, 255}` are snapped: `>128 → 255`, else `0`.
 
-Output: `generated/processed/<name>/NN.png`. The post-processor is the **contract** that makes sensors trivially satisfiable — sensors verify the contract was met, they do not enforce it.
+Output: `generated/runs/<brief-id>/<run-id>/processed/NN.png`. The post-processor is the **contract** that makes sensors trivially satisfiable — sensors verify the contract was met, they do not enforce it.
 
 #### F4. Sensors (deterministic gates)
 
@@ -89,11 +89,11 @@ Run only locally and only on candidates that passed sensors. Three named scorers
 
 Two phases for _how_ the scorers run; the contract `(candidate, brief) → {score, rationale}` is identical:
 
-**Phase 1 — JSON scorecard.** A Node script (`scripts/sprites/judge.ts`) calls Azure OpenAI `gpt-4o` (vision) for each candidate. Input: the candidate (upscaled 8x for model legibility), `brief.prompt`, three reference PNGs from `brief.references` or sibling registry entries. Output: a structured JSON per run at `generated/scorecard/<name>.json`:
+**Phase 1 — JSON scorecard.** A Node script (`scripts/sprites/judge.ts`) calls Azure OpenAI `gpt-4o` (vision) for each candidate. Input: the candidate (upscaled 8x for model legibility), `brief.prompt`, three reference PNGs from `brief.references` or sibling registry entries. Output: structured JSON artifacts under `generated/runs/<brief-id>/<run-id>/processed/*.judge.json` with run-level summary in `summary.json`:
 
 ```json
 {
-  "brief": "rusty_longsword",
+  "brief": "iron-sword",
   "model": "gpt-4o",
   "ts": "2026-06-04T16:00:00Z",
   "candidates": [
@@ -123,13 +123,13 @@ Two phases for _how_ the scorers run; the contract `(candidate, brief) → {scor
 
 #### F6. Approval and registry integration
 
-- `scripts/sprites/approve.ts <brief> <candidate_id>` is the only operation that mutates checked-in repo state.
-- It moves `generated/processed/<name>/<id>.png` to `public/assets/generated/<type>/<name>.png` and appends a corresponding entry to `src/engine/sprites/registry.ts` (new `SHEETS` row + named sprite alias as appropriate for `type`).
+- `scripts/sprites/approve.ts` / `npm run sprites:approve -- <runDir> --variant <n>` are the only operations that mutate checked-in repo state.
+- It promotes `generated/runs/<brief>/<runId>/processed/<id>.png` to `public/assets/generated/<brief>.png` and upserts `public/assets/generated/manifest.json` for engine pickup.
 - After approval, the sensor test for that asset is added to the per-type sensor test file so future PRs cannot land changes that break the approved sprite.
 
-#### F7. `sprite-forge-lab`
+#### F7. `sprite-gallery-lab`
 
-A new lab at `src/labs/sprite-forge-lab/` providing the human-in-the-loop surface. UI sections:
+A lab at `src/labs/sprite-gallery-lab/` provides the human-in-the-loop surface. UI sections:
 
 - **Brief editor** — form-bound to the YAML schema; "Save brief" writes/updates `briefs/<type>/<name>.yaml`.
 - **Pipeline controls** — buttons for Generate, Postprocess, Judge, and Run-all; live status; last-run summary (candidates, sensor pass count, mean judge score).
@@ -141,24 +141,23 @@ A new lab at `src/labs/sprite-forge-lab/` providing the human-in-the-loop surfac
 
 #### F8. Sidecar architecture
 
-The lab cannot call Azure OpenAI directly (secrets, file I/O). `npm run lab:sprite-forge` starts Vite **and** a small Fastify sidecar (`scripts/sprites/sidecar/server.ts`, port 3010) that exposes:
+The lab cannot call Azure OpenAI directly (secrets, file I/O). `npm run sprites:gallery` starts Vite **and** a small Fastify sidecar (`scripts/sprites/sidecar/server.ts`, port 3010) that exposes:
 
-| Endpoint                   | Purpose                                                           |
-| -------------------------- | ----------------------------------------------------------------- |
-| `GET /api/health`          | Sidecar readiness; lab uses this to enable/disable action buttons |
-| `POST /api/briefs`         | Save a brief YAML                                                 |
-| `POST /api/generate`       | Kick a generate job; returns job id                               |
-| `GET /api/jobs/:id`        | Job status + log tail                                             |
-| `GET /api/scorecard/:name` | Latest scorecard JSON for a brief                                 |
-| `POST /api/approve`        | Run `approve.ts` for a `(brief, candidate)` pair                  |
+| Endpoint                                   | Purpose                                                           |
+| ------------------------------------------ | ----------------------------------------------------------------- |
+| `GET /api/health`                          | Sidecar readiness; lab uses this to enable/disable action buttons |
+| `GET /api/runs`                            | List available run directories                                    |
+| `GET /api/runs/:briefId/:runId`            | Return the run `summary.json`                                     |
+| `GET /api/runs/:briefId/:runId/processed/:filename` | Serve processed PNG/JSON artifacts                      |
+| `POST /api/runs/:briefId/:runId/approve`   | Approve a variant from an existing run                            |
 
 The sidecar is a thin HTTP shell over the same TypeScript modules the CLI uses. **No business logic in the sidecar.**
 
 #### F9. Graceful review-only mode
 
-When the sidecar is absent (the lab is hosted on GitHub Pages, or the user is reviewing without `npm run lab:sprite-forge`), the lab pings `/api/health`, fails, and falls into review-only mode:
+When the sidecar is absent (the lab is hosted on GitHub Pages, or the user is reviewing without `npm run sprites:gallery`), the lab pings `/api/health`, fails, and falls into review-only mode:
 
-- Reads `generated/scorecard/*.json` and PNGs via Vite's static serving.
+- Reads `generated/runs/**/summary.json` and processed artifacts via static serving.
 - Candidate grid and selected-detail panels render normally.
 - Generate / Postprocess / Judge / Approve / Iterate / Save Brief buttons are disabled with tooltips explaining how to enable them.
 
@@ -184,13 +183,13 @@ This lets the lab deploy publicly as a viewer without exposing any pipeline-muta
 
 ```
 .specify/specs/sprite-generation-pipeline.md         # this spec
-docs/knowledge/adr/NNNN-sprite-generation-pipeline.md # forthcoming ADR
+docs/knowledge/adr/0003-sprite-generation-pipeline.md # ADR
 docs/agent-os/sprite-style.md                         # global style preamble (text + reference image manifests)
 
 briefs/
   weapons/
-    rusty_longsword.yaml
-    iron_dagger.yaml
+    iron-sword.yaml
+    skull-mace.yaml
 data/
   palettes/
     kenney-roguelike.json   # auto-extracted, append-only edits
@@ -198,34 +197,33 @@ data/
 
 scripts/sprites/
   extract-palette.ts        # one-shot: builds a palette JSON from a Kenney sheet
-  generate.ts               # brief -> raw candidates (Azure OpenAI gpt-image-1)
+  generate-one.ts           # brief -> run artifacts (raw + processed + summary)
+  cli.ts                    # sprites:run entrypoint
   postprocess.ts            # raw -> bg-remove + downscale + quantize + alpha-snap
   judge.ts                  # processed (sensor-passing) -> scorecard.json
-  approve.ts                # winner -> public/assets + registry edit
+  approve.ts                # winner -> public/assets/generated + manifest upsert
   sidecar/
     server.ts               # Fastify; routes only call into the modules above
     jobs.ts                 # in-memory job tracker (per-process)
 
-src/labs/sprite-forge-lab/
+src/labs/sprite-gallery-lab/
   index.ts                  # registerLab + UI orchestration
-  brief-editor.ts
-  candidate-grid.ts
-  candidate-detail.ts
-  sensor-overlay.ts         # palette + pixel-grid overlays
-  api-client.ts             # fetch wrapper handling sidecar-down
 
 generated/                  # gitignored
-  raw/<name>/NN.png
-  processed/<name>/NN.png
-  scorecard/<name>.json
+  runs/<brief-id>/<run-id>/
+    raw/NN.png
+    processed/NN.png
+    processed/NN.scorecard.json
+    processed/NN.judge.json
+    summary.json
 
 public/assets/generated/
-  weapons/<name>.png        # checked in only after approval
+  <brief-id>.png            # checked in only after approval
+  manifest.json
 
 tests/
   sensors/
-    common.ts               # universal sensors (dims, palette, alpha, bbox, anchor, opaque-ratio)
-    weapons.test.ts         # universal + weapon-specific (silhouette diagonal axis)
+    weapons.test.ts         # universal + weapon-specific sensors
   unit/
     palette-quantize.test.ts
     bg-remove.test.ts
@@ -234,9 +232,9 @@ tests/
 ### Brief schema
 
 ```yaml
-# briefs/weapons/rusty_longsword.yaml
+# briefs/weapons/iron-sword.yaml
 type: weapon
-name: rusty_longsword
+name: iron-sword
 size: [16, 16]
 palette: kenney-roguelike
 anchor: { x: 8, y: 14 }
@@ -265,8 +263,8 @@ The script walks every pixel of the input sheet, dedupes opaque RGB tuples, and 
 
 Two surfaces, identical underlying calls:
 
-- **CLI (CI / scripted use):** `npm run sprites:run -- briefs/weapons/rusty_longsword.yaml`
-- **Lab (interactive / human review):** `sprite-forge-lab` Run-all button
+- **CLI (CI / scripted use):** `npm run sprites:run -- --brief briefs/weapons/iron-sword.yaml`
+- **Lab (interactive / human review):** `sprite-gallery-lab` review + approve flow
 
 Both invoke `generate → postprocess → sensors → judge` in sequence, writing artifacts under `generated/`. The CLI exits non-zero if any stage fails; the lab surfaces failures inline.
 
@@ -290,7 +288,7 @@ Each Phase-1 judge becomes a Foundry custom evaluator:
 - `BriefMatchEvaluator` — VLM call comparing candidate vs. `brief.prompt`.
 - `ReadabilityEvaluator` — VLM call asking "does this read at game scale on a dark floor tile?"
 
-A Phase-2 run uploads the candidate set as a Foundry dataset, kicks an evaluation run, and the lab's Judge panel swaps its data source from `generated/scorecard/*.json` to the Foundry run output. No other lab UI changes.
+A Phase-2 run uploads the candidate set as a Foundry dataset, kicks an evaluation run, and the lab's Judge panel swaps its data source from run-local judge artifacts (`generated/runs/**/processed/*.judge.json`) to the Foundry run output. No other lab UI changes.
 
 ### Constitutional implications and ADR
 
@@ -312,18 +310,18 @@ This spec touches `assets`, `engine/sprites/registry`, `labs`, `scripts`, and `t
 
 ### Lab smoke tests
 
-- `sprite-forge-lab` registers and renders without console errors when sidecar is absent (review-only mode). This is what runs in CI; full sidecar-driven flows are local-only.
+- `sprite-gallery-lab` registers and renders without console errors when sidecar is absent (review-only mode). This is what runs in CI; full sidecar-driven flows are local-only.
 
 ### Out-of-CI verification
 
-- `npm run sprites:run -- <brief>` is run manually for each new asset family. Failure modes (network, auth, model regression) are tracked as handoff notes, not CI gates.
+- `npm run sprites:run -- --brief <brief>` is run manually for each new asset family. Failure modes (network, auth, model regression) are tracked as handoff notes, not CI gates.
 
 ## Constitutional Compliance
 
-- **§2 Lab-Gated Development:** `sprite-forge-lab` ships before the pipeline is considered complete. Lab smoke test runs in CI.
+- **§2 Lab-Gated Development:** `sprite-gallery-lab` ships before the pipeline is considered complete. Lab smoke test runs in CI.
 - **§3 Deterministic CI Only:** sensors are pure deterministic Vitest tests with structured failure reasons. The judge / Foundry evaluators run **only locally** — never in CI. This is the explicit rationale for splitting sensors and evaluators in the first place.
 - **§4 Deterministic Game Logic:** the post-processor uses no `Math.random()` and no clocks; given a raw input it always produces the same processed output. The pipeline does not run at game time, but the sprites it produces are loaded by `BootScene` like any other asset and play by the same rules.
-- **§5 ECS-Phaser Bridge:** the lab and pipeline live in `src/labs/`, `scripts/`, and `tests/` — no `src/core/` imports anywhere. Approved sprites are referenced from `src/engine/sprites/registry.ts`, which is already the bridge layer.
+- **§5 ECS-Phaser Bridge:** the lab and pipeline live in `src/labs/`, `scripts/`, and `tests/` — no `src/core/` imports anywhere. Approved sprites are loaded by engine preload code from `public/assets/generated/manifest.json`, which stays in the rendering layer.
 - **§7 Memory Governance:** an ADR will accompany the implementation PR. Each generation run produces artifacts under `generated/` (gitignored) and a scorecard whose summary belongs in the session handoff.
 - **§8 Conventional Commits:** approval commits use `feat(sprites): add <name>`. Pipeline / sensor / lab code uses `feat:`, `fix:`, `lab:` as appropriate.
 - **§9 Coverage:** sensor and post-processor modules sit in `scripts/` (no minimum) but the deterministic logic is heavily tested by design. The lab itself only needs the smoke test (§3 already accounts for the 30% labs floor).
