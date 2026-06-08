@@ -61,12 +61,15 @@ jobs:
         run: npm ci
 
       - name: Dead code detection
+        if: ${{ !cancelled() }}
         run: npm run lint:dead-code
 
       - name: Integration tests
+        if: ${{ !cancelled() }}
         run: npx vitest run --project integration --reporter=verbose
 
       - name: Security audit
+        if: ${{ !cancelled() }}
         run: npm audit --audit-level=high
 
   merge-gate:
