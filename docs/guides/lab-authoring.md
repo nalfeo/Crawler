@@ -62,8 +62,9 @@ A typical lab entry point registration looks like this:
 ```ts
 import { registerLab } from '../registry.js';
 
-function createMovementLab(parent: HTMLElement): void {
+function createMovementLab(canvas: HTMLElement, controls: HTMLElement): (() => void) | void {
   // Lab setup logic lives in index.ts in current labs.
+  // Return a cleanup callback if the lab allocates resources.
 }
 
 registerLab('movement-lab', {
