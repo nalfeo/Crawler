@@ -57,7 +57,9 @@ export function parseArgs(argv: ReadonlyArray<string>): AssetPlanCliArgs {
   }
 
   if (!planPath) {
-    throw new Error('Missing plan path. Use --plan <path> or provide it as the first positional arg.');
+    throw new Error(
+      'Missing plan path. Use --plan <path> or provide it as the first positional arg.',
+    );
   }
   return {
     planPath,

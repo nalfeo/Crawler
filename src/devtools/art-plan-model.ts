@@ -149,12 +149,15 @@ export function parseApprovedSprites(
   return out;
 }
 
-export function buildFloorArtPlanReport(plan: FloorArtPlan, options: {
-  readonly briefKeys: ReadonlySet<string>;
-  readonly approvedSprites: ReadonlyMap<string, ApprovedSpriteEntry>;
-  readonly spriteRegistryIds: ReadonlySet<string>;
-  readonly itemCatalogIds: ReadonlySet<string>;
-}): FloorArtPlanReport {
+export function buildFloorArtPlanReport(
+  plan: FloorArtPlan,
+  options: {
+    readonly briefKeys: ReadonlySet<string>;
+    readonly approvedSprites: ReadonlyMap<string, ApprovedSpriteEntry>;
+    readonly spriteRegistryIds: ReadonlySet<string>;
+    readonly itemCatalogIds: ReadonlySet<string>;
+  },
+): FloorArtPlanReport {
   const assets: FloorArtAssetReport[] = plan.assets.map((asset) => {
     const briefId = asset.briefId ?? asset.id;
     const briefAuthored = options.briefKeys.has(briefKey(asset.type, briefId));

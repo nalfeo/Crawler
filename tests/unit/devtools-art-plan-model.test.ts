@@ -50,7 +50,10 @@ describe('devtools art-plan model', () => {
     const report = buildFloorArtPlanReport(plan, {
       briefKeys: new Set(['enemy::rat-mage']),
       approvedSprites: new Map([
-        ['rat-bruiser', { briefId: 'rat-bruiser', assetPath: 'generated/rat-bruiser.png', exists: true }],
+        [
+          'rat-bruiser',
+          { briefId: 'rat-bruiser', assetPath: 'generated/rat-bruiser.png', exists: true },
+        ],
       ]),
       spriteRegistryIds: new Set(['enemy.rat-bruiser']),
       itemCatalogIds: new Set(),

@@ -167,7 +167,9 @@ export function loadApprovedSprites(
   const out = new Map<string, ApprovedSpriteRecord>();
   for (const [mapKey, entry] of Object.entries(manifest.entries)) {
     const briefId = entry.briefId || mapKey;
-    const assetExists = existsSync(path.join(repoRoot, 'public', 'assets', ...entry.assetPath.split('/')));
+    const assetExists = existsSync(
+      path.join(repoRoot, 'public', 'assets', ...entry.assetPath.split('/')),
+    );
     out.set(briefId, {
       briefId,
       manifest: entry,
