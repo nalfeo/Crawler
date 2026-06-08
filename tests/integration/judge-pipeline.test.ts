@@ -200,6 +200,7 @@ describe('generateOne + VLM judge (integration)', () => {
       repoRoot: root,
       outputRoot,
       now: fixedClock,
+      env: {},
     });
 
     // Only 2 vision calls (the sensor-passing ones).
@@ -275,6 +276,7 @@ describe('generateOne + VLM judge (integration)', () => {
         repoRoot: root,
         outputRoot,
         now: fixedClock,
+        env: {},
       }),
     ).rejects.toThrow(/judge\.enabled: true.*vision provider/s);
   });
@@ -295,6 +297,7 @@ describe('generateOne + VLM judge (integration)', () => {
       repoRoot: root,
       outputRoot,
       now: fixedClock,
+      env: {},
     });
 
     // Exactly one vision call, despite 4 sensor-passing variants.
@@ -326,6 +329,7 @@ describe('generateOne + VLM judge (integration)', () => {
       repoRoot: root,
       outputRoot,
       now: fixedClock,
+      env: {},
     });
 
     expect(calls).toHaveLength(0);
