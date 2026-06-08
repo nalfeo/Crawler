@@ -98,6 +98,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   }
 
   const entries = parseSpriteCatalog(catalogJson).map((entry) => ({ ...entry }));
+  
   let selectedId = entries[0]?.id;
   let aiProvider: AiProviderMode = 'auto';
 
@@ -287,6 +288,38 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     pre.style.fontSize = '12px';
     pre.style.wordBreak = 'break-all';
     return labeledInput(label, pre);
+  }
+
+  /**
+   * Create a sprite preview for generated (individual PNG) sprites.
+   */
+  function createGeneratedSpritePreview(sprite: SpriteCatalogEntry & { assetPath?: string }): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '16px';
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.alignItems = 'flex-start';
+    wrap.style.gap = '8px';
+
+    const previewLabel = document.createElement('label');
+    previewLabel.textContent = 'Sprite Preview';
+    previewLabel.style.fontSize = '12px';
+    previewLabel.style.color = '#cbd5f5';
+    previewLabel.style.fontWeight = '600';
+
+    const img = document.createElement('img');
+    img.style.background =
+      'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
+    img.style.borderRadius = '8px';
+    img.style.border = '1px solid rgba(255,255,255,0.15)';
+    img.style.imageRendering = 'pixelated';
+    img.style.maxWidth = '256px';
+    img.style.maxHeight = '256px';
+    img.src = `/assets/${sprite.assetPath || `generated/${sprite.spriteId}.png`}`;
+    img.alt = sprite.spriteId;
+
+    wrap.append(previewLabel, img);
+    return wrap;
   }
 
   /**
@@ -722,9 +755,13 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
 
     // Sprite preview image
     if (selected.kind === 'sprite') {
-      const sheet = getSheetForSprite(selected);
-      if (sheet) {
-        detailPanel.append(createSpritePreview(selected, sheet));
+      if (selected.tags?.includes('pipeline-approved')) {
+        detailPanel.append(createGeneratedSpritePreview(selected));
+      } else {
+        const sheet = getSheetForSprite(selected);
+        if (sheet) {
+          detailPanel.append(createSpritePreview(selected, sheet));
+        }
       }
     } else {
       detailPanel.append(createSheetOverview(selected));
@@ -886,6 +923,37 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
 
   renderList();
   renderDetails();
+
+  // Fetch and merge approved generated sprites from the manifest (async, fire and forget)
+  fetch('/assets/generated/manifest.json')
+    .then((res) => res.json())
+    .then((manifest: {
+      version?: number;
+      entries?: Record<string, { briefId: string; spriteName: string; assetPath: string; [key: string]: unknown }>;
+    }) => {
+      if (manifest.entries) {
+        for (const [key, entry] of Object.entries(manifest.entries)) {
+          entries.push({
+            id: `generated:${key}`,
+            kind: 'sprite',
+            label: entry.spriteName ?? key,
+            description: `Generated sprite from brief: ${entry.briefId}`,
+            tags: ['generated', 'pipeline-approved'],
+            spriteId: entry.spriteName ?? key,
+            sheetKey: 'generated-manifest',
+           assetPath: entry.assetPath,
+           frame: 0,
+           col: 0,
+           row: 0,
+         } as unknown as SpriteCatalogEntry);
+       }
+        // Trigger UI refresh if we've loaded generated sprites
+        renderList();
+      }
+    })
+    .catch(() => {
+      // Silently ignore manifest load errors
+    });
 
   return () => {
     root.remove();

@@ -374,16 +374,16 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     const body = res.json();
     expect(body.briefId).toBe(briefId);
     expect(body.variantIndex).toBe(1);
-    expect(body.assetPath).toBe(`generated/${briefId}.png`);
+    expect(body.assetPath).toBe(`generated/${briefId}-var-1.png`);
     expect(body.sensorScore).toBe('7/7');
     expect(body.judgeScore).toBe('4');
 
     // The asset was actually copied to the public dir.
-    const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}.png`);
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`);
     expect(readFileSync(assetAbs).toString()).toBe('PNG-01');
     // Manifest was created on disk too.
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-    expect(manifest.entries[briefId].variantIndex).toBe(1);
+    expect(manifest.entries[`${briefId}-var-1`].variantIndex).toBe(1);
   });
 
   it('refuses with 403 when process.env.CI is set', async () => {

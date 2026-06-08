@@ -159,10 +159,9 @@ export function computeDiversity(processedPngs: ReadonlyArray<Buffer>): Diversit
   if (bitLength === 0) return null;
   for (let i = 1; i < hashes.length; i++) {
     if (hashes[i]!.bitLength !== bitLength) {
-      throw new Error(
-        `computeDiversity: sprite ${i} has ${hashes[i]!.bitLength} bits, ` +
-          `expected ${bitLength} bits to match sprite 0`,
-      );
+      // When trimAndFit produces variable-sized outputs, diversity
+      // comparison is meaningless — gracefully bail rather than crash.
+      return null;
     }
   }
   let sum = 0;

@@ -201,9 +201,11 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   }
 
   // Asset destination. Flat layout under public/assets/generated/.
+  // Use variant-specific ID so multiple variants per brief coexist.
+  const variantId = `${briefId}-var-${options.variantIndex}`;
   const generatedDir = path.join(options.publicAssetsDir, 'generated');
   fs.mkdirSync(generatedDir, { recursive: true });
-  const assetAbsPath = path.join(generatedDir, `${briefId}.png`);
+  const assetAbsPath = path.join(generatedDir, `${variantId}.png`);
   fs.copyFileSync(processedPng, assetAbsPath);
 
   // Anchor: prefer the per-variant derived sidecar, fall back to chosen.anchor.
@@ -228,7 +230,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     briefId,
     spriteName: briefId,
     // Forward slashes so the engine can pass this straight to a URL/loader.
-    assetPath: `generated/${briefId}.png`,
+    assetPath: `generated/${variantId}.png`,
     approvedAt: now().toISOString(),
     sourceRun: toRepoRelativePosix(options.repoRoot, options.runDir),
     variantIndex: options.variantIndex,
@@ -237,7 +239,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     judgeScore,
   };
 
-  upsertManifest(fs, options.manifestPath, entry);
+  upsertManifest(fs, options.manifestPath, entry, variantId);
   return entry;
 }
 
@@ -246,7 +248,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
  * file is small and tracked in git; pretty-printing with stable key order
  * keeps diffs reviewable.
  */
-function upsertManifest(fs: ApproveFs, manifestPath: string, entry: ManifestEntry): void {
+function upsertManifest(fs: ApproveFs, manifestPath: string, entry: ManifestEntry, entryKey: string): void {
   let current: Manifest;
   if (fs.existsSync(manifestPath)) {
     try {
@@ -272,8 +274,8 @@ function upsertManifest(fs: ApproveFs, manifestPath: string, entry: ManifestEntr
     current = { version: MANIFEST_VERSION, entries: {} };
   }
 
-  // Stable key order: sort keys so latest-wins doesn't shuffle the file.
-  const nextEntries: Record<string, ManifestEntry> = { ...current.entries, [entry.briefId]: entry };
+  // Stable key order: sort keys so multiple approvals don't shuffle the file.
+  const nextEntries: Record<string, ManifestEntry> = { ...current.entries, [entryKey]: entry };
   const sortedKeys = Object.keys(nextEntries).sort();
   const sorted: Record<string, ManifestEntry> = {};
   for (const key of sortedKeys) {
