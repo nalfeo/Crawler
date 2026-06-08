@@ -26,6 +26,7 @@ import { PNG } from 'pngjs';
 
 import { runBatch, type BatchSummary } from '../../scripts/sprites/batch.js';
 import { JudgeBudget } from '../../scripts/sprites/cost-tracker.js';
+import { generateOne } from '../../scripts/sprites/generate-one.js';
 import { JudgeCache } from '../../scripts/sprites/judge-cache.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import type {
@@ -209,6 +210,7 @@ describe('runBatch (integration)', () => {
       provider: makeMockImageProvider(sheet),
       visionProvider: vision,
       now: fixedClock,
+      generate: (options) => generateOne({ ...options, env: {} }),
     });
 
     // 4 vision calls happened (all of brief 1). Briefs 2 + 3 NEVER
