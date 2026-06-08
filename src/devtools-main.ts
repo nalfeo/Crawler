@@ -248,18 +248,23 @@ function render(): void {
       manifest = (await response.json()) as unknown;
       const entries = ((manifest as { entries?: Record<string, { assetPath?: string }> }).entries ??
         {}) as Record<string, { assetPath?: string }>;
-      for (const entry of Object.values(entries)) {
-        if (!entry.assetPath) continue;
-        const assetUrl = `/assets/${entry.assetPath}`;
-        try {
-          const head = await fetch(assetUrl, { method: 'HEAD', cache: 'no-store' });
-          if (head.ok) {
-            existingAssets.add(entry.assetPath);
-          }
-        } catch {
-          // Ignore per-asset lookup failures; status will surface as missing file.
-        }
-      }
+      await Promise.all(
+        Object.values(entries)
+          .filter((entry): entry is { assetPath: string } => typeof entry.assetPath === 'string')
+          .map(async (entry) => {
+            try {
+              const head = await fetch(`/assets/${entry.assetPath}`, {
+                method: 'HEAD',
+                cache: 'no-store',
+              });
+              if (head.ok) {
+                existingAssets.add(entry.assetPath);
+              }
+            } catch {
+              // Ignore per-asset lookup failures; status will surface as missing file.
+            }
+          }),
+      );
     } catch (error) {
       manifestError = error instanceof Error ? error.message : String(error);
     }

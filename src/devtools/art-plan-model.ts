@@ -1,5 +1,12 @@
 import { z } from 'zod';
 import { parse as parseYaml } from 'yaml';
+import {
+  briefKey,
+  resolveArtPlanStatus,
+  resolveIntegrationState,
+  type ArtPlanStatus,
+  type IntegrationState,
+} from '../shared/art-plan-status.js';
 
 const spriteTypes = ['weapon', 'enemy', 'item', 'tile', 'vfx', 'character'] as const;
 
@@ -50,16 +57,9 @@ export type FloorArtPlan = z.infer<typeof assetPlanSchema>;
 export type FloorArtAsset = z.infer<typeof assetPlanEntrySchema>;
 export type IntegrationTarget = z.infer<typeof integrationTargetSchema>;
 
-export type IntegrationState = 'integrated' | 'missing' | 'not-applicable';
-export type FloorArtStatus =
-  | 'ready'
-  | 'approved'
-  | 'approved-not-integrated'
-  | 'approved-missing-file'
-  | 'brief-ready'
-  | 'brief-ready-placeholder'
-  | 'needs-art-placeholder'
-  | 'planned';
+export type { IntegrationState };
+/** Alias kept for backward compatibility — same values as ArtPlanStatus. */
+export type FloorArtStatus = ArtPlanStatus;
 
 export interface ApprovedSpriteEntry {
   readonly briefId: string;
@@ -181,7 +181,7 @@ export function buildFloorArtPlanReport(
       approved,
       approvedAssetExists,
       integrationState,
-      status: resolveStatus({
+      status: resolveArtPlanStatus({
         briefAuthored,
         approved,
         approvedAssetExists,
@@ -210,56 +210,6 @@ export function buildFloorArtPlanReport(
     counts,
     unresolvedPlaceholders,
   };
-}
-
-function resolveIntegrationState(
-  target: IntegrationTarget | undefined,
-  approvedAssetExists: boolean,
-  spriteRegistryIds: ReadonlySet<string>,
-  itemCatalogIds: ReadonlySet<string>,
-): IntegrationState {
-  if (!target) {
-    return 'not-applicable';
-  }
-  if (target.kind === 'sprite-registry') {
-    return spriteRegistryIds.has(target.id) ? 'integrated' : 'missing';
-  }
-  return itemCatalogIds.has(target.id) && approvedAssetExists ? 'integrated' : 'missing';
-}
-
-function resolveStatus(args: {
-  readonly briefAuthored: boolean;
-  readonly approved: boolean;
-  readonly approvedAssetExists: boolean;
-  readonly integrationState: IntegrationState;
-  readonly placeholderInUse: boolean;
-}): FloorArtStatus {
-  if (args.approved && !args.approvedAssetExists) {
-    return 'approved-missing-file';
-  }
-  if (args.approved && args.integrationState === 'integrated') {
-    return 'ready';
-  }
-  if (args.approved && args.integrationState === 'not-applicable') {
-    return 'approved';
-  }
-  if (args.approved) {
-    return 'approved-not-integrated';
-  }
-  if (args.briefAuthored && args.placeholderInUse) {
-    return 'brief-ready-placeholder';
-  }
-  if (args.briefAuthored) {
-    return 'brief-ready';
-  }
-  if (args.placeholderInUse) {
-    return 'needs-art-placeholder';
-  }
-  return 'planned';
-}
-
-function briefKey(type: string, name: string): string {
-  return `${type}::${name}`;
 }
 
 const manifestEntrySchema = z

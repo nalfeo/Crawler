@@ -4,6 +4,13 @@ import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 import { SPRITES } from '../../src/engine/sprites/index.js';
 import { parseGeneratedManifest, type ManifestEntry } from '../../src/shared/generated-assets.js';
+import {
+  briefKey,
+  resolveArtPlanStatus,
+  resolveIntegrationState,
+  type ArtPlanStatus,
+  type IntegrationState,
+} from '../../src/shared/art-plan-status.js';
 import { ITEM_CATALOG } from '../../src/shared/items.js';
 import { SPRITE_TYPES, minimalBriefSchema } from './brief-schema.js';
 
@@ -75,16 +82,9 @@ export interface ApprovedSpriteRecord {
 export type BriefIndex = ReadonlyMap<string, string>;
 export type ApprovedSpriteIndex = ReadonlyMap<string, ApprovedSpriteRecord>;
 
-export type IntegrationState = 'integrated' | 'missing' | 'not-applicable';
-export type AssetPlanStatus =
-  | 'ready'
-  | 'approved'
-  | 'approved-not-integrated'
-  | 'approved-missing-file'
-  | 'brief-ready'
-  | 'brief-ready-placeholder'
-  | 'needs-art-placeholder'
-  | 'planned';
+export type { IntegrationState };
+/** Alias kept for backward compatibility — same values as ArtPlanStatus. */
+export type AssetPlanStatus = ArtPlanStatus;
 
 export interface AssetPlanAssetReport {
   readonly id: string;
@@ -215,7 +215,7 @@ export function buildAssetPlanReport(
       approved,
       approvedAssetExists,
       integrationState,
-      status: resolveAssetStatus({
+      status: resolveArtPlanStatus({
         approved,
         approvedAssetExists,
         integrationState,
@@ -246,52 +246,6 @@ export function buildAssetPlanReport(
   };
 }
 
-function resolveIntegrationState(
-  target: IntegrationTarget | undefined,
-  approvedAssetExists: boolean,
-  spriteIds: ReadonlySet<string>,
-  itemIds: ReadonlySet<string>,
-): IntegrationState {
-  if (!target) {
-    return 'not-applicable';
-  }
-  if (target.kind === 'sprite-registry') {
-    return spriteIds.has(target.id) ? 'integrated' : 'missing';
-  }
-  return itemIds.has(target.id) && approvedAssetExists ? 'integrated' : 'missing';
-}
-
-function resolveAssetStatus(args: {
-  readonly approved: boolean;
-  readonly approvedAssetExists: boolean;
-  readonly integrationState: IntegrationState;
-  readonly briefAuthored: boolean;
-  readonly placeholderInUse: boolean;
-}): AssetPlanStatus {
-  if (args.approved && !args.approvedAssetExists) {
-    return 'approved-missing-file';
-  }
-  if (args.approved && args.integrationState === 'integrated') {
-    return 'ready';
-  }
-  if (args.approved && args.integrationState === 'not-applicable') {
-    return 'approved';
-  }
-  if (args.approved) {
-    return 'approved-not-integrated';
-  }
-  if (args.briefAuthored && args.placeholderInUse) {
-    return 'brief-ready-placeholder';
-  }
-  if (args.briefAuthored) {
-    return 'brief-ready';
-  }
-  if (args.placeholderInUse) {
-    return 'needs-art-placeholder';
-  }
-  return 'planned';
-}
-
 function walkYamlFiles(dirPath: string): string[] {
   const entries = readdirSync(dirPath, { withFileTypes: true });
   const out: string[] = [];
@@ -306,8 +260,4 @@ function walkYamlFiles(dirPath: string): string[] {
     }
   }
   return out.sort((left, right) => left.localeCompare(right));
-}
-
-function briefKey(type: string, name: string): string {
-  return `${type}::${name}`;
 }
