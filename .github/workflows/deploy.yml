@@ -124,7 +124,7 @@ jobs:
         if: steps.prod-tag.outputs.exists == 'true'
         run: git checkout ${{ github.sha }} -- .
 
-      - name: Guard - prod must NOT include lab.html
+      - name: Guard - prod must NOT include lab.html or devtools.html
         if: steps.prod-tag.outputs.exists == 'true'
         run: |
           if [ -f staging/prod/lab.html ]; then

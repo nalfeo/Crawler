@@ -108,7 +108,7 @@ jobs:
           DEPLOY_ENV: prod
           BUILD_OUTDIR: staging/prod
 
-      - name: Guard - prod must NOT include lab.html
+      - name: Guard - prod must NOT include lab.html or devtools.html
         run: |
           if [ -f staging/prod/lab.html ]; then
             echo "::error::Prod build contains lab.html - lab leakage!"
