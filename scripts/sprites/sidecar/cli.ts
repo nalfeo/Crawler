@@ -77,7 +77,7 @@ async function main(): Promise<number> {
     process.stdout.write(`  repoRoot: ${repoRoot}\n`);
     process.stdout.write(`  runsDir : ${runsDir}\n`);
     process.stdout.write(
-      `  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file\n`,
+      `  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file, POST /api/runs/:brief/:run/approve\n`,
     );
     return 0;
   } catch (err) {

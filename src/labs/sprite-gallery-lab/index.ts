@@ -81,6 +81,56 @@ function summaryUrl(briefId: string, runId: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`;
 }
 
+function approveUrl(briefId: string, runId: string): string {
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/approve`;
+}
+
+interface ApproveResponse {
+  briefId: string;
+  spriteName: string;
+  assetPath: string;
+  approvedAt: string;
+  sourceRun: string;
+  variantIndex: number;
+  anchor: { x: number; y: number; source: string } | null;
+  sensorScore: string;
+  judgeScore: string | null;
+}
+
+interface ApproveErrorBody {
+  error?: string;
+  message?: string;
+}
+
+/**
+ * Post an approval to the sidecar. Exported so unit tests can exercise the
+ * fetch contract without rendering the gallery DOM. On a non-2xx response
+ * the body is read for an `{ error, message }` shape and surfaced verbatim.
+ */
+export async function postApprove(
+  briefId: string,
+  runId: string,
+  variantIndex: number,
+  fetcher: typeof fetch = fetch,
+): Promise<ApproveResponse> {
+  const res = await fetcher(approveUrl(briefId, runId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ variantIndex }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = (await res.json()) as ApproveErrorBody;
+      detail = body.message ?? body.error ?? '';
+    } catch {
+      // Body wasn't JSON; fall through with status text only.
+    }
+    throw new Error(`approve failed (${res.status}): ${detail || res.statusText}`);
+  }
+  return (await res.json()) as ApproveResponse;
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
@@ -499,6 +549,7 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     details: new Map<string, Record<string, unknown>>(),
     grid: null as CreatedGallery | null,
     selected: null as CandidateRef | null,
+    healthy: false,
   };
 
   function setOverlayVisibility(show: boolean): void {
@@ -531,15 +582,84 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       : [];
     const cand = candidatesArr[ref.candidateIndex];
     if (!cand) return;
+    const variantIndex = typeof cand.index === 'number' ? cand.index : ref.candidateIndex;
     const header = el('div', { style: { marginBottom: '10px' } }, [
       el('div', { textContent: run.briefId, style: { fontWeight: '700', color: '#f1f5f9' } }),
       el('div', {
-        textContent: `${run.runId} · candidate ${cand.index ?? ref.candidateIndex}`,
+        textContent: `${run.runId} · candidate ${variantIndex}`,
         style: { fontSize: '11px', color: '#94a3b8' },
       }),
     ]);
     sidePanel.append(header);
+
+    // Approve button — only enabled when the sidecar is reachable. The
+    // gallery's `load()` populates state.healthy on success; without a
+    // sidecar there's no mutation surface to call, matching spec §F9
+    // (review-only mode disables action buttons with a tooltip).
+    const approveRow = el('div', { style: { margin: '10px 0' } });
+    const approveBtn = el('button', {
+      type: 'button',
+      textContent: `Approve variant ${variantIndex}`,
+      style: {
+        padding: '8px 14px',
+        borderRadius: '6px',
+        border: '1px solid rgba(250,204,21,0.6)',
+        background: state.healthy ? '#a16207' : '#374151',
+        color: '#fef3c7',
+        cursor: state.healthy ? 'pointer' : 'not-allowed',
+        fontSize: '13px',
+        fontWeight: '600',
+      },
+    });
+    approveBtn.disabled = !state.healthy;
+    if (!state.healthy) {
+      approveBtn.title =
+        'Sidecar not running — start it with `npm run sprites:gallery` to enable approval.';
+    }
+    const approveStatus = el('div', {
+      style: { fontSize: '11px', marginTop: '6px', color: '#94a3b8', whiteSpace: 'pre-wrap' },
+    });
+    approveBtn.addEventListener('click', () => {
+      void onApprove(run, variantIndex, approveBtn, approveStatus);
+    });
+    approveRow.append(approveBtn, approveStatus);
+    sidePanel.append(approveRow);
+
     sidePanel.append(renderJsonTree(cand, 'candidate'));
+  }
+
+  async function onApprove(
+    run: SidecarRunListEntry,
+    variantIndex: number,
+    btn: HTMLButtonElement,
+    status: HTMLDivElement,
+  ): Promise<void> {
+    btn.disabled = true;
+    const prevLabel = btn.textContent;
+    btn.textContent = 'Approving…';
+    status.style.color = '#94a3b8';
+    status.textContent = '';
+    try {
+      const entry = await postApprove(run.briefId, run.runId, variantIndex);
+      status.style.color = '#bef264';
+      status.textContent = `Approved → ${entry.assetPath} (${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''})`;
+      // Re-fetch the run summary so any sidecar-side metadata refreshes.
+      try {
+        const summary = await fetchJson<Record<string, unknown>>(
+          summaryUrl(run.briefId, run.runId),
+        );
+        state.details.set(`${run.briefId}/${run.runId}`, summary);
+        rerenderGrid();
+      } catch {
+        // Refresh is best-effort; the approval already succeeded.
+      }
+    } catch (err) {
+      status.style.color = '#fca5a5';
+      status.textContent = err instanceof Error ? err.message : String(err);
+    } finally {
+      btn.disabled = !state.healthy;
+      btn.textContent = prevLabel ?? `Approve variant ${variantIndex}`;
+    }
   }
 
   function selectCandidate(ref: CandidateRef): void {
@@ -567,7 +687,9 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     let health: SidecarHealth;
     try {
       health = await fetchJson<SidecarHealth>(`${SIDECAR_BASE}/api/health`);
+      state.healthy = true;
     } catch (err) {
+      state.healthy = false;
       gridHost.replaceChildren();
       renderBanner(
         bannerHost,

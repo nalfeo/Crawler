@@ -23,6 +23,7 @@
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
+    "sprites:approve": "tsx scripts/sprites/approve-cli.ts",
     "sprites:synth": "tsx scripts/sprites/synth-cli.ts",
     "sprites:batch": "tsx scripts/sprites/batch-cli.ts",
     "sprites:sync-catalog": "tsx scripts/sprites/sync-catalog.ts",
