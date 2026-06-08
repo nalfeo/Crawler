@@ -91,21 +91,3 @@ jobs:
           fi
           echo "✅ All required checks passed"
 
-  commit-lint:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          types: |
-            feat
-            fix
-            chore
-            lab
-            docs
-            refactor
-            test
-            perf
-            ci
