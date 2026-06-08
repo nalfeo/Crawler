@@ -2,7 +2,7 @@
 
 ## Identity
 
-Crawler is a crafting-focused vampire-survivors-like set inside a brutal intergalactic reality show dungeon. Built with Phaser 3 + bitecs ECS + TypeScript.
+Crawler is a crafting-focused vampire-survivors-like set inside a brutal intergalactic reality show dungeon. Built with Phaser 4 + bitecs ECS + TypeScript.
 
 ## Governing Principles
 
@@ -39,15 +39,15 @@ Ollama (The Director) generates content during floor-load transitions. Never mid
 
 ### 8. Conventional Commits
 
-Use prefixes: `feat:`, `fix:`, `chore:`, `lab:`, `docs:`. CI enforces commit format.
+Use Conventional Commit prefixes enforced by commitlint: `feat:`, `fix:`, `chore:`, `docs:`, `lab:`, `refactor:`, `test:`, `perf:`, `ci:`, `build:`, `revert:`. CI enforces commit format.
 
 ### 9. Coverage Requirements
 
-- `src/core/` and `src/game/`: 90% line coverage minimum
-- `src/shared/`: 90% minimum
-- `src/engine/`: 50% minimum
-- `src/labs/`: 30% minimum
-- Overall: 80% minimum
+- `src/core/` and `src/game/`: 90% line coverage target
+- `src/shared/`: 90% target
+- `src/engine/`: 50% target
+- `src/labs/`: 30% target
+- Overall: 80% target
 
 ### 10. Hashimoto's Loop
 
@@ -55,9 +55,9 @@ Every agent failure becomes a permanent fix: observe → classify → decide fix
 
 ## Architectural Boundaries
 
-- `src/core/` → `src/shared/`, `bitecs` only
-- `src/engine/` → `src/core/`, `src/shared/`
-- `src/game/` → `src/core/`, `src/shared/`
+- `src/core/` → must not import `src/engine/`, `src/game/`, or `src/labs/`
+- `src/engine/` → must not import `src/game/` or `src/labs/`
+- `src/game/` → must not import `src/engine/` or `src/labs/`
 - `src/labs/` → unrestricted
 
 ## Non-Negotiable

@@ -33,15 +33,15 @@
 ## Architecture
 
 - **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering
-- **Phaser 3**: Rendering only in `src/engine/` — replaceable layer
+- **Phaser 4**: Rendering only in `src/engine/` — replaceable layer
 - **Labs**: Sandboxes in `src/labs/` — every system needs a lab before shipping
-- **AI**: Ollama integration in `src/game/ai/` — called during floor-load only
+- **AI**: `src/game/ai/` is reserved for Ollama integration — when implemented, floor-load only
 
 ## Layer Rules (enforced by ESLint)
 
-- `src/core/` → imports from `src/shared/` only
-- `src/engine/` → imports from `src/core/`, `src/shared/`
-- `src/game/` → imports from `src/core/`, `src/shared/`
+- `src/core/` → must not import from `src/engine/`, `src/game/`, or `src/labs/`
+- `src/engine/` → must not import from `src/game/` or `src/labs/`
+- `src/game/` → must not import from `src/engine/` or `src/labs/`
 - `src/labs/` → unrestricted
 
 ## Key Files
@@ -65,7 +65,7 @@
 2. **Deterministic CI only**: No LLM-as-judge in CI. All gates are scripts with exit codes.
 3. **Never use Math.random()**: Use `SeededRandom` from `src/shared/random.ts`
 4. **Never use Date.now()**: Pass delta/frameCount as parameters
-5. **Conventional commits**: `feat:`, `fix:`, `chore:`, `lab:`, `docs:`
+5. **Conventional commits**: full type set enforced by commitlint — `feat:`, `fix:`, `chore:`, `docs:`, `lab:`, `refactor:`, `test:`, `perf:`, `ci:`, `build:`, `revert:`
 6. **Handoff required**: Write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session
 7. **ADR required**: Any decision affecting 2+ systems needs an ADR
 
@@ -77,4 +77,4 @@
 
 ## Tech Stack
 
-TypeScript (strict) · Phaser 3 · bitecs 0.4 · Vite · Vitest · fast-check · ESLint · Prettier · GitHub Actions
+TypeScript (strict) · Phaser 4 · bitecs 0.4 · Vite · Vitest · fast-check · ESLint · Prettier · GitHub Actions

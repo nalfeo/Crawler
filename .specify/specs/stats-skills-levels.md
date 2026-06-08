@@ -11,6 +11,8 @@ The skill system is a distinct "level by usage" system separate from XP leveling
 Silly skills and synergies are a core design goal — deferred to v2 but the
 architecture must accommodate them.
 
+> **Current-code note:** this spec covers gameplay stat keys (`STAT_KEYS` in `src/shared/stats.ts`). The codebase also contains primary/secondary equipment stats (`StatId`) used by the equipment system; bridges between these surfaces are system-owned.
+
 ## Requirements
 
 ### Level System
@@ -136,7 +138,7 @@ Modifiers are stored as a world-level list (not ECS), player-only in v1:
 
 ```typescript
 interface StatModifier {
-  sourceType: 'skill' | 'floor' | 'buff';
+  sourceType: 'skill' | 'floor' | 'buff' | 'ability';
   sourceId: string;           // e.g. 'swordsmanship' or 'fire-floor'
   stat: StatKey;
   op: 'add' | 'multiply';
@@ -214,6 +216,7 @@ interface SkillState {
 ```typescript
 // world.skillUsageEvents: SkillUsageEvent[] — cleared each frame after skillSystem runs
 interface SkillUsageEvent {
+  holderEid?: number;
   skillId: string;
   metric: UsageMetric;
   amount: number;
@@ -222,13 +225,13 @@ interface SkillUsageEvent {
 
 Usage emitters:
 
-- `damageSystem` emits `hits_landed` and `damage_dealt` for player projectile hits
-- `movementSystem` emits `distance_dodged_near_threat` when player moves near an enemy projectile
+- `damageSystem` currently emits `hits_landed` for player projectile hits
+- `damage_dealt` and `distance_dodged_near_threat` emitters are planned follow-up integrations
 
 ### System Architecture
 
 ```
-levelSystem(world, deltaMs)
+levelSystem(world)
   ├─ reads: world.playerLevel, xpGem pickups
   ├─ accumulates XP, computes threshold crossings
   ├─ on level-up: adds pointsPerLevel to unspentPoints, sets world.state='level_up'
@@ -242,7 +245,7 @@ statsSystem(world)
   ├─ clamps to per-stat minimums
   └─ writes: stats store for player eid
 
-skillSystem(world, frameCount)
+skillSystem(world)
   ├─ reads: world.skillUsageEvents (then clears them)
   ├─ accumulates usage per skill in world.playerSkills
   ├─ level-ups: check thresholds, clamp to min(naturalCap + itemBonus, hardCap)

@@ -229,8 +229,8 @@ Items can declare **requirements** that are evaluated at equip time. If any requ
 
 ```typescript
 type EquipRequirement =
-  | { type: 'minLevel'; value: number } // entity must be ≥ level
-  | { type: 'maxLevel'; value: number } // entity must be ≤ level
+  | { type: 'minLevel'; value: number } // reserved in v1 (currently no-op until level component wiring exists)
+  | { type: 'maxLevel'; value: number } // reserved in v1 (currently no-op until level component wiring exists)
   | { type: 'minStat'; stat: StatId; value: number } // base stat must be ≥ value
   | { type: 'hasTag'; tag: string } // entity must have tag (e.g. 'male', 'undead', 'class:mage')
   | { type: 'notTag'; tag: string } // entity must NOT have tag
@@ -240,7 +240,7 @@ type EquipRequirement =
 #### Examples
 
 ```typescript
-// Only equippable at level 5+
+// Reserved for future level-component wiring
 { type: 'minLevel', value: 5 }
 
 // Requires 10 strength
@@ -342,13 +342,14 @@ type CanEquipResult = {
 
 ### Requirement Evaluation
 
-- **`minStat` / `minLevel` requirements check current `EffectiveStats`** (including bonuses from already-equipped gear), **excluding** the candidate item's own bonuses. The item being equipped does not bootstrap itself.
+- **`minStat` requirements check current `EffectiveStats`** (including bonuses from already-equipped gear), **excluding** the candidate item's own bonuses. The item being equipped does not bootstrap itself.
+- **`minLevel` / `maxLevel` are schema-valid but currently no-op** until level-component wiring lands in the equipment layer.
 - **`hasTag` / `notTag`** refer to **entity tags** — a lightweight string set stored per entity in the equipment side-map (e.g. `'male'`, `'undead'`, `'class:mage'`). Entity tags are set at character creation and may be modified by game events. They are distinct from item `tags` (which are for crafting/synergy).
 - **Custom predicates** must be pure and deterministic — they receive `(world, entity, itemDef)` and must not use `Math.random()`, `Date.now()`, or mutable globals. The custom requirement registry is scoped per `GameWorld` to prevent test bleed.
 
 ### When Equipment Can Change
 
-Equipment changes (equip/unequip) are permitted **only in safe rooms** (`world.state === 'safe_room'`) and in labs. Mid-combat equipment changes are not allowed in v1. The `equip`/`unequip` functions enforce this by checking `world.state` (with a `forceInLab` override for lab/test use).
+Equipment changes (equip/unequip) are permitted **only in safe rooms** (`world.state === 'safe_room'`) and in labs. Mid-combat equipment changes are not allowed in v1. The `equip`/`unequip` functions enforce this by checking `world.state` (with a `force` override for lab/test use).
 
 ## Scope & Future Work
 
@@ -486,9 +487,9 @@ Adjacent to the paper doll, a **stat panel** displays:
 
 | Artifact                  | Location                                                  |
 | ------------------------- | --------------------------------------------------------- |
-| Paper doll scene (Phaser) | `src/engine/scenes/EquipmentScene.ts`                     |
+| Paper doll rendering      | `src/labs/equipment-lab/index.ts`                         |
 | Slot layout config (data) | `src/shared/equipment-slots.ts` (position hints per slot) |
-| Equipment UI state bridge | `src/engine/ui/EquipmentUI.ts`                            |
+| Equipment UI state bridge | `src/engine/InventoryUI.ts`                               |
 
 The UI layer reads from `EquipmentState` (via the ECS bridge) and calls `equip`/`unequip`/`canEquip` operations. No game logic in the rendering layer.
 
@@ -512,7 +513,7 @@ The UI layer reads from `EquipmentState` (via the ECS bridge) and calls `equip`/
 14. **Invalid item def (duplicate slots)** — equip rejected.
 15. **Entity cleanup** — remove Equipment component, verify side-map entry cleared.
 16. **Equip/unequip determinism** — same sequence, same outcome (seeded world).
-17. **Equip fails on minLevel requirement** — entity below required level, equip denied.
+17. **Level requirements are currently reserved** — `minLevel`/`maxLevel` parse but remain no-op until level-component wiring is added.
 18. **Equip fails on minStat requirement** — entity strength too low, equip denied.
 19. **Equip fails on notTag requirement** — entity has excluded tag, equip denied.
 20. **Equip succeeds with all requirements met** — level, stat, and tag checks pass.
@@ -522,7 +523,7 @@ The UI layer reads from `EquipmentState` (via the ECS bridge) and calls `equip`/
 24. **Unknown slot rejected** — item referencing unregistered slot fails validation.
 25. **Multi-slot item stats not double-counted** — two-handed weapon in mainHand+offHand grants bonuses exactly once.
 26. **NaN/Infinity stat values rejected** — equip denied with invalidDef reason.
-27. **Equip denied outside safe room** — equip returns `ok: false` when `world.state !== 'safe_room'` (without `forceInLab`).
+27. **Equip denied outside safe room** — equip returns `ok: false` when `world.state !== 'safe_room'` (without `force`).
 28. **Entity tag requirements** — `hasTag` checks entity tag set, not item tags.
 
 ### Property-Based Tests (`tests/ecs/equipment.property.test.ts`)
