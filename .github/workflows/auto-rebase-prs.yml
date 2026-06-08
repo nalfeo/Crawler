@@ -1,0 +1,75 @@
+name: Auto-rebase open PRs
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: auto-rebase-prs
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rebase-prs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update all open PR branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔄 Fetching open PRs..."
+          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --base main --json number --jq '.[].number')
+
+          if [ -z "$prs" ]; then
+            echo "No open PRs to update."
+            exit 0
+          fi
+
+          for pr in $prs; do
+            echo "Updating PR #$pr with latest main..."
+
+            # Try to update the branch (merge main in)
+            # Omit expected_head_sha to allow unconditional updates
+            response=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/update-branch" \
+              --method PUT 2>&1) && status=0 || status=$?
+
+            if [ $status -eq 0 ]; then
+              echo "  ✅ PR #$pr updated successfully"
+
+              # Request Copilot code review
+              echo "  🤖 Requesting Copilot code review..."
+              gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/requested_reviewers" \
+                --method POST \
+                --field "reviewers[]=copilot-pull-request-reviewer" 2>/dev/null \
+                && echo "  ✅ Copilot review requested" \
+                || echo "  ⚠️  Could not request Copilot review"
+            else
+              # Check if the failure is actually due to merge conflicts
+              if echo "$response" | grep -qi "merge conflict\|cannot be merged"; then
+                # Only comment if there isn't already a recent @copilot resolve comment
+                existing=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json comments \
+                  --jq '[.comments[] | select(.body | startswith("@copilot resolve"))] | length' 2>/dev/null || echo "0")
+
+                if [ "$existing" -eq 0 ]; then
+                  echo "  ❌ PR #$pr has merge conflicts"
+                  echo "  🤖 Asking Copilot to resolve conflicts..."
+                  gh pr comment "$pr" \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --body "@copilot resolve the merge conflicts with main and keep the intent of this PR's changes." 2>/dev/null \
+                    && echo "  ✅ Copilot asked to resolve conflicts" \
+                    || echo "  ⚠️  Could not comment on PR"
+                else
+                  echo "  ⚠️  PR #$pr has conflicts but Copilot was already asked to resolve"
+                fi
+              else
+                echo "  ⚠️  PR #$pr update failed (non-conflict error), skipping"
+              fi
+            fi
+
+            sleep 2
+          done
+
+          echo "✅ Done processing PR branches."

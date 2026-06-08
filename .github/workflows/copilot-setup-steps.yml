@@ -1,3 +1,6 @@
+# Provisions a fully working environment for the Copilot coding agent
+# (cloud/mobile sessions). The agent uses this environment to fix CI failures,
+# address review comments, rebase branches, and perform general code changes.
 name: 'Copilot Setup Steps'
 
 on:
@@ -18,14 +21,28 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
+
       - name: Install dependencies
         run: npm ci
-      - name: Verify build
-        run: npm run typecheck
-      - name: Verify fast
+
+      - name: Environment confirmation
+        run: |
+          echo "=== Environment Versions ==="
+          echo "Node: $(node --version)"
+          echo "npm:  $(npm --version)"
+          echo "git:  $(git --version)"
+          echo "============================"
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify (typecheck + lint + tests)
         run: npm run verify:fast
