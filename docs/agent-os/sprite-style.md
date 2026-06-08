@@ -291,3 +291,112 @@ turned off does not even compute the key, let alone touch the cache.
 
 Both modules are pure-ish (filesystem ops at the edges, no network)
 and unit-testable without mocking Azure.
+
+## Batch runs (Phase 3 build 6)
+
+A single command — `npm run sprites:batch` — walks a directory of brief
+YAMLs, runs each through the same `generateOne` pipeline as
+`sprites:run`, and threads ONE `JudgeBudget` + ONE `JudgeCache` across
+every brief. Without this layer the cost ceiling is a per-process
+formality; here it actually stops new work from starting.
+
+### Flags
+
+- `--brief <path>` (repeatable) — explicit brief YAML files.
+- `--briefs-dir <dir>` — glob `**/*.yaml` under `<dir>`. Combinable with
+  `--brief`. Duplicates de-duplicated.
+- `--judge-budget-usd <n>` — REQUIRED unless `--no-budget` (or the
+  `SPRITES_JUDGE_BUDGET_USD` env). The batch CLI exists because of the
+  cap; refusing to start without one is intentional.
+- `--no-budget` — explicit opt-out (dry runs, tests).
+- `--reset-budget` — wipe `generated/.cost-state.json` before starting.
+- `--no-judge-cache` — disable vision cache for the run.
+- `--cache-max-entries <n>` — LRU cap (default 1000).
+- `--prune-judge-cache <hours>` — drop entries older than N hours
+  before starting.
+- `--concurrency <n>` — accepted but only `1` is currently honoured.
+  Sequential keeps Azure rate-limit + budget accounting deterministic.
+- `--dry-run` — list briefs + projected cost without issuing any Azure
+  calls. Cost projection uses `gpt-4o` rates × ~1580 tokens × 4
+  variants × N briefs (rough; cache hits in a real run will be lower).
+
+### Behaviour
+
+1. **Pre-flight budget gate, per brief.** Before each brief we call
+   `judgeBudget.wouldExceed()`. If true, the brief is marked
+   `skipped-over-budget`, `generateOne` is NOT invoked, and the loop
+   continues. The ceiling stops new work; it doesn't kill a brief
+   already in flight.
+2. **One bad brief never kills the batch.** Per-brief errors are
+   caught, captured in `BatchBriefResult.error`, logged, and the loop
+   continues.
+3. **Incremental persistence.** After every brief (success, failure, or
+   skip) the batch rewrites `batch-summary.json` with the partial
+   results. Ctrl-C mid-batch leaves a valid summary on disk.
+
+### Output
+
+Per-brief artifacts go to the usual
+`generated/runs/<brief-id>/<timestamp-id>/...`. The batch adds one
+file: `generated/runs/_batch/<batch-id>/batch-summary.json`, the
+gallery's input contract. Schema:
+
+```jsonc
+{
+  "batchId": "2026-06-07T22-30-12-000Z-abc123",
+  "startedAt": "2026-06-07T22:30:12.000Z",
+  "finishedAt": "2026-06-07T22:34:01.000Z", // null while in flight
+  "briefs": [
+    {
+      "briefPath": "briefs/weapons/iron-sword.yaml",
+      "briefId": "iron-sword",
+      "status": "succeeded", // or "failed" | "skipped-over-budget"
+      "runDir": "/abs/.../generated/runs/iron-sword/2026-06-07T22-30-12Z-abc",
+      "summary": {
+        /* the per-run RunSummary, same shape as run-summary.json */
+      },
+      "elapsedMs": 8245,
+    },
+    {
+      "briefPath": "briefs/weapons/bronze-axe.yaml",
+      "briefId": "bronze-axe",
+      "status": "skipped-over-budget",
+      "runDir": "",
+      "elapsedMs": 0,
+    },
+  ],
+  "judgeBudget": {
+    "budgetUsd": 0.05,
+    "spentUsd": 0.0182,
+    "remainingUsd": 0.0318,
+    "callsThisRun": 4,
+    "callsSkipped": 0,
+  },
+  "judgeCache": { "hits": 0, "misses": 4, "bypassed": 0 },
+  "totals": {
+    "briefsAttempted": 3,
+    "briefsSucceeded": 1,
+    "briefsFailed": 0,
+    "briefsSkippedOverBudget": 2,
+    "variantsJudged": 4,
+    "variantsSkipped": 0,
+  },
+}
+```
+
+### Exit codes
+
+- `0` — batch completed. Skipped-over-budget briefs are by-design and
+  do NOT fail the run.
+- `1` — at least one brief threw (status `failed`), CLI args invalid,
+  or budget wiring rejected.
+
+### Known interaction: cache bypasses per-variant budget gate
+
+When a `JudgeCache` is supplied, `generateOne` skips the per-variant
+`wouldExceed()` check inside the run (`scripts/sprites/generate-one.ts`
+~L305). Rationale: cache hits don't bill, and we can't tell hit-vs-miss
+without trying the lookup. Net effect for the batch: a brief that
+starts under-budget runs all its variants even if mid-brief spending
+crosses the cap; the BATCH gate then stops the NEXT brief. If you
+want hard per-variant cutoff, disable the cache with `--no-judge-cache`.
