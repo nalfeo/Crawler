@@ -1,0 +1,304 @@
+/**
+ * Fastify-based read-only sidecar for the sprite gallery lab.
+ *
+ * Responsibilities (this PR — read-only):
+ *   - GET  /api/health                                                       — readiness probe
+ *   - GET  /api/runs                                                         — list all runs
+ *   - GET  /api/runs/:briefId/:runId                                         — full RunSummary JSON
+ *   - GET  /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
+ *
+ * Security contract (spec §F8):
+ *   - The HTTP server MUST bind to 127.0.0.1 only. Binding is the CLI's job
+ *     (`./cli.ts`); this module exposes only `buildServer(deps)` so tests
+ *     can run requests through `inject()` without ever opening a socket.
+ *   - The static-file route MUST validate that the resolved path stays
+ *     inside the configured runsDir. A request like `../../etc/passwd`
+ *     would otherwise expose the whole filesystem.
+ *
+ * No business logic lives here. The sidecar is a thin HTTP shell over file
+ * IO — every meaningful piece is implemented (and unit-tested) in the
+ * `scripts/sprites/` modules that the orchestrator already uses.
+ */
+
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import path from 'node:path';
+import Fastify, { type FastifyInstance } from 'fastify';
+
+export interface SidecarDeps {
+  /** Repository root — used in /api/health for operator visibility. */
+  readonly repoRoot: string;
+  /** Absolute path to the runs directory (typically `<repoRoot>/generated/runs`). */
+  readonly runsDir: string;
+  /** Version string surfaced by /api/health for log correlation. */
+  readonly version: string;
+  /** Optional logger toggle. Defaults to off for tests, on for CLI. */
+  readonly logger?: boolean;
+}
+
+export interface RunListEntry {
+  readonly briefId: string;
+  readonly runId: string;
+  /** ISO timestamp parsed from the run-id prefix; null when unparseable. */
+  readonly timestamp: string | null;
+  /** Short prompt hash from `summary.json` when available. */
+  readonly briefHash: string | null;
+  /** Chosen variant index from `summary.json` when available. */
+  readonly chosenIndex: number | null;
+  /** Number of candidates in `summary.json` when available. */
+  readonly candidateCount: number | null;
+  /** True iff any candidate has a non-null judgeScorecard. */
+  readonly hasJudge: boolean;
+}
+
+interface RunSummaryShape {
+  readonly promptHash?: string;
+  readonly chosen?: { readonly index?: number } | null;
+  readonly candidates?: ReadonlyArray<{ readonly judgeScorecard?: unknown }>;
+}
+
+/**
+ * Mime-type table for the only artifact types the gallery serves. Kept
+ * tight on purpose — anything else returns 415 so an attacker can't trick
+ * the sidecar into serving e.g. a `.bash_history` even if directory
+ * traversal slipped past the guard.
+ */
+const ALLOWED_EXTENSIONS: Readonly<Record<string, string>> = {
+  '.png': 'image/png',
+  '.json': 'application/json; charset=utf-8',
+};
+
+/**
+ * Build the Fastify instance. Does NOT call `.listen()` — that's the CLI's
+ * job. Returning an unstarted instance keeps tests fast: they can use
+ * `app.inject()` to fire requests through the router without ever opening
+ * a port (and without the flakiness of port-in-use races).
+ */
+export function buildServer(deps: SidecarDeps): FastifyInstance {
+  const app = Fastify({ logger: deps.logger ?? false });
+
+  // Vite serves the lab from a different loopback port, so allow CORS only
+  // for loopback origins (localhost/127.0.0.1/::1).
+  app.addHook('onRequest', async (req, reply) => {
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && isAllowedOrigin(origin)) {
+      reply.header('Access-Control-Allow-Origin', origin);
+      reply.header('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') {
+      reply.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      reply.header('Access-Control-Allow-Headers', 'Content-Type');
+      // `return reply` short-circuits Fastify routing after the preflight
+      // is sent so the request can't fall through to a route handler and
+      // trigger a "Reply already sent" warning.
+      return reply.code(204).send();
+    }
+  });
+
+  app.get('/api/health', async () => ({
+    status: 'ok',
+    repoRoot: deps.repoRoot,
+    runsDir: deps.runsDir,
+    version: deps.version,
+  }));
+
+  app.get('/api/runs', async () => ({ runs: listRuns(deps.runsDir) }));
+
+  app.get<{ Params: { briefId: string; runId: string } }>(
+    '/api/runs/:briefId/:runId',
+    async (req, reply) => {
+      const { briefId, runId } = req.params;
+      const summaryPath = safeJoin(deps.runsDir, [briefId, runId, 'summary.json']);
+      if (summaryPath === null) {
+        // safeJoin rejected a traversal attempt — mirror the static-file
+        // route's 403 so probes are distinguishable from "missing run".
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
+      if (!existsSync(summaryPath)) {
+        reply.code(404);
+        return { error: 'run-not-found', briefId, runId };
+      }
+      let raw: string;
+      try {
+        raw = readFileSync(summaryPath, 'utf8');
+      } catch {
+        // TOCTOU: summary may have been deleted between existsSync and readFileSync.
+        reply.code(404);
+        return { error: 'run-not-found', briefId, runId };
+      }
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // Corrupt or mid-write JSON (e.g. concurrent sprites:run).
+        reply.code(500);
+        return { error: 'summary-invalid', briefId, runId };
+      }
+    },
+  );
+
+  app.get<{ Params: { briefId: string; runId: string; filename: string } }>(
+    '/api/runs/:briefId/:runId/processed/:filename',
+    async (req, reply) => {
+      const { briefId, runId, filename } = req.params;
+      const ext = path.extname(filename).toLowerCase();
+      const mime = ALLOWED_EXTENSIONS[ext];
+      if (!mime) {
+        reply.code(415);
+        return { error: 'unsupported-extension', filename };
+      }
+      const target = safeJoin(deps.runsDir, [briefId, runId, 'processed', filename]);
+      if (target === null) {
+        // safeJoin returns null on any traversal attempt — fail closed.
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
+      if (!existsSync(target)) {
+        reply.code(404);
+        return { error: 'file-not-found', filename };
+      }
+      // Single statSync after existsSync, then catch ENOENT racing the
+      // existsSync->statSync window. Belt-and-braces against TOCTOU when
+      // a run is mid-write or being cleaned up.
+      let stat;
+      try {
+        stat = statSync(target);
+      } catch {
+        reply.code(404);
+        return { error: 'file-not-found', filename };
+      }
+      if (!stat.isFile()) {
+        reply.code(404);
+        return { error: 'file-not-found', filename };
+      }
+      reply.header('Content-Type', mime);
+      return reply.send(createReadStream(target));
+    },
+  );
+
+  return app;
+}
+
+/**
+ * Join a base dir with caller-supplied path segments and refuse anything
+ * that escapes `base` after resolution. Returns null on any escape attempt
+ * (including absolute-path segments) so callers can fail closed without
+ * having to inspect the components themselves.
+ *
+ * Exported for tests so the path-traversal guard's contract is unit-pinned
+ * separately from the routes that consume it.
+ */
+export function safeJoin(base: string, segments: ReadonlyArray<string>): string | null {
+  const resolvedBase = path.resolve(base);
+  for (const segment of segments) {
+    // Reject anything with a path separator, drive letter, NUL byte, or
+    // null/empty segment. Fastify route params normally can't contain `/`
+    // but an attacker could URL-encode `%2f` or pass `..` directly.
+    if (
+      segment === '' ||
+      segment === '.' ||
+      segment === '..' ||
+      segment.includes('/') ||
+      segment.includes('\\') ||
+      segment.includes('\0') ||
+      path.isAbsolute(segment)
+    ) {
+      return null;
+    }
+  }
+  const joined = path.resolve(resolvedBase, ...segments);
+  const rel = path.relative(resolvedBase, joined);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    return null;
+  }
+  return joined;
+}
+
+/**
+ * Enumerate runs by scanning `<runsDir>/<briefId>/<runId>/summary.json`.
+ * Returns an empty list when the directory doesn't exist (fresh checkout
+ * with no runs yet). Quietly skips entries whose summary.json is missing
+ * or unparseable rather than failing the whole endpoint — gallery should
+ * show what's available even if one run is corrupt.
+ *
+ * Sorted newest-first by runId (timestamp-prefixed), so the gallery
+ * naturally surfaces the most recent run at the top.
+ */
+export function listRuns(runsDir: string): RunListEntry[] {
+  if (!existsSync(runsDir)) return [];
+  const entries: RunListEntry[] = [];
+  for (const briefId of safeReaddir(runsDir)) {
+    const briefDir = path.join(runsDir, briefId);
+    if (!safeIsDirectory(briefDir)) continue;
+    for (const runId of safeReaddir(briefDir)) {
+      const runDir = path.join(briefDir, runId);
+      if (!safeIsDirectory(runDir)) continue;
+      const summaryPath = path.join(runDir, 'summary.json');
+      let summary: RunSummaryShape | null = null;
+      if (existsSync(summaryPath)) {
+        try {
+          summary = JSON.parse(readFileSync(summaryPath, 'utf8')) as RunSummaryShape;
+        } catch {
+          summary = null;
+        }
+      }
+      entries.push({
+        briefId,
+        runId,
+        timestamp: parseRunIdTimestamp(runId),
+        briefHash: summary?.promptHash ?? null,
+        chosenIndex: summary?.chosen?.index ?? null,
+        candidateCount: summary?.candidates?.length ?? null,
+        hasJudge: (summary?.candidates ?? []).some(
+          (c) => c.judgeScorecard !== null && c.judgeScorecard !== undefined,
+        ),
+      });
+    }
+  }
+  // Newest first: runId prefix is an ISO-ish timestamp, so descending
+  // string sort is the right order.
+  entries.sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0));
+  return entries;
+}
+
+function safeReaddir(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
+function safeIsDirectory(target: string): boolean {
+  try {
+    return statSync(target).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    return (
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '127.0.0.1' ||
+      parsed.hostname === '::1'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Parse the leading ISO timestamp out of a runId of the form
+ * `YYYY-MM-DDTHH-mm-ss-<hash>`. Returns null when the format doesn't
+ * match (e.g. legacy runs or hand-created directories).
+ */
+function parseRunIdTimestamp(runId: string): string | null {
+  const m = runId.match(/^(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  return `${m[1]}T${m[2]}:${m[3]}:${m[4]}Z`;
+}

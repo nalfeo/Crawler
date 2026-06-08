@@ -230,6 +230,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     readonly scorecardPath: string;
     readonly derivedAnchor: RunSummaryEntry['derivedAnchor'];
     readonly anchorSidecarPath: string | null;
+    readonly anchorOverlayPath: string;
     readonly processed: Buffer;
   }
   const sensorEntries: SensorEntry[] = [];
@@ -237,13 +238,10 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     const raw = sliced[i]!;
     const processed = postprocess(raw, brief, palette);
     const scorecard = scoreCandidate(processed, brief, palette);
-    const { rawPath, processedPath, scorecardPath, anchorSidecarPath } = writeVariant(
-      paths,
-      i,
-      raw,
-      processed,
-      scorecard,
-    );
+    const { rawPath, processedPath, scorecardPath, anchorSidecarPath, anchorOverlayPath } =
+      writeVariant(paths, i, raw, processed, scorecard, {
+        overlaySize: { width: brief.size.width, height: brief.size.height },
+      });
     sensorEntries.push({
       index: i,
       score: scorecard.score,
@@ -254,6 +252,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       scorecardPath,
       derivedAnchor: scorecard.derivedAnchor,
       anchorSidecarPath,
+      anchorOverlayPath,
       processed,
     });
     processedBuffers.push(processed);
@@ -365,6 +364,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       scorecardPath: e.scorecardPath,
       derivedAnchor: e.derivedAnchor,
       anchorSidecarPath: e.anchorSidecarPath,
+      anchorOverlayPath: e.anchorOverlayPath,
       judgeScorecard,
       judgeSkipReason: reason,
       combinedPassed,

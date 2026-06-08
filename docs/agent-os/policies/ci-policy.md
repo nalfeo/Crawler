@@ -70,11 +70,11 @@ Protect `main` with the following rules:
 In addition to the per-PR `ci.yml` gate stack, three scheduled workflows run
 deterministic, self-driving health checks:
 
-| Workflow                              | Cadence              | Purpose                                                  |
-| ------------------------------------- | -------------------- | -------------------------------------------------------- |
-| `.github/workflows/docs-update.yml`   | Weekly (Mon 09:00 UTC) | Path/ADR consistency, handoff archive, command sync     |
-| `.github/workflows/security-review.yml` | Daily 06:00 UTC + PR | `npm audit`, secret scan, CODEOWNERS, dep allowlist, prompt-injection |
-| `.github/workflows/test-health.yml`   | Weekly (Mon 09:30 UTC) | Coverage trend, untested systems, extended property, balance regression |
+| Workflow                                | Cadence                | Purpose                                                                 |
+| --------------------------------------- | ---------------------- | ----------------------------------------------------------------------- |
+| `.github/workflows/docs-update.yml`     | Weekly (Mon 09:00 UTC) | Path/ADR consistency, handoff archive, command sync                     |
+| `.github/workflows/security-review.yml` | Daily 06:00 UTC + PR   | `npm audit`, secret scan, CODEOWNERS, dep allowlist, prompt-injection   |
+| `.github/workflows/test-health.yml`     | Weekly (Mon 09:30 UTC) | Coverage trend, untested systems, extended property, balance regression |
 
 Rules for these loops:
 

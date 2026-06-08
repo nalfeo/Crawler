@@ -28,6 +28,7 @@ const TRUSTED_SCOPES = [
   '@vitejs/',
   '@vitest/',
   '@commitlint/',
+  '@fastify/',
 ];
 
 const TRUSTED_PACKAGES = new Set<string>([
@@ -51,6 +52,7 @@ const TRUSTED_PACKAGES = new Set<string>([
   'pngjs',
   'yaml',
   'zod',
+  'fastify',
 ]);
 
 function isTrusted(name: string): boolean {
