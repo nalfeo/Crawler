@@ -56,6 +56,10 @@ jobs:
         run: npx tsx scripts/agent/docs/promote-handoffs.ts
         continue-on-error: true
 
+      - name: Apple calibration
+        run: npx tsx scripts/agent/docs/apple-calibration.ts
+        continue-on-error: true
+
       - name: Archive handoffs older than 30 days
         run: npx tsx scripts/agent/docs/archive-handoffs.ts --apply
 
