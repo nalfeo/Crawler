@@ -10,12 +10,35 @@
  */
 
 import { query } from 'bitecs';
-import { DoorState } from '../components.js';
+import { DoorState, Player, Position } from '../components.js';
 import type { GameWorld } from '../world.js';
+
+const AUTO_OPEN_RADIUS_TILES = 1;
 
 export function doorSystem(world: GameWorld): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
+
+  // Auto-open nearby closed doors so players can traverse room connections.
+  const players = query(world.ecs, [Player, Position]);
+  for (const player of players) {
+    const px = world.stores.position.x[player] ?? 0;
+    const py = world.stores.position.y[player] ?? 0;
+    const tile = floorMap.pixelToTile(px, py);
+
+    for (let dy = -AUTO_OPEN_RADIUS_TILES; dy <= AUTO_OPEN_RADIUS_TILES; dy += 1) {
+      for (let dx = -AUTO_OPEN_RADIUS_TILES; dx <= AUTO_OPEN_RADIUS_TILES; dx += 1) {
+        const tx = tile.x + dx;
+        const ty = tile.y + dy;
+        if (!floorMap.tileMap.inBounds(tx, ty) || !floorMap.tileMap.isDoor(tx, ty)) {
+          continue;
+        }
+        if (!floorMap.tileMap.isPassable(tx, ty)) {
+          floorMap.tileMap.openDoor(tx, ty);
+        }
+      }
+    }
+  }
 
   const doors = query(world.ecs, [DoorState]);
   const { doorState } = world.stores;

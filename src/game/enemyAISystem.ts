@@ -4,6 +4,7 @@ import { spawnEnemyProjectile } from '../core/helpers.js';
 import type { GameWorld } from '../core/world.js';
 import { ENEMY_PROJECTILE } from '../shared/constants.js';
 import { ftToPx } from '../shared/units.js';
+import { SeededRandom } from '../shared/random.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2 } as const;
 
@@ -21,6 +22,15 @@ const SWARM_COHESION_WEIGHT = 0.2;
 const MAX_OVERLAP_FRACTION = 0.25;
 const SEPARATION_FORCE = 2.0;
 const ENEMY_RADIUS = ftToPx(1); // half of 16x16 sprite
+const NAVIGATION_LOOKAHEAD_PX = 24;
+const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
+
+/**
+ * Unstuck mechanism: if an enemy is stuck (velocity clamped to 0 by all-blocked pathfinding),
+ * retry with more angles or use random jiggle after this many frames.
+ */
+const STUCK_FRAMES_THRESHOLD = 15;
+const UNSTUCK_ANGLE_COUNT = 12;
 
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
   setComponent(world.ecs, eid, Velocity, { x, y });
@@ -40,8 +50,122 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   return speed > 0 ? speed : DEFAULT_ENEMY_SPEED;
 }
 
+function rotate(x: number, y: number, angle: number): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  };
+}
+
+function setNavigatingVelocity(
+  world: GameWorld,
+  eid: number,
+  desiredX: number,
+  desiredY: number,
+  speed: number,
+): void {
+  const desired = normalize(desiredX, desiredY);
+  if (desired.length <= EPSILON) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    setVelocity(world, eid, desired.x * speed, desired.y * speed);
+    return;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+
+  for (const offset of NAVIGATION_ANGLE_OFFSETS) {
+    const candidate = rotate(desired.x, desired.y, offset);
+    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
+    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
+    if (floorMap.isPassableAt(sampleX, sampleY)) {
+      setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
+      return;
+    }
+  }
+
+  setVelocity(world, eid, 0, 0);
+}
+
+/**
+ * Unstuck mechanism: when an enemy is stuck (all basic angles blocked),
+ * try a wider arc of angles or jiggle randomly.
+ */
+function tryUnstuckVelocity(
+  world: GameWorld,
+  eid: number,
+  desiredX: number,
+  desiredY: number,
+  speed: number,
+  random: SeededRandom,
+): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const desired = normalize(desiredX, desiredY);
+
+  if (desired.length <= EPSILON) return;
+
+  // Try wider arc: UNSTUCK_ANGLE_COUNT angles
+  for (let i = 0; i < UNSTUCK_ANGLE_COUNT; i++) {
+    const angle = (i / UNSTUCK_ANGLE_COUNT) * Math.PI * 2;
+    const candidate = rotate(desired.x, desired.y, angle);
+    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
+    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
+    if (floorMap.isPassableAt(sampleX, sampleY)) {
+      setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
+      return;
+    }
+  }
+
+  // Still stuck — try random jiggle as last resort
+  const jiggleAngle = random.next() * Math.PI * 2;
+  const jiggle = {
+    x: Math.cos(jiggleAngle),
+    y: Math.sin(jiggleAngle),
+  };
+  setVelocity(world, eid, jiggle.x * speed, jiggle.y * speed);
+}
+
 function isAggroActive(aggroRange: number, distanceToPlayer: number): boolean {
   return aggroRange <= 0 || distanceToPlayer <= aggroRange;
+}
+
+function isEnemyRoomDoorOpen(world: GameWorld, eid: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return true;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const tile = floorMap.pixelToTile(enemyX, enemyY);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return true;
+  }
+
+  const room = floorMap.roomGraph.get(roomId);
+  if (!room || room.doors.length === 0) {
+    return true;
+  }
+
+  for (const door of room.doors) {
+    if (floorMap.tileMap.isPassable(door.x, door.y)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function applyChaseBehavior(
@@ -58,8 +182,7 @@ function applyChaseBehavior(
     return;
   }
 
-  const direction = normalize(playerDx, playerDy);
-  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  setNavigatingVelocity(world, eid, playerDx, playerDy, speed);
 }
 
 function applySwarmBehavior(
@@ -124,8 +247,7 @@ function applySwarmBehavior(
     steerY += cohesion.y * SWARM_COHESION_WEIGHT;
   }
 
-  const direction = normalize(steerX, steerY);
-  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  setNavigatingVelocity(world, eid, steerX, steerY, speed);
 }
 
 function tryFireEnemyProjectile(
@@ -172,13 +294,17 @@ function applyRangedBehavior(
   playerDx: number,
   playerDy: number,
   distanceToPlayer: number,
-  _aggroRange: number,
+  aggroRange: number,
   attackRange: number,
   speed: number,
 ): void {
+  if (!isAggroActive(aggroRange, distanceToPlayer)) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
   if (attackRange <= EPSILON) {
-    const direction = normalize(playerDx, playerDy);
-    setVelocity(world, eid, direction.x * speed, direction.y * speed);
+    setNavigatingVelocity(world, eid, playerDx, playerDy, speed);
     return;
   }
 
@@ -186,7 +312,7 @@ function applyRangedBehavior(
   const toPlayer = normalize(playerDx, playerDy);
 
   if (distanceToPlayer > attackRange) {
-    setVelocity(world, eid, toPlayer.x * speed, toPlayer.y * speed);
+    setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     return;
   }
 
@@ -194,14 +320,14 @@ function applyRangedBehavior(
   tryFireEnemyProjectile(world, eid, playerDx, playerDy);
 
   if (distanceToPlayer < retreatDistance && distanceToPlayer > EPSILON) {
-    setVelocity(world, eid, -toPlayer.x * speed, -toPlayer.y * speed);
+    setNavigatingVelocity(world, eid, -toPlayer.x, -toPlayer.y, speed);
     return;
   }
 
   const tangentX = -toPlayer.y;
   const tangentY = toPlayer.x;
   const tangent = normalize(tangentX, tangentY);
-  setVelocity(world, eid, tangent.x * speed, tangent.y * speed);
+  setNavigatingVelocity(world, eid, tangent.x, tangent.y, speed);
 }
 
 /**
@@ -311,6 +437,26 @@ export function enemyAISystem(world: GameWorld): void {
     const aggroRange = enemyBehavior.aggroRange[eid]!;
     const attackRange = enemyBehavior.attackRange[eid]!;
     const speed = getEnemySpeed(world, eid);
+    const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
+    const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
+    const inAggroRange = permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
+    const canDetectPlayer = hasOpenRoomDoor && inAggroRange;
+
+    // Track stuck frames: increment if velocity is zero, reset if non-zero
+    const currentVx = velocity.x[eid] ?? 0;
+    const currentVy = velocity.y[eid] ?? 0;
+    const isMoving = Math.hypot(currentVx, currentVy) > EPSILON;
+
+    if (isMoving) {
+      enemyBehavior.stuckFrames[eid] = 0;
+    } else {
+      enemyBehavior.stuckFrames[eid] = (enemyBehavior.stuckFrames[eid] ?? 0) + 1;
+    }
+
+    if (!canDetectPlayer) {
+      setVelocity(world, eid, 0, 0);
+      continue;
+    }
 
     switch (behaviorType) {
       case AI_TYPE.SWARM:
@@ -324,9 +470,7 @@ export function enemyAISystem(world: GameWorld): void {
           aggroRange,
           speed,
         );
-        if (isAggroActive(aggroRange, distanceToPlayer)) {
-          activeEnemies.push(eid);
-        }
+        activeEnemies.push(eid);
         break;
       case AI_TYPE.RANGED:
         applyRangedBehavior(
@@ -339,16 +483,19 @@ export function enemyAISystem(world: GameWorld): void {
           attackRange,
           speed,
         );
-        // Ranged enemies are always actively steered
         activeEnemies.push(eid);
         break;
       case AI_TYPE.CHASE:
       default:
         applyChaseBehavior(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
-        if (isAggroActive(aggroRange, distanceToPlayer)) {
-          activeEnemies.push(eid);
-        }
+        activeEnemies.push(eid);
         break;
+    }
+
+    // Unstuck: if stuck for too long, try wider pathfinding or jiggle
+    const stuckFrames = enemyBehavior.stuckFrames[eid] ?? 0;
+    if (stuckFrames > STUCK_FRAMES_THRESHOLD && canDetectPlayer) {
+      tryUnstuckVelocity(world, eid, playerDx, playerDy, speed, world.rng);
     }
   }
 

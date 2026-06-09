@@ -29,6 +29,7 @@ describe('magic weapons', () => {
   it('fireball respects cooldown', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 30); // must have a visible enemy
     const def = getWeaponDef('fireball')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
