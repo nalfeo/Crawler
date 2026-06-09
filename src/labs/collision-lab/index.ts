@@ -680,7 +680,9 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     if (canvas.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }
-    fireCurrentShot();
+    if (event.type === 'pointerup') {
+      fireCurrentShot();
+    }
   };
 
   const roomOptions = Object.fromEntries(ROOM_PRESETS.map((room) => [room.name, room.id]));
