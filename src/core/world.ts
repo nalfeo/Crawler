@@ -31,6 +31,7 @@ import {
   AreaDamage,
   AoeOnImpact,
   Returning,
+  Bouncing,
   LineDamage,
   Trap,
   MeleeSwing,
@@ -132,6 +133,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, AreaDamage, stores.areaDamage);
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
   wireStore(ecs, Returning, stores.returning);
+  wireStore(ecs, Bouncing, stores.bouncing);
   wireStore(ecs, LineDamage, stores.lineDamage);
   wireStore(ecs, Trap, stores.trap);
   wireStore(ecs, MeleeSwing, stores.meleeSwing);

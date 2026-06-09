@@ -139,6 +139,20 @@
     "pierce": 0
   },
   {
+    "id": "bowling-ball",
+    "name": "Bowling Ball",
+    "weaponType": 4,
+    "baseDamage": 18,
+    "cooldownMs": 1300,
+    "range": 280,
+    "projectileSpeed": 4.5,
+    "returnSpeed": 0,
+    "maxRange": 0,
+    "knockback": 0,
+    "pierce": 12,
+    "bounceCount": 6
+  },
+  {
     "id": "laser",
     "name": "Laser",
     "weaponType": 5,

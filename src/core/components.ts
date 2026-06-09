@@ -52,6 +52,8 @@ export const AreaDamage = {};
 export const AoeOnImpact = {};
 /** Thrown weapon that returns to owner. */
 export const Returning = {};
+/** Projectile that can bounce off arena bounds before despawning. */
+export const Bouncing = {};
 /** Continuous beam/line damage from this entity's position. */
 export const LineDamage = {};
 /** Placed trap that arms and triggers on proximity. */
@@ -137,6 +139,9 @@ export function createComponentStores() {
       maxRange: new Float32Array(MAX_ENTITIES),
       originX: new Float32Array(MAX_ENTITIES),
       originY: new Float32Array(MAX_ENTITIES),
+    },
+    bouncing: {
+      remainingBounces: new Uint8Array(MAX_ENTITIES),
     },
     lineDamage: {
       dirX: new Float32Array(MAX_ENTITIES),
