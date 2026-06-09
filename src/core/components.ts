@@ -21,6 +21,7 @@ export const Damage = {};
 export const Player = {};
 export const Enemy = {};
 export const EnemyBehavior = {};
+export const Flying = {};
 export const Projectile = {};
 /** Marks an entity as an enemy projectile. */
 export const EnemyProjectile = {};
@@ -102,6 +103,10 @@ export function createComponentStores() {
       attackRange: new Float32Array(MAX_ENTITIES),
       fireCooldownMs: new Float32Array(MAX_ENTITIES),
       lastFireMs: new Float32Array(MAX_ENTITIES),
+      persona: new Uint8Array(MAX_ENTITIES),
+      traversalMode: new Uint8Array(MAX_ENTITIES),
+      flankDistance: new Float32Array(MAX_ENTITIES),
+      pathRefreshFrames: new Uint16Array(MAX_ENTITIES),
       /** Set to 1 when this enemy has been permanently aggroed (e.g. hit by player). */
       aggroedPermanently: new Uint8Array(MAX_ENTITIES),
       /** Frames since velocity was zero (used to detect stuck enemies). */

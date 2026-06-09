@@ -8,6 +8,7 @@ import {
   Enemy,
   EnemyBehavior,
   EnemyProjectile,
+  Flying,
   Gold,
   Health,
   Inventory,
@@ -29,6 +30,7 @@ import {
 } from './components.js';
 import type { GameWorld } from './world.js';
 import type { WeaponTypeValue } from '../shared/constants.js';
+import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
 
@@ -89,8 +91,17 @@ export function spawnBehaviorEnemy(
   speed: number,
   aggroRange: number,
   attackRange: number,
+  options?: {
+    persona?: number;
+    traversalMode?: number;
+    flankDistance?: number;
+    pathRefreshFrames?: number;
+    isFlying?: boolean;
+  },
 ): number {
   const eid = createEntity(world);
+  const traversalMode = options?.traversalMode ?? TRAVERSAL_MODE.GROUND;
+  const isFlying = options?.isFlying === true || traversalMode === TRAVERSAL_MODE.FLYING;
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
@@ -100,8 +111,20 @@ export function spawnBehaviorEnemy(
   addComponent(
     world.ecs,
     eid,
-    set(EnemyBehavior, { type: behaviorType, speed, aggroRange, attackRange }),
+    set(EnemyBehavior, {
+      type: behaviorType,
+      speed,
+      aggroRange,
+      attackRange,
+      persona: options?.persona ?? PATH_PERSONA.NAVIGATOR,
+      traversalMode,
+      flankDistance: options?.flankDistance ?? 96,
+      pathRefreshFrames: options?.pathRefreshFrames ?? 10,
+    }),
   );
+  if (isFlying) {
+    addComponent(world.ecs, eid, Flying);
+  }
 
   return eid;
 }

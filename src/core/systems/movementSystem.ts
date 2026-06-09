@@ -1,5 +1,5 @@
-import { query } from 'bitecs';
-import { Position, Velocity } from '../components.js';
+import { hasComponent, query } from 'bitecs';
+import { Flying, Position, Velocity } from '../components.js';
 import type { GameWorld } from '../world.js';
 
 export function movementSystem(world: GameWorld): void {
@@ -17,7 +17,21 @@ export function movementSystem(world: GameWorld): void {
     const newX = oldX + (velocity.x[eid] ?? 0);
     const newY = oldY + (velocity.y[eid] ?? 0);
 
+    const isFlying = hasComponent(world.ecs, eid, Flying);
     if (floorMap) {
+      if (isFlying) {
+        const inBoundsX = newX >= 0 && newX < floorMap.widthPx;
+        const inBoundsY = newY >= 0 && newY < floorMap.heightPx;
+
+        if (inBoundsX) {
+          position.x[eid] = newX;
+        }
+        if (inBoundsY) {
+          position.y[eid] = newY;
+        }
+        continue;
+      }
+
       // Slide-based collision: try full move, then each axis independently
       if (floorMap.isPassableAt(newX, newY)) {
         position.x[eid] = newX;

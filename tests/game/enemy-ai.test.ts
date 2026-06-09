@@ -1,18 +1,50 @@
-import { query, setComponent } from 'bitecs';
+import { addComponent, addEntity, query, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { EnemyBehavior, EnemyProjectile, Velocity } from '../../src/core/components.js';
+import { DoorState, EnemyBehavior, EnemyProjectile, Velocity } from '../../src/core/components.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import {
+  doorSystem,
   movementSystem,
   spawnBehaviorEnemy,
   spawnEnemy,
   spawnPlayer,
 } from '../../src/core/index.js';
-import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+function makePathingFloorMap(doorOpen = true): FloorMap {
+  const width = 14;
+  const height = 10;
+  const tileMap = new TileMap(width, height);
+  const terrain = new Uint8Array(width * height);
+
+  const config: MapConfig = {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizePx: 32,
+    biome: BiomeType.DUNGEON,
+    seed: 42,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const idx = y * width + x;
+      const isBorder = x === 0 || y === 0 || x === width - 1 || y === height - 1;
+      const isPillar = x === 6 && y >= 1 && y <= height - 2 && y !== 5;
+      tileMap.flags[idx] = isBorder || isPillar ? TilePresets.WALL : TilePresets.FLOOR;
+    }
+  }
+
+  tileMap.flags[5 * width + 6] = doorOpen ? TilePresets.DOOR_OPEN : TilePresets.DOOR_CLOSED;
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 2, y: 5 });
+}
 
 function createOneRoomMapWithDoor(doorOpen: boolean): FloorMap {
   const config: MapConfig = {
@@ -48,11 +80,20 @@ function createObstacleMap(): FloorMap {
   };
   const tileMap = new TileMap(12, 12);
   tileMap.fill(TilePresets.FLOOR);
-  // Vertical wall directly between enemy and player.
   for (let y = 1; y < 11; y += 1) {
     tileMap.setFlags(5, y, TilePresets.WALL);
   }
   return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(144), { x: 2, y: 2 });
+}
+
+function runTicks(world: ReturnType<typeof createTestWorld>, ticks: number): void {
+  for (let i = 0; i < ticks; i += 1) {
+    world.frameCount += 1;
+    world.elapsedMs += 16;
+    doorSystem(world);
+    enemyAISystem(world);
+    movementSystem(world);
+  }
 }
 
 describe('enemyAISystem', () => {
@@ -303,5 +344,152 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.y[enemyA]).toBeCloseTo(0);
     expect(world.stores.velocity.x[enemyB]).toBeCloseTo(0);
     expect(world.stores.velocity.y[enemyB]).toBeCloseTo(0);
+  });
+
+  it('navigator personas route through doorways instead of getting stuck on pillars', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    const player = spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    const navigator = spawnBehaviorEnemy(
+      world,
+      3 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    runTicks(world, 120);
+
+    expect(world.stores.position.x[navigator]).toBeGreaterThan(
+      (world.stores.position.x[player] ?? 0) - 64,
+    );
+  });
+
+  it('stupid personas keep direct steering and stay blocked by closed doors', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(false);
+    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    const stupid = spawnBehaviorEnemy(
+      world,
+      3 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.STUPID,
+      },
+    );
+
+    runTicks(world, 120);
+
+    expect(
+      world.floorMap.pixelToTile(
+        world.stores.position.x[stupid] ?? 0,
+        world.stores.position.y[stupid] ?? 0,
+      ).x,
+    ).toBeLessThanOrEqual(5);
+  });
+
+  it('flanker personas prefer passing beyond the player instead of stopping in front', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    const player = spawnPlayer(world, 9 * 32 + 16, 5 * 32 + 16);
+    const flanker = spawnBehaviorEnemy(
+      world,
+      2 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2.4,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.FLANKER,
+        flankDistance: 96,
+      },
+    );
+
+    runTicks(world, 140);
+
+    expect(world.stores.position.x[flanker]).toBeGreaterThan(world.stores.position.x[player] ?? 0);
+  });
+
+  it('flying traversal can cross blocked structures where ground traversal cannot', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(false);
+    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    const grounded = spawnBehaviorEnemy(
+      world,
+      3 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+        traversalMode: TRAVERSAL_MODE.GROUND,
+      },
+    );
+    const flying = spawnBehaviorEnemy(
+      world,
+      3 * 32 + 16,
+      6 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+        traversalMode: TRAVERSAL_MODE.FLYING,
+        isFlying: true,
+      },
+    );
+
+    runTicks(world, 120);
+
+    expect(world.stores.position.x[grounded]).toBeLessThan(6 * 32);
+    expect(world.stores.position.x[flying]).toBeGreaterThan(9 * 32);
+  });
+
+  it('door state changes trigger re-pathing without trapping navigators in rooms', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(false);
+    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    const navigator = spawnBehaviorEnemy(
+      world,
+      3 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    const door = addEntity(world.ecs);
+    addComponent(world.ecs, door, set(DoorState, { tileX: 6, tileY: 5, isOpen: 0 }));
+    runTicks(world, 40);
+    const beforeOpenX = world.stores.position.x[navigator] ?? 0;
+
+    setComponent(world.ecs, door, DoorState, { tileX: 6, tileY: 5, isOpen: 1 });
+    runTicks(world, 100);
+
+    expect(beforeOpenX).toBeLessThan(6 * 32);
+    expect(world.stores.position.x[navigator]).toBeGreaterThan(8 * 32);
   });
 });

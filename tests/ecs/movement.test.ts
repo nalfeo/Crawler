@@ -1,6 +1,6 @@
 import { addComponent, addEntity, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Position, Velocity } from '../../src/core/components.js';
+import { Flying, Position, Velocity } from '../../src/core/components.js';
 import { movementSystem } from '../../src/core/systems/movementSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -117,6 +117,21 @@ describe('movementSystem', () => {
       // X blocked (wall at x=5), but Y should slide to tile (4, 4) which is floor
       expect(world.stores.position.x[eid]).toBe(128); // didn't move X
       expect(world.stores.position.y[eid]).toBe(128); // moved Y
+    });
+
+    it('allows flying entities to traverse blocked tiles', () => {
+      const world = createTestWorld();
+      world.floorMap = makeWalledMap();
+
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, set(Position, { x: 128, y: 96 }));
+      addComponent(world.ecs, eid, set(Velocity, { x: 32, y: 0 }));
+      addComponent(world.ecs, eid, Flying);
+
+      movementSystem(world);
+
+      expect(world.stores.position.x[eid]).toBeCloseTo(160);
+      expect(world.stores.position.y[eid]).toBeCloseTo(96);
     });
 
     it('allows unrestricted movement when no floorMap', () => {
