@@ -9,6 +9,7 @@ import {
   spawnPlayer,
 } from '../../core/index.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
+import { findTilePath, PATH_TRAVERSAL } from '../../core/map/pathfinding.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { enemyAISystem, AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE } from '../../game/index.js';
@@ -17,20 +18,37 @@ import { registerLab } from '../registry.js';
 
 const LAB_ID = 'pathfinding-lab';
 const CELL_SIZE = 24;
-const MAP_W = 24;
-const MAP_H = 16;
 const FIXED_DELTA_MS = 16;
 const MAX_STEPS_PER_FRAME = 4;
-const PLAYER_START = { x: 19, y: 8 };
-const ENEMY_START = { x: 4, y: 8 };
-const DOOR_TILE = { x: 11, y: 8 };
 
-function createLabMap(doorOpen: boolean): FloorMap {
-  const tileMap = new TileMap(MAP_W, MAP_H);
-  const terrain = new Uint8Array(MAP_W * MAP_H);
+// ---------------------------------------------------------------------------
+// Map presets
+// ---------------------------------------------------------------------------
+
+interface LabMapPreset {
+  readonly id: string;
+  readonly name: string;
+  readonly mapW: number;
+  readonly mapH: number;
+  readonly playerStart: { x: number; y: number };
+  readonly enemyStart: { x: number; y: number };
+  readonly doorTile: { x: number; y: number } | null;
+  buildMap(doorOpen: boolean): FloorMap;
+}
+
+function makeFloorMap(
+  mapW: number,
+  mapH: number,
+  isWall: (x: number, y: number) => boolean,
+  doorTile: { x: number; y: number } | null,
+  doorOpen: boolean,
+  playerStart: { x: number; y: number },
+): FloorMap {
+  const tileMap = new TileMap(mapW, mapH);
+  const terrain = new Uint8Array(mapW * mapH);
   const config: MapConfig = {
-    widthTiles: MAP_W,
-    heightTiles: MAP_H,
+    widthTiles: mapW,
+    heightTiles: mapH,
     tileSizePx: CELL_SIZE,
     biome: BiomeType.DUNGEON,
     seed: 42,
@@ -40,26 +58,202 @@ function createLabMap(doorOpen: boolean): FloorMap {
     floorDensity: 0.5,
   };
 
-  for (let y = 0; y < MAP_H; y += 1) {
-    for (let x = 0; x < MAP_W; x += 1) {
-      const idx = y * MAP_W + x;
-      const isBorder = x === 0 || y === 0 || x === MAP_W - 1 || y === MAP_H - 1;
-      const centerWall = x === 11 && y >= 1 && y <= MAP_H - 2 && y !== DOOR_TILE.y;
-      const leftPillar = x === 7 && y >= 5 && y <= 10;
-      const rightPillar = x === 15 && y >= 4 && y <= 11;
-      tileMap.flags[idx] =
-        isBorder || centerWall || leftPillar || rightPillar ? TilePresets.WALL : TilePresets.FLOOR;
+  for (let y = 0; y < mapH; y += 1) {
+    for (let x = 0; x < mapW; x += 1) {
+      const idx = y * mapW + x;
+      if (doorTile !== null && x === doorTile.x && y === doorTile.y) {
+        tileMap.flags[idx] = doorOpen ? TilePresets.DOOR_OPEN : TilePresets.DOOR_CLOSED;
+      } else {
+        tileMap.flags[idx] = isWall(x, y) ? TilePresets.WALL : TilePresets.FLOOR;
+      }
     }
   }
 
-  tileMap.flags[DOOR_TILE.y * MAP_W + DOOR_TILE.x] = doorOpen
-    ? TilePresets.DOOR_OPEN
-    : TilePresets.DOOR_CLOSED;
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, {
-    x: PLAYER_START.x,
-    y: PLAYER_START.y,
-  });
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, playerStart);
 }
+
+const LAB_MAP_PRESETS: readonly LabMapPreset[] = [
+  {
+    id: 'two-pillars',
+    name: 'Two Pillars',
+    mapW: 24,
+    mapH: 16,
+    playerStart: { x: 19, y: 8 },
+    enemyStart: { x: 4, y: 8 },
+    doorTile: { x: 11, y: 8 },
+    buildMap(doorOpen) {
+      const { mapW, mapH, doorTile } = this;
+      return makeFloorMap(
+        mapW,
+        mapH,
+        (x, y) => {
+          const isBorder = x === 0 || y === 0 || x === mapW - 1 || y === mapH - 1;
+          const centerWall =
+            x === 11 && y >= 1 && y <= mapH - 2 && !(doorTile !== null && y === doorTile.y);
+          const leftPillar = x === 7 && y >= 5 && y <= 10;
+          const rightPillar = x === 15 && y >= 4 && y <= 11;
+          return isBorder || centerWall || leftPillar || rightPillar;
+        },
+        doorTile,
+        doorOpen,
+        this.playerStart,
+      );
+    },
+  },
+  {
+    id: 'open-field',
+    name: 'Open Field',
+    mapW: 24,
+    mapH: 16,
+    playerStart: { x: 19, y: 8 },
+    enemyStart: { x: 4, y: 8 },
+    doorTile: null,
+    buildMap(doorOpen) {
+      const { mapW, mapH } = this;
+      return makeFloorMap(
+        mapW,
+        mapH,
+        (x, y) => x === 0 || y === 0 || x === mapW - 1 || y === mapH - 1,
+        null,
+        doorOpen,
+        this.playerStart,
+      );
+    },
+  },
+  {
+    id: 'snake-walls',
+    name: 'Snake Walls',
+    mapW: 26,
+    mapH: 18,
+    playerStart: { x: 20, y: 9 },
+    enemyStart: { x: 4, y: 9 },
+    doorTile: null,
+    buildMap(doorOpen) {
+      const { mapW, mapH } = this;
+      return makeFloorMap(
+        mapW,
+        mapH,
+        (x, y) => {
+          const isBorder = x === 0 || y === 0 || x === mapW - 1 || y === mapH - 1;
+          // Upper snake wall: blocks passage across top half, gap at right end
+          const upperWall = y === 6 && x >= 2 && x <= mapW - 5;
+          // Lower snake wall: blocks passage across bottom half, gap at left end
+          const lowerWall = y === 12 && x >= 5 && x <= mapW - 3;
+          return isBorder || upperWall || lowerWall;
+        },
+        null,
+        doorOpen,
+        this.playerStart,
+      );
+    },
+  },
+  {
+    id: 'box-maze',
+    name: 'Box Maze',
+    mapW: 24,
+    mapH: 18,
+    playerStart: { x: 19, y: 9 },
+    enemyStart: { x: 3, y: 9 },
+    doorTile: { x: 11, y: 9 },
+    buildMap(doorOpen) {
+      const { mapW, mapH, doorTile } = this;
+      return makeFloorMap(
+        mapW,
+        mapH,
+        (x, y) => {
+          const isBorder = x === 0 || y === 0 || x === mapW - 1 || y === mapH - 1;
+          const centerWall =
+            x === 11 && y >= 1 && y <= mapH - 2 && !(doorTile !== null && y === doorTile.y);
+          // Left room box
+          const boxL = (x === 4 || x === 8) && y >= 4 && y <= 8;
+          const boxLTop = y === 4 && x >= 4 && x <= 8;
+          const boxLBot = y === 8 && x >= 4 && x <= 7;
+          // Right room box
+          const boxR = (x === 14 || x === 19) && y >= 9 && y <= 14;
+          const boxRTop = y === 9 && x >= 14 && x <= 19;
+          const boxRBot = y === 14 && x >= 15 && x <= 19;
+          return isBorder || centerWall || boxL || boxLTop || boxLBot || boxR || boxRTop || boxRBot;
+        },
+        doorTile,
+        doorOpen,
+        this.playerStart,
+      );
+    },
+  },
+];
+
+function getPreset(id: string): LabMapPreset {
+  return LAB_MAP_PRESETS.find((p) => p.id === id) ?? LAB_MAP_PRESETS[0]!;
+}
+
+// ---------------------------------------------------------------------------
+// Mob specs
+// ---------------------------------------------------------------------------
+
+interface MobSpec {
+  readonly key: string;
+  readonly label: string;
+  readonly color: string;
+  readonly persona: number;
+  readonly traversalMode: number;
+  readonly isFlying: boolean;
+  readonly flankDistance?: number;
+}
+
+const MOB_SPECS: readonly MobSpec[] = [
+  {
+    key: 'stupid',
+    label: 'Stupid',
+    color: '#e53e3e',
+    persona: PATH_PERSONA.STUPID,
+    traversalMode: TRAVERSAL_MODE.GROUND,
+    isFlying: false,
+  },
+  {
+    key: 'navigator',
+    label: 'Navigator',
+    color: '#4299e1',
+    persona: PATH_PERSONA.NAVIGATOR,
+    traversalMode: TRAVERSAL_MODE.GROUND,
+    isFlying: false,
+  },
+  {
+    key: 'flanker',
+    label: 'Flanker',
+    color: '#9f7aea',
+    persona: PATH_PERSONA.FLANKER,
+    traversalMode: TRAVERSAL_MODE.GROUND,
+    isFlying: false,
+    flankDistance: 120,
+  },
+  {
+    key: 'flying',
+    label: 'Flying',
+    color: '#22d3ee',
+    persona: PATH_PERSONA.NAVIGATOR,
+    traversalMode: TRAVERSAL_MODE.FLYING,
+    isFlying: true,
+  },
+];
+
+const SPAWN_OFFSETS: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 0, y: -20 },
+  { x: 0, y: 20 },
+  { x: -22, y: 0 },
+  { x: -22, y: -20 },
+  { x: -22, y: 20 },
+];
+
+interface MobInstance {
+  eid: number;
+  label: string;
+  color: string;
+  isFlying: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Lab
+// ---------------------------------------------------------------------------
 
 function tileCenter(tileX: number, tileY: number): { x: number; y: number } {
   return { x: tileX * CELL_SIZE + CELL_SIZE / 2, y: tileY * CELL_SIZE + CELL_SIZE / 2 };
@@ -71,34 +265,39 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  const root = document.createElement('div');
-  root.style.display = 'grid';
-  root.style.gap = '12px';
   const canvas = document.createElement('canvas');
-  canvas.width = MAP_W * CELL_SIZE;
-  canvas.height = MAP_H * CELL_SIZE;
   canvas.style.display = 'block';
   canvas.style.margin = '0 auto';
   canvas.style.cursor = 'crosshair';
   canvas.style.border = '1px solid rgba(255,255,255,0.15)';
 
   const info = document.createElement('pre');
-  info.style.margin = '0';
-  info.style.padding = '12px';
-  info.style.background = 'rgba(5, 10, 24, 0.65)';
-  info.style.borderRadius = '8px';
-  info.style.color = '#d6e4ff';
-  info.style.fontSize = '12px';
-  info.style.lineHeight = '1.5';
+  info.style.cssText =
+    'margin:0;padding:12px;background:rgba(5,10,24,0.65);border-radius:8px;color:#d6e4ff;font-size:12px;line-height:1.5;';
 
+  const root = document.createElement('div');
+  root.style.cssText = 'display:grid;gap:12px;';
   root.append(canvas, info);
   canvasHost.append(root);
+
   const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    throw new Error('Canvas context could not be created.');
-  }
+  if (!ctx) throw new Error('Canvas context could not be created.');
   const renderCtx = ctx;
 
+  // --- Settings ---
+  const labSettings = {
+    mapPresetId: LAB_MAP_PRESETS[0]!.id,
+    showPaths: false,
+  };
+
+  const mobEnabled: Record<string, boolean> = {};
+  const mobCount: Record<string, number> = {};
+  for (const spec of MOB_SPECS) {
+    mobEnabled[spec.key] = true;
+    mobCount[spec.key] = 1;
+  }
+
+  // --- ECS state ---
   let world = createGameWorld({ seed: 1337 });
   let playerEid = -1;
   let doorEid = -1;
@@ -106,62 +305,94 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
   let accumulator = 0;
   let rafId = 0;
   let lastTimestamp = 0;
-  let mobEids: number[] = [];
+  let mobs: MobInstance[] = [];
+  let currentPreset: LabMapPreset = getPreset(labSettings.mapPresetId);
+
+  function syncCanvasSize(): void {
+    canvas.width = currentPreset.mapW * CELL_SIZE;
+    canvas.height = currentPreset.mapH * CELL_SIZE;
+  }
 
   function resetWorld(): void {
     world = createGameWorld({ seed: 1337 });
-    world.floorMap = createLabMap(doorOpen);
+    currentPreset = getPreset(labSettings.mapPresetId);
+    syncCanvasSize();
 
-    const playerPos = tileCenter(PLAYER_START.x, PLAYER_START.y);
+    world.floorMap = currentPreset.buildMap(doorOpen);
+
+    const playerPos = tileCenter(currentPreset.playerStart.x, currentPreset.playerStart.y);
     playerEid = spawnPlayer(world, playerPos.x, playerPos.y);
 
-    doorEid = addEntity(world.ecs);
-    addComponent(
-      world.ecs,
-      doorEid,
-      set(DoorState, { tileX: DOOR_TILE.x, tileY: DOOR_TILE.y, isOpen: doorOpen ? 1 : 0 }),
-    );
+    doorEid = -1;
+    if (currentPreset.doorTile !== null) {
+      const dt = currentPreset.doorTile;
+      doorEid = addEntity(world.ecs);
+      addComponent(
+        world.ecs,
+        doorEid,
+        set(DoorState, { tileX: dt.x, tileY: dt.y, isOpen: doorOpen ? 1 : 0 }),
+      );
+    }
 
-    const start = tileCenter(ENEMY_START.x, ENEMY_START.y);
-    mobEids = [
-      spawnBehaviorEnemy(world, start.x, start.y - 18, 20, AI_TYPE.CHASE, 1.8, 999, 0, {
-        persona: PATH_PERSONA.STUPID,
-      }),
-      spawnBehaviorEnemy(world, start.x, start.y + 18, 20, AI_TYPE.CHASE, 1.8, 999, 0, {
-        persona: PATH_PERSONA.NAVIGATOR,
-      }),
-      spawnBehaviorEnemy(world, start.x - 10, start.y, 20, AI_TYPE.CHASE, 1.8, 999, 0, {
-        persona: PATH_PERSONA.FLANKER,
-        flankDistance: 120,
-      }),
-      spawnBehaviorEnemy(world, start.x - 20, start.y - 28, 20, AI_TYPE.CHASE, 1.8, 999, 0, {
-        persona: PATH_PERSONA.NAVIGATOR,
-        traversalMode: TRAVERSAL_MODE.FLYING,
-        isFlying: true,
-      }),
-    ];
+    mobs = [];
+    let offsetIdx = 0;
+    for (const spec of MOB_SPECS) {
+      if (!mobEnabled[spec.key]) continue;
+      const count = Math.max(0, Math.min(5, mobCount[spec.key] ?? 1));
+      for (let i = 0; i < count; i += 1) {
+        const offset = SPAWN_OFFSETS[offsetIdx % SPAWN_OFFSETS.length] ?? { x: 0, y: 0 };
+        const base = tileCenter(currentPreset.enemyStart.x, currentPreset.enemyStart.y);
+        const eid = spawnBehaviorEnemy(
+          world,
+          base.x + offset.x,
+          base.y + offset.y,
+          20,
+          AI_TYPE.CHASE,
+          1.8,
+          999,
+          0,
+          {
+            persona: spec.persona,
+            traversalMode: spec.traversalMode,
+            isFlying: spec.isFlying,
+            ...(spec.flankDistance !== undefined ? { flankDistance: spec.flankDistance } : {}),
+          },
+        );
+        mobs.push({
+          eid,
+          label: count > 1 ? `${spec.label} ${i + 1}` : spec.label,
+          color: spec.color,
+          isFlying: spec.isFlying,
+        });
+        offsetIdx += 1;
+      }
+    }
   }
 
   function setDoorState(open: boolean): void {
     doorOpen = open;
-    setComponent(world.ecs, doorEid, DoorState, {
-      tileX: DOOR_TILE.x,
-      tileY: DOOR_TILE.y,
-      isOpen: doorOpen ? 1 : 0,
-    });
+    if (doorEid >= 0 && currentPreset.doorTile !== null) {
+      const dt = currentPreset.doorTile;
+      setComponent(world.ecs, doorEid, DoorState, {
+        tileX: dt.x,
+        tileY: dt.y,
+        isOpen: doorOpen ? 1 : 0,
+      });
+    }
   }
 
   function draw(): void {
     const floorMap = world.floorMap;
-    if (!floorMap) {
-      return;
-    }
+    if (!floorMap) return;
+
+    const { mapW, mapH } = currentPreset;
 
     renderCtx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (let y = 0; y < MAP_H; y += 1) {
-      for (let x = 0; x < MAP_W; x += 1) {
-        const idx = y * MAP_W + x;
+    // Tiles
+    for (let y = 0; y < mapH; y += 1) {
+      for (let x = 0; x < mapW; x += 1) {
+        const idx = y * mapW + x;
         const flags = floorMap.flags[idx] ?? 0;
         const isDoor = (flags & TileFlags.DOOR) !== 0;
         const isPassable = (flags & TileFlags.PASSABLE) !== 0;
@@ -184,35 +415,72 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
 
     const playerX = world.stores.position.x[playerEid] ?? 0;
     const playerY = world.stores.position.y[playerEid] ?? 0;
+    const playerTile = floorMap.pixelToTile(playerX, playerY);
+
+    // Path overlays
+    if (labSettings.showPaths) {
+      for (const mob of mobs) {
+        const mx = world.stores.position.x[mob.eid] ?? 0;
+        const my = world.stores.position.y[mob.eid] ?? 0;
+        const mobTile = floorMap.pixelToTile(mx, my);
+
+        const path = findTilePath(floorMap, mobTile, playerTile, {
+          traversalMode: mob.isFlying ? PATH_TRAVERSAL.FLYING : PATH_TRAVERSAL.GROUND,
+          maxPathLength: 512,
+        });
+
+        if (path.length < 2) continue;
+
+        renderCtx.save();
+        renderCtx.strokeStyle = mob.color;
+        renderCtx.globalAlpha = 0.55;
+        renderCtx.lineWidth = 2;
+        renderCtx.setLineDash([3, 5]);
+        renderCtx.beginPath();
+        for (let j = 0; j < path.length; j += 1) {
+          const wp = path[j]!;
+          const px = wp.x * CELL_SIZE + CELL_SIZE / 2;
+          const py = wp.y * CELL_SIZE + CELL_SIZE / 2;
+          if (j === 0) renderCtx.moveTo(px, py);
+          else renderCtx.lineTo(px, py);
+        }
+        renderCtx.stroke();
+        renderCtx.restore();
+      }
+    }
+
+    // Player
     renderCtx.fillStyle = '#f6e05e';
     renderCtx.beginPath();
     renderCtx.arc(playerX, playerY, 7, 0, Math.PI * 2);
     renderCtx.fill();
 
-    const mobLabels = ['Stupid', 'Navigator', 'Flanker', 'Flying'];
-    const mobColors = ['#e53e3e', '#4299e1', '#9f7aea', '#22d3ee'];
-    for (let i = 0; i < mobEids.length; i += 1) {
-      const eid = mobEids[i]!;
-      const x = world.stores.position.x[eid] ?? 0;
-      const y = world.stores.position.y[eid] ?? 0;
-      renderCtx.fillStyle = mobColors[i] ?? '#ffffff';
+    // Mobs
+    for (const mob of mobs) {
+      const x = world.stores.position.x[mob.eid] ?? 0;
+      const y = world.stores.position.y[mob.eid] ?? 0;
+      renderCtx.fillStyle = mob.color;
       renderCtx.beginPath();
       renderCtx.arc(x, y, 6, 0, Math.PI * 2);
       renderCtx.fill();
+
       renderCtx.fillStyle = '#e2e8f0';
       renderCtx.font = '10px monospace';
       renderCtx.textAlign = 'center';
-      renderCtx.fillText(mobLabels[i] ?? '', x, y - 10);
+      renderCtx.fillText(mob.label, x, y - 10);
     }
 
-    info.textContent = [
-      'Click a passable tile to move the player target.',
-      `Door: ${doorOpen ? 'open' : 'closed'}`,
-      'Red = stupid direct steering (gets stuck)',
-      'Blue = navigator pathfinding',
-      'Purple = flanker pathfinding',
-      'Cyan = flying navigator (crosses blocked structures)',
-    ].join('\n');
+    const lines: string[] = [
+      'Click a passable tile to move the player.',
+      `Room: ${currentPreset.name}  |  Door: ${currentPreset.doorTile !== null ? (doorOpen ? 'open' : 'closed') : 'none'}`,
+      `Mobs: ${mobs.length}  |  Path overlay: ${labSettings.showPaths ? 'on' : 'off'}`,
+    ];
+    for (const spec of MOB_SPECS) {
+      if (mobEnabled[spec.key] && (mobCount[spec.key] ?? 0) > 0) {
+        lines.push(`${spec.color.slice(0, 7)}  ${spec.label}`);
+      }
+    }
+    info.textContent = lines.join('\n');
   }
 
   function stepSimulation(frameDelta: number): void {
@@ -227,7 +495,6 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
       accumulator -= FIXED_DELTA_MS;
       steps += 1;
     }
-
     if (accumulator > FIXED_DELTA_MS * MAX_STEPS_PER_FRAME) {
       accumulator = 0;
     }
@@ -242,28 +509,48 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
     rafId = requestAnimationFrame(loop);
   }
 
-  const controlsApi = {
-    reset: () => resetWorld(),
+  // --- GUI ---
+  const mapOptions = Object.fromEntries(LAB_MAP_PRESETS.map((p) => [p.name, p.id]));
+  gui
+    .add(labSettings, 'mapPresetId', mapOptions)
+    .name('Room Layout')
+    .onChange(() => resetWorld());
+
+  gui.add(labSettings, 'showPaths').name('Show Mob Paths');
+
+  const doorApi = {
     toggleDoor: () => setDoorState(!doorOpen),
     openDoor: () => setDoorState(true),
     closeDoor: () => setDoorState(false),
+    reset: () => resetWorld(),
   };
+  gui.add(doorApi, 'toggleDoor').name('Toggle Door');
+  gui.add(doorApi, 'openDoor').name('Open Door');
+  gui.add(doorApi, 'closeDoor').name('Close Door');
+  gui.add(doorApi, 'reset').name('Reset Scenario');
 
-  gui.add(controlsApi, 'toggleDoor').name('Toggle Door');
-  gui.add(controlsApi, 'openDoor').name('Open Door');
-  gui.add(controlsApi, 'closeDoor').name('Close Door');
-  gui.add(controlsApi, 'reset').name('Reset Scenario');
+  const mobFolder = gui.addFolder('Mob Spawn');
+  mobFolder.close();
+  for (const spec of MOB_SPECS) {
+    const typeFolder = mobFolder.addFolder(spec.label);
+    typeFolder
+      .add(mobEnabled, spec.key)
+      .name('Enabled')
+      .onChange(() => resetWorld());
+    typeFolder
+      .add(mobCount, spec.key, 0, 5, 1)
+      .name('Count')
+      .onChange(() => resetWorld());
+  }
 
   canvas.addEventListener('click', (event) => {
-    if (!world.floorMap) {
-      return;
-    }
+    if (!world.floorMap) return;
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor((event.clientX - rect.left) / CELL_SIZE);
-    const y = Math.floor((event.clientY - rect.top) / CELL_SIZE);
-    if (!world.floorMap.tileMap.isPassable(x, y)) {
-      return;
-    }
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.floor(((event.clientX - rect.left) * scaleX) / CELL_SIZE);
+    const y = Math.floor(((event.clientY - rect.top) * scaleY) / CELL_SIZE);
+    if (!world.floorMap.tileMap.isPassable(x, y)) return;
     const center = tileCenter(x, y);
     setComponent(world.ecs, playerEid, Position, { x: center.x, y: center.y });
   });
@@ -282,6 +569,6 @@ registerLab(LAB_ID, {
   category: 'Movement & Physics',
   name: 'Pathfinding Lab',
   description:
-    'Compares stupid, navigator, flanker, and flying mob pathing through doors and around pillars.',
+    'Compare stupid, navigator, flanker, and flying mob pathing across 4 room layouts. Toggle path overlays and control which mob types spawn.',
   create: createPathfindingLab,
 });

@@ -28,7 +28,7 @@ type RoomPreset = {
   mobs: CollisionTarget[];
 };
 
-type ProjectileType = 'bullet' | 'arrow' | 'beam';
+type ProjectileType = 'bullet' | 'arrow' | 'beam' | 'bowling-ball';
 
 type ProjectileProfile = {
   speed: number;
@@ -49,6 +49,16 @@ type ProjectileState = {
   distanceTraveled: number;
   color: string;
   active: boolean;
+  /** Remaining wall bounces; 0 = stops on first wall hit. */
+  bouncesLeft: number;
+  /** When true, mob collisions are skipped (pierces through targets). */
+  pierceThrough: boolean;
+};
+
+type WallHit = {
+  t: number;
+  normalX: number;
+  normalY: number;
 };
 
 type BeamPulse = {
@@ -73,6 +83,8 @@ const EPSILON_DELTA_SQ = 0.0000001;
 const EPSILON_AXIS_DELTA = 0.000001;
 const BACKGROUND = '#0b1020';
 
+const BOWLING_BALL_BOUNCES = 6;
+
 const PROJECTILE_PROFILES: Readonly<Record<Exclude<ProjectileType, 'beam'>, ProjectileProfile>> = {
   bullet: {
     speed: 720,
@@ -85,6 +97,12 @@ const PROJECTILE_PROFILES: Readonly<Record<Exclude<ProjectileType, 'beam'>, Proj
     radius: 7,
     maxDistance: 700,
     color: '#facc15',
+  },
+  'bowling-ball': {
+    speed: 340,
+    radius: 16,
+    maxDistance: 1400,
+    color: '#64748b',
   },
 };
 
@@ -278,6 +296,56 @@ function raycastRect(origin: Vec2, delta: Vec2, wall: Wall, radius: number): num
   return null;
 }
 
+/**
+ * Like raycastRect but also returns the surface normal of the hit face.
+ * Used for bowling-ball wall bouncing.
+ */
+function raycastRectHit(origin: Vec2, delta: Vec2, wall: Wall, radius: number): WallHit | null {
+  const minX = wall.x - radius;
+  const maxX = wall.x + wall.width + radius;
+  const minY = wall.y - radius;
+  const maxY = wall.y + wall.height + radius;
+
+  let tEnterX: number;
+  let tExitX: number;
+  let tEnterY: number;
+  let tExitY: number;
+
+  if (Math.abs(delta.x) < EPSILON_AXIS_DELTA) {
+    if (origin.x < minX || origin.x > maxX) return null;
+    tEnterX = Number.NEGATIVE_INFINITY;
+    tExitX = Number.POSITIVE_INFINITY;
+  } else {
+    const invX = 1 / delta.x;
+    const tX1 = (minX - origin.x) * invX;
+    const tX2 = (maxX - origin.x) * invX;
+    tEnterX = Math.min(tX1, tX2);
+    tExitX = Math.max(tX1, tX2);
+  }
+
+  if (Math.abs(delta.y) < EPSILON_AXIS_DELTA) {
+    if (origin.y < minY || origin.y > maxY) return null;
+    tEnterY = Number.NEGATIVE_INFINITY;
+    tExitY = Number.POSITIVE_INFINITY;
+  } else {
+    const invY = 1 / delta.y;
+    const tY1 = (minY - origin.y) * invY;
+    const tY2 = (maxY - origin.y) * invY;
+    tEnterY = Math.min(tY1, tY2);
+    tExitY = Math.max(tY1, tY2);
+  }
+
+  const tEnter = Math.max(tEnterX, tEnterY);
+  const tExit = Math.min(tExitX, tExitY);
+
+  if (tEnter > tExit || tEnter < 0 || tEnter > 1) return null;
+
+  const normalX = tEnterX > tEnterY ? (delta.x > 0 ? -1 : 1) : 0;
+  const normalY = tEnterX <= tEnterY ? (delta.y > 0 ? -1 : 1) : 0;
+
+  return { t: tEnter, normalX, normalY };
+}
+
 function findRoom(roomId: string): RoomPreset {
   return ROOM_PRESETS.find((room) => room.id === roomId) ?? DEFAULT_ROOM;
 }
@@ -420,6 +488,8 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       distanceTraveled: 0,
       color: profile.color,
       active: true,
+      bouncesLeft: type === 'bowling-ball' ? BOWLING_BALL_BOUNCES : 0,
+      pierceThrough: type === 'bowling-ball',
     });
   };
 
@@ -446,6 +516,68 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     fireProjectile(direction, settings.projectileType);
   };
 
+  const advanceBouncingProjectile = (projectile: ProjectileState, travelDistance: number) => {
+    let remaining = travelDistance;
+
+    for (
+      let iter = 0;
+      iter <= BOWLING_BALL_BOUNCES + 1 && remaining > 0.5 && projectile.active;
+      iter += 1
+    ) {
+      const delta = { x: projectile.dirX * remaining, y: projectile.dirY * remaining };
+
+      let earliestT = 1;
+      let hitNormalX = 0;
+      let hitNormalY = 0;
+
+      for (const wall of currentRoom.walls) {
+        const hit = raycastRectHit(projectile, delta, wall, projectile.radius);
+        if (hit !== null && hit.t < earliestT) {
+          earliestT = hit.t;
+          hitNormalX = hit.normalX;
+          hitNormalY = hit.normalY;
+        }
+      }
+
+      const traveled = remaining * earliestT;
+      projectile.x += delta.x * earliestT;
+      projectile.y += delta.y * earliestT;
+      projectile.distanceTraveled += traveled;
+      remaining -= traveled;
+
+      if (projectile.distanceTraveled >= projectile.maxDistance) {
+        projectile.active = false;
+        return;
+      }
+
+      if (earliestT >= 1) {
+        return;
+      }
+
+      if (projectile.bouncesLeft <= 0) {
+        projectile.active = false;
+        return;
+      }
+
+      projectile.bouncesLeft -= 1;
+
+      const dot = projectile.dirX * hitNormalX + projectile.dirY * hitNormalY;
+      projectile.dirX = projectile.dirX - 2 * dot * hitNormalX;
+      projectile.dirY = projectile.dirY - 2 * dot * hitNormalY;
+
+      const len = Math.hypot(projectile.dirX, projectile.dirY);
+      if (len > 0.0001) {
+        projectile.dirX /= len;
+        projectile.dirY /= len;
+      }
+
+      projectile.x += projectile.dirX * 0.5;
+      projectile.y += projectile.dirY * 0.5;
+
+      remaining *= 0.92;
+    }
+  };
+
   const updateProjectiles = (deltaMs: number) => {
     for (const projectile of projectiles) {
       if (!projectile.active) {
@@ -460,6 +592,12 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       }
 
       const travelDistance = Math.min(stepDistance, remaining);
+
+      if (projectile.bouncesLeft > 0) {
+        advanceBouncingProjectile(projectile, travelDistance);
+        continue;
+      }
+
       const delta = {
         x: projectile.dirX * travelDistance,
         y: projectile.dirY * travelDistance,
@@ -474,10 +612,12 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         }
       }
 
-      for (const mob of currentRoom.mobs) {
-        const t = raycastCircle(projectile, delta, mob, mob.radius + projectile.radius);
-        if (t !== null && t < earliest) {
-          earliest = t;
+      if (!projectile.pierceThrough) {
+        for (const mob of currentRoom.mobs) {
+          const t = raycastCircle(projectile, delta, mob, mob.radius + projectile.radius);
+          if (t !== null && t < earliest) {
+            earliest = t;
+          }
         }
       }
 
@@ -557,6 +697,38 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         context.moveTo(projectile.x, projectile.y);
         context.lineTo(projectile.x - projectile.dirX * 12, projectile.y - projectile.dirY * 12);
         context.stroke();
+      }
+
+      if (projectile.type === 'bowling-ball') {
+        context.strokeStyle = '#94a3b8';
+        context.lineWidth = 2;
+        context.beginPath();
+        context.arc(projectile.x, projectile.y, projectile.radius, 0, Math.PI * 2);
+        context.stroke();
+
+        context.strokeStyle = '#1e293b';
+        context.lineWidth = 1.5;
+        for (const [ox, oy] of [
+          [-5, -4],
+          [5, -4],
+          [0, 6],
+        ] as const) {
+          context.beginPath();
+          context.arc(projectile.x + ox, projectile.y + oy, 2.5, 0, Math.PI * 2);
+          context.stroke();
+        }
+
+        context.save();
+        context.fillStyle = '#f1f5f9';
+        context.font = 'bold 10px monospace';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        context.fillText(
+          String(projectile.bouncesLeft),
+          projectile.x,
+          projectile.y - projectile.radius - 7,
+        );
+        context.restore();
       }
     }
   };
@@ -690,6 +862,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     Bullet: 'bullet',
     Arrow: 'arrow',
     Beam: 'beam',
+    'Bowling Ball': 'bowling-ball',
   };
 
   gui
@@ -745,6 +918,6 @@ registerLab('collision-lab', {
   category: 'Movement & Physics' as LabCategory,
   name: 'Projectile Collision Lab',
   description:
-    'Hold to aim from a fixed player center, release to fire, and verify bullets/arrows/beams stop on walls in room presets.',
+    'Hold to aim from a fixed player center, release to fire, and verify bullets/arrows/beams stop on walls. Bowling ball bounces off walls (number above it = bounces left) and pierces mobs.',
   create: createCollisionLab,
 });
