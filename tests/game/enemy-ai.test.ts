@@ -30,11 +30,7 @@ function createOneRoomMapWithDoor(doorOpen: boolean): FloorMap {
   tileMap.fill(TilePresets.FLOOR);
   tileMap.setFlags(3, 1, doorOpen ? TilePresets.DOOR_OPEN : TilePresets.DOOR_CLOSED);
   const roomGraph = new RoomGraph();
-  roomGraph.add(
-    { x: 1, y: 1, width: 5, height: 5 },
-    [{ x: 3, y: 1, connectsTo: -1 }],
-    [],
-  );
+  roomGraph.add({ x: 1, y: 1, width: 5, height: 5 }, [{ x: 3, y: 1, connectsTo: -1 }], []);
   return new FloorMap(config, tileMap, roomGraph, new Uint8Array(64), { x: 2, y: 2 });
 }
 
