@@ -156,7 +156,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
         const terrain = floorMap.terrain[idx] ?? TerrainType.VOID;
         const color = MINI_COLORS[terrain] ?? 0x05060f;
         g.fillStyle(color, 1);
-        g.fillRect(MAP_X + tx * tilePx * scaleX, MAP_Y + ty * tilePx * scaleY, pixW, pixH);
+        g.fillRect(tx * tilePx * scaleX, ty * tilePx * scaleY, pixW, pixH);
       }
     }
 

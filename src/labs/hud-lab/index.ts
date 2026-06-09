@@ -126,6 +126,11 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       if (settings.minimapExpanded) {
         hudUi.sync(world!, playerEid);
       }
+
+      this.events.once('shutdown', () => {
+        hudUi?.destroy();
+        hudUi = undefined;
+      });
     }
 
     update(_time: number, delta: number): void {
@@ -151,10 +156,6 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       hudUi.sync(world, playerEid);
     }
 
-    shutdown(): void {
-      hudUi?.destroy();
-      hudUi = undefined;
-    }
   }
 
   const createGame = (): void => {
@@ -195,6 +196,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
   createGame();
 
   return () => {
+    hudUi?.destroy();
     game?.destroy(true);
     hint.remove();
     root.remove();
