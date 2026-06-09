@@ -3,8 +3,9 @@ import { Owner, Position, Projectile, Returning, Velocity } from '../components.
 import { clearEntityStores } from '../helpers.js';
 import { clearProjectilePierceHits } from './damageSystem.js';
 import type { GameWorld } from '../world.js';
+import { ftToPx } from '../../shared/units.js';
 
-const PICKUP_RADIUS_SQ = 16 * 16;
+const PICKUP_RADIUS_SQ = ftToPx(2) ** 2;
 
 /** Handles returning projectile logic (boomerangs, etc.). */
 export function returningProjectileSystem(world: GameWorld): void {
