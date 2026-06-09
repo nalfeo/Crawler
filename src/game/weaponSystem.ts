@@ -25,6 +25,7 @@ import type { GameWorld } from '../core/world.js';
 import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
+import { ftToPx } from '../shared/units.js';
 
 export interface WeaponConfig {
   projectileSpeed: number;
@@ -240,16 +241,16 @@ function fireMeleeAttack(
     py,
     player,
     def.baseDamage,
-    def.aoeRadius,
+    ftToPx(def.aoeRadius),
     def.durationMs,
     dir.x,
     dir.y,
     def.swingArcDeg,
     TeamId.PLAYER,
     def.meleeStyle,
-    def.headRadius,
+    ftToPx(def.headRadius),
     def.shaftDamageMult,
-    def.knockback,
+    ftToPx(def.knockback),
   );
 }
 
@@ -287,7 +288,7 @@ function fireMagicAttack(
     dir.x * def.projectileSpeed,
     dir.y * def.projectileSpeed,
     def.baseDamage,
-    def.aoeRadius,
+    ftToPx(def.aoeRadius),
     def.baseDamage,
     player,
     TeamId.PLAYER,
@@ -312,7 +313,7 @@ function fireThrownAttack(
       def.baseDamage,
       player,
       def.returnSpeed,
-      def.maxRange,
+      ftToPx(def.maxRange),
       TeamId.PLAYER,
       def.pierce,
     );
@@ -344,7 +345,7 @@ function fireBeamAttack(
     py,
     dir.x,
     dir.y,
-    def.beamLength,
+    ftToPx(def.beamLength),
     def.baseDamage,
     def.durationMs,
     def.beamTickMs,
@@ -361,8 +362,8 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
     px,
     py,
     def.baseDamage,
-    def.trapTriggerRadius,
-    def.trapExplosionRadius,
+    ftToPx(def.trapTriggerRadius),
+    ftToPx(def.trapExplosionRadius),
     def.trapArmMs,
     player,
     TeamId.PLAYER,
