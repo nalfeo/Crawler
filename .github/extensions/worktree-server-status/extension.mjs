@@ -44,7 +44,7 @@ function buildProcessScanScript(worktreePath) {
   return `
 $workspacePath = '${escapedPath}'
 $needle = $workspacePath.ToLowerInvariant().Replace('/', '\\')
-$processes = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name, CommandLine)
+$processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Select-Object ProcessId, ParentProcessId, Name, CommandLine)
 $processById = @{}
 foreach ($process in $processes) {
   $processId = [int]$process.ProcessId
@@ -130,16 +130,22 @@ async function runPowerShellJson(script) {
     },
   );
 
-  if (stderr.trim()) {
-    throw new Error(stderr.trim());
-  }
-
   const trimmed = stdout.trim();
   if (!trimmed) {
+    if (stderr.trim()) {
+      throw new Error(stderr.trim());
+    }
     return [];
   }
 
-  return JSON.parse(trimmed);
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    if (stderr.trim()) {
+      throw new Error(stderr.trim());
+    }
+    throw error;
+  }
 }
 
 function addressPriority(address) {
