@@ -10,7 +10,7 @@ fi
 stashed=0
 cleanup() {
   if [ "$stashed" -eq 1 ]; then
-    git stash pop -q --index >/dev/null
+    git stash pop -q >/dev/null
   fi
 }
 trap cleanup EXIT INT TERM
