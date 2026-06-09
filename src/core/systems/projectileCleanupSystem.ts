@@ -49,7 +49,11 @@ export function projectileCleanupSystem(world: GameWorld): void {
     const isBeyondPlayBounds =
       x < PLAY_BOUNDS.minX || x > PLAY_BOUNDS.maxX || y < PLAY_BOUNDS.minY || y > PLAY_BOUNDS.maxY;
 
-    if (isBeyondPlayBounds && hasComponent(world.ecs, eid, Bouncing) && hasComponent(world.ecs, eid, Velocity)) {
+    if (
+      isBeyondPlayBounds &&
+      hasComponent(world.ecs, eid, Bouncing) &&
+      hasComponent(world.ecs, eid, Velocity)
+    ) {
       const remaining = world.stores.bouncing.remainingBounces[eid] ?? 0;
       if (remaining > 0) {
         let bounced = false;
