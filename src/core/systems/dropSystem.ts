@@ -23,8 +23,8 @@ import { ftToPx } from '../../shared/units.js';
 
 const logger = createLogger('core:drop-system');
 
-/** Base knockback distance for death (pixels). Scales with overkill. */
-const DEATH_KNOCKBACK_BASE = 8;
+/** Base knockback distance for death (1 foot). Scales with overkill. */
+const DEATH_KNOCKBACK_BASE = ftToPx(1);
 /** Max knockback distance on death (8 feet). */
 const DEATH_KNOCKBACK_MAX = ftToPx(8);
 /** Knockback speed (pixels per frame-step). */

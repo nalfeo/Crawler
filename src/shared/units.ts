@@ -22,5 +22,6 @@ export function pxToFt(pixels: number): number {
 /** Format a pixel distance as a feet string, e.g. "5'" or "4.5'". */
 export function formatFeet(pixels: number): string {
   const feet = pxToFt(pixels);
-  return `${feet}'`;
+  const rounded = Math.round(feet * 10) / 10;
+  return `${rounded}'`;
 }
