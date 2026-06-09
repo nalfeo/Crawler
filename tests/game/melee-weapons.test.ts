@@ -14,6 +14,7 @@ import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { GAME } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { ftToPx } from '../../src/shared/units.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('melee weapons', () => {
@@ -34,7 +35,7 @@ describe('melee weapons', () => {
     expect(world.stores.position.x[swing]).toBe(100);
     expect(world.stores.position.y[swing]).toBe(100);
     expect(world.stores.meleeSwing.damage[swing]).toBe(def.baseDamage);
-    expect(world.stores.meleeSwing.bladeLength[swing]).toBe(def.aoeRadius);
+    expect(world.stores.meleeSwing.bladeLength[swing]).toBe(ftToPx(def.aoeRadius));
     expect(world.stores.owner.eid[swing]).toBe(player);
   });
 
@@ -222,7 +223,7 @@ describe('melee weapons', () => {
 
     const afterX = world.stores.position.x[enemy] ?? 0;
     // Total displacement should approximately equal knockback value
-    expect(afterX - beforeX).toBeCloseTo(hammer.knockback, 0);
+    expect(afterX - beforeX).toBeCloseTo(ftToPx(hammer.knockback), 0);
   });
 
   it('sword (no headRadius) deals uniform damage everywhere on blade', () => {
@@ -299,9 +300,9 @@ describe('unarmed weapons', () => {
     expect(swings).toHaveLength(1);
     const swing = swings[0]!;
     expect(world.stores.meleeSwing.style[swing]).toBe(1); // STAB
-    expect(world.stores.meleeSwing.headRadius[swing]).toBe(def.headRadius);
+    expect(world.stores.meleeSwing.headRadius[swing]).toBe(ftToPx(def.headRadius));
     expect(world.stores.meleeSwing.shaftDamageMult[swing]).toBe(0);
-    expect(world.stores.meleeSwing.knockback[swing]).toBe(def.knockback);
+    expect(world.stores.meleeSwing.knockback[swing]).toBe(ftToPx(def.knockback));
   });
 
   it('punch head deals damage to enemy within reach', () => {
