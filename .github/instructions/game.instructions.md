@@ -13,6 +13,7 @@ Game-specific systems: crafting, loot, floors, AI integration.
 - AI content (when implemented) is called during floor-load, NEVER mid-gameplay
 - All game randomness uses `world.rng` (SeededRandom) — never `Math.random()`
 - Crafting recipes, loot tables, and floor configs are data-driven (JSON/TS objects)
+- **Declare apple complexity** before starting: 🍎–🍎🍎🍎🍎 per `docs/agent-os/policies/complexity-policy.md`
 
 ## AI Content Pipeline
 
