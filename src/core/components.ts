@@ -21,6 +21,7 @@ export const Damage = {};
 export const Player = {};
 export const Enemy = {};
 export const EnemyBehavior = {};
+export const Flying = {};
 export const Projectile = {};
 /** Marks an entity as an enemy projectile. */
 export const EnemyProjectile = {};
@@ -52,6 +53,8 @@ export const AreaDamage = {};
 export const AoeOnImpact = {};
 /** Thrown weapon that returns to owner. */
 export const Returning = {};
+/** Projectile that can bounce off arena bounds before despawning. */
+export const Bouncing = {};
 /** Continuous beam/line damage from this entity's position. */
 export const LineDamage = {};
 /** Placed trap that arms and triggers on proximity. */
@@ -100,6 +103,14 @@ export function createComponentStores() {
       attackRange: new Float32Array(MAX_ENTITIES),
       fireCooldownMs: new Float32Array(MAX_ENTITIES),
       lastFireMs: new Float32Array(MAX_ENTITIES),
+      persona: new Uint8Array(MAX_ENTITIES),
+      traversalMode: new Uint8Array(MAX_ENTITIES),
+      flankDistance: new Float32Array(MAX_ENTITIES),
+      pathRefreshFrames: new Uint16Array(MAX_ENTITIES),
+      /** Set to 1 when this enemy has been permanently aggroed (e.g. hit by player). */
+      aggroedPermanently: new Uint8Array(MAX_ENTITIES),
+      /** Frames since velocity was zero (used to detect stuck enemies). */
+      stuckFrames: new Uint16Array(MAX_ENTITIES),
     },
     broadcastScore: { current: new Float32Array(MAX_ENTITIES) },
     droppedItem: { itemIndex: new Uint16Array(MAX_ENTITIES) },
@@ -137,6 +148,9 @@ export function createComponentStores() {
       maxRange: new Float32Array(MAX_ENTITIES),
       originX: new Float32Array(MAX_ENTITIES),
       originY: new Float32Array(MAX_ENTITIES),
+    },
+    bouncing: {
+      remainingBounces: new Uint8Array(MAX_ENTITIES),
     },
     lineDamage: {
       dirX: new Float32Array(MAX_ENTITIES),

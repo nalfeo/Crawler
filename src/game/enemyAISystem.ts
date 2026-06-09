@@ -1,25 +1,50 @@
 import { query, setComponent } from 'bitecs';
-import { Enemy, EnemyBehavior, Player, Position, Velocity } from '../core/components.js';
+import { DoorState, Enemy, EnemyBehavior, Player, Position, Velocity } from '../core/components.js';
+import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
 import { spawnEnemyProjectile } from '../core/helpers.js';
 import type { GameWorld } from '../core/world.js';
 import { ENEMY_PROJECTILE } from '../shared/constants.js';
+import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
+import { ftToPx } from '../shared/units.js';
+import { SeededRandom } from '../shared/random.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2 } as const;
+export { PATH_PERSONA, TRAVERSAL_MODE };
 
 const DEFAULT_ENEMY_SPEED = 1.5;
 const EPSILON = 0.0001;
-const SWARM_NEIGHBOR_RADIUS = 30;
+const SWARM_NEIGHBOR_RADIUS = ftToPx(4);
 const SWARM_PLAYER_WEIGHT = 1;
 const SWARM_SEPARATION_WEIGHT = 1.4;
 const SWARM_COHESION_WEIGHT = 0.2;
-
-/**
- * Maximum allowed overlap fraction between enemy entities (0.25 = 25%).
- * When two enemies overlap beyond this threshold, a separation force is applied.
- */
 const MAX_OVERLAP_FRACTION = 0.25;
 const SEPARATION_FORCE = 2.0;
-const ENEMY_RADIUS = 8; // half of 16x16 sprite
+const ENEMY_RADIUS = 8;
+const STALE_PATH_FRAMES = 180;
+const DEFAULT_PATH_REFRESH_FRAMES = 10;
+const DEFAULT_FLANK_DISTANCE = 96;
+const TARGET_SEARCH_RADIUS = 8;
+const WAYPOINT_EPSILON = 4;
+const NAVIGATION_LOOKAHEAD_PX = 24;
+const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
+const STUCK_FRAMES_THRESHOLD = 15;
+const UNSTUCK_ANGLE_COUNT = 12;
+
+interface PathState {
+  key: string;
+  waypoints: TilePoint[];
+  waypointIndex: number;
+  lastComputedFrame: number;
+  lastTouchedFrame: number;
+}
+
+interface DoorRevisionState {
+  hash: number;
+  revision: number;
+}
+
+const pathStatesByWorld = new WeakMap<GameWorld, Map<number, PathState>>();
+const doorRevisionByWorld = new WeakMap<GameWorld, DoorRevisionState>();
 
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
   setComponent(world.ecs, eid, Velocity, { x, y });
@@ -39,11 +64,393 @@ function getEnemySpeed(world: GameWorld, eid: number): number {
   return speed > 0 ? speed : DEFAULT_ENEMY_SPEED;
 }
 
+function rotate(x: number, y: number, angle: number): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: x * cos - y * sin,
+    y: x * sin + y * cos,
+  };
+}
+
+function setNavigatingVelocity(
+  world: GameWorld,
+  eid: number,
+  desiredX: number,
+  desiredY: number,
+  speed: number,
+): void {
+  const desired = normalize(desiredX, desiredY);
+  if (desired.length <= EPSILON) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    setVelocity(world, eid, desired.x * speed, desired.y * speed);
+    return;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+
+  for (const offset of NAVIGATION_ANGLE_OFFSETS) {
+    const candidate = rotate(desired.x, desired.y, offset);
+    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
+    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
+    if (floorMap.isPassableAt(sampleX, sampleY)) {
+      setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
+      return;
+    }
+  }
+
+  setVelocity(world, eid, 0, 0);
+}
+
+/**
+ * Unstuck mechanism: when an enemy is stuck (all basic angles blocked),
+ * try a wider arc of angles or jiggle randomly.
+ */
+function tryUnstuckVelocity(
+  world: GameWorld,
+  eid: number,
+  desiredX: number,
+  desiredY: number,
+  speed: number,
+  random: SeededRandom,
+): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const desired = normalize(desiredX, desiredY);
+
+  if (desired.length <= EPSILON) return;
+
+  // Try wider arc: UNSTUCK_ANGLE_COUNT angles
+  for (let i = 0; i < UNSTUCK_ANGLE_COUNT; i++) {
+    const angle = (i / UNSTUCK_ANGLE_COUNT) * Math.PI * 2;
+    const candidate = rotate(desired.x, desired.y, angle);
+    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
+    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
+    if (floorMap.isPassableAt(sampleX, sampleY)) {
+      setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
+      return;
+    }
+  }
+
+  // Still stuck — try random jiggle as last resort
+  const jiggleAngle = random.next() * Math.PI * 2;
+  const jiggle = {
+    x: Math.cos(jiggleAngle),
+    y: Math.sin(jiggleAngle),
+  };
+  setVelocity(world, eid, jiggle.x * speed, jiggle.y * speed);
+}
+
 function isAggroActive(aggroRange: number, distanceToPlayer: number): boolean {
   return aggroRange <= 0 || distanceToPlayer <= aggroRange;
 }
 
-function applyChaseBehavior(
+function getPathStateMap(world: GameWorld): Map<number, PathState> {
+  let map = pathStatesByWorld.get(world);
+  if (!map) {
+    map = new Map();
+    pathStatesByWorld.set(world, map);
+  }
+  return map;
+}
+
+function getDoorRevision(world: GameWorld): number {
+  const doors = query(world.ecs, [DoorState]);
+  const { doorState } = world.stores;
+  let hash = 2_166_136_261;
+
+  for (const eid of doors) {
+    const tx = doorState.tileX[eid] ?? 0;
+    const ty = doorState.tileY[eid] ?? 0;
+    const isOpen = doorState.isOpen[eid] ?? 0;
+    hash ^= tx * 73856093;
+    hash = Math.imul(hash, 16777619);
+    hash ^= ty * 19349663;
+    hash = Math.imul(hash, 16777619);
+    hash ^= isOpen;
+    hash = Math.imul(hash, 16777619);
+  }
+
+  const existing = doorRevisionByWorld.get(world);
+  if (!existing) {
+    doorRevisionByWorld.set(world, { hash, revision: 1 });
+    return 1;
+  }
+
+  if (existing.hash !== hash) {
+    existing.hash = hash;
+    existing.revision += 1;
+  }
+  return existing.revision;
+}
+
+function trimStalePaths(world: GameWorld, pathStates: Map<number, PathState>): void {
+  for (const [eid, state] of pathStates.entries()) {
+    if (world.frameCount - state.lastTouchedFrame > STALE_PATH_FRAMES) {
+      pathStates.delete(eid);
+    }
+  }
+}
+
+function isTileTraversable(world: GameWorld, tile: TilePoint, traversalMode: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap || !floorMap.tileMap.inBounds(tile.x, tile.y)) {
+    return false;
+  }
+  if (traversalMode === TRAVERSAL_MODE.FLYING) {
+    return true;
+  }
+  return floorMap.tileMap.isPassable(tile.x, tile.y);
+}
+
+function findNearestTraversableTile(
+  world: GameWorld,
+  target: TilePoint,
+  traversalMode: number,
+): TilePoint | null {
+  if (isTileTraversable(world, target, traversalMode)) {
+    return target;
+  }
+
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return null;
+  }
+
+  for (let radius = 1; radius <= TARGET_SEARCH_RADIUS; radius += 1) {
+    for (let y = target.y - radius; y <= target.y + radius; y += 1) {
+      for (let x = target.x - radius; x <= target.x + radius; x += 1) {
+        if (Math.abs(x - target.x) !== radius && Math.abs(y - target.y) !== radius) {
+          continue;
+        }
+        const candidate = { x, y };
+        if (isTileTraversable(world, candidate, traversalMode)) {
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function asTilePoint(world: GameWorld, px: number, py: number): TilePoint {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return { x: 0, y: 0 };
+  }
+  return floorMap.pixelToTile(px, py);
+}
+
+function makeFlankTargets(
+  world: GameWorld,
+  eid: number,
+  enemyX: number,
+  enemyY: number,
+  playerX: number,
+  playerY: number,
+): TilePoint[] {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return [asTilePoint(world, playerX, playerY)];
+  }
+
+  const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
+  if (toPlayer.length <= EPSILON) {
+    return [asTilePoint(world, playerX, playerY)];
+  }
+
+  const flankDistance = Math.max(
+    floorMap.config.tileSizePx * 2,
+    world.stores.enemyBehavior.flankDistance[eid] || DEFAULT_FLANK_DISTANCE,
+  );
+  const sideDistance = Math.max(floorMap.config.tileSizePx * 1.5, flankDistance * 0.5);
+  const sideSign = eid % 2 === 0 ? 1 : -1;
+  const leftX = -toPlayer.y;
+  const leftY = toPlayer.x;
+
+  return [
+    asTilePoint(
+      world,
+      playerX + toPlayer.x * flankDistance + leftX * sideDistance * sideSign,
+      playerY + toPlayer.y * flankDistance + leftY * sideDistance * sideSign,
+    ),
+    asTilePoint(
+      world,
+      playerX + toPlayer.x * flankDistance - leftX * sideDistance * sideSign,
+      playerY + toPlayer.y * flankDistance - leftY * sideDistance * sideSign,
+    ),
+    asTilePoint(world, playerX + toPlayer.x * flankDistance, playerY + toPlayer.y * flankDistance),
+    asTilePoint(world, playerX, playerY),
+  ];
+}
+
+function choosePersonaTarget(
+  world: GameWorld,
+  eid: number,
+  enemyX: number,
+  enemyY: number,
+  playerX: number,
+  playerY: number,
+  traversalMode: number,
+): TilePoint | null {
+  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+  const baseTarget = asTilePoint(world, playerX, playerY);
+
+  if (persona !== PATH_PERSONA.FLANKER) {
+    return findNearestTraversableTile(world, baseTarget, traversalMode);
+  }
+
+  const flankTargets = makeFlankTargets(world, eid, enemyX, enemyY, playerX, playerY);
+  for (const target of flankTargets) {
+    const traversable = findNearestTraversableTile(world, target, traversalMode);
+    if (traversable) {
+      return traversable;
+    }
+  }
+
+  return null;
+}
+
+function nextWaypointDirection(
+  world: GameWorld,
+  eid: number,
+  pathState: PathState,
+  speed: number,
+): { x: number; y: number; valid: boolean } {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return { x: 0, y: 0, valid: false };
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const maxReach = Math.max(WAYPOINT_EPSILON, speed + 0.5);
+
+  while (pathState.waypointIndex < pathState.waypoints.length) {
+    const waypoint = pathState.waypoints[pathState.waypointIndex]!;
+    const waypointCenter = floorMap.tileToPixel(waypoint.x, waypoint.y);
+    const delta = normalize(waypointCenter.x - enemyX, waypointCenter.y - enemyY);
+
+    if (delta.length <= maxReach) {
+      pathState.waypointIndex += 1;
+      continue;
+    }
+
+    return { x: delta.x, y: delta.y, valid: true };
+  }
+
+  return { x: 0, y: 0, valid: false };
+}
+
+function followPathWithCaching(
+  world: GameWorld,
+  eid: number,
+  speed: number,
+  targetTile: TilePoint,
+  traversalMode: number,
+  doorRevision: number,
+): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+
+  const pathStates = getPathStateMap(world);
+  const refreshFrames = Math.max(
+    1,
+    world.stores.enemyBehavior.pathRefreshFrames[eid] || DEFAULT_PATH_REFRESH_FRAMES,
+  );
+  const enemyTile = asTilePoint(
+    world,
+    world.stores.position.x[eid] ?? 0,
+    world.stores.position.y[eid] ?? 0,
+  );
+  const pathKey = `${enemyTile.x},${enemyTile.y}|${targetTile.x},${targetTile.y}|${traversalMode}|${doorRevision}`;
+  const previousState = pathStates.get(eid);
+
+  let pathState = previousState;
+  const shouldRefresh =
+    !pathState ||
+    pathState.key !== pathKey ||
+    world.frameCount - pathState.lastComputedFrame >= refreshFrames ||
+    pathState.waypointIndex >= pathState.waypoints.length;
+
+  if (shouldRefresh) {
+    const path = findTilePath(floorMap, enemyTile, targetTile, {
+      traversalMode:
+        traversalMode === TRAVERSAL_MODE.FLYING ? PATH_TRAVERSAL.FLYING : PATH_TRAVERSAL.GROUND,
+      maxPathLength: 8_192,
+    });
+    if (path.length === 0) {
+      pathStates.delete(eid);
+      return false;
+    }
+
+    pathState = {
+      key: pathKey,
+      waypoints: path,
+      waypointIndex: 1,
+      lastComputedFrame: world.frameCount,
+      lastTouchedFrame: world.frameCount,
+    };
+    pathStates.set(eid, pathState);
+  } else if (pathState) {
+    pathState.lastTouchedFrame = world.frameCount;
+  }
+
+  if (!pathState) {
+    return false;
+  }
+
+  const direction = nextWaypointDirection(world, eid, pathState, speed);
+  if (!direction.valid) {
+    setVelocity(world, eid, 0, 0);
+    return true;
+  }
+
+  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  return true;
+}
+
+function isEnemyRoomDoorOpen(world: GameWorld, eid: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return true;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const tile = floorMap.pixelToTile(enemyX, enemyY);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return true;
+  }
+
+  const room = floorMap.roomGraph.get(roomId);
+  if (!room || room.doors.length === 0) {
+    return true;
+  }
+
+  for (const door of room.doors) {
+    if (floorMap.tileMap.isPassable(door.x, door.y)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function applyLegacyChase(
   world: GameWorld,
   eid: number,
   playerDx: number,
@@ -57,11 +464,10 @@ function applyChaseBehavior(
     return;
   }
 
-  const direction = normalize(playerDx, playerDy);
-  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  setNavigatingVelocity(world, eid, playerDx, playerDy, speed);
 }
 
-function applySwarmBehavior(
+function applyLegacySwarm(
   world: GameWorld,
   eid: number,
   swarmEntities: number[],
@@ -123,8 +529,7 @@ function applySwarmBehavior(
     steerY += cohesion.y * SWARM_COHESION_WEIGHT;
   }
 
-  const direction = normalize(steerX, steerY);
-  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  setNavigatingVelocity(world, eid, steerX, steerY, speed);
 }
 
 function tryFireEnemyProjectile(
@@ -138,7 +543,6 @@ function tryFireEnemyProjectile(
   const effectiveCooldown = cooldown > 0 ? cooldown : ENEMY_PROJECTILE.FIRE_COOLDOWN_MS;
   const lastFire = enemyBehavior.lastFireMs[eid]!;
 
-  // lastFireMs=0 means "never fired" — allow immediate first shot
   if (lastFire > 0 && world.elapsedMs - lastFire < effectiveCooldown) {
     return;
   }
@@ -165,19 +569,23 @@ function tryFireEnemyProjectile(
   enemyBehavior.lastFireMs[eid] = world.elapsedMs;
 }
 
-function applyRangedBehavior(
+function applyLegacyRanged(
   world: GameWorld,
   eid: number,
   playerDx: number,
   playerDy: number,
   distanceToPlayer: number,
-  _aggroRange: number,
+  aggroRange: number,
   attackRange: number,
   speed: number,
 ): void {
+  if (!isAggroActive(aggroRange, distanceToPlayer)) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
   if (attackRange <= EPSILON) {
-    const direction = normalize(playerDx, playerDy);
-    setVelocity(world, eid, direction.x * speed, direction.y * speed);
+    setNavigatingVelocity(world, eid, playerDx, playerDy, speed);
     return;
   }
 
@@ -185,37 +593,127 @@ function applyRangedBehavior(
   const toPlayer = normalize(playerDx, playerDy);
 
   if (distanceToPlayer > attackRange) {
-    setVelocity(world, eid, toPlayer.x * speed, toPlayer.y * speed);
+    setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     return;
   }
 
-  // Within attack range — fire at the player
-  tryFireEnemyProjectile(world, eid, playerDx, playerDy);
-
   if (distanceToPlayer < retreatDistance && distanceToPlayer > EPSILON) {
-    setVelocity(world, eid, -toPlayer.x * speed, -toPlayer.y * speed);
+    setNavigatingVelocity(world, eid, -toPlayer.x, -toPlayer.y, speed);
     return;
   }
 
   const tangentX = -toPlayer.y;
   const tangentY = toPlayer.x;
   const tangent = normalize(tangentX, tangentY);
-  setVelocity(world, eid, tangent.x * speed, tangent.y * speed);
+  setNavigatingVelocity(world, eid, tangent.x, tangent.y, speed);
 }
 
-/**
- * Post-process separation pass: pushes enemies apart when they exceed
- * the MAX_OVERLAP_FRACTION threshold. Uses a simple pairwise distance check
- * and blends a repulsion vector into the existing velocity.
- * Only applies to actively-steered enemies (RANGED always; CHASE/SWARM when in aggro).
- */
+function buildRangedPathTarget(
+  eid: number,
+  enemyX: number,
+  enemyY: number,
+  playerX: number,
+  playerY: number,
+  distanceToPlayer: number,
+  attackRange: number,
+): { x: number; y: number } {
+  const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
+  if (attackRange <= EPSILON || toPlayer.length <= EPSILON) {
+    return { x: playerX, y: playerY };
+  }
+
+  const retreatDistance = attackRange * 0.5;
+  if (distanceToPlayer > attackRange) {
+    return { x: playerX, y: playerY };
+  }
+
+  if (distanceToPlayer < retreatDistance) {
+    return {
+      x: enemyX - toPlayer.x * attackRange,
+      y: enemyY - toPlayer.y * attackRange,
+    };
+  }
+
+  const tangentSign = eid % 2 === 0 ? 1 : -1;
+  return {
+    x: enemyX + -toPlayer.y * tangentSign * attackRange * 0.65,
+    y: enemyY + toPlayer.x * tangentSign * attackRange * 0.65,
+  };
+}
+
+function applyPathDrivenBehavior(
+  world: GameWorld,
+  eid: number,
+  behaviorType: number,
+  playerX: number,
+  playerY: number,
+  distanceToPlayer: number,
+  speed: number,
+  attackRange: number,
+  doorRevision: number,
+): void {
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const traversalMode = world.stores.enemyBehavior.traversalMode[eid] ?? TRAVERSAL_MODE.GROUND;
+  const personaTarget = choosePersonaTarget(
+    world,
+    eid,
+    enemyX,
+    enemyY,
+    playerX,
+    playerY,
+    traversalMode,
+  );
+  if (!personaTarget) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+
+  let targetTile = personaTarget;
+  if (behaviorType === AI_TYPE.RANGED) {
+    const rangedTargetPx = buildRangedPathTarget(
+      eid,
+      enemyX,
+      enemyY,
+      playerX,
+      playerY,
+      distanceToPlayer,
+      attackRange,
+    );
+    const preferred = asTilePoint(world, rangedTargetPx.x, rangedTargetPx.y);
+    const fallback = findNearestTraversableTile(world, preferred, traversalMode);
+    if (fallback) {
+      targetTile = fallback;
+    }
+  }
+
+  const usedPath = followPathWithCaching(
+    world,
+    eid,
+    speed,
+    targetTile,
+    traversalMode,
+    doorRevision,
+  );
+
+  if (!usedPath) {
+    const waypoint = world.floorMap?.tileToPixel(targetTile.x, targetTile.y);
+    if (!waypoint) {
+      setVelocity(world, eid, 0, 0);
+      return;
+    }
+    const fallback = normalize(waypoint.x - enemyX, waypoint.y - enemyY);
+    setVelocity(world, eid, fallback.x * speed, fallback.y * speed);
+  }
+}
+
 function applySeparation(
   world: GameWorld,
   activeEnemies: number[],
   position: GameWorld['stores']['position'],
   velocity: GameWorld['stores']['velocity'],
 ): void {
-  const minDistance = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION); // 12px for 25% overlap
+  const minDistance = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION);
 
   for (let i = 0; i < activeEnemies.length; i += 1) {
     const a = activeEnemies[i]!;
@@ -235,19 +733,17 @@ function applySeparation(
         continue;
       }
 
-      // Deterministic fallback when centers coincide to avoid division-by-zero
       let nx: number;
       let ny: number;
       let penetration: number;
 
       if (dist <= EPSILON) {
-        // Use entity IDs for a stable, deterministic push direction (survives ID recycling)
         nx = a % 2 === 0 ? 1 : -1;
         ny = b % 2 === 0 ? 1 : -1;
         const len = Math.hypot(nx, ny);
         nx /= len;
         ny /= len;
-        penetration = 1; // full overlap
+        penetration = 1;
       } else {
         penetration = (minDistance - dist) / minDistance;
         nx = dx / dist;
@@ -255,8 +751,6 @@ function applySeparation(
       }
 
       const force = penetration * SEPARATION_FORCE;
-
-      // Push each entity in opposite directions
       velocity.x[a] = (velocity.x[a] ?? 0) + nx * force;
       velocity.y[a] = (velocity.y[a] ?? 0) + ny * force;
       velocity.x[b] = (velocity.x[b] ?? 0) - nx * force;
@@ -264,7 +758,6 @@ function applySeparation(
     }
   }
 
-  // Clamp velocities to each enemy's configured speed and write back to ECS
   for (const eid of activeEnemies) {
     const vx = velocity.x[eid] ?? 0;
     const vy = velocity.y[eid] ?? 0;
@@ -284,21 +777,28 @@ export function enemyAISystem(world: GameWorld): void {
   const enemies = query(world.ecs, [Enemy, EnemyBehavior, Position, Velocity]);
   const players = query(world.ecs, [Player, Position]);
   const playerEid = players[0];
+  const pathStates = getPathStateMap(world);
+
+  if (world.frameCount % 60 === 0) {
+    trimStalePaths(world, pathStates);
+  }
 
   if (playerEid === undefined) {
     for (const eid of enemies) {
       setVelocity(world, eid, 0, 0);
+      pathStates.delete(eid);
     }
     return;
   }
 
+  const floorMap = world.floorMap;
   const { enemyBehavior, position, velocity } = world.stores;
   const enemyList = Array.from(enemies);
   const playerX = position.x[playerEid]!;
   const playerY = position.y[playerEid]!;
   const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
-
   const activeEnemies: number[] = [];
+  const doorRevision = floorMap ? getDoorRevision(world) : 0;
 
   for (const eid of enemies) {
     const enemyX = position.x[eid]!;
@@ -310,47 +810,94 @@ export function enemyAISystem(world: GameWorld): void {
     const aggroRange = enemyBehavior.aggroRange[eid]!;
     const attackRange = enemyBehavior.attackRange[eid]!;
     const speed = getEnemySpeed(world, eid);
+    const persona = enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+    const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
+    const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
+    const inAggroRange = permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
+    const canDetectPlayer = hasOpenRoomDoor && inAggroRange;
 
-    switch (behaviorType) {
-      case AI_TYPE.SWARM:
-        applySwarmBehavior(
-          world,
-          eid,
-          swarmEntities,
-          playerDx,
-          playerDy,
-          distanceToPlayer,
-          aggroRange,
-          speed,
-        );
-        if (isAggroActive(aggroRange, distanceToPlayer)) {
-          activeEnemies.push(eid);
-        }
-        break;
-      case AI_TYPE.RANGED:
-        applyRangedBehavior(
-          world,
-          eid,
-          playerDx,
-          playerDy,
-          distanceToPlayer,
-          aggroRange,
-          attackRange,
-          speed,
-        );
-        // Ranged enemies are always actively steered
-        activeEnemies.push(eid);
-        break;
-      case AI_TYPE.CHASE:
-      default:
-        applyChaseBehavior(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
-        if (isAggroActive(aggroRange, distanceToPlayer)) {
-          activeEnemies.push(eid);
-        }
-        break;
+    const currentVx = velocity.x[eid] ?? 0;
+    const currentVy = velocity.y[eid] ?? 0;
+    const isMoving = Math.hypot(currentVx, currentVy) > EPSILON;
+    if (isMoving) {
+      enemyBehavior.stuckFrames[eid] = 0;
+    } else {
+      enemyBehavior.stuckFrames[eid] = (enemyBehavior.stuckFrames[eid] ?? 0) + 1;
+    }
+
+    if (!canDetectPlayer) {
+      setVelocity(world, eid, 0, 0);
+      pathStates.delete(eid);
+      continue;
+    }
+
+    const usePathing = floorMap !== null && persona !== PATH_PERSONA.STUPID;
+
+    if (!usePathing) {
+      switch (behaviorType) {
+        case AI_TYPE.SWARM:
+          applyLegacySwarm(
+            world,
+            eid,
+            swarmEntities,
+            playerDx,
+            playerDy,
+            distanceToPlayer,
+            aggroRange,
+            speed,
+          );
+          break;
+        case AI_TYPE.RANGED:
+          applyLegacyRanged(
+            world,
+            eid,
+            playerDx,
+            playerDy,
+            distanceToPlayer,
+            aggroRange,
+            attackRange,
+            speed,
+          );
+          break;
+        case AI_TYPE.CHASE:
+        default:
+          applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+          break;
+      }
+    } else {
+      applyPathDrivenBehavior(
+        world,
+        eid,
+        behaviorType,
+        playerX,
+        playerY,
+        distanceToPlayer,
+        speed,
+        attackRange,
+        doorRevision,
+      );
+    }
+
+    if (
+      behaviorType === AI_TYPE.RANGED &&
+      attackRange > EPSILON &&
+      distanceToPlayer <= attackRange
+    ) {
+      tryFireEnemyProjectile(world, eid, playerDx, playerDy);
+    }
+
+    activeEnemies.push(eid);
+    const tracked = pathStates.get(eid);
+    if (tracked) {
+      tracked.lastTouchedFrame = world.frameCount;
+    }
+
+    // Unstuck: if stuck for too long, try wider pathfinding or jiggle
+    const stuckFrames = enemyBehavior.stuckFrames[eid] ?? 0;
+    if (stuckFrames > STUCK_FRAMES_THRESHOLD && canDetectPlayer) {
+      tryUnstuckVelocity(world, eid, playerDx, playerDy, speed, world.rng);
     }
   }
 
-  // Enforce max 25% overlap between actively-steered enemy pairs via separation forces
   applySeparation(world, activeEnemies, position, velocity);
 }

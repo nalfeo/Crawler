@@ -1,4 +1,4 @@
-export { AI_TYPE, enemyAISystem } from './enemyAISystem.js';
+export { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from './enemyAISystem.js';
 export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.js';
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
 export {
@@ -10,6 +10,13 @@ export {
   getActiveWeapon,
 } from './weaponSystem.js';
 export type { WeaponConfig } from './weaponSystem.js';
+export {
+  initializeFloor1Scenario,
+  selectFloor1StarterWeapon,
+  floor1PlayerStatSystem,
+  floor1EnemyDirectorSystem,
+  floor1ObjectiveSystem,
+} from './floor1Scenario.js';
 export { levelSystem } from './systems/levelSystem.js';
 export {
   statsSystem,

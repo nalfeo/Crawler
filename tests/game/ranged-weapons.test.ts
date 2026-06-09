@@ -45,6 +45,7 @@ describe('ranged weapons', () => {
   it('legacy mode still works without setActiveWeapon', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);
+    spawnEnemy(world, 200, 100, 10); // must have a visible enemy to fire
     world.elapsedMs = WEAPON.FIRE_RATE_MS;
 
     weaponSystem(world);

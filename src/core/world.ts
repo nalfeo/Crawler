@@ -31,6 +31,7 @@ import {
   AreaDamage,
   AoeOnImpact,
   Returning,
+  Bouncing,
   LineDamage,
   Trap,
   MeleeSwing,
@@ -44,6 +45,7 @@ import {
   type ComponentStores,
 } from './components.js';
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
+import type { Floor1ScenarioState } from '../shared/floor1.js';
 
 const logger = createLogger('core:world');
 
@@ -61,7 +63,7 @@ export interface GameWorld {
   /** Current floor number (1-indexed) */
   floor: number;
   /** Game state */
-  state: 'loading' | 'playing' | 'paused' | 'safe_room' | 'game_over' | 'level_up';
+  state: 'loading' | 'loadout' | 'playing' | 'paused' | 'safe_room' | 'game_over' | 'level_up';
 
   // --- Stats/Skills/Levels (player-singleton, stored at world level) ---
 
@@ -89,6 +91,13 @@ export interface GameWorld {
   playerGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
   floorMap: FloorMap | null;
+  /** Floor 1 tutorial scenario state. */
+  floor1: Floor1ScenarioState | null;
+  /** Debug flags — lab/dev use only. Never read in production game logic. */
+  debugFlags: {
+    /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
+    showAllRooms: boolean;
+  };
 }
 
 export interface CreateWorldOptions {
@@ -132,6 +141,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, AreaDamage, stores.areaDamage);
   wireStore(ecs, AoeOnImpact, stores.aoeOnImpact);
   wireStore(ecs, Returning, stores.returning);
+  wireStore(ecs, Bouncing, stores.bouncing);
   wireStore(ecs, LineDamage, stores.lineDamage);
   wireStore(ecs, Trap, stores.trap);
   wireStore(ecs, MeleeSwing, stores.meleeSwing);
@@ -167,6 +177,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     combatEvents: [],
     playerGold: 0,
     floorMap: null,
+    floor1: null,
+    debugFlags: {
+      showAllRooms: false,
+    },
   };
   logger.info('Created game world', {
     seed: options.seed ?? 42,

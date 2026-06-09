@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export CI=1
 
 echo "🔍 Step 1-2/7: Type checking + Linting (parallel)..."
 npx tsc --noEmit &
@@ -23,16 +24,16 @@ if [ "$eslint_status" -ne 0 ]; then
 fi
 
 echo "🔍 Step 3/7: Format checking..."
-npx prettier --check "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"
+npx prettier --check --log-level warn "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"
 
 echo "🔍 Step 4/7: Dead code detection..."
 npx knip || echo "⚠️  Knip found unused exports (non-blocking for now)"
 
 echo "🔍 Step 5/7: Unit tests with coverage..."
-npx vitest run --coverage
+npx vitest run --coverage --reporter=dot
 
 echo "🔍 Step 6/7: Integration tests..."
-npx vitest run --project integration 2>/dev/null || echo "ℹ️  No integration tests yet"
+npx vitest run --project integration --reporter=dot 2>/dev/null || echo "ℹ️  No integration tests yet"
 
 echo "🔍 Step 7/7: Building..."
 npx vite build

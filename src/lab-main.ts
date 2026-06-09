@@ -1,5 +1,6 @@
 import './labs/index.js';
 import { renderLabIndex } from './labs/lab-index.js';
+import { initLabShell } from './labs/lab-shell.js';
 import { runLab } from './labs/lab-runner.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
@@ -30,8 +31,11 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'fov-lab': '/src/labs/fov-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
   'map-gen-lab': '/src/labs/map-gen-lab/index.ts',
+  'pathfinding-lab': '/src/labs/pathfinding-lab/index.ts',
+  'floor1-lab': '/src/labs/floor1-lab/index.ts',
   'sprite-gallery': '/src/labs/sprite-gallery-lab/index.ts',
   'deathtimer-lab': '/src/labs/deathtimer-lab/index.ts',
+  'hud-lab': '/src/labs/hud-lab/index.ts',
 };
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;
@@ -94,6 +98,7 @@ async function loadAllLabs(): Promise<void> {
 
 async function main(): Promise<void> {
   const labId = new URLSearchParams(window.location.search).get('lab');
+  initLabShell({ hasActiveLab: Boolean(labId) });
 
   if (labId) {
     await loadLabModule(labId);

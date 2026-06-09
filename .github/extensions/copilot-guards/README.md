@@ -30,7 +30,7 @@ Loaded automatically because it lives under `.github/extensions/`.
 | Handoff required | A `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` file must be added in the branch diff. Skipped for docs-only diffs.      |
 | Lab gate         | Runs `scripts/agent/lab-gate-check.sh` **only** when the diff touches `src/core/systems/**` or `src/labs/**`. Cached.     |
 | Forbidden paths  | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`. |
-| Cross-system ADR | Soft warning (additionalContext, not deny) when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR. |
+| Cross-system ADR | Hard deny when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR in the branch. |
 
 ### `edit-repo-md-junk` allowlist
 

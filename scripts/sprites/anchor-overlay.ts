@@ -60,11 +60,24 @@ export function buildAnchorOverlay(input: AnchorOverlayInput): Buffer {
         `buildAnchorOverlay: anchor (${anchor.x}, ${anchor.y}) is out of ${width}x${height} bounds`,
       );
     }
-    const idx = (anchor.y * width + anchor.x) * 4;
-    png.data[idx] = 255;
-    png.data[idx + 1] = 0;
-    png.data[idx + 2] = 0;
-    png.data[idx + 3] = 255;
+    // Draw a 3×3 crosshair (center + 4 cardinal neighbors) for visibility
+    // at larger sprite sizes. Clip at image edges.
+    const crossPixels: Array<[number, number]> = [
+      [anchor.x, anchor.y],
+      [anchor.x - 1, anchor.y],
+      [anchor.x + 1, anchor.y],
+      [anchor.x, anchor.y - 1],
+      [anchor.x, anchor.y + 1],
+    ];
+    for (const [px, py] of crossPixels) {
+      if (px >= 0 && px < width && py >= 0 && py < height) {
+        const idx = (py * width + px) * 4;
+        png.data[idx] = 255;
+        png.data[idx + 1] = 0;
+        png.data[idx + 2] = 0;
+        png.data[idx + 3] = 255;
+      }
+    }
   }
 
   return PNG.sync.write(png);

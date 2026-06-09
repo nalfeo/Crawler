@@ -7,8 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  ci:
-    name: Required checks
+  # Job 1: Type & Lint checks (can run in parallel)
+  check-types-and-lint:
+    name: Types & Lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,27 +23,74 @@ jobs:
         run: npm ci
 
       - name: Typecheck
-        if: ${{ !cancelled() }}
-        run: npm run typecheck
+        run: npm run typecheck &
 
       - name: Lint
-        if: ${{ !cancelled() }}
         run: npm run lint
 
+      - name: Wait for typecheck
+        run: wait
+
+  # Job 2: Format & Lab gate (fast, independent checks)
+  check-format-and-labs:
+    name: Format & Labs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Format check
-        if: ${{ !cancelled() }}
-        run: npm run format:check
+        run: npm run format:check &
 
       - name: Lab gate check
-        if: ${{ !cancelled() }}
         run: bash scripts/agent/lab-gate-check.sh
 
+      - name: Wait for format check
+        run: wait
+
+  # Job 3: Unit tests (critical path, must pass)
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Unit tests
-        if: ${{ !cancelled() }}
         run: npx vitest run --project unit --reporter=verbose
 
+  # Job 4: Build (moved to advisory, not blocking)
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [test-unit]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Build
-        if: ${{ !cancelled() }}
         run: npm run build
 
   ci-advisory:
@@ -75,13 +123,33 @@ jobs:
   merge-gate:
     name: Merge gate
     runs-on: ubuntu-latest
-    needs: [ci]
+    needs: [check-types-and-lint, check-format-and-labs, test-unit]
     if: always()
     steps:
       - name: Check required jobs
         run: |
-          if [ "${{ needs.ci.result }}" != "success" ]; then
-            echo "❌ Required CI checks failed"
+          if [ "${{ needs.check-types-and-lint.result }}" != "success" ]; then
+            echo "❌ Types & Lint checks failed"
+            exit 1
+          fi
+          if [ "${{ needs.check-format-and-labs.result }}" != "success" ]; then
+            echo "❌ Format & Labs checks failed"
+            exit 1
+          fi
+          if [ "${{ needs.test-unit.result }}" != "success" ]; then
+            echo "❌ Unit tests failed"
             exit 1
           fi
           echo "✅ All required checks passed"
+
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    needs: [merge-gate]
+    if: always()
+    steps:
+      - name: Verify CI passed
+        run: |
+          if [ "${{ needs.merge-gate.result }}" != "success" ]; then
+            exit 1
+          fi

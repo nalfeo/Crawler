@@ -2,11 +2,13 @@ import { addComponent, addEntity, set } from 'bitecs';
 import { createInventoryBag } from '../shared/inventory.js';
 import {
   AoeOnImpact,
+  Bouncing,
   AreaDamage,
   Damage,
   Enemy,
   EnemyBehavior,
   EnemyProjectile,
+  Flying,
   Gold,
   Health,
   Inventory,
@@ -28,6 +30,7 @@ import {
 } from './components.js';
 import type { GameWorld } from './world.js';
 import type { WeaponTypeValue } from '../shared/constants.js';
+import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
 
@@ -88,8 +91,17 @@ export function spawnBehaviorEnemy(
   speed: number,
   aggroRange: number,
   attackRange: number,
+  options?: {
+    persona?: number;
+    traversalMode?: number;
+    flankDistance?: number;
+    pathRefreshFrames?: number;
+    isFlying?: boolean;
+  },
 ): number {
   const eid = createEntity(world);
+  const traversalMode = options?.traversalMode ?? TRAVERSAL_MODE.GROUND;
+  const isFlying = options?.isFlying === true || traversalMode === TRAVERSAL_MODE.FLYING;
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
@@ -99,8 +111,20 @@ export function spawnBehaviorEnemy(
   addComponent(
     world.ecs,
     eid,
-    set(EnemyBehavior, { type: behaviorType, speed, aggroRange, attackRange }),
+    set(EnemyBehavior, {
+      type: behaviorType,
+      speed,
+      aggroRange,
+      attackRange,
+      persona: options?.persona ?? PATH_PERSONA.NAVIGATOR,
+      traversalMode,
+      flankDistance: options?.flankDistance ?? 96,
+      pathRefreshFrames: options?.pathRefreshFrames ?? 10,
+    }),
   );
+  if (isFlying) {
+    addComponent(world.ecs, eid, Flying);
+  }
 
   return eid;
 }
@@ -293,6 +317,22 @@ export function spawnReturningProjectile(
   );
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
+  return eid;
+}
+
+/** Spawn a projectile that can bounce off arena bounds. */
+export function spawnBouncingProjectile(
+  world: GameWorld,
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  damage: number,
+  remainingBounces: number,
+  pierce: number = 0,
+): number {
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce);
+  addComponent(world.ecs, eid, set(Bouncing, { remainingBounces }));
   return eid;
 }
 

@@ -22,12 +22,61 @@
         position: relative;
         overflow: hidden;
       }
+      #lab-stage {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        position: relative;
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+        overflow: auto;
+        background: #1a1a2e;
+      }
       #lab-canvas {
         flex: 1;
         min-width: 0;
         min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
+      }
+      #lab-toolbar {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        z-index: 90;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      #viewport-toggle {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(126, 224, 255, 0.3);
+        background: rgba(8, 12, 24, 0.82);
+        color: #7ee0ff;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+        line-height: 1;
+        touch-action: manipulation;
+      }
+      #viewport-toggle[hidden] {
+        display: none;
+      }
+      #devtools-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(126, 224, 255, 0.3);
+        background: rgba(8, 12, 24, 0.82);
+        color: #7ee0ff;
+        text-decoration: none;
+        font-size: 12px;
+        line-height: 1;
+        touch-action: manipulation;
       }
 
       #lab-controls {
@@ -72,12 +121,45 @@
         right: 0;
       }
 
+      body.lab-shell--iphone-landscape #lab-stage {
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background:
+          radial-gradient(circle at top, rgba(126, 224, 255, 0.12), transparent 35%),
+          linear-gradient(180deg, #141423 0%, #090912 100%);
+      }
+      body.lab-shell--iphone-landscape #lab-canvas {
+        flex: none;
+        width: min(844px, 100%);
+        height: min(390px, 100%);
+        max-width: 844px;
+        max-height: 390px;
+        border-radius: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        box-shadow:
+          0 24px 64px rgba(0, 0, 0, 0.45),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        background: #05050a;
+      }
+      body.lab-shell--iphone-landscape #lab-canvas > * {
+        width: 100%;
+        height: 100%;
+      }
+
+      @media (pointer: coarse), (max-width: 900px) {
+        #viewport-toggle {
+          display: none;
+        }
+      }
+
       /* On narrow screens in portrait, stack canvas above controls */
       @media (max-width: 600px) and (orientation: portrait) {
         #lab-container {
           flex-direction: column;
         }
-        #lab-canvas {
+        #lab-stage {
           flex: 1;
         }
         #lab-controls {
@@ -114,38 +196,20 @@
   </head>
   <body>
     <div id="lab-container">
-      <div id="lab-canvas"></div>
+      <div id="lab-stage">
+        <div id="lab-toolbar">
+          <a id="devtools-link" href="/devtools.html">Open DevTools</a>
+          <button id="viewport-toggle" type="button" aria-pressed="false" hidden>
+            iPhone Landscape: Off
+          </button>
+        </div>
+        <div id="lab-canvas"></div>
+      </div>
       <button id="controls-toggle" aria-label="Collapse config panel" aria-expanded="true">
         ›
       </button>
       <div id="lab-controls"></div>
     </div>
     <script type="module" src="/src/lab-main.ts"></script>
-    <script>
-      (function () {
-        const toggle = document.getElementById('controls-toggle');
-        const controls = document.getElementById('lab-controls');
-        const STORAGE_KEY = 'lab-controls-collapsed';
-
-        function setCollapsed(collapsed) {
-          controls.classList.toggle('collapsed', collapsed);
-          toggle.classList.toggle('collapsed', collapsed);
-          toggle.setAttribute('aria-expanded', String(!collapsed));
-          toggle.setAttribute(
-            'aria-label',
-            collapsed ? 'Expand config panel' : 'Collapse config panel',
-          );
-          toggle.textContent = collapsed ? '‹' : '›';
-        }
-
-        setCollapsed(localStorage.getItem(STORAGE_KEY) === 'true');
-
-        toggle.addEventListener('click', function () {
-          const next = !controls.classList.contains('collapsed');
-          setCollapsed(next);
-          localStorage.setItem(STORAGE_KEY, String(next));
-        });
-      })();
-    </script>
   </body>
 </html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crawler DevTools</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #111827;
+        color: #e5e7eb;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+          'Courier New', monospace;
+      }
+      #devtools-root {
+        min-height: 100svh;
+        display: block;
+        padding: 24px;
+      }
+      .panel {
+        width: min(1400px, 100%);
+        background: #0f172a;
+        border: 1px solid rgba(229, 231, 235, 0.2);
+        border-radius: 12px;
+        padding: 20px;
+      }
+      .devtools-shell {
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: 1.25rem;
+        margin-bottom: 8px;
+      }
+      p {
+        line-height: 1.5;
+      }
+      .asset-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .asset-table th,
+      .asset-table td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid rgba(229, 231, 235, 0.1);
+        vertical-align: top;
+      }
+      .asset-table thead th {
+        position: sticky;
+        top: 0;
+        background: #111827;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="devtools-root"></main>
+    <script type="module" src="/src/devtools-main.ts"></script>
+  </body>
+</html>

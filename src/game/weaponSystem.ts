@@ -17,6 +17,7 @@ import {
   clearEntityStores,
   spawnMeleeSwing,
   spawnProjectile,
+  spawnBouncingProjectile,
   spawnReturningProjectile,
   spawnTrap,
 } from '../core/helpers.js';
@@ -25,6 +26,7 @@ import type { GameWorld } from '../core/world.js';
 import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
+import { ftToPx } from '../shared/units.js';
 
 export interface WeaponConfig {
   projectileSpeed: number;
@@ -188,8 +190,19 @@ function getNearestEnemyDirection(
   let nearestDistanceSq = Number.POSITIVE_INFINITY;
 
   for (const enemy of enemies) {
-    const deltaX = world.stores.position.x[enemy]! - playerX;
-    const deltaY = world.stores.position.y[enemy]! - playerY;
+    const ex = world.stores.position.x[enemy]!;
+    const ey = world.stores.position.y[enemy]!;
+
+    // Only target enemies the player can currently see (FOV + open doors).
+    if (world.floorMap) {
+      const tile = world.floorMap.pixelToTile(ex, ey);
+      if (!world.floorMap.isVisible(tile.x, tile.y)) {
+        continue;
+      }
+    }
+
+    const deltaX = ex - playerX;
+    const deltaY = ey - playerY;
     const distanceSq = deltaX * deltaX + deltaY * deltaY;
 
     if (distanceSq >= nearestDistanceSq || distanceSq <= 0.0001) {
@@ -229,16 +242,16 @@ function fireMeleeAttack(
     py,
     player,
     def.baseDamage,
-    def.aoeRadius,
+    ftToPx(def.aoeRadius),
     def.durationMs,
     dir.x,
     dir.y,
     def.swingArcDeg,
     TeamId.PLAYER,
     def.meleeStyle,
-    def.headRadius,
+    ftToPx(def.headRadius),
     def.shaftDamageMult,
-    def.knockback,
+    ftToPx(def.knockback),
   );
 }
 
@@ -276,7 +289,7 @@ function fireMagicAttack(
     dir.x * def.projectileSpeed,
     dir.y * def.projectileSpeed,
     def.baseDamage,
-    def.aoeRadius,
+    ftToPx(def.aoeRadius),
     def.baseDamage,
     player,
     TeamId.PLAYER,
@@ -301,8 +314,22 @@ function fireThrownAttack(
       def.baseDamage,
       player,
       def.returnSpeed,
-      def.maxRange,
+      ftToPx(def.maxRange),
       TeamId.PLAYER,
+      def.pierce,
+    );
+    return;
+  }
+
+  if (def.bounceCount > 0) {
+    spawnBouncingProjectile(
+      world,
+      px,
+      py,
+      dir.x * def.projectileSpeed,
+      dir.y * def.projectileSpeed,
+      def.baseDamage,
+      def.bounceCount,
       def.pierce,
     );
     return;
@@ -333,7 +360,7 @@ function fireBeamAttack(
     py,
     dir.x,
     dir.y,
-    def.beamLength,
+    ftToPx(def.beamLength),
     def.baseDamage,
     def.durationMs,
     def.beamTickMs,
@@ -350,8 +377,8 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
     px,
     py,
     def.baseDamage,
-    def.trapTriggerRadius,
-    def.trapExplosionRadius,
+    ftToPx(def.trapTriggerRadius),
+    ftToPx(def.trapExplosionRadius),
     def.trapArmMs,
     player,
     TeamId.PLAYER,
@@ -441,10 +468,17 @@ export function weaponSystem(world: GameWorld): void {
 
   const playerX = world.stores.position.x[player]!;
   const playerY = world.stores.position.y[player]!;
-  const direction = getNearestEnemyDirection(world, playerX, playerY) ?? {
-    x: state.aimX,
-    y: state.aimY,
-  };
+  const direction = getNearestEnemyDirection(world, playerX, playerY);
+
+  // Traps are placed at the player's feet and don't need a target direction.
+  // All other weapons require a visible enemy before firing.
+  const isTrap = state.activeWeaponDef?.weaponType === WeaponType.TRAP;
+  if (direction === undefined && !isTrap) {
+    return;
+  }
+
+  // Safe fallback direction for trap (unused but needed for dispatchAttack signature).
+  const fireDir = direction ?? { x: state.aimX, y: state.aimY };
 
   // Data-driven weapon mode
   if (state.activeWeaponDef !== undefined) {
@@ -455,9 +489,9 @@ export function weaponSystem(world: GameWorld): void {
       return;
     }
 
-    dispatchAttack(world, player, def, direction);
-    state.aimX = direction.x;
-    state.aimY = direction.y;
+    dispatchAttack(world, player, def, fireDir);
+    state.aimX = fireDir.x;
+    state.aimY = fireDir.y;
     state.lastFireMs = world.elapsedMs;
     logger.debug('Fired active weapon attack', {
       weaponId: def.id,
@@ -483,14 +517,14 @@ export function weaponSystem(world: GameWorld): void {
 
   for (let i = 0; i < totalProjectiles; i++) {
     // Spread extra projectiles slightly so they don't perfectly overlap
-    let dx = direction.x;
-    let dy = direction.y;
+    let dx = fireDir.x;
+    let dy = fireDir.y;
     if (i > 0) {
       const spreadAngle = (i % 2 === 1 ? 1 : -1) * (Math.ceil(i / 2) * 0.15);
       const cos = Math.cos(spreadAngle);
       const sin = Math.sin(spreadAngle);
-      dx = direction.x * cos - direction.y * sin;
-      dy = direction.x * sin + direction.y * cos;
+      dx = fireDir.x * cos - fireDir.y * sin;
+      dy = fireDir.x * sin + fireDir.y * cos;
       const len = Math.hypot(dx, dy);
       dx /= len;
       dy /= len;
@@ -506,8 +540,8 @@ export function weaponSystem(world: GameWorld): void {
     );
   }
 
-  state.aimX = direction.x;
-  state.aimY = direction.y;
+  state.aimX = fireDir.x;
+  state.aimY = fireDir.y;
   writeLastFireMs(world, player, config, world.elapsedMs);
   logger.debug('Fired legacy projectile volley', {
     projectileCount: totalProjectiles,
@@ -536,7 +570,10 @@ export function weaponEntitySystem(world: GameWorld): void {
 
     const px = position.x[ownerEid]!;
     const py = position.y[ownerEid]!;
-    const dir = getNearestEnemyDirection(world, px, py) ?? { x: 1, y: 0 };
+    const dir = getNearestEnemyDirection(world, px, py);
+    if (dir === undefined) {
+      continue;
+    }
     const baseDamage = weapon.baseDamage[weid]!;
     const weaponType = weapon.weaponType[weid]!;
     const projSpeed = weapon.projectileSpeed[weid]!;

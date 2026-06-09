@@ -3,6 +3,7 @@ import type Phaser from 'phaser';
 import {
   AoeOnImpact,
   AreaDamage,
+  DeathTimer,
   Enemy,
   EnemyProjectile,
   LineDamage,
@@ -18,11 +19,14 @@ import {
 import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
+import { createGoreVfx } from './GoreVfx.js';
 import { createLogger } from '../shared/logger.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
 const TEX_ENEMY = '__cw_enemy';
+const TEX_ENEMY_RAT = '__cw_enemy_rat';
+const TEX_ENEMY_SLIME = '__cw_enemy_slime';
 const TEX_GEM = '__cw_gem';
 const TEX_BULLET = '__cw_bullet';
 const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
@@ -32,6 +36,8 @@ const TEX_MELEE = '__cw_melee';
 const TEX_TRAP_ARMED = '__cw_trap_armed';
 const TEX_TRAP_ARMING = '__cw_trap_arming';
 const TEX_EXPLOSION = '__cw_explosion';
+const TEX_DEAD_SKULL = '__cw_dead_skull';
+const DEAD_SKULL_Y_OFFSET = 18;
 const logger = createLogger('engine:phaser-bridge');
 
 function generateTextures(scene: Phaser.Scene): void {
@@ -60,6 +66,29 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0x880000, 0.5);
   g.fillCircle(10, 10, 5);
   g.generateTexture(TEX_ENEMY, 22, 22);
+
+  // Rat — gray body with darker head/tail hint
+  g.clear();
+  g.fillStyle(0x8f959e, 1);
+  g.fillEllipse(11, 12, 18, 12);
+  g.fillStyle(0xb7bcc4, 1);
+  g.fillCircle(6, 9, 4);
+  g.lineStyle(2, 0x6f7782, 1);
+  g.beginPath();
+  g.moveTo(18, 13);
+  g.lineTo(22, 15);
+  g.strokePath();
+  g.generateTexture(TEX_ENEMY_RAT, 24, 22);
+
+  // Slime — green blob with glossy top and dark core
+  g.clear();
+  g.fillStyle(0x2cb34a, 1);
+  g.fillCircle(11, 11, 10);
+  g.fillStyle(0x5eea81, 0.85);
+  g.fillCircle(8, 7, 4);
+  g.fillStyle(0x157a2f, 0.5);
+  g.fillCircle(11, 13, 5);
+  g.generateTexture(TEX_ENEMY_SLIME, 22, 22);
 
   // XP gem — yellow diamond
   g.clear();
@@ -132,6 +161,20 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0xffaa00, 0.2);
   g.fillCircle(32, 32, 20);
   g.generateTexture(TEX_EXPLOSION, 66, 66);
+
+  // Dead marker — simple skull icon for corpse linger window
+  g.clear();
+  g.fillStyle(0xf8fafc, 0.95);
+  g.fillCircle(8, 7, 5);
+  g.fillRect(4, 9, 8, 5);
+  g.fillRect(6, 14, 1, 2);
+  g.fillRect(8, 14, 1, 2);
+  g.fillRect(10, 14, 1, 2);
+  g.fillStyle(0x0b1020, 1);
+  g.fillCircle(6, 6, 1);
+  g.fillCircle(10, 6, 1);
+  g.fillRect(7, 9, 2, 1);
+  g.generateTexture(TEX_DEAD_SKULL, 16, 16);
 
   g.destroy();
   logger.info('Generated procedural fallback textures');
@@ -220,6 +263,10 @@ function getProceduralTextureForType(type: string): string {
       return TEX_PLAYER;
     case 'enemy':
       return TEX_ENEMY;
+    case 'enemy_rat':
+      return TEX_ENEMY_RAT;
+    case 'enemy_slime':
+      return TEX_ENEMY_SLIME;
     case 'gem':
       return TEX_GEM;
     case 'proj':
@@ -246,13 +293,19 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   generateTextures(scene);
 
   const visuals = new Map<number, EntityVisual>();
+  const deathMarkers = new Map<number, Phaser.GameObjects.Image>();
   const beamGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
   const combatVfx = createCombatVfx(scene);
+  const goreVfx =
+    typeof scene.add.rectangle === 'function'
+      ? createGoreVfx(scene, { intensity: 1.25, hitGoreEnabled: true })
+      : null;
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
+  let lastRenderMs: number | null = null;
 
   function logFallback(type: string): void {
     const spriteId = ENTITY_KENNEY_SPRITE[type];
@@ -288,6 +341,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         activeEntities.add(eid);
 
         const entityType = getEntityType(world, eid);
+        const visualType =
+          entityType === 'enemy'
+            ? world.stores.sprite.textureId[eid] === 1
+              ? 'enemy_rat'
+              : world.stores.sprite.textureId[eid] === 2
+                ? 'enemy_slime'
+                : 'enemy'
+            : entityType;
         const x = (position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha;
         const y = (position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha;
 
@@ -429,11 +490,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
         let visual = visuals.get(eid);
 
-        if (!visual || visual.type !== entityType) {
+        if (!visual || visual.type !== visualType) {
           if (visual) {
             visual.obj.destroy();
           }
-          const resolved = resolveTexture(scene, entityType);
+          const resolved = resolveTexture(scene, visualType);
           const img =
             resolved.frame !== undefined
               ? scene.add.image(x, y, resolved.key, resolved.frame)
@@ -442,15 +503,44 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setScale(resolved.scale);
           }
           if (resolved.fallback) {
-            logFallback(entityType);
+            logFallback(visualType);
           }
-          visual = { obj: img, type: entityType, baseScale: resolved.scale };
+          visual = { obj: img, type: visualType, baseScale: resolved.scale };
           visuals.set(eid, visual);
         }
 
         const img = visual.obj;
-        img.setVisible(true);
+        let isVisible = true;
+        if (entityType === 'enemy' && world.floorMap) {
+          const tile = world.floorMap.pixelToTile(x, y);
+          isVisible = world.floorMap.isVisible(tile.x, tile.y);
+          if (!isVisible && world.debugFlags.showAllRooms) {
+            // Debug: show enemies in closed rooms dimly — does NOT affect game FOV
+            img.setVisible(true);
+            img.setAlpha(0.3);
+          } else {
+            img.setAlpha(1);
+            img.setVisible(isVisible);
+          }
+        } else {
+          img.setAlpha(1);
+          img.setVisible(isVisible);
+        }
         img.setPosition(x, y);
+
+        const isDeadEnemy = entityType === 'enemy' && hasComponent(world.ecs, eid, DeathTimer);
+        let deathMarker = deathMarkers.get(eid);
+        if (isDeadEnemy) {
+          if (!deathMarker) {
+            deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, TEX_DEAD_SKULL);
+            deathMarkers.set(eid, deathMarker);
+          }
+          deathMarker.setVisible(isVisible);
+          deathMarker.setPosition(x, y - DEAD_SKULL_Y_OFFSET);
+          deathMarker.setAlpha(0.95);
+        } else if (deathMarker) {
+          deathMarker.setVisible(false);
+        }
 
         // Per-type updates
         switch (entityType) {
@@ -596,6 +686,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visuals.delete(eid);
       }
 
+      for (const [eid, marker] of deathMarkers) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        marker.destroy();
+        deathMarkers.delete(eid);
+      }
+
       for (const [eid, bg] of beamGraphics) {
         if (activeEntities.has(eid)) {
           continue;
@@ -613,6 +711,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         arcSpawnMs.delete(eid);
       }
 
+      const deltaMs =
+        lastRenderMs === null ? 16 : Math.max(1, Math.min(50, renderElapsedMs - lastRenderMs));
+      lastRenderMs = renderElapsedMs;
+      if (goreVfx) {
+        goreVfx.update(world, renderElapsedMs, deltaMs);
+      }
       // Process combat VFX (floating damage numbers)
       combatVfx.update(world, renderElapsedMs);
     },
@@ -622,6 +726,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         visual.obj.destroy();
       }
       visuals.clear();
+
+      for (const marker of deathMarkers.values()) {
+        marker.destroy();
+      }
+      deathMarkers.clear();
 
       for (const bg of beamGraphics.values()) {
         bg.destroy();
@@ -633,6 +742,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
       arcGraphics.clear();
       arcSpawnMs.clear();
+      goreVfx?.destroy();
       combatVfx.destroy();
     },
   };

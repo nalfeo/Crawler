@@ -19,3 +19,8 @@ _check-merge.sh
 # Local automation report drops
 .automation-reports-local/
 
+# Local environment credentials (populate via scripts/setup-azure-env.ps1)
+# Variable names documented in scripts/azure-env.example.
+# .env.local is already covered by the *.local rule above; listed explicitly for clarity.
+.env.local
+.env

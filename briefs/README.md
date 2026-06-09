@@ -7,6 +7,33 @@ the pipeline; everything downstream — prompt construction, provider call,
 slicing, post-processing, sensor scoring, selection — is determined by the
 brief.
 
+For cross-asset planning (for example, a full floor theme like "rat-themed
+dungeon"), use art-plan files under `plans/floor-art/*.art.yaml` and run:
+
+```bash
+npm run sprites:asset-plan -- --plan plans/floor-art/rat-themed-dungeon-floor.art.yaml
+```
+
+The tracker reports per-asset lifecycle status (planned, brief-ready,
+approved, integrated) and unresolved placeholders.
+
+To turn missing art-plan entries into runnable draft briefs, run:
+
+```bash
+npm run sprites:plan-drafts -- --plan plans/floor-art/rat-themed-dungeon-floor.art.yaml
+```
+
+That command materializes draft briefs under `briefs/draft/` for assets still
+in `needs-art-placeholder` or `planned` status. The intended multi-family flow
+is:
+
+1. `npm run sprites:asset-plan -- --plan <plan>` to see the gaps.
+2. `npm run sprites:plan-drafts -- --plan <plan>` to emit draft briefs for
+   enemies/mobs, items/props/decor, tiles, and VFX/flair.
+3. `npm run sprites:run -- --brief <draft>` or `npm run sprites:batch -- --briefs-dir <draft-dir>`
+   to generate candidates.
+4. `npm run sprites:approve -- <runDir> --variant <n>` once a winner is chosen.
+
 ## Minimal shape
 
 Authors only need three fields:
@@ -70,14 +97,24 @@ briefs/
 
 Subdirectories under `briefs/` are informational; the loader doesn't
 care. `type:` is the source of truth for which defaults file to merge.
+The repo uses these conventional family folders:
+
+| Type        | Folder         |
+| ----------- | -------------- |
+| `weapon`    | `weapons/`     |
+| `enemy`     | `enemies/`     |
+| `item`      | `items/`       |
+| `tile`      | `tiles/`       |
+| `vfx`       | `vfx/`         |
+| `character` | `characters/`  |
 
 ## Per-type defaults
 
-Defaults live in `data/sprite-types/<type>.json`. For weapons, that
-currently means: 16×16 sprite, `kenney-roguelike` palette, anchor at
-`(8, 14)`, two reference spritesheets, a 4×4 = 16-variant generation sheet
-on a 1024² canvas, and `silhouette-orientation-axis = vertical` so the
-in-game renderer can rotate weapons around a known axis.
+Defaults live in `data/sprite-types/<type>.json`. Weapons, enemies, items,
+tiles, VFX, and characters now all ship with committed defaults so minimal
+briefs are runnable across the same workflow. Those family defaults set size,
+palette, anchor, references, sheet layout, and any family-specific
+sensor/judge knobs.
 
 The loader deep-merges minimal briefs on top of the defaults:
 

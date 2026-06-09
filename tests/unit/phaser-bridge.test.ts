@@ -1,13 +1,18 @@
 import { addComponent, addEntity, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
-import { Player, Position, Sprite } from '../../src/core/components.js';
+import { DeathTimer, Enemy, Player, Position, Sprite } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
+import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 class MockImage {
   destroyed = false;
+  visible = true;
   alpha = 1;
   scaleX = 1;
   scaleY = 1;
@@ -52,7 +57,8 @@ class MockImage {
     return this;
   }
 
-  setVisible(_visible: boolean): this {
+  setVisible(visible: boolean): this {
+    this.visible = visible;
     return this;
   }
 
@@ -80,6 +86,23 @@ function createSceneStub(options: { kenneyLoaded?: boolean } = {}) {
       textures,
     } as unknown as Phaser.Scene,
   };
+}
+
+function createBridgeTestMap(): FloorMap {
+  const config: MapConfig = {
+    widthTiles: 20,
+    heightTiles: 20,
+    tileSizePx: 32,
+    biome: BiomeType.ARENA,
+    seed: 42,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(20, 20);
+  tileMap.fill(TilePresets.FLOOR);
+  return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(400), { x: 10, y: 10 });
 }
 
 describe('createPhaserBridge', () => {
@@ -184,5 +207,84 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toBe('kenney-roguelike-characters');
     expect(images[0]?.frame).toBe(0); // player at (0, 0)
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
+  });
+
+  it('adds a skull marker above enemies during their death linger window', () => {
+    const { scene, images } = createSceneStub();
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 12, y: 34 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 300 }));
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    expect(images[1]).toMatchObject({
+      x: 12,
+      y: 16,
+      textureKey: '__cw_dead_skull',
+      destroyed: false,
+    });
+
+    removeEntity(world.ecs, eid);
+    bridge.sync(world);
+
+    expect(images[0]?.destroyed).toBe(true);
+    expect(images[1]?.destroyed).toBe(true);
+  });
+
+  it('renders rats and slimes with distinct enemy textures', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const rat = addEntity(world.ecs);
+    const slime = addEntity(world.ecs);
+
+    addComponent(world.ecs, rat, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, rat, Enemy);
+    addComponent(world.ecs, rat, set(Sprite, { textureId: 1, width: 16, height: 16 }));
+
+    addComponent(world.ecs, slime, set(Position, { x: 30, y: 10 }));
+    addComponent(world.ecs, slime, Enemy);
+    addComponent(world.ecs, slime, set(Sprite, { textureId: 2, width: 16, height: 16 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    expect(images[0]?.textureKey).toBe('__cw_enemy_rat');
+    expect(images[1]?.textureKey).toBe('__cw_enemy_slime');
+  });
+
+  it('hides enemies on tiles outside current FOV visibility', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const floorMap = createBridgeTestMap();
+    world.floorMap = floorMap;
+    floorMap.clearVisibility();
+    floorMap.setVisible(2, 2);
+    const enemyVisible = addEntity(world.ecs);
+    const enemyHidden = addEntity(world.ecs);
+
+    addComponent(world.ecs, enemyVisible, set(Position, { x: 2 * 32 + 16, y: 2 * 32 + 16 }));
+    addComponent(world.ecs, enemyVisible, Enemy);
+    addComponent(world.ecs, enemyVisible, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+
+    addComponent(world.ecs, enemyHidden, set(Position, { x: 8 * 32 + 16, y: 8 * 32 + 16 }));
+    addComponent(world.ecs, enemyHidden, Enemy);
+    addComponent(world.ecs, enemyHidden, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    expect(images[0]?.visible).toBe(true);
+    expect(images[1]?.visible).toBe(false);
   });
 });

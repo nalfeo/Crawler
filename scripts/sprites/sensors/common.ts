@@ -52,6 +52,10 @@ const fail = (sensor: string, reason: string, pixels?: ReadonlyArray<Pixel>): Se
 
 export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
   const sensor = 'dimensions-exact';
+  // When trimAndFit is enabled, output dimensions are dynamic — skip this sensor.
+  if (brief.postprocessing?.trimAndFit) {
+    return ok(sensor);
+  }
   if (image.width !== brief.size.width || image.height !== brief.size.height) {
     return fail(
       sensor,
@@ -147,18 +151,145 @@ function gatherOpaqueStats(image: RgbaImage): OpaqueStats {
 }
 
 export function opaqueBboxFits(image: RgbaImage): SensorResult {
+  return opaqueBboxFitsWithOptions(image);
+}
+
+interface EdgeTouchOptions {
+  readonly allowMainTouch: boolean;
+  readonly allowDetachedEdgeComponents: boolean;
+  readonly maxDetachedEdgePixels: number;
+}
+
+interface OpaqueComponent {
+  readonly area: number;
+  readonly touchesEdge: boolean;
+  readonly edgePixels: ReadonlyArray<Pixel>;
+}
+
+interface EdgeAnalysis {
+  readonly ok: boolean;
+  readonly reason: string;
+  readonly pixels?: ReadonlyArray<Pixel>;
+}
+
+export function opaqueBboxFitsWithOptions(
+  image: RgbaImage,
+  opts: {
+    allowMainTouch?: boolean;
+    allowDetachedEdgeComponents?: boolean;
+    maxDetachedEdgePixels?: number;
+  } = {},
+): SensorResult {
   const sensor = 'opaque-bbox-fits';
-  const stats = gatherOpaqueStats(image);
-  if (stats.count === 0) {
-    return fail(sensor, 'no opaque pixels — sprite is empty');
-  }
-  if (stats.minX < 0 || stats.maxX >= image.width || stats.minY < 0 || stats.maxY >= image.height) {
-    return fail(
-      sensor,
-      `opaque bbox [${stats.minX}..${stats.maxX}] x [${stats.minY}..${stats.maxY}] outside frame ${image.width}x${image.height}`,
-    );
+  const edgeAnalysis = analyzeEdgeTouchingComponents(image, {
+    allowMainTouch: opts.allowMainTouch ?? false,
+    allowDetachedEdgeComponents: opts.allowDetachedEdgeComponents ?? false,
+    maxDetachedEdgePixels: opts.maxDetachedEdgePixels ?? 0,
+  });
+  if (!edgeAnalysis.ok) {
+    return fail(sensor, edgeAnalysis.reason, edgeAnalysis.pixels);
   }
   return ok(sensor);
+}
+
+function analyzeEdgeTouchingComponents(image: RgbaImage, opts: EdgeTouchOptions): EdgeAnalysis {
+  const components = extractOpaqueComponents(image);
+  if (components.length === 0) {
+    return { ok: false, reason: 'no opaque pixels - sprite is empty' };
+  }
+  let largestIdx = 0;
+  for (let i = 1; i < components.length; i++) {
+    if (components[i]!.area > components[largestIdx]!.area) largestIdx = i;
+  }
+  const largest = components[largestIdx]!;
+  if (largest.touchesEdge && !opts.allowMainTouch) {
+    return {
+      ok: false,
+      reason: `main silhouette touches frame edge (${image.width}x${image.height})`,
+      pixels: largest.edgePixels,
+    };
+  }
+  for (let i = 0; i < components.length; i++) {
+    if (i === largestIdx) continue;
+    const c = components[i]!;
+    if (!c.touchesEdge) continue;
+    if (!opts.allowDetachedEdgeComponents) {
+      return {
+        ok: false,
+        reason: `detached edge artifact detected (area=${c.area})`,
+        pixels: c.edgePixels,
+      };
+    }
+    if (c.area > opts.maxDetachedEdgePixels) {
+      return {
+        ok: false,
+        reason:
+          `detached edge artifact exceeds allowance (` +
+          `area=${c.area}, max=${opts.maxDetachedEdgePixels})`,
+        pixels: c.edgePixels,
+      };
+    }
+  }
+  return { ok: true, reason: 'ok' };
+}
+
+function extractOpaqueComponents(image: RgbaImage): OpaqueComponent[] {
+  const width = image.width;
+  const height = image.height;
+  const visited = new Uint8Array(width * height);
+  const components: OpaqueComponent[] = [];
+  const queueX: number[] = [];
+  const queueY: number[] = [];
+  const push = (x: number, y: number) => {
+    queueX.push(x);
+    queueY.push(y);
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (visited[idx] === 1 || !isOpaque(image, x, y)) continue;
+      visited[idx] = 1;
+      queueX.length = 0;
+      queueY.length = 0;
+      push(x, y);
+      let area = 0;
+      let touchesEdge = false;
+      const edgePixels: Pixel[] = [];
+      for (let q = 0; q < queueX.length; q++) {
+        const cx = queueX[q]!;
+        const cy = queueY[q]!;
+        area += 1;
+        if (isFrameEdge(cx, cy, width, height)) {
+          touchesEdge = true;
+          if (edgePixels.length < 16) edgePixels.push({ x: cx, y: cy });
+        }
+        const neighbors: ReadonlyArray<readonly [number, number]> = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ];
+        for (const [nx, ny] of neighbors) {
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const nIdx = ny * width + nx;
+          if (visited[nIdx] === 1 || !isOpaque(image, nx, ny)) continue;
+          visited[nIdx] = 1;
+          push(nx, ny);
+        }
+      }
+      components.push({ area, touchesEdge, edgePixels });
+    }
+  }
+  return components;
+}
+
+function isOpaque(image: RgbaImage, x: number, y: number): boolean {
+  const a = image.data[(y * image.width + x) * 4 + 3] ?? 0;
+  return a !== 0;
+}
+
+function isFrameEdge(x: number, y: number, width: number, height: number): boolean {
+  return x === 0 || y === 0 || x === width - 1 || y === height - 1;
 }
 
 export function opaqueRatio(
@@ -180,6 +311,11 @@ export function opaqueRatio(
 
 export function anchorOpaque(image: RgbaImage, brief: Brief): SensorResult {
   const sensor = 'anchor-opaque';
+  // When trimAndFit is on, the image dimensions change so the brief's static
+  // anchor coords are meaningless. Skip — anchor-derivable handles validation.
+  if (brief.postprocessing?.trimAndFit) {
+    return ok(sensor);
+  }
   const { x, y } = brief.anchor;
   if (x < 0 || x >= image.width || y < 0 || y >= image.height) {
     return fail(sensor, `anchor (${x}, ${y}) out of bounds for ${image.width}x${image.height}`);
@@ -200,12 +336,15 @@ export function universalSensors(
   brief: Brief,
   palette: PaletteColors,
 ): SensorResult[] {
+  // When trimAndFit is enabled, the opaque ratio naturally increases
+  // since transparent padding was removed. Use a more permissive max.
+  const opaqueMax = brief.postprocessing?.trimAndFit ? 0.92 : 0.65;
   return [
     dimensionsExact(image, brief),
     alphaBinary(image),
     paletteMembership(image, palette),
     opaqueBboxFits(image),
-    opaqueRatio(image),
+    opaqueRatio(image, { max: opaqueMax }),
     anchorOpaque(image, brief),
   ];
 }

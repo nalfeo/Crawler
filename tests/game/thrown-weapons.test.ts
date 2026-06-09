@@ -1,6 +1,6 @@
 import { entityExists, query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Position, Projectile, Returning, Velocity } from '../../src/core/components.js';
+import { Bouncing, Position, Projectile, Returning, Velocity } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
@@ -8,6 +8,7 @@ import { returningProjectileSystem } from '../../src/core/systems/returningProje
 import { movementSystem } from '../../src/core/systems/movementSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { ftToPx } from '../../src/shared/units.js';
 import { GAME } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -25,7 +26,7 @@ describe('thrown weapons', () => {
     const returning = Array.from(query(world.ecs, [Returning, Projectile, Position, Velocity]));
     expect(returning).toHaveLength(1);
     const r = returning[0]!;
-    expect(world.stores.returning.maxRange[r]).toBe(def.maxRange);
+    expect(world.stores.returning.maxRange[r]).toBe(ftToPx(def.maxRange));
     expect(world.stores.returning.returnSpeed[r]).toBe(def.returnSpeed);
     expect(world.stores.returning.isReturning[r]).toBe(0);
     expect(world.stores.projectile.pierce[r]).toBe(def.pierce);
@@ -79,6 +80,23 @@ describe('thrown weapons', () => {
     const returning = Array.from(query(world.ecs, [Returning]));
     expect(projectiles).toHaveLength(1);
     expect(returning).toHaveLength(0);
+  });
+
+  it('bowling ball spawns a bouncing projectile with configured bounce count', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 20);
+    const def = getWeaponDef('bowling-ball')!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+
+    weaponSystem(world);
+
+    const projectiles = Array.from(query(world.ecs, [Projectile, Bouncing, Position, Velocity]));
+    expect(projectiles).toHaveLength(1);
+    const ball = projectiles[0]!;
+    expect(world.stores.bouncing.remainingBounces[ball]).toBe(def.bounceCount);
+    expect(world.stores.projectile.pierce[ball]).toBe(def.pierce);
   });
 
   it('boomerang returns after hitting its final outbound target (1 + pierce)', () => {
