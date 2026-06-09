@@ -135,6 +135,37 @@ describe('scoreCandidate', () => {
     expect(sensors).not.toContain('silhouette-orientation-axis');
   });
 
+  it('enemy briefs derive anchors from center of mass and stay front-facing', () => {
+    const body = buildProcessedFixture(16, 16, rectPixels(6, 4, 9, 11));
+    const brief = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: {
+        enemy: { facing: 'front' },
+        anchor: { mode: 'center-of-mass' },
+      } as Brief['sensors'],
+    });
+    const card = scoreCandidate(body, brief, PALETTE);
+    expect(card.breakdown.map((r) => r.sensor)).toContain('anchor-center-of-mass');
+    expect(card.breakdown.map((r) => r.sensor)).toContain('silhouette-orientation-axis');
+    expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(true);
+    expect(card.derivedAnchor).toEqual({ x: 7, y: 7 });
+  });
+
+  it('enemy briefs reject angled silhouettes', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: {
+        enemy: { facing: 'front' },
+        anchor: { mode: 'center-of-mass' },
+      } as Brief['sensors'],
+    });
+    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(false);
+  });
+
   it('honors a brief override that relaxes the opaque-ratio max', () => {
     // The solid-block fixture normally fails opaque-ratio; bumping max to 1.0
     // should let it pass that sensor specifically.

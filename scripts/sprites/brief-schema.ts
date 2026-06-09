@@ -137,6 +137,12 @@ const sensorOverridesSchema = z
       })
       .strict()
       .optional(),
+    enemy: z
+      .object({
+        facing: z.enum(['front', 'any']).default('front'),
+      })
+      .strict()
+      .optional(),
     /**
      * Per-variant derived anchor opt-in. When `derive: true`, the scorer
      * replaces the static `anchor-opaque` sensor with `anchor-derivable`,
@@ -153,6 +159,7 @@ const sensorOverridesSchema = z
     anchor: z
       .object({
         derive: z.boolean().default(false),
+        mode: z.enum(['static', 'grip', 'center-of-mass']).default('static'),
         bandRows: z.number().int().min(1).max(8).default(4),
         centerToleranceX: z.number().int().min(0).max(8).default(3),
       })

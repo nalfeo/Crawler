@@ -2,7 +2,7 @@
   "$comment": "Default brief settings for hostile mob sprites. Keeps enemy briefs minimal while anchoring them to the existing CC0 reference packs and the shared Kenney palette.",
   "size": { "width": 64, "height": 64 },
   "palette": { "id": "kenney-roguelike" },
-  "anchor": { "x": 32, "y": 63 },
+  "anchor": { "x": 32, "y": 32 },
   "tags": ["enemy", "mob"],
   "references": [
     {
@@ -18,7 +18,13 @@
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
   },
   "sensors": {
-    "anchor": { "derive": true, "bandRows": 8, "centerToleranceX": 8 }
+    "edge": {
+      "allowMainTouch": false,
+      "allowDetachedEdgeComponents": false,
+      "maxDetachedEdgePixels": 0
+    },
+    "enemy": { "facing": "front" },
+    "anchor": { "mode": "center-of-mass" }
   },
   "minVariations": 4,
   "judge": { "enabled": true, "maxVariants": 16 }

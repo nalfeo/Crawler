@@ -75,6 +75,23 @@ describe('buildPrompt (single)', () => {
     expect(out).toContain('An iron sword');
   });
 
+  it('adds mob rules for enemy briefs', () => {
+    const enemy = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: {
+        enemy: { facing: 'front' },
+        anchor: { mode: 'center-of-mass' },
+      } as Brief['sensors'],
+    });
+    const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Mob rules/i);
+    expect(out).toMatch(/straight forward/i);
+    expect(out).toMatch(/no held weapons/i);
+    expect(out).toMatch(/no shields/i);
+    expect(out).toMatch(/no spell effects/i);
+  });
+
   it('includes per-variant constraints (no clipping, no text, neutral bg)', () => {
     const out = buildPrompt(makeBrief(), FAKE_STYLE_GUIDE);
     expect(out).toMatch(/margin/i);
@@ -160,6 +177,20 @@ describe('buildSheetPrompt', () => {
     const layoutIdx = out.indexOf('Sheet layout');
     expect(subjectIdx).toBeGreaterThan(preambleEnd);
     expect(layoutIdx).toBeGreaterThan(subjectIdx);
+  });
+
+  it('adds mob rules to enemy sheet prompts', () => {
+    const enemy = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: {
+        enemy: { facing: 'front' },
+        anchor: { mode: 'center-of-mass' },
+      } as Brief['sensors'],
+    });
+    const out = buildSheetPrompt(enemy, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Mob rules/i);
+    expect(out).toMatch(/centered around the body mass/i);
   });
 });
 
