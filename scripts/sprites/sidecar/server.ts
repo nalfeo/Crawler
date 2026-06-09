@@ -24,7 +24,7 @@
  * `scripts/sprites/` modules that the orchestrator already uses.
  */
 
-import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { approveVariant, ApproveError, type ManifestEntry } from '../approve.js';
@@ -49,6 +49,11 @@ export interface SidecarDeps {
    * `<publicAssetsDir>/generated/manifest.json`.
    */
   readonly manifestPath?: string;
+  /**
+   * Absolute path to `src/shared/data/sprite-catalog.json`. Defaults to
+   * `<repoRoot>/src/shared/data/sprite-catalog.json`.
+   */
+  readonly catalogPath?: string;
   /**
    * Environment snapshot the approve route consults for the CI refusal.
    * Defaults to `process.env`. Inject `{}` (or `{ CI: undefined }`) in
@@ -107,7 +112,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.header('Vary', 'Origin');
     }
     if (req.method === 'OPTIONS') {
-      reply.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
       reply.header('Access-Control-Allow-Headers', 'Content-Type');
       // `return reply` short-circuits Fastify routing after the preflight
       // is sent so the request can't fall through to a route handler and
@@ -155,6 +160,52 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(500);
         return { error: 'summary-invalid', briefId, runId };
       }
+    },
+  );
+
+  app.get<{ Params: { briefId: string; runId: string } }>(
+    '/api/runs/:briefId/:runId/brief',
+    async (req, reply) => {
+      const { briefId, runId } = req.params;
+      const summaryPath = safeJoin(deps.runsDir, [briefId, runId, 'summary.json']);
+      if (summaryPath === null) {
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
+      if (!existsSync(summaryPath)) {
+        reply.code(404);
+        return { error: 'run-not-found', briefId, runId };
+      }
+      let summary: { briefPath?: string; prompt?: string };
+      try {
+        summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+      } catch {
+        reply.code(500);
+        return { error: 'summary-invalid', briefId, runId };
+      }
+
+      let briefYaml: string | null = null;
+      if (typeof summary.briefPath === 'string' && summary.briefPath !== '') {
+        // Resolve brief path safely — must stay under repoRoot.
+        const resolved = path.isAbsolute(summary.briefPath)
+          ? summary.briefPath
+          : path.resolve(deps.repoRoot, summary.briefPath);
+        const rel = path.relative(deps.repoRoot, resolved);
+        if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+          try {
+            briefYaml = readFileSync(resolved, 'utf8');
+          } catch {
+            briefYaml = null;
+          }
+        }
+      }
+
+      return {
+        briefId,
+        runId,
+        briefYaml,
+        promptText: typeof summary.prompt === 'string' ? summary.prompt : null,
+      };
     },
   );
 
@@ -241,6 +292,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const publicAssetsDir = deps.publicAssetsDir ?? path.join(deps.repoRoot, 'public', 'assets');
     const manifestPath =
       deps.manifestPath ?? path.join(publicAssetsDir, 'generated', 'manifest.json');
+    const catalogPath =
+      deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
     let entry: ManifestEntry;
     try {
@@ -248,6 +301,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         runDir,
         variantIndex,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot: deps.repoRoot,
       });
@@ -274,6 +328,37 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
     return entry;
   });
+
+  // DELETE /api/runs/:briefId/:runId — remove an entire run directory.
+  // Used by the gallery UI to dismiss/cleanup experiments that are done.
+  app.delete<{ Params: { briefId: string; runId: string } }>(
+    '/api/runs/:briefId/:runId',
+    async (req, reply) => {
+      const { briefId, runId } = req.params;
+      const runDir = safeJoin(deps.runsDir, [briefId, runId]);
+      if (runDir === null) {
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
+      if (!existsSync(runDir)) {
+        reply.code(404);
+        return { error: 'run-not-found', briefId, runId };
+      }
+      // Recursively remove the run directory.
+      rmSync(runDir, { recursive: true, force: true });
+
+      // If the briefId directory is now empty, remove it too.
+      const briefDir = path.join(deps.runsDir, briefId);
+      if (existsSync(briefDir)) {
+        const remaining = readdirSync(briefDir);
+        if (remaining.length === 0) {
+          rmSync(briefDir, { recursive: true, force: true });
+        }
+      }
+
+      return { ok: true, deleted: `${briefId}/${runId}` };
+    },
+  );
 
   return app;
 }

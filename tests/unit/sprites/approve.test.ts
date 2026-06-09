@@ -111,12 +111,14 @@ describe('approveVariant', () => {
   let repoRoot: string;
   let publicAssetsDir: string;
   let manifestPath: string;
+  let catalogPath: string;
   const fixedNow = () => new Date('2026-06-08T15:30:00.000Z');
 
   beforeEach(() => {
     repoRoot = mkdtempSync(path.join(tmpdir(), 'crawler-approve-'));
     publicAssetsDir = path.join(repoRoot, 'public', 'assets');
     manifestPath = path.join(publicAssetsDir, 'generated', 'manifest.json');
+    catalogPath = path.join(repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
   });
 
   afterEach(() => {
@@ -132,6 +134,7 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 1,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
@@ -139,7 +142,7 @@ describe('approveVariant', () => {
 
     expect(entry.briefId).toBe(briefId);
     expect(entry.spriteName).toBe(briefId);
-    expect(entry.assetPath).toBe(`generated/${briefId}.png`);
+    expect(entry.assetPath).toBe(`generated/${briefId}-var-1.png`);
     expect(entry.variantIndex).toBe(1);
     expect(entry.anchor).toEqual({ x: 5, y: 12, source: 'derived' });
     expect(entry.sensorScore).toBe('7/7');
@@ -150,13 +153,14 @@ describe('approveVariant', () => {
     expect(entry.sourceRun.includes('\\')).toBe(false);
 
     // The asset PNG was copied with the variant's bytes.
-    const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}.png`);
+    const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`);
     expect(readFileSync(assetAbs).toString()).toBe('PNG-1');
 
     const manifest = readManifest(manifestPath);
     expect(manifest.version).toBe(MANIFEST_VERSION);
-    expect(Object.keys(manifest.entries)).toEqual([briefId]);
-    expect(manifest.entries[briefId]).toEqual(entry);
+    const entryKey = `${briefId}-var-1`;
+    expect(Object.keys(manifest.entries)).toEqual([entryKey]);
+    expect(manifest.entries[entryKey]).toEqual(entry);
   });
 
   it('upserts an existing manifest without dropping other entries (alphabetical key order)', () => {
@@ -196,27 +200,30 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
     });
 
     const manifest = readManifest(manifestPath);
-    // Three entries total, sorted alphabetically.
-    expect(Object.keys(manifest.entries)).toEqual(['cloth-shirt', briefId, 'zealot']);
+    // Three entries total: old entries + new variant entry
+    const expectedKey = `${briefId}-var-0`;
+    expect(Object.keys(manifest.entries)).toEqual(['cloth-shirt', expectedKey, 'zealot']);
     expect(manifest.entries['cloth-shirt']!.sourceRun).toBe('generated/runs/cloth-shirt/old');
     expect(manifest.entries.zealot!.sourceRun).toBe('generated/runs/zealot/old');
   });
 
-  it('latest-wins: re-approving the same brief overwrites asset + entry in place', () => {
+  it('approving different variants of the same brief creates separate entries', () => {
     const first = writeFakeRun(repoRoot, {
       runId: '2026-06-08T10-00-00-aaaaaaaa',
       variantIndices: [0],
     });
-    approveVariant({
+    const first_entry = approveVariant({
       runDir: first.runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: () => new Date('2026-06-08T10:00:00.000Z'),
@@ -230,22 +237,32 @@ describe('approveVariant', () => {
       runDir: second.runDir,
       variantIndex: 3,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: () => new Date('2026-06-08T14:00:00.000Z'),
     });
 
     const manifest = readManifest(manifestPath);
-    // Still one entry, keyed on briefId.
-    expect(Object.keys(manifest.entries)).toEqual([second.briefId]);
-    expect(manifest.entries[second.briefId]).toEqual(second_entry);
-    expect(manifest.entries[second.briefId]!.sourceRun).toContain('bbbbbbbb');
-    expect(manifest.entries[second.briefId]!.variantIndex).toBe(3);
-    expect(manifest.entries[second.briefId]!.approvedAt).toBe('2026-06-08T14:00:00.000Z');
+    // Two entries now: one for each variant of the same brief
+    const entryKeys = Object.keys(manifest.entries).sort();
+    expect(entryKeys).toEqual([`iron-sword-var-0`, `iron-sword-var-3`]);
 
-    // The PNG body is from the second run's variant 3.
-    const assetAbs = path.join(publicAssetsDir, 'generated', `${second.briefId}.png`);
-    expect(readFileSync(assetAbs).toString()).toBe('PNG-3');
+    expect(manifest.entries[`iron-sword-var-0`]).toEqual(first_entry);
+    expect(manifest.entries[`iron-sword-var-0`]!.sourceRun).toContain('aaaaaaaa');
+    expect(manifest.entries[`iron-sword-var-0`]!.variantIndex).toBe(0);
+    expect(manifest.entries[`iron-sword-var-0`]!.approvedAt).toBe('2026-06-08T10:00:00.000Z');
+
+    expect(manifest.entries[`iron-sword-var-3`]).toEqual(second_entry);
+    expect(manifest.entries[`iron-sword-var-3`]!.sourceRun).toContain('bbbbbbbb');
+    expect(manifest.entries[`iron-sword-var-3`]!.variantIndex).toBe(3);
+    expect(manifest.entries[`iron-sword-var-3`]!.approvedAt).toBe('2026-06-08T14:00:00.000Z');
+
+    // Both PNGs exist
+    const assetAbs0 = path.join(publicAssetsDir, 'generated', 'iron-sword-var-0.png');
+    const assetAbs3 = path.join(publicAssetsDir, 'generated', 'iron-sword-var-3.png');
+    expect(readFileSync(assetAbs0).toString()).toBe('PNG-0');
+    expect(readFileSync(assetAbs3).toString()).toBe('PNG-3');
   });
 
   it('throws variant-not-found when the requested index is not in summary.candidates', () => {
@@ -255,6 +272,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 9,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -265,6 +283,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 9,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -285,6 +304,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 1,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -300,6 +320,7 @@ describe('approveVariant', () => {
         runDir: empty,
         variantIndex: 0,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -316,6 +337,7 @@ describe('approveVariant', () => {
         runDir,
         variantIndex: 0,
         manifestPath,
+        catalogPath,
         publicAssetsDir,
         repoRoot,
         now: fixedNow,
@@ -332,6 +354,7 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
@@ -348,10 +371,44 @@ describe('approveVariant', () => {
       runDir,
       variantIndex: 0,
       manifestPath,
+      catalogPath,
       publicAssetsDir,
       repoRoot,
       now: fixedNow,
     });
     expect(entry.anchor).toBeNull();
+  });
+
+  it('persists approved sprite to both manifest and catalog', () => {
+    const { runDir, briefId } = writeFakeRun(repoRoot, {
+      variantIndices: [0, 1],
+      chosenIndex: 1,
+    });
+    approveVariant({
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+
+    // Verify manifest has the entry
+    const manifest: Manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const variantId = `${briefId}-var-1`;
+    expect(manifest.entries).toHaveProperty(variantId);
+
+    // Verify catalog has the entry with correct structure
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
+    const catalogEntry = catalog.find((e) => e.id === `generated:${variantId}`);
+    expect(catalogEntry).toBeDefined();
+    expect(catalogEntry).toMatchObject({
+      kind: 'sprite',
+      label: briefId,
+      spriteId: briefId,
+      sheetKey: 'generated-manifest',
+      tags: expect.arrayContaining(['generated', 'pipeline-approved']),
+    });
   });
 });
