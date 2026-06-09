@@ -266,7 +266,12 @@ describe('loadBrief', () => {
       );
 
       const { brief } = loadBrief(briefPath, { projectRoot: root });
-      expect(brief.sensors.anchor).toEqual({ derive: true, bandRows: 4, centerToleranceX: 3 });
+      expect(brief.sensors.anchor).toEqual({
+        derive: true,
+        mode: 'static',
+        bandRows: 4,
+        centerToleranceX: 3,
+      });
     });
 
     it('lets the brief override individual sensor sub-keys without restating the rest', () => {
@@ -292,7 +297,12 @@ describe('loadBrief', () => {
 
       const { brief } = loadBrief(briefPath, { projectRoot: root });
       // Brief overrides only centerToleranceX; derive + bandRows come from defaults.
-      expect(brief.sensors.anchor).toEqual({ derive: true, bandRows: 4, centerToleranceX: 8 });
+      expect(brief.sensors.anchor).toEqual({
+        derive: true,
+        mode: 'static',
+        bandRows: 4,
+        centerToleranceX: 8,
+      });
     });
 
     it('leaves the brief untouched when no defaults file exists', () => {

@@ -124,6 +124,7 @@ function typeRulesBlock(brief: Brief): string | null {
     '- Draw the mob facing straight forward, not angled or in three-quarter view.',
     '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
     '- Anchor and composition should read from the mob silhouette itself, centered around the body mass.',
+    '- Keep the full body comfortably inside the frame with clear padding on every side; no feet, tail, hood, robe hem, or headgear may touch the border.',
   ].join('\n');
 }
 

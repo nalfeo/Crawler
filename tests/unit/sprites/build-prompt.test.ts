@@ -90,6 +90,7 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no held weapons/i);
     expect(out).toMatch(/no shields/i);
     expect(out).toMatch(/no spell effects/i);
+    expect(out).toMatch(/clear padding/i);
   });
 
   it('includes per-variant constraints (no clipping, no text, neutral bg)', () => {
@@ -191,6 +192,7 @@ describe('buildSheetPrompt', () => {
     const out = buildSheetPrompt(enemy, FAKE_STYLE_GUIDE);
     expect(out).toMatch(/Mob rules/i);
     expect(out).toMatch(/centered around the body mass/i);
+    expect(out).toMatch(/clear padding/i);
   });
 });
 
