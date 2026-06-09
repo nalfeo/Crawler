@@ -4,7 +4,8 @@
  * (collision, hazard, audio). The same schema supports any floor theme.
  */
 
-export type BiomeTag = 'dungeon' | 'organic' | 'tech' | 'void';
+import type { BiomeTag } from './biome-tags.js';
+
 export type Collider = 'none' | 'solid' | 'hazard';
 export type Passability = 'walkable' | 'blocked' | 'deadly';
 
@@ -23,7 +24,7 @@ export interface TileDef {
   readonly variant: number;
   /** Whether entities can walk through this tile. */
   readonly passability: Passability;
-  /** Audio cue ID for foot steps / interactions. */
+  /** Audio cue ID for footsteps / interactions. */
   readonly audioCue: string;
 }
 

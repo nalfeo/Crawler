@@ -75,7 +75,7 @@ describe('Generation Lab: Mob Pipeline', () => {
     }
   });
 
-  it('should have unique loot table references', () => {
+  it('should have non-empty loot table references', () => {
     for (const def of MOB_DEFS.values()) {
       expect(def.lootTableId.length).toBeGreaterThan(0);
     }

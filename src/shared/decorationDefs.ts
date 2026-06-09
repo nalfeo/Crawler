@@ -4,7 +4,8 @@
  * They layer depth, scale, and animation to create visual richness without gameplay impact.
  */
 
-export type BiomeTag = 'dungeon' | 'organic' | 'tech' | 'void';
+import type { BiomeTag } from './biome-tags.js';
+
 export type DepthLayer = 'back' | 'mid' | 'front';
 
 export interface DecorationDef {
@@ -33,8 +34,7 @@ export interface DecorationDef {
 }
 
 function def(
-  partial: Partial<DecorationDef> &
-    Pick<DecorationDef, 'id' | 'name' | 'spriteId' | 'biomeTag'>,
+  partial: Partial<DecorationDef> & Pick<DecorationDef, 'id' | 'name' | 'spriteId' | 'biomeTag'>,
 ): DecorationDef {
   return {
     scale: 1.0,
