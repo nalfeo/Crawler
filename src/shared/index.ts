@@ -14,6 +14,13 @@ export type { InputState } from './input.js';
 export { SeededRandom } from './random.js';
 export { WEAPON_DEFS, getWeaponDef } from './weaponDefs.js';
 export type { WeaponDef } from './weaponDefs.js';
+export { MOB_DEFS, getMobDef } from './mobDefs.js';
+export type { MobDef } from './mobDefs.js';
+export { TILE_DEFS, getTileDef, getTilesByBiome } from './tileDefs.js';
+export type { TileDef, Collider, Passability } from './tileDefs.js';
+export { DECORATION_DEFS, getDecorationDef, getDecorationsByBiome } from './decorationDefs.js';
+export type { DecorationDef, DepthLayer } from './decorationDefs.js';
+export type { BiomeTag } from './biome-tags.js';
 export { SLOT_REGISTRY, VALID_SLOT_IDS, isValidSlotId } from './equipment-slots.js';
 export type { SlotDefinition, EquipmentSlotId } from './equipment-slots.js';
 export {
