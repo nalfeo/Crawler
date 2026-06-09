@@ -44,6 +44,9 @@
 | Security loop          | `npm run security:check`          |
 | Health loop            | `npm run health:check`            |
 
+For sprite workflow details and when to use sprite commands, see
+`docs/guides/sprite-workflow.md` and `docs/knowledge/game-design/sprites/`.
+
 ## Architecture
 
 - **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering
