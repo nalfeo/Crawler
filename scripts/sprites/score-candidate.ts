@@ -132,10 +132,12 @@ function runUniversal(image: RgbaImage, brief: Brief, palette: PaletteColors): S
 
 function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {
   const overrides = brief.sensors.opaqueRatio;
-  if (!overrides || (overrides.min === undefined && overrides.max === undefined)) {
+  const min = overrides?.min;
+  const max = overrides?.max ?? (brief.postprocessing?.trimAndFit ? 0.92 : undefined);
+  if (min === undefined && max === undefined) {
     return opaqueRatio(image);
   }
-  return opaqueRatio(image, { min: overrides.min, max: overrides.max });
+  return opaqueRatio(image, { min, max });
 }
 
 function resolveAnchorSensor(image: RgbaImage, brief: Brief): SensorResult {

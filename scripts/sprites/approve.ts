@@ -14,18 +14,17 @@
  * --------------
  *   - `briefId` is the `brief.name` from `brief-schema.ts`, constrained to
  *     `^[a-z0-9][a-z0-9-]*$` (single safe path segment).
- *   - The asset PNG lives flat at `public/assets/generated/<briefId>.png`.
- *     This matches the sidecar's `:briefId` route param shape (also a
- *     single segment) and side-steps the type→plural mapping question.
- *     Type-grouped subfolders are a YAGNI migration we can do later.
+ *   - Approved assets are keyed by variant and written as
+ *     `public/assets/generated/<briefId>-var-<N>.png`.
+ *   - This preserves multiple approved variants per brief instead of
+ *     overwriting a single `<briefId>.png` output.
  *
  * Supersede policy
  * ----------------
- *   - **Latest-wins.** Re-approving overwrites the same `<briefId>.png` and
- *     replaces the manifest entry in place. `sourceRun` + `approvedAt` +
- *     `variantIndex` + `anchor` all reflect the latest approval.
- *   - Manifest entries are keyed by `briefId`, so two runs of the same
- *     brief always converge on one entry.
+ *   - **Latest-wins per variant key.** Re-approving the same variant index
+ *     replaces that `briefId-var-N` entry in place.
+ *   - Different variant indices of the same brief coexist as separate
+ *     manifest/catalog entries (`briefId-var-0`, `briefId-var-3`, ...).
  *
  * Anchor source resolution
  * ------------------------
@@ -337,6 +336,14 @@ function upsertCatalog(
   // Remove existing entry with same ID if present, then add new one
   const filtered = catalog.filter((e) => e.id !== catalogEntry.id);
   filtered.push(catalogEntry);
+  filtered.sort((a, b) => {
+    const aKind = a.kind === 'sheet' ? 0 : 1;
+    const bKind = b.kind === 'sheet' ? 0 : 1;
+    if (aKind !== bKind) return aKind - bKind;
+    const aId = typeof a.id === 'string' ? a.id : '';
+    const bId = typeof b.id === 'string' ? b.id : '';
+    return aId.localeCompare(bId);
+  });
 
   // Write updated catalog
   fs.mkdirSync(path.dirname(catalogPath), { recursive: true });
