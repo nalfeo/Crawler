@@ -2,6 +2,7 @@ import { addComponent, addEntity, set } from 'bitecs';
 import { createInventoryBag } from '../shared/inventory.js';
 import {
   AoeOnImpact,
+  Bouncing,
   AreaDamage,
   Damage,
   Enemy,
@@ -293,6 +294,22 @@ export function spawnReturningProjectile(
   );
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
+  return eid;
+}
+
+/** Spawn a projectile that can bounce off arena bounds. */
+export function spawnBouncingProjectile(
+  world: GameWorld,
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  damage: number,
+  remainingBounces: number,
+  pierce: number = 0,
+): number {
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce);
+  addComponent(world.ecs, eid, set(Bouncing, { remainingBounces }));
   return eid;
 }
 
