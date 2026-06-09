@@ -17,6 +17,7 @@ import {
   clearEntityStores,
   spawnMeleeSwing,
   spawnProjectile,
+  spawnBouncingProjectile,
   spawnReturningProjectile,
   spawnTrap,
 } from '../core/helpers.js';
@@ -315,6 +316,20 @@ function fireThrownAttack(
       def.returnSpeed,
       ftToPx(def.maxRange),
       TeamId.PLAYER,
+      def.pierce,
+    );
+    return;
+  }
+
+  if (def.bounceCount > 0) {
+    spawnBouncingProjectile(
+      world,
+      px,
+      py,
+      dir.x * def.projectileSpeed,
+      dir.y * def.projectileSpeed,
+      def.baseDamage,
+      def.bounceCount,
       def.pierce,
     );
     return;

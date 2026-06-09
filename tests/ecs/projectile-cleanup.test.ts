@@ -1,6 +1,7 @@
-import { entityExists } from 'bitecs';
+import { addComponent, entityExists, removeComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { spawnProjectile } from '../../src/core/helpers.js';
+import { Bouncing, Velocity } from '../../src/core/components.js';
+import { spawnBouncingProjectile, spawnProjectile } from '../../src/core/helpers.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
@@ -47,6 +48,49 @@ describe('projectileCleanupSystem', () => {
     projectileCleanupSystem(world);
 
     expect(entityExists(world.ecs, nearEdge)).toBe(true);
+  });
+
+  it('bounces bouncing projectiles off arena bounds and decrements remaining bounces', () => {
+    const world = createTestWorld();
+    const bouncing = spawnBouncingProjectile(world, -5, 360, -4, 0, 10, 2);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, bouncing)).toBe(true);
+    expect(world.stores.bouncing.remainingBounces[bouncing]).toBe(1);
+    expect(world.stores.velocity.x[bouncing]).toBe(4);
+    expect(world.stores.position.x[bouncing]).toBe(0);
+  });
+
+  it('removes bouncing projectiles that leave play bounds with no bounces left', () => {
+    const world = createTestWorld();
+    const bouncing = spawnBouncingProjectile(world, -1, 360, -4, 0, 10, 0);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, bouncing)).toBe(false);
+  });
+
+  it('keeps non-bouncing projectiles using existing cleanup behavior', () => {
+    const world = createTestWorld();
+    const projectile = spawnProjectile(world, -1, 360, -4, 0, 10);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, projectile)).toBe(true);
+  });
+
+  it('does not process bounce for entities missing velocity component', () => {
+    const world = createTestWorld();
+    const bouncing = spawnProjectile(world, -5, 360, -4, 0, 10);
+    // Simulate malformed data where bounce metadata exists but velocity tag was removed.
+    world.stores.bouncing.remainingBounces[bouncing] = 1;
+    addComponent(world.ecs, bouncing, Bouncing);
+    removeComponent(world.ecs, bouncing, Velocity);
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, bouncing)).toBe(true);
   });
 
   it('removes projectiles that hit impassable map tiles (stationary in wall)', () => {
