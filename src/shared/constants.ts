@@ -6,6 +6,7 @@
  * structural constants (enums, game dimensions) remain hardcoded.
  */
 import tuning from './data/tuning.json';
+import { ftToPx } from './units.js';
 
 export const GAME = {
   WIDTH: 1280,
@@ -43,24 +44,24 @@ export const WEAPON = {
   PROJECTILE_SPEED: tuning.weapon.projectileSpeed,
   FIRE_RATE_MS: tuning.weapon.fireRateMs,
   BASE_DAMAGE: tuning.weapon.baseDamage,
-  MELEE_RANGE: tuning.weapon.meleeRange,
+  MELEE_RANGE: ftToPx(tuning.weapon.meleeRange),
   MELEE_DURATION_MS: tuning.weapon.meleeDurationMs,
-  BEAM_LENGTH: tuning.weapon.beamLength,
+  BEAM_LENGTH: ftToPx(tuning.weapon.beamLength),
   BEAM_DURATION_MS: tuning.weapon.beamDurationMs,
   BEAM_TICK_MS: tuning.weapon.beamTickMs,
   TRAP_ARM_MS: tuning.weapon.trapArmMs,
-  TRAP_TRIGGER_RADIUS: tuning.weapon.trapTriggerRadius,
-  TRAP_EXPLOSION_RADIUS: tuning.weapon.trapExplosionRadius,
+  TRAP_TRIGGER_RADIUS: ftToPx(tuning.weapon.trapTriggerRadius),
+  TRAP_EXPLOSION_RADIUS: ftToPx(tuning.weapon.trapExplosionRadius),
   THROWN_RETURN_SPEED: tuning.weapon.thrownReturnSpeed,
-  THROWN_MAX_RANGE: tuning.weapon.thrownMaxRange,
-  AOE_RADIUS: tuning.weapon.aoeRadius,
+  THROWN_MAX_RANGE: ftToPx(tuning.weapon.thrownMaxRange),
+  AOE_RADIUS: ftToPx(tuning.weapon.aoeRadius),
 } as const;
 
 export const ENEMY_PROJECTILE = {
   SPEED: tuning.enemyProjectile.speed,
   FIRE_COOLDOWN_MS: tuning.enemyProjectile.fireCooldownMs,
   DAMAGE: tuning.enemyProjectile.damage,
-  MUZZLE_OFFSET: tuning.enemyProjectile.muzzleOffset,
+  MUZZLE_OFFSET: ftToPx(tuning.enemyProjectile.muzzleOffset),
 } as const;
 
 export const FLOOR = {
