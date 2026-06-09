@@ -44,6 +44,10 @@ export enum TerrainType {
   CAVE_WALL = 12,
   TREE = 13,
   RUBBLE = 14,
+  /** Floor tiles inside a boss/staircase room — rendered distinctly for player readability. */
+  BOSS_STAIR_FLOOR = 15,
+  /** Floor tiles inside a safe room — rendered with a calm blue tint. */
+  SAFE_ROOM_FLOOR = 16,
 }
 
 // --- Biome Types ---
@@ -95,6 +99,20 @@ export const DEFAULT_MAP_CONFIG: MapConfig = {
   floorDensity: 0.45,
 };
 
+// --- Room Roles ---
+
+/** Semantic role assigned to each room during map generation. */
+export enum RoomRole {
+  /** Player spawns here at floor start. */
+  SPAWN = 'spawn',
+  /** Boss spawns here; stairs to the next floor appear after the boss is defeated. */
+  BOSS_STAIR = 'boss_stair',
+  /** Safe room — healing, merchant, objective marker. */
+  SAFE = 'safe',
+  /** Standard combat/loot room. */
+  NORMAL = 'normal',
+}
+
 // --- Room Data ---
 
 export interface RoomBounds {
@@ -126,6 +144,8 @@ export interface RoomData {
   readonly doors: readonly DoorLocation[];
   /** Indices of rooms connected via doors/corridors. */
   readonly neighbors: readonly number[];
+  /** Semantic role assigned during generation. */
+  role: RoomRole;
   /** Optional label for AI/narrative use. */
   readonly label?: string;
 }

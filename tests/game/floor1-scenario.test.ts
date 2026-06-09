@@ -1,3 +1,4 @@
+import { removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
@@ -82,5 +83,66 @@ describe('floor1Scenario', () => {
     expect(archetypeA).toBe(archetypeB);
     expect(worldA.stores.position.x[eidA]).toBeCloseTo(worldB.stores.position.x[eidB] ?? 0, 5);
     expect(worldA.stores.position.y[eidA]).toBeCloseTo(worldB.stores.position.y[eidB] ?? 0, 5);
+  });
+
+  it('spawns stairs with a large slime rat boss and unlocks stairs after boss death', () => {
+    const world = createTestWorld({ seed: 123 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const objective = world.floor1?.objective;
+    if (!objective) {
+      throw new Error('Expected floor1 objective to exist');
+    }
+
+    objective.ratsKilled = objective.requiredRats;
+    objective.slimesKilled = objective.requiredSlimes;
+    objective.safeRoomDiscovered = true;
+    world.playerGold = objective.requiredGold;
+    const bag = world.inventories.get(player);
+    if (!bag) {
+      throw new Error('Expected player inventory bag to exist');
+    }
+    bag.slots.push({ itemId: 'rusted-scrap', quantity: objective.requiredJunk });
+
+    world.elapsedMs = 1_000;
+    floor1ObjectiveSystem(world);
+    expect(objective.staircaseSpawnStartedMs).toBe(1_000);
+    expect(objective.staircaseSpawned).toBe(false);
+    expect(objective.staircaseUnlocked).toBe(false);
+
+    world.elapsedMs = 1_000 + objective.staircaseSpawnCountdownMs - 1;
+    floor1ObjectiveSystem(world);
+    expect(objective.staircaseSpawned).toBe(false);
+    expect(objective.staircaseSpawnRemainingMs).toBe(1);
+
+    world.elapsedMs = 1_000 + objective.staircaseSpawnCountdownMs;
+    floor1ObjectiveSystem(world);
+    expect(objective.staircaseSpawned).toBe(true);
+    expect(objective.staircaseLocked).toBe(true);
+    expect(objective.staircaseBossEid).not.toBeNull();
+    expect(objective.staircaseUnlocked).toBe(false);
+
+    world.stores.position.x[player] = objective.staircasePos.x;
+    world.stores.position.y[player] = objective.staircasePos.y;
+    floor1ObjectiveSystem(world);
+    expect(objective.staircaseDiscovered).toBe(false);
+
+    const bossEid = objective.staircaseBossEid;
+    if (bossEid === null) {
+      throw new Error('Expected staircase boss to exist');
+    }
+
+    removeEntity(world.ecs, bossEid);
+    floor1ObjectiveSystem(world);
+    expect(objective.staircaseLocked).toBe(false);
+    expect(objective.staircaseUnlocked).toBe(true);
+    expect(objective.staircaseBossDefeated).toBe(true);
+
+    floor1ObjectiveSystem(world);
+    expect(objective.staircaseDiscovered).toBe(true);
+    expect(world.state).toBe('safe_room');
+    expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
   });
 });

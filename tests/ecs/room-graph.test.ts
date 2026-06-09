@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { RoomGraph } from '../../src/core/map/RoomGraph';
+import { RoomRole } from '../../src/shared/map-types';
 
 describe('RoomGraph', () => {
   it('should start empty', () => {
@@ -67,6 +68,58 @@ describe('RoomGraph', () => {
       expect(graph.getRoomAt(5, 5)).toBe(0);
       expect(graph.getRoomAt(25, 25)).toBe(1);
       expect(graph.getRoomAt(15, 15)).toBe(-1); // between rooms
+    });
+  });
+
+  describe('role management', () => {
+    it('new rooms default to NORMAL role', () => {
+      const graph = new RoomGraph();
+      graph.add({ x: 0, y: 0, width: 10, height: 10 });
+      expect(graph.get(0)!.role).toBe(RoomRole.NORMAL);
+    });
+
+    it('setRole updates room role', () => {
+      const graph = new RoomGraph();
+      graph.add({ x: 0, y: 0, width: 10, height: 10 });
+      graph.setRole(0, RoomRole.BOSS_STAIR);
+      expect(graph.get(0)!.role).toBe(RoomRole.BOSS_STAIR);
+    });
+
+    it('getFirstRoomByRole returns the first matching room', () => {
+      const graph = new RoomGraph();
+      graph.add({ x: 0, y: 0, width: 10, height: 10 });
+      graph.add({ x: 20, y: 0, width: 10, height: 10 });
+      graph.setRole(1, RoomRole.SAFE);
+
+      const safe = graph.getFirstRoomByRole(RoomRole.SAFE);
+      expect(safe).toBeDefined();
+      expect(safe!.id).toBe(1);
+    });
+
+    it('getFirstRoomByRole returns undefined when no match', () => {
+      const graph = new RoomGraph();
+      graph.add({ x: 0, y: 0, width: 10, height: 10 });
+      expect(graph.getFirstRoomByRole(RoomRole.BOSS_STAIR)).toBeUndefined();
+    });
+
+    it('getRoomsByRole returns all matching rooms', () => {
+      const graph = new RoomGraph();
+      graph.add({ x: 0, y: 0, width: 10, height: 10 });
+      graph.add({ x: 20, y: 0, width: 10, height: 10 });
+      graph.add({ x: 40, y: 0, width: 10, height: 10 });
+      graph.setRole(0, RoomRole.NORMAL);
+      graph.setRole(1, RoomRole.SAFE);
+      graph.setRole(2, RoomRole.SAFE);
+
+      const safeRooms = graph.getRoomsByRole(RoomRole.SAFE);
+      expect(safeRooms).toHaveLength(2);
+      expect(safeRooms.map((r) => r.id)).toEqual([1, 2]);
+    });
+
+    it('add() accepts an explicit role', () => {
+      const graph = new RoomGraph();
+      graph.add({ x: 0, y: 0, width: 10, height: 10 }, [], [], RoomRole.SPAWN);
+      expect(graph.get(0)!.role).toBe(RoomRole.SPAWN);
     });
   });
 
