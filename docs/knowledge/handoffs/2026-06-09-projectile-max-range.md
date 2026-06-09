@@ -1,6 +1,6 @@
 # Handoff: Projectile Max Range Despawn Rules
 
-**Date:** 2025-01-09  
+**Date:** 2026-06-09  
 **Session:** Weapon range rules (nalfeo/vigilant-adventure)  
 **Commit:** 42f9825 - feat: implement projectile max range despawn rules
 
