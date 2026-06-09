@@ -74,7 +74,7 @@ flowchart TD
     CACHE{Path cache\nvalid & fresh?}
     FIND[findTilePath\nA* from enemy tile to player tile]
     NEXT[Pop next waypoint]
-    STALE{Waypoint reached\nor path stale?}
+    STALE{Waypoint reached\nor path stale?]
     VEL[velocity = normalise(waypoint - pos) × speed]
     STUCK{stuckFrames >\nthreshold?}
     REFRESH[Force path refresh]

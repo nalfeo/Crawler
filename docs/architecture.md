@@ -32,7 +32,7 @@ A crafting-focused vampire-survivors-like set inside a brutal intergalactic real
 
 ## 2. Layer Model
 
-Five layers with strict one-way dependencies enforced by ESLint import rules.
+Four layers with strict one-way dependencies enforced by ESLint import rules.
 
 ```mermaid
 graph TD
@@ -194,9 +194,10 @@ flowchart LR
 **Weapon & AI systems** run inside `preSystems`/`postSystems` (injected by the scenario at scene construction — see [Floor 1 scenario](systems/06-map-generation.md)):
 
 ```
-preSystems: statsSystem → floor1PlayerStatSystem → weaponSystem
-            → enemyAISystem → floor1EnemyDirectorSystem
-postSystems: levelSystem → skillSystem → abilitySystem → floor1ObjectiveSystem
+preSystems: weaponSystem → weaponEntitySystem → enemyAISystem
+           → enemySpawnerSystem → floor1EnemyDirectorSystem
+           → floor1ObjectiveSystem → floor1PlayerStatSystem
+postSystems: levelSystem → statsSystem → skillSystem → abilitySystem
 ```
 
 ---
@@ -234,7 +235,7 @@ postSystems: levelSystem → skillSystem → abilitySystem → floor1ObjectiveSy
 | System                      | Status | Brief                                                   | Detail                                         |
 | --------------------------- | ------ | ------------------------------------------------------- | ---------------------------------------------- |
 | `weaponSystem`              | ✅     | Player auto-fires all 6 weapon types                    | [Weapons](systems/03-weapons.md)               |
-| `weaponEntitySystem`        | ✅     | Weapon entities auto-target nearest enemy and fire      | [Weapons](systems/03-weapons.md)               |
+| `weaponEntitySystem`        | ✅     | Enemy weapon entities fire ranged projectiles           | [Weapons](systems/03-weapons.md)               |
 | `enemyAISystem`             | ✅     | Pathfinding + 3 AI personas (Chase, Swarm, Ranged)      | [Enemy AI](systems/04-enemy-ai.md)             |
 | `enemySpawnerSystem`        | ✅     | Timed enemy spawning within bounds                      | [Enemy AI](systems/04-enemy-ai.md)             |
 | `levelSystem`               | ✅     | Accumulates XP; grants stat points on level-up          | [Progression](systems/05-progression.md)       |
