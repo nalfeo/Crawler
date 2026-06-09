@@ -155,7 +155,6 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
 
       hudUi.sync(world, playerEid);
     }
-
   }
 
   const createGame = (): void => {
