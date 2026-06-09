@@ -13,7 +13,7 @@ Added a one-shot PowerShell script to bootstrap Azure OpenAI credentials on any 
 | File | Change |
 |------|--------|
 | `scripts/setup-azure-env.ps1` | New bootstrap script |
-| `.env.example` | New template with var names (empty values) |
+| `scripts/azure-env.example` | New template with var names (empty values) |
 | `.gitignore` | Added explicit `.env.local` comment/entry alongside `*.local` |
 
 ## How it works

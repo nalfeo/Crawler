@@ -69,6 +69,12 @@ $apiKey = az cognitiveservices account keys list `
     --subscription $subscription `
     --query key1 -o tsv
 
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to retrieve API key from Azure CLI output." `
+        -ForegroundColor Red
+    exit 1
+}
+
 if (-not $apiKey) {
     Write-Host "Failed to retrieve API key. Check your permissions." `
         -ForegroundColor Red
