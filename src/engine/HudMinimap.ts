@@ -137,34 +137,49 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let visitedTiles: Uint8Array | null = null;
 
   // ---------------------------------------------------------------------------
-  // Terrain bake
+  // Terrain bake — incremental
   // ---------------------------------------------------------------------------
 
-  function bakeTerrain(floorMap: FloorMap, visited: Uint8Array): void {
-    rt?.destroy();
-    const g = scene.add.graphics();
-    const scaleX = MAP_WIDTH / floorMap.widthPx;
-    const scaleY = MAP_HEIGHT / floorMap.heightPx;
-    const tilePx = floorMap.config.tileSizePx;
-    const pixW = Math.max(1, tilePx * scaleX);
-    const pixH = Math.max(1, tilePx * scaleY);
+  // Scale factors cached per floorMap to avoid recomputing each sync.
+  let cachedScaleX = 0;
+  let cachedScaleY = 0;
+  let cachedTilePx = 0;
+  let cachedPixW = 0;
+  let cachedPixH = 0;
 
-    for (let ty = 0; ty < floorMap.height; ty += 1) {
-      for (let tx = 0; tx < floorMap.width; tx += 1) {
-        const idx = ty * floorMap.width + tx;
-        if (!visited[idx]) continue;
-        const terrain = floorMap.terrain[idx] ?? TerrainType.VOID;
-        const color = MINI_COLORS[terrain] ?? 0x05060f;
-        g.fillStyle(color, 1);
-        g.fillRect(tx * tilePx * scaleX, ty * tilePx * scaleY, pixW, pixH);
-      }
+  /**
+   * Stamp only the newly revealed tile indices onto the persistent RenderTexture.
+   * Creates the RT on first call per floor; reuses it on subsequent calls so we
+   * never iterate or redraw already-visited tiles.
+   */
+  function bakeNewTiles(floorMap: FloorMap, newIndices: number[]): void {
+    if (!rt) {
+      cachedScaleX = MAP_WIDTH / floorMap.widthPx;
+      cachedScaleY = MAP_HEIGHT / floorMap.heightPx;
+      cachedTilePx = floorMap.config.tileSizePx;
+      cachedPixW = Math.max(1, cachedTilePx * cachedScaleX);
+      cachedPixH = Math.max(1, cachedTilePx * cachedScaleY);
+      rt = scene.add
+        .renderTexture(MAP_X, MAP_Y, MAP_WIDTH, MAP_HEIGHT)
+        .setScrollFactor(0)
+        .setDepth(DEPTH + 1)
+        .setVisible(false);
     }
 
-    rt = scene.add
-      .renderTexture(MAP_X, MAP_Y, MAP_WIDTH, MAP_HEIGHT)
-      .setScrollFactor(0)
-      .setDepth(DEPTH + 1)
-      .setVisible(false);
+    const g = scene.add.graphics();
+    for (const idx of newIndices) {
+      const tx = idx % floorMap.width;
+      const ty = Math.floor(idx / floorMap.width);
+      const terrain = floorMap.terrain[idx] ?? TerrainType.VOID;
+      const color = MINI_COLORS[terrain] ?? 0x05060f;
+      g.fillStyle(color, 1);
+      g.fillRect(
+        tx * cachedTilePx * cachedScaleX,
+        ty * cachedTilePx * cachedScaleY,
+        cachedPixW,
+        cachedPixH,
+      );
+    }
     rt.draw(g, 0, 0);
     g.destroy();
   }
@@ -259,19 +274,19 @@ export function createHudMinimap(scene: Phaser.Scene): {
       rt = undefined;
     }
 
-    // Accumulate explored tiles
+    // Accumulate explored tiles; collect only newly revealed indices
     const visited = visitedTiles!;
-    let anyNewTile = false;
+    const newIndices: number[] = [];
     for (let i = 0; i < visited.length; i += 1) {
       if (!visited[i] && floorMap.visible[i]) {
         visited[i] = 1;
-        anyNewTile = true;
+        newIndices.push(i);
       }
     }
 
-    // Rebake terrain when new tiles discovered
-    if (anyNewTile || !rt) {
-      bakeTerrain(floorMap, visited);
+    // Stamp only new tiles onto the persistent RT (or create it on first call)
+    if (newIndices.length > 0 || !rt) {
+      bakeNewTiles(floorMap, newIndices);
       if (expanded) {
         rt?.setVisible(true);
       }
