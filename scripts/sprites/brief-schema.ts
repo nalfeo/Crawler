@@ -136,8 +136,8 @@ const sensorOverridesSchema = z
     anchor: z
       .object({
         derive: z.boolean().default(false),
-        bandRows: z.number().int().min(1).max(8).default(4),
-        centerToleranceX: z.number().int().min(0).max(8).default(3),
+        bandRows: z.number().int().min(1).max(32).default(4),
+        centerToleranceX: z.number().int().min(0).max(64).default(3),
       })
       .strict()
       .optional(),
@@ -227,6 +227,26 @@ export const briefSchema = z
       })
       .strict()
       .default({ enabled: false, maxVariants: 16 }),
+    /**
+     * Optional post-processing overrides beyond the standard pipeline.
+     *
+     * `trimAndFit`: when enabled, after the normal postprocess steps
+     * (bg removal → downscale → quantize → alpha threshold), the
+     * pipeline trims fully-transparent edge rows/columns and then
+     * scales the result up (nearest-neighbor) so the smallest
+     * dimension reaches `minDimension` pixels. This maximises pixel
+     * utilisation for sprites that don't fill their canvas.
+     *
+     * The `dimensions-exact` sensor should be disabled or adjusted
+     * when this is enabled since the output size becomes dynamic.
+     */
+    postprocessing: z
+      .object({
+        trimAndFit: z.boolean().default(false),
+        minDimension: z.number().int().min(8).max(256).default(64),
+      })
+      .strict()
+      .default({ trimAndFit: false, minDimension: 64 }),
   })
   .strict()
   .superRefine((brief, ctx) => {
