@@ -25,9 +25,6 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      - name: Install Stryker dependencies
-        run: npm ci
-
       - name: Run mutation tests
         run: npx stryker run
         continue-on-error: true
