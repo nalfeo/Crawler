@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export CI=1
 
 echo "🔍 Step 1-2/3: Type checking + Linting (parallel)..."
 npx tsc --noEmit &
@@ -23,6 +24,6 @@ if [ "$eslint_status" -ne 0 ]; then
 fi
 
 echo "🔍 Step 3/3: Unit tests..."
-npx vitest run --project unit --reporter=verbose
+npx vitest run --project unit --reporter=dot
 
 echo "✅ Fast verification passed."
