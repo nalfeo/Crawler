@@ -7,12 +7,19 @@ if [ -z "$staged_files" ]; then
   exit 0
 fi
 
-prettier_targets="$(printf '%s\n' "$staged_files" | grep -E '\.(ts|tsx|js|jsx|json|md|css|scss|yml|yaml)$' || true)"
+stashed=0
+cleanup() {
+  if [ "$stashed" -eq 1 ]; then
+    git stash pop -q --index >/dev/null
+  fi
+}
+trap cleanup EXIT INT TERM
 
-if [ -z "$prettier_targets" ]; then
-  exit 0
+if ! git diff --quiet; then
+  git stash push -q --keep-index -m "pre-commit-format-stash"
+  stashed=1
 fi
 
 echo "Running Prettier on staged files..."
-printf '%s\n' "$prettier_targets" | xargs npx prettier --write
-printf '%s\n' "$prettier_targets" | xargs git add --
+git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 npx prettier --ignore-unknown --write --
+git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 git add --
