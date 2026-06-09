@@ -664,16 +664,24 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     );
     sidePanel.append(briefSection);
 
-    const selectionKey = `${run.briefId}/${run.runId}/${variantIndex}`;
+    const selectionSnapshot = state.selected
+      ? {
+          briefIndex: state.selected.briefIndex,
+          candidateIndex: state.selected.candidateIndex,
+        }
+      : null;
     fetchJson<{ briefYaml: string | null; promptText: string | null }>(
       `${SIDECAR_BASE}/api/runs/${encodeURIComponent(run.briefId)}/${encodeURIComponent(run.runId)}/brief`,
     )
       .then((data) => {
         // Guard against stale fetch if user changed selection.
-        const currentKey = state.selected
-          ? `${state.runs[state.selected.briefIndex]?.briefId}/${state.runs[state.selected.briefIndex]?.runId}/${typeof candidatesArr[state.selected.candidateIndex]?.index === 'number' ? candidatesArr[state.selected.candidateIndex]!.index : state.selected.candidateIndex}`
-          : null;
-        if (currentKey !== selectionKey) return;
+        if (!selectionSnapshot || !state.selected) return;
+        if (
+          state.selected.briefIndex !== selectionSnapshot.briefIndex ||
+          state.selected.candidateIndex !== selectionSnapshot.candidateIndex
+        ) {
+          return;
+        }
 
         briefSection.replaceChildren();
         if (data.briefYaml) {
