@@ -148,7 +148,7 @@ function checkCrossSystemAdr(files) {
   if (hitCount < 2) return null;
   const hasAdr = files.some((f) => ADR_RE.test(f));
   if (hasAdr) return null;
-  return `Heads up: diff touches ${hitCount} architectural layers (src/core, src/engine, src/game). Memory policy recommends an ADR under docs/knowledge/adr/ for decisions affecting 2+ systems. This is a soft warning, not a block.`;
+  return `Diff touches ${hitCount} architectural layers (src/core, src/engine, src/game). Per memory policy, every change affecting 2+ systems requires an ADR under docs/knowledge/adr/. Create one documenting: context, decision, consequences (positive/negative/risks), and alternatives considered.`;
 }
 
 export default {
@@ -196,19 +196,18 @@ export default {
     const labIssue = checkLabGate(files, cwd);
     if (labIssue) denyParts.push(labIssue);
 
-    const adrWarning = checkCrossSystemAdr(files);
+    const adrIssue = checkCrossSystemAdr(files);
+    if (adrIssue) denyParts.push(adrIssue);
 
     if (denyParts.length > 0) {
       const reason = denyParts.join('\n\n--- next finding ---\n\n');
       return {
         decision: 'deny',
         reason,
-        additionalContext: adrWarning || undefined,
       };
     }
     return {
       decision: 'allow',
-      additionalContext: adrWarning || undefined,
     };
   },
 };

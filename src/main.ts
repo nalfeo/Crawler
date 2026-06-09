@@ -3,6 +3,15 @@ import { BootScene, MainGameScene } from './engine/index.js';
 import { GAME } from './shared/constants.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from './game/systems/index.js';
 import {
+  enemyAISystem,
+  floor1EnemyDirectorSystem,
+  floor1ObjectiveSystem,
+  floor1PlayerStatSystem,
+  initializeFloor1Scenario,
+  selectFloor1StarterWeapon,
+  weaponSystem,
+} from './game/index.js';
+import {
   createLogger,
   getGlobalLogLevel,
   setGlobalLogLevel,
@@ -33,7 +42,21 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, new MainGameScene([levelSystem, skillSystem, abilitySystem, statsSystem])],
+  scene: [
+    BootScene,
+    new MainGameScene({
+      configureWorld: initializeFloor1Scenario,
+      selectLoadoutOption: selectFloor1StarterWeapon,
+      preSystems: [
+        statsSystem,
+        floor1PlayerStatSystem,
+        weaponSystem,
+        enemyAISystem,
+        floor1EnemyDirectorSystem,
+      ],
+      postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem],
+    }),
+  ],
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

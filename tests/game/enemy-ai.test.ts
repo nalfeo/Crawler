@@ -1,6 +1,9 @@
 import { query, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { EnemyBehavior, EnemyProjectile, Velocity } from '../../src/core/components.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
 import {
   movementSystem,
   spawnBehaviorEnemy,
@@ -8,7 +11,49 @@ import {
   spawnPlayer,
 } from '../../src/core/index.js';
 import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
+import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+
+function createOneRoomMapWithDoor(doorOpen: boolean): FloorMap {
+  const config: MapConfig = {
+    widthTiles: 8,
+    heightTiles: 8,
+    tileSizePx: 32,
+    biome: BiomeType.DUNGEON,
+    seed: 42,
+    roomWidthRange: [4, 6],
+    roomHeightRange: [4, 6],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(8, 8);
+  tileMap.fill(TilePresets.FLOOR);
+  tileMap.setFlags(3, 1, doorOpen ? TilePresets.DOOR_OPEN : TilePresets.DOOR_CLOSED);
+  const roomGraph = new RoomGraph();
+  roomGraph.add({ x: 1, y: 1, width: 5, height: 5 }, [{ x: 3, y: 1, connectsTo: -1 }], []);
+  return new FloorMap(config, tileMap, roomGraph, new Uint8Array(64), { x: 2, y: 2 });
+}
+
+function createObstacleMap(): FloorMap {
+  const config: MapConfig = {
+    widthTiles: 12,
+    heightTiles: 12,
+    tileSizePx: 32,
+    biome: BiomeType.DUNGEON,
+    seed: 42,
+    roomWidthRange: [4, 6],
+    roomHeightRange: [4, 6],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(12, 12);
+  tileMap.fill(TilePresets.FLOOR);
+  // Vertical wall directly between enemy and player.
+  for (let y = 1; y < 11; y += 1) {
+    tileMap.setFlags(5, y, TilePresets.WALL);
+  }
+  return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(144), { x: 2, y: 2 });
+}
 
 describe('enemyAISystem', () => {
   it('moves a chase enemy toward the player', () => {
@@ -144,15 +189,42 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
 
-  it('ranged enemies pursue player when outside aggro range but beyond attack range', () => {
+  it('ranged enemies do not detect player outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const enemy = spawnBehaviorEnemy(world, 400, 0, 20, AI_TYPE.RANGED, 2, 100, 150);
 
     enemyAISystem(world);
 
-    // Ranged enemies always pursue to get within attack range
-    expect(world.stores.velocity.x[enemy]).toBeLessThan(0);
+    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
+    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+  });
+
+  it('keeps room enemies idle until their room door opens', () => {
+    const world = createTestWorld();
+    world.floorMap = createOneRoomMapWithDoor(false);
+    spawnPlayer(world, 32, 32);
+    const enemy = spawnBehaviorEnemy(world, 64, 64, 20, AI_TYPE.CHASE, 2, 200, 0);
+
+    enemyAISystem(world);
+    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
+    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+
+    world.floorMap.tileMap.openDoor(3, 1);
+    enemyAISystem(world);
+    expect(world.stores.velocity.x[enemy]).not.toBeCloseTo(0);
+  });
+
+  it('steers around nearby wall obstacles instead of pushing straight into them', () => {
+    const world = createTestWorld();
+    world.floorMap = createObstacleMap();
+    spawnPlayer(world, 8 * 32 + 16, 6 * 32 + 16);
+    const enemy = spawnBehaviorEnemy(world, 4 * 32 + 28, 6 * 32 + 16, 20, AI_TYPE.CHASE, 2, 300, 0);
+
+    enemyAISystem(world);
+
+    // Direct path is blocked by the x=5 wall, so avoidance should introduce lateral steering.
+    expect(world.stores.velocity.y[enemy]).not.toBeCloseTo(0);
   });
 
   it('falls back to chase behavior when ranged attack range is zero', () => {

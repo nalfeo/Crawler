@@ -10,6 +10,7 @@ describe('weaponSystem', () => {
   it('spawns a projectile when the cooldown has elapsed', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 120);
+    spawnEnemy(world, 200, 120, 10); // target enemy (no floorMap = always visible)
     world.elapsedMs = WEAPON.FIRE_RATE_MS;
 
     weaponSystem(world);
@@ -22,6 +23,16 @@ describe('weaponSystem', () => {
     expect(world.stores.position.x[projectile!]).toBe(100);
     expect(world.stores.position.y[projectile!]).toBe(120);
     expect(world.stores.damage.amount[projectile!]).toBe(WEAPON.BASE_DAMAGE);
+  });
+
+  it('does not fire when there are no enemies', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 120);
+    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
   });
 
   it('aims projectiles at the nearest enemy', () => {
@@ -46,6 +57,7 @@ describe('weaponSystem', () => {
   it('does not spawn a projectile while the weapon is on cooldown', () => {
     const world = createTestWorld();
     spawnPlayer(world, 64, 64);
+    spawnEnemy(world, 200, 64, 10); // target enemy
     world.elapsedMs = WEAPON.FIRE_RATE_MS;
 
     weaponSystem(world);
