@@ -121,6 +121,29 @@ const sensorOverridesSchema = z
       .strict()
       .optional(),
     /**
+     * Edge-clipping / bleed-artifact guard.
+     *
+     * By default, variants fail when the main silhouette touches the frame edge
+     * (likely clipped) or when a disconnected edge-touching fragment appears
+     * (often bleed from an adjacent sheet cell).
+     *
+     * Use overrides only when a brief intentionally wants border contact.
+     */
+    edge: z
+      .object({
+        allowMainTouch: z.boolean().default(false),
+        allowDetachedEdgeComponents: z.boolean().default(false),
+        maxDetachedEdgePixels: z.number().int().min(0).max(512).default(0),
+      })
+      .strict()
+      .optional(),
+    enemy: z
+      .object({
+        facing: z.enum(['front', 'any']).default('front'),
+      })
+      .strict()
+      .optional(),
+    /**
      * Per-variant derived anchor opt-in. When `derive: true`, the scorer
      * replaces the static `anchor-opaque` sensor with `anchor-derivable`,
      * which finds the bottom-center grip pixel from the silhouette instead
@@ -136,6 +159,7 @@ const sensorOverridesSchema = z
     anchor: z
       .object({
         derive: z.boolean().default(false),
+        mode: z.enum(['static', 'grip', 'center-of-mass']).default('static'),
         bandRows: z.number().int().min(1).max(32).default(4),
         centerToleranceX: z.number().int().min(0).max(64).default(3),
       })

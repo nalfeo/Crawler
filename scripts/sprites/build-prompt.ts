@@ -68,7 +68,15 @@ export function extractPreamble(markdown: string): string {
  * trivial to diff "what's different about sheet mode?" in tests.
  */
 export function buildPrompt(brief: Brief, styleGuide: string): string {
-  return [styleGuide, '', briefSubjectBlock(brief), '', singleConstraintsBlock()].join('\n');
+  const rules = typeRulesBlock(brief);
+  return [
+    styleGuide,
+    '',
+    briefSubjectBlock(brief),
+    ...(rules ? ['', rules] : []),
+    '',
+    singleConstraintsBlock(),
+  ].join('\n');
 }
 
 /**
@@ -85,11 +93,13 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
   const cols = brief.generation.sheet.cols;
   const emptyCells = brief.generation.sheet.emptyCells;
   const count = variants ?? variantCount(brief);
+  const rules = typeRulesBlock(brief);
   const variationsBlock = thematicVariationsBlock(brief.variations);
   return [
     styleGuide,
     '',
     briefSubjectBlock(brief),
+    ...(rules ? ['', rules] : []),
     '',
     sheetLayoutBlock(rows, cols, count, emptyCells),
     ...(variationsBlock ? ['', variationsBlock] : []),
@@ -105,6 +115,16 @@ function briefSubjectBlock(brief: Brief): string {
   // better than comma-separated keywords. Authors should put any
   // visual detail in the description / prompt itself.
   return ['## Subject', brief.prompt.trim()].join('\n');
+}
+
+function typeRulesBlock(brief: Brief): string | null {
+  if (brief.type !== 'enemy') return null;
+  return [
+    '## Mob rules',
+    '- Draw the mob facing straight forward, not angled or in three-quarter view.',
+    '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
+    '- Anchor and composition should read from the mob silhouette itself, centered around the body mass.',
+  ].join('\n');
 }
 
 function singleConstraintsBlock(): string {

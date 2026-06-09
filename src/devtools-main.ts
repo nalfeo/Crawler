@@ -5,6 +5,7 @@ import {
   buildFloorArtPlanReport,
   parseApprovedSprites,
   parseCommittedBriefKeys,
+  parseDraftBriefKeys,
   parseFloorArtPlans,
   type FloorArtPlanReport,
   type FloorArtStatus,
@@ -18,6 +19,8 @@ const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   'approved-missing-file': '#dc2626',
   'brief-ready': '#4f46e5',
   'brief-ready-placeholder': '#7c3aed',
+  'draft-ready': '#0f766e',
+  'draft-ready-placeholder': '#0d9488',
   'needs-art-placeholder': '#b91c1c',
   planned: '#475569',
 };
@@ -111,6 +114,7 @@ function render(): void {
   }
 
   const briefKeys = parseCommittedBriefKeys(briefSources);
+  const draftBriefKeys = parseDraftBriefKeys(briefSources);
   const spriteRegistryIds = new Set(SPRITES.map((sprite) => sprite.id));
   const itemCatalogIds = new Set(ITEM_CATALOG.map((item) => item.id));
 
@@ -216,6 +220,7 @@ function render(): void {
     'Brief',
     'Placeholder',
     'Briefed',
+    'Drafted',
     'Approved',
     'Integration',
   ]) {
@@ -273,6 +278,7 @@ function render(): void {
     reports = plans.map((plan) =>
       buildFloorArtPlanReport(plan, {
         briefKeys,
+        draftBriefKeys,
         approvedSprites,
         spriteRegistryIds,
         itemCatalogIds,
@@ -296,6 +302,7 @@ function render(): void {
       ['Unresolved placeholders', String(plan.unresolvedPlaceholders)],
       ['Ready', String(plan.counts.ready)],
       ['Approved not integrated', String(plan.counts['approved-not-integrated'])],
+      ['Drafts ready', String(plan.counts['draft-ready'] + plan.counts['draft-ready-placeholder'])],
       ['Needs art', String(plan.counts['needs-art-placeholder'])],
     ];
     for (const [label, value] of cards) {
@@ -366,6 +373,7 @@ function render(): void {
         el('td', { text: asset.briefId }),
         el('td', { text: asset.placeholderInUse ? 'yes' : 'no' }),
         el('td', { text: asset.briefAuthored ? 'yes' : 'no' }),
+        el('td', { text: asset.draftAuthored ? 'yes' : 'no' }),
         el('td', {
           text: asset.approvedAssetExists ? 'yes' : asset.approved ? 'manifest-only' : 'no',
         }),
