@@ -83,7 +83,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   isOpen(): boolean;
   destroy(): void;
 } {
-  const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false);
+  const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
     .rectangle(0, 0, scene.scale.width, scene.scale.height, 0x020617, 0.72)
     .setOrigin(0, 0);

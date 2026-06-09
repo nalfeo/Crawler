@@ -244,12 +244,6 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     return;
   }
 
-  for (const eid of [...world.floor1.enemyArchetypes.keys()]) {
-    if (!entityExists(world.ecs, eid)) {
-      world.floor1.enemyArchetypes.delete(eid);
-    }
-  }
-
   if (world.floor1.enemyArchetypes.size >= FLOOR_1_MAX_ENEMIES) {
     return;
   }
