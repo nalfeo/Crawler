@@ -16,7 +16,7 @@ Implemented all 5 grouped lab UX feedback items for collision-lab and pathfindin
 
 - Added `'bowling-ball'` to `ProjectileType` union
 - Added `WallHit` type `{ t, normalX, normalY }` for AABB slab intersection
-- Added `raycastRectHit(ox, oy, dx, dy, rect)` for surface normal detection
+- Added `raycastRectHit(origin, delta, wall, radius)` for surface normal detection
 - Added `bouncesLeft` + `pierceThrough` fields to `ProjectileState`
 - Added `BOWLING_BALL_BOUNCES = 6` constant
 - Added profile: speed 340, radius 16, maxDistance 1400, color `#64748b`
