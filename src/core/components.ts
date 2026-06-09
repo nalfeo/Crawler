@@ -100,6 +100,10 @@ export function createComponentStores() {
       attackRange: new Float32Array(MAX_ENTITIES),
       fireCooldownMs: new Float32Array(MAX_ENTITIES),
       lastFireMs: new Float32Array(MAX_ENTITIES),
+      /** Set to 1 when this enemy has been permanently aggroed (e.g. hit by player). */
+      aggroedPermanently: new Uint8Array(MAX_ENTITIES),
+      /** Frames since velocity was zero (used to detect stuck enemies). */
+      stuckFrames: new Uint16Array(MAX_ENTITIES),
     },
     broadcastScore: { current: new Float32Array(MAX_ENTITIES) },
     droppedItem: { itemIndex: new Uint16Array(MAX_ENTITIES) },
