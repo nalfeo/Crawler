@@ -1,0 +1,21 @@
+{
+  "$schema": "https://stryker-mutator.io/schemas/stryker-core.json",
+  "testRunner": "vitest",
+  "coverageAnalysis": "perTest",
+  "mutate": ["src/core/systems/*.ts", "src/game/**/*.ts", "!src/game/index.ts", "!src/game/ai/**"],
+  "checkers": ["typescript"],
+  "tsconfigFile": "tsconfig.json",
+  "reporters": ["json", "clear-text"],
+  "jsonReporter": {
+    "fileName": "reports/mutation/mutation.json"
+  },
+  "thresholds": {
+    "high": 80,
+    "low": 60,
+    "break": null
+  },
+  "testRunnerNodeArgs": ["--experimental-vm-modules"],
+  "vitest": {
+    "configFile": "vitest.config.ts"
+  }
+}
