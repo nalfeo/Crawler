@@ -158,7 +158,157 @@ export function opaqueBboxFits(image: RgbaImage): SensorResult {
       `opaque bbox [${stats.minX}..${stats.maxX}] x [${stats.minY}..${stats.maxY}] outside frame ${image.width}x${image.height}`,
     );
   }
+  const edgeAnalysis = analyzeEdgeTouchingComponents(image, {
+    allowMainTouch: false,
+    allowDetachedEdgeComponents: false,
+    maxDetachedEdgePixels: 0,
+  });
+  if (!edgeAnalysis.ok) {
+    return fail(sensor, edgeAnalysis.reason, edgeAnalysis.pixels);
+  }
   return ok(sensor);
+}
+
+interface EdgeTouchOptions {
+  readonly allowMainTouch: boolean;
+  readonly allowDetachedEdgeComponents: boolean;
+  readonly maxDetachedEdgePixels: number;
+}
+
+interface OpaqueComponent {
+  readonly area: number;
+  readonly touchesEdge: boolean;
+  readonly edgePixels: ReadonlyArray<Pixel>;
+}
+
+interface EdgeAnalysis {
+  readonly ok: boolean;
+  readonly reason: string;
+  readonly pixels?: ReadonlyArray<Pixel>;
+}
+
+export function opaqueBboxFitsWithOptions(
+  image: RgbaImage,
+  opts: {
+    allowMainTouch?: boolean;
+    allowDetachedEdgeComponents?: boolean;
+    maxDetachedEdgePixels?: number;
+  } = {},
+): SensorResult {
+  const sensor = 'opaque-bbox-fits';
+  const stats = gatherOpaqueStats(image);
+  if (stats.count === 0) {
+    return fail(sensor, 'no opaque pixels - sprite is empty');
+  }
+  const edgeAnalysis = analyzeEdgeTouchingComponents(image, {
+    allowMainTouch: opts.allowMainTouch ?? false,
+    allowDetachedEdgeComponents: opts.allowDetachedEdgeComponents ?? false,
+    maxDetachedEdgePixels: opts.maxDetachedEdgePixels ?? 0,
+  });
+  if (!edgeAnalysis.ok) {
+    return fail(sensor, edgeAnalysis.reason, edgeAnalysis.pixels);
+  }
+  return ok(sensor);
+}
+
+function analyzeEdgeTouchingComponents(image: RgbaImage, opts: EdgeTouchOptions): EdgeAnalysis {
+  const components = extractOpaqueComponents(image);
+  if (components.length === 0) {
+    return { ok: false, reason: 'no opaque pixels - sprite is empty' };
+  }
+  let largestIdx = 0;
+  for (let i = 1; i < components.length; i++) {
+    if (components[i]!.area > components[largestIdx]!.area) largestIdx = i;
+  }
+  const largest = components[largestIdx]!;
+  if (largest.touchesEdge && !opts.allowMainTouch) {
+    return {
+      ok: false,
+      reason: `main silhouette touches frame edge (${image.width}x${image.height})`,
+      pixels: largest.edgePixels,
+    };
+  }
+  for (let i = 0; i < components.length; i++) {
+    if (i === largestIdx) continue;
+    const c = components[i]!;
+    if (!c.touchesEdge) continue;
+    if (!opts.allowDetachedEdgeComponents) {
+      return {
+        ok: false,
+        reason: `detached edge artifact detected (area=${c.area})`,
+        pixels: c.edgePixels,
+      };
+    }
+    if (c.area > opts.maxDetachedEdgePixels) {
+      return {
+        ok: false,
+        reason:
+          `detached edge artifact exceeds allowance (` +
+          `area=${c.area}, max=${opts.maxDetachedEdgePixels})`,
+        pixels: c.edgePixels,
+      };
+    }
+  }
+  return { ok: true, reason: 'ok' };
+}
+
+function extractOpaqueComponents(image: RgbaImage): OpaqueComponent[] {
+  const width = image.width;
+  const height = image.height;
+  const visited = new Uint8Array(width * height);
+  const components: OpaqueComponent[] = [];
+  const queueX: number[] = [];
+  const queueY: number[] = [];
+  const push = (x: number, y: number) => {
+    queueX.push(x);
+    queueY.push(y);
+  };
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (visited[idx] === 1 || !isOpaque(image, x, y)) continue;
+      visited[idx] = 1;
+      queueX.length = 0;
+      queueY.length = 0;
+      push(x, y);
+      let area = 0;
+      let touchesEdge = false;
+      const edgePixels: Pixel[] = [];
+      for (let q = 0; q < queueX.length; q++) {
+        const cx = queueX[q]!;
+        const cy = queueY[q]!;
+        area += 1;
+        if (isFrameEdge(cx, cy, width, height)) {
+          touchesEdge = true;
+          if (edgePixels.length < 16) edgePixels.push({ x: cx, y: cy });
+        }
+        const neighbors: ReadonlyArray<readonly [number, number]> = [
+          [cx - 1, cy],
+          [cx + 1, cy],
+          [cx, cy - 1],
+          [cx, cy + 1],
+        ];
+        for (const [nx, ny] of neighbors) {
+          if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+          const nIdx = ny * width + nx;
+          if (visited[nIdx] === 1 || !isOpaque(image, nx, ny)) continue;
+          visited[nIdx] = 1;
+          push(nx, ny);
+        }
+      }
+      components.push({ area, touchesEdge, edgePixels });
+    }
+  }
+  return components;
+}
+
+function isOpaque(image: RgbaImage, x: number, y: number): boolean {
+  const a = image.data[(y * image.width + x) * 4 + 3] ?? 0;
+  return a !== 0;
+}
+
+function isFrameEdge(x: number, y: number, width: number, height: number): boolean {
+  return x === 0 || y === 0 || x === width - 1 || y === height - 1;
 }
 
 export function opaqueRatio(

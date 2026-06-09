@@ -18,6 +18,7 @@
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
   },
   "sensors": {
+    "edge": { "allowMainTouch": true },
     "anchor": { "derive": true, "bandRows": 8, "centerToleranceX": 8 }
   },
   "minVariations": 2,

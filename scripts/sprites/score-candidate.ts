@@ -5,6 +5,7 @@ import {
   decodeSprite,
   dimensionsExact,
   opaqueBboxFits,
+  opaqueBboxFitsWithOptions,
   opaqueRatio,
   paletteMembership,
   type RgbaImage,
@@ -124,10 +125,20 @@ function runUniversal(image: RgbaImage, brief: Brief, palette: PaletteColors): S
     dimensionsExact(image, brief),
     alphaBinary(image),
     paletteMembership(image, palette),
-    opaqueBboxFits(image),
+    resolveOpaqueBboxFits(image, brief),
     resolveOpaqueRatio(image, brief),
     resolveAnchorSensor(image, brief),
   ];
+}
+
+function resolveOpaqueBboxFits(image: RgbaImage, brief: Brief): SensorResult {
+  const edge = brief.sensors.edge;
+  if (!edge) return opaqueBboxFits(image);
+  return opaqueBboxFitsWithOptions(image, {
+    allowMainTouch: edge.allowMainTouch,
+    allowDetachedEdgeComponents: edge.allowDetachedEdgeComponents,
+    maxDetachedEdgePixels: edge.maxDetachedEdgePixels,
+  });
 }
 
 function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {

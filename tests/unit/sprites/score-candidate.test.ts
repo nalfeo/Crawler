@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { PNG } from 'pngjs';
 import {
   briefSchema,
   type Brief,
@@ -50,6 +51,35 @@ function makeBrief(overrides: Partial<Brief> = {}): Brief {
     sensors: { weapon: { orientation: 'diagonal' } },
     ...overrides,
   });
+}
+
+function buildProcessedFixture(
+  width: number,
+  height: number,
+  pixels: ReadonlyArray<readonly [number, number]>,
+): Buffer {
+  const png = new PNG({ width, height });
+  for (const [x, y] of pixels) {
+    const idx = (y * width + x) * 4;
+    png.data[idx] = PALETTE[1]![0];
+    png.data[idx + 1] = PALETTE[1]![1];
+    png.data[idx + 2] = PALETTE[1]![2];
+    png.data[idx + 3] = 255;
+  }
+  return PNG.sync.write(png);
+}
+
+function rectPixels(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): ReadonlyArray<readonly [number, number]> {
+  const out: Array<readonly [number, number]> = [];
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) out.push([x, y] as const);
+  }
+  return out;
 }
 
 describe('scoreCandidate', () => {
@@ -169,6 +199,47 @@ describe('scoreCandidate', () => {
     const card1 = scoreCandidate(processed, brief, PALETTE);
     const card2 = scoreCandidate(processed, brief, PALETTE);
     expect(card1.breakdown.map((r) => r.sensor)).toEqual(card2.breakdown.map((r) => r.sensor));
+  });
+
+  it('rejects variants whose main silhouette is clipped by the frame edge', () => {
+    const clipped = buildProcessedFixture(16, 16, rectPixels(6, 0, 10, 10));
+    const brief = makeBrief({
+      type: 'item',
+      anchor: { x: 8, y: 8 },
+      sensors: {} as Brief['sensors'],
+    });
+    const card = scoreCandidate(clipped, brief, PALETTE);
+    const edgeResult = card.breakdown.find((r) => r.sensor === 'opaque-bbox-fits');
+    expect(edgeResult?.ok).toBe(false);
+    expect(edgeResult && !edgeResult.ok ? edgeResult.reason : '').toContain('main silhouette');
+  });
+
+  it('rejects detached edge fragments as bleed artifacts', () => {
+    const pixels = [...rectPixels(5, 5, 10, 12), [0, 0] as const];
+    const withArtifact = buildProcessedFixture(16, 16, pixels);
+    const brief = makeBrief({
+      type: 'item',
+      anchor: { x: 8, y: 8 },
+      sensors: {} as Brief['sensors'],
+    });
+    const card = scoreCandidate(withArtifact, brief, PALETTE);
+    const edgeResult = card.breakdown.find((r) => r.sensor === 'opaque-bbox-fits');
+    expect(edgeResult?.ok).toBe(false);
+    expect(edgeResult && !edgeResult.ok ? edgeResult.reason : '').toContain(
+      'detached edge artifact',
+    );
+  });
+
+  it('allows intentional edge touch when brief opts in', () => {
+    const clipped = buildProcessedFixture(16, 16, rectPixels(6, 0, 10, 10));
+    const brief = makeBrief({
+      type: 'tile',
+      anchor: { x: 8, y: 8 },
+      sensors: { edge: { allowMainTouch: true } } as Brief['sensors'],
+    });
+    const card = scoreCandidate(clipped, brief, PALETTE);
+    const edgeResult = card.breakdown.find((r) => r.sensor === 'opaque-bbox-fits');
+    expect(edgeResult?.ok).toBe(true);
   });
 
   it('uses anchor-opaque by default and reports derivedAnchor=null', () => {
