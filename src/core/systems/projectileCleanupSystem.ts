@@ -51,6 +51,7 @@ export function projectileCleanupSystem(world: GameWorld): void {
           bounced = true;
         }
         if (bounced) {
+          // Corner impacts invert both axes but still count as one wall-bounce event.
           world.stores.bouncing.remainingBounces[eid] = remaining - 1;
           continue;
         }

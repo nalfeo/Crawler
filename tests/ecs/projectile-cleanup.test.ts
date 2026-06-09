@@ -59,7 +59,7 @@ describe('projectileCleanupSystem', () => {
     expect(entityExists(world.ecs, projectile)).toBe(true);
   });
 
-  it('supports entities flagged as bouncing even when velocity component is missing', () => {
+  it('does not process bounce for entities missing velocity component', () => {
     const world = createTestWorld();
     const bouncing = spawnProjectile(world, -5, 360, -4, 0, 10);
     // Simulate malformed data where bounce metadata exists but velocity tag was removed.
