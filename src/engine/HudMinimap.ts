@@ -1,0 +1,329 @@
+/**
+ * HudMinimap — collapsible top-right minimap.
+ *
+ * States:
+ *   Collapsed: 40×40 icon with "M" hint label.
+ *   Expanded:  ~200×150 RenderTexture. Terrain drawn for explored (ever-visible)
+ *              tiles only; enemy dots drawn for currently-visible enemies; player
+ *              dot always visible.
+ *
+ * Discovery model:
+ *   A local `visitedTiles` Uint8Array accumulates tiles exposed by fovSystem
+ *   (floorMap.visible). Terrain is rendered for visited tiles only, preserving
+ *   FOV exploration. Enemy dots are drawn only when the enemy's tile is currently
+ *   visible, preventing off-screen radar.
+ *
+ * Toggle:
+ *   M key (via window listener, not Phaser keyboard plugin — canvas focus safe).
+ *   Also click on the collapsed icon.
+ */
+import Phaser from 'phaser';
+import { query } from 'bitecs';
+import { Enemy, Position } from '../core/components.js';
+import type { GameWorld } from '../core/world.js';
+import { GAME } from '../shared/constants.js';
+import { TerrainType } from '../shared/map-types.js';
+import type { FloorMap } from '../core/map/FloorMap.js';
+
+// ---------------------------------------------------------------------------
+// Layout / style constants
+// ---------------------------------------------------------------------------
+
+const ICON_SIZE = 40;
+const ICON_X = GAME.WIDTH - ICON_SIZE - 12;
+const ICON_Y = 12;
+
+const MAP_WIDTH = 200;
+const MAP_HEIGHT = 150;
+const MAP_X = GAME.WIDTH - MAP_WIDTH - 12;
+const MAP_Y = 12;
+const MAP_BORDER = 1;
+
+const DEPTH = 1000;
+
+/** Terrain colour palette for minimap (same hues as main terrain, darker). */
+const MINI_COLORS: Readonly<Record<number, number>> = {
+  [TerrainType.VOID]: 0x05060f,
+  [TerrainType.STONE_FLOOR]: 0x374151,
+  [TerrainType.STONE_WALL]: 0x1f2937,
+  [TerrainType.DOOR]: 0x8b5e34,
+  [TerrainType.CORRIDOR]: 0x3d5068,
+  [TerrainType.WATER]: 0x1e40af,
+  [TerrainType.LAVA]: 0x991b1b,
+  [TerrainType.GRASS]: 0x166534,
+  [TerrainType.DIRT]: 0x6b3f24,
+  [TerrainType.WOOD_FLOOR]: 0x5b4430,
+  [TerrainType.WOOD_WALL]: 0x3a2d20,
+  [TerrainType.CAVE_FLOOR]: 0x2a2a3d,
+  [TerrainType.CAVE_WALL]: 0x1b1b29,
+  [TerrainType.TREE]: 0x14532d,
+  [TerrainType.RUBBLE]: 0x334155,
+} as const;
+
+const DOT_PLAYER = 0xffffff;
+const DOT_ENEMY = 0xef4444;
+const DOT_PLAYER_RADIUS = 3;
+const DOT_ENEMY_RADIUS = 2;
+
+export function createHudMinimap(scene: Phaser.Scene): {
+  sync(world: GameWorld, playerEid: number): void;
+  toggle(): void;
+  destroy(): void;
+} {
+  // --- Collapsed icon ---
+  const iconBg = scene.add
+    .rectangle(
+      ICON_X + ICON_SIZE / 2,
+      ICON_Y + ICON_SIZE / 2,
+      ICON_SIZE,
+      ICON_SIZE,
+      0x111827,
+      0.9,
+    )
+    .setStrokeStyle(1, 0x334155)
+    .setScrollFactor(0)
+    .setDepth(DEPTH)
+    .setInteractive({ useHandCursor: true });
+
+  const iconLabel = scene.add
+    .text(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE / 2, '🗺', {
+      fontFamily: 'monospace',
+      fontSize: '18px',
+    })
+    .setOrigin(0.5, 0.5)
+    .setScrollFactor(0)
+    .setDepth(DEPTH + 1);
+
+  const iconHint = scene.add
+    .text(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE + 4, 'M', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#64748b',
+    })
+    .setOrigin(0.5, 0)
+    .setScrollFactor(0)
+    .setDepth(DEPTH + 1);
+
+  // --- Expanded map container ---
+  const mapBg = scene.add
+    .rectangle(
+      MAP_X + MAP_WIDTH / 2,
+      MAP_Y + MAP_HEIGHT / 2,
+      MAP_WIDTH + MAP_BORDER * 2,
+      MAP_HEIGHT + MAP_BORDER * 2,
+      0x0d1117,
+      0.92,
+    )
+    .setStrokeStyle(1, 0x334155)
+    .setScrollFactor(0)
+    .setDepth(DEPTH)
+    .setVisible(false);
+
+  let rt: Phaser.GameObjects.RenderTexture | undefined;
+  const dotGraphics = scene.add
+    .graphics()
+    .setScrollFactor(0)
+    .setDepth(DEPTH + 2)
+    .setVisible(false);
+
+  const closeLabel = scene.add
+    .text(MAP_X + MAP_WIDTH - 6, MAP_Y + 4, '✕', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#64748b',
+    })
+    .setOrigin(1, 0)
+    .setScrollFactor(0)
+    .setDepth(DEPTH + 3)
+    .setVisible(false)
+    .setInteractive({ useHandCursor: true });
+
+  // --- State ---
+  let expanded = false;
+  let lastFloorMap: FloorMap | null = null;
+  let visitedTiles: Uint8Array | null = null;
+
+  // ---------------------------------------------------------------------------
+  // Terrain bake
+  // ---------------------------------------------------------------------------
+
+  function bakeTerrain(floorMap: FloorMap, visited: Uint8Array): void {
+    rt?.destroy();
+    const g = scene.add.graphics();
+    const scaleX = MAP_WIDTH / floorMap.widthPx;
+    const scaleY = MAP_HEIGHT / floorMap.heightPx;
+    const tilePx = floorMap.config.tileSizePx;
+    const pixW = Math.max(1, tilePx * scaleX);
+    const pixH = Math.max(1, tilePx * scaleY);
+
+    for (let ty = 0; ty < floorMap.height; ty += 1) {
+      for (let tx = 0; tx < floorMap.width; tx += 1) {
+        const idx = ty * floorMap.width + tx;
+        if (!visited[idx]) continue;
+        const terrain = floorMap.terrain[idx] ?? TerrainType.VOID;
+        const color = MINI_COLORS[terrain] ?? 0x05060f;
+        g.fillStyle(color, 1);
+        g.fillRect(
+          MAP_X + tx * tilePx * scaleX,
+          MAP_Y + ty * tilePx * scaleY,
+          pixW,
+          pixH,
+        );
+      }
+    }
+
+    rt = scene.add
+      .renderTexture(MAP_X, MAP_Y, MAP_WIDTH, MAP_HEIGHT)
+      .setScrollFactor(0)
+      .setDepth(DEPTH + 1)
+      .setVisible(false);
+    rt.draw(g, 0, 0);
+    g.destroy();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Dot overlay
+  // ---------------------------------------------------------------------------
+
+  function drawDots(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
+    dotGraphics.clear();
+    const scaleX = MAP_WIDTH / floorMap.widthPx;
+    const scaleY = MAP_HEIGHT / floorMap.heightPx;
+    const tilePx = floorMap.config.tileSizePx;
+
+    // Enemy dots — only when tile is currently visible
+    const enemies = query(world.ecs, [Enemy, Position]);
+    for (const eid of enemies) {
+      const wx = world.stores.position.x[eid] ?? 0;
+      const wy = world.stores.position.y[eid] ?? 0;
+      const tx = Math.floor(wx / tilePx);
+      const ty = Math.floor(wy / tilePx);
+      const idx = ty * floorMap.width + tx;
+      if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
+      if (!floorMap.visible[idx]) continue;
+      const mx = MAP_X + wx * scaleX;
+      const my = MAP_Y + wy * scaleY;
+      dotGraphics.fillStyle(DOT_ENEMY, 1);
+      dotGraphics.fillCircle(mx, my, DOT_ENEMY_RADIUS);
+    }
+
+    // Player dot — always shown
+    if (playerEid >= 0) {
+      const px = world.stores.position.x[playerEid] ?? 0;
+      const py = world.stores.position.y[playerEid] ?? 0;
+      const mx = MAP_X + px * scaleX;
+      const my = MAP_Y + py * scaleY;
+      dotGraphics.fillStyle(DOT_PLAYER, 1);
+      dotGraphics.fillCircle(mx, my, DOT_PLAYER_RADIUS);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Visibility helpers
+  // ---------------------------------------------------------------------------
+
+  function showExpanded(): void {
+    iconBg.setVisible(false);
+    iconLabel.setVisible(false);
+    iconHint.setVisible(false);
+    mapBg.setVisible(true);
+    rt?.setVisible(true);
+    dotGraphics.setVisible(true);
+    closeLabel.setVisible(true);
+  }
+
+  function showCollapsed(): void {
+    iconBg.setVisible(true);
+    iconLabel.setVisible(true);
+    iconHint.setVisible(true);
+    mapBg.setVisible(false);
+    rt?.setVisible(false);
+    dotGraphics.setVisible(false);
+    closeLabel.setVisible(false);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  function toggle(): void {
+    expanded = !expanded;
+    if (expanded) {
+      showExpanded();
+    } else {
+      showCollapsed();
+    }
+  }
+
+  function sync(world: GameWorld, playerEid: number): void {
+    const floorMap = world.floorMap;
+
+    if (!floorMap) {
+      return;
+    }
+
+    // Reset visited buffer when floor changes
+    if (floorMap !== lastFloorMap) {
+      lastFloorMap = floorMap;
+      visitedTiles = new Uint8Array(floorMap.width * floorMap.height);
+      // Invalidate baked terrain
+      rt?.destroy();
+      rt = undefined;
+    }
+
+    // Accumulate explored tiles
+    const visited = visitedTiles!;
+    let anyNewTile = false;
+    for (let i = 0; i < visited.length; i += 1) {
+      if (!visited[i] && floorMap.visible[i]) {
+        visited[i] = 1;
+        anyNewTile = true;
+      }
+    }
+
+    // Rebake terrain when new tiles discovered
+    if (anyNewTile || !rt) {
+      bakeTerrain(floorMap, visited);
+      if (expanded) {
+        rt?.setVisible(true);
+      }
+    }
+
+    if (expanded) {
+      drawDots(world, playerEid, floorMap);
+    }
+  }
+
+  function destroy(): void {
+    rt?.destroy();
+    dotGraphics.destroy();
+    iconBg.destroy();
+    iconLabel.destroy();
+    iconHint.destroy();
+    mapBg.destroy();
+    closeLabel.destroy();
+  }
+
+  // --- Wire click listeners ---
+  iconBg.on('pointerdown', toggle);
+  closeLabel.on('pointerdown', toggle);
+
+  // --- M-key via window listener (canvas-focus-safe) ---
+  function handleKeyDown(e: KeyboardEvent): void {
+    if (e.key === 'm' || e.key === 'M') {
+      toggle();
+    }
+  }
+  window.addEventListener('keydown', handleKeyDown);
+
+  // Extend destroy to remove window listener
+  const originalDestroy = destroy;
+  return {
+    sync,
+    toggle,
+    destroy() {
+      window.removeEventListener('keydown', handleKeyDown);
+      originalDestroy();
+    },
+  };
+}
