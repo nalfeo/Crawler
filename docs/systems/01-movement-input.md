@@ -12,7 +12,7 @@
 | ------------------- | --------------------------------------- | ----------------------------- |
 | `InputCapture`      | `src/engine/InputCapture.ts`            | every Phaser frame (pre-step) |
 | `playerInputSystem` | `src/core/systems/playerInputSystem.ts` | step 1 of pipeline            |
-| `movementSystem`    | `src/core/systems/movementSystem.ts`    | step 2                        |
+| `movementSystem`    | `src/core/systems/movementSystem.ts`    | step 3                        |
 | `collisionSystem`   | `src/core/systems/collisionSystem.ts`   | step 4                        |
 
 ---
