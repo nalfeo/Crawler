@@ -8,7 +8,6 @@ import {
   Projectile,
   Stats,
   Team,
-  Velocity,
   Weapon,
 } from '../../src/core/components.js';
 import { createEntity, spawnEnemy, spawnPlayer, spawnWeapon } from '../../src/core/helpers.js';
@@ -76,18 +75,18 @@ describe('weaponSystem coverage paths', () => {
     expect(query(world.ecs, [Projectile]).length).toBe(0);
   });
 
-  it('uses velocity-derived aim when no enemy is present', () => {
+  it('does not fire when no enemy is visible', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    addComponent(world.ecs, player, set(Velocity, { x: 0, y: 4 }));
+    // Give the player velocity (old behavior: fire in movement direction).
+    // New behavior: weapon is silent when no visible enemy exists.
+    world.stores.velocity.x[player] = 0;
+    world.stores.velocity.y[player] = 4;
     world.elapsedMs = WEAPON.FIRE_RATE_MS;
 
     weaponSystem(world);
 
-    const projectile = query(world.ecs, [Projectile])[0];
-    expect(projectile).toBeDefined();
-    expect(world.stores.velocity.x[projectile!]).toBeCloseTo(0, 5);
-    expect(world.stores.velocity.y[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
   });
 
   it('applies Damage component overrides in legacy mode', () => {
