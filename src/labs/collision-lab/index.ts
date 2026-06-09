@@ -583,7 +583,11 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
     const aimRadius =
       settings.projectileType === 'beam' ? 2 : PROJECTILE_PROFILES[settings.projectileType].radius;
-    const result = castRay(PLAYER, direction, AIM_RANGE, aimRadius);
+    const aimDistance =
+      settings.projectileType === 'beam'
+        ? AIM_RANGE
+        : PROJECTILE_PROFILES[settings.projectileType].maxDistance;
+    const result = castRay(PLAYER, direction, aimDistance, aimRadius);
 
     context.strokeStyle = settings.highlightAimTarget
       ? result.hitWall
