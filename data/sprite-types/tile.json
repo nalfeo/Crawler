@@ -1,0 +1,25 @@
+{
+  "$comment": "Default brief settings for floor, wall, and terrain tile sprites.",
+  "size": { "width": 64, "height": 64 },
+  "palette": { "id": "kenney-roguelike" },
+  "anchor": { "x": 32, "y": 63 },
+  "tags": ["tile", "terrain", "environment"],
+  "references": [
+    {
+      "path": "public/assets/kenney/roguelike-rpg-pack/spritesheet.png",
+      "note": "primary dungeon floors, walls, doors, and furniture tiles"
+    },
+    {
+      "path": "public/assets/kenney/tiny-town/spritesheet.png",
+      "note": "secondary terrain and set-dressing tile language"
+    }
+  ],
+  "generation": {
+    "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
+  },
+  "sensors": {
+    "anchor": { "derive": true, "bandRows": 8, "centerToleranceX": 8 }
+  },
+  "minVariations": 2,
+  "judge": { "enabled": true, "maxVariants": 16 }
+}
