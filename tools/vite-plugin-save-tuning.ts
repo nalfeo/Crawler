@@ -99,7 +99,10 @@ function readGeneratedManifestEntry(id: string): GeneratedManifestEntry | null {
   }
 }
 
-function buildGeneratedCatalogEntry(id: string, manifestEntry: GeneratedManifestEntry): SpriteCatalogRecord {
+function buildGeneratedCatalogEntry(
+  id: string,
+  manifestEntry: GeneratedManifestEntry,
+): SpriteCatalogRecord {
   const spriteName = manifestEntry.spriteName ?? id.slice('generated:'.length);
   const briefId = manifestEntry.briefId ?? spriteName;
   return {
@@ -362,7 +365,11 @@ export function labTuningSavePlugin(): Plugin {
                   hydrated,
                 ]);
                 catalog = parseSpriteCatalog(merged);
-                writeFileSync(absoluteCatalogPath, JSON.stringify(catalog, null, 2) + '\n', 'utf-8');
+                writeFileSync(
+                  absoluteCatalogPath,
+                  JSON.stringify(catalog, null, 2) + '\n',
+                  'utf-8',
+                );
                 existingEntry = hydrated;
               }
             }

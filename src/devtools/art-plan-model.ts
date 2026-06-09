@@ -32,6 +32,7 @@ const assetPlanEntrySchema = z
     label: z.string().trim().min(1),
     brief: z.string().trim().min(1),
     briefId: z.string().trim().min(1).optional(),
+    briefOverrides: z.record(z.string(), z.unknown()).optional(),
     placeholderInUse: z.boolean().default(true),
     integration: integrationTargetSchema.optional(),
   })
@@ -75,6 +76,7 @@ export interface FloorArtAssetReport {
   readonly placeholderInUse: boolean;
   readonly integration: IntegrationTarget | null;
   readonly briefAuthored: boolean;
+  readonly draftAuthored: boolean;
   readonly approved: boolean;
   readonly approvedAssetExists: boolean;
   readonly integrationState: IntegrationState;
@@ -97,6 +99,8 @@ export const STATUS_ORDER: readonly FloorArtStatus[] = [
   'approved-missing-file',
   'brief-ready',
   'brief-ready-placeholder',
+  'draft-ready',
+  'draft-ready-placeholder',
   'needs-art-placeholder',
   'planned',
 ] as const;
@@ -114,9 +118,24 @@ export function parseFloorArtPlans(rawPlans: Readonly<Record<string, string>>): 
 }
 
 export function parseCommittedBriefKeys(rawBriefs: Readonly<Record<string, string>>): Set<string> {
+  return parseBriefKeys(rawBriefs, 'committed');
+}
+
+export function parseDraftBriefKeys(rawBriefs: Readonly<Record<string, string>>): Set<string> {
+  return parseBriefKeys(rawBriefs, 'draft');
+}
+
+function parseBriefKeys(
+  rawBriefs: Readonly<Record<string, string>>,
+  mode: 'committed' | 'draft',
+): Set<string> {
   const keys = new Set<string>();
   for (const [path, source] of Object.entries(rawBriefs)) {
-    if (path.toLowerCase().includes('/draft/')) {
+    const isDraft = path.toLowerCase().includes('/draft/');
+    if (mode === 'committed' && isDraft) {
+      continue;
+    }
+    if (mode === 'draft' && !isDraft) {
       continue;
     }
     const value = parseYaml(source) as unknown;
@@ -153,6 +172,7 @@ export function buildFloorArtPlanReport(
   plan: FloorArtPlan,
   options: {
     readonly briefKeys: ReadonlySet<string>;
+    readonly draftBriefKeys: ReadonlySet<string>;
     readonly approvedSprites: ReadonlyMap<string, ApprovedSpriteEntry>;
     readonly spriteRegistryIds: ReadonlySet<string>;
     readonly itemCatalogIds: ReadonlySet<string>;
@@ -161,6 +181,7 @@ export function buildFloorArtPlanReport(
   const assets: FloorArtAssetReport[] = plan.assets.map((asset) => {
     const briefId = asset.briefId ?? asset.id;
     const briefAuthored = options.briefKeys.has(briefKey(asset.type, briefId));
+    const draftAuthored = options.draftBriefKeys.has(briefKey(asset.type, briefId));
     const approvedEntry = options.approvedSprites.get(briefId);
     const approved = approvedEntry !== undefined;
     const approvedAssetExists = approvedEntry?.exists ?? false;
@@ -178,11 +199,13 @@ export function buildFloorArtPlanReport(
       placeholderInUse: asset.placeholderInUse,
       integration: asset.integration ?? null,
       briefAuthored,
+      draftAuthored,
       approved,
       approvedAssetExists,
       integrationState,
       status: resolveArtPlanStatus({
         briefAuthored,
+        draftAuthored,
         approved,
         approvedAssetExists,
         integrationState,

@@ -1,0 +1,25 @@
+{
+  "$comment": "Default brief settings for pickups, props, and decorative item sprites.",
+  "size": { "width": 64, "height": 64 },
+  "palette": { "id": "kenney-roguelike" },
+  "anchor": { "x": 32, "y": 56 },
+  "tags": ["item", "prop", "decoration"],
+  "references": [
+    {
+      "path": "public/assets/kenney/tiny-dungeon/spritesheet.png",
+      "note": "pickup, chest, prop, and trinket silhouettes"
+    },
+    {
+      "path": "public/assets/kenney/roguelike-rpg-pack/spritesheet.png",
+      "note": "environmental clutter, furniture, and dungeon dressing"
+    }
+  ],
+  "generation": {
+    "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
+  },
+  "sensors": {
+    "anchor": { "derive": true, "bandRows": 8, "centerToleranceX": 8 }
+  },
+  "minVariations": 3,
+  "judge": { "enabled": true, "maxVariants": 16 }
+}

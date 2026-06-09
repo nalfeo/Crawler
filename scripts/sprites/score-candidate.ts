@@ -5,6 +5,7 @@ import {
   decodeSprite,
   dimensionsExact,
   opaqueBboxFits,
+  opaqueBboxFitsWithOptions,
   opaqueRatio,
   paletteMembership,
   type RgbaImage,
@@ -15,8 +16,12 @@ import {
   anchorDerivable,
   isAnchorDerivableOk,
 } from './sensors/anchor-derivable.js';
+import {
+  ANCHOR_CENTER_OF_MASS_SENSOR,
+  anchorCenterOfMass,
+} from './sensors/center-of-mass-anchor.js';
 import type { DerivedAnchor } from './sensors/derive-anchor.js';
-import { weaponSensors } from './sensors/weapons.js';
+import { silhouetteOrientationAxis, weaponSensors } from './sensors/weapons.js';
 
 /**
  * Pure candidate scorer. Wraps the universal and family-specific sensors
@@ -32,9 +37,10 @@ import { weaponSensors } from './sensors/weapons.js';
  * - `passed` = every sensor returned `ok: true` (no failures at all).
  * - `breakdown` is the full per-sensor result list, preserved in order, so
  *   reviewers can see exactly which check failed and why.
- * - `derivedAnchor` is the per-variant grip pixel found by the
- *   `anchor-derivable` sensor — `null` when the brief uses the legacy
- *   `anchor-opaque` sensor, or when derivation failed.
+ * - `derivedAnchor` is the per-variant anchor pixel found by the active
+ *   anchor sensor (`anchor-derivable` or `anchor-center-of-mass`) - null
+ *   when the brief uses the legacy `anchor-opaque` sensor, or when
+ *   derivation failed.
  *
  * There is no subjective "looks good" score in Phase 2. Phase 3's
  * `sprite-forge-lab` will layer that on top of this baseline.
@@ -50,9 +56,10 @@ export interface Scorecard {
   /** Per-sensor results, in the order the sensors ran. */
   readonly breakdown: ReadonlyArray<SensorResult>;
   /**
-   * Anchor derived from the silhouette by the `anchor-derivable` sensor.
-   * Null when the brief uses the legacy `anchor-opaque` sensor, or when
-   * `anchor-derivable` failed (the failure is still recorded in `breakdown`).
+   * Anchor derived from the silhouette by the active anchor sensor
+   * (`anchor-derivable` or `anchor-center-of-mass`). Null when the brief uses
+   * the legacy `anchor-opaque` sensor, or when derivation failed (the failure
+   * is still recorded in `breakdown`).
    */
   readonly derivedAnchor: DerivedAnchor | null;
 }
@@ -88,17 +95,26 @@ export function scoreCandidate(
     })) {
       breakdown.push(result);
     }
+  } else if (brief.type === 'enemy') {
+    const facing = brief.sensors.enemy?.facing ?? 'front';
+    if (facing === 'front') {
+      breakdown.push(
+        silhouetteOrientationAxis(image, {
+          orientation: 'vertical',
+        }),
+      );
+    }
   }
 
   const score = breakdown.filter((r) => r.ok).length;
   const outOf = breakdown.length;
 
   // Lift the derived anchor out of the breakdown so consumers don't have to
-  // know which slot it occupies. Null when anchor-derivable failed or when
-  // the brief uses the legacy anchor-opaque sensor.
+  // know which slot it occupies. Null when the active anchor sensor failed or
+  // when the brief uses the legacy anchor-opaque sensor.
   let derivedAnchor: DerivedAnchor | null = null;
   for (const result of breakdown) {
-    if (isAnchorDerivableOk(result)) {
+    if (isAnchorDerivableOk(result) || isAnchorCenterOfMassOk(result)) {
       derivedAnchor = result.anchor;
       break;
     }
@@ -124,10 +140,20 @@ function runUniversal(image: RgbaImage, brief: Brief, palette: PaletteColors): S
     dimensionsExact(image, brief),
     alphaBinary(image),
     paletteMembership(image, palette),
-    opaqueBboxFits(image),
+    resolveOpaqueBboxFits(image, brief),
     resolveOpaqueRatio(image, brief),
     resolveAnchorSensor(image, brief),
   ];
+}
+
+function resolveOpaqueBboxFits(image: RgbaImage, brief: Brief): SensorResult {
+  const edge = brief.sensors.edge;
+  if (!edge) return opaqueBboxFits(image);
+  return opaqueBboxFitsWithOptions(image, {
+    allowMainTouch: edge.allowMainTouch,
+    allowDetachedEdgeComponents: edge.allowDetachedEdgeComponents,
+    maxDetachedEdgePixels: edge.maxDetachedEdgePixels,
+  });
 }
 
 function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {
@@ -142,7 +168,10 @@ function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {
 
 function resolveAnchorSensor(image: RgbaImage, brief: Brief): SensorResult {
   const anchorOpts = brief.sensors.anchor;
-  if (anchorOpts?.derive) {
+  if (anchorOpts?.mode === 'center-of-mass') {
+    return anchorCenterOfMass(image);
+  }
+  if (anchorOpts?.derive || anchorOpts?.mode === 'grip') {
     return anchorDerivable(image, {
       bandRows: anchorOpts.bandRows,
       centerToleranceX: anchorOpts.centerToleranceX,
@@ -151,4 +180,14 @@ function resolveAnchorSensor(image: RgbaImage, brief: Brief): SensorResult {
   return anchorOpaque(image, brief);
 }
 
-export { ANCHOR_DERIVABLE_SENSOR };
+function isAnchorCenterOfMassOk(
+  result: SensorResult,
+): result is SensorResult & { ok: true; anchor: { x: number; y: number } } {
+  if (!result.ok || result.sensor !== ANCHOR_CENTER_OF_MASS_SENSOR) return false;
+  const candidate = result as { anchor?: unknown };
+  if (typeof candidate.anchor !== 'object' || candidate.anchor === null) return false;
+  const a = candidate.anchor as { x?: unknown; y?: unknown };
+  return typeof a.x === 'number' && typeof a.y === 'number';
+}
+
+export { ANCHOR_DERIVABLE_SENSOR, ANCHOR_CENTER_OF_MASS_SENSOR };

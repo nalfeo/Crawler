@@ -16,6 +16,8 @@ export type ArtPlanStatus =
   | 'approved-missing-file'
   | 'brief-ready'
   | 'brief-ready-placeholder'
+  | 'draft-ready'
+  | 'draft-ready-placeholder'
   | 'needs-art-placeholder'
   | 'planned';
 
@@ -38,6 +40,7 @@ export function resolveIntegrationState(
 
 export function resolveArtPlanStatus(args: {
   readonly briefAuthored: boolean;
+  readonly draftAuthored: boolean;
   readonly approved: boolean;
   readonly approvedAssetExists: boolean;
   readonly integrationState: IntegrationState;
@@ -49,6 +52,8 @@ export function resolveArtPlanStatus(args: {
   if (args.approved) return 'approved-not-integrated';
   if (args.briefAuthored && args.placeholderInUse) return 'brief-ready-placeholder';
   if (args.briefAuthored) return 'brief-ready';
+  if (args.draftAuthored && args.placeholderInUse) return 'draft-ready-placeholder';
+  if (args.draftAuthored) return 'draft-ready';
   if (args.placeholderInUse) return 'needs-art-placeholder';
   return 'planned';
 }
