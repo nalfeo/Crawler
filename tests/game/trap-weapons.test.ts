@@ -6,6 +6,7 @@ import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { trapSystem } from '../../src/core/systems/trapSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { ftToPx } from '../../src/shared/units.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('trap weapons', () => {
@@ -23,8 +24,8 @@ describe('trap weapons', () => {
     const t = traps[0]!;
     expect(world.stores.position.x[t]).toBe(200);
     expect(world.stores.position.y[t]).toBe(200);
-    expect(world.stores.trap.triggerRadius[t]).toBe(def.trapTriggerRadius);
-    expect(world.stores.trap.explosionRadius[t]).toBe(def.trapExplosionRadius);
+    expect(world.stores.trap.triggerRadius[t]).toBe(ftToPx(def.trapTriggerRadius));
+    expect(world.stores.trap.explosionRadius[t]).toBe(ftToPx(def.trapExplosionRadius));
   });
 
   it('trap does not trigger before arm time', () => {

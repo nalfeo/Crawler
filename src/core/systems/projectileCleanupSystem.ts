@@ -3,9 +3,10 @@ import { Position, Projectile } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import { GAME } from '../../shared/constants.js';
+import { ftToPx } from '../../shared/units.js';
 
-/** Margin beyond screen bounds before culling. */
-const CULL_MARGIN = 100;
+/** Margin beyond screen bounds before culling (12.5 feet). */
+const CULL_MARGIN = ftToPx(12.5);
 
 const BOUNDS = {
   minX: -CULL_MARGIN,

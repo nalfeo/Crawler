@@ -3,12 +3,13 @@ import { Enemy, EnemyBehavior, Player, Position, Velocity } from '../core/compon
 import { spawnEnemyProjectile } from '../core/helpers.js';
 import type { GameWorld } from '../core/world.js';
 import { ENEMY_PROJECTILE } from '../shared/constants.js';
+import { ftToPx } from '../shared/units.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2 } as const;
 
 const DEFAULT_ENEMY_SPEED = 1.5;
 const EPSILON = 0.0001;
-const SWARM_NEIGHBOR_RADIUS = 30;
+const SWARM_NEIGHBOR_RADIUS = ftToPx(4);
 const SWARM_PLAYER_WEIGHT = 1;
 const SWARM_SEPARATION_WEIGHT = 1.4;
 const SWARM_COHESION_WEIGHT = 0.2;
@@ -19,7 +20,7 @@ const SWARM_COHESION_WEIGHT = 0.2;
  */
 const MAX_OVERLAP_FRACTION = 0.25;
 const SEPARATION_FORCE = 2.0;
-const ENEMY_RADIUS = 8; // half of 16x16 sprite
+const ENEMY_RADIUS = ftToPx(1); // half of 16x16 sprite
 
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
   setComponent(world.ecs, eid, Velocity, { x, y });

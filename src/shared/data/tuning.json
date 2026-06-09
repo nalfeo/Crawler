@@ -11,23 +11,23 @@
     "projectileSpeed": 5.0,
     "fireRateMs": 500,
     "baseDamage": 10,
-    "meleeRange": 40,
+    "meleeRange": 5,
     "meleeDurationMs": 200,
-    "beamLength": 200,
+    "beamLength": 25,
     "beamDurationMs": 300,
     "beamTickMs": 100,
     "trapArmMs": 500,
-    "trapTriggerRadius": 32,
-    "trapExplosionRadius": 64,
+    "trapTriggerRadius": 4,
+    "trapExplosionRadius": 8,
     "thrownReturnSpeed": 4.0,
-    "thrownMaxRange": 200,
-    "aoeRadius": 48
+    "thrownMaxRange": 25,
+    "aoeRadius": 6
   },
   "enemyProjectile": {
     "speed": 3.0,
     "fireCooldownMs": 1200,
     "damage": 8,
-    "muzzleOffset": 12
+    "muzzleOffset": 1.5
   },
   "xp": {
     "basePerLevel": 10,
@@ -44,6 +44,6 @@
     "impatienceThresholdS": 180
   },
   "projectileCleanup": {
-    "cullMargin": 100
+    "cullMargin": 12.5
   }
 }
