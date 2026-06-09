@@ -72,14 +72,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 } {
   // --- Collapsed icon ---
   const iconBg = scene.add
-    .rectangle(
-      ICON_X + ICON_SIZE / 2,
-      ICON_Y + ICON_SIZE / 2,
-      ICON_SIZE,
-      ICON_SIZE,
-      0x111827,
-      0.9,
-    )
+    .rectangle(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE / 2, ICON_SIZE, ICON_SIZE, 0x111827, 0.9)
     .setStrokeStyle(1, 0x334155)
     .setScrollFactor(0)
     .setDepth(DEPTH)
@@ -163,12 +156,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
         const terrain = floorMap.terrain[idx] ?? TerrainType.VOID;
         const color = MINI_COLORS[terrain] ?? 0x05060f;
         g.fillStyle(color, 1);
-        g.fillRect(
-          MAP_X + tx * tilePx * scaleX,
-          MAP_Y + ty * tilePx * scaleY,
-          pixW,
-          pixH,
-        );
+        g.fillRect(MAP_X + tx * tilePx * scaleX, MAP_Y + ty * tilePx * scaleY, pixW, pixH);
       }
     }
 

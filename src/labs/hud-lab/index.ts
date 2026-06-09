@@ -174,8 +174,14 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     game = new Phaser.Game(config);
   };
 
-  gui.add(settings, 'hpPercent', 0, 100, 1).name('HP %').onChange(() => {});
-  gui.add(settings, 'maxHp', 10, 500, 10).name('Max HP').onChange(() => {});
+  gui
+    .add(settings, 'hpPercent', 0, 100, 1)
+    .name('HP %')
+    .onChange(() => {});
+  gui
+    .add(settings, 'maxHp', 10, 500, 10)
+    .name('Max HP')
+    .onChange(() => {});
   gui
     .add(settings, 'timeRemainingS', 0, FLOOR.MAX_DURATION_S, 5)
     .name('Time remaining (s)')
@@ -184,9 +190,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     .add(settings, 'floor', 1, 10, 1)
     .name('Floor')
     .onChange(() => {});
-  gui
-    .add({ restart: () => createGame() }, 'restart')
-    .name('Restart scene');
+  gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
   createGame();
 

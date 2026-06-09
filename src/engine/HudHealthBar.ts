@@ -51,7 +51,13 @@ export function createHudHealthBar(
 
   // Shell (background track)
   const shell = scene.add
-    .rectangle(x + BAR_WIDTH / 2, y + BAR_HEIGHT / 2, BAR_WIDTH + BORDER * 2, BAR_HEIGHT + BORDER * 2, COLORS.shell)
+    .rectangle(
+      x + BAR_WIDTH / 2,
+      y + BAR_HEIGHT / 2,
+      BAR_WIDTH + BORDER * 2,
+      BAR_HEIGHT + BORDER * 2,
+      COLORS.shell,
+    )
     .setStrokeStyle(1, COLORS.shellBorder)
     .setScrollFactor(0)
     .setDepth(DEPTH);
