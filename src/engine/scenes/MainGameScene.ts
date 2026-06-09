@@ -30,6 +30,7 @@ import { createInputState, type InputState } from '../../shared/input.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
+import { createHudUI } from '../HudUI.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 
@@ -96,9 +97,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private objectiveText?: Phaser.GameObjects.Text;
 
-  private statusText?: Phaser.GameObjects.Text;
-
   private loadoutText?: Phaser.GameObjects.Text;
+
+  private hudUi?: ReturnType<typeof createHudUI>;
 
   private keyOne?: Phaser.Input.Keyboard.Key;
 
@@ -159,15 +160,15 @@ export class MainGameScene extends Phaser.Scene {
       this.safeRoomMarker?.destroy();
       this.staircaseMarker?.destroy();
       this.objectiveText?.destroy();
-      this.statusText?.destroy();
       this.loadoutText?.destroy();
+      this.hudUi?.destroy();
       this.mapGraphics = undefined;
       this.doorGraphics = undefined;
       this.safeRoomMarker = undefined;
       this.staircaseMarker = undefined;
       this.objectiveText = undefined;
-      this.statusText = undefined;
       this.loadoutText = undefined;
+      this.hudUi = undefined;
     });
   }
 
@@ -289,6 +290,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private initializeUi(): void {
+    // Objective tracker — top-left, keeps floor1 kill/loot progress
     this.objectiveText = this.add
       .text(16, 16, '', {
         fontFamily: 'monospace',
@@ -300,19 +302,7 @@ export class MainGameScene extends Phaser.Scene {
       .setDepth(1000)
       .setScrollFactor(0);
 
-    this.statusText = this.add
-      .text(GAME.WIDTH - 16, 16, '', {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: '#fbbf24',
-        backgroundColor: '#111827cc',
-        padding: { x: 10, y: 8 },
-        align: 'right',
-      })
-      .setOrigin(1, 0)
-      .setDepth(1000)
-      .setScrollFactor(0);
-
+    // Loadout info overlay — top-center, visible during weapon selection
     this.loadoutText = this.add
       .text(GAME.WIDTH / 2, 56, '', {
         fontFamily: 'monospace',
@@ -325,6 +315,9 @@ export class MainGameScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(1000)
       .setScrollFactor(0);
+
+    // HUD — health bar, floor timer, minimap
+    this.hudUi = createHudUI(this);
   }
 
   private processLoadoutInput(): void {
@@ -485,23 +478,19 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateOverlayText(): void {
+    // HUD (health bar, floor timer, minimap) updates every frame
+    this.hudUi?.sync(this.world, this.playerEid);
+
     if (!this.world.floor1) {
       this.objectiveText?.setText(`State: ${this.world.state}`);
-      this.statusText?.setText('');
       this.loadoutText?.setVisible(false);
       return;
     }
 
     const objective = this.world.floor1.objective;
-    const remainingMs = Math.max(0, objective.deadlineMs - this.world.elapsedMs);
-    const remainingTotalSeconds = Math.ceil(remainingMs / 1000);
-    const remainingMinutes = Math.floor(remainingTotalSeconds / 60);
-    const remainingSeconds = remainingTotalSeconds % 60;
-    const timer = `${remainingMinutes}:${remainingSeconds.toString().padStart(2, '0')}`;
     this.objectiveText?.setText(
       [
         `Floor 1 Tutorial`,
-        `Timer: ${timer}`,
         `Rats: ${objective.ratsKilled}/${objective.requiredRats}`,
         `Slimes: ${objective.slimesKilled}/${objective.requiredSlimes}`,
         `Gold: ${objective.goldCollected}/${objective.requiredGold}`,
@@ -523,21 +512,9 @@ export class MainGameScene extends Phaser.Scene {
           `Press 1, 2, or 3`,
         ].join('\n'),
       );
-      this.statusText?.setText('State: loadout');
       return;
     }
 
     this.loadoutText?.setVisible(false);
-    if (this.world.state === 'game_over') {
-      this.statusText?.setText('State: game over\nTimeout: staircase not found');
-    } else if (this.world.state === 'safe_room') {
-      this.statusText?.setText('State: floor cleared\nSafe room reached');
-    } else if (objective.staircaseUnlocked) {
-      this.statusText?.setText('Objective: find staircase');
-    } else if (!objective.safeRoomDiscovered) {
-      this.statusText?.setText('Objective: find safe room');
-    } else {
-      this.statusText?.setText('Objective: clear kills + loot');
-    }
   }
 }
