@@ -1,0 +1,178 @@
+[
+  {
+    "id": "stone-floor",
+    "name": "Stone Floor",
+    "spriteId": "tile-stone-floor",
+    "biomeTag": "dungeon",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-stone"
+  },
+  {
+    "id": "stone-wall",
+    "name": "Stone Wall",
+    "spriteId": "tile-stone-wall",
+    "biomeTag": "dungeon",
+    "collider": "solid",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "blocked",
+    "audioCue": "impact-stone"
+  },
+  {
+    "id": "stone-grate",
+    "name": "Stone Grate",
+    "spriteId": "tile-stone-grate",
+    "biomeTag": "dungeon",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-metal"
+  },
+  {
+    "id": "torch-floor",
+    "name": "Torchlit Floor",
+    "spriteId": "tile-torch-floor",
+    "biomeTag": "dungeon",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-stone"
+  },
+  {
+    "id": "flesh-floor",
+    "name": "Flesh Floor",
+    "spriteId": "tile-flesh-floor",
+    "biomeTag": "organic",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-wet"
+  },
+  {
+    "id": "flesh-wall",
+    "name": "Flesh Wall",
+    "spriteId": "tile-flesh-wall",
+    "biomeTag": "organic",
+    "collider": "solid",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "blocked",
+    "audioCue": "impact-flesh"
+  },
+  {
+    "id": "bone-tile",
+    "name": "Bone Tile",
+    "spriteId": "tile-bone",
+    "biomeTag": "organic",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-bone"
+  },
+  {
+    "id": "blood-pool",
+    "name": "Blood Pool",
+    "spriteId": "tile-blood-pool",
+    "biomeTag": "organic",
+    "collider": "hazard",
+    "damagePerSecond": 5,
+    "variant": 0,
+    "passability": "deadly",
+    "audioCue": "step-wet"
+  },
+  {
+    "id": "metal-plate",
+    "name": "Metal Plate",
+    "spriteId": "tile-metal-plate",
+    "biomeTag": "tech",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-metal"
+  },
+  {
+    "id": "circuit-tile",
+    "name": "Circuit Tile",
+    "spriteId": "tile-circuit",
+    "biomeTag": "tech",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-electric"
+  },
+  {
+    "id": "energy-barrier",
+    "name": "Energy Barrier",
+    "spriteId": "tile-energy-barrier",
+    "biomeTag": "tech",
+    "collider": "hazard",
+    "damagePerSecond": 10,
+    "variant": 0,
+    "passability": "deadly",
+    "audioCue": "impact-electric"
+  },
+  {
+    "id": "neon-floor",
+    "name": "Neon Floor",
+    "spriteId": "tile-neon-floor",
+    "biomeTag": "tech",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-neon"
+  },
+  {
+    "id": "void-tile",
+    "name": "Void Tile",
+    "spriteId": "tile-void",
+    "biomeTag": "void",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-void"
+  },
+  {
+    "id": "corrupted-wall",
+    "name": "Corrupted Wall",
+    "spriteId": "tile-corrupted-wall",
+    "biomeTag": "void",
+    "collider": "solid",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "blocked",
+    "audioCue": "impact-void"
+  },
+  {
+    "id": "rift",
+    "name": "Rift",
+    "spriteId": "tile-rift",
+    "biomeTag": "void",
+    "collider": "hazard",
+    "damagePerSecond": 20,
+    "variant": 0,
+    "passability": "deadly",
+    "audioCue": "impact-void"
+  },
+  {
+    "id": "starfield-floor",
+    "name": "Starfield Floor",
+    "spriteId": "tile-starfield",
+    "biomeTag": "void",
+    "collider": "none",
+    "damagePerSecond": 0,
+    "variant": 0,
+    "passability": "walkable",
+    "audioCue": "step-void"
+  }
+]
