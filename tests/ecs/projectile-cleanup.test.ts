@@ -1,7 +1,11 @@
 import { addComponent, entityExists, removeComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Bouncing, Velocity } from '../../src/core/components.js';
-import { spawnBouncingProjectile, spawnProjectile } from '../../src/core/helpers.js';
+import {
+  spawnBouncingProjectile,
+  spawnProjectile,
+  spawnReturningProjectile,
+} from '../../src/core/helpers.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
@@ -127,5 +131,83 @@ describe('projectileCleanupSystem', () => {
 
     expect(entityExists(world.ecs, headingIntoWall)).toBe(false);
     expect(entityExists(world.ecs, movingAway)).toBe(true);
+  });
+
+  it('removes non-returning projectiles when they exceed max range', () => {
+    const world = createTestWorld();
+    const maxRange = 100;
+    // Projectile spawned at (500, 360) with maxRange=100
+    const eid = spawnProjectile(world, 500, 360, 0, 0, 10, 0, maxRange);
+    // Move projectile to exactly at max range (100 pixels away)
+    world.stores.position.x[eid] = 500 + 100;
+    world.stores.position.y[eid] = 360;
+
+    projectileCleanupSystem(world);
+
+    // Projectile at exactly max range should survive
+    expect(entityExists(world.ecs, eid)).toBe(true);
+
+    // Move projectile slightly beyond max range
+    world.stores.position.x[eid] = 500 + 100.1;
+    projectileCleanupSystem(world);
+
+    // Projectile beyond max range should be despawned
+    expect(entityExists(world.ecs, eid)).toBe(false);
+  });
+
+  it('removes non-returning projectiles that exceed diagonal max range', () => {
+    const world = createTestWorld();
+    const maxRange = 100;
+    const eid = spawnProjectile(world, 500, 360, 0, 0, 10, 0, maxRange);
+    // Move projectile diagonally to distance > 100
+    // sqrt(70^2 + 70^2) = ~99, sqrt(71^2 + 71^2) = ~100.4
+    world.stores.position.x[eid] = 500 + 71;
+    world.stores.position.y[eid] = 360 + 71;
+
+    projectileCleanupSystem(world);
+
+    expect(entityExists(world.ecs, eid)).toBe(false);
+  });
+
+  it('keeps projectiles with zero or no max range', () => {
+    const world = createTestWorld();
+    // Projectile with no maxRange tracking (legacy behavior)
+    const noRange = spawnProjectile(world, 500, 360, 1, 0, 10, 0, 0);
+    // Simulate movement far from origin, but within bounds (bounds are 0-1280, 0-720, + 100 cull margin)
+    world.stores.position.x[noRange] = 1200;
+    world.stores.position.y[noRange] = 680;
+
+    projectileCleanupSystem(world);
+
+    // Should be kept because maxRange=0 means unlimited range
+    expect(entityExists(world.ecs, noRange)).toBe(true);
+  });
+
+  it('does not despawn returning projectiles at max range', () => {
+    const world = createTestWorld();
+    const player = 999; // Mock player entity ID
+    const maxRange = 100;
+    const returning = spawnReturningProjectile(
+      world,
+      500,
+      360,
+      10,
+      0,
+      10,
+      player,
+      5, // returnSpeed
+      maxRange,
+      0, // teamId
+    );
+
+    // Move returning projectile beyond maxRange
+    world.stores.position.x[returning] = 500 + 150;
+    world.stores.position.y[returning] = 360;
+
+    projectileCleanupSystem(world);
+
+    // Returning projectile should NOT be despawned (even though it's beyond max range)
+    // It's managed by the Returning component, not the Projectile maxRange check
+    expect(entityExists(world.ecs, returning)).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
-import { Bouncing, Position, Projectile, Velocity } from '../components.js';
+import { Bouncing, Position, Projectile, Returning, Velocity } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import { GAME } from '../../shared/constants.js';
@@ -28,6 +28,12 @@ const PLAY_BOUNDS = {
  * Bouncing projectiles (with the Bouncing component) reflect off the inner
  * play bounds and decrement their remaining-bounce counter until exhausted.
  *
+ * Returning projectiles (with the Returning component) do NOT despawn on reaching
+ * max range — they should only despawn if the owner is dead/unreachable or if
+ * they hit an obstacle while returning.
+ *
+ * Non-returning projectiles despawn when they exceed their maxRange (distance from spawn).
+ *
  * Wall-hit detection: the movementSystem uses slide-based collision and
  * prevents projectiles from entering impassable tiles.  This means a
  * projectile's *current* position is always passable — we must check the
@@ -36,7 +42,7 @@ const PLAY_BOUNDS = {
  */
 export function projectileCleanupSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Projectile, Position]);
-  const { position, velocity } = world.stores;
+  const { position, velocity, projectile } = world.stores;
   const floorMap = world.floorMap;
 
   for (const eid of Array.from(entities)) {
@@ -92,6 +98,24 @@ export function projectileCleanupSystem(world: GameWorld): void {
         clearEntityStores(world, eid);
         removeEntity(world.ecs, eid);
         continue;
+      }
+    }
+
+    // Max range check for non-returning projectiles
+    const isReturning = hasComponent(world.ecs, eid, Returning);
+    if (!isReturning) {
+      const maxRange = projectile.maxRange[eid] ?? 0;
+      if (maxRange > 0) {
+        const originX = projectile.originX[eid] ?? 0;
+        const originY = projectile.originY[eid] ?? 0;
+        const dx = x - originX;
+        const dy = y - originY;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > maxRange * maxRange) {
+          clearEntityStores(world, eid);
+          removeEntity(world.ecs, eid);
+          continue;
+        }
       }
     }
 

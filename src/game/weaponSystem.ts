@@ -271,6 +271,7 @@ function fireRangedAttack(
     dir.y * def.projectileSpeed,
     def.baseDamage,
     def.pierce,
+    ftToPx(def.range),
   );
 }
 
@@ -293,6 +294,7 @@ function fireMagicAttack(
     def.baseDamage,
     player,
     TeamId.PLAYER,
+    ftToPx(def.range),
   );
 }
 
@@ -331,6 +333,7 @@ function fireThrownAttack(
       def.baseDamage,
       def.bounceCount,
       def.pierce,
+      ftToPx(def.range),
     );
     return;
   }
@@ -343,6 +346,7 @@ function fireThrownAttack(
     dir.y * def.projectileSpeed,
     def.baseDamage,
     def.pierce,
+    ftToPx(def.range),
   );
 }
 

@@ -90,6 +90,9 @@ export function createComponentStores() {
     projectile: {
       pierce: new Uint8Array(MAX_ENTITIES),
       hitCount: new Uint8Array(MAX_ENTITIES),
+      maxRange: new Float32Array(MAX_ENTITIES),
+      originX: new Float32Array(MAX_ENTITIES),
+      originY: new Float32Array(MAX_ENTITIES),
     },
     sprite: {
       textureId: new Uint16Array(MAX_ENTITIES),
