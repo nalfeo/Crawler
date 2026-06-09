@@ -177,7 +177,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
         level: 20,
         name: 'Juggernaut',
         description: 'Aura — damages nearby enemies for 5% of your damage per second',
-        effect: { type: 'aura', radius: 48, dpsPercentOfDamage: 0.05 },
+        effect: { type: 'aura', radius: 6, dpsPercentOfDamage: 0.05 },
       },
     ],
     flavorText:

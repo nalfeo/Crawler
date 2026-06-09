@@ -8,6 +8,7 @@ import { returningProjectileSystem } from '../../src/core/systems/returningProje
 import { movementSystem } from '../../src/core/systems/movementSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { ftToPx } from '../../src/shared/units.js';
 import { GAME } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -25,7 +26,7 @@ describe('thrown weapons', () => {
     const returning = Array.from(query(world.ecs, [Returning, Projectile, Position, Velocity]));
     expect(returning).toHaveLength(1);
     const r = returning[0]!;
-    expect(world.stores.returning.maxRange[r]).toBe(def.maxRange);
+    expect(world.stores.returning.maxRange[r]).toBe(ftToPx(def.maxRange));
     expect(world.stores.returning.returnSpeed[r]).toBe(def.returnSpeed);
     expect(world.stores.returning.isReturning[r]).toBe(0);
     expect(world.stores.projectile.pierce[r]).toBe(def.pierce);

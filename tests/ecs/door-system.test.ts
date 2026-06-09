@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { addEntity, addComponent, set } from 'bitecs';
 import { createTestWorld } from '../../tests/helpers/world-factory';
+import { spawnPlayer } from '../../src/core/index';
 import { doorSystem } from '../../src/core/systems/doorSystem';
 import { DoorState } from '../../src/core/components';
 import { FloorMap } from '../../src/core/map/FloorMap';
@@ -61,6 +62,19 @@ describe('Door System', () => {
     expect(() => doorSystem(world)).not.toThrow();
     // Door stays closed
     expect(world.floorMap!.tileMap.isPassable(5, 5)).toBe(false);
+  });
+
+  it('should auto-open a nearby closed door for the player', () => {
+    world.floorMap = makeMapWithDoor();
+    const floorMap = world.floorMap;
+    const player = spawnPlayer(world, 0, 0);
+    const pixel = floorMap.tileToPixel(4, 5);
+    world.stores.position.x[player] = pixel.x;
+    world.stores.position.y[player] = pixel.y;
+
+    doorSystem(world);
+
+    expect(floorMap.tileMap.isPassable(5, 5)).toBe(true);
   });
 
   it('should open a closed door when isOpen = 1', () => {

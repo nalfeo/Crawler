@@ -5,6 +5,7 @@ import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { beamSystem } from '../../src/core/systems/beamSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { ftToPx } from '../../src/shared/units.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('beam weapons', () => {
@@ -21,7 +22,7 @@ describe('beam weapons', () => {
     const beams = Array.from(query(world.ecs, [LineDamage, Position, Lifetime]));
     expect(beams).toHaveLength(1);
     const b = beams[0]!;
-    expect(world.stores.lineDamage.length[b]).toBe(def.beamLength);
+    expect(world.stores.lineDamage.length[b]).toBe(ftToPx(def.beamLength));
     expect(world.stores.lineDamage.damage[b]).toBe(def.baseDamage);
     expect(world.stores.lineDamage.tickMs[b]).toBe(def.beamTickMs);
   });
