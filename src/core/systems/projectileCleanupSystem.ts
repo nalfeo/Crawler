@@ -41,12 +41,12 @@ export function projectileCleanupSystem(world: GameWorld): void {
       if (remaining > 0) {
         let bounced = false;
         if (x < PLAY_BOUNDS.minX || x > PLAY_BOUNDS.maxX) {
-          world.stores.velocity.x[eid] = -world.stores.velocity.x[eid]!;
+          world.stores.velocity.x[eid] = -(world.stores.velocity.x[eid] ?? 0);
           position.x[eid] = Math.max(PLAY_BOUNDS.minX, Math.min(PLAY_BOUNDS.maxX, x));
           bounced = true;
         }
         if (y < PLAY_BOUNDS.minY || y > PLAY_BOUNDS.maxY) {
-          world.stores.velocity.y[eid] = -world.stores.velocity.y[eid]!;
+          world.stores.velocity.y[eid] = -(world.stores.velocity.y[eid] ?? 0);
           position.y[eid] = Math.max(PLAY_BOUNDS.minY, Math.min(PLAY_BOUNDS.maxY, y));
           bounced = true;
         }
