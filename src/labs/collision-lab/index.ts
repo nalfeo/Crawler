@@ -164,6 +164,16 @@ const ROOM_PRESETS: readonly RoomPreset[] = [
   },
 ];
 
+function getDefaultRoom(): RoomPreset {
+  const room = ROOM_PRESETS[0];
+  if (!room) {
+    throw new Error('Projectile collision lab requires at least one room preset.');
+  }
+  return room;
+}
+
+const DEFAULT_ROOM = getDefaultRoom();
+
 interface CollisionLabSettings {
   roomId: string;
   projectileType: ProjectileType;
@@ -256,7 +266,7 @@ function raycastRect(origin: Vec2, delta: Vec2, wall: Wall, radius: number): num
 }
 
 function findRoom(roomId: string): RoomPreset {
-  return ROOM_PRESETS.find((room) => room.id === roomId) ?? ROOM_PRESETS[0];
+  return ROOM_PRESETS.find((room) => room.id === roomId) ?? DEFAULT_ROOM;
 }
 
 function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
@@ -296,7 +306,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   }
 
   const settings: CollisionLabSettings = {
-    roomId: ROOM_PRESETS[0].id,
+    roomId: DEFAULT_ROOM.id,
     projectileType: 'bullet',
     showSightCollision: true,
   };
