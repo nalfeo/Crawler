@@ -71,6 +71,7 @@ interface TunableWeaponDef {
   shaftDamageMult: number;
   knockback: number;
   pierce: number;
+  bounceCount: number;
 }
 
 function cloneWeaponDef(def: WeaponDef): TunableWeaponDef {
@@ -425,6 +426,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       weaponFolder.add(tunedWeapon, 'pierce', 0, 20, 1).name('Pierce');
       weaponFolder.add(tunedWeapon, 'returnSpeed', 1, 15, 0.5).name('Return Speed');
       weaponFolder.add(tunedWeapon, 'maxRange', 50, 500, 10).name('Max Range');
+      weaponFolder.add(tunedWeapon, 'bounceCount', 0, 12, 1).name('Bounce Count');
     }
 
     // Beam: length + duration + tick interval
