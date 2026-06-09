@@ -52,6 +52,7 @@ export const spriteCatalogEntrySchema = baseEntrySchema
     kind: z.literal('sprite'),
     spriteId: z.string().trim().min(1),
     sheetKey: z.string().trim().min(1),
+    assetPath: z.string().trim().min(1).optional(),
     frame: z.number().int().min(0),
     col: z.number().int().min(0),
     row: z.number().int().min(0),

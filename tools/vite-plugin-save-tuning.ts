@@ -19,10 +19,15 @@ import {
   resolveProvider,
   type MetadataProviderMode,
 } from '../scripts/sprites/metadata-pipeline.js';
-import { parseSpriteCatalog, type SpriteCatalogRecord } from '../src/shared/sprite-catalog.js';
+import {
+  ensureSentence,
+  parseSpriteCatalog,
+  type SpriteCatalogRecord,
+} from '../src/shared/sprite-catalog.js';
 
 const DATA_DIR = resolve(__dirname, '../src/shared/data');
 const REPO_ROOT = resolve(__dirname, '..');
+const GENERATED_MANIFEST_PATH = resolve(__dirname, '../public/assets/generated/manifest.json');
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
@@ -62,6 +67,57 @@ function isLoopbackHostHeader(hostHeader: string | string[] | undefined): boolea
   if (!raw) return false;
   const host = raw.split(':')[0]?.toLowerCase() ?? '';
   return host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+}
+
+function sortCatalog(records: SpriteCatalogRecord[]): SpriteCatalogRecord[] {
+  const copy = [...records];
+  copy.sort((a, b) => {
+    const kindCmp = (a.kind === 'sheet' ? 0 : 1) - (b.kind === 'sheet' ? 0 : 1);
+    if (kindCmp !== 0) return kindCmp;
+    return a.id.localeCompare(b.id);
+  });
+  return copy;
+}
+
+interface GeneratedManifestEntry {
+  readonly briefId?: string;
+  readonly spriteName?: string;
+  readonly assetPath?: string;
+}
+
+function readGeneratedManifestEntry(id: string): GeneratedManifestEntry | null {
+  if (!id.startsWith('generated:')) return null;
+  const manifestKey = id.slice('generated:'.length);
+  if (!manifestKey) return null;
+  try {
+    const manifest = JSON.parse(readFileSync(GENERATED_MANIFEST_PATH, 'utf-8')) as {
+      entries?: Record<string, GeneratedManifestEntry>;
+    };
+    return manifest.entries?.[manifestKey] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function buildGeneratedCatalogEntry(
+  id: string,
+  manifestEntry: GeneratedManifestEntry,
+): SpriteCatalogRecord {
+  const spriteName = manifestEntry.spriteName ?? id.slice('generated:'.length);
+  const briefId = manifestEntry.briefId ?? spriteName;
+  return {
+    id,
+    kind: 'sprite',
+    label: spriteName,
+    description: ensureSentence(`Generated sprite from brief: ${briefId}`),
+    tags: ['generated', 'pipeline-approved'],
+    spriteId: spriteName,
+    sheetKey: 'generated-manifest',
+    assetPath: manifestEntry.assetPath ?? `generated/${spriteName}.png`,
+    frame: 0,
+    col: 0,
+    row: 0,
+  };
 }
 
 export function labTuningSavePlugin(): Plugin {
@@ -227,13 +283,7 @@ export function labTuningSavePlugin(): Plugin {
               return;
             }
 
-            const merged = [...catalog, ...toAdd];
-            // Sort: sheets first, then sprites alphabetically
-            merged.sort((a, b) => {
-              const kindCmp = (a.kind === 'sheet' ? 0 : 1) - (b.kind === 'sheet' ? 0 : 1);
-              if (kindCmp !== 0) return kindCmp;
-              return a.id.localeCompare(b.id);
-            });
+            const merged = sortCatalog([...catalog, ...toAdd]);
 
             // Validate full catalog and write atomically via temp file + rename
             const validated = parseSpriteCatalog(merged);
@@ -302,10 +352,27 @@ export function labTuningSavePlugin(): Plugin {
             }
 
             const raw = JSON.parse(readFileSync(absoluteCatalogPath, 'utf-8'));
-            const catalog = parseSpriteCatalog(raw);
-            const existingEntry = catalog.find(
+            let catalog = parseSpriteCatalog(raw);
+            let existingEntry = catalog.find(
               (entry: SpriteCatalogRecord) => entry.id === payload.id,
             );
+            if (!existingEntry) {
+              const generatedManifestEntry = readGeneratedManifestEntry(payload.id);
+              if (generatedManifestEntry) {
+                const hydrated = buildGeneratedCatalogEntry(payload.id, generatedManifestEntry);
+                const merged = sortCatalog([
+                  ...catalog.filter((entry: SpriteCatalogRecord) => entry.id !== payload.id),
+                  hydrated,
+                ]);
+                catalog = parseSpriteCatalog(merged);
+                writeFileSync(
+                  absoluteCatalogPath,
+                  JSON.stringify(catalog, null, 2) + '\n',
+                  'utf-8',
+                );
+                existingEntry = hydrated;
+              }
+            }
             if (!existingEntry) {
               res.statusCode = 404;
               res.setHeader('Content-Type', 'application/json');

@@ -56,9 +56,10 @@ export interface Scorecard {
   /** Per-sensor results, in the order the sensors ran. */
   readonly breakdown: ReadonlyArray<SensorResult>;
   /**
-   * Anchor derived from the silhouette by the `anchor-derivable` sensor.
-   * Null when the brief uses the legacy `anchor-opaque` sensor, or when
-   * `anchor-derivable` failed (the failure is still recorded in `breakdown`).
+   * Anchor derived from the silhouette by the active anchor sensor
+   * (`anchor-derivable` or `anchor-center-of-mass`). Null when the brief uses
+   * the legacy `anchor-opaque` sensor, or when derivation failed (the failure
+   * is still recorded in `breakdown`).
    */
   readonly derivedAnchor: DerivedAnchor | null;
 }
@@ -157,10 +158,12 @@ function resolveOpaqueBboxFits(image: RgbaImage, brief: Brief): SensorResult {
 
 function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {
   const overrides = brief.sensors.opaqueRatio;
-  if (!overrides || (overrides.min === undefined && overrides.max === undefined)) {
+  const min = overrides?.min;
+  const max = overrides?.max ?? (brief.postprocessing?.trimAndFit ? 0.92 : undefined);
+  if (min === undefined && max === undefined) {
     return opaqueRatio(image);
   }
-  return opaqueRatio(image, { min: overrides.min, max: overrides.max });
+  return opaqueRatio(image, { min, max });
 }
 
 function resolveAnchorSensor(image: RgbaImage, brief: Brief): SensorResult {
