@@ -1,6 +1,6 @@
-import { addComponent, addEntity, set } from 'bitecs';
+import { addComponent, addEntity, entityExists, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Position, Velocity } from '../../src/core/components.js';
+import { Position, Projectile, Velocity } from '../../src/core/components.js';
 import { movementSystem } from '../../src/core/systems/movementSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -8,6 +8,7 @@ import { TileMap } from '../../src/core/map/TileMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TilePresets, BiomeType } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
+import { WeaponType } from '../../src/shared/constants.js';
 
 /** Create a 10×10 map with walls on borders and a wall column at x=5. */
 function makeWalledMap(): FloorMap {
@@ -145,6 +146,32 @@ describe('movementSystem', () => {
 
       expect(world.stores.position.x[eid]).toBeCloseTo(96);
       expect(world.stores.position.y[eid]).toBeCloseTo(96);
+    });
+
+    it('emits a wall surface-hit event and removes blocked projectiles', () => {
+      const world = createTestWorld();
+      world.floorMap = makeWalledMap();
+      world.elapsedMs = 777;
+
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, set(Position, { x: 96, y: 96 }));
+      addComponent(world.ecs, eid, set(Velocity, { x: 80, y: -96 }));
+      addComponent(world.ecs, eid, set(Projectile, { pierce: 0, hitCount: 0 }));
+
+      movementSystem(world);
+
+      expect(entityExists(world.ecs, eid)).toBe(false);
+      expect(world.combatEvents).toHaveLength(1);
+      expect(world.combatEvents[0]).toMatchObject({
+        type: 'surface-hit',
+        x: 176,
+        y: 0,
+        timestamp: 777,
+        surfaceType: 'wall',
+        sourceX: 96,
+        sourceY: 96,
+        weaponType: WeaponType.RANGED,
+      });
     });
   });
 });

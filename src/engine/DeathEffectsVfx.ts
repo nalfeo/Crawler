@@ -1,4 +1,5 @@
 import type { CombatEvent } from '../shared/combat-events.js';
+import { GORE_PALETTES } from './GorePalettes.js';
 
 interface SpawnParticles {
   (
@@ -14,10 +15,6 @@ interface SpawnParticles {
 }
 
 const DEATH_BASE_PARTICLES = 16;
-const LIVING_COLORS = [0xcc0000, 0xaa0000, 0x880000, 0x660000, 0x990000];
-const UNDEAD_COLORS = [0x6b8f23, 0x4f6f1a, 0x7f9f2a, 0x2f4f2f];
-const MECHANICAL_COLORS = [0x8ea0b5, 0xb0bec5, 0xe5edf5, 0x7cd4ff];
-
 export function createDeathEffectsSystem(
   spawnParticles: SpawnParticles,
 ): {
@@ -31,11 +28,11 @@ export function createDeathEffectsSystem(
       const overkillMult = 1 + Math.min(overkill / 20, 3);
       const count = Math.round(DEATH_BASE_PARTICLES * overkillMult);
 
-      let colors = LIVING_COLORS;
+      let colors: readonly number[] = GORE_PALETTES.living;
       if (event.targetMaterial === 'undead') {
-        colors = UNDEAD_COLORS;
+        colors = GORE_PALETTES.undead;
       } else if (event.targetMaterial === 'mechanical') {
-        colors = MECHANICAL_COLORS;
+        colors = GORE_PALETTES.mechanical;
       }
 
       let dirX = event.knockbackDirX ?? 0;

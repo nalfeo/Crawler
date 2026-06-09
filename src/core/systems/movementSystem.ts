@@ -1,10 +1,9 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
-import { AoeOnImpact, EnemyProjectile, Position, Projectile, Returning, Velocity } from '../components.js';
+import { Position, Projectile, Velocity } from '../components.js';
+import { resolveProjectileWeaponType } from '../combat-event-classifiers.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import { clearProjectilePierceHits } from './damageSystem.js';
-import { WeaponType } from '../../shared/constants.js';
-import type { CombatWeaponType } from '../../shared/combat-events.js';
 
 export function movementSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Position, Velocity]);
@@ -37,15 +36,15 @@ export function movementSystem(world: GameWorld): void {
       } else if (hasComponent(world.ecs, eid, Projectile)) {
         world.combatEvents.push({
           type: 'surface-hit',
-          x: oldX,
-          y: oldY,
+          x: newX,
+          y: newY,
           amount: 0,
           timestamp: world.elapsedMs,
           targetEid: eid,
           surfaceType: 'wall',
           weaponType: resolveProjectileWeaponType(world, eid),
-          sourceX: oldX - (velocity.x[eid] ?? 0),
-          sourceY: oldY - (velocity.y[eid] ?? 0),
+          sourceX: oldX,
+          sourceY: oldY,
         });
         clearProjectilePierceHits(world, eid);
         clearEntityStores(world, eid);
@@ -59,10 +58,4 @@ export function movementSystem(world: GameWorld): void {
     }
   }
 
-  function resolveProjectileWeaponType(world: GameWorld, eid: number): CombatWeaponType {
-    if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy-projectile';
-    if (hasComponent(world.ecs, eid, AoeOnImpact)) return WeaponType.MAGIC;
-    if (hasComponent(world.ecs, eid, Returning)) return WeaponType.THROWN;
-    return WeaponType.RANGED;
-  }
 }

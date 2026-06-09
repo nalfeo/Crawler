@@ -1,7 +1,6 @@
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
 import {
-  AoeOnImpact,
   Damage,
   Enemy,
   EnemyProjectile,
@@ -12,10 +11,10 @@ import {
   Stats,
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { resolveProjectileWeaponType } from '../combat-event-classifiers.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import { WeaponType } from '../../shared/constants.js';
-import type { CombatWeaponType } from '../../shared/combat-events.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -115,7 +114,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
-    const weaponType = getProjectileWeaponType(world, projectile);
+    const weaponType = resolveProjectileWeaponType(world, projectile);
     applyDamage(
       world,
       enemy,
@@ -178,7 +177,7 @@ function applyPlayerEnemyHit(
     undefined,
     world.stores.position.x[enemy] ?? 0,
     world.stores.position.y[enemy] ?? 0,
-    'unknown',
+    WeaponType.MELEE,
   );
   hitTimestamps[player] = world.elapsedMs;
 }
@@ -218,12 +217,6 @@ function applyEnemyProjectileHit(
   hitTimestamps[player] = world.elapsedMs;
 
   destroyEntity(world, projectile);
-}
-
-function getProjectileWeaponType(world: GameWorld, projectile: number): CombatWeaponType {
-  if (hasComponent(world.ecs, projectile, AoeOnImpact)) return WeaponType.MAGIC;
-  if (hasComponent(world.ecs, projectile, Returning)) return WeaponType.THROWN;
-  return WeaponType.RANGED;
 }
 
 export function damageSystem(world: GameWorld, collisionResult: CollisionResult): void {

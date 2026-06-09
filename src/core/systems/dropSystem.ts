@@ -19,8 +19,7 @@ import {
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
 import { createLogger } from '../../shared/logger.js';
-import { getEntityTags } from './equipmentSystem.js';
-import type { CombatTargetMaterial } from '../../shared/combat-events.js';
+import { resolveTargetMaterial } from '../combat-event-classifiers.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -236,17 +235,6 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     // Add death linger timer so entity persists for knockback/death animation
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: deathLingerMs }));
-  }
-
-  function resolveTargetMaterial(world: GameWorld, eid: number): CombatTargetMaterial {
-    const tags = getEntityTags(world, eid);
-    if (tags.has('mechanical') || tags.has('robotic') || tags.has('construct')) {
-      return 'mechanical';
-    }
-    if (tags.has('undead')) {
-      return 'undead';
-    }
-    return 'living';
   }
 }
 
