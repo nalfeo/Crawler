@@ -67,6 +67,10 @@ const PLAYER = {
 };
 const AIM_RANGE = 620;
 const BEAM_PULSE_TTL_MS = 140;
+const MAX_FRAME_DELTA_MS = 50;
+const EPSILON_LENGTH_SQ = 0.0001 * 0.0001;
+const EPSILON_DELTA_SQ = 0.0000001;
+const EPSILON_AXIS_DELTA = 0.000001;
 const BACKGROUND = '#0b1020';
 
 const PROJECTILE_PROFILES: Readonly<Record<Exclude<ProjectileType, 'beam'>, ProjectileProfile>> = {
@@ -183,19 +187,21 @@ interface CollisionLabSettings {
 function normalizeVector(from: Vec2, to: Vec2): Vec2 | null {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const length = Math.hypot(dx, dy);
-  if (length <= 0.0001) {
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= EPSILON_LENGTH_SQ) {
     return null;
   }
+
+  const inverseLength = 1 / Math.sqrt(lengthSquared);
   return {
-    x: dx / length,
-    y: dy / length,
+    x: dx * inverseLength,
+    y: dy * inverseLength,
   };
 }
 
 function raycastCircle(origin: Vec2, delta: Vec2, center: Vec2, radius: number): number | null {
   const a = delta.x * delta.x + delta.y * delta.y;
-  if (a <= 0.0000001) {
+  if (a <= EPSILON_DELTA_SQ) {
     return null;
   }
 
@@ -237,7 +243,7 @@ function raycastRect(origin: Vec2, delta: Vec2, wall: Wall, radius: number): num
   ];
 
   for (const axis of axes) {
-    if (Math.abs(axis.delta) < 0.000001) {
+    if (Math.abs(axis.delta) < EPSILON_AXIS_DELTA) {
       if (axis.origin < axis.min || axis.origin > axis.max) {
         return null;
       }
@@ -623,7 +629,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
   const tick = (now: number) => {
     syncCanvasSize();
-    const deltaMs = Math.min(now - lastFrameTimeMs, 50);
+    const deltaMs = Math.min(now - lastFrameTimeMs, MAX_FRAME_DELTA_MS);
     lastFrameTimeMs = now;
 
     updateProjectiles(deltaMs);
