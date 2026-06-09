@@ -83,6 +83,16 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   isOpen(): boolean;
   destroy(): void;
 } {
+  const textResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const snap = (value: number): number => Math.round(value);
+  const crispText = (
+    x: number,
+    y: number,
+    text: string,
+    style: Phaser.Types.GameObjects.Text.TextStyle,
+  ): Phaser.GameObjects.Text =>
+    scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
+
   const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
     .rectangle(0, 0, scene.scale.width, scene.scale.height, 0x020617, 0.72)
@@ -137,25 +147,20 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     const panelY = panel.y;
     let cursorY = panelY + PANEL_PADDING;
 
-    const title = scene.add.text(panelX + PANEL_PADDING, cursorY, state.title, TITLE_STYLE);
+    const title = crispText(panelX + PANEL_PADDING, cursorY, state.title, TITLE_STYLE);
     textNodes.push(title);
     overlay.add(title);
     cursorY += title.height + 6;
 
     if (state.subtitle) {
-      const subtitle = scene.add.text(
-        panelX + PANEL_PADDING,
-        cursorY,
-        state.subtitle,
-        SUBTITLE_STYLE,
-      );
+      const subtitle = crispText(panelX + PANEL_PADDING, cursorY, state.subtitle, SUBTITLE_STYLE);
       textNodes.push(subtitle);
       overlay.add(subtitle);
       cursorY += subtitle.height + 6;
     }
 
     if (state.body) {
-      const body = scene.add.text(panelX + PANEL_PADDING, cursorY, state.body, BODY_STYLE);
+      const body = crispText(panelX + PANEL_PADDING, cursorY, state.body, BODY_STYLE);
       textNodes.push(body);
       overlay.add(body);
       cursorY += body.height + 10;
@@ -200,13 +205,13 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       });
 
       const marker = isSelected ? '▶ ' : '  ';
-      const label = scene.add.text(
+      const label = crispText(
         panelX + PANEL_PADDING + 10,
         rowY + 8,
         `${marker}${option.label}`,
         isDisabled ? LABEL_DISABLED_STYLE : LABEL_STYLE,
       );
-      const description = scene.add.text(
+      const description = crispText(
         panelX + PANEL_PADDING + 26,
         rowY + 30,
         option.description ?? (isDisabled ? 'Unavailable' : ''),
@@ -219,7 +224,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     }
 
     const footerY = cursorY + state.options.length * (rowHeight + 8) + 4;
-    const footer = scene.add.text(
+    const footer = crispText(
       panelX + PANEL_PADDING,
       footerY,
       state.allowCancel
