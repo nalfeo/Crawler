@@ -60,8 +60,7 @@ Protect `main` with the following rules:
 - Require all blocking CI checks to pass before merge
 - Require the semantic PR / commit check to pass
 - Require the branch to be up to date with `main` before merging
-- Require at least one approving review
-- Dismiss stale approvals when new commits are pushed
+- **No human review requirement** — merges are approved by passing CI only
 - Block force-pushes and branch deletion on `main`
 - Prefer squash merge or other linear-history-friendly merge settings
 
