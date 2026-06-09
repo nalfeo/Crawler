@@ -45,6 +45,8 @@ export interface WeaponDef {
   readonly knockback: number;
   /** Number of enemies a projectile can pierce through (0 = destroy on first hit). */
   readonly pierce: number;
+  /** Number of arena-bound bounces for projectile weapons (0 = no bounce). */
+  readonly bounceCount: number;
   /** Gore factor 0..1 — how likely/intense blood splatter is on hit.
    *  Bladed/piercing weapons are high (~0.8–1.0), blunt weapons low (~0.1–0.2). */
   readonly goreFactor: number;
@@ -72,6 +74,7 @@ function def(
     shaftDamageMult: 1.0,
     knockback: 0,
     pierce: 0,
+    bounceCount: 0,
     goreFactor: 0.5,
     ...partial,
   };
@@ -247,6 +250,21 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       returnSpeed: 0,
       maxRange: 0,
       goreFactor: 0.95,
+    }),
+  ],
+  [
+    'bowling-ball',
+    def({
+      id: 'bowling-ball',
+      name: 'Bowling Ball',
+      weaponType: WeaponType.THROWN,
+      baseDamage: 18,
+      cooldownMs: 1300,
+      range: 280,
+      projectileSpeed: 4.5,
+      pierce: 12,
+      bounceCount: 6,
+      goreFactor: 0.05,
     }),
   ],
 
