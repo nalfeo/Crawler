@@ -1,4 +1,4 @@
-export { AI_TYPE, enemyAISystem } from './enemyAISystem.js';
+export { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from './enemyAISystem.js';
 export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.js';
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
 export {
