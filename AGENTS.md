@@ -11,24 +11,38 @@
 
 ## Commands
 
-| Task              | Command                    |
-| ----------------- | -------------------------- |
-| Typecheck         | `npm run typecheck`        |
-| Lint              | `npm run lint`             |
-| Format            | `npm run format`           |
-| Unit tests        | `npm test`                 |
-| Integration tests | `npm run test:integration` |
-| E2E tests         | `npm run test:e2e`         |
-| Coverage          | `npm run test:coverage`    |
-| Dev server        | `npm run dev`              |
-| Lab mode          | `npm run lab`              |
-| Build             | `npm run build`            |
-| Dead code         | `npm run lint:dead-code`   |
-| Fast verify       | `npm run verify:fast`      |
-| Full verify       | `npm run verify`           |
-| Docs loop (local) | `npm run docs:check`       |
-| Security loop     | `npm run security:check`   |
-| Health loop       | `npm run health:check`     |
+| Task                   | Command                           |
+| ---------------------- | --------------------------------- |
+| Typecheck              | `npm run typecheck`               |
+| Lint                   | `npm run lint`                    |
+| Lint (fix)             | `npm run lint:fix`                |
+| Format                 | `npm run format`                  |
+| Format (check)         | `npm run format:check`            |
+| Unit tests             | `npm test`                        |
+| Unit tests (watch)     | `npm run test:watch`              |
+| Integration tests      | `npm run test:integration`        |
+| E2E tests              | `npm run test:e2e`                |
+| Coverage               | `npm run test:coverage`           |
+| Dev server             | `npm run dev`                     |
+| Lab mode               | `npm run lab`                     |
+| DevTools mode          | `npm run devtools`                |
+| Build                  | `npm run build`                   |
+| Dead code              | `npm run lint:dead-code`          |
+| Sprite extract palette | `npm run sprites:extract-palette` |
+| Sprite run             | `npm run sprites:run`             |
+| Sprite gallery         | `npm run sprites:gallery`         |
+| Sprite approve         | `npm run sprites:approve`         |
+| Sprite synth           | `npm run sprites:synth`           |
+| Sprite batch           | `npm run sprites:batch`           |
+| Sprite asset plan      | `npm run sprites:asset-plan`      |
+| Sprite plan drafts     | `npm run sprites:plan-drafts`     |
+| Sprite sync catalog    | `npm run sprites:sync-catalog`    |
+| Sprite metadata        | `npm run sprites:metadata`        |
+| Fast verify            | `npm run verify:fast`             |
+| Full verify            | `npm run verify`                  |
+| Docs loop (local)      | `npm run docs:check`              |
+| Security loop          | `npm run security:check`          |
+| Health loop            | `npm run health:check`            |
 
 ## Architecture
 
