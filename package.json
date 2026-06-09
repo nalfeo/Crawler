@@ -5,6 +5,7 @@
   "description": "A crafting-focused vampire-survivors-like set inside a brutal intergalactic reality show dungeon",
   "type": "module",
   "scripts": {
+    "prepare": "node scripts/agent/setup-git-hooks.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
