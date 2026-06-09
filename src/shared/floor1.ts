@@ -6,6 +6,7 @@ export interface Floor1ObjectiveState {
   readonly requiredGold: number;
   readonly requiredJunk: number;
   readonly deadlineMs: number;
+  readonly staircaseSpawnCountdownMs: number;
   readonly safeRoomPos: { x: number; y: number };
   readonly staircasePos: { x: number; y: number };
   /** Position of the Welcome Office (spawn-room area) where the Tutorial Goon NPC stands. */
@@ -16,8 +17,14 @@ export interface Floor1ObjectiveState {
   goldCollected: number;
   junkCollected: number;
   safeRoomDiscovered: boolean;
+  staircaseSpawnStartedMs: number | null;
+  staircaseSpawnRemainingMs: number | null;
+  staircaseSpawned: boolean;
+  staircaseLocked: boolean;
   staircaseUnlocked: boolean;
   staircaseDiscovered: boolean;
+  staircaseBossEid: number | null;
+  staircaseBossDefeated: boolean;
 }
 
 export interface Floor1RunSummary {
