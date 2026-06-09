@@ -19,6 +19,9 @@ const POLL_INTERVAL_MS = 5000;
 
 const servers = new Map();
 let trackedWorktreePath = null;
+let latestState = null;
+let refreshTimer = null;
+let refreshInFlight = null;
 
 function rememberWorkingDirectory(workingDirectory) {
   if (typeof workingDirectory !== 'string') {
@@ -33,6 +36,10 @@ function rememberWorkingDirectory(workingDirectory) {
 
 function getTrackedWorktreePath() {
   return trackedWorktreePath;
+}
+
+function getSessionWorkspacePath(session) {
+  return session.workspacePath ?? getTrackedWorktreePath();
 }
 
 function escapeForPowerShell(value) {
@@ -296,10 +303,11 @@ function sortServers(serversList) {
 }
 
 function getArtifactPath(session) {
-  if (!session.workspacePath) {
+  const workspacePath = getSessionWorkspacePath(session);
+  if (!workspacePath) {
     return null;
   }
-  return join(session.workspacePath, 'files', 'worktree-server-status.json');
+  return join(workspacePath, 'files', 'worktree-server-status.json');
 }
 
 async function persistState(session, state) {
@@ -330,6 +338,38 @@ async function discoverState(session) {
       ...baseState,
       error: 'The session worktree path is not available yet.',
     };
+  }
+
+  async function refreshState(session) {
+    if (refreshInFlight) {
+      return refreshInFlight;
+    }
+
+    refreshInFlight = (async () => {
+      latestState = await discoverState(session);
+      return latestState;
+    })();
+
+    try {
+      return await refreshInFlight;
+    } finally {
+      refreshInFlight = null;
+    }
+  }
+
+  function getCachedState() {
+    return (
+      latestState ?? {
+        workspaceName: getTrackedWorktreePath() ? basename(getTrackedWorktreePath()) : null,
+        workspacePath: getTrackedWorktreePath(),
+        platform: process.platform,
+        scannedAt: new Date().toISOString(),
+        discoveryMethod: 'windows-process-scan',
+        activeServerCount: 0,
+        servers: [],
+        error: 'State is loading.',
+      }
+    );
   }
 
   if (process.platform !== 'win32') {
@@ -411,8 +451,7 @@ async function handleRequest(req, res, instanceId, session) {
   const requestUrl = new URL(req.url || '/', 'http://127.0.0.1');
 
   if (requestUrl.pathname === '/api/state') {
-    const state = await discoverState(session);
-    setJsonResponse(res, state);
+    setJsonResponse(res, getCachedState());
     return;
   }
 
@@ -421,7 +460,7 @@ async function handleRequest(req, res, instanceId, session) {
       setJsonResponse(res, { error: 'Method not allowed' }, 405);
       return;
     }
-    const state = await discoverState(session);
+    const state = await refreshState(session);
     setJsonResponse(res, state);
     return;
   }
@@ -483,7 +522,12 @@ const session = await joinSession({
           servers.set(ctx.instanceId, entry);
         }
 
-        const state = await discoverState(session);
+        const state = await refreshState(session);
+        if (!refreshTimer) {
+          refreshTimer = setInterval(() => {
+            void refreshState(session);
+          }, POLL_INTERVAL_MS);
+        }
         return {
           title: 'Worktree Server',
           status:
@@ -502,6 +546,10 @@ const session = await joinSession({
         }
         servers.delete(ctx.instanceId);
         await new Promise((resolve) => entry.server.close(() => resolve()));
+        if (servers.size === 0 && refreshTimer) {
+          clearInterval(refreshTimer);
+          refreshTimer = null;
+        }
       },
     }),
   ],
