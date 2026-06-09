@@ -92,7 +92,12 @@ function createBoundaryWalls(): Wall[] {
   return [
     { x: 0, y: 0, width: WORLD_WIDTH, height: BORDER_THICKNESS },
     { x: 0, y: WORLD_HEIGHT - BORDER_THICKNESS, width: WORLD_WIDTH, height: BORDER_THICKNESS },
-    { x: 0, y: BORDER_THICKNESS, width: BORDER_THICKNESS, height: WORLD_HEIGHT - BORDER_THICKNESS * 2 },
+    {
+      x: 0,
+      y: BORDER_THICKNESS,
+      width: BORDER_THICKNESS,
+      height: WORLD_HEIGHT - BORDER_THICKNESS * 2,
+    },
     {
       x: WORLD_WIDTH - BORDER_THICKNESS,
       y: BORDER_THICKNESS,
@@ -550,10 +555,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         context.lineWidth = 2;
         context.beginPath();
         context.moveTo(projectile.x, projectile.y);
-        context.lineTo(
-          projectile.x - projectile.dirX * 12,
-          projectile.y - projectile.dirY * 12,
-        );
+        context.lineTo(projectile.x - projectile.dirX * 12, projectile.y - projectile.dirY * 12);
         context.stroke();
       }
     }
