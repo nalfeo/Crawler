@@ -15,7 +15,7 @@ type Wall = {
   height: number;
 };
 
-type Mob = {
+type CollisionTarget = {
   x: number;
   y: number;
   radius: number;
@@ -25,7 +25,7 @@ type RoomPreset = {
   id: string;
   name: string;
   walls: Wall[];
-  mobs: Mob[];
+  mobs: CollisionTarget[];
 };
 
 type ProjectileType = 'bullet' | 'arrow' | 'beam';
@@ -181,7 +181,7 @@ const DEFAULT_ROOM = getDefaultRoom();
 interface CollisionLabSettings {
   roomId: string;
   projectileType: ProjectileType;
-  showSightCollision: boolean;
+  highlightAimTarget: boolean;
 }
 
 function normalizeVector(from: Vec2, to: Vec2): Vec2 | null {
@@ -254,7 +254,9 @@ function raycastRect(origin: Vec2, delta: Vec2, wall: Wall, radius: number): num
     let t1 = (axis.min - axis.origin) * inv;
     let t2 = (axis.max - axis.origin) * inv;
     if (t1 > t2) {
-      [t1, t2] = [t2, t1];
+      const temp = t1;
+      t1 = t2;
+      t2 = temp;
     }
 
     tMin = Math.max(tMin, t1);
@@ -314,7 +316,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   const settings: CollisionLabSettings = {
     roomId: DEFAULT_ROOM.id,
     projectileType: 'bullet',
-    showSightCollision: true,
+    highlightAimTarget: true,
   };
 
   let currentRoom = findRoom(settings.roomId);
@@ -581,7 +583,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
     const result = castRay(PLAYER, direction, AIM_RANGE, 0);
 
-    context.strokeStyle = settings.showSightCollision
+    context.strokeStyle = settings.highlightAimTarget
       ? result.hitWall
         ? '#f97316'
         : result.hitMob
@@ -697,7 +699,7 @@ function createCollisionLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       render();
     });
 
-  gui.add(settings, 'showSightCollision').name('Show Sight Collision');
+  gui.add(settings, 'highlightAimTarget').name('Color-Code Aim Target');
   gui
     .add(
       {
