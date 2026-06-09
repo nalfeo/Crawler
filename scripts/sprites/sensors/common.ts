@@ -147,26 +147,7 @@ function gatherOpaqueStats(image: RgbaImage): OpaqueStats {
 }
 
 export function opaqueBboxFits(image: RgbaImage): SensorResult {
-  const sensor = 'opaque-bbox-fits';
-  const stats = gatherOpaqueStats(image);
-  if (stats.count === 0) {
-    return fail(sensor, 'no opaque pixels — sprite is empty');
-  }
-  if (stats.minX < 0 || stats.maxX >= image.width || stats.minY < 0 || stats.maxY >= image.height) {
-    return fail(
-      sensor,
-      `opaque bbox [${stats.minX}..${stats.maxX}] x [${stats.minY}..${stats.maxY}] outside frame ${image.width}x${image.height}`,
-    );
-  }
-  const edgeAnalysis = analyzeEdgeTouchingComponents(image, {
-    allowMainTouch: false,
-    allowDetachedEdgeComponents: false,
-    maxDetachedEdgePixels: 0,
-  });
-  if (!edgeAnalysis.ok) {
-    return fail(sensor, edgeAnalysis.reason, edgeAnalysis.pixels);
-  }
-  return ok(sensor);
+  return opaqueBboxFitsWithOptions(image);
 }
 
 interface EdgeTouchOptions {
@@ -196,10 +177,6 @@ export function opaqueBboxFitsWithOptions(
   } = {},
 ): SensorResult {
   const sensor = 'opaque-bbox-fits';
-  const stats = gatherOpaqueStats(image);
-  if (stats.count === 0) {
-    return fail(sensor, 'no opaque pixels - sprite is empty');
-  }
   const edgeAnalysis = analyzeEdgeTouchingComponents(image, {
     allowMainTouch: opts.allowMainTouch ?? false,
     allowDetachedEdgeComponents: opts.allowDetachedEdgeComponents ?? false,

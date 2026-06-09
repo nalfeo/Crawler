@@ -54,8 +54,9 @@ export function parseArgs(argv: ReadonlyArray<string>): PlanDraftCliArgs {
       statuses.push(
         ...value
           .split(',')
-          .map((entry) => parseStatusValue(entry.trim()))
-          .filter(Boolean),
+          .map((entry) => entry.trim())
+          .filter(Boolean)
+          .map((entry) => parseStatusValue(entry)),
       );
       i += 1;
     } else if (arg === '--type') {
