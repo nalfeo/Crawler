@@ -113,6 +113,15 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
         margin-top: 16px;
       }
 
+      .empty {
+        display: grid;
+        gap: 8px;
+      }
+
+      .empty strong {
+        font-size: 16px;
+      }
+
       .server-card {
         border: 1px solid var(--border-color-default, #d1d9e0);
         border-radius: 16px;
@@ -341,7 +350,12 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
         }
 
         const servers = Array.isArray(state.servers) ? state.servers : [];
-        serversEl.innerHTML = servers.map(renderServer).join('');
+        serversEl.innerHTML =
+          servers.length > 0
+            ? servers.map(renderServer).join('')
+            : '<section class="empty"><strong>No active server found</strong><div>Run <code>npm run lab</code>, <code>npm run devtools</code>, or <code>npm run dev</code> in this worktree to populate the links.</div><div class="meta"><span>Last scan: ' +
+              escapeHtml(scannedAt) +
+              '</span></div></section>';
       }
 
       async function loadState(url, options) {
