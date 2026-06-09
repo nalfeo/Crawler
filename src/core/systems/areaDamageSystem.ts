@@ -3,6 +3,7 @@ import { AreaDamage, Enemy, Health, Owner, Player, Position, Team } from '../com
 import { applyDamage } from '../apply-damage.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
+import { WeaponType } from '../../shared/constants.js';
 
 const hitSets = new WeakMap<GameWorld, Map<number, Set<number>>>();
 
@@ -108,6 +109,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
         undefined,
         x,
         y,
+        WeaponType.MELEE,
       );
 
       if (hitSet !== undefined) {

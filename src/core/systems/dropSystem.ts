@@ -19,6 +19,8 @@ import {
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
 import { createLogger } from '../../shared/logger.js';
+import { getEntityTags } from './equipmentSystem.js';
+import type { CombatTargetMaterial } from '../../shared/combat-events.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -215,12 +217,14 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     }
 
     // Emit death combat event for gore VFX (with direction info)
+    const targetMaterial = resolveTargetMaterial(world, eid);
     world.combatEvents.push({
       type: 'death',
       x,
       y,
       amount: maxHp,
       targetType: 'enemy',
+      targetMaterial,
       timestamp: world.elapsedMs,
       targetEid: eid,
       overkill,
@@ -232,6 +236,17 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     // Add death linger timer so entity persists for knockback/death animation
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: deathLingerMs }));
+  }
+
+  function resolveTargetMaterial(world: GameWorld, eid: number): CombatTargetMaterial {
+    const tags = getEntityTags(world, eid);
+    if (tags.has('mechanical') || tags.has('robotic') || tags.has('construct')) {
+      return 'mechanical';
+    }
+    if (tags.has('undead')) {
+      return 'undead';
+    }
+    return 'living';
   }
 }
 

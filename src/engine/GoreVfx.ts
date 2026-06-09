@@ -1,23 +1,19 @@
 /**
- * Gore VFX renderer — spawns blood splatter particles on hit and death events.
+ * Gore VFX renderer — orchestrates split collision-effects and death-effects VFX.
  *
  * IMPORTANT: Must run BEFORE CombatVfx.update() since CombatVfx drains the
  * combatEvents queue. GoreVfx reads events without draining them.
  *
- * Hit gore: small directional splatter, probability controlled by weaponGoreFactor.
- * Death gore: large particle burst, intensity scaled by overkill damage.
  */
 import type Phaser from 'phaser';
-import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from '../core/world.js';
+import { createCollisionEffectsSystem } from './CollisionEffectsVfx.js';
+import { createDeathEffectsSystem } from './DeathEffectsVfx.js';
 
 const PARTICLE_LIFETIME_MS = 500;
-const HIT_BASE_PARTICLES = 4;
-const DEATH_BASE_PARTICLES = 16;
 const PARTICLE_SPEED = 120;
 const PARTICLE_SIZE_MIN = 2;
 const PARTICLE_SIZE_MAX = 6;
-const BLOOD_COLORS = [0xcc0000, 0xaa0000, 0x880000, 0x660000, 0x990000];
 
 interface GoreParticle {
   obj: Phaser.GameObjects.Rectangle;
@@ -64,6 +60,7 @@ export function createGoreVfx(
     dirY: number,
     spread: number,
     renderElapsedMs: number,
+    colors: readonly number[],
   ): void {
     const scaledCount = Math.round(count * cfg.intensity);
     if (scaledCount <= 0) return;
@@ -71,7 +68,7 @@ export function createGoreVfx(
       const angle = Math.atan2(dirY, dirX) + (vfxRandom() - 0.5) * spread;
       const speed = PARTICLE_SPEED * (0.5 + vfxRandom() * 0.8);
       const size = PARTICLE_SIZE_MIN + vfxRandom() * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
-      const color = BLOOD_COLORS[Math.floor(vfxRandom() * BLOOD_COLORS.length)]!;
+      const color = colors[Math.floor(vfxRandom() * colors.length)]!;
 
       const rect = scene.add.rectangle(x, y, size, size, color);
       rect.setDepth(999);
@@ -86,74 +83,8 @@ export function createGoreVfx(
     }
   }
 
-  function handleHitEvent(event: CombatEvent, renderElapsedMs: number): void {
-    if (!cfg.hitGoreEnabled) return;
-    if (event.targetType !== 'enemy') return;
-
-    const goreFactor = event.weaponGoreFactor ?? 0.5;
-    if (vfxRandom() > goreFactor) return;
-
-    const count = Math.round(HIT_BASE_PARTICLES * goreFactor * (event.amount / 10));
-    const particleCount = Math.max(1, Math.min(count, 8));
-
-    // Compute direction: blood sprays AWAY from the source
-    let dirX: number;
-    let dirY: number;
-    if (
-      event.sourceX !== undefined &&
-      event.sourceY !== undefined &&
-      (Math.abs(event.x - event.sourceX) > 0.01 || Math.abs(event.y - event.sourceY) > 0.01)
-    ) {
-      // Direction from source to target (blood goes same way the force travels)
-      const dx = event.x - event.sourceX;
-      const dy = event.y - event.sourceY;
-      const dist = Math.hypot(dx, dy);
-      dirX = dx / dist;
-      dirY = dy / dist;
-    } else {
-      // Fallback: random direction when no source info
-      const angle = vfxRandom() * Math.PI * 2;
-      dirX = Math.cos(angle);
-      dirY = Math.sin(angle);
-    }
-
-    spawnParticles(event.x, event.y, particleCount, dirX, dirY, Math.PI * 1.0, renderElapsedMs);
-  }
-
-  function handleDeathEvent(event: CombatEvent, renderElapsedMs: number): void {
-    const overkill = event.overkill ?? 0;
-    const overkillMult = 1 + Math.min(overkill / 20, 3);
-    const count = Math.round(DEATH_BASE_PARTICLES * overkillMult);
-
-    // Prefer explicit knockback direction, fall back to source→target direction
-    let dirX = event.knockbackDirX ?? 0;
-    let dirY = event.knockbackDirY ?? 0;
-    let hasDir = Math.abs(dirX) + Math.abs(dirY) > 0.01;
-
-    if (
-      !hasDir &&
-      event.sourceX !== undefined &&
-      event.sourceY !== undefined &&
-      (Math.abs(event.x - event.sourceX) > 0.01 || Math.abs(event.y - event.sourceY) > 0.01)
-    ) {
-      const dx = event.x - event.sourceX;
-      const dy = event.y - event.sourceY;
-      const dist = Math.hypot(dx, dy);
-      dirX = dx / dist;
-      dirY = dy / dist;
-      hasDir = true;
-    }
-
-    spawnParticles(
-      event.x,
-      event.y,
-      count,
-      hasDir ? dirX : 0,
-      hasDir ? dirY : -1,
-      hasDir ? Math.PI * 1.2 : Math.PI * 2,
-      renderElapsedMs,
-    );
-  }
+  const collisionEffects = createCollisionEffectsSystem(spawnParticles, vfxRandom, cfg);
+  const deathEffects = createDeathEffectsSystem(spawnParticles);
 
   return {
     config: cfg,
@@ -161,11 +92,8 @@ export function createGoreVfx(
     update(world: GameWorld, renderElapsedMs: number, deltaMs: number): void {
       // Process events (do NOT drain — CombatVfx does that)
       for (const event of world.combatEvents) {
-        if (event.type === 'hit') {
-          handleHitEvent(event, renderElapsedMs);
-        } else if (event.type === 'death') {
-          handleDeathEvent(event, renderElapsedMs);
-        }
+        collisionEffects.handle(event, renderElapsedMs);
+        deathEffects.handle(event, renderElapsedMs);
       }
 
       // Animate and clean up particles

@@ -24,6 +24,10 @@ export function createCombatVfx(scene: Phaser.Scene): {
   const floaters: FloatingText[] = [];
 
   function spawnFloater(event: CombatEvent, renderElapsedMs: number): void {
+    if (event.type === 'surface-hit') {
+      return;
+    }
+
     let label: string;
     let color: string;
 

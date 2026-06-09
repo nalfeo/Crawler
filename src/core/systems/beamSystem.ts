@@ -2,6 +2,7 @@ import { entityExists, hasComponent, query } from 'bitecs';
 import { Enemy, Health, LineDamage, Owner, Player, Position, Team } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import type { GameWorld } from '../world.js';
+import { WeaponType } from '../../shared/constants.js';
 
 /** Distance from a point to a line segment. */
 function pointToSegmentDistSq(
@@ -101,6 +102,7 @@ export function beamSystem(world: GameWorld): void {
           undefined,
           ax,
           ay,
+          WeaponType.BEAM,
         );
       }
     }

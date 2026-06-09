@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
 import {
+  AoeOnImpact,
   Damage,
   Enemy,
   EnemyProjectile,
@@ -13,6 +14,8 @@ import {
 import { applyDamage } from '../apply-damage.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
+import { WeaponType } from '../../shared/constants.js';
+import type { CombatWeaponType } from '../../shared/combat-events.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -112,6 +115,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
+    const weaponType = getProjectileWeaponType(world, projectile);
     applyDamage(
       world,
       enemy,
@@ -121,6 +125,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       undefined,
       world.stores.position.x[projectile] ?? 0,
       world.stores.position.y[projectile] ?? 0,
+      weaponType,
     );
 
     // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
@@ -173,6 +178,7 @@ function applyPlayerEnemyHit(
     undefined,
     world.stores.position.x[enemy] ?? 0,
     world.stores.position.y[enemy] ?? 0,
+    'unknown',
   );
   hitTimestamps[player] = world.elapsedMs;
 }
@@ -207,10 +213,17 @@ function applyEnemyProjectileHit(
     undefined,
     world.stores.position.x[projectile] ?? 0,
     world.stores.position.y[projectile] ?? 0,
+    'enemy-projectile',
   );
   hitTimestamps[player] = world.elapsedMs;
 
   destroyEntity(world, projectile);
+}
+
+function getProjectileWeaponType(world: GameWorld, projectile: number): CombatWeaponType {
+  if (hasComponent(world.ecs, projectile, AoeOnImpact)) return WeaponType.MAGIC;
+  if (hasComponent(world.ecs, projectile, Returning)) return WeaponType.THROWN;
+  return WeaponType.RANGED;
 }
 
 export function damageSystem(world: GameWorld, collisionResult: CollisionResult): void {

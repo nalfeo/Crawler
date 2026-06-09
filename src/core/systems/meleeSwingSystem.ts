@@ -11,7 +11,7 @@ import {
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import type { GameWorld } from '../world.js';
-import { MeleeStyle } from '../../shared/constants.js';
+import { MeleeStyle, WeaponType } from '../../shared/constants.js';
 
 /** Half-width of the blade hitbox in pixels. */
 const BLADE_HIT_HALF_WIDTH = 12;
@@ -170,7 +170,7 @@ export function meleeSwingSystem(world: GameWorld): void {
       }
 
       if (hitDamage > 0) {
-        applyDamage(world, target, hitDamage, tx, ty, undefined, px, py);
+        applyDamage(world, target, hitDamage, tx, ty, undefined, px, py, WeaponType.MELEE);
         hitSet.add(target);
 
         // Apply knockback as smooth impulse via Knockback component
