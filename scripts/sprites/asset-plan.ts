@@ -42,6 +42,7 @@ const assetPlanEntrySchema = z
     label: z.string().trim().min(1),
     brief: z.string().trim().min(1),
     briefId: slugSchema.optional(),
+    briefOverrides: z.record(z.string(), z.unknown()).optional(),
     placeholderInUse: z.boolean().default(true),
     integration: integrationTargetSchema.optional(),
   })
@@ -81,6 +82,7 @@ export interface ApprovedSpriteRecord {
 
 export type BriefIndex = ReadonlyMap<string, string>;
 export type ApprovedSpriteIndex = ReadonlyMap<string, ApprovedSpriteRecord>;
+export type DraftBriefIndex = ReadonlyMap<string, string>;
 
 export type { IntegrationState };
 /** Alias kept for backward compatibility — same values as ArtPlanStatus. */
@@ -94,6 +96,7 @@ export interface AssetPlanAssetReport {
   readonly placeholderInUse: boolean;
   readonly integration: IntegrationTarget | null;
   readonly briefAuthored: boolean;
+  readonly draftAuthored: boolean;
   readonly approved: boolean;
   readonly approvedAssetExists: boolean;
   readonly integrationState: IntegrationState;
@@ -116,6 +119,8 @@ export const STATUS_ORDER: readonly AssetPlanStatus[] = [
   'approved-missing-file',
   'brief-ready',
   'brief-ready-placeholder',
+  'draft-ready',
+  'draft-ready-placeholder',
   'needs-art-placeholder',
   'planned',
 ] as const;
@@ -132,16 +137,28 @@ export function loadAssetPlan(planPath: string): AssetPlan {
 }
 
 export function collectCommittedBriefs(repoRoot: string): BriefIndex {
+  return collectBriefIndex(repoRoot, 'committed');
+}
+
+export function collectDraftBriefs(repoRoot: string): DraftBriefIndex {
+  return collectBriefIndex(repoRoot, 'draft');
+}
+
+function collectBriefIndex(repoRoot: string, mode: 'committed' | 'draft'): Map<string, string> {
   const briefsRoot = path.join(repoRoot, 'briefs');
   if (!existsSync(briefsRoot)) {
-    return new Map<string, string>();
+    return new Map();
   }
   const files = walkYamlFiles(briefsRoot);
   const out = new Map<string, string>();
   for (const filePath of files) {
     const relative = path.relative(briefsRoot, filePath);
     const segments = relative.split(path.sep).map((segment) => segment.toLowerCase());
-    if (segments.includes('draft')) {
+    const isDraft = segments.includes('draft');
+    if (mode === 'committed' && isDraft) {
+      continue;
+    }
+    if (mode === 'draft' && !isDraft) {
       continue;
     }
     const parsed = parseYaml(readFileSync(filePath, 'utf8')) as unknown;
@@ -181,6 +198,7 @@ export function loadApprovedSprites(
 
 export interface BuildAssetPlanReportOptions {
   readonly briefIndex: BriefIndex;
+  readonly draftBriefIndex: DraftBriefIndex;
   readonly approvedSprites: ApprovedSpriteIndex;
   readonly spriteRegistryIds?: ReadonlySet<string>;
   readonly itemCatalogIds?: ReadonlySet<string>;
@@ -195,6 +213,7 @@ export function buildAssetPlanReport(
   const assets: AssetPlanAssetReport[] = plan.assets.map((asset) => {
     const briefId = asset.briefId ?? asset.id;
     const briefAuthored = options.briefIndex.has(briefKey(asset.type, briefId));
+    const draftAuthored = options.draftBriefIndex.has(briefKey(asset.type, briefId));
     const approvedRecord = options.approvedSprites.get(briefId);
     const approved = approvedRecord !== undefined;
     const approvedAssetExists = approvedRecord?.assetExists ?? false;
@@ -212,6 +231,7 @@ export function buildAssetPlanReport(
       placeholderInUse: asset.placeholderInUse,
       integration: asset.integration ?? null,
       briefAuthored,
+      draftAuthored,
       approved,
       approvedAssetExists,
       integrationState,
@@ -220,6 +240,7 @@ export function buildAssetPlanReport(
         approvedAssetExists,
         integrationState,
         briefAuthored,
+        draftAuthored,
         placeholderInUse: asset.placeholderInUse,
       }),
     };

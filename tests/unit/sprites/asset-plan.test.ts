@@ -6,6 +6,7 @@ import {
   assetPlanSchema,
   buildAssetPlanReport,
   collectCommittedBriefs,
+  collectDraftBriefs,
   loadApprovedSprites,
   type AssetPlan,
 } from '../../../scripts/sprites/asset-plan.js';
@@ -56,6 +57,7 @@ describe('asset-plan report', () => {
         ['enemy::rat-king', 'briefs/enemies/rat-king.yaml'],
         ['enemy::rat-trash', 'briefs/enemies/rat-trash.yaml'],
       ]),
+      draftBriefIndex: new Map([['enemy::rat-mage', 'briefs/draft/enemies/rat-mage.yaml']]),
       approvedSprites: new Map([
         [
           'rat-bruiser',
@@ -124,6 +126,7 @@ describe('asset-plan report', () => {
 
     const report = buildAssetPlanReport(plan, {
       briefIndex: new Map(),
+      draftBriefIndex: new Map(),
       approvedSprites: new Map([
         [
           'rat-man-mage',
@@ -150,6 +153,32 @@ describe('asset-plan report', () => {
 
     expect(report.assets[0]?.status).toBe('approved-not-integrated');
   });
+
+  it('reports draft-ready statuses when only a draft brief exists', () => {
+    const plan = assetPlanSchema.parse({
+      id: 'rat-floor',
+      title: 'Rat Floor',
+      assets: [
+        {
+          id: 'rat-flash',
+          type: 'vfx',
+          label: 'Rat Flash',
+          brief: 'A quick scamper burst',
+          placeholderInUse: true,
+        },
+      ],
+    }) as AssetPlan;
+
+    const report = buildAssetPlanReport(plan, {
+      briefIndex: new Map(),
+      draftBriefIndex: new Map([['vfx::rat-flash', 'briefs/draft/vfx/rat-flash.yaml']]),
+      approvedSprites: new Map(),
+      spriteRegistryIds: new Set(),
+      itemCatalogIds: new Set(),
+    });
+
+    expect(report.assets[0]?.status).toBe('draft-ready-placeholder');
+  });
 });
 
 describe('asset-plan discovery', () => {
@@ -174,6 +203,22 @@ describe('asset-plan discovery', () => {
 
     const index = collectCommittedBriefs(root);
     expect(index.has('weapon::iron-sword')).toBe(true);
+    expect(index.size).toBe(1);
+  });
+
+  it('collects only draft briefs from briefs/draft/', () => {
+    mkdirSync(path.join(root, 'briefs', 'draft', 'enemies'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'briefs', 'draft', 'enemies', 'rat-bruiser.yaml'),
+      ['type: enemy', 'name: rat-bruiser', 'description: Rat bruiser brief'].join('\n'),
+    );
+    writeFileSync(
+      path.join(root, 'briefs', 'weapons', 'iron-sword.yaml'),
+      ['type: weapon', 'name: iron-sword', 'description: Iron sword brief'].join('\n'),
+    );
+
+    const index = collectDraftBriefs(root);
+    expect(index.has('enemy::rat-bruiser')).toBe(true);
     expect(index.size).toBe(1);
   });
 

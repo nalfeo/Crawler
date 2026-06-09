@@ -1,0 +1,25 @@
+{
+  "$comment": "Default brief settings for hit sparks, spell bursts, ambient flourishes, and other special-effect sprites.",
+  "size": { "width": 64, "height": 64 },
+  "palette": { "id": "kenney-roguelike" },
+  "anchor": { "x": 32, "y": 32 },
+  "tags": ["vfx", "effect", "flair"],
+  "references": [
+    {
+      "path": "public/assets/kenney/tiny-dungeon/spritesheet.png",
+      "note": "projectiles, spell bursts, and dungeon-effect silhouettes"
+    },
+    {
+      "path": "public/assets/kenney/tiny-battle/spritesheet.png",
+      "note": "secondary explosions, flashes, and impact accents"
+    }
+  ],
+  "generation": {
+    "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
+  },
+  "sensors": {
+    "opaqueRatio": { "min": 0.05, "max": 0.6 }
+  },
+  "minVariations": 5,
+  "judge": { "enabled": true, "maxVariants": 16 }
+}

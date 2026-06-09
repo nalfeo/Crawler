@@ -66,6 +66,10 @@ generation:
 sensors:
   weapon:
     orientation: diagonal
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: true
+    maxDetachedEdgePixels: 16
 judge:
   enabled: true
   maxVariants: 16

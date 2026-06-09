@@ -5,6 +5,7 @@ import {
   STATUS_ORDER,
   buildAssetPlanReport,
   collectCommittedBriefs,
+  collectDraftBriefs,
   loadApprovedSprites,
   loadAssetPlan,
   type AssetPlanReport,
@@ -91,12 +92,22 @@ function printHelp(): void {
 }
 
 function renderTable(report: AssetPlanReport): string {
-  const headers = ['asset', 'type', 'status', 'brief', 'approved', 'integration', 'placeholder'];
+  const headers = [
+    'asset',
+    'type',
+    'status',
+    'brief',
+    'draft',
+    'approved',
+    'integration',
+    'placeholder',
+  ];
   const rows = report.assets.map((asset) => [
     asset.id,
     asset.type,
     asset.status,
     asset.briefId,
+    asset.draftAuthored ? 'yes' : 'no',
     asset.approvedAssetExists ? 'yes' : asset.approved ? 'manifest-only' : 'no',
     asset.integration ? `${asset.integration.kind}:${asset.integration.id}` : 'n/a',
     asset.placeholderInUse ? 'yes' : 'no',
@@ -139,8 +150,9 @@ async function main(): Promise<number> {
   const absoluteManifestPath = path.resolve(repoRoot, args.manifestPath);
   const plan = loadAssetPlan(absolutePlanPath);
   const briefIndex = collectCommittedBriefs(repoRoot);
+  const draftBriefIndex = collectDraftBriefs(repoRoot);
   const approvedSprites = loadApprovedSprites(repoRoot, absoluteManifestPath);
-  const report = buildAssetPlanReport(plan, { briefIndex, approvedSprites });
+  const report = buildAssetPlanReport(plan, { briefIndex, draftBriefIndex, approvedSprites });
 
   if (args.format === 'json') {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
