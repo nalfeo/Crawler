@@ -52,6 +52,10 @@ const fail = (sensor: string, reason: string, pixels?: ReadonlyArray<Pixel>): Se
 
 export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
   const sensor = 'dimensions-exact';
+  // When trimAndFit is enabled, output dimensions are dynamic — skip this sensor.
+  if (brief.postprocessing?.trimAndFit) {
+    return ok(sensor);
+  }
   if (image.width !== brief.size.width || image.height !== brief.size.height) {
     return fail(
       sensor,
@@ -180,6 +184,11 @@ export function opaqueRatio(
 
 export function anchorOpaque(image: RgbaImage, brief: Brief): SensorResult {
   const sensor = 'anchor-opaque';
+  // When trimAndFit is on, the image dimensions change so the brief's static
+  // anchor coords are meaningless. Skip — anchor-derivable handles validation.
+  if (brief.postprocessing?.trimAndFit) {
+    return ok(sensor);
+  }
   const { x, y } = brief.anchor;
   if (x < 0 || x >= image.width || y < 0 || y >= image.height) {
     return fail(sensor, `anchor (${x}, ${y}) out of bounds for ${image.width}x${image.height}`);
@@ -200,12 +209,15 @@ export function universalSensors(
   brief: Brief,
   palette: PaletteColors,
 ): SensorResult[] {
+  // When trimAndFit is enabled, the opaque ratio naturally increases
+  // since transparent padding was removed. Use a more permissive max.
+  const opaqueMax = brief.postprocessing?.trimAndFit ? 0.92 : 0.65;
   return [
     dimensionsExact(image, brief),
     alphaBinary(image),
     paletteMembership(image, palette),
     opaqueBboxFits(image),
-    opaqueRatio(image),
+    opaqueRatio(image, { max: opaqueMax }),
     anchorOpaque(image, brief),
   ];
 }

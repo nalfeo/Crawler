@@ -45,6 +45,18 @@ export function postprocess(rawPng: Buffer, brief: Brief, palette: PaletteColors
   const scaled = downscaleNearest(bgRemoved, brief.size.width, brief.size.height);
   const quantized = quantizeToPalette(scaled, palette);
   const finalised = hardThresholdAlpha(quantized);
+
+  // Optional trim-and-fit: remove dead transparent edges, then scale up
+  // so the smallest dimension hits minDimension.
+  if (brief.postprocessing?.trimAndFit) {
+    const trimmed = trimTransparentEdges(finalised);
+    if (trimmed.width > 0 && trimmed.height > 0) {
+      const minDim = brief.postprocessing.minDimension ?? 64;
+      const fitted = scaleToMinDimension(trimmed, minDim);
+      return encodePng(fitted);
+    }
+  }
+
   return encodePng(finalised);
 }
 
@@ -245,6 +257,102 @@ export function hardThresholdAlpha(image: RgbaImage): RgbaImage {
     dst[i] = (dst[i] ?? 0) > 128 ? 255 : 0;
   }
   return { width, height, data: dst };
+}
+
+/**
+ * Trim fully-transparent rows and columns from all 4 edges.
+ *
+ * A row is "empty" if every pixel in it has alpha === 0.
+ * A column is "empty" if every pixel in it has alpha === 0.
+ *
+ * Returns the cropped sub-image. If the image is entirely transparent,
+ * returns a 0×0 image (callers should guard against this).
+ *
+ * Exported for direct unit testing.
+ */
+export function trimTransparentEdges(image: RgbaImage): RgbaImage {
+  const { width, height, data } = image;
+  if (width === 0 || height === 0) return { width: 0, height: 0, data: new Uint8Array(0) };
+
+  // Find bounding box of non-transparent pixels.
+  let top = height;
+  let bottom = -1;
+  let left = width;
+  let right = -1;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const a = data[(y * width + x) * 4 + 3] ?? 0;
+      if (a > 0) {
+        if (y < top) top = y;
+        if (y > bottom) bottom = y;
+        if (x < left) left = x;
+        if (x > right) right = x;
+      }
+    }
+  }
+
+  // Entirely transparent — return empty.
+  if (bottom === -1) return { width: 0, height: 0, data: new Uint8Array(0) };
+
+  const newW = right - left + 1;
+  const newH = bottom - top + 1;
+  const dst = new Uint8Array(newW * newH * 4);
+  for (let y = 0; y < newH; y++) {
+    const srcRow = (top + y) * width + left;
+    const dstRow = y * newW;
+    for (let x = 0; x < newW; x++) {
+      const si = (srcRow + x) * 4;
+      const di = (dstRow + x) * 4;
+      dst[di] = data[si] ?? 0;
+      dst[di + 1] = data[si + 1] ?? 0;
+      dst[di + 2] = data[si + 2] ?? 0;
+      dst[di + 3] = data[si + 3] ?? 0;
+    }
+  }
+  return { width: newW, height: newH, data: dst };
+}
+
+/**
+ * Nearest-neighbor upscale so that the smallest dimension equals `minPx`.
+ * If the image is already >= minPx on both axes, returns unchanged.
+ * Maintains aspect ratio (both axes scale by the same integer or fractional factor).
+ *
+ * Exported for direct unit testing.
+ */
+export function scaleToMinDimension(image: RgbaImage, minPx: number): RgbaImage {
+  const { width, height } = image;
+  if (width === 0 || height === 0) return image;
+  const minCurrent = Math.min(width, height);
+  if (minCurrent >= minPx) return image;
+
+  const scale = minPx / minCurrent;
+  const dstW = Math.round(width * scale);
+  const dstH = Math.round(height * scale);
+  // Reuse the existing nearest-neighbor scaler (it handles up AND down).
+  return upscaleNearest(image, dstW, dstH);
+}
+
+/**
+ * Nearest-neighbor scale (works for both up and down). Same deterministic
+ * logic as downscaleNearest but as a separate export for clarity.
+ */
+function upscaleNearest(image: RgbaImage, dstW: number, dstH: number): RgbaImage {
+  const { width: srcW, height: srcH, data: src } = image;
+  const dst = new Uint8Array(dstW * dstH * 4);
+  for (let y = 0; y < dstH; y++) {
+    const sy = Math.min(srcH - 1, Math.floor(((y + 0.5) * srcH) / dstH));
+    for (let x = 0; x < dstW; x++) {
+      const sx = Math.min(srcW - 1, Math.floor(((x + 0.5) * srcW) / dstW));
+      const srcIdx = (sy * srcW + sx) * 4;
+      const dstIdx = (y * dstW + x) * 4;
+      dst[dstIdx] = src[srcIdx] ?? 0;
+      dst[dstIdx + 1] = src[srcIdx + 1] ?? 0;
+      dst[dstIdx + 2] = src[srcIdx + 2] ?? 0;
+      dst[dstIdx + 3] = src[srcIdx + 3] ?? 0;
+    }
+  }
+  return { width: dstW, height: dstH, data: dst };
 }
 
 // Re-export the internal image type so tests can build images without going

@@ -33,6 +33,7 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { PNG } from 'pngjs';
 import { variantCount } from './brief-schema.js';
 import type { Brief } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
@@ -240,7 +241,10 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     const scorecard = scoreCandidate(processed, brief, palette);
     const { rawPath, processedPath, scorecardPath, anchorSidecarPath, anchorOverlayPath } =
       writeVariant(paths, i, raw, processed, scorecard, {
-        overlaySize: { width: brief.size.width, height: brief.size.height },
+        overlaySize: (() => {
+          const img = PNG.sync.read(processed);
+          return { width: img.width, height: img.height };
+        })(),
       });
     sensorEntries.push({
       index: i,

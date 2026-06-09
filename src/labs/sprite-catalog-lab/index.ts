@@ -98,8 +98,10 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   }
 
   const entries = parseSpriteCatalog(catalogJson).map((entry) => ({ ...entry }));
+
   let selectedId = entries[0]?.id;
   let aiProvider: AiProviderMode = 'auto';
+  let filterMode: 'all' | 'sheets' | 'sprites' = 'all';
 
   // Sheet image cache
   const sheetImages = new Map<string, SheetImageCache>();
@@ -135,7 +137,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   listPanel.style.background = 'rgba(8, 12, 24, 0.6)';
   listPanel.style.overflow = 'hidden';
   listPanel.style.display = 'grid';
-  listPanel.style.gridTemplateRows = 'auto auto 1fr';
+  listPanel.style.gridTemplateRows = 'auto auto auto 1fr';
 
   const listTitle = document.createElement('h2');
   listTitle.textContent = 'Sprite Catalog';
@@ -143,6 +145,45 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   listTitle.style.margin = '0';
   listTitle.style.fontSize = '18px';
   listTitle.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+
+  // Filter toggle buttons
+  const filterButtonsContainer = document.createElement('div');
+  filterButtonsContainer.style.display = 'flex';
+  filterButtonsContainer.style.gap = '6px';
+  filterButtonsContainer.style.padding = '12px 14px';
+  filterButtonsContainer.style.borderBottom = '1px solid rgba(255,255,255,0.08)';
+  filterButtonsContainer.style.flexWrap = 'wrap';
+
+  const filterModes = [
+    { mode: 'all', label: 'All' },
+    { mode: 'sheets', label: 'Sheets' },
+    { mode: 'sprites', label: 'Sprites' },
+  ];
+
+  for (const { mode, label } of filterModes) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = label;
+    btn.style.padding = '6px 12px';
+    btn.style.borderRadius = '6px';
+    btn.style.fontSize = '12px';
+    btn.style.border = '1px solid rgba(255,255,255,0.18)';
+    btn.style.cursor = 'pointer';
+    btn.style.background =
+      filterMode === mode ? 'rgba(126, 224, 255, 0.25)' : 'rgba(15, 23, 42, 0.5)';
+    btn.style.color = filterMode === mode ? '#7ee0ff' : '#cbd5e1';
+    btn.addEventListener('click', () => {
+      filterMode = mode as typeof filterMode;
+      // Update all filter buttons
+      filterButtonsContainer.querySelectorAll('button').forEach((b, i) => {
+        const isActive = i === filterModes.findIndex((fm) => fm.mode === mode);
+        b.style.background = isActive ? 'rgba(126, 224, 255, 0.25)' : 'rgba(15, 23, 42, 0.5)';
+        b.style.color = isActive ? '#7ee0ff' : '#cbd5e1';
+      });
+      renderList();
+    });
+    filterButtonsContainer.append(btn);
+  }
 
   const filterInput = document.createElement('input');
   filterInput.placeholder = 'Filter by id, sheet, or tag';
@@ -157,7 +198,7 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   listBody.style.overflow = 'auto';
   listBody.style.padding = '0 8px 8px';
 
-  listPanel.append(listTitle, filterInput, listBody);
+  listPanel.append(listTitle, filterButtonsContainer, filterInput, listBody);
 
   const detailPanel = document.createElement('section');
   detailPanel.style.border = '1px solid rgba(255,255,255,0.12)';
@@ -204,9 +245,24 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
   }
 
   function renderList(): void {
+    // Preserve scroll position
+    const scrollTop = listBody.scrollTop;
+
     listBody.replaceChildren();
     const filter = filterInput.value.trim().toLowerCase();
     const filtered = entries.filter((entry) => {
+      // Apply kind filter
+      if (filterMode === 'sheets' && entry.kind !== 'sheet') return false;
+      if (filterMode === 'sprites' && entry.kind !== 'sprite') return false;
+
+      // For sheets, filter out those with no cataloged sprites
+      if (filterMode === 'sheets' && entry.kind === 'sheet') {
+        const hasSprites = entries.some(
+          (e) => e.kind === 'sprite' && e.sheetKey === entry.sheetKey,
+        );
+        if (!hasSprites) return false;
+      }
+
       if (filter === '') return true;
       const tagMatch = entry.tags.some((tag) => tag.toLowerCase().includes(filter));
       const fieldMatch =
@@ -258,6 +314,9 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
       });
       listBody.append(button);
     }
+
+    // Restore scroll position
+    listBody.scrollTop = scrollTop;
   }
 
   function labeledInput(labelText: string, input: HTMLElement): HTMLDivElement {
@@ -287,6 +346,39 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
     pre.style.fontSize = '12px';
     pre.style.wordBreak = 'break-all';
     return labeledInput(label, pre);
+  }
+
+  /**
+   * Create a sprite preview for generated (individual PNG) sprites.
+   */
+  function createGeneratedSpritePreview(
+    sprite: SpriteCatalogEntry & { assetPath?: string },
+  ): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '16px';
+    wrap.style.display = 'flex';
+    wrap.style.flexDirection = 'column';
+    wrap.style.alignItems = 'flex-start';
+    wrap.style.gap = '8px';
+
+    const previewLabel = document.createElement('label');
+    previewLabel.textContent = 'Sprite Preview';
+    previewLabel.style.fontSize = '12px';
+    previewLabel.style.color = '#cbd5f5';
+    previewLabel.style.fontWeight = '600';
+
+    const img = document.createElement('img');
+    img.style.background = 'repeating-conic-gradient(#1f2937 0 25%, #111827 0 50%) 50% / 16px 16px';
+    img.style.borderRadius = '8px';
+    img.style.border = '1px solid rgba(255,255,255,0.15)';
+    img.style.imageRendering = 'pixelated';
+    img.style.maxWidth = '256px';
+    img.style.maxHeight = '256px';
+    img.src = `/assets/${sprite.assetPath || `generated/${sprite.spriteId}.png`}`;
+    img.alt = sprite.spriteId;
+
+    wrap.append(previewLabel, img);
+    return wrap;
   }
 
   /**
@@ -722,9 +814,13 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
 
     // Sprite preview image
     if (selected.kind === 'sprite') {
-      const sheet = getSheetForSprite(selected);
-      if (sheet) {
-        detailPanel.append(createSpritePreview(selected, sheet));
+      if (selected.tags?.includes('pipeline-approved')) {
+        detailPanel.append(createGeneratedSpritePreview(selected));
+      } else {
+        const sheet = getSheetForSprite(selected);
+        if (sheet) {
+          detailPanel.append(createSpritePreview(selected, sheet));
+        }
       }
     } else {
       detailPanel.append(createSheetOverview(selected));
@@ -886,6 +982,42 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
 
   renderList();
   renderDetails();
+
+  // Fetch and merge approved generated sprites from the manifest (async, fire and forget)
+  fetch('/assets/generated/manifest.json')
+    .then((res) => res.json())
+    .then(
+      (manifest: {
+        version?: number;
+        entries?: Record<
+          string,
+          { briefId: string; spriteName: string; assetPath: string; [key: string]: unknown }
+        >;
+      }) => {
+        if (manifest.entries) {
+          for (const [key, entry] of Object.entries(manifest.entries)) {
+            entries.push({
+              id: `generated:${key}`,
+              kind: 'sprite',
+              label: entry.spriteName ?? key,
+              description: `Generated sprite from brief: ${entry.briefId}.`,
+              tags: ['generated', 'pipeline-approved'],
+              spriteId: entry.spriteName ?? key,
+              sheetKey: 'generated-manifest',
+              assetPath: entry.assetPath,
+              frame: 0,
+              col: 0,
+              row: 0,
+            } as unknown as SpriteCatalogEntry);
+          }
+          // Trigger UI refresh if we've loaded generated sprites
+          renderList();
+        }
+      },
+    )
+    .catch(() => {
+      // Silently ignore manifest load errors
+    });
 
   return () => {
     root.remove();

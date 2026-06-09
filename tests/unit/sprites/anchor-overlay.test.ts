@@ -59,20 +59,47 @@ function findRedPixels(buffer: Buffer): Array<{ x: number; y: number }> {
 }
 
 describe('buildAnchorOverlay', () => {
-  it('marks a single red pixel at the center of a 16x16 sprite', () => {
+  it('marks a 3×3 crosshair at the anchor for a 16x16 sprite', () => {
     const out = buildAnchorOverlay({ width: 16, height: 16, anchor: { x: 8, y: 12 } });
     const reds = findRedPixels(out);
-    expect(reds).toEqual([{ x: 8, y: 12 }]);
+    // Center + 4 cardinal neighbors
+    expect(reds).toEqual(
+      expect.arrayContaining([
+        { x: 8, y: 12 },
+        { x: 7, y: 12 },
+        { x: 9, y: 12 },
+        { x: 8, y: 11 },
+        { x: 8, y: 13 },
+      ]),
+    );
+    expect(reds).toHaveLength(5);
   });
 
-  it('places the pixel at the top-left corner (0,0)', () => {
+  it('clips crosshair at the top-left corner (0,0) — only 3 pixels', () => {
     const out = buildAnchorOverlay({ width: 16, height: 16, anchor: { x: 0, y: 0 } });
-    expect(findRedPixels(out)).toEqual([{ x: 0, y: 0 }]);
+    const reds = findRedPixels(out);
+    // Left and up arms clipped
+    expect(reds).toEqual(
+      expect.arrayContaining([
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 0, y: 1 },
+      ]),
+    );
+    expect(reds).toHaveLength(3);
   });
 
-  it('places the pixel at the bottom-right corner (15,15)', () => {
+  it('clips crosshair at the bottom-right corner (15,15) — only 3 pixels', () => {
     const out = buildAnchorOverlay({ width: 16, height: 16, anchor: { x: 15, y: 15 } });
-    expect(findRedPixels(out)).toEqual([{ x: 15, y: 15 }]);
+    const reds = findRedPixels(out);
+    expect(reds).toEqual(
+      expect.arrayContaining([
+        { x: 15, y: 15 },
+        { x: 14, y: 15 },
+        { x: 15, y: 14 },
+      ]),
+    );
+    expect(reds).toHaveLength(3);
   });
 
   it('returns a fully transparent PNG when anchor is null', () => {
@@ -89,12 +116,21 @@ describe('buildAnchorOverlay', () => {
     expect(a.equals(b)).toBe(true);
   });
 
-  it('supports non-16 dimensions (e.g. 32x32)', () => {
+  it('supports non-16 dimensions (e.g. 32x32) with edge clipping', () => {
     const out = buildAnchorOverlay({ width: 32, height: 32, anchor: { x: 31, y: 0 } });
     const { width, height } = decode(out);
     expect(width).toBe(32);
     expect(height).toBe(32);
-    expect(findRedPixels(out)).toEqual([{ x: 31, y: 0 }]);
+    const reds = findRedPixels(out);
+    // Right arm and top arm clipped
+    expect(reds).toEqual(
+      expect.arrayContaining([
+        { x: 31, y: 0 },
+        { x: 30, y: 0 },
+        { x: 31, y: 1 },
+      ]),
+    );
+    expect(reds).toHaveLength(3);
   });
 
   it('throws on out-of-bounds anchor', () => {
@@ -111,12 +147,16 @@ describe('buildAnchorOverlay', () => {
     expect(() => buildAnchorOverlay({ width: 16, height: -1, anchor: null })).toThrow(/height/);
   });
 
-  it('property: any in-bounds anchor produces exactly one red pixel at exactly that coord', () => {
+  it('property: any in-bounds anchor produces 3–5 red pixels including the anchor coord', () => {
     fc.assert(
       fc.property(fc.integer({ min: 0, max: 15 }), fc.integer({ min: 0, max: 15 }), (x, y) => {
         const out = buildAnchorOverlay({ width: 16, height: 16, anchor: { x, y } });
         const reds = findRedPixels(out);
-        expect(reds).toEqual([{ x, y }]);
+        // Center is always present
+        expect(reds).toEqual(expect.arrayContaining([{ x, y }]));
+        // 3 (corner) to 5 (interior) pixels depending on edge clipping
+        expect(reds.length).toBeGreaterThanOrEqual(3);
+        expect(reds.length).toBeLessThanOrEqual(5);
       }),
     );
   });

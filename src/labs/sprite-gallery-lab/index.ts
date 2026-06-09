@@ -227,7 +227,11 @@ function createGalleryGrid(
   host: HTMLElement,
   runs: SidecarRunListEntry[],
   details: Map<string, Record<string, unknown>>,
-  state: { showOverlay: boolean; onSelect: (ref: CandidateRef) => void },
+  state: {
+    showOverlay: boolean;
+    onSelect: (ref: CandidateRef) => void;
+    onDismiss?: (briefId: string, runId: string) => void;
+  },
 ): CreatedGallery {
   host.replaceChildren();
   const candidates: CandidateRef[] = [];
@@ -271,10 +275,31 @@ function createGalleryGrid(
             style: { fontSize: '11px', color: '#94a3b8', marginLeft: '8px' },
           }),
         ]),
-        el('div', {
-          textContent: `${run.candidateCount ?? '?'} candidates${run.hasJudge ? ' · judge' : ''}`,
-          style: { fontSize: '11px', color: '#94a3b8' },
-        }),
+        el('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } }, [
+          el('span', {
+            textContent: `${run.candidateCount ?? '?'} candidates${run.hasJudge ? ' · judge' : ''}`,
+            style: { fontSize: '11px', color: '#94a3b8' },
+          }),
+          (() => {
+            const btn = el('button', {
+              textContent: '✕ Dismiss',
+              style: {
+                fontSize: '11px',
+                padding: '2px 8px',
+                border: '1px solid rgba(239,68,68,0.4)',
+                borderRadius: '4px',
+                background: 'rgba(239,68,68,0.1)',
+                color: '#fca5a5',
+                cursor: 'pointer',
+              },
+            });
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              if (state.onDismiss) state.onDismiss(run.briefId, run.runId);
+            });
+            return btn;
+          })(),
+        ]),
       ],
     );
     briefRow.append(header);
@@ -626,6 +651,110 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     sidePanel.append(approveRow);
 
     sidePanel.append(renderJsonTree(cand, 'candidate'));
+
+    // Fetch and display brief YAML + prompt below the scorecard.
+    const briefSection = el('div', {
+      style: { marginTop: '14px' },
+    });
+    briefSection.append(
+      el('div', {
+        textContent: 'Loading brief…',
+        style: { fontSize: '11px', color: '#64748b' },
+      }),
+    );
+    sidePanel.append(briefSection);
+
+    const selectionSnapshot = state.selected
+      ? {
+          briefIndex: state.selected.briefIndex,
+          candidateIndex: state.selected.candidateIndex,
+        }
+      : null;
+    fetchJson<{ briefYaml: string | null; promptText: string | null }>(
+      `${SIDECAR_BASE}/api/runs/${encodeURIComponent(run.briefId)}/${encodeURIComponent(run.runId)}/brief`,
+    )
+      .then((data) => {
+        // Guard against stale fetch if user changed selection.
+        if (!selectionSnapshot || !state.selected) return;
+        if (
+          state.selected.briefIndex !== selectionSnapshot.briefIndex ||
+          state.selected.candidateIndex !== selectionSnapshot.candidateIndex
+        ) {
+          return;
+        }
+
+        briefSection.replaceChildren();
+        if (data.briefYaml) {
+          briefSection.append(
+            el('div', {
+              textContent: 'Brief YAML',
+              style: { fontWeight: '600', fontSize: '12px', color: '#e2e8f0', marginBottom: '4px' },
+            }),
+            el('pre', {
+              textContent: data.briefYaml,
+              style: {
+                fontSize: '10px',
+                lineHeight: '1.4',
+                background: 'rgba(15,23,42,0.8)',
+                border: '1px solid rgba(148,163,184,0.2)',
+                borderRadius: '4px',
+                padding: '8px',
+                overflow: 'auto',
+                maxHeight: '200px',
+                color: '#cbd5e1',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              },
+            }),
+          );
+        }
+        if (data.promptText) {
+          briefSection.append(
+            el('div', {
+              textContent: 'Assembled Prompt',
+              style: {
+                fontWeight: '600',
+                fontSize: '12px',
+                color: '#e2e8f0',
+                marginTop: '10px',
+                marginBottom: '4px',
+              },
+            }),
+            el('pre', {
+              textContent: data.promptText,
+              style: {
+                fontSize: '10px',
+                lineHeight: '1.4',
+                background: 'rgba(15,23,42,0.8)',
+                border: '1px solid rgba(148,163,184,0.2)',
+                borderRadius: '4px',
+                padding: '8px',
+                overflow: 'auto',
+                maxHeight: '300px',
+                color: '#cbd5e1',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              },
+            }),
+          );
+        }
+        if (!data.briefYaml && !data.promptText) {
+          briefSection.append(
+            el('div', {
+              textContent: 'Brief file not found or prompt not stored in this run.',
+              style: { fontSize: '11px', color: '#64748b' },
+            }),
+          );
+        }
+      })
+      .catch(() => {
+        briefSection.replaceChildren(
+          el('div', {
+            textContent: 'Could not load brief (sidecar route unavailable).',
+            style: { fontSize: '11px', color: '#64748b' },
+          }),
+        );
+      });
   }
 
   async function onApprove(
@@ -668,10 +797,30 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     state.grid?.focus(ref);
   }
 
+  async function dismissRun(briefId: string, runId: string): Promise<void> {
+    if (!confirm(`Delete run ${briefId}/${runId}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(
+        `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Remove from local state and re-render.
+      state.runs = state.runs.filter((r) => !(r.briefId === briefId && r.runId === runId));
+      state.details.delete(`${briefId}/${runId}`);
+      state.selected = null;
+      sidePanel.replaceChildren();
+      rerenderGrid();
+    } catch (err) {
+      alert(`Failed to dismiss: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   function rerenderGrid(): void {
     state.grid = createGalleryGrid(gridHost, state.runs, state.details, {
       showOverlay: state.showOverlay,
       onSelect: selectCandidate,
+      onDismiss: dismissRun,
     });
     if (state.selected) {
       state.grid.focus(state.selected);
@@ -793,9 +942,9 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 }
 
 registerLab('sprite-gallery', {
-  name: 'Sprite Gallery',
+  name: 'Sprite Generation Pipeline Review',
   description:
-    'Read-only review surface for sprite-pipeline runs. Renders thumbnails, anchor overlays, sensor + judge badges. Requires the sprites sidecar (`npm run sprites:gallery`).',
+    'Review and approve sprite-pipeline candidates. Renders thumbnails, anchor overlays, sensor + judge badges. Requires the sprites sidecar (`npm run sprites:gallery`).',
   category: 'Meta',
   create: createGalleryLab,
 });
