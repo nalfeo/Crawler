@@ -8,6 +8,8 @@ export const PATH_TRAVERSAL = {
 
 export interface PathfindingOptions {
   traversalMode?: number;
+  maxPathLength?: number;
+  /** @deprecated Use maxPathLength instead. */
   maxVisited?: number;
 }
 
@@ -16,7 +18,7 @@ export interface TilePoint {
   y: number;
 }
 
-const DEFAULT_MAX_VISITED = 4_096;
+const DEFAULT_MAX_PATH_LENGTH = 4_096;
 
 function isTileTraversable(
   floorMap: FloorMap,
@@ -42,7 +44,10 @@ export function findTilePath(
   options: PathfindingOptions = {},
 ): TilePoint[] {
   const traversalMode = options.traversalMode ?? PATH_TRAVERSAL.GROUND;
-  const maxVisited = Math.max(1, options.maxVisited ?? DEFAULT_MAX_VISITED);
+  const maxPathLength = Math.max(
+    1,
+    options.maxPathLength ?? options.maxVisited ?? DEFAULT_MAX_PATH_LENGTH,
+  );
 
   if (
     !floorMap.tileMap.inBounds(start.x, start.y) ||
@@ -67,7 +72,7 @@ export function findTilePath(
   let visited = 0;
 
   astar.compute(start.x, start.y, (x: number, y: number) => {
-    if (visited < maxVisited) {
+    if (visited < maxPathLength) {
       result.push({ x, y });
     }
     visited += 1;
