@@ -18,3 +18,4 @@ export { dropSystem, clearProcessedDeaths } from './dropSystem.js';
 export { deathTimerSystem } from './deathTimerSystem.js';
 export { fovSystem } from './fovSystem.js';
 export { doorSystem } from './doorSystem.js';
+export { npcSystem } from './npcSystem.js';

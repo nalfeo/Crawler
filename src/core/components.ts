@@ -69,6 +69,10 @@ export const Gold = {};
 export const DoorState = {};
 /** Marks a dying entity — delays removal so knockback/death animations can play. */
 export const DeathTimer = {};
+/** Marks an entity as an NPC — non-hostile and tracked in world.npcs sidecar. */
+export const Npc = {};
+/** Marks an entity as invincible — applyDamage skips it entirely. */
+export const Invincible = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -197,6 +201,10 @@ export function createComponentStores() {
     },
     deathTimer: {
       remainingMs: new Float32Array(MAX_ENTITIES),
+    },
+    npc: {
+      /** Index into the NPC registry; used to look up NpcDef. Stored as a compact uint16. */
+      defIdIndex: new Uint16Array(MAX_ENTITIES),
     },
     baseStats: {
       strength: new Float32Array(MAX_ENTITIES),
