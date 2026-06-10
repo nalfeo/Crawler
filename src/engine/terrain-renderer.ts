@@ -22,7 +22,8 @@
  * Fallback: if the Kenney sheet for a tile is not loaded (e.g. test environments
  * or load errors), the color-only path is used for that tile automatically.
  *
- * No imports from src/core/, src/game/, or src/labs/.
+ * No runtime imports from src/core/, src/game/, or src/labs/. Type-only imports
+ * from core are acceptable in the engine layer and are erased at build time.
  */
 
 import Phaser from 'phaser';

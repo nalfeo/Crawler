@@ -40,7 +40,6 @@
 
 import { TerrainType } from '../../shared/map-types.js';
 
-/** Maps a TerrainType to the sheet and frame to stamp at that tile position. */
 /**
  * A 16-entry frame array for 4-directional blob-tile autotiling.
  * Indexed by the 4-bit neighbour mask from `neighborMask()`:
@@ -65,6 +64,7 @@ export type BlobFrames16 = readonly [
   number,
 ];
 
+/** Maps a TerrainType to the sheet and frame to stamp at that tile position. */
 export interface TileVisualDef {
   /** Phaser texture key — must be a key registered in SHEETS. */
   readonly sheetKey: string;
