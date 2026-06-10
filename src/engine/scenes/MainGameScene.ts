@@ -600,31 +600,32 @@ export class MainGameScene extends Phaser.Scene {
     centerX: number,
     centerY: number,
   ): void {
+    const rng = this.world.rng;
     for (let i = 0; i < ATOMIZATION_PIXEL_COUNT; i += 1) {
-      const size = Phaser.Math.Between(2, 4);
-      const startX = Phaser.Math.Between(0, GAME.WIDTH);
-      const startY = Phaser.Math.Between(0, GAME.HEIGHT);
+      const size = rng.nextInt(2, 4);
+      const startX = rng.nextInt(0, GAME.WIDTH);
+      const startY = rng.nextInt(0, GAME.HEIGHT);
       const color = Phaser.Display.Color.GetColor(
-        Phaser.Math.Between(180, 255),
-        Phaser.Math.Between(180, 255),
-        Phaser.Math.Between(180, 255),
+        rng.nextInt(180, 255),
+        rng.nextInt(180, 255),
+        rng.nextInt(180, 255),
       );
       const pixel = this.add
         .rectangle(startX, startY, size, size, color, 0.9)
         .setScrollFactor(0)
-        .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+        .setRotation(rng.next() * Math.PI * 2);
       overlay.add(pixel);
 
       const startAngle = Phaser.Math.Angle.Between(centerX, centerY, startX, startY);
       const startRadius = Phaser.Math.Distance.Between(centerX, centerY, startX, startY);
-      const spinTurns = Phaser.Math.FloatBetween(3.5, 7.5) * Math.PI;
+      const spinTurns = (3.5 + rng.next() * 4) * Math.PI;
       const state = { t: 0 };
 
       this.tweens.add({
         targets: state,
         t: 1,
-        duration: Phaser.Math.Between(900, ATOMIZATION_SWIRL_MS),
-        delay: Phaser.Math.Between(0, 220),
+        duration: rng.nextInt(900, ATOMIZATION_SWIRL_MS),
+        delay: rng.nextInt(0, 220),
         ease: 'Cubic.easeIn',
         onUpdate: () => {
           const t = state.t;
