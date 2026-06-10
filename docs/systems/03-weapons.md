@@ -8,12 +8,12 @@
 
 ## Systems in this group
 
-| System                      | File                                            | Pipeline position           |
-| --------------------------- | ----------------------------------------------- | --------------------------- |
-| `weaponSystem`              | `src/game/weaponSystem.ts`                      | preSystems (player weapons) |
-| `weaponEntitySystem`        | `src/game/weaponSystem.ts`                      | preSystems (enemy weapons)  |
-| `returningProjectileSystem` | `src/core/systems/returningProjectileSystem.ts` | 2                           |
-| `projectileCleanupSystem`   | `src/core/systems/projectileCleanupSystem.ts`   | 18                          |
+| System                      | File                                            | Pipeline position            |
+| --------------------------- | ----------------------------------------------- | ---------------------------- |
+| `weaponSystem`              | `src/game/weaponSystem.ts`                      | preSystems (player weapons)  |
+| `weaponEntitySystem`        | `src/game/weaponSystem.ts`                      | preSystems (weapon entities) |
+| `returningProjectileSystem` | `src/core/systems/returningProjectileSystem.ts` | 3                            |
+| `projectileCleanupSystem`   | `src/core/systems/projectileCleanupSystem.ts`   | 18                           |
 
 ---
 
@@ -102,17 +102,17 @@ flowchart TD
 
 ## weaponEntitySystem
 
-Runs in `preSystems`. Queries all `Weapon + Owner + Enemy` entities. For each weapon entity whose cooldown has elapsed, fires an enemy projectile toward the player's last known position using `spawnEnemyProjectile`.
+Runs in `preSystems`. Queries all `Weapon + Owner` entities. For each weapon entity whose cooldown has elapsed, it aims toward the nearest enemy and fires via `spawnProjectile` or `spawnAreaAttack` based on `weaponType`.
 
 ### Contract
 
 ```
-Reads:   Weapon.{weaponType, baseDamage, cooldownMs, lastFireMs, projectileSpeed}
+Reads:   Weapon.{weaponType, baseDamage, cooldownMs, lastFireMs, projectileSpeed, range}
          Owner.eid (owner entity's position)
-         Player position (aim target)
+         Enemy positions (nearest target direction)
          world.elapsedMs
 Writes:  weapon.lastFireMs
-         spawnEnemyProjectile → Projectile + EnemyProjectile + Velocity + Lifetime
+         spawnProjectile / spawnAreaAttack entities
 ```
 
 ---
@@ -189,11 +189,11 @@ All weapon definitions live in `src/shared/weaponDefs.ts`. Weapons referenced by
 
 | id               | Type          | Base DMG | Cooldown |
 | ---------------- | ------------- | -------- | -------- |
-| `sword`          | MELEE (SLASH) | 18       | 600 ms   |
-| `knife`          | MELEE (STAB)  | 12       | 400 ms   |
-| `bow`            | RANGED        | 14       | 800 ms   |
-| `pistol`         | RANGED        | 10       | 350 ms   |
-| `throwing-knife` | THROWN        | 15       | 700 ms   |
+| `sword`          | MELEE (SLASH) | 15       | 600 ms   |
+| `knife`          | MELEE (STAB)  | 8        | 300 ms   |
+| `bow`            | RANGED        | 12       | 700 ms   |
+| `pistol`         | RANGED        | 10       | 500 ms   |
+| `throwing-knife` | THROWN        | 6        | 350 ms   |
 
 Additional weapons in catalog: `crossbow`, `wand`, `staff`, `shotgun`, `flamethrower`, `trap-mine`, `grenade`, and more.
 
