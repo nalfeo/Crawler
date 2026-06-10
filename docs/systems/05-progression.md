@@ -157,7 +157,8 @@ Consumes `world.skillUsageEvents` each frame. For each event:
 ### Contract
 
 ```
-Reads:   world.skillUsageEvents[]\n         SkillDefinition from registry (thresholds, bonuses)
+Reads:   world.skillUsageEvents[]
+         SkillDefinition from registry (thresholds, bonuses)
          world.skillStatesByEntity (or world.playerSkills for v1 fallback)
 Writes:  SkillState.{level, usage, triggeredMilestones}
          world.statModifiers (new per-level bonuses)
@@ -194,8 +195,8 @@ flowchart TD
 
 | Cap                 | Value | Behaviour                       |
 | ------------------- | ----- | ------------------------------- |
-| `SKILL_NATURAL_CAP` | 10    | Regular usage can reach this    |
-| `SKILL_HARD_CAP`    | 15    | Requires special catalyst items |
+| `SKILL_NATURAL_CAP` | 15    | Regular usage can reach this    |
+| `SKILL_HARD_CAP`    | 20    | Requires special catalyst items |
 
 ---
 

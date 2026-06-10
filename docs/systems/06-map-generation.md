@@ -52,6 +52,7 @@ graph TD
 
 ```typescript
 interface MapGenerator {
+  readonly name: string;
   generate(config: MapConfig, rng: SeededRandom): FloorMap;
 }
 ```
@@ -222,7 +223,7 @@ graph LR
 
 `initializeFloor1Scenario(world)` is the bootstrap function called on scene creation. It:
 
-1. Generates a `40×23` dungeon floor with a fixed seed.
+1. Generates a `40×23` dungeon floor with a world-RNG-derived seed (`world.rng.nextInt(1, 2_000_000)`).
 2. Spawns the player at `floorMap.playerSpawn`.
 3. Sets `world.state = 'loadout'` and presents the starter weapon modal.
 4. Injects three systems into `preSystems`/`postSystems`:
