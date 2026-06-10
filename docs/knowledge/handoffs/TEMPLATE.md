@@ -4,6 +4,14 @@
 
 YYYY-MM-DD
 
+## Apples
+
+Estimated: 🍎 x N <!-- declared before work began -->
+Actual: 🍎 x N <!-- honest assessment at handoff time -->
+Verdict: [🎯 Exact | 📉 Under | 📈 Over | 💥 Miss] — one sentence on why the gap exists (or "N/A" if exact)
+
+Hello kitties: N/5 = N.NN 🎀 <!-- actual_apples / 5, two decimal places -->
+
 ## What Was Done
 
 <!-- Summary of changes made this session -->

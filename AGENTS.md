@@ -92,6 +92,16 @@ For sprite workflow details and when to use sprite commands, see
 > for the full list, bypass mechanism, and rationale for items that are NOT
 > enforced.
 
+## Merge Policy
+
+- When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass — do not poll or wait manually.
+- **No human review is required to merge.** Branch protection does NOT require an approving review. Never attribute a merge failure to a "human review block" without explicit proof from `gh pr merge` output.
+- When `gh pr merge` fails, diagnose the actual cause before giving up:
+  1. Run `gh pr checks <pr-number>` to see which checks are failing.
+  2. Run `gh run list --branch <branch>` then `gh run view <run-id> --log-failed` to read actual error output.
+  3. Fix the underlying CI failure, then re-run `gh pr merge --auto --squash`.
+- Only stop and report to the user if `gh pr merge` itself explicitly states a review is required.
+
 ## Tech Stack
 
 TypeScript (strict) · Phaser 4 · bitecs 0.4 · Vite · Vitest · fast-check · ESLint · Prettier · GitHub Actions

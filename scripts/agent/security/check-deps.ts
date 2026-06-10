@@ -29,6 +29,7 @@ const TRUSTED_SCOPES = [
   '@vitest/',
   '@commitlint/',
   '@fastify/',
+  '@stryker-mutator/',
 ];
 
 const TRUSTED_PACKAGES = new Set<string>([

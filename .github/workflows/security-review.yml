@@ -21,13 +21,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: npm audit
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-npm-audit -- npm audit --audit-level=high
@@ -42,13 +36,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Scan for committed secrets
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-scan-secrets -- bash scripts/agent/security/scan-secrets.sh
@@ -61,13 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: CODEOWNERS coverage
         run: npx tsx scripts/agent/security/check-codeowners.ts
@@ -80,13 +62,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Dependency allowlist
         run: npx tsx scripts/agent/security/check-deps.ts
@@ -99,13 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Dynamic-execution patterns
         run: npx tsx scripts/agent/shared/wrap-step.ts --name security-dynamic-patterns -- bash scripts/agent/security/check-dynamic-patterns.sh
@@ -118,13 +88,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: AI prompt-injection scan
         run: npx tsx scripts/agent/security/check-ai-prompts.ts
@@ -135,7 +99,15 @@ jobs:
     name: Aggregate & file issues
     runs-on: ubuntu-latest
     if: always()
-    needs: [check-npm-audit, check-secrets, check-codeowners, check-deps, check-dynamic-patterns, check-ai-prompts]
+    needs:
+      [
+        check-npm-audit,
+        check-secrets,
+        check-codeowners,
+        check-deps,
+        check-dynamic-patterns,
+        check-ai-prompts,
+      ]
     timeout-minutes: 10
     env:
       AUTOMATION_REPORT_DIR: ${{ github.workspace }}/.automation-reports
@@ -145,13 +117,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Prepare report directory
         run: mkdir -p "$AUTOMATION_REPORT_DIR"

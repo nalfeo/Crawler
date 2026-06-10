@@ -2,4 +2,4 @@
 set -eu
 
 echo "Running Prettier check before push..."
-npm run format:check
+npx prettier --check "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"

@@ -157,6 +157,7 @@ export function spawnProjectile(
   vy: number,
   damage: number,
   pierce: number = 0,
+  maxRange: number = 0,
 ): number {
   const eid = createEntity(world);
 
@@ -164,7 +165,11 @@ export function spawnProjectile(
   addComponent(world.ecs, eid, set(Velocity, { x: vx, y: vy }));
   addComponent(world.ecs, eid, set(Damage, { amount: damage, cooldownMs: 0, lastFireMs: 0 }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 6, height: 6 }));
-  addComponent(world.ecs, eid, set(Projectile, { pierce, hitCount: 0 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Projectile, { pierce, hitCount: 0, maxRange, originX: x, originY: y }),
+  );
 
   return eid;
 }
@@ -281,8 +286,9 @@ export function spawnAoeProjectile(
   aoeDamage: number,
   ownerEid: number,
   teamId: number,
+  maxRange: number = 0,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, maxRange);
   addComponent(world.ecs, eid, set(AoeOnImpact, { radius: aoeRadius, damage: aoeDamage }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
@@ -330,8 +336,9 @@ export function spawnBouncingProjectile(
   damage: number,
   remainingBounces: number,
   pierce: number = 0,
+  maxRange: number = 0,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce, maxRange);
   addComponent(world.ecs, eid, set(Bouncing, { remainingBounces }));
   return eid;
 }
