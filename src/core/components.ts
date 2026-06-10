@@ -73,6 +73,8 @@ export const DeathTimer = {};
 export const Npc = {};
 /** Marks an entity as invincible — applyDamage skips it entirely. */
 export const Invincible = {};
+/** Physical weight of an entity (lbs). Used for knockback, strength interactions, etc. */
+export const Weight = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -205,6 +207,9 @@ export function createComponentStores() {
     npc: {
       /** Index into the NPC registry; used to look up NpcDef. Stored as a compact uint16. */
       defIdIndex: new Uint16Array(MAX_ENTITIES),
+    },
+    weight: {
+      value: new Float32Array(MAX_ENTITIES),
     },
     baseStats: {
       strength: new Float32Array(MAX_ENTITIES),
