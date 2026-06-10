@@ -174,7 +174,10 @@ function dedupeCandidates(rawCandidates) {
   const byPort = new Map();
   for (const candidate of rawCandidates) {
     const existing = byPort.get(candidate.localPort);
-    if (!existing || addressPriority(candidate.localAddress) < addressPriority(existing.localAddress)) {
+    if (
+      !existing ||
+      addressPriority(candidate.localAddress) < addressPriority(existing.localAddress)
+    ) {
       byPort.set(candidate.localPort, candidate);
     }
   }
@@ -321,6 +324,38 @@ async function persistState(session, state) {
   return artifactPath;
 }
 
+async function refreshState(session) {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
+  refreshInFlight = (async () => {
+    latestState = await discoverState(session);
+    return latestState;
+  })();
+
+  try {
+    return await refreshInFlight;
+  } finally {
+    refreshInFlight = null;
+  }
+}
+
+function getCachedState() {
+  return (
+    latestState ?? {
+      workspaceName: getTrackedWorktreePath() ? basename(getTrackedWorktreePath()) : null,
+      workspacePath: getTrackedWorktreePath(),
+      platform: process.platform,
+      scannedAt: new Date().toISOString(),
+      discoveryMethod: 'windows-process-scan',
+      activeServerCount: 0,
+      servers: [],
+      error: 'State is loading.',
+    }
+  );
+}
+
 async function discoverState(session) {
   const worktreePath = getTrackedWorktreePath();
   const baseState = {
@@ -338,38 +373,6 @@ async function discoverState(session) {
       ...baseState,
       error: 'The session worktree path is not available yet.',
     };
-  }
-
-  async function refreshState(session) {
-    if (refreshInFlight) {
-      return refreshInFlight;
-    }
-
-    refreshInFlight = (async () => {
-      latestState = await discoverState(session);
-      return latestState;
-    })();
-
-    try {
-      return await refreshInFlight;
-    } finally {
-      refreshInFlight = null;
-    }
-  }
-
-  function getCachedState() {
-    return (
-      latestState ?? {
-        workspaceName: getTrackedWorktreePath() ? basename(getTrackedWorktreePath()) : null,
-        workspacePath: getTrackedWorktreePath(),
-        platform: process.platform,
-        scannedAt: new Date().toISOString(),
-        discoveryMethod: 'windows-process-scan',
-        activeServerCount: 0,
-        servers: [],
-        error: 'State is loading.',
-      }
-    );
   }
 
   if (process.platform !== 'win32') {
@@ -433,11 +436,7 @@ function setJsonResponse(res, body, statusCode = 200) {
 async function startServer(instanceId, session) {
   const server = createServer((req, res) => {
     void handleRequest(req, res, instanceId, session).catch((error) => {
-      setJsonResponse(
-        res,
-        { error: error instanceof Error ? error.message : String(error) },
-        500,
-      );
+      setJsonResponse(res, { error: error instanceof Error ? error.message : String(error) }, 500);
     });
   });
 
