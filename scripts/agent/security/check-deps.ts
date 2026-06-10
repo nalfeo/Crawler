@@ -30,6 +30,7 @@ const TRUSTED_SCOPES = [
   '@commitlint/',
   '@fastify/',
   '@stryker-mutator/',
+  '@azure/',
 ];
 
 const TRUSTED_PACKAGES = new Set<string>([

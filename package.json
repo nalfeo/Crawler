@@ -30,6 +30,8 @@
     "sprites:batch": "tsx scripts/sprites/batch-cli.ts",
     "sprites:asset-plan": "tsx scripts/sprites/asset-plan-cli.ts",
     "sprites:plan-drafts": "tsx scripts/sprites/plan-drafts-cli.ts",
+    "sprites:enqueue": "tsx scripts/sprites/queue-cli.ts",
+    "sprites:worker": "tsx scripts/sprites/worker-cli.ts",
     "sprites:sync-catalog": "tsx scripts/sprites/sync-catalog.ts",
     "sprites:metadata": "tsx scripts/sprites/metadata-pipeline.ts",
     "verify:fast": "bash scripts/agent/verify-fast.sh",
@@ -55,6 +57,8 @@
     "rot-js": "^2.2.1"
   },
   "devDependencies": {
+    "@azure/storage-blob": "^12.32.0",
+    "@azure/storage-queue": "^12.30.0",
     "@commitlint/cli": "^21.0.2",
     "@commitlint/config-conventional": "^21.0.2",
     "@eslint/js": "^10.0.1",

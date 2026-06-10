@@ -24,10 +24,12 @@
  * `scripts/sprites/` modules that the orchestrator already uses.
  */
 
-import { createReadStream, existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { approveVariant, ApproveError, type ManifestEntry } from '../approve.js';
+import { LocalRunStore } from '../store/local-store.js';
+import type { RunStore } from '../store/types.js';
 
 export interface SidecarDeps {
   /** Repository root — used in /api/health for operator visibility. */
@@ -60,6 +62,12 @@ export interface SidecarDeps {
    * tests to exercise the non-CI path even when the host runs in CI.
    */
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * RunStore used to list and serve run artifacts. Defaults to a
+   * `LocalRunStore` rooted at `runsDir` so existing local workflows are
+   * unaffected. Pass an `AzureBlobRunStore` to read from Azure Blob Storage.
+   */
+  readonly store?: RunStore;
 }
 
 export interface RunListEntry {
@@ -102,6 +110,8 @@ const ALLOWED_EXTENSIONS: Readonly<Record<string, string>> = {
  */
 export function buildServer(deps: SidecarDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
+  // Default to a LocalRunStore rooted at runsDir — same layout as before.
+  const store: RunStore = deps.store ?? new LocalRunStore(deps.runsDir);
 
   // Vite serves the lab from a different loopback port, so allow CORS only
   // for loopback origins (localhost/127.0.0.1/::1).
@@ -126,30 +136,32 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     repoRoot: deps.repoRoot,
     runsDir: deps.runsDir,
     version: deps.version,
+    storeBackend: store.backend,
   }));
 
-  app.get('/api/runs', async () => ({ runs: listRuns(deps.runsDir) }));
+  app.get('/api/runs', async () => ({ runs: await listRunsFromStore(store) }));
 
   app.get<{ Params: { briefId: string; runId: string } }>(
     '/api/runs/:briefId/:runId',
     async (req, reply) => {
       const { briefId, runId } = req.params;
-      const summaryPath = safeJoin(deps.runsDir, [briefId, runId, 'summary.json']);
-      if (summaryPath === null) {
-        // safeJoin rejected a traversal attempt — mirror the static-file
-        // route's 403 so probes are distinguishable from "missing run".
+      // safeJoin validates that briefId/runId contain no path separators,
+      // traversal sequences, or absolute-path components before we interpolate
+      // them into a store key. The returned path is discarded — only the
+      // null/non-null result matters as the security gate.
+      if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
-      if (!existsSync(summaryPath)) {
+      const summaryKey = `${briefId}/${runId}/summary.json`;
+      if (!(await store.has(summaryKey))) {
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
       }
       let raw: string;
       try {
-        raw = readFileSync(summaryPath, 'utf8');
+        raw = (await store.get(summaryKey)).toString('utf8');
       } catch {
-        // TOCTOU: summary may have been deleted between existsSync and readFileSync.
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
       }
@@ -167,18 +179,19 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     '/api/runs/:briefId/:runId/brief',
     async (req, reply) => {
       const { briefId, runId } = req.params;
-      const summaryPath = safeJoin(deps.runsDir, [briefId, runId, 'summary.json']);
-      if (summaryPath === null) {
+      // safeJoin as segment validator — see /api/runs/:briefId/:runId for rationale.
+      if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
-      if (!existsSync(summaryPath)) {
+      const summaryKey = `${briefId}/${runId}/summary.json`;
+      if (!(await store.has(summaryKey))) {
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
       }
       let summary: { briefPath?: string; prompt?: string };
       try {
-        summary = JSON.parse(readFileSync(summaryPath, 'utf8'));
+        summary = JSON.parse((await store.get(summaryKey)).toString('utf8'));
       } catch {
         reply.code(500);
         return { error: 'summary-invalid', briefId, runId };
@@ -219,32 +232,25 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(415);
         return { error: 'unsupported-extension', filename };
       }
-      const target = safeJoin(deps.runsDir, [briefId, runId, 'processed', filename]);
-      if (target === null) {
-        // safeJoin returns null on any traversal attempt — fail closed.
+      // safeJoin as segment validator — see /api/runs/:briefId/:runId for rationale.
+      if (safeJoin(deps.runsDir, [briefId, runId, 'processed', filename]) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
-      if (!existsSync(target)) {
+      const fileKey = `${briefId}/${runId}/processed/${filename}`;
+      if (!(await store.has(fileKey))) {
         reply.code(404);
         return { error: 'file-not-found', filename };
       }
-      // Single statSync after existsSync, then catch ENOENT racing the
-      // existsSync->statSync window. Belt-and-braces against TOCTOU when
-      // a run is mid-write or being cleaned up.
-      let stat;
+      let fileData: Buffer;
       try {
-        stat = statSync(target);
+        fileData = await store.get(fileKey);
       } catch {
         reply.code(404);
         return { error: 'file-not-found', filename };
       }
-      if (!stat.isFile()) {
-        reply.code(404);
-        return { error: 'file-not-found', filename };
-      }
       reply.header('Content-Type', mime);
-      return reply.send(createReadStream(target));
+      return reply.send(fileData);
     },
   );
 
@@ -396,6 +402,49 @@ export function safeJoin(base: string, segments: ReadonlyArray<string>): string 
     return null;
   }
   return joined;
+}
+
+/**
+ * Enumerate runs by listing all `<briefId>/<runId>/summary.json` keys in the
+ * store. Works for both local and Azure backends. Returns an empty list when
+ * the store has no entries. Skips keys whose summary is unparseable rather
+ * than failing the whole endpoint.
+ *
+ * Sorted newest-first by runId (timestamp-prefixed).
+ */
+async function listRunsFromStore(store: RunStore): Promise<RunListEntry[]> {
+  const allKeys = await store.list('');
+  // Keep only keys of the shape <briefId>/<runId>/summary.json (exactly 3 parts).
+  const summaryKeys = allKeys.filter((k) => {
+    const parts = k.split('/');
+    return parts.length === 3 && parts[2] === 'summary.json';
+  });
+
+  const entries: RunListEntry[] = [];
+  for (const key of summaryKeys) {
+    const parts = key.split('/');
+    const briefId = parts[0]!;
+    const runId = parts[1]!;
+    let summary: RunSummaryShape | null = null;
+    try {
+      summary = JSON.parse((await store.get(key)).toString('utf8')) as RunSummaryShape;
+    } catch {
+      // Leave summary as null — unparseable entry is skipped gracefully.
+    }
+    entries.push({
+      briefId,
+      runId,
+      timestamp: parseRunIdTimestamp(runId),
+      briefHash: summary?.promptHash ?? null,
+      chosenIndex: summary?.chosen?.index ?? null,
+      candidateCount: summary?.candidates?.length ?? null,
+      hasJudge: (summary?.candidates ?? []).some(
+        (c) => c.judgeScorecard !== null && c.judgeScorecard !== undefined,
+      ),
+    });
+  }
+  entries.sort((a, b) => (a.runId < b.runId ? 1 : a.runId > b.runId ? -1 : 0));
+  return entries;
 }
 
 /**
