@@ -1,0 +1,12 @@
+{
+  "script": "health-mutation-score",
+  "startedAt": "2026-06-10T06:54:34.871Z",
+  "finishedAt": "2026-06-10T06:54:34.891Z",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Empty baseline — recorded mutation score 34.24% as the new baseline."
+    }
+  ],
+  "blocking": 0
+}
