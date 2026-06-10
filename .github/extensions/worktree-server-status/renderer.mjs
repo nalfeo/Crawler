@@ -13,7 +13,7 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Worktree Server</title>
+    <title>Crawler Worktree Servers</title>
     <style>
       :root {
         color-scheme: light dark;
@@ -234,7 +234,7 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
     <main>
       <div class="stack">
         <header>
-          <h1>Worktree Server</h1>
+          <h1>Crawler Worktree Servers</h1>
           <div class="subtitle">${escapeHtml(workspacePath)}</div>
         </header>
 
@@ -255,6 +255,7 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
     <script>
       const stateUrl = '/api/state';
       const refreshUrl = '/api/refresh';
+      const openUrl = '/api/open';
       const pollIntervalMs = ${JSON.stringify(pollIntervalMs)};
 
       const summaryEl = document.getElementById('summary');
@@ -291,14 +292,18 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
                 \${route.available ? 'available' : 'unavailable'}
               </span>
             </div>
-            <a href="\${escapeHtml(route.url)}" target="_blank" rel="noreferrer">\${escapeHtml(route.url)}</a>
+            <a href="\${escapeHtml(route.url)}" data-open-url="\${escapeHtml(route.url)}">\${escapeHtml(route.url)}</a>
             <div class="meta">\${statusBits.map((bit) => '<span>' + escapeHtml(bit) + '</span>').join('')}</div>
           </article>
         \`;
       }
 
       function renderServer(server) {
-        const commandLines = Array.isArray(server.matchedCommandLines) ? server.matchedCommandLines : [];
+        const commandLines = Array.isArray(server.familyCommandLines)
+          ? server.familyCommandLines
+          : Array.isArray(server.matchedCommandLines)
+            ? server.matchedCommandLines
+            : [];
         const commandMarkup =
           commandLines.length > 0
             ? \`
@@ -322,9 +327,15 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
             </div>
             <div class="server-url">\${escapeHtml(server.baseUrl)}</div>
             <div class="meta">
+              <span>session: \${escapeHtml(server.sessionName || 'unknown')}</span>
+              <span>branch: \${escapeHtml(server.branchName || 'unknown')}</span>
               <span>listen address: \${escapeHtml(server.localAddress)}</span>
               <span>owner PID: \${escapeHtml(server.owningProcess)}</span>
+              <span>launch PID: \${escapeHtml(server.launchProcessId || 'unknown')}</span>
               <span>verified routes: \${escapeHtml(server.availableRouteCount)}</span>
+            </div>
+            <div class="meta">
+              <span>workspace: \${escapeHtml(server.workspacePath || 'unknown')}</span>
             </div>
             <div class="links">
               <div class="link-grid">\${server.routes.map(renderRoute).join('')}</div>
@@ -338,8 +349,8 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
         const count = Number(state.activeServerCount || 0);
         const scannedAt = state.scannedAt ? new Date(state.scannedAt).toLocaleTimeString() : 'unknown';
         summaryEl.innerHTML = count > 0
-          ? '<strong>' + escapeHtml(count) + '</strong> active worktree server' + (count === 1 ? '' : 's') + ' detected. <span class="meta"><span>Last scan: ' + escapeHtml(scannedAt) + '</span></span>'
-          : 'No live Vite server matched this worktree on the last scan.';
+          ? '<strong>' + escapeHtml(count) + '</strong> running Crawler worktree server' + (count === 1 ? '' : 's') + ' detected. <span class="meta"><span>Last scan: ' + escapeHtml(scannedAt) + '</span></span>'
+          : 'No running Crawler dev servers were found on the last scan.';
 
         if (state.error) {
           errorEl.hidden = false;
@@ -353,7 +364,7 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
         serversEl.innerHTML =
           servers.length > 0
             ? servers.map(renderServer).join('')
-            : '<section class="empty"><strong>No active server found</strong><div>Run <code>npm run lab</code>, <code>npm run devtools</code>, or <code>npm run dev</code> in this worktree to populate the links.</div><div class="meta"><span>Last scan: ' +
+            : '<section class="empty"><strong>No running Crawler dev servers found</strong><div>Run <code>npm run lab</code>, <code>npm run devtools</code>, or <code>npm run dev</code> in a Crawler worktree to populate the links.</div><div class="meta"><span>Last scan: ' +
               escapeHtml(scannedAt) +
               '</span></div></section>';
       }
@@ -377,6 +388,42 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
 
       refreshButton.addEventListener('click', () => {
         void loadState(refreshUrl, { method: 'POST' });
+      });
+
+      async function openRouteUrl(url) {
+        if (!url) {
+          return;
+        }
+        const response = await fetch(openUrl, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ url }),
+        });
+        if (!response.ok) {
+          let message = 'Failed to open link in system browser.';
+          try {
+            const data = await response.json();
+            if (data && typeof data.error === 'string') {
+              message = data.error;
+            }
+          } catch {}
+          throw new Error(message);
+        }
+      }
+
+      document.addEventListener('click', async (event) => {
+        const anchor = event.target instanceof Element ? event.target.closest('a[data-open-url]') : null;
+        if (!anchor) {
+          return;
+        }
+        event.preventDefault();
+        const url = anchor.getAttribute('data-open-url');
+        try {
+          await openRouteUrl(url);
+        } catch (error) {
+          errorEl.hidden = false;
+          errorEl.textContent = error instanceof Error ? error.message : String(error);
+        }
       });
 
       void loadState(stateUrl);

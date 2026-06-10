@@ -16,12 +16,17 @@ const ROUTES = [
   { id: 'devtools', label: 'DevTools', path: '/devtools.html', expectedTitle: 'Crawler DevTools' },
 ];
 const POLL_INTERVAL_MS = 5000;
+const WORKSPACE_METADATA_TTL_MS = 15_000;
+const MAX_JSON_BODY_BYTES = 1024 * 1024;
+const WORKTREE_MARKER = '\\repos\\copilot-worktrees\\crawler\\';
+const MAIN_CHECKOUT_MARKER = '\\repos\\crawler';
 
 const servers = new Map();
 let trackedWorktreePath = null;
 let latestState = null;
 let refreshTimer = null;
 let refreshInFlight = null;
+const workspaceMetadataCache = new Map();
 
 function rememberWorkingDirectory(workingDirectory) {
   if (typeof workingDirectory !== 'string') {
@@ -46,11 +51,8 @@ function escapeForPowerShell(value) {
   return value.replaceAll("'", "''");
 }
 
-function buildProcessScanScript(worktreePath) {
-  const escapedPath = escapeForPowerShell(worktreePath);
+function buildProcessScanScript() {
   return `
-$workspacePath = '${escapedPath}'
-$needle = $workspacePath.ToLowerInvariant().Replace('/', '\\')
 $processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Select-Object ProcessId, ParentProcessId, Name, CommandLine)
 $processById = @{}
 foreach ($process in $processes) {
@@ -91,8 +93,12 @@ function IsWorktreeViteCommand([string]$commandLine) {
   if (-not $commandLine) {
     return $false
   }
-  $normalized = $commandLine.ToLowerInvariant()
-  if (-not $normalized.Contains($needle)) {
+  $normalized = $commandLine.ToLowerInvariant().Replace('/', '\\')
+  if (
+    -not $normalized.Contains('\\copilot-worktrees\\crawler\\') -and
+    -not $normalized.Contains('\\repos\\crawler\\') -and
+    -not $normalized.Contains('\\crawler\\node_modules\\vite\\bin\\vite.js')
+  ) {
     return $false
   }
   return (
@@ -117,7 +123,9 @@ foreach ($match in $workspaceMatches) {
       localAddress = [string]$listener.LocalAddress
       localPort = [int]$listener.LocalPort
       owningProcess = [int]$listener.OwningProcess
+      launchProcessId = [int]$match.ProcessId
       familyProcessIds = @($ancestorIds)
+      familyCommandLines = @($commandLines)
       mode = Get-LaunchMode($commandLines)
       matchedCommandLines = @($match.CommandLine)
     }
@@ -196,6 +204,118 @@ function formatLinkHost(localAddress) {
     return `[${localAddress}]`;
   }
   return localAddress;
+}
+
+function extractWorkspacePathFromCommandLine(commandLine) {
+  if (typeof commandLine !== 'string' || !commandLine.trim()) {
+    return null;
+  }
+
+  const vitePathMatch = /([a-z]:\\[^"'`]+?)\\node_modules\\vite\\bin\\vite\.js/i.exec(commandLine);
+  if (vitePathMatch?.[1]) {
+    return vitePathMatch[1];
+  }
+
+  const worktreePathMatch =
+    /([a-z]:\\[^"'`]*?\\repos\\copilot-worktrees\\crawler\\[^\\"'`\s]+)/i.exec(commandLine);
+  if (worktreePathMatch?.[1]) {
+    return worktreePathMatch[1];
+  }
+
+  const mainCheckoutMatch = /([a-z]:\\[^"'`]*?\\repos\\crawler)(?:\\|["'`\s]|$)/i.exec(commandLine);
+  if (mainCheckoutMatch?.[1]) {
+    return mainCheckoutMatch[1];
+  }
+
+  return null;
+}
+
+function inferWorkspacePath(candidate) {
+  const commandLines = [
+    ...(Array.isArray(candidate.familyCommandLines) ? candidate.familyCommandLines : []),
+    ...(Array.isArray(candidate.matchedCommandLines) ? candidate.matchedCommandLines : []),
+  ];
+  for (const commandLine of commandLines) {
+    const workspacePath = extractWorkspacePathFromCommandLine(commandLine);
+    if (workspacePath) {
+      return workspacePath;
+    }
+  }
+  return null;
+}
+
+function inferSessionName(workspacePath) {
+  if (!workspacePath) {
+    return null;
+  }
+  const normalized = workspacePath.replaceAll('/', '\\');
+  const lower = normalized.toLowerCase();
+  const markerIndex = lower.indexOf(WORKTREE_MARKER);
+  if (markerIndex >= 0) {
+    const suffix = normalized.slice(markerIndex + WORKTREE_MARKER.length);
+    const [sessionName] = suffix.split('\\');
+    return sessionName || null;
+  }
+  if (lower.endsWith(MAIN_CHECKOUT_MARKER)) {
+    return 'main-checkout';
+  }
+  return basename(normalized);
+}
+
+async function resolveBranchName(workspacePath) {
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['-C', workspacePath, 'rev-parse', '--abbrev-ref', 'HEAD'],
+      { windowsHide: true, maxBuffer: 1024 * 1024 },
+    );
+    const branchName = stdout.trim();
+    return branchName || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getWorkspaceMetadata(workspacePath) {
+  if (!workspacePath) {
+    return {
+      workspacePath: null,
+      workspaceName: null,
+      sessionName: null,
+      branchName: null,
+    };
+  }
+
+  const now = Date.now();
+  const cached = workspaceMetadataCache.get(workspacePath);
+  if (cached && now - cached.fetchedAtMs < WORKSPACE_METADATA_TTL_MS) {
+    return await cached.metadataPromise;
+  }
+
+  const metadataPromise = (async () => ({
+    workspacePath,
+    workspaceName: basename(workspacePath),
+    sessionName: inferSessionName(workspacePath),
+    branchName: await resolveBranchName(workspacePath),
+  }))();
+  workspaceMetadataCache.set(workspacePath, {
+    fetchedAtMs: now,
+    metadataPromise,
+  });
+
+  try {
+    return await metadataPromise;
+  } catch (error) {
+    // Avoid pinning a failing lookup in cache.
+    workspaceMetadataCache.delete(workspacePath);
+    return {
+      workspacePath,
+      workspaceName: basename(workspacePath),
+      sessionName: inferSessionName(workspacePath),
+      branchName: null,
+      metadataError: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function getModeLabel(mode) {
@@ -277,18 +397,40 @@ async function enrichCandidate(candidate) {
   const baseUrl = `http://${host}:${candidate.localPort}`;
   const routes = await Promise.all(ROUTES.map((route) => probeRoute(baseUrl, route)));
   const availableRoutes = routes.filter((route) => route.available);
+  const workspacePath = inferWorkspacePath(candidate);
+  const workspaceMetadata = await getWorkspaceMetadata(workspacePath);
+  const matchedCommandLines = Array.isArray(candidate.matchedCommandLines)
+    ? candidate.matchedCommandLines
+    : [];
+  const familyCommandLines = Array.isArray(candidate.familyCommandLines)
+    ? candidate.familyCommandLines
+    : [];
+  const primaryFamilyCommand = familyCommandLines.find(
+    (line) => typeof line === 'string' && line.trim(),
+  );
+  const primaryMatchedCommand = matchedCommandLines.find(
+    (line) => typeof line === 'string' && line.trim(),
+  );
+  const commandSummary = primaryFamilyCommand || primaryMatchedCommand || null;
+
   return {
     baseUrl,
     localAddress: candidate.localAddress,
     port: candidate.localPort,
     owningProcess: candidate.owningProcess,
+    launchProcessId: candidate.launchProcessId ?? null,
     familyProcessIds: candidate.familyProcessIds,
+    workspacePath: workspaceMetadata.workspacePath,
+    workspaceName: workspaceMetadata.workspaceName,
+    sessionName: workspaceMetadata.sessionName,
+    branchName: workspaceMetadata.branchName,
     mode: candidate.mode,
     modeLabel: getModeLabel(candidate.mode),
     availableRouteCount: availableRoutes.length,
     verified: availableRoutes.length > 0,
-    matchedCommandLines: candidate.matchedCommandLines,
-    commandSummary: candidate.matchedCommandLines[0] ?? null,
+    matchedCommandLines,
+    familyCommandLines,
+    commandSummary,
     routes,
   };
 }
@@ -383,18 +525,20 @@ async function discoverState(session) {
   }
 
   try {
-    const rawResult = await runPowerShellJson(buildProcessScanScript(worktreePath));
+    const rawResult = await runPowerShellJson(buildProcessScanScript());
     const rawCandidates = Array.isArray(rawResult) ? rawResult : rawResult ? [rawResult] : [];
     const candidates = dedupeCandidates(rawCandidates);
     const discoveredServers = sortServers(
       await Promise.all(candidates.map((candidate) => enrichCandidate(candidate))),
     );
-    const activeServers = discoveredServers.filter((server) => server.verified);
+    const runningServers = discoveredServers.filter((server) => server.verified);
     const nextState = {
       ...baseState,
-      activeServerCount: activeServers.length,
-      hasActiveServer: activeServers.length > 0,
-      servers: activeServers,
+      activeServerCount: runningServers.length,
+      verifiedServerCount: runningServers.length,
+      hasActiveServer: runningServers.length > 0,
+      hasVerifiedServer: runningServers.length > 0,
+      servers: runningServers,
     };
 
     try {
@@ -433,6 +577,92 @@ function setJsonResponse(res, body, statusCode = 200) {
   res.end(`${JSON.stringify(body)}\n`);
 }
 
+async function readJsonRequestBody(req) {
+  return await new Promise((resolve, reject) => {
+    const chunks = [];
+    let totalBytes = 0;
+    let settled = false;
+
+    const fail = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error);
+    };
+
+    req.on('data', (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_JSON_BODY_BYTES) {
+        const error = new Error(`Request body too large (max ${MAX_JSON_BODY_BYTES} bytes).`);
+        error.code = 'BODY_TOO_LARGE';
+        fail(error);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on('end', () => {
+      if (settled) {
+        return;
+      }
+      const body = Buffer.concat(chunks).toString('utf8');
+      if (!body || !body.trim()) {
+        settled = true;
+        resolve({});
+        return;
+      }
+      try {
+        settled = true;
+        resolve(JSON.parse(body));
+      } catch {
+        const error = new Error('Invalid JSON body.');
+        error.code = 'INVALID_JSON';
+        fail(error);
+      }
+    });
+
+    req.on('error', (error) => {
+      fail(error);
+    });
+  });
+}
+
+async function openInSystemBrowser(rawUrl) {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim()) {
+    throw new Error('A non-empty URL is required.');
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid URL.');
+  }
+
+  if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+    throw new Error('Only http/https URLs are supported.');
+  }
+
+  if (process.platform !== 'win32') {
+    throw new Error('System browser launching is currently supported on Windows only.');
+  }
+
+  const escapedUrl = escapeForPowerShell(parsedUrl.toString());
+  await execFileAsync(
+    'pwsh.exe',
+    [
+      '-NoLogo',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `Start-Process -FilePath '${escapedUrl}'`,
+    ],
+    { windowsHide: true, maxBuffer: 1024 * 1024 },
+  );
+}
+
 async function startServer(instanceId, session) {
   const server = createServer((req, res) => {
     void handleRequest(req, res, instanceId, session).catch((error) => {
@@ -461,6 +691,37 @@ async function handleRequest(req, res, instanceId, session) {
     }
     const state = await refreshState(session);
     setJsonResponse(res, state);
+    return;
+  }
+
+  if (requestUrl.pathname === '/api/open') {
+    if (req.method !== 'POST') {
+      setJsonResponse(res, { error: 'Method not allowed' }, 405);
+      return;
+    }
+
+    let payload;
+    try {
+      payload = await readJsonRequestBody(req);
+    } catch (error) {
+      if (error?.code === 'BODY_TOO_LARGE') {
+        setJsonResponse(res, { error: error.message }, 413);
+        return;
+      }
+      if (error?.code === 'INVALID_JSON') {
+        setJsonResponse(res, { error: 'Invalid JSON body.' }, 400);
+        return;
+      }
+      setJsonResponse(res, { error: error instanceof Error ? error.message : String(error) }, 400);
+      return;
+    }
+
+    try {
+      await openInSystemBrowser(payload.url);
+      setJsonResponse(res, { ok: true });
+    } catch (error) {
+      setJsonResponse(res, { error: error instanceof Error ? error.message : String(error) }, 400);
+    }
     return;
   }
 
@@ -497,7 +758,7 @@ const session = await joinSession({
       id: 'worktree-server-status',
       displayName: 'Worktree Server',
       description:
-        'Shows live Vite servers for this worktree and links to the game, labs, and devtools entrypoints.',
+        'Shows all live Crawler Vite instances with session, branch, and links to game/labs/devtools entrypoints.',
       actions: [
         {
           name: 'refresh',
