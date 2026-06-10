@@ -45,7 +45,7 @@
 | Health loop            | `npm run health:check`            |
 
 For sprite workflow details and when to use sprite commands, see
-`docs/guides/sprite-workflow.md` and `docs/knowledge/game-design/sprites/`.
+`scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
 
 ## Architecture
 
