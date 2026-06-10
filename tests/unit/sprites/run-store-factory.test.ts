@@ -1,0 +1,70 @@
+/**
+ * Unit tests for the RunStore factory (createRunStore).
+ *
+ * The Azure implementation is not constructed here because it would require
+ * valid Azure credentials. The factory logic (env-var dispatch, error messages)
+ * is tested with a stub env map instead.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { createRunStore } from '../../../scripts/sprites/store/index.js';
+
+const REPO_ROOT = '/fake/repo';
+
+describe('createRunStore factory', () => {
+  it('returns LocalRunStore by default (no env)', () => {
+    const store = createRunStore({ env: {}, repoRoot: REPO_ROOT });
+    expect(store.backend).toBe('local');
+  });
+
+  it('returns LocalRunStore when SPRITES_RUN_STORE=local', () => {
+    const store = createRunStore({ env: { SPRITES_RUN_STORE: 'local' }, repoRoot: REPO_ROOT });
+    expect(store.backend).toBe('local');
+  });
+
+  it('throws on unknown backend value', () => {
+    expect(() => createRunStore({ env: { SPRITES_RUN_STORE: 's3' }, repoRoot: REPO_ROOT })).toThrow(
+      "Unknown SPRITES_RUN_STORE 's3'",
+    );
+  });
+
+  it('throws on missing AZURE_STORAGE_ACCOUNT when azure-blob requested', () => {
+    expect(() =>
+      createRunStore({
+        env: { SPRITES_RUN_STORE: 'azure-blob' },
+        repoRoot: REPO_ROOT,
+      }),
+    ).toThrow("Missing required env var 'AZURE_STORAGE_ACCOUNT'");
+  });
+
+  it('throws on missing AZURE_STORAGE_KEY when azure-blob requested', () => {
+    expect(() =>
+      createRunStore({
+        env: {
+          SPRITES_RUN_STORE: 'azure-blob',
+          AZURE_STORAGE_ACCOUNT: 'myaccount',
+        },
+        repoRoot: REPO_ROOT,
+      }),
+    ).toThrow("Missing required env var 'AZURE_STORAGE_KEY'");
+  });
+
+  it('constructs AzureBlobRunStore when all required vars present', () => {
+    const store = createRunStore({
+      env: {
+        SPRITES_RUN_STORE: 'azure-blob',
+        AZURE_STORAGE_ACCOUNT: 'myaccount',
+        AZURE_STORAGE_KEY: 'dGVzdA==',
+      },
+      repoRoot: REPO_ROOT,
+    });
+    expect(store.backend).toBe('azure-blob');
+  });
+
+  it('resolve() on LocalRunStore returns path inside generated/runs', () => {
+    const store = createRunStore({ env: {}, repoRoot: REPO_ROOT });
+    const resolved = store.resolve('iron-sword/run-001/summary.json');
+    expect(resolved).toContain('generated');
+    expect(resolved).toContain('iron-sword');
+  });
+});
