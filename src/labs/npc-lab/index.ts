@@ -93,7 +93,7 @@ function createNpcLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
   const playerEid = spawnPlayer(world, PLAYER_SPAWN_X, PLAYER_SPAWN_Y);
   setComponent(world.ecs, playerEid, Health, { current: 100, max: 100 });
 
-  const npcEid = spawnNpc(world, NPC_X, NPC_Y, 'guild-guide');
+  const npcEid = spawnNpc(world, NPC_X, NPC_Y, 'tutorial-goon');
 
   // --- Input ---
   const keysDown = new Set<string>();

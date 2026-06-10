@@ -10,7 +10,7 @@ import { NPC_INTERACT_RANGE_PX } from '../../src/shared/npc-types.js';
 describe('spawnNpc', () => {
   it('creates an entity with Npc, Invincible, Position, and Sprite components', () => {
     const world = createTestWorld();
-    const eid = spawnNpc(world, 100, 200, 'guild-guide');
+    const eid = spawnNpc(world, 100, 200, 'tutorial-goon');
 
     expect(eid).toBeGreaterThanOrEqual(0);
     expect(hasComponent(world.ecs, eid, Npc)).toBe(true);
@@ -21,7 +21,7 @@ describe('spawnNpc', () => {
 
   it('stores position correctly', () => {
     const world = createTestWorld();
-    const eid = spawnNpc(world, 50, 75, 'guild-guide');
+    const eid = spawnNpc(world, 50, 75, 'tutorial-goon');
 
     expect(world.stores.position.x[eid]).toBe(50);
     expect(world.stores.position.y[eid]).toBe(75);
@@ -29,11 +29,11 @@ describe('spawnNpc', () => {
 
   it('registers an NpcInstance in world.npcs with correct defId and initial quest state', () => {
     const world = createTestWorld();
-    const eid = spawnNpc(world, 0, 0, 'guild-guide');
+    const eid = spawnNpc(world, 0, 0, 'tutorial-goon');
 
     const instance = world.npcs.get(eid);
     expect(instance).toBeDefined();
-    expect(instance?.defId).toBe('guild-guide');
+    expect(instance?.defId).toBe('tutorial-goon');
     expect(instance?.dialogueIndex).toBe(0);
     expect(instance?.nearbyPlayer).toBe(false);
     expect(instance?.quests).toHaveLength(1);
@@ -52,7 +52,7 @@ describe('spawnNpc', () => {
 describe('Invincible component — applyDamage guard', () => {
   it('applyDamage deals no damage to an Invincible entity', () => {
     const world = createTestWorld();
-    const eid = spawnNpc(world, 0, 0, 'guild-guide');
+    const eid = spawnNpc(world, 0, 0, 'tutorial-goon');
 
     // Manually set health store values to confirm they are not reduced
     world.stores.health.current[eid] = 50;
@@ -74,7 +74,7 @@ describe('Invincible component — applyDamage guard', () => {
 
   it('emits no combat event for an Invincible entity', () => {
     const world = createTestWorld();
-    const eid = spawnNpc(world, 0, 0, 'guild-guide');
+    const eid = spawnNpc(world, 0, 0, 'tutorial-goon');
     world.stores.health.current[eid] = 50;
 
     applyDamage(world, eid, 10, 0, 0);
@@ -85,7 +85,7 @@ describe('Invincible component — applyDamage guard', () => {
 describe('npcSystem', () => {
   it('marks nearbyPlayer true when player is within interact range', () => {
     const world = createTestWorld();
-    const npcEid = spawnNpc(world, 200, 200, 'guild-guide');
+    const npcEid = spawnNpc(world, 200, 200, 'tutorial-goon');
     spawnPlayer(world, 200, 200 + NPC_INTERACT_RANGE_PX - 1);
 
     npcSystem(world);
@@ -95,7 +95,7 @@ describe('npcSystem', () => {
 
   it('marks nearbyPlayer false when player is beyond interact range', () => {
     const world = createTestWorld();
-    const npcEid = spawnNpc(world, 200, 200, 'guild-guide');
+    const npcEid = spawnNpc(world, 200, 200, 'tutorial-goon');
     spawnPlayer(world, 200, 200 + NPC_INTERACT_RANGE_PX + 10);
 
     npcSystem(world);
@@ -105,7 +105,7 @@ describe('npcSystem', () => {
 
   it('marks nearbyPlayer false when no player exists', () => {
     const world = createTestWorld();
-    const npcEid = spawnNpc(world, 200, 200, 'guild-guide');
+    const npcEid = spawnNpc(world, 200, 200, 'tutorial-goon');
 
     // Force nearbyPlayer to true to confirm it gets cleared
     const instance = world.npcs.get(npcEid)!;
@@ -118,8 +118,8 @@ describe('npcSystem', () => {
 
   it('handles multiple NPCs independently', () => {
     const world = createTestWorld();
-    const npc1 = spawnNpc(world, 100, 100, 'guild-guide');
-    const npc2 = spawnNpc(world, 400, 400, 'guild-guide');
+    const npc1 = spawnNpc(world, 100, 100, 'tutorial-goon');
+    const npc2 = spawnNpc(world, 400, 400, 'tutorial-goon');
     spawnPlayer(world, 100, 100); // close to npc1, far from npc2
 
     npcSystem(world);

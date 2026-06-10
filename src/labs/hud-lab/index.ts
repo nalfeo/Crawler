@@ -95,7 +95,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           deadlineMs,
           safeRoomPos: { x: 300, y: 300 },
           staircasePos: { x: 600, y: 400 },
-          personalSpacePos: { x: 100, y: 100 },
+          welcomeOfficePos: { x: 100, y: 100 },
           markerRadiusPx: 32,
           ratsKilled: 0,
           slimesKilled: 0,

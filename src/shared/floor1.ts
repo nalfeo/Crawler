@@ -8,8 +8,8 @@ export interface Floor1ObjectiveState {
   readonly deadlineMs: number;
   readonly safeRoomPos: { x: number; y: number };
   readonly staircasePos: { x: number; y: number };
-  /** Position of the personal space (spawn-room area) where the Guild Guide NPC stands. */
-  readonly personalSpacePos: { x: number; y: number };
+  /** Position of the Welcome Office (spawn-room area) where the Tutorial Goon NPC stands. */
+  readonly welcomeOfficePos: { x: number; y: number };
   readonly markerRadiusPx: number;
   ratsKilled: number;
   slimesKilled: number;
@@ -38,7 +38,7 @@ export interface Floor1ScenarioState {
     pickupRange: number;
   };
   enemyArchetypes: Map<number, Floor1EnemyArchetype>;
-  /** EID of the spawned Guild Guide NPC, or null if not yet spawned. */
+  /** EID of the spawned Tutorial Goon NPC, or null if not yet spawned. */
   guideNpcEid: number | null;
   objective: Floor1ObjectiveState;
   failReason: 'stair_timeout' | null;

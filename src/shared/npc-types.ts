@@ -44,12 +44,12 @@ export const NPC_INTERACT_RANGE_PX = 80;
 
 // ---- NPC Definitions ----
 
-const GUILD_GUIDE_DEF: NpcDef = {
-  id: 'guild-guide',
-  name: 'Starter Guild Game Guide',
+const TUTORIAL_GOON_DEF: NpcDef = {
+  id: 'tutorial-goon',
+  name: 'Tutorial Goon',
   dialogue: [
     {
-      text: "Welcome, contestant! I'm your Starter Guild Game Guide. The audience is watching — don't disappoint them.",
+      text: "Hey, contestant! I'm the Tutorial Goon. Welcome to the Welcome Office — enjoy it while it lasts.",
     },
     {
       text: 'Your first mission: defeat the floor boss. Find them, fight them, and claim your glory!',
@@ -68,7 +68,9 @@ const GUILD_GUIDE_DEF: NpcDef = {
   heightPx: 28,
 };
 
-const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([[GUILD_GUIDE_DEF.id, GUILD_GUIDE_DEF]]);
+const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
+  [TUTORIAL_GOON_DEF.id, TUTORIAL_GOON_DEF],
+]);
 
 export function getNpcDef(id: string): NpcDef | undefined {
   return NPC_REGISTRY.get(id);
