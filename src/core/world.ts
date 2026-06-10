@@ -41,11 +41,13 @@ import {
   BaseStats,
   EffectiveStats,
   Gold,
+  Npc,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
 import type { Floor1ScenarioState } from '../shared/floor1.js';
+import type { NpcInstance } from '../shared/npc-types.js';
 
 const logger = createLogger('core:world');
 
@@ -93,6 +95,8 @@ export interface GameWorld {
   floorMap: FloorMap | null;
   /** Floor 1 tutorial scenario state. */
   floor1: Floor1ScenarioState | null;
+  /** Per-entity NPC instance state (eid → NpcInstance). Side-car for variable-length NPC data. */
+  npcs: Map<number, NpcInstance>;
   /** Debug flags — lab/dev use only. Never read in production game logic. */
   debugFlags: {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
@@ -151,6 +155,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
   wireStore(ecs, Gold, stores.gold);
+  wireStore(ecs, Npc, stores.npc);
 
   const world: GameWorld = {
     ecs,
@@ -178,6 +183,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerGold: 0,
     floorMap: null,
     floor1: null,
+    npcs: new Map(),
     debugFlags: {
       showAllRooms: false,
     },
