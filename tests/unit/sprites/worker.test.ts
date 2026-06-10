@@ -6,6 +6,7 @@
  * real providers.
  */
 
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   AssetQueue,
@@ -264,7 +265,7 @@ describe('runWorker', () => {
 
     expect(mockGenerate).toHaveBeenCalledWith(
       expect.objectContaining({
-        briefPath: '/repo/briefs/weapons/iron-sword.yaml',
+        briefPath: path.resolve('/repo', 'briefs/weapons/iron-sword.yaml'),
         repoRoot: '/repo',
       }),
     );
