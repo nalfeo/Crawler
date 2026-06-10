@@ -12,6 +12,7 @@ describe('sprite catalog sync', () => {
       margin: 0,
       spacing: 1,
       cols: 8,
+      rows: 12,
       description: 'Sheet A description',
     },
   ] as const;

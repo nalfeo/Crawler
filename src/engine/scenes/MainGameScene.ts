@@ -25,8 +25,8 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { GAME } from '../../shared/constants.js';
-import { TerrainType } from '../../shared/map-types.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { buildTerrainLayer } from '../terrain-renderer.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
@@ -37,27 +37,6 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
 const logger = createLogger('engine:main-game-scene');
-
-const TERRAIN_COLORS: Readonly<Record<number, number>> = {
-  [TerrainType.VOID]: 0x05060f,
-  [TerrainType.STONE_FLOOR]: 0x1f2937,
-  [TerrainType.STONE_WALL]: 0x111827,
-  [TerrainType.DOOR]: 0x8b5e34,
-  [TerrainType.CORRIDOR]: 0x233044,
-  [TerrainType.WATER]: 0x1d4ed8,
-  [TerrainType.LAVA]: 0xb91c1c,
-  [TerrainType.GRASS]: 0x166534,
-  [TerrainType.DIRT]: 0x6b3f24,
-  [TerrainType.WOOD_FLOOR]: 0x5b4430,
-  [TerrainType.WOOD_WALL]: 0x3a2d20,
-  [TerrainType.CAVE_FLOOR]: 0x2a2a3d,
-  [TerrainType.CAVE_WALL]: 0x1b1b29,
-  [TerrainType.TREE]: 0x14532d,
-  [TerrainType.RUBBLE]: 0x334155,
-  [TerrainType.BOSS_STAIR_FLOOR]: 0x2d0e1e,
-  [TerrainType.SAFE_ROOM_FLOOR]: 0x0f2340,
-};
-
 export interface MainGameSceneOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
@@ -89,7 +68,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
 
-  private mapGraphics?: Phaser.GameObjects.Graphics;
+  /** Terrain tile layer — baked once per floor as a RenderTexture. */
+  private mapRt?: Phaser.GameObjects.RenderTexture;
 
   private doorGraphics?: Phaser.GameObjects.Graphics;
 
@@ -157,14 +137,14 @@ export class MainGameScene extends Phaser.Scene {
       this.modalPicker = undefined;
       this.bridge?.destroy();
       this.bridge = undefined;
-      this.mapGraphics?.destroy();
+      this.mapRt?.destroy();
       this.doorGraphics?.destroy();
       this.safeRoomMarker?.destroy();
       this.staircaseMarker?.destroy();
       this.objectiveText?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
-      this.mapGraphics = undefined;
+      this.mapRt = undefined;
       this.doorGraphics = undefined;
       this.safeRoomMarker = undefined;
       this.staircaseMarker = undefined;
@@ -336,9 +316,9 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private drawFloorTerrain(): void {
-    this.mapGraphics?.destroy();
+    this.mapRt?.destroy();
     this.doorGraphics?.destroy();
-    this.mapGraphics = undefined;
+    this.mapRt = undefined;
     this.doorGraphics = undefined;
 
     const floorMap = this.world.floorMap;
@@ -346,18 +326,17 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    const g = this.add.graphics().setDepth(-20);
-    const tileSize = floorMap.config.tileSizePx;
-    for (let y = 0; y < floorMap.height; y += 1) {
-      for (let x = 0; x < floorMap.width; x += 1) {
-        const idx = y * floorMap.width + x;
-        const color = TERRAIN_COLORS[floorMap.terrain[idx] ?? TerrainType.VOID] ?? 0x05060f;
-        g.fillStyle(color, 1);
-        g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-      }
+    const { rt, colorCount } = buildTerrainLayer(this, floorMap);
+    rt.setDepth(-20);
+    this.mapRt = rt;
+
+    if (colorCount > 0) {
+      logger.debug('Terrain layer: tiles using color fallback', {
+        colorCount,
+        hint: 'Add entries to TILE_SPRITES in src/engine/sprites/tile-visuals.ts to replace fallbacks.',
+      });
     }
 
-    this.mapGraphics = g;
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.updateDoorOverlay();
     this.cameras.main.setBounds(0, 0, floorMap.widthPx, floorMap.heightPx);

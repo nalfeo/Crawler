@@ -34,5 +34,23 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.6
+  },
+  {
+    "date": "2026-06-10",
+    "session": "blob-tile-autotiling",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-10",
+    "session": "agent-merge-pr106",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6
   }
 ]

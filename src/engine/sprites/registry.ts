@@ -43,6 +43,8 @@ export interface SpriteSheetDef {
   readonly spacing: number;
   /** Number of tile columns. Used to translate (col, row) -> frame index. */
   readonly cols: number;
+  /** Number of tile rows. Used together with cols for frame-bounds validation. */
+  readonly rows: number;
   /** Human-readable note about the sheet, surfaced in the lab. */
   readonly description: string;
 }
@@ -104,6 +106,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     margin: 0,
     spacing: 1,
     cols: 54,
+    rows: 12,
     description: 'Kenney Roguelike Characters (CC0). 918x203, 16x16 tiles, 1px gap.',
   },
   {
@@ -114,6 +117,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     margin: 0,
     spacing: 1,
     cols: 12,
+    rows: 11,
     description:
       'Kenney Tiny Dungeon (CC0). 203x186, 132 tiles (12x11). ' +
       'Characters, weapons, items, dungeon terrain, projectiles.',
@@ -126,6 +130,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     margin: 0,
     spacing: 1,
     cols: 12,
+    rows: 11,
     description:
       'Kenney Tiny Town (CC0). 203x186, 132 tiles (12x11). ' +
       'Outdoor terrain, buildings, trees, NPCs, animals.',
@@ -138,6 +143,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     margin: 0,
     spacing: 1,
     cols: 18,
+    rows: 11,
     description:
       'Kenney Tiny Battle (CC0). 305x186, 198 tiles (18x11). ' +
       'Soldiers, vehicles, military props.',
@@ -150,6 +156,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     margin: 0,
     spacing: 1,
     cols: 12,
+    rows: 11,
     description: 'Kenney Tiny Ski (CC0). 203x186, 132 tiles (12x11). Winter biome.',
   },
   {
@@ -160,6 +167,7 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     margin: 0,
     spacing: 1,
     cols: 57,
+    rows: 31,
     description:
       'Kenney Roguelike/RPG Pack (CC0). 968x526, ~1767 tiles (57x31). ' +
       'Floors, walls, roofs, flora, doors, furniture, mining, banners, UI.',
