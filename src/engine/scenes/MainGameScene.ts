@@ -40,6 +40,7 @@ const logger = createLogger('engine:main-game-scene');
 const ATOMIZATION_OVERLAY_DEPTH = 6000;
 const ATOMIZATION_PIXEL_COUNT = 220;
 const ATOMIZATION_SWIRL_MS = 1450;
+const TAU = 6.283185307179586;
 
 const TERRAIN_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.VOID]: 0x05060f,
@@ -613,12 +614,12 @@ export class MainGameScene extends Phaser.Scene {
       const pixel = this.add
         .rectangle(startX, startY, size, size, color, 0.9)
         .setScrollFactor(0)
-        .setRotation(rng.next() * Math.PI * 2);
+        .setRotation(rng.next() * TAU);
       overlay.add(pixel);
 
       const startAngle = Phaser.Math.Angle.Between(centerX, centerY, startX, startY);
       const startRadius = Phaser.Math.Distance.Between(centerX, centerY, startX, startY);
-      const spinTurns = (3.5 + rng.next() * 4) * Math.PI;
+      const spinTurns = (3.5 + rng.next() * 4) * (TAU / 2);
       const state = { t: 0 };
 
       this.tweens.add({

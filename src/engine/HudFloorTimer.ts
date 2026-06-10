@@ -88,7 +88,7 @@ export function createHudFloorTimer(scene: Phaser.Scene): {
     }
 
     const timerStr = formatTimer(remainingMs);
-    timerText.setText(`Floor ${world.floor}  Atomization ${timerStr}`);
+    timerText.setText(`Floor ${world.floor}  Atomization in ${timerStr}`);
 
     if (remainingMs <= RED_THRESHOLD_MS) {
       timerText.setColor(COLORS.red);
