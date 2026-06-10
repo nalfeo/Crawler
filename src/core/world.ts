@@ -11,6 +11,7 @@ import type { InventoryBag } from '../shared/inventory.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
+import type { DoorLockConfig } from './door-lock.js';
 import type { FloorMap } from './map/FloorMap.js';
 import {
   Position,
@@ -88,6 +89,10 @@ export interface GameWorld {
   statsDirty: boolean;
   /** Per-entity inventory bags (eid → bag). Side-car for variable-length data. */
   inventories: Map<number, InventoryBag>;
+  /** Per-door lock configurations (eid → lock config). */
+  doorLockConfigs: Map<number, DoorLockConfig>;
+  /** Scenario/world objective flags used by lock conditions and other systems. */
+  goalFlags: Map<string, boolean>;
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
@@ -181,6 +186,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     abilityTriggerEvents: [],
     statsDirty: true,
     inventories: new Map(),
+    doorLockConfigs: new Map(),
+    goalFlags: new Map(),
     combatEvents: [],
     playerGold: 0,
     floorMap: null,

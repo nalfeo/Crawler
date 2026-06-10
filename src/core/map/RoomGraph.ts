@@ -6,6 +6,7 @@
  */
 
 import type { RoomData, RoomBounds, DoorLocation } from '../../shared/map-types';
+import { RoomRole } from '../../shared/map-types';
 
 export class RoomGraph {
   private readonly rooms: RoomData[];
@@ -36,12 +37,31 @@ export class RoomGraph {
     bounds: RoomBounds,
     doors: DoorLocation[] = [],
     neighbors: number[] = [],
+    role: RoomRole = RoomRole.NORMAL,
     label?: string,
   ): number {
     const id = this.rooms.length;
-    this.rooms.push({ id, bounds, doors, neighbors, label });
+    this.rooms.push({ id, bounds, doors, neighbors, role, label });
     this.spatialCache = null; // invalidate cache
     return id;
+  }
+
+  /** Assign or update the semantic role of a room. */
+  setRole(id: number, role: RoomRole): void {
+    const room = this.rooms[id];
+    if (room) {
+      room.role = role;
+    }
+  }
+
+  /** Return the first room that has the given role, or undefined if none. */
+  getFirstRoomByRole(role: RoomRole): RoomData | undefined {
+    return this.rooms.find((r) => r.role === role);
+  }
+
+  /** Return all rooms that have the given role. */
+  getRoomsByRole(role: RoomRole): readonly RoomData[] {
+    return this.rooms.filter((r) => r.role === role);
   }
 
   /** Find which room a tile belongs to (interior only, not walls). Returns -1 if none. */

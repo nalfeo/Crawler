@@ -25,6 +25,8 @@ export const TERRAIN_FALLBACK_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.CAVE_WALL]: 0x1b1b29,
   [TerrainType.TREE]: 0x14532d,
   [TerrainType.RUBBLE]: 0x334155,
+  [TerrainType.BOSS_STAIR_FLOOR]: 0x2d0e1e,
+  [TerrainType.SAFE_ROOM_FLOOR]: 0x0f2340,
 };
 
 /** Convert a numeric 0xRRGGBB colour to a CSS hex string (e.g. `'#1f2937'`). */

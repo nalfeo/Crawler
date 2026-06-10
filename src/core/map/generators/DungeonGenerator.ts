@@ -7,7 +7,7 @@
 
 import { Map as ROTMap, RNG } from 'rot-js';
 import type { MapConfig, DoorLocation, RoomBounds } from '../../../shared/map-types';
-import { TilePresets, TerrainType } from '../../../shared/map-types';
+import { TilePresets, TerrainType, RoomRole } from '../../../shared/map-types';
 import type { SeededRandom } from '../../../shared/random';
 import { TileMap } from '../TileMap';
 import { RoomGraph } from '../RoomGraph';
@@ -118,7 +118,9 @@ export class DungeonGenerator implements MapGenerator {
       }
     }
 
-    // Player spawns in the first room's center
+    // --- Assign room roles ---
+    // Room 0 is spawn. Score remaining rooms by distance from spawn center;
+    // furthest → BOSS_STAIR, second-furthest → SAFE, rest → NORMAL.
     const spawnRoom = roomGraph.get(0);
     let playerSpawn = { x: Math.floor(w / 2), y: Math.floor(h / 2) };
     if (spawnRoom) {
@@ -126,8 +128,57 @@ export class DungeonGenerator implements MapGenerator {
         x: Math.floor(spawnRoom.bounds.x + spawnRoom.bounds.width / 2),
         y: Math.floor(spawnRoom.bounds.y + spawnRoom.bounds.height / 2),
       };
+      roomGraph.setRole(0, RoomRole.SPAWN);
+    }
+
+    if (roomGraph.count >= 2) {
+      const scored = roomGraph
+        .getAll()
+        .filter((r) => r.id !== 0)
+        .map((room) => {
+          const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
+          const cy = Math.floor(room.bounds.y + room.bounds.height / 2);
+          const dx = cx - playerSpawn.x;
+          const dy = cy - playerSpawn.y;
+          return { id: room.id, distanceSq: dx * dx + dy * dy };
+        });
+      scored.sort((a, b) => b.distanceSq - a.distanceSq);
+
+      const bossStairId = scored[0]?.id;
+      const safeId = scored[1]?.id;
+
+      if (bossStairId !== undefined) {
+        roomGraph.setRole(bossStairId, RoomRole.BOSS_STAIR);
+        paintRoomFloor(bossStairId, roomGraph, w, terrain, TerrainType.BOSS_STAIR_FLOOR);
+      }
+      if (safeId !== undefined) {
+        roomGraph.setRole(safeId, RoomRole.SAFE);
+        paintRoomFloor(safeId, roomGraph, w, terrain, TerrainType.SAFE_ROOM_FLOOR);
+      }
     }
 
     return new FloorMap(config, tileMap, roomGraph, terrain, playerSpawn);
+  }
+}
+
+/** Repaint interior floor tiles of a room with a given terrain type. */
+function paintRoomFloor(
+  roomId: number,
+  roomGraph: RoomGraph,
+  mapWidth: number,
+  terrain: Uint8Array,
+  terrainType: TerrainType,
+): void {
+  const room = roomGraph.get(roomId);
+  if (!room) return;
+  const { x, y, width, height } = room.bounds;
+  // Interior = 1 tile inset from bounding walls
+  for (let ty = y + 1; ty < y + height - 1; ty++) {
+    for (let tx = x + 1; tx < x + width - 1; tx++) {
+      const idx = ty * mapWidth + tx;
+      if (terrain[idx] === TerrainType.STONE_FLOOR) {
+        terrain[idx] = terrainType;
+      }
+    }
   }
 }

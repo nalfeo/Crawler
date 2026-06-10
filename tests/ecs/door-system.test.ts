@@ -77,6 +77,23 @@ describe('Door System', () => {
     expect(floorMap.tileMap.isPassable(5, 5)).toBe(true);
   });
 
+  it('should not auto-open a nearby door that is locked', () => {
+    world.floorMap = makeMapWithDoor();
+    const floorMap = world.floorMap;
+    const player = spawnPlayer(world, 0, 0);
+    const pixel = floorMap.tileToPixel(4, 5);
+    world.stores.position.x[player] = pixel.x;
+    world.stores.position.y[player] = pixel.y;
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(DoorState, { tileX: 5, tileY: 5, isOpen: 0, isLocked: 1 }));
+
+    doorSystem(world);
+
+    expect(floorMap.tileMap.isPassable(5, 5)).toBe(false);
+    expect(world.stores.doorState.isLocked[eid]).toBe(1);
+  });
+
   it('should open a closed door when isOpen = 1', () => {
     const floorMap = makeMapWithDoor();
     world.floorMap = floorMap;
