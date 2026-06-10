@@ -5,7 +5,7 @@ import { Position, Player, Health, BroadcastScore, Sprite } from '../core/compon
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { setActiveWeapon } from './weaponSystem.js';
-import { spawnBehaviorEnemy, spawnNpc } from '../core/helpers.js';
+import { spawnBehaviorEnemy } from '../core/helpers.js';
 import { setGoalFlag } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById } from '../shared/items.js';
