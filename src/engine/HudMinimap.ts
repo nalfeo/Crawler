@@ -56,6 +56,8 @@ const MINI_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.WOOD_WALL]: 0x3a2d20,
   [TerrainType.CAVE_FLOOR]: 0x2a2a3d,
   [TerrainType.CAVE_WALL]: 0x1b1b29,
+  [TerrainType.BOSS_STAIR_FLOOR]: 0x475569,
+  [TerrainType.SAFE_ROOM_FLOOR]: 0x14532d,
   [TerrainType.TREE]: 0x14532d,
   [TerrainType.RUBBLE]: 0x334155,
 } as const;
