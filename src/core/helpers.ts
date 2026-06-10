@@ -12,9 +12,11 @@ import {
   Gold,
   Health,
   Inventory,
+  Invincible,
   Lifetime,
   LineDamage,
   MeleeSwing,
+  Npc,
   Owner,
   Player,
   Position,
@@ -33,6 +35,7 @@ import type { WeaponTypeValue } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
+import { getNpcDef, type NpcInstance } from '../shared/npc-types.js';
 
 // Re-export applyDamage for backward compatibility
 export { applyDamage } from './apply-damage.js';
@@ -157,6 +160,7 @@ export function spawnProjectile(
   vy: number,
   damage: number,
   pierce: number = 0,
+  maxRange: number = 0,
 ): number {
   const eid = createEntity(world);
 
@@ -164,7 +168,11 @@ export function spawnProjectile(
   addComponent(world.ecs, eid, set(Velocity, { x: vx, y: vy }));
   addComponent(world.ecs, eid, set(Damage, { amount: damage, cooldownMs: 0, lastFireMs: 0 }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 6, height: 6 }));
-  addComponent(world.ecs, eid, set(Projectile, { pierce, hitCount: 0 }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Projectile, { pierce, hitCount: 0, maxRange, originX: x, originY: y }),
+  );
 
   return eid;
 }
@@ -281,8 +289,9 @@ export function spawnAoeProjectile(
   aoeDamage: number,
   ownerEid: number,
   teamId: number,
+  maxRange: number = 0,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, 0, maxRange);
   addComponent(world.ecs, eid, set(AoeOnImpact, { radius: aoeRadius, damage: aoeDamage }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
@@ -330,8 +339,9 @@ export function spawnBouncingProjectile(
   damage: number,
   remainingBounces: number,
   pierce: number = 0,
+  maxRange: number = 0,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce, maxRange);
   addComponent(world.ecs, eid, set(Bouncing, { remainingBounces }));
   return eid;
 }
@@ -442,5 +452,39 @@ export function spawnMeleeSwing(
     eid,
     set(Sprite, { textureId: 0, width: bladeLength * 2, height: bladeLength * 2 }),
   );
+  return eid;
+}
+
+/**
+ * Spawn an NPC entity at the given position.
+ * NPCs are non-hostile (no Enemy component) and invincible by default.
+ * The defId must match a registered NpcDef in npc-types.ts.
+ * Returns the entity id, or -1 if the defId is not found.
+ */
+export function spawnNpc(world: GameWorld, x: number, y: number, defId: string): number {
+  const def = getNpcDef(defId);
+  if (def === undefined) {
+    return -1;
+  }
+
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Sprite, { textureId: def.textureId, width: def.widthPx, height: def.heightPx }),
+  );
+  addComponent(world.ecs, eid, set(Npc, { defIdIndex: 0 }));
+  addComponent(world.ecs, eid, Invincible);
+
+  const instance: NpcInstance = {
+    defId,
+    dialogueIndex: 0,
+    quests: def.quests.map((q) => ({ questId: q.questId, status: 'available' })),
+    nearbyPlayer: false,
+  };
+  world.npcs.set(eid, instance);
+
   return eid;
 }

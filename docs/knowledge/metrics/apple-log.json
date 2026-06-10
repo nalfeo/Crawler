@@ -1,0 +1,20 @@
+[
+  {
+    "date": "2026-06-09",
+    "session": "worktree-server-canvas-open-fix",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-10",
+    "session": "npc-system",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8
+  }
+]
