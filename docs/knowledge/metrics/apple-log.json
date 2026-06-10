@@ -9,6 +9,15 @@
     "hello_kitties": 0.4
   },
   {
+    "date": "2026-06-09",
+    "session": "pr-108-agent-merge",
+    "estimated_apples": 2,
+    "actual_apples": 1,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.2
+  },
+  {
     "date": "2026-06-10",
     "session": "npc-system",
     "estimated_apples": 4,
