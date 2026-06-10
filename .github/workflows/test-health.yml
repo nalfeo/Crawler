@@ -23,13 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Run coverage suite
         run: npm run test:coverage -- --coverage.reporter=json-summary --coverage.reporter=text
@@ -46,13 +40,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Detect untested ECS systems
         run: npx tsx scripts/agent/health/untested-systems.ts
@@ -98,13 +86,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Extended property-based tests (10x)
         run: npx tsx scripts/agent/health/extended-property.ts
@@ -120,13 +102,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Governor playthroughs
         run: npx tsx scripts/agent/health/governor-playthroughs.ts
@@ -142,25 +118,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Balance regression
         run: npx tsx scripts/agent/health/balance-regression.ts
         continue-on-error: true
 
-  # Job 6: Aggregation (depends on all tests)
+  # Job 6: Benchmark regression (can run in parallel)
+  bench-regression:
+    name: Benchmark regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Run benchmarks
+        run: npx vitest bench --reporter=json --outputFile=coverage/bench-results.json
+        continue-on-error: true
+
+      - name: Benchmark regression check
+        run: npx tsx scripts/agent/health/bench-regression.ts
+        continue-on-error: true
+
+  # Job 7: Aggregation (depends on all tests)
   aggregate-results:
     name: Aggregate & file issues
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: always()
-    needs: [coverage-trend, property-tests, governor-playthroughs, balance-regression]
+    needs:
+      [coverage-trend, property-tests, governor-playthroughs, balance-regression, bench-regression]
     env:
       AUTOMATION_REPORT_DIR: ${{ github.workspace }}/.automation-reports
       AUTOMATION_TITLE: 'test-health: weekly report'
@@ -169,13 +160,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - uses: ./.github/actions/setup-node
 
       - name: Prepare report directory
         run: mkdir -p "$AUTOMATION_REPORT_DIR"
