@@ -37,19 +37,19 @@ describe('floor1Scenario', () => {
     expect(getActiveWeapon(world)?.id).toBe(chosenId);
   });
 
-  it('times out the run when the staircase deadline is missed', () => {
+  it('fails the run when the staircase atomization deadline is missed', () => {
     const world = createTestWorld({ seed: 7 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
 
-    const deadlineMs = world.floor1?.objective.deadlineMs ?? 0;
-    world.elapsedMs = deadlineMs + 1;
+    const atomizationDeadlineMs = world.floor1?.objective.atomizationDeadlineMs ?? 0;
+    world.elapsedMs = atomizationDeadlineMs + 1;
     floor1ObjectiveSystem(world);
 
     expect(world.state).toBe('game_over');
-    expect(world.floor1?.failReason).toBe('stair_timeout');
-    expect(world.floor1?.runSummary?.outcome).toBe('failed_timeout');
+    expect(world.floor1?.failReason).toBe('stair_atomization');
+    expect(world.floor1?.runSummary?.outcome).toBe('failed_atomization');
   });
 
   it('spawns deterministic rat/slime encounters from the floor director', () => {

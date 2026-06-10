@@ -157,7 +157,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       requiredSlimes: FLOOR_1_REQUIRED_SLIMES,
       requiredGold: FLOOR_1_REQUIRED_GOLD,
       requiredJunk: FLOOR_1_REQUIRED_JUNK,
-      deadlineMs: FLOOR_1_TIMER_MS,
+      atomizationDeadlineMs: FLOOR_1_TIMER_MS,
       safeRoomPos,
       staircasePos,
       markerRadiusPx: FLOOR_1_MARKER_RADIUS_PX,
@@ -314,7 +314,10 @@ function countJunkInInventory(world: GameWorld): number {
   return total;
 }
 
-function finalizeRunSummary(world: GameWorld, outcome: 'failed_timeout' | 'cleared_floor'): void {
+function finalizeRunSummary(
+  world: GameWorld,
+  outcome: 'failed_atomization' | 'cleared_floor',
+): void {
   if (!world.floor1 || world.floor1.runSummary) {
     return;
   }
@@ -374,10 +377,10 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
     objective.junkCollected >= objective.requiredJunk;
   objective.staircaseUnlocked = objective.safeRoomDiscovered && meetsCombat && meetsLoot;
 
-  if (world.elapsedMs >= objective.deadlineMs && !objective.staircaseDiscovered) {
-    world.floor1.failReason = 'stair_timeout';
+  if (world.elapsedMs >= objective.atomizationDeadlineMs && !objective.staircaseDiscovered) {
+    world.floor1.failReason = 'stair_atomization';
     world.state = 'game_over';
-    finalizeRunSummary(world, 'failed_timeout');
+    finalizeRunSummary(world, 'failed_atomization');
     return;
   }
 

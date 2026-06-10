@@ -1,5 +1,5 @@
 /**
- * HudFloorTimer — fixed-position floor number + countdown timer.
+ * HudFloorTimer — fixed-position floor number + atomization countdown timer.
  *
  * Positioned top-center. Reads from world.floor1 (Floor 1) with a generic
  * FLOOR.MAX_DURATION_S fallback for future floors.
@@ -80,14 +80,14 @@ export function createHudFloorTimer(scene: Phaser.Scene): {
     let remainingMs: number;
 
     if (world.floor1?.objective) {
-      remainingMs = Math.max(0, world.floor1.objective.deadlineMs - world.elapsedMs);
+      remainingMs = Math.max(0, world.floor1.objective.atomizationDeadlineMs - world.elapsedMs);
     } else {
       const maxMs = FLOOR.MAX_DURATION_S * 1000;
       remainingMs = Math.max(0, maxMs - world.elapsedMs);
     }
 
     const timerStr = formatTimer(remainingMs);
-    timerText.setText(`Floor ${world.floor}  ${timerStr}`);
+    timerText.setText(`Floor ${world.floor}  Atomization ${timerStr}`);
 
     if (remainingMs <= RED_THRESHOLD_MS) {
       timerText.setColor(COLORS.red);

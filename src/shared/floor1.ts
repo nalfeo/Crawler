@@ -5,7 +5,7 @@ export interface Floor1ObjectiveState {
   readonly requiredSlimes: number;
   readonly requiredGold: number;
   readonly requiredJunk: number;
-  readonly deadlineMs: number;
+  readonly atomizationDeadlineMs: number;
   readonly safeRoomPos: { x: number; y: number };
   readonly staircasePos: { x: number; y: number };
   readonly markerRadiusPx: number;
@@ -19,7 +19,7 @@ export interface Floor1ObjectiveState {
 }
 
 export interface Floor1RunSummary {
-  outcome: 'failed_timeout' | 'cleared_floor';
+  outcome: 'failed_atomization' | 'cleared_floor';
   viewsEarned: number;
   fansEarned: number;
 }
@@ -37,6 +37,6 @@ export interface Floor1ScenarioState {
   };
   enemyArchetypes: Map<number, Floor1EnemyArchetype>;
   objective: Floor1ObjectiveState;
-  failReason: 'stair_timeout' | null;
+  failReason: 'stair_atomization' | null;
   runSummary: Floor1RunSummary | null;
 }

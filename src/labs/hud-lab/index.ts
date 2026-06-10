@@ -77,7 +77,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       world.stores.health.max[playerEid] = settings.maxHp;
 
       // Fake a floor1 objective for timer display
-      const deadlineMs = settings.timeRemainingS * 1000;
+      const atomizationDeadlineMs = settings.timeRemainingS * 1000;
       world.floor1 = {
         protagonistName: 'HUD Lab Player',
         starterWeaponPool: [],
@@ -91,7 +91,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           requiredSlimes: 3,
           requiredGold: 50,
           requiredJunk: 2,
-          deadlineMs,
+          atomizationDeadlineMs,
           safeRoomPos: { x: 300, y: 300 },
           staircasePos: { x: 600, y: 400 },
           markerRadiusPx: 32,
@@ -145,7 +145,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       if (world.floor1) {
         world.floor1.objective = {
           ...world.floor1.objective,
-          deadlineMs: maxMs,
+          atomizationDeadlineMs: maxMs,
         };
       }
 
