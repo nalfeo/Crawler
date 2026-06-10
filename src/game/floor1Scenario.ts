@@ -1,12 +1,12 @@
 import { addComponent, entityExists, hasComponent, query, set, setComponent } from 'bitecs';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { getGenerator } from '../core/map/generators/registry.js';
-import { Position, Player, Health, BroadcastScore, Sprite } from '../core/components.js';
+import { Position, Player, Health, BroadcastScore, Sprite, DoorState } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { setActiveWeapon } from './weaponSystem.js';
-import { spawnBehaviorEnemy } from '../core/helpers.js';
-import { setGoalFlag } from '../core/door-lock.js';
+import { spawnBehaviorEnemy, spawnNpc, createEntity } from '../core/helpers.js';
+import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById } from '../shared/items.js';
 import { PLAYER_SPEED } from '../shared/constants.js';
@@ -18,7 +18,7 @@ const FLOOR_1_REQUIRED_RATS = 6;
 const FLOOR_1_REQUIRED_SLIMES = 4;
 const FLOOR_1_REQUIRED_GOLD = 15;
 const FLOOR_1_REQUIRED_JUNK = 2;
-const FLOOR_1_MARKER_RADIUS_PX = 24;
+const FLOOR_1_MARKER_RADIUS_PX = 64;
 const FLOOR_1_STAIR_SPAWN_COUNTDOWN_MS = 30_000;
 
 const FLOOR_1_MAP_CONFIG: MapConfig = {
@@ -219,6 +219,30 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, false);
+
+  // Spawn the tutorial guide NPC near the player's starting position.
+  world.floor1.guideNpcEid = spawnNpc(world, spawn.x + 48, spawn.y, 'tutorial-goon');
+
+  // Initialise the boss-defeat goal flag and lock the boss room doors.
+  setGoalFlag(world, 'floor1-defeat-boss', false);
+  const bossStairRoom = floorMap.bossStairRoom;
+  if (bossStairRoom) {
+    for (const door of bossStairRoom.doors) {
+      const doorEid = createEntity(world);
+      addComponent(
+        world.ecs,
+        doorEid,
+        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 0, isLocked: 1, wasUnlocked: 0 }),
+      );
+      setDoorLockConfig(world, doorEid, {
+        unlock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-defeat-boss' }],
+        },
+      });
+    }
+  }
+
   world.state = 'loadout';
 }
 
@@ -500,6 +524,8 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
       objective.staircaseUnlocked = true;
       objective.staircaseBossDefeated = true;
       objective.staircaseBossEid = null;
+      // Unlock boss room doors via goal flag (doorSystem picks this up automatically).
+      setGoalFlag(world, 'floor1-defeat-boss', true);
     }
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);

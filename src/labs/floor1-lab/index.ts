@@ -12,6 +12,7 @@ import {
   weaponSystem,
 } from '../../game/index.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../../game/systems/index.js';
+import { npcSystem } from '../../core/index.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -63,6 +64,13 @@ const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
     hook: 'Loop pre hook',
     implementation: 'Real game implementation',
     activeInFloor1: true,
+  },
+  {
+    name: 'npcSystem',
+    hook: 'Loop pre hook',
+    implementation: 'Real game implementation',
+    activeInFloor1: true,
+    note: 'Updates nearbyPlayer proximity flag for NPC dialogue interactions.',
   },
   {
     name: 'levelSystem',
@@ -231,6 +239,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             weaponSystem,
             enemyAISystem,
             floor1EnemyDirectorSystem,
+            npcSystem,
           ],
           postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem],
         }),

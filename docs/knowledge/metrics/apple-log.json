@@ -70,5 +70,14 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.8
+  },
+  {
+    "date": "2026-06-10",
+    "session": "npc-door-stairs-integration",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
   }
 ]
