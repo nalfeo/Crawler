@@ -51,15 +51,13 @@ import { ProviderError } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { createLogger } from '../../src/shared/logger.js';
+import { buildAnchorOverlay } from './anchor-overlay.js';
+import { LocalRunStore } from './store/local-store.js';
+import type { RunStore } from './store/types.js';
 import {
-  ensureRunDirs,
   makeRunId,
   pickChosen,
   rankCandidates,
-  runPaths,
-  writeSheet,
-  writeSummary,
-  writeVariant,
   type RunSummary,
   type RunSummaryEntry,
 } from './run-artifacts.js';
@@ -122,6 +120,12 @@ export interface GenerateOneOptions {
   readonly warn?: (message: string) => void;
   /** Environment override used by local-only judge checks (primarily tests). */
   readonly env?: NodeJS.ProcessEnv;
+  /**
+   * RunStore for writing all artifacts. Defaults to a `LocalRunStore` rooted
+   * at `<outputRoot>/runs` so existing local workflows are unaffected.
+   * Pass an `AzureBlobRunStore` to write artifacts to Azure Blob Storage.
+   */
+  readonly store?: RunStore;
 }
 
 export interface GenerateOneResult {
@@ -145,6 +149,8 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   const maxAttempts = options.maxAttempts ?? 2;
   const now = options.now ?? (() => new Date());
   const readReference = options.readReference ?? ((p) => readFileSync(p));
+  // Default to a local store rooted at <outputRoot>/runs — same layout as before.
+  const store: RunStore = options.store ?? new LocalRunStore(path.join(outputRoot, 'runs'));
 
   const loaded = options.preloaded ?? loadBrief(options.briefPath, { projectRoot: repoRoot });
   const brief = loaded.brief;
@@ -175,8 +181,9 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   );
 
   const runId = makeRunId(now(), `${brief.name}|${prompt}`);
-  const paths = runPaths(outputRoot, brief, runId);
-  ensureRunDirs(paths);
+  // Store-key helper: returns a key relative to the store root.
+  const sk = (rel: string) => `${brief.name}/${runId}/${rel}`;
+  const pad2 = (n: number) => String(n).padStart(2, '0');
 
   // --- Generate the sheet, with bounded retries on transient grid issues. ---
   let attempts = 0;
@@ -191,7 +198,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         referencePngs,
         variants: expected,
       });
-      writeSheet(paths, attempt, sheet);
+      await store.put(sk(`sheet-${pad2(attempt)}.png`), sheet);
       const cells = sliceSheetFromBrief(sheet, brief);
       if (cells.length !== expected) {
         throw new ProviderError(
@@ -239,24 +246,58 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     const raw = sliced[i]!;
     const processed = postprocess(raw, brief, palette);
     const scorecard = scoreCandidate(processed, brief, palette);
-    const { rawPath, processedPath, scorecardPath, anchorSidecarPath, anchorOverlayPath } =
-      writeVariant(paths, i, raw, processed, scorecard, {
-        overlaySize: (() => {
-          const img = PNG.sync.read(processed);
-          return { width: img.width, height: img.height };
-        })(),
-      });
+    const id = pad2(i);
+
+    // Write raw + processed PNGs and scorecard via the store.
+    await store.put(sk(`raw/${id}.png`), raw);
+    await store.put(sk(`processed/${id}.png`), processed);
+    await store.put(
+      sk(`processed/${id}.scorecard.json`),
+      Buffer.from(`${JSON.stringify(scorecard, null, 2)}\n`),
+    );
+
+    // Optional anchor sidecar (only when derivation succeeded).
+    let anchorSidecarPath: string | null = null;
+    if (scorecard.derivedAnchor) {
+      const anchorKey = sk(`processed/${id}.anchor.json`);
+      await store.put(
+        anchorKey,
+        Buffer.from(
+          `${JSON.stringify({ x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y, source: 'derived' as const }, null, 2)}\n`,
+        ),
+      );
+      anchorSidecarPath = store.resolve(anchorKey);
+    }
+
+    // Always emit the overlay PNG — fully transparent when anchor is null so
+    // the gallery can blindly composite it without branching on derivation.
+    const { width: overlayW, height: overlayH } = (() => {
+      const img = PNG.sync.read(processed);
+      return { width: img.width, height: img.height };
+    })();
+    const overlayKey = sk(`processed/${id}.anchor-overlay.png`);
+    await store.put(
+      overlayKey,
+      buildAnchorOverlay({
+        width: overlayW,
+        height: overlayH,
+        anchor: scorecard.derivedAnchor
+          ? { x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y }
+          : null,
+      }),
+    );
+
     sensorEntries.push({
       index: i,
       score: scorecard.score,
       outOf: scorecard.outOf,
       passed: scorecard.passed,
-      rawPath,
-      processedPath,
-      scorecardPath,
+      rawPath: store.resolve(sk(`raw/${id}.png`)),
+      processedPath: store.resolve(sk(`processed/${id}.png`)),
+      scorecardPath: store.resolve(sk(`processed/${id}.scorecard.json`)),
       derivedAnchor: scorecard.derivedAnchor,
       anchorSidecarPath,
-      anchorOverlayPath,
+      anchorOverlayPath: store.resolve(overlayKey),
       processed,
     });
     processedBuffers.push(processed);
@@ -325,7 +366,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         styleGuide,
         provider: visionProvider,
         variantIndex: e.index,
-        processedDir: paths.processedDir,
+        processedDir: store.resolve(sk('processed')),
         variantPath: e.processedPath,
         ...(options.judgeCache ? { cache: options.judgeCache } : {}),
         ...(options.now ? { now: options.now } : {}),
@@ -413,9 +454,12 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       : null,
     judgeCache: cacheStats,
   };
-  const summaryPath = writeSummary(paths, summary);
+  const summaryKey = sk('summary.json');
+  await store.put(summaryKey, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`));
+  const summaryPath = store.resolve(summaryKey);
+  const runDir = store.resolve(`${brief.name}/${runId}`);
 
-  return { summary, summaryPath, runDir: paths.briefDir, attempts, brief };
+  return { summary, summaryPath, runDir, attempts, brief };
 }
 
 function shortPromptHash(prompt: string): string {
