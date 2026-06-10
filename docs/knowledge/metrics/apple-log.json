@@ -25,5 +25,14 @@
     "delta": -1,
     "verdict": "over",
     "hello_kitties": 0.2
+  },
+  {
+    "date": "2026-06-10",
+    "session": "weight-component",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6
   }
 ]

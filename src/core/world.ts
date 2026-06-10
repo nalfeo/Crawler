@@ -42,6 +42,7 @@ import {
   EffectiveStats,
   Gold,
   Npc,
+  Weight,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -156,6 +157,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
   wireStore(ecs, Gold, stores.gold);
   wireStore(ecs, Npc, stores.npc);
+  wireStore(ecs, Weight, stores.weight);
 
   const world: GameWorld = {
     ecs,
