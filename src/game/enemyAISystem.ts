@@ -705,6 +705,30 @@ function applyPathDrivenBehavior(
     }
     const fallback = normalize(waypoint.x - enemyX, waypoint.y - enemyY);
     setVelocity(world, eid, fallback.x * speed, fallback.y * speed);
+    return;
+  }
+
+  // Keep chase/swarm mobs converging on the player instead of mirroring lateral
+  // player strafes tile-for-tile when pathing updates are frequent.
+  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+  if (
+    (behaviorType === AI_TYPE.CHASE || behaviorType === AI_TYPE.SWARM) &&
+    persona === PATH_PERSONA.NAVIGATOR &&
+    traversalMode !== TRAVERSAL_MODE.FLYING
+  ) {
+    const currentVx = world.stores.velocity.x[eid] ?? 0;
+    const currentVy = world.stores.velocity.y[eid] ?? 0;
+    const pathDirection = normalize(currentVx, currentVy);
+    const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
+    if (pathDirection.length > EPSILON && toPlayer.length > EPSILON) {
+      const blended = normalize(
+        pathDirection.x * 0.7 + toPlayer.x * 0.3,
+        pathDirection.y * 0.7 + toPlayer.y * 0.3,
+      );
+      if (blended.length > EPSILON) {
+        setNavigatingVelocity(world, eid, blended.x, blended.y, speed);
+      }
+    }
   }
 }
 

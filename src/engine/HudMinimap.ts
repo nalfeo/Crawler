@@ -81,9 +81,10 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setInteractive({ useHandCursor: true });
 
   const iconLabel = scene.add
-    .text(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE / 2, '🗺', {
+    .text(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE / 2, 'MAP', {
       fontFamily: 'monospace',
-      fontSize: '18px',
+      fontSize: '12px',
+      color: '#e2e8f0',
     })
     .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
@@ -163,27 +164,26 @@ export function createHudMinimap(scene: Phaser.Scene): {
       cachedPixH = Math.max(1, cachedTilePx * cachedScaleY);
       rt = scene.add
         .renderTexture(MAP_X, MAP_Y, MAP_WIDTH, MAP_HEIGHT)
+        .setOrigin(0, 0)
         .setScrollFactor(0)
         .setDepth(DEPTH + 1)
         .setVisible(false);
     }
 
-    const g = scene.add.graphics();
     for (const idx of newIndices) {
       const tx = idx % floorMap.width;
       const ty = Math.floor(idx / floorMap.width);
       const terrain = floorMap.terrain[idx] ?? TerrainType.VOID;
       const color = MINI_COLORS[terrain] ?? 0x05060f;
-      g.fillStyle(color, 1);
-      g.fillRect(
+      rt.fill(
+        color,
+        1,
         tx * cachedTilePx * cachedScaleX,
         ty * cachedTilePx * cachedScaleY,
         cachedPixW,
         cachedPixH,
       );
     }
-    rt.draw(g, 0, 0);
-    g.destroy();
   }
 
   // ---------------------------------------------------------------------------

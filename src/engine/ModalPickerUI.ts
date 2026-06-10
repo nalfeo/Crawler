@@ -250,7 +250,8 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     }
 
     switch (event.code) {
-      case 'ArrowUp': {
+      case 'ArrowUp':
+      case 'KeyW': {
         event.preventDefault();
         const previous = state;
         state = moveModalPickerSelection(state, -1);
@@ -266,7 +267,8 @@ export function createModalPickerUI(scene: Phaser.Scene): {
         }
         break;
       }
-      case 'ArrowDown': {
+      case 'ArrowDown':
+      case 'KeyS': {
         event.preventDefault();
         const previous = state;
         state = moveModalPickerSelection(state, 1);

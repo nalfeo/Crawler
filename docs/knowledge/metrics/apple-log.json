@@ -52,5 +52,14 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.6
+  },
+  {
+    "date": "2026-06-10",
+    "session": "floor1-feedback-fixes",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8
   }
 ]

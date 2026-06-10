@@ -398,6 +398,48 @@ describe('enemyAISystem', () => {
     );
   });
 
+  it('navigator chase still closes distance while player strafes left-right', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    const player = spawnPlayer(world, 10 * 32 + 16, 5 * 32 + 16);
+    const navigator = spawnBehaviorEnemy(
+      world,
+      2 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    const startDx =
+      (world.stores.position.x[player] ?? 0) - (world.stores.position.x[navigator] ?? 0);
+    const startDy =
+      (world.stores.position.y[player] ?? 0) - (world.stores.position.y[navigator] ?? 0);
+    const startDistance = Math.hypot(startDx, startDy);
+
+    for (let i = 0; i < 120; i += 1) {
+      const strafeDir = i % 20 < 10 ? -1 : 1;
+      world.stores.position.x[player] = (world.stores.position.x[player] ?? 0) + strafeDir * 1.5;
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      doorSystem(world);
+      enemyAISystem(world);
+      movementSystem(world);
+    }
+
+    const endDx =
+      (world.stores.position.x[player] ?? 0) - (world.stores.position.x[navigator] ?? 0);
+    const endDy =
+      (world.stores.position.y[player] ?? 0) - (world.stores.position.y[navigator] ?? 0);
+    const endDistance = Math.hypot(endDx, endDy);
+    expect(endDistance).toBeLessThan(startDistance - 40);
+  });
+
   it('stupid personas keep direct steering and stay blocked by closed doors', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(false);

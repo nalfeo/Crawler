@@ -112,10 +112,19 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
+  // URL params: ?autopick=1 skips the loadout modal, ?weapon=1|2|3 selects choice.
+  // e.g. http://localhost:3004/lab.html?lab=floor1-lab&autopick=1&weapon=2
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlAutoPick = urlParams.get('autopick') === '1';
+  const urlWeapon = parseInt(urlParams.get('weapon') ?? '0', 10);
+
   const settings: Floor1LabSettings = {
-    autoPickStarter: false,
-    starterChoice: 1,
+    autoPickStarter: urlAutoPick,
+    starterChoice: urlWeapon >= 1 && urlWeapon <= 3 ? urlWeapon : 1,
     ...(loadLabState<Floor1LabSettings>(LAB_ID) ?? {}),
+    // URL params always override persisted state
+    ...(urlAutoPick ? { autoPickStarter: true } : {}),
+    ...(urlWeapon >= 1 && urlWeapon <= 3 ? { starterChoice: urlWeapon } : {}),
   };
 
   const root = document.createElement('div');
