@@ -16,6 +16,8 @@ const ROUTES = [
   { id: 'devtools', label: 'DevTools', path: '/devtools.html', expectedTitle: 'Crawler DevTools' },
 ];
 const POLL_INTERVAL_MS = 5000;
+const WORKSPACE_METADATA_TTL_MS = 15_000;
+const MAX_JSON_BODY_BYTES = 1024 * 1024;
 const WORKTREE_MARKER = '\\repos\\copilot-worktrees\\crawler\\';
 const MAIN_CHECKOUT_MARKER = '\\repos\\crawler';
 
@@ -284,18 +286,36 @@ async function getWorkspaceMetadata(workspacePath) {
     };
   }
 
-  let pending = workspaceMetadataCache.get(workspacePath);
-  if (!pending) {
-    pending = (async () => ({
+  const now = Date.now();
+  const cached = workspaceMetadataCache.get(workspacePath);
+  if (cached && now - cached.fetchedAtMs < WORKSPACE_METADATA_TTL_MS) {
+    return await cached.metadataPromise;
+  }
+
+  const metadataPromise = (async () => ({
+    workspacePath,
+    workspaceName: basename(workspacePath),
+    sessionName: inferSessionName(workspacePath),
+    branchName: await resolveBranchName(workspacePath),
+  }))();
+  workspaceMetadataCache.set(workspacePath, {
+    fetchedAtMs: now,
+    metadataPromise,
+  });
+
+  try {
+    return await metadataPromise;
+  } catch (error) {
+    // Avoid pinning a failing lookup in cache.
+    workspaceMetadataCache.delete(workspacePath);
+    return {
       workspacePath,
       workspaceName: basename(workspacePath),
       sessionName: inferSessionName(workspacePath),
-      branchName: await resolveBranchName(workspacePath),
-    }))();
-    workspaceMetadataCache.set(workspacePath, pending);
+      branchName: null,
+      metadataError: error instanceof Error ? error.message : String(error),
+    };
   }
-
-  return await pending;
 }
 
 function getModeLabel(mode) {
@@ -558,17 +578,55 @@ function setJsonResponse(res, body, statusCode = 200) {
 }
 
 async function readJsonRequestBody(req) {
-  const body = await new Promise((resolve, reject) => {
+  return await new Promise((resolve, reject) => {
     const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
+    let totalBytes = 0;
+    let settled = false;
 
-  if (!body || !body.trim()) {
-    return {};
-  }
-  return JSON.parse(body);
+    const fail = (error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error);
+    };
+
+    req.on('data', (chunk) => {
+      totalBytes += chunk.length;
+      if (totalBytes > MAX_JSON_BODY_BYTES) {
+        const error = new Error(`Request body too large (max ${MAX_JSON_BODY_BYTES} bytes).`);
+        error.code = 'BODY_TOO_LARGE';
+        fail(error);
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+
+    req.on('end', () => {
+      if (settled) {
+        return;
+      }
+      const body = Buffer.concat(chunks).toString('utf8');
+      if (!body || !body.trim()) {
+        settled = true;
+        resolve({});
+        return;
+      }
+      try {
+        settled = true;
+        resolve(JSON.parse(body));
+      } catch {
+        const error = new Error('Invalid JSON body.');
+        error.code = 'INVALID_JSON';
+        fail(error);
+      }
+    });
+
+    req.on('error', (error) => {
+      fail(error);
+    });
+  });
 }
 
 async function openInSystemBrowser(rawUrl) {
@@ -645,8 +703,16 @@ async function handleRequest(req, res, instanceId, session) {
     let payload;
     try {
       payload = await readJsonRequestBody(req);
-    } catch {
-      setJsonResponse(res, { error: 'Invalid JSON body.' }, 400);
+    } catch (error) {
+      if (error?.code === 'BODY_TOO_LARGE') {
+        setJsonResponse(res, { error: error.message }, 413);
+        return;
+      }
+      if (error?.code === 'INVALID_JSON') {
+        setJsonResponse(res, { error: 'Invalid JSON body.' }, 400);
+        return;
+      }
+      setJsonResponse(res, { error: error instanceof Error ? error.message : String(error) }, 400);
       return;
     }
 
