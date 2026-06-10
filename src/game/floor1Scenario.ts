@@ -8,7 +8,7 @@ import { setActiveWeapon } from './weaponSystem.js';
 import { spawnBehaviorEnemy } from '../core/helpers.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById } from '../shared/items.js';
-import { PLAYER_SPEED } from '../shared/constants.js';
+import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 
 const FLOOR_1_PROTAGONIST = 'Rhea Vale';
 const FLOOR_1_STARTER_POOL = ['sword', 'knife', 'bow', 'pistol', 'throwing-knife'] as const;
@@ -18,18 +18,18 @@ const FLOOR_1_REQUIRED_SLIMES = 4;
 const FLOOR_1_REQUIRED_GOLD = 15;
 const FLOOR_1_REQUIRED_JUNK = 2;
 const FLOOR_1_MARKER_RADIUS_PX = 24;
+const FLOOR_1_CORNER_TRAVEL_SECONDS = 120;
+const FLOOR_1_TARGET_ASPECT_RATIO = 40 / 23;
+const FLOOR_1_TILE_SIZE_PX = 32;
 
-const FLOOR_1_MAP_CONFIG: MapConfig = {
-  widthTiles: 40,
-  heightTiles: 23,
-  tileSizePx: 32,
+const FLOOR_1_MAP_CONFIG_BASE = {
+  tileSizePx: FLOOR_1_TILE_SIZE_PX,
   biome: BiomeType.DUNGEON,
-  seed: 42,
   roomWidthRange: [5, 11],
   roomHeightRange: [5, 11],
   maxRooms: 16,
   floorDensity: 0.42,
-};
+} as const;
 
 const RAT_SPAWN_WEIGHT = 0.62;
 const RAT_HP = 20;
@@ -120,11 +120,30 @@ function chooseObjectiveTiles(world: GameWorld): {
   };
 }
 
-export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
-  const config: MapConfig = {
-    ...FLOOR_1_MAP_CONFIG,
-    seed: world.rng.nextInt(1, 2_000_000),
+function createFloor1MapConfig(seed: number): MapConfig {
+  const targetDiagonalPx = PLAYER_SPEED * GAME.TARGET_FPS * FLOOR_1_CORNER_TRAVEL_SECONDS;
+  const ratioDenominator = Math.hypot(FLOOR_1_TARGET_ASPECT_RATIO, 1);
+  const targetWidthPx = targetDiagonalPx * (FLOOR_1_TARGET_ASPECT_RATIO / ratioDenominator);
+  const targetHeightPx = targetDiagonalPx * (1 / ratioDenominator);
+  const widthTiles = Math.max(
+    FLOOR_1_MAP_CONFIG_BASE.roomWidthRange[1] + 2,
+    Math.ceil(targetWidthPx / FLOOR_1_TILE_SIZE_PX),
+  );
+  const heightTiles = Math.max(
+    FLOOR_1_MAP_CONFIG_BASE.roomHeightRange[1] + 2,
+    Math.ceil(targetHeightPx / FLOOR_1_TILE_SIZE_PX),
+  );
+
+  return {
+    ...FLOOR_1_MAP_CONFIG_BASE,
+    widthTiles,
+    heightTiles,
+    seed,
   };
+}
+
+export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
+  const config = createFloor1MapConfig(world.rng.nextInt(1, 2_000_000));
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
 

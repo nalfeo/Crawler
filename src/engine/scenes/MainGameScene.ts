@@ -36,6 +36,8 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
+const CAMERA_ROOM_COVERAGE = 1.5;
+const CAMERA_MIN_ZOOM = 1.25;
 const logger = createLogger('engine:main-game-scene');
 
 const TERRAIN_COLORS: Readonly<Record<number, number>> = {
@@ -359,6 +361,25 @@ export class MainGameScene extends Phaser.Scene {
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.updateDoorOverlay();
     this.cameras.main.setBounds(0, 0, floorMap.widthPx, floorMap.heightPx);
+    this.configureFloorCamera(floorMap);
+  }
+
+  private configureFloorCamera(floorMap: GameWorld['floorMap']): void {
+    if (!floorMap) {
+      return;
+    }
+    const avgRoomWidthTiles =
+      (floorMap.config.roomWidthRange[0] + floorMap.config.roomWidthRange[1]) * 0.5;
+    const avgRoomHeightTiles =
+      (floorMap.config.roomHeightRange[0] + floorMap.config.roomHeightRange[1]) * 0.5;
+    const targetVisibleWidthPx =
+      avgRoomWidthTiles * floorMap.config.tileSizePx * CAMERA_ROOM_COVERAGE;
+    const targetVisibleHeightPx =
+      avgRoomHeightTiles * floorMap.config.tileSizePx * CAMERA_ROOM_COVERAGE;
+    const zoomX = this.scale.width / targetVisibleWidthPx;
+    const zoomY = this.scale.height / targetVisibleHeightPx;
+    const zoom = Math.max(CAMERA_MIN_ZOOM, Math.min(zoomX, zoomY));
+    this.cameras.main.setZoom(zoom);
   }
 
   private openLoadoutModal(): void {
