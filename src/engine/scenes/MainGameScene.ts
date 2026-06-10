@@ -619,7 +619,7 @@ export class MainGameScene extends Phaser.Scene {
 
       const startAngle = Phaser.Math.Angle.Between(centerX, centerY, startX, startY);
       const startRadius = Phaser.Math.Distance.Between(centerX, centerY, startX, startY);
-      const spinTurns = (3.5 + rng.next() * 4) * (TAU / 2);
+      const spinTurns = (3.5 + rng.next() * 4) * TAU;
       const state = { t: 0 };
 
       this.tweens.add({
