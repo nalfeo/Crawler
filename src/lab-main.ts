@@ -32,12 +32,12 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'door-lab': '/src/labs/door-lab/index.ts',
   'map-gen-lab': '/src/labs/map-gen-lab/index.ts',
   'pathfinding-lab': '/src/labs/pathfinding-lab/index.ts',
+  'tile-render-lab': '/src/labs/tile-render-lab/index.ts',
   'floor1-lab': '/src/labs/floor1-lab/index.ts',
   'npc-lab': '/src/labs/npc-lab/index.ts',
   'sprite-gallery': '/src/labs/sprite-gallery-lab/index.ts',
   'deathtimer-lab': '/src/labs/deathtimer-lab/index.ts',
   'hud-lab': '/src/labs/hud-lab/index.ts',
-  'weight-lab': '/src/labs/weight-lab/index.ts',
 };
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;

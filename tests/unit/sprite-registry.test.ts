@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SHEETS, SPRITES, getSheet, getSprite } from '../../src/engine/sprites/index.js';
+import { TILE_SPRITES } from '../../src/engine/sprites/tile-visuals.js';
 import { isValidAnchor } from '../../src/shared/sprite-anchor.js';
 
 describe('sprite registry', () => {
@@ -51,12 +52,15 @@ describe('sprite registry', () => {
     expect(td!.path).toBe('/assets/kenney/tiny-dungeon/spritesheet.png');
   });
 
-  it('every sheet declares a positive column count', () => {
+  it('every sheet declares a positive column and row count', () => {
     // Frame-index math (`frame % cols`, `frame / cols`) silently breaks
     // if cols is 0 or NaN. Pin it as an explicit invariant.
+    // `rows` is required for bounds-checking TILE_SPRITES frame indices.
     for (const sheet of SHEETS) {
       expect(sheet.cols, `sheet ${sheet.key} cols`).toBeGreaterThan(0);
       expect(Number.isFinite(sheet.cols), `sheet ${sheet.key} cols finite`).toBe(true);
+      expect(sheet.rows, `sheet ${sheet.key} rows`).toBeGreaterThan(0);
+      expect(Number.isFinite(sheet.rows), `sheet ${sheet.key} rows finite`).toBe(true);
     }
   });
 
@@ -92,6 +96,57 @@ describe('sprite registry', () => {
         `sprite ${sprite.id} anchor ${JSON.stringify(sprite.anchor)} ` +
           `outside ${sheet!.frameWidth}x${sheet!.frameHeight}`,
       ).toBe(true);
+    }
+  });
+});
+
+describe('TILE_SPRITES', () => {
+  it('every entry references a registered sheet key', () => {
+    const sheetKeys = new Set(SHEETS.map((s) => s.key));
+    for (const [terrain, visual] of Object.entries(TILE_SPRITES)) {
+      if (!visual) continue;
+      expect(
+        sheetKeys.has(visual.sheetKey),
+        `TerrainType ${terrain}: unknown sheetKey '${visual.sheetKey}'`,
+      ).toBe(true);
+    }
+  });
+
+  it('every entry has a non-negative frame index within sheet bounds', () => {
+    for (const [terrain, visual] of Object.entries(TILE_SPRITES)) {
+      if (!visual) continue;
+      const sheet = getSheet(visual.sheetKey);
+      expect(sheet, `TerrainType ${terrain}: sheet '${visual.sheetKey}' not found`).toBeDefined();
+      const frameCount = sheet!.cols * sheet!.rows;
+      expect(
+        visual.frame,
+        `TerrainType ${terrain}: frame ${visual.frame} is negative`,
+      ).toBeGreaterThanOrEqual(0);
+      expect(
+        visual.frame,
+        `TerrainType ${terrain}: frame ${visual.frame} >= frameCount ${frameCount} (${sheet!.cols}×${sheet!.rows})`,
+      ).toBeLessThan(frameCount);
+    }
+  });
+
+  it('every blob-tile frame entry stays within sheet bounds when present', () => {
+    for (const [terrain, visual] of Object.entries(TILE_SPRITES)) {
+      if (!visual?.frames) continue;
+      const sheet = getSheet(visual.sheetKey);
+      expect(sheet, `TerrainType ${terrain}: sheet '${visual.sheetKey}' not found`).toBeDefined();
+      expect(visual.frames.length, `TerrainType ${terrain}: blob frame count`).toBe(16);
+
+      const frameCount = sheet!.cols * sheet!.rows;
+      for (const [mask, frame] of visual.frames.entries()) {
+        expect(
+          frame,
+          `TerrainType ${terrain}: frames[${mask}] ${frame} is negative`,
+        ).toBeGreaterThanOrEqual(0);
+        expect(
+          frame,
+          `TerrainType ${terrain}: frames[${mask}] ${frame} >= frameCount ${frameCount} (${sheet!.cols}×${sheet!.rows})`,
+        ).toBeLessThan(frameCount);
+      }
     }
   });
 });
