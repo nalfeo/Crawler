@@ -120,9 +120,15 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
   onStatus?.({ type: 'stopping' });
 }
 
-/** Abortable sleep — resolves immediately when the signal fires. */
+/** Abortable sleep — resolves immediately when the signal fires or is already aborted. */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
+    // Resolve immediately if the signal is already aborted so the caller
+    // doesn't wait the full poll interval before checking the abort flag again.
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
     const timer = setTimeout(resolve, ms);
     signal?.addEventListener(
       'abort',

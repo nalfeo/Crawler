@@ -182,7 +182,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
 
   const runId = makeRunId(now(), `${brief.name}|${prompt}`);
   // Store-key helper: returns a key relative to the store root.
-  const sk = (rel: string) => `${brief.name}/${runId}/${rel}`;
+  const storeKey = (rel: string) => `${brief.name}/${runId}/${rel}`;
   const pad2 = (n: number) => String(n).padStart(2, '0');
 
   // --- Generate the sheet, with bounded retries on transient grid issues. ---
@@ -198,7 +198,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         referencePngs,
         variants: expected,
       });
-      await store.put(sk(`sheet-${pad2(attempt)}.png`), sheet);
+      await store.put(storeKey(`sheet-${pad2(attempt)}.png`), sheet);
       const cells = sliceSheetFromBrief(sheet, brief);
       if (cells.length !== expected) {
         throw new ProviderError(
@@ -249,17 +249,17 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     const id = pad2(i);
 
     // Write raw + processed PNGs and scorecard via the store.
-    await store.put(sk(`raw/${id}.png`), raw);
-    await store.put(sk(`processed/${id}.png`), processed);
+    await store.put(storeKey(`raw/${id}.png`), raw);
+    await store.put(storeKey(`processed/${id}.png`), processed);
     await store.put(
-      sk(`processed/${id}.scorecard.json`),
+      storeKey(`processed/${id}.scorecard.json`),
       Buffer.from(`${JSON.stringify(scorecard, null, 2)}\n`),
     );
 
     // Optional anchor sidecar (only when derivation succeeded).
     let anchorSidecarPath: string | null = null;
     if (scorecard.derivedAnchor) {
-      const anchorKey = sk(`processed/${id}.anchor.json`);
+      const anchorKey = storeKey(`processed/${id}.anchor.json`);
       await store.put(
         anchorKey,
         Buffer.from(
@@ -275,7 +275,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       const img = PNG.sync.read(processed);
       return { width: img.width, height: img.height };
     })();
-    const overlayKey = sk(`processed/${id}.anchor-overlay.png`);
+    const overlayKey = storeKey(`processed/${id}.anchor-overlay.png`);
     await store.put(
       overlayKey,
       buildAnchorOverlay({
@@ -292,9 +292,9 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       score: scorecard.score,
       outOf: scorecard.outOf,
       passed: scorecard.passed,
-      rawPath: store.resolve(sk(`raw/${id}.png`)),
-      processedPath: store.resolve(sk(`processed/${id}.png`)),
-      scorecardPath: store.resolve(sk(`processed/${id}.scorecard.json`)),
+      rawPath: store.resolve(storeKey(`raw/${id}.png`)),
+      processedPath: store.resolve(storeKey(`processed/${id}.png`)),
+      scorecardPath: store.resolve(storeKey(`processed/${id}.scorecard.json`)),
       derivedAnchor: scorecard.derivedAnchor,
       anchorSidecarPath,
       anchorOverlayPath: store.resolve(overlayKey),
@@ -366,7 +366,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         styleGuide,
         provider: visionProvider,
         variantIndex: e.index,
-        processedDir: store.resolve(sk('processed')),
+        processedDir: store.resolve(storeKey('processed')),
         variantPath: e.processedPath,
         ...(options.judgeCache ? { cache: options.judgeCache } : {}),
         ...(options.now ? { now: options.now } : {}),
@@ -454,7 +454,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       : null,
     judgeCache: cacheStats,
   };
-  const summaryKey = sk('summary.json');
+  const summaryKey = storeKey('summary.json');
   await store.put(summaryKey, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`));
   const summaryPath = store.resolve(summaryKey);
   const runDir = store.resolve(`${brief.name}/${runId}`);

@@ -145,7 +145,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     '/api/runs/:briefId/:runId',
     async (req, reply) => {
       const { briefId, runId } = req.params;
-      // Reuse safeJoin purely as a traversal guard for the URL params.
+      // safeJoin validates that briefId/runId contain no path separators,
+      // traversal sequences, or absolute-path components before we interpolate
+      // them into a store key. The returned path is discarded — only the
+      // null/non-null result matters as the security gate.
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
@@ -176,6 +179,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     '/api/runs/:briefId/:runId/brief',
     async (req, reply) => {
       const { briefId, runId } = req.params;
+      // safeJoin as segment validator — see /api/runs/:briefId/:runId for rationale.
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
@@ -228,7 +232,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(415);
         return { error: 'unsupported-extension', filename };
       }
-      // Use safeJoin as a traversal guard for URL params.
+      // safeJoin as segment validator — see /api/runs/:briefId/:runId for rationale.
       if (safeJoin(deps.runsDir, [briefId, runId, 'processed', filename]) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };

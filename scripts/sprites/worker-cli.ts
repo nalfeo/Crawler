@@ -46,6 +46,8 @@ import { createLogger } from '../../src/shared/logger.js';
 
 const logger = createLogger('infra:sprites:worker');
 
+// This file lives at <repoRoot>/scripts/sprites/worker-cli.ts.
+// Two parent traversals resolve to the repository root.
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const pollMs = process.env['SPRITES_WORKER_POLL_MS']
