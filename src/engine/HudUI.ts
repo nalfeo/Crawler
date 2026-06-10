@@ -12,6 +12,7 @@ import { createHudMinimap } from './HudMinimap.js';
 
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
+  isMapOverlayOpen(): boolean;
   destroy(): void;
 } {
   const healthBar = createHudHealthBar(scene);
@@ -30,5 +31,5 @@ export function createHudUI(scene: Phaser.Scene): {
     minimap.destroy();
   }
 
-  return { sync, destroy };
+  return { sync, isMapOverlayOpen: minimap.isOverlayOpen, destroy };
 }
