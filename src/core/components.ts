@@ -200,6 +200,8 @@ export function createComponentStores() {
       tileX: new Uint16Array(MAX_ENTITIES),
       tileY: new Uint16Array(MAX_ENTITIES),
       isOpen: new Uint8Array(MAX_ENTITIES), // 0 = closed, 1 = open
+      isLocked: new Uint8Array(MAX_ENTITIES), // 0 = unlocked, 1 = locked
+      wasUnlocked: new Uint8Array(MAX_ENTITIES), // 0 = never unlocked, 1 = unlocked at least once
     },
     deathTimer: {
       remainingMs: new Float32Array(MAX_ENTITIES),
