@@ -6,6 +6,7 @@ import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { setActiveWeapon } from './weaponSystem.js';
 import { spawnBehaviorEnemy, spawnNpc } from '../core/helpers.js';
+import { setGoalFlag } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById } from '../shared/items.js';
 import { PLAYER_SPEED } from '../shared/constants.js';
@@ -47,6 +48,7 @@ const FLOOR_1_SPAWN_RADIUS_MAX = 320;
 const FLOOR_1_PLAYER_HP_BONUS = 20;
 const FLOOR_1_PLAYER_MOVE_SPEED_BONUS = 0.2;
 const FLOOR_1_PLAYER_PICKUP_RANGE_BONUS = 8;
+const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 
 interface Floor1SpawnerState {
   lastSpawnMs: number;
@@ -184,6 +186,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     failReason: null,
     runSummary: null,
   };
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.safeRoomDiscovered`, false);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, false);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, false);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, false);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, false);
   world.state = 'loadout';
 }
 
@@ -385,6 +392,10 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
     objective.goldCollected >= objective.requiredGold &&
     objective.junkCollected >= objective.requiredJunk;
   objective.staircaseUnlocked = objective.safeRoomDiscovered && meetsCombat && meetsLoot;
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.safeRoomDiscovered`, objective.safeRoomDiscovered);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, meetsCombat);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, meetsLoot);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
 
   if (world.elapsedMs >= objective.deadlineMs && !objective.staircaseDiscovered) {
     world.floor1.failReason = 'stair_timeout';
@@ -398,6 +409,7 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
     const stairDy = playerY - objective.staircasePos.y;
     if (Math.hypot(stairDx, stairDy) <= objective.markerRadiusPx) {
       objective.staircaseDiscovered = true;
+      setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, true);
       world.state = 'safe_room';
       finalizeRunSummary(world, 'cleared_floor');
     }
