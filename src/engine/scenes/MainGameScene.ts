@@ -175,6 +175,15 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.hudUi?.isMapOverlayOpen()) {
+      this.updateDoorOverlay();
+      this.bridge.sync(this.world);
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      return;
+    }
+
     this.inputCapture.poll(this.inputState);
 
     if (this.world.state === 'loadout') {

@@ -1,45 +1,27 @@
-/**
- * HudMinimap — collapsible top-right minimap.
- *
- * States:
- *   Collapsed: 40×40 icon with "M" hint label.
- *   Expanded:  ~200×150 RenderTexture. Terrain drawn for explored (ever-visible)
- *              tiles only; enemy dots drawn for currently-visible enemies; player
- *              dot always visible.
- *
- * Discovery model:
- *   A local `visitedTiles` Uint8Array accumulates tiles exposed by fovSystem
- *   (floorMap.visible). Terrain is rendered for visited tiles only, preserving
- *   FOV exploration. Enemy dots are drawn only when the enemy's tile is currently
- *   visible, preventing off-screen radar.
- *
- * Toggle:
- *   M key (via window listener, not Phaser keyboard plugin — canvas focus safe).
- *   Also click on the collapsed icon.
- */
 import Phaser from 'phaser';
 import { query } from 'bitecs';
 import { Enemy, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { GAME } from '../shared/constants.js';
 import { TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
+import {
+  clampMinimapViewState,
+  panMinimapByScreenDelta,
+  zoomMinimapAtPoint,
+  type MinimapViewState,
+  type MinimapZoomLimits,
+} from './minimap-view-state.js';
 
-// ---------------------------------------------------------------------------
-// Layout / style constants
-// ---------------------------------------------------------------------------
-
+const HUD_DEPTH = 1000;
+const MAP_PADDING = 16;
+const MAP_BORDER = 2;
 const ICON_SIZE = 40;
-const ICON_X = GAME.WIDTH - ICON_SIZE - 12;
-const ICON_Y = 12;
-
-const MAP_WIDTH = 200;
-const MAP_HEIGHT = 150;
-const MAP_X = GAME.WIDTH - MAP_WIDTH - 12;
-const MAP_Y = 12;
-const MAP_BORDER = 1;
-
-const DEPTH = 1000;
+const ZOOM_STEP_IN = 1.15;
+const ZOOM_STEP_OUT = 0.87;
+const DOT_PLAYER = 0xffffff;
+const DOT_ENEMY = 0xef4444;
+const DOT_PLAYER_RADIUS = 0.8;
+const DOT_ENEMY_RADIUS = 0.55;
 
 /** Terrain colour palette for minimap (same hues as main terrain, darker). */
 const MINI_COLORS: Readonly<Record<number, number>> = {
@@ -62,112 +44,301 @@ const MINI_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.RUBBLE]: 0x334155,
 } as const;
 
-const DOT_PLAYER = 0xffffff;
-const DOT_ENEMY = 0xef4444;
-const DOT_PLAYER_RADIUS = 3;
-const DOT_ENEMY_RADIUS = 2;
+function buildDefaultViewState(
+  mapWidth: number,
+  mapHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): { view: MinimapViewState; limits: MinimapZoomLimits } {
+  const fitZoom = Math.max(0.1, Math.min(viewportWidth / mapWidth, viewportHeight / mapHeight));
+  const limits: MinimapZoomLimits = {
+    minZoom: Math.max(0.25, fitZoom * 0.5),
+    maxZoom: Math.max(fitZoom * 14, 24),
+  };
+  const view: MinimapViewState = clampMinimapViewState({
+    centerX: mapWidth / 2,
+    centerY: mapHeight / 2,
+    zoom: fitZoom,
+    mapWidth,
+    mapHeight,
+    viewportWidth,
+    viewportHeight,
+  });
+  return { view, limits };
+}
+
+function screenToViewport(
+  x: number,
+  y: number,
+  viewport: Phaser.Geom.Rectangle,
+): { x: number; y: number } {
+  return {
+    x: x - viewport.x,
+    y: y - viewport.y,
+  };
+}
+
+function isInsideViewport(x: number, y: number, viewport: Phaser.Geom.Rectangle): boolean {
+  return x >= viewport.x && y >= viewport.y && x <= viewport.right && y <= viewport.bottom;
+}
 
 export function createHudMinimap(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   toggle(): void;
+  isOverlayOpen(): boolean;
   destroy(): void;
 } {
-  // --- Collapsed icon ---
   const iconBg = scene.add
-    .rectangle(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE / 2, ICON_SIZE, ICON_SIZE, 0x111827, 0.9)
+    .rectangle(0, 0, ICON_SIZE, ICON_SIZE, 0x111827, 0.9)
     .setStrokeStyle(1, 0x334155)
     .setScrollFactor(0)
-    .setDepth(DEPTH)
+    .setDepth(HUD_DEPTH)
     .setInteractive({ useHandCursor: true });
 
   const iconLabel = scene.add
-    .text(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE / 2, '🗺', {
+    .text(0, 0, '🗺', {
       fontFamily: 'monospace',
       fontSize: '18px',
     })
     .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
+    .setDepth(HUD_DEPTH + 1);
 
   const iconHint = scene.add
-    .text(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE + 4, 'M', {
+    .text(0, 0, 'M', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#64748b',
     })
     .setOrigin(0.5, 0)
     .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
+    .setDepth(HUD_DEPTH + 1);
 
-  // --- Expanded map container ---
-  const mapBg = scene.add
-    .rectangle(
-      MAP_X + MAP_WIDTH / 2,
-      MAP_Y + MAP_HEIGHT / 2,
-      MAP_WIDTH + MAP_BORDER * 2,
-      MAP_HEIGHT + MAP_BORDER * 2,
-      0x0d1117,
-      0.92,
-    )
-    .setStrokeStyle(1, 0x334155)
+  const overlayDimmer = scene.add
+    .rectangle(0, 0, 0, 0, 0x020617, 0.86)
+    .setOrigin(0, 0)
     .setScrollFactor(0)
-    .setDepth(DEPTH)
+    .setDepth(HUD_DEPTH)
     .setVisible(false);
 
-  let rt: Phaser.GameObjects.RenderTexture | undefined;
-  const dotGraphics = scene.add
-    .graphics()
+  const panelBg = scene.add
+    .rectangle(0, 0, 0, 0, 0x0b1020, 0.95)
+    .setStrokeStyle(MAP_BORDER, 0x334155)
     .setScrollFactor(0)
-    .setDepth(DEPTH + 2)
+    .setDepth(HUD_DEPTH + 1)
+    .setVisible(false);
+
+  const panelTitle = scene.add
+    .text(0, 0, 'Dungeon Map', {
+      fontFamily: 'monospace',
+      fontSize: '16px',
+      color: '#cbd5e1',
+    })
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 2)
+    .setVisible(false);
+
+  const panelHint = scene.add
+    .text(0, 0, 'Wheel: zoom  Drag: pan  +/-: zoom  M: close', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#94a3b8',
+    })
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 2)
+    .setVisible(false);
+
+  const viewportFrame = scene.add
+    .rectangle(0, 0, 0, 0, 0x0f172a, 1)
+    .setStrokeStyle(1, 0x475569)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 2)
     .setVisible(false);
 
   const closeLabel = scene.add
-    .text(MAP_X + MAP_WIDTH - 6, MAP_Y + 4, '✕', {
+    .text(0, 0, '✕', {
       fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#64748b',
+      fontSize: '14px',
+      color: '#94a3b8',
     })
     .setOrigin(1, 0)
     .setScrollFactor(0)
-    .setDepth(DEPTH + 3)
+    .setDepth(HUD_DEPTH + 3)
     .setVisible(false)
     .setInteractive({ useHandCursor: true });
 
-  // --- State ---
-  let expanded = false;
+  const viewportHitArea = scene.add
+    .zone(0, 0, 0, 0)
+    .setOrigin(0, 0)
+    .setDepth(HUD_DEPTH + 3)
+    .setVisible(false)
+    .setInteractive({ useHandCursor: true });
+
+  const maskGraphics = scene.add
+    .graphics()
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 3)
+    .setVisible(false);
+  const viewportMask = maskGraphics.createGeometryMask();
+
+  let terrainRt: Phaser.GameObjects.RenderTexture | undefined;
+  const dotGraphics = scene.add
+    .graphics()
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 2)
+    .setVisible(false)
+    .setMask(viewportMask);
+
+  let overlayOpen = false;
   let lastFloorMap: FloorMap | null = null;
   let visitedTiles: Uint8Array | null = null;
+  let viewState: MinimapViewState | null = null;
+  let zoomLimits: MinimapZoomLimits = { minZoom: 0.5, maxZoom: 12 };
+  let viewport = new Phaser.Geom.Rectangle(0, 0, 0, 0);
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+  let dragging = false;
 
-  // ---------------------------------------------------------------------------
-  // Terrain bake — incremental
-  // ---------------------------------------------------------------------------
+  function getGameSize(): { width: number; height: number } {
+    return { width: scene.scale.gameSize.width, height: scene.scale.gameSize.height };
+  }
 
-  // Scale factors cached per floorMap to avoid recomputing each sync.
-  let cachedScaleX = 0;
-  let cachedScaleY = 0;
-  let cachedTilePx = 0;
-  let cachedPixW = 0;
-  let cachedPixH = 0;
+  function updateLayout(): void {
+    const { width, height } = getGameSize();
+    const panelW = Math.floor(Math.max(160, width - MAP_PADDING * 2));
+    const panelH = Math.floor(Math.max(140, height - MAP_PADDING * 2));
+    const panelX = Math.floor((width - panelW) / 2);
+    const panelY = Math.floor((height - panelH) / 2);
+    const viewportX = panelX + 16;
+    const viewportY = panelY + 42;
+    const viewportW = Math.max(120, panelW - 32);
+    const viewportH = Math.max(80, panelH - 76);
 
-  /**
-   * Stamp only the newly revealed tile indices onto the persistent RenderTexture.
-   * Creates the RT on first call per floor; reuses it on subsequent calls so we
-   * never iterate or redraw already-visited tiles.
-   */
-  function bakeNewTiles(floorMap: FloorMap, newIndices: number[]): void {
-    if (!rt) {
-      cachedScaleX = MAP_WIDTH / floorMap.widthPx;
-      cachedScaleY = MAP_HEIGHT / floorMap.heightPx;
-      cachedTilePx = floorMap.config.tileSizePx;
-      cachedPixW = Math.max(1, cachedTilePx * cachedScaleX);
-      cachedPixH = Math.max(1, cachedTilePx * cachedScaleY);
-      rt = scene.add
-        .renderTexture(MAP_X, MAP_Y, MAP_WIDTH, MAP_HEIGHT)
-        .setScrollFactor(0)
-        .setDepth(DEPTH + 1)
-        .setVisible(false);
+    iconBg.setPosition(width - ICON_SIZE / 2 - 12, ICON_SIZE / 2 + 12);
+    iconLabel.setPosition(iconBg.x, iconBg.y);
+    iconHint.setPosition(iconBg.x, iconBg.y + ICON_SIZE / 2 + 4);
+
+    overlayDimmer.setSize(width, height);
+    panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
+    panelTitle.setPosition(panelX + 14, panelY + 10);
+    panelHint.setPosition(panelX + 14, panelY + panelH - 26);
+    closeLabel.setPosition(panelX + panelW - 10, panelY + 8);
+
+    viewport = new Phaser.Geom.Rectangle(viewportX, viewportY, viewportW, viewportH);
+    viewportFrame
+      .setPosition(viewport.centerX, viewport.centerY)
+      .setSize(viewport.width, viewport.height);
+    viewportHitArea.setPosition(viewport.x, viewport.y);
+    viewportHitArea.setSize(viewport.width, viewport.height);
+
+    maskGraphics.clear();
+    maskGraphics.fillStyle(0xffffff, 1);
+    maskGraphics.fillRect(viewport.x, viewport.y, viewport.width, viewport.height);
+
+    if (viewState) {
+      viewState = clampMinimapViewState({
+        ...viewState,
+        viewportWidth: viewport.width,
+        viewportHeight: viewport.height,
+      });
+      const fitZoom = Math.max(
+        0.1,
+        Math.min(viewport.width / viewState.mapWidth, viewport.height / viewState.mapHeight),
+      );
+      zoomLimits = {
+        minZoom: Math.max(0.25, fitZoom * 0.5),
+        maxZoom: Math.max(fitZoom * 14, 24),
+      };
+      viewState = zoomMinimapAtPoint(
+        viewState,
+        viewState.zoom,
+        viewport.width * 0.5,
+        viewport.height * 0.5,
+        zoomLimits,
+      );
+      applyViewTransform();
+    }
+  }
+
+  function setOverlayVisible(visible: boolean): void {
+    overlayDimmer.setVisible(visible);
+    panelBg.setVisible(visible);
+    panelTitle.setVisible(visible);
+    panelHint.setVisible(visible);
+    viewportFrame.setVisible(visible);
+    closeLabel.setVisible(visible);
+    viewportHitArea.setVisible(visible);
+    terrainRt?.setVisible(visible);
+    dotGraphics.setVisible(visible);
+
+    iconBg.setVisible(!visible);
+    iconLabel.setVisible(!visible);
+    iconHint.setVisible(!visible);
+  }
+
+  function applyViewTransform(): void {
+    if (!terrainRt || !viewState) {
+      return;
+    }
+    const originX = viewport.centerX - viewState.centerX * viewState.zoom;
+    const originY = viewport.centerY - viewState.centerY * viewState.zoom;
+    terrainRt.setPosition(originX, originY).setScale(viewState.zoom);
+    dotGraphics.setPosition(originX, originY).setScale(viewState.zoom);
+  }
+
+  function drawDots(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
+    dotGraphics.clear();
+    dotGraphics.fillStyle(DOT_ENEMY, 1);
+
+    const tilePx = floorMap.config.tileSizePx;
+    const enemies = query(world.ecs, [Enemy, Position]);
+    for (const eid of enemies) {
+      const wx = world.stores.position.x[eid] ?? 0;
+      const wy = world.stores.position.y[eid] ?? 0;
+      const tx = Math.floor(wx / tilePx);
+      const ty = Math.floor(wy / tilePx);
+      if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
+      const idx = ty * floorMap.width + tx;
+      if (!floorMap.visible[idx]) continue;
+      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_ENEMY_RADIUS);
     }
 
+    if (playerEid >= 0) {
+      const px = world.stores.position.x[playerEid] ?? 0;
+      const py = world.stores.position.y[playerEid] ?? 0;
+      dotGraphics.fillStyle(DOT_PLAYER, 1);
+      dotGraphics.fillCircle(px / tilePx, py / tilePx, DOT_PLAYER_RADIUS);
+    }
+  }
+
+  function ensureTerrainTexture(floorMap: FloorMap): void {
+    if (terrainRt) {
+      return;
+    }
+    terrainRt = scene.add
+      .renderTexture(viewport.x, viewport.y, floorMap.width, floorMap.height)
+      .setOrigin(0, 0)
+      .setDepth(HUD_DEPTH + 2)
+      .setScrollFactor(0)
+      .setVisible(false)
+      .setMask(viewportMask);
+
+    const built = buildDefaultViewState(
+      floorMap.width,
+      floorMap.height,
+      viewport.width,
+      viewport.height,
+    );
+    viewState = built.view;
+    zoomLimits = built.limits;
+    applyViewTransform();
+  }
+
+  function bakeNewTiles(floorMap: FloorMap, newIndices: number[]): void {
+    ensureTerrainTexture(floorMap);
+    if (!terrainRt || newIndices.length === 0) {
+      return;
+    }
     const g = scene.add.graphics();
     for (const idx of newIndices) {
       const tx = idx % floorMap.width;
@@ -175,108 +346,111 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const terrain = floorMap.terrain[idx] ?? TerrainType.VOID;
       const color = MINI_COLORS[terrain] ?? 0x05060f;
       g.fillStyle(color, 1);
-      g.fillRect(
-        tx * cachedTilePx * cachedScaleX,
-        ty * cachedTilePx * cachedScaleY,
-        cachedPixW,
-        cachedPixH,
-      );
+      g.fillRect(tx, ty, 1, 1);
     }
-    rt.draw(g, 0, 0);
+    terrainRt.draw(g, 0, 0);
     g.destroy();
   }
 
-  // ---------------------------------------------------------------------------
-  // Dot overlay
-  // ---------------------------------------------------------------------------
-
-  function drawDots(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
-    dotGraphics.clear();
-    const scaleX = MAP_WIDTH / floorMap.widthPx;
-    const scaleY = MAP_HEIGHT / floorMap.heightPx;
-    const tilePx = floorMap.config.tileSizePx;
-
-    // Enemy dots — only when tile is currently visible
-    const enemies = query(world.ecs, [Enemy, Position]);
-    for (const eid of enemies) {
-      const wx = world.stores.position.x[eid] ?? 0;
-      const wy = world.stores.position.y[eid] ?? 0;
-      const tx = Math.floor(wx / tilePx);
-      const ty = Math.floor(wy / tilePx);
-      const idx = ty * floorMap.width + tx;
-      if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
-      if (!floorMap.visible[idx]) continue;
-      const mx = MAP_X + wx * scaleX;
-      const my = MAP_Y + wy * scaleY;
-      dotGraphics.fillStyle(DOT_ENEMY, 1);
-      dotGraphics.fillCircle(mx, my, DOT_ENEMY_RADIUS);
-    }
-
-    // Player dot — always shown
-    if (playerEid >= 0) {
-      const px = world.stores.position.x[playerEid] ?? 0;
-      const py = world.stores.position.y[playerEid] ?? 0;
-      const mx = MAP_X + px * scaleX;
-      const my = MAP_Y + py * scaleY;
-      dotGraphics.fillStyle(DOT_PLAYER, 1);
-      dotGraphics.fillCircle(mx, my, DOT_PLAYER_RADIUS);
-    }
+  function openOverlay(): void {
+    overlayOpen = true;
+    setOverlayVisible(true);
   }
 
-  // ---------------------------------------------------------------------------
-  // Visibility helpers
-  // ---------------------------------------------------------------------------
-
-  function showExpanded(): void {
-    iconBg.setVisible(false);
-    iconLabel.setVisible(false);
-    iconHint.setVisible(false);
-    mapBg.setVisible(true);
-    rt?.setVisible(true);
-    dotGraphics.setVisible(true);
-    closeLabel.setVisible(true);
+  function closeOverlay(): void {
+    overlayOpen = false;
+    dragging = false;
+    setOverlayVisible(false);
   }
-
-  function showCollapsed(): void {
-    iconBg.setVisible(true);
-    iconLabel.setVisible(true);
-    iconHint.setVisible(true);
-    mapBg.setVisible(false);
-    rt?.setVisible(false);
-    dotGraphics.setVisible(false);
-    closeLabel.setVisible(false);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Public API
-  // ---------------------------------------------------------------------------
 
   function toggle(): void {
-    expanded = !expanded;
-    if (expanded) {
-      showExpanded();
+    if (overlayOpen) {
+      closeOverlay();
     } else {
-      showCollapsed();
+      openOverlay();
     }
+  }
+
+  function handleKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'm' || event.key === 'M') {
+      if (event.repeat) {
+        return;
+      }
+      toggle();
+      return;
+    }
+
+    if (!overlayOpen || !viewState) {
+      return;
+    }
+
+    if (event.key === '+' || event.key === '=' || event.key === 'NumpadAdd') {
+      viewState = zoomMinimapAtPoint(
+        viewState,
+        viewState.zoom * ZOOM_STEP_IN,
+        viewState.viewportWidth * 0.5,
+        viewState.viewportHeight * 0.5,
+        zoomLimits,
+      );
+      applyViewTransform();
+    } else if (event.key === '-' || event.key === '_' || event.key === 'NumpadSubtract') {
+      viewState = zoomMinimapAtPoint(
+        viewState,
+        viewState.zoom * ZOOM_STEP_OUT,
+        viewState.viewportWidth * 0.5,
+        viewState.viewportHeight * 0.5,
+        zoomLimits,
+      );
+      applyViewTransform();
+    } else if (event.key === 'Escape') {
+      closeOverlay();
+    }
+  }
+
+  function handleWheel(
+    pointer: Phaser.Input.Pointer,
+    _targets: Phaser.GameObjects.GameObject[],
+    _deltaX: number,
+    deltaY: number,
+  ): void {
+    if (!overlayOpen || !viewState) {
+      return;
+    }
+    if (!isInsideViewport(pointer.x, pointer.y, viewport)) {
+      return;
+    }
+    const local = screenToViewport(pointer.x, pointer.y, viewport);
+    const nextZoom = deltaY > 0 ? viewState.zoom * ZOOM_STEP_OUT : viewState.zoom * ZOOM_STEP_IN;
+    viewState = zoomMinimapAtPoint(viewState, nextZoom, local.x, local.y, zoomLimits);
+    applyViewTransform();
+  }
+
+  function handlePointerMove(pointer: Phaser.Input.Pointer): void {
+    if (!overlayOpen || !dragging || !viewState) {
+      return;
+    }
+    const dx = pointer.x - lastPointerX;
+    const dy = pointer.y - lastPointerY;
+    lastPointerX = pointer.x;
+    lastPointerY = pointer.y;
+    viewState = panMinimapByScreenDelta(viewState, dx, dy);
+    applyViewTransform();
   }
 
   function sync(world: GameWorld, playerEid: number): void {
     const floorMap = world.floorMap;
-
     if (!floorMap) {
       return;
     }
 
-    // Reset visited buffer when floor changes
     if (floorMap !== lastFloorMap) {
       lastFloorMap = floorMap;
       visitedTiles = new Uint8Array(floorMap.width * floorMap.height);
-      // Invalidate baked terrain
-      rt?.destroy();
-      rt = undefined;
+      terrainRt?.destroy();
+      terrainRt = undefined;
+      viewState = null;
     }
 
-    // Accumulate explored tiles; collect only newly revealed indices
     const visited = visitedTiles!;
     const newIndices: number[] = [];
     for (let i = 0; i < visited.length; i += 1) {
@@ -285,50 +459,71 @@ export function createHudMinimap(scene: Phaser.Scene): {
         newIndices.push(i);
       }
     }
-
-    // Stamp only new tiles onto the persistent RT (or create it on first call)
-    if (newIndices.length > 0 || !rt) {
+    if (newIndices.length > 0 || !terrainRt) {
       bakeNewTiles(floorMap, newIndices);
-      if (expanded) {
-        rt?.setVisible(true);
+      applyViewTransform();
+      if (overlayOpen) {
+        terrainRt?.setVisible(true);
       }
     }
 
-    if (expanded) {
+    if (overlayOpen && terrainRt) {
       drawDots(world, playerEid, floorMap);
     }
   }
 
   function destroy(): void {
-    rt?.destroy();
+    window.removeEventListener('keydown', handleKeyDown);
+    scene.scale.off('resize', updateLayout);
+    scene.input.off('wheel', handleWheel);
+    scene.input.off('pointermove', handlePointerMove);
+    scene.input.off('pointerup', handlePointerUp);
+    scene.input.off('pointerupoutside', handlePointerUp);
+
+    terrainRt?.destroy();
     dotGraphics.destroy();
     iconBg.destroy();
     iconLabel.destroy();
     iconHint.destroy();
-    mapBg.destroy();
+    overlayDimmer.destroy();
+    panelBg.destroy();
+    panelTitle.destroy();
+    panelHint.destroy();
+    viewportFrame.destroy();
+    viewportHitArea.destroy();
     closeLabel.destroy();
+    maskGraphics.destroy();
   }
 
-  // --- Wire click listeners ---
+  function handlePointerUp(): void {
+    dragging = false;
+  }
+
   iconBg.on('pointerdown', toggle);
-  closeLabel.on('pointerdown', toggle);
-
-  // --- M-key via window listener (canvas-focus-safe) ---
-  function handleKeyDown(e: KeyboardEvent): void {
-    if (e.key === 'm' || e.key === 'M') {
-      toggle();
+  closeLabel.on('pointerdown', closeOverlay);
+  viewportHitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+    if (!overlayOpen) {
+      return;
     }
-  }
-  window.addEventListener('keydown', handleKeyDown);
+    dragging = true;
+    lastPointerX = pointer.x;
+    lastPointerY = pointer.y;
+  });
 
-  // Extend destroy to remove window listener
-  const originalDestroy = destroy;
+  window.addEventListener('keydown', handleKeyDown);
+  scene.scale.on('resize', updateLayout);
+  scene.input.on('wheel', handleWheel);
+  scene.input.on('pointermove', handlePointerMove);
+  scene.input.on('pointerup', handlePointerUp);
+  scene.input.on('pointerupoutside', handlePointerUp);
+
+  updateLayout();
+  closeOverlay();
+
   return {
     sync,
     toggle,
-    destroy() {
-      window.removeEventListener('keydown', handleKeyDown);
-      originalDestroy();
-    },
+    isOverlayOpen: () => overlayOpen,
+    destroy,
   };
 }
