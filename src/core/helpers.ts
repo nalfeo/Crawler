@@ -27,6 +27,7 @@ import {
   Trap,
   Velocity,
   Weapon,
+  Weight,
   XpGem,
   DroppedItem,
 } from './components.js';
@@ -59,13 +60,14 @@ export function createEntity(world: GameWorld): number {
   return eid;
 }
 
-export function spawnPlayer(world: GameWorld, x: number, y: number): number {
+export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180): number {
   const eid = createEntity(world);
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 24, height: 24 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Player);
   addComponent(world.ecs, eid, Inventory);
   world.inventories.set(eid, createInventoryBag());
@@ -73,13 +75,20 @@ export function spawnPlayer(world: GameWorld, x: number, y: number): number {
   return eid;
 }
 
-export function spawnEnemy(world: GameWorld, x: number, y: number, hp: number): number {
+export function spawnEnemy(
+  world: GameWorld,
+  x: number,
+  y: number,
+  hp: number,
+  weight = 120,
+): number {
   const eid = createEntity(world);
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Enemy);
 
   return eid;
@@ -100,6 +109,7 @@ export function spawnBehaviorEnemy(
     flankDistance?: number;
     pathRefreshFrames?: number;
     isFlying?: boolean;
+    weight?: number;
   },
 ): number {
   const eid = createEntity(world);
@@ -110,6 +120,7 @@ export function spawnBehaviorEnemy(
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+  addComponent(world.ecs, eid, set(Weight, { value: options?.weight ?? 120 }));
   addComponent(world.ecs, eid, Enemy);
   addComponent(
     world.ecs,
@@ -132,22 +143,36 @@ export function spawnBehaviorEnemy(
   return eid;
 }
 
-export function spawnXpGem(world: GameWorld, x: number, y: number, value: number): number {
+export function spawnXpGem(
+  world: GameWorld,
+  x: number,
+  y: number,
+  value: number,
+  weight = 1,
+): number {
   const eid = createEntity(world);
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(XpGem, { value }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
 }
 
-export function spawnGold(world: GameWorld, x: number, y: number, value: number): number {
+export function spawnGold(
+  world: GameWorld,
+  x: number,
+  y: number,
+  value: number,
+  weight = 1,
+): number {
   const eid = createEntity(world);
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Gold, { value }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
 }
@@ -161,6 +186,7 @@ export function spawnProjectile(
   damage: number,
   pierce: number = 0,
   maxRange: number = 0,
+  weight: number = 1,
 ): number {
   const eid = createEntity(world);
 
@@ -173,6 +199,7 @@ export function spawnProjectile(
     eid,
     set(Projectile, { pierce, hitCount: 0, maxRange, originX: x, originY: y }),
   );
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
 }
@@ -195,6 +222,7 @@ export function spawnDroppedItem(
   x: number,
   y: number,
   itemIndex: number,
+  weight = 5,
 ): number {
   const eid = createEntity(world);
   const sanitizedItemIndex = Math.max(0, Math.min(0xffff, Math.floor(itemIndex)));
@@ -202,6 +230,7 @@ export function spawnDroppedItem(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(DroppedItem, { itemIndex: sanitizedItemIndex }));
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 10, height: 10 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
 }
