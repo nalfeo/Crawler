@@ -6,7 +6,7 @@ Accepted
 
 ## Date
 
-2025-06-08
+2026-06-08
 
 **Scope:** src/core, src/game, src/shared  
 **Affects:** ECS stores, game systems, design tuning
