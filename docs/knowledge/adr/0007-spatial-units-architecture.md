@@ -66,7 +66,7 @@ PhaserBridge & Rendering (1:1 pixel-to-screen mapping)
 - **Single conversion boundary**: All design→ECS happens in `weaponSystem.ts` attack dispatchers. Easy to audit, hard to double-convert by accident.
 - **No physics changes**: PhaserBridge, collision system, spatial hash grid remain 100% pixel-based. Low risk.
 - **Designer-friendly**: All tuning values (tuning.json, weaponDefs.ts) are in feet. Easier to reason about and adjust.
-- **Clean constants**: WEAPON._, ENEMY_PROJECTILE._ constants receive pixels from `ftToPx()`, so systems can use them directly without further conversion.
+- **Clean constants**: `WEAPON.*`, `ENEMY_PROJECTILE.*` constants receive pixels from `ftToPx()`, so systems can use them directly without further conversion.
 
 ### Trade-offs
 
