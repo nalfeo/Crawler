@@ -43,4 +43,4 @@ Hello kitties: 3/5 = 0.60 🎀
 ## Key Decisions Made
 
 - Treated the unresolved `TILE_SPRITES` review note as still actionable because the existing test only covered base `frame` values, not blob-mask frame arrays.
-- Resolved the rebase conflict by preserving both same-day apple-log entries instead of dropping either session record.
+- Resolved the rebase conflict by preserving the same-day apple-log entries rather than collapsing session history.

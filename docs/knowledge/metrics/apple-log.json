@@ -28,6 +28,15 @@
   },
   {
     "date": "2026-06-10",
+    "session": "weight-component",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6
+  },
+  {
+    "date": "2026-06-10",
     "session": "blob-tile-autotiling",
     "estimated_apples": 2,
     "actual_apples": 2,
