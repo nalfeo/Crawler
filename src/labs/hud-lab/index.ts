@@ -86,6 +86,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         selectedChoiceIndex: null,
         baseStatBonuses: { maxHp: 0, moveSpeed: 0, pickupRange: 0 },
         enemyArchetypes: new Map(),
+        guideNpcEid: null,
         objective: {
           requiredRats: 5,
           requiredSlimes: 3,
@@ -94,6 +95,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           deadlineMs,
           safeRoomPos: { x: 300, y: 300 },
           staircasePos: { x: 600, y: 400 },
+          welcomeOfficePos: { x: 100, y: 100 },
           markerRadiusPx: 32,
           ratsKilled: 0,
           slimesKilled: 0,

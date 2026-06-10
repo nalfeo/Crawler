@@ -1,5 +1,5 @@
 import { hasComponent } from 'bitecs';
-import { Player } from './components.js';
+import { Player, Invincible } from './components.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
 
@@ -20,6 +20,7 @@ export function applyDamage(
   sourceY?: number,
 ): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
+  if (hasComponent(world.ecs, target, Invincible)) return 0;
 
   const current = world.stores.health.current[target] ?? 0;
   const dealt = Math.min(current, amount);

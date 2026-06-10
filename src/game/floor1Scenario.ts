@@ -5,7 +5,7 @@ import { Position, Player, Health, BroadcastScore, Sprite } from '../core/compon
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { setActiveWeapon } from './weaponSystem.js';
-import { spawnBehaviorEnemy } from '../core/helpers.js';
+import { spawnBehaviorEnemy, spawnNpc } from '../core/helpers.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById } from '../shared/items.js';
 import { PLAYER_SPEED } from '../shared/constants.js';
@@ -90,12 +90,14 @@ function centerOfRoom(room: { bounds: { x: number; y: number; width: number; hei
 function chooseObjectiveTiles(world: GameWorld): {
   safeRoomPos: { x: number; y: number };
   staircasePos: { x: number; y: number };
+  welcomeOfficePos: { x: number; y: number };
 } {
   const floorMap = world.floorMap;
   if (!floorMap || floorMap.rooms.length < 2) {
     return {
       safeRoomPos: { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 120 },
       staircasePos: { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 560 },
+      welcomeOfficePos: { x: 120, y: 120 },
     };
   }
 
@@ -110,13 +112,17 @@ function chooseObjectiveTiles(world: GameWorld): {
 
   const safeRoom = scored[0]?.room ?? floorMap.rooms[floorMap.rooms.length - 1]!;
   const staircaseRoom = scored[1]?.room ?? floorMap.rooms[Math.max(0, floorMap.rooms.length - 2)]!;
+  // Welcome Office: the room nearest to the player spawn (lowest distanceSq)
+  const welcomeOfficeRoom = scored[scored.length - 1]?.room ?? floorMap.rooms[0]!;
 
   const safeTile = centerOfRoom(safeRoom);
   const staircaseTile = centerOfRoom(staircaseRoom);
+  const welcomeOfficeTile = centerOfRoom(welcomeOfficeRoom);
 
   return {
     safeRoomPos: floorMap.tileToPixel(safeTile.x, safeTile.y),
     staircasePos: floorMap.tileToPixel(staircaseTile.x, staircaseTile.y),
+    welcomeOfficePos: floorMap.tileToPixel(welcomeOfficeTile.x, welcomeOfficeTile.y),
   };
 }
 
@@ -139,7 +145,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const maxHp = (world.stores.health.max[playerEid] ?? 100) + FLOOR_1_PLAYER_HP_BONUS;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
-  const { safeRoomPos, staircasePos } = chooseObjectiveTiles(world);
+  const { safeRoomPos, staircasePos, welcomeOfficePos } = chooseObjectiveTiles(world);
+
+  // Spawn the Tutorial Goon NPC at the Welcome Office (near player spawn room)
+  const guideNpcEid = spawnNpc(world, welcomeOfficePos.x, welcomeOfficePos.y, 'tutorial-goon');
+
   world.floor1 = {
     protagonistName: FLOOR_1_PROTAGONIST,
     starterWeaponPool: FLOOR_1_STARTER_POOL,
@@ -152,6 +162,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       pickupRange: FLOOR_1_PLAYER_PICKUP_RANGE_BONUS,
     },
     enemyArchetypes: new Map(),
+    guideNpcEid: guideNpcEid >= 0 ? guideNpcEid : null,
     objective: {
       requiredRats: FLOOR_1_REQUIRED_RATS,
       requiredSlimes: FLOOR_1_REQUIRED_SLIMES,
@@ -160,6 +171,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       deadlineMs: FLOOR_1_TIMER_MS,
       safeRoomPos,
       staircasePos,
+      welcomeOfficePos,
       markerRadiusPx: FLOOR_1_MARKER_RADIUS_PX,
       ratsKilled: 0,
       slimesKilled: 0,
