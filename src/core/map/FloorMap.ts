@@ -6,6 +6,7 @@
  */
 
 import type { MapConfig, FloorMapData } from '../../shared/map-types';
+import { RoomRole } from '../../shared/map-types';
 import { TileMap } from './TileMap';
 import { RoomGraph } from './RoomGraph';
 
@@ -40,6 +41,21 @@ export class FloorMap implements FloorMapData {
   /** Delegate to RoomGraph for FloorMapData interface. */
   get rooms() {
     return this.roomGraph.getAll();
+  }
+
+  /** The boss/stair room — boss spawns here and stairs appear after boss death. Null for biomes without discrete rooms. */
+  get bossStairRoom() {
+    return this.roomGraph.getFirstRoomByRole(RoomRole.BOSS_STAIR) ?? null;
+  }
+
+  /** The safe room — objective marker, healing/merchant. Null for biomes without discrete rooms. */
+  get safeRoom() {
+    return this.roomGraph.getFirstRoomByRole(RoomRole.SAFE) ?? null;
+  }
+
+  /** The player spawn room. Null for biomes without discrete rooms. */
+  get spawnRoom() {
+    return this.roomGraph.getFirstRoomByRole(RoomRole.SPAWN) ?? null;
   }
 
   /** Map width in tiles. */

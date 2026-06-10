@@ -54,6 +54,8 @@ const TERRAIN_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.CAVE_WALL]: 0x1b1b29,
   [TerrainType.TREE]: 0x14532d,
   [TerrainType.RUBBLE]: 0x334155,
+  [TerrainType.BOSS_STAIR_FLOOR]: 0x2d0e1e,
+  [TerrainType.SAFE_ROOM_FLOOR]: 0x0f2340,
 };
 
 export interface MainGameSceneOptions {
@@ -472,9 +474,20 @@ export class MainGameScene extends Phaser.Scene {
         .setStrokeStyle(2, 0x86efac, 0.95)
         .setDepth(20);
     }
+    const staircaseFill = objective.staircaseLocked ? 0xf59e0b : 0x10b981;
+    const staircaseStroke = objective.staircaseLocked ? 0xfcd34d : 0x86efac;
     this.staircaseMarker.setPosition(objective.staircasePos.x, objective.staircasePos.y);
     this.staircaseMarker.setRadius(objective.markerRadiusPx);
-    this.staircaseMarker.setVisible(objective.staircaseUnlocked && !objective.staircaseDiscovered);
+    this.staircaseMarker.setFillStyle(staircaseFill, 0.25);
+    this.staircaseMarker.setStrokeStyle(2, staircaseStroke, 0.95);
+    this.staircaseMarker.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
+  }
+
+  private formatRemainingMs(remainingMs: number): string {
+    const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}:${sec.toString().padStart(2, '0')}`;
   }
 
   private updateOverlayText(): void {
@@ -488,6 +501,13 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     const objective = this.world.floor1.objective;
+    const stairStatus = objective.staircaseSpawned
+      ? objective.staircaseLocked
+        ? 'Stairs: locked (kill Large Slime Rat boss)'
+        : 'Stairs: unlocked'
+      : objective.staircaseSpawnStartedMs !== null
+        ? `Stairs spawn in: ${this.formatRemainingMs(objective.staircaseSpawnRemainingMs ?? 0)}`
+        : 'Stairs: complete objectives to begin spawn countdown';
     this.objectiveText?.setText(
       [
         `Floor 1 Tutorial`,
@@ -495,6 +515,7 @@ export class MainGameScene extends Phaser.Scene {
         `Slimes: ${objective.slimesKilled}/${objective.requiredSlimes}`,
         `Gold: ${objective.goldCollected}/${objective.requiredGold}`,
         `Junk: ${objective.junkCollected}/${objective.requiredJunk}`,
+        stairStatus,
       ].join('\n'),
     );
 

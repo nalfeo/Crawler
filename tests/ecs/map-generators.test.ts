@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SeededRandom } from '../../src/shared/random';
-import { BiomeType, TileFlags } from '../../src/shared/map-types';
+import { BiomeType, TileFlags, RoomRole } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import { DungeonGenerator } from '../../src/core/map/generators/DungeonGenerator';
 import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
@@ -60,6 +60,38 @@ describe('Map Generators', () => {
 
       expect(Array.from(floor1.flags)).toEqual(Array.from(floor2.flags));
       expect(floor1.rooms.length).toBe(floor2.rooms.length);
+    });
+
+    it('should tag spawn room with SPAWN role', () => {
+      const gen = new DungeonGenerator();
+      const floor = gen.generate(smallConfig(BiomeType.DUNGEON), new SeededRandom(42));
+
+      if (floor.rooms.length >= 1) {
+        expect(floor.spawnRoom).toBeDefined();
+        expect(floor.spawnRoom!.role).toBe(RoomRole.SPAWN);
+      }
+    });
+
+    it('should tag exactly one BOSS_STAIR room when >= 2 rooms', () => {
+      const gen = new DungeonGenerator();
+      const floor = gen.generate(smallConfig(BiomeType.DUNGEON), new SeededRandom(42));
+
+      if (floor.rooms.length >= 2) {
+        expect(floor.bossStairRoom).toBeDefined();
+        const bossRooms = floor.rooms.filter((r) => r.role === RoomRole.BOSS_STAIR);
+        expect(bossRooms).toHaveLength(1);
+      }
+    });
+
+    it('should tag exactly one SAFE room when >= 3 rooms', () => {
+      const gen = new DungeonGenerator();
+      const floor = gen.generate(smallConfig(BiomeType.DUNGEON), new SeededRandom(42));
+
+      if (floor.rooms.length >= 3) {
+        expect(floor.safeRoom).toBeDefined();
+        const safeRooms = floor.rooms.filter((r) => r.role === RoomRole.SAFE);
+        expect(safeRooms).toHaveLength(1);
+      }
     });
 
     it('should have both floor and wall tiles', () => {

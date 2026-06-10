@@ -52,6 +52,8 @@ const TERRAIN_COLORS: Record<number, string> = {
   [TerrainType.WOOD_WALL]: '#3d2914',
   [TerrainType.CAVE_FLOOR]: '#3c3656',
   [TerrainType.CAVE_WALL]: '#553c75',
+  [TerrainType.BOSS_STAIR_FLOOR]: '#4b5563',
+  [TerrainType.SAFE_ROOM_FLOOR]: '#0f766e',
   [TerrainType.TREE]: '#1c5a2d',
   [TerrainType.RUBBLE]: '#4a3f35',
 };
