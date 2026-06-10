@@ -20,6 +20,7 @@ const SWARM_COHESION_WEIGHT = 0.2;
 const MAX_OVERLAP_FRACTION = 0.25;
 const SEPARATION_FORCE = 2.0;
 const ENEMY_RADIUS = 8;
+const MIN_MOB_PLAYER_DISTANCE = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION);
 const STALE_PATH_FRAMES = 180;
 const DEFAULT_PATH_REFRESH_FRAMES = 10;
 const DEFAULT_FLANK_DISTANCE = 96;
@@ -712,6 +713,8 @@ function applySeparation(
   activeEnemies: number[],
   position: GameWorld['stores']['position'],
   velocity: GameWorld['stores']['velocity'],
+  playerX: number,
+  playerY: number,
 ): void {
   const minDistance = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION);
 
@@ -755,6 +758,60 @@ function applySeparation(
       velocity.y[a] = (velocity.y[a] ?? 0) + ny * force;
       velocity.x[b] = (velocity.x[b] ?? 0) - nx * force;
       velocity.y[b] = (velocity.y[b] ?? 0) - ny * force;
+    }
+  }
+
+  if (world.floorMap) {
+    // Clamp enemy motion so mobs cannot exceed the shared player overlap cap.
+    // This keeps one collision restriction path for all personas/traversal modes.
+    for (const eid of activeEnemies) {
+      const enemyX = position.x[eid] ?? 0;
+      const enemyY = position.y[eid] ?? 0;
+      const currentVx = velocity.x[eid] ?? 0;
+      const currentVy = velocity.y[eid] ?? 0;
+      const speed = Math.hypot(currentVx, currentVy);
+
+      if (speed <= EPSILON) {
+        continue;
+      }
+
+      const toPlayerX = playerX - enemyX;
+      const toPlayerY = playerY - enemyY;
+      const distance = Math.hypot(toPlayerX, toPlayerY);
+      let toward = normalize(toPlayerX, toPlayerY);
+
+      if (toward.length <= EPSILON) {
+        const velocityDirection = normalize(currentVx, currentVy);
+        toward =
+          velocityDirection.length > EPSILON
+            ? velocityDirection
+            : { x: eid % 2 === 0 ? 1 : -1, y: 0, length: 1 };
+      }
+
+      const radialToward = currentVx * toward.x + currentVy * toward.y;
+      if (radialToward <= EPSILON) {
+        continue;
+      }
+
+      const allowedTowardStep = Math.max(0, distance - MIN_MOB_PLAYER_DISTANCE);
+      if (radialToward <= allowedTowardStep + EPSILON) {
+        continue;
+      }
+
+      const tangentX = currentVx - toward.x * radialToward;
+      const tangentY = currentVy - toward.y * radialToward;
+      const clampedToward = Math.min(radialToward, allowedTowardStep);
+      const tangentMagnitude = Math.hypot(tangentX, tangentY);
+
+      if (clampedToward <= EPSILON && tangentMagnitude <= EPSILON) {
+        const tangentSign = eid % 2 === 0 ? 1 : -1;
+        velocity.x[eid] = -toward.y * tangentSign * speed;
+        velocity.y[eid] = toward.x * tangentSign * speed;
+        continue;
+      }
+
+      velocity.x[eid] = tangentX + toward.x * clampedToward;
+      velocity.y[eid] = tangentY + toward.y * clampedToward;
     }
   }
 
@@ -899,5 +956,5 @@ export function enemyAISystem(world: GameWorld): void {
     }
   }
 
-  applySeparation(world, activeEnemies, position, velocity);
+  applySeparation(world, activeEnemies, position, velocity, playerX, playerY);
 }
