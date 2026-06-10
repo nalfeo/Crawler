@@ -61,12 +61,11 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
   const { width, height, config } = floorMap;
   const tileSize = config.tileSizePx;
 
-  const rt = scene.add.renderTexture(0, 0, width * tileSize, height * tileSize);
-
-  // Collect fallback tiles so we can batch all color fills into one Graphics
-  // draw call before stamping, avoiding per-tile Graphics object creation.
-  type ColorTile = { x: number; y: number; color: number };
-  const colorTiles: ColorTile[] = [];
+  // setOrigin(0,0) so that internal pixel (tx*tileSize, ty*tileSize) maps
+  // directly to world position (tx*tileSize, ty*tileSize). The default Image
+  // origin of (0.5, 0.5) would shift the entire texture left/up by half its
+  // dimensions, misaligning every tile with the rest of the scene.
+  const rt = scene.add.renderTexture(0, 0, width * tileSize, height * tileSize).setOrigin(0, 0);
 
   let spriteCount = 0;
   let colorCount = 0;
@@ -76,8 +75,12 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
       const idx = ty * width + tx;
       const terrain: TerrainType = floorMap.terrain[idx] ?? TerrainType.VOID;
       const visual = getTileVisual(terrain);
+      const shouldForceColorFallback =
+        terrain === TerrainType.STONE_WALL ||
+        terrain === TerrainType.CAVE_WALL ||
+        terrain === TerrainType.WOOD_WALL;
 
-      if (visual && scene.textures.exists(visual.sheetKey)) {
+      if (!shouldForceColorFallback && visual && scene.textures.exists(visual.sheetKey)) {
         const sheet = getSheet(visual.sheetKey);
         const frameSize = sheet?.frameWidth ?? tileSize;
         const scale = tileSize / frameSize;
@@ -90,44 +93,28 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
         });
         spriteCount++;
       } else {
+        // rt.fill() queues a fill command into Phaser 4's DynamicTexture buffer.
+        // Commands are NOT visible until rt.render() is called below.
         const color = TERRAIN_FALLBACK_COLORS[terrain] ?? 0x05060f;
-        colorTiles.push({ x: tx * tileSize, y: ty * tileSize, color });
+        rt.fill(color, 1, tx * tileSize, ty * tileSize, tileSize, tileSize);
         colorCount++;
       }
     }
   }
 
-  // Batch all color-fallback tiles into a single Graphics → stamp pass.
-  if (colorTiles.length > 0) {
-    const g = scene.add.graphics();
+  // Phaser 4: flush all buffered fill/stamp commands to the GPU framebuffer.
+  // Without this call nothing drawn above will appear on screen.
+  rt.render();
 
-    // Group by color to minimize fillStyle() calls.
-    const byColor = new Map<number, ColorTile[]>();
-    for (const tile of colorTiles) {
-      let group = byColor.get(tile.color);
-      if (!group) {
-        group = [];
-        byColor.set(tile.color, group);
-      }
-      group.push(tile);
-    }
-
-    for (const [color, tiles] of byColor) {
-      g.fillStyle(color, 1);
-      for (const tile of tiles) {
-        g.fillRect(tile.x, tile.y, tileSize, tileSize);
-      }
-    }
-
-    rt.draw(g, 0, 0);
-    g.destroy();
-  }
-
-  logger.debug('Terrain layer built', {
-    width,
-    height,
+  logger.info('[terrain-renderer] layer built', {
+    mapTiles: `${width}x${height}`,
+    rtPos: `(${rt.x}, ${rt.y})`,
+    rtOrigin: `(${rt.originX}, ${rt.originY})`,
+    rtSize: `${rt.width}x${rt.height}`,
+    rtDepth: rt.depth,
     spriteCount,
     colorCount,
+    totalTiles: width * height,
     spriteCoverage:
       width * height > 0 ? `${Math.round((spriteCount / (width * height)) * 100)}%` : '0%',
   });

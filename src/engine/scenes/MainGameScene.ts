@@ -17,6 +17,7 @@ import {
   lifetimeSystem,
   meleeSwingSystem,
   movementSystem,
+  npcSystem,
   playerInputSystem,
   projectileCleanupSystem,
   returningProjectileSystem,
@@ -33,6 +34,7 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
+import { getNpcDef } from '../../shared/npc-types.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -89,6 +91,17 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyThree?: Phaser.Input.Keyboard.Key;
 
+  private keyE?: Phaser.Input.Keyboard.Key;
+
+  /** World-space label shown above the staircase marker. */
+  private stairsLabel?: Phaser.GameObjects.Text;
+
+  /** Screen-space interaction hint shown when near an NPC or the stairs. */
+  private interactionHint?: Phaser.GameObjects.Text;
+
+  /** Screen-space NPC dialogue text shown while a dialogue line is active. */
+  private npcDialogueText?: Phaser.GameObjects.Text;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -123,6 +136,7 @@ export class MainGameScene extends Phaser.Scene {
     this.keyOne = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
     this.keyTwo = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
     this.keyThree = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
+    this.keyE = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.initializeUi();
     this.drawFloorTerrain();
     this.openLoadoutModal();
@@ -141,6 +155,9 @@ export class MainGameScene extends Phaser.Scene {
       this.doorGraphics?.destroy();
       this.safeRoomMarker?.destroy();
       this.staircaseMarker?.destroy();
+      this.stairsLabel?.destroy();
+      this.interactionHint?.destroy();
+      this.npcDialogueText?.destroy();
       this.objectiveText?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
@@ -148,6 +165,9 @@ export class MainGameScene extends Phaser.Scene {
       this.doorGraphics = undefined;
       this.safeRoomMarker = undefined;
       this.staircaseMarker = undefined;
+      this.stairsLabel = undefined;
+      this.interactionHint = undefined;
+      this.npcDialogueText = undefined;
       this.objectiveText = undefined;
       this.loadoutText = undefined;
       this.hudUi = undefined;
@@ -171,6 +191,15 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.modalPicker?.isOpen()) {
+      this.updateOverlayText();
+      return;
+    }
+
+    if (this.hudUi?.isMapOverlayOpen()) {
+      this.updateDoorOverlay();
+      this.bridge.sync(this.world);
+      this.updateCamera();
+      this.updateObjectiveMarkers();
       this.updateOverlayText();
       return;
     }
@@ -232,6 +261,7 @@ export class MainGameScene extends Phaser.Scene {
       projectileCleanupSystem(this.world);
       doorSystem(this.world);
       fovSystem(this.world);
+      npcSystem(this.world);
       for (const sys of this.options.postSystems ?? []) {
         sys(this.world);
       }
@@ -259,6 +289,7 @@ export class MainGameScene extends Phaser.Scene {
     this.updateCamera();
     this.updateObjectiveMarkers();
     this.updateOverlayText();
+    this.updateInteractions();
   }
 
   /** Set a debug flag at runtime. Safe to call any time after create(). */
@@ -300,6 +331,37 @@ export class MainGameScene extends Phaser.Scene {
 
     // HUD — health bar, floor timer, minimap
     this.hudUi = createHudUI(this);
+
+    // Screen-space interaction hint — bottom-center, shows [E] Talk / [E] Descend prompts
+    this.interactionHint = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT - 56, '', {
+        fontFamily: 'monospace',
+        fontSize: '16px',
+        color: '#fef9c3',
+        backgroundColor: '#422006cc',
+        padding: { x: 14, y: 8 },
+        align: 'center',
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
+
+    // Screen-space NPC dialogue box — bottom-center, above the hint
+    this.npcDialogueText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT - 72, '', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#e2e8f0',
+        backgroundColor: '#0f172acc',
+        padding: { x: 14, y: 10 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 64 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
   }
 
   private processLoadoutInput(): void {
@@ -460,6 +522,33 @@ export class MainGameScene extends Phaser.Scene {
     this.staircaseMarker.setFillStyle(staircaseFill, 0.25);
     this.staircaseMarker.setStrokeStyle(2, staircaseStroke, 0.95);
     this.staircaseMarker.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
+
+    // World-space staircase label above the marker
+    if (!this.stairsLabel) {
+      this.stairsLabel = this.add
+        .text(
+          objective.staircasePos.x,
+          objective.staircasePos.y - objective.markerRadiusPx - 10,
+          '▼ STAIRS',
+          {
+            fontFamily: 'monospace',
+            fontSize: '13px',
+            color: '#fef9c3',
+            backgroundColor: '#422006cc',
+            padding: { x: 8, y: 4 },
+            align: 'center',
+          },
+        )
+        .setOrigin(0.5, 1)
+        .setDepth(25)
+        .setVisible(false);
+    }
+    this.stairsLabel.setPosition(
+      objective.staircasePos.x,
+      objective.staircasePos.y - objective.markerRadiusPx - 10,
+    );
+    this.stairsLabel.setColor(objective.staircaseLocked ? '#fcd34d' : '#86efac');
+    this.stairsLabel.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
   }
 
   private formatRemainingMs(remainingMs: number): string {
@@ -516,5 +605,58 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.loadoutText?.setVisible(false);
+  }
+
+  private updateInteractions(): void {
+    if (!this.world.floor1 || this.world.state !== 'playing') {
+      this.interactionHint?.setVisible(false);
+      this.npcDialogueText?.setVisible(false);
+      return;
+    }
+
+    const objective = this.world.floor1.objective;
+    const playerX = this.world.stores.position.x[this.playerEid] ?? 0;
+    const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
+
+    // Find nearest NPC with nearbyPlayer flag set
+    let nearNpcEid = -1;
+    for (const [eid, instance] of this.world.npcs.entries()) {
+      if (instance.nearbyPlayer) {
+        nearNpcEid = eid;
+        break;
+      }
+    }
+
+    // Check stair proximity (only when unlocked and not yet discovered)
+    const nearStairs =
+      objective.staircaseUnlocked &&
+      objective.staircaseSpawned &&
+      !objective.staircaseDiscovered &&
+      Math.hypot(playerX - objective.staircasePos.x, playerY - objective.staircasePos.y) <=
+        objective.markerRadiusPx;
+
+    if (nearNpcEid >= 0) {
+      this.interactionHint?.setText('[E] Talk').setVisible(true);
+
+      if (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE)) {
+        const instance = this.world.npcs.get(nearNpcEid);
+        if (instance) {
+          const def = getNpcDef(instance.defId);
+          if (def && def.dialogue.length > 0) {
+            instance.dialogueIndex = (instance.dialogueIndex + 1) % def.dialogue.length;
+            const line = def.dialogue[instance.dialogueIndex]?.text ?? '';
+            this.npcDialogueText?.setText(`${def.name}: "${line}"`).setVisible(true);
+          }
+        }
+      }
+    } else if (nearStairs) {
+      this.interactionHint?.setText('[E] Descend').setVisible(true);
+      this.npcDialogueText?.setVisible(false);
+    } else {
+      this.interactionHint?.setVisible(false);
+      if (nearNpcEid < 0) {
+        this.npcDialogueText?.setVisible(false);
+      }
+    }
   }
 }

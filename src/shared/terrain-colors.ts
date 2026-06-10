@@ -11,22 +11,22 @@ import { TerrainType } from './map-types.js';
 /** Fallback solid colours (0xRRGGBB) when a TerrainType has no sprite mapping. */
 export const TERRAIN_FALLBACK_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.VOID]: 0x05060f,
-  [TerrainType.STONE_FLOOR]: 0x1f2937,
-  [TerrainType.STONE_WALL]: 0x111827,
+  [TerrainType.STONE_FLOOR]: 0x2d3a4a, // mid blue-gray — room interiors
+  [TerrainType.STONE_WALL]: 0x0d1117, // near-black — solid wall mass
   [TerrainType.DOOR]: 0x8b5e34,
-  [TerrainType.CORRIDOR]: 0x233044,
+  [TerrainType.CORRIDOR]: 0x1e2d3d, // slightly darker than floor — tunnels
   [TerrainType.WATER]: 0x1d4ed8,
   [TerrainType.LAVA]: 0xb91c1c,
   [TerrainType.GRASS]: 0x166534,
   [TerrainType.DIRT]: 0x6b3f24,
   [TerrainType.WOOD_FLOOR]: 0x5b4430,
-  [TerrainType.WOOD_WALL]: 0x3a2d20,
+  [TerrainType.WOOD_WALL]: 0x1a1108,
   [TerrainType.CAVE_FLOOR]: 0x2a2a3d,
-  [TerrainType.CAVE_WALL]: 0x1b1b29,
+  [TerrainType.CAVE_WALL]: 0x0d0d18,
   [TerrainType.TREE]: 0x14532d,
-  [TerrainType.RUBBLE]: 0x334155,
-  [TerrainType.BOSS_STAIR_FLOOR]: 0x2d0e1e,
-  [TerrainType.SAFE_ROOM_FLOOR]: 0x0f2340,
+  [TerrainType.RUBBLE]: 0x3d3d3d,
+  [TerrainType.BOSS_STAIR_FLOOR]: 0x3d0a18, // deep red — boss room
+  [TerrainType.SAFE_ROOM_FLOOR]: 0x0a2040, // deep blue — safe room
 };
 
 /** Convert a numeric 0xRRGGBB colour to a CSS hex string (e.g. `'#1f2937'`). */
