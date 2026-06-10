@@ -12,6 +12,7 @@ import { createHudMinimap } from './HudMinimap.js';
 
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
+  setAlpha(alpha: number): void;
   destroy(): void;
 } {
   const healthBar = createHudHealthBar(scene);
@@ -24,11 +25,17 @@ export function createHudUI(scene: Phaser.Scene): {
     minimap.sync(world, playerEid);
   }
 
+  function setAlpha(alpha: number): void {
+    healthBar.setAlpha(alpha);
+    floorTimer.setAlpha(alpha);
+    minimap.setAlpha(alpha);
+  }
+
   function destroy(): void {
     healthBar.destroy();
     floorTimer.destroy();
     minimap.destroy();
   }
 
-  return { sync, destroy };
+  return { sync, setAlpha, destroy };
 }

@@ -37,6 +37,9 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
 const logger = createLogger('engine:main-game-scene');
+const ATOMIZATION_OVERLAY_DEPTH = 6000;
+const ATOMIZATION_PIXEL_COUNT = 220;
+const ATOMIZATION_SWIRL_MS = 1450;
 
 const TERRAIN_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.VOID]: 0x05060f,
@@ -107,6 +110,12 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyThree?: Phaser.Input.Keyboard.Key;
 
+  private atomizationSequenceStarted = false;
+
+  private atomizationOverlay?: Phaser.GameObjects.Container;
+
+  private atomizationMessage?: Phaser.GameObjects.Text;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -127,6 +136,9 @@ export class MainGameScene extends Phaser.Scene {
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
     this.warnedMissingDependencies = false;
+    this.atomizationSequenceStarted = false;
+    this.atomizationOverlay = undefined;
+    this.atomizationMessage = undefined;
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -162,6 +174,8 @@ export class MainGameScene extends Phaser.Scene {
       this.objectiveText?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
+      this.atomizationOverlay?.destroy(true);
+      this.atomizationMessage?.destroy();
       this.mapGraphics = undefined;
       this.doorGraphics = undefined;
       this.safeRoomMarker = undefined;
@@ -169,6 +183,8 @@ export class MainGameScene extends Phaser.Scene {
       this.objectiveText = undefined;
       this.loadoutText = undefined;
       this.hudUi = undefined;
+      this.atomizationOverlay = undefined;
+      this.atomizationMessage = undefined;
     });
   }
 
@@ -211,6 +227,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     if (this.world.state !== 'playing') {
+      this.startAtomizationSequenceIfNeeded();
       this.updateDoorOverlay();
       this.bridge.sync(this.world);
       this.updateCamera();
@@ -475,6 +492,152 @@ export class MainGameScene extends Phaser.Scene {
     this.staircaseMarker.setPosition(objective.staircasePos.x, objective.staircasePos.y);
     this.staircaseMarker.setRadius(objective.markerRadiusPx);
     this.staircaseMarker.setVisible(objective.staircaseUnlocked && !objective.staircaseDiscovered);
+  }
+
+  private startAtomizationSequenceIfNeeded(): void {
+    if (this.atomizationSequenceStarted) {
+      return;
+    }
+    if (this.world.state !== 'game_over' || this.world.floor1?.failReason !== 'stair_atomization') {
+      return;
+    }
+
+    this.atomizationSequenceStarted = true;
+    this.objectiveText?.setVisible(false);
+    this.loadoutText?.setVisible(false);
+    this.safeRoomMarker?.setVisible(false);
+    this.staircaseMarker?.setVisible(false);
+    this.hudUi?.setAlpha(1);
+
+    const centerX = GAME.WIDTH * 0.5;
+    const centerY = GAME.HEIGHT * 0.5;
+    const overlay = this.add.container(0, 0).setScrollFactor(0).setDepth(ATOMIZATION_OVERLAY_DEPTH);
+    const blackout = this.add
+      .rectangle(centerX, centerY, GAME.WIDTH, GAME.HEIGHT, 0x02030a, 0)
+      .setScrollFactor(0);
+    const singularity = this.add
+      .circle(centerX, centerY, 14, 0x000000, 0.95)
+      .setScrollFactor(0)
+      .setScale(0.2);
+
+    overlay.add([blackout, singularity]);
+    this.atomizationOverlay = overlay;
+
+    if (this.objectiveText) {
+      this.tweens.add({
+        targets: this.objectiveText,
+        alpha: 0,
+        duration: 300,
+        ease: 'Quad.easeOut',
+      });
+    }
+    if (this.loadoutText) {
+      this.tweens.add({
+        targets: this.loadoutText,
+        alpha: 0,
+        duration: 300,
+        ease: 'Quad.easeOut',
+      });
+    }
+
+    const hudAlpha = { value: 1 };
+    this.tweens.add({
+      targets: hudAlpha,
+      value: 0,
+      duration: 420,
+      ease: 'Quad.easeOut',
+      onUpdate: () => this.hudUi?.setAlpha(hudAlpha.value),
+    });
+
+    this.tweens.add({
+      targets: blackout,
+      alpha: 0.78,
+      duration: 550,
+      ease: 'Quad.easeOut',
+    });
+
+    this.tweens.add({
+      targets: singularity,
+      scaleX: 1.8,
+      scaleY: 1.8,
+      duration: ATOMIZATION_SWIRL_MS,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1,
+    });
+
+    this.spawnAtomizationSwirl(overlay, centerX, centerY);
+
+    this.time.delayedCall(ATOMIZATION_SWIRL_MS, () => {
+      if (!this.sys.isActive()) {
+        return;
+      }
+      this.atomizationMessage = this.add
+        .text(centerX, centerY, 'MATERIALS RECLAIMED', {
+          fontFamily: 'monospace',
+          fontSize: '42px',
+          color: '#f8fafc',
+          backgroundColor: '#000000cc',
+          padding: { x: 18, y: 10 },
+          align: 'center',
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0)
+        .setDepth(ATOMIZATION_OVERLAY_DEPTH + 1)
+        .setAlpha(0);
+
+      this.tweens.add({
+        targets: this.atomizationMessage,
+        alpha: 1,
+        duration: 240,
+        ease: 'Quad.easeOut',
+      });
+    });
+  }
+
+  private spawnAtomizationSwirl(
+    overlay: Phaser.GameObjects.Container,
+    centerX: number,
+    centerY: number,
+  ): void {
+    for (let i = 0; i < ATOMIZATION_PIXEL_COUNT; i += 1) {
+      const size = Phaser.Math.Between(2, 4);
+      const startX = Phaser.Math.Between(0, GAME.WIDTH);
+      const startY = Phaser.Math.Between(0, GAME.HEIGHT);
+      const color = Phaser.Display.Color.GetColor(
+        Phaser.Math.Between(180, 255),
+        Phaser.Math.Between(180, 255),
+        Phaser.Math.Between(180, 255),
+      );
+      const pixel = this.add
+        .rectangle(startX, startY, size, size, color, 0.9)
+        .setScrollFactor(0)
+        .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+      overlay.add(pixel);
+
+      const startAngle = Phaser.Math.Angle.Between(centerX, centerY, startX, startY);
+      const startRadius = Phaser.Math.Distance.Between(centerX, centerY, startX, startY);
+      const spinTurns = Phaser.Math.FloatBetween(3.5, 7.5) * Math.PI;
+      const state = { t: 0 };
+
+      this.tweens.add({
+        targets: state,
+        t: 1,
+        duration: Phaser.Math.Between(900, ATOMIZATION_SWIRL_MS),
+        delay: Phaser.Math.Between(0, 220),
+        ease: 'Cubic.easeIn',
+        onUpdate: () => {
+          const t = state.t;
+          const radius = Phaser.Math.Linear(startRadius, 0, t * t);
+          const angle = startAngle + spinTurns * t;
+          pixel.x = centerX + Math.cos(angle) * radius;
+          pixel.y = centerY + Math.sin(angle) * radius;
+          pixel.rotation += 0.28;
+          pixel.alpha = 1 - t;
+        },
+        onComplete: () => pixel.destroy(),
+      });
+    }
   }
 
   private updateOverlayText(): void {

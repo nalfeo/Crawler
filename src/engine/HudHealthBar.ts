@@ -44,6 +44,7 @@ export function createHudHealthBar(
   options: HudHealthBarOptions = {},
 ): {
   sync(world: GameWorld, playerEid: number): void;
+  setAlpha(alpha: number): void;
   destroy(): void;
 } {
   const x = options.x ?? BAR_X;
@@ -147,5 +148,12 @@ export function createHudHealthBar(
     icon.destroy();
   }
 
-  return { sync, destroy };
+  function setAlpha(alpha: number): void {
+    shell.setAlpha(alpha);
+    fill.setAlpha(alpha);
+    label.setAlpha(alpha);
+    icon.setAlpha(alpha);
+  }
+
+  return { sync, setAlpha, destroy };
 }

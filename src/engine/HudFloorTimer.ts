@@ -29,6 +29,7 @@ const RED_THRESHOLD_MS = 30_000;
 
 export function createHudFloorTimer(scene: Phaser.Scene): {
   sync(world: GameWorld): void;
+  setAlpha(alpha: number): void;
   destroy(): void;
 } {
   const timerText = scene.add
@@ -106,5 +107,9 @@ export function createHudFloorTimer(scene: Phaser.Scene): {
     timerText.destroy();
   }
 
-  return { sync, destroy };
+  function setAlpha(alpha: number): void {
+    timerText.setAlpha(alpha);
+  }
+
+  return { sync, setAlpha, destroy };
 }

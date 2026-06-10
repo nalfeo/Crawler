@@ -68,6 +68,7 @@ const DOT_ENEMY_RADIUS = 2;
 export function createHudMinimap(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   toggle(): void;
+  setAlpha(alpha: number): void;
   destroy(): void;
 } {
   // --- Collapsed icon ---
@@ -307,6 +308,16 @@ export function createHudMinimap(scene: Phaser.Scene): {
     closeLabel.destroy();
   }
 
+  function setAlpha(alpha: number): void {
+    iconBg.setAlpha(alpha);
+    iconLabel.setAlpha(alpha);
+    iconHint.setAlpha(alpha);
+    mapBg.setAlpha(alpha);
+    rt?.setAlpha(alpha);
+    dotGraphics.setAlpha(alpha);
+    closeLabel.setAlpha(alpha);
+  }
+
   // --- Wire click listeners ---
   iconBg.on('pointerdown', toggle);
   closeLabel.on('pointerdown', toggle);
@@ -324,6 +335,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   return {
     sync,
     toggle,
+    setAlpha,
     destroy() {
       window.removeEventListener('keydown', handleKeyDown);
       originalDestroy();
