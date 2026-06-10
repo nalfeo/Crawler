@@ -15,6 +15,10 @@ import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-typ
 import { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
+const ENEMY_RADIUS = 8;
+const MAX_OVERLAP_FRACTION = 0.25;
+const MIN_ENEMY_PLAYER_DISTANCE = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION);
+
 function makePathingFloorMap(doorOpen = true): FloorMap {
   const width = 14;
   const height = 10;
@@ -94,6 +98,29 @@ function runTicks(world: ReturnType<typeof createTestWorld>, ticks: number): voi
     enemyAISystem(world);
     movementSystem(world);
   }
+}
+
+function runTicksAndTrackMinDistance(
+  world: ReturnType<typeof createTestWorld>,
+  ticks: number,
+  player: number,
+  enemy: number,
+): number {
+  let minDistance = Number.POSITIVE_INFINITY;
+
+  for (let i = 0; i < ticks; i += 1) {
+    world.frameCount += 1;
+    world.elapsedMs += 16;
+    doorSystem(world);
+    enemyAISystem(world);
+    movementSystem(world);
+
+    const dx = (world.stores.position.x[player] ?? 0) - (world.stores.position.x[enemy] ?? 0);
+    const dy = (world.stores.position.y[player] ?? 0) - (world.stores.position.y[enemy] ?? 0);
+    minDistance = Math.min(minDistance, Math.hypot(dx, dy));
+  }
+
+  return minDistance;
 }
 
 describe('enemyAISystem', () => {
@@ -423,6 +450,29 @@ describe('enemyAISystem', () => {
     expect(world.stores.position.x[flanker]).toBeGreaterThan(world.stores.position.x[player] ?? 0);
   });
 
+  it('flanker personas respect the player overlap cap while pathing past the player', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    const player = spawnPlayer(world, 9 * 32 + 16, 5 * 32 + 16);
+    const flanker = spawnBehaviorEnemy(
+      world,
+      2 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2.4,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.FLANKER,
+        flankDistance: 96,
+      },
+    );
+
+    const minDistance = runTicksAndTrackMinDistance(world, 160, player, flanker);
+    expect(minDistance).toBeGreaterThanOrEqual(MIN_ENEMY_PLAYER_DISTANCE - 0.05);
+  });
+
   it('flying traversal can cross blocked structures where ground traversal cannot', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(false);
@@ -461,6 +511,30 @@ describe('enemyAISystem', () => {
 
     expect(world.stores.position.x[grounded]).toBeLessThan(6 * 32);
     expect(world.stores.position.x[flying]).toBeGreaterThan(9 * 32);
+  });
+
+  it('flying traversal respects the player overlap cap while crossing blocked structures', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(false);
+    const player = spawnPlayer(world, 8 * 32 + 16, 5 * 32 + 16);
+    const flying = spawnBehaviorEnemy(
+      world,
+      3 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.CHASE,
+      2,
+      500,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+        traversalMode: TRAVERSAL_MODE.FLYING,
+        isFlying: true,
+      },
+    );
+
+    const minDistance = runTicksAndTrackMinDistance(world, 140, player, flying);
+    expect(minDistance).toBeGreaterThanOrEqual(MIN_ENEMY_PLAYER_DISTANCE - 0.05);
   });
 
   it('door state changes trigger re-pathing without trapping navigators in rooms', () => {
