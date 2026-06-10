@@ -96,7 +96,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setInteractive({ useHandCursor: true });
 
   const iconLabel = scene.add
-    .text(ICON_X + ICON_SIZE / 2, ICON_Y + ICON_SIZE / 2, 'MAP', {
+    .text(0, 0, 'MAP', {
       fontFamily: 'monospace',
       fontSize: '12px',
       color: '#e2e8f0',
