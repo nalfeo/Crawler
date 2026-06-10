@@ -183,6 +183,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       pickupRange: FLOOR_1_PLAYER_PICKUP_RANGE_BONUS,
     },
     enemyArchetypes: new Map(),
+    guideNpcEid: null,
     objective: {
       requiredRats: FLOOR_1_REQUIRED_RATS,
       requiredSlimes: FLOOR_1_REQUIRED_SLIMES,
@@ -192,6 +193,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircaseSpawnCountdownMs: FLOOR_1_STAIR_SPAWN_COUNTDOWN_MS,
       safeRoomPos,
       staircasePos,
+      welcomeOfficePos: spawn,
       markerRadiusPx: FLOOR_1_MARKER_RADIUS_PX,
       ratsKilled: 0,
       slimesKilled: 0,
