@@ -129,6 +129,12 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
+  private floorCompletionTitleText?: Phaser.GameObjects.Text;
+
+  private floorCompletionSubtitleText?: Phaser.GameObjects.Text;
+
+  private floorCompletionBodyText?: Phaser.GameObjects.Text;
+
   /** Screen-space boss health bar shown during the Floor 1 boss fight. */
   private bossHealthShell?: Phaser.GameObjects.Rectangle;
 
@@ -262,6 +268,9 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint = undefined;
       this.npcDialogueText = undefined;
       this.floorCompletionScreen = undefined;
+      this.floorCompletionTitleText = undefined;
+      this.floorCompletionSubtitleText = undefined;
+      this.floorCompletionBodyText = undefined;
       this.bossHealthShell = undefined;
       this.bossHealthFill = undefined;
       this.bossHealthLabel = undefined;
@@ -547,21 +556,21 @@ export class MainGameScene extends Phaser.Scene {
     const completionPanel = this.add
       .rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 620, 260, 0x0f172a, 0.98)
       .setStrokeStyle(2, 0x334155, 1);
-    const completionTitle = this.add
+    this.floorCompletionTitleText = this.add
       .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 72, 'Game Over', {
         fontFamily: 'Segoe UI, Arial, sans-serif',
         fontSize: '38px',
         color: '#f8fafc',
       })
       .setOrigin(0.5, 0.5);
-    const completionSubtitle = this.add
+    this.floorCompletionSubtitleText = this.add
       .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 26, 'Floor 1 complete!', {
         fontFamily: 'Segoe UI, Arial, sans-serif',
         fontSize: '24px',
         color: '#cbd5e1',
       })
       .setOrigin(0.5, 0.5);
-    const completionBody = this.add
+    this.floorCompletionBodyText = this.add
       .text(
         GAME.WIDTH / 2,
         GAME.HEIGHT / 2 + 34,
@@ -578,9 +587,9 @@ export class MainGameScene extends Phaser.Scene {
       .container(0, 0, [
         completionBackdrop,
         completionPanel,
-        completionTitle,
-        completionSubtitle,
-        completionBody,
+        this.floorCompletionTitleText,
+        this.floorCompletionSubtitleText,
+        this.floorCompletionBodyText,
       ])
       .setDepth(5500)
       .setScrollFactor(0)
@@ -909,8 +918,23 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private showFloorCompletionScreenIfNeeded(): void {
-    if (!this.shouldShowFloorCompletionMessage()) {
+    const outcome = this.getFloorRunOutcome();
+    if (!outcome || !this.shouldShowFloorCompletionMessage()) {
       return;
+    }
+
+    if (outcome === 'failed_timeout') {
+      this.floorCompletionTitleText?.setText('Game Over');
+      this.floorCompletionSubtitleText?.setText('Floor 1 failed');
+      this.floorCompletionBodyText?.setText(
+        'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
+      );
+    } else {
+      this.floorCompletionTitleText?.setText('Game Over');
+      this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Thanks for completing the first floor!\nMore game coming soon...',
+      );
     }
 
     this.floorCompletionMessagePending = false;
@@ -919,10 +943,15 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private shouldShowFloorCompletionMessage(): boolean {
-    return (
-      this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
-      !this.floorCompletionMessageShown
-    );
+    return this.getFloorRunOutcome() !== null && !this.floorCompletionMessageShown;
+  }
+
+  private getFloorRunOutcome(): 'cleared_floor' | 'failed_timeout' | null {
+    const outcome = this.world.floor1?.runSummary?.outcome;
+    if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
+      return outcome;
+    }
+    return null;
   }
 
   private updateBossHealthBar(): void {
