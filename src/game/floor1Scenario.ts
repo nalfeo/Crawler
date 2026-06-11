@@ -460,7 +460,17 @@ function isInRoom(
 function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolean {
   const floorMap = world.floorMap;
   const bossRoom = floorMap?.bossStairRoom ?? null;
-  return !!(floorMap && bossRoom && isInRoom(world, px, py, bossRoom));
+  if (!floorMap || !bossRoom || !isInRoom(world, px, py, bossRoom)) {
+    return false;
+  }
+  const playerTile = floorMap.pixelToTile(px, py);
+  for (const door of bossRoom.doors) {
+    const distance = Math.max(Math.abs(playerTile.x - door.x), Math.abs(playerTile.y - door.y));
+    if (distance <= 2) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isInAnyRoom(world: GameWorld, px: number, py: number): boolean {
