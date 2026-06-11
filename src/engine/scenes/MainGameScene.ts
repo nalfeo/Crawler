@@ -251,13 +251,12 @@ export class MainGameScene extends Phaser.Scene {
     if (this.previousWorldState !== this.world.state) {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
-      if (
-        this.world.state === 'safe_room' &&
-        this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
-        !this.floorCompletionMessageShown
-      ) {
-        this.floorCompletionMessagePending = true;
-      }
+    }
+    if (
+      this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
+      !this.floorCompletionMessageShown
+    ) {
+      this.floorCompletionMessagePending = true;
     }
     this.showFloorCompletionMessageIfNeeded();
     this.refreshCameraMasks();
@@ -841,7 +840,7 @@ export class MainGameScene extends Phaser.Scene {
       subtitle: 'Nice clear.',
       body: 'Thanks for completing the first floor! More game coming soon...',
       options: [{ id: 'continue', label: 'Continue', description: 'Return to the safe room.' }],
-      allowCancel: true,
+      allowCancel: false,
       initialSelectedId: 'continue',
     });
   }
