@@ -90,3 +90,18 @@ describe('hud minimap view math', () => {
     expect(tooLarge.zoom).toBe(8);
   });
 });
+
+describe('HudMinimap architectural guard', () => {
+  it('flushes baked terrain updates and keeps special-room markers wired', async () => {
+    const { readFileSync } = await import('fs');
+    const source = (readFileSync as (path: string, encoding: string) => string)(
+      'src/engine/HudMinimap.ts',
+      'utf-8',
+    );
+
+    expect(source).toContain('terrainRt.render();');
+    expect(source).toContain('RoomRole.SAFE');
+    expect(source).toContain('RoomRole.BOSS_STAIR');
+    expect(source).toContain('objective?.staircaseSpawned && objective.staircaseDiscovered');
+  });
+});

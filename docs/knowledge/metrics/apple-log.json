@@ -95,5 +95,14 @@
     "actual": "🍎🍎",
     "verdict": "on-target",
     "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
+  },
+  {
+    "date": "2026-06-11",
+    "session": "minimap-render-fix",
+    "estimated_apples": 3,
+    "actual_apples": 2,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.4
   }
 ]
