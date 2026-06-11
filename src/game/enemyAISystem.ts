@@ -972,7 +972,7 @@ export function enemyAISystem(world: GameWorld): void {
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
     const inAggroRange = permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
-    const canDetectPlayer = hasOpenRoomDoor && inAggroRange;
+    const canDetectPlayer = (hasOpenRoomDoor || permanentAggro) && inAggroRange;
 
     const currentVx = velocity.x[eid] ?? 0;
     const currentVy = velocity.y[eid] ?? 0;

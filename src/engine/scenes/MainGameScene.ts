@@ -136,6 +136,10 @@ export class MainGameScene extends Phaser.Scene {
   /** One-frame latch set by pointer tap/click to advance or start dialogue. */
   private tappedInteraction = false;
 
+  private floorCompletionMessageShown = false;
+
+  private floorCompletionMessagePending = false;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -156,6 +160,8 @@ export class MainGameScene extends Phaser.Scene {
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
     this.warnedMissingDependencies = false;
+    this.floorCompletionMessageShown = false;
+    this.floorCompletionMessagePending = false;
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -245,7 +251,15 @@ export class MainGameScene extends Phaser.Scene {
     if (this.previousWorldState !== this.world.state) {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
+      if (
+        this.world.state === 'safe_room' &&
+        this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
+        !this.floorCompletionMessageShown
+      ) {
+        this.floorCompletionMessagePending = true;
+      }
     }
+    this.showFloorCompletionMessageIfNeeded();
     this.refreshCameraMasks();
 
     if (this.modalPicker?.isOpen()) {
@@ -808,6 +822,28 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.loadoutText?.setVisible(false);
+  }
+
+  private showFloorCompletionMessageIfNeeded(): void {
+    if (
+      !this.floorCompletionMessagePending ||
+      this.floorCompletionMessageShown ||
+      !this.modalPicker ||
+      this.modalPicker.isOpen()
+    ) {
+      return;
+    }
+
+    this.floorCompletionMessagePending = false;
+    this.floorCompletionMessageShown = true;
+    this.modalPicker.open({
+      title: 'Floor 1 complete!',
+      subtitle: 'Nice clear.',
+      body: 'Thanks for completing the first floor! More game coming soon...',
+      options: [{ id: 'continue', label: 'Continue', description: 'Return to the safe room.' }],
+      allowCancel: true,
+      initialSelectedId: 'continue',
+    });
   }
 
   private updateBossHealthBar(): void {
