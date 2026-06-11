@@ -163,6 +163,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionMessagePending = false;
 
+  private cameraMasksDirty = true;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -205,6 +207,8 @@ export class MainGameScene extends Phaser.Scene {
     this.initializeUi();
     this.drawFloorTerrain();
     this.ensureUiCamera();
+    this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
+    this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
     this.bridge.sync(this.world);
@@ -280,6 +284,8 @@ export class MainGameScene extends Phaser.Scene {
       this.hudUi = undefined;
       this.conversationNpcEid = null;
       this.tappedInteraction = false;
+      this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
+      this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
       if (typeof window !== 'undefined' && window.__floor1Debug) {
         delete window.__floor1Debug;
@@ -289,6 +295,10 @@ export class MainGameScene extends Phaser.Scene {
 
   private handlePointerDown(): void {
     this.tappedInteraction = true;
+  }
+
+  private markCameraMasksDirty(): void {
+    this.cameraMasksDirty = true;
   }
 
   update(_time: number, delta: number): void {
@@ -686,6 +696,10 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private refreshCameraMasks(): void {
+    if (!this.cameraMasksDirty) {
+      return;
+    }
+    this.cameraMasksDirty = false;
     const mainCamera = this.cameras.main;
     if (!mainCamera) {
       return;
