@@ -54,6 +54,21 @@ export interface MainGameSceneOptions {
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
 }
 
+declare global {
+  interface Window {
+    __floor1Debug?: {
+      getState: () => {
+        worldState: GameWorld['state'];
+        runOutcome: string | null;
+        floorCompletionMessagePending: boolean;
+        floorCompletionMessageShown: boolean;
+        modalOpen: boolean;
+      };
+      forceCompletionModal: () => void;
+    };
+  }
+}
+
 export class MainGameScene extends Phaser.Scene {
   static readonly KEY = 'MainGameScene';
 
@@ -186,6 +201,21 @@ export class MainGameScene extends Phaser.Scene {
     this.openLoadoutModal();
     this.bridge.sync(this.world);
     this.updateOverlayText();
+    if (typeof window !== 'undefined') {
+      window.__floor1Debug = {
+        getState: () => ({
+          worldState: this.world.state,
+          runOutcome: this.world.floor1?.runSummary?.outcome ?? null,
+          floorCompletionMessagePending: this.floorCompletionMessagePending,
+          floorCompletionMessageShown: this.floorCompletionMessageShown,
+          modalOpen: this.modalPicker?.isOpen() ?? false,
+        }),
+        forceCompletionModal: () => {
+          this.floorCompletionMessagePending = true;
+          this.showFloorCompletionMessageIfNeeded();
+        },
+      };
+    }
 
     this.events.once('shutdown', () => {
       logger.info('Main game scene shutdown');
@@ -230,6 +260,9 @@ export class MainGameScene extends Phaser.Scene {
       this.conversationNpcEid = null;
       this.tappedInteraction = false;
       this.input.off('pointerdown', this.handlePointerDown, this);
+      if (typeof window !== 'undefined' && window.__floor1Debug) {
+        delete window.__floor1Debug;
+      }
     });
   }
 
@@ -980,11 +1013,7 @@ export class MainGameScene extends Phaser.Scene {
             {
               onConfirm: () => {
                 const descended = this.options.onStairDescend?.(this.world, this.playerEid);
-                if (
-                  descended !== false &&
-                  this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
-                  !this.floorCompletionMessageShown
-                ) {
+                if (descended !== false && !this.floorCompletionMessageShown) {
                   this.floorCompletionMessagePending = true;
                   this.time.delayedCall(0, () => this.showFloorCompletionMessageIfNeeded());
                 }
