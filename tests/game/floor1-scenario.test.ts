@@ -2,6 +2,7 @@ import { removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
+  confirmFloor1StairDescend,
   floor1EnemyDirectorSystem,
   floor1ObjectiveSystem,
   initializeFloor1Scenario,
@@ -132,7 +133,8 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseUnlocked).toBe(true);
     expect(objective.staircaseBossDefeated).toBe(true);
 
-    floor1ObjectiveSystem(world);
+    const descended = confirmFloor1StairDescend(world, player);
+    expect(descended).toBe(true);
     expect(objective.staircaseDiscovered).toBe(true);
     expect(world.state).toBe('safe_room');
     expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
