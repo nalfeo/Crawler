@@ -10,6 +10,7 @@ import {
   Team,
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 
@@ -112,6 +113,13 @@ export function meleeSwingSystem(world: GameWorld): void {
     const knockback = meleeSwing.knockback[eid]!;
     const swingTeam = hasComponent(world.ecs, eid, Team) ? team.id[eid]! : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? world.stores.owner.eid[eid]! : -1;
+    if (
+      ownerEid >= 0 &&
+      hasComponent(world.ecs, ownerEid, Player) &&
+      isEntityInSafeSpace(world, ownerEid)
+    ) {
+      continue;
+    }
 
     const elapsed = world.elapsedMs - spawnAt;
     const progress = Math.min(1, Math.max(0, elapsed / duration));

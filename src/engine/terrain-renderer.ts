@@ -76,7 +76,11 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
       const terrain: TerrainType = floorMap.terrain[idx] ?? TerrainType.VOID;
       const visual = getTileVisual(terrain);
       const shouldForceColorFallback =
+        terrain === TerrainType.STONE_FLOOR ||
+        terrain === TerrainType.CORRIDOR ||
         terrain === TerrainType.STONE_WALL ||
+        terrain === TerrainType.BOSS_STAIR_FLOOR ||
+        terrain === TerrainType.SAFE_ROOM_FLOOR ||
         terrain === TerrainType.CAVE_WALL ||
         terrain === TerrainType.WOOD_WALL;
 

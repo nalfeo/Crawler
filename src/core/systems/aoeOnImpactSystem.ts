@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { AoeOnImpact, Owner, Position, Team } from '../components.js';
 import { spawnAreaAttack } from '../helpers.js';
+import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 
 interface AoeSnapshot {
@@ -54,6 +55,9 @@ export function aoeOnImpactPostDamage(world: GameWorld): void {
   for (const snap of snapshots) {
     if (entityExists(world.ecs, snap.eid)) {
       continue; // still alive, no explosion yet
+    }
+    if (snap.ownerEid >= 0 && isEntityInSafeSpace(world, snap.ownerEid)) {
+      continue;
     }
 
     if (snap.radius > 0) {

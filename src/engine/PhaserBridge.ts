@@ -8,6 +8,7 @@ import {
   EnemyProjectile,
   LineDamage,
   MeleeSwing,
+  Npc,
   Player,
   Position,
   Projectile,
@@ -25,8 +26,10 @@ import { createLogger } from '../shared/logger.js';
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
 const TEX_ENEMY = '__cw_enemy';
+const TEX_NPC = '__cw_npc';
 const TEX_ENEMY_RAT = '__cw_enemy_rat';
 const TEX_ENEMY_SLIME = '__cw_enemy_slime';
+const TEX_ENEMY_BOSS = '__cw_enemy_boss';
 const TEX_GEM = '__cw_gem';
 const TEX_BULLET = '__cw_bullet';
 const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
@@ -67,6 +70,22 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(10, 10, 5);
   g.generateTexture(TEX_ENEMY, 22, 22);
 
+  // NPC (placeholder) — simple stick-figure silhouette.
+  g.clear();
+  g.lineStyle(2, 0xf1f5f9, 1);
+  g.strokeCircle(8, 5, 3);
+  g.beginPath();
+  g.moveTo(8, 8);
+  g.lineTo(8, 15);
+  g.moveTo(3, 11);
+  g.lineTo(13, 11);
+  g.moveTo(8, 15);
+  g.lineTo(4, 20);
+  g.moveTo(8, 15);
+  g.lineTo(12, 20);
+  g.strokePath();
+  g.generateTexture(TEX_NPC, 16, 22);
+
   // Rat — gray body with darker head/tail hint
   g.clear();
   g.fillStyle(0x8f959e, 1);
@@ -89,6 +108,39 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0x157a2f, 0.5);
   g.fillCircle(11, 13, 5);
   g.generateTexture(TEX_ENEMY_SLIME, 22, 22);
+
+  // Boss — rat/slime hybrid, large and unmistakable.
+  g.clear();
+  g.fillStyle(0x1d4ed8, 0.18);
+  g.fillEllipse(22, 22, 40, 34);
+  g.fillStyle(0x22c55e, 1);
+  g.fillEllipse(24, 24, 24, 18);
+  g.fillStyle(0x8f959e, 1);
+  g.fillCircle(14, 16, 7);
+  g.fillCircle(34, 16, 7);
+  g.fillStyle(0x2cb34a, 0.9);
+  g.fillEllipse(26, 28, 30, 24);
+  g.fillStyle(0xb7bcc4, 1);
+  g.fillTriangle(10, 13, 14, 5, 18, 14);
+  g.fillTriangle(30, 14, 34, 5, 38, 13);
+  g.fillStyle(0x157a2f, 0.75);
+  g.fillCircle(24, 26, 7);
+  g.fillStyle(0x0f4c1d, 0.75);
+  g.fillTriangle(30, 28, 40, 34, 34, 37);
+  g.lineStyle(3, 0x6f7782, 1);
+  g.beginPath();
+  g.moveTo(16, 35);
+  g.lineTo(10, 39);
+  g.moveTo(36, 34);
+  g.lineTo(44, 39);
+  g.strokePath();
+  g.fillStyle(0xf8fafc, 1);
+  g.fillCircle(20, 23, 2);
+  g.fillCircle(29, 23, 2);
+  g.fillStyle(0x0b1020, 1);
+  g.fillCircle(20, 23, 1);
+  g.fillCircle(29, 23, 1);
+  g.generateTexture(TEX_ENEMY_BOSS, 44, 40);
 
   // XP gem — yellow diamond
   g.clear();
@@ -189,6 +241,7 @@ interface EntityVisual {
 
 function getEntityType(world: GameWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Player)) return 'player';
+  if (hasComponent(world.ecs, eid, Npc)) return 'npc';
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, LineDamage)) return 'beam';
@@ -263,6 +316,10 @@ function getProceduralTextureForType(type: string): string {
       return TEX_PLAYER;
     case 'enemy':
       return TEX_ENEMY;
+    case 'npc':
+      return TEX_NPC;
+    case 'enemy_boss':
+      return TEX_ENEMY_BOSS;
     case 'enemy_rat':
       return TEX_ENEMY_RAT;
     case 'enemy_slime':
@@ -343,11 +400,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const entityType = getEntityType(world, eid);
         const visualType =
           entityType === 'enemy'
-            ? world.stores.sprite.textureId[eid] === 1
-              ? 'enemy_rat'
-              : world.stores.sprite.textureId[eid] === 2
-                ? 'enemy_slime'
-                : 'enemy'
+            ? world.floor1?.objective.staircaseBossEid === eid
+              ? 'enemy_boss'
+              : world.stores.sprite.textureId[eid] === 1
+                ? 'enemy_rat'
+                : world.stores.sprite.textureId[eid] === 2
+                  ? 'enemy_slime'
+                  : 'enemy'
             : entityType;
         const x = (position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha;
         const y = (position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha;

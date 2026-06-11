@@ -12,6 +12,7 @@
 import { query } from 'bitecs';
 import { DoorState, Player, Position } from '../components.js';
 import { evaluateDoorConditionGroup, getDoorLockConfig } from '../door-lock.js';
+import { isPointInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 
 const AUTO_OPEN_RADIUS_TILES = 1;
@@ -27,6 +28,8 @@ export function doorSystem(world: GameWorld): void {
   const doors = query(world.ecs, [DoorState]);
   const { doorState } = world.stores;
   const lockedDoorTiles = new Set<string>();
+  const forcedClosedDoorTiles = new Set<string>();
+  const safeRoom = floorMap.safeRoom;
 
   // Evaluate lock conditions first so auto-open respects currently locked doors.
   for (const eid of doors) {
@@ -66,6 +69,24 @@ export function doorSystem(world: GameWorld): void {
   for (const player of players) {
     const px = world.stores.position.x[player] ?? 0;
     const py = world.stores.position.y[player] ?? 0;
+    if (safeRoom && isPointInSafeSpace(world, px, py)) {
+      const playerTile = floorMap.pixelToTile(px, py);
+      let closeSafeDoors = true;
+      for (const door of safeRoom.doors) {
+        const manhattan = Math.abs(playerTile.x - door.x) + Math.abs(playerTile.y - door.y);
+        // Keep doorway passable while the player is still transitioning through it.
+        if (manhattan <= 1) {
+          closeSafeDoors = false;
+          break;
+        }
+      }
+      if (closeSafeDoors) {
+        for (const door of safeRoom.doors) {
+          forcedClosedDoorTiles.add(tileKey(door.x, door.y));
+          floorMap.tileMap.closeDoor(door.x, door.y);
+        }
+      }
+    }
     const tile = floorMap.pixelToTile(px, py);
 
     for (let dy = -AUTO_OPEN_RADIUS_TILES; dy <= AUTO_OPEN_RADIUS_TILES; dy += 1) {
@@ -78,6 +99,9 @@ export function doorSystem(world: GameWorld): void {
         if (lockedDoorTiles.has(tileKey(tx, ty))) {
           continue;
         }
+        if (forcedClosedDoorTiles.has(tileKey(tx, ty))) {
+          continue;
+        }
         if (!floorMap.tileMap.isPassable(tx, ty)) {
           floorMap.tileMap.openDoor(tx, ty);
         }
@@ -88,10 +112,14 @@ export function doorSystem(world: GameWorld): void {
   for (const eid of doors) {
     const tx = doorState.tileX[eid] ?? 0;
     const ty = doorState.tileY[eid] ?? 0;
+    const isForcedClosed = forcedClosedDoorTiles.has(tileKey(tx, ty));
     const isLocked = (doorState.isLocked[eid] ?? 0) !== 0;
     const isOpen = (doorState.isOpen[eid] ?? 0) !== 0;
 
-    if (isLocked) {
+    if (isForcedClosed || isLocked) {
+      if (isForcedClosed) {
+        doorState.isOpen[eid] = 0;
+      }
       floorMap.tileMap.closeDoor(tx, ty);
     } else if (isOpen) {
       floorMap.tileMap.openDoor(tx, ty);

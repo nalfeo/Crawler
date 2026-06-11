@@ -2,6 +2,7 @@ import { query, setComponent } from 'bitecs';
 import { DoorState, Enemy, EnemyBehavior, Player, Position, Velocity } from '../core/components.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
 import { spawnEnemyProjectile } from '../core/helpers.js';
+import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
 import { ENEMY_PROJECTILE } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
@@ -30,6 +31,7 @@ const NAVIGATION_LOOKAHEAD_PX = 24;
 const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
+const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
 
 interface PathState {
   key: string;
@@ -44,10 +46,36 @@ interface DoorRevisionState {
   revision: number;
 }
 
+interface WanderState {
+  dirX: number;
+  dirY: number;
+  untilFrame: number;
+}
+
 const pathStatesByWorld = new WeakMap<GameWorld, Map<number, PathState>>();
 const doorRevisionByWorld = new WeakMap<GameWorld, DoorRevisionState>();
+const wanderStatesByWorld = new WeakMap<GameWorld, Map<number, WanderState>>();
+
+function getWanderStateMap(world: GameWorld): Map<number, WanderState> {
+  let map = wanderStatesByWorld.get(world);
+  if (!map) {
+    map = new Map();
+    wanderStatesByWorld.set(world, map);
+  }
+  return map;
+}
 
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
+  if (Math.hypot(x, y) > EPSILON) {
+    const enemyX = world.stores.position.x[eid] ?? 0;
+    const enemyY = world.stores.position.y[eid] ?? 0;
+    const nextX = enemyX + x;
+    const nextY = enemyY + y;
+    if (isPointInSafeSpace(world, nextX, nextY)) {
+      setComponent(world.ecs, eid, Velocity, { x: 0, y: 0 });
+      return;
+    }
+  }
   setComponent(world.ecs, eid, Velocity, { x, y });
 }
 
@@ -63,6 +91,34 @@ function normalize(x: number, y: number): { x: number; y: number; length: number
 function getEnemySpeed(world: GameWorld, eid: number): number {
   const speed = world.stores.enemyBehavior.speed[eid]!;
   return speed > 0 ? speed : DEFAULT_ENEMY_SPEED;
+}
+
+function applyIdleWander(world: GameWorld, eid: number, speed: number): void {
+  const wanderMap = getWanderStateMap(world);
+  const px = world.stores.position.x[eid] ?? 0;
+  const py = world.stores.position.y[eid] ?? 0;
+  let state = wanderMap.get(eid);
+  const shouldPickNewDirection =
+    !state ||
+    world.frameCount >= state.untilFrame ||
+    !world.floorMap?.isPassableAt(px + state.dirX * 20, py + state.dirY * 20) ||
+    isPointInSafeSpace(world, px + (state?.dirX ?? 0) * 20, py + (state?.dirY ?? 0) * 20);
+
+  if (shouldPickNewDirection) {
+    const angle = world.rng.next() * Math.PI * 2;
+    state = {
+      dirX: Math.cos(angle),
+      dirY: Math.sin(angle),
+      untilFrame: world.frameCount + world.rng.nextInt(24, 96),
+    };
+    wanderMap.set(eid, state);
+  }
+
+  if (!state) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+  setNavigatingVelocity(world, eid, state.dirX, state.dirY, Math.max(0.2, speed * 0.45));
 }
 
 function rotate(x: number, y: number, angle: number): { x: number; y: number } {
@@ -100,7 +156,7 @@ function setNavigatingVelocity(
     const candidate = rotate(desired.x, desired.y, offset);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
-    if (floorMap.isPassableAt(sampleX, sampleY)) {
+    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -136,7 +192,7 @@ function tryUnstuckVelocity(
     const candidate = rotate(desired.x, desired.y, angle);
     const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
     const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
-    if (floorMap.isPassableAt(sampleX, sampleY)) {
+    if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
     }
@@ -741,14 +797,26 @@ function applySeparation(
   playerY: number,
 ): void {
   const minDistance = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION);
+  const separationEnemies =
+    activeEnemies.length <= MAX_PAIRWISE_SEPARATION_ENEMIES
+      ? activeEnemies
+      : [...activeEnemies]
+          .sort((a, b) => {
+            const adx = (position.x[a] ?? 0) - playerX;
+            const ady = (position.y[a] ?? 0) - playerY;
+            const bdx = (position.x[b] ?? 0) - playerX;
+            const bdy = (position.y[b] ?? 0) - playerY;
+            return adx * adx + ady * ady - (bdx * bdx + bdy * bdy);
+          })
+          .slice(0, MAX_PAIRWISE_SEPARATION_ENEMIES);
 
-  for (let i = 0; i < activeEnemies.length; i += 1) {
-    const a = activeEnemies[i]!;
+  for (let i = 0; i < separationEnemies.length; i += 1) {
+    const a = separationEnemies[i]!;
     const ax = position.x[a]!;
     const ay = position.y[a]!;
 
-    for (let j = i + 1; j < activeEnemies.length; j += 1) {
-      const b = activeEnemies[j]!;
+    for (let j = i + 1; j < separationEnemies.length; j += 1) {
+      const b = separationEnemies[j]!;
       const bx = position.x[b]!;
       const by = position.y[b]!;
 
@@ -847,9 +915,9 @@ function applySeparation(
 
     if (mag > maxSpeed && mag > EPSILON) {
       const scale = maxSpeed / mag;
-      setComponent(world.ecs, eid, Velocity, { x: vx * scale, y: vy * scale });
+      setVelocity(world, eid, vx * scale, vy * scale);
     } else {
-      setComponent(world.ecs, eid, Velocity, { x: vx, y: vy });
+      setVelocity(world, eid, vx, vy);
     }
   }
 }
@@ -875,6 +943,15 @@ export function enemyAISystem(world: GameWorld): void {
   const floorMap = world.floorMap;
   const { enemyBehavior, position, velocity } = world.stores;
   const enemyList = Array.from(enemies);
+  if (world.frameCount % 60 === 0) {
+    const activeEnemySet = new Set(enemyList);
+    const wanderMap = getWanderStateMap(world);
+    for (const eid of [...wanderMap.keys()]) {
+      if (!activeEnemySet.has(eid)) {
+        wanderMap.delete(eid);
+      }
+    }
+  }
   const playerX = position.x[playerEid]!;
   const playerY = position.y[playerEid]!;
   const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
@@ -907,7 +984,11 @@ export function enemyAISystem(world: GameWorld): void {
     }
 
     if (!canDetectPlayer) {
-      setVelocity(world, eid, 0, 0);
+      if (!inAggroRange) {
+        applyIdleWander(world, eid, speed);
+      } else {
+        setVelocity(world, eid, 0, 0);
+      }
       pathStates.delete(eid);
       continue;
     }

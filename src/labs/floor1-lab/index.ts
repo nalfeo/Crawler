@@ -250,6 +250,8 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       },
     };
     game = new Phaser.Game(config);
+    // Debug helper: expose live game instance for browser-console inspection.
+    (window as Window & { __floor1Game?: Phaser.Game }).__floor1Game = game;
   };
 
   gui

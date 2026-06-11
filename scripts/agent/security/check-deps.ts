@@ -55,6 +55,7 @@ const TRUSTED_PACKAGES = new Set<string>([
   'yaml',
   'zod',
   'fastify',
+  'playwright',
 ]);
 
 function isTrusted(name: string): boolean {

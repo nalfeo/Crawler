@@ -52,9 +52,9 @@ const TUTORIAL_GOON_DEF: NpcDef = {
       text: "Hey, contestant! I'm the Tutorial Goon. Welcome to the Welcome Office — enjoy it while it lasts.",
     },
     {
-      text: 'Your first mission: defeat the floor boss. Find them, fight them, and claim your glory!',
+      text: 'Quest time: kill 10 rats + slimes total. That unlocks the boss room door.',
     },
-    { text: "Remember: the boss won't go down without a fight. Gear up and stay sharp." },
+    { text: 'Once the boss is dead, stairs spawn in the boss room. Come back if you forget.' },
   ],
   quests: [
     {

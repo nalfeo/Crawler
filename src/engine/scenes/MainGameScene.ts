@@ -1,3 +1,4 @@
+import { entityExists } from 'bitecs';
 import Phaser from 'phaser';
 import {
   aoeOnImpactPostDamage,
@@ -38,12 +39,19 @@ import { getNpcDef } from '../../shared/npc-types.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
+const UI_DEPTH_CUTOFF = 900;
+const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
+  'You did it! Boss dropped, room cleared.',
+  'Stairs are live. Descend when you are ready.',
+  'Floor 2 will hit harder. Keep moving and kite smart.',
+] as const;
 const logger = createLogger('engine:main-game-scene');
 export interface MainGameSceneOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
+  onStairDescend?: (world: GameWorld, playerEid: number) => void;
 }
 
 export class MainGameScene extends Phaser.Scene {
@@ -93,6 +101,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyE?: Phaser.Input.Keyboard.Key;
 
+  private keyEsc?: Phaser.Input.Keyboard.Key;
+
   /** World-space label shown above the staircase marker. */
   private stairsLabel?: Phaser.GameObjects.Text;
 
@@ -101,6 +111,30 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Screen-space NPC dialogue text shown while a dialogue line is active. */
   private npcDialogueText?: Phaser.GameObjects.Text;
+
+  /** Screen-space boss health bar shown during the Floor 1 boss fight. */
+  private bossHealthShell?: Phaser.GameObjects.Rectangle;
+
+  private bossHealthFill?: Phaser.GameObjects.Rectangle;
+
+  private bossHealthLabel?: Phaser.GameObjects.Text;
+
+  private bossHealthName?: Phaser.GameObjects.Text;
+
+  /** Dedicated UI camera so HUD is not affected by world camera zoom. */
+  private uiCamera?: Phaser.Cameras.Scene2D.Camera;
+
+  private readonly uiMaskIgnoreList: Phaser.GameObjects.GameObject[] = [];
+
+  private readonly worldMaskIgnoreList: Phaser.GameObjects.GameObject[] = [];
+
+  private previousBossEid: number | null = null;
+
+  /** Active NPC conversation lock; when set, fixed-step simulation pauses. */
+  private conversationNpcEid: number | null = null;
+
+  /** One-frame latch set by pointer tap/click to advance or start dialogue. */
+  private tappedInteraction = false;
 
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
@@ -137,8 +171,12 @@ export class MainGameScene extends Phaser.Scene {
     this.keyTwo = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.TWO);
     this.keyThree = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
     this.keyE = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.E);
+    this.keyEsc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.input.on('pointerdown', this.handlePointerDown, this);
     this.initializeUi();
     this.drawFloorTerrain();
+    this.ensureUiCamera();
+    this.refreshCameraMasks();
     this.openLoadoutModal();
     this.bridge.sync(this.world);
     this.updateOverlayText();
@@ -158,9 +196,17 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel?.destroy();
       this.interactionHint?.destroy();
       this.npcDialogueText?.destroy();
+      this.bossHealthShell?.destroy();
+      this.bossHealthFill?.destroy();
+      this.bossHealthLabel?.destroy();
+      this.bossHealthName?.destroy();
       this.objectiveText?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
+      if (this.uiCamera) {
+        this.cameras.remove(this.uiCamera);
+        this.uiCamera = undefined;
+      }
       this.mapRt = undefined;
       this.doorGraphics = undefined;
       this.safeRoomMarker = undefined;
@@ -168,10 +214,21 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.npcDialogueText = undefined;
+      this.bossHealthShell = undefined;
+      this.bossHealthFill = undefined;
+      this.bossHealthLabel = undefined;
+      this.bossHealthName = undefined;
       this.objectiveText = undefined;
       this.loadoutText = undefined;
       this.hudUi = undefined;
+      this.conversationNpcEid = null;
+      this.tappedInteraction = false;
+      this.input.off('pointerdown', this.handlePointerDown, this);
     });
+  }
+
+  private handlePointerDown(): void {
+    this.tappedInteraction = true;
   }
 
   update(_time: number, delta: number): void {
@@ -189,6 +246,7 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    this.refreshCameraMasks();
 
     if (this.modalPicker?.isOpen()) {
       this.updateOverlayText();
@@ -198,9 +256,28 @@ export class MainGameScene extends Phaser.Scene {
     if (this.hudUi?.isMapOverlayOpen()) {
       this.updateDoorOverlay();
       this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
       this.updateCamera();
       this.updateObjectiveMarkers();
       this.updateOverlayText();
+      return;
+    }
+
+    // Floor 1 doesn't expose a stat-allocation UI, so keep the simulation flowing
+    // instead of parking the whole scene on the level_up flag.
+    if (this.world.state === 'level_up') {
+      this.world.state = 'playing';
+    }
+
+    // Freeze fixed-step gameplay while an NPC dialogue is active.
+    if (this.conversationNpcEid !== null) {
+      this.updateDoorOverlay();
+      this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      this.updateInteractions();
       return;
     }
 
@@ -215,6 +292,7 @@ export class MainGameScene extends Phaser.Scene {
       this.processLoadoutInput();
       this.updateDoorOverlay();
       this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
       this.updateCamera();
       this.updateObjectiveMarkers();
       this.updateOverlayText();
@@ -224,6 +302,7 @@ export class MainGameScene extends Phaser.Scene {
     if (this.world.state !== 'playing') {
       this.updateDoorOverlay();
       this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
       this.updateCamera();
       this.updateObjectiveMarkers();
       this.updateOverlayText();
@@ -286,10 +365,56 @@ export class MainGameScene extends Phaser.Scene {
 
     this.updateDoorOverlay();
     this.bridge.sync(this.world);
+    this.playBossSpawnIntro();
     this.updateCamera();
     this.updateObjectiveMarkers();
     this.updateOverlayText();
     this.updateInteractions();
+  }
+
+  private playBossSpawnIntro(): void {
+    const objective = this.world.floor1?.objective;
+    const bossEid = objective?.staircaseBossEid ?? null;
+    if (bossEid === this.previousBossEid) {
+      return;
+    }
+
+    this.previousBossEid = bossEid;
+    if (bossEid === null || !entityExists(this.world.ecs, bossEid)) {
+      return;
+    }
+
+    const x = this.world.stores.position.x[bossEid] ?? 0;
+    const y = this.world.stores.position.y[bossEid] ?? 0;
+
+    this.cameras.main.shake(160, 0.008);
+    this.cameras.main.flash(140, 255, 230, 160);
+
+    const ring = this.add
+      .circle(x, y, 12, 0xffd166, 0.35)
+      .setDepth(880)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const core = this.add
+      .circle(x, y, 4, 0xffffff, 0.95)
+      .setDepth(881)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const burst = this.add
+      .circle(x, y, 20, 0xff6b6b, 0.18)
+      .setDepth(879)
+      .setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: [ring, core, burst],
+      scale: { from: 0.35, to: 4.5 },
+      alpha: { from: 1, to: 0 },
+      duration: 720,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        ring.destroy();
+        core.destroy();
+        burst.destroy();
+      },
+    });
   }
 
   /** Set a debug flag at runtime. Safe to call any time after create(). */
@@ -362,6 +487,44 @@ export class MainGameScene extends Phaser.Scene {
       .setDepth(1100)
       .setScrollFactor(0)
       .setVisible(false);
+
+    const bossBarWidth = 360;
+    const bossBarX = GAME.WIDTH / 2 - bossBarWidth / 2;
+    const bossBarY = 16;
+    this.bossHealthShell = this.add
+      .rectangle(bossBarX + bossBarWidth / 2, bossBarY + 10, bossBarWidth + 4, 24, 0x111827, 0.92)
+      .setStrokeStyle(2, 0x4b5563)
+      .setScrollFactor(0)
+      .setDepth(1000)
+      .setVisible(false);
+    this.bossHealthFill = this.add
+      .rectangle(bossBarX, bossBarY + 10, bossBarWidth, 20, 0xf97316)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(1001)
+      .setVisible(false);
+    this.bossHealthLabel = this.add
+      .text(GAME.WIDTH / 2, bossBarY, 'BOSS', {
+        fontFamily: 'monospace',
+        fontSize: '12px',
+        color: '#fde68a',
+      })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(1001)
+      .setVisible(false);
+    this.bossHealthName = this.add
+      .text(GAME.WIDTH / 2, bossBarY + 28, 'Rat-Slime Hybrid', {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        color: '#f8fafc',
+        backgroundColor: '#0f172acc',
+        padding: { x: 6, y: 3 },
+      })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(1001)
+      .setVisible(false);
   }
 
   private processLoadoutInput(): void {
@@ -402,6 +565,46 @@ export class MainGameScene extends Phaser.Scene {
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.updateDoorOverlay();
     this.cameras.main.setBounds(0, 0, floorMap.widthPx, floorMap.heightPx);
+    this.cameras.main.setZoom(2.0);
+  }
+
+  private ensureUiCamera(): void {
+    if (this.uiCamera) {
+      return;
+    }
+    this.uiCamera = this.cameras.add(0, 0, GAME.WIDTH, GAME.HEIGHT, false, 'ui');
+    this.uiCamera.setScroll(0, 0);
+    this.uiCamera.setZoom(1);
+    this.uiCamera.roundPixels = true;
+  }
+
+  private refreshCameraMasks(): void {
+    const mainCamera = this.cameras.main;
+    if (!mainCamera) {
+      return;
+    }
+    this.ensureUiCamera();
+    const uiCamera = this.uiCamera;
+    if (!uiCamera) {
+      return;
+    }
+
+    this.uiMaskIgnoreList.length = 0;
+    this.worldMaskIgnoreList.length = 0;
+    for (const object of this.children.list) {
+      const depth = (object as { depth?: number }).depth ?? 0;
+      if (depth >= UI_DEPTH_CUTOFF) {
+        this.uiMaskIgnoreList.push(object);
+      } else {
+        this.worldMaskIgnoreList.push(object);
+      }
+    }
+    if (this.uiMaskIgnoreList.length > 0) {
+      mainCamera.ignore(this.uiMaskIgnoreList);
+    }
+    if (this.worldMaskIgnoreList.length > 0) {
+      uiCamera.ignore(this.worldMaskIgnoreList);
+    }
   }
 
   private openLoadoutModal(): void {
@@ -551,16 +754,10 @@ export class MainGameScene extends Phaser.Scene {
     this.stairsLabel.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
   }
 
-  private formatRemainingMs(remainingMs: number): string {
-    const totalSec = Math.max(0, Math.ceil(remainingMs / 1000));
-    const min = Math.floor(totalSec / 60);
-    const sec = totalSec % 60;
-    return `${min}:${sec.toString().padStart(2, '0')}`;
-  }
-
   private updateOverlayText(): void {
     // HUD (health bar, floor timer, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
+    this.updateBossHealthBar();
 
     if (!this.world.floor1) {
       this.objectiveText?.setText(`State: ${this.world.state}`);
@@ -569,16 +766,22 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     const objective = this.world.floor1.objective;
+    const totalKills = objective.ratsKilled + objective.slimesKilled;
+    const requiredTotalKills = objective.requiredRats + objective.requiredSlimes;
+    const killProgress = Math.min(totalKills, requiredTotalKills);
+    const questStatus = !objective.questAccepted
+      ? 'Quest: talk to Tutorial Goon'
+      : objective.questCompleted
+        ? 'Quest: complete'
+        : `Quest: kill rats + slimes ${killProgress}/${requiredTotalKills}`;
     const stairStatus = objective.staircaseSpawned
-      ? objective.staircaseLocked
-        ? 'Stairs: locked (kill Large Slime Rat boss)'
-        : 'Stairs: unlocked'
-      : objective.staircaseSpawnStartedMs !== null
-        ? `Stairs spawn in: ${this.formatRemainingMs(objective.staircaseSpawnRemainingMs ?? 0)}`
-        : 'Stairs: complete objectives to begin spawn countdown';
+      ? 'Stairs: spawned in boss room'
+      : 'Stairs: defeat the boss to spawn';
     this.objectiveText?.setText(
       [
         `Floor 1 Tutorial`,
+        questStatus,
+        `Kill progress: ${killProgress}/${requiredTotalKills}`,
         `Rats: ${objective.ratsKilled}/${objective.requiredRats}`,
         `Slimes: ${objective.slimesKilled}/${objective.requiredSlimes}`,
         `Gold: ${objective.goldCollected}/${objective.requiredGold}`,
@@ -607,7 +810,40 @@ export class MainGameScene extends Phaser.Scene {
     this.loadoutText?.setVisible(false);
   }
 
+  private updateBossHealthBar(): void {
+    const objective = this.world.floor1?.objective;
+    const bossEid = objective?.staircaseBossEid ?? null;
+    const bossAlive = bossEid !== null && entityExists(this.world.ecs, bossEid);
+    const barVisible = !!objective?.bossBattleStarted && bossAlive;
+    const shell = this.bossHealthShell;
+    const fill = this.bossHealthFill;
+    const label = this.bossHealthLabel;
+    const name = this.bossHealthName;
+    if (!shell || !fill || !label || !name) {
+      return;
+    }
+
+    shell.setVisible(barVisible);
+    fill.setVisible(barVisible);
+    label.setVisible(barVisible);
+    name.setVisible(barVisible);
+    if (!barVisible || bossEid === null) {
+      return;
+    }
+
+    const current = this.world.stores.health.current[bossEid] ?? 0;
+    const max = Math.max(1, this.world.stores.health.max[bossEid] ?? 1);
+    const pct = Math.max(0, Math.min(1, current / max));
+    const width = 360;
+    fill.setSize(Math.max(1, Math.round(width * pct)), 20);
+    fill.setFillStyle(pct > 0.5 ? 0x22c55e : pct >= 0.25 ? 0xf59e0b : 0xef4444);
+    name.setText(`Rat-Slime Hybrid  ${Math.ceil(current)} / ${Math.ceil(max)}`);
+  }
+
   private updateInteractions(): void {
+    const tapped = this.tappedInteraction;
+    this.tappedInteraction = false;
+
     if (!this.world.floor1 || this.world.state !== 'playing') {
       this.interactionHint?.setVisible(false);
       this.npcDialogueText?.setVisible(false);
@@ -627,6 +863,41 @@ export class MainGameScene extends Phaser.Scene {
       }
     }
 
+    // Active conversation: game is frozen until the player advances/closes dialogue.
+    if (this.conversationNpcEid !== null) {
+      const instance = this.world.npcs.get(this.conversationNpcEid);
+      if (!instance || !instance.nearbyPlayer) {
+        this.conversationNpcEid = null;
+        this.npcDialogueText?.setVisible(false);
+      } else {
+        const def = getNpcDef(instance.defId);
+        const activeDialogue = this.resolveDialogueLines(instance.defId);
+        this.interactionHint?.setText('[E] Next  [Esc] Close').setVisible(true);
+
+        if (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc)) {
+          this.conversationNpcEid = null;
+          this.npcDialogueText?.setVisible(false);
+          return;
+        }
+
+        if (
+          (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
+          activeDialogue.length > 0
+        ) {
+          const nextIndex = instance.dialogueIndex + 1;
+          if (nextIndex >= activeDialogue.length) {
+            this.conversationNpcEid = null;
+            this.npcDialogueText?.setVisible(false);
+            return;
+          }
+          instance.dialogueIndex = nextIndex;
+          const line = activeDialogue[instance.dialogueIndex] ?? '';
+          this.npcDialogueText?.setText(`${def?.name ?? 'NPC'}: "${line}"`).setVisible(true);
+        }
+      }
+      return;
+    }
+
     // Check stair proximity (only when unlocked and not yet discovered)
     const nearStairs =
       objective.staircaseUnlocked &&
@@ -638,25 +909,62 @@ export class MainGameScene extends Phaser.Scene {
     if (nearNpcEid >= 0) {
       this.interactionHint?.setText('[E] Talk').setVisible(true);
 
-      if (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE)) {
+      if (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) {
         const instance = this.world.npcs.get(nearNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
-          if (def && def.dialogue.length > 0) {
-            instance.dialogueIndex = (instance.dialogueIndex + 1) % def.dialogue.length;
-            const line = def.dialogue[instance.dialogueIndex]?.text ?? '';
-            this.npcDialogueText?.setText(`${def.name}: "${line}"`).setVisible(true);
+          const activeDialogue = this.resolveDialogueLines(instance.defId);
+          if (def && activeDialogue.length > 0) {
+            this.conversationNpcEid = nearNpcEid;
+            objective.questAccepted = true;
+            instance.dialogueIndex = 0;
+            const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
+            this.npcDialogueText?.setText(`${def.name}: "${text}"`).setVisible(true);
           }
         }
       }
     } else if (nearStairs) {
       this.interactionHint?.setText('[E] Descend').setVisible(true);
       this.npcDialogueText?.setVisible(false);
+      if (
+        (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
+        this.modalPicker
+      ) {
+        if (!this.modalPicker.isOpen()) {
+          this.modalPicker.open(
+            {
+              title: 'Proceed to the next floor?',
+              subtitle: 'You are at the stairs.',
+              body: 'The boss is defeated. Are you ready to descend to the next floor?',
+              options: [
+                { id: 'confirm-descend', label: 'Yes, descend now', description: 'Start Floor 2.' },
+              ],
+              allowCancel: true,
+              initialSelectedId: 'confirm-descend',
+            },
+            {
+              onConfirm: () => {
+                this.options.onStairDescend?.(this.world, this.playerEid);
+                this.updateOverlayText();
+              },
+            },
+          );
+        }
+      }
     } else {
       this.interactionHint?.setVisible(false);
       if (nearNpcEid < 0) {
         this.npcDialogueText?.setVisible(false);
       }
     }
+  }
+
+  private resolveDialogueLines(defId: string): string[] {
+    const objective = this.world.floor1?.objective;
+    if (defId === 'tutorial-goon' && objective?.staircaseBossDefeated) {
+      return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
+    }
+    const def = getNpcDef(defId);
+    return def?.dialogue.map((line) => line.text) ?? [];
   }
 }
