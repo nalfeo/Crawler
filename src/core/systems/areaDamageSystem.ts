@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { AreaDamage, Enemy, Health, Owner, Player, Position, Team } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 
@@ -44,6 +45,14 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
     const damage = areaDamage.damage[eid] ?? 0;
     const isHitOnce = (areaDamage.hitOnce[eid] ?? 0) !== 0;
     const areaTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
+    const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? -1) : -1;
+    if (
+      ownerEid >= 0 &&
+      hasComponent(world.ecs, ownerEid, Player) &&
+      isEntityInSafeSpace(world, ownerEid)
+    ) {
+      continue;
+    }
     const arcHalfRad = areaDamage.arcHalfRad[eid] ?? 0;
     const arcCenterRad = areaDamage.arcCenterRad[eid] ?? 0;
     const isArc = arcHalfRad > 0 && arcHalfRad < Math.PI;
@@ -69,8 +78,7 @@ export function areaDamageSystem(world: GameWorld, collisionResult: CollisionRes
       }
 
       // Skip owner
-      if (hasComponent(world.ecs, eid, Owner)) {
-        const ownerEid = world.stores.owner.eid[eid] ?? 0;
+      if (ownerEid >= 0) {
         if (target === ownerEid) {
           continue;
         }

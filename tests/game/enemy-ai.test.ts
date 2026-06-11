@@ -90,6 +90,23 @@ function createObstacleMap(): FloorMap {
   return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(144), { x: 2, y: 2 });
 }
 
+function createFullyBlockedMap(): FloorMap {
+  const config: MapConfig = {
+    widthTiles: 10,
+    heightTiles: 10,
+    tileSizePx: 32,
+    biome: BiomeType.DUNGEON,
+    seed: 7,
+    roomWidthRange: [4, 6],
+    roomHeightRange: [4, 6],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(10, 10);
+  tileMap.fill(TilePresets.WALL);
+  return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(100), { x: 1, y: 1 });
+}
+
 function runTicks(world: ReturnType<typeof createTestWorld>, ticks: number): void {
   for (let i = 0; i < ticks; i += 1) {
     world.frameCount += 1;
@@ -204,6 +221,64 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
 
+  it('pathing ranged enemies strafe while inside attack range band', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    const enemy = spawnBehaviorEnemy(
+      world,
+      9 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.RANGED,
+      2,
+      500,
+      120,
+      { persona: PATH_PERSONA.NAVIGATOR },
+    );
+
+    enemyAISystem(world);
+
+    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.1);
+  });
+
+  it('pathing ranged enemies retreat when too close to the player', () => {
+    const world = createTestWorld();
+    world.floorMap = makePathingFloorMap(true);
+    spawnPlayer(world, 7 * 32 + 16, 5 * 32 + 16);
+    const enemy = spawnBehaviorEnemy(
+      world,
+      7 * 32 + 16,
+      5 * 32 + 16,
+      20,
+      AI_TYPE.RANGED,
+      2,
+      500,
+      160,
+      { persona: PATH_PERSONA.NAVIGATOR },
+    );
+
+    enemyAISystem(world);
+
+    expect(
+      Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+    ).toBe(0);
+  });
+
+  it('keeps pathing flanker enemies idle when no traversable target tile exists', () => {
+    const world = createTestWorld();
+    world.floorMap = createFullyBlockedMap();
+    spawnPlayer(world, 5 * 32, 5 * 32);
+    const enemy = spawnBehaviorEnemy(world, 4 * 32, 4 * 32, 20, AI_TYPE.CHASE, 2, 500, 0, {
+      persona: PATH_PERSONA.FLANKER,
+    });
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBe(0);
+    expect(world.stores.velocity.y[enemy]).toBe(0);
+  });
+
   it('affects only enemies with the EnemyBehavior component', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
@@ -234,18 +309,19 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.y[swarmEnemy]).toBeCloseTo(0);
   });
 
-  it('stops chase enemies when the player is outside aggro range', () => {
+  it('makes chase enemies wander when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const enemy = spawnBehaviorEnemy(world, 150, 0, 20, AI_TYPE.CHASE, 2, 100, 0);
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
-    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+    expect(
+      Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+    ).toBeGreaterThan(0.1);
   });
 
-  it('stops swarm enemies when the player is outside aggro range', () => {
+  it('makes swarm enemies wander when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const enemy = spawnBehaviorEnemy(world, 180, 0, 20, AI_TYPE.SWARM, 2, 100, 0);
@@ -253,19 +329,21 @@ describe('enemyAISystem', () => {
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
-    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+    expect(
+      Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+    ).toBeGreaterThan(0.1);
   });
 
-  it('ranged enemies do not detect player outside aggro range', () => {
+  it('makes ranged enemies wander when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     const enemy = spawnBehaviorEnemy(world, 400, 0, 20, AI_TYPE.RANGED, 2, 100, 150);
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
-    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+    expect(
+      Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+    ).toBeGreaterThan(0.1);
   });
 
   it('keeps room enemies idle until their room door opens', () => {
@@ -357,7 +435,7 @@ describe('enemyAISystem', () => {
     expect(Math.hypot(vxB, vyB)).toBeLessThanOrEqual(2 + 0.001);
   });
 
-  it('does not apply separation to de-aggroed enemies', () => {
+  it('keeps de-aggroed enemies wandering independently', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Two chase enemies at same position but outside aggro range
@@ -366,11 +444,16 @@ describe('enemyAISystem', () => {
 
     enemyAISystem(world);
 
-    // De-aggroed enemies should remain stationary
-    expect(world.stores.velocity.x[enemyA]).toBeCloseTo(0);
-    expect(world.stores.velocity.y[enemyA]).toBeCloseTo(0);
-    expect(world.stores.velocity.x[enemyB]).toBeCloseTo(0);
-    expect(world.stores.velocity.y[enemyB]).toBeCloseTo(0);
+    const speedA = Math.hypot(
+      world.stores.velocity.x[enemyA] ?? 0,
+      world.stores.velocity.y[enemyA] ?? 0,
+    );
+    const speedB = Math.hypot(
+      world.stores.velocity.x[enemyB] ?? 0,
+      world.stores.velocity.y[enemyB] ?? 0,
+    );
+    expect(speedA).toBeGreaterThan(0.1);
+    expect(speedB).toBeGreaterThan(0.1);
   });
 
   it('navigator personas route through doorways instead of getting stuck on pillars', () => {

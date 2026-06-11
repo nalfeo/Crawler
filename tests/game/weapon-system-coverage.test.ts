@@ -170,6 +170,7 @@ describe('weaponEntitySystem coverage paths', () => {
   it('uses owner team for melee attacks and falls back to player team', () => {
     const world = createTestWorld();
     const owner = spawnPlayer(world, 0, 0);
+    // Enemy at 50px is still reachable once melee gate includes enemy collision radius.
     spawnEnemy(world, 50, 0, 50);
     addComponent(world.ecs, owner, set(Team, { id: TeamId.ENEMY }));
     spawnWeapon(world, owner, WeaponType.MELEE, 15, 10, 33, 0, TeamId.PLAYER);
@@ -183,6 +184,7 @@ describe('weaponEntitySystem coverage paths', () => {
     expect(world.stores.areaDamage.radius[firstArea!]).toBe(33);
 
     const owner2 = spawnPlayer(world, 5, 5);
+    spawnEnemy(world, 25, 5, 50);
     spawnWeapon(world, owner2, WeaponType.MELEE, 10, 10, 20, 0, TeamId.PLAYER);
     world.elapsedMs = 20;
     weaponEntitySystem(world);

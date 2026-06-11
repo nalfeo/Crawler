@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query } from 'bitecs';
 import { Enemy, Health, LineDamage, Owner, Player, Position, Team } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
+import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 
 /** Distance from a point to a line segment. */
@@ -59,6 +60,13 @@ export function beamSystem(world: GameWorld): void {
     const damage = lineDamage.damage[eid] ?? 0;
     const beamTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? 0) : -1;
+    if (
+      ownerEid >= 0 &&
+      hasComponent(world.ecs, ownerEid, Player) &&
+      isEntityInSafeSpace(world, ownerEid)
+    ) {
+      continue;
+    }
 
     const bx = ax + dirX * length;
     const by = ay + dirY * length;

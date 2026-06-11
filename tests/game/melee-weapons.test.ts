@@ -21,8 +21,8 @@ describe('melee weapons', () => {
   it('sword spawns a MeleeSwing entity at player position', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 100, 100);
-    // Place enemy so swing has a direction
-    spawnEnemy(world, 200, 100, 50);
+    // Place enemy within sword gate range (5ft * 8px * 1.5 = 60px)
+    spawnEnemy(world, 150, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -83,7 +83,8 @@ describe('melee weapons', () => {
   it('sword blade follows player position', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 100, 100);
-    spawnEnemy(world, 200, 100, 50);
+    // Place enemy within sword gate range (5ft * 8px * 1.5 = 60px)
+    spawnEnemy(world, 150, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -125,7 +126,8 @@ describe('melee weapons', () => {
   it('sword respects cooldown', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);
-    spawnEnemy(world, 200, 100, 50);
+    // Place enemy within sword gate range (5ft * 8px * 1.5 = 60px)
+    spawnEnemy(world, 150, 100, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
