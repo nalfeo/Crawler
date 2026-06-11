@@ -17,6 +17,7 @@ import {
   Sprite,
   DoorState,
   Enemy,
+  Damage,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
@@ -515,6 +516,10 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     width: FLOOR_1_STAIR_BOSS_SPRITE_WIDTH,
     height: FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT,
   });
+
+  // Boss has melee contact damage and can shoot projectiles
+  setComponent(world.ecs, eid, Damage, { amount: 12 });
+
   return eid;
 }
 
