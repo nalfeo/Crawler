@@ -1,44 +1,61 @@
-import { addComponent, entityExists, hasComponent, query, set, setComponent } from 'bitecs';
+import {
+  addComponent,
+  entityExists,
+  hasComponent,
+  query,
+  removeEntity,
+  set,
+  setComponent,
+} from 'bitecs';
 import { BiomeType, type MapConfig } from '../shared/map-types.js';
 import { getGenerator } from '../core/map/generators/registry.js';
-import { Position, Player, Health, BroadcastScore, Sprite, DoorState } from '../core/components.js';
+import {
+  Position,
+  Player,
+  Health,
+  BroadcastScore,
+  Sprite,
+  DoorState,
+  Enemy,
+} from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { setActiveWeapon } from './weaponSystem.js';
-import { spawnBehaviorEnemy, spawnNpc, createEntity } from '../core/helpers.js';
+import { clearEntityStores, spawnBehaviorEnemy, spawnNpc, createEntity } from '../core/helpers.js';
 import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById } from '../shared/items.js';
-import { PLAYER_SPEED } from '../shared/constants.js';
+import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 
 const FLOOR_1_PROTAGONIST = 'Rhea Vale';
 const FLOOR_1_STARTER_POOL = ['sword', 'knife', 'bow', 'pistol', 'throwing-knife'] as const;
 const FLOOR_1_TIMER_MS = 300_000;
 const FLOOR_1_REQUIRED_RATS = 6;
 const FLOOR_1_REQUIRED_SLIMES = 4;
+const FLOOR_1_REQUIRED_TOTAL_KILLS = 10;
 const FLOOR_1_REQUIRED_GOLD = 15;
 const FLOOR_1_REQUIRED_JUNK = 2;
 const FLOOR_1_MARKER_RADIUS_PX = 64;
 const FLOOR_1_STAIR_SPAWN_COUNTDOWN_MS = 30_000;
 
 const FLOOR_1_MAP_CONFIG: MapConfig = {
-  widthTiles: 40,
-  heightTiles: 23,
+  widthTiles: 120,
+  heightTiles: 70,
   tileSizePx: 32,
   biome: BiomeType.DUNGEON,
   seed: 42,
-  roomWidthRange: [5, 11],
-  roomHeightRange: [5, 11],
-  maxRooms: 16,
+  roomWidthRange: [6, 14],
+  roomHeightRange: [5, 13],
+  maxRooms: 45,
   floorDensity: 0.42,
 };
 
 const RAT_SPAWN_WEIGHT = 0.62;
 const RAT_HP = 20;
-const RAT_SPEED = 1.6;
+const RAT_SPEED = 1.25;
 const RAT_DETECT_RANGE = 420;
 const SLIME_HP = 30;
-const SLIME_SPEED = 1.1;
+const SLIME_SPEED = 0.9;
 const SLIME_DETECT_RANGE = 320;
 const SPRITE_TEX_ENEMY_RAT = 1;
 const SPRITE_TEX_ENEMY_SLIME = 2;
@@ -49,10 +66,14 @@ const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN = 64;
 const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MAX = 110;
 const FLOOR_1_STAIR_BOSS_SPRITE_WIDTH = 30;
 const FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT = 30;
-const FLOOR_1_MAX_ENEMIES = 18;
-const FLOOR_1_SPAWN_INTERVAL_MS = 850;
-const FLOOR_1_SPAWN_RADIUS_MIN = 200;
-const FLOOR_1_SPAWN_RADIUS_MAX = 320;
+const FLOOR_1_ENEMY_CAP = 14;
+const FLOOR_1_SPAWN_INTERVAL_MS = 900;
+const FLOOR_1_CAMERA_ZOOM = 2.0;
+const FLOOR_1_VIEWPORT_WIDTH_PX = GAME.WIDTH / FLOOR_1_CAMERA_ZOOM;
+const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 2;
+const FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 3;
+const FLOOR_1_SPAWN_RADIUS_MIN = 160;
+const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
 const FLOOR_1_PLAYER_HP_BONUS = 20;
 const FLOOR_1_PLAYER_MOVE_SPEED_BONUS = 0.2;
 const FLOOR_1_PLAYER_PICKUP_RANGE_BONUS = 8;
@@ -60,6 +81,59 @@ const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 
 interface Floor1SpawnerState {
   lastSpawnMs: number;
+}
+
+function pruneAmbientOverflow(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+  overflowCount: number,
+): void {
+  if (!world.floor1 || overflowCount <= 0) {
+    return;
+  }
+  const rankedAmbient = [...world.floor1.enemyArchetypes.keys()]
+    .filter((eid) => entityExists(world.ecs, eid))
+    .map((eid) => {
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const dx = ex - playerX;
+      const dy = ey - playerY;
+      return { eid, distanceSq: dx * dx + dy * dy };
+    })
+    .sort((a, b) => b.distanceSq - a.distanceSq);
+  for (let i = 0; i < Math.min(overflowCount, rankedAmbient.length); i += 1) {
+    const victim = rankedAmbient[i]?.eid;
+    if (victim === undefined) {
+      continue;
+    }
+    clearEntityStores(world, victim);
+    removeEntity(world.ecs, victim);
+    world.floor1.enemyArchetypes.delete(victim);
+  }
+}
+
+function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: number): void {
+  if (!world.floor1) {
+    return;
+  }
+  const maxDistanceSq = FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX * FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX;
+  for (const eid of [...world.floor1.enemyArchetypes.keys()]) {
+    if (!entityExists(world.ecs, eid)) {
+      world.floor1.enemyArchetypes.delete(eid);
+      continue;
+    }
+    const ex = world.stores.position.x[eid] ?? 0;
+    const ey = world.stores.position.y[eid] ?? 0;
+    const dx = ex - playerX;
+    const dy = ey - playerY;
+    if (dx * dx + dy * dy <= maxDistanceSq) {
+      continue;
+    }
+    clearEntityStores(world, eid);
+    removeEntity(world.ecs, eid);
+    world.floor1.enemyArchetypes.delete(eid);
+  }
 }
 
 const spawnerStateByWorld = new WeakMap<GameWorld, Floor1SpawnerState>();
@@ -186,6 +260,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     },
     enemyArchetypes: new Map(),
     guideNpcEid: null,
+    bossDoorEids: [],
     objective: {
       requiredRats: FLOOR_1_REQUIRED_RATS,
       requiredSlimes: FLOOR_1_REQUIRED_SLIMES,
@@ -195,8 +270,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircaseSpawnCountdownMs: FLOOR_1_STAIR_SPAWN_COUNTDOWN_MS,
       safeRoomPos,
       staircasePos,
-      welcomeOfficePos: spawn,
+      welcomeOfficePos: safeRoomPos,
       markerRadiusPx: FLOOR_1_MARKER_RADIUS_PX,
+      questAccepted: false,
+      questCompleted: false,
       ratsKilled: 0,
       slimesKilled: 0,
       goldCollected: 0,
@@ -205,9 +282,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircaseSpawnStartedMs: null,
       staircaseSpawnRemainingMs: null,
       staircaseSpawned: false,
-      staircaseLocked: false,
+      staircaseLocked: true,
       staircaseUnlocked: false,
       staircaseDiscovered: false,
+      bossBattleStarted: false,
       staircaseBossEid: null,
       staircaseBossDefeated: false,
     },
@@ -219,12 +297,19 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, false);
+  setGoalFlag(world, 'floor1-defeat-boss', false);
+  setGoalFlag(world, 'floor1-boss-active', false);
 
   // Spawn the tutorial guide NPC near the player's starting position.
-  world.floor1.guideNpcEid = spawnNpc(world, spawn.x + 48, spawn.y, 'tutorial-goon');
+  world.floor1.guideNpcEid = spawnNpc(
+    world,
+    world.floor1.objective.welcomeOfficePos.x,
+    world.floor1.objective.welcomeOfficePos.y,
+    'tutorial-goon',
+  );
 
-  // Initialise the boss-defeat goal flag and lock the boss room doors.
-  setGoalFlag(world, 'floor1-defeat-boss', false);
+  // Keep boss-room doors locked until the Tutorial Goon quest is completed.
+  setGoalFlag(world, 'floor1-goon-quest-complete', false);
   const bossStairRoom = floorMap.bossStairRoom;
   if (bossStairRoom) {
     for (const door of bossStairRoom.doors) {
@@ -237,9 +322,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       setDoorLockConfig(world, doorEid, {
         unlock: {
           operator: 'all',
-          conditions: [{ type: 'goal', goalId: 'floor1-defeat-boss' }],
+          conditions: [{ type: 'goal', goalId: 'floor1-goon-quest-complete' }],
         },
       });
+      world.floor1.bossDoorEids.push(doorEid);
     }
   }
 
@@ -272,6 +358,10 @@ function resolveSpawnPosition(
   playerX: number,
   playerY: number,
 ): { x: number; y: number } {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return { x: playerX + FLOOR_1_SPAWN_RADIUS_MIN, y: playerY };
+  }
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius =
@@ -279,18 +369,65 @@ function resolveSpawnPosition(
       world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - FLOOR_1_SPAWN_RADIUS_MIN);
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
-    if (world.floorMap && world.floorMap.isPassableAt(x, y)) {
-      return { x, y };
+    if (floorMap.isPassableAt(x, y)) {
+      const tile = floorMap.pixelToTile(x, y);
+      const candidate = floorMap.tileToPixel(tile.x, tile.y);
+      if (isInAnyRoom(world, candidate.x, candidate.y)) {
+        return candidate;
+      }
     }
   }
-  return { x: playerX + FLOOR_1_SPAWN_RADIUS_MIN, y: playerY };
+  const viableRooms = floorMap.rooms.filter(
+    (room) => room !== floorMap.safeRoom && room !== floorMap.bossStairRoom,
+  );
+  if (viableRooms.length > 0) {
+    for (let i = 0; i < 32; i += 1) {
+      const room = viableRooms[world.rng.nextInt(0, viableRooms.length - 1)]!;
+      const minX = room.bounds.x + 1;
+      const maxX = Math.max(minX, room.bounds.x + room.bounds.width - 2);
+      const minY = room.bounds.y + 1;
+      const maxY = Math.max(minY, room.bounds.y + room.bounds.height - 2);
+      const tx = world.rng.nextInt(minX, maxX);
+      const ty = world.rng.nextInt(minY, maxY);
+      const candidate = floorMap.tileToPixel(tx, ty);
+      if (floorMap.isPassableAt(candidate.x, candidate.y)) {
+        return candidate;
+      }
+    }
+  }
+  const fallbackTile = floorMap.pixelToTile(playerX + FLOOR_1_SPAWN_RADIUS_MIN, playerY);
+  return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
 }
 
 function resolveBossSpawnPosition(
   world: GameWorld,
+  bossRoom: { bounds: { x: number; y: number; width: number; height: number } } | null,
   stairX: number,
   stairY: number,
 ): { x: number; y: number } {
+  const floorMap = world.floorMap;
+  if (floorMap && bossRoom) {
+    const center = centerOfRoom(bossRoom);
+    const minX = Math.max(bossRoom.bounds.x + 2, center.x - 2);
+    const maxX = Math.min(bossRoom.bounds.x + bossRoom.bounds.width - 3, center.x + 2);
+    const minY = Math.max(bossRoom.bounds.y + 2, center.y - 2);
+    const maxY = Math.min(bossRoom.bounds.y + bossRoom.bounds.height - 3, center.y + 2);
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const tx = world.rng.nextInt(minX, maxX);
+      const ty = world.rng.nextInt(minY, maxY);
+      const candidate = floorMap.tileToPixel(tx, ty);
+      if (floorMap.isPassableAt(candidate.x, candidate.y)) {
+        return candidate;
+      }
+    }
+    const centerCandidate = floorMap.tileToPixel(center.x, center.y);
+    if (floorMap.isPassableAt(centerCandidate.x, centerCandidate.y)) {
+      return centerCandidate;
+    }
+  }
+  if (!floorMap) {
+    return { x: stairX + FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN, y: stairY };
+  }
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius =
@@ -299,11 +436,46 @@ function resolveBossSpawnPosition(
         (FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MAX - FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN);
     const x = stairX + Math.cos(angle) * radius;
     const y = stairY + Math.sin(angle) * radius;
-    if (world.floorMap && world.floorMap.isPassableAt(x, y)) {
-      return { x, y };
+    if (floorMap.isPassableAt(x, y)) {
+      const tile = floorMap.pixelToTile(x, y);
+      return floorMap.tileToPixel(tile.x, tile.y);
     }
   }
-  return { x: stairX + FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN, y: stairY };
+  const fallbackTile = floorMap.pixelToTile(stairX + FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN, stairY);
+  return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
+}
+
+function isInRoom(
+  world: GameWorld,
+  px: number,
+  py: number,
+  room: { bounds: { x: number; y: number; width: number; height: number } } | null,
+): boolean {
+  if (!world.floorMap || !room) return false;
+  const tile = world.floorMap.pixelToTile(px, py);
+  const { x, y, width, height } = room.bounds;
+  return tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height;
+}
+
+function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolean {
+  const floorMap = world.floorMap;
+  const bossRoom = floorMap?.bossStairRoom ?? null;
+  return !!(floorMap && bossRoom && isInRoom(world, px, py, bossRoom));
+}
+
+function isInAnyRoom(world: GameWorld, px: number, py: number): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+  const tile = floorMap.pixelToTile(px, py);
+  for (const room of floorMap.rooms) {
+    const { x, y, width, height } = room.bounds;
+    if (tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function spawnFloor1StairBoss(world: GameWorld): number {
@@ -311,8 +483,10 @@ function spawnFloor1StairBoss(world: GameWorld): number {
   if (!objective) {
     throw new Error('Cannot spawn stair boss without floor1 objective state.');
   }
+  const bossRoom = world.floorMap?.bossStairRoom ?? null;
   const spawnPoint = resolveBossSpawnPosition(
     world,
+    bossRoom,
     objective.staircasePos.x,
     objective.staircasePos.y,
   );
@@ -363,7 +537,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     return;
   }
 
-  if (world.floor1.enemyArchetypes.size >= FLOOR_1_MAX_ENEMIES) {
+  if (world.floor1.enemyArchetypes.size >= FLOOR_1_ENEMY_CAP) {
     return;
   }
 
@@ -380,7 +554,54 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
 
   const playerX = world.stores.position.x[player] ?? 0;
   const playerY = world.stores.position.y[player] ?? 0;
-  const spawnPoint = resolveSpawnPosition(world, playerX, playerY);
+  pruneAmbientOutOfRange(world, playerX, playerY);
+  const totalEnemies = query(world.ecs, [Enemy]).length;
+  if (totalEnemies > FLOOR_1_ENEMY_CAP) {
+    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - FLOOR_1_ENEMY_CAP);
+  }
+  if (query(world.ecs, [Enemy]).length >= FLOOR_1_ENEMY_CAP) {
+    return;
+  }
+  const spawnMaxDistanceSq =
+    FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
+  let spawnPoint = resolveSpawnPosition(world, playerX, playerY);
+  const isInvalidSpawn = (x: number, y: number): boolean => {
+    const dx = x - playerX;
+    const dy = y - playerY;
+    return (
+      dx * dx + dy * dy > spawnMaxDistanceSq ||
+      !isInAnyRoom(world, x, y) ||
+      isInRoom(world, x, y, world.floorMap?.bossStairRoom ?? null) ||
+      isInRoom(world, x, y, world.floorMap?.safeRoom ?? null)
+    );
+  };
+  if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return;
+    }
+    let found = false;
+    for (let i = 0; i < 64; i += 1) {
+      const tx = world.rng.nextInt(0, floorMap.width - 1);
+      const ty = world.rng.nextInt(0, floorMap.height - 1);
+      const candidate = floorMap.tileToPixel(tx, ty);
+      if (
+        !floorMap.isPassableAt(candidate.x, candidate.y) ||
+        isInvalidSpawn(candidate.x, candidate.y)
+      ) {
+        continue;
+      }
+      spawnPoint = candidate;
+      found = true;
+      break;
+    }
+    if (!found) {
+      return;
+    }
+  }
+  if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {
+    return;
+  }
   const archetype: 'rat' | 'slime' = world.rng.next() < RAT_SPAWN_WEIGHT ? 'rat' : 'slime';
   const hp = archetype === 'rat' ? RAT_HP : SLIME_HP;
   const speed = archetype === 'rat' ? RAT_SPEED : SLIME_SPEED;
@@ -485,50 +706,92 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   }
 
   const objective = world.floor1.objective;
+  const totalKills = objective.ratsKilled + objective.slimesKilled;
   const meetsCombat =
+    objective.questAccepted &&
+    totalKills >= FLOOR_1_REQUIRED_TOTAL_KILLS &&
     objective.ratsKilled >= objective.requiredRats &&
     objective.slimesKilled >= objective.requiredSlimes;
   const meetsLoot =
     objective.goldCollected >= objective.requiredGold &&
     objective.junkCollected >= objective.requiredJunk;
-  const staircasePrereqsMet = objective.safeRoomDiscovered && meetsCombat && meetsLoot;
-  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.safeRoomDiscovered`, objective.safeRoomDiscovered);
-  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, meetsCombat);
-  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, meetsLoot);
-  if (
-    staircasePrereqsMet &&
-    objective.staircaseSpawnStartedMs === null &&
-    !objective.staircaseSpawned
-  ) {
-    objective.staircaseSpawnStartedMs = world.elapsedMs;
+
+  if (meetsCombat && !objective.questCompleted) {
+    objective.questCompleted = true;
+    setGoalFlag(world, 'floor1-goon-quest-complete', true);
   }
-  if (!objective.staircaseSpawned && objective.staircaseSpawnStartedMs !== null) {
-    const elapsedSinceStart = Math.max(0, world.elapsedMs - objective.staircaseSpawnStartedMs);
-    const remainingMs = Math.max(0, objective.staircaseSpawnCountdownMs - elapsedSinceStart);
-    objective.staircaseSpawnRemainingMs = remainingMs;
-    if (remainingMs === 0) {
-      objective.staircaseSpawned = true;
-      objective.staircaseLocked = true;
-      objective.staircaseUnlocked = false;
-      objective.staircaseBossDefeated = false;
-      objective.staircaseBossEid = spawnFloor1StairBoss(world);
-      objective.staircaseSpawnRemainingMs = null;
+
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.safeRoomDiscovered`, objective.safeRoomDiscovered);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, objective.questCompleted);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, meetsLoot);
+
+  // Boss battle starts only after the player fully enters the boss room.
+  if (
+    objective.questCompleted &&
+    isFullyInsideBossRoom(world, playerX, playerY) &&
+    !objective.bossBattleStarted
+  ) {
+    objective.bossBattleStarted = true;
+    objective.staircaseLocked = true;
+    objective.staircaseUnlocked = false;
+    setGoalFlag(world, 'floor1-boss-active', true);
+    objective.staircaseBossEid = spawnFloor1StairBoss(world);
+    const floorMap = world.floorMap;
+    const bossRoom = floorMap?.bossStairRoom;
+    if (bossRoom) {
+      for (const door of bossRoom.doors) {
+        floorMap!.tileMap.closeDoor(door.x, door.y);
+      }
+    }
+    // Replace lock config: doors stay locked while boss is active, open once boss defeated.
+    for (const doorEid of world.floor1.bossDoorEids) {
+      world.stores.doorState.isLocked[doorEid] = 1;
+      world.stores.doorState.isOpen[doorEid] = 0;
+      setDoorLockConfig(world, doorEid, {
+        unlock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-defeat-boss' }],
+        },
+        relock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-boss-active' }],
+        },
+      });
     }
   }
 
-  if (objective.staircaseSpawned && objective.staircaseLocked) {
-    const bossEid = objective.staircaseBossEid;
-    const bossAlive = bossEid !== null && entityExists(world.ecs, bossEid);
-    if (!bossAlive) {
-      objective.staircaseLocked = false;
-      objective.staircaseUnlocked = true;
-      objective.staircaseBossDefeated = true;
-      objective.staircaseBossEid = null;
-      // Unlock boss room doors via goal flag (doorSystem picks this up automatically).
-      setGoalFlag(world, 'floor1-defeat-boss', true);
+  const bossEid = objective.staircaseBossEid;
+  const bossAlive = bossEid !== null && entityExists(world.ecs, bossEid);
+  if (objective.bossBattleStarted && !bossAlive && !objective.staircaseSpawned) {
+    objective.staircaseSpawned = true;
+    objective.staircaseLocked = false;
+    objective.staircaseUnlocked = true;
+    objective.staircaseBossDefeated = true;
+    objective.staircaseBossEid = null;
+    setGoalFlag(world, 'floor1-boss-active', false);
+    const floorMap = world.floorMap;
+    if (floorMap?.bossStairRoom) {
+      for (const door of floorMap.bossStairRoom.doors) {
+        floorMap.tileMap.openDoor(door.x, door.y);
+      }
     }
+    for (const doorEid of world.floor1.bossDoorEids) {
+      world.stores.doorState.isLocked[doorEid] = 0;
+      world.stores.doorState.isOpen[doorEid] = 1;
+    }
+    setGoalFlag(world, 'floor1-defeat-boss', true);
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
+
+  // Auto-discover staircase if player is already standing on it.
+  if (objective.staircaseSpawned && objective.staircaseUnlocked && !objective.staircaseDiscovered) {
+    const stairDx = playerX - objective.staircasePos.x;
+    const stairDy = playerY - objective.staircasePos.y;
+    if (Math.hypot(stairDx, stairDy) <= objective.markerRadiusPx) {
+      confirmFloor1StairDescend(world, player);
+      return;
+    }
+  }
 
   if (world.elapsedMs >= objective.deadlineMs && !objective.staircaseDiscovered) {
     world.floor1.failReason = 'stair_timeout';
@@ -536,15 +799,30 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
     finalizeRunSummary(world, 'failed_timeout');
     return;
   }
+}
 
-  if (objective.staircaseSpawned && objective.staircaseUnlocked) {
-    const stairDx = playerX - objective.staircasePos.x;
-    const stairDy = playerY - objective.staircasePos.y;
-    if (Math.hypot(stairDx, stairDy) <= objective.markerRadiusPx) {
-      objective.staircaseDiscovered = true;
-      setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, true);
-      world.state = 'safe_room';
-      finalizeRunSummary(world, 'cleared_floor');
-    }
+export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): boolean {
+  if (!world.floor1 || world.state !== 'playing') {
+    return false;
   }
+  const objective = world.floor1.objective;
+  if (
+    !objective.staircaseSpawned ||
+    !objective.staircaseUnlocked ||
+    objective.staircaseDiscovered
+  ) {
+    return false;
+  }
+  const playerX = world.stores.position.x[playerEid] ?? 0;
+  const playerY = world.stores.position.y[playerEid] ?? 0;
+  const stairDx = playerX - objective.staircasePos.x;
+  const stairDy = playerY - objective.staircasePos.y;
+  if (Math.hypot(stairDx, stairDy) > objective.markerRadiusPx) {
+    return false;
+  }
+  objective.staircaseDiscovered = true;
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, true);
+  world.state = 'safe_room';
+  finalizeRunSummary(world, 'cleared_floor');
+  return true;
 }

@@ -11,6 +11,7 @@ import {
   selectFloor1StarterWeapon,
   weaponSystem,
 } from './game/index.js';
+import { confirmFloor1StairDescend } from './game/floor1Scenario.js';
 import {
   createLogger,
   getGlobalLogLevel,
@@ -47,6 +48,7 @@ const config: Phaser.Types.Core.GameConfig = {
     new MainGameScene({
       configureWorld: initializeFloor1Scenario,
       selectLoadoutOption: selectFloor1StarterWeapon,
+      onStairDescend: confirmFloor1StairDescend,
       preSystems: [
         statsSystem,
         floor1PlayerStatSystem,
