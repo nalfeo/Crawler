@@ -501,13 +501,13 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     objective.staircasePos.x,
     objective.staircasePos.y,
   );
-  // Boss uses ranged behavior so it both chases into range and fires slime shots.
+  // Boss uses chaser movement and fires independently via attackRange + cooldown.
   const eid = spawnBehaviorEnemy(
     world,
     spawnPoint.x,
     spawnPoint.y,
     FLOOR_1_STAIR_BOSS_HP,
-    AI_TYPE.RANGED,
+    AI_TYPE.CHASE,
     FLOOR_1_STAIR_BOSS_SPEED,
     FLOOR_1_STAIR_BOSS_DETECT_RANGE,
     280,
