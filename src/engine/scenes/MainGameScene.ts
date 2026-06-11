@@ -51,7 +51,7 @@ export interface MainGameSceneOptions {
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
-  onStairDescend?: (world: GameWorld, playerEid: number) => void;
+  onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
 }
 
 export class MainGameScene extends Phaser.Scene {
@@ -979,7 +979,15 @@ export class MainGameScene extends Phaser.Scene {
             },
             {
               onConfirm: () => {
-                this.options.onStairDescend?.(this.world, this.playerEid);
+                const descended = this.options.onStairDescend?.(this.world, this.playerEid);
+                if (
+                  descended !== false &&
+                  this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
+                  !this.floorCompletionMessageShown
+                ) {
+                  this.floorCompletionMessagePending = true;
+                  this.time.delayedCall(0, () => this.showFloorCompletionMessageIfNeeded());
+                }
                 this.updateOverlayText();
               },
             },
