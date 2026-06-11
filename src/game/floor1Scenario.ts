@@ -67,6 +67,7 @@ const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN = 64;
 const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MAX = 110;
 const FLOOR_1_STAIR_BOSS_SPRITE_WIDTH = 30;
 const FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT = 30;
+const FLOOR_1_STAIR_BOSS_FIREBALL_COOLDOWN_MS = 5000;
 const FLOOR_1_ENEMY_CAP = 14;
 const FLOOR_1_SPAWN_INTERVAL_MS = 900;
 const FLOOR_1_CAMERA_ZOOM = 2.0;
@@ -524,8 +525,8 @@ function spawnFloor1StairBoss(world: GameWorld): number {
   // Keep boss aggro active during the locked-room fight.
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
 
-  // Boss fires projectiles every 5 seconds.
-  world.stores.enemyBehavior.fireCooldownMs[eid] = 5000;
+  // Boss fires acid projectiles every 5 seconds.
+  world.stores.enemyBehavior.fireCooldownMs[eid] = FLOOR_1_STAIR_BOSS_FIREBALL_COOLDOWN_MS;
 
   return eid;
 }
