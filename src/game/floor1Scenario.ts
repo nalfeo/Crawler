@@ -17,6 +17,7 @@ import {
   Sprite,
   DoorState,
   Enemy,
+  Damage,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
@@ -66,6 +67,7 @@ const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN = 64;
 const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MAX = 110;
 const FLOOR_1_STAIR_BOSS_SPRITE_WIDTH = 30;
 const FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT = 30;
+const FLOOR_1_STAIR_BOSS_FIREBALL_COOLDOWN_MS = 5000;
 const FLOOR_1_ENEMY_CAP = 14;
 const FLOOR_1_SPAWN_INTERVAL_MS = 900;
 const FLOOR_1_CAMERA_ZOOM = 2.0;
@@ -460,7 +462,16 @@ function isInRoom(
 function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolean {
   const floorMap = world.floorMap;
   const bossRoom = floorMap?.bossStairRoom ?? null;
-  return !!(floorMap && bossRoom && isInRoom(world, px, py, bossRoom));
+  if (!floorMap || !bossRoom || !isInRoom(world, px, py, bossRoom)) {
+    return false;
+  }
+  const playerTile = floorMap.pixelToTile(px, py);
+  for (const door of bossRoom.doors) {
+    if (playerTile.x === door.x && playerTile.y === door.y) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function isInAnyRoom(world: GameWorld, px: number, py: number): boolean {
@@ -490,6 +501,7 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     objective.staircasePos.x,
     objective.staircasePos.y,
   );
+  // Boss uses chaser movement and fires independently via attackRange + cooldown.
   const eid = spawnBehaviorEnemy(
     world,
     spawnPoint.x,
@@ -498,14 +510,60 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     AI_TYPE.CHASE,
     FLOOR_1_STAIR_BOSS_SPEED,
     FLOOR_1_STAIR_BOSS_DETECT_RANGE,
-    0,
+    280,
   );
   setComponent(world.ecs, eid, Sprite, {
     textureId: SPRITE_TEX_ENEMY_SLIME,
     width: FLOOR_1_STAIR_BOSS_SPRITE_WIDTH,
     height: FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT,
   });
+
+  // Boss has melee contact damage for swipe attacks.
+  setComponent(world.ecs, eid, Damage, { amount: 12 });
+
+  // Keep boss aggro active during the locked-room fight.
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+
+  // Boss fires acid projectiles every 5 seconds.
+  world.stores.enemyBehavior.fireCooldownMs[eid] = FLOOR_1_STAIR_BOSS_FIREBALL_COOLDOWN_MS;
+
   return eid;
+}
+
+function beginFloor1BossBattle(world: GameWorld): void {
+  const floor1 = world.floor1;
+  const objective = floor1?.objective;
+  if (!floor1 || !objective || objective.bossBattleStarted) {
+    return;
+  }
+
+  objective.bossBattleStarted = true;
+  objective.staircaseLocked = true;
+  objective.staircaseUnlocked = false;
+  setGoalFlag(world, 'floor1-boss-active', true);
+  objective.staircaseBossEid = spawnFloor1StairBoss(world);
+  const floorMap = world.floorMap;
+  const bossRoom = floorMap?.bossStairRoom;
+  if (bossRoom) {
+    for (const door of bossRoom.doors) {
+      floorMap!.tileMap.closeDoor(door.x, door.y);
+    }
+  }
+  // Replace lock config: doors stay locked while boss is active, open once boss defeated.
+  for (const doorEid of floor1.bossDoorEids) {
+    world.stores.doorState.isLocked[doorEid] = 1;
+    world.stores.doorState.isOpen[doorEid] = 0;
+    setDoorLockConfig(world, doorEid, {
+      unlock: {
+        operator: 'all',
+        conditions: [{ type: 'goal', goalId: 'floor1-defeat-boss' }],
+      },
+      relock: {
+        operator: 'all',
+        conditions: [{ type: 'goal', goalId: 'floor1-boss-active' }],
+      },
+    });
+  }
 }
 
 export function floor1PlayerStatSystem(world: GameWorld): void {
@@ -731,33 +789,7 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
     isFullyInsideBossRoom(world, playerX, playerY) &&
     !objective.bossBattleStarted
   ) {
-    objective.bossBattleStarted = true;
-    objective.staircaseLocked = true;
-    objective.staircaseUnlocked = false;
-    setGoalFlag(world, 'floor1-boss-active', true);
-    objective.staircaseBossEid = spawnFloor1StairBoss(world);
-    const floorMap = world.floorMap;
-    const bossRoom = floorMap?.bossStairRoom;
-    if (bossRoom) {
-      for (const door of bossRoom.doors) {
-        floorMap!.tileMap.closeDoor(door.x, door.y);
-      }
-    }
-    // Replace lock config: doors stay locked while boss is active, open once boss defeated.
-    for (const doorEid of world.floor1.bossDoorEids) {
-      world.stores.doorState.isLocked[doorEid] = 1;
-      world.stores.doorState.isOpen[doorEid] = 0;
-      setDoorLockConfig(world, doorEid, {
-        unlock: {
-          operator: 'all',
-          conditions: [{ type: 'goal', goalId: 'floor1-defeat-boss' }],
-        },
-        relock: {
-          operator: 'all',
-          conditions: [{ type: 'goal', goalId: 'floor1-boss-active' }],
-        },
-      });
-    }
+    beginFloor1BossBattle(world);
   }
 
   const bossEid = objective.staircaseBossEid;
@@ -783,16 +815,6 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
 
-  // Auto-discover staircase if player is already standing on it.
-  if (objective.staircaseSpawned && objective.staircaseUnlocked && !objective.staircaseDiscovered) {
-    const stairDx = playerX - objective.staircasePos.x;
-    const stairDy = playerY - objective.staircasePos.y;
-    if (Math.hypot(stairDx, stairDy) <= objective.markerRadiusPx) {
-      confirmFloor1StairDescend(world, player);
-      return;
-    }
-  }
-
   if (world.elapsedMs >= objective.deadlineMs && !objective.staircaseDiscovered) {
     world.floor1.failReason = 'stair_timeout';
     world.state = 'game_over';
@@ -801,7 +823,35 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   }
 }
 
-export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): boolean {
+export function startFloor1BossEncounter(world: GameWorld, playerEid: number): boolean {
+  const objective = world.floor1?.objective;
+  const floorMap = world.floorMap;
+  const bossRoom = floorMap?.bossStairRoom;
+  if (!objective || !floorMap || !bossRoom || !entityExists(world.ecs, playerEid)) {
+    return false;
+  }
+
+  objective.questAccepted = true;
+  objective.questCompleted = true;
+  objective.ratsKilled = Math.max(objective.ratsKilled, objective.requiredRats);
+  objective.slimesKilled = Math.max(objective.slimesKilled, objective.requiredSlimes);
+  objective.goldCollected = Math.max(objective.goldCollected, objective.requiredGold);
+  objective.junkCollected = Math.max(objective.junkCollected, objective.requiredJunk);
+  setGoalFlag(world, 'floor1-goon-quest-complete', true);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, true);
+  setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);
+
+  const center = centerOfRoom(bossRoom);
+  const bossEntryPoint = floorMap.tileToPixel(center.x, center.y);
+  setComponent(world.ecs, playerEid, Position, bossEntryPoint);
+  world.stores.velocity.x[playerEid] = 0;
+  world.stores.velocity.y[playerEid] = 0;
+
+  beginFloor1BossBattle(world);
+  return true;
+}
+
+export function confirmFloor1StairDescend(world: GameWorld, _playerEid: number): boolean {
   if (!world.floor1 || world.state !== 'playing') {
     return false;
   }
@@ -811,13 +861,6 @@ export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): 
     !objective.staircaseUnlocked ||
     objective.staircaseDiscovered
   ) {
-    return false;
-  }
-  const playerX = world.stores.position.x[playerEid] ?? 0;
-  const playerY = world.stores.position.y[playerEid] ?? 0;
-  const stairDx = playerX - objective.staircasePos.x;
-  const stairDy = playerY - objective.staircasePos.y;
-  if (Math.hypot(stairDx, stairDy) > objective.markerRadiusPx) {
     return false;
   }
   objective.staircaseDiscovered = true;
