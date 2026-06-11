@@ -127,6 +127,8 @@ export class MainGameScene extends Phaser.Scene {
   /** Screen-space NPC dialogue text shown while a dialogue line is active. */
   private npcDialogueText?: Phaser.GameObjects.Text;
 
+  private floorCompletionScreen?: Phaser.GameObjects.Container;
+
   /** Screen-space boss health bar shown during the Floor 1 boss fight. */
   private bossHealthShell?: Phaser.GameObjects.Rectangle;
 
@@ -219,7 +221,7 @@ export class MainGameScene extends Phaser.Scene {
             };
             this.world.floor1.runSummary.outcome = 'cleared_floor';
             this.floorCompletionMessagePending = true;
-            this.showFloorCompletionMessageIfNeeded();
+            this.showFloorCompletionScreenIfNeeded();
           }
         },
       };
@@ -240,6 +242,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel?.destroy();
       this.interactionHint?.destroy();
       this.npcDialogueText?.destroy();
+      this.floorCompletionScreen?.destroy();
       this.bossHealthShell?.destroy();
       this.bossHealthFill?.destroy();
       this.bossHealthLabel?.destroy();
@@ -258,6 +261,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.npcDialogueText = undefined;
+      this.floorCompletionScreen = undefined;
       this.bossHealthShell = undefined;
       this.bossHealthFill = undefined;
       this.bossHealthLabel = undefined;
@@ -294,7 +298,7 @@ export class MainGameScene extends Phaser.Scene {
       this.previousWorldState = this.world.state;
     }
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
-    this.showFloorCompletionMessageIfNeeded();
+    this.showFloorCompletionScreenIfNeeded();
     this.refreshCameraMasks();
 
     if (this.modalPicker?.isOpen()) {
@@ -534,6 +538,51 @@ export class MainGameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 1)
       .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
+
+    const completionBackdrop = this.add
+      .rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x020617, 0.84)
+      .setOrigin(0, 0);
+    const completionPanel = this.add
+      .rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 620, 260, 0x0f172a, 0.98)
+      .setStrokeStyle(2, 0x334155, 1);
+    const completionTitle = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 72, 'Game Over', {
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+        fontSize: '38px',
+        color: '#f8fafc',
+      })
+      .setOrigin(0.5, 0.5);
+    const completionSubtitle = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 26, 'Floor 1 complete!', {
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+        fontSize: '24px',
+        color: '#cbd5e1',
+      })
+      .setOrigin(0.5, 0.5);
+    const completionBody = this.add
+      .text(
+        GAME.WIDTH / 2,
+        GAME.HEIGHT / 2 + 34,
+        'Thanks for completing the first floor!\nMore game coming soon...',
+        {
+          fontFamily: 'Segoe UI, Arial, sans-serif',
+          fontSize: '20px',
+          color: '#94a3b8',
+          align: 'center',
+        },
+      )
+      .setOrigin(0.5, 0.5);
+    this.floorCompletionScreen = this.add
+      .container(0, 0, [
+        completionBackdrop,
+        completionPanel,
+        completionTitle,
+        completionSubtitle,
+        completionBody,
+      ])
+      .setDepth(5500)
       .setScrollFactor(0)
       .setVisible(false);
 
@@ -859,25 +908,14 @@ export class MainGameScene extends Phaser.Scene {
     this.loadoutText?.setVisible(false);
   }
 
-  private showFloorCompletionMessageIfNeeded(): void {
-    if (
-      !this.shouldShowFloorCompletionMessage() ||
-      !this.modalPicker ||
-      this.modalPicker.isOpen()
-    ) {
+  private showFloorCompletionScreenIfNeeded(): void {
+    if (!this.shouldShowFloorCompletionMessage()) {
       return;
     }
 
     this.floorCompletionMessagePending = false;
     this.floorCompletionMessageShown = true;
-    this.modalPicker.open({
-      title: 'Floor 1 complete!',
-      subtitle: 'Nice clear.',
-      body: 'Thanks for completing the first floor! More game coming soon...',
-      options: [{ id: 'continue', label: 'Continue', description: 'Return to the safe room.' }],
-      allowCancel: false,
-      initialSelectedId: 'continue',
-    });
+    this.floorCompletionScreen?.setVisible(true);
   }
 
   private shouldShowFloorCompletionMessage(): boolean {
@@ -1023,7 +1061,7 @@ export class MainGameScene extends Phaser.Scene {
               onConfirm: () => {
                 const descended = this.options.onStairDescend?.(this.world, this.playerEid);
                 if (descended !== false && !this.floorCompletionMessageShown) {
-                  this.time.delayedCall(0, () => this.showFloorCompletionMessageIfNeeded());
+                  this.time.delayedCall(0, () => this.showFloorCompletionScreenIfNeeded());
                 }
                 this.updateOverlayText();
               },
