@@ -467,8 +467,7 @@ function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolea
   }
   const playerTile = floorMap.pixelToTile(px, py);
   for (const door of bossRoom.doors) {
-    const distance = Math.max(Math.abs(playerTile.x - door.x), Math.abs(playerTile.y - door.y));
-    if (distance <= 2) {
+    if (playerTile.x === door.x && playerTile.y === door.y) {
       return false;
     }
   }
@@ -532,8 +531,9 @@ function spawnFloor1StairBoss(world: GameWorld): number {
 }
 
 function beginFloor1BossBattle(world: GameWorld): void {
-  const objective = world.floor1?.objective;
-  if (!objective || objective.bossBattleStarted) {
+  const floor1 = world.floor1;
+  const objective = floor1?.objective;
+  if (!floor1 || !objective || objective.bossBattleStarted) {
     return;
   }
 
@@ -550,7 +550,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
     }
   }
   // Replace lock config: doors stay locked while boss is active, open once boss defeated.
-  for (const doorEid of world.floor1.bossDoorEids) {
+  for (const doorEid of floor1.bossDoorEids) {
     world.stores.doorState.isLocked[doorEid] = 1;
     world.stores.doorState.isOpen[doorEid] = 0;
     setDoorLockConfig(world, doorEid, {
@@ -851,7 +851,7 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   return true;
 }
 
-export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): boolean {
+export function confirmFloor1StairDescend(world: GameWorld, _playerEid: number): boolean {
   if (!world.floor1 || world.state !== 'playing') {
     return false;
   }
