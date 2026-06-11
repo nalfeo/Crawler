@@ -211,8 +211,16 @@ export class MainGameScene extends Phaser.Scene {
           modalOpen: this.modalPicker?.isOpen() ?? false,
         }),
         forceCompletionModal: () => {
-          this.floorCompletionMessagePending = true;
-          this.showFloorCompletionMessageIfNeeded();
+          if (this.world.floor1) {
+            this.world.floor1.runSummary ??= {
+              outcome: 'cleared_floor',
+              viewsEarned: 0,
+              fansEarned: 0,
+            };
+            this.world.floor1.runSummary.outcome = 'cleared_floor';
+            this.floorCompletionMessagePending = true;
+            this.showFloorCompletionMessageIfNeeded();
+          }
         },
       };
     }
@@ -285,12 +293,7 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
-    if (
-      this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
-      !this.floorCompletionMessageShown
-    ) {
-      this.floorCompletionMessagePending = true;
-    }
+    this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionMessageIfNeeded();
     this.refreshCameraMasks();
 
@@ -858,8 +861,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private showFloorCompletionMessageIfNeeded(): void {
     if (
-      !this.floorCompletionMessagePending ||
-      this.floorCompletionMessageShown ||
+      !this.shouldShowFloorCompletionMessage() ||
       !this.modalPicker ||
       this.modalPicker.isOpen()
     ) {
@@ -876,6 +878,13 @@ export class MainGameScene extends Phaser.Scene {
       allowCancel: false,
       initialSelectedId: 'continue',
     });
+  }
+
+  private shouldShowFloorCompletionMessage(): boolean {
+    return (
+      this.world.floor1?.runSummary?.outcome === 'cleared_floor' &&
+      !this.floorCompletionMessageShown
+    );
   }
 
   private updateBossHealthBar(): void {
@@ -1014,7 +1023,6 @@ export class MainGameScene extends Phaser.Scene {
               onConfirm: () => {
                 const descended = this.options.onStairDescend?.(this.world, this.playerEid);
                 if (descended !== false && !this.floorCompletionMessageShown) {
-                  this.floorCompletionMessagePending = true;
                   this.time.delayedCall(0, () => this.showFloorCompletionMessageIfNeeded());
                 }
                 this.updateOverlayText();
