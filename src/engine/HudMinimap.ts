@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { query } from 'bitecs';
 import { Enemy, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
-import { TerrainType } from '../shared/map-types.js';
+import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import {
   clampMinimapViewState,
@@ -22,8 +22,14 @@ const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
 const DOT_PLAYER = 0xffffff;
 const DOT_ENEMY = 0xef4444;
+const DOT_SAFE_ROOM = 0x2dd4bf;
+const DOT_BOSS_ROOM = 0xf59e0b;
+const DOT_SPAWN_ROOM = 0x60a5fa;
+const DOT_STAIRS = 0xf8fafc;
 const DOT_PLAYER_RADIUS = 0.8;
 const DOT_ENEMY_RADIUS = 0.55;
+const ROOM_MARKER_SIZE = 1.6;
+const STAIRS_MARKER_SIZE = 1.1;
 
 /** Terrain colour palette for minimap (same hues as main terrain, darker). */
 const MINI_COLORS: Readonly<Record<number, number>> = {
@@ -82,6 +88,33 @@ function screenToViewport(
 
 function isInsideViewport(x: number, y: number, viewport: Phaser.Geom.Rectangle): boolean {
   return x >= viewport.x && y >= viewport.y && x <= viewport.right && y <= viewport.bottom;
+}
+
+function roomHasDiscoveredTile(room: RoomData, floorMap: FloorMap, visited: Uint8Array): boolean {
+  const minX = Math.max(0, room.bounds.x);
+  const maxX = Math.min(floorMap.width - 1, room.bounds.x + room.bounds.width - 1);
+  const minY = Math.max(0, room.bounds.y);
+  const maxY = Math.min(floorMap.height - 1, room.bounds.y + room.bounds.height - 1);
+  for (let ty = minY; ty <= maxY; ty += 1) {
+    for (let tx = minX; tx <= maxX; tx += 1) {
+      if (visited[ty * floorMap.width + tx]) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function drawSquareMarker(
+  graphics: Phaser.GameObjects.Graphics,
+  tileX: number,
+  tileY: number,
+  color: number,
+  size: number,
+): void {
+  const half = size * 0.5;
+  graphics.fillStyle(color, 1);
+  graphics.fillRect(tileX + 0.5 - half, tileY + 0.5 - half, size, size);
 }
 
 export function createHudMinimap(scene: Phaser.Scene): {
@@ -313,12 +346,50 @@ export function createHudMinimap(scene: Phaser.Scene): {
     dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
   }
 
-  function drawDots(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
+  function drawDots(
+    world: GameWorld,
+    playerEid: number,
+    floorMap: FloorMap,
+    visited: Uint8Array,
+  ): void {
     dotGraphics.clear();
-    dotGraphics.fillStyle(DOT_ENEMY, 1);
+    for (const room of floorMap.rooms) {
+      const color =
+        room.role === RoomRole.SAFE
+          ? DOT_SAFE_ROOM
+          : room.role === RoomRole.BOSS_STAIR
+            ? DOT_BOSS_ROOM
+            : room.role === RoomRole.SPAWN
+              ? DOT_SPAWN_ROOM
+              : null;
+      if (color === null) {
+        continue;
+      }
+      if (!roomHasDiscoveredTile(room, floorMap, visited)) {
+        continue;
+      }
+      const centerX = room.bounds.x + Math.floor(room.bounds.width / 2);
+      const centerY = room.bounds.y + Math.floor(room.bounds.height / 2);
+      drawSquareMarker(dotGraphics, centerX, centerY, color, ROOM_MARKER_SIZE);
+    }
+
+    const objective = world.floor1?.objective;
+    if (objective?.staircaseSpawned && objective.staircaseDiscovered) {
+      const stairTile = floorMap.pixelToTile(objective.staircasePos.x, objective.staircasePos.y);
+      if (
+        stairTile.x >= 0 &&
+        stairTile.y >= 0 &&
+        stairTile.x < floorMap.width &&
+        stairTile.y < floorMap.height &&
+        visited[stairTile.y * floorMap.width + stairTile.x]
+      ) {
+        drawSquareMarker(dotGraphics, stairTile.x, stairTile.y, DOT_STAIRS, STAIRS_MARKER_SIZE);
+      }
+    }
 
     const tilePx = floorMap.config.tileSizePx;
     const enemies = query(world.ecs, [Enemy, Position]);
+    dotGraphics.fillStyle(DOT_ENEMY, 1);
     for (const eid of enemies) {
       const wx = world.stores.position.x[eid] ?? 0;
       const wy = world.stores.position.y[eid] ?? 0;
@@ -372,6 +443,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const color = MINI_COLORS[terrain] ?? 0x05060f;
       terrainRt.fill(color, 1, tx, ty, 1, 1);
     }
+    terrainRt.render();
   }
 
   function openOverlay(): void {
@@ -521,7 +593,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
 
     if (terrainRt) {
-      drawDots(world, playerEid, floorMap);
+      drawDots(world, playerEid, floorMap, visited);
       if (overlayOpen) {
         applyViewTransform();
       } else {
