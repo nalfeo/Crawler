@@ -103,5 +103,11 @@ describe('HudMinimap architectural guard', () => {
     expect(source).toContain('RoomRole.SAFE');
     expect(source).toContain('RoomRole.BOSS_STAIR');
     expect(source).toContain('objective?.staircaseSpawned && objective.staircaseDiscovered');
+    expect(source.indexOf('const color =')).toBeLessThan(
+      source.indexOf('roomHasDiscoveredTile(room, floorMap, visited)'),
+    );
+    expect(source).toContain(
+      'dotGraphics.fillStyle(DOT_ENEMY, 1);\n    for (const eid of enemies)',
+    );
   });
 });

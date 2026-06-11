@@ -354,9 +354,6 @@ export function createHudMinimap(scene: Phaser.Scene): {
   ): void {
     dotGraphics.clear();
     for (const room of floorMap.rooms) {
-      if (!roomHasDiscoveredTile(room, floorMap, visited)) {
-        continue;
-      }
       const color =
         room.role === RoomRole.SAFE
           ? DOT_SAFE_ROOM
@@ -366,6 +363,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
               ? DOT_SPAWN_ROOM
               : null;
       if (color === null) {
+        continue;
+      }
+      if (!roomHasDiscoveredTile(room, floorMap, visited)) {
         continue;
       }
       const centerX = room.bounds.x + Math.floor(room.bounds.width / 2);
@@ -389,6 +389,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     const tilePx = floorMap.config.tileSizePx;
     const enemies = query(world.ecs, [Enemy, Position]);
+    dotGraphics.fillStyle(DOT_ENEMY, 1);
     for (const eid of enemies) {
       const wx = world.stores.position.x[eid] ?? 0;
       const wy = world.stores.position.y[eid] ?? 0;
@@ -397,7 +398,6 @@ export function createHudMinimap(scene: Phaser.Scene): {
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       const idx = ty * floorMap.width + tx;
       if (!floorMap.visible[idx]) continue;
-      dotGraphics.fillStyle(DOT_ENEMY, 1);
       dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_ENEMY_RADIUS);
     }
 
