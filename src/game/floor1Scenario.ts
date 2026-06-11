@@ -501,6 +501,7 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     objective.staircasePos.x,
     objective.staircasePos.y,
   );
+  // Boss has a large attackRange for ranged projectile firing
   const eid = spawnBehaviorEnemy(
     world,
     spawnPoint.x,
@@ -509,7 +510,7 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     AI_TYPE.CHASE,
     FLOOR_1_STAIR_BOSS_SPEED,
     FLOOR_1_STAIR_BOSS_DETECT_RANGE,
-    0,
+    300, // Large attack range for projectile firing
   );
   setComponent(world.ecs, eid, Sprite, {
     textureId: SPRITE_TEX_ENEMY_SLIME,
@@ -517,8 +518,11 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     height: FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT,
   });
 
-  // Boss has melee contact damage and can shoot projectiles
+  // Boss has melee contact damage for swipe attacks
   setComponent(world.ecs, eid, Damage, { amount: 12 });
+
+  // Boss fires projectiles every 5 seconds
+  world.stores.enemyBehavior.fireCooldownMs[eid] = 5000;
 
   return eid;
 }
