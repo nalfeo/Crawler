@@ -88,5 +88,12 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.6
+  },
+  {
+    "session": "2026-06-11-mobile-review-fixes",
+    "estimate": "🍎🍎",
+    "actual": "🍎🍎",
+    "verdict": "on-target",
+    "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
   }
 ]

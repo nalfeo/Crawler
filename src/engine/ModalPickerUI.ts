@@ -41,12 +41,12 @@ interface RenderEntry<TId extends string = string> {
   readonly description: Phaser.GameObjects.Text;
 }
 
-const PANEL_WIDTH = 560;
-const PANEL_HEIGHT = 420;
+const PANEL_WIDTH = 500;
+const PANEL_HEIGHT = 360;
 const PANEL_PADDING = 18;
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'Segoe UI, Arial, sans-serif',
-  fontSize: '26px',
+  fontSize: '24px',
   color: '#f8fafc',
 };
 const SUBTITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
@@ -57,7 +57,7 @@ const SUBTITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
 };
 const BODY_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'Segoe UI, Arial, sans-serif',
-  fontSize: '14px',
+  fontSize: '13px',
   color: '#94a3b8',
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
@@ -166,7 +166,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       cursorY += body.height + 10;
     }
 
-    const rowHeight = 54;
+    const rowHeight = 48;
     for (let index = 0; index < state.options.length; index += 1) {
       const option = state.options[index]!;
       const isSelected = state.selectedIndex === index;
@@ -200,8 +200,21 @@ export function createModalPickerUI(scene: Phaser.Scene): {
               optionIndex: state.selectedIndex,
             });
           }
-          rerender();
         }
+        const confirmed = confirmModalPickerSelection(next);
+        if (confirmed.status === 'confirmed' && confirmed.selectedIndex !== null) {
+          const selectedOption = confirmed.options[confirmed.selectedIndex];
+          if (selectedOption) {
+            hooks?.onConfirm?.({
+              option: selectedOption,
+              optionIndex: confirmed.selectedIndex,
+              source: 'pointer',
+            });
+          }
+          close();
+          return;
+        }
+        rerender();
       });
 
       const marker = isSelected ? '▶ ' : '  ';
@@ -228,8 +241,8 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       panelX + PANEL_PADDING,
       footerY,
       state.allowCancel
-        ? 'Up/Down: Navigate   Enter: Confirm   Esc: Cancel'
-        : 'Up/Down: Navigate   Enter: Confirm',
+        ? 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm  ·  Esc: Cancel'
+        : 'Tap to select  ·  Up/Down: Navigate  ·  Enter: Confirm',
       BODY_STYLE,
     );
     textNodes.push(footer);

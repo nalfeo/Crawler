@@ -8,19 +8,30 @@ import { ftToPx } from '../../shared/units.js';
 /** Margin beyond screen bounds before culling (12.5 feet). */
 const CULL_MARGIN = ftToPx(12.5);
 
-const BOUNDS = {
-  minX: -CULL_MARGIN,
-  maxX: GAME.WIDTH + CULL_MARGIN,
-  minY: -CULL_MARGIN,
-  maxY: GAME.HEIGHT + CULL_MARGIN,
-};
-
 const PLAY_BOUNDS = {
   minX: 0,
   maxX: GAME.WIDTH,
   minY: 0,
   maxY: GAME.HEIGHT,
 };
+
+function getPlayBounds(world: GameWorld): {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+} {
+  const floorMap = world.floorMap;
+  if (floorMap) {
+    return {
+      minX: 0,
+      maxX: floorMap.widthPx,
+      minY: 0,
+      maxY: floorMap.heightPx,
+    };
+  }
+  return PLAY_BOUNDS;
+}
 
 /**
  * Removes projectiles that have hit a wall or left the game bounds.
@@ -44,6 +55,13 @@ export function projectileCleanupSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Projectile, Position]);
   const { position, velocity, projectile } = world.stores;
   const floorMap = world.floorMap;
+  const playBounds = getPlayBounds(world);
+  const cullBounds = {
+    minX: playBounds.minX - CULL_MARGIN,
+    maxX: playBounds.maxX + CULL_MARGIN,
+    minY: playBounds.minY - CULL_MARGIN,
+    maxY: playBounds.maxY + CULL_MARGIN,
+  };
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) {
@@ -53,7 +71,7 @@ export function projectileCleanupSystem(world: GameWorld): void {
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
     const isBeyondPlayBounds =
-      x < PLAY_BOUNDS.minX || x > PLAY_BOUNDS.maxX || y < PLAY_BOUNDS.minY || y > PLAY_BOUNDS.maxY;
+      x < playBounds.minX || x > playBounds.maxX || y < playBounds.minY || y > playBounds.maxY;
 
     if (
       isBeyondPlayBounds &&
@@ -63,14 +81,14 @@ export function projectileCleanupSystem(world: GameWorld): void {
       const remaining = world.stores.bouncing.remainingBounces[eid] ?? 0;
       if (remaining > 0) {
         let bounced = false;
-        if (x < PLAY_BOUNDS.minX || x > PLAY_BOUNDS.maxX) {
+        if (x < playBounds.minX || x > playBounds.maxX) {
           world.stores.velocity.x[eid] = -(world.stores.velocity.x[eid] ?? 0);
-          position.x[eid] = Math.max(PLAY_BOUNDS.minX, Math.min(PLAY_BOUNDS.maxX, x));
+          position.x[eid] = Math.max(playBounds.minX, Math.min(playBounds.maxX, x));
           bounced = true;
         }
-        if (y < PLAY_BOUNDS.minY || y > PLAY_BOUNDS.maxY) {
+        if (y < playBounds.minY || y > playBounds.maxY) {
           world.stores.velocity.y[eid] = -(world.stores.velocity.y[eid] ?? 0);
-          position.y[eid] = Math.max(PLAY_BOUNDS.minY, Math.min(PLAY_BOUNDS.maxY, y));
+          position.y[eid] = Math.max(playBounds.minY, Math.min(playBounds.maxY, y));
           bounced = true;
         }
         if (bounced) {
@@ -119,7 +137,7 @@ export function projectileCleanupSystem(world: GameWorld): void {
       }
     }
 
-    if (x < BOUNDS.minX || x > BOUNDS.maxX || y < BOUNDS.minY || y > BOUNDS.maxY) {
+    if (x < cullBounds.minX || x > cullBounds.maxX || y < cullBounds.minY || y > cullBounds.maxY) {
       clearEntityStores(world, eid);
       removeEntity(world.ecs, eid);
     }

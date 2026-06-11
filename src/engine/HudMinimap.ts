@@ -15,7 +15,9 @@ import {
 const HUD_DEPTH = 1000;
 const MAP_PADDING = 16;
 const MAP_BORDER = 2;
-const ICON_SIZE = 40;
+const HUD_MINIMAP_WIDTH = 180;
+const HUD_MINIMAP_HEIGHT = 112;
+const HUD_MINIMAP_TOP = 62;
 const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
 const DOT_PLAYER = 0xffffff;
@@ -88,30 +90,26 @@ export function createHudMinimap(scene: Phaser.Scene): {
   isOverlayOpen(): boolean;
   destroy(): void;
 } {
-  const iconBg = scene.add
-    .rectangle(0, 0, ICON_SIZE, ICON_SIZE, 0x111827, 0.9)
+  const hudMapBg = scene.add
+    .rectangle(0, 0, HUD_MINIMAP_WIDTH, HUD_MINIMAP_HEIGHT, 0x0b1020, 0.95)
     .setStrokeStyle(1, 0x334155)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH)
     .setInteractive({ useHandCursor: true });
 
-  const iconLabel = scene.add
-    .text(0, 0, 'MAP', {
+  const hudMapLabel = scene.add
+    .text(0, 0, 'MAP (M)', {
       fontFamily: 'monospace',
-      fontSize: '12px',
+      fontSize: '11px',
       color: '#e2e8f0',
     })
-    .setOrigin(0.5, 0.5)
+    .setOrigin(0, 0)
     .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 1);
+    .setDepth(HUD_DEPTH + 2);
 
-  const iconHint = scene.add
-    .text(0, 0, 'M', {
-      fontFamily: 'monospace',
-      fontSize: '10px',
-      color: '#64748b',
-    })
-    .setOrigin(0.5, 0)
+  const hudMapViewportFrame = scene.add
+    .rectangle(0, 0, 0, 0, 0x0f172a, 1)
+    .setStrokeStyle(1, 0x475569)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 1);
 
@@ -140,7 +138,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setVisible(false);
 
   const panelHint = scene.add
-    .text(0, 0, 'Wheel: zoom  Drag: pan  +/-: zoom  M: close', {
+    .text(0, 0, 'Drag/pinch: pan & zoom  ·  Wheel/+/-: zoom  ·  M: close', {
       fontFamily: 'monospace',
       fontSize: '12px',
       color: '#94a3b8',
@@ -169,26 +167,18 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setInteractive({ useHandCursor: true });
 
   const viewportHitArea = scene.add
-    .zone(0, 0, 0, 0)
+    .zone(0, 0, 1, 1)
     .setOrigin(0, 0)
     .setDepth(HUD_DEPTH + 3)
     .setVisible(false)
     .setInteractive({ useHandCursor: true });
-
-  const maskGraphics = scene.add
-    .graphics()
-    .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 3)
-    .setVisible(false);
-  const viewportMask = maskGraphics.createGeometryMask();
 
   let terrainRt: Phaser.GameObjects.RenderTexture | undefined;
   const dotGraphics = scene.add
     .graphics()
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2)
-    .setVisible(false)
-    .setMask(viewportMask);
+    .setVisible(false);
 
   let overlayOpen = false;
   let lastFloorMap: FloorMap | null = null;
@@ -196,9 +186,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let viewState: MinimapViewState | null = null;
   let zoomLimits: MinimapZoomLimits = { minZoom: 0.5, maxZoom: 12 };
   let viewport = new Phaser.Geom.Rectangle(0, 0, 0, 0);
+  let hudViewport = new Phaser.Geom.Rectangle(0, 0, 0, 0);
   let lastPointerX = 0;
   let lastPointerY = 0;
   let dragging = false;
+  let lastPinchDist = 0;
 
   function getGameSize(): { width: number; height: number } {
     return { width: scene.scale.gameSize.width, height: scene.scale.gameSize.height };
@@ -206,8 +198,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   function updateLayout(): void {
     const { width, height } = getGameSize();
-    const panelW = Math.floor(Math.max(160, width - MAP_PADDING * 2));
-    const panelH = Math.floor(Math.max(140, height - MAP_PADDING * 2));
+    const panelW = Math.floor(Math.min(1120, Math.max(640, width * 0.86)));
+    const panelH = Math.floor(Math.min(720, Math.max(420, height * 0.84)));
     const panelX = Math.floor((width - panelW) / 2);
     const panelY = Math.floor((height - panelH) / 2);
     const viewportX = panelX + 16;
@@ -215,9 +207,21 @@ export function createHudMinimap(scene: Phaser.Scene): {
     const viewportW = Math.max(120, panelW - 32);
     const viewportH = Math.max(80, panelH - 76);
 
-    iconBg.setPosition(width - ICON_SIZE / 2 - 12, ICON_SIZE / 2 + 12);
-    iconLabel.setPosition(iconBg.x, iconBg.y);
-    iconHint.setPosition(iconBg.x, iconBg.y + ICON_SIZE / 2 + 4);
+    const hudMapX = width - MAP_PADDING - HUD_MINIMAP_WIDTH;
+    const hudMapY = MAP_PADDING + HUD_MINIMAP_TOP;
+    const hudMapInnerX = hudMapX + 6;
+    const hudMapInnerY = hudMapY + 24;
+    const hudMapInnerW = HUD_MINIMAP_WIDTH - 12;
+    const hudMapInnerH = HUD_MINIMAP_HEIGHT - 30;
+
+    hudMapBg
+      .setPosition(hudMapX + HUD_MINIMAP_WIDTH / 2, hudMapY + HUD_MINIMAP_HEIGHT / 2)
+      .setSize(HUD_MINIMAP_WIDTH, HUD_MINIMAP_HEIGHT);
+    hudMapLabel.setPosition(hudMapX + 7, hudMapY + 6);
+    hudViewport = new Phaser.Geom.Rectangle(hudMapInnerX, hudMapInnerY, hudMapInnerW, hudMapInnerH);
+    hudMapViewportFrame
+      .setPosition(hudViewport.centerX, hudViewport.centerY)
+      .setSize(hudViewport.width, hudViewport.height);
 
     overlayDimmer.setSize(width, height);
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
@@ -231,10 +235,6 @@ export function createHudMinimap(scene: Phaser.Scene): {
       .setSize(viewport.width, viewport.height);
     viewportHitArea.setPosition(viewport.x, viewport.y);
     viewportHitArea.setSize(viewport.width, viewport.height);
-
-    maskGraphics.clear();
-    maskGraphics.fillStyle(0xffffff, 1);
-    maskGraphics.fillRect(viewport.x, viewport.y, viewport.width, viewport.height);
 
     if (viewState) {
       viewState = clampMinimapViewState({
@@ -257,7 +257,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
         viewport.height * 0.5,
         zoomLimits,
       );
-      applyViewTransform();
+      if (overlayOpen) {
+        applyViewTransform();
+      } else {
+        applyHudTransform();
+      }
     }
   }
 
@@ -269,22 +273,44 @@ export function createHudMinimap(scene: Phaser.Scene): {
     viewportFrame.setVisible(visible);
     closeLabel.setVisible(visible);
     viewportHitArea.setVisible(visible);
-    terrainRt?.setVisible(visible);
-    dotGraphics.setVisible(visible);
+    terrainRt?.setVisible(Boolean(lastFloorMap));
+    dotGraphics.setVisible(Boolean(lastFloorMap));
 
-    iconBg.setVisible(!visible);
-    iconLabel.setVisible(!visible);
-    iconHint.setVisible(!visible);
+    hudMapBg.setVisible(!visible);
+    hudMapLabel.setVisible(!visible);
+    hudMapViewportFrame.setVisible(!visible);
+    if (visible) {
+      applyViewTransform();
+    } else {
+      applyHudTransform();
+    }
   }
 
   function applyViewTransform(): void {
     if (!terrainRt || !viewState) {
       return;
     }
-    const originX = viewport.centerX - viewState.centerX * viewState.zoom;
-    const originY = viewport.centerY - viewState.centerY * viewState.zoom;
-    terrainRt.setPosition(originX, originY).setScale(viewState.zoom);
-    dotGraphics.setPosition(originX, originY).setScale(viewState.zoom);
+    const snappedZoom = Math.max(0.25, Math.round(viewState.zoom * 2) / 2);
+    const originX = viewport.centerX - viewState.centerX * snappedZoom;
+    const originY = viewport.centerY - viewState.centerY * snappedZoom;
+    terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(snappedZoom);
+    dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(snappedZoom);
+  }
+
+  function applyHudTransform(): void {
+    if (!terrainRt) {
+      return;
+    }
+    const mapWidth = lastFloorMap?.width ?? viewState?.mapWidth ?? 0;
+    const mapHeight = lastFloorMap?.height ?? viewState?.mapHeight ?? 0;
+    if (mapWidth <= 0 || mapHeight <= 0) {
+      return;
+    }
+    const scale = Math.min(hudViewport.width / mapWidth, hudViewport.height / mapHeight);
+    const originX = hudViewport.centerX - mapWidth * scale * 0.5;
+    const originY = hudViewport.centerY - mapHeight * scale * 0.5;
+    terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
+    dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
   }
 
   function drawDots(world: GameWorld, playerEid: number, floorMap: FloorMap): void {
@@ -321,8 +347,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       .setOrigin(0, 0)
       .setDepth(HUD_DEPTH + 2)
       .setScrollFactor(0)
-      .setVisible(false)
-      .setMask(viewportMask);
+      .setVisible(false);
 
     const built = buildDefaultViewState(
       floorMap.width,
@@ -347,7 +372,6 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const color = MINI_COLORS[terrain] ?? 0x05060f;
       terrainRt.fill(color, 1, tx, ty, 1, 1);
     }
-    terrainRt.render();
   }
 
   function openOverlay(): void {
@@ -424,7 +448,37 @@ export function createHudMinimap(scene: Phaser.Scene): {
   }
 
   function handlePointerMove(pointer: Phaser.Input.Pointer): void {
-    if (!overlayOpen || !dragging || !viewState) {
+    if (!overlayOpen || !viewState) {
+      return;
+    }
+
+    // Pinch-to-zoom: two simultaneous touch pointers
+    const p2 = scene.input.pointer2;
+    if (p2?.isDown) {
+      const p1 = scene.input.pointer1;
+      const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      if (lastPinchDist > 0 && dist > 0) {
+        const scaleFactor = dist / lastPinchDist;
+        const midX = (p1.x + p2.x) / 2;
+        const midY = (p1.y + p2.y) / 2;
+        const local = screenToViewport(midX, midY, viewport);
+        viewState = zoomMinimapAtPoint(
+          viewState,
+          viewState.zoom * scaleFactor,
+          local.x,
+          local.y,
+          zoomLimits,
+        );
+        applyViewTransform();
+      }
+      lastPinchDist = dist;
+      dragging = false;
+      return;
+    }
+
+    lastPinchDist = 0;
+
+    if (!dragging) {
       return;
     }
     const dx = pointer.x - lastPointerX;
@@ -459,14 +513,22 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
     if (newIndices.length > 0 || !terrainRt) {
       bakeNewTiles(floorMap, newIndices);
-      applyViewTransform();
       if (overlayOpen) {
-        terrainRt?.setVisible(true);
+        applyViewTransform();
+      } else {
+        applyHudTransform();
       }
     }
 
-    if (overlayOpen && terrainRt) {
+    if (terrainRt) {
       drawDots(world, playerEid, floorMap);
+      if (overlayOpen) {
+        applyViewTransform();
+      } else {
+        applyHudTransform();
+      }
+      terrainRt.setVisible(true);
+      dotGraphics.setVisible(true);
     }
   }
 
@@ -480,9 +542,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     terrainRt?.destroy();
     dotGraphics.destroy();
-    iconBg.destroy();
-    iconLabel.destroy();
-    iconHint.destroy();
+    hudMapBg.destroy();
+    hudMapLabel.destroy();
+    hudMapViewportFrame.destroy();
     overlayDimmer.destroy();
     panelBg.destroy();
     panelTitle.destroy();
@@ -490,14 +552,14 @@ export function createHudMinimap(scene: Phaser.Scene): {
     viewportFrame.destroy();
     viewportHitArea.destroy();
     closeLabel.destroy();
-    maskGraphics.destroy();
   }
 
   function handlePointerUp(): void {
     dragging = false;
+    lastPinchDist = 0;
   }
 
-  iconBg.on('pointerdown', toggle);
+  hudMapBg.on('pointerdown', toggle);
   closeLabel.on('pointerdown', closeOverlay);
   viewportHitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     if (!overlayOpen) {

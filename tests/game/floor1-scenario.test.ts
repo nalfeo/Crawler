@@ -85,7 +85,7 @@ describe('floor1Scenario', () => {
     expect(worldA.stores.position.y[eidA]).toBeCloseTo(worldB.stores.position.y[eidB] ?? 0, 5);
   });
 
-  it('spawns stairs with a large slime rat boss and unlocks stairs after boss death', () => {
+  it('starts boss battle on boss-room entry after goon quest, then spawns stairs after boss death', () => {
     const world = createTestWorld({ seed: 123 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -98,35 +98,26 @@ describe('floor1Scenario', () => {
 
     objective.ratsKilled = objective.requiredRats;
     objective.slimesKilled = objective.requiredSlimes;
-    objective.safeRoomDiscovered = true;
-    world.playerGold = objective.requiredGold;
-    const bag = world.inventories.get(player);
-    if (!bag) {
-      throw new Error('Expected player inventory bag to exist');
-    }
-    bag.slots.push({ itemId: 'rusted-scrap', quantity: objective.requiredJunk });
+    expect(objective.bossBattleStarted).toBe(false);
+    expect(objective.staircaseBossEid).toBeNull();
+    expect(objective.staircaseSpawned).toBe(false);
+    expect(objective.staircaseLocked).toBe(true);
+    expect(objective.staircaseUnlocked).toBe(false);
 
+    // Kills do not complete the quest until the player talks to the goon.
     world.elapsedMs = 1_000;
     floor1ObjectiveSystem(world);
-    expect(objective.staircaseSpawnStartedMs).toBe(1_000);
-    expect(objective.staircaseSpawned).toBe(false);
-    expect(objective.staircaseUnlocked).toBe(false);
+    expect(objective.questCompleted).toBe(false);
 
-    world.elapsedMs = 1_000 + objective.staircaseSpawnCountdownMs - 1;
+    objective.questAccepted = true;
     floor1ObjectiveSystem(world);
-    expect(objective.staircaseSpawned).toBe(false);
-    expect(objective.staircaseSpawnRemainingMs).toBe(1);
-
-    world.elapsedMs = 1_000 + objective.staircaseSpawnCountdownMs;
-    floor1ObjectiveSystem(world);
-    expect(objective.staircaseSpawned).toBe(true);
-    expect(objective.staircaseLocked).toBe(true);
-    expect(objective.staircaseBossEid).not.toBeNull();
-    expect(objective.staircaseUnlocked).toBe(false);
+    expect(objective.questCompleted).toBe(true);
+    expect(objective.staircaseBossEid).toBeNull();
 
     world.stores.position.x[player] = objective.staircasePos.x;
     world.stores.position.y[player] = objective.staircasePos.y;
     floor1ObjectiveSystem(world);
+    expect(objective.bossBattleStarted).toBe(true);
     expect(objective.staircaseDiscovered).toBe(false);
 
     const bossEid = objective.staircaseBossEid;
@@ -136,6 +127,7 @@ describe('floor1Scenario', () => {
 
     removeEntity(world.ecs, bossEid);
     floor1ObjectiveSystem(world);
+    expect(objective.staircaseSpawned).toBe(true);
     expect(objective.staircaseLocked).toBe(false);
     expect(objective.staircaseUnlocked).toBe(true);
     expect(objective.staircaseBossDefeated).toBe(true);

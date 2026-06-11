@@ -49,18 +49,6 @@
         align-items: center;
         gap: 8px;
       }
-      #viewport-toggle {
-        padding: 10px 14px;
-        border-radius: 999px;
-        border: 1px solid rgba(126, 224, 255, 0.3);
-        background: rgba(8, 12, 24, 0.82);
-        color: #7ee0ff;
-        cursor: pointer;
-        font-family: inherit;
-        font-size: 12px;
-        line-height: 1;
-        touch-action: manipulation;
-      }
       #viewport-toggle[hidden] {
         display: none;
       }
@@ -199,12 +187,12 @@
       <div id="lab-stage">
         <div id="lab-toolbar">
           <a id="devtools-link" href="/devtools.html">Open DevTools</a>
-          <button id="viewport-toggle" type="button" aria-pressed="false" hidden>
-            iPhone Landscape: Off
-          </button>
         </div>
         <div id="lab-canvas"></div>
       </div>
+      <!-- viewport-toggle is kept here (hidden) so lab-shell.ts can find it on init;
+           lab-runner.ts moves it into the sidebar "Global Controls" section. -->
+      <button id="viewport-toggle" hidden aria-label="Switch viewport"></button>
       <button id="controls-toggle" aria-label="Collapse config panel" aria-expanded="true">
         ›
       </button>

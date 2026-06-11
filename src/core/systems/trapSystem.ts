@@ -1,6 +1,7 @@
 import { entityExists, hasComponent, query, removeEntity } from 'bitecs';
-import { Enemy, Health, Owner, Position, Team, Trap } from '../components.js';
+import { Enemy, Health, Owner, Player, Position, Team, Trap } from '../components.js';
 import { clearEntityStores, spawnAreaAttack } from '../helpers.js';
+import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 
@@ -26,6 +27,13 @@ export function trapSystem(world: GameWorld, collisionResult: CollisionResult): 
     const triggerRadius = trap.triggerRadius[eid] ?? 0;
     const trapTeam = hasComponent(world.ecs, eid, Team) ? (team.id[eid] ?? 0) : -1;
     const ownerEid = hasComponent(world.ecs, eid, Owner) ? (world.stores.owner.eid[eid] ?? 0) : -1;
+    if (
+      ownerEid >= 0 &&
+      hasComponent(world.ecs, ownerEid, Player) &&
+      isEntityInSafeSpace(world, ownerEid)
+    ) {
+      continue;
+    }
 
     const candidates = collisionResult.grid.queryRadius(x, y, triggerRadius);
     let triggered = false;

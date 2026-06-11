@@ -22,6 +22,7 @@ import {
   spawnTrap,
 } from '../core/helpers.js';
 import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
+import { isEntityInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
 import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
@@ -43,6 +44,14 @@ interface WeaponState {
   /** Cached weapon def for the active weapon. */
   activeWeaponDef: WeaponDef | undefined;
 }
+
+interface EnemyTarget {
+  direction: { x: number; y: number };
+  distanceSq: number;
+  radiusPx: number;
+}
+
+const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
 
 const weaponConfigs = new WeakMap<GameWorld, WeaponConfig>();
 const weaponStates = new WeakMap<GameWorld, WeaponState>();
@@ -180,13 +189,13 @@ function updateAimFromVelocity(world: GameWorld, player: number, state: WeaponSt
   state.aimY = direction.y;
 }
 
-function getNearestEnemyDirection(
+function getNearestEnemyTarget(
   world: GameWorld,
   playerX: number,
   playerY: number,
-): { x: number; y: number } | undefined {
+): EnemyTarget | undefined {
   const enemies = query(world.ecs, [Enemy, Position]);
-  let nearestDirection: { x: number; y: number } | undefined;
+  let nearestTarget: EnemyTarget | undefined;
   let nearestDistanceSq = Number.POSITIVE_INFINITY;
 
   for (const enemy of enemies) {
@@ -210,10 +219,33 @@ function getNearestEnemyDirection(
     }
 
     nearestDistanceSq = distanceSq;
-    nearestDirection = normalizeVector(deltaX, deltaY);
+    const enemyRadiusPx =
+      Math.max(world.stores.sprite.width[enemy] ?? 0, world.stores.sprite.height[enemy] ?? 0) * 0.5;
+    nearestTarget = {
+      direction: normalizeVector(deltaX, deltaY),
+      distanceSq,
+      radiusPx: enemyRadiusPx,
+    };
   }
 
-  return nearestDirection;
+  return nearestTarget;
+}
+
+function getWeaponGateRangePx(def: WeaponDef): number {
+  switch (def.weaponType) {
+    case WeaponType.MELEE:
+      return ftToPx(Math.max(def.aoeRadius, def.range));
+    case WeaponType.BEAM:
+      return ftToPx(Math.max(def.beamLength, def.range));
+    case WeaponType.TRAP:
+      return ftToPx(Math.max(def.trapTriggerRadius, def.trapExplosionRadius, def.range));
+    case WeaponType.THROWN:
+      return ftToPx(def.maxRange > 0 ? def.maxRange : def.range);
+    case WeaponType.RANGED:
+    case WeaponType.MAGIC:
+    default:
+      return ftToPx(def.range);
+  }
 }
 
 // --- Attack dispatchers per weapon type ---
@@ -466,27 +498,39 @@ export function weaponSystem(world: GameWorld): void {
   if (player === undefined) {
     return;
   }
+  if (isEntityInSafeSpace(world, player)) {
+    return;
+  }
 
   const state = getWeaponState(world);
   updateAimFromVelocity(world, player, state);
 
   const playerX = world.stores.position.x[player]!;
   const playerY = world.stores.position.y[player]!;
-  const direction = getNearestEnemyDirection(world, playerX, playerY);
-
-  // Traps are placed at the player's feet and don't need a target direction.
-  // All other weapons require a visible enemy before firing.
-  const isTrap = state.activeWeaponDef?.weaponType === WeaponType.TRAP;
-  if (direction === undefined && !isTrap) {
-    return;
-  }
-
-  // Safe fallback direction for trap (unused but needed for dispatchAttack signature).
-  const fireDir = direction ?? { x: state.aimX, y: state.aimY };
 
   // Data-driven weapon mode
   if (state.activeWeaponDef !== undefined) {
     const def = state.activeWeaponDef;
+
+    // Trap weapons deploy at the player's feet regardless of enemy proximity.
+    if (def.weaponType === WeaponType.TRAP) {
+      const lastFire = state.lastFireMs;
+      if (world.elapsedMs - lastFire >= def.cooldownMs) {
+        dispatchAttack(world, player, def, { x: 0, y: 0 });
+        state.lastFireMs = world.elapsedMs;
+      }
+      return;
+    }
+
+    const target = getNearestEnemyTarget(world, playerX, playerY);
+    if (!target) {
+      return;
+    }
+    const fireDir = target.direction;
+    const gateRangePx = getWeaponGateRangePx(def) * ATTACK_TARGET_GATE_MULTIPLIER;
+    if (target.distanceSq > gateRangePx * gateRangePx) {
+      return;
+    }
     const lastFire = state.lastFireMs;
 
     if (world.elapsedMs - lastFire < def.cooldownMs) {
@@ -513,6 +557,15 @@ export function weaponSystem(world: GameWorld): void {
     return;
   }
 
+  const legacyTarget = getNearestEnemyTarget(world, playerX, playerY);
+  if (!legacyTarget) {
+    return;
+  }
+  const legacyGateRangePx = WEAPON.THROWN_MAX_RANGE * ATTACK_TARGET_GATE_MULTIPLIER;
+  if (legacyTarget.distanceSq > legacyGateRangePx * legacyGateRangePx) {
+    return;
+  }
+
   // Determine how many projectiles to fire (1 + floor(projectileCount bonus))
   const extraProjectiles = hasComponent(world.ecs, player, Stats)
     ? Math.floor(world.stores.stats.projectileCount[player]!)
@@ -521,14 +574,14 @@ export function weaponSystem(world: GameWorld): void {
 
   for (let i = 0; i < totalProjectiles; i++) {
     // Spread extra projectiles slightly so they don't perfectly overlap
-    let dx = fireDir.x;
-    let dy = fireDir.y;
+    let dx = legacyTarget.direction.x;
+    let dy = legacyTarget.direction.y;
     if (i > 0) {
       const spreadAngle = (i % 2 === 1 ? 1 : -1) * (Math.ceil(i / 2) * 0.15);
       const cos = Math.cos(spreadAngle);
       const sin = Math.sin(spreadAngle);
-      dx = fireDir.x * cos - fireDir.y * sin;
-      dy = fireDir.x * sin + fireDir.y * cos;
+      dx = legacyTarget.direction.x * cos - legacyTarget.direction.y * sin;
+      dy = legacyTarget.direction.x * sin + legacyTarget.direction.y * cos;
       const len = Math.hypot(dx, dy);
       dx /= len;
       dy /= len;
@@ -544,8 +597,8 @@ export function weaponSystem(world: GameWorld): void {
     );
   }
 
-  state.aimX = fireDir.x;
-  state.aimY = fireDir.y;
+  state.aimX = legacyTarget.direction.x;
+  state.aimY = legacyTarget.direction.y;
   writeLastFireMs(world, player, config, world.elapsedMs);
   logger.debug('Fired legacy projectile volley', {
     projectileCount: totalProjectiles,
@@ -564,6 +617,9 @@ export function weaponEntitySystem(world: GameWorld): void {
     if (!hasComponent(world.ecs, ownerEid, Position)) {
       continue;
     }
+    if (hasComponent(world.ecs, ownerEid, Player) && isEntityInSafeSpace(world, ownerEid)) {
+      continue;
+    }
 
     const cooldownMs = weapon.cooldownMs[weid]!;
     const lastFireMs = weapon.lastFireMs[weid]!;
@@ -574,12 +630,23 @@ export function weaponEntitySystem(world: GameWorld): void {
 
     const px = position.x[ownerEid]!;
     const py = position.y[ownerEid]!;
-    const dir = getNearestEnemyDirection(world, px, py);
-    if (dir === undefined) {
+    const target = getNearestEnemyTarget(world, px, py);
+    if (!target) {
       continue;
     }
-    const baseDamage = weapon.baseDamage[weid]!;
     const weaponType = weapon.weaponType[weid]!;
+    const rawRange = weapon.range[weid] ?? 0;
+    if (rawRange > 0) {
+      let gateRangePx = rawRange * ATTACK_TARGET_GATE_MULTIPLIER;
+      if (weaponType === WeaponType.MELEE) {
+        gateRangePx += target.radiusPx;
+      }
+      if (target.distanceSq > gateRangePx * gateRangePx) {
+        continue;
+      }
+    }
+    const dir = target.direction;
+    const baseDamage = weapon.baseDamage[weid]!;
     const projSpeed = weapon.projectileSpeed[weid]!;
 
     switch (weaponType) {

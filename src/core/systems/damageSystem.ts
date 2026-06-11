@@ -1,4 +1,4 @@
-import { entityExists, hasComponent, removeEntity } from 'bitecs';
+import { entityExists, hasComponent, query, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
 import {
   Damage,
@@ -12,6 +12,7 @@ import {
 } from '../components.js';
 import { applyDamage } from '../apply-damage.js';
 import { clearEntityStores } from '../helpers.js';
+import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
@@ -154,6 +155,9 @@ function applyPlayerEnemyHit(
   enemy: number,
   hitTimestamps: Float64Array,
 ): void {
+  if (isEntityInSafeSpace(world, player)) {
+    return;
+  }
   if (!hasComponent(world.ecs, player, Health)) {
     return;
   }
@@ -186,6 +190,10 @@ function applyEnemyProjectileHit(
   player: number,
   hitTimestamps: Float64Array,
 ): void {
+  if (isEntityInSafeSpace(world, player)) {
+    destroyEntity(world, projectile);
+    return;
+  }
   if (!hasComponent(world.ecs, player, Health)) {
     destroyEntity(world, projectile);
     return;
@@ -218,6 +226,9 @@ function applyEnemyProjectileHit(
 
 export function damageSystem(world: GameWorld, collisionResult: CollisionResult): void {
   const hitTimestamps = getPlayerHitTimestamps(world);
+  const players = query(world.ecs, [Player, Health]);
+  const player = players[0];
+  const playerInSafeSpace = player !== undefined && isEntityInSafeSpace(world, player);
 
   for (const pair of collisionResult.pairs) {
     const { a, b } = pair;
@@ -232,6 +243,10 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       !hasComponent(world.ecs, a, EnemyProjectile) &&
       hasComponent(world.ecs, b, Enemy)
     ) {
+      if (playerInSafeSpace) {
+        destroyEntity(world, a);
+        continue;
+      }
       applyProjectileHit(world, a, b);
       continue;
     }
@@ -241,6 +256,10 @@ export function damageSystem(world: GameWorld, collisionResult: CollisionResult)
       !hasComponent(world.ecs, b, EnemyProjectile) &&
       hasComponent(world.ecs, a, Enemy)
     ) {
+      if (playerInSafeSpace) {
+        destroyEntity(world, b);
+        continue;
+      }
       applyProjectileHit(world, b, a);
       continue;
     }
