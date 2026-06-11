@@ -13,6 +13,8 @@ export type { WeaponConfig } from './weaponSystem.js';
 export {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
+  startFloor1BossEncounter,
+  confirmFloor1StairDescend,
   floor1PlayerStatSystem,
   floor1EnemyDirectorSystem,
   floor1ObjectiveSystem,

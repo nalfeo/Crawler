@@ -9,10 +9,12 @@ import {
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
+  startFloor1BossEncounter,
   weaponSystem,
 } from '../../game/index.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../../game/systems/index.js';
 import { npcSystem } from '../../core/index.js';
+import { confirmFloor1StairDescend } from '../../game/floor1Scenario.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -21,6 +23,7 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 interface Floor1LabSettings {
   autoPickStarter: boolean;
   starterChoice: number;
+  quickStartBossFight: boolean;
 }
 
 interface SubsystemStatus {
@@ -120,19 +123,25 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  // URL params: ?autopick=1 skips the loadout modal, ?weapon=1|2|3 selects choice.
-  // e.g. http://localhost:3004/lab.html?lab=floor1-lab&autopick=1&weapon=2
+  // URL params:
+  // - ?autopick=1 skips loadout modal
+  // - ?weapon=1|2|3 selects auto-picked starter
+  // - ?boss=1 teleports to boss room and immediately starts boss fight
+  // e.g. http://localhost:3004/lab.html?lab=floor1-lab&boss=1
   const urlParams = new URLSearchParams(window.location.search);
   const urlAutoPick = urlParams.get('autopick') === '1';
   const urlWeapon = parseInt(urlParams.get('weapon') ?? '0', 10);
+  const urlBoss = urlParams.get('boss') === '1';
 
   const settings: Floor1LabSettings = {
     autoPickStarter: urlAutoPick,
     starterChoice: urlWeapon >= 1 && urlWeapon <= 3 ? urlWeapon : 1,
+    quickStartBossFight: urlBoss,
     ...(loadLabState<Floor1LabSettings>(LAB_ID) ?? {}),
     // URL params always override persisted state
     ...(urlAutoPick ? { autoPickStarter: true } : {}),
     ...(urlWeapon >= 1 && urlWeapon <= 3 ? { starterChoice: urlWeapon } : {}),
+    ...(urlBoss ? { quickStartBossFight: true } : {}),
   };
 
   const root = document.createElement('div');
@@ -149,7 +158,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Floor 1 vertical-slice lab. Toggle auto-pick to skip loadout and jump straight into the tutorial loop.';
+    'Floor 1 vertical-slice lab. Toggle auto-pick to skip loadout, or enable Quick boss start to jump straight into the boss room fight.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';
@@ -227,12 +236,16 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
         new MainGameScene({
           configureWorld: (world, playerEid) => {
             initializeFloor1Scenario(world, playerEid);
-            if (settings.autoPickStarter) {
+            if (settings.autoPickStarter || settings.quickStartBossFight) {
               const clamped = Math.max(1, Math.min(3, Math.floor(settings.starterChoice)));
               selectFloor1StarterWeapon(world, clamped - 1);
             }
+            if (settings.quickStartBossFight) {
+              startFloor1BossEncounter(world, playerEid);
+            }
           },
           selectLoadoutOption: selectFloor1StarterWeapon,
+          onStairDescend: confirmFloor1StairDescend,
           preSystems: [
             statsSystem,
             floor1PlayerStatSystem,
@@ -269,6 +282,13 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       if (settings.autoPickStarter) {
         createGame();
       }
+    });
+  gui
+    .add(settings, 'quickStartBossFight')
+    .name('Quick boss start')
+    .onChange(() => {
+      saveLabState(LAB_ID, settings);
+      createGame();
     });
   gui
     .add(

@@ -14,6 +14,7 @@ import {
   Projectile,
   Returning,
   Sprite,
+  Team,
   Trap,
   XpGem,
 } from '../core/components.js';
@@ -22,6 +23,7 @@ import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createLogger } from '../shared/logger.js';
+import { TeamId } from '../shared/constants.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -34,11 +36,13 @@ const TEX_GEM = '__cw_gem';
 const TEX_BULLET = '__cw_bullet';
 const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
 const TEX_AOE_PROJ = '__cw_aoe_proj';
+const TEX_ENEMY_AOE_PROJ = '__cw_enemy_aoe_proj';
 const TEX_RETURNING = '__cw_returning';
 const TEX_MELEE = '__cw_melee';
 const TEX_TRAP_ARMED = '__cw_trap_armed';
 const TEX_TRAP_ARMING = '__cw_trap_arming';
 const TEX_EXPLOSION = '__cw_explosion';
+const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
 const TEX_DEAD_SKULL = '__cw_dead_skull';
 const DEAD_SKULL_Y_OFFSET = 18;
 const logger = createLogger('engine:phaser-bridge');
@@ -171,6 +175,16 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(10, 10, 3);
   g.generateTexture(TEX_AOE_PROJ, 22, 22);
 
+  // Enemy AoE projectile (acid ball) — green glow
+  g.clear();
+  g.fillStyle(0x10b981, 0.4);
+  g.fillCircle(10, 10, 10);
+  g.fillStyle(0x22c55e, 1);
+  g.fillCircle(10, 10, 5);
+  g.fillStyle(0xbbf7d0, 0.8);
+  g.fillCircle(10, 10, 3);
+  g.generateTexture(TEX_ENEMY_AOE_PROJ, 22, 22);
+
   // Returning weapon — cyan spinning square shape
   g.clear();
   g.fillStyle(0x44ddff, 1);
@@ -214,6 +228,16 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(32, 32, 20);
   g.generateTexture(TEX_EXPLOSION, 66, 66);
 
+  // Enemy acid explosion — green splash
+  g.clear();
+  g.fillStyle(0x22c55e, 0.32);
+  g.fillCircle(32, 32, 32);
+  g.lineStyle(3, 0x16a34a, 0.72);
+  g.strokeCircle(32, 32, 32);
+  g.fillStyle(0xbbf7d0, 0.24);
+  g.fillCircle(32, 32, 20);
+  g.generateTexture(TEX_ENEMY_EXPLOSION, 66, 66);
+
   // Dead marker — simple skull icon for corpse linger window
   g.clear();
   g.fillStyle(0xf8fafc, 0.95);
@@ -247,9 +271,19 @@ function getEntityType(world: GameWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, LineDamage)) return 'beam';
   if (hasComponent(world.ecs, eid, MeleeSwing)) return 'melee_swing';
   if (hasComponent(world.ecs, eid, Trap)) return 'trap';
-  if (hasComponent(world.ecs, eid, AreaDamage)) return 'aoe';
+  if (hasComponent(world.ecs, eid, AreaDamage)) {
+    if (hasComponent(world.ecs, eid, Team) && world.stores.team.id[eid] === TeamId.ENEMY) {
+      return 'enemy_aoe';
+    }
+    return 'aoe';
+  }
   if (hasComponent(world.ecs, eid, Returning)) return 'returning';
-  if (hasComponent(world.ecs, eid, AoeOnImpact)) return 'aoe_proj';
+  if (hasComponent(world.ecs, eid, AoeOnImpact)) {
+    if (hasComponent(world.ecs, eid, EnemyProjectile)) {
+      return 'enemy_aoe_proj';
+    }
+    return 'aoe_proj';
+  }
   if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
   if (hasComponent(world.ecs, eid, Projectile)) return 'proj';
   return 'default';
@@ -332,10 +366,14 @@ function getProceduralTextureForType(type: string): string {
       return TEX_ENEMY_BULLET;
     case 'aoe_proj':
       return TEX_AOE_PROJ;
+    case 'enemy_aoe_proj':
+      return TEX_ENEMY_AOE_PROJ;
     case 'returning':
       return TEX_RETURNING;
     case 'aoe':
       return TEX_MELEE;
+    case 'enemy_aoe':
+      return TEX_ENEMY_EXPLOSION;
     case 'trap':
       return TEX_TRAP_ARMING;
     default:
@@ -613,8 +651,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             break;
           }
 
-          case 'aoe_proj': {
-            // Fireball: gentle pulsing glow
+          case 'aoe_proj':
+          case 'enemy_aoe_proj': {
+            // Fireball/acid ball: gentle pulsing glow
             const pulse = 0.9 + 0.2 * Math.sin(renderElapsedMs * 0.01);
             img.setScale(pulse);
             const vx = velocity.x[eid] ?? 0;
@@ -631,7 +670,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             break;
           }
 
-          case 'aoe': {
+          case 'aoe':
+          case 'enemy_aoe': {
             const radius = areaDamage.radius[eid] ?? 32;
             const arcHalf = areaDamage.arcHalfRad[eid] ?? 0;
             const arcCenter = areaDamage.arcCenterRad[eid] ?? 0;
@@ -695,8 +735,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               img.setAlpha(alpha);
 
               // Use explosion texture for trap-spawned AoEs (short duration)
-              if (remaining <= 100 && img.texture.key !== TEX_EXPLOSION) {
-                img.setTexture(TEX_EXPLOSION);
+              const explosionTexture =
+                entityType === 'enemy_aoe' ? TEX_ENEMY_EXPLOSION : TEX_EXPLOSION;
+              if (remaining <= 100 && img.texture.key !== explosionTexture) {
+                img.setTexture(explosionTexture);
               }
 
               // Clean up any stale arc graphics

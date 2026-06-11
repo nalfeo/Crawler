@@ -51,7 +51,22 @@ export interface MainGameSceneOptions {
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
-  onStairDescend?: (world: GameWorld, playerEid: number) => void;
+  onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
+}
+
+declare global {
+  interface Window {
+    __floor1Debug?: {
+      getState: () => {
+        worldState: GameWorld['state'];
+        runOutcome: string | null;
+        floorCompletionMessagePending: boolean;
+        floorCompletionMessageShown: boolean;
+        modalOpen: boolean;
+      };
+      forceCompletionModal: () => void;
+    };
+  }
 }
 
 export class MainGameScene extends Phaser.Scene {
@@ -112,6 +127,14 @@ export class MainGameScene extends Phaser.Scene {
   /** Screen-space NPC dialogue text shown while a dialogue line is active. */
   private npcDialogueText?: Phaser.GameObjects.Text;
 
+  private floorCompletionScreen?: Phaser.GameObjects.Container;
+
+  private floorCompletionTitleText?: Phaser.GameObjects.Text;
+
+  private floorCompletionSubtitleText?: Phaser.GameObjects.Text;
+
+  private floorCompletionBodyText?: Phaser.GameObjects.Text;
+
   /** Screen-space boss health bar shown during the Floor 1 boss fight. */
   private bossHealthShell?: Phaser.GameObjects.Rectangle;
 
@@ -136,6 +159,12 @@ export class MainGameScene extends Phaser.Scene {
   /** One-frame latch set by pointer tap/click to advance or start dialogue. */
   private tappedInteraction = false;
 
+  private floorCompletionMessageShown = false;
+
+  private floorCompletionMessagePending = false;
+
+  private cameraMasksDirty = true;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -156,6 +185,8 @@ export class MainGameScene extends Phaser.Scene {
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
     this.warnedMissingDependencies = false;
+    this.floorCompletionMessageShown = false;
+    this.floorCompletionMessagePending = false;
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -176,10 +207,35 @@ export class MainGameScene extends Phaser.Scene {
     this.initializeUi();
     this.drawFloorTerrain();
     this.ensureUiCamera();
+    this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
+    this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
     this.bridge.sync(this.world);
     this.updateOverlayText();
+    if (typeof window !== 'undefined') {
+      window.__floor1Debug = {
+        getState: () => ({
+          worldState: this.world.state,
+          runOutcome: this.world.floor1?.runSummary?.outcome ?? null,
+          floorCompletionMessagePending: this.floorCompletionMessagePending,
+          floorCompletionMessageShown: this.floorCompletionMessageShown,
+          modalOpen: this.modalPicker?.isOpen() ?? false,
+        }),
+        forceCompletionModal: () => {
+          if (this.world.floor1) {
+            this.world.floor1.runSummary ??= {
+              outcome: 'cleared_floor',
+              viewsEarned: 0,
+              fansEarned: 0,
+            };
+            this.world.floor1.runSummary.outcome = 'cleared_floor';
+            this.floorCompletionMessagePending = true;
+            this.showFloorCompletionScreenIfNeeded();
+          }
+        },
+      };
+    }
 
     this.events.once('shutdown', () => {
       logger.info('Main game scene shutdown');
@@ -196,6 +252,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel?.destroy();
       this.interactionHint?.destroy();
       this.npcDialogueText?.destroy();
+      this.floorCompletionScreen?.destroy();
       this.bossHealthShell?.destroy();
       this.bossHealthFill?.destroy();
       this.bossHealthLabel?.destroy();
@@ -214,6 +271,10 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.npcDialogueText = undefined;
+      this.floorCompletionScreen = undefined;
+      this.floorCompletionTitleText = undefined;
+      this.floorCompletionSubtitleText = undefined;
+      this.floorCompletionBodyText = undefined;
       this.bossHealthShell = undefined;
       this.bossHealthFill = undefined;
       this.bossHealthLabel = undefined;
@@ -223,12 +284,21 @@ export class MainGameScene extends Phaser.Scene {
       this.hudUi = undefined;
       this.conversationNpcEid = null;
       this.tappedInteraction = false;
+      this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
+      this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
+      if (typeof window !== 'undefined' && window.__floor1Debug) {
+        delete window.__floor1Debug;
+      }
     });
   }
 
   private handlePointerDown(): void {
     this.tappedInteraction = true;
+  }
+
+  private markCameraMasksDirty(): void {
+    this.cameraMasksDirty = true;
   }
 
   update(_time: number, delta: number): void {
@@ -246,6 +316,8 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
+    this.showFloorCompletionScreenIfNeeded();
     this.refreshCameraMasks();
 
     if (this.modalPicker?.isOpen()) {
@@ -488,6 +560,51 @@ export class MainGameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setVisible(false);
 
+    const completionBackdrop = this.add
+      .rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x020617, 0.84)
+      .setOrigin(0, 0);
+    const completionPanel = this.add
+      .rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 620, 260, 0x0f172a, 0.98)
+      .setStrokeStyle(2, 0x334155, 1);
+    this.floorCompletionTitleText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 72, 'Game Over', {
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+        fontSize: '38px',
+        color: '#f8fafc',
+      })
+      .setOrigin(0.5, 0.5);
+    this.floorCompletionSubtitleText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 26, 'Floor 1 complete!', {
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+        fontSize: '24px',
+        color: '#cbd5e1',
+      })
+      .setOrigin(0.5, 0.5);
+    this.floorCompletionBodyText = this.add
+      .text(
+        GAME.WIDTH / 2,
+        GAME.HEIGHT / 2 + 34,
+        'Thanks for completing the first floor!\nMore game coming soon...',
+        {
+          fontFamily: 'Segoe UI, Arial, sans-serif',
+          fontSize: '20px',
+          color: '#94a3b8',
+          align: 'center',
+        },
+      )
+      .setOrigin(0.5, 0.5);
+    this.floorCompletionScreen = this.add
+      .container(0, 0, [
+        completionBackdrop,
+        completionPanel,
+        this.floorCompletionTitleText,
+        this.floorCompletionSubtitleText,
+        this.floorCompletionBodyText,
+      ])
+      .setDepth(5500)
+      .setScrollFactor(0)
+      .setVisible(false);
+
     const bossBarWidth = 360;
     const bossBarX = GAME.WIDTH / 2 - bossBarWidth / 2;
     const bossBarY = 16;
@@ -579,6 +696,10 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private refreshCameraMasks(): void {
+    if (!this.cameraMasksDirty) {
+      return;
+    }
+    this.cameraMasksDirty = false;
     const mainCamera = this.cameras.main;
     if (!mainCamera) {
       return;
@@ -810,6 +931,43 @@ export class MainGameScene extends Phaser.Scene {
     this.loadoutText?.setVisible(false);
   }
 
+  private showFloorCompletionScreenIfNeeded(): void {
+    const outcome = this.getFloorRunOutcome();
+    if (!outcome || !this.shouldShowFloorCompletionMessage()) {
+      return;
+    }
+
+    if (outcome === 'failed_timeout') {
+      this.floorCompletionTitleText?.setText('Game Over');
+      this.floorCompletionSubtitleText?.setText('Floor 1 failed');
+      this.floorCompletionBodyText?.setText(
+        'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
+      );
+    } else {
+      this.floorCompletionTitleText?.setText('Game Over');
+      this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Thanks for completing the first floor!\nMore game coming soon...',
+      );
+    }
+
+    this.floorCompletionMessagePending = false;
+    this.floorCompletionMessageShown = true;
+    this.floorCompletionScreen?.setVisible(true);
+  }
+
+  private shouldShowFloorCompletionMessage(): boolean {
+    return this.getFloorRunOutcome() !== null && !this.floorCompletionMessageShown;
+  }
+
+  private getFloorRunOutcome(): 'cleared_floor' | 'failed_timeout' | null {
+    const outcome = this.world.floor1?.runSummary?.outcome;
+    if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
+      return outcome;
+    }
+    return null;
+  }
+
   private updateBossHealthBar(): void {
     const objective = this.world.floor1?.objective;
     const bossEid = objective?.staircaseBossEid ?? null;
@@ -944,7 +1102,10 @@ export class MainGameScene extends Phaser.Scene {
             },
             {
               onConfirm: () => {
-                this.options.onStairDescend?.(this.world, this.playerEid);
+                const descended = this.options.onStairDescend?.(this.world, this.playerEid);
+                if (descended !== false && !this.floorCompletionMessageShown) {
+                  this.time.delayedCall(0, () => this.showFloorCompletionScreenIfNeeded());
+                }
                 this.updateOverlayText();
               },
             },

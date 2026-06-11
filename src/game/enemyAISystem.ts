@@ -1,11 +1,20 @@
-import { query, setComponent } from 'bitecs';
-import { DoorState, Enemy, EnemyBehavior, Player, Position, Velocity } from '../core/components.js';
+import { addComponent, query, setComponent } from 'bitecs';
+import {
+  DoorState,
+  Enemy,
+  EnemyBehavior,
+  EnemyProjectile,
+  Player,
+  Position,
+  Velocity,
+} from '../core/components.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
-import { spawnEnemyProjectile } from '../core/helpers.js';
+import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
-import { ENEMY_PROJECTILE } from '../shared/constants.js';
+import { ENEMY_PROJECTILE, TeamId } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
+import { getWeaponDef } from '../shared/weaponDefs.js';
 import { ftToPx } from '../shared/units.js';
 import { SeededRandom } from '../shared/random.js';
 
@@ -32,6 +41,7 @@ const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Ma
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
+const FIREBALL_DEF = getWeaponDef('fireball');
 
 interface PathState {
   key: string;
@@ -614,14 +624,31 @@ function tryFireEnemyProjectile(
   const spawnX = enemyX + direction.x * ENEMY_PROJECTILE.MUZZLE_OFFSET;
   const spawnY = enemyY + direction.y * ENEMY_PROJECTILE.MUZZLE_OFFSET;
 
-  spawnEnemyProjectile(
-    world,
-    spawnX,
-    spawnY,
-    direction.x * ENEMY_PROJECTILE.SPEED,
-    direction.y * ENEMY_PROJECTILE.SPEED,
-    ENEMY_PROJECTILE.DAMAGE,
-  );
+  if (FIREBALL_DEF) {
+    const projectile = spawnAoeProjectile(
+      world,
+      spawnX,
+      spawnY,
+      direction.x * FIREBALL_DEF.projectileSpeed,
+      direction.y * FIREBALL_DEF.projectileSpeed,
+      FIREBALL_DEF.baseDamage,
+      ftToPx(FIREBALL_DEF.aoeRadius),
+      FIREBALL_DEF.baseDamage,
+      eid,
+      TeamId.ENEMY,
+      ftToPx(FIREBALL_DEF.range),
+    );
+    addComponent(world.ecs, projectile, EnemyProjectile);
+  } else {
+    spawnEnemyProjectile(
+      world,
+      spawnX,
+      spawnY,
+      direction.x * ENEMY_PROJECTILE.SPEED,
+      direction.y * ENEMY_PROJECTILE.SPEED,
+      ENEMY_PROJECTILE.DAMAGE,
+    );
+  }
 
   enemyBehavior.lastFireMs[eid] = world.elapsedMs;
 }
@@ -972,7 +999,7 @@ export function enemyAISystem(world: GameWorld): void {
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
     const inAggroRange = permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
-    const canDetectPlayer = hasOpenRoomDoor && inAggroRange;
+    const canDetectPlayer = (hasOpenRoomDoor || permanentAggro) && inAggroRange;
 
     const currentVx = velocity.x[eid] ?? 0;
     const currentVy = velocity.y[eid] ?? 0;
@@ -1040,11 +1067,7 @@ export function enemyAISystem(world: GameWorld): void {
       );
     }
 
-    if (
-      behaviorType === AI_TYPE.RANGED &&
-      attackRange > EPSILON &&
-      distanceToPlayer <= attackRange
-    ) {
+    if (attackRange > EPSILON && distanceToPlayer <= attackRange) {
       tryFireEnemyProjectile(world, eid, playerDx, playerDy);
     }
 
