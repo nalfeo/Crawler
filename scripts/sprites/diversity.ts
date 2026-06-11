@@ -9,15 +9,16 @@
  * Algorithm: a coarse perceptual hash per sprite, then average pairwise
  * Hamming distance across the set.
  *
- * Hash construction (deliberately simple — these are already 16x16 PNGs):
+ * Hash construction (deliberately simple — these are already post-processed PNGs):
  *   1. Decode the PNG to RGBA.
  *   2. For each pixel: if alpha == 0, treat as luminance 0 (background);
  *      else compute Rec. 601 luminance Y = 0.299R + 0.587G + 0.114B.
  *   3. Compute the mean luminance across all pixels.
  *   4. Emit one bit per pixel: 1 if Y >= mean, 0 otherwise.
  *
- * A 16x16 sprite yields a 256-bit hash. Hamming distance between two hashes
- * divided by 256 normalises to [0, 1] — 0 means "identical structure",
+ * A sprite yields one hash bit per pixel (e.g. 16x16 -> 256 bits,
+ * 64x64 -> 4096 bits). Hamming distance between two hashes
+ * divided by bit length normalises to [0, 1] — 0 means "identical structure",
  * 1 means "perfectly inverted". Real near-duplicates score ~0.0-0.05;
  * meaningfully different variants score ~0.2-0.4; visually unrelated
  * images score 0.4+.
@@ -48,7 +49,7 @@ export interface DiversitySummary {
   /**
    * Meaningful bit length of each per-sprite hash (the pixel count).
    * Surfaced so callers (CLI, logs, scorecards) can describe the metric
-   * accurately — a 16x16 sheet produces a 256-bit hash, but a 32x32 brief
+   * accurately — a 16x16 sprite produces a 256-bit hash, but a 32x32 sprite
    * would produce a 1024-bit hash, and hard-coding either number would
    * be wrong half the time.
    */
@@ -153,7 +154,7 @@ export function computeDiversity(processedPngs: ReadonlyArray<Buffer>): Diversit
   const hashes = processedPngs.map((p) => perceptualHash(p));
   // Hashes must share the same meaningful bit length (the decoded
   // pixel count). Comparing by byte-length alone would let a 15x17 and a
-  // 16x16 hash slip through with the same packed size but different
+  // hashes from different image dimensions slip through with the same packed size but different
   // pixel layouts; here we validate the underlying dimension instead.
   const bitLength = hashes[0]!.bitLength;
   if (bitLength === 0) return null;

@@ -43,7 +43,7 @@ import { expandVariations } from './expand-variations.js';
 import type { JudgeCache } from './judge-cache.js';
 import { judgeVariant, type JudgeScorecard } from './judge.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
-import { postprocess } from './postprocess.js';
+import { postprocessWithTrace } from './postprocess.js';
 import { scoreCandidate } from './score-candidate.js';
 import { sliceSheetFromBrief } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
@@ -232,19 +232,23 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     readonly index: number;
     readonly score: number;
     readonly outOf: number;
+    readonly breakdown: RunSummaryEntry['breakdown'];
     readonly passed: boolean;
     readonly rawPath: string;
     readonly processedPath: string;
     readonly scorecardPath: string;
     readonly derivedAnchor: RunSummaryEntry['derivedAnchor'];
+    readonly derivedAnchors: RunSummaryEntry['derivedAnchors'];
     readonly anchorSidecarPath: string | null;
+    readonly centerOfGravitySidecarPath: string | null;
     readonly anchorOverlayPath: string;
     readonly processed: Buffer;
   }
   const sensorEntries: SensorEntry[] = [];
   for (let i = 0; i < sliced.length; i++) {
     const raw = sliced[i]!;
-    const processed = postprocess(raw, brief, palette);
+    const traced = postprocessWithTrace(raw, brief, palette);
+    const processed = traced.finalPng;
     const scorecard = scoreCandidate(processed, brief, palette);
     const id = pad2(i);
 
@@ -254,6 +258,30 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     await store.put(
       storeKey(`processed/${id}.scorecard.json`),
       Buffer.from(`${JSON.stringify(scorecard, null, 2)}\n`),
+    );
+    const pipelineSteps = traced.steps.map((step, idx) => {
+      const file = `${id}.step-${String(idx + 1).padStart(2, '0')}-${step.id}.png`;
+      return { id: step.id, label: step.label, file, png: step.png };
+    });
+    for (const step of pipelineSteps) {
+      await store.put(storeKey(`processed/${step.file}`), step.png);
+    }
+    await store.put(
+      storeKey(`processed/${id}.pipeline.json`),
+      Buffer.from(
+        `${JSON.stringify(
+          {
+            profile: 'default',
+            steps: pipelineSteps.map((step) => ({
+              id: step.id,
+              label: step.label,
+              file: step.file,
+            })),
+          },
+          null,
+          2,
+        )}\n`,
+      ),
     );
 
     // Optional anchor sidecar (only when derivation succeeded).
@@ -267,6 +295,25 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         ),
       );
       anchorSidecarPath = store.resolve(anchorKey);
+    }
+    let centerOfGravitySidecarPath: string | null = null;
+    if (scorecard.derivedAnchors.centerOfGravity) {
+      const cogKey = storeKey(`processed/${id}.anchor.cog.json`);
+      await store.put(
+        cogKey,
+        Buffer.from(
+          `${JSON.stringify(
+            {
+              x: scorecard.derivedAnchors.centerOfGravity.x,
+              y: scorecard.derivedAnchors.centerOfGravity.y,
+              source: 'derived' as const,
+            },
+            null,
+            2,
+          )}\n`,
+        ),
+      );
+      centerOfGravitySidecarPath = store.resolve(cogKey);
     }
 
     // Always emit the overlay PNG — fully transparent when anchor is null so
@@ -286,18 +333,20 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
           : null,
       }),
     );
-
     sensorEntries.push({
       index: i,
       score: scorecard.score,
       outOf: scorecard.outOf,
+      breakdown: scorecard.breakdown,
       passed: scorecard.passed,
       rawPath: store.resolve(storeKey(`raw/${id}.png`)),
       processedPath: store.resolve(storeKey(`processed/${id}.png`)),
       scorecardPath: store.resolve(storeKey(`processed/${id}.scorecard.json`)),
       derivedAnchor: scorecard.derivedAnchor,
+      derivedAnchors: scorecard.derivedAnchors,
       anchorSidecarPath,
       anchorOverlayPath: store.resolve(overlayKey),
+      centerOfGravitySidecarPath,
       processed,
     });
     processedBuffers.push(processed);
@@ -403,12 +452,15 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       index: e.index,
       score: e.score,
       outOf: e.outOf,
+      breakdown: e.breakdown,
       passed: e.passed,
       rawPath: e.rawPath,
       processedPath: e.processedPath,
       scorecardPath: e.scorecardPath,
       derivedAnchor: e.derivedAnchor,
+      derivedAnchors: e.derivedAnchors,
       anchorSidecarPath: e.anchorSidecarPath,
+      centerOfGravitySidecarPath: e.centerOfGravitySidecarPath,
       anchorOverlayPath: e.anchorOverlayPath,
       judgeScorecard,
       judgeSkipReason: reason,

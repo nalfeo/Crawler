@@ -1,6 +1,11 @@
-# Azure OpenAI — required for vision/AI features (sprite metadata, Cloud Code Review)
+# Azure OpenAI - required for vision/AI features (sprite metadata, Cloud Code Review)
 # Run scripts/setup-azure-env.ps1 to populate this file automatically.
 # DO NOT commit real values — .env.local is git-ignored.
+# Expected local Azure context for this project:
+#   user         : nalfeo@hotmail.com
+#   tenant       : 81f46c6b-e3ce-4db7-bc18-a3375faeb507 (nalfeohotmail.onmicrosoft.com)
+#   subscription : 308f5463-c4b1-4cfb-94e9-c3e0fd0dc67c
 AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_API_KEY=
 AZURE_OPENAI_VISION_DEPLOYMENT=
+AZURE_OPENAI_CHAT_DEPLOYMENT=

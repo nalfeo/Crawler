@@ -6,7 +6,7 @@
  *
  * Steps, in this exact order:
  *   1. Background removal: 4-corner flood fill -> alpha 0 on reachable pixels.
- *   2. Downscale: nearest-neighbor resample to brief.size.
+ *   2. Resample: nearest-neighbor resize to brief.size.
  *   3. Palette quantize: snap each opaque pixel to its nearest palette entry
  *      by Euclidean RGB distance.
  *   4. Alpha hard-threshold: alpha > 128 -> 255, else -> 0.
@@ -35,29 +35,162 @@ interface RgbaImage {
   readonly data: Uint8Array;
 }
 
-export function postprocess(rawPng: Buffer, brief: Brief, palette: PaletteColors): Buffer {
+export type SpeckleMode = 'edge-drop' | 'preserve-orphans' | 'disabled';
+
+export interface PostprocessOptions {
+  readonly speckle?: {
+    readonly minChannel?: number;
+    readonly maxOpaqueNeighbors?: number;
+    readonly dropEdgeOrphans?: boolean;
+  };
+  readonly modules?: {
+    readonly speckleMode?: SpeckleMode;
+  };
+}
+
+export function postprocess(
+  rawPng: Buffer,
+  brief: Brief,
+  palette: PaletteColors,
+  options: PostprocessOptions = {},
+): Buffer {
+  return postprocessWithTrace(rawPng, brief, palette, options).finalPng;
+}
+
+export interface PostprocessStepTrace {
+  readonly id: string;
+  readonly label: string;
+  readonly png: Buffer;
+}
+
+export interface PostprocessTrace {
+  readonly finalPng: Buffer;
+  readonly steps: ReadonlyArray<PostprocessStepTrace>;
+}
+
+export function postprocessWithTrace(
+  rawPng: Buffer,
+  brief: Brief,
+  palette: PaletteColors,
+  options: PostprocessOptions = {},
+): PostprocessTrace {
   if (palette.length === 0) {
     throw new Error('postprocess: palette must contain at least one color');
   }
+  const steps: PostprocessStepTrace[] = [];
+  const pushStep = (id: string, label: string, image: RgbaImage): void => {
+    steps.push({ id, label, png: encodePng(image) });
+  };
 
-  const decoded = decodePng(rawPng);
-  const bgRemoved = removeBackground(decoded);
-  const scaled = downscaleNearest(bgRemoved, brief.size.width, brief.size.height);
-  const quantized = quantizeToPalette(scaled, palette);
-  const finalised = hardThresholdAlpha(quantized);
+  let image = decodePng(rawPng);
+  image = removeBackground(image);
+  pushStep('background-removal', 'Background removal', image);
 
-  // Optional trim-and-fit: remove dead transparent edges, then scale up
-  // so the smallest dimension hits minDimension.
+  image = downscaleNearest(image, brief.size.width, brief.size.height);
+  pushStep('resize-nearest', 'Resize (nearest)', image);
+
+  const speckleMode = options.modules?.speckleMode ?? 'edge-drop';
+  if (speckleMode !== 'disabled') {
+    image = removeIsolatedNearWhiteSpeckles(image, {
+      ...options.speckle,
+      ...(speckleMode === 'preserve-orphans' ? { dropEdgeOrphans: false } : {}),
+    });
+    pushStep('speckle-cleanup', `Speckle cleanup (${speckleMode})`, image);
+  } else {
+    pushStep('speckle-cleanup-disabled', 'Speckle cleanup (disabled)', image);
+  }
+
+  if (brief.postprocessing?.paletteMode === 'strict') {
+    image = quantizeToPalette(image, palette);
+    pushStep('palette-quantize', 'Palette quantize (strict)', image);
+  } else {
+    pushStep('palette-quantize-skipped', 'Palette quantize (skipped)', image);
+  }
+
+  image = hardThresholdAlpha(image);
+  pushStep('alpha-threshold', 'Alpha threshold', image);
+
   if (brief.postprocessing?.trimAndFit) {
-    const trimmed = trimTransparentEdges(finalised);
+    const trimmed = trimTransparentEdges(image);
     if (trimmed.width > 0 && trimmed.height > 0) {
       const minDim = brief.postprocessing.minDimension ?? 64;
-      const fitted = scaleToMinDimension(trimmed, minDim);
-      return encodePng(fitted);
+      image = scaleToMinDimension(trimmed, minDim);
+      pushStep('trim-fit', `Trim + fit (${minDim}px min)`, image);
     }
   }
 
-  return encodePng(finalised);
+  return { finalPng: encodePng(image), steps };
+}
+
+/**
+ * Replace isolated near-white opaque pixels (often random model speckles) with
+ * the dominant neighboring opaque color. If none are found, only drop the
+ * pixel when it is on a transparency edge; otherwise preserve interior pixels.
+ */
+export function removeIsolatedNearWhiteSpeckles(
+  image: RgbaImage,
+  opts: { minChannel?: number; maxOpaqueNeighbors?: number; dropEdgeOrphans?: boolean } = {},
+): RgbaImage {
+  const minChannel = opts.minChannel ?? 245;
+  const maxOpaqueNeighbors = opts.maxOpaqueNeighbors ?? 8;
+  const dropEdgeOrphans = opts.dropEdgeOrphans ?? true;
+  const { width, height, data: src } = image;
+  const dst = new Uint8Array(src);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const a = src[idx + 3] ?? 0;
+      if (a === 0) continue;
+      const r = src[idx] ?? 0;
+      const g = src[idx + 1] ?? 0;
+      const b = src[idx + 2] ?? 0;
+      if (r < minChannel || g < minChannel || b < minChannel) continue;
+      let opaqueNeighbors = 0;
+      let touchesTransparent = false;
+      const neighborColors = new Map<string, number>();
+      for (let ny = y - 1; ny <= y + 1; ny++) {
+        for (let nx = x - 1; nx <= x + 1; nx++) {
+          if (nx === x && ny === y) continue;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const nIdx = (ny * width + nx) * 4;
+          const na = src[nIdx + 3] ?? 0;
+          if (na === 0) {
+            touchesTransparent = true;
+            continue;
+          }
+          opaqueNeighbors++;
+          const nr = src[nIdx] ?? 0;
+          const ng = src[nIdx + 1] ?? 0;
+          const nb = src[nIdx + 2] ?? 0;
+          if (nr >= minChannel && ng >= minChannel && nb >= minChannel) continue;
+          const key = `${nr},${ng},${nb}`;
+          neighborColors.set(key, (neighborColors.get(key) ?? 0) + 1);
+        }
+      }
+      // Always clean near-white fringe pixels that touch transparency, even if
+      // they are part of a larger white cluster (common after bg removal).
+      if (opaqueNeighbors > maxOpaqueNeighbors && !touchesTransparent) continue;
+      let chosen: string | null = null;
+      let chosenCount = -1;
+      for (const [key, count] of neighborColors.entries()) {
+        if (count > chosenCount) {
+          chosen = key;
+          chosenCount = count;
+        }
+      }
+      if (chosen) {
+        const [nr, ng, nb] = chosen.split(',').map((v) => Number(v));
+        dst[idx] = nr ?? 255;
+        dst[idx + 1] = ng ?? 255;
+        dst[idx + 2] = nb ?? 255;
+      } else if (touchesTransparent && dropEdgeOrphans) {
+        // Edge-adjacent near-white with no usable neighbors is usually a
+        // background remnant; clear it so it can't become a solid artifact.
+        dst[idx + 3] = 0;
+      }
+    }
+  }
+  return { width, height, data: dst };
 }
 
 function decodePng(buffer: Buffer): RgbaImage {
@@ -160,7 +293,7 @@ function floodFill(
 }
 
 /**
- * Nearest-neighbor downscale (or upscale, but we never upscale in practice).
+ * Nearest-neighbor resize (supports both downscale and upscale).
  * For each destination pixel, sample the source pixel whose center maps to it.
  *
  * Determinism: tie-breaking falls out of integer truncation in a fixed order;

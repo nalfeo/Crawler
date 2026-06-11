@@ -1,84 +1,82 @@
-/**
- * Unit tests for the gallery lab's approve helper.
- *
- * The gallery's DOM rendering is exercised manually in the lab; this file
- * pins the network contract of `postApprove` so the sidecar wire shape
- * (POST /api/runs/:brief/:run/approve with `{ variantIndex }`) can't drift.
- */
-
 import { describe, expect, it, vi } from 'vitest';
-import { postApprove } from '../../src/labs/sprite-gallery-lab/index.js';
+import { extractSensorFailures, postReprocess } from '../../src/labs/sprite-gallery-lab/index.js';
 
-describe('postApprove (gallery lab → sidecar)', () => {
-  it('posts JSON {variantIndex} to the approve endpoint and returns the parsed entry', async () => {
-    const fakeEntry = {
-      briefId: 'iron-sword',
-      spriteName: 'iron-sword',
-      assetPath: 'generated/iron-sword.png',
-      approvedAt: '2026-06-08T15:30:00.000Z',
-      sourceRun: 'generated/runs/iron-sword/2026-06-08T12-00-00-deadbeef',
-      variantIndex: 1,
-      anchor: { x: 8, y: 13, source: 'brief' },
-      sensorScore: '7/7',
-      judgeScore: '4',
+describe('extractSensorFailures', () => {
+  it('returns only failing sensors with reasons', () => {
+    const candidate = {
+      breakdown: [
+        { ok: true, sensor: 'dimensions-exact' },
+        { ok: false, sensor: 'opaque-bbox-fits', reason: 'main silhouette touches frame edge' },
+        { ok: false, sensor: 'weapon-orientation', reason: 'expected diagonal' },
+      ],
+    } as Record<string, unknown>;
+
+    expect(extractSensorFailures(candidate)).toEqual([
+      { sensor: 'opaque-bbox-fits', reason: 'main silhouette touches frame edge' },
+      { sensor: 'weapon-orientation', reason: 'expected diagonal' },
+    ]);
+  });
+
+  it('ignores malformed breakdown entries', () => {
+    const candidate = {
+      breakdown: [{ ok: false, sensor: 'a' }, { ok: false, reason: 'missing sensor' }, null],
+    } as Record<string, unknown>;
+
+    expect(extractSensorFailures(candidate)).toEqual([]);
+  });
+});
+
+describe('postReprocess (gallery lab → sidecar)', () => {
+  it('posts JSON payload to the reprocess endpoint and returns parsed runs', async () => {
+    const fakeResponse = {
+      sourceRunDir: 'generated/runs/characters/old-run',
+      briefPath: 'briefs/characters/african-american-female.yaml',
+      runs: [
+        {
+          profile: 'edge-drop',
+          briefId: 'african-american-female',
+          runId: 'new-run-a',
+          runDir: 'generated/runs/african-american-female/new-run-a',
+          summaryPath: 'generated/runs/african-american-female/new-run-a/summary.json',
+        },
+      ],
     };
     const fetcher = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(fakeEntry), {
+      new Response(JSON.stringify(fakeResponse), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       }),
     );
+    const payload = {
+      sourceBriefId: 'african-american-female',
+      sourceRunId: 'old-run',
+      profileA: { name: 'edge-drop', modules: { speckleMode: 'edge-drop' as const } },
+    };
 
-    const entry = await postApprove(
-      'iron-sword',
-      '2026-06-08T12-00-00-deadbeef',
-      1,
-      fetcher as unknown as typeof fetch,
-    );
+    const out = await postReprocess(payload, fetcher as unknown as typeof fetch);
 
-    expect(entry).toEqual(fakeEntry);
+    expect(out).toEqual(fakeResponse);
     expect(fetcher).toHaveBeenCalledTimes(1);
     const [url, init] = fetcher.mock.calls[0]!;
-    expect(url).toBe(
-      'http://127.0.0.1:3010/api/runs/iron-sword/2026-06-08T12-00-00-deadbeef/approve',
-    );
+    expect(url).toBe('http://127.0.0.1:3010/api/workflow/reprocess');
     expect(init.method).toBe('POST');
     expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
-    expect(JSON.parse(init.body as string)).toEqual({ variantIndex: 1 });
+    expect(JSON.parse(init.body as string)).toEqual(payload);
   });
 
-  it('URL-encodes path segments so a slash in briefId cannot escape the route', async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValue(
-        new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
-      );
-    await postApprove('a/b', 'run-1', 0, fetcher as unknown as typeof fetch);
-    const [url] = fetcher.mock.calls[0]!;
-    expect(url).toBe('http://127.0.0.1:3010/api/runs/a%2Fb/run-1/approve');
-  });
-
-  it('surfaces the sidecar error message on a non-2xx response', async () => {
+  it('surfaces sidecar errors for non-2xx responses', async () => {
     const fetcher = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ error: 'variant-not-found', message: 'no such variant' }), {
-        status: 404,
-        statusText: 'Not Found',
+      new Response(JSON.stringify({ error: 'reprocess-failed', message: 'bad source run' }), {
+        status: 500,
+        statusText: 'Internal Server Error',
         headers: { 'Content-Type': 'application/json' },
       }),
     );
     await expect(
-      postApprove('iron-sword', 'run-1', 99, fetcher as unknown as typeof fetch),
-    ).rejects.toThrow(/approve failed \(404\): no such variant/);
-  });
-
-  it('falls back to status text when the error body is not JSON', async () => {
-    const fetcher = vi
-      .fn()
-      .mockResolvedValue(
-        new Response('not json', { status: 500, statusText: 'Internal Server Error' }),
-      );
-    await expect(
-      postApprove('iron-sword', 'run-1', 0, fetcher as unknown as typeof fetch),
-    ).rejects.toThrow(/approve failed \(500\): Internal Server Error/);
+      postReprocess(
+        { sourceBriefId: 'a', sourceRunId: 'b', profileA: { name: 'A' } },
+        fetcher as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow(/reprocess failed \(500\): bad source run/);
   });
 });

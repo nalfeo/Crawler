@@ -183,6 +183,21 @@ describe('generateOne (integration)', () => {
       expect(existsSync(candidate.anchorOverlayPath)).toBe(true);
       const card = JSON.parse(readFileSync(candidate.scorecardPath, 'utf8'));
       expect(card.passed).toBe(true);
+      const padded = String(candidate.index).padStart(2, '0');
+      const pipelinePath = path.join(result.runDir, 'processed', `${padded}.pipeline.json`);
+      expect(existsSync(pipelinePath)).toBe(true);
+      const pipeline = JSON.parse(readFileSync(pipelinePath, 'utf8')) as {
+        profile?: string;
+        steps?: Array<{ file?: string }>;
+      };
+      expect(pipeline.profile).toBe('default');
+      expect(Array.isArray(pipeline.steps)).toBe(true);
+      expect((pipeline.steps?.length ?? 0) > 0).toBe(true);
+      const firstStep = pipeline.steps?.[0]?.file;
+      expect(typeof firstStep).toBe('string');
+      if (typeof firstStep === 'string') {
+        expect(existsSync(path.join(result.runDir, 'processed', firstStep))).toBe(true);
+      }
     }
     expect(result.attempts).toBe(1);
   });

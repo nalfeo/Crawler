@@ -20,7 +20,7 @@ import { buildServer } from './server.js';
 
 const HOST = '127.0.0.1';
 const DEFAULT_PORT = 3010;
-const VERSION = '0.1.0-readonly';
+const VERSION = '0.2.0-workflow';
 
 function resolvePort(): number {
   // SPRITES_SIDECAR_PORT lets tests bind to a free port (commonly 0 →
@@ -77,8 +77,12 @@ async function main(): Promise<number> {
     process.stdout.write(`  repoRoot: ${repoRoot}\n`);
     process.stdout.write(`  runsDir : ${runsDir}\n`);
     process.stdout.write(
-      `  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file, POST /api/runs/:brief/:run/approve\n`,
+      `  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file\n`,
     );
+    process.stdout.write(
+      `            POST /api/runs/:brief/:run/approve, POST /api/workflow/synthesize, POST /api/workflow/promote-brief,\n`,
+    );
+    process.stdout.write(`            POST /api/workflow/generate, POST /api/workflow/metadata\n`);
     return 0;
   } catch (err) {
     process.stderr.write(`sprites:gallery sidecar: failed to bind ${HOST}:${port}\n`);

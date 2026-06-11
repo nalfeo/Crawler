@@ -61,20 +61,21 @@ const KENNEY_RELATIVE = 'public/assets/kenney';
  */
 const PACK_NOTES: Readonly<Record<string, string>> = {
   'roguelike-characters':
-    'Top-down 16x16 roguelike humanoid + creature characters; use for biped silhouettes, robes, armored figures.',
+    'Top-down roguelike humanoid + creature characters from legacy 16x16 source sheets; use for biped silhouettes, robes, armored figures.',
   'roguelike-rpg-pack':
-    'Top-down 16x16 RPG weapons + items + props; primary anchor for swords, axes, maces, staffs, bows, shields.',
+    'Top-down RPG weapons + items + props from legacy 16x16 source sheets; primary anchor for swords, axes, maces, staffs, bows, shields.',
   'tiny-battle':
-    '16x16 hand-weapons + soldiers + small props; secondary palette and pose anchor for melee weapons.',
+    'Hand-weapons + soldiers + small props from legacy 16x16 sheets; secondary palette and pose anchor for melee weapons.',
   'tiny-dungeon':
-    '16x16 dungeon items, weapons, monsters, environment props; use for traps, keys, doors, slimes, rats, small enemies.',
-  'tiny-ski': '16x16 winter-themed characters and props; niche — use only for snow / ski subjects.',
+    'Dungeon items, weapons, monsters, and environment props from legacy 16x16 sheets; use for traps, keys, doors, slimes, rats, small enemies.',
+  'tiny-ski':
+    'Winter-themed characters and props from legacy 16x16 sheets; niche — use only for snow / ski subjects.',
   'tiny-town':
-    '16x16 town buildings, civilians, signs, foliage; use for non-combat props, shopkeepers, decorative items.',
+    'Town buildings, civilians, signs, and foliage from legacy 16x16 sheets; use for non-combat props, shopkeepers, decorative items.',
 };
 
 const GENERIC_PACK_NOTE =
-  '16x16 Kenney pack — contents not specifically curated; pick only if the subject clearly matches the pack name.';
+  'Kenney pack (legacy 16x16 source sheet) — contents not specifically curated; pick only if the subject clearly matches the pack name.';
 
 export function buildReferenceCatalog(
   options: BuildReferenceCatalogOptions,

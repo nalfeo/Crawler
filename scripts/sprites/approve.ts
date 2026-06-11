@@ -84,6 +84,10 @@ export interface ManifestEntry {
   readonly sourceRun: string;
   readonly variantIndex: number;
   readonly anchor: ManifestAnchor | null;
+  readonly anchors: {
+    readonly hold: ManifestAnchor | null;
+    readonly centerOfGravity: ManifestAnchor | null;
+  };
   /** Sensor scorecard summary, e.g. `"7/7"`. */
   readonly sensorScore: string;
   /** Judge `minScore` as a string, or `null` if not judged. */
@@ -118,12 +122,24 @@ interface RunSummaryShape {
   readonly chosen?: {
     readonly index?: number;
     readonly anchor?: { readonly x: number; readonly y: number; readonly source: string } | null;
+    readonly anchors?: {
+      readonly hold?: { readonly x: number; readonly y: number; readonly source: string } | null;
+      readonly centerOfGravity?: {
+        readonly x: number;
+        readonly y: number;
+        readonly source: string;
+      } | null;
+    } | null;
   } | null;
   readonly candidates?: ReadonlyArray<{
     readonly index?: number;
     readonly score?: number;
     readonly outOf?: number;
     readonly derivedAnchor?: { readonly x: number; readonly y: number } | null;
+    readonly derivedAnchors?: {
+      readonly hold?: { readonly x: number; readonly y: number } | null;
+      readonly centerOfGravity?: { readonly x: number; readonly y: number } | null;
+    } | null;
     readonly judgeScorecard?: { readonly minScore?: number } | null;
   }>;
 }
@@ -210,12 +226,14 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   fs.copyFileSync(processedPng, assetAbsPath);
 
   // Anchor: prefer the per-variant derived sidecar, fall back to chosen.anchor.
-  const anchor = resolveAnchor(
+  const anchors = resolveAnchors(
     fs,
     processedDir,
     padded,
-    candidate.derivedAnchor ?? null,
+    candidate.derivedAnchors?.hold ?? candidate.derivedAnchor ?? null,
+    candidate.derivedAnchors?.centerOfGravity ?? null,
     summary.chosen?.anchor ?? null,
+    summary.chosen?.anchors?.centerOfGravity ?? null,
   );
 
   const sensorScore =
@@ -235,7 +253,8 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     approvedAt: now().toISOString(),
     sourceRun: toRepoRelativePosix(options.repoRoot, options.runDir),
     variantIndex: options.variantIndex,
-    anchor,
+    anchor: anchors.hold,
+    anchors,
     sensorScore,
     judgeScore,
   };
@@ -361,14 +380,37 @@ function parseSummary(raw: string, summaryPath: string): RunSummaryShape {
   }
 }
 
-function resolveAnchor(
+function resolveAnchors(
   fs: ApproveFs,
   processedDir: string,
   paddedIndex: string,
+  candidateHoldAnchor: { readonly x: number; readonly y: number } | null,
+  candidateCenterOfGravityAnchor: { readonly x: number; readonly y: number } | null,
+  chosenAnchor: { readonly x: number; readonly y: number; readonly source: string } | null,
+  chosenCenterOfGravityAnchor: {
+    readonly x: number;
+    readonly y: number;
+    readonly source: string;
+  } | null,
+): { hold: ManifestAnchor | null; centerOfGravity: ManifestAnchor | null } {
+  const sidecarPath = path.join(processedDir, `${paddedIndex}.anchor.json`);
+  const centerOfGravitySidecarPath = path.join(processedDir, `${paddedIndex}.anchor.cog.json`);
+  const hold = resolveSingleAnchor(fs, sidecarPath, candidateHoldAnchor, chosenAnchor);
+  const centerOfGravity = resolveSingleAnchor(
+    fs,
+    centerOfGravitySidecarPath,
+    candidateCenterOfGravityAnchor,
+    chosenCenterOfGravityAnchor,
+  );
+  return { hold, centerOfGravity };
+}
+
+function resolveSingleAnchor(
+  fs: ApproveFs,
+  sidecarPath: string,
   candidateDerivedAnchor: { readonly x: number; readonly y: number } | null,
   chosenAnchor: { readonly x: number; readonly y: number; readonly source: string } | null,
 ): ManifestAnchor | null {
-  const sidecarPath = path.join(processedDir, `${paddedIndex}.anchor.json`);
   if (fs.existsSync(sidecarPath)) {
     try {
       const raw = JSON.parse(fs.readFileSync(sidecarPath, 'utf8')) as VariantAnchorSidecar;

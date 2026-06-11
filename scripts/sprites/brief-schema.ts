@@ -64,8 +64,8 @@ const referenceSchema = z
 /**
  * Optional sheet-mode generation hints. The pipeline defaults to a 4x4 grid
  * with 16 variants, no empty cells. Rationale: a 1024 native canvas split
- * 4-ways yields 256x256 cells, which downscale cleanly by an integer factor
- * to 64x64, 32x32, and 16x16 pixel sprites; 16 variants per call gives the
+ * 4-ways yields 256x256 cells, which resample cleanly by an integer factor
+ * to the default 64x64 output (and any larger integer multiples); 16 variants per call gives the
  * scoring loop enough headroom to reject low-quality candidates without
  * paying for a second provider round-trip. The slicer requires `nativeCanvas`
  * to be evenly divisible by both `rows` and `cols`, which the defaults
@@ -140,6 +140,7 @@ const sensorOverridesSchema = z
     enemy: z
       .object({
         facing: z.enum(['front', 'any']).default('front'),
+        toleranceDeg: z.number().min(0).max(45).default(2),
       })
       .strict()
       .optional(),
@@ -255,7 +256,7 @@ export const briefSchema = z
      * Optional post-processing overrides beyond the standard pipeline.
      *
      * `trimAndFit`: when enabled, after the normal postprocess steps
-     * (bg removal → downscale → quantize → alpha threshold), the
+     * (bg removal → resample to brief size → quantize → alpha threshold), the
      * pipeline trims fully-transparent edge rows/columns and then
      * scales the result up (nearest-neighbor) so the smallest
      * dimension reaches `minDimension` pixels. This maximises pixel
@@ -268,9 +269,10 @@ export const briefSchema = z
       .object({
         trimAndFit: z.boolean().default(false),
         minDimension: z.number().int().min(8).max(256).default(64),
+        paletteMode: z.enum(['none', 'strict']).default('none'),
       })
       .strict()
-      .default({ trimAndFit: false, minDimension: 64 }),
+      .default({ trimAndFit: false, minDimension: 64, paletteMode: 'none' }),
   })
   .strict()
   .superRefine((brief, ctx) => {

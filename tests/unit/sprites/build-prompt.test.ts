@@ -84,12 +84,39 @@ describe('buildPrompt (single)', () => {
         anchor: { mode: 'center-of-mass' },
       } as Brief['sensors'],
     });
+
     const out = buildPrompt(enemy, FAKE_STYLE_GUIDE);
     expect(out).toMatch(/Mob rules/i);
     expect(out).toMatch(/straight forward/i);
     expect(out).toMatch(/no held weapons/i);
     expect(out).toMatch(/no shields/i);
     expect(out).toMatch(/no spell effects/i);
+  });
+
+  it('adds tile rules for tile briefs including exact output size', () => {
+    const tile = makeBrief({
+      type: 'tile',
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 63 },
+    });
+    const out = buildPrompt(tile, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Tile rules/i);
+    expect(out).toMatch(/tileable background tile/i);
+    expect(out).toMatch(/exactly 64x64 pixels/i);
+    expect(out).toMatch(/seamlessly in both axes/i);
+  });
+
+  it('adds character rules encouraging non-drab clothing and readable tones', () => {
+    const character = makeBrief({
+      type: 'character',
+      anchor: { x: 8, y: 8 },
+      sensors: { enemy: { facing: 'front' } } as Brief['sensors'],
+    });
+    const out = buildPrompt(character, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Character rules/i);
+    expect(out).toMatch(/Avoid drab monochrome outfits/i);
+    expect(out).toMatch(/not only browns\/oranges/i);
+    expect(out).toMatch(/hair and skin tones are clearly differentiated/i);
   });
 
   it('includes per-variant constraints (no clipping, no text, neutral bg)', () => {
@@ -191,6 +218,30 @@ describe('buildSheetPrompt', () => {
     const out = buildSheetPrompt(enemy, FAKE_STYLE_GUIDE);
     expect(out).toMatch(/Mob rules/i);
     expect(out).toMatch(/centered around the body mass/i);
+  });
+
+  it('adds tile-specific sheet constraints for seamless edge-to-edge tiles', () => {
+    const tile = makeBrief({
+      type: 'tile',
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 63 },
+    });
+    const out = buildSheetPrompt(tile, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Tile rules/i);
+    expect(out).toMatch(/exactly 64x64 pixels/i);
+    expect(out).toMatch(/no transparent padding and no subject margin/i);
+    expect(out).toMatch(/seamless tiling continuity/i);
+  });
+
+  it('adds character rules to character sheet prompts', () => {
+    const character = makeBrief({
+      type: 'character',
+      anchor: { x: 8, y: 8 },
+      sensors: { enemy: { facing: 'front' } } as Brief['sensors'],
+    });
+    const out = buildSheetPrompt(character, FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Character rules/i);
+    expect(out).toMatch(/Avoid drab monochrome outfits/i);
   });
 });
 

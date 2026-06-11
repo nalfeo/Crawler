@@ -243,6 +243,8 @@ describe('judgeVariant — happy path', () => {
     // System prompt must include the 1-5 scale and the rejection threshold.
     expect(call.request.systemInstructions).toContain('1-5');
     expect(call.request.systemInstructions).toContain('below 3');
+    expect(call.request.systemInstructions).toContain('transparency holes');
+    expect(call.request.systemInstructions).toContain('disconnected/floating pixel islands');
     // System prompt must embed the (truncated) style guide.
     expect(call.request.systemInstructions).toContain('pixel art style guide content');
   });

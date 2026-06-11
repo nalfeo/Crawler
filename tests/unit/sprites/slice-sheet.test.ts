@@ -112,6 +112,59 @@ describe('sliceSheet', () => {
     expect(() => sliceSheet(sheet, { rows: 1, cols: 0 })).toThrow(/>= 1/);
   });
 
+  it('can nudge vertical slice bounds to recover bottom overflow from a cell', () => {
+    const width = 8;
+    const height = 16;
+    const png = new PNG({ width, height });
+    // White background.
+    for (let i = 0; i < png.data.length; i += 4) {
+      png.data[i] = 255;
+      png.data[i + 1] = 255;
+      png.data[i + 2] = 255;
+      png.data[i + 3] = 255;
+    }
+    // First-row sprite: red torso from y=2..7 and green "feet" that spill into y=8.
+    for (let y = 2; y <= 7; y++) {
+      for (let x = 3; x <= 4; x++) {
+        const i = (y * width + x) * 4;
+        png.data[i] = 220;
+        png.data[i + 1] = 30;
+        png.data[i + 2] = 30;
+      }
+    }
+    for (let x = 3; x <= 4; x++) {
+      const i = (8 * width + x) * 4;
+      png.data[i] = 40;
+      png.data[i + 1] = 220;
+      png.data[i + 2] = 40;
+    }
+    const sheet = PNG.sync.write(png);
+
+    const fixed = sliceSheet(sheet, { rows: 2, cols: 1 });
+    const nudged = sliceSheet(sheet, {
+      rows: 2,
+      cols: 1,
+      autoNudge: {
+        enabled: true,
+        maxVerticalShiftPx: 2,
+        backgroundDistanceThreshold: 16,
+        edgeBandPx: 1,
+      },
+    });
+    const fixedPng = PNG.sync.read(fixed[0]!);
+    const nudgedPng = PNG.sync.read(nudged[0]!);
+    const hasGreen = (img: PNG): boolean => {
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (img.data[i] === 40 && img.data[i + 1] === 220 && img.data[i + 2] === 40) {
+          return true;
+        }
+      }
+      return false;
+    };
+    expect(hasGreen(fixedPng)).toBe(false);
+    expect(hasGreen(nudgedPng)).toBe(true);
+  });
+
   // Property: for any small NxM grid with arbitrary distinct cell colors,
   // slicing recovers the cells in row-major order at the right resolution.
   it('property: round-trips an arbitrary NxM grid of solid-color cells', () => {

@@ -3,6 +3,7 @@ import {
   DEFAULT_HANDHELD_SPRITE_ANCHOR,
   isValidAnchor,
   resolveHandheldAnchor,
+  resolveSpriteAnchors,
   type SpriteAnchor,
 } from '../../src/shared/sprite-anchor.js';
 
@@ -23,6 +24,38 @@ describe('SpriteAnchor', () => {
     it('returns the supplied anchor when one is provided', () => {
       const anchor: SpriteAnchor = { x: 3, y: 9 };
       expect(resolveHandheldAnchor(anchor)).toBe(anchor);
+    });
+
+    describe('resolveSpriteAnchors', () => {
+      it('uses explicit hold and center-of-gravity anchors when both are provided', () => {
+        expect(
+          resolveSpriteAnchors({
+            hold: { x: 4, y: 12 },
+            centerOfGravity: { x: 7, y: 8 },
+          }),
+        ).toEqual({
+          hold: { x: 4, y: 12 },
+          centerOfGravity: { x: 7, y: 8 },
+        });
+      });
+
+      it('falls back center-of-gravity to hold when only hold is provided', () => {
+        expect(resolveSpriteAnchors({ hold: { x: 6, y: 11 } })).toEqual({
+          hold: { x: 6, y: 11 },
+          centerOfGravity: { x: 6, y: 11 },
+        });
+      });
+
+      it('falls back hold to provided fallback anchor, then to default', () => {
+        expect(resolveSpriteAnchors(undefined, { x: 8, y: 8 })).toEqual({
+          hold: { x: 8, y: 8 },
+          centerOfGravity: { x: 8, y: 8 },
+        });
+        expect(resolveSpriteAnchors()).toEqual({
+          hold: DEFAULT_HANDHELD_SPRITE_ANCHOR,
+          centerOfGravity: DEFAULT_HANDHELD_SPRITE_ANCHOR,
+        });
+      });
     });
 
     it('returns the default when called with no argument', () => {

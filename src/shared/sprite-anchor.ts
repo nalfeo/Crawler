@@ -14,6 +14,11 @@ export interface SpriteAnchor {
   readonly y: number;
 }
 
+export interface SpriteAnchors {
+  readonly hold: SpriteAnchor;
+  readonly centerOfGravity: SpriteAnchor;
+}
+
 /**
  * Default anchor for **hand-held items on a 16x16 frame**: bottom-center, one
  * pixel above the bottom edge. Matches the default used by weapon briefs in the
@@ -30,6 +35,15 @@ export const DEFAULT_HANDHELD_SPRITE_ANCHOR: SpriteAnchor = Object.freeze({ x: 8
  */
 export function resolveHandheldAnchor(anchor?: SpriteAnchor): SpriteAnchor {
   return anchor ?? DEFAULT_HANDHELD_SPRITE_ANCHOR;
+}
+
+export function resolveSpriteAnchors(
+  anchors?: Partial<SpriteAnchors>,
+  fallback?: SpriteAnchor,
+): SpriteAnchors {
+  const hold = anchors?.hold ?? fallback ?? DEFAULT_HANDHELD_SPRITE_ANCHOR;
+  const centerOfGravity = anchors?.centerOfGravity ?? hold;
+  return { hold, centerOfGravity };
 }
 
 /**

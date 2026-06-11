@@ -51,7 +51,7 @@ const SWORD_BRIEF: Brief = {
   variations: [],
   minVariations: 4,
   judge: { enabled: false, maxVariants: 16 },
-  postprocessing: { trimAndFit: false, minDimension: 64 },
+  postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'strict' },
 };
 
 function runAllSensors(

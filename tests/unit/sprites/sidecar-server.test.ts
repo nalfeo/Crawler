@@ -240,6 +240,40 @@ describe('buildServer routes (inject)', () => {
     expect(res.statusCode).toBe(403);
   });
 
+  it('GET /api/runs/:brief/:run/sheets lists source sheet PNGs', async () => {
+    const runDir = path.join(root, 'runs', 'iron-sword', '2026-06-04T12-00-00-deadbeef');
+    writeFileSync(path.join(runDir, 'sheet-00.png'), Buffer.from('PNG-SHEET-00'));
+    writeFileSync(path.join(runDir, 'sheet-01.png'), Buffer.from('PNG-SHEET-01'));
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/runs/iron-sword/2026-06-04T12-00-00-deadbeef/sheets',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().files).toEqual(['sheet-00.png', 'sheet-01.png']);
+  });
+
+  it('GET /api/runs/:brief/:run/sheet/:filename serves sheet PNGs', async () => {
+    const runDir = path.join(root, 'runs', 'iron-sword', '2026-06-04T12-00-00-deadbeef');
+    const sheet = Buffer.from('PNG-SHEET');
+    writeFileSync(path.join(runDir, 'sheet-00.png'), sheet);
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/runs/iron-sword/2026-06-04T12-00-00-deadbeef/sheet/sheet-00.png',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('image/png');
+    expect(res.rawPayload.toString()).toBe('PNG-SHEET');
+  });
+
+  it('GET /api/runs/:brief/:run/sheet/:filename rejects non-sheet filenames', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/runs/iron-sword/2026-06-04T12-00-00-deadbeef/sheet/not-allowed.png',
+    });
+    expect(res.statusCode).toBe(415);
+    expect(res.json().error).toBe('unsupported-sheet-filename');
+  });
+
   it('GET processed/:filename streams the PNG with correct mime', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -281,6 +315,76 @@ describe('buildServer routes (inject)', () => {
       url: '/api/runs/iron-sword/2026-06-04T12-00-00-deadbeef/processed/99.png',
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it('POST /api/workflow/synthesize validates body.name', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+  });
+
+  it('POST /api/workflow/promote-brief validates required fields', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/promote-brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { sourceYamlPath: 'generated/brief-candidates/test/test-v1.yaml' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+  });
+
+  it('POST /api/workflow/generate validates briefPath', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/generate',
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+  });
+
+  it('POST /api/workflow/metadata validates provider', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/metadata',
+      headers: { 'content-type': 'application/json' },
+      payload: { provider: 'invalid-provider' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+  });
+
+  it('POST /api/workflow/reprocess validates required fields', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/reprocess',
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+  });
+
+  it('POST /api/workflow/reprocess returns 404 for missing source run', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/reprocess',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        sourceBriefId: 'iron-sword',
+        sourceRunId: 'missing-run',
+        profileA: { name: 'edge-drop', modules: { speckleMode: 'edge-drop' } },
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('run-not-found');
   });
 });
 
