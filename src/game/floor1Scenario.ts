@@ -802,16 +802,6 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
 
-  // Auto-discover staircase if player is already standing on it.
-  if (objective.staircaseSpawned && objective.staircaseUnlocked && !objective.staircaseDiscovered) {
-    const stairDx = playerX - objective.staircasePos.x;
-    const stairDy = playerY - objective.staircasePos.y;
-    if (Math.hypot(stairDx, stairDy) <= objective.markerRadiusPx) {
-      confirmFloor1StairDescend(world, player);
-      return;
-    }
-  }
-
   if (world.elapsedMs >= objective.deadlineMs && !objective.staircaseDiscovered) {
     world.floor1.failReason = 'stair_timeout';
     world.state = 'game_over';
