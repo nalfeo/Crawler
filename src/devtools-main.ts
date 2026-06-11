@@ -92,6 +92,30 @@ interface SidecarSheetsResponse {
   files: string[];
 }
 
+interface SliceBboxEntry {
+  index: number;
+  row: number;
+  col: number;
+  x0: number;
+  y0: number;
+  w: number;
+  h: number;
+  empty: boolean;
+}
+
+interface SliceMapResponse {
+  sheetW: number;
+  sheetH: number;
+  rows: number;
+  cols: number;
+  cellW: number;
+  cellH: number;
+  rowOffsets: number[];
+  colOffsets: number[];
+  cells: SliceBboxEntry[];
+  sheetFile: string;
+}
+
 interface ReprocessResponse {
   sourceRunDir: string;
   briefPath: string;
@@ -135,6 +159,10 @@ function sheetsUrl(briefId: string, runId: string): string {
 
 function sheetUrl(briefId: string, runId: string, filename: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/sheet/${encodeURIComponent(filename)}`;
+}
+
+function sliceMapUrl(briefId: string, runId: string): string {
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/slice-map`;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -1377,13 +1405,12 @@ function render(): void {
     debuggerTraceHost.append(pipelineSection);
 
     // ── Shared state for cross-section rendering ────────────────────
-    let pendingSheetImg: HTMLImageElement | null = null;
-    let spriteDims = { w: 0, h: 0 };
+    let pendingSheetImgForSlice: HTMLImageElement | null = null;
+    let currentSliceMap: SliceMapResponse | null = null;
 
-    const drawGridOnCanvas = (
+    const drawSliceMapOnCanvas = (
       sourceImg: HTMLImageElement,
-      spriteW: number,
-      spriteH: number,
+      sliceMap: SliceMapResponse,
     ): void => {
       const maxW = Math.min(sourceImg.naturalWidth, 640);
       const scale = maxW / sourceImg.naturalWidth;
@@ -1401,79 +1428,83 @@ function render(): void {
       sheetCanvas.style.display = 'block';
       sheetStatus.style.display = 'none';
 
-      // Grid + highlight overlay
-      const cols = Math.max(1, Math.floor(sourceImg.naturalWidth / spriteW));
-      const rows = Math.max(1, Math.floor(sourceImg.naturalHeight / spriteH));
-      const cw = Math.round(spriteW * scale);
-      const ch = Math.round(spriteH * scale);
-
+      // Slicing overlay with actual cell bboxes
       slicingCanvas.width = dw;
       slicingCanvas.height = dh;
       const ctx2 = slicingCanvas.getContext('2d');
-      if (ctx2) {
-        ctx2.imageSmoothingEnabled = false;
-        ctx2.drawImage(sourceImg, 0, 0, dw, dh);
-        // Dim everything
-        ctx2.fillStyle = 'rgba(8,12,24,0.45)';
-        ctx2.fillRect(0, 0, dw, dh);
-        // Grid lines
-        ctx2.strokeStyle = 'rgba(148,163,184,0.5)';
-        ctx2.lineWidth = 1;
-        for (let c = 1; c < cols; c++) {
-          ctx2.beginPath();
-          ctx2.moveTo(c * cw, 0);
-          ctx2.lineTo(c * cw, rows * ch);
-          ctx2.stroke();
-        }
-        for (let r = 1; r < rows; r++) {
-          ctx2.beginPath();
-          ctx2.moveTo(0, r * ch);
-          ctx2.lineTo(cols * cw, r * ch);
-          ctx2.stroke();
-        }
-        // Highlight selected cell
-        const total = Math.max(1, cols * rows);
-        const idx = Math.max(0, Math.min(total - 1, variantIndex));
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
-        // Undim selected cell
-        ctx2.drawImage(
-          sourceImg,
-          col * spriteW,
-          row * spriteH,
-          spriteW,
-          spriteH,
-          col * cw,
-          row * ch,
-          cw,
-          ch,
-        );
-        // Selection border
-        ctx2.strokeStyle = '#7dd3fc';
-        ctx2.lineWidth = 2;
-        ctx2.strokeRect(col * cw + 1, row * ch + 1, cw - 2, ch - 2);
-        // Dim corners label
-        ctx2.fillStyle = 'rgba(125,211,252,0.15)';
-        ctx2.fillRect(col * cw, row * ch, cw, ch);
+      if (!ctx2) return;
+      ctx2.imageSmoothingEnabled = false;
+      ctx2.drawImage(sourceImg, 0, 0, dw, dh);
+      // Dim everything
+      ctx2.fillStyle = 'rgba(8,12,24,0.55)';
+      ctx2.fillRect(0, 0, dw, dh);
 
-        slicingStatus.textContent = `${cols}×${rows} grid — variant #${idx} highlighted (row ${row + 1}, col ${col + 1})`;
+      // Draw each cell with its actual (nudged) bounds
+      const selectedCell = sliceMap.cells.find((c) => c.index === variantIndex) ?? null;
+      for (const cell of sliceMap.cells) {
+        const sx = cell.x0;
+        const sy = cell.y0;
+        const dx = Math.round(sx * scale);
+        const dy = Math.round(sy * scale);
+        const dCellW = Math.round(cell.w * scale);
+        const dCellH = Math.round(cell.h * scale);
+        const isSelected = cell.index === variantIndex;
+
+        if (cell.empty) {
+          // Empty cell: dashed red outline
+          ctx2.save();
+          ctx2.setLineDash([3, 3]);
+          ctx2.strokeStyle = 'rgba(239,68,68,0.5)';
+          ctx2.lineWidth = 1;
+          ctx2.strokeRect(dx + 0.5, dy + 0.5, dCellW - 1, dCellH - 1);
+          ctx2.restore();
+        } else if (isSelected) {
+          // Selected: redraw undimmed, add highlight
+          ctx2.drawImage(sourceImg, sx, sy, cell.w, cell.h, dx, dy, dCellW, dCellH);
+          ctx2.fillStyle = 'rgba(125,211,252,0.12)';
+          ctx2.fillRect(dx, dy, dCellW, dCellH);
+          ctx2.strokeStyle = '#7dd3fc';
+          ctx2.lineWidth = 2;
+          ctx2.strokeRect(dx + 1, dy + 1, dCellW - 2, dCellH - 2);
+        } else {
+          // Non-selected cell: show border
+          ctx2.strokeStyle = 'rgba(148,163,184,0.4)';
+          ctx2.lineWidth = 1;
+          ctx2.strokeRect(dx + 0.5, dy + 0.5, dCellW - 1, dCellH - 1);
+        }
       }
+
+      // Build status line
+      const nudgeRows = sliceMap.rowOffsets.filter((o) => o !== 0);
+      const nudgeCols = sliceMap.colOffsets.filter((o) => o !== 0);
+      const nudgeNote =
+        nudgeRows.length > 0 || nudgeCols.length > 0
+          ? ` · autoNudge: rows[${sliceMap.rowOffsets.join(',')}] cols[${sliceMap.colOffsets.join(',')}]`
+          : ' · no nudge';
+      const cellLabel =
+        selectedCell && !selectedCell.empty
+          ? ` — variant #${variantIndex} at (${selectedCell.x0},${selectedCell.y0}) ${selectedCell.w}×${selectedCell.h}px`
+          : '';
+      slicingStatus.textContent =
+        `${sliceMap.cols}×${sliceMap.rows} grid · ${sliceMap.cellW}×${sliceMap.cellH}px cells` +
+        nudgeNote +
+        cellLabel;
       slicingCanvas.style.display = 'block';
     };
 
-    const tryDrawGrid = (sourceImg: HTMLImageElement): void => {
-      if (spriteDims.w > 0) {
-        drawGridOnCanvas(sourceImg, spriteDims.w, spriteDims.h);
+    const tryDrawSliceMap = (sourceImg: HTMLImageElement): void => {
+      if (currentSliceMap) {
+        drawSliceMapOnCanvas(sourceImg, currentSliceMap);
       } else {
-        pendingSheetImg = sourceImg;
+        pendingSheetImgForSlice = sourceImg;
       }
     };
 
-    const onSpriteDimsKnown = (w: number, h: number): void => {
-      spriteDims = { w, h };
-      if (pendingSheetImg) {
-        drawGridOnCanvas(pendingSheetImg, w, h);
-        pendingSheetImg = null;
+    const onSliceMapKnown = (sliceMap: SliceMapResponse): void => {
+      currentSliceMap = sliceMap;
+      if (pendingSheetImgForSlice) {
+        drawSliceMapOnCanvas(pendingSheetImgForSlice, sliceMap);
+        pendingSheetImgForSlice = null;
       }
     };
 
@@ -1495,7 +1526,7 @@ function render(): void {
           `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
         )
           return;
-        tryDrawGrid(img);
+        tryDrawSliceMap(img);
       };
       img.onerror = () => {
         sheetStatus.textContent = `Failed to load ${filename}`;
@@ -1567,12 +1598,13 @@ function render(): void {
       return card;
     };
 
-    // ── Async: fetch sheets + manifest in parallel ──────────────────
+    // ── Async: fetch sheets + manifest + slice-map in parallel ──────
     void (async () => {
       try {
-        const [sheetResult, manifestResult] = await Promise.allSettled([
+        const [sheetResult, manifestResult, sliceMapResult] = await Promise.allSettled([
           fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
           fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
+          fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId)),
         ]);
 
         if (
@@ -1633,6 +1665,13 @@ function render(): void {
           }
         }
 
+        // Wire up slice-map (drives the slicing canvas)
+        if (sliceMapResult.status === 'fulfilled') {
+          onSliceMapKnown(sliceMapResult.value);
+        } else {
+          slicingStatus.textContent = 'Slice map unavailable — run may pre-date this feature.';
+        }
+
         // Load most recent (last) sheet
         const activeSheet = sheetFiles[sheetFiles.length - 1];
         if (activeSheet) {
@@ -1650,18 +1689,6 @@ function render(): void {
         // ── Pipeline trace ─────────────────────────────────────────
         pipelineBody.replaceChildren();
         const finalSrc = spriteUrl(briefId, runId, `${padded}.png`);
-
-        // Always load final sprite to get dimensions for grid drawing
-        const finalImg = new Image();
-        finalImg.onload = () => {
-          if (
-            !debugTarget ||
-            `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
-          )
-            return;
-          onSpriteDimsKnown(finalImg.naturalWidth, finalImg.naturalHeight);
-        };
-        finalImg.src = finalSrc;
 
         if (manifestResult.status === 'rejected') {
           pipelineBody.append(

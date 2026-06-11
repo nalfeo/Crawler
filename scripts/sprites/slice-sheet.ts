@@ -34,6 +34,103 @@ export interface SliceOptions {
   };
 }
 
+export interface SliceBbox {
+  /** 0-based variant index in reading order, excluding empty cells. -1 for empty cells. */
+  readonly index: number;
+  readonly row: number;
+  readonly col: number;
+  /** Actual top-left x after autoNudge + clamp. */
+  readonly x0: number;
+  /** Actual top-left y after autoNudge + clamp. */
+  readonly y0: number;
+  readonly w: number;
+  readonly h: number;
+  readonly empty: boolean;
+}
+
+export interface SliceMap {
+  readonly sheetW: number;
+  readonly sheetH: number;
+  readonly rows: number;
+  readonly cols: number;
+  /** Nominal cell width (= sheetW / cols), before nudge. */
+  readonly cellW: number;
+  /** Nominal cell height (= sheetH / rows), before nudge. */
+  readonly cellH: number;
+  /** Per-row vertical offset applied by autoNudge (0 = no nudge). */
+  readonly rowOffsets: readonly number[];
+  /** Per-column horizontal offset applied by autoNudge (0 = no nudge). */
+  readonly colOffsets: readonly number[];
+  /** Every cell in reading order, including empty cells. */
+  readonly cells: readonly SliceBbox[];
+}
+
+/**
+ * Compute the actual bounding boxes for every cell in the sheet without
+ * extracting pixel data. Useful for visualisation (the debugger draws
+ * these exact rectangles rather than a uniform grid).
+ */
+export function computeSliceMap(sheetPng: Buffer, options: SliceOptions): SliceMap {
+  const { rows, cols } = options;
+  if (rows < 1 || cols < 1) {
+    throw new Error(`computeSliceMap: rows and cols must be >= 1 (got ${rows}x${cols})`);
+  }
+  const sheet = PNG.sync.read(sheetPng);
+  if (sheet.width % cols !== 0 || sheet.height % rows !== 0) {
+    throw new Error(
+      `computeSliceMap: sheet ${sheet.width}x${sheet.height} is not evenly divisible into a ${rows}x${cols} grid`,
+    );
+  }
+  const cellW = sheet.width / cols;
+  const cellH = sheet.height / rows;
+  const emptyCells = options.emptyCells ?? [];
+  const emptyKeys = new Set(emptyCells.map(([r, c]) => `${r},${c}`));
+  const autoNudge = options.autoNudge;
+  const rowOffsets: number[] =
+    autoNudge?.enabled === true
+      ? inferRowOffsets(
+          sheet,
+          rows,
+          cellH,
+          autoNudge.maxVerticalShiftPx ?? 12,
+          autoNudge.backgroundDistanceThreshold ?? 24,
+        )
+      : new Array(rows).fill(0);
+  const colOffsets: number[] =
+    autoNudge?.enabled === true
+      ? inferColOffsets(
+          sheet,
+          cols,
+          cellW,
+          Math.max(2, Math.floor((autoNudge.maxVerticalShiftPx ?? 12) / 2)),
+          autoNudge.backgroundDistanceThreshold ?? 24,
+        )
+      : new Array(cols).fill(0);
+
+  const cells: SliceBbox[] = [];
+  let index = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const empty = emptyKeys.has(`${r},${c}`);
+      const x0 = clamp(c * cellW + (colOffsets[c] ?? 0), 0, sheet.width - cellW);
+      const y0 = clamp(r * cellH + (rowOffsets[r] ?? 0), 0, sheet.height - cellH);
+      cells.push({ index: empty ? -1 : index, row: r, col: c, x0, y0, w: cellW, h: cellH, empty });
+      if (!empty) index++;
+    }
+  }
+  return {
+    sheetW: sheet.width,
+    sheetH: sheet.height,
+    rows,
+    cols,
+    cellW,
+    cellH,
+    rowOffsets,
+    colOffsets,
+    cells,
+  };
+}
+
 /**
  * Slice a sheet into individual cell PNGs.
  *

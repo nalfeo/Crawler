@@ -54,7 +54,9 @@ import {
   createVisionProvider,
 } from '../provider/factory.js';
 import { reprocessRuns, type ReprocessProfile } from '../reprocess.js';
+import { computeSliceMap } from '../slice-sheet.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
+import { loadBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { LocalRunStore } from '../store/local-store.js';
 import type { RunStore } from '../store/types.js';
@@ -328,6 +330,87 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         .map((key) => key.slice(runPrefix.length))
         .sort((a, b) => a.localeCompare(b));
       return { files };
+    },
+  );
+
+  app.get<{ Params: { briefId: string; runId: string } }>(
+    '/api/runs/:briefId/:runId/slice-map',
+    async (req, reply) => {
+      const { briefId, runId } = req.params;
+      if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
+      const summaryKey = `${briefId}/${runId}/summary.json`;
+      if (!(await store.has(summaryKey))) {
+        reply.code(404);
+        return { error: 'run-not-found', briefId, runId };
+      }
+      let summary: { briefPath?: string };
+      try {
+        summary = JSON.parse((await store.get(summaryKey)).toString('utf8'));
+      } catch {
+        reply.code(500);
+        return { error: 'summary-invalid' };
+      }
+      if (typeof summary.briefPath !== 'string') {
+        reply.code(404);
+        return { error: 'brief-path-missing' };
+      }
+      const resolved = path.isAbsolute(summary.briefPath)
+        ? summary.briefPath
+        : path.resolve(deps.repoRoot, summary.briefPath);
+      const rel = path.relative(deps.repoRoot, resolved);
+      if (rel.startsWith('..') || path.isAbsolute(rel)) {
+        reply.code(403);
+        return { error: 'forbidden-brief-path' };
+      }
+      let brief: Brief;
+      try {
+        brief = loadBrief(resolved).brief;
+      } catch {
+        reply.code(500);
+        return { error: 'brief-load-failed' };
+      }
+      const runPrefix = `${briefId}/${runId}/`;
+      const keys = await store.list(runPrefix);
+      const sheetFiles = keys
+        .filter((key) => /^sheet-\d+\.png$/i.test(key.slice(runPrefix.length)))
+        .map((key) => key.slice(runPrefix.length))
+        .sort((a, b) => a.localeCompare(b));
+      if (sheetFiles.length === 0) {
+        reply.code(404);
+        return { error: 'sheet-not-found' };
+      }
+      const sheetKey = `${briefId}/${runId}/${sheetFiles[0]!}`;
+      let sheetPng: Buffer;
+      try {
+        sheetPng = await store.get(sheetKey);
+      } catch {
+        reply.code(404);
+        return { error: 'sheet-not-found' };
+      }
+      const { rows, cols, emptyCells } = brief.generation.sheet;
+      const nudgeEnabled = brief.type === 'character' || brief.type === 'enemy';
+      try {
+        const sliceMap = computeSliceMap(sheetPng, {
+          rows,
+          cols,
+          emptyCells,
+          autoNudge: nudgeEnabled
+            ? {
+                enabled: true,
+                maxVerticalShiftPx: 12,
+                backgroundDistanceThreshold: 24,
+                edgeBandPx: 2,
+              }
+            : undefined,
+        });
+        return { ...sliceMap, sheetFile: sheetFiles[0] };
+      } catch (err) {
+        reply.code(500);
+        return { error: 'slice-failed', message: String(err) };
+      }
     },
   );
 
