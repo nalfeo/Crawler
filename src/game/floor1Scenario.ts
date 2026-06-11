@@ -863,13 +863,6 @@ export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): 
   ) {
     return false;
   }
-  const playerX = world.stores.position.x[playerEid] ?? 0;
-  const playerY = world.stores.position.y[playerEid] ?? 0;
-  const stairDx = playerX - objective.staircasePos.x;
-  const stairDy = playerY - objective.staircasePos.y;
-  if (Math.hypot(stairDx, stairDy) > objective.markerRadiusPx) {
-    return false;
-  }
   objective.staircaseDiscovered = true;
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, true);
   world.state = 'safe_room';
