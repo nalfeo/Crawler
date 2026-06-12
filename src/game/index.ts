@@ -18,6 +18,7 @@ export {
   floor1PlayerStatSystem,
   floor1EnemyDirectorSystem,
   floor1ObjectiveSystem,
+  meetTutorialGoon,
 } from './floor1Scenario.js';
 export {
   getShopkeeperStage,

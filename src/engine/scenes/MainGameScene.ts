@@ -83,6 +83,10 @@ export interface MainGameSceneOptions {
     equipmentCost: number;
     equipmentName: string;
   };
+  /** Tutorial Goon callbacks — fired on first player-NPC interaction. */
+  tutorialGoon?: {
+    meet: (world: GameWorld) => void;
+  };
 }
 
 declare global {
@@ -695,9 +699,9 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedInteraction = true;
     });
 
-    // Screen-space NPC dialogue box — bottom-center, above the hint
+    // Screen-space NPC dialogue box — bottom-center, well above the interaction hint
     this.npcDialogueText = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - 72, '', {
+      .text(GAME.WIDTH / 2, GAME.HEIGHT - 120, '', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#e2e8f0',
@@ -712,7 +716,7 @@ export class MainGameScene extends Phaser.Scene {
       .setVisible(false);
 
     this.dialogueCloseButton = this.add
-      .text(GAME.WIDTH - 20, GAME.HEIGHT - 104, 'Close', {
+      .text(GAME.WIDTH - 20, GAME.HEIGHT - 152, 'Close', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#f8fafc',
@@ -1273,7 +1277,7 @@ export class MainGameScene extends Phaser.Scene {
       } else {
         const def = getNpcDef(instance.defId);
         const activeDialogue = this.resolveDialogueLines(instance.defId);
-        this.interactionHint?.setText('Next').setVisible(true);
+        this.interactionHint?.setVisible(false);
         this.dialogueCloseButton?.setVisible(true);
 
         if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc))) {
@@ -1328,7 +1332,9 @@ export class MainGameScene extends Phaser.Scene {
           const activeDialogue = this.resolveDialogueLines(instance.defId);
           if (def && activeDialogue.length > 0) {
             this.conversationNpcEid = nearNpcEid;
-            objective.questAccepted = true;
+            if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
+              this.options.tutorialGoon.meet(this.world);
+            }
             instance.dialogueIndex = 0;
             const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
             this.npcDialogueText?.setText(`${def.name}: "${text}"`).setVisible(true);

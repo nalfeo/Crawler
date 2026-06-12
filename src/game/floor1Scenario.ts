@@ -7,7 +7,7 @@ import {
   set,
   setComponent,
 } from 'bitecs';
-import { BiomeType, type MapConfig } from '../shared/map-types.js';
+import { BiomeType, RoomRole, TerrainType, type MapConfig } from '../shared/map-types.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import {
   Position,
@@ -284,6 +284,36 @@ function chooseObjectiveTiles(world: GameWorld): {
   return { safeRoomPos, staircasePos, shopRoomPos, questItemPos };
 }
 
+/** Tag the shop room as a safe room and repaint its floor tiles so it renders correctly. */
+function tagShopRoomAsSafe(world: GameWorld, shopRoomPos: { x: number; y: number }): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  const tile = floorMap.pixelToTile(shopRoomPos.x, shopRoomPos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) return;
+  floorMap.roomGraph.setRole(roomId, RoomRole.SAFE);
+  const room = floorMap.roomGraph.get(roomId);
+  if (!room) return;
+  const { x: rx, y: ry, width, height } = room.bounds;
+  const w = floorMap.config.widthTiles;
+  for (let ty = ry; ty < ry + height; ty++) {
+    for (let tx = rx; tx < rx + width; tx++) {
+      if (floorMap.terrain[ty * w + tx] === TerrainType.STONE_FLOOR) {
+        floorMap.terrain[ty * w + tx] = TerrainType.SAFE_ROOM_FLOOR;
+      }
+    }
+  }
+}
+
+/** Called the first time the player talks to the Tutorial Goon. Accepts the quest and unlocks quest tracking. */
+export function meetTutorialGoon(world: GameWorld): void {
+  acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+  notifyQuestTalk(world, 'tutorial-goon');
+  if (world.floor1) {
+    world.floor1.objective.questAccepted = true;
+  }
+}
+
 export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
   const config: MapConfig = {
     ...FLOOR_1_MAP_CONFIG,
@@ -304,6 +334,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
   const { safeRoomPos, staircasePos, shopRoomPos, questItemPos } = chooseObjectiveTiles(world);
+  tagShopRoomAsSafe(world, shopRoomPos);
   world.floor1 = {
     protagonistName: FLOOR_1_PROTAGONIST,
     starterWeaponPool: FLOOR_1_STARTER_POOL,
@@ -383,8 +414,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
 
-  // Seed the quest log: the tutorial pest-control quest and the merchant's errand.
-  acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+  // Seed the quest log: the merchant's errand only. Tutorial quest is accepted when meeting the Goon.
   acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
 
   // Keep boss-room doors locked until the Tutorial Goon quest is completed.
@@ -457,7 +487,7 @@ function resolveSpawnPosition(
     }
   }
   const viableRooms = floorMap.rooms.filter(
-    (room) => room !== floorMap.safeRoom && room !== floorMap.bossStairRoom,
+    (room) => room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR,
   );
   if (viableRooms.length > 0) {
     for (let i = 0; i < 32; i += 1) {
@@ -707,7 +737,10 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
       dx * dx + dy * dy > spawnMaxDistanceSq ||
       !isInAnyRoom(world, x, y) ||
       isInRoom(world, x, y, world.floorMap?.bossStairRoom ?? null) ||
-      isInRoom(world, x, y, world.floorMap?.safeRoom ?? null)
+      (world.floorMap?.roomGraph
+        .getRoomsByRole(RoomRole.SAFE)
+        .some((r) => isInRoom(world, x, y, r)) ??
+        false)
     );
   };
   if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {

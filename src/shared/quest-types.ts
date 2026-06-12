@@ -111,7 +111,7 @@ const FLOOR1_SHOP_QUEST: QuestDef = {
     },
     {
       id: 'fetch-prize',
-      label: 'Retrieve his "special" rat tail',
+      label: 'Retrieve his "special" rat tail (dropped in a far dungeon room)',
       kind: 'collect',
       itemId: SHOPKEEPER_FETCH_ITEM_ID,
       target: 1,
