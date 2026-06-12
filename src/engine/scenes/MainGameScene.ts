@@ -1078,7 +1078,7 @@ export class MainGameScene extends Phaser.Scene {
       } else {
         const def = getNpcDef(instance.defId);
         const activeDialogue = this.resolveDialogueLines(instance.defId);
-        this.interactionHint?.setText('Next · [E]').setVisible(true);
+        this.interactionHint?.setText('Next').setVisible(true);
         this.dialogueCloseButton?.setVisible(true);
 
         if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc))) {
@@ -1116,7 +1116,7 @@ export class MainGameScene extends Phaser.Scene {
         objective.markerRadiusPx;
 
     if (nearNpcEid >= 0) {
-      this.interactionHint?.setText('Talk · [E]').setVisible(true);
+      this.interactionHint?.setText('Talk').setVisible(true);
       this.dialogueCloseButton?.setVisible(false);
 
       if (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) {
@@ -1134,7 +1134,7 @@ export class MainGameScene extends Phaser.Scene {
         }
       }
     } else if (nearStairs) {
-      this.interactionHint?.setText('Descend · [E]').setVisible(true);
+      this.interactionHint?.setText('Descend').setVisible(true);
       this.npcDialogueText?.setVisible(false);
       this.dialogueCloseButton?.setVisible(false);
       if (
