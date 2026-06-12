@@ -2141,8 +2141,9 @@ function render(): void {
           // Wire button listeners every time pipeline is re-rendered
           wireSlicingButtons();
 
-          // Start with raw cell URL
+          // Start with raw cell URL and include slice version in cache key
           const rawCellUrl = rawSpriteUrl(briefId, runId, `${padded}.png`);
+          const cacheKey = `${rawCellUrl}|${sliceVersion}`;
           let selectedOutputForNextStep: string | null = rawCellUrl;
           let lastActiveBranch: 'A' | 'B' = 'A';
 
@@ -2152,10 +2153,10 @@ function render(): void {
           if (useLivePostprocess) {
             // Compute all live steps from the raw cell
             try {
-              let liveResult = liveResultsCache.get(rawCellUrl);
+              let liveResult = liveResultsCache.get(cacheKey);
               if (!liveResult) {
                 liveResult = await livePostprocess(rawCellUrl, briefPathStr);
-                liveResultsCache.set(rawCellUrl, liveResult);
+                liveResultsCache.set(cacheKey, liveResult);
               }
               const steps = liveResult.steps;
 
