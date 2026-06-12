@@ -785,15 +785,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               // Use explosion texture for trap-spawned AoEs (short duration)
               const explosionType = entityType === 'enemy_aoe' ? 'enemy_explosion' : 'explosion';
               const explosionTex = resolveTexture(scene, explosionType);
-              if (
-                remaining <= 100 &&
-                !explosionTex.fallback &&
-                (img.texture.key !== explosionTex.key ||
-                  (explosionTex.frame !== undefined &&
-                    img.frame.name !== explosionTex.frame?.toString()))
-              ) {
+              if (remaining <= 100 && img.texture.key !== explosionTex.key) {
                 img.setTexture(explosionTex.key, explosionTex.frame);
-                scale = (radius * 2) / 16; // explosion sprite is 16x16
+                // Recalculate scale based on new texture
+                scale = (radius * 2) / (explosionTex.scale > 1 ? 16 : 66);
                 img.setScale(scale);
               }
 
