@@ -270,9 +270,9 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   [TerrainType.RUBBLE]: { sheetKey: TD, frame: td(2, 2) },
 
   // ── Boss/Safe room floors ───────────────────────────────────────────────────
-  // BOSS_STAIR_FLOOR and SAFE_ROOM_FLOOR intentionally have no sprite entry here.
-  // They render via TERRAIN_FALLBACK_COLORS (deep crimson 0x3d0a18 / dark teal 0x0a2040).
-  // TODO: map to appropriate Kenney sprite frames once confirmed in tile-explorer-lab.
+  [TerrainType.BOSS_STAIR_FLOOR]: { sheetKey: TD, frame: td(3, 1) },
+  [TerrainType.SAFE_ROOM_FLOOR]: { sheetKey: TD, frame: td(4, 1) },
+  [TerrainType.WOOD_WALL]: { sheetKey: TD, frame: td(0, 3) },
 } as const;
 
 /**
