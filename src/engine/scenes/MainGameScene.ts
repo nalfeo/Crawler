@@ -45,6 +45,7 @@ const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
   'Stairs are live. Descend when you are ready.',
   'Floor 2 will hit harder. Keep moving and kite smart.',
 ] as const;
+const DIRECTOR_COMMENTARY_MS = 3600;
 const logger = createLogger('engine:main-game-scene');
 export interface MainGameSceneOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
@@ -127,6 +128,9 @@ export class MainGameScene extends Phaser.Scene {
   /** Screen-space NPC dialogue text shown while a dialogue line is active. */
   private npcDialogueText?: Phaser.GameObjects.Text;
 
+  /** Screen-space temporary commentary text for scenario callouts. */
+  private directorCommentaryText?: Phaser.GameObjects.Text;
+
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
   private floorCompletionTitleText?: Phaser.GameObjects.Text;
@@ -163,6 +167,18 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionMessagePending = false;
 
+  private commentaryHideAtMs = 0;
+
+  private commentaryMilestones = {
+    floorIntro: false,
+    questAccepted: false,
+    questCompleted: false,
+    bossBattleStarted: false,
+    bossDefeated: false,
+    descended: false,
+    timeout: false,
+  };
+
   private cameraMasksDirty = true;
 
   constructor(private readonly options: MainGameSceneOptions = {}) {
@@ -187,6 +203,16 @@ export class MainGameScene extends Phaser.Scene {
     this.warnedMissingDependencies = false;
     this.floorCompletionMessageShown = false;
     this.floorCompletionMessagePending = false;
+    this.commentaryHideAtMs = 0;
+    this.commentaryMilestones = {
+      floorIntro: false,
+      questAccepted: false,
+      questCompleted: false,
+      bossBattleStarted: false,
+      bossDefeated: false,
+      descended: false,
+      timeout: false,
+    };
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -252,6 +278,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel?.destroy();
       this.interactionHint?.destroy();
       this.npcDialogueText?.destroy();
+      this.directorCommentaryText?.destroy();
       this.floorCompletionScreen?.destroy();
       this.bossHealthShell?.destroy();
       this.bossHealthFill?.destroy();
@@ -271,6 +298,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.npcDialogueText = undefined;
+      this.directorCommentaryText = undefined;
       this.floorCompletionScreen = undefined;
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
@@ -556,6 +584,21 @@ export class MainGameScene extends Phaser.Scene {
         wordWrap: { width: GAME.WIDTH - 64 },
       })
       .setOrigin(0.5, 1)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
+
+    this.directorCommentaryText = this.add
+      .text(GAME.WIDTH / 2, 96, '', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#fef3c7',
+        backgroundColor: '#451a03dd',
+        padding: { x: 12, y: 8 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 80 },
+      })
+      .setOrigin(0.5, 0)
       .setDepth(1100)
       .setScrollFactor(0)
       .setVisible(false);
@@ -879,6 +922,7 @@ export class MainGameScene extends Phaser.Scene {
     // HUD (health bar, floor timer, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateBossHealthBar();
+    this.updateDirectorCommentary();
 
     if (!this.world.floor1) {
       this.objectiveText?.setText(`State: ${this.world.state}`);
@@ -929,6 +973,64 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.loadoutText?.setVisible(false);
+  }
+
+  private queueDirectorCommentary(text: string): void {
+    this.directorCommentaryText?.setText(`DIRECTOR: ${text}`).setVisible(true);
+    this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
+  }
+
+  private updateDirectorCommentary(): void {
+    if (this.commentaryHideAtMs > 0 && this.time.now >= this.commentaryHideAtMs) {
+      this.directorCommentaryText?.setVisible(false);
+      this.commentaryHideAtMs = 0;
+    }
+
+    if (!this.world.floor1 || this.world.floor !== 1) {
+      return;
+    }
+
+    const objective = this.world.floor1.objective;
+    if (!this.commentaryMilestones.floorIntro) {
+      this.commentaryMilestones.floorIntro = true;
+      this.queueDirectorCommentary(
+        'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
+      );
+      return;
+    }
+    if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
+      this.commentaryMilestones.questAccepted = true;
+      this.queueDirectorCommentary(
+        'Tutorial Goon gets a deal accepted: clear the rat and slime quota for tonight’s show.',
+      );
+      return;
+    }
+    if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
+      this.commentaryMilestones.questCompleted = true;
+      this.queueDirectorCommentary('Quota complete. Boss room is live for the next segment.');
+      return;
+    }
+    if (objective.bossBattleStarted && !this.commentaryMilestones.bossBattleStarted) {
+      this.commentaryMilestones.bossBattleStarted = true;
+      this.queueDirectorCommentary('Boss encounter started. This is the ratings spike moment.');
+      return;
+    }
+    if (objective.staircaseBossDefeated && !this.commentaryMilestones.bossDefeated) {
+      this.commentaryMilestones.bossDefeated = true;
+      this.queueDirectorCommentary(
+        'Boss down. Stairs unlocked and the crowd wants a clean finish.',
+      );
+      return;
+    }
+    if (objective.staircaseDiscovered && !this.commentaryMilestones.descended) {
+      this.commentaryMilestones.descended = true;
+      this.queueDirectorCommentary('Floor 1 cleared. Queueing the transfer to the next floor.');
+      return;
+    }
+    if (this.world.floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+      this.commentaryMilestones.timeout = true;
+      this.queueDirectorCommentary('Time expired before the stairs. Floor 1 run ends here.');
+    }
   }
 
   private showFloorCompletionScreenIfNeeded(): void {
