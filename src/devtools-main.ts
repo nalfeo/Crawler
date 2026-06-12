@@ -191,17 +191,27 @@ interface LivePostprocessResult {
   readonly steps: ReadonlyArray<{ id: string; label: string; png: string }>;
 }
 
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function livePostprocess(
-  rawPngUrl: string,
+  rawPngSource: string,
   briefPath: string,
 ): Promise<LivePostprocessResult> {
   // Fetch raw PNG as blob
-  const pngRes = await fetch(rawPngUrl);
+  const pngRes = await fetch(rawPngSource);
   if (!pngRes.ok) {
     throw new Error(`Failed to fetch raw PNG: ${pngRes.status} ${pngRes.statusText}`);
   }
   const pngBlob = await pngRes.arrayBuffer();
-  const pngBase64 = btoa(String.fromCharCode(...new Uint8Array(pngBlob)));
+  const pngBase64 = arrayBufferToBase64(pngBlob);
 
   // Call /api/postprocess
   const result = await fetchJson<LivePostprocessResult>(`${SIDECAR_BASE}/api/postprocess`, {
@@ -1468,6 +1478,7 @@ function render(): void {
     let pendingSheetImgForSlice: HTMLImageElement | null = null;
     let sliceMapV1: SliceMapResponse | null = null;
     let sliceMapV2: SliceMapResponse | null = null;
+    let rerenderPipeline: (() => void) | null = null;
     let hitCells: Array<{
       cell: SliceMapResponse['cells'][number];
       x: number;
@@ -1651,6 +1662,7 @@ function render(): void {
       sheetStatus.style.display = '';
       sheetCanvas.style.display = 'none';
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         if (
           !debugTarget ||
@@ -1659,11 +1671,39 @@ function render(): void {
           return;
         lastSheetImg = img;
         tryDrawSliceMap(img);
+        rerenderPipeline?.();
       };
       img.onerror = () => {
         sheetStatus.textContent = `Failed to load ${filename}`;
       };
       img.src = sheetUrl(briefId, sheetRunId, filename);
+    };
+
+    const makeSelectedRawCellDataUrl = (): string | null => {
+      const activeSliceMap = getActiveSliceMap();
+      if (!activeSliceMap || !lastSheetImg || !lastSheetImg.complete) return null;
+      const selectedCell = activeSliceMap.cells.find(
+        (cell) => cell.index === variantIndex && !cell.empty,
+      );
+      if (!selectedCell || selectedCell.w <= 0 || selectedCell.h <= 0) return null;
+      const canvas = document.createElement('canvas');
+      canvas.width = selectedCell.w;
+      canvas.height = selectedCell.h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        lastSheetImg,
+        selectedCell.x0,
+        selectedCell.y0,
+        selectedCell.w,
+        selectedCell.h,
+        0,
+        0,
+        selectedCell.w,
+        selectedCell.h,
+      );
+      return canvas.toDataURL('image/png');
     };
 
     const makeComparisonStepCard = (
@@ -2136,6 +2176,9 @@ function render(): void {
         };
 
         const renderPipelineSteps = async (): Promise<void> => {
+          rerenderPipeline = () => {
+            void renderPipelineSteps();
+          };
           const profileNode = profile
             ? el('div', {
                 text: `Profile: ${profile}`,
@@ -2166,10 +2209,12 @@ function render(): void {
           // Wire button listeners every time pipeline is re-rendered
           wireSlicingButtons();
 
-          // Start with raw cell URL and include slice version in cache key
-          const rawCellUrl = rawSpriteUrl(briefId, runId, `${padded}.png`);
-          const cacheKey = `${rawCellUrl}|${sliceVersion}`;
-          let selectedOutputForNextStep: string | null = rawCellUrl;
+          // Start from current slicer selection when available; fallback to raw artifact.
+          const selectedRawCellDataUrl = makeSelectedRawCellDataUrl();
+          const rawCellSource =
+            selectedRawCellDataUrl ?? rawSpriteUrl(briefId, runId, `${padded}.png`);
+          const cacheKey = `${briefId}/${runId}/${variantIndex}|${sliceVersion}|${selectedRawCellDataUrl ? 'sheet' : 'raw'}`;
+          let selectedOutputForNextStep: string | null = rawCellSource;
           let lastActiveBranch: 'A' | 'B' = 'A';
 
           // If we have briefPath, compute live pipeline steps; otherwise show pre-baked
@@ -2180,7 +2225,7 @@ function render(): void {
             try {
               let liveResult = liveResultsCache.get(cacheKey);
               if (!liveResult) {
-                liveResult = await livePostprocess(rawCellUrl, briefPathStr);
+                liveResult = await livePostprocess(rawCellSource, briefPathStr);
                 liveResultsCache.set(cacheKey, liveResult);
               }
               const steps = liveResult.steps;
