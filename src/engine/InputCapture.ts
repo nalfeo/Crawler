@@ -19,9 +19,11 @@ interface InputCaptureOptions {
  * touches that start on the game surface are captured — lab UI panels
  * and other overlays remain scrollable.
  *
- * Mouse pointer events are mapped through the same virtual-joystick logic
- * so developers can test the mobile touch experience on desktop without a
- * touch screen (left-half = move joystick, right-half = action).
+ * Real touch input treats the first active touch as movement so joystick drag
+ * can begin anywhere on the screen; additional simultaneous touches count as
+ * action input. Mouse pointer events still use left-half = move and right-half
+ * = action so developers can emulate the old split-zone mobile layout on
+ * desktop without a touch screen.
  */
 export function createInputCapture(
   scene: Phaser.Scene,
@@ -65,7 +67,7 @@ export function createInputCapture(
     logger.debug('Window blur cleared keyboard and touch state');
   };
 
-  const classifyTouchZone = (clientX: number): 'move' | 'action' => {
+  const classifyPointerZone = (clientX: number): 'move' | 'action' => {
     const canvas = scene.game?.canvas;
     if (canvas) {
       const rect = canvas.getBoundingClientRect();
@@ -74,10 +76,19 @@ export function createInputCapture(
     return clientX < window.innerWidth / 2 ? 'move' : 'action';
   };
 
+  const hasActiveMoveTouch = (): boolean => {
+    for (const touch of activeTouches.values()) {
+      if (touch.zone === 'move') {
+        return true;
+      }
+    }
+    return false;
+  };
+
   const onTouchStart = (e: TouchEvent) => {
     for (const touch of e.changedTouches) {
       activeTouches.set(touch.identifier, {
-        zone: classifyTouchZone(touch.clientX),
+        zone: hasActiveMoveTouch() ? 'action' : 'move',
         startX: touch.clientX,
         startY: touch.clientY,
         x: touch.clientX,
@@ -113,7 +124,7 @@ export function createInputCapture(
     if (e.pointerType === 'touch') return; // real touches handled above
     if (e.button !== 0) return; // only left-click emulates touch
     activeTouches.set(MOUSE_POINTER_ID_BASE, {
-      zone: classifyTouchZone(e.clientX),
+      zone: classifyPointerZone(e.clientX),
       startX: e.clientX,
       startY: e.clientY,
       x: e.clientX,

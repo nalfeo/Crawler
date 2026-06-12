@@ -190,12 +190,20 @@ export function createHudMinimap(scene: Phaser.Scene): {
   const closeLabel = scene.add
     .text(0, 0, '✕', {
       fontFamily: 'monospace',
-      fontSize: '14px',
+      fontSize: '18px',
       color: '#94a3b8',
     })
-    .setOrigin(1, 0)
+    .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 3)
+    .setVisible(false)
+    .setInteractive({ useHandCursor: true });
+
+  const closeButtonBg = scene.add
+    .rectangle(0, 0, 44, 44, 0x0f172a, 0.96)
+    .setStrokeStyle(1, 0x475569)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 2)
     .setVisible(false)
     .setInteractive({ useHandCursor: true });
 
@@ -260,7 +268,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
     panelTitle.setPosition(panelX + 14, panelY + 10);
     panelHint.setPosition(panelX + 14, panelY + panelH - 26);
-    closeLabel.setPosition(panelX + panelW - 10, panelY + 8);
+    closeButtonBg.setPosition(panelX + panelW - 14 - 22, panelY + 10 + 22);
+    closeLabel.setPosition(panelX + panelW - 14 - 22, panelY + 10 + 22);
 
     viewport = new Phaser.Geom.Rectangle(viewportX, viewportY, viewportW, viewportH);
     viewportFrame
@@ -304,6 +313,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     panelTitle.setVisible(visible);
     panelHint.setVisible(visible);
     viewportFrame.setVisible(visible);
+    closeButtonBg.setVisible(visible);
     closeLabel.setVisible(visible);
     viewportHitArea.setVisible(visible);
     terrainRt?.setVisible(Boolean(lastFloorMap));
@@ -397,7 +407,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const ty = Math.floor(wy / tilePx);
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       const idx = ty * floorMap.width + tx;
-      if (!floorMap.visible[idx]) continue;
+      if (!visited[idx]) continue;
       dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_ENEMY_RADIUS);
     }
 
@@ -417,8 +427,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
       .renderTexture(viewport.x, viewport.y, floorMap.width, floorMap.height)
       .setOrigin(0, 0)
       .setDepth(HUD_DEPTH + 2)
-      .setScrollFactor(0)
-      .setVisible(false);
+      .setScrollFactor(0);
+    terrainRt.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    terrainRt.setVisible(false);
 
     const built = buildDefaultViewState(
       floorMap.width,
@@ -623,6 +634,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     panelHint.destroy();
     viewportFrame.destroy();
     viewportHitArea.destroy();
+    closeButtonBg.destroy();
     closeLabel.destroy();
   }
 
@@ -632,6 +644,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   }
 
   hudMapBg.on('pointerdown', toggle);
+  closeButtonBg.on('pointerdown', closeOverlay);
   closeLabel.on('pointerdown', closeOverlay);
   viewportHitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     if (!overlayOpen) {
