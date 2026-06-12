@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 describe('MainGameScene mobile interaction guard', () => {
   it('keeps touch movement separate from tappable dialogue controls', async () => {
-    const { readFileSync } = await import('fs');
-    const source = (readFileSync as (path: string, encoding: string) => string)(
-      'src/engine/scenes/MainGameScene.ts',
-      'utf-8',
-    );
+    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
 
     expect(source).toContain('private queuedInteraction = false;');
     expect(source).toContain('private queuedConversationClose = false;');
