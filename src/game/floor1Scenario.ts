@@ -37,7 +37,6 @@ import { addItem, hasItem, removeItem } from '../shared/inventory.js';
 import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
   MERCHANTS_CHARM_COST,
-  MERCHANTS_CHARM_DEF,
   getEquipmentDefForItem,
   isEquippableItem,
 } from '../shared/equipmentDefs.js';
@@ -1051,7 +1050,10 @@ export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean
   if (!slot) {
     return false;
   }
-  const def = getEquipmentDefForItem(slot.itemId) ?? MERCHANTS_CHARM_DEF;
+  const def = getEquipmentDefForItem(slot.itemId);
+  if (!def) {
+    return false;
+  }
   const result = equip(world, playerEid, def, { force: true });
   if (!result.ok) {
     return false;
