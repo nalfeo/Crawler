@@ -45,7 +45,19 @@ const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
   'Stairs are live. Descend when you are ready.',
   'Floor 2 will hit harder. Keep moving and kite smart.',
 ] as const;
+const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
+/** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
+const FLOOR_1_COMMENTARY = {
+  intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
+  questAccepted:
+    'Tutorial Goon gets a deal accepted: clear the rat and slime quota for tonight’s show.',
+  questCompleted: 'Quota complete. Boss room is live for the next segment.',
+  bossBattleStarted: 'Boss encounter started. This is the ratings spike moment.',
+  staircaseBossDefeated: 'Boss down. Stairs unlocked and the crowd wants a clean finish.',
+  staircaseDiscovered: 'Floor 1 cleared. Queueing the transfer to the next floor.',
+  timeout: 'Time expired before the stairs. Floor 1 run ends here.',
+} as const;
 const logger = createLogger('engine:main-game-scene');
 export interface MainGameSceneOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
@@ -174,8 +186,8 @@ export class MainGameScene extends Phaser.Scene {
     questAccepted: false,
     questCompleted: false,
     bossBattleStarted: false,
-    bossDefeated: false,
-    descended: false,
+    staircaseBossDefeated: false,
+    staircaseDiscovered: false,
     timeout: false,
   };
 
@@ -209,8 +221,8 @@ export class MainGameScene extends Phaser.Scene {
       questAccepted: false,
       questCompleted: false,
       bossBattleStarted: false,
-      bossDefeated: false,
-      descended: false,
+      staircaseBossDefeated: false,
+      staircaseDiscovered: false,
       timeout: false,
     };
 
@@ -976,7 +988,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private queueDirectorCommentary(text: string): void {
-    this.directorCommentaryText?.setText(`DIRECTOR: ${text}`).setVisible(true);
+    this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${text}`).setVisible(true);
     this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
   }
 
@@ -986,50 +998,45 @@ export class MainGameScene extends Phaser.Scene {
       this.commentaryHideAtMs = 0;
     }
 
-    if (!this.world.floor1 || this.world.floor !== 1) {
+    const floor1 = this.world.floor1;
+    if (!floor1 || this.world.floor !== 1) {
       return;
     }
 
-    const objective = this.world.floor1.objective;
+    const objective = floor1.objective;
     if (!this.commentaryMilestones.floorIntro) {
       this.commentaryMilestones.floorIntro = true;
-      this.queueDirectorCommentary(
-        'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
-      );
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.intro);
       return;
     }
     if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
       this.commentaryMilestones.questAccepted = true;
-      this.queueDirectorCommentary(
-        'Tutorial Goon gets a deal accepted: clear the rat and slime quota for tonight’s show.',
-      );
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questAccepted);
       return;
     }
     if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
       this.commentaryMilestones.questCompleted = true;
-      this.queueDirectorCommentary('Quota complete. Boss room is live for the next segment.');
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
       return;
     }
     if (objective.bossBattleStarted && !this.commentaryMilestones.bossBattleStarted) {
       this.commentaryMilestones.bossBattleStarted = true;
-      this.queueDirectorCommentary('Boss encounter started. This is the ratings spike moment.');
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
       return;
     }
-    if (objective.staircaseBossDefeated && !this.commentaryMilestones.bossDefeated) {
-      this.commentaryMilestones.bossDefeated = true;
-      this.queueDirectorCommentary(
-        'Boss down. Stairs unlocked and the crowd wants a clean finish.',
-      );
+    if (objective.staircaseBossDefeated && !this.commentaryMilestones.staircaseBossDefeated) {
+      this.commentaryMilestones.staircaseBossDefeated = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
       return;
     }
-    if (objective.staircaseDiscovered && !this.commentaryMilestones.descended) {
-      this.commentaryMilestones.descended = true;
-      this.queueDirectorCommentary('Floor 1 cleared. Queueing the transfer to the next floor.');
+    if (objective.staircaseDiscovered && !this.commentaryMilestones.staircaseDiscovered) {
+      this.commentaryMilestones.staircaseDiscovered = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseDiscovered);
       return;
     }
-    if (this.world.floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+    if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
       this.commentaryMilestones.timeout = true;
-      this.queueDirectorCommentary('Time expired before the stairs. Floor 1 run ends here.');
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.timeout);
     }
   }
 
