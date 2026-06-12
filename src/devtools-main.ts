@@ -2251,6 +2251,22 @@ function render(): void {
         };
 
         void renderPipelineSteps();
+
+        // Re-wire A/B buttons to trigger cascade when renderPipelineSteps is defined
+        btnV1.removeEventListener('click', () => {});
+        btnV2.removeEventListener('click', () => {});
+        btnV1.addEventListener('click', () => {
+          setAbActive('v1');
+          if (sliceMapV1 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV1);
+          else if (!sliceMapV1) slicingStatus.textContent = 'v1 slice map not yet loaded…';
+          void renderPipelineSteps();
+        });
+        btnV2.addEventListener('click', () => {
+          setAbActive('v2');
+          if (sliceMapV2 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV2);
+          else if (!sliceMapV2) slicingStatus.textContent = 'v2 slice map not yet loaded…';
+          void renderPipelineSteps();
+        });
       } catch (error) {
         if (
           !debugTarget ||
