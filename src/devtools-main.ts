@@ -154,6 +154,10 @@ function spriteUrl(briefId: string, runId: string, filename: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/processed/${encodeURIComponent(filename)}`;
 }
 
+function rawSpriteUrl(briefId: string, runId: string, filename: string): string {
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/raw/${encodeURIComponent(filename)}`;
+}
+
 function sheetsUrl(briefId: string, runId: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/sheets`;
 }
@@ -2074,12 +2078,16 @@ function render(): void {
             }),
           );
 
-          let selectedOutputForNextStep: string | null = null;
+          let selectedOutputForNextStep: string | null = rawSpriteUrl(
+            briefId,
+            runId,
+            `${padded}.png`,
+          );
           let lastActiveBranch: 'A' | 'B' = 'A';
           for (let i = 0; i < stepEntries.length; i++) {
             const step = stepEntries[i]!;
             const combinedIdx = i + 1; // 0 = slicing
-            const beforeSrc: string | null = i === 0 ? null : selectedOutputForNextStep;
+            const beforeSrc: string | null = selectedOutputForNextStep;
             const selectedBranch = selectedBranches[i]!;
             const isSkipped = collapsedSteps.has(combinedIdx);
             pipelineBody.append(

@@ -8,6 +8,7 @@
  *   - GET  /api/runs/:briefId/:runId/sheets                                  — list source sheet PNGs
  *   - GET  /api/runs/:briefId/:runId/sheet/:filename                         — source sheet PNG bytes
  *   - GET  /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
+ *   - GET  /api/runs/:briefId/:runId/raw/:filename                           — raw (pre-pipeline) cell PNG
  *   - POST /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
  *
  * Security contract (spec §F8):
@@ -449,6 +450,36 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return { error: 'file-not-found', filename };
       }
       reply.header('Content-Type', mime);
+      return reply.send(fileData);
+    },
+  );
+
+  app.get<{ Params: { briefId: string; runId: string; filename: string } }>(
+    '/api/runs/:briefId/:runId/raw/:filename',
+    async (req, reply) => {
+      const { briefId, runId, filename } = req.params;
+      const ext = path.extname(filename).toLowerCase();
+      if (ext !== '.png') {
+        reply.code(415);
+        return { error: 'unsupported-extension', filename };
+      }
+      if (safeJoin(deps.runsDir, [briefId, runId, 'raw', filename]) === null) {
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
+      const fileKey = `${briefId}/${runId}/raw/${filename}`;
+      if (!(await store.has(fileKey))) {
+        reply.code(404);
+        return { error: 'file-not-found', filename };
+      }
+      let fileData: Buffer;
+      try {
+        fileData = await store.get(fileKey);
+      } catch {
+        reply.code(404);
+        return { error: 'file-not-found', filename };
+      }
+      reply.header('Content-Type', 'image/png');
       return reply.send(fileData);
     },
   );
