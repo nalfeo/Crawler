@@ -116,23 +116,14 @@
   },
   {
     "date": "2026-06-12",
-<<<<<<< HEAD
-    "estimated_apples": 3,
-    "actual_apples": 3,
-    "delta": 0,
-    "verdict": "exact",
-    "hello_kitties": 0.6
-},
-{
-    "date": "2026-06-12",
     "session": "mobile-touch-minimap-fixes",
     "estimated_apples": 3,
     "actual_apples": 3,
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.6
-},
-{
+  },
+  {
     "date": "2026-06-11",
     "session": "auto-rebase-main-updates",
     "estimated_apples": 2,
@@ -140,8 +131,8 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.4
-},
-{
+  },
+  {
     "date": "2026-06-12",
     "session": "floor1-quest-system",
     "estimated_apples": 4,
@@ -149,5 +140,15 @@
     "delta": 0,
     "verdict": "exact",
     "notes": "Data-driven quest system + tracker HUD, shopkeeper errand, inventory/equipment unlocks, new lab; spans core/engine/game/shared"
+  },
+  {
+    "date": "2026-06-11",
+    "session": "floor1-lab-ux-fixes",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "4 targeted UX fixes: merchant safe room + minimap, rat tail hint, dialog overlap, goon quest timing"
   }
 ]
