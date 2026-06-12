@@ -1807,6 +1807,31 @@ function render(): void {
       return card;
     };
 
+    const makeReprocessStepBridge = (onReprocess: () => void): HTMLElement => {
+      const row = el('div', {
+        style: {
+          display: 'flex',
+          justifyContent: 'center',
+          margin: '4px 0 10px',
+        },
+      });
+      const button = el('button', {
+        text: 'Reprocess',
+        style: {
+          fontSize: '10px',
+          padding: '3px 10px',
+          borderRadius: '999px',
+          border: '1px solid #475569',
+          background: '#1e293b',
+          color: '#94a3b8',
+          cursor: 'pointer',
+        },
+      }) as HTMLButtonElement;
+      button.addEventListener('click', onReprocess);
+      row.append(button);
+      return row;
+    };
+
     const makeSlicingStepCard = (collapsed: boolean, onCollapseToggle: () => void): HTMLElement => {
       const card = el('div', {
         style: {
@@ -2193,6 +2218,14 @@ function render(): void {
                     },
                   ),
                 );
+                if (i < steps.length - 1) {
+                  pipelineBody.append(
+                    makeReprocessStepBridge(() => {
+                      liveResultsCache.delete(cacheKey);
+                      void renderPipelineSteps();
+                    }),
+                  );
+                }
 
                 if (!isSkipped) {
                   lastActiveBranch = 'A';
@@ -2244,6 +2277,13 @@ function render(): void {
                   },
                 ),
               );
+              if (i < stepEntries.length - 1) {
+                pipelineBody.append(
+                  makeReprocessStepBridge(() => {
+                    void renderPipelineSteps();
+                  }),
+                );
+              }
               if (isSkipped) {
                 selectedOutputForNextStep = beforeSrc;
               } else {
