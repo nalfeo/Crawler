@@ -2184,6 +2184,14 @@ function render(): void {
                 liveResultsCache.set(cacheKey, liveResult);
               }
               const steps = liveResult.steps;
+              if (steps.length > 0) {
+                pipelineBody.append(
+                  makeReprocessStepBridge(() => {
+                    liveResultsCache.delete(cacheKey);
+                    void renderPipelineSteps();
+                  }),
+                );
+              }
 
               // Render each step with live-computed images
               for (let i = 0; i < steps.length; i++) {
@@ -2246,6 +2254,13 @@ function render(): void {
             }
           } else {
             // Fall back to pre-baked images if no briefPath
+            if (stepEntries.length > 0) {
+              pipelineBody.append(
+                makeReprocessStepBridge(() => {
+                  void renderPipelineSteps();
+                }),
+              );
+            }
             for (let i = 0; i < stepEntries.length; i++) {
               const step = stepEntries[i]!;
               const combinedIdx = i + 1; // 0 = slicing
