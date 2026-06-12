@@ -45,6 +45,19 @@ const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
   'Stairs are live. Descend when you are ready.',
   'Floor 2 will hit harder. Keep moving and kite smart.',
 ] as const;
+const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
+/** Duration each temporary commentary line stays visible (ms). */
+const DIRECTOR_COMMENTARY_MS = 3600;
+const FLOOR_1_COMMENTARY = {
+  intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
+  questAccepted:
+    'Tutorial Goon gets a deal accepted: clear the rat and slime quota for tonight’s show.',
+  questCompleted: 'Quota complete. Boss room is live for the next segment.',
+  bossBattleStarted: 'Boss encounter started. This is the ratings spike moment.',
+  staircaseBossDefeated: 'Boss down. Stairs unlocked and the crowd wants a clean finish.',
+  staircaseDiscovered: 'Floor 1 cleared. Queueing the transfer to the next floor.',
+  timeout: 'Time expired before the stairs. Floor 1 run ends here.',
+} as const;
 const logger = createLogger('engine:main-game-scene');
 export interface MainGameSceneOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
@@ -127,6 +140,8 @@ export class MainGameScene extends Phaser.Scene {
   /** Screen-space NPC dialogue text shown while a dialogue line is active. */
   private npcDialogueText?: Phaser.GameObjects.Text;
 
+  /** Screen-space temporary commentary text for scenario callouts. */
+  private directorCommentaryText?: Phaser.GameObjects.Text;
   /** Screen-space close button for mobile-friendly dialogue dismissal. */
   private dialogueCloseButton?: Phaser.GameObjects.Text;
 
@@ -172,6 +187,18 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionMessagePending = false;
 
+  private commentaryHideAtMs = 0;
+
+  private commentaryMilestones = {
+    floorIntro: false,
+    questAccepted: false,
+    questCompleted: false,
+    bossBattleStarted: false,
+    staircaseBossDefeated: false,
+    staircaseDiscovered: false,
+    timeout: false,
+  };
+
   private cameraMasksDirty = true;
 
   constructor(private readonly options: MainGameSceneOptions = {}) {
@@ -196,6 +223,16 @@ export class MainGameScene extends Phaser.Scene {
     this.warnedMissingDependencies = false;
     this.floorCompletionMessageShown = false;
     this.floorCompletionMessagePending = false;
+    this.commentaryHideAtMs = 0;
+    this.commentaryMilestones = {
+      floorIntro: false,
+      questAccepted: false,
+      questCompleted: false,
+      bossBattleStarted: false,
+      staircaseBossDefeated: false,
+      staircaseDiscovered: false,
+      timeout: false,
+    };
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -261,6 +298,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel?.destroy();
       this.interactionHint?.destroy();
       this.npcDialogueText?.destroy();
+      this.directorCommentaryText?.destroy();
       this.dialogueCloseButton?.destroy();
       this.floorCompletionScreen?.destroy();
       this.bossHealthShell?.destroy();
@@ -281,6 +319,7 @@ export class MainGameScene extends Phaser.Scene {
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
       this.npcDialogueText = undefined;
+      this.directorCommentaryText = undefined;
       this.dialogueCloseButton = undefined;
       this.floorCompletionScreen = undefined;
       this.floorCompletionTitleText = undefined;
@@ -603,6 +642,21 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedConversationClose = true;
     });
 
+    this.directorCommentaryText = this.add
+      .text(GAME.WIDTH / 2, 96, '', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#fef3c7',
+        backgroundColor: '#451a03dd',
+        padding: { x: 12, y: 8 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 80 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
+
     const completionBackdrop = this.add
       .rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x020617, 0.84)
       .setOrigin(0, 0);
@@ -922,6 +976,7 @@ export class MainGameScene extends Phaser.Scene {
     // HUD (health bar, floor timer, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateBossHealthBar();
+    this.updateDirectorCommentary();
 
     if (!this.world.floor1) {
       this.objectiveText?.setText(`State: ${this.world.state}`);
@@ -972,6 +1027,59 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.loadoutText?.setVisible(false);
+  }
+
+  private queueDirectorCommentary(text: string): void {
+    this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${text}`).setVisible(true);
+    this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
+  }
+
+  private updateDirectorCommentary(): void {
+    if (this.commentaryHideAtMs > 0 && this.time.now >= this.commentaryHideAtMs) {
+      this.directorCommentaryText?.setVisible(false);
+      this.commentaryHideAtMs = 0;
+    }
+
+    const floor1 = this.world.floor1;
+    if (!floor1 || this.world.floor !== 1) {
+      return;
+    }
+
+    const objective = floor1.objective;
+    if (!this.commentaryMilestones.floorIntro) {
+      this.commentaryMilestones.floorIntro = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.intro);
+      return;
+    }
+    if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
+      this.commentaryMilestones.questAccepted = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questAccepted);
+      return;
+    }
+    if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
+      this.commentaryMilestones.questCompleted = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
+      return;
+    }
+    if (objective.bossBattleStarted && !this.commentaryMilestones.bossBattleStarted) {
+      this.commentaryMilestones.bossBattleStarted = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
+      return;
+    }
+    if (objective.staircaseBossDefeated && !this.commentaryMilestones.staircaseBossDefeated) {
+      this.commentaryMilestones.staircaseBossDefeated = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
+      return;
+    }
+    if (objective.staircaseDiscovered && !this.commentaryMilestones.staircaseDiscovered) {
+      this.commentaryMilestones.staircaseDiscovered = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseDiscovered);
+      return;
+    }
+    if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+      this.commentaryMilestones.timeout = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.timeout);
+    }
   }
 
   private showFloorCompletionScreenIfNeeded(): void {
