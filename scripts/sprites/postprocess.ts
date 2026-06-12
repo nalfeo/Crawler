@@ -36,6 +36,7 @@ interface RgbaImage {
 }
 
 export type SpeckleMode = 'edge-drop' | 'preserve-orphans' | 'disabled';
+export type BackgroundRemovalMode = 'legacy' | 'fringe-clean';
 
 export interface PostprocessOptions {
   readonly speckle?: {
@@ -45,6 +46,7 @@ export interface PostprocessOptions {
   };
   readonly modules?: {
     readonly speckleMode?: SpeckleMode;
+    readonly backgroundRemovalMode?: BackgroundRemovalMode;
   };
 }
 
@@ -83,8 +85,10 @@ export function postprocessWithTrace(
   };
 
   let image = decodePng(rawPng);
-  image = removeBackground(image);
-  pushStep('background-removal', 'Background removal', image);
+  const backgroundRemovalMode = options.modules?.backgroundRemovalMode ?? 'legacy';
+  image =
+    backgroundRemovalMode === 'fringe-clean' ? removeBackgroundB(image) : removeBackground(image);
+  pushStep('background-removal', `Background removal (${backgroundRemovalMode})`, image);
 
   image = downscaleNearest(image, brief.size.width, brief.size.height);
   pushStep('resize-nearest', 'Resize (nearest)', image);
@@ -227,6 +231,7 @@ function encodePng(image: RgbaImage): Buffer {
  * Exported for direct unit testing.
  */
 export const BACKGROUND_COLOR_TOLERANCE_SQ = 32 * 32; // squared Euclidean RGB tolerance
+export const BACKGROUND_FRINGE_TOLERANCE_SQ = 56 * 56; // post-flood edge cleanup tolerance
 
 export function removeBackground(image: RgbaImage): RgbaImage {
   const { width, height } = image;
@@ -259,6 +264,78 @@ export function removeBackground(image: RgbaImage): RgbaImage {
   }
 
   return { width, height, data: out };
+}
+
+export function removeBackgroundB(image: RgbaImage): RgbaImage {
+  const flooded = removeBackground(image);
+  return removeBackgroundFringe(flooded, image, BACKGROUND_FRINGE_TOLERANCE_SQ);
+}
+
+function removeBackgroundFringe(
+  flooded: RgbaImage,
+  source: RgbaImage,
+  toleranceSq: number,
+): RgbaImage {
+  const { width, height } = flooded;
+  if (width === 0 || height === 0) return flooded;
+  const dst = new Uint8Array(flooded.data);
+  const cornerColors = getCornerColors(source);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = (y * width + x) * 4;
+      const alpha = dst[idx + 3] ?? 0;
+      if (alpha === 0) continue;
+      if (!touchesTransparentNeighbor(flooded, x, y)) continue;
+      const r = dst[idx] ?? 0;
+      const g = dst[idx + 1] ?? 0;
+      const b = dst[idx + 2] ?? 0;
+      const nearCorner = cornerColors.some(([cr, cg, cb]) => {
+        const dr = r - cr;
+        const dg = g - cg;
+        const db = b - cb;
+        return dr * dr + dg * dg + db * db <= toleranceSq;
+      });
+      if (nearCorner) dst[idx + 3] = 0;
+    }
+  }
+  return { width, height, data: dst };
+}
+
+function touchesTransparentNeighbor(image: RgbaImage, x: number, y: number): boolean {
+  const { width, height, data } = image;
+  const offsets: ReadonlyArray<[number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (const [dx, dy] of offsets) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    const nIdx = (ny * width + nx) * 4;
+    if ((data[nIdx + 3] ?? 0) === 0) return true;
+  }
+  return false;
+}
+
+function getCornerColors(image: RgbaImage): ReadonlyArray<[number, number, number]> {
+  const { width, height, data } = image;
+  if (width === 0 || height === 0) return [];
+  const corners: ReadonlyArray<[number, number]> = [
+    [0, 0],
+    [width - 1, 0],
+    [0, height - 1],
+    [width - 1, height - 1],
+  ];
+  return corners.map(([x, y]) => {
+    const idx = (y * width + x) * 4;
+    return [
+      (data[idx] ?? 0) as number,
+      (data[idx + 1] ?? 0) as number,
+      (data[idx + 2] ?? 0) as number,
+    ];
+  });
 }
 
 function floodFill(

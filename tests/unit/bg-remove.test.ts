@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { removeBackground, type RgbaImage } from '../../scripts/sprites/postprocess.js';
+import {
+  removeBackground,
+  removeBackgroundB,
+  type RgbaImage,
+} from '../../scripts/sprites/postprocess.js';
 
 function blank(width: number, height: number, color: readonly [number, number, number]): RgbaImage {
   const data = new Uint8Array(width * height * 4);
@@ -41,6 +45,25 @@ describe('removeBackground', () => {
         expect(alphaAt(out, x, y)).toBe(0);
       }
     }
+  });
+
+  describe('removeBackgroundB', () => {
+    it('removes near-background edge fringe left by legacy flood fill', () => {
+      const img = blank(8, 8, [255, 0, 255]);
+      // Near-magenta pixel outside legacy tolerance (32) but inside B fringe tolerance.
+      setPixel(img, 1, 4, 230, 20, 230);
+      const legacy = removeBackground(img);
+      expect(alphaAt(legacy, 1, 4)).toBe(255);
+      const out = removeBackgroundB(img);
+      expect(alphaAt(out, 1, 4)).toBe(0);
+    });
+
+    it('keeps edge-adjacent foreground colors that are far from corner background colors', () => {
+      const img = blank(8, 8, [255, 0, 255]);
+      setPixel(img, 1, 4, 0, 180, 40);
+      const out = removeBackgroundB(img);
+      expect(alphaAt(out, 1, 4)).toBe(255);
+    });
   });
 
   it('leaves an interior region of a different color fully opaque', () => {

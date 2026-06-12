@@ -21,6 +21,7 @@ interface MutableSpeckleTuning {
 
 interface MutableModuleSelection {
   speckleMode?: 'edge-drop' | 'preserve-orphans' | 'disabled';
+  backgroundRemovalMode?: 'legacy' | 'fringe-clean';
 }
 
 interface CliArgs {
@@ -66,6 +67,12 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
         throw new Error(`--a-speckle-mode must be one of: edge-drop, preserve-orphans, disabled`);
       }
       aModules.speckleMode = mode as MutableModuleSelection['speckleMode'];
+    } else if (arg === '--a-bg-removal-mode') {
+      const mode = next();
+      if (!['legacy', 'fringe-clean'].includes(mode)) {
+        throw new Error(`--a-bg-removal-mode must be one of: legacy, fringe-clean`);
+      }
+      aModules.backgroundRemovalMode = mode as MutableModuleSelection['backgroundRemovalMode'];
     } else if (arg === '--b-min-channel') bTuning.minChannel = nextInt();
     else if (arg === '--b-max-opaque-neighbors') bTuning.maxOpaqueNeighbors = nextInt();
     else if (arg === '--b-drop-edge-orphans') bTuning.dropEdgeOrphans = true;
@@ -76,6 +83,12 @@ function parseArgs(argv: ReadonlyArray<string>): CliArgs {
         throw new Error(`--b-speckle-mode must be one of: edge-drop, preserve-orphans, disabled`);
       }
       bModules.speckleMode = mode as MutableModuleSelection['speckleMode'];
+    } else if (arg === '--b-bg-removal-mode') {
+      const mode = next();
+      if (!['legacy', 'fringe-clean'].includes(mode)) {
+        throw new Error(`--b-bg-removal-mode must be one of: legacy, fringe-clean`);
+      }
+      bModules.backgroundRemovalMode = mode as MutableModuleSelection['backgroundRemovalMode'];
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -113,11 +126,13 @@ function printHelp(): void {
       '  --a-drop-edge-orphans           Clear edge-adjacent near-white orphan pixels (A).',
       '  --a-keep-edge-orphans           Keep edge-adjacent near-white orphan pixels (A).',
       '  --a-speckle-mode <mode>         edge-drop | preserve-orphans | disabled',
+      '  --a-bg-removal-mode <mode>      legacy | fringe-clean',
       '  --b-min-channel <n>             Same knobs for profile B.',
       '  --b-max-opaque-neighbors <n>',
       '  --b-drop-edge-orphans',
       '  --b-keep-edge-orphans',
       '  --b-speckle-mode <mode>',
+      '  --b-bg-removal-mode <mode>',
       '',
       'Notes:',
       '  - This command does NOT call the image model.',

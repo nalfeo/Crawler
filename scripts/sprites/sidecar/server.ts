@@ -810,7 +810,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
             : {}),
         };
       }
-      let modules: { speckleMode?: 'edge-drop' | 'preserve-orphans' | 'disabled' } | undefined;
+      let modules:
+        | {
+            speckleMode?: 'edge-drop' | 'preserve-orphans' | 'disabled';
+            backgroundRemovalMode?: 'legacy' | 'fringe-clean';
+          }
+        | undefined;
       if (value.modules !== undefined) {
         if (!isRecord(value.modules)) return null;
         if (
@@ -821,6 +826,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         ) {
           return null;
         }
+        if (
+          value.modules.backgroundRemovalMode !== undefined &&
+          value.modules.backgroundRemovalMode !== 'legacy' &&
+          value.modules.backgroundRemovalMode !== 'fringe-clean'
+        ) {
+          return null;
+        }
         modules = {
           ...(value.modules.speckleMode !== undefined
             ? {
@@ -828,6 +840,13 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                   | 'edge-drop'
                   | 'preserve-orphans'
                   | 'disabled',
+              }
+            : {}),
+          ...(value.modules.backgroundRemovalMode !== undefined
+            ? {
+                backgroundRemovalMode: value.modules.backgroundRemovalMode as
+                  | 'legacy'
+                  | 'fringe-clean',
               }
             : {}),
         };
