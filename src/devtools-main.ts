@@ -1637,16 +1637,7 @@ function render(): void {
 
     // Wire A/B buttons — redraw immediately from cached maps if sheet is available
     let lastSheetImg: HTMLImageElement | null = null;
-    btnV1.addEventListener('click', () => {
-      setAbActive('v1');
-      if (sliceMapV1 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV1);
-      else if (!sliceMapV1) slicingStatus.textContent = 'v1 slice map not yet loaded…';
-    });
-    btnV2.addEventListener('click', () => {
-      setAbActive('v2');
-      if (sliceMapV2 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV2);
-      else if (!sliceMapV2) slicingStatus.textContent = 'v2 slice map not yet loaded…';
-    });
+    // Button listeners are wired after renderPipelineSteps is defined (see line ~2258)
 
     const normalizeSheetFiles = (response: SidecarSheetsResponse): string[] =>
       Array.isArray(response.files)
