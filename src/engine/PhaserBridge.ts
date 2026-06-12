@@ -306,9 +306,15 @@ const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
   gem: 'item.gem',
   proj: 'effect.proj',
   enemy_proj: 'effect.enemy_proj',
-  aoe_proj: 'effect.proj',
-  enemy_aoe_proj: 'effect.enemy_proj',
-  returning: 'effect.proj',
+  aoe_proj: 'effect.aoe',
+  enemy_aoe_proj: 'effect.enemy_aoe',
+  returning: 'weapon.returning',
+  melee: 'effect.melee',
+  trap_arming: 'effect.trap_arming',
+  trap_armed: 'effect.trap_armed',
+  explosion: 'effect.explosion',
+  enemy_explosion: 'effect.enemy_explosion',
+  dead_skull: 'effect.dead',
 };
 
 /**
@@ -327,9 +333,15 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
   gem: 1.0,
   proj: 1.0,
   enemy_proj: 1.0,
-  aoe_proj: 1.0,
-  enemy_aoe_proj: 1.0,
-  returning: 1.0,
+  aoe_proj: 1.4,
+  enemy_aoe_proj: 1.4,
+  returning: 1.2,
+  melee: 4.0,
+  trap_arming: 1.0,
+  trap_armed: 1.0,
+  explosion: 4.0,
+  enemy_explosion: 4.0,
+  dead_skull: 1.0,
 };
 
 interface ResolvedTexture {
@@ -395,7 +407,18 @@ function getProceduralTextureForType(type: string): string {
     case 'enemy_aoe':
       return TEX_ENEMY_EXPLOSION;
     case 'trap':
+    case 'trap_arming':
       return TEX_TRAP_ARMING;
+    case 'trap_armed':
+      return TEX_TRAP_ARMED;
+    case 'explosion':
+      return TEX_EXPLOSION;
+    case 'enemy_explosion':
+      return TEX_ENEMY_EXPLOSION;
+    case 'melee':
+      return TEX_MELEE;
+    case 'dead_skull':
+      return TEX_DEAD_SKULL;
     default:
       return TEX_BULLET;
   }
@@ -649,7 +672,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         let deathMarker = deathMarkers.get(eid);
         if (isDeadEnemy) {
           if (!deathMarker) {
-            deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, TEX_DEAD_SKULL);
+            const tex = resolveTexture(scene, 'dead_skull');
+            deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, tex.key, tex.frame);
             deathMarkers.set(eid, deathMarker);
           }
           deathMarker.setVisible(isVisible);
@@ -755,10 +779,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               img.setAlpha(alpha);
 
               // Use explosion texture for trap-spawned AoEs (short duration)
-              const explosionTexture =
-                entityType === 'enemy_aoe' ? TEX_ENEMY_EXPLOSION : TEX_EXPLOSION;
-              if (remaining <= 100 && img.texture.key !== explosionTexture) {
-                img.setTexture(explosionTexture);
+              const explosionType = entityType === 'enemy_aoe' ? 'enemy_explosion' : 'explosion';
+              const explosionTex = resolveTexture(scene, explosionType);
+              if (
+                remaining <= 100 &&
+                (img.texture.key !== explosionTex.key ||
+                  img.frame.name !== explosionTex.frame?.toString())
+              ) {
+                img.setTexture(explosionTex.key, explosionTex.frame);
               }
 
               // Clean up any stale arc graphics
@@ -776,7 +804,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             // Switch texture based on arm state
             const armAt = trap.armAtMs[eid] ?? 0;
             const isArmed = renderElapsedMs >= armAt;
-            img.setTexture(isArmed ? TEX_TRAP_ARMED : TEX_TRAP_ARMING);
+            const tex = resolveTexture(scene, isArmed ? 'trap_armed' : 'trap_arming');
+            img.setTexture(tex.key, tex.frame);
 
             // Pulse when armed
             if (isArmed) {

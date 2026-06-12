@@ -204,7 +204,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('kenney-roguelike-characters');
+    expect(images[0]?.textureKey).toBe('custom-pixel-sprites');
     expect(images[0]?.frame).toBe(0); // player at (0, 0)
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
   });
