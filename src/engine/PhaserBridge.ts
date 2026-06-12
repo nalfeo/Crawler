@@ -774,7 +774,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             } else {
               // Full circle AoE — use image
-              const scale = (radius * 2) / 66;
+              const currentTex = resolveTexture(
+                scene,
+                entityType === 'enemy_aoe' ? 'melee' : 'aoe_proj',
+              );
+              let scale = (radius * 2) / (currentTex.scale > 1 ? 16 : 66);
               img.setScale(scale);
               img.setAlpha(alpha);
 
@@ -783,10 +787,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               const explosionTex = resolveTexture(scene, explosionType);
               if (
                 remaining <= 100 &&
+                !explosionTex.fallback &&
                 (img.texture.key !== explosionTex.key ||
-                  img.frame.name !== explosionTex.frame?.toString())
+                  (explosionTex.frame !== undefined &&
+                    img.frame.name !== explosionTex.frame?.toString()))
               ) {
                 img.setTexture(explosionTex.key, explosionTex.frame);
+                scale = (radius * 2) / 16; // explosion sprite is 16x16
+                img.setScale(scale);
               }
 
               // Clean up any stale arc graphics
