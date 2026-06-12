@@ -19,6 +19,27 @@ export {
   floor1EnemyDirectorSystem,
   floor1ObjectiveSystem,
 } from './floor1Scenario.js';
+export {
+  getShopkeeperStage,
+  meetShopkeeper,
+  returnShopkeeperPrize,
+  purchaseShopkeeperEquipment,
+  equipPurchasedGear,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from './floor1Scenario.js';
+export type { ShopkeeperStage } from './floor1Scenario.js';
+export {
+  questSystem,
+  acceptQuest,
+  getActiveQuests,
+  getTrackedQuest,
+  setTrackedQuest,
+  notifyQuestTalk,
+  setQuestCounter,
+  getQuestObjectiveViews,
+  isQuestComplete,
+} from './questSystem.js';
+export type { QuestObjectiveView } from './questSystem.js';
 export { levelSystem } from './systems/levelSystem.js';
 export {
   statsSystem,

@@ -68,8 +68,56 @@ const TUTORIAL_GOON_DEF: NpcDef = {
   heightPx: 28,
 };
 
+const SHOPKEEPER_DEF: NpcDef = {
+  id: 'shopkeeper',
+  name: 'Sweaty Merchant',
+  dialogue: [
+    {
+      text: "Oh-ho, a new contestant! Come closer, don't be shy. I'm a merchant of... refined tastes.",
+    },
+    {
+      text: "I'll sell you something nice. But first — fetch me a rat tail. Fresh. Glistening. Still warm, if you can manage it.",
+    },
+    {
+      text: 'Bring it straight back. No wiping it off. I like them... authentic. Hehe.',
+    },
+  ],
+  quests: [
+    {
+      questId: 'floor1-shopkeeper-errand',
+      title: "The Merchant's Disgusting Little Errand",
+      description: 'Fetch the merchant his "special" rat tail, then buy a piece of equipment.',
+    },
+  ],
+  textureId: 10,
+  widthPx: 20,
+  heightPx: 28,
+};
+
+/** Lines shown when the player has the rat tail and is ready to hand it over. */
+export const SHOPKEEPER_RETURN_DIALOGUE: readonly string[] = [
+  "Is that... oh, you actually got it. And it's still moist. Good contestant.",
+  'Give it here. *sniff* Ahhh. Worth every coin. Now — let me show you my wares.',
+];
+
+/** Lines shown after the prize is returned but before a purchase is made. */
+export const SHOPKEEPER_SHOP_DIALOGUE: readonly string[] = [
+  'Back for the good stuff? Smart. Take a look — gold only, no refunds, no judgement.',
+];
+
+/** Lines shown once the player owns equipment but has not equipped it yet. */
+export const SHOPKEEPER_EQUIP_HINT_DIALOGUE: readonly string[] = [
+  'Put it on, put it on! Open your pack and equip it. I want to see how it looks on you.',
+];
+
+/** Lines shown after the questline is fully complete. */
+export const SHOPKEEPER_DONE_DIALOGUE: readonly string[] = [
+  'Looks marvellous on you. Pleasure doing business, contestant. Bring me more tails sometime.',
+];
+
 const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [TUTORIAL_GOON_DEF.id, TUTORIAL_GOON_DEF],
+  [SHOPKEEPER_DEF.id, SHOPKEEPER_DEF],
 ]);
 
 export function getNpcDef(id: string): NpcDef | undefined {

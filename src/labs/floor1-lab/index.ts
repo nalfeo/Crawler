@@ -10,6 +10,7 @@ import {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
   startFloor1BossEncounter,
+  questSystem,
   weaponSystem,
 } from '../../game/index.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../../game/systems/index.js';
@@ -254,7 +255,13 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             floor1EnemyDirectorSystem,
             npcSystem,
           ],
-          postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem],
+          postSystems: [
+            levelSystem,
+            skillSystem,
+            abilitySystem,
+            floor1ObjectiveSystem,
+            questSystem,
+          ],
         }),
       ],
       scale: {

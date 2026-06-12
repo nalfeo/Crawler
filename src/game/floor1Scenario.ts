@@ -22,11 +22,32 @@ import {
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { setActiveWeapon } from './weaponSystem.js';
-import { clearEntityStores, spawnBehaviorEnemy, spawnNpc, createEntity } from '../core/helpers.js';
+import {
+  clearEntityStores,
+  spawnBehaviorEnemy,
+  spawnNpc,
+  createEntity,
+  spawnDroppedItem,
+} from '../core/helpers.js';
 import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
-import { getItemById } from '../shared/items.js';
+import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
+import { addItem, hasItem, removeItem } from '../shared/inventory.js';
+import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
+import {
+  MERCHANTS_CHARM_COST,
+  MERCHANTS_CHARM_DEF,
+  getEquipmentDefForItem,
+  isEquippableItem,
+} from '../shared/equipmentDefs.js';
+import {
+  FLOOR1_SHOP_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+  SHOPKEEPER_EQUIPMENT_ITEM_ID,
+  SHOPKEEPER_FETCH_ITEM_ID,
+} from '../shared/quest-types.js';
+import { acceptQuest, notifyQuestTalk, setQuestCounter } from './questSystem.js';
 
 const FLOOR_1_PROTAGONIST = 'Rhea Vale';
 const FLOOR_1_STARTER_POOL = ['sword', 'knife', 'bow', 'pistol', 'throwing-knife'] as const;
@@ -176,57 +197,91 @@ function centerOfRoom(room: { bounds: { x: number; y: number; width: number; hei
 function chooseObjectiveTiles(world: GameWorld): {
   safeRoomPos: { x: number; y: number };
   staircasePos: { x: number; y: number };
+  shopRoomPos: { x: number; y: number };
+  questItemPos: { x: number; y: number };
 } {
   const floorMap = world.floorMap;
   const fallbackSafe = { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 120 };
   const fallbackStair = { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 560 };
+  const fallbackShop = { x: floorMap?.widthPx ? floorMap.widthPx - 240 : 880, y: 340 };
+  const fallbackItem = { x: floorMap?.widthPx ? Math.floor(floorMap.widthPx / 2) : 640, y: 340 };
 
   if (!floorMap) {
-    return { safeRoomPos: fallbackSafe, staircasePos: fallbackStair };
+    return {
+      safeRoomPos: fallbackSafe,
+      staircasePos: fallbackStair,
+      shopRoomPos: fallbackShop,
+      questItemPos: fallbackItem,
+    };
   }
 
   // Prefer role-tagged rooms assigned by the generator
   const bossStairRoom = floorMap.bossStairRoom;
   const safeRoom = floorMap.safeRoom;
 
+  let safeRoomPos: { x: number; y: number };
+  let staircasePos: { x: number; y: number };
+
   if (bossStairRoom && safeRoom) {
-    return {
-      safeRoomPos: floorMap.tileToPixel(centerOfRoom(safeRoom).x, centerOfRoom(safeRoom).y),
-      staircasePos: floorMap.tileToPixel(
-        centerOfRoom(bossStairRoom).x,
-        centerOfRoom(bossStairRoom).y,
-      ),
-    };
-  }
+    safeRoomPos = floorMap.tileToPixel(centerOfRoom(safeRoom).x, centerOfRoom(safeRoom).y);
+    staircasePos = floorMap.tileToPixel(
+      centerOfRoom(bossStairRoom).x,
+      centerOfRoom(bossStairRoom).y,
+    );
+  } else if (floorMap.rooms.length < 2) {
+    safeRoomPos = fallbackSafe;
+    staircasePos = fallbackStair;
+  } else {
+    const spawnTile = floorMap.playerSpawn;
+    const scored = floorMap.rooms.map((room) => {
+      const center = centerOfRoom(room);
+      const dx = center.x - spawnTile.x;
+      const dy = center.y - spawnTile.y;
+      return { room, distanceSq: dx * dx + dy * dy };
+    });
+    scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
-  // Fallback: distance-based selection for biomes without role-tagged rooms
-  if (floorMap.rooms.length < 2) {
-    return { safeRoomPos: fallbackSafe, staircasePos: fallbackStair };
-  }
-
-  const spawnTile = floorMap.playerSpawn;
-  const scored = floorMap.rooms.map((room) => {
-    const center = centerOfRoom(room);
-    const dx = center.x - spawnTile.x;
-    const dy = center.y - spawnTile.y;
-    return { room, distanceSq: dx * dx + dy * dy };
-  });
-  scored.sort((a, b) => b.distanceSq - a.distanceSq);
-
-  const staircaseRoom = scored[0]?.room ?? floorMap.rooms[floorMap.rooms.length - 1]!;
-  const safeRoomFallback =
-    scored[1]?.room ?? floorMap.rooms[Math.max(0, floorMap.rooms.length - 2)]!;
-
-  return {
-    safeRoomPos: floorMap.tileToPixel(
+    const staircaseRoom = scored[0]?.room ?? floorMap.rooms[floorMap.rooms.length - 1]!;
+    const safeRoomFallback =
+      scored[1]?.room ?? floorMap.rooms[Math.max(0, floorMap.rooms.length - 2)]!;
+    safeRoomPos = floorMap.tileToPixel(
       centerOfRoom(safeRoomFallback).x,
       centerOfRoom(safeRoomFallback).y,
-    ),
-    staircasePos: floorMap.tileToPixel(
+    );
+    staircasePos = floorMap.tileToPixel(
       centerOfRoom(staircaseRoom).x,
       centerOfRoom(staircaseRoom).y,
+    );
+  }
+
+  // Shop room: nearest non-special room to spawn (so the merchant is met early).
+  // Quest item: a distinct, further room so the player has to go find it.
+  const spawnTile = floorMap.playerSpawn;
+  const reserved = new Set(
+    [floorMap.spawnRoom, floorMap.safeRoom, floorMap.bossStairRoom].filter(
+      (r): r is NonNullable<typeof r> => r != null,
     ),
-  };
+  );
+  const candidates = floorMap.rooms
+    .filter((room) => !reserved.has(room))
+    .map((room) => {
+      const center = centerOfRoom(room);
+      const dx = center.x - spawnTile.x;
+      const dy = center.y - spawnTile.y;
+      return { room, center, distanceSq: dx * dx + dy * dy };
+    })
+    .sort((a, b) => a.distanceSq - b.distanceSq);
+
+  const shopEntry = candidates[0];
+  const itemEntry = candidates.length > 1 ? candidates[candidates.length - 1] : candidates[0];
+  const shopRoomPos = shopEntry
+    ? floorMap.tileToPixel(shopEntry.center.x, shopEntry.center.y)
+    : fallbackShop;
+  const questItemPos = itemEntry
+    ? floorMap.tileToPixel(itemEntry.center.x, itemEntry.center.y)
+    : fallbackItem;
+
+  return { safeRoomPos, staircasePos, shopRoomPos, questItemPos };
 }
 
 export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
@@ -248,7 +303,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const maxHp = (world.stores.health.max[playerEid] ?? 100) + FLOOR_1_PLAYER_HP_BONUS;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
-  const { safeRoomPos, staircasePos } = chooseObjectiveTiles(world);
+  const { safeRoomPos, staircasePos, shopRoomPos, questItemPos } = chooseObjectiveTiles(world);
   world.floor1 = {
     protagonistName: FLOOR_1_PROTAGONIST,
     starterWeaponPool: FLOOR_1_STARTER_POOL,
@@ -262,6 +317,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     },
     enemyArchetypes: new Map(),
     guideNpcEid: null,
+    shopkeeperNpcEid: null,
+    questItemEid: null,
     bossDoorEids: [],
     objective: {
       requiredRats: FLOOR_1_REQUIRED_RATS,
@@ -273,6 +330,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       safeRoomPos,
       staircasePos,
       welcomeOfficePos: safeRoomPos,
+      shopRoomPos,
+      questItemPos,
       markerRadiusPx: FLOOR_1_MARKER_RADIUS_PX,
       questAccepted: false,
       questCompleted: false,
@@ -301,6 +360,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, false);
   setGoalFlag(world, 'floor1-defeat-boss', false);
   setGoalFlag(world, 'floor1-boss-active', false);
+  setGoalFlag(world, 'floor1-shop-prize-returned', false);
+  setGoalFlag(world, 'floor1-shop-quest-complete', false);
 
   // Spawn the tutorial guide NPC near the player's starting position.
   world.floor1.guideNpcEid = spawnNpc(
@@ -309,6 +370,22 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     world.floor1.objective.welcomeOfficePos.y,
     'tutorial-goon',
   );
+
+  // Spawn the merchant in his shop room and drop his gross fetch item out in the dungeon.
+  world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
+  world.floor1.questItemEid = spawnDroppedItem(
+    world,
+    questItemPos.x,
+    questItemPos.y,
+    getItemIndex(SHOPKEEPER_FETCH_ITEM_ID),
+  );
+
+  // Give the player base stats so purchased equipment can be equipped.
+  initializeBaseStats(world, playerEid);
+
+  // Seed the quest log: the tutorial pest-control quest and the merchant's errand.
+  acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+  acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
 
   // Keep boss-room doors locked until the Tutorial Goon quest is completed.
   setGoalFlag(world, 'floor1-goon-quest-complete', false);
@@ -755,6 +832,15 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   world.floor1.objective.goldCollected = world.playerGold;
   world.floor1.objective.junkCollected = countJunkInInventory(world);
 
+  // Mirror kill tallies into the tutorial quest log for the tracker HUD.
+  setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-rats', world.floor1.objective.ratsKilled);
+  setQuestCounter(
+    world,
+    FLOOR1_TUTORIAL_QUEST_ID,
+    'kill-slimes',
+    world.floor1.objective.slimesKilled,
+  );
+
   const playerX = world.stores.position.x[player] ?? 0;
   const playerY = world.stores.position.y[player] ?? 0;
   const safeDx = playerX - world.floor1.objective.safeRoomPos.x;
@@ -867,5 +953,115 @@ export function confirmFloor1StairDescend(world: GameWorld, _playerEid: number):
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, true);
   world.state = 'safe_room';
   finalizeRunSummary(world, 'cleared_floor');
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Shopkeeper errand flow
+// ---------------------------------------------------------------------------
+
+export type ShopkeeperStage =
+  | 'not-met'
+  | 'awaiting-prize'
+  | 'ready-to-buy'
+  | 'awaiting-equip'
+  | 'complete';
+
+function findPlayerEid(world: GameWorld): number | undefined {
+  return query(world.ecs, [Player])[0];
+}
+
+function playerBag(world: GameWorld) {
+  const player = findPlayerEid(world);
+  return player === undefined ? undefined : world.inventories.get(player);
+}
+
+/** Current stage of the merchant's errand, derived from world state. */
+export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
+  if (world.goalFlags.get('floor1-shop-quest-complete') === true) {
+    return 'complete';
+  }
+  const bag = playerBag(world);
+  const hasEquippable = bag ? bag.slots.some((s) => isEquippableItem(s.itemId)) : false;
+  if (hasEquippable) {
+    return 'awaiting-equip';
+  }
+  if (world.goalFlags.get('floor1-shop-prize-returned') === true) {
+    return 'ready-to-buy';
+  }
+  const quest = world.questLog.get(FLOOR1_SHOP_QUEST_ID);
+  if (!quest || quest.done['meet-merchant'] !== true) {
+    return 'not-met';
+  }
+  return 'awaiting-prize';
+}
+
+/** Mark the merchant as met (advances the first quest step). */
+export function meetShopkeeper(world: GameWorld): void {
+  notifyQuestTalk(world, 'shopkeeper');
+}
+
+/**
+ * Hand the gross rat tail to the merchant. Consumes the fetch item and unlocks
+ * his shop. Returns true when the prize was actually turned in.
+ */
+export function returnShopkeeperPrize(world: GameWorld, playerEid: number): boolean {
+  const bag = world.inventories.get(playerEid);
+  if (!bag || !hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)) {
+    return false;
+  }
+  if (world.goalFlags.get('floor1-shop-prize-returned') === true) {
+    return false;
+  }
+  removeItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
+  setGoalFlag(world, 'floor1-shop-prize-returned', true);
+  return true;
+}
+
+/** Cost of the merchant's wares. */
+export const SHOPKEEPER_EQUIPMENT_COST = MERCHANTS_CHARM_COST;
+
+/**
+ * Buy the merchant's charm with gold. Adds the (equippable) item to the bag.
+ * Returns true on a successful purchase.
+ */
+export function purchaseShopkeeperEquipment(world: GameWorld, playerEid: number): boolean {
+  const bag = world.inventories.get(playerEid);
+  if (!bag) {
+    return false;
+  }
+  if (world.goalFlags.get('floor1-shop-prize-returned') !== true) {
+    return false;
+  }
+  if (hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
+    return false;
+  }
+  if (world.playerGold < SHOPKEEPER_EQUIPMENT_COST) {
+    return false;
+  }
+  world.playerGold -= SHOPKEEPER_EQUIPMENT_COST;
+  addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+  return true;
+}
+
+/**
+ * Equip a purchased, equippable item from the bag. Removes it from the bag once
+ * worn. Returns true when something was equipped.
+ */
+export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean {
+  const bag = world.inventories.get(playerEid);
+  if (!bag) {
+    return false;
+  }
+  const slot = bag.slots.find((s) => isEquippableItem(s.itemId));
+  if (!slot) {
+    return false;
+  }
+  const def = getEquipmentDefForItem(slot.itemId) ?? MERCHANTS_CHARM_DEF;
+  const result = equip(world, playerEid, def, { force: true });
+  if (!result.ok) {
+    return false;
+  }
+  removeItem(bag, slot.itemId, 1);
   return true;
 }

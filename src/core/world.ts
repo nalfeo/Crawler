@@ -50,6 +50,7 @@ import {
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
 import type { Floor1ScenarioState } from '../shared/floor1.js';
 import type { NpcInstance } from '../shared/npc-types.js';
+import type { QuestState } from '../shared/quest-types.js';
 
 const logger = createLogger('core:world');
 
@@ -103,6 +104,15 @@ export interface GameWorld {
   floor1: Floor1ScenarioState | null;
   /** Per-entity NPC instance state (eid → NpcInstance). Side-car for variable-length NPC data. */
   npcs: Map<number, NpcInstance>;
+  /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
+  questLog: Map<string, QuestState>;
+  /** Progressively-unlocked UI features. Latched true; never reset to false mid-run. */
+  featureUnlocks: {
+    /** Inventory panel becomes usable once unlocked (Floor 1: on key-item pickup). */
+    inventory: boolean;
+    /** Equipment actions become usable once the player holds something equippable. */
+    equipment: boolean;
+  };
   /** Debug flags — lab/dev use only. Never read in production game logic. */
   debugFlags: {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
@@ -193,6 +203,11 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     floorMap: null,
     floor1: null,
     npcs: new Map(),
+    questLog: new Map(),
+    featureUnlocks: {
+      inventory: false,
+      equipment: false,
+    },
     debugFlags: {
       showAllRooms: false,
     },

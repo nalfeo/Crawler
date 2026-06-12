@@ -9,6 +9,7 @@ import {
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
+  questSystem,
   weaponSystem,
 } from './game/index.js';
 import { confirmFloor1StairDescend } from './game/floor1Scenario.js';
@@ -56,7 +57,7 @@ const config: Phaser.Types.Core.GameConfig = {
         enemyAISystem,
         floor1EnemyDirectorSystem,
       ],
-      postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem],
+      postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem, questSystem],
     }),
   ],
   scale: {
