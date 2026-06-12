@@ -3,12 +3,25 @@ import { describe, expect, it } from 'vitest';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
+  equipPurchasedGear,
   floor1EnemyDirectorSystem,
   floor1ObjectiveSystem,
+  getShopkeeperStage,
   initializeFloor1Scenario,
+  meetShopkeeper,
+  purchaseShopkeeperEquipment,
+  returnShopkeeperPrize,
   selectFloor1StarterWeapon,
+  SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floor1Scenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
+import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
+import { addItem, hasItem } from '../../src/shared/inventory.js';
+import {
+  FLOOR1_SHOP_QUEST_ID,
+  SHOPKEEPER_EQUIPMENT_ITEM_ID,
+  SHOPKEEPER_FETCH_ITEM_ID,
+} from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('floor1Scenario', () => {
@@ -138,5 +151,105 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseDiscovered).toBe(true);
     expect(world.state).toBe('safe_room');
     expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
+  });
+
+  describe('shopkeeper errand questline', () => {
+    it('accepts both Floor 1 quests on initialization', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(true);
+      expect(getShopkeeperStage(world)).toBe('not-met');
+      expect(world.featureUnlocks.inventory).toBe(false);
+      expect(world.featureUnlocks.equipment).toBe(false);
+    });
+
+    it('walks the merchant errand: meet → fetch → return → buy → equip', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST + 10;
+      const bag = world.inventories.get(player)!;
+
+      // Meet the merchant.
+      meetShopkeeper(world);
+      questSystem(world);
+      expect(getShopkeeperStage(world)).toBe('awaiting-prize');
+
+      // Pick up the gross fetch item → inventory unlocks.
+      addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      questSystem(world);
+      expect(world.featureUnlocks.inventory).toBe(true);
+
+      // Return the prize: consumes the item, opens the shop.
+      expect(returnShopkeeperPrize(world, player)).toBe(true);
+      expect(hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID)).toBe(false);
+      questSystem(world);
+      expect(getShopkeeperStage(world)).toBe('ready-to-buy');
+
+      // Buy the charm → gold deducted, equipment unlocks.
+      const goldBefore = world.playerGold;
+      expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
+      expect(world.playerGold).toBe(goldBefore - SHOPKEEPER_EQUIPMENT_COST);
+      expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(true);
+      questSystem(world);
+      expect(world.featureUnlocks.equipment).toBe(true);
+      expect(getShopkeeperStage(world)).toBe('awaiting-equip');
+
+      // Equip the charm → quest completes.
+      expect(equipPurchasedGear(world, player)).toBe(true);
+      questSystem(world);
+      expect(getShopkeeperStage(world)).toBe('complete');
+      expect(isQuestComplete(world, FLOOR1_SHOP_QUEST_ID)).toBe(true);
+    });
+
+    it('refuses to sell when the player cannot afford the charm', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      const bag = world.inventories.get(player)!;
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST - 1;
+
+      meetShopkeeper(world);
+      addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      returnShopkeeperPrize(world, player);
+
+      expect(purchaseShopkeeperEquipment(world, player)).toBe(false);
+      expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
+      expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST - 1);
+    });
+
+    it('does not let the player return a prize they do not hold', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      meetShopkeeper(world);
+
+      expect(returnShopkeeperPrize(world, player)).toBe(false);
+      expect(world.goalFlags.get('floor1-shop-prize-returned')).not.toBe(true);
+    });
+
+    it('keeps the boss door quest independent of the shopkeeper errand', () => {
+      const world = createTestWorld({ seed: 123 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const objective = world.floor1?.objective;
+      if (!objective) {
+        throw new Error('Expected floor1 objective to exist');
+      }
+      objective.ratsKilled = objective.requiredRats;
+      objective.slimesKilled = objective.requiredSlimes;
+      objective.questAccepted = true;
+      world.elapsedMs = 1_000;
+      floor1ObjectiveSystem(world);
+
+      expect(objective.questCompleted).toBe(true);
+      // Boss-door unlock must not depend on finishing the merchant errand.
+      expect(getShopkeeperStage(world)).toBe('not-met');
+    });
   });
 });
