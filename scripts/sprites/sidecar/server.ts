@@ -54,7 +54,7 @@ import {
   createVisionProvider,
 } from '../provider/factory.js';
 import { reprocessRuns, type ReprocessProfile } from '../reprocess.js';
-import { computeSliceMap } from '../slice-sheet.js';
+import { computeSliceMap, computeSliceMapV2 } from '../slice-sheet.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { loadBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
@@ -333,10 +333,11 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     },
   );
 
-  app.get<{ Params: { briefId: string; runId: string } }>(
+  app.get<{ Params: { briefId: string; runId: string }; Querystring: { v?: string } }>(
     '/api/runs/:briefId/:runId/slice-map',
     async (req, reply) => {
       const { briefId, runId } = req.params;
+      const version = req.query.v === '2' ? 'v2' : 'v1';
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
@@ -390,9 +391,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(404);
         return { error: 'sheet-not-found' };
       }
-      const { rows, cols, emptyCells } = brief.generation.sheet;
-      const nudgeEnabled = brief.type === 'character' || brief.type === 'enemy';
       try {
+        if (version === 'v2') {
+          const sliceMap = computeSliceMapV2(sheetPng, {
+            emptyCells: brief.generation.sheet.emptyCells,
+          });
+          return { ...sliceMap, sheetFile: sheetFiles[0], algorithm: 'v2' };
+        }
+        const { rows, cols, emptyCells } = brief.generation.sheet;
+        const nudgeEnabled = brief.type === 'character' || brief.type === 'enemy';
         const sliceMap = computeSliceMap(sheetPng, {
           rows,
           cols,
@@ -406,7 +413,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
               }
             : undefined,
         });
-        return { ...sliceMap, sheetFile: sheetFiles[0] };
+        return { ...sliceMap, sheetFile: sheetFiles[0], algorithm: 'v1' };
       } catch (err) {
         reply.code(500);
         return { error: 'slice-failed', message: String(err) };

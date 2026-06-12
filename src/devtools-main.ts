@@ -114,6 +114,7 @@ interface SliceMapResponse {
   colOffsets: number[];
   cells: SliceBboxEntry[];
   sheetFile: string;
+  algorithm?: string;
 }
 
 interface ReprocessResponse {
@@ -161,8 +162,9 @@ function sheetUrl(briefId: string, runId: string, filename: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/sheet/${encodeURIComponent(filename)}`;
 }
 
-function sliceMapUrl(briefId: string, runId: string): string {
-  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/slice-map`;
+function sliceMapUrl(briefId: string, runId: string, version: 'v1' | 'v2' = 'v1'): string {
+  const v = version === 'v2' ? '?v=2' : '';
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/slice-map${v}`;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -637,7 +639,7 @@ function render(): void {
   const debuggerPickerRow = el('div', {
     style: {
       display: 'grid',
-      gridTemplateColumns: '1fr 110px auto auto',
+      gridTemplateColumns: '1fr auto auto',
       gap: '6px',
       marginBottom: '6px',
       alignItems: 'end',
@@ -687,12 +689,7 @@ function render(): void {
       fontSize: '11px',
     },
   }) as HTMLButtonElement;
-  debuggerPickerRow.append(
-    debuggerRunSelect,
-    debuggerVariantSelect,
-    debuggerRefreshPickerBtn,
-    debuggerLoadPickerBtn,
-  );
+  debuggerPickerRow.append(debuggerRunSelect, debuggerRefreshPickerBtn, debuggerLoadPickerBtn);
   const debuggerPickerStatus = el('div', {
     text: 'Available runs: loading…',
     style: { marginBottom: '8px', fontSize: '11px', color: '#94a3b8' },
@@ -905,6 +902,7 @@ function render(): void {
   let promotedBriefPath: string | null = null;
   let currentRun: WorkflowRunState | null = null;
   let debugTarget: PostprocessDebugTarget | null = null;
+  let preferredSliceVersion: 'v1' | 'v2' = 'v1';
   const queuedAssetIds = new Set<string>();
   const initialParams = new URLSearchParams(window.location.search);
   const initialBriefId = initialParams.get('briefId');
@@ -929,6 +927,10 @@ function render(): void {
   }
   let debuggerRuns: SidecarRunListEntry[] = [];
   const debuggerVariantCache = new Map<string, number[]>();
+  const experimentPartnerByRun = new Map<
+    string,
+    { briefId: string; runId: string; label: string }
+  >();
   const makeRunKey = (briefId: string, runId: string): string => `${briefId}::${runId}`;
   const findRunByKey = (key: string): SidecarRunListEntry | null => {
     for (const run of debuggerRuns) {
@@ -1273,7 +1275,7 @@ function render(): void {
       debuggerReprocessStatus.textContent = 'Waiting for debug target.';
       debuggerTraceHost.append(
         el('p', {
-          text: 'Select a run and variant above, then click "Load selected" to trace the full postprocess pipeline.',
+          text: 'Select a run above and click "Load selected" to trace the full postprocess pipeline.',
           style: {
             color: '#475569',
             fontSize: '12px',
@@ -1374,12 +1376,39 @@ function render(): void {
     sheetBody.append(sheetTabRow, sheetStatus, sheetCanvas);
     debuggerTraceHost.append(sheetSection);
 
-    // ── Section 2: Slicing ──────────────────────────────────────────
-    const { section: slicingSection, body: slicingBody } = makeSection(
-      'Slicing — grid & selected variant',
-    );
+    // ── Slicing elements (rendered as first pipeline step) ──────────
+    const slicingVariantRow = el('div', {
+      style: { display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' },
+    });
+    const slicingVariantLabel = el('span', {
+      text: 'Variant:',
+      style: { fontSize: '10px', color: '#64748b' },
+    });
+    Object.assign(debuggerVariantSelect.style, { width: '120px' });
+    slicingVariantRow.append(slicingVariantLabel, debuggerVariantSelect);
+
+    const makeAbBtn = (label: string, active: boolean): HTMLButtonElement => {
+      const btn = el('button', {
+        text: label,
+        style: {
+          fontSize: '10px',
+          padding: '2px 8px',
+          borderRadius: '4px',
+          border: `1px solid ${active ? '#7dd3fc' : '#475569'}`,
+          background: active ? 'rgba(125,211,252,0.12)' : '#1e293b',
+          color: active ? '#7dd3fc' : '#94a3b8',
+          cursor: 'pointer',
+          fontWeight: active ? '600' : '400',
+        },
+      }) as HTMLButtonElement;
+      return btn;
+    };
+    let sliceVersion: 'v1' | 'v2' = preferredSliceVersion;
+    const btnV1 = makeAbBtn('A — v1 (nudge)', preferredSliceVersion === 'v1');
+    const btnV2 = makeAbBtn('B — v2 (bands)', preferredSliceVersion === 'v2');
+
     const slicingStatus = el('div', {
-      text: 'Waiting for sheet and sprite dimensions…',
+      text: 'Waiting for sheet…',
       style: { fontSize: '11px', color: '#64748b', marginBottom: '8px' },
     });
     const slicingCanvas = document.createElement('canvas');
@@ -1390,8 +1419,6 @@ function render(): void {
       borderRadius: '4px',
       border: '1px solid rgba(148,163,184,0.2)',
     });
-    slicingBody.append(slicingStatus, slicingCanvas);
-    debuggerTraceHost.append(slicingSection);
 
     // ── Section 3: Pipeline steps ───────────────────────────────────
     const { section: pipelineSection, body: pipelineBody } = makeSection(
@@ -1406,7 +1433,37 @@ function render(): void {
 
     // ── Shared state for cross-section rendering ────────────────────
     let pendingSheetImgForSlice: HTMLImageElement | null = null;
-    let currentSliceMap: SliceMapResponse | null = null;
+    let sliceMapV1: SliceMapResponse | null = null;
+    let sliceMapV2: SliceMapResponse | null = null;
+    let hitCells: Array<{
+      cell: SliceMapResponse['cells'][number];
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+    }> = [];
+    // currentSliceMap is a derived getter, not separate state
+    const getActiveSliceMap = (): SliceMapResponse | null =>
+      sliceVersion === 'v2' ? sliceMapV2 : sliceMapV1;
+
+    const setAbActive = (v: 'v1' | 'v2'): void => {
+      sliceVersion = v;
+      preferredSliceVersion = v;
+      const activeStyle = {
+        border: '1px solid #7dd3fc',
+        background: 'rgba(125,211,252,0.12)',
+        color: '#7dd3fc',
+        fontWeight: '600',
+      };
+      const idleStyle = {
+        border: '1px solid #475569',
+        background: '#1e293b',
+        color: '#94a3b8',
+        fontWeight: '400',
+      };
+      Object.assign(btnV1.style, v === 'v1' ? activeStyle : idleStyle);
+      Object.assign(btnV2.style, v === 'v2' ? activeStyle : idleStyle);
+    };
 
     const drawSliceMapOnCanvas = (
       sourceImg: HTMLImageElement,
@@ -1433,6 +1490,7 @@ function render(): void {
       slicingCanvas.height = dh;
       const ctx2 = slicingCanvas.getContext('2d');
       if (!ctx2) return;
+      hitCells = [];
       ctx2.imageSmoothingEnabled = false;
       ctx2.drawImage(sourceImg, 0, 0, dw, dh);
       // Dim everything
@@ -1449,6 +1507,7 @@ function render(): void {
         const dCellW = Math.round(cell.w * scale);
         const dCellH = Math.round(cell.h * scale);
         const isSelected = cell.index === variantIndex;
+        hitCells.push({ cell, x: dx, y: dy, w: dCellW, h: dCellH });
 
         if (cell.empty) {
           // Empty cell: dashed red outline
@@ -1492,21 +1551,69 @@ function render(): void {
       slicingCanvas.style.display = 'block';
     };
 
+    slicingCanvas.onclick = (event: MouseEvent): void => {
+      if (!debugTarget || hitCells.length === 0) return;
+      const rect = slicingCanvas.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) * slicingCanvas.width) / rect.width;
+      const y = ((event.clientY - rect.top) * slicingCanvas.height) / rect.height;
+      const clicked = hitCells.find(
+        (entry) =>
+          !entry.cell.empty &&
+          x >= entry.x &&
+          x <= entry.x + entry.w &&
+          y >= entry.y &&
+          y <= entry.y + entry.h,
+      );
+      if (!clicked || clicked.cell.index < 0 || clicked.cell.index === debugTarget.variantIndex)
+        return;
+      debugTarget = { ...debugTarget, variantIndex: clicked.cell.index };
+      renderPostprocessDebugger();
+    };
+
+    debuggerVariantSelect.onchange = (): void => {
+      if (!debugTarget) return;
+      const variantIndexRaw = Number.parseInt(debuggerVariantSelect.value, 10);
+      const selectedIndex =
+        Number.isFinite(variantIndexRaw) && variantIndexRaw >= 0 ? variantIndexRaw : 0;
+      if (selectedIndex === debugTarget.variantIndex) return;
+      debugTarget = { ...debugTarget, variantIndex: selectedIndex };
+      renderPostprocessDebugger();
+    };
+
     const tryDrawSliceMap = (sourceImg: HTMLImageElement): void => {
-      if (currentSliceMap) {
-        drawSliceMapOnCanvas(sourceImg, currentSliceMap);
+      const active = getActiveSliceMap();
+      if (active) {
+        drawSliceMapOnCanvas(sourceImg, active);
       } else {
         pendingSheetImgForSlice = sourceImg;
       }
     };
 
-    const onSliceMapKnown = (sliceMap: SliceMapResponse): void => {
-      currentSliceMap = sliceMap;
+    const onSliceMapKnown = (sliceMap: SliceMapResponse, v: 'v1' | 'v2'): void => {
+      if (v === 'v1') sliceMapV1 = sliceMap;
+      else sliceMapV2 = sliceMap;
+      if (v !== sliceVersion) return; // Not the active version, nothing to draw yet
       if (pendingSheetImgForSlice) {
         drawSliceMapOnCanvas(pendingSheetImgForSlice, sliceMap);
+        lastSheetImg = pendingSheetImgForSlice;
         pendingSheetImgForSlice = null;
+      } else if (lastSheetImg) {
+        drawSliceMapOnCanvas(lastSheetImg, sliceMap);
       }
     };
+
+    // Wire A/B buttons — redraw immediately from cached maps if sheet is available
+    let lastSheetImg: HTMLImageElement | null = null;
+    btnV1.addEventListener('click', () => {
+      setAbActive('v1');
+      if (sliceMapV1 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV1);
+      else if (!sliceMapV1) slicingStatus.textContent = 'v1 slice map not yet loaded…';
+    });
+    btnV2.addEventListener('click', () => {
+      setAbActive('v2');
+      if (sliceMapV2 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV2);
+      else if (!sliceMapV2) slicingStatus.textContent = 'v2 slice map not yet loaded…';
+    });
 
     const normalizeSheetFiles = (response: SidecarSheetsResponse): string[] =>
       Array.isArray(response.files)
@@ -1526,6 +1633,7 @@ function render(): void {
           `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
         )
           return;
+        lastSheetImg = img;
         tryDrawSliceMap(img);
       };
       img.onerror = () => {
@@ -1534,10 +1642,16 @@ function render(): void {
       img.src = sheetUrl(briefId, sheetRunId, filename);
     };
 
-    const makeStepCard = (
+    const makeComparisonStepCard = (
       stepLabel: string,
       beforeSrc: string | null,
-      afterSrc: string,
+      afterASrc: string,
+      afterBSrc: string | null,
+      bLabel: string,
+      selectedBranch: 'A' | 'B',
+      onBranchSelect: (branch: 'A' | 'B') => void,
+      skipped: boolean,
+      onSkipToggle: () => void,
     ): HTMLElement => {
       const card = el('div', {
         style: {
@@ -1549,8 +1663,10 @@ function render(): void {
         },
       });
       const title = el('div', {
-        text: stepLabel,
         style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
           fontSize: '11px',
           color: '#7dd3fc',
           fontWeight: '600',
@@ -1558,10 +1674,77 @@ function render(): void {
           letterSpacing: '0.02em',
         },
       });
+      const titleText = el('span', { text: stepLabel });
+      const branchRow = el('div', { style: { display: 'flex', gap: '4px' } });
+      const makeBranchBtn = (
+        label: string,
+        branch: 'A' | 'B',
+        enabled: boolean,
+      ): HTMLButtonElement => {
+        const active = selectedBranch === branch;
+        const btn = el('button', {
+          text: label,
+          style: {
+            fontSize: '10px',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            border: `1px solid ${active ? '#7dd3fc' : '#475569'}`,
+            background: active ? 'rgba(125,211,252,0.12)' : '#1e293b',
+            color: active ? '#7dd3fc' : '#94a3b8',
+            cursor: enabled ? 'pointer' : 'not-allowed',
+            opacity: enabled ? '1' : '0.5',
+          },
+        }) as HTMLButtonElement;
+        btn.disabled = !enabled;
+        if (enabled) btn.addEventListener('click', () => onBranchSelect(branch));
+        return btn;
+      };
+      const makeSkipBtn = (): HTMLButtonElement => {
+        const btn = el('button', {
+          text: skipped ? '▶ Enable' : 'Skip',
+          style: {
+            fontSize: '10px',
+            padding: '2px 8px',
+            borderRadius: '4px',
+            border: `1px solid ${skipped ? '#fbbf24' : '#475569'}`,
+            background: skipped ? 'rgba(251,191,36,0.12)' : '#1e293b',
+            color: skipped ? '#fbbf24' : '#94a3b8',
+            cursor: 'pointer',
+          },
+        }) as HTMLButtonElement;
+        btn.addEventListener('click', onSkipToggle);
+        return btn;
+      };
+      branchRow.append(
+        makeBranchBtn('A', 'A', true),
+        makeBranchBtn(bLabel, 'B', afterBSrc !== null),
+        makeSkipBtn(),
+      );
+      title.append(titleText, branchRow);
+      if (skipped) {
+        const badge = el('div', {
+          text: '⏭ SKIPPED — passing through',
+          style: {
+            fontSize: '11px',
+            color: '#fbbf24',
+            background: 'rgba(251,191,36,0.06)',
+            border: '1px dashed rgba(251,191,36,0.25)',
+            borderRadius: '4px',
+            padding: '6px 10px',
+          },
+        });
+        card.append(title, badge);
+        return card;
+      }
       const row = el('div', {
-        style: { display: 'flex', alignItems: 'flex-start', gap: '10px' },
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          alignItems: 'flex-start',
+          gap: '10px',
+        },
       });
-      const makeBox = (label: string, src: string | null): HTMLElement => {
+      const makeBox = (label: string, src: string | null, emptyText = '—'): HTMLElement => {
         const box = el('div', {
           style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' },
         });
@@ -1572,7 +1755,7 @@ function render(): void {
           box.append(lbl, img);
         } else {
           const ph = el('div', {
-            text: '—',
+            text: emptyText,
             style: {
               width: '96px',
               height: '96px',
@@ -1582,30 +1765,106 @@ function render(): void {
               border: '1px dashed rgba(148,163,184,0.2)',
               borderRadius: '4px',
               color: '#334155',
-              fontSize: '20px',
+              fontSize: emptyText === '—' ? '20px' : '11px',
+              textAlign: 'center',
+              padding: '0 6px',
             },
           });
           box.append(lbl, ph);
         }
         return box;
       };
-      const arrow = el('div', {
-        text: '→',
-        style: { color: '#334155', fontSize: '18px', alignSelf: 'center', flexShrink: '0' },
-      });
-      row.append(makeBox('before', beforeSrc), arrow, makeBox('after', afterSrc));
+      row.append(
+        makeBox('before', beforeSrc),
+        makeBox('after (A)', afterASrc),
+        makeBox(`after (${bLabel})`, afterBSrc, 'no experiment'),
+      );
       card.append(title, row);
+      return card;
+    };
+
+    const makeSlicingStepCard = (collapsed: boolean, onCollapseToggle: () => void): HTMLElement => {
+      const card = el('div', {
+        style: {
+          marginBottom: '10px',
+          padding: '10px',
+          background: 'rgba(15,23,42,0.5)',
+          border: '1px solid rgba(148,163,184,0.1)',
+          borderRadius: '6px',
+        },
+      });
+      const headerEl = el('div', {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          fontSize: '11px',
+          color: '#7dd3fc',
+          fontWeight: '600',
+          marginBottom: collapsed ? '0' : '10px',
+          letterSpacing: '0.02em',
+        },
+      });
+      const titleText = el('span', { text: 'Slicing' });
+      const btnRow = el('div', { style: { display: 'flex', gap: '4px' } });
+      const collapseBtn = el('button', {
+        text: collapsed ? '▶ Show' : 'Skip',
+        style: {
+          fontSize: '10px',
+          padding: '2px 8px',
+          borderRadius: '4px',
+          border: `1px solid ${collapsed ? '#fbbf24' : '#475569'}`,
+          background: collapsed ? 'rgba(251,191,36,0.12)' : '#1e293b',
+          color: collapsed ? '#fbbf24' : '#94a3b8',
+          cursor: 'pointer',
+        },
+      }) as HTMLButtonElement;
+      collapseBtn.addEventListener('click', onCollapseToggle);
+      btnRow.append(btnV1, btnV2, collapseBtn);
+      headerEl.append(titleText, btnRow);
+      card.append(headerEl);
+      if (!collapsed) {
+        card.append(slicingVariantRow, slicingStatus, slicingCanvas);
+      }
+      return card;
+    };
+
+    const makeFinalOutputCard = (src: string): HTMLElement => {
+      const card = el('div', {
+        style: {
+          marginTop: '10px',
+          padding: '10px',
+          background: 'rgba(15,23,42,0.5)',
+          border: '1px solid rgba(148,163,184,0.1)',
+          borderRadius: '6px',
+        },
+      });
+      const title = el('div', {
+        text: 'Final output',
+        style: {
+          fontSize: '11px',
+          color: '#7dd3fc',
+          fontWeight: '600',
+          marginBottom: '8px',
+          letterSpacing: '0.02em',
+        },
+      });
+      const img = makeImgEl(128);
+      img.src = src;
+      card.append(title, img);
       return card;
     };
 
     // ── Async: fetch sheets + manifest + slice-map in parallel ──────
     void (async () => {
       try {
-        const [sheetResult, manifestResult, sliceMapResult] = await Promise.allSettled([
-          fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
-          fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
-          fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId)),
-        ]);
+        const [sheetResult, manifestResult, sliceMapResult, sliceMapV2Result] =
+          await Promise.allSettled([
+            fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
+            fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
+            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v1')),
+            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v2')),
+          ]);
 
         if (
           !debugTarget ||
@@ -1665,11 +1924,14 @@ function render(): void {
           }
         }
 
-        // Wire up slice-map (drives the slicing canvas)
+        // Wire up slice-maps (drives the slicing canvas A/B)
         if (sliceMapResult.status === 'fulfilled') {
-          onSliceMapKnown(sliceMapResult.value);
+          onSliceMapKnown(sliceMapResult.value, 'v1');
         } else {
           slicingStatus.textContent = 'Slice map unavailable — run may pre-date this feature.';
+        }
+        if (sliceMapV2Result.status === 'fulfilled') {
+          onSliceMapKnown(sliceMapV2Result.value, 'v2');
         }
 
         // Load most recent (last) sheet
@@ -1689,6 +1951,21 @@ function render(): void {
         // ── Pipeline trace ─────────────────────────────────────────
         pipelineBody.replaceChildren();
         const finalSrc = spriteUrl(briefId, runId, `${padded}.png`);
+        const experimentPartner = experimentPartnerByRun.get(makeRunKey(briefId, runId)) ?? null;
+        let partnerManifest: PipelineManifest | null = null;
+        if (experimentPartner) {
+          try {
+            partnerManifest = await fetchJson<PipelineManifest>(
+              spriteUrl(
+                experimentPartner.briefId,
+                experimentPartner.runId,
+                `${padded}.pipeline.json`,
+              ),
+            );
+          } catch {
+            partnerManifest = null;
+          }
+        }
 
         if (manifestResult.status === 'rejected') {
           pipelineBody.append(
@@ -1696,7 +1973,7 @@ function render(): void {
               text: 'No pipeline trace available for this run.',
               style: { fontSize: '11px', color: '#64748b', marginBottom: '10px' },
             }),
-            makeStepCard('Final output', null, finalSrc),
+            makeFinalOutputCard(finalSrc),
           );
           return;
         }
@@ -1714,30 +1991,139 @@ function render(): void {
             }),
           );
         }
+        pipelineBody.append(
+          el('div', {
+            text:
+              experimentPartner && partnerManifest
+                ? `A/B: A=${briefId}/${runId} · B=${experimentPartner.label} (${experimentPartner.briefId}/${experimentPartner.runId})`
+                : 'A/B: no experiment',
+            style: { fontSize: '11px', color: '#64748b', marginBottom: '10px' },
+          }),
+        );
 
         const steps = (manifest.steps ?? []).filter(
           (s): s is Required<PipelineStepManifest> & { file: string } =>
             typeof s.file === 'string' && s.file.length > 0,
         );
+        const partnerSteps = ((partnerManifest?.steps ?? []).filter(
+          (s): s is Required<PipelineStepManifest> & { file: string } =>
+            typeof s.file === 'string' && s.file.length > 0,
+        ) ?? []) as Array<Required<PipelineStepManifest> & { file: string }>;
+        const partnerById = new Map(
+          partnerSteps
+            .filter((step) => typeof step.id === 'string' && step.id.length > 0)
+            .map((step) => [step.id as string, step] as const),
+        );
+        const bLabel = experimentPartner?.label ?? 'B';
 
         if (steps.length === 0) {
-          pipelineBody.append(makeStepCard('Final output', null, finalSrc));
+          const collapsedSteps0 = new Set<number>();
+          pipelineBody.append(
+            makeSlicingStepCard(false, () => {
+              if (collapsedSteps0.has(0)) {
+                collapsedSteps0.delete(0);
+              } else {
+                collapsedSteps0.add(0);
+              }
+            }),
+            makeFinalOutputCard(finalSrc),
+          );
           return;
         }
 
-        // Before/after cards: consecutive step pairs
-        for (let i = 0; i < steps.length; i++) {
-          const step = steps[i]!;
+        const stepEntries = steps.map((step, i) => {
           const label = step.label ?? step.id ?? step.file;
-          const beforeSrc = i === 0 ? null : spriteUrl(briefId, runId, steps[i - 1]!.file);
-          const afterSrc = spriteUrl(briefId, runId, step.file);
-          pipelineBody.append(makeStepCard(label, beforeSrc, afterSrc));
-        }
-        // Final output card
-        const lastStep = steps[steps.length - 1]!;
-        pipelineBody.append(
-          makeStepCard('Final output', spriteUrl(briefId, runId, lastStep.file), finalSrc),
-        );
+          const afterASrc = spriteUrl(briefId, runId, step.file);
+          const partnerStep =
+            (step.id ? partnerById.get(step.id) : undefined) ?? partnerSteps[i] ?? null;
+          const afterBSrc =
+            partnerStep && experimentPartner
+              ? spriteUrl(experimentPartner.briefId, experimentPartner.runId, partnerStep.file)
+              : null;
+          return { label, afterASrc, afterBSrc };
+        });
+        const selectedBranches: Array<'A' | 'B'> = stepEntries.map(() => 'A');
+        // index 0 = slicing step, 1..n = pipeline steps
+        const collapsedSteps = new Set<number>();
+
+        const renderPipelineSteps = (): void => {
+          const profileNode = profile
+            ? el('div', {
+                text: `Profile: ${profile}`,
+                style: { fontSize: '11px', color: '#475569', marginBottom: '10px' },
+              })
+            : null;
+          const abNode = el('div', {
+            text:
+              experimentPartner && partnerManifest
+                ? `A/B: A=${briefId}/${runId} · B=${experimentPartner.label} (${experimentPartner.briefId}/${experimentPartner.runId})`
+                : 'A/B: no experiment',
+            style: { fontSize: '11px', color: '#64748b', marginBottom: '10px' },
+          });
+          pipelineBody.replaceChildren(...(profileNode ? [profileNode] : []), abNode);
+
+          // Slicing step is always first in the pipeline
+          pipelineBody.append(
+            makeSlicingStepCard(collapsedSteps.has(0), () => {
+              if (collapsedSteps.has(0)) {
+                collapsedSteps.delete(0);
+              } else {
+                collapsedSteps.add(0);
+              }
+              renderPipelineSteps();
+            }),
+          );
+
+          let selectedOutputForNextStep: string | null = null;
+          let lastActiveBranch: 'A' | 'B' = 'A';
+          for (let i = 0; i < stepEntries.length; i++) {
+            const step = stepEntries[i]!;
+            const combinedIdx = i + 1; // 0 = slicing
+            const beforeSrc: string | null = i === 0 ? null : selectedOutputForNextStep;
+            const selectedBranch = selectedBranches[i]!;
+            const isSkipped = collapsedSteps.has(combinedIdx);
+            pipelineBody.append(
+              makeComparisonStepCard(
+                step.label,
+                beforeSrc,
+                step.afterASrc,
+                step.afterBSrc,
+                bLabel,
+                selectedBranch,
+                (branch) => {
+                  const requested = branch === 'B' && step.afterBSrc === null ? 'A' : branch;
+                  if (selectedBranches[i] === requested) return;
+                  selectedBranches[i] = requested;
+                  renderPipelineSteps();
+                },
+                isSkipped,
+                () => {
+                  if (collapsedSteps.has(combinedIdx)) {
+                    collapsedSteps.delete(combinedIdx);
+                  } else {
+                    collapsedSteps.add(combinedIdx);
+                  }
+                  renderPipelineSteps();
+                },
+              ),
+            );
+            if (isSkipped) {
+              selectedOutputForNextStep = beforeSrc;
+            } else {
+              lastActiveBranch = selectedBranch;
+              selectedOutputForNextStep =
+                selectedBranch === 'B' && step.afterBSrc ? step.afterBSrc : step.afterASrc;
+            }
+          }
+
+          const finalOutputSrc =
+            lastActiveBranch === 'B' && experimentPartner
+              ? spriteUrl(experimentPartner.briefId, experimentPartner.runId, `${padded}.png`)
+              : finalSrc;
+          pipelineBody.append(makeFinalOutputCard(finalOutputSrc));
+        };
+
+        renderPipelineSteps();
       } catch (error) {
         if (
           !debugTarget ||
@@ -1781,9 +2167,9 @@ function render(): void {
       debuggerPickerStatus.textContent = 'Select a run first.';
       return;
     }
-    const variantIndexRaw = Number.parseInt(debuggerVariantSelect.value, 10);
-    const variantIndex =
-      Number.isFinite(variantIndexRaw) && variantIndexRaw >= 0 ? variantIndexRaw : 0;
+    const runKey = makeRunKey(run.briefId, run.runId);
+    const cachedVariants = debuggerVariantCache.get(runKey) ?? [0];
+    const variantIndex = cachedVariants[0] ?? 0;
     debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex };
     renderPostprocessDebugger();
   });
@@ -1831,6 +2217,15 @@ function render(): void {
       debuggerReprocessStatus.textContent = `Created runs:\n${result.runs
         .map((r) => `${r.profile}: ${r.briefId}/${r.runId}`)
         .join('\n')}`;
+      if (result.runs[0] && result.runs[1]) {
+        const runA = result.runs[0];
+        const runB = result.runs[1];
+        experimentPartnerByRun.set(makeRunKey(runA.briefId, runA.runId), {
+          briefId: runB.briefId,
+          runId: runB.runId,
+          label: runB.profile,
+        });
+      }
       if (result.runs[0]) {
         debugTarget = {
           briefId: result.runs[0].briefId,

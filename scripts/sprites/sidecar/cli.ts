@@ -15,7 +15,7 @@
 
 import path from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildServer } from './server.js';
 
 const HOST = '127.0.0.1';
@@ -97,8 +97,13 @@ async function main(): Promise<number> {
 }
 
 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : '';
+const modulePath = path.resolve(fileURLToPath(import.meta.url));
+const normalizedInvokedPath = invokedPath.toLowerCase();
+const normalizedModulePath = modulePath.toLowerCase();
 const isDirectInvocation =
-  invokedPath !== '' && import.meta.url === pathToFileURL(invokedPath).href;
+  invokedPath !== '' &&
+  (import.meta.url === pathToFileURL(invokedPath).href ||
+    normalizedInvokedPath === normalizedModulePath);
 if (isDirectInvocation) {
   main().then(
     (code) => {

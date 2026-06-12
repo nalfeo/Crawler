@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { PNG } from 'pngjs';
-import { sliceSheet } from '../../../scripts/sprites/slice-sheet.js';
+import { computeSliceMapV2, sliceSheet } from '../../../scripts/sprites/slice-sheet.js';
 
 interface Rgb {
   r: number;
@@ -69,6 +69,59 @@ describe('sliceSheet', () => {
         expect(color).toEqual({ r: r * 80 + 10, g: c * 80 + 10, b: (r * 3 + c) * 30 + 10 });
       }
     }
+  });
+
+  describe('computeSliceMapV2', () => {
+    it('trims large outer margins down to a 1px border around content', () => {
+      const width = 24;
+      const height = 12;
+      const png = new PNG({ width, height });
+      // White background.
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i] = 255;
+        png.data[i + 1] = 255;
+        png.data[i + 2] = 255;
+        png.data[i + 3] = 255;
+      }
+      // Two black sprites with a wide interior separator.
+      for (let y = 3; y <= 8; y++) {
+        for (let x = 5; x <= 8; x++) {
+          const i = (y * width + x) * 4;
+          png.data[i] = 0;
+          png.data[i + 1] = 0;
+          png.data[i + 2] = 0;
+        }
+        for (let x = 14; x <= 17; x++) {
+          const i = (y * width + x) * 4;
+          png.data[i] = 0;
+          png.data[i + 1] = 0;
+          png.data[i + 2] = 0;
+        }
+      }
+      // Sparse edge noise should not prevent margin trimming.
+      {
+        const i0 = (1 * width + 0) * 4;
+        png.data[i0] = 0;
+        png.data[i0 + 1] = 0;
+        png.data[i0 + 2] = 0;
+        const i1 = ((height - 2) * width + (width - 1)) * 4;
+        png.data[i1] = 0;
+        png.data[i1 + 1] = 0;
+        png.data[i1 + 2] = 0;
+      }
+
+      const map = computeSliceMapV2(PNG.sync.write(png));
+      expect(map.rows).toBe(1);
+      expect(map.cols).toBe(2);
+
+      const left = map.cells[0]!;
+      const right = map.cells[1]!;
+      // min content x/y is (5,3), max content x/y is (17,8) => trim to 1px border.
+      expect(left.x0).toBe(4);
+      expect(left.y0).toBe(2);
+      expect(right.x0 + right.w).toBe(19);
+      expect(left.y0 + left.h).toBe(10);
+    });
   });
 
   it('emits cells at the cell-native resolution, not the whole sheet', () => {
