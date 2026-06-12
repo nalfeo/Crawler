@@ -76,7 +76,7 @@ const SHOPKEEPER_DEF: NpcDef = {
       text: "Oh-ho, a new contestant! Come closer, don't be shy. I'm a merchant of... refined tastes.",
     },
     {
-      text: "I'll sell you something nice. But first — fetch me a rat tail. Fresh. Glistening. Still warm, if you can manage it.",
+      text: "I'll sell you something nice. But first — fetch me a rat tail. They tend to lose them in the deeper, far-flung rooms of this dungeon.",
     },
     {
       text: 'Bring it straight back. No wiping it off. I like them... authentic. Hehe.',

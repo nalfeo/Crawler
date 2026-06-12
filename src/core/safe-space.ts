@@ -1,19 +1,19 @@
 import type { GameWorld } from './world.js';
+import { RoomRole } from '../shared/map-types.js';
 
 /**
- * Returns true when the given pixel position is inside the current floor's safe-room bounds.
- * Floors without a discrete safe room report false.
+ * Returns true when the given pixel position is inside any safe room on the current floor.
+ * Floors without a safe room report false.
  */
 export function isPointInSafeSpace(world: GameWorld, x: number, y: number): boolean {
   const floorMap = world.floorMap;
-  const safeRoom = floorMap?.safeRoom;
-  if (!floorMap || !safeRoom) {
-    return false;
-  }
-
+  if (!floorMap) return false;
+  const safeRooms = floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE);
+  if (safeRooms.length === 0) return false;
   const tile = floorMap.pixelToTile(x, y);
-  const { x: roomX, y: roomY, width, height } = safeRoom.bounds;
-  return tile.x >= roomX && tile.x < roomX + width && tile.y >= roomY && tile.y < roomY + height;
+  return safeRooms.some(({ bounds: { x: rx, y: ry, width, height } }) => {
+    return tile.x >= rx && tile.x < rx + width && tile.y >= ry && tile.y < ry + height;
+  });
 }
 
 /** Returns true when the entity's current position is inside a safe room. */
