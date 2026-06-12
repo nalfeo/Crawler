@@ -91,8 +91,8 @@
   },
   {
     "session": "2026-06-11-mobile-review-fixes",
-    "estimate": "🍎🍎",
-    "actual": "🍎🍎",
+    "estimate": "\ud83c\udf4e\ud83c\udf4e",
+    "actual": "\ud83c\udf4e\ud83c\udf4e",
     "verdict": "on-target",
     "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
   },
@@ -168,5 +168,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "4 targeted UX fixes: merchant safe room + minimap, rat tail hint, dialog overlap, goon quest timing"
+  },
+  {
+    "date": "2026-06-12",
+    "session": "mobile-ui-fixes-inventory-minimap",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8,
+    "notes": "Mobile UX multi-fix: inventory/equip buttons, quest compass arrow, minimap 3x zoom + overlay zoom btns, quest tracker layout, bigger tap targets. 4 files + 3 tests."
   }
 ]

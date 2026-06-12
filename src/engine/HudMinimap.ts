@@ -18,7 +18,7 @@ const MAP_BORDER = 2;
 const HUD_MINIMAP_WIDTH = 180;
 const HUD_MINIMAP_HEIGHT = 112;
 const HUD_MINIMAP_TOP = 62;
-/** Fixed zoom level for the HUD minimap widget — centred on the player. */
+/** Fixed zoom level for the HUD minimap widget — centered on the player. */
 const HUD_MINIMAP_PLAYER_ZOOM = 3;
 const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
@@ -383,7 +383,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   /**
    * Position the terrain texture and dot layer inside the HUD widget.
    * When a player tile position is supplied the map is zoomed in at
-   * HUD_MINIMAP_PLAYER_ZOOM and centred on the player so the local area
+   * HUD_MINIMAP_PLAYER_ZOOM and centered on the player so the local area
    * is clearly visible and scrolls with movement.  Falls back to a
    * fit-to-view layout (whole map visible) when no position is known yet.
    */
@@ -398,7 +398,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
 
     if (lastPlayerTileX !== undefined && lastPlayerTileY !== undefined) {
-      // Fixed 3× zoom centred on the player tile.
+      // Fixed 3× zoom centered on the player tile.
       const scale = HUD_MINIMAP_PLAYER_ZOOM;
       const halfW = hudViewport.width / (2 * scale);
       const halfH = hudViewport.height / (2 * scale);
