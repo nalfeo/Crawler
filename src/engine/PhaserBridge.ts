@@ -299,6 +299,16 @@ function getEntityType(world: GameWorld, eid: number): string {
 const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
   player: 'player',
   enemy: 'enemy.orc',
+  enemy_rat: 'enemy.rat',
+  enemy_slime: 'enemy.slime',
+  enemy_boss: 'enemy.boss',
+  npc: 'npc.guide',
+  gem: 'item.gem',
+  proj: 'effect.proj',
+  enemy_proj: 'effect.enemy_proj',
+  aoe_proj: 'effect.proj',
+  enemy_aoe_proj: 'effect.enemy_proj',
+  returning: 'effect.proj',
 };
 
 /**
@@ -310,6 +320,16 @@ const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
 const KENNEY_SCALE: Readonly<Record<string, number>> = {
   player: 1.6, // procedural player texture is 26x26
   enemy: 1.4, // procedural enemy texture is 22x22
+  enemy_rat: 1.4,
+  enemy_slime: 1.4,
+  enemy_boss: 2.5, // boss is larger
+  npc: 1.4,
+  gem: 1.0,
+  proj: 1.0,
+  enemy_proj: 1.0,
+  aoe_proj: 1.0,
+  enemy_aoe_proj: 1.0,
+  returning: 1.0,
 };
 
 interface ResolvedTexture {

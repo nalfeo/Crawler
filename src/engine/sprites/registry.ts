@@ -222,6 +222,48 @@ export const SPRITES: ReadonlyArray<SpriteDef> = [
     frame: frameAt(ROGUELIKE_COLS, 1, 11),
     note: 'Pale spectral character (last row).',
   },
+  {
+    id: 'enemy.rat',
+    sheetKey: KENNEY_ROGUELIKE_CHARS,
+    frame: frameAt(ROGUELIKE_COLS, 26, 7),
+    note: 'Rat placeholder.',
+  },
+  {
+    id: 'enemy.slime',
+    sheetKey: KENNEY_ROGUELIKE_CHARS,
+    frame: frameAt(ROGUELIKE_COLS, 27, 7),
+    note: 'Slime placeholder.',
+  },
+  {
+    id: 'enemy.boss',
+    sheetKey: KENNEY_ROGUELIKE_CHARS,
+    frame: frameAt(ROGUELIKE_COLS, 28, 7),
+    note: 'Boss placeholder.',
+  },
+  {
+    id: 'npc.guide',
+    sheetKey: KENNEY_ROGUELIKE_CHARS,
+    frame: frameAt(ROGUELIKE_COLS, 0, 1),
+    note: 'NPC guide placeholder.',
+  },
+  {
+    id: 'item.gem',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(12, 6, 9),
+    note: 'Gem placeholder.',
+  },
+  {
+    id: 'effect.proj',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(12, 10, 8),
+    note: 'Projectile placeholder.',
+  },
+  {
+    id: 'effect.enemy_proj',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(12, 11, 8),
+    note: 'Enemy projectile placeholder.',
+  },
 ];
 
 const SPRITES_BY_ID: ReadonlyMap<string, SpriteDef> = new Map(SPRITES.map((s) => [s.id, s]));
