@@ -132,6 +132,9 @@ function objectiveProgress(
     case 'counter':
       return { current: quest.progress[objective.id] ?? 0, target };
     case 'collect': {
+      if (quest.done[objective.id] === true) {
+        return { current: target, target };
+      }
       const bag = playerEid === undefined ? undefined : world.inventories.get(playerEid);
       const current = bag && objective.itemId ? getItemCount(bag, objective.itemId) : 0;
       return { current, target };
@@ -270,10 +273,14 @@ function evaluateQuest(world: GameWorld, quest: QuestState, playerEid: number | 
   if (!def || quest.status === 'complete') {
     return;
   }
-  // Latch one-shot acquisition objectives so later steps (e.g. equipping, which
-  // removes the item from the bag) don't retroactively un-satisfy them.
+  // Latch one-shot acquisition objectives so later steps (e.g. returning the
+  // fetch item or equipping, which both remove the item from the bag) don't
+  // retroactively un-satisfy them.
   for (const objective of def.objectives) {
-    if (objective.kind === 'haveEquippable' && quest.done[objective.id] !== true) {
+    if (
+      (objective.kind === 'haveEquippable' || objective.kind === 'collect') &&
+      quest.done[objective.id] !== true
+    ) {
       if (isObjectiveComplete(world, quest, objective, playerEid)) {
         quest.done[objective.id] = true;
       }
