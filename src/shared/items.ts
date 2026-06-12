@@ -263,7 +263,13 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   key('elevator-fuse', 'Elevator Fuse', "The elevator won't move without it.", R),
   key('vip-lanyard', 'VIP Lanyard', 'Looks important. Feels important.', U),
   key('classified-dossier', 'Classified Dossier', 'Eyes only. (Everyone reads it anyway.)', E),
-  key('finale-invitation', 'Finale Invitation', 'Your ticket to the season finale.', L),
+  key(
+    'glistening-rat-tail',
+    'Glistening Rat Tail',
+    'A still-warm, slime-slicked rat tail. The merchant requested it by name and asked that you "keep it moist." Do not think about why.',
+    U,
+    [customTag('Smelly Stuff')],
+  ),
 
   // ── Misc (20) ───────────────────────────────────────────────────────
   misc('broken-circuit', 'Broken Circuit', 'Sparks occasionally. Mostly useless.', C),
@@ -293,7 +299,13 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   misc('laugh-track-tape', 'Laugh Track Tape', 'Plays canned laughter. Inappropriately.', U),
   misc('lucky-dice', 'Lucky Dice', 'Loaded. In your favor. Maybe.', R),
   misc('expired-coupon', 'Expired Coupon', '10% off at a store that no longer exists.', C),
-  misc('golden-ticket', 'Golden Ticket', 'Grants access to... something wonderful.', L),
+  misc(
+    'merchants-stained-charm',
+    "Merchant's Stained Charm",
+    'A pendant the merchant fished out from somewhere unspeakable. Faintly damp, weirdly lucky. Equippable.',
+    U,
+    [customTag('Gear')],
+  ),
 ];
 
 // ---------------------------------------------------------------------------

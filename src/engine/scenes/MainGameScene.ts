@@ -33,9 +33,17 @@ import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
+import { createInventoryUI } from '../InventoryUI.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
-import { getNpcDef } from '../../shared/npc-types.js';
+import {
+  getNpcDef,
+  SHOPKEEPER_DONE_DIALOGUE,
+  SHOPKEEPER_EQUIP_HINT_DIALOGUE,
+  SHOPKEEPER_RETURN_DIALOGUE,
+  SHOPKEEPER_SHOP_DIALOGUE,
+} from '../../shared/npc-types.js';
+import type { ShopkeeperStage } from '../../shared/quest-types.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -65,6 +73,16 @@ export interface MainGameSceneOptions {
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
+  /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
+  shopkeeper?: {
+    getStage: (world: GameWorld) => ShopkeeperStage;
+    meet: (world: GameWorld) => void;
+    returnPrize: (world: GameWorld, playerEid: number) => boolean;
+    purchase: (world: GameWorld, playerEid: number) => boolean;
+    equip: (world: GameWorld, playerEid: number) => boolean;
+    equipmentCost: number;
+    equipmentName: string;
+  };
 }
 
 declare global {
@@ -130,6 +148,20 @@ export class MainGameScene extends Phaser.Scene {
   private keyE?: Phaser.Input.Keyboard.Key;
 
   private keyEsc?: Phaser.Input.Keyboard.Key;
+
+  private keyInventory?: Phaser.Input.Keyboard.Key;
+
+  private keyEquip?: Phaser.Input.Keyboard.Key;
+
+  private inventoryUI?: ReturnType<typeof createInventoryUI>;
+
+  /** True when the prize was handed over during the current shopkeeper talk. */
+  private shopkeeperJustReturned = false;
+
+  /** Latches so the inventory/equipment unlock toasts only show once. */
+  private inventoryUnlockNotified = false;
+
+  private equipmentUnlockNotified = false;
 
   /** World-space label shown above the staircase marker. */
   private stairsLabel?: Phaser.GameObjects.Text;
@@ -249,6 +281,9 @@ export class MainGameScene extends Phaser.Scene {
     this.keyThree = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
     this.keyE = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.keyEsc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.keyInventory = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+    this.inventoryUI = createInventoryUI(this);
     this.input.on('pointerdown', this.handlePointerDown, this);
     this.initializeUi();
     this.drawFloorTerrain();
@@ -308,6 +343,8 @@ export class MainGameScene extends Phaser.Scene {
       this.objectiveText?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
+      this.inventoryUI?.destroy();
+      this.inventoryUI = undefined;
       if (this.uiCamera) {
         this.cameras.remove(this.uiCamera);
         this.uiCamera = undefined;
@@ -502,6 +539,56 @@ export class MainGameScene extends Phaser.Scene {
     this.updateObjectiveMarkers();
     this.updateOverlayText();
     this.updateInteractions();
+    this.updateFeatureUnlocks();
+  }
+
+  /**
+   * Inventory ([I]) and equip ([G]) input plus one-time unlock toasts. The
+   * inventory panel only opens after the player picks up the merchant's fetch
+   * item; equipping is only allowed after a purchase makes the feature unlock.
+   */
+  private updateFeatureUnlocks(): void {
+    const unlocks = this.world.featureUnlocks;
+
+    if (unlocks.inventory && !this.inventoryUnlockNotified) {
+      this.inventoryUnlockNotified = true;
+      this.flashHint('Inventory unlocked! Press [I] to open your pack.');
+    }
+    if (unlocks.equipment && !this.equipmentUnlockNotified) {
+      this.equipmentUnlockNotified = true;
+      this.flashHint('Equipment unlocked! Press [G] to equip your new gear.');
+    }
+
+    if (
+      unlocks.inventory &&
+      this.keyInventory &&
+      Phaser.Input.Keyboard.JustDown(this.keyInventory)
+    ) {
+      this.inventoryUI?.toggle(this.world);
+    } else if (this.inventoryUI?.isOpen()) {
+      this.inventoryUI.refresh(this.world);
+    }
+
+    if (unlocks.equipment && this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip)) {
+      const equipped = this.options.shopkeeper?.equip(this.world, this.playerEid) ?? false;
+      if (equipped) {
+        this.flashHint('Equipped! The merchant beams with unsettling pride.');
+        this.inventoryUI?.refresh(this.world);
+      }
+    }
+  }
+
+  /** Briefly show a transient message in the interaction-hint slot. */
+  private flashHint(message: string): void {
+    if (!this.interactionHint) {
+      return;
+    }
+    this.interactionHint.setText(message).setVisible(true);
+    this.time.delayedCall(2500, () => {
+      if (this.interactionHint?.text === message) {
+        this.interactionHint.setVisible(false);
+      }
+    });
   }
 
   private playBossSpawnIntro(): void {
@@ -1231,6 +1318,13 @@ export class MainGameScene extends Phaser.Scene {
         const instance = this.world.npcs.get(nearNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
+          // Shopkeeper errand: advance the merchant's multistep flow on talk.
+          if (instance.defId === 'shopkeeper' && this.options.shopkeeper) {
+            const openedModal = this.handleShopkeeperTalk();
+            if (openedModal) {
+              return;
+            }
+          }
           const activeDialogue = this.resolveDialogueLines(instance.defId);
           if (def && activeDialogue.length > 0) {
             this.conversationNpcEid = nearNpcEid;
@@ -1287,7 +1381,79 @@ export class MainGameScene extends Phaser.Scene {
     if (defId === 'tutorial-goon' && objective?.staircaseBossDefeated) {
       return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
     }
+    if (defId === 'shopkeeper' && this.options.shopkeeper) {
+      const stage = this.options.shopkeeper.getStage(this.world);
+      if (stage === 'complete') {
+        return [...SHOPKEEPER_DONE_DIALOGUE];
+      }
+      if (stage === 'awaiting-equip') {
+        return [...SHOPKEEPER_EQUIP_HINT_DIALOGUE];
+      }
+      if (stage === 'ready-to-buy') {
+        return this.shopkeeperJustReturned
+          ? [...SHOPKEEPER_RETURN_DIALOGUE]
+          : [...SHOPKEEPER_SHOP_DIALOGUE];
+      }
+      // not-met / awaiting-prize: the merchant's initial fetch request.
+    }
     const def = getNpcDef(defId);
     return def?.dialogue.map((line) => line.text) ?? [];
+  }
+
+  /**
+   * Advance the shopkeeper errand when the player talks to the merchant.
+   * Returns true when a purchase modal was opened (so the caller skips the
+   * normal conversation flow).
+   */
+  private handleShopkeeperTalk(): boolean {
+    const shop = this.options.shopkeeper;
+    if (!shop) {
+      return false;
+    }
+    // Latch the "introduce yourself" objective.
+    shop.meet(this.world);
+
+    // If the player is carrying the prize, hand it over now.
+    this.shopkeeperJustReturned = shop.returnPrize(this.world, this.playerEid);
+
+    const stage = shop.getStage(this.world);
+    // Shop is open and the prize is already handled: offer the purchase modal.
+    if (stage === 'ready-to-buy' && !this.shopkeeperJustReturned && this.modalPicker) {
+      if (this.modalPicker.isOpen()) {
+        return true;
+      }
+      const affordable = this.world.playerGold >= shop.equipmentCost;
+      this.modalPicker.open(
+        {
+          title: "The Merchant's Wares",
+          subtitle: `Gold: ${this.world.playerGold}`,
+          body: affordable
+            ? `Buy the ${shop.equipmentName} for ${shop.equipmentCost} gold?`
+            : `The ${shop.equipmentName} costs ${shop.equipmentCost} gold. You can't afford it yet.`,
+          options: affordable
+            ? [
+                {
+                  id: 'buy-equipment',
+                  label: `Buy ${shop.equipmentName} (${shop.equipmentCost}g)`,
+                  description: 'A faintly damp, weirdly lucky charm.',
+                },
+              ]
+            : [],
+          allowCancel: true,
+          initialSelectedId: 'buy-equipment',
+        },
+        {
+          onConfirm: () => {
+            if (shop.purchase(this.world, this.playerEid)) {
+              this.flashHint('Purchased! Press [I] then [G] to equip your gear.');
+              this.inventoryUI?.refresh(this.world);
+            }
+            this.updateOverlayText();
+          },
+        },
+      );
+      return true;
+    }
+    return false;
   }
 }
