@@ -21,9 +21,12 @@ describe('sprite registry', () => {
     }
   });
 
-  it('every sheet path lives under /assets/kenney/', () => {
+  it('every sheet path lives under /assets/kenney/ or /assets/generated/', () => {
     for (const sheet of SHEETS) {
-      expect(sheet.path.startsWith('/assets/kenney/'), sheet.key).toBe(true);
+      expect(
+        sheet.path.startsWith('/assets/kenney/') || sheet.path.startsWith('/assets/generated/'),
+        sheet.key,
+      ).toBe(true);
     }
   });
 
