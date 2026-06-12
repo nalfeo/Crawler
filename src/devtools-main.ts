@@ -2094,6 +2094,22 @@ function render(): void {
         // Cache for live-computed pipeline results (by rawCellUrl)
         const liveResultsCache = new Map<string, LivePostprocessResult>();
 
+        // Define button wiring function before renderPipelineSteps so it can be called
+        const wireSlicingButtons = (): void => {
+          btnV1.onclick = () => {
+            setAbActive('v1');
+            if (sliceMapV1 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV1);
+            else if (!sliceMapV1) slicingStatus.textContent = 'v1 slice map not yet loaded…';
+            void renderPipelineSteps();
+          };
+          btnV2.onclick = () => {
+            setAbActive('v2');
+            if (sliceMapV2 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV2);
+            else if (!sliceMapV2) slicingStatus.textContent = 'v2 slice map not yet loaded…';
+            void renderPipelineSteps();
+          };
+        };
+
         const renderPipelineSteps = async (): Promise<void> => {
           const profileNode = profile
             ? el('div', {
@@ -2242,22 +2258,6 @@ function render(): void {
                 : finalSrc;
             pipelineBody.append(makeFinalOutputCard(finalOutputSrc));
           }
-        };
-
-        // Wire button listeners INSIDE renderPipelineSteps so they're active even after re-renders
-        const wireSlicingButtons = (): void => {
-          btnV1.onclick = () => {
-            setAbActive('v1');
-            if (sliceMapV1 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV1);
-            else if (!sliceMapV1) slicingStatus.textContent = 'v1 slice map not yet loaded…';
-            void renderPipelineSteps();
-          };
-          btnV2.onclick = () => {
-            setAbActive('v2');
-            if (sliceMapV2 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV2);
-            else if (!sliceMapV2) slicingStatus.textContent = 'v2 slice map not yet loaded…';
-            void renderPipelineSteps();
-          };
         };
 
         void renderPipelineSteps();
