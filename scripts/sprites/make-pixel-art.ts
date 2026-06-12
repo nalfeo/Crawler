@@ -395,10 +395,10 @@ keys.forEach((key, index) => {
   const lines = sprites[key as keyof typeof sprites];
 
   for (let y = 0; y < frameH; y++) {
-    const line = lines[y];
+    const line = lines[y] ?? '';
     for (let x = 0; x < frameW; x++) {
-      const char = line[x];
-      const color = pal[char] || pal['.'];
+      const char = line[x] ?? '.';
+      const color = pal[char] ?? pal['.']!;
       const idx = (png.width * (yBase + y) + (xBase + x)) << 2;
       png.data[idx] = color[0];
       png.data[idx + 1] = color[1];
