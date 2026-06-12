@@ -178,8 +178,27 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Screen-space temporary commentary text for scenario callouts. */
   private directorCommentaryText?: Phaser.GameObjects.Text;
+
   /** Screen-space close button for mobile-friendly dialogue dismissal. */
   private dialogueCloseButton?: Phaser.GameObjects.Text;
+
+  /**
+   * Mobile tap button that opens/closes the inventory panel.
+   * Visible only after the inventory feature is unlocked.
+   */
+  private inventoryButton?: Phaser.GameObjects.Text;
+
+  /**
+   * Mobile tap button that triggers the equip action.
+   * Visible only after the equipment feature is unlocked.
+   */
+  private equipButton?: Phaser.GameObjects.Text;
+
+  /**
+   * Directional compass arrow shown on-screen pointing toward the merchant
+   * while the player holds the rat tail but has not yet returned it.
+   */
+  private questArrow?: Phaser.GameObjects.Text;
 
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
@@ -339,6 +358,9 @@ export class MainGameScene extends Phaser.Scene {
       this.npcDialogueText?.destroy();
       this.directorCommentaryText?.destroy();
       this.dialogueCloseButton?.destroy();
+      this.inventoryButton?.destroy();
+      this.equipButton?.destroy();
+      this.questArrow?.destroy();
       this.floorCompletionScreen?.destroy();
       this.bossHealthShell?.destroy();
       this.bossHealthFill?.destroy();
@@ -362,6 +384,9 @@ export class MainGameScene extends Phaser.Scene {
       this.npcDialogueText = undefined;
       this.directorCommentaryText = undefined;
       this.dialogueCloseButton = undefined;
+      this.inventoryButton = undefined;
+      this.equipButton = undefined;
+      this.questArrow = undefined;
       this.floorCompletionScreen = undefined;
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
@@ -550,18 +575,23 @@ export class MainGameScene extends Phaser.Scene {
    * Inventory ([I]) and equip ([G]) input plus one-time unlock toasts. The
    * inventory panel only opens after the player picks up the merchant's fetch
    * item; equipping is only allowed after a purchase makes the feature unlock.
+   * Mobile tap buttons are shown/hidden here and the quest arrow is updated.
    */
   private updateFeatureUnlocks(): void {
     const unlocks = this.world.featureUnlocks;
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
-      this.flashHint('Inventory unlocked! Press [I] to open your pack.');
+      this.flashHint('Rat Tail picked up! Follow the arrow to the merchant.');
     }
     if (unlocks.equipment && !this.equipmentUnlockNotified) {
       this.equipmentUnlockNotified = true;
-      this.flashHint('Equipment unlocked! Press [G] to equip your new gear.');
+      this.flashHint('Equipment unlocked! Tap [G Equip] or press [G].');
     }
+
+    // Show / hide mobile buttons based on feature unlock state.
+    this.inventoryButton?.setVisible(unlocks.inventory);
+    this.equipButton?.setVisible(unlocks.equipment);
 
     if (
       unlocks.inventory &&
@@ -580,6 +610,53 @@ export class MainGameScene extends Phaser.Scene {
         this.inventoryUI?.refresh(this.world);
       }
     }
+
+    this.updateQuestArrow();
+  }
+
+  /**
+   * Eight compass-direction arrows used by the quest pointer.
+   * Index 0 = East, then clockwise: SE, S, SW, W, NW, N, NE.
+   */
+  private static readonly COMPASS_ARROWS = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'] as const;
+
+  /**
+   * Update the quest-arrow indicator that points toward the merchant while the
+   * player holds the rat tail but has not yet purchased the charm.
+   * Hides the arrow once the equipment unlock fires (purchase complete).
+   */
+  private updateQuestArrow(): void {
+    if (!this.questArrow) {
+      return;
+    }
+    const unlocks = this.world.featureUnlocks;
+    // Show only while the player has the rat tail but hasn't bought the charm.
+    if (!unlocks.inventory || unlocks.equipment) {
+      this.questArrow.setVisible(false);
+      return;
+    }
+    const shopEid = this.world.floor1?.shopkeeperNpcEid;
+    if (shopEid === null || shopEid === undefined || shopEid < 0) {
+      this.questArrow.setVisible(false);
+      return;
+    }
+    const shopX = this.world.stores.position.x[shopEid] ?? 0;
+    const shopY = this.world.stores.position.y[shopEid] ?? 0;
+    const playerX = this.world.stores.position.x[this.playerEid] ?? 0;
+    const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
+    const dx = shopX - playerX;
+    const dy = shopY - playerY;
+    const distSq = dx * dx + dy * dy;
+    // Hide once the player is standing right on top of the merchant.
+    if (distSq < 64 * 64) {
+      this.questArrow.setVisible(false);
+      return;
+    }
+    const angle = Math.atan2(dy, dx); // -π..π; 0 = right
+    const normalised = angle < 0 ? angle + 2 * Math.PI : angle; // 0..2π
+    const idx = Math.round((normalised / (2 * Math.PI)) * 8) % 8;
+    const arrow = MainGameScene.COMPASS_ARROWS[idx];
+    this.questArrow.setText(`${arrow} Merchant`).setVisible(true);
   }
 
   /** Briefly show a transient message in the interaction-hint slot. */
@@ -680,14 +757,15 @@ export class MainGameScene extends Phaser.Scene {
     // HUD — health bar, floor timer, minimap
     this.hudUi = createHudUI(this);
 
-    // Screen-space interaction hint — bottom-center, shows [E] Talk / [E] Descend prompts
+    // Screen-space interaction hint — bottom-center, shows Talk / Descend prompts.
+    // Extra padding makes the tap target comfortable on mobile.
     this.interactionHint = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - 56, '', {
+      .text(GAME.WIDTH / 2, GAME.HEIGHT - 48, '', {
         fontFamily: 'monospace',
-        fontSize: '16px',
+        fontSize: '18px',
         color: '#fef9c3',
         backgroundColor: '#422006cc',
-        padding: { x: 14, y: 8 },
+        padding: { x: 20, y: 14 },
         align: 'center',
       })
       .setOrigin(0.5, 1)
@@ -732,6 +810,64 @@ export class MainGameScene extends Phaser.Scene {
     this.dialogueCloseButton.on('pointerdown', () => {
       this.queuedConversationClose = true;
     });
+
+    // Mobile inventory button — bottom-right, visible once inventory is unlocked.
+    this.inventoryButton = this.add
+      .text(GAME.WIDTH - 16, GAME.HEIGHT - 52, '[I] Pack', {
+        fontFamily: 'monospace',
+        fontSize: '15px',
+        color: '#fde68a',
+        backgroundColor: '#1e293bcc',
+        padding: { x: 14, y: 10 },
+        align: 'center',
+      })
+      .setOrigin(1, 1)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.inventoryButton.on('pointerdown', () => {
+      this.inventoryUI?.toggle(this.world);
+    });
+
+    // Mobile equip button — just above the inventory button.
+    this.equipButton = this.add
+      .text(GAME.WIDTH - 16, GAME.HEIGHT - 100, '[G] Equip', {
+        fontFamily: 'monospace',
+        fontSize: '15px',
+        color: '#86efac',
+        backgroundColor: '#1e293bcc',
+        padding: { x: 14, y: 10 },
+        align: 'center',
+      })
+      .setOrigin(1, 1)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.equipButton.on('pointerdown', () => {
+      const equipped = this.options.shopkeeper?.equip(this.world, this.playerEid) ?? false;
+      if (equipped) {
+        this.flashHint('Equipped! The merchant beams with unsettling pride.');
+        this.inventoryUI?.refresh(this.world);
+      }
+    });
+
+    // Quest compass arrow — left-centre of screen, points toward the merchant
+    // while the player holds the rat tail and hasn't returned it yet.
+    this.questArrow = this.add
+      .text(24, GAME.HEIGHT / 2, '', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#fde68a',
+        backgroundColor: '#1e293bcc',
+        padding: { x: 10, y: 8 },
+        align: 'center',
+      })
+      .setOrigin(0, 0.5)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
 
     this.directorCommentaryText = this.add
       .text(GAME.WIDTH / 2, 96, '', {

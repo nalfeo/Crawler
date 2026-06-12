@@ -114,4 +114,24 @@ describe('HudMinimap architectural guard', () => {
     );
     expect(source).toContain('if (!visited[idx]) continue;');
   });
+
+  it('uses player-following 3× zoom on the HUD widget and exposes overlay zoom buttons', async () => {
+    const { readFileSync } = await import('fs');
+    const source = (readFileSync as (path: string, encoding: string) => string)(
+      'src/engine/HudMinimap.ts',
+      'utf-8',
+    );
+
+    // Constant declared
+    expect(source).toContain('HUD_MINIMAP_PLAYER_ZOOM = 3');
+    // Player tile tracked each frame
+    expect(source).toContain('lastPlayerTileX');
+    expect(source).toContain('lastPlayerTileY');
+    // Overlay zoom buttons exist
+    expect(source).toContain('overlayZoomInBtn');
+    expect(source).toContain('overlayZoomOutBtn');
+    // Both buttons wired to zoom in/out
+    expect(source).toContain("overlayZoomInBtn.on('pointerdown'");
+    expect(source).toContain("overlayZoomOutBtn.on('pointerdown'");
+  });
 });

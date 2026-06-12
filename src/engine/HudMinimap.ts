@@ -18,6 +18,8 @@ const MAP_BORDER = 2;
 const HUD_MINIMAP_WIDTH = 180;
 const HUD_MINIMAP_HEIGHT = 112;
 const HUD_MINIMAP_TOP = 62;
+/** Fixed zoom level for the HUD minimap widget — centred on the player. */
+const HUD_MINIMAP_PLAYER_ZOOM = 3;
 const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
 const DOT_PLAYER = 0xffffff;
@@ -171,7 +173,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setVisible(false);
 
   const panelHint = scene.add
-    .text(0, 0, 'Drag/pinch: pan & zoom  ·  Wheel/+/-: zoom  ·  M: close', {
+    .text(0, 0, 'Drag/pinch: pan & zoom  ·  +/−: zoom  ·  M/tap ✕: close', {
       fontFamily: 'monospace',
       fontSize: '12px',
       color: '#94a3b8',
@@ -207,6 +209,36 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setVisible(false)
     .setInteractive({ useHandCursor: true });
 
+  /** Tap-friendly zoom-in button shown in the fullscreen overlay. */
+  const overlayZoomInBtn = scene.add
+    .text(0, 0, '+', {
+      fontFamily: 'monospace',
+      fontSize: '22px',
+      color: '#e2e8f0',
+      backgroundColor: '#0f172acc',
+      padding: { x: 14, y: 8 },
+    })
+    .setOrigin(1, 1)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 3)
+    .setVisible(false)
+    .setInteractive({ useHandCursor: true });
+
+  /** Tap-friendly zoom-out button shown in the fullscreen overlay. */
+  const overlayZoomOutBtn = scene.add
+    .text(0, 0, '−', {
+      fontFamily: 'monospace',
+      fontSize: '22px',
+      color: '#e2e8f0',
+      backgroundColor: '#0f172acc',
+      padding: { x: 14, y: 8 },
+    })
+    .setOrigin(1, 1)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 3)
+    .setVisible(false)
+    .setInteractive({ useHandCursor: true });
+
   const viewportHitArea = scene.add
     .zone(0, 0, 1, 1)
     .setOrigin(0, 0)
@@ -232,6 +264,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let lastPointerY = 0;
   let dragging = false;
   let lastPinchDist = 0;
+  /** Last known player tile position for HUD widget centering. */
+  let lastPlayerTileX: number | undefined;
+  let lastPlayerTileY: number | undefined;
 
   function getGameSize(): { width: number; height: number } {
     return { width: scene.scale.gameSize.width, height: scene.scale.gameSize.height };
@@ -270,6 +305,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
     panelHint.setPosition(panelX + 14, panelY + panelH - 26);
     closeButtonBg.setPosition(panelX + panelW - 14 - 22, panelY + 10 + 22);
     closeLabel.setPosition(panelX + panelW - 14 - 22, panelY + 10 + 22);
+    // Overlay zoom buttons — bottom-right of panel, above the hint line
+    overlayZoomInBtn.setPosition(panelX + panelW - 14, panelY + panelH - 36);
+    overlayZoomOutBtn.setPosition(panelX + panelW - 14 - 52, panelY + panelH - 36);
 
     viewport = new Phaser.Geom.Rectangle(viewportX, viewportY, viewportW, viewportH);
     viewportFrame
@@ -315,6 +353,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     viewportFrame.setVisible(visible);
     closeButtonBg.setVisible(visible);
     closeLabel.setVisible(visible);
+    overlayZoomInBtn.setVisible(visible);
+    overlayZoomOutBtn.setVisible(visible);
     viewportHitArea.setVisible(visible);
     terrainRt?.setVisible(Boolean(lastFloorMap));
     dotGraphics.setVisible(Boolean(lastFloorMap));
@@ -340,6 +380,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
     dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(snappedZoom);
   }
 
+  /**
+   * Position the terrain texture and dot layer inside the HUD widget.
+   * When a player tile position is supplied the map is zoomed in at
+   * HUD_MINIMAP_PLAYER_ZOOM and centred on the player so the local area
+   * is clearly visible and scrolls with movement.  Falls back to a
+   * fit-to-view layout (whole map visible) when no position is known yet.
+   */
   function applyHudTransform(): void {
     if (!terrainRt) {
       return;
@@ -349,11 +396,26 @@ export function createHudMinimap(scene: Phaser.Scene): {
     if (mapWidth <= 0 || mapHeight <= 0) {
       return;
     }
-    const scale = Math.min(hudViewport.width / mapWidth, hudViewport.height / mapHeight);
-    const originX = hudViewport.centerX - mapWidth * scale * 0.5;
-    const originY = hudViewport.centerY - mapHeight * scale * 0.5;
-    terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
-    dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
+
+    if (lastPlayerTileX !== undefined && lastPlayerTileY !== undefined) {
+      // Fixed 3× zoom centred on the player tile.
+      const scale = HUD_MINIMAP_PLAYER_ZOOM;
+      const halfW = hudViewport.width / (2 * scale);
+      const halfH = hudViewport.height / (2 * scale);
+      const clampedX = Math.max(halfW, Math.min(mapWidth - halfW, lastPlayerTileX));
+      const clampedY = Math.max(halfH, Math.min(mapHeight - halfH, lastPlayerTileY));
+      const originX = hudViewport.centerX - clampedX * scale;
+      const originY = hudViewport.centerY - clampedY * scale;
+      terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
+      dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
+    } else {
+      // Fallback: fit the entire map inside the HUD widget.
+      const scale = Math.min(hudViewport.width / mapWidth, hudViewport.height / mapHeight);
+      const originX = hudViewport.centerX - mapWidth * scale * 0.5;
+      const originY = hudViewport.centerY - mapHeight * scale * 0.5;
+      terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
+      dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
+    }
   }
 
   function drawDots(
@@ -586,6 +648,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
       viewState = null;
     }
 
+    // Track player tile position so the HUD widget can follow the player.
+    if (playerEid >= 0) {
+      const tilePx = floorMap.config.tileSizePx;
+      lastPlayerTileX = (world.stores.position.x[playerEid] ?? 0) / tilePx;
+      lastPlayerTileY = (world.stores.position.y[playerEid] ?? 0) / tilePx;
+    }
+
     const visited = visitedTiles!;
     const newIndices: number[] = [];
     for (let i = 0; i < visited.length; i += 1) {
@@ -636,6 +705,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     viewportHitArea.destroy();
     closeButtonBg.destroy();
     closeLabel.destroy();
+    overlayZoomInBtn.destroy();
+    overlayZoomOutBtn.destroy();
   }
 
   function handlePointerUp(): void {
@@ -646,6 +717,32 @@ export function createHudMinimap(scene: Phaser.Scene): {
   hudMapBg.on('pointerdown', toggle);
   closeButtonBg.on('pointerdown', closeOverlay);
   closeLabel.on('pointerdown', closeOverlay);
+  overlayZoomInBtn.on('pointerdown', () => {
+    if (!overlayOpen || !viewState) {
+      return;
+    }
+    viewState = zoomMinimapAtPoint(
+      viewState,
+      viewState.zoom * ZOOM_STEP_IN,
+      viewState.viewportWidth * 0.5,
+      viewState.viewportHeight * 0.5,
+      zoomLimits,
+    );
+    applyViewTransform();
+  });
+  overlayZoomOutBtn.on('pointerdown', () => {
+    if (!overlayOpen || !viewState) {
+      return;
+    }
+    viewState = zoomMinimapAtPoint(
+      viewState,
+      viewState.zoom * ZOOM_STEP_OUT,
+      viewState.viewportWidth * 0.5,
+      viewState.viewportHeight * 0.5,
+      zoomLimits,
+    );
+    applyViewTransform();
+  });
   viewportHitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
     if (!overlayOpen) {
       return;

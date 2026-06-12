@@ -17,10 +17,13 @@ import {
 } from '../core/systems/questSystem.js';
 import { getQuestDef, MAX_ACTIVE_QUESTS } from '../shared/quest-types.js';
 
+// Positioned below the HUD minimap so the two elements don't overlap.
+// The minimap sits at y = MAP_PADDING(16) + HUD_MINIMAP_TOP(62) = 78 and is 112px
+// tall, so this tracker starts at y = 200 (a 10px gap below the minimap bottom).
 const RIGHT_X = GAME.WIDTH - 16;
-const TOP_Y = 16;
+const TOP_Y = 200;
 const DEPTH = 1000;
-const MAX_WIDTH = 300;
+const MAX_WIDTH = 220;
 
 const COLORS = {
   title: '#fcd34d',
