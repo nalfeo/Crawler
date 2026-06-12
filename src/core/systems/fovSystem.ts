@@ -10,9 +10,38 @@ import { FOV } from 'rot-js';
 import { query } from 'bitecs';
 import { Player, Position } from '../components.js';
 import type { GameWorld } from '../world.js';
+import type { FloorMap } from '../map/FloorMap.js';
 
 /** Default FOV radius in tiles (~25 tiles ≈ 800px at 32px/tile). */
 const DEFAULT_FOV_RADIUS = 25;
+
+interface FovCacheEntry {
+  floorMap: FloorMap;
+  fov: Shadowcaster;
+}
+
+const fovCacheByWorld = new WeakMap<GameWorld, FovCacheEntry>();
+
+interface Shadowcaster {
+  compute: (
+    x: number,
+    y: number,
+    radius: number,
+    callback: (_x: number, _y: number, _r: number, visibility: number) => void,
+  ) => void;
+}
+
+function getCachedFov(world: GameWorld, floorMap: FloorMap): Shadowcaster {
+  const existing = fovCacheByWorld.get(world);
+  if (existing && existing.floorMap === floorMap) {
+    return existing.fov;
+  }
+
+  const lightPasses = floorMap.tileMap.createLightPassesCallback();
+  const fov = new FOV.RecursiveShadowcasting(lightPasses);
+  fovCacheByWorld.set(world, { floorMap, fov });
+  return fov;
+}
 
 export function fovSystem(world: GameWorld): void {
   const floorMap = world.floorMap;
@@ -32,8 +61,7 @@ export function fovSystem(world: GameWorld): void {
   floorMap.clearVisibility();
 
   // Compute FOV using recursive shadowcasting
-  const lightPasses = floorMap.tileMap.createLightPassesCallback();
-  const fov = new FOV.RecursiveShadowcasting(lightPasses);
+  const fov = getCachedFov(world, floorMap);
 
   fov.compute(
     tile.x,

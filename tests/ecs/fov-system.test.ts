@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { addEntity, addComponent, set } from 'bitecs';
 import { createTestWorld } from '../../tests/helpers/world-factory';
 import { fovSystem } from '../../src/core/systems/fovSystem';
@@ -143,5 +143,22 @@ describe('FOV System', () => {
 
     expect(() => fovSystem(world)).not.toThrow();
     expect(floorMap.isVisible(1, 1)).toBe(true);
+  });
+
+  it('should reuse cached shadowcaster for repeated ticks on the same map', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    const createLightPassesSpy = vi.spyOn(floorMap.tileMap, 'createLightPassesCallback');
+
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+    fovSystem(world);
+    fovSystem(world);
+
+    expect(createLightPassesSpy).toHaveBeenCalledTimes(1);
   });
 });
