@@ -81,6 +81,7 @@ export type {
   QuestDef,
   QuestStatus,
   QuestState,
+  ShopkeeperStage,
 } from './quest-types.js';
 export {
   MERCHANTS_CHARM_DEF,

@@ -11,11 +11,18 @@ import {
   selectFloor1StarterWeapon,
   startFloor1BossEncounter,
   questSystem,
+  getShopkeeperStage,
+  meetShopkeeper,
+  returnShopkeeperPrize,
+  purchaseShopkeeperEquipment,
+  equipPurchasedGear,
+  SHOPKEEPER_EQUIPMENT_COST,
   weaponSystem,
 } from '../../game/index.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../../game/systems/index.js';
 import { npcSystem } from '../../core/index.js';
 import { confirmFloor1StairDescend } from '../../game/floor1Scenario.js';
+import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -247,6 +254,15 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
           },
           selectLoadoutOption: selectFloor1StarterWeapon,
           onStairDescend: confirmFloor1StairDescend,
+          shopkeeper: {
+            getStage: getShopkeeperStage,
+            meet: meetShopkeeper,
+            returnPrize: returnShopkeeperPrize,
+            purchase: purchaseShopkeeperEquipment,
+            equip: equipPurchasedGear,
+            equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
+            equipmentName: MERCHANTS_CHARM_DEF.name,
+          },
           preSystems: [
             statsSystem,
             floor1PlayerStatSystem,

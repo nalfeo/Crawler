@@ -14,6 +14,15 @@ import {
 } from './game/index.js';
 import { confirmFloor1StairDescend } from './game/floor1Scenario.js';
 import {
+  getShopkeeperStage,
+  meetShopkeeper,
+  returnShopkeeperPrize,
+  purchaseShopkeeperEquipment,
+  equipPurchasedGear,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from './game/floor1Scenario.js';
+import { MERCHANTS_CHARM_DEF } from './shared/equipmentDefs.js';
+import {
   createLogger,
   getGlobalLogLevel,
   setGlobalLogLevel,
@@ -50,6 +59,15 @@ const config: Phaser.Types.Core.GameConfig = {
       configureWorld: initializeFloor1Scenario,
       selectLoadoutOption: selectFloor1StarterWeapon,
       onStairDescend: confirmFloor1StairDescend,
+      shopkeeper: {
+        getStage: getShopkeeperStage,
+        meet: meetShopkeeper,
+        returnPrize: returnShopkeeperPrize,
+        purchase: purchaseShopkeeperEquipment,
+        equip: equipPurchasedGear,
+        equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
+        equipmentName: MERCHANTS_CHARM_DEF.name,
+      },
       preSystems: [
         statsSystem,
         floor1PlayerStatSystem,

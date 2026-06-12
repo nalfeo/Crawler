@@ -12,11 +12,11 @@
  */
 
 import { query } from 'bitecs';
-import { Player } from '../core/components.js';
-import type { GameWorld } from '../core/world.js';
-import { getItemCount, hasItem } from '../shared/inventory.js';
-import { getEquippableItemIds, isEquippableItem } from '../shared/equipmentDefs.js';
-import { getEquipmentState } from '../core/systems/equipmentSystem.js';
+import { Player } from '../components.js';
+import type { GameWorld } from '../world.js';
+import { getItemCount, hasItem } from '../../shared/inventory.js';
+import { getEquippableItemIds, isEquippableItem } from '../../shared/equipmentDefs.js';
+import { getEquipmentState } from './equipmentSystem.js';
 import {
   getQuestDef,
   objectiveTarget,
@@ -24,7 +24,7 @@ import {
   type QuestDef,
   type QuestObjectiveDef,
   type QuestState,
-} from '../shared/quest-types.js';
+} from '../../shared/quest-types.js';
 
 // ---------------------------------------------------------------------------
 // Quest-log helpers

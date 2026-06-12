@@ -149,3 +149,18 @@ export function getAllQuestDefs(): QuestDef[] {
 export function objectiveTarget(objective: QuestObjectiveDef): number {
   return objective.target ?? 1;
 }
+
+/**
+ * Stages of the Floor 1 shopkeeper errand, derived from world state.
+ * - `not-met`        — player hasn't introduced themselves yet.
+ * - `awaiting-prize` — quest accepted; go find the gross fetch item.
+ * - `ready-to-buy`   — prize returned; the shop is open.
+ * - `awaiting-equip` — equipment purchased; equip it to finish.
+ * - `complete`       — errand done.
+ */
+export type ShopkeeperStage =
+  | 'not-met'
+  | 'awaiting-prize'
+  | 'ready-to-buy'
+  | 'awaiting-equip'
+  | 'complete';

@@ -27,7 +27,7 @@ export {
   equipPurchasedGear,
   SHOPKEEPER_EQUIPMENT_COST,
 } from './floor1Scenario.js';
-export type { ShopkeeperStage } from './floor1Scenario.js';
+export type { ShopkeeperStage } from '../shared/quest-types.js';
 export {
   questSystem,
   acceptQuest,
@@ -38,8 +38,8 @@ export {
   setQuestCounter,
   getQuestObjectiveViews,
   isQuestComplete,
-} from './questSystem.js';
-export type { QuestObjectiveView } from './questSystem.js';
+} from '../core/systems/questSystem.js';
+export type { QuestObjectiveView } from '../core/systems/questSystem.js';
 export { levelSystem } from './systems/levelSystem.js';
 export {
   statsSystem,

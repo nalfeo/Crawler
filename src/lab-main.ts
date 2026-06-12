@@ -37,6 +37,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'tile-render-lab': '/src/labs/tile-render-lab/index.ts',
   'floor1-lab': '/src/labs/floor1-lab/index.ts',
   'npc-lab': '/src/labs/npc-lab/index.ts',
+  'quest-lab': '/src/labs/quest-lab/index.ts',
   'sprite-gallery': '/src/labs/sprite-gallery-lab/index.ts',
   'deathtimer-lab': '/src/labs/deathtimer-lab/index.ts',
   'hud-lab': '/src/labs/hud-lab/index.ts',

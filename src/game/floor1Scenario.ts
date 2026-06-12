@@ -46,8 +46,9 @@ import {
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
+  type ShopkeeperStage,
 } from '../shared/quest-types.js';
-import { acceptQuest, notifyQuestTalk, setQuestCounter } from './questSystem.js';
+import { acceptQuest, notifyQuestTalk, setQuestCounter } from '../core/systems/questSystem.js';
 
 const FLOOR_1_PROTAGONIST = 'Rhea Vale';
 const FLOOR_1_STARTER_POOL = ['sword', 'knife', 'bow', 'pistol', 'throwing-knife'] as const;
@@ -959,13 +960,6 @@ export function confirmFloor1StairDescend(world: GameWorld, _playerEid: number):
 // ---------------------------------------------------------------------------
 // Shopkeeper errand flow
 // ---------------------------------------------------------------------------
-
-export type ShopkeeperStage =
-  | 'not-met'
-  | 'awaiting-prize'
-  | 'ready-to-buy'
-  | 'awaiting-equip'
-  | 'complete';
 
 function findPlayerEid(world: GameWorld): number | undefined {
   return query(world.ecs, [Player])[0];
