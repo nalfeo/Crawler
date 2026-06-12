@@ -3,6 +3,7 @@ name: Auto-rebase open PRs
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: auto-rebase-prs
@@ -16,60 +17,81 @@ jobs:
   rebase-prs:
     runs-on: ubuntu-latest
     steps:
-      - name: Update all open PR branches
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔄 Fetching open PRs..."
-          prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --base main --json number --jq '.[].number')
+          set -euo pipefail
 
-          if [ -z "$prs" ]; then
-            echo "No open PRs to update."
+          echo "🔄 Fetching active PRs targeting main..."
+          prs_json=$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --base main \
+            --json number,isDraft,headRefName,headRepository,headRepositoryOwner \
+            --jq '[.[] | select(.isDraft == false)]')
+
+          pr_count=$(echo "$prs_json" | jq 'length')
+          if [ "$pr_count" -eq 0 ]; then
+            echo "No active PRs targeting main."
             exit 0
           fi
 
-          for pr in $prs; do
-            echo "Updating PR #$pr with latest main..."
+          echo "Found $pr_count active PR(s). Rebasing branches..."
 
-            # Try to update the branch (merge main in)
-            # Omit expected_head_sha to allow unconditional updates
-            response=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/update-branch" \
-              --method PUT 2>&1) && status=0 || status=$?
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --prune
 
-            if [ $status -eq 0 ]; then
-              echo "  ✅ PR #$pr updated successfully"
+          rebased=0
+          conflicts=0
+          skipped=0
+          failed=0
 
-              # Request Copilot code review
-              echo "  🤖 Requesting Copilot code review..."
-              gh api "repos/$GITHUB_REPOSITORY/pulls/$pr/requested_reviewers" \
-                --method POST \
-                --field "reviewers[]=copilot-pull-request-reviewer" 2>/dev/null \
-                && echo "  ✅ Copilot review requested" \
-                || echo "  ⚠️  Could not request Copilot review"
-            else
-              # Check if the failure is actually due to merge conflicts
-              if echo "$response" | grep -qi "merge conflict\|cannot be merged"; then
-                # Only comment if there isn't already a recent @copilot resolve comment
-                existing=$(gh pr view "$pr" --repo "$GITHUB_REPOSITORY" --json comments \
-                  --jq '[.comments[] | select(.body | startswith("@copilot resolve"))] | length' 2>/dev/null || echo "0")
+          while IFS= read -r pr; do
+            number=$(echo "$pr" | jq -r '.number')
+            head_ref=$(echo "$pr" | jq -r '.headRefName')
+            head_owner=$(echo "$pr" | jq -r '.headRepositoryOwner.login // empty')
+            head_repo=$(echo "$pr" | jq -r '.headRepository.name // empty')
 
-                if [ "$existing" -eq 0 ]; then
-                  echo "  ❌ PR #$pr has merge conflicts"
-                  echo "  🤖 Asking Copilot to resolve conflicts..."
-                  gh pr comment "$pr" \
-                    --repo "$GITHUB_REPOSITORY" \
-                    --body "@copilot resolve the merge conflicts with main and keep the intent of this PR's changes." 2>/dev/null \
-                    && echo "  ✅ Copilot asked to resolve conflicts" \
-                    || echo "  ⚠️  Could not comment on PR"
-                else
-                  echo "  ⚠️  PR #$pr has conflicts but Copilot was already asked to resolve"
-                fi
-              else
-                echo "  ⚠️  PR #$pr update failed (non-conflict error), skipping"
-              fi
+            echo "Processing PR #$number ($head_owner/$head_repo:$head_ref)..."
+
+            if [ "$head_owner/$head_repo" != "$GITHUB_REPOSITORY" ]; then
+              echo "  ⏭️ Skipping PR #$number (head branch is in a fork)."
+              skipped=$((skipped + 1))
+              continue
             fi
 
-            sleep 2
-          done
+            if ! git fetch origin "$head_ref":"refs/remotes/origin/$head_ref"; then
+              echo "  ⚠️ Failed to fetch branch for PR #$number; skipping."
+              failed=$((failed + 1))
+              continue
+            fi
 
-          echo "✅ Done processing PR branches."
+            if ! git checkout -B "auto-rebase-pr-$number" "origin/$head_ref"; then
+              echo "  ⚠️ Failed to checkout branch for PR #$number; skipping."
+              failed=$((failed + 1))
+              continue
+            fi
+
+            if git rebase origin/main; then
+              if git push --force-with-lease origin "HEAD:$head_ref"; then
+                echo "  ✅ Rebasing complete for PR #$number."
+                rebased=$((rebased + 1))
+              else
+                echo "  ⚠️ Rebase succeeded but push failed for PR #$number; leaving branch unchanged."
+                failed=$((failed + 1))
+              fi
+            else
+              git rebase --abort || true
+              echo "  ⚠️ Rebase conflict on PR #$number; leaving branch unchanged."
+              conflicts=$((conflicts + 1))
+            fi
+          done < <(echo "$prs_json" | jq -c '.[]')
+
+          echo "Done. Rebasing summary: rebased=$rebased conflicts=$conflicts skipped=$skipped failed=$failed"
