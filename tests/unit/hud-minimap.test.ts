@@ -100,14 +100,18 @@ describe('HudMinimap architectural guard', () => {
     );
 
     expect(source).toContain('terrainRt.render();');
+    expect(source).toContain('terrainRt.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);');
     expect(source).toContain('RoomRole.SAFE');
     expect(source).toContain('RoomRole.BOSS_STAIR');
     expect(source).toContain('objective?.staircaseSpawned && objective.staircaseDiscovered');
+    expect(source).toContain('const closeButtonBg = scene.add');
+    expect(source).toContain("fontSize: '18px'");
     expect(source.indexOf('const color =')).toBeLessThan(
       source.indexOf('roomHasDiscoveredTile(room, floorMap, visited)'),
     );
     expect(source).toContain(
       'dotGraphics.fillStyle(DOT_ENEMY, 1);\n    for (const eid of enemies)',
     );
+    expect(source).toContain('if (!visited[idx]) continue;');
   });
 });

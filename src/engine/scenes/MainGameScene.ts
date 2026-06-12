@@ -142,6 +142,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Screen-space temporary commentary text for scenario callouts. */
   private directorCommentaryText?: Phaser.GameObjects.Text;
+  /** Screen-space close button for mobile-friendly dialogue dismissal. */
+  private dialogueCloseButton?: Phaser.GameObjects.Text;
 
   private floorCompletionScreen?: Phaser.GameObjects.Container;
 
@@ -174,6 +176,12 @@ export class MainGameScene extends Phaser.Scene {
 
   /** One-frame latch set by pointer tap/click to advance or start dialogue. */
   private tappedInteraction = false;
+
+  /** One-frame latch set by tapping the interaction hint button. */
+  private queuedInteraction = false;
+
+  /** One-frame latch set by tapping the dialogue close button. */
+  private queuedConversationClose = false;
 
   private floorCompletionMessageShown = false;
 
@@ -291,6 +299,7 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint?.destroy();
       this.npcDialogueText?.destroy();
       this.directorCommentaryText?.destroy();
+      this.dialogueCloseButton?.destroy();
       this.floorCompletionScreen?.destroy();
       this.bossHealthShell?.destroy();
       this.bossHealthFill?.destroy();
@@ -311,6 +320,7 @@ export class MainGameScene extends Phaser.Scene {
       this.interactionHint = undefined;
       this.npcDialogueText = undefined;
       this.directorCommentaryText = undefined;
+      this.dialogueCloseButton = undefined;
       this.floorCompletionScreen = undefined;
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
@@ -324,6 +334,8 @@ export class MainGameScene extends Phaser.Scene {
       this.hudUi = undefined;
       this.conversationNpcEid = null;
       this.tappedInteraction = false;
+      this.queuedInteraction = false;
+      this.queuedConversationClose = false;
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
@@ -333,7 +345,15 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
-  private handlePointerDown(): void {
+  private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
+    const nativeEvent = pointer.event as { pointerType?: string; type?: string } | undefined;
+    return nativeEvent?.pointerType === 'touch' || nativeEvent?.type?.startsWith('touch') === true;
+  }
+
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.isTouchPointer(pointer)) {
+      return;
+    }
     this.tappedInteraction = true;
   }
 
@@ -582,7 +602,11 @@ export class MainGameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(1100)
       .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true })
       .setVisible(false);
+    this.interactionHint.on('pointerdown', () => {
+      this.queuedInteraction = true;
+    });
 
     // Screen-space NPC dialogue box — bottom-center, above the hint
     this.npcDialogueText = this.add
@@ -599,6 +623,24 @@ export class MainGameScene extends Phaser.Scene {
       .setDepth(1100)
       .setScrollFactor(0)
       .setVisible(false);
+
+    this.dialogueCloseButton = this.add
+      .text(GAME.WIDTH - 20, GAME.HEIGHT - 104, 'Close', {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#f8fafc',
+        backgroundColor: '#7f1d1dcc',
+        padding: { x: 12, y: 8 },
+        align: 'center',
+      })
+      .setOrigin(1, 1)
+      .setDepth(1101)
+      .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true })
+      .setVisible(false);
+    this.dialogueCloseButton.on('pointerdown', () => {
+      this.queuedConversationClose = true;
+    });
 
     this.directorCommentaryText = this.add
       .text(GAME.WIDTH / 2, 96, '', {
@@ -1108,12 +1150,16 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateInteractions(): void {
-    const tapped = this.tappedInteraction;
+    const tapped = this.tappedInteraction || this.queuedInteraction;
+    const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
+    this.queuedInteraction = false;
+    this.queuedConversationClose = false;
 
     if (!this.world.floor1 || this.world.state !== 'playing') {
       this.interactionHint?.setVisible(false);
       this.npcDialogueText?.setVisible(false);
+      this.dialogueCloseButton?.setVisible(false);
       return;
     }
 
@@ -1136,14 +1182,17 @@ export class MainGameScene extends Phaser.Scene {
       if (!instance || !instance.nearbyPlayer) {
         this.conversationNpcEid = null;
         this.npcDialogueText?.setVisible(false);
+        this.dialogueCloseButton?.setVisible(false);
       } else {
         const def = getNpcDef(instance.defId);
         const activeDialogue = this.resolveDialogueLines(instance.defId);
-        this.interactionHint?.setText('[E] Next  [Esc] Close').setVisible(true);
+        this.interactionHint?.setText('Next').setVisible(true);
+        this.dialogueCloseButton?.setVisible(true);
 
-        if (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc)) {
+        if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc))) {
           this.conversationNpcEid = null;
           this.npcDialogueText?.setVisible(false);
+          this.dialogueCloseButton?.setVisible(false);
           return;
         }
 
@@ -1155,6 +1204,7 @@ export class MainGameScene extends Phaser.Scene {
           if (nextIndex >= activeDialogue.length) {
             this.conversationNpcEid = null;
             this.npcDialogueText?.setVisible(false);
+            this.dialogueCloseButton?.setVisible(false);
             return;
           }
           instance.dialogueIndex = nextIndex;
@@ -1174,7 +1224,8 @@ export class MainGameScene extends Phaser.Scene {
         objective.markerRadiusPx;
 
     if (nearNpcEid >= 0) {
-      this.interactionHint?.setText('[E] Talk').setVisible(true);
+      this.interactionHint?.setText('Talk').setVisible(true);
+      this.dialogueCloseButton?.setVisible(false);
 
       if (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) {
         const instance = this.world.npcs.get(nearNpcEid);
@@ -1191,8 +1242,9 @@ export class MainGameScene extends Phaser.Scene {
         }
       }
     } else if (nearStairs) {
-      this.interactionHint?.setText('[E] Descend').setVisible(true);
+      this.interactionHint?.setText('Descend').setVisible(true);
       this.npcDialogueText?.setVisible(false);
+      this.dialogueCloseButton?.setVisible(false);
       if (
         (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
         this.modalPicker
@@ -1223,6 +1275,7 @@ export class MainGameScene extends Phaser.Scene {
       }
     } else {
       this.interactionHint?.setVisible(false);
+      this.dialogueCloseButton?.setVisible(false);
       if (nearNpcEid < 0) {
         this.npcDialogueText?.setVisible(false);
       }
