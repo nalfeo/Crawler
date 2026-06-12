@@ -186,6 +186,35 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+interface LivePostprocessResult {
+  readonly finalPng: string;
+  readonly steps: ReadonlyArray<{ id: string; label: string; png: string }>;
+}
+
+async function livePostprocess(
+  rawPngUrl: string,
+  briefPath: string,
+): Promise<LivePostprocessResult> {
+  // Fetch raw PNG as blob
+  const pngRes = await fetch(rawPngUrl);
+  if (!pngRes.ok) {
+    throw new Error(`Failed to fetch raw PNG: ${pngRes.status} ${pngRes.statusText}`);
+  }
+  const pngBlob = await pngRes.arrayBuffer();
+  const pngBase64 = btoa(String.fromCharCode(...new Uint8Array(pngBlob)));
+
+  // Call /api/postprocess
+  const result = await fetchJson<LivePostprocessResult>(`${SIDECAR_BASE}/api/postprocess`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      briefPath,
+      rawPng: pngBase64,
+    }),
+  });
+  return result;
+}
+
 function setButtonBusy(
   button: HTMLButtonElement,
   busy: boolean,
@@ -1809,7 +1838,17 @@ function render(): void {
           letterSpacing: '0.02em',
         },
       });
-      const titleText = el('span', { text: 'Slicing' });
+      const titleText = el('span', { text: 'Slicing — visualization only' });
+      const vizNote = el('div', {
+        text: 'v1/v2 choice affects this visualization only. Cell selection controls which variant is traced below.',
+        style: {
+          fontSize: '10px',
+          color: '#64748b',
+          marginBottom: collapsed ? '0' : '6px',
+          fontWeight: '400',
+          letterSpacing: '0',
+        },
+      });
       const btnRow = el('div', { style: { display: 'flex', gap: '4px' } });
       const collapseBtn = el('button', {
         text: collapsed ? '▶ Show' : 'Skip',
@@ -1828,7 +1867,7 @@ function render(): void {
       headerEl.append(titleText, btnRow);
       card.append(headerEl);
       if (!collapsed) {
-        card.append(slicingVariantRow, slicingStatus, slicingCanvas);
+        card.append(vizNote, slicingVariantRow, slicingStatus, slicingCanvas);
       }
       return card;
     };
@@ -1859,15 +1898,18 @@ function render(): void {
       return card;
     };
 
-    // ── Async: fetch sheets + manifest + slice-map in parallel ──────
+    // ── Async: fetch sheets + manifest + slice-map + run summary in parallel ──────
     void (async () => {
       try {
-        const [sheetResult, manifestResult, sliceMapResult, sliceMapV2Result] =
+        const [sheetResult, manifestResult, sliceMapResult, sliceMapV2Result, summaryResult] =
           await Promise.allSettled([
             fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
             fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
             fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v1')),
             fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v2')),
+            fetchJson<Record<string, unknown>>(
+              `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`,
+            ),
           ]);
 
         if (
@@ -2050,7 +2092,18 @@ function render(): void {
         // index 0 = slicing step, 1..n = pipeline steps
         const collapsedSteps = new Set<number>();
 
-        const renderPipelineSteps = (): void => {
+        // Extract briefPath from summary for live postprocessing
+        const briefPath =
+          summaryResult.status === 'fulfilled'
+            ? (summaryResult.value as Record<string, unknown>).briefPath
+            : null;
+        const briefPathStr =
+          typeof briefPath === 'string' && briefPath.length > 0 ? briefPath : null;
+
+        // Cache for live-computed pipeline results (by rawCellUrl)
+        const liveResultsCache = new Map<string, LivePostprocessResult>();
+
+        const renderPipelineSteps = async (): Promise<void> => {
           const profileNode = profile
             ? el('div', {
                 text: `Profile: ${profile}`,
@@ -2074,64 +2127,130 @@ function render(): void {
               } else {
                 collapsedSteps.add(0);
               }
-              renderPipelineSteps();
+              void renderPipelineSteps();
             }),
           );
 
-          let selectedOutputForNextStep: string | null = rawSpriteUrl(
-            briefId,
-            runId,
-            `${padded}.png`,
-          );
+          // Start with raw cell URL
+          const rawCellUrl = rawSpriteUrl(briefId, runId, `${padded}.png`);
+          let selectedOutputForNextStep: string | null = rawCellUrl;
           let lastActiveBranch: 'A' | 'B' = 'A';
-          for (let i = 0; i < stepEntries.length; i++) {
-            const step = stepEntries[i]!;
-            const combinedIdx = i + 1; // 0 = slicing
-            const beforeSrc: string | null = selectedOutputForNextStep;
-            const selectedBranch = selectedBranches[i]!;
-            const isSkipped = collapsedSteps.has(combinedIdx);
-            pipelineBody.append(
-              makeComparisonStepCard(
-                step.label,
-                beforeSrc,
-                step.afterASrc,
-                step.afterBSrc,
-                bLabel,
-                selectedBranch,
-                (branch) => {
-                  const requested = branch === 'B' && step.afterBSrc === null ? 'A' : branch;
-                  if (selectedBranches[i] === requested) return;
-                  selectedBranches[i] = requested;
-                  renderPipelineSteps();
-                },
-                isSkipped,
-                () => {
-                  if (collapsedSteps.has(combinedIdx)) {
-                    collapsedSteps.delete(combinedIdx);
-                  } else {
-                    collapsedSteps.add(combinedIdx);
-                  }
-                  renderPipelineSteps();
-                },
-              ),
-            );
-            if (isSkipped) {
-              selectedOutputForNextStep = beforeSrc;
-            } else {
-              lastActiveBranch = selectedBranch;
-              selectedOutputForNextStep =
-                selectedBranch === 'B' && step.afterBSrc ? step.afterBSrc : step.afterASrc;
-            }
-          }
 
-          const finalOutputSrc =
-            lastActiveBranch === 'B' && experimentPartner
-              ? spriteUrl(experimentPartner.briefId, experimentPartner.runId, `${padded}.png`)
-              : finalSrc;
-          pipelineBody.append(makeFinalOutputCard(finalOutputSrc));
+          // If we have briefPath, compute live pipeline steps; otherwise show pre-baked
+          const useLivePostprocess = briefPathStr !== null;
+
+          if (useLivePostprocess) {
+            // Compute all live steps from the raw cell
+            try {
+              let liveResult = liveResultsCache.get(rawCellUrl);
+              if (!liveResult) {
+                liveResult = await livePostprocess(rawCellUrl, briefPathStr);
+                liveResultsCache.set(rawCellUrl, liveResult);
+              }
+              const steps = liveResult.steps;
+
+              // Render each step with live-computed images
+              for (let i = 0; i < steps.length; i++) {
+                const step = steps[i]!;
+                const combinedIdx = i + 1;
+                const beforeSrc: string | null = selectedOutputForNextStep;
+                const selectedBranch = selectedBranches[i] ?? 'A';
+                const isSkipped = collapsedSteps.has(combinedIdx);
+
+                // Convert base64 to data URL
+                const afterASrc = `data:image/png;base64,${step.png}`;
+
+                pipelineBody.append(
+                  makeComparisonStepCard(
+                    step.label,
+                    beforeSrc,
+                    afterASrc,
+                    null, // No B variant for live processing
+                    'B',
+                    selectedBranch,
+                    () => {
+                      // Live postprocessing doesn't have variants yet
+                    },
+                    isSkipped,
+                    () => {
+                      if (collapsedSteps.has(combinedIdx)) {
+                        collapsedSteps.delete(combinedIdx);
+                      } else {
+                        collapsedSteps.add(combinedIdx);
+                      }
+                      void renderPipelineSteps();
+                    },
+                  ),
+                );
+
+                if (!isSkipped) {
+                  lastActiveBranch = 'A';
+                  selectedOutputForNextStep = afterASrc;
+                }
+              }
+
+              // Final output from live postprocessing
+              const finalOutputSrc = `data:image/png;base64,${liveResult.finalPng}`;
+              pipelineBody.append(makeFinalOutputCard(finalOutputSrc));
+            } catch (err) {
+              pipelineBody.append(
+                el('div', {
+                  text: `Live postprocessing failed: ${err instanceof Error ? err.message : String(err)}`,
+                  style: { fontSize: '11px', color: '#fca5a5', marginTop: '10px' },
+                }),
+              );
+            }
+          } else {
+            // Fall back to pre-baked images if no briefPath
+            for (let i = 0; i < stepEntries.length; i++) {
+              const step = stepEntries[i]!;
+              const combinedIdx = i + 1; // 0 = slicing
+              const beforeSrc: string | null = selectedOutputForNextStep;
+              const selectedBranch = selectedBranches[i]!;
+              const isSkipped = collapsedSteps.has(combinedIdx);
+              pipelineBody.append(
+                makeComparisonStepCard(
+                  step.label,
+                  beforeSrc,
+                  step.afterASrc,
+                  step.afterBSrc,
+                  bLabel,
+                  selectedBranch,
+                  (branch) => {
+                    const requested = branch === 'B' && step.afterBSrc === null ? 'A' : branch;
+                    if (selectedBranches[i] === requested) return;
+                    selectedBranches[i] = requested;
+                    void renderPipelineSteps();
+                  },
+                  isSkipped,
+                  () => {
+                    if (collapsedSteps.has(combinedIdx)) {
+                      collapsedSteps.delete(combinedIdx);
+                    } else {
+                      collapsedSteps.add(combinedIdx);
+                    }
+                    void renderPipelineSteps();
+                  },
+                ),
+              );
+              if (isSkipped) {
+                selectedOutputForNextStep = beforeSrc;
+              } else {
+                lastActiveBranch = selectedBranch;
+                selectedOutputForNextStep =
+                  selectedBranch === 'B' && step.afterBSrc ? step.afterBSrc : step.afterASrc;
+              }
+            }
+
+            const finalOutputSrc =
+              lastActiveBranch === 'B' && experimentPartner
+                ? spriteUrl(experimentPartner.briefId, experimentPartner.runId, `${padded}.png`)
+                : finalSrc;
+            pipelineBody.append(makeFinalOutputCard(finalOutputSrc));
+          }
         };
 
-        renderPipelineSteps();
+        void renderPipelineSteps();
       } catch (error) {
         if (
           !debugTarget ||

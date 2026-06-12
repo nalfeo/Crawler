@@ -1,0 +1,36 @@
+type: character
+name: african-american-female
+description: |
+  A brave female adventurer with African descent, standing upright in a
+  ready-to-explore stance facing straight toward camera (frontal pose, both
+  eyes visible, shoulders squared to viewer). The character has a well-proportioned
+  64x64 silhouette with distinct features: full lips, defined cheekbones,
+  natural hair styled in braids, locs, twists, or a short natural afro with
+  visible texture and shape definition around the hairline. Rich deep-brown
+  skin tone with clear readable contrast against outfit colors. Wearing basic
+  explorer gear — practical tunic/jacket layers, utility belt, boots, and
+  small backpack or pouch. Equipment suggests readiness for dungeon crawling:
+  no ornate royal wear. Strongly prefer vibrant, varied clothing accents
+  across the sheet (teal, cobalt, plum, crimson, emerald, mustard, steel)
+  and avoid drab monochrome brown/orange outfits. Keep at least one cool-color
+  accent and one warm-color accent in most variants. Confident, alert
+  expression with gaze directed toward camera. No crown, no excessive jewelry,
+  no stereotypical tropes. The silhouette must read as a capable hero ready
+  for adventure, clearly front-facing.
+  Keep at least a 1-pixel transparent border around the figure to avoid clipping.
+# Character is a player or NPC. Default character anchor (32,63) applies.
+# Judge is currently OFF by default for character type, but enabling it here
+# ensures we get good representation and pose quality for this important sprite.
+judge:
+  enabled: true
+sensors:
+  enemy:
+    toleranceDeg: 20
+  edge:
+    allowMainTouch: true
+variations:
+  - female character with braided cornrows tied back, cobalt-and-teal tunic accents, frontal neutral pose
+  - female character with shoulder-length locs, plum-and-crimson jacket accents, frontal alert pose
+  - female character with short natural afro, emerald-and-mustard cloth accents, frontal ready stance
+  - female character with twists and side-parted fringe, steel-and-burgundy utility vest, frontal confident pose
+minVariations: 6

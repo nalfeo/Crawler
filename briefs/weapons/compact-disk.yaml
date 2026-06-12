@@ -1,0 +1,23 @@
+type: weapon
+name: compact-disk
+description: |
+  A compact disc (CD) used as a throwing weapon. The disc is held slightly
+  angled and tilted, positioned in a vertical throwing stance — roughly
+  diagonal from bottom-left to top-right at about 45 degrees. Reflective
+  silver/chrome face with a rainbow holographic sheen spanning cool and warm
+  hues; dark center hole and
+  label visible; thin beveled metallic edge catching light. The disc edges
+  must be sharp and defined. No glow, no enchantment, no cracks. The
+  silhouette must clearly read as a circular disc weapon, not a shield.
+# Compact disk is a throwing weapon held at a diagonal angle, slightly
+# different from the canonical vertical orientation but still a side-profile
+# weapon. We override the anchor to center the disc better for the angle.
+anchor: { x: 32, y: 40 }
+sensors:
+  weapon:
+    orientation: diagonal
+    diagonalToleranceDeg: 8
+variations:
+  - worn scratched surface with faded label visible
+  - iridescent rainbow sheen more prominent on the back
+minVariations: 6

@@ -1,0 +1,25 @@
+type: enemy
+name: baby-dragon
+description: |
+  A tiny juvenile dragon, roughly 1/4 the size of an adult dragon, with a
+  cute, curious expression. The dragon has small scaled body, stubby wings
+  held at rest against its back, short tail curled upward or to the side.
+  Small horns, pointed ears, and large expressive eyes. Scaled hide in warm
+  and cool color families distributed across variants — include combinations
+  like jade, cobalt, violet, slate, and limited gold accents; avoid all-orange
+  or all-amber variants. Small white belly and inner ear highlights. No flames, no glow,
+  no enchantment. The silhouette must clearly read as a small dragon,
+  front-facing toward camera, ready to waddle or hop toward something interesting.
+# Baby dragon is a small enemy. Default center-of-mass anchor is appropriate.
+# Judge is enabled by default for enemy type, so this brief will use VLM
+# review. We want a few seed variations to ensure cute/playful vs aggressive.
+sensors:
+  enemy:
+    toleranceDeg: 20
+  edge:
+    allowMainTouch: true
+variations:
+  - baby dragon with small tuft of colorful feathers on its head like a mohawk, frontal pose
+  - baby dragon with one oversized claw or tooth visible, looking mischievous
+  - baby dragon sitting down, coiled tail, wings folded, friendly frontal pose
+minVariations: 6

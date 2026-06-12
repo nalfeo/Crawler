@@ -900,6 +900,49 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
   });
 
+  app.post<{
+    Body: { briefPath?: unknown; rawPng?: unknown; options?: unknown };
+  }>('/api/postprocess', async (req, reply) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.briefPath !== 'string' || body.briefPath.trim() === '') {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.briefPath must be a non-empty string' };
+    }
+    if (typeof body.rawPng !== 'string' || body.rawPng.trim() === '') {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.rawPng must be a base64-encoded string' };
+    }
+    const briefPath = path.resolve(deps.repoRoot, body.briefPath);
+    if (!existsSync(briefPath)) {
+      reply.code(404);
+      return { error: 'brief-not-found', message: `briefPath does not exist: ${briefPath}` };
+    }
+    try {
+      const loaded = loadBrief(briefPath, { projectRoot: deps.repoRoot });
+      const { postprocessWithTrace } = await import('../postprocess.js');
+      const rawPngBuffer = Buffer.from(body.rawPng, 'base64');
+      const traced = postprocessWithTrace(rawPngBuffer, loaded.brief, loaded.palette, {
+        ...(typeof body.options === 'object' && body.options !== null
+          ? (body.options as Record<string, unknown>)
+          : {}),
+      });
+      return {
+        finalPng: traced.finalPng.toString('base64'),
+        steps: traced.steps.map((step) => ({
+          id: step.id,
+          label: step.label,
+          png: step.png.toString('base64'),
+        })),
+      };
+    } catch (err) {
+      reply.code(500);
+      return {
+        error: 'postprocess-failed',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
   // DELETE /api/runs/:briefId/:runId — remove an entire run directory.
   // Used by the gallery UI to dismiss/cleanup experiments that are done.
   app.delete<{ Params: { briefId: string; runId: string } }>(
