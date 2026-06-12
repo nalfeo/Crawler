@@ -4,7 +4,7 @@
  * Replaces the hardcoded Floor 1 objective booleans with a small data-driven
  * quest log. Quests are ordered lists of objectives; multistep quests reveal
  * their later objectives one at a time (Skyrim/WoW-style tracker). Evaluation
- * of objectives against world state lives in `src/game/questSystem.ts` — this
+ * of objectives against world state lives in `src/core/systems/questSystem.ts` — this
  * module stays free of ECS/engine imports so it remains portable.
  */
 
