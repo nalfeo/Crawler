@@ -91,8 +91,8 @@
   },
   {
     "session": "2026-06-11-mobile-review-fixes",
-    "estimate": "🍎🍎",
-    "actual": "🍎🍎",
+    "estimate": "\ud83c\udf4e\ud83c\udf4e",
+    "actual": "\ud83c\udf4e\ud83c\udf4e",
     "verdict": "on-target",
     "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
   },
@@ -113,5 +113,14 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-12",
+    "session": "mobile-touch-minimap-fixes",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6
   }
 ]
