@@ -306,6 +306,56 @@ function tagShopRoomAsSafe(world: GameWorld, shopRoomPos: { x: number; y: number
   }
 }
 
+function findRoomPath(
+  roomGraph: { get(id: number): { neighbors: Iterable<number> } | undefined },
+  startId: number,
+  targetId: number,
+): number[] | null {
+  const queue: number[] = [startId];
+  const visited = new Set<number>([startId]);
+  const parent = new Map<number, number>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === targetId) {
+      break;
+    }
+    const room = roomGraph.get(current);
+    if (!room) {
+      continue;
+    }
+    for (const neighborId of room.neighbors) {
+      if (visited.has(neighborId)) {
+        continue;
+      }
+      visited.add(neighborId);
+      parent.set(neighborId, current);
+      queue.push(neighborId);
+    }
+  }
+
+  if (!visited.has(targetId)) {
+    return null;
+  }
+
+  const path: number[] = [];
+  let current: number | undefined = targetId;
+  while (current !== undefined) {
+    path.push(current);
+    if (current === startId) {
+      break;
+    }
+    current = parent.get(current);
+  }
+
+  if (path[path.length - 1] !== startId) {
+    return null;
+  }
+
+  path.reverse();
+  return path;
+}
+
 /** Called the first time the player talks to the Tutorial Goon. Accepts the quest and unlocks quest tracking. */
 export function meetTutorialGoon(world: GameWorld): void {
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
@@ -340,26 +390,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   if (floorMap.spawnRoom && floorMap.safeRoom) {
     const startId = floorMap.spawnRoom.id;
     const targetId = floorMap.safeRoom.id;
-    const queue: number[][] = [[startId]];
-    const visited = new Set<number>([startId]);
-    let path: number[] | null = null;
-
-    while (queue.length > 0) {
-      const p = queue.shift()!;
-      const current = p[p.length - 1]!;
-      if (current === targetId) {
-        path = p;
-        break;
-      }
-      const room = floorMap.roomGraph.get(current);
-      if (!room) continue;
-      for (const neighborId of room.neighbors) {
-        if (!visited.has(neighborId)) {
-          visited.add(neighborId);
-          queue.push([...p, neighborId]);
-        }
-      }
-    }
+    const path = findRoomPath(floorMap.roomGraph, startId, targetId);
 
     if (path) {
       for (let i = 1; i < path.length - 1; i += 2) {
@@ -374,17 +405,17 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
           const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
 
           const eid = createEntity(world);
-          addComponent(world.ecs, eid, Position);
-          world.stores.position.x[eid] = pos.x;
-          world.stores.position.y[eid] = pos.y;
-
-          addComponent(world.ecs, eid, Rotation);
-          world.stores.rotation.angle[eid] = angle;
-
-          addComponent(world.ecs, eid, Sprite);
-          world.stores.sprite.textureId[eid] = 3; // TEX_WELCOME_SIGN
-          world.stores.sprite.width[eid] = 32;
-          world.stores.sprite.height[eid] = 16;
+          addComponent(world.ecs, eid, set(Position, { x: pos.x, y: pos.y }));
+          addComponent(world.ecs, eid, set(Rotation, { angle }));
+          addComponent(
+            world.ecs,
+            eid,
+            set(Sprite, {
+              textureId: 3, // TEX_WELCOME_SIGN
+              width: 32,
+              height: 16,
+            }),
+          );
         }
       }
     }
