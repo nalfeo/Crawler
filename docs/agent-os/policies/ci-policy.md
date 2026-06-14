@@ -87,6 +87,15 @@ Rules for these loops:
 
 See ADR `docs/knowledge/adr/0007-automation-loops.md` for rationale.
 
+## Agent Responsibility for Failures
+
+Agents must fix every test, lint, typecheck, or build failure they encounter — no exceptions for "preexisting" or "unrelated" failures.
+
+- **Do not document failures and move on.** The practice of running the suite before starting just to record a baseline of failures to ignore is waste; it produces cruft that compounds across sessions.
+- **Do not skip or comment out failing tests** to make CI green. Fix the underlying issue.
+- If a failure is genuinely caused by an in-progress external change (e.g. a dependency that hasn't landed yet), pause and flag it to the user; do not silently bypass it.
+- The only acceptable state for a PR to merge is: all CI gates green on real passing code.
+
 ## Non-Negotiable
 
 No CI step may call an LLM service, use subjective grading, or depend on non-deterministic runtime behavior.
