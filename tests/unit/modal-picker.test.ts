@@ -142,7 +142,7 @@ describe('modal picker state', () => {
     expect(moved).toBe(state);
   });
 
-  it('returns the same object when moving or selecting after confirm', () => {
+  it('returns the same object when moving after confirm', () => {
     const state = createModalPickerState({
       title: 'Choose',
       options: [{ id: 'a', label: 'A' }],
@@ -150,7 +150,25 @@ describe('modal picker state', () => {
     const confirmed = confirmModalPickerSelection(state);
 
     expect(moveModalPickerSelection(confirmed, 1)).toBe(confirmed);
+  });
+
+  it('returns the same object when selecting an id after confirm', () => {
+    const state = createModalPickerState({
+      title: 'Choose',
+      options: [{ id: 'a', label: 'A' }],
+    });
+    const confirmed = confirmModalPickerSelection(state);
+
     expect(setModalPickerSelectedId(confirmed, 'a')).toBe(confirmed);
+  });
+
+  it('returns the same object when confirming an already confirmed state', () => {
+    const state = createModalPickerState({
+      title: 'Choose',
+      options: [{ id: 'a', label: 'A' }],
+    });
+    const confirmed = confirmModalPickerSelection(state);
+
     expect(confirmModalPickerSelection(confirmed)).toBe(confirmed);
   });
 
