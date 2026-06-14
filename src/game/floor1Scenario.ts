@@ -41,13 +41,19 @@ import {
   isEquippableItem,
 } from '../shared/equipmentDefs.js';
 import {
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type ShopkeeperStage,
 } from '../shared/quest-types.js';
-import { acceptQuest, notifyQuestTalk, setQuestCounter } from '../core/systems/questSystem.js';
+import {
+  acceptQuest,
+  notifyQuestTalk,
+  setQuestCounter,
+  setTrackedQuest,
+} from '../core/systems/questSystem.js';
 
 const FLOOR_1_PROTAGONIST = 'Rhea Vale';
 const FLOOR_1_STARTER_POOL = ['sword', 'knife', 'bow', 'pistol', 'throwing-knife'] as const;
@@ -308,7 +314,9 @@ function tagShopRoomAsSafe(world: GameWorld, shopRoomPos: { x: number; y: number
 /** Called the first time the player talks to the Tutorial Goon. Accepts the quest and unlocks quest tracking. */
 export function meetTutorialGoon(world: GameWorld): void {
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+  setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
   notifyQuestTalk(world, 'tutorial-goon');
+  setGoalFlag(world, 'floor1-xp-unlocked', true);
   if (world.floor1) {
     world.floor1.objective.questAccepted = true;
   }
@@ -389,6 +397,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, false);
+  setGoalFlag(world, 'floor1-reach-level-2', false);
+  setGoalFlag(world, 'floor1-leveling-quest-complete', false);
+  setGoalFlag(world, 'floor1-xp-unlocked', false);
   setGoalFlag(world, 'floor1-defeat-boss', false);
   setGoalFlag(world, 'floor1-boss-active', false);
   setGoalFlag(world, 'floor1-shop-prize-returned', false);
@@ -865,11 +876,23 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   world.floor1.objective.goldCollected = world.playerGold;
   world.floor1.objective.junkCollected = countJunkInInventory(world);
 
-  // Mirror kill tallies into the tutorial quest log for the tracker HUD.
-  setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-rats', world.floor1.objective.ratsKilled);
+  const reachedLevel2 = world.playerLevel.level >= 2;
+  setGoalFlag(world, 'floor1-reach-level-2', reachedLevel2);
+  if (world.goalFlags.get('floor1-leveling-quest-complete') === true) {
+    acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+  }
+
+  // Mirror kill tallies into the boss-unlock quest for the tracker HUD.
   setQuestCounter(
     world,
-    FLOOR1_TUTORIAL_QUEST_ID,
+    FLOOR1_BOSS_UNLOCK_QUEST_ID,
+    'kill-rats',
+    world.floor1.objective.ratsKilled,
+  );
+  setQuestCounter(
+    world,
+    FLOOR1_BOSS_UNLOCK_QUEST_ID,
     'kill-slimes',
     world.floor1.objective.slimesKilled,
   );
@@ -884,8 +907,9 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
 
   const objective = world.floor1.objective;
   const totalKills = objective.ratsKilled + objective.slimesKilled;
+  const bossUnlockQuestAccepted = world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID);
   const meetsCombat =
-    objective.questAccepted &&
+    bossUnlockQuestAccepted &&
     totalKills >= FLOOR_1_REQUIRED_TOTAL_KILLS &&
     objective.ratsKilled >= objective.requiredRats &&
     objective.slimesKilled >= objective.requiredSlimes;
@@ -952,10 +976,15 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
 
   objective.questAccepted = true;
   objective.questCompleted = true;
+  acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+  acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
   objective.ratsKilled = Math.max(objective.ratsKilled, objective.requiredRats);
   objective.slimesKilled = Math.max(objective.slimesKilled, objective.requiredSlimes);
   objective.goldCollected = Math.max(objective.goldCollected, objective.requiredGold);
   objective.junkCollected = Math.max(objective.junkCollected, objective.requiredJunk);
+  setGoalFlag(world, 'floor1-xp-unlocked', true);
+  setGoalFlag(world, 'floor1-reach-level-2', true);
+  setGoalFlag(world, 'floor1-leveling-quest-complete', true);
   setGoalFlag(world, 'floor1-goon-quest-complete', true);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, true);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);

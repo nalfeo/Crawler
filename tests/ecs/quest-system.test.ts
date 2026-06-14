@@ -16,6 +16,7 @@ import { equip, initializeBaseStats } from '../../src/core/systems/equipmentSyst
 import { addItem } from '../../src/shared/inventory.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 import {
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
@@ -45,16 +46,29 @@ describe('questSystem', () => {
     expect(getActiveQuests(world)).toHaveLength(1);
   });
 
-  it('completes the counter-based tutorial quest and sets its goal flag', () => {
+  it('completes the level-2 tutorial quest and sets its goal flag', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
 
-    setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-rats', 6);
-    setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-slimes', 4);
+    world.goalFlags.set('floor1-reach-level-2', true);
     questSystem(world);
 
     expect(isQuestComplete(world, FLOOR1_TUTORIAL_QUEST_ID)).toBe(true);
+    expect(world.goalFlags.get('floor1-leveling-quest-complete')).toBe(true);
+    expect(getActiveQuests(world)).toHaveLength(0);
+  });
+
+  it('completes the counter-based boss-unlock quest and sets its goal flag', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+
+    setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-rats', 6);
+    setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-slimes', 4);
+    questSystem(world);
+
+    expect(isQuestComplete(world, FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
     expect(world.goalFlags.get('floor1-goon-quest-complete')).toBe(true);
     expect(getActiveQuests(world)).toHaveLength(0);
   });
@@ -144,17 +158,17 @@ describe('questSystem', () => {
   });
 
   describe('invariants (property-based)', () => {
-    it('the tutorial quest never completes before both counters hit target', () => {
+    it('the boss-unlock quest never completes before both counters hit target', () => {
       fc.assert(
         fc.property(fc.nat({ max: 5 }), fc.nat({ max: 3 }), (rats, slimes) => {
           const world = createTestWorld();
           spawnPlayer(world, 0, 0);
-          acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-          setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-rats', rats);
-          setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-slimes', slimes);
+          acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+          setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-rats', rats);
+          setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-slimes', slimes);
           questSystem(world);
           // rats<6 or slimes<4 ⇒ never complete.
-          expect(isQuestComplete(world, FLOOR1_TUTORIAL_QUEST_ID)).toBe(false);
+          expect(isQuestComplete(world, FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(false);
         }),
       );
     });
@@ -164,8 +178,8 @@ describe('questSystem', () => {
         fc.property(fc.double({ min: -100, max: 100, noNaN: true }), (value) => {
           const world = createTestWorld();
           spawnPlayer(world, 0, 0);
-          const quest = acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID)!;
-          setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-rats', value);
+          const quest = acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID)!;
+          setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-rats', value);
           const stored = quest.progress['kill-rats']!;
           expect(stored).toBeGreaterThanOrEqual(0);
           expect(Number.isInteger(stored)).toBe(true);

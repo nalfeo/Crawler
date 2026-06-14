@@ -8,6 +8,7 @@ import {
   floor1ObjectiveSystem,
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
+  meetTutorialGoon,
   selectFloor1StarterWeapon,
   questSystem,
   weaponSystem,
@@ -68,6 +69,7 @@ const config: Phaser.Types.Core.GameConfig = {
         equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
         equipmentName: MERCHANTS_CHARM_DEF.name,
       },
+      tutorialGoon: { meet: meetTutorialGoon },
       preSystems: [
         statsSystem,
         floor1PlayerStatSystem,

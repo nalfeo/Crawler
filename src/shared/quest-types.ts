@@ -76,6 +76,7 @@ export const MAX_ACTIVE_QUESTS = 3;
 // ---------------------------------------------------------------------------
 
 export const FLOOR1_TUTORIAL_QUEST_ID = 'floor1-tutorial';
+export const FLOOR1_BOSS_UNLOCK_QUEST_ID = 'floor1-boss-unlock';
 export const FLOOR1_SHOP_QUEST_ID = 'floor1-shopkeeper-errand';
 
 /** The gross, rat/slime-themed key item the shopkeeper sends you to fetch. */
@@ -85,8 +86,19 @@ export const SHOPKEEPER_EQUIPMENT_ITEM_ID = 'merchants-stained-charm';
 
 const FLOOR1_TUTORIAL_QUEST: QuestDef = {
   id: FLOOR1_TUTORIAL_QUEST_ID,
+  title: 'Trial by XP',
+  summary: 'Meet the Tutorial Goon, unlock experience, and hit level 2.',
+  giverNpcId: 'tutorial-goon',
+  onCompleteGoalFlag: 'floor1-leveling-quest-complete',
+  objectives: [
+    { id: 'reach-level-2', label: 'Reach level 2', kind: 'goal', goalId: 'floor1-reach-level-2' },
+  ],
+};
+
+const FLOOR1_BOSS_UNLOCK_QUEST: QuestDef = {
+  id: FLOOR1_BOSS_UNLOCK_QUEST_ID,
   title: 'Pest Control for Beginners',
-  summary: 'The Tutorial Goon wants the vermin thinned out before the boss door opens.',
+  summary: 'Thin out rats and slimes to unlock the boss room door.',
   giverNpcId: 'tutorial-goon',
   onCompleteGoalFlag: 'floor1-goon-quest-complete',
   objectives: [
@@ -134,6 +146,7 @@ const FLOOR1_SHOP_QUEST: QuestDef = {
 
 const QUEST_REGISTRY: ReadonlyMap<string, QuestDef> = new Map([
   [FLOOR1_TUTORIAL_QUEST.id, FLOOR1_TUTORIAL_QUEST],
+  [FLOOR1_BOSS_UNLOCK_QUEST.id, FLOOR1_BOSS_UNLOCK_QUEST],
   [FLOOR1_SHOP_QUEST.id, FLOOR1_SHOP_QUEST],
 ]);
 

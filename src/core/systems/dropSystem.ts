@@ -73,7 +73,13 @@ function getProcessedDeaths(world: GameWorld): Set<number> {
   return tracking.eids;
 }
 
-function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): void {
+function spawnDrops(
+  world: GameWorld,
+  x: number,
+  y: number,
+  drops: LootDrop[],
+  allowXpDrops: boolean,
+): void {
   logger.debug('Spawning drops', {
     dropCount: drops.length,
     x,
@@ -97,6 +103,9 @@ function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): 
         }
         break;
       case 'xp':
+        if (!allowXpDrops) {
+          break;
+        }
         for (let i = 0; i < drop.quantity; i++) {
           const ex = dx + (world.rng.next() - 0.5) * 8;
           const ey = dy + (world.rng.next() - 0.5) * 8;
@@ -123,6 +132,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   const processed = getProcessedDeaths(world);
   const spawnLoot = options.spawnLoot ?? true;
   const deathLingerMs = options.deathLingerMs ?? DEATH_LINGER_MS;
+  const allowXpDrops = !world.floor1 || world.goalFlags.get('floor1-xp-unlocked') === true;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -205,7 +215,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      spawnDrops(world, x, y, drops);
+      spawnDrops(world, x, y, drops, allowXpDrops);
       logger.info('Processed enemy death drops', {
         eid,
         x,
