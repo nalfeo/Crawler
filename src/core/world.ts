@@ -102,6 +102,12 @@ export interface GameWorld {
   floorMap: FloorMap | null;
   /** Floor 1 tutorial scenario state. */
   floor1: Floor1ScenarioState | null;
+  /**
+   * Generic per-floor objective tick registered by each floor's scenario at
+   * initialisation. `floorObjectiveSystem` calls this every frame so no
+   * floor needs its own named system slot in `postSystems`.
+   */
+  floorObjectiveTick: ((world: GameWorld) => void) | null;
   /** Per-entity NPC instance state (eid → NpcInstance). Side-car for variable-length NPC data. */
   npcs: Map<number, NpcInstance>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
@@ -208,6 +214,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerGold: 0,
     floorMap: null,
     floor1: null,
+    floorObjectiveTick: null,
     npcs: new Map(),
     questLog: new Map(),
     featureUnlocks: {

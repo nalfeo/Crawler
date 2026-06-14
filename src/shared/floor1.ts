@@ -7,7 +7,7 @@ export interface Floor1ObjectiveState {
   readonly requiredJunk: number;
   /**
    * Absolute elapsed-time threshold (ms) at which the floor collapses.
-   * Mutable so that `floor1ObjectiveSystem` can advance it while the player
+   * Mutable so that `floorObjectiveSystem` can advance it while the player
    * is in a safe room, effectively pausing the countdown.
    */
   deadlineMs: number;

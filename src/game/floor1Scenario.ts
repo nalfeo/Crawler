@@ -439,6 +439,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   }
 
   world.state = 'loadout';
+  world.floorObjectiveTick = floor1ObjectiveTick;
 }
 
 export function selectFloor1StarterWeapon(world: GameWorld, optionIndex: number): void {
@@ -839,7 +840,7 @@ function finalizeRunSummary(world: GameWorld, outcome: 'failed_timeout' | 'clear
   };
 }
 
-export function floor1ObjectiveSystem(world: GameWorld): void {
+function floor1ObjectiveTick(world: GameWorld): void {
   if (!world.floor1 || world.state !== 'playing') {
     return;
   }
@@ -946,6 +947,18 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
     finalizeRunSummary(world, 'failed_timeout');
     return;
   }
+}
+
+/**
+ * Generic floor objective system.
+ *
+ * Each floor scenario registers its own tick function on
+ * `world.floorObjectiveTick` during initialisation. This system calls that
+ * function every frame so no floor needs its own named system slot in
+ * `postSystems` — only `floorObjectiveSystem` needs to be wired up once.
+ */
+export function floorObjectiveSystem(world: GameWorld): void {
+  world.floorObjectiveTick?.(world);
 }
 
 export function startFloor1BossEncounter(world: GameWorld, playerEid: number): boolean {
