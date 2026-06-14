@@ -50,6 +50,9 @@
     "roguelite"
   ],
   "license": "UNLICENSED",
+  "overrides": {
+    "qs": "^6.15.2"
+  },
   "dependencies": {
     "bitecs": "^0.4.0",
     "loglevel": "^1.9.2",
