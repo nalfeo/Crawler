@@ -270,7 +270,7 @@ function createSafeRoomLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     state.safeContext = isInSafeContext(world);
     state.status = world.playerInSafeRoom
       ? 'Customization ENABLED (in safe room)'
-      : 'Customization DISABLED (leave safe room)';
+      : 'Customization DISABLED (outside safe room)';
     ctrlInSafe.updateDisplay();
     ctrlSafeCtx.updateDisplay();
     folder.controllers.find((c) => c.property === 'status')?.updateDisplay();
