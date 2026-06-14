@@ -132,6 +132,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   const processed = getProcessedDeaths(world);
   const spawnLoot = options.spawnLoot ?? true;
   const deathLingerMs = options.deathLingerMs ?? DEATH_LINGER_MS;
+  // Floor 1 tutorial pacing: XP starts dropping only after the Tutorial Goon intro.
   const allowXpDrops = !world.floor1 || world.goalFlags.get('floor1-xp-unlocked') === true;
 
   for (const eid of Array.from(entities)) {

@@ -51,6 +51,7 @@ import {
 import {
   acceptQuest,
   notifyQuestTalk,
+  questSystem,
   setQuestCounter,
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
@@ -879,8 +880,10 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   const reachedLevel2 = world.playerLevel.level >= 2;
   setGoalFlag(world, 'floor1-reach-level-2', reachedLevel2);
   if (world.goalFlags.get('floor1-leveling-quest-complete') === true) {
-    acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
-    setTrackedQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+    if (!world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)) {
+      acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+      setTrackedQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+    }
   }
 
   // Mirror kill tallies into the boss-unlock quest for the tracker HUD.
@@ -976,7 +979,6 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
 
   objective.questAccepted = true;
   objective.questCompleted = true;
-  acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
   acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
   objective.ratsKilled = Math.max(objective.ratsKilled, objective.requiredRats);
   objective.slimesKilled = Math.max(objective.slimesKilled, objective.requiredSlimes);
@@ -986,6 +988,7 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   setGoalFlag(world, 'floor1-reach-level-2', true);
   setGoalFlag(world, 'floor1-leveling-quest-complete', true);
   setGoalFlag(world, 'floor1-goon-quest-complete', true);
+  questSystem(world);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, true);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);
 
