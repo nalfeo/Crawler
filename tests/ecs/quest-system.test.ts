@@ -11,6 +11,7 @@ import {
   questSystem,
   setQuestCounter,
   setTrackedQuest,
+  emitQuestEvent,
 } from '../../src/core/systems/questSystem.js';
 import { equip, initializeBaseStats } from '../../src/core/systems/equipmentSystem.js';
 import { addItem } from '../../src/shared/inventory.js';
@@ -157,6 +158,25 @@ describe('questSystem', () => {
     expect(tracked).toHaveLength(1);
   });
 
+  it('consumes and clears queued quest events', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+    expect(world.questEvents).toHaveLength(0);
+
+    emitQuestEvent(world, {
+      type: 'quest.counter.set',
+      questId: FLOOR1_BOSS_UNLOCK_QUEST_ID,
+      objectiveId: 'kill-rats',
+      value: 3,
+    });
+    expect(world.questEvents).toHaveLength(1);
+
+    questSystem(world);
+    expect(world.questEvents).toHaveLength(0);
+    expect(world.questLog.get(FLOOR1_BOSS_UNLOCK_QUEST_ID)?.progress['kill-rats']).toBe(3);
+  });
+
   describe('invariants (property-based)', () => {
     it('the boss-unlock quest never completes before both counters hit target', () => {
       fc.assert(
@@ -180,6 +200,7 @@ describe('questSystem', () => {
           spawnPlayer(world, 0, 0);
           const quest = acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID)!;
           setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-rats', value);
+          questSystem(world);
           const stored = quest.progress['kill-rats']!;
           expect(stored).toBeGreaterThanOrEqual(0);
           expect(Number.isInteger(stored)).toBe(true);
