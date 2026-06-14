@@ -3,6 +3,10 @@ name: Auto-rebase open PRs
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, reopened]
+  schedule:
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -89,7 +93,10 @@ jobs:
               fi
             else
               git rebase --abort || true
-              echo "  ⚠️ Rebase conflict on PR #$number; leaving branch unchanged."
+              echo "  ⚠️ Rebase conflict on PR #$number; delegating to Copilot."
+              gh pr comment "$number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --body "@copilot This PR has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically. Please resolve the conflict, update the branch, and ensure CI passes."
               conflicts=$((conflicts + 1))
             fi
           done < <(echo "$prs_json" | jq -c '.[]')
