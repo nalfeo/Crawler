@@ -11,6 +11,7 @@ import { BiomeType, RoomRole, TerrainType, type MapConfig } from '../shared/map-
 import { getGenerator } from '../core/map/generators/registry.js';
 import {
   Position,
+  Rotation,
   Player,
   Health,
   BroadcastScore,
@@ -335,6 +336,60 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   const { safeRoomPos, staircasePos, shopRoomPos, questItemPos } = chooseObjectiveTiles(world);
   tagShopRoomAsSafe(world, shopRoomPos);
+
+  if (floorMap.spawnRoom && floorMap.safeRoom) {
+    const startId = floorMap.spawnRoom.id;
+    const targetId = floorMap.safeRoom.id;
+    const queue: number[][] = [[startId]];
+    const visited = new Set<number>([startId]);
+    let path: number[] | null = null;
+
+    while (queue.length > 0) {
+      const p = queue.shift()!;
+      const current = p[p.length - 1]!;
+      if (current === targetId) {
+        path = p;
+        break;
+      }
+      const room = floorMap.roomGraph.get(current);
+      if (!room) continue;
+      for (const neighborId of room.neighbors) {
+        if (!visited.has(neighborId)) {
+          visited.add(neighborId);
+          queue.push([...p, neighborId]);
+        }
+      }
+    }
+
+    if (path) {
+      for (let i = 1; i < path.length - 1; i += 2) {
+        const roomId = path[i]!;
+        const nextRoomId = path[i + 1]!;
+        const room = floorMap.roomGraph.get(roomId);
+        const nextRoom = floorMap.roomGraph.get(nextRoomId);
+        if (room && nextRoom) {
+          const c1 = centerOfRoom(room);
+          const c2 = centerOfRoom(nextRoom);
+          const pos = floorMap.tileToPixel(c1.x, c1.y);
+          const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
+
+          const eid = createEntity(world);
+          addComponent(world.ecs, eid, Position);
+          world.stores.position.x[eid] = pos.x;
+          world.stores.position.y[eid] = pos.y;
+
+          addComponent(world.ecs, eid, Rotation);
+          world.stores.rotation.angle[eid] = angle;
+
+          addComponent(world.ecs, eid, Sprite);
+          world.stores.sprite.textureId[eid] = 3; // TEX_WELCOME_SIGN
+          world.stores.sprite.width[eid] = 32;
+          world.stores.sprite.height[eid] = 16;
+        }
+      }
+    }
+  }
+
   world.floor1 = {
     protagonistName: FLOOR_1_PROTAGONIST,
     starterWeaponPool: FLOOR_1_STARTER_POOL,
