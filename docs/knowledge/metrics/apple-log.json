@@ -177,5 +177,24 @@
     "delta": 0,
     "verdict": "exact",
     "notes": "Added procedural sign sprite, BFS pathfinding, and spawned signs along the path to the welcome guild"
+  },
+  {
+    "date": "2026-06-14",
+    "session": "nightly-mutation-copilot-handoff",
+    "estimated_apples": 3,
+    "actual_apples": 2,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.4,
+    "notes": "Replaced failing Actions PR creation in nightly mutation workflow with Copilot-assigned issue flow and explicit ready/auto-merge instructions."
+  },
+  {
+    "date": "2026-06-14",
+    "session": "fix-preexisting-failure",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
   }
 ]

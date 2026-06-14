@@ -85,6 +85,7 @@ For sprite workflow details and when to use sprite commands, see
 5. **Conventional commits**: full type set enforced by commitlint — `feat:`, `fix:`, `chore:`, `docs:`, `lab:`, `refactor:`, `test:`, `perf:`, `ci:`, `build:`, `revert:`
 6. **Handoff required**: Write `docs/knowledge/handoffs/YYYY-MM-DD-<slug>.md` before ending session
 7. **ADR required**: Any decision affecting 2+ systems needs an ADR
+8. **Always fix test and infra failures**: Never skip, ignore, or document broken tests/lint/build issues as "preexisting" or "unrelated" and move on. Fix every failure you encounter, regardless of whether you caused it. There is no such thing as a pre-existing issue that is out of scope — cruft compounds and wastes future agent time.
 
 > Several of these rules are now **hard-enforced** at the tool-call boundary by
 > the `copilot-guards` extension. See

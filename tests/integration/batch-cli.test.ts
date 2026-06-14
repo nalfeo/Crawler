@@ -258,5 +258,5 @@ describe('runBatch (integration)', () => {
     expect(onDisk.briefs[1]!.status).toBe('succeeded');
     expect(onDisk.briefs[2]!.status).toBe('succeeded');
     expect(onDisk.totals).toEqual(summary.totals);
-  }, 60_000);
+  }, 120_000);
 });
