@@ -90,7 +90,7 @@ jobs:
         with:
           script: |
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const title = `nightly-mutation: baseline update needed (${new Date().toISOString().slice(0, 10)})`;
+            const title = `nightly-mutation: baseline update needed (run #${context.runNumber})`;
             const body = [
               'Nightly mutation baseline changed and needs an automation PR.',
               '',
@@ -99,10 +99,11 @@ jobs:
               `- Commit: ${context.sha}`,
               '',
               'Please do the following:',
-              '1. Create a branch from `main` and commit only the baseline update.',
-              '2. Open a PR with title `chore: update mutation score baseline`.',
-              '3. Mark the PR as ready for review (not draft).',
-              '4. Enable auto-merge (squash).',
+              `1. Create a branch from \`main\` named \`automation/mutation-baseline-${context.runId}\`.`,
+              "2. Commit only docs/knowledge/metrics/mutation-baseline.json with commit message chore: update mutation score baseline.",
+              '3. Open a PR with title `chore: update mutation score baseline`.',
+              '4. Mark the PR as ready for review (not draft).',
+              '5. Enable auto-merge (squash).',
               '',
               '@copilot please create this PR now.'
             ].join('\n');

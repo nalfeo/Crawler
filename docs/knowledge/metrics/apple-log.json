@@ -168,5 +168,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "4 targeted UX fixes: merchant safe room + minimap, rat tail hint, dialog overlap, goon quest timing"
+  },
+  {
+    "date": "2026-06-14",
+    "session": "nightly-mutation-copilot-handoff",
+    "estimated_apples": 3,
+    "actual_apples": 2,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.4,
+    "notes": "Replaced failing Actions PR creation in nightly mutation workflow with Copilot-assigned issue flow and explicit ready/auto-merge instructions."
   }
 ]
