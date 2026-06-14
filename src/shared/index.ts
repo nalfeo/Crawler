@@ -67,6 +67,7 @@ export {
 export type { SpriteAnchor } from './sprite-anchor.js';
 export {
   MAX_ACTIVE_QUESTS,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,

@@ -984,6 +984,8 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   objective.slimesKilled = Math.max(objective.slimesKilled, objective.requiredSlimes);
   objective.goldCollected = Math.max(objective.goldCollected, objective.requiredGold);
   objective.junkCollected = Math.max(objective.junkCollected, objective.requiredJunk);
+  setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-rats', objective.ratsKilled);
+  setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-slimes', objective.slimesKilled);
   setGoalFlag(world, 'floor1-xp-unlocked', true);
   setGoalFlag(world, 'floor1-reach-level-2', true);
   setGoalFlag(world, 'floor1-leveling-quest-complete', true);
