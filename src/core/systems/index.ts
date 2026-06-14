@@ -19,3 +19,5 @@ export { deathTimerSystem } from './deathTimerSystem.js';
 export { fovSystem } from './fovSystem.js';
 export { doorSystem } from './doorSystem.js';
 export { npcSystem } from './npcSystem.js';
+export { safeRoomSystem } from '../safe-space.js';
+export { isInSafeContext } from '../safe-space.js';

@@ -934,6 +934,12 @@ export function floor1ObjectiveSystem(world: GameWorld): void {
   }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, objective.staircaseUnlocked);
 
+  // Pause the floor-collapse deadline while the player is in a safe room.
+  // Advancing deadlineMs by one tick's worth keeps the remaining time constant.
+  if (world.playerInSafeRoom) {
+    objective.deadlineMs += GAME.DELTA_MS;
+  }
+
   if (world.elapsedMs >= objective.deadlineMs && !objective.staircaseDiscovered) {
     world.floor1.failReason = 'stair_timeout';
     world.state = 'game_over';

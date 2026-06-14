@@ -113,6 +113,12 @@ export interface GameWorld {
     /** Equipment actions become usable once the player holds something equippable. */
     equipment: boolean;
   };
+  /**
+   * True when the player entity's current position is inside a safe room.
+   * Updated each tick by `safeRoomSystem`. Systems and UI use this to pause
+   * timers and enable customization panels.
+   */
+  playerInSafeRoom: boolean;
   /** Debug flags — lab/dev use only. Never read in production game logic. */
   debugFlags: {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
@@ -211,6 +217,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     debugFlags: {
       showAllRooms: false,
     },
+    playerInSafeRoom: false,
   };
   logger.info('Created game world', {
     seed: options.seed ?? 42,
