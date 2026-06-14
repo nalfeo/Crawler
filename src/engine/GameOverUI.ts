@@ -55,6 +55,7 @@ export function createGameOverUI(
         },
         {
           onConfirm: ({ option }) => {
+            visible = false;
             if (option.id === 'restart') {
               hooks.onRestart();
             } else if (option.id === 'quit') {
