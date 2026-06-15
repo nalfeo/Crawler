@@ -20,20 +20,20 @@ Also added a dedicated quest content lab for runtime pack/template/event validat
 
 ### 1) Config-driven quest content
 
-- Added `/home/runner/work/Crawler/Crawler/src/shared/data/quests.floor1.json` as the source of Floor 1 quest definitions.
-- Replaced hardcoded in-module quest definitions in `/home/runner/work/Crawler/Crawler/src/shared/quest-types.ts` with:
+- Added `src/shared/data/quests.floor1.json` as the source of Floor 1 quest definitions.
+- Replaced hardcoded in-module quest definitions in `src/shared/quest-types.ts` with:
   - data-pack schema validation (`questPackSchema`)
   - runtime registry build from validated pack data
   - pack install/reset APIs (`installQuestPacks`, `installDefaultQuestPacks`, `getQuestPacks`)
 
 ### 2) Event-driven quest progression
 
-- Added `/home/runner/work/Crawler/Crawler/src/shared/quest-events.ts` with the quest event contract:
+- Added `src/shared/quest-events.ts` with the quest event contract:
   - `quest.counter.set`
   - `quest.counter.add`
   - `quest.npc.talked`
-- Extended world state in `/home/runner/work/Crawler/Crawler/src/core/world.ts` with `world.questEvents`.
-- Updated `/home/runner/work/Crawler/Crawler/src/core/systems/questSystem.ts` to:
+- Extended world state in `src/core/world.ts` with `world.questEvents`.
+- Updated `src/core/systems/questSystem.ts` to:
   - queue events via `emitQuestEvent`
   - convert `notifyQuestTalk` and `setQuestCounter` to event emitters
   - add `addQuestCounter`
@@ -41,7 +41,7 @@ Also added a dedicated quest content lab for runtime pack/template/event validat
 
 ### 3) Template-driven quests
 
-- Added template schemas + compiler in `/home/runner/work/Crawler/Crawler/src/shared/quest-types.ts`:
+- Added template schemas + compiler in `src/shared/quest-types.ts`:
   - `goalFlag`
   - `killTargets`
   - `fetchAndEquip`
@@ -49,8 +49,8 @@ Also added a dedicated quest content lab for runtime pack/template/event validat
 
 ### Labs
 
-- Added `/home/runner/work/Crawler/Crawler/src/labs/quest-content-lab/index.ts`.
-- Registered lab in `/home/runner/work/Crawler/Crawler/src/lab-main.ts` as `quest-content-lab`.
+- Added `src/labs/quest-content-lab/index.ts`.
+- Registered lab in `src/lab-main.ts` as `quest-content-lab`.
 - Lab supports:
   - inspecting loaded packs and compiled quests
   - injecting a runtime pack
@@ -58,16 +58,16 @@ Also added a dedicated quest content lab for runtime pack/template/event validat
 
 ### Exports / API surface
 
-- Updated `/home/runner/work/Crawler/Crawler/src/shared/index.ts` quest exports.
-- Updated `/home/runner/work/Crawler/Crawler/src/game/index.ts` to export `addQuestCounter` and `emitQuestEvent`.
+- Updated `src/shared/index.ts` quest exports.
+- Updated `src/game/index.ts` to export `addQuestCounter` and `emitQuestEvent`.
 
 ## Tests
 
-- Added `/home/runner/work/Crawler/Crawler/tests/unit/quest-types.test.ts` for:
+- Added `tests/unit/quest-types.test.ts` for:
   - default pack loading
   - runtime template-pack compilation
   - objective target defaults
-- Updated `/home/runner/work/Crawler/Crawler/tests/ecs/quest-system.test.ts` with event-queue consume/clear coverage.
+- Updated `tests/ecs/quest-system.test.ts` with event-queue consume/clear coverage.
 
 ## Validation
 

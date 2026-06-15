@@ -103,13 +103,14 @@ function spawnDrops(
         }
         break;
       case 'xp':
-        if (!allowXpDrops) {
-          break;
-        }
         for (let i = 0; i < drop.quantity; i++) {
+          // Always consume RNG to keep the seeded sequence stable regardless
+          // of whether XP drops are currently gated.
           const ex = dx + (world.rng.next() - 0.5) * 8;
           const ey = dy + (world.rng.next() - 0.5) * 8;
-          spawnXpGem(world, ex, ey, drop.value);
+          if (allowXpDrops) {
+            spawnXpGem(world, ex, ey, drop.value);
+          }
         }
         break;
       case 'item':
