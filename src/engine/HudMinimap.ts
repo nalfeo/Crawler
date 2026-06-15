@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { query } from 'bitecs';
-import { Enemy, Position } from '../core/components.js';
+import { Enemy, Npc, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
@@ -14,21 +14,28 @@ import {
 import { PIXEL_UI } from './pixel-ui.js';
 
 const HUD_DEPTH = 1000;
-const MAP_PADDING = 16;
 const MAP_BORDER = 2;
-const HUD_MINIMAP_WIDTH = 180;
-const HUD_MINIMAP_HEIGHT = 112;
-const HUD_MINIMAP_TOP = 62;
+// Round radar minimap pinned to the very top-right corner.
+const HUD_RADAR_DIAMETER = 152;
+const HUD_RADAR_MARGIN = 12;
+const HUD_RADAR_RADIUS = HUD_RADAR_DIAMETER / 2;
+// Player-centred radar zoom: pixels rendered per dungeon tile.
+const RADAR_PX_PER_TILE = 6;
 const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
 const DOT_PLAYER = 0xffffff;
+const DOT_PLAYER_RING = 0xffd23f;
+const DOT_OUTLINE = 0x0b0b14;
+const DOT_OUTLINE_WIDTH = 0.32;
 const DOT_ENEMY = 0xef4444;
+const DOT_NPC = 0x4ade80;
 const DOT_SAFE_ROOM = 0x2dd4bf;
 const DOT_BOSS_ROOM = 0xf59e0b;
 const DOT_SPAWN_ROOM = 0x60a5fa;
 const DOT_STAIRS = 0xf8fafc;
 const DOT_PLAYER_RADIUS = 0.8;
 const DOT_ENEMY_RADIUS = 0.55;
+const DOT_NPC_RADIUS = 0.62;
 const ROOM_MARKER_SIZE = 1.6;
 const STAIRS_MARKER_SIZE = 1.1;
 
@@ -124,45 +131,44 @@ export function createHudMinimap(scene: Phaser.Scene): {
   isOverlayOpen(): boolean;
   destroy(): void;
 } {
+  // --- Round radar minimap chrome (top-right corner) ------------------------
+  // Filled disc background (also the click target that toggles the overlay).
   const hudMapBg = scene.add
-    .rectangle(0, 0, HUD_MINIMAP_WIDTH, HUD_MINIMAP_HEIGHT, PIXEL_UI.panelFill, 0.96)
-    .setStrokeStyle(2, PIXEL_UI.border)
+    .circle(0, 0, HUD_RADAR_RADIUS, PIXEL_UI.panelFill, 0.96)
+    .setStrokeStyle(3, PIXEL_UI.border)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH)
-    .setInteractive({ useHandCursor: true });
+    .setInteractive({
+      hitArea: new Phaser.Geom.Circle(HUD_RADAR_RADIUS, HUD_RADAR_RADIUS, HUD_RADAR_RADIUS),
+      hitAreaCallback: Phaser.Geom.Circle.Contains,
+      useHandCursor: true,
+    });
 
-  // Raised pixel bevel + titled header strip for the docked minimap chrome.
-  const hudBevelTop = scene.add
-    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 2, PIXEL_UI.bevelLight)
-    .setOrigin(0, 0)
+  // Beveled gold inner ring for the "modern pixel UI" frame feel.
+  const hudRingGold = scene.add
+    .circle(0, 0, HUD_RADAR_RADIUS - 2, 0x000000, 0)
+    .setStrokeStyle(2, PIXEL_UI.gold, 0.55)
     .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 1);
-  const hudBevelLeft = scene.add
-    .rectangle(0, 0, 2, HUD_MINIMAP_HEIGHT, PIXEL_UI.bevelLight)
-    .setOrigin(0, 0)
+    .setDepth(HUD_DEPTH + 5);
+  const hudRingInner = scene.add
+    .circle(0, 0, HUD_RADAR_RADIUS - 5, 0x000000, 0)
+    .setStrokeStyle(1, PIXEL_UI.bevelLight, 0.4)
     .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 1);
-  const hudBevelBottom = scene.add
-    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 2, PIXEL_UI.bevelDark)
-    .setOrigin(0, 0)
-    .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 1);
-  const hudBevelRight = scene.add
-    .rectangle(0, 0, 2, HUD_MINIMAP_HEIGHT, PIXEL_UI.bevelDark)
-    .setOrigin(0, 0)
-    .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 1);
-  const hudTitleStrip = scene.add
-    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 18, 0x222b41, 1)
-    .setOrigin(0, 0)
-    .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 1);
-  const hudTitleRule = scene.add
-    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 1, PIXEL_UI.gold, 0.65)
-    .setOrigin(0, 0)
-    .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 1);
+    .setDepth(HUD_DEPTH + 5);
 
+  // Compass "N" marker at the top of the dial for orientation.
+  const hudCompass = scene.add
+    .text(0, 0, 'N', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: '#fcd34d',
+    })
+    .setOrigin(0.5, 0.5)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 6);
+
+  // Small "MAP (M)" hint tab beneath the dial.
   const hudMapLabel = scene.add
     .text(0, 0, 'MAP (M)', {
       fontFamily: 'monospace',
@@ -170,15 +176,19 @@ export function createHudMinimap(scene: Phaser.Scene): {
       fontStyle: 'bold',
       color: '#fcd34d',
     })
-    .setOrigin(0, 0)
+    .setOrigin(0.5, 0)
     .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 2);
+    .setDepth(HUD_DEPTH + 6);
 
-  const hudMapViewportFrame = scene.add
-    .rectangle(0, 0, 0, 0, PIXEL_UI.trackFill, 1)
-    .setStrokeStyle(1, PIXEL_UI.border)
+  // Circle that clips the radar terrain + dots to the dial. In Phaser 4 a
+  // geometry-mask Graphics that is fully invisible can be skipped by the
+  // stencil pass (the mask then clips nothing), so keep it renderable — an
+  // assigned geometry mask is never drawn to the colour buffer regardless.
+  const hudMaskGraphics = scene.add
+    .graphics()
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 1);
+  const hudCircleMask = hudMaskGraphics.createGeometryMask();
 
   const overlayDimmer = scene.add
     .rectangle(0, 0, 0, 0, 0x020617, 0.86)
@@ -262,7 +272,10 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let viewState: MinimapViewState | null = null;
   let zoomLimits: MinimapZoomLimits = { minZoom: 0.5, maxZoom: 12 };
   let viewport = new Phaser.Geom.Rectangle(0, 0, 0, 0);
-  let hudViewport = new Phaser.Geom.Rectangle(0, 0, 0, 0);
+  let hudRadarCenterX = 0;
+  let hudRadarCenterY = 0;
+  let lastPlayerWorldX = 0;
+  let lastPlayerWorldY = 0;
   let lastPointerX = 0;
   let lastPointerY = 0;
   let dragging = false;
@@ -283,31 +296,20 @@ export function createHudMinimap(scene: Phaser.Scene): {
     const viewportW = Math.max(120, panelW - 32);
     const viewportH = Math.max(80, panelH - 76);
 
-    const hudMapX = width - MAP_PADDING - HUD_MINIMAP_WIDTH;
-    const hudMapY = MAP_PADDING + HUD_MINIMAP_TOP;
-    const hudMapInnerX = hudMapX + 6;
-    const hudMapInnerY = hudMapY + 24;
-    const hudMapInnerW = HUD_MINIMAP_WIDTH - 12;
-    const hudMapInnerH = HUD_MINIMAP_HEIGHT - 30;
+    const radarCx = width - HUD_RADAR_MARGIN - HUD_RADAR_RADIUS;
+    const radarCy = HUD_RADAR_MARGIN + HUD_RADAR_RADIUS;
+    hudRadarCenterX = radarCx;
+    hudRadarCenterY = radarCy;
 
-    hudMapBg
-      .setPosition(hudMapX + HUD_MINIMAP_WIDTH / 2, hudMapY + HUD_MINIMAP_HEIGHT / 2)
-      .setSize(HUD_MINIMAP_WIDTH, HUD_MINIMAP_HEIGHT);
-    hudBevelTop.setPosition(hudMapX, hudMapY).setSize(HUD_MINIMAP_WIDTH, 2);
-    hudBevelLeft.setPosition(hudMapX, hudMapY).setSize(2, HUD_MINIMAP_HEIGHT);
-    hudBevelBottom
-      .setPosition(hudMapX, hudMapY + HUD_MINIMAP_HEIGHT - 2)
-      .setSize(HUD_MINIMAP_WIDTH, 2);
-    hudBevelRight
-      .setPosition(hudMapX + HUD_MINIMAP_WIDTH - 2, hudMapY)
-      .setSize(2, HUD_MINIMAP_HEIGHT);
-    hudTitleStrip.setPosition(hudMapX + 2, hudMapY + 2).setSize(HUD_MINIMAP_WIDTH - 4, 17);
-    hudTitleRule.setPosition(hudMapX + 2, hudMapY + 19).setSize(HUD_MINIMAP_WIDTH - 4, 1);
-    hudMapLabel.setPosition(hudMapX + 8, hudMapY + 5);
-    hudViewport = new Phaser.Geom.Rectangle(hudMapInnerX, hudMapInnerY, hudMapInnerW, hudMapInnerH);
-    hudMapViewportFrame
-      .setPosition(hudViewport.centerX, hudViewport.centerY)
-      .setSize(hudViewport.width, hudViewport.height);
+    hudMapBg.setPosition(radarCx, radarCy);
+    hudRingGold.setPosition(radarCx, radarCy);
+    hudRingInner.setPosition(radarCx, radarCy);
+    hudCompass.setPosition(radarCx, radarCy - HUD_RADAR_RADIUS + 9);
+    hudMapLabel.setPosition(radarCx, radarCy + HUD_RADAR_RADIUS + 4);
+
+    hudMaskGraphics.clear();
+    hudMaskGraphics.fillStyle(0xffffff, 1);
+    hudMaskGraphics.fillCircle(radarCx, radarCy, HUD_RADAR_RADIUS - 4);
 
     overlayDimmer.setSize(width, height);
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
@@ -365,17 +367,19 @@ export function createHudMinimap(scene: Phaser.Scene): {
     dotGraphics.setVisible(Boolean(lastFloorMap));
 
     hudMapBg.setVisible(!visible);
-    hudBevelTop.setVisible(!visible);
-    hudBevelLeft.setVisible(!visible);
-    hudBevelBottom.setVisible(!visible);
-    hudBevelRight.setVisible(!visible);
-    hudTitleStrip.setVisible(!visible);
-    hudTitleRule.setVisible(!visible);
+    hudRingGold.setVisible(!visible);
+    hudRingInner.setVisible(!visible);
+    hudCompass.setVisible(!visible);
     hudMapLabel.setVisible(!visible);
-    hudMapViewportFrame.setVisible(!visible);
     if (visible) {
+      // Full-screen overlay: show the whole map, no circular clip.
+      terrainRt?.clearMask();
+      dotGraphics.clearMask();
       applyViewTransform();
     } else {
+      // Docked radar: clip terrain + dots to the circular dial.
+      terrainRt?.setMask(hudCircleMask);
+      dotGraphics.setMask(hudCircleMask);
       applyHudTransform();
     }
   }
@@ -392,19 +396,17 @@ export function createHudMinimap(scene: Phaser.Scene): {
   }
 
   function applyHudTransform(): void {
-    if (!terrainRt) {
+    if (!terrainRt || !lastFloorMap) {
       return;
     }
-    const mapWidth = lastFloorMap?.width ?? viewState?.mapWidth ?? 0;
-    const mapHeight = lastFloorMap?.height ?? viewState?.mapHeight ?? 0;
-    if (mapWidth <= 0 || mapHeight <= 0) {
-      return;
-    }
-    const scale = Math.min(hudViewport.width / mapWidth, hudViewport.height / mapHeight);
-    const originX = hudViewport.centerX - mapWidth * scale * 0.5;
-    const originY = hudViewport.centerY - mapHeight * scale * 0.5;
-    terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
-    dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(scale);
+    const tilePx = lastFloorMap.config.tileSizePx;
+    const playerTileX = lastPlayerWorldX / tilePx;
+    const playerTileY = lastPlayerWorldY / tilePx;
+    // Centre the player in the dial; terrain + dots scroll underneath the mask.
+    const originX = hudRadarCenterX - playerTileX * RADAR_PX_PER_TILE;
+    const originY = hudRadarCenterY - playerTileY * RADAR_PX_PER_TILE;
+    terrainRt.setPosition(Math.round(originX), Math.round(originY)).setScale(RADAR_PX_PER_TILE);
+    dotGraphics.setPosition(Math.round(originX), Math.round(originY)).setScale(RADAR_PX_PER_TILE);
   }
 
   function drawDots(
@@ -450,7 +452,6 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     const tilePx = floorMap.config.tileSizePx;
     const enemies = query(world.ecs, [Enemy, Position]);
-    dotGraphics.fillStyle(DOT_ENEMY, 1);
     for (const eid of enemies) {
       const wx = world.stores.position.x[eid] ?? 0;
       const wy = world.stores.position.y[eid] ?? 0;
@@ -459,14 +460,40 @@ export function createHudMinimap(scene: Phaser.Scene): {
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       const idx = ty * floorMap.width + tx;
       if (!visited[idx]) continue;
+      dotGraphics.fillStyle(DOT_OUTLINE, 1);
+      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_ENEMY_RADIUS + DOT_OUTLINE_WIDTH);
+      dotGraphics.fillStyle(DOT_ENEMY, 1);
       dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_ENEMY_RADIUS);
+    }
+
+    const npcs = query(world.ecs, [Npc, Position]);
+    for (const eid of npcs) {
+      const wx = world.stores.position.x[eid] ?? 0;
+      const wy = world.stores.position.y[eid] ?? 0;
+      const tx = Math.floor(wx / tilePx);
+      const ty = Math.floor(wy / tilePx);
+      if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
+      const idx = ty * floorMap.width + tx;
+      if (!visited[idx]) continue;
+      dotGraphics.fillStyle(DOT_OUTLINE, 1);
+      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_NPC_RADIUS + DOT_OUTLINE_WIDTH);
+      dotGraphics.fillStyle(DOT_NPC, 1);
+      dotGraphics.fillCircle(tx + 0.5, ty + 0.5, DOT_NPC_RADIUS);
     }
 
     if (playerEid >= 0) {
       const px = world.stores.position.x[playerEid] ?? 0;
       const py = world.stores.position.y[playerEid] ?? 0;
+      lastPlayerWorldX = px;
+      lastPlayerWorldY = py;
+      const ptx = px / tilePx;
+      const pty = py / tilePx;
+      dotGraphics.fillStyle(DOT_OUTLINE, 1);
+      dotGraphics.fillCircle(ptx, pty, DOT_PLAYER_RADIUS + DOT_OUTLINE_WIDTH);
+      dotGraphics.fillStyle(DOT_PLAYER_RING, 1);
+      dotGraphics.fillCircle(ptx, pty, DOT_PLAYER_RADIUS);
       dotGraphics.fillStyle(DOT_PLAYER, 1);
-      dotGraphics.fillCircle(px / tilePx, py / tilePx, DOT_PLAYER_RADIUS);
+      dotGraphics.fillCircle(ptx, pty, DOT_PLAYER_RADIUS - 0.3);
     }
   }
 
@@ -477,10 +504,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
     terrainRt = scene.add
       .renderTexture(viewport.x, viewport.y, floorMap.width, floorMap.height)
       .setOrigin(0, 0)
-      .setDepth(HUD_DEPTH + 2)
+      .setDepth(HUD_DEPTH + 1)
       .setScrollFactor(0);
     terrainRt.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     terrainRt.setVisible(false);
+    if (!overlayOpen) {
+      terrainRt.setMask(hudCircleMask);
+    }
 
     const built = buildDefaultViewState(
       floorMap.width,
@@ -677,14 +707,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
     terrainRt?.destroy();
     dotGraphics.destroy();
     hudMapBg.destroy();
-    hudBevelTop.destroy();
-    hudBevelLeft.destroy();
-    hudBevelBottom.destroy();
-    hudBevelRight.destroy();
-    hudTitleStrip.destroy();
-    hudTitleRule.destroy();
+    hudRingGold.destroy();
+    hudRingInner.destroy();
+    hudCompass.destroy();
     hudMapLabel.destroy();
-    hudMapViewportFrame.destroy();
+    hudMaskGraphics.destroy();
     overlayDimmer.destroy();
     panelBg.destroy();
     panelTitle.destroy();
