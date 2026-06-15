@@ -1,0 +1,24 @@
+{
+  "script": "docs-check-readme-commands",
+  "startedAt": "2026-06-15T15:16:46.689Z",
+  "finishedAt": "2026-06-15T15:16:46.690Z",
+  "findings": [
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:enqueue`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run sprites:worker`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run verify:flash`"
+    },
+    {
+      "severity": "info",
+      "message": "Script not documented in README/AGENTS: `npm run bench`"
+    }
+  ],
+  "blocking": 0
+}
