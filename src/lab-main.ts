@@ -43,6 +43,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'sprite-gallery': '/src/labs/sprite-gallery-lab/index.ts',
   'deathtimer-lab': '/src/labs/deathtimer-lab/index.ts',
   'hud-lab': '/src/labs/hud-lab/index.ts',
+  'death-lab': '/src/labs/death-lab/index.ts',
 };
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;
