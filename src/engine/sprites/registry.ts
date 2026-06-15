@@ -81,6 +81,7 @@ const KENNEY_TINY_TOWN = 'kenney-tiny-town';
 const KENNEY_TINY_BATTLE = 'kenney-tiny-battle';
 const KENNEY_TINY_SKI = 'kenney-tiny-ski';
 const KENNEY_ROGUELIKE_RPG = 'kenney-roguelike-rpg-pack';
+const CUSTOM_PIXEL_SPRITES = 'custom-pixel-sprites';
 
 type ImportMetaWithEnv = ImportMeta & { env?: { BASE_URL?: string } };
 const ENV_BASE_PATH = (import.meta as ImportMetaWithEnv).env?.BASE_URL;
@@ -172,6 +173,17 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
       'Kenney Roguelike/RPG Pack (CC0). 968x526, ~1767 tiles (57x31). ' +
       'Floors, walls, roofs, flora, doors, furniture, mining, banners, UI.',
   },
+  {
+    key: CUSTOM_PIXEL_SPRITES,
+    path: withBasePath('/assets/generated/custom-pixel-sprites.png'),
+    frameWidth: 16,
+    frameHeight: 16,
+    margin: 1,
+    spacing: 1,
+    cols: 19,
+    rows: 1,
+    description: 'Custom generated pixel art sprites. 16x16 with 1px margin/spacing.',
+  },
 ];
 
 /** `(col, row) -> frame index` for a sheet with the given column count. */
@@ -190,25 +202,27 @@ const colsOf = (key: string): number => {
 };
 
 const ROGUELIKE_COLS = colsOf(KENNEY_ROGUELIKE_CHARS);
+const CUSTOM_COLS = colsOf(CUSTOM_PIXEL_SPRITES);
+const TD_COLS = colsOf(KENNEY_TINY_DUNGEON);
 
 export const SPRITES: ReadonlyArray<SpriteDef> = [
   {
     id: 'player',
-    sheetKey: KENNEY_ROGUELIKE_CHARS,
-    frame: frameAt(ROGUELIKE_COLS, 0, 0),
-    note: 'Tan/orange knight, base hero palette.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 0, 8),
+    note: 'Tiny Dungeon knight (frame 96) — temp CC0 art.',
   },
   {
     id: 'enemy.goblin',
-    sheetKey: KENNEY_ROGUELIKE_CHARS,
-    frame: frameAt(ROGUELIKE_COLS, 0, 3),
-    note: 'Green goblin (light variant).',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 1, 10),
+    note: 'Tiny Dungeon ghost (frame 121) — temp CC0 art.',
   },
   {
     id: 'enemy.orc',
-    sheetKey: KENNEY_ROGUELIKE_CHARS,
-    frame: frameAt(ROGUELIKE_COLS, 1, 3),
-    note: 'Green orc (dark variant).',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 1, 9),
+    note: 'Tiny Dungeon brawler (frame 109) — temp CC0 art.',
   },
   {
     id: 'enemy.brigand',
@@ -221,6 +235,102 @@ export const SPRITES: ReadonlyArray<SpriteDef> = [
     sheetKey: KENNEY_ROGUELIKE_CHARS,
     frame: frameAt(ROGUELIKE_COLS, 1, 11),
     note: 'Pale spectral character (last row).',
+  },
+  {
+    id: 'enemy.rat',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 3, 10),
+    note: 'Tiny Dungeon rat (frame 123) — temp CC0 art.',
+  },
+  {
+    id: 'enemy.slime',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 0, 9),
+    note: 'Tiny Dungeon teal slime (frame 108) — temp CC0 art.',
+  },
+  {
+    id: 'enemy.boss',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 0, 10),
+    note: 'Tiny Dungeon bat-beast (frame 120) — temp CC0 art.',
+  },
+  {
+    id: 'npc.guide',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 3, 8),
+    note: 'Tiny Dungeon princess (frame 99) — temp CC0 art.',
+  },
+  {
+    id: 'item.gem',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 7, 0),
+    note: 'Custom gem sprite.',
+  },
+  {
+    id: 'effect.proj',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 8, 0),
+    note: 'Custom projectile sprite.',
+  },
+  {
+    id: 'effect.enemy_proj',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 9, 0),
+    note: 'Custom enemy projectile sprite.',
+  },
+  {
+    id: 'effect.aoe',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 10, 0),
+    note: 'Custom AoE sprite.',
+  },
+  {
+    id: 'effect.enemy_aoe',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 11, 0),
+    note: 'Custom enemy AoE sprite.',
+  },
+  {
+    id: 'weapon.returning',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 12, 0),
+    note: 'Custom returning weapon sprite.',
+  },
+  {
+    id: 'effect.melee',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 13, 0),
+    note: 'Custom melee arc sprite.',
+  },
+  {
+    id: 'effect.trap_arming',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 14, 0),
+    note: 'Custom trap arming sprite.',
+  },
+  {
+    id: 'effect.trap_armed',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 15, 0),
+    note: 'Custom trap armed sprite.',
+  },
+  {
+    id: 'effect.explosion',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 16, 0),
+    note: 'Custom explosion sprite.',
+  },
+  {
+    id: 'effect.enemy_explosion',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 17, 0),
+    note: 'Custom enemy explosion sprite.',
+  },
+  {
+    id: 'effect.dead',
+    sheetKey: CUSTOM_PIXEL_SPRITES,
+    frame: frameAt(CUSTOM_COLS, 18, 0),
+    note: 'Custom dead marker sprite.',
   },
 ];
 

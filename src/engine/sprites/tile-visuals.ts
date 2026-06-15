@@ -187,81 +187,78 @@ function td(col: number, row: number): number {
  */
 export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>> = {
   // ── Dungeon biome ──────────────────────────────────────────────────────────
-  /** Basic walkable stone floor. Row 1, col 0. */
-  [TerrainType.STONE_FLOOR]: { sheetKey: TD, frame: td(0, 1) },
+  /** Basic walkable stone floor (clean tan, frame 48). Row 4, col 0. */
+  [TerrainType.STONE_FLOOR]: { sheetKey: TD, frame: td(0, 4) },
 
   /**
-   * Stone wall block with 4-dir autotiling.
-   *
-   * Base frame: row 0, col 0.
-   * `frames` indices: mask 0 = isolated … mask 15 = fully surrounded.
-   * TODO: verify each entry in ?lab=tile-explorer (kenney-tiny-dungeon row 0).
+   * Stone wall block (clean grey brick, frame 40) with 4-dir autotiling.
+   * The Tiny Dungeon sheet has no directional wall corner variants, so every
+   * mask entry uses the same clean block; this keeps walls cohesive instead of
+   * mixing in grated/banded tiles.
    */
   [TerrainType.STONE_WALL]: {
     sheetKey: TD,
-    frame: td(0, 0),
+    frame: td(4, 3),
     frames: [
-      td(0, 0), //  0: isolated          (no neighbours)
-      td(0, 0), //  1: N
-      td(0, 0), //  2: E
-      td(0, 0), //  3: N+E
-      td(0, 0), //  4: S
-      td(0, 0), //  5: N+S  (vertical run)
-      td(0, 0), //  6: E+S
-      td(0, 0), //  7: N+E+S
-      td(0, 0), //  8: W
-      td(0, 0), //  9: N+W
-      td(0, 0), // 10: E+W  (horizontal run)
-      td(0, 0), // 11: N+E+W
-      td(0, 0), // 12: S+W
-      td(0, 0), // 13: N+S+W
-      td(0, 0), // 14: E+S+W
-      td(0, 0), // 15: N+E+S+W (fully surrounded)
+      td(4, 3), //  0: isolated          (no neighbours)
+      td(4, 3), //  1: N
+      td(4, 3), //  2: E
+      td(4, 3), //  3: N+E
+      td(4, 3), //  4: S
+      td(4, 3), //  5: N+S  (vertical run)
+      td(4, 3), //  6: E+S
+      td(4, 3), //  7: N+E+S
+      td(4, 3), //  8: W
+      td(4, 3), //  9: N+W
+      td(4, 3), // 10: E+W  (horizontal run)
+      td(4, 3), // 11: N+E+W
+      td(4, 3), // 12: S+W
+      td(4, 3), // 13: N+S+W
+      td(4, 3), // 14: E+S+W
+      td(4, 3), // 15: N+E+S+W (fully surrounded)
     ],
   },
 
   /**
-   * Corridor floor — slightly darker variant to distinguish narrow passages
-   * from open rooms. Row 1, col 1.
+   * Corridor floor — speckled tan variant (frame 49) to distinguish narrow
+   * passages from open rooms. Row 4, col 1.
    */
-  [TerrainType.CORRIDOR]: { sheetKey: TD, frame: td(1, 1) },
+  [TerrainType.CORRIDOR]: { sheetKey: TD, frame: td(1, 4) },
 
   /**
    * Door tile — rendered via the door overlay system but also given a base
-   * sprite so the floor beneath the door looks consistent. Row 1, col 2.
+   * floor sprite (frame 48) so the path through the door reads as walkable
+   * floor. Row 4, col 0.
    */
-  [TerrainType.DOOR]: { sheetKey: TD, frame: td(2, 1) },
+  [TerrainType.DOOR]: { sheetKey: TD, frame: td(0, 4) },
 
   // ── Cave biome ─────────────────────────────────────────────────────────────
-  /** Cave floor — worn stone, earthy. Row 2, col 0. */
-  [TerrainType.CAVE_FLOOR]: { sheetKey: TD, frame: td(0, 2) },
+  /** Cave floor — speckled tan (frame 49). Row 4, col 1. */
+  [TerrainType.CAVE_FLOOR]: { sheetKey: TD, frame: td(1, 4) },
 
   /**
-   * Cave wall with 4-dir autotiling.
-   *
-   * Base frame: row 2, col 1.
-   * TODO: verify each entry in ?lab=tile-explorer (kenney-tiny-dungeon row 2).
+   * Cave wall — same clean grey brick block (frame 40) with 4-dir autotiling.
    */
   [TerrainType.CAVE_WALL]: {
     sheetKey: TD,
-    frame: td(1, 2),
+    frame: td(4, 3),
     frames: [
-      td(1, 2), //  0: isolated
-      td(1, 2), //  1: N
-      td(1, 2), //  2: E
-      td(1, 2), //  3: N+E
-      td(1, 2), //  4: S
-      td(1, 2), //  5: N+S
-      td(1, 2), //  6: E+S
-      td(1, 2), //  7: N+E+S
-      td(1, 2), //  8: W
-      td(1, 2), //  9: N+W
-      td(1, 2), // 10: E+W
-      td(1, 2), // 11: N+E+W
-      td(1, 2), // 12: S+W
-      td(1, 2), // 13: N+S+W
-      td(1, 2), // 14: E+S+W
-      td(1, 2), // 15: N+E+S+W
+      td(4, 3), //  0: isolated
+      td(4, 3), //  1: N
+      td(4, 3), //  2: E
+      td(4, 3), //  3: N+E
+      td(4, 3), //  4: S
+      td(4, 3), //  5: N+S
+      td(4, 3), //  6: E+S
+      td(4, 3), //  7: N+E+S
+      td(4, 3), //  8: W
+      td(4, 3), //  9: N+W
+      td(4, 3), // 10: E+W
+      td(4, 3), // 11: N+E+W
+      td(4, 3), // 12: S+W
+      td(4, 3), // 13: N+S+W
+      td(4, 3), // 14: E+S+W
+      td(4, 3), // 15: N+E+S+W
     ],
   },
 
@@ -270,9 +267,9 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   [TerrainType.RUBBLE]: { sheetKey: TD, frame: td(2, 2) },
 
   // ── Boss/Safe room floors ───────────────────────────────────────────────────
-  // BOSS_STAIR_FLOOR and SAFE_ROOM_FLOOR intentionally have no sprite entry here.
-  // They render via TERRAIN_FALLBACK_COLORS (deep crimson 0x3d0a18 / dark teal 0x0a2040).
-  // TODO: map to appropriate Kenney sprite frames once confirmed in tile-explorer-lab.
+  [TerrainType.BOSS_STAIR_FLOOR]: { sheetKey: TD, frame: td(0, 4) },
+  [TerrainType.SAFE_ROOM_FLOOR]: { sheetKey: TD, frame: td(1, 4) },
+  [TerrainType.WOOD_WALL]: { sheetKey: TD, frame: td(0, 3) },
 } as const;
 
 /**

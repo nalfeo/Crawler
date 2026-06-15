@@ -300,15 +300,16 @@ describe('InputCapture (raw DOM)', () => {
     expect(state.action).toBe(false);
   });
 
-  it('left-side touch drag controls movement', () => {
-    startTouch(1, 100, 200);
-    moveTouch(1, 160, 200);
+  it('first touch drag controls movement anywhere on the screen', () => {
+    startTouch(1, 600, 300);
+    moveTouch(1, 660, 300);
 
     capture.poll(state);
     expect(state.moveX).toBeGreaterThan(0);
     expect(state.moveY).toBe(0);
+    expect(state.action).toBe(false);
 
-    endTouch(1, 160, 200);
+    endTouch(1, 660, 300);
     capture.poll(state);
     expect(state.moveX).toBe(0);
     expect(state.moveY).toBe(0);
@@ -363,11 +364,14 @@ describe('InputCapture (raw DOM)', () => {
     expect(state.moveY).toBe(0);
   });
 
-  it('right-side touch enables action and updates pointer', () => {
+  it('second simultaneous touch enables action and updates pointer', () => {
+    startTouch(1, 100, 200);
+    moveTouch(1, 160, 200);
     startTouch(2, 600, 300);
     moveTouch(2, 620, 340);
 
     capture.poll(state);
+    expect(state.moveX).toBeGreaterThan(0);
     expect(state.action).toBe(true);
     expect(state.pointerX).toBe(620);
     expect(state.pointerY).toBe(340);
@@ -375,6 +379,7 @@ describe('InputCapture (raw DOM)', () => {
     endTouch(2, 620, 340);
     capture.poll(state);
     expect(state.action).toBe(false);
+    expect(state.moveX).toBeGreaterThan(0);
   });
 
   it('diagonal input is normalized', () => {

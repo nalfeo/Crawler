@@ -10,15 +10,16 @@ Added a one-shot PowerShell script to bootstrap Azure OpenAI credentials on any 
 
 ## Files touched
 
-| File | Change |
-|------|--------|
-| `scripts/setup-azure-env.ps1` | New bootstrap script |
-| `scripts/azure-env.example` | New template with var names (empty values) |
-| `.gitignore` | Added explicit `.env.local` comment/entry alongside `*.local` |
+| File                          | Change                                                        |
+| ----------------------------- | ------------------------------------------------------------- |
+| `scripts/setup-azure-env.ps1` | New bootstrap script                                          |
+| `scripts/azure-env.example`   | New template with var names (empty values)                    |
+| `.gitignore`                  | Added explicit `.env.local` comment/entry alongside `*.local` |
 
 ## How it works
 
 `scripts/setup-azure-env.ps1`:
+
 - Guards against cloud/CI environments (`$env:CI`, `$env:GITHUB_ACTIONS`, `$env:CODESPACES`) — exits 0 (no-op) in those contexts
 - Fetches the API key from Azure via `az cognitiveservices account keys list`
 - Writes `.env.local` (git-ignored by `*.local` pattern) with three vars:

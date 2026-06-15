@@ -28,6 +28,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'sprite-catalog': '/src/labs/sprite-catalog-lab/index.ts',
   'weight-lab': '/src/labs/weight-lab/index.ts',
   'drop-lab': '/src/labs/drop-lab/index.ts',
+  'visual-snapshot-lab': '/src/labs/visual-snapshot-lab/index.ts',
   'gore-lab': '/src/labs/gore-lab/index.ts',
   'fov-lab': '/src/labs/fov-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
@@ -37,9 +38,14 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'tile-render-lab': '/src/labs/tile-render-lab/index.ts',
   'floor1-lab': '/src/labs/floor1-lab/index.ts',
   'npc-lab': '/src/labs/npc-lab/index.ts',
+  'quest-lab': '/src/labs/quest-lab/index.ts',
+  'quest-content-lab': '/src/labs/quest-content-lab/index.ts',
+  'safe-room-lab': '/src/labs/safe-room-lab/index.ts',
   'sprite-gallery': '/src/labs/sprite-gallery-lab/index.ts',
   'deathtimer-lab': '/src/labs/deathtimer-lab/index.ts',
   'hud-lab': '/src/labs/hud-lab/index.ts',
+  'ux-snapshot-lab': '/src/labs/ux-snapshot-lab/index.ts',
+  'death-lab': '/src/labs/death-lab/index.ts',
 };
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;

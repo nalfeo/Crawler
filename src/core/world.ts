@@ -50,6 +50,8 @@ import {
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
 import type { Floor1ScenarioState } from '../shared/floor1.js';
 import type { NpcInstance } from '../shared/npc-types.js';
+import type { QuestState } from '../shared/quest-types.js';
+import type { QuestEvent } from '../shared/quest-events.js';
 
 const logger = createLogger('core:world');
 
@@ -101,8 +103,31 @@ export interface GameWorld {
   floorMap: FloorMap | null;
   /** Floor 1 tutorial scenario state. */
   floor1: Floor1ScenarioState | null;
+  /**
+   * Generic per-floor objective tick registered by each floor's scenario at
+   * initialisation. `floorObjectiveSystem` calls this every frame so no
+   * floor needs its own named system slot in `postSystems`.
+   */
+  floorObjectiveTick: ((world: GameWorld) => void) | null;
   /** Per-entity NPC instance state (eid → NpcInstance). Side-car for variable-length NPC data. */
   npcs: Map<number, NpcInstance>;
+  /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
+  questLog: Map<string, QuestState>;
+  /** Quest progression events queued this frame. Drained by questSystem. */
+  questEvents: QuestEvent[];
+  /** Progressively-unlocked UI features. Latched true; never reset to false mid-run. */
+  featureUnlocks: {
+    /** Inventory panel becomes usable once unlocked (Floor 1: on key-item pickup). */
+    inventory: boolean;
+    /** Equipment actions become usable once the player holds something equippable. */
+    equipment: boolean;
+  };
+  /**
+   * True when the player entity's current position is inside a safe room.
+   * Updated each tick by `safeRoomSystem`. Systems and UI use this to pause
+   * timers and enable customization panels.
+   */
+  playerInSafeRoom: boolean;
   /** Debug flags — lab/dev use only. Never read in production game logic. */
   debugFlags: {
     /** When true, renders enemies in closed rooms at reduced alpha (doesn't affect game FOV). */
@@ -192,10 +217,18 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerGold: 0,
     floorMap: null,
     floor1: null,
+    floorObjectiveTick: null,
     npcs: new Map(),
+    questLog: new Map(),
+    questEvents: [],
+    featureUnlocks: {
+      inventory: false,
+      equipment: false,
+    },
     debugFlags: {
       showAllRooms: false,
     },
+    playerInSafeRoom: false,
   };
   logger.info('Created game world', {
     seed: options.seed ?? 42,

@@ -53,6 +53,10 @@ Use Conventional Commit prefixes enforced by commitlint: `feat:`, `fix:`, `chore
 
 Every agent failure becomes a permanent fix: observe → classify → decide fix type → implement → add regression test → audit. Never "fix the prompt" — encode rules as sensors.
 
+### 11. Zero Cruft
+
+Every test, lint, typecheck, and build failure encountered during a session must be fixed before the session ends — regardless of whether the agent caused it. There is no such thing as a "preexisting" or "unrelated" failure that is out of scope. Running the suite only to record a baseline of failures to ignore is waste; it compounds cruft across sessions and degrades future agent time.
+
 ## Architectural Boundaries
 
 - `src/core/` → must not import `src/engine/`, `src/game/`, or `src/labs/`
@@ -67,3 +71,4 @@ Every agent failure becomes a permanent fix: observe → classify → decide fix
 - No secrets in source code
 - No LLM calls in CI pipeline
 - No Phaser imports in `src/core/`
+- No skipping, ignoring, or deferring test/lint/build failures — fix every failure encountered

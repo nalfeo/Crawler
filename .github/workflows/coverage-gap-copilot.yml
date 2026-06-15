@@ -1,0 +1,103 @@
+name: Coverage Gap Copilot Ping
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  ping-copilot-on-coverage-gap:
+    name: Ping Copilot on coverage gaps
+    if: ${{ github.event.issue.pull_request != null }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Detect below-goal coverage and request help
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment;
+            const body = comment.body ?? '';
+
+            if (comment.user?.login !== 'github-actions[bot]') {
+              core.info('Skipping: comment is not from github-actions[bot].');
+              return;
+            }
+
+            if (!body.includes('vitest-coverage-report-marker-root') || !body.includes('Coverage Report')) {
+              core.info('Skipping: comment is not a vitest coverage report.');
+              return;
+            }
+
+            const rowPattern =
+              /<tr>\s*<td[^>]*>[\s\S]*?<\/td>\s*<td[^>]*>\s*([^<]+?)\s*<\/td>\s*<td[^>]*>\s*([0-9.]+)%\s*\(🎯\s*([0-9.]+)%\)\s*<\/td>/g;
+            const belowGoal = [];
+            let match;
+
+            while ((match = rowPattern.exec(body)) !== null) {
+              const category = match[1].trim();
+              const actual = Number.parseFloat(match[2]);
+              const goal = Number.parseFloat(match[3]);
+
+              if (Number.isFinite(actual) && Number.isFinite(goal) && actual < goal) {
+                belowGoal.push({ category, actual, goal });
+              }
+            }
+
+            if (belowGoal.length === 0) {
+              core.info('Coverage is at/above configured goals.');
+              return;
+            }
+
+            const marker = `<!-- copilot-coverage-gap:${comment.id} -->`;
+            const issueNumber = context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const lines = belowGoal
+              .map((gap) => `- ${gap.category}: ${gap.actual.toFixed(2)}% / goal ${gap.goal.toFixed(2)}%`)
+              .join('\n');
+
+            const copilotBody = [
+              marker,
+              '@copilot Please analyze this coverage report and try to address the gaps below with targeted, deterministic tests.',
+              '',
+              `Coverage comment: ${comment.html_url}`,
+              '',
+              'Below-goal categories:',
+              lines,
+            ].join('\n');
+
+            const existingComments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            const existing = existingComments.find(
+              (item) => item.user?.login === 'github-actions[bot]' && (item.body ?? '').includes(marker),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body: copilotBody,
+              });
+              core.info(`Updated existing Copilot ping comment ${existing.id}.`);
+              return;
+            }
+
+            const created = await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: issueNumber,
+              body: copilotBody,
+            });
+
+            core.info(`Created Copilot ping comment ${created.data.id}.`);

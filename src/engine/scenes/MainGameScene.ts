@@ -13,6 +13,7 @@ import {
   dropSystem,
   fovSystem,
   healthSystem,
+  isInSafeContext,
   itemPickupSystem,
   knockbackSystem,
   lifetimeSystem,
@@ -22,6 +23,7 @@ import {
   playerInputSystem,
   projectileCleanupSystem,
   returningProjectileSystem,
+  safeRoomSystem,
   spawnPlayer,
   trapSystem,
   type GameWorld,
@@ -31,11 +33,21 @@ import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
+import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
+import { createInventoryUI } from '../InventoryUI.js';
+import { createGameOverUI } from '../GameOverUI.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
-import { getNpcDef } from '../../shared/npc-types.js';
+import {
+  getNpcDef,
+  SHOPKEEPER_DONE_DIALOGUE,
+  SHOPKEEPER_EQUIP_HINT_DIALOGUE,
+  SHOPKEEPER_RETURN_DIALOGUE,
+  SHOPKEEPER_SHOP_DIALOGUE,
+} from '../../shared/npc-types.js';
+import type { ShopkeeperStage } from '../../shared/quest-types.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -45,13 +57,54 @@ const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
   'Stairs are live. Descend when you are ready.',
   'Floor 2 will hit harder. Keep moving and kite smart.',
 ] as const;
+const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
+/** Duration each temporary commentary line stays visible (ms). */
+const DIRECTOR_COMMENTARY_MS = 3600;
+const FLOOR_1_COMMENTARY = {
+  intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
+  questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
+  questCompleted: 'Quota complete. Boss room is live for the next segment.',
+  bossBattleStarted: 'Boss encounter started. This is the ratings spike moment.',
+  staircaseBossDefeated: 'Boss down. Stairs unlocked and the crowd wants a clean finish.',
+  staircaseDiscovered: 'Floor 1 cleared. Queueing the transfer to the next floor.',
+  timeout: 'Time expired before the stairs. Floor 1 run ends here.',
+} as const;
 const logger = createLogger('engine:main-game-scene');
 export interface MainGameSceneOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
   selectLoadoutOption?: (world: GameWorld, optionIndex: number) => void;
-  onStairDescend?: (world: GameWorld, playerEid: number) => void;
+  onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
+  /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
+  shopkeeper?: {
+    getStage: (world: GameWorld) => ShopkeeperStage;
+    meet: (world: GameWorld) => void;
+    returnPrize: (world: GameWorld, playerEid: number) => boolean;
+    purchase: (world: GameWorld, playerEid: number) => boolean;
+    equip: (world: GameWorld, playerEid: number) => boolean;
+    equipmentCost: number;
+    equipmentName: string;
+  };
+  /** Tutorial Goon callbacks — fired on first player-NPC interaction. */
+  tutorialGoon?: {
+    meet: (world: GameWorld) => void;
+  };
+}
+
+declare global {
+  interface Window {
+    __floor1Debug?: {
+      getState: () => {
+        worldState: GameWorld['state'];
+        runOutcome: string | null;
+        floorCompletionMessagePending: boolean;
+        floorCompletionMessageShown: boolean;
+        modalOpen: boolean;
+      };
+      forceCompletionModal: () => void;
+    };
+  }
 }
 
 export class MainGameScene extends Phaser.Scene {
@@ -83,6 +136,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private doorGraphics?: Phaser.GameObjects.Graphics;
 
+  /** Per-door sprite Images (Tiny Dungeon door art), rebuilt on door updates. */
+  private doorImages: Phaser.GameObjects.Image[] = [];
+
   private safeRoomMarker?: Phaser.GameObjects.Arc;
 
   private staircaseMarker?: Phaser.GameObjects.Arc;
@@ -103,14 +159,44 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyEsc?: Phaser.Input.Keyboard.Key;
 
+  private keyInventory?: Phaser.Input.Keyboard.Key;
+
+  private keyEquip?: Phaser.Input.Keyboard.Key;
+
+  private inventoryUI?: ReturnType<typeof createInventoryUI>;
+
+  private gameOverUI?: ReturnType<typeof createGameOverUI>;
+
+  /** Latches true once the death-screen has been shown (to avoid re-triggering). */
+  private deathScreenShown = false;
+
+  /** True when the prize was handed over during the current shopkeeper talk. */
+  private shopkeeperJustReturned = false;
+
+  /** Latches so the inventory/equipment unlock toasts only show once. */
+  private inventoryUnlockNotified = false;
+
+  private equipmentUnlockNotified = false;
+
   /** World-space label shown above the staircase marker. */
   private stairsLabel?: Phaser.GameObjects.Text;
 
   /** Screen-space interaction hint shown when near an NPC or the stairs. */
   private interactionHint?: Phaser.GameObjects.Text;
 
-  /** Screen-space NPC dialogue text shown while a dialogue line is active. */
-  private npcDialogueText?: Phaser.GameObjects.Text;
+  /** Screen-space pixel-themed NPC dialogue box shown while a line is active. */
+  private dialogueBox?: DialogueBox;
+
+  /** Screen-space temporary commentary text for scenario callouts. */
+  private directorCommentaryText?: Phaser.GameObjects.Text;
+
+  private floorCompletionScreen?: Phaser.GameObjects.Container;
+
+  private floorCompletionTitleText?: Phaser.GameObjects.Text;
+
+  private floorCompletionSubtitleText?: Phaser.GameObjects.Text;
+
+  private floorCompletionBodyText?: Phaser.GameObjects.Text;
 
   /** Screen-space boss health bar shown during the Floor 1 boss fight. */
   private bossHealthShell?: Phaser.GameObjects.Rectangle;
@@ -136,6 +222,30 @@ export class MainGameScene extends Phaser.Scene {
   /** One-frame latch set by pointer tap/click to advance or start dialogue. */
   private tappedInteraction = false;
 
+  /** One-frame latch set by tapping the interaction hint button. */
+  private queuedInteraction = false;
+
+  /** One-frame latch set by tapping the dialogue close button. */
+  private queuedConversationClose = false;
+
+  private floorCompletionMessageShown = false;
+
+  private floorCompletionMessagePending = false;
+
+  private commentaryHideAtMs = 0;
+
+  private commentaryMilestones = {
+    floorIntro: false,
+    questAccepted: false,
+    questCompleted: false,
+    bossBattleStarted: false,
+    staircaseBossDefeated: false,
+    staircaseDiscovered: false,
+    timeout: false,
+  };
+
+  private cameraMasksDirty = true;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -156,6 +266,19 @@ export class MainGameScene extends Phaser.Scene {
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
     this.warnedMissingDependencies = false;
+    this.floorCompletionMessageShown = false;
+    this.floorCompletionMessagePending = false;
+    this.deathScreenShown = false;
+    this.commentaryHideAtMs = 0;
+    this.commentaryMilestones = {
+      floorIntro: false,
+      questAccepted: false,
+      questCompleted: false,
+      bossBattleStarted: false,
+      staircaseBossDefeated: false,
+      staircaseDiscovered: false,
+      timeout: false,
+    };
 
     this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
     this.options.configureWorld?.(this.world, this.playerEid);
@@ -172,14 +295,52 @@ export class MainGameScene extends Phaser.Scene {
     this.keyThree = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.THREE);
     this.keyE = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.E);
     this.keyEsc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.keyInventory = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.I);
+    this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+    this.inventoryUI = createInventoryUI(this);
+    this.gameOverUI = createGameOverUI(this, {
+      // Both actions reload for now — a title screen / main menu doesn't exist yet.
+      // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
+      onRestart: () => {
+        window.location.reload();
+      },
+      onQuit: () => {
+        window.location.reload();
+      },
+    });
     this.input.on('pointerdown', this.handlePointerDown, this);
     this.initializeUi();
     this.drawFloorTerrain();
     this.ensureUiCamera();
+    this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
+    this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
     this.bridge.sync(this.world);
     this.updateOverlayText();
+    if (typeof window !== 'undefined') {
+      window.__floor1Debug = {
+        getState: () => ({
+          worldState: this.world.state,
+          runOutcome: this.world.floor1?.runSummary?.outcome ?? null,
+          floorCompletionMessagePending: this.floorCompletionMessagePending,
+          floorCompletionMessageShown: this.floorCompletionMessageShown,
+          modalOpen: this.modalPicker?.isOpen() ?? false,
+        }),
+        forceCompletionModal: () => {
+          if (this.world.floor1) {
+            this.world.floor1.runSummary ??= {
+              outcome: 'cleared_floor',
+              viewsEarned: 0,
+              fansEarned: 0,
+            };
+            this.world.floor1.runSummary.outcome = 'cleared_floor';
+            this.floorCompletionMessagePending = true;
+            this.showFloorCompletionScreenIfNeeded();
+          }
+        },
+      };
+    }
 
     this.events.once('shutdown', () => {
       logger.info('Main game scene shutdown');
@@ -191,11 +352,17 @@ export class MainGameScene extends Phaser.Scene {
       this.bridge = undefined;
       this.mapRt?.destroy();
       this.doorGraphics?.destroy();
+      for (const img of this.doorImages) {
+        img.destroy();
+      }
+      this.doorImages.length = 0;
       this.safeRoomMarker?.destroy();
       this.staircaseMarker?.destroy();
       this.stairsLabel?.destroy();
       this.interactionHint?.destroy();
-      this.npcDialogueText?.destroy();
+      this.dialogueBox?.destroy();
+      this.directorCommentaryText?.destroy();
+      this.floorCompletionScreen?.destroy();
       this.bossHealthShell?.destroy();
       this.bossHealthFill?.destroy();
       this.bossHealthLabel?.destroy();
@@ -203,6 +370,10 @@ export class MainGameScene extends Phaser.Scene {
       this.objectiveText?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
+      this.inventoryUI?.destroy();
+      this.inventoryUI = undefined;
+      this.gameOverUI?.destroy();
+      this.gameOverUI = undefined;
       if (this.uiCamera) {
         this.cameras.remove(this.uiCamera);
         this.uiCamera = undefined;
@@ -213,7 +384,12 @@ export class MainGameScene extends Phaser.Scene {
       this.staircaseMarker = undefined;
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
-      this.npcDialogueText = undefined;
+      this.dialogueBox = undefined;
+      this.directorCommentaryText = undefined;
+      this.floorCompletionScreen = undefined;
+      this.floorCompletionTitleText = undefined;
+      this.floorCompletionSubtitleText = undefined;
+      this.floorCompletionBodyText = undefined;
       this.bossHealthShell = undefined;
       this.bossHealthFill = undefined;
       this.bossHealthLabel = undefined;
@@ -223,12 +399,31 @@ export class MainGameScene extends Phaser.Scene {
       this.hudUi = undefined;
       this.conversationNpcEid = null;
       this.tappedInteraction = false;
+      this.queuedInteraction = false;
+      this.queuedConversationClose = false;
+      this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
+      this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
+      if (typeof window !== 'undefined' && window.__floor1Debug) {
+        delete window.__floor1Debug;
+      }
     });
   }
 
-  private handlePointerDown(): void {
+  private isTouchPointer(pointer: Phaser.Input.Pointer): boolean {
+    const nativeEvent = pointer.event as { pointerType?: string; type?: string } | undefined;
+    return nativeEvent?.pointerType === 'touch' || nativeEvent?.type?.startsWith('touch') === true;
+  }
+
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (this.isTouchPointer(pointer)) {
+      return;
+    }
     this.tappedInteraction = true;
+  }
+
+  private markCameraMasksDirty(): void {
+    this.cameraMasksDirty = true;
   }
 
   update(_time: number, delta: number): void {
@@ -246,6 +441,9 @@ export class MainGameScene extends Phaser.Scene {
       logger.info('World state changed', { from: this.previousWorldState, to: this.world.state });
       this.previousWorldState = this.world.state;
     }
+    this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
+    this.showFloorCompletionScreenIfNeeded();
+    this.showDeathScreenIfNeeded();
     this.refreshCameraMasks();
 
     if (this.modalPicker?.isOpen()) {
@@ -340,6 +538,7 @@ export class MainGameScene extends Phaser.Scene {
       projectileCleanupSystem(this.world);
       doorSystem(this.world);
       fovSystem(this.world);
+      safeRoomSystem(this.world);
       npcSystem(this.world);
       for (const sys of this.options.postSystems ?? []) {
         sys(this.world);
@@ -370,6 +569,63 @@ export class MainGameScene extends Phaser.Scene {
     this.updateObjectiveMarkers();
     this.updateOverlayText();
     this.updateInteractions();
+    this.updateFeatureUnlocks();
+  }
+
+  /**
+   * Inventory ([I]) and equip ([G]) input plus one-time unlock toasts. The
+   * inventory panel only opens after the player picks up the merchant's fetch
+   * item; equipping is only allowed after a purchase makes the feature unlock.
+   */
+  private updateFeatureUnlocks(): void {
+    const unlocks = this.world.featureUnlocks;
+    const safeCtx = isInSafeContext(this.world);
+
+    if (unlocks.inventory && !this.inventoryUnlockNotified) {
+      this.inventoryUnlockNotified = true;
+      this.flashHint('Inventory unlocked! Press [I] in a safe room to open your pack.');
+    }
+    if (unlocks.equipment && !this.equipmentUnlockNotified) {
+      this.equipmentUnlockNotified = true;
+      this.flashHint('Equipment unlocked! Press [G] in a safe room to equip your new gear.');
+    }
+
+    if (
+      unlocks.inventory &&
+      safeCtx &&
+      this.keyInventory &&
+      Phaser.Input.Keyboard.JustDown(this.keyInventory)
+    ) {
+      this.inventoryUI?.toggle(this.world);
+    } else if (this.inventoryUI?.isOpen()) {
+      this.inventoryUI.refresh(this.world);
+    }
+
+    if (
+      unlocks.equipment &&
+      safeCtx &&
+      this.keyEquip &&
+      Phaser.Input.Keyboard.JustDown(this.keyEquip)
+    ) {
+      const equipped = this.options.shopkeeper?.equip(this.world, this.playerEid) ?? false;
+      if (equipped) {
+        this.flashHint('Equipped! The merchant beams with unsettling pride.');
+        this.inventoryUI?.refresh(this.world);
+      }
+    }
+  }
+
+  /** Briefly show a transient message in the interaction-hint slot. */
+  private flashHint(message: string): void {
+    if (!this.interactionHint) {
+      return;
+    }
+    this.interactionHint.setText(message).setVisible(true);
+    this.time.delayedCall(2500, () => {
+      if (this.interactionHint?.text === message) {
+        this.interactionHint.setVisible(false);
+      }
+    });
   }
 
   private playBossSpawnIntro(): void {
@@ -470,21 +726,76 @@ export class MainGameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(1100)
       .setScrollFactor(0)
+      .setInteractive({ useHandCursor: true })
       .setVisible(false);
+    this.interactionHint.on('pointerdown', () => {
+      this.queuedInteraction = true;
+    });
 
-    // Screen-space NPC dialogue box — bottom-center, above the hint
-    this.npcDialogueText = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - 72, '', {
+    // Screen-space NPC dialogue box — bottom-center, well above the interaction hint
+    this.dialogueBox = createDialogueBox(this, {
+      onClose: () => {
+        this.queuedConversationClose = true;
+      },
+    });
+
+    this.directorCommentaryText = this.add
+      .text(GAME.WIDTH / 2, 96, '', {
         fontFamily: 'monospace',
         fontSize: '14px',
-        color: '#e2e8f0',
-        backgroundColor: '#0f172acc',
-        padding: { x: 14, y: 10 },
+        color: '#fef3c7',
+        backgroundColor: '#451a03dd',
+        padding: { x: 12, y: 8 },
         align: 'center',
-        wordWrap: { width: GAME.WIDTH - 64 },
+        wordWrap: { width: GAME.WIDTH - 80 },
       })
-      .setOrigin(0.5, 1)
+      .setOrigin(0.5, 0)
       .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
+
+    const completionBackdrop = this.add
+      .rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x020617, 0.84)
+      .setOrigin(0, 0);
+    const completionPanel = this.add
+      .rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 620, 260, 0x0f172a, 0.98)
+      .setStrokeStyle(2, 0x334155, 1);
+    this.floorCompletionTitleText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 72, 'Game Over', {
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+        fontSize: '38px',
+        color: '#f8fafc',
+      })
+      .setOrigin(0.5, 0.5);
+    this.floorCompletionSubtitleText = this.add
+      .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 26, 'Floor 1 complete!', {
+        fontFamily: 'Segoe UI, Arial, sans-serif',
+        fontSize: '24px',
+        color: '#cbd5e1',
+      })
+      .setOrigin(0.5, 0.5);
+    this.floorCompletionBodyText = this.add
+      .text(
+        GAME.WIDTH / 2,
+        GAME.HEIGHT / 2 + 34,
+        'Thanks for completing the first floor!\nMore game coming soon...',
+        {
+          fontFamily: 'Segoe UI, Arial, sans-serif',
+          fontSize: '20px',
+          color: '#94a3b8',
+          align: 'center',
+        },
+      )
+      .setOrigin(0.5, 0.5);
+    this.floorCompletionScreen = this.add
+      .container(0, 0, [
+        completionBackdrop,
+        completionPanel,
+        this.floorCompletionTitleText,
+        this.floorCompletionSubtitleText,
+        this.floorCompletionBodyText,
+      ])
+      .setDepth(5500)
       .setScrollFactor(0)
       .setVisible(false);
 
@@ -543,6 +854,10 @@ export class MainGameScene extends Phaser.Scene {
   private drawFloorTerrain(): void {
     this.mapRt?.destroy();
     this.doorGraphics?.destroy();
+    for (const img of this.doorImages) {
+      img.destroy();
+    }
+    this.doorImages.length = 0;
     this.mapRt = undefined;
     this.doorGraphics = undefined;
 
@@ -579,6 +894,10 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private refreshCameraMasks(): void {
+    if (!this.cameraMasksDirty) {
+      return;
+    }
+    this.cameraMasksDirty = false;
     const mainCamera = this.cameras.main;
     if (!mainCamera) {
       return;
@@ -657,17 +976,57 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     g.clear();
+    for (const img of this.doorImages) {
+      img.destroy();
+    }
+    this.doorImages.length = 0;
+
     const tileSize = floorMap.config.tileSizePx;
+    const TD_KEY = 'kenney-tiny-dungeon';
+    const DOOR_CLOSED_FRAME = 46; // brown arched wooden door
+    const DOOR_OPEN_FRAME = 34; // door swung open, clear passage
+    const hasSheet = this.textures.exists(TD_KEY);
+
+    const tm = floorMap.tileMap;
+    // A wall is an in-bounds tile that is neither passable nor a door.
+    const isWall = (wx: number, wy: number): boolean =>
+      tm.inBounds(wx, wy) && !tm.isPassable(wx, wy) && !tm.isDoor(wx, wy);
+
     for (let y = 0; y < floorMap.height; y += 1) {
       for (let x = 0; x < floorMap.width; x += 1) {
-        if (!floorMap.tileMap.isDoor(x, y)) {
+        if (!tm.isDoor(x, y)) {
           continue;
         }
-        const isOpen = floorMap.tileMap.isPassable(x, y);
-        g.fillStyle(isOpen ? 0xd2b48c : 0x6b4423, 1);
-        g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-        g.lineStyle(1, isOpen ? 0xf5deb3 : 0x3d2615, 0.9);
-        g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+        // Only render a door where it reads as set into a wall: flanked by
+        // walls left+right (vertical wall run) or above+below (horizontal run).
+        // Doors that ended up surrounded by floor get no sprite — plain floor
+        // shows through instead of a door "floating" in the open.
+        const horizontalDoorway = isWall(x - 1, y) && isWall(x + 1, y);
+        const verticalDoorway = isWall(x, y - 1) && isWall(x, y + 1);
+        if (!horizontalDoorway && !verticalDoorway) {
+          continue;
+        }
+        const isOpen = tm.isPassable(x, y);
+        if (hasSheet) {
+          const frame = isOpen ? DOOR_OPEN_FRAME : DOOR_CLOSED_FRAME;
+          const img = this.add
+            .image(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2, TD_KEY, frame)
+            .setDepth(-19)
+            .setScale(tileSize / 16);
+          // Door images are recreated every frame, after refreshCameraMasks()
+          // has already rebuilt the camera ignore lists. Without this, the
+          // scroll-locked UI camera renders them at raw world coordinates, so
+          // doors appear pinned to the screen and "follow" the player. Pinning
+          // the ignore here guarantees only the scrolling world camera draws them.
+          this.uiCamera?.ignore(img);
+          this.doorImages.push(img);
+        } else {
+          // Fallback for environments without the sprite sheet (e.g. tests).
+          g.fillStyle(isOpen ? 0xd2b48c : 0x6b4423, 1);
+          g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+          g.lineStyle(1, isOpen ? 0xf5deb3 : 0x3d2615, 0.9);
+          g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+        }
       }
     }
   }
@@ -758,6 +1117,7 @@ export class MainGameScene extends Phaser.Scene {
     // HUD (health bar, floor timer, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
     this.updateBossHealthBar();
+    this.updateDirectorCommentary();
 
     if (!this.world.floor1) {
       this.objectiveText?.setText(`State: ${this.world.state}`);
@@ -769,11 +1129,15 @@ export class MainGameScene extends Phaser.Scene {
     const totalKills = objective.ratsKilled + objective.slimesKilled;
     const requiredTotalKills = objective.requiredRats + objective.requiredSlimes;
     const killProgress = Math.min(totalKills, requiredTotalKills);
-    const questStatus = !objective.questAccepted
-      ? 'Quest: talk to Tutorial Goon'
-      : objective.questCompleted
-        ? 'Quest: complete'
-        : `Quest: kill rats + slimes ${killProgress}/${requiredTotalKills}`;
+    const xpUnlocked = this.world.goalFlags.get('floor1-xp-unlocked') === true;
+    const reachedLevel2 = this.world.goalFlags.get('floor1-leveling-quest-complete') === true;
+    const questStatus = !xpUnlocked
+      ? 'Quest 1: talk to Tutorial Goon'
+      : !reachedLevel2
+        ? `Quest 1: reach level 2 (Lv ${this.world.playerLevel.level}/2)`
+        : objective.questCompleted
+          ? 'Quest 2: boss door unlocked'
+          : `Quest 2: kill rats + slimes ${killProgress}/${requiredTotalKills}`;
     const stairStatus = objective.staircaseSpawned
       ? 'Stairs: spawned in boss room'
       : 'Stairs: defeat the boss to spawn';
@@ -784,8 +1148,6 @@ export class MainGameScene extends Phaser.Scene {
         `Kill progress: ${killProgress}/${requiredTotalKills}`,
         `Rats: ${objective.ratsKilled}/${objective.requiredRats}`,
         `Slimes: ${objective.slimesKilled}/${objective.requiredSlimes}`,
-        `Gold: ${objective.goldCollected}/${objective.requiredGold}`,
-        `Junk: ${objective.junkCollected}/${objective.requiredJunk}`,
         stairStatus,
       ].join('\n'),
     );
@@ -808,6 +1170,116 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.loadoutText?.setVisible(false);
+  }
+
+  private queueDirectorCommentary(text: string): void {
+    this.directorCommentaryText?.setText(`${DIRECTOR_LABEL_TEXT}: ${text}`).setVisible(true);
+    this.commentaryHideAtMs = this.time.now + DIRECTOR_COMMENTARY_MS;
+  }
+
+  private updateDirectorCommentary(): void {
+    if (this.commentaryHideAtMs > 0 && this.time.now >= this.commentaryHideAtMs) {
+      this.directorCommentaryText?.setVisible(false);
+      this.commentaryHideAtMs = 0;
+    }
+
+    const floor1 = this.world.floor1;
+    if (!floor1 || this.world.floor !== 1) {
+      return;
+    }
+
+    const objective = floor1.objective;
+    if (!this.commentaryMilestones.floorIntro) {
+      this.commentaryMilestones.floorIntro = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.intro);
+      return;
+    }
+    if (objective.questAccepted && !this.commentaryMilestones.questAccepted) {
+      this.commentaryMilestones.questAccepted = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questAccepted);
+      return;
+    }
+    if (objective.questCompleted && !this.commentaryMilestones.questCompleted) {
+      this.commentaryMilestones.questCompleted = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
+      return;
+    }
+    if (objective.bossBattleStarted && !this.commentaryMilestones.bossBattleStarted) {
+      this.commentaryMilestones.bossBattleStarted = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
+      return;
+    }
+    if (objective.staircaseBossDefeated && !this.commentaryMilestones.staircaseBossDefeated) {
+      this.commentaryMilestones.staircaseBossDefeated = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
+      return;
+    }
+    if (objective.staircaseDiscovered && !this.commentaryMilestones.staircaseDiscovered) {
+      this.commentaryMilestones.staircaseDiscovered = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseDiscovered);
+      return;
+    }
+    if (floor1.failReason === 'stair_timeout' && !this.commentaryMilestones.timeout) {
+      this.commentaryMilestones.timeout = true;
+      this.queueDirectorCommentary(FLOOR_1_COMMENTARY.timeout);
+    }
+  }
+
+  private showFloorCompletionScreenIfNeeded(): void {
+    const outcome = this.getFloorRunOutcome();
+    if (!outcome || !this.shouldShowFloorCompletionMessage()) {
+      return;
+    }
+
+    if (outcome === 'failed_timeout') {
+      this.floorCompletionTitleText?.setText('Game Over');
+      this.floorCompletionSubtitleText?.setText('Floor 1 failed');
+      this.floorCompletionBodyText?.setText(
+        'You ran out of time before reaching the stairs.\nTry again and move faster through objectives.',
+      );
+    } else {
+      this.floorCompletionTitleText?.setText('Game Over');
+      this.floorCompletionSubtitleText?.setText('Floor 1 complete!');
+      this.floorCompletionBodyText?.setText(
+        'Thanks for completing the first floor!\nMore game coming soon...',
+      );
+    }
+
+    this.floorCompletionMessagePending = false;
+    this.floorCompletionMessageShown = true;
+    this.floorCompletionScreen?.setVisible(true);
+  }
+
+  private shouldShowFloorCompletionMessage(): boolean {
+    return this.getFloorRunOutcome() !== null && !this.floorCompletionMessageShown;
+  }
+
+  private getFloorRunOutcome(): 'cleared_floor' | 'failed_timeout' | null {
+    const outcome = this.world.floor1?.runSummary?.outcome;
+    if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
+      return outcome;
+    }
+    return null;
+  }
+
+  /**
+   * Shows the death screen when the player was slain (world.state === 'game_over'
+   * and no floor-completion screen is handling the transition).
+   *
+   * Floor completion outcomes (cleared_floor, failed_timeout) take precedence:
+   * those cases are already handled by showFloorCompletionScreenIfNeeded() and
+   * should not additionally trigger the death screen.
+   */
+  private showDeathScreenIfNeeded(): void {
+    if (
+      this.world.state !== 'game_over' ||
+      this.deathScreenShown ||
+      this.getFloorRunOutcome() !== null
+    ) {
+      return;
+    }
+    this.deathScreenShown = true;
+    this.gameOverUI?.show();
   }
 
   private updateBossHealthBar(): void {
@@ -841,12 +1313,15 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateInteractions(): void {
-    const tapped = this.tappedInteraction;
+    const tapped = this.tappedInteraction || this.queuedInteraction;
+    const closeRequested = this.queuedConversationClose;
     this.tappedInteraction = false;
+    this.queuedInteraction = false;
+    this.queuedConversationClose = false;
 
     if (!this.world.floor1 || this.world.state !== 'playing') {
       this.interactionHint?.setVisible(false);
-      this.npcDialogueText?.setVisible(false);
+      this.dialogueBox?.hide();
       return;
     }
 
@@ -868,15 +1343,16 @@ export class MainGameScene extends Phaser.Scene {
       const instance = this.world.npcs.get(this.conversationNpcEid);
       if (!instance || !instance.nearbyPlayer) {
         this.conversationNpcEid = null;
-        this.npcDialogueText?.setVisible(false);
+        this.dialogueBox?.hide();
       } else {
         const def = getNpcDef(instance.defId);
         const activeDialogue = this.resolveDialogueLines(instance.defId);
-        this.interactionHint?.setText('[E] Next  [Esc] Close').setVisible(true);
+        this.interactionHint?.setVisible(false);
+        this.dialogueBox?.setCloseVisible(true);
 
-        if (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc)) {
+        if (closeRequested || (this.keyEsc && Phaser.Input.Keyboard.JustDown(this.keyEsc))) {
           this.conversationNpcEid = null;
-          this.npcDialogueText?.setVisible(false);
+          this.dialogueBox?.hide();
           return;
         }
 
@@ -887,12 +1363,12 @@ export class MainGameScene extends Phaser.Scene {
           const nextIndex = instance.dialogueIndex + 1;
           if (nextIndex >= activeDialogue.length) {
             this.conversationNpcEid = null;
-            this.npcDialogueText?.setVisible(false);
+            this.dialogueBox?.hide();
             return;
           }
           instance.dialogueIndex = nextIndex;
           const line = activeDialogue[instance.dialogueIndex] ?? '';
-          this.npcDialogueText?.setText(`${def?.name ?? 'NPC'}: "${line}"`).setVisible(true);
+          this.dialogueBox?.showLine(def?.name ?? 'NPC', `"${line}"`);
         }
       }
       return;
@@ -907,25 +1383,35 @@ export class MainGameScene extends Phaser.Scene {
         objective.markerRadiusPx;
 
     if (nearNpcEid >= 0) {
-      this.interactionHint?.setText('[E] Talk').setVisible(true);
+      this.interactionHint?.setText('Talk').setVisible(true);
+      this.dialogueBox?.setCloseVisible(false);
 
       if (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) {
         const instance = this.world.npcs.get(nearNpcEid);
         if (instance) {
           const def = getNpcDef(instance.defId);
+          // Shopkeeper errand: advance the merchant's multistep flow on talk.
+          if (instance.defId === 'shopkeeper' && this.options.shopkeeper) {
+            const openedModal = this.handleShopkeeperTalk();
+            if (openedModal) {
+              return;
+            }
+          }
           const activeDialogue = this.resolveDialogueLines(instance.defId);
           if (def && activeDialogue.length > 0) {
             this.conversationNpcEid = nearNpcEid;
-            objective.questAccepted = true;
+            if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
+              this.options.tutorialGoon.meet(this.world);
+            }
             instance.dialogueIndex = 0;
             const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
-            this.npcDialogueText?.setText(`${def.name}: "${text}"`).setVisible(true);
+            this.dialogueBox?.showLine(def.name, `"${text}"`);
           }
         }
       }
     } else if (nearStairs) {
-      this.interactionHint?.setText('[E] Descend').setVisible(true);
-      this.npcDialogueText?.setVisible(false);
+      this.interactionHint?.setText('Descend').setVisible(true);
+      this.dialogueBox?.hide();
       if (
         (tapped || (this.keyE && Phaser.Input.Keyboard.JustDown(this.keyE))) &&
         this.modalPicker
@@ -944,7 +1430,10 @@ export class MainGameScene extends Phaser.Scene {
             },
             {
               onConfirm: () => {
-                this.options.onStairDescend?.(this.world, this.playerEid);
+                const descended = this.options.onStairDescend?.(this.world, this.playerEid);
+                if (descended !== false && !this.floorCompletionMessageShown) {
+                  this.time.delayedCall(0, () => this.showFloorCompletionScreenIfNeeded());
+                }
                 this.updateOverlayText();
               },
             },
@@ -953,8 +1442,9 @@ export class MainGameScene extends Phaser.Scene {
       }
     } else {
       this.interactionHint?.setVisible(false);
+      this.dialogueBox?.setCloseVisible(false);
       if (nearNpcEid < 0) {
-        this.npcDialogueText?.setVisible(false);
+        this.dialogueBox?.setBodyVisible(false);
       }
     }
   }
@@ -964,7 +1454,79 @@ export class MainGameScene extends Phaser.Scene {
     if (defId === 'tutorial-goon' && objective?.staircaseBossDefeated) {
       return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
     }
+    if (defId === 'shopkeeper' && this.options.shopkeeper) {
+      const stage = this.options.shopkeeper.getStage(this.world);
+      if (stage === 'complete') {
+        return [...SHOPKEEPER_DONE_DIALOGUE];
+      }
+      if (stage === 'awaiting-equip') {
+        return [...SHOPKEEPER_EQUIP_HINT_DIALOGUE];
+      }
+      if (stage === 'ready-to-buy') {
+        return this.shopkeeperJustReturned
+          ? [...SHOPKEEPER_RETURN_DIALOGUE]
+          : [...SHOPKEEPER_SHOP_DIALOGUE];
+      }
+      // not-met / awaiting-prize: the merchant's initial fetch request.
+    }
     const def = getNpcDef(defId);
     return def?.dialogue.map((line) => line.text) ?? [];
+  }
+
+  /**
+   * Advance the shopkeeper errand when the player talks to the merchant.
+   * Returns true when a purchase modal was opened (so the caller skips the
+   * normal conversation flow).
+   */
+  private handleShopkeeperTalk(): boolean {
+    const shop = this.options.shopkeeper;
+    if (!shop) {
+      return false;
+    }
+    // Latch the "introduce yourself" objective.
+    shop.meet(this.world);
+
+    // If the player is carrying the prize, hand it over now.
+    this.shopkeeperJustReturned = shop.returnPrize(this.world, this.playerEid);
+
+    const stage = shop.getStage(this.world);
+    // Shop is open and the prize is already handled: offer the purchase modal.
+    if (stage === 'ready-to-buy' && !this.shopkeeperJustReturned && this.modalPicker) {
+      if (this.modalPicker.isOpen()) {
+        return true;
+      }
+      const affordable = this.world.playerGold >= shop.equipmentCost;
+      this.modalPicker.open(
+        {
+          title: "The Merchant's Wares",
+          subtitle: `Gold: ${this.world.playerGold}`,
+          body: affordable
+            ? `Buy the ${shop.equipmentName} for ${shop.equipmentCost} gold?`
+            : `The ${shop.equipmentName} costs ${shop.equipmentCost} gold. You can't afford it yet.`,
+          options: affordable
+            ? [
+                {
+                  id: 'buy-equipment',
+                  label: `Buy ${shop.equipmentName} (${shop.equipmentCost}g)`,
+                  description: 'A faintly damp, weirdly lucky charm.',
+                },
+              ]
+            : [],
+          allowCancel: true,
+          initialSelectedId: 'buy-equipment',
+        },
+        {
+          onConfirm: () => {
+            if (shop.purchase(this.world, this.playerEid)) {
+              this.flashHint('Purchased! Press [I] then [G] to equip your gear.');
+              this.inventoryUI?.refresh(this.world);
+            }
+            this.updateOverlayText();
+          },
+        },
+      );
+      return true;
+    }
+    return false;
   }
 }

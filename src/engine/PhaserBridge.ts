@@ -13,7 +13,9 @@ import {
   Position,
   Projectile,
   Returning,
+  Rotation,
   Sprite,
+  Team,
   Trap,
   XpGem,
 } from '../core/components.js';
@@ -22,6 +24,7 @@ import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createLogger } from '../shared/logger.js';
+import { TeamId } from '../shared/constants.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -34,12 +37,16 @@ const TEX_GEM = '__cw_gem';
 const TEX_BULLET = '__cw_bullet';
 const TEX_ENEMY_BULLET = '__cw_enemy_bullet';
 const TEX_AOE_PROJ = '__cw_aoe_proj';
+const TEX_ENEMY_AOE_PROJ = '__cw_enemy_aoe_proj';
 const TEX_RETURNING = '__cw_returning';
 const TEX_MELEE = '__cw_melee';
 const TEX_TRAP_ARMED = '__cw_trap_armed';
 const TEX_TRAP_ARMING = '__cw_trap_arming';
 const TEX_EXPLOSION = '__cw_explosion';
+const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
 const TEX_DEAD_SKULL = '__cw_dead_skull';
+const TEX_WELCOME_SIGN = '__cw_welcome_sign';
+const SPRITE_TEX_WELCOME_SIGN = 3;
 const DEAD_SKULL_Y_OFFSET = 18;
 const logger = createLogger('engine:phaser-bridge');
 
@@ -142,12 +149,19 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(29, 23, 1);
   g.generateTexture(TEX_ENEMY_BOSS, 44, 40);
 
-  // XP gem — yellow diamond
+  // XP gem — faceted cyan crystal with dark outline + sparkle
   g.clear();
-  g.fillStyle(0xffee00, 1);
-  g.fillTriangle(5, 0, 0, 5, 5, 10);
-  g.fillTriangle(5, 0, 10, 5, 5, 10);
-  g.generateTexture(TEX_GEM, 12, 12);
+  g.fillStyle(0x0b3038, 1);
+  g.fillTriangle(7, 0, 0, 7, 7, 14);
+  g.fillTriangle(7, 0, 14, 7, 7, 14);
+  g.fillStyle(0x1f9fb8, 1);
+  g.fillTriangle(7, 2, 2, 7, 7, 12);
+  g.fillTriangle(7, 2, 12, 7, 7, 12);
+  g.fillStyle(0x4fd6e8, 1);
+  g.fillTriangle(7, 2, 2, 7, 7, 7);
+  g.fillStyle(0x9af0ff, 1);
+  g.fillRect(5, 3, 2, 2);
+  g.generateTexture(TEX_GEM, 14, 14);
 
   // Player bullet — white elongated pill
   g.clear();
@@ -170,6 +184,16 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillStyle(0xffcc00, 0.8);
   g.fillCircle(10, 10, 3);
   g.generateTexture(TEX_AOE_PROJ, 22, 22);
+
+  // Enemy AoE projectile (acid ball) — green glow
+  g.clear();
+  g.fillStyle(0x10b981, 0.4);
+  g.fillCircle(10, 10, 10);
+  g.fillStyle(0x22c55e, 1);
+  g.fillCircle(10, 10, 5);
+  g.fillStyle(0xbbf7d0, 0.8);
+  g.fillCircle(10, 10, 3);
+  g.generateTexture(TEX_ENEMY_AOE_PROJ, 22, 22);
 
   // Returning weapon — cyan spinning square shape
   g.clear();
@@ -214,6 +238,16 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(32, 32, 20);
   g.generateTexture(TEX_EXPLOSION, 66, 66);
 
+  // Enemy acid explosion — green splash
+  g.clear();
+  g.fillStyle(0x22c55e, 0.32);
+  g.fillCircle(32, 32, 32);
+  g.lineStyle(3, 0x16a34a, 0.72);
+  g.strokeCircle(32, 32, 32);
+  g.fillStyle(0xbbf7d0, 0.24);
+  g.fillCircle(32, 32, 20);
+  g.generateTexture(TEX_ENEMY_EXPLOSION, 66, 66);
+
   // Dead marker — simple skull icon for corpse linger window
   g.clear();
   g.fillStyle(0xf8fafc, 0.95);
@@ -227,6 +261,22 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(10, 6, 1);
   g.fillRect(7, 9, 2, 1);
   g.generateTexture(TEX_DEAD_SKULL, 16, 16);
+
+  // Welcome sign — wooden board with painted white arrow (pointing right)
+  g.clear();
+  g.fillStyle(0x8b5a2b, 1);
+  g.fillRect(0, 0, 32, 16);
+  g.lineStyle(2, 0x5c3a21, 1);
+  g.strokeRect(1, 1, 30, 14);
+  g.lineStyle(3, 0xffffff, 0.9);
+  g.beginPath();
+  g.moveTo(6, 8);
+  g.lineTo(26, 8);
+  g.moveTo(20, 3);
+  g.lineTo(26, 8);
+  g.lineTo(20, 13);
+  g.strokePath();
+  g.generateTexture(TEX_WELCOME_SIGN, 32, 16);
 
   g.destroy();
   logger.info('Generated procedural fallback textures');
@@ -247,11 +297,26 @@ function getEntityType(world: GameWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, LineDamage)) return 'beam';
   if (hasComponent(world.ecs, eid, MeleeSwing)) return 'melee_swing';
   if (hasComponent(world.ecs, eid, Trap)) return 'trap';
-  if (hasComponent(world.ecs, eid, AreaDamage)) return 'aoe';
+  if (hasComponent(world.ecs, eid, AreaDamage)) {
+    if (hasComponent(world.ecs, eid, Team) && world.stores.team.id[eid] === TeamId.ENEMY) {
+      return 'enemy_aoe';
+    }
+    return 'aoe';
+  }
   if (hasComponent(world.ecs, eid, Returning)) return 'returning';
-  if (hasComponent(world.ecs, eid, AoeOnImpact)) return 'aoe_proj';
+  if (hasComponent(world.ecs, eid, AoeOnImpact)) {
+    if (hasComponent(world.ecs, eid, EnemyProjectile)) {
+      return 'enemy_aoe_proj';
+    }
+    return 'aoe_proj';
+  }
   if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
   if (hasComponent(world.ecs, eid, Projectile)) return 'proj';
+  if (
+    hasComponent(world.ecs, eid, Sprite) &&
+    world.stores.sprite.textureId[eid] === SPRITE_TEX_WELCOME_SIGN
+  )
+    return 'welcome_sign';
   return 'default';
 }
 
@@ -265,6 +330,22 @@ function getEntityType(world: GameWorld, eid: number): string {
 const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
   player: 'player',
   enemy: 'enemy.orc',
+  enemy_rat: 'enemy.rat',
+  enemy_slime: 'enemy.slime',
+  enemy_boss: 'enemy.boss',
+  npc: 'npc.guide',
+  gem: 'item.gem',
+  proj: 'effect.proj',
+  enemy_proj: 'effect.enemy_proj',
+  aoe_proj: 'effect.aoe',
+  enemy_aoe_proj: 'effect.enemy_aoe',
+  returning: 'weapon.returning',
+  melee: 'effect.melee',
+  trap_arming: 'effect.trap_arming',
+  trap_armed: 'effect.trap_armed',
+  explosion: 'effect.explosion',
+  enemy_explosion: 'effect.enemy_explosion',
+  dead_skull: 'effect.dead',
 };
 
 /**
@@ -276,6 +357,22 @@ const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
 const KENNEY_SCALE: Readonly<Record<string, number>> = {
   player: 1.6, // procedural player texture is 26x26
   enemy: 1.4, // procedural enemy texture is 22x22
+  enemy_rat: 1.4,
+  enemy_slime: 1.4,
+  enemy_boss: 2.5, // boss is larger
+  npc: 1.4,
+  gem: 1.0,
+  proj: 1.0,
+  enemy_proj: 1.0,
+  aoe_proj: 1.4,
+  enemy_aoe_proj: 1.4,
+  returning: 1.2,
+  melee: 4.0,
+  trap_arming: 1.0,
+  trap_armed: 1.0,
+  explosion: 4.0,
+  enemy_explosion: 4.0,
+  dead_skull: 1.0,
 };
 
 interface ResolvedTexture {
@@ -332,12 +429,29 @@ function getProceduralTextureForType(type: string): string {
       return TEX_ENEMY_BULLET;
     case 'aoe_proj':
       return TEX_AOE_PROJ;
+    case 'welcome_sign':
+      return TEX_WELCOME_SIGN;
+    case 'enemy_aoe_proj':
+      return TEX_ENEMY_AOE_PROJ;
     case 'returning':
       return TEX_RETURNING;
     case 'aoe':
       return TEX_MELEE;
+    case 'enemy_aoe':
+      return TEX_ENEMY_EXPLOSION;
     case 'trap':
+    case 'trap_arming':
       return TEX_TRAP_ARMING;
+    case 'trap_armed':
+      return TEX_TRAP_ARMED;
+    case 'explosion':
+      return TEX_EXPLOSION;
+    case 'enemy_explosion':
+      return TEX_ENEMY_EXPLOSION;
+    case 'melee':
+      return TEX_MELEE;
+    case 'dead_skull':
+      return TEX_DEAD_SKULL;
     default:
       return TEX_BULLET;
   }
@@ -591,7 +705,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         let deathMarker = deathMarkers.get(eid);
         if (isDeadEnemy) {
           if (!deathMarker) {
-            deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, TEX_DEAD_SKULL);
+            const tex = resolveTexture(scene, 'dead_skull');
+            deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, tex.key, tex.frame);
             deathMarkers.set(eid, deathMarker);
           }
           deathMarker.setVisible(isVisible);
@@ -613,8 +728,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             break;
           }
 
-          case 'aoe_proj': {
-            // Fireball: gentle pulsing glow
+          case 'aoe_proj':
+          case 'enemy_aoe_proj': {
+            // Fireball/acid ball: gentle pulsing glow
             const pulse = 0.9 + 0.2 * Math.sin(renderElapsedMs * 0.01);
             img.setScale(pulse);
             const vx = velocity.x[eid] ?? 0;
@@ -631,7 +747,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             break;
           }
 
-          case 'aoe': {
+          case 'aoe':
+          case 'enemy_aoe': {
             const radius = areaDamage.radius[eid] ?? 32;
             const arcHalf = areaDamage.arcHalfRad[eid] ?? 0;
             const arcCenter = areaDamage.arcCenterRad[eid] ?? 0;
@@ -690,13 +807,22 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             } else {
               // Full circle AoE — use image
-              const scale = (radius * 2) / 66;
+              const currentTex = resolveTexture(
+                scene,
+                entityType === 'enemy_aoe' ? 'melee' : 'aoe_proj',
+              );
+              let scale = (radius * 2) / (currentTex.scale > 1 ? 16 : 66);
               img.setScale(scale);
               img.setAlpha(alpha);
 
               // Use explosion texture for trap-spawned AoEs (short duration)
-              if (remaining <= 100 && img.texture.key !== TEX_EXPLOSION) {
-                img.setTexture(TEX_EXPLOSION);
+              const explosionType = entityType === 'enemy_aoe' ? 'enemy_explosion' : 'explosion';
+              const explosionTex = resolveTexture(scene, explosionType);
+              if (remaining <= 100 && img.texture.key !== explosionTex.key) {
+                img.setTexture(explosionTex.key, explosionTex.frame);
+                // Recalculate scale based on new texture
+                scale = (radius * 2) / (explosionTex.scale > 1 ? 16 : 66);
+                img.setScale(scale);
               }
 
               // Clean up any stale arc graphics
@@ -714,7 +840,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             // Switch texture based on arm state
             const armAt = trap.armAtMs[eid] ?? 0;
             const isArmed = renderElapsedMs >= armAt;
-            img.setTexture(isArmed ? TEX_TRAP_ARMED : TEX_TRAP_ARMING);
+            const tex = resolveTexture(scene, isArmed ? 'trap_armed' : 'trap_arming');
+            img.setTexture(tex.key, tex.frame);
 
             // Pulse when armed
             if (isArmed) {
@@ -724,6 +851,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               // Arming blink
               const blink = Math.sin(renderElapsedMs * 0.02) > 0 ? 0.7 : 0.3;
               img.setAlpha(blink);
+            }
+            break;
+          }
+
+          case 'welcome_sign': {
+            if (hasComponent(world.ecs, eid, Rotation)) {
+              img.setRotation(world.stores.rotation.angle[eid] ?? 0);
             }
             break;
           }

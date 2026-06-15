@@ -1,8 +1,13 @@
 import { query, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { DeathTimer, Enemy, Gold, Health, Position, XpGem } from '../../src/core/components.js';
-import { spawnEnemy } from '../../src/core/helpers.js';
+import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
+import {
+  initializeFloor1Scenario,
+  meetTutorialGoon,
+  selectFloor1StarterWeapon,
+} from '../../src/game/floor1Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('dropSystem', () => {
@@ -104,5 +109,23 @@ describe('dropSystem', () => {
     expect(world.stores.deathTimer.remainingMs[eid]).toBe(900);
     expect(query(world.ecs, [DeathTimer])).toContain(eid);
     expect(world.combatEvents.filter((event) => event.type === 'death')).toHaveLength(1);
+  });
+
+  it('suppresses floor1 XP drops until the tutorial goon unlocks XP', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const lockedEnemy = spawnEnemy(world, 100, 200, 10);
+    setComponent(world.ecs, lockedEnemy, Health, { current: 0, max: 10 });
+    dropSystem(world);
+    expect(query(world.ecs, [XpGem]).length).toBe(0);
+
+    meetTutorialGoon(world);
+    const unlockedEnemy = spawnEnemy(world, 140, 220, 10);
+    setComponent(world.ecs, unlockedEnemy, Health, { current: 0, max: 10 });
+    dropSystem(world);
+    expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(1);
   });
 });

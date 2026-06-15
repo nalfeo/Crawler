@@ -1,18 +1,29 @@
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME } from '../../shared/constants.js';
-import { MainGameScene } from '../../engine/scenes/MainGameScene.js';
+import { BootScene, MainGameScene } from '../../engine/index.js';
 import {
   enemyAISystem,
   floor1EnemyDirectorSystem,
-  floor1ObjectiveSystem,
+  floorObjectiveSystem,
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
+  meetTutorialGoon,
   selectFloor1StarterWeapon,
+  startFloor1BossEncounter,
+  questSystem,
+  getShopkeeperStage,
+  meetShopkeeper,
+  returnShopkeeperPrize,
+  purchaseShopkeeperEquipment,
+  equipPurchasedGear,
+  SHOPKEEPER_EQUIPMENT_COST,
   weaponSystem,
 } from '../../game/index.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../../game/systems/index.js';
 import { npcSystem } from '../../core/index.js';
+import { confirmFloor1StairDescend } from '../../game/floor1Scenario.js';
+import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -21,6 +32,7 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 interface Floor1LabSettings {
   autoPickStarter: boolean;
   starterChoice: number;
+  quickStartBossFight: boolean;
 }
 
 interface SubsystemStatus {
@@ -76,8 +88,8 @@ const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
     name: 'levelSystem',
     hook: 'Loop post hook',
     implementation: 'Real game implementation',
-    activeInFloor1: false,
-    note: 'Wired, but currently inactive for this Floor 1 slice.',
+    activeInFloor1: true,
+    note: 'Active; level-ups are driven by XP gems once the Tutorial Goon unlocks XP drops.',
   },
   {
     name: 'skillSystem',
@@ -94,7 +106,7 @@ const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
     note: 'Wired, but currently inactive for this Floor 1 slice.',
   },
   {
-    name: 'floor1ObjectiveSystem',
+    name: 'floorObjectiveSystem',
     hook: 'Loop post hook',
     implementation: 'Real game implementation',
     activeInFloor1: true,
@@ -120,19 +132,25 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     throw new Error('Lab runner did not initialize lil-gui.');
   }
 
-  // URL params: ?autopick=1 skips the loadout modal, ?weapon=1|2|3 selects choice.
-  // e.g. http://localhost:3004/lab.html?lab=floor1-lab&autopick=1&weapon=2
+  // URL params:
+  // - ?autopick=1 skips loadout modal
+  // - ?weapon=1|2|3 selects auto-picked starter
+  // - ?boss=1 teleports to boss room and immediately starts boss fight
+  // e.g. http://localhost:3004/lab.html?lab=floor1-lab&boss=1
   const urlParams = new URLSearchParams(window.location.search);
   const urlAutoPick = urlParams.get('autopick') === '1';
   const urlWeapon = parseInt(urlParams.get('weapon') ?? '0', 10);
+  const urlBoss = urlParams.get('boss') === '1';
 
   const settings: Floor1LabSettings = {
     autoPickStarter: urlAutoPick,
     starterChoice: urlWeapon >= 1 && urlWeapon <= 3 ? urlWeapon : 1,
+    quickStartBossFight: urlBoss,
     ...(loadLabState<Floor1LabSettings>(LAB_ID) ?? {}),
     // URL params always override persisted state
     ...(urlAutoPick ? { autoPickStarter: true } : {}),
     ...(urlWeapon >= 1 && urlWeapon <= 3 ? { starterChoice: urlWeapon } : {}),
+    ...(urlBoss ? { quickStartBossFight: true } : {}),
   };
 
   const root = document.createElement('div');
@@ -149,7 +167,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Floor 1 vertical-slice lab. Toggle auto-pick to skip loadout and jump straight into the tutorial loop.';
+    'Floor 1 vertical-slice lab. Meet the Tutorial Goon to unlock XP drops + XP bar, reach level 2, then progress the boss unlock quest.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';
@@ -223,16 +241,42 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       width: GAME.WIDTH,
       height: GAME.HEIGHT,
       backgroundColor: '#05070f',
+      // Match the real game (src/main.ts): without these, Phaser defaults to
+      // LINEAR filtering, which blurs the pixel-art tiles and samples the 1px
+      // sheet spacing into dark grid seams — the "muddy" look. Each entry point
+      // builds its own Phaser config, so this flag must be set per host.
+      pixelArt: true,
+      roundPixels: true,
       scene: [
+        // BootScene preloads the Kenney sprite sheets, then starts
+        // MainGameScene by key. Without it the tiny-dungeon textures never
+        // load and MainGameScene falls back to procedural primitives — which
+        // is why this slice previously rendered a flat-colored placeholder
+        // instead of the real Floor 1 art.
+        BootScene,
         new MainGameScene({
           configureWorld: (world, playerEid) => {
             initializeFloor1Scenario(world, playerEid);
-            if (settings.autoPickStarter) {
+            if (settings.autoPickStarter || settings.quickStartBossFight) {
               const clamped = Math.max(1, Math.min(3, Math.floor(settings.starterChoice)));
               selectFloor1StarterWeapon(world, clamped - 1);
             }
+            if (settings.quickStartBossFight) {
+              startFloor1BossEncounter(world, playerEid);
+            }
           },
           selectLoadoutOption: selectFloor1StarterWeapon,
+          onStairDescend: confirmFloor1StairDescend,
+          shopkeeper: {
+            getStage: getShopkeeperStage,
+            meet: meetShopkeeper,
+            returnPrize: returnShopkeeperPrize,
+            purchase: purchaseShopkeeperEquipment,
+            equip: equipPurchasedGear,
+            equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
+            equipmentName: MERCHANTS_CHARM_DEF.name,
+          },
+          tutorialGoon: { meet: meetTutorialGoon },
           preSystems: [
             statsSystem,
             floor1PlayerStatSystem,
@@ -241,7 +285,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             floor1EnemyDirectorSystem,
             npcSystem,
           ],
-          postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem],
+          postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
         }),
       ],
       scale: {
@@ -269,6 +313,13 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       if (settings.autoPickStarter) {
         createGame();
       }
+    });
+  gui
+    .add(settings, 'quickStartBossFight')
+    .name('Quick boss start')
+    .onChange(() => {
+      saveLabState(LAB_ID, settings);
+      createGame();
     });
   gui
     .add(

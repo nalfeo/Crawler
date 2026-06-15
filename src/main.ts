@@ -5,13 +5,24 @@ import { abilitySystem, levelSystem, skillSystem, statsSystem } from './game/sys
 import {
   enemyAISystem,
   floor1EnemyDirectorSystem,
-  floor1ObjectiveSystem,
+  floorObjectiveSystem,
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
+  meetTutorialGoon,
   selectFloor1StarterWeapon,
+  questSystem,
   weaponSystem,
 } from './game/index.js';
 import { confirmFloor1StairDescend } from './game/floor1Scenario.js';
+import {
+  getShopkeeperStage,
+  meetShopkeeper,
+  returnShopkeeperPrize,
+  purchaseShopkeeperEquipment,
+  equipPurchasedGear,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from './game/floor1Scenario.js';
+import { MERCHANTS_CHARM_DEF } from './shared/equipmentDefs.js';
 import {
   createLogger,
   getGlobalLogLevel,
@@ -36,6 +47,8 @@ const config: Phaser.Types.Core.GameConfig = {
   width: GAME.WIDTH,
   height: GAME.HEIGHT,
   backgroundColor: '#111111',
+  pixelArt: true,
+  roundPixels: true,
   physics: {
     default: 'arcade',
     arcade: {
@@ -49,6 +62,16 @@ const config: Phaser.Types.Core.GameConfig = {
       configureWorld: initializeFloor1Scenario,
       selectLoadoutOption: selectFloor1StarterWeapon,
       onStairDescend: confirmFloor1StairDescend,
+      shopkeeper: {
+        getStage: getShopkeeperStage,
+        meet: meetShopkeeper,
+        returnPrize: returnShopkeeperPrize,
+        purchase: purchaseShopkeeperEquipment,
+        equip: equipPurchasedGear,
+        equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
+        equipmentName: MERCHANTS_CHARM_DEF.name,
+      },
+      tutorialGoon: { meet: meetTutorialGoon },
       preSystems: [
         statsSystem,
         floor1PlayerStatSystem,
@@ -56,7 +79,7 @@ const config: Phaser.Types.Core.GameConfig = {
         enemyAISystem,
         floor1EnemyDirectorSystem,
       ],
-      postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem],
+      postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
     }),
   ],
   scale: {

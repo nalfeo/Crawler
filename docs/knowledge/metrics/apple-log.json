@@ -103,7 +103,35 @@
     "actual_apples": 4,
     "delta": 0,
     "verdict": "exact",
+    "hello_kitties": 0.8,
     "notes": "DevTools page routing, shared header, approval migration from Labs, run/variant picker, full postprocess debugger redesign as vertical pipeline trace, merge conflict resolution"
+  },
+  {
+    "date": "2026-06-11",
+    "session": "minimap-render-fix",
+    "estimated_apples": 3,
+    "actual_apples": 2,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-11",
+    "session": "pr118-minimap-comment-fixes",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-12",
+    "session": "custom-pixel-sprites",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6
   },
   {
     "date": "2026-06-12",
@@ -114,5 +142,151 @@
     "verdict": "exact",
     "hello_kitties": 0.6,
     "notes": "Removed the global postprocess A/B reprocess flow, simplified the debugger to a linear trace, cleaned stale UX copy, and verified the fast gate"
+  },
+  {
+    "date": "2026-06-12",
+    "session": "floor1-ai-commentary-overlay",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6
+  },
+  {
+    "date": "2026-06-12",
+    "session": "mobile-touch-minimap-fixes",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6
+  },
+  {
+    "date": "2026-06-11",
+    "session": "auto-rebase-main-updates",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-12",
+    "session": "floor1-quest-system",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Data-driven quest system + tracker HUD, shopkeeper errand, inventory/equipment unlocks, new lab; spans core/engine/game/shared"
+  },
+  {
+    "date": "2026-06-11",
+    "session": "floor1-lab-ux-fixes",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "4 targeted UX fixes: merchant safe room + minimap, rat tail hint, dialog overlap, goon quest timing"
+  },
+  {
+    "date": "2026-06-14",
+    "session": "welcome-signs",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Added procedural sign sprite, BFS pathfinding, and spawned signs along the path to the welcome guild"
+  },
+  {
+    "date": "2026-06-14",
+    "session": "nightly-mutation-copilot-handoff",
+    "estimated_apples": 3,
+    "actual_apples": 2,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.4,
+    "notes": "Replaced failing Actions PR creation in nightly mutation workflow with Copilot-assigned issue flow and explicit ready/auto-merge instructions."
+  },
+  {
+    "date": "2026-06-14",
+    "session": "coverage-gap-copilot-ping",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-14",
+    "session": "fix-preexisting-failure",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-14",
+    "session": "quest-pack-event-template-phase1",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Implemented quest phases 1-3: config pack loading, event-driven quest progression, template compiler, and quest-content lab"
+  },
+  {
+    "date": "2026-06-14",
+    "session": "cc0-visual-snapshot-art",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Temporary CC0 Kenney art bridge: bake script + rewritten visual-snapshot lab (clean grid, wall depth shadow, scattered floor detail, see-through door, glowing fireball) + stricter judge. Established VLM judge caps flat CC0 art at style ~3; user accepted shipping after concrete defects fixed."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "wire-cc0-art-into-main-game",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Wired approved CC0 tiny-dungeon art into actual gameplay: repointed entity sprites (registry) and tiles (tile-visuals) to clean frames, rewrote MainGameScene door overlay to stamp real door art. Corrected rat to frame 123 (123/124 are real rats; prior spider stand-in was wrong). Visually verified lab + main game via Playwright. verify:fast passes; full-verify failures are unrelated flaky sprite-pipeline integration timeouts that pass in isolation."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "fix-muddy-tiles-and-floating-doors",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Fixed two main-game art regressions. Muddy/seams: src/main.ts lacked pixelArt+roundPixels so Phaser used LINEAR filtering; enabled both. Doors 'following' the player: door overlay images are recreated every frame after refreshCameraMasks() rebuilds camera ignore lists, so the scroll-locked uiCamera drew them at raw world coords; added uiCamera.ignore(img) per door image. Stripped temp tint/label/ASCII-dump debug. verify:fast 1144 pass; Playwright-confirmed crisp tiles + doors set in walls, none flanking player."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "ux-art-enhancements",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Polished HUD/UX art. New src/engine/pixel-ui.ts shared theme (beveled panels, inset stat bars with top shine + segment ticks, generated pixel-art icon textures) used to refactor HudHealthBar, HudExperienceBar, HudFloorTimer, HudQuestTracker while preserving sync/destroy APIs; upgraded procedural drop gem (TEX_GEM) to a faceted crystal. Fixed a real HUD collision: quest tracker overlapped the top-right minimap, so stacked it below (TOP_Y 16->200). Added ux-snapshot-lab driving the real HudUI over a Floor 1 room with in-world drops and lil-gui sliders for every surface state. verify:fast 1179 pass; full verify's only failure is an unrelated flaky sprite-pipeline beforeEach timeout that passes in isolation. Playwright-verified legibility + modern-pixel look."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "ux-art-dialog-modal-minimap",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Re-skinned the three remaining UX surfaces to the pixel-ui theme. New src/engine/DialogueBox.ts (reusable gold-name-plate dialogue box w/ beveled body + close button) replaces MainGameScene's inline dialogue chrome; refactored MainGameScene to create it upfront in create() so the depth-routed uiCamera doesn't double-draw it. Re-skinned ModalPickerUI (choice modal): beveled inline panel + gold title strip/rule, monospace styles, selected row 0x1d4ed8 + gold border + selection-arrow marker, disabled rows dimmed. Re-skinned HudMinimap docked frame + overlay panel with beveled chrome + gold 'MAP (M)' title strip. Extended ux-snapshot-lab to demo the dialogue box + choice modal with lil-gui toggles. Fixed source-assertion test for the DialogueBox refactor. verify (full) passes; Playwright-verified all three look modern + text legible."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "round-radar-minimap",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Converted the docked minimap into a player-centered round radar pinned to the top-right corner, showing the current room + nearby entities (enemies red, NPCs green, gold-ringed white player dot). Fixed two live visual bugs: (1) terrain bleeding outside the gold dial when the player moved -- the geometry-mask Graphics was setVisible(false), which Phaser 4.1's stencil pass skips so it clipped nothing; removing that made the mask clip again. (2) entity/player blips invisible -- lazily-created terrainRt shared dotGraphics' depth and rendered over it; fixed with an explicit depth hierarchy (bg 1000 < terrain 1001 < dots 1002 < rings 1005 < compass 1006). Updated the HudMinimap architectural guard test to match the refactored outlined-dot drawing while preserving FOV-gating intent. verify:fast 1179 pass; full verify's only failures are the known-flaky sprite-pipeline integration timeouts (generate-one / synth-to-generate) under parallel load, unrelated to this change. Playwright-confirmed terrain stays clipped in the dial when moving + player dot centered."
   }
 ]

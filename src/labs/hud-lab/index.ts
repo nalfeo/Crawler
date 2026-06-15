@@ -87,6 +87,8 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
         baseStatBonuses: { maxHp: 0, moveSpeed: 0, pickupRange: 0 },
         enemyArchetypes: new Map(),
         guideNpcEid: null,
+        shopkeeperNpcEid: null,
+        questItemEid: null,
         bossDoorEids: [],
         objective: {
           requiredRats: 5,
@@ -98,6 +100,8 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           safeRoomPos: { x: 300, y: 300 },
           staircasePos: { x: 600, y: 400 },
           welcomeOfficePos: { x: 100, y: 100 },
+          shopRoomPos: { x: 500, y: 300 },
+          questItemPos: { x: 700, y: 500 },
           markerRadiusPx: 32,
           questAccepted: false,
           questCompleted: false,
