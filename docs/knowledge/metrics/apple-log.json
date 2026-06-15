@@ -190,6 +190,15 @@
   },
   {
     "date": "2026-06-14",
+    "session": "coverage-gap-copilot-ping",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4
+  },
+  {
+    "date": "2026-06-14",
     "session": "fix-preexisting-failure",
     "estimated_apples": 2,
     "actual_apples": 2,
