@@ -57,7 +57,7 @@ export function createGameOverUI(
           onConfirm: ({ option }) => {
             if (option.id === 'restart') {
               hooks.onRestart();
-            } else {
+            } else if (option.id === 'quit') {
               hooks.onQuit();
             }
           },

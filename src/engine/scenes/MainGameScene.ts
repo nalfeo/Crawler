@@ -298,6 +298,8 @@ export class MainGameScene extends Phaser.Scene {
     this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
     this.inventoryUI = createInventoryUI(this);
     this.gameOverUI = createGameOverUI(this, {
+      // Both actions reload for now — a title screen / main menu doesn't exist yet.
+      // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
       onRestart: () => {
         window.location.reload();
       },
@@ -1241,6 +1243,10 @@ export class MainGameScene extends Phaser.Scene {
   /**
    * Shows the death screen when the player was slain (world.state === 'game_over'
    * and no floor-completion screen is handling the transition).
+   *
+   * Floor completion outcomes (cleared_floor, failed_timeout) take precedence:
+   * those cases are already handled by showFloorCompletionScreenIfNeeded() and
+   * should not additionally trigger the death screen.
    */
   private showDeathScreenIfNeeded(): void {
     if (
