@@ -401,7 +401,6 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
                 enabled: true,
                 maxVerticalShiftPx: 12,
                 backgroundDistanceThreshold: 24,
-                edgeBandPx: 2,
               }
             : undefined,
         });
@@ -766,10 +765,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.code(400);
       return { error: 'bad-request', message: 'body.rawPng must be a base64-encoded string' };
     }
-    const briefPath = path.resolve(deps.repoRoot, body.briefPath);
+    const briefPath = resolveRepoPath(deps.repoRoot, body.briefPath);
+    if (!briefPath) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.briefPath must be a repo-relative path' };
+    }
     if (!existsSync(briefPath)) {
       reply.code(404);
-      return { error: 'brief-not-found', message: `briefPath does not exist: ${briefPath}` };
+      return { error: 'brief-not-found', message: 'briefPath does not exist in repo' };
     }
     try {
       const loaded = loadBrief(briefPath, { projectRoot: deps.repoRoot });

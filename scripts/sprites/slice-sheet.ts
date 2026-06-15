@@ -30,7 +30,6 @@ export interface SliceOptions {
     readonly enabled?: boolean;
     readonly maxVerticalShiftPx?: number;
     readonly backgroundDistanceThreshold?: number;
-    readonly edgeBandPx?: number;
   };
 }
 
@@ -419,7 +418,6 @@ export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
           enabled: true,
           maxVerticalShiftPx: 12,
           backgroundDistanceThreshold: 24,
-          edgeBandPx: 2,
         }
       : undefined,
   });

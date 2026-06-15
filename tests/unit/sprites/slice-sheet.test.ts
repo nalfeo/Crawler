@@ -201,7 +201,6 @@ describe('sliceSheet', () => {
         enabled: true,
         maxVerticalShiftPx: 2,
         backgroundDistanceThreshold: 16,
-        edgeBandPx: 1,
       },
     });
     const fixedPng = PNG.sync.read(fixed[0]!);
