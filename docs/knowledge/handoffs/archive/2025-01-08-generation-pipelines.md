@@ -13,16 +13,19 @@ Extended the sprite generation pipeline architecture (ADR 0003) from weapons to 
 ### Files Created
 
 **Definition Files** (`src/shared/`)
+
 - `mobDefs.ts` — 8 mob definitions with MobDef interface, MOB_DEFS ReadonlyMap, getMobDef() getter
 - `tileDefs.ts` — 16 tile definitions with TileDef interface, TILE_DEFS ReadonlyMap, getTileDef() and getTilesByBiome() getters
 - `decorationDefs.ts` — 18 decoration definitions with DecorationDef interface, DECORATION_DEFS ReadonlyMap, getDecorationDef() and getDecorationsByBiome() getters
 
 **Data Files** (`src/shared/data/`)
+
 - `mobs.json` — Serialized mob data (8 entries, 2998 bytes)
 - `tiles.json` — Serialized tile data (16 entries, 4167 bytes)
 - `decorations.json` — Serialized decoration data (18 entries, 5433 bytes)
 
 **Test Lab** (`tests/unit/labs/`)
+
 - `generationLab.test.ts` — Unified lab with 3 describe blocks (28 tests total):
   - Mob Pipeline: 8 tests (loading, lookup, rarity scaling, AI validation, stats, loot refs, sprites)
   - Tile Pipeline: 10 tests (loading, lookup, biome filtering, collision types, passability, hazard damage, sprite refs)
@@ -34,7 +37,7 @@ Extended the sprite generation pipeline architecture (ADR 0003) from weapons to 
 
 2. **Density Calculations**: Decorations use density per 1000 floor pixels for spawn count calculations (e.g., torch 0.08 → ~46 spawns per 320×180 room).
 
-3. **Collision Mapping**: 
+3. **Collision Mapping**:
    - Solid → Blocked (impassable)
    - Hazard → Deadly (damages player)
    - None → Walkable (passable)
@@ -56,7 +59,7 @@ Extended the sprite generation pipeline architecture (ADR 0003) from weapons to 
 - ✅ Full verify:fast passes (941 tests total)
 - ✅ Type checking passes
 - ✅ Linting passes
-- ✅ All sprite IDs validated (mob-*, tile-*, deco-* prefixes)
+- ✅ All sprite IDs validated (mob-_, tile-_, deco-\* prefixes)
 - ✅ Biome distribution validated (4 biomes each for tiles and decorations)
 - ✅ Stat ranges validated (HP, speed, damage, knockback, gore, XP multipliers)
 - ✅ Collider and passability types validated
@@ -64,12 +67,14 @@ Extended the sprite generation pipeline architecture (ADR 0003) from weapons to 
 ## Next Steps
 
 ### Phase 2: Game System Integration
+
 - Create `mobSpawner` system that reads from MOB_DEFS
 - Create `tileSystem` that reads from TILE_DEFS for floor generation
 - Create `decorationSystem` that reads from DECORATION_DEFS for scene dressing
 - Create corresponding labs for each system (if not already present)
 
 ### Phase 3: Extensibility
+
 - Implement sensor validation for mob sprites (silhouette, palette)
 - Implement sensor validation for tile sprites (collision visual consistency)
 - Implement sensor validation for decoration sprites (depth layer consistency)
@@ -78,7 +83,7 @@ Extended the sprite generation pipeline architecture (ADR 0003) from weapons to 
 
 ### Considerations
 
-1. **Sprite Catalog**: All sprite IDs (mob-*, tile-*, deco-*) must exist in the sprite catalog before deployment. Current definitions are ready but sprites are not validated at this stage.
+1. **Sprite Catalog**: All sprite IDs (mob-_, tile-_, deco-\*) must exist in the sprite catalog before deployment. Current definitions are ready but sprites are not validated at this stage.
 
 2. **Loot Tables**: Mob definitions reference loot tables (e.g., "common-drops", "pillar-rubble") that should be implemented in `lootDefs.ts` or similar.
 
@@ -91,18 +96,22 @@ Extended the sprite generation pipeline architecture (ADR 0003) from weapons to 
 ## Technical Details
 
 ### Pattern (ADR 0003)
+
 Each pipeline follows the same architecture:
+
 1. **TypeScript Defs** — Interface definition + factory function + ReadonlyMap + getter functions
 2. **JSON Data** — Serialized definitions for runtime loading
 3. **Validation** — Type-safe access via getter functions with optional chaining support
 4. **Lab Testing** — Comprehensive test coverage of loading, filtering, and business logic
 
 ### Sprite Prefixes (Required)
+
 - Mob sprites: `mob-*` (e.g., `mob-zombie`, `mob-directors-proxy`)
 - Tile sprites: `tile-*` (e.g., `tile-stone-floor`, `tile-blood-pool`)
 - Decoration sprites: `deco-*` (e.g., `deco-torch`, `deco-rubble`)
 
 ### Biome Distribution
+
 - **Dungeon**: stone, walls, grates, torches, pillars, barrels
 - **Organic**: flesh, bone, blood pools, vines, fungal growths
 - **Tech**: metal, circuits, energy barriers, panels, conduits
