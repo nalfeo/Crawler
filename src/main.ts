@@ -5,7 +5,7 @@ import { abilitySystem, levelSystem, skillSystem, statsSystem } from './game/sys
 import {
   enemyAISystem,
   floor1EnemyDirectorSystem,
-  floor1ObjectiveSystem,
+  floorObjectiveSystem,
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
@@ -75,7 +75,7 @@ const config: Phaser.Types.Core.GameConfig = {
         enemyAISystem,
         floor1EnemyDirectorSystem,
       ],
-      postSystems: [levelSystem, skillSystem, abilitySystem, floor1ObjectiveSystem, questSystem],
+      postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
     }),
   ],
   scale: {
