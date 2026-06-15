@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
+import { query } from 'bitecs';
 import { BootScene, MainGameScene } from './engine/index.js';
+import { Player } from './core/components.js';
 import { GAME } from './shared/constants.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from './game/systems/index.js';
 import {
@@ -21,6 +23,7 @@ import {
   purchaseShopkeeperEquipment,
   equipPurchasedGear,
   SHOPKEEPER_EQUIPMENT_COST,
+  selectSpellFromBossBattle,
 } from './game/floor1Scenario.js';
 import { MERCHANTS_CHARM_DEF } from './shared/equipmentDefs.js';
 import {
@@ -62,6 +65,13 @@ const config: Phaser.Types.Core.GameConfig = {
       configureWorld: initializeFloor1Scenario,
       selectLoadoutOption: selectFloor1StarterWeapon,
       onStairDescend: confirmFloor1StairDescend,
+      selectSpellFromBossBattle: (world, spellId) => {
+        const playerEntities = query(world.ecs, [Player]);
+        const playerEid = [...playerEntities][0];
+        if (playerEid !== undefined) {
+          selectSpellFromBossBattle(world, playerEid, spellId);
+        }
+      },
       shopkeeper: {
         getStage: getShopkeeperStage,
         meet: meetShopkeeper,

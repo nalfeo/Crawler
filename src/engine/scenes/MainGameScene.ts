@@ -90,6 +90,8 @@ export interface MainGameSceneOptions {
   tutorialGoon?: {
     meet: (world: GameWorld) => void;
   };
+  /** Spell selection callback for floor1 boss battle reward. */
+  selectSpellFromBossBattle?: (world: GameWorld, spellId: string) => void;
 }
 
 declare global {
@@ -501,6 +503,17 @@ export class MainGameScene extends Phaser.Scene {
       this.updateDoorOverlay();
       this.bridge.sync(this.world);
       this.playBossSpawnIntro();
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      return;
+    }
+
+    // Check if spell selection modal should be shown (before simulation)
+    this.openSpellSelectionModal();
+    if (this.modalPicker?.isOpen()) {
+      this.updateDoorOverlay();
+      this.bridge.sync(this.world);
       this.updateCamera();
       this.updateObjectiveMarkers();
       this.updateOverlayText();
@@ -964,6 +977,68 @@ export class MainGameScene extends Phaser.Scene {
         },
         onCancel: () => {
           this.options.selectLoadoutOption?.(this.world, 0);
+          this.updateOverlayText();
+        },
+      },
+    );
+  }
+
+  private openSpellSelectionModal(): void {
+    if (!this.modalPicker || this.world.state !== 'playing') {
+      return;
+    }
+    if (this.modalPicker.isOpen()) {
+      return;
+    }
+
+    // Check if spell selection should be shown: boss quest completed and spells not yet unlocked
+    if (
+      this.world.goalFlags.get('floor1-boss-battle-complete') !== true ||
+      this.world.featureUnlocks.spells === true
+    ) {
+      return;
+    }
+
+    // The three available spells for the boss battle reward
+    const spellIds = ['fireball', 'heal', 'pulse-shield'] as const;
+
+    const options = spellIds.map((spellId) => {
+      // Spell name and description (matching ability definitions)
+      const spellNames: Record<(typeof spellIds)[number], string> = {
+        fireball: 'Fireball',
+        heal: 'Heal',
+        'pulse-shield': 'Pulse Shield',
+      };
+
+      const spellDescriptions: Record<(typeof spellIds)[number], string> = {
+        fireball: 'Unleash a fireball that damages enemies in an area',
+        heal: 'Restore your health',
+        'pulse-shield': 'Create a shockwave that knocks back nearby enemies',
+      };
+
+      return {
+        id: spellId,
+        label: spellNames[spellId],
+        description: spellDescriptions[spellId],
+      };
+    });
+
+    this.modalPicker.open(
+      {
+        title: 'Learn a Spell',
+        subtitle: 'You defeated the Slime Rat boss!',
+        body: 'Choose a spell to unlock your ability system.',
+        options,
+        allowCancel: false,
+        initialSelectedId: 'fireball',
+      },
+      {
+        onConfirm: ({ option }) => {
+          this.options.selectSpellFromBossBattle?.(this.world, option.id as string);
+          this.updateOverlayText();
+        },
+        onCancel: () => {
+          // No cancellation allowed for spell selection
           this.updateOverlayText();
         },
       },
