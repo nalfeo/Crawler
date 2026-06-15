@@ -37,6 +37,8 @@ export {
   setTrackedQuest,
   notifyQuestTalk,
   setQuestCounter,
+  addQuestCounter,
+  emitQuestEvent,
   getQuestObjectiveViews,
   isQuestComplete,
 } from '../core/systems/questSystem.js';

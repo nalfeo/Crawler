@@ -51,6 +51,7 @@ import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../
 import type { Floor1ScenarioState } from '../shared/floor1.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { QuestState } from '../shared/quest-types.js';
+import type { QuestEvent } from '../shared/quest-events.js';
 
 const logger = createLogger('core:world');
 
@@ -112,6 +113,8 @@ export interface GameWorld {
   npcs: Map<number, NpcInstance>;
   /** Active/completed quests keyed by quest id. Drives the quest tracker HUD. */
   questLog: Map<string, QuestState>;
+  /** Quest progression events queued this frame. Drained by questSystem. */
+  questEvents: QuestEvent[];
   /** Progressively-unlocked UI features. Latched true; never reset to false mid-run. */
   featureUnlocks: {
     /** Inventory panel becomes usable once unlocked (Floor 1: on key-item pickup). */
@@ -217,6 +220,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     floorObjectiveTick: null,
     npcs: new Map(),
     questLog: new Map(),
+    questEvents: [],
     featureUnlocks: {
       inventory: false,
       equipment: false,

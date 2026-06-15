@@ -137,6 +137,7 @@ export const LOOT_TABLES = {
   FLOOR_1: {
     id: 'floor_1',
     entries: [
+      { type: 'xp' as const, value: 4, chance: 1.0, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'pebble', value: 1, chance: 0.2, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'rusted-scrap', value: 1, chance: 0.14, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'old-sock', value: 1, chance: 0.08, min: 1, max: 1 },

@@ -52,15 +52,15 @@ const TUTORIAL_GOON_DEF: NpcDef = {
       text: "Hey, contestant! I'm the Tutorial Goon. Welcome to the Welcome Office — enjoy it while it lasts.",
     },
     {
-      text: 'Quest time: kill 10 rats + slimes total. That unlocks the boss room door.',
+      text: 'No XP drops until you check in with me. Done now — watch the XP bar and hit level 2 first.',
     },
-    { text: 'Once the boss is dead, stairs spawn in the boss room. Come back if you forget.' },
+    { text: 'After level 2, I unlock your boss-door quest: clear 6 rats + 4 slimes to open it.' },
   ],
   quests: [
     {
-      questId: 'floor1-defeat-boss',
-      title: 'Defeat the Boss',
-      description: 'Defeat the floor boss to prove yourself to the Guild and the audience!',
+      questId: 'floor1-tutorial',
+      title: 'Trial by XP',
+      description: 'Unlock XP with the goon and reach level 2.',
     },
   ],
   textureId: 10,

@@ -37,7 +37,7 @@ describe('spawnNpc', () => {
     expect(instance?.dialogueIndex).toBe(0);
     expect(instance?.nearbyPlayer).toBe(false);
     expect(instance?.quests).toHaveLength(1);
-    expect(instance?.quests[0]?.questId).toBe('floor1-defeat-boss');
+    expect(instance?.quests[0]?.questId).toBe('floor1-tutorial');
     expect(instance?.quests[0]?.status).toBe('available');
   });
 

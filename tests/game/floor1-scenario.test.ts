@@ -8,6 +8,7 @@ import {
   floorObjectiveSystem,
   getShopkeeperStage,
   initializeFloor1Scenario,
+  meetTutorialGoon,
   meetShopkeeper,
   purchaseShopkeeperEquipment,
   returnShopkeeperPrize,
@@ -18,7 +19,9 @@ import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import {
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../src/shared/quest-types.js';
@@ -118,12 +121,20 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseLocked).toBe(true);
     expect(objective.staircaseUnlocked).toBe(false);
 
-    // Kills do not complete the quest until the player talks to the goon.
+    // Kills do not complete boss-unlock until level quest completion unlocks it.
     world.elapsedMs = 1_000;
     floorObjectiveSystem(world);
     expect(objective.questCompleted).toBe(false);
 
-    objective.questAccepted = true;
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    floorObjectiveSystem(world);
+    questSystem(world);
+    floorObjectiveSystem(world);
+
+    expect(world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID)).toBe(true);
+    expect(world.goalFlags.get('floor1-leveling-quest-complete')).toBe(true);
+    expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
     floorObjectiveSystem(world);
     expect(objective.questCompleted).toBe(true);
     expect(objective.staircaseBossEid).toBeNull();
@@ -154,12 +165,14 @@ describe('floor1Scenario', () => {
   });
 
   describe('shopkeeper errand questline', () => {
-    it('accepts both Floor 1 quests on initialization', () => {
+    it('accepts only the shop quest on initialization', () => {
       const world = createTestWorld({ seed: 5 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
 
       expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(true);
+      expect(world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID)).toBe(false);
+      expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(false);
       expect(getShopkeeperStage(world)).toBe('not-met');
       expect(world.featureUnlocks.inventory).toBe(false);
       expect(world.featureUnlocks.equipment).toBe(false);
@@ -231,7 +244,7 @@ describe('floor1Scenario', () => {
       expect(world.goalFlags.get('floor1-shop-prize-returned')).not.toBe(true);
     });
 
-    it('keeps the boss door quest independent of the shopkeeper errand', () => {
+    it('unlocks the boss-door quest only after completing the level-2 quest', () => {
       const world = createTestWorld({ seed: 123 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
@@ -243,12 +256,22 @@ describe('floor1Scenario', () => {
       }
       objective.ratsKilled = objective.requiredRats;
       objective.slimesKilled = objective.requiredSlimes;
-      objective.questAccepted = true;
       world.elapsedMs = 1_000;
       floorObjectiveSystem(world);
 
+      expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(false);
+      meetTutorialGoon(world);
+      floorObjectiveSystem(world);
+      questSystem(world);
+      expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(false);
+
+      world.playerLevel.level = 2;
+      floorObjectiveSystem(world);
+      questSystem(world);
+      floorObjectiveSystem(world);
+      expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
       expect(objective.questCompleted).toBe(true);
-      // Boss-door unlock must not depend on finishing the merchant errand.
+      // Boss-door unlock remains independent of the merchant errand.
       expect(getShopkeeperStage(world)).toBe('not-met');
     });
   });

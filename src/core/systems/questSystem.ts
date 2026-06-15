@@ -25,6 +25,7 @@ import {
   type QuestObjectiveDef,
   type QuestState,
 } from '../../shared/quest-types.js';
+import type { QuestEvent } from '../../shared/quest-events.js';
 
 // ---------------------------------------------------------------------------
 // Quest-log helpers
@@ -36,6 +37,10 @@ function findPlayer(world: GameWorld): number | undefined {
 
 function createQuestState(questId: string, tracked: boolean): QuestState {
   return { questId, status: 'active', tracked, progress: {}, done: {} };
+}
+
+function assertNever(value: never): never {
+  throw new Error(`Unhandled quest event: ${JSON.stringify(value)}`);
 }
 
 /**
@@ -74,22 +79,14 @@ export function setTrackedQuest(world: GameWorld, questId: string): void {
   }
 }
 
+/** Queue a quest progression event; consumed by questSystem on the same tick. */
+export function emitQuestEvent(world: GameWorld, event: QuestEvent): void {
+  world.questEvents.push(event);
+}
+
 /** Latch a `talk` objective complete (e.g. the player spoke to an NPC). */
 export function notifyQuestTalk(world: GameWorld, npcId: string): void {
-  for (const quest of world.questLog.values()) {
-    if (quest.status !== 'active') {
-      continue;
-    }
-    const def = getQuestDef(quest.questId);
-    if (!def) {
-      continue;
-    }
-    for (const objective of def.objectives) {
-      if (objective.kind === 'talk' && objective.npcId === npcId) {
-        quest.done[objective.id] = true;
-      }
-    }
-  }
+  emitQuestEvent(world, { type: 'quest.npc.talked', npcId });
 }
 
 /** Set the absolute progress of a `counter` objective (e.g. kill tally). */
@@ -99,11 +96,27 @@ export function setQuestCounter(
   objectiveId: string,
   value: number,
 ): void {
-  const quest = world.questLog.get(questId);
-  if (!quest) {
-    return;
-  }
-  quest.progress[objectiveId] = Math.max(0, Math.floor(value));
+  emitQuestEvent(world, {
+    type: 'quest.counter.set',
+    questId,
+    objectiveId,
+    value,
+  });
+}
+
+/** Additively increment progress for a `counter` objective. */
+export function addQuestCounter(
+  world: GameWorld,
+  questId: string,
+  objectiveId: string,
+  amount: number,
+): void {
+  emitQuestEvent(world, {
+    type: 'quest.counter.add',
+    questId,
+    objectiveId,
+    amount,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -298,8 +311,62 @@ function evaluateQuest(world: GameWorld, quest: QuestState, playerEid: number | 
   }
 }
 
+function applyQuestEvent(world: GameWorld, event: QuestEvent): void {
+  switch (event.type) {
+    case 'quest.npc.talked': {
+      for (const quest of world.questLog.values()) {
+        if (quest.status !== 'active') {
+          continue;
+        }
+        const def = getQuestDef(quest.questId);
+        if (!def) {
+          continue;
+        }
+        for (const objective of def.objectives) {
+          if (objective.kind === 'talk' && objective.npcId === event.npcId) {
+            quest.done[objective.id] = true;
+          }
+        }
+      }
+      return;
+    }
+    case 'quest.counter.set': {
+      const quest = world.questLog.get(event.questId);
+      if (!quest || quest.status !== 'active') {
+        return;
+      }
+      quest.progress[event.objectiveId] = Math.max(0, Math.floor(event.value));
+      return;
+    }
+    case 'quest.counter.add': {
+      const quest = world.questLog.get(event.questId);
+      if (!quest || quest.status !== 'active') {
+        return;
+      }
+      const current = quest.progress[event.objectiveId] ?? 0;
+      const safeAmount = Math.max(0, Math.floor(event.amount));
+      const next = current + safeAmount;
+      quest.progress[event.objectiveId] = Math.max(0, Math.floor(next));
+      return;
+    }
+    default:
+      assertNever(event);
+  }
+}
+
+function consumeQuestEvents(world: GameWorld): void {
+  if (world.questEvents.length === 0) {
+    return;
+  }
+  for (const event of world.questEvents) {
+    applyQuestEvent(world, event);
+  }
+  world.questEvents.length = 0;
+}
+
 /** Deterministic quest evaluation pass. Shape: (world) => void. */
 export function questSystem(world: GameWorld): void {
+  consumeQuestEvents(world);
   const player = findPlayer(world);
   latchFeatureUnlocks(world, player);
   for (const quest of world.questLog.values()) {

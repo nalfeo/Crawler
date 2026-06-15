@@ -61,8 +61,7 @@ const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 const DIRECTOR_COMMENTARY_MS = 3600;
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
-  questAccepted:
-    'Tutorial Goon gets a deal accepted: clear the rat and slime quota for tonight’s show.',
+  questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
   questCompleted: 'Quota complete. Boss room is live for the next segment.',
   bossBattleStarted: 'Boss encounter started. This is the ratings spike moment.',
   staircaseBossDefeated: 'Boss down. Stairs unlocked and the crowd wants a clean finish.',
@@ -1109,11 +1108,15 @@ export class MainGameScene extends Phaser.Scene {
     const totalKills = objective.ratsKilled + objective.slimesKilled;
     const requiredTotalKills = objective.requiredRats + objective.requiredSlimes;
     const killProgress = Math.min(totalKills, requiredTotalKills);
-    const questStatus = !objective.questAccepted
-      ? 'Quest: talk to Tutorial Goon'
-      : objective.questCompleted
-        ? 'Quest: complete'
-        : `Quest: kill rats + slimes ${killProgress}/${requiredTotalKills}`;
+    const xpUnlocked = this.world.goalFlags.get('floor1-xp-unlocked') === true;
+    const reachedLevel2 = this.world.goalFlags.get('floor1-leveling-quest-complete') === true;
+    const questStatus = !xpUnlocked
+      ? 'Quest 1: talk to Tutorial Goon'
+      : !reachedLevel2
+        ? `Quest 1: reach level 2 (Lv ${this.world.playerLevel.level}/2)`
+        : objective.questCompleted
+          ? 'Quest 2: boss door unlocked'
+          : `Quest 2: kill rats + slimes ${killProgress}/${requiredTotalKills}`;
     const stairStatus = objective.staircaseSpawned
       ? 'Stairs: spawned in boss room'
       : 'Stairs: defeat the boss to spawn';

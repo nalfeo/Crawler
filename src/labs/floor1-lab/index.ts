@@ -88,8 +88,8 @@ const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
     name: 'levelSystem',
     hook: 'Loop post hook',
     implementation: 'Real game implementation',
-    activeInFloor1: false,
-    note: 'Wired, but currently inactive for this Floor 1 slice.',
+    activeInFloor1: true,
+    note: 'Active; level-ups are driven by XP gems once the Tutorial Goon unlocks XP drops.',
   },
   {
     name: 'skillSystem',
@@ -167,7 +167,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Floor 1 vertical-slice lab. Toggle auto-pick to skip loadout, or enable Quick boss start to jump straight into the boss room fight.';
+    'Floor 1 vertical-slice lab. Meet the Tutorial Goon to unlock XP drops + XP bar, reach level 2, then progress the boss unlock quest.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';

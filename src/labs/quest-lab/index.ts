@@ -3,6 +3,7 @@ import { createGameWorld, spawnPlayer, type GameWorld } from '../../core/index.j
 import { initializeBaseStats } from '../../core/systems/equipmentSystem.js';
 import { addItem } from '../../shared/inventory.js';
 import {
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
@@ -52,8 +53,8 @@ function createQuestLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
   canvasHost.append(panel);
 
   function tick(): void {
-    setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-rats', ratsKilled);
-    setQuestCounter(world, FLOOR1_TUTORIAL_QUEST_ID, 'kill-slimes', slimesKilled);
+    setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-rats', ratsKilled);
+    setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-slimes', slimesKilled);
     questSystem(world);
     render();
   }
@@ -97,6 +98,11 @@ function createQuestLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
       slimesKilled += 1;
       tick();
     },
+    reachLevel2: () => {
+      world.goalFlags.set('floor1-reach-level-2', true);
+      acceptQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID);
+      tick();
+    },
     meetMerchant: () => {
       notifyQuestTalk(world, 'shopkeeper');
       tick();
@@ -136,6 +142,7 @@ function createQuestLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
 
   gui.add(actions, 'killRat').name('Kill a rat');
   gui.add(actions, 'killSlime').name('Kill a slime');
+  gui.add(actions, 'reachLevel2').name('Complete level-2 quest');
   gui.add(actions, 'meetMerchant').name('Talk to merchant');
   gui.add(actions, 'pickUpRatTail').name('Pick up rat tail');
   gui.add(actions, 'returnPrize').name('Return prize');

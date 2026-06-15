@@ -73,7 +73,13 @@ function getProcessedDeaths(world: GameWorld): Set<number> {
   return tracking.eids;
 }
 
-function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): void {
+function spawnDrops(
+  world: GameWorld,
+  x: number,
+  y: number,
+  drops: LootDrop[],
+  allowXpDrops: boolean,
+): void {
   logger.debug('Spawning drops', {
     dropCount: drops.length,
     x,
@@ -98,9 +104,13 @@ function spawnDrops(world: GameWorld, x: number, y: number, drops: LootDrop[]): 
         break;
       case 'xp':
         for (let i = 0; i < drop.quantity; i++) {
+          // Always consume RNG to keep the seeded sequence stable regardless
+          // of whether XP drops are currently gated.
           const ex = dx + (world.rng.next() - 0.5) * 8;
           const ey = dy + (world.rng.next() - 0.5) * 8;
-          spawnXpGem(world, ex, ey, drop.value);
+          if (allowXpDrops) {
+            spawnXpGem(world, ex, ey, drop.value);
+          }
         }
         break;
       case 'item':
@@ -123,6 +133,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   const processed = getProcessedDeaths(world);
   const spawnLoot = options.spawnLoot ?? true;
   const deathLingerMs = options.deathLingerMs ?? DEATH_LINGER_MS;
+  // Floor 1 tutorial pacing: XP starts dropping only after the Tutorial Goon intro.
+  const allowXpDrops = !world.floor1 || world.goalFlags.get('floor1-xp-unlocked') === true;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -205,7 +217,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      spawnDrops(world, x, y, drops);
+      spawnDrops(world, x, y, drops, allowXpDrops);
       logger.info('Processed enemy death drops', {
         eid,
         x,

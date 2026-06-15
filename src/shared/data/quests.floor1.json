@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "packId": "floor1",
+  "quests": [
+    {
+      "id": "floor1-tutorial",
+      "title": "Trial by XP",
+      "summary": "Meet the Tutorial Goon, unlock experience, and hit level 2.",
+      "giverNpcId": "tutorial-goon",
+      "onCompleteGoalFlag": "floor1-leveling-quest-complete",
+      "template": {
+        "kind": "goalFlag",
+        "objectiveId": "reach-level-2",
+        "label": "Reach level 2",
+        "goalId": "floor1-reach-level-2"
+      }
+    },
+    {
+      "id": "floor1-boss-unlock",
+      "title": "Pest Control for Beginners",
+      "summary": "Thin out rats and slimes to unlock the boss room door.",
+      "giverNpcId": "tutorial-goon",
+      "onCompleteGoalFlag": "floor1-goon-quest-complete",
+      "template": {
+        "kind": "killTargets",
+        "targets": [
+          {
+            "objectiveId": "kill-rats",
+            "label": "Exterminate rats",
+            "target": 6
+          },
+          {
+            "objectiveId": "kill-slimes",
+            "label": "Squish slimes",
+            "target": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "floor1-shopkeeper-errand",
+      "title": "The Merchant's Disgusting Little Errand",
+      "summary": "A clammy shopkeeper will only trade with contestants who fetch him a very particular souvenir. Try not to think about what he does with it.",
+      "giverNpcId": "shopkeeper",
+      "onCompleteGoalFlag": "floor1-shop-quest-complete",
+      "template": {
+        "kind": "fetchAndEquip",
+        "meetObjectiveId": "meet-merchant",
+        "meetLabel": "Introduce yourself to the merchant",
+        "npcId": "shopkeeper",
+        "fetchObjectiveId": "fetch-prize",
+        "fetchLabel": "Retrieve his \"special\" rat tail (dropped in a far dungeon room)",
+        "itemId": "glistening-rat-tail",
+        "fetchTarget": 1,
+        "returnObjectiveId": "return-prize",
+        "returnLabel": "Hand the merchant his prize (ew)",
+        "returnGoalId": "floor1-shop-prize-returned",
+        "buyObjectiveId": "buy-gear",
+        "buyLabel": "Buy a piece of equipment",
+        "equipObjectiveId": "equip-gear",
+        "equipLabel": "Equip your new gear",
+        "equipmentId": "merchants-stained-charm"
+      }
+    }
+  ]
+}

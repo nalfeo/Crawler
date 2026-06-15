@@ -1,0 +1,112 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+  getQuestDef,
+  getQuestPacks,
+  installDefaultQuestPacks,
+  installQuestPacks,
+  objectiveTarget,
+  questPackSchema,
+} from '../../src/shared/quest-types.js';
+
+describe('quest content packs', () => {
+  afterEach(() => {
+    installDefaultQuestPacks();
+  });
+
+  it('loads bundled floor1 quests from a validated data pack', () => {
+    expect(getQuestPacks()).toHaveLength(1);
+
+    expect(getQuestDef(FLOOR1_TUTORIAL_QUEST_ID)?.objectives).toEqual([
+      {
+        id: 'reach-level-2',
+        label: 'Reach level 2',
+        kind: 'goal',
+        goalId: 'floor1-reach-level-2',
+      },
+    ]);
+
+    expect(getQuestDef(FLOOR1_BOSS_UNLOCK_QUEST_ID)?.objectives).toEqual([
+      {
+        id: 'kill-rats',
+        label: 'Exterminate rats',
+        kind: 'counter',
+        target: 6,
+      },
+      {
+        id: 'kill-slimes',
+        label: 'Squish slimes',
+        kind: 'counter',
+        target: 4,
+      },
+    ]);
+
+    expect(getQuestDef(FLOOR1_SHOP_QUEST_ID)?.objectives.map((o) => o.kind)).toEqual([
+      'talk',
+      'collect',
+      'goal',
+      'haveEquippable',
+      'equip',
+    ]);
+  });
+
+  it('compiles template-driven packs at runtime', () => {
+    installQuestPacks([
+      questPackSchema.parse({
+        version: 1,
+        packId: 'tests',
+        quests: [
+          {
+            id: 'kill-x-template',
+            title: 'Target Practice',
+            summary: 'Eliminate test mobs.',
+            template: {
+              kind: 'killTargets',
+              targets: [
+                { objectiveId: 'kill-bats', label: 'Kill bats', target: 3 },
+                { objectiveId: 'kill-goblins', label: 'Kill goblins', target: 2 },
+              ],
+            },
+          },
+        ],
+      }),
+    ]);
+
+    expect(getQuestDef('kill-x-template')?.objectives).toEqual([
+      { id: 'kill-bats', label: 'Kill bats', kind: 'counter', target: 3 },
+      { id: 'kill-goblins', label: 'Kill goblins', kind: 'counter', target: 2 },
+    ]);
+  });
+
+  it('defaults missing objective targets to 1', () => {
+    expect(
+      objectiveTarget({
+        id: 'x',
+        label: 'X',
+        kind: 'counter',
+      }),
+    ).toBe(1);
+  });
+
+  it('rejects malformed quest packs via schema validation', () => {
+    expect(() =>
+      questPackSchema.parse({
+        version: 1,
+        packId: 'invalid',
+        quests: [
+          {
+            id: 'bad',
+            title: 'Bad',
+            summary: 'Bad',
+            template: {
+              kind: 'killTargets',
+              targets: [{ objectiveId: 'oops', label: 'Oops', target: 0 }],
+            },
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+});
