@@ -93,7 +93,7 @@ bake('temp_door_open', 34); // door swung open, wide dark passage (clearly see-t
 bake('temp_hero', 96); // knight
 bake('temp_npc', 99); // princess
 bake('temp_slime', 108); // teal ooze
-bake('temp_rat', 122); // spider (no rat exists in any vendored CC0 pack)
+bake('temp_rat', 123); // brown rat (curled body, snout + tail, top-down rodent)
 bake('temp_fireball', 29, { flame: true }); // color-keyed flame
 
 // Contact sheet for quick visual verification.
@@ -106,7 +106,7 @@ const picks = [
   ['hero', 96],
   ['npc', 99],
   ['slime', 108],
-  ['rat/spider', 122],
+  ['rat', 123],
   ['flame', -1],
 ];
 const COLS = 7;

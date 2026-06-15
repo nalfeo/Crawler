@@ -135,6 +135,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private doorGraphics?: Phaser.GameObjects.Graphics;
 
+  /** Per-door sprite Images (Tiny Dungeon door art), rebuilt on door updates. */
+  private doorImages: Phaser.GameObjects.Image[] = [];
+
   private safeRoomMarker?: Phaser.GameObjects.Arc;
 
   private staircaseMarker?: Phaser.GameObjects.Arc;
@@ -350,6 +353,10 @@ export class MainGameScene extends Phaser.Scene {
       this.bridge = undefined;
       this.mapRt?.destroy();
       this.doorGraphics?.destroy();
+      for (const img of this.doorImages) {
+        img.destroy();
+      }
+      this.doorImages.length = 0;
       this.safeRoomMarker?.destroy();
       this.staircaseMarker?.destroy();
       this.stairsLabel?.destroy();
@@ -877,6 +884,10 @@ export class MainGameScene extends Phaser.Scene {
   private drawFloorTerrain(): void {
     this.mapRt?.destroy();
     this.doorGraphics?.destroy();
+    for (const img of this.doorImages) {
+      img.destroy();
+    }
+    this.doorImages.length = 0;
     this.mapRt = undefined;
     this.doorGraphics = undefined;
 
@@ -995,17 +1006,37 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     g.clear();
+    for (const img of this.doorImages) {
+      img.destroy();
+    }
+    this.doorImages.length = 0;
+
     const tileSize = floorMap.config.tileSizePx;
+    const TD_KEY = 'kenney-tiny-dungeon';
+    const DOOR_CLOSED_FRAME = 46; // brown arched wooden door
+    const DOOR_OPEN_FRAME = 34; // door swung open, clear passage
+    const hasSheet = this.textures.exists(TD_KEY);
+
     for (let y = 0; y < floorMap.height; y += 1) {
       for (let x = 0; x < floorMap.width; x += 1) {
         if (!floorMap.tileMap.isDoor(x, y)) {
           continue;
         }
         const isOpen = floorMap.tileMap.isPassable(x, y);
-        g.fillStyle(isOpen ? 0xd2b48c : 0x6b4423, 1);
-        g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-        g.lineStyle(1, isOpen ? 0xf5deb3 : 0x3d2615, 0.9);
-        g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+        if (hasSheet) {
+          const frame = isOpen ? DOOR_OPEN_FRAME : DOOR_CLOSED_FRAME;
+          const img = this.add
+            .image(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2, TD_KEY, frame)
+            .setDepth(-19)
+            .setScale(tileSize / 16);
+          this.doorImages.push(img);
+        } else {
+          // Fallback for environments without the sprite sheet (e.g. tests).
+          g.fillStyle(isOpen ? 0xd2b48c : 0x6b4423, 1);
+          g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+          g.lineStyle(1, isOpen ? 0xf5deb3 : 0x3d2615, 0.9);
+          g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+        }
       }
     }
   }

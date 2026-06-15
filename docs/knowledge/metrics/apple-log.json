@@ -223,5 +223,14 @@
     "delta": 0,
     "verdict": "exact",
     "notes": "Temporary CC0 Kenney art bridge: bake script + rewritten visual-snapshot lab (clean grid, wall depth shadow, scattered floor detail, see-through door, glowing fireball) + stricter judge. Established VLM judge caps flat CC0 art at style ~3; user accepted shipping after concrete defects fixed."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "wire-cc0-art-into-main-game",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Wired approved CC0 tiny-dungeon art into actual gameplay: repointed entity sprites (registry) and tiles (tile-visuals) to clean frames, rewrote MainGameScene door overlay to stamp real door art. Corrected rat to frame 123 (123/124 are real rats; prior spider stand-in was wrong). Visually verified lab + main game via Playwright. verify:fast passes; full-verify failures are unrelated flaky sprite-pipeline integration timeouts that pass in isolation."
   }
 ]

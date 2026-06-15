@@ -204,8 +204,8 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]?.textureKey).toBe('custom-pixel-sprites');
-    expect(images[0]?.frame).toBe(0); // player at (0, 0)
+    expect(images[0]?.textureKey).toBe('kenney-tiny-dungeon');
+    expect(images[0]?.frame).toBe(96); // player → Tiny Dungeon knight (frame 96)
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
   });
 
