@@ -34,8 +34,10 @@ async function run() {
   });
   const page = await context.newPage();
 
-  console.log('Navigating to http://localhost:3006/lab.html?lab=visual-snapshot-lab');
-  await page.goto('http://localhost:3006/lab.html?lab=visual-snapshot-lab');
+  const port = process.env.SNAPSHOT_PORT || '3003';
+  const url = `http://localhost:${port}/lab.html?lab=visual-snapshot-lab`;
+  console.log(`Navigating to ${url}`);
+  await page.goto(url);
 
   // Wait for it to render
   await page.waitForTimeout(3000);
@@ -62,18 +64,41 @@ async function run() {
     apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2024-02-15-preview',
   });
 
-  const prompt = `You are an expert game developer reviewing a procedural pixel art prototype.
-The user's goal is to hit a 4/5 score across these criteria to prove the automated art pipeline works.
-This is PROGRAMMER ART generated algorithmically, so do not hold it to shipped AAA standards.
-If the floor does not look like a blatant noisy mess, and walls/doors have a proper visual grounding (like a shadow), and sprites look roughly recognizable, give it a 4.
+  const prompt = `You are a STRICT senior pixel-art director reviewing a top-down dungeon scene
+for a commercial game. Hold it to the bar of a shipped modern pixel game (Terraria,
+Stardew Valley, Enter the Gungeon). Do NOT give credit for effort or for being a
+"prototype". Score what you actually see. Most amateur output should land at 2-3.
 
-Evaluate the attached visual snapshot on the following axes (1-5):
-1. Tiling: Do the floor tiles connect seamlessly without obvious seams?
-2. Style: Does the scene look like a cohesive modern pixel game (e.g., Terraria, Stardew, or Enter the Gungeon prototype)?
-3. Readability: Are the mobs (slime, rat), hero, and fireball visually distinct and readable against the floor?
-4. Overall Quality: Is this a solid 4/5 prototype?
+The scene should contain a walled room with a tiled floor, an OPEN door (you can see
+the passage/threshold through it), a CLOSED door, a hero, an NPC, a slime, a small
+vermin creature, and a glowing fireball.
 
-Output a JSON object ONLY matching this schema:
+Be ruthless. Deduct heavily (cap the axis at 2) for ANY of these defects:
+- Floor tiles that are all identical with zero variation, or that show obvious
+  repeating seams / a grid of hard lines.
+- Walls that do not look like solid blocks: visible banding/stripes, a vertical wall
+  reusing a horizontal tile, broken or missing corners, or BLACK GAPS between the wall
+  and the adjacent floor.
+- An "open" door that is just a frame stuck on a wall with no visible passage, or that
+  reads identically to the closed door.
+- Mobs/characters that are unrecognizable blobs (e.g. a "rat" or "slime" you could not
+  identify without the label), or that look like a 1991 / NES-era game.
+- A fireball that is just a flat dot with no glow, or indistinguishable from the floor.
+- Overall incoherent art where tiles/sprites clearly come from clashing styles.
+
+Award 4 only if the axis is genuinely clean and would not embarrass a hobbyist release.
+Award 5 only if it looks professionally cohesive and intentional.
+
+Evaluate the attached snapshot on these axes (integer 1-5):
+1. tiling: Do floor tiles vary believably and tile seamlessly, AND do walls form a
+   solid bordered room with correct edges/corners and no black gaps?
+2. style: Does the whole scene read as one cohesive, modern pixel-art game?
+3. readability: Are the hero, NPC, slime, vermin, both doors, and the fireball each
+   individually recognizable at a glance and distinct from the floor?
+4. overall_quality: Holistic verdict vs. a shipped modern pixel game.
+
+For each axis give a concrete, specific rationale naming exactly what you see (good and
+bad). Output ONLY this JSON:
 {
   "tiling": { "score": number, "rationale": "string" },
   "style": { "score": number, "rationale": "string" },

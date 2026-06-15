@@ -1,7 +1,15 @@
 import Phaser from 'phaser';
 import { registerLab } from '../registry.js';
+import { SeededRandom } from '../../shared/random.js';
 
 const LAB_ID = 'visual-snapshot-lab';
+
+const TILE = 64;
+const GW = 11; // grid width (tiles)
+const GH = 9; // grid height (tiles)
+const FLOOR_VARIANTS = 2; // 0 = flat, 1 = lightly speckled
+const DOOR_OPEN_COL = 5; // top wall
+const DOOR_CLOSED_ROW = 4; // right wall
 
 class VisualSnapshotScene extends Phaser.Scene {
   constructor() {
@@ -9,112 +17,168 @@ class VisualSnapshotScene extends Phaser.Scene {
   }
 
   preload() {
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < FLOOR_VARIANTS; i++) {
       this.load.image(`floor_${i}`, `assets/generated/temp_floor_${i}.png`);
     }
-    for (let i = 0; i < 4; i++) {
-      this.load.image(`wall_h_${i}`, `assets/generated/temp_wall_h_${i}.png`);
-      this.load.image(`wall_v_${i}`, `assets/generated/temp_wall_v_${i}.png`);
-    }
-    this.load.image('wall_tl', 'assets/generated/temp_wall_tl.png');
-    this.load.image('wall_tr', 'assets/generated/temp_wall_tr.png');
-    this.load.image('wall_bl', 'assets/generated/temp_wall_bl.png');
-    this.load.image('wall_br', 'assets/generated/temp_wall_br.png');
+    this.load.image('wall', 'assets/generated/temp_wall.png');
     this.load.image('door_closed', 'assets/generated/temp_door_closed.png');
     this.load.image('door_open', 'assets/generated/temp_door_open.png');
     this.load.image('hero', 'assets/generated/temp_hero.png');
+    this.load.image('npc', 'assets/generated/temp_npc.png');
     this.load.image('slime', 'assets/generated/temp_slime.png');
     this.load.image('rat', 'assets/generated/temp_rat.png');
     this.load.image('fireball', 'assets/generated/temp_fireball.png');
   }
 
+  private tile(col: number, row: number, key: string, depth: number): Phaser.GameObjects.Image {
+    const img = this.add.image(col * TILE, row * TILE, key);
+    img.setOrigin(0, 0);
+    img.setDepth(depth);
+    return img;
+  }
+
+  private entity(col: number, row: number, key: string): Phaser.GameObjects.Image {
+    const x = col * TILE + TILE / 2;
+    const y = row * TILE + TILE / 2;
+    const img = this.add.image(x, y, key);
+    img.setOrigin(0.5, 0.9); // feet near tile centre for grounded look
+    img.setDepth(1000 + y);
+    return img;
+  }
+
   create() {
-    this.cameras.main.setBackgroundColor('#16131d');
+    this.cameras.main.setBackgroundColor('#0e0b14');
+    const rng = new SeededRandom(0xc0ffee);
 
-    const tileSize = 64;
+    const isWall = (c: number, r: number) => c === 0 || r === 0 || c === GW - 1 || r === GH - 1;
+    // Mostly the flat tile; sprinkle the speckled one so it varies without seams.
+    const floorKey = () => `floor_${rng.nextInt(0, 3) === 0 ? 1 : 0}`;
 
-    // Draw 10x10 floor
-    for (let y = 0; y < 10; y++) {
-      for (let x = 0; x < 10; x++) {
-        const variant = Math.floor(Math.random() * 16);
-        const img = this.add.image(
-          x * tileSize + tileSize / 2,
-          y * tileSize + tileSize / 2,
-          `floor_${variant}`,
-        );
-        img.setOrigin(0.5, 0.5);
+    // 1. Floor everywhere (under walls + doorways too -> never a black gap).
+    //    Plus a passage tile just outside the open door.
+    this.tile(DOOR_OPEN_COL, -1, floorKey(), 0);
+    for (let r = 0; r < GH; r++) {
+      for (let c = 0; c < GW; c++) {
+        this.tile(c, r, floorKey(), 0);
       }
     }
 
-    // Top wall
-    for (let x = 2; x < 8; x++) {
-      const img = this.add.image(
-        x * tileSize + tileSize / 2,
-        2 * tileSize + tileSize,
-        `wall_h_${Math.floor(Math.random() * 4)}`,
+    // 1b. Scatter subtle floor detail (pebbles / cracks) so the floor reads as
+    //     textured and varied rather than a repeated tile.
+    for (let n = 0; n < 14; n++) {
+      const c = rng.nextInt(1, GW - 2);
+      const r = rng.nextInt(1, GH - 2);
+      const px = c * TILE + rng.nextInt(10, TILE - 10);
+      const py = r * TILE + rng.nextInt(10, TILE - 10);
+      const dark = rng.nextInt(0, 1) === 0;
+      const spec = this.add.ellipse(
+        px,
+        py,
+        rng.nextInt(4, 9),
+        rng.nextInt(4, 8),
+        dark ? 0x8f7048 : 0xe2c79a,
+        dark ? 0.5 : 0.4,
       );
-      img.setOrigin(0.5, 0.5);
-      img.setDepth(2 * tileSize + tileSize);
+      spec.setDepth(2);
     }
 
-    // Left and right walls
-    for (let y = 3; y < 7; y++) {
-      const img1 = this.add.image(
-        2 * tileSize + tileSize / 2,
-        y * tileSize + tileSize,
-        `wall_v_${Math.floor(Math.random() * 4)}`,
-      );
-      img1.setOrigin(0.5, 0.5);
-      img1.setDepth(y * tileSize + tileSize);
-
-      const img2 = this.add.image(
-        7 * tileSize + tileSize / 2,
-        y * tileSize + tileSize,
-        `wall_v_${Math.floor(Math.random() * 4)}`,
-      );
-      img2.setOrigin(0.5, 0.5);
-      img2.setDepth(y * tileSize + tileSize);
+    // 2. Uniform wall ring (single cohesive grey-brick block, no corner logic).
+    for (let r = 0; r < GH; r++) {
+      for (let c = 0; c < GW; c++) {
+        if (!isWall(c, r)) continue;
+        if (r === 0 && c === DOOR_OPEN_COL) continue; // open doorway
+        if (c === GW - 1 && r === DOOR_CLOSED_ROW) continue; // closed doorway
+        this.tile(c, r, 'wall', 1);
+      }
     }
 
-    // Corners
-    const tl = this.add.image(2 * tileSize + tileSize / 2, 2 * tileSize + tileSize, 'wall_tl');
-    tl.setOrigin(0.5, 0.5);
-    tl.setDepth(2 * tileSize + tileSize);
-    const tr = this.add.image(7 * tileSize + tileSize / 2, 2 * tileSize + tileSize, 'wall_tr');
-    tr.setOrigin(0.5, 0.5);
-    tr.setDepth(2 * tileSize + tileSize);
-    const bl = this.add.image(2 * tileSize + tileSize / 2, 7 * tileSize + tileSize, 'wall_bl');
-    bl.setOrigin(0.5, 0.5);
-    bl.setDepth(7 * tileSize + tileSize);
-    const br = this.add.image(7 * tileSize + tileSize / 2, 7 * tileSize + tileSize, 'wall_br');
-    br.setOrigin(0.5, 0.5);
-    br.setDepth(7 * tileSize + tileSize);
+    // 3. Doors. Open door sits over floor threshold so the passage shows through.
+    this.tile(DOOR_OPEN_COL, 0, 'door_open', 2);
+    this.tile(GW - 1, DOOR_CLOSED_ROW, 'door_closed', 2);
 
-    // Doors
-    const d1 = this.add.image(5 * tileSize + tileSize / 2, 2 * tileSize + tileSize, 'door_open');
-    d1.setOrigin(0.5, 0.5);
-    d1.setDepth(2 * tileSize + tileSize);
-    const d2 = this.add.image(7 * tileSize + tileSize / 2, 5 * tileSize + tileSize, 'door_closed');
-    d2.setOrigin(0.5, 0.5);
-    d2.setDepth(5 * tileSize + tileSize);
+    // 3b. Inner drop-shadow cast from the wall ring onto the floor -> the walls
+    //     read as taller than the floor (depth), not a flat painted band.
+    const inX = TILE;
+    const inY = TILE;
+    const inW = (GW - 2) * TILE;
+    const inH = (GH - 2) * TILE;
+    const shadow = (x: number, y: number, w: number, h: number, a: number) => {
+      const s = this.add.rectangle(x, y, w, h, 0x000000, a);
+      s.setOrigin(0, 0);
+      s.setDepth(3);
+      s.setBlendMode(Phaser.BlendModes.MULTIPLY);
+    };
+    for (let layer = 0; layer < 3; layer++) {
+      const t = (3 - layer) * 5; // 15,10,5 px thick
+      const a = 0.18 - layer * 0.05;
+      shadow(inX, inY + layer * 5, inW, t, a); // top
+      shadow(inX, inY + inH - (layer + 1) * 5, inW, t, a); // bottom
+      shadow(inX + layer * 5, inY, t, inH, a); // left
+      shadow(inX + inW - (layer + 1) * 5, inY, t, inH, a); // right
+    }
 
-    // Sprites
-    const hero = this.add.image(4 * tileSize + tileSize / 2, 4 * tileSize + tileSize / 2, 'hero');
-    hero.setOrigin(0.5, 0.5);
-    hero.setDepth(hero.y);
-    const slime = this.add.image(3 * tileSize + tileSize / 2, 5 * tileSize + tileSize / 2, 'slime');
-    slime.setOrigin(0.5, 0.5);
-    slime.setDepth(slime.y);
-    const rat = this.add.image(6 * tileSize + tileSize / 2, 6 * tileSize + tileSize / 2, 'rat');
-    rat.setOrigin(0.5, 0.5);
-    rat.setDepth(rat.y);
-    const fire = this.add.image(5 * tileSize, 4 * tileSize + tileSize / 2, 'fireball');
+    // 4. Entities on interior floor.
+    this.entity(3, 2, 'npc');
+    this.entity(7, 3, 'hero');
+    this.entity(3, 6, 'slime');
+    this.entity(7, 6, 'rat');
+
+    // 5. Animated fireball in flight: trailing tail + layered glow + flicker.
+    const fy = 4 * TILE + TILE / 2;
+    const x0 = 3 * TILE;
+    const x1 = 8 * TILE;
+
+    const tail = this.add.ellipse(x0, fy, 150, 34, 0xff5a1e, 0.3);
+    tail.setBlendMode(Phaser.BlendModes.ADD);
+    tail.setDepth(3999);
+    const glow = this.add.ellipse(x0, fy, 104, 104, 0xff7a22, 0.5);
+    glow.setBlendMode(Phaser.BlendModes.ADD);
+    glow.setDepth(4000);
+    const core = this.add.ellipse(x0, fy, 46, 46, 0xffd24a, 0.75);
+    core.setBlendMode(Phaser.BlendModes.ADD);
+    core.setDepth(4001);
+    const fire = this.add.image(x0, fy, 'fireball');
     fire.setOrigin(0.5, 0.5);
-    fire.setDepth(fire.y);
+    fire.setScale(1.15);
+    fire.setDepth(4002);
 
-    // Zoom in a bit
-    this.cameras.main.setZoom(2);
-    this.cameras.main.centerOn(5 * tileSize, 5 * tileSize);
+    const travelers = [tail, glow, core, fire];
+    this.tweens.add({
+      targets: travelers,
+      x: x1,
+      duration: 1400,
+      ease: 'Sine.InOut',
+      yoyo: true,
+      repeat: -1,
+      onYoyo: () => {
+        tail.scaleX = -1; // tail trails behind direction of travel
+      },
+      onRepeat: () => {
+        tail.scaleX = 1;
+      },
+    });
+    this.tweens.add({
+      targets: [glow, core],
+      scale: 1.3,
+      duration: 240,
+      ease: 'Sine.InOut',
+      yoyo: true,
+      repeat: -1,
+    });
+    this.tweens.add({
+      targets: fire,
+      scaleX: 1.3,
+      scaleY: 1.0,
+      angle: 12,
+      duration: 130,
+      ease: 'Sine.InOut',
+      yoyo: true,
+      repeat: -1,
+    });
+
+    // Frame the room.
+    this.cameras.main.setZoom(1.2);
+    this.cameras.main.centerOn((GW * TILE) / 2, (GH * TILE) / 2);
   }
 }
 
