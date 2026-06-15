@@ -38,6 +38,23 @@
       }
     },
     {
+      "id": "floor1-boss-battle",
+      "title": "Neighborhood Watch",
+      "summary": "Defeat the Slime Rat, a fearsome neighborhood boss, and claim your magical power.",
+      "giverNpcId": "tutorial-goon",
+      "onCompleteGoalFlag": "floor1-boss-battle-complete",
+      "template": {
+        "kind": "killTargets",
+        "targets": [
+          {
+            "objectiveId": "kill-slime-rat",
+            "label": "Defeat the Slime Rat",
+            "target": 1
+          }
+        ]
+      }
+    },
+    {
       "id": "floor1-shopkeeper-errand",
       "title": "The Merchant's Disgusting Little Errand",
       "summary": "A clammy shopkeeper will only trade with contestants who fetch him a very particular souvenir. Try not to think about what he does with it.",

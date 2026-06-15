@@ -43,6 +43,7 @@ import {
 } from '../shared/equipmentDefs.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
@@ -56,6 +57,7 @@ import {
   setQuestCounter,
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
+import { memorizeSpell } from './systems/abilitySystem.js';
 
 const FLOOR_1_PROTAGONIST = 'Rhea Vale';
 const FLOOR_1_STARTER_POOL = ['sword', 'knife', 'bow', 'pistol', 'throwing-knife'] as const;
@@ -748,6 +750,13 @@ function beginFloor1BossBattle(world: GameWorld): void {
   objective.staircaseLocked = true;
   objective.staircaseUnlocked = false;
   setGoalFlag(world, 'floor1-boss-active', true);
+
+  // Accept the boss battle quest
+  if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+  }
+
   objective.staircaseBossEid = spawnFloor1StairBoss(world);
   const floorMap = world.floorMap;
   const bossRoom = floorMap?.bossStairRoom;
@@ -1035,6 +1044,12 @@ function floor1ObjectiveTick(world: GameWorld): void {
     objective.staircaseBossDefeated = true;
     objective.staircaseBossEid = null;
     setGoalFlag(world, 'floor1-boss-active', false);
+
+    // Update the boss battle quest with the kill
+    setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
+    // Trigger quest system to evaluate completion
+    questSystem(world);
+
     const floorMap = world.floorMap;
     if (floorMap?.bossStairRoom) {
       for (const door of floorMap.bossStairRoom.doors) {
@@ -1232,5 +1247,59 @@ export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean
     return false;
   }
   removeItem(bag, slot.itemId, 1);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Boss battle spell selection flow
+// ---------------------------------------------------------------------------
+
+const FLOOR1_BOSS_BATTLE_SPELLS = ['fireball', 'heal', 'pulse-shield'] as const;
+
+/** Check if the boss battle quest is available for selection. */
+export function shouldShowSpellSelector(world: GameWorld): boolean {
+  // Show the spell selector if the boss battle quest just completed
+  return (
+    world.goalFlags.get('floor1-boss-battle-complete') === true &&
+    world.featureUnlocks.spells === false
+  );
+}
+
+/** Show the spell selector modal with available spells. */
+export function showSpellSelector(world: GameWorld, showModal: (spellIds: string[]) => void): void {
+  if (!shouldShowSpellSelector(world)) {
+    return;
+  }
+  // The showModal callback receives the list of available spell IDs to display
+  showModal(Array.from(FLOOR1_BOSS_BATTLE_SPELLS));
+}
+
+/** Select a spell to equip. Returns true when the spell was successfully learned. */
+export function selectSpellFromBossBattle(
+  world: GameWorld,
+  playerEid: number,
+  spellId: string,
+): boolean {
+  // Verify the spell is one of the allowed options
+  if (!FLOOR1_BOSS_BATTLE_SPELLS.includes(spellId as (typeof FLOOR1_BOSS_BATTLE_SPELLS)[number])) {
+    return false;
+  }
+
+  // Verify the quest completion goal flag is set
+  if (world.goalFlags.get('floor1-boss-battle-complete') !== true) {
+    return false;
+  }
+
+  // Verify the feature unlock hasn't already been triggered
+  if (world.featureUnlocks.spells === true) {
+    return false;
+  }
+
+  // Equip the selected spell
+  memorizeSpell(world, playerEid, spellId);
+
+  // Unlock the spells feature (MP bar + ability system)
+  world.featureUnlocks.spells = true;
+
   return true;
 }
