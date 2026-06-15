@@ -1,41 +1,43 @@
 /**
  * HudHealthBar — fixed-position health bar rendered in the Phaser scene.
  *
- * Uses two Rectangle GameObjects (shell + fill) to avoid per-frame Graphics
- * redraws. Color transitions: green > yellow > red. Low-HP pulse via Phaser tween.
+ * Cohesive pixel-UI styling (see engine/pixel-ui): a raised beveled panel holds
+ * a pixel heart icon, an inset segmented HP bar with a glossy shine, and a
+ * centered HP readout. Colour transitions green → amber → red; a tween pulses
+ * the fill at low HP. Public `sync`/`destroy` contract is unchanged.
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
+import {
+  PIXEL_UI,
+  PIXEL_UI_DEPTH,
+  PIXEL_ICON,
+  createBeveledPanel,
+  createStatBar,
+  addPixelIcon,
+} from './pixel-ui.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
 // ---------------------------------------------------------------------------
 
+const PAD = 7;
+const ICON_SIZE = 16;
+const BAR_WIDTH = 200;
+const BAR_HEIGHT = 18;
+const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
+const PANEL_H = PAD + BAR_HEIGHT + PAD;
+
 const BAR_X = 16;
 const BAR_Y = GAME.HEIGHT - 52;
-const BAR_WIDTH = 220;
-const BAR_HEIGHT = 20;
-const BORDER = 2;
-const LABEL_OFFSET_X = BAR_WIDTH + 10;
-const DEPTH = 1000;
-
-const COLORS = {
-  shell: 0x1e293b,
-  shellBorder: 0x334155,
-  barHigh: 0x22c55e, // > 50 %
-  barMid: 0xf59e0b, // 25–50 %
-  barLow: 0xef4444, // < 25 %
-  labelText: '#f8fafc',
-  labelBg: 0x0f172a,
-} as const;
 
 const LOW_HP_THRESHOLD = 0.25;
 
 export interface HudHealthBarOptions {
   /** Horizontal position of left edge. Defaults to 16. */
   x?: number;
-  /** Vertical position of top edge. Defaults to bottom-left corner. */
+  /** Vertical position of bar top edge. Defaults to bottom-left corner. */
   y?: number;
 }
 
@@ -46,51 +48,40 @@ export function createHudHealthBar(
   sync(world: GameWorld, playerEid: number): void;
   destroy(): void;
 } {
-  const x = options.x ?? BAR_X;
-  const y = options.y ?? BAR_Y;
+  const barX = options.x ?? BAR_X;
+  const barY = options.y ?? BAR_Y;
 
-  // Shell (background track)
-  const shell = scene.add
-    .rectangle(
-      x + BAR_WIDTH / 2,
-      y + BAR_HEIGHT / 2,
-      BAR_WIDTH + BORDER * 2,
-      BAR_HEIGHT + BORDER * 2,
-      COLORS.shell,
-    )
-    .setStrokeStyle(1, COLORS.shellBorder)
-    .setScrollFactor(0)
-    .setDepth(DEPTH);
+  const panelX = barX;
+  const panelY = barY + BAR_HEIGHT / 2 - PANEL_H / 2;
 
-  // Fill rectangle — anchored left, scaled by width
-  const fill = scene.add
-    .rectangle(x, y + BAR_HEIGHT / 2, BAR_WIDTH, BAR_HEIGHT, COLORS.barHigh)
-    .setOrigin(0, 0.5)
-    .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
+  const panel = createBeveledPanel(scene, panelX, panelY, PANEL_W, PANEL_H);
 
-  // HP text label
+  const iconCx = panelX + PAD + ICON_SIZE / 2;
+  const iconCy = panelY + PANEL_H / 2;
+  const icon = addPixelIcon(scene, PIXEL_ICON.heart, iconCx, iconCy, {
+    depth: PIXEL_UI_DEPTH.overlay,
+  });
+
+  const innerBarX = panelX + PAD + ICON_SIZE + 6;
+  const innerBarY = panelY + (PANEL_H - BAR_HEIGHT) / 2;
+
+  const bar = createStatBar(scene, innerBarX, innerBarY, BAR_WIDTH, BAR_HEIGHT, {
+    fill: PIXEL_UI.hpHigh,
+    depth: PIXEL_UI_DEPTH.content,
+    segment: 25,
+  });
+
   const label = scene.add
-    .text(x + LABEL_OFFSET_X, y + BAR_HEIGHT / 2, '', {
+    .text(innerBarX + BAR_WIDTH / 2, innerBarY + BAR_HEIGHT / 2, '', {
       fontFamily: 'monospace',
-      fontSize: '13px',
-      color: COLORS.labelText,
-      backgroundColor: `#${COLORS.labelBg.toString(16).padStart(6, '0')}cc`,
-      padding: { x: 6, y: 3 },
+      fontSize: '12px',
+      color: '#f8fafc',
+      stroke: '#02040a',
+      strokeThickness: 3,
     })
-    .setOrigin(0, 0.5)
+    .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
-
-  // Icon label "♥ HP"
-  const icon = scene.add
-    .text(x, y - 16, '♥ HP', {
-      fontFamily: 'monospace',
-      fontSize: '11px',
-      color: '#94a3b8',
-    })
-    .setScrollFactor(0)
-    .setDepth(DEPTH);
+    .setDepth(PIXEL_UI_DEPTH.overlay);
 
   let pulseTween: Phaser.Tweens.Tween | undefined;
   let wasPulsing = false;
@@ -100,7 +91,7 @@ export function createHudHealthBar(
     wasPulsing = true;
     pulseTween?.stop();
     pulseTween = scene.tweens.add({
-      targets: fill,
+      targets: bar.fill,
       alpha: { from: 1, to: 0.5 },
       duration: 400,
       yoyo: true,
@@ -114,7 +105,7 @@ export function createHudHealthBar(
     wasPulsing = false;
     pulseTween?.stop();
     pulseTween = undefined;
-    fill.setAlpha(1);
+    bar.fill.setAlpha(1);
   }
 
   function sync(world: GameWorld, playerEid: number): void {
@@ -124,11 +115,9 @@ export function createHudHealthBar(
     const max = world.stores.health.max[playerEid] ?? 1;
     const pct = max > 0 ? Math.max(0, Math.min(1, current / max)) : 0;
 
-    const fillWidth = Math.round(pct * BAR_WIDTH);
-    fill.setSize(Math.max(1, fillWidth), BAR_HEIGHT);
-
-    const color = pct > 0.5 ? COLORS.barHigh : pct >= 0.25 ? COLORS.barMid : COLORS.barLow;
-    fill.setFillStyle(color);
+    bar.setPercent(pct);
+    const color = pct > 0.5 ? PIXEL_UI.hpHigh : pct >= 0.25 ? PIXEL_UI.hpMid : PIXEL_UI.hpLow;
+    bar.setColor(color);
 
     label.setText(`${Math.ceil(current)} / ${Math.ceil(max)}`);
 
@@ -141,8 +130,8 @@ export function createHudHealthBar(
 
   function destroy(): void {
     pulseTween?.stop();
-    shell.destroy();
-    fill.destroy();
+    panel.destroy();
+    bar.destroy();
     label.destroy();
     icon.destroy();
   }

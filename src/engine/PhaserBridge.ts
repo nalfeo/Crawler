@@ -149,12 +149,19 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillCircle(29, 23, 1);
   g.generateTexture(TEX_ENEMY_BOSS, 44, 40);
 
-  // XP gem — yellow diamond
+  // XP gem — faceted cyan crystal with dark outline + sparkle
   g.clear();
-  g.fillStyle(0xffee00, 1);
-  g.fillTriangle(5, 0, 0, 5, 5, 10);
-  g.fillTriangle(5, 0, 10, 5, 5, 10);
-  g.generateTexture(TEX_GEM, 12, 12);
+  g.fillStyle(0x0b3038, 1);
+  g.fillTriangle(7, 0, 0, 7, 7, 14);
+  g.fillTriangle(7, 0, 14, 7, 7, 14);
+  g.fillStyle(0x1f9fb8, 1);
+  g.fillTriangle(7, 2, 2, 7, 7, 12);
+  g.fillTriangle(7, 2, 12, 7, 7, 12);
+  g.fillStyle(0x4fd6e8, 1);
+  g.fillTriangle(7, 2, 2, 7, 7, 7);
+  g.fillStyle(0x9af0ff, 1);
+  g.fillRect(5, 3, 2, 2);
+  g.generateTexture(TEX_GEM, 14, 14);
 
   // Player bullet — white elongated pill
   g.clear();

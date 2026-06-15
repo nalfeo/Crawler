@@ -1,69 +1,71 @@
+/**
+ * HudExperienceBar — fixed-position XP progress bar.
+ *
+ * Mirrors the health bar's pixel-UI styling: a beveled panel with an XP-spark
+ * icon and an inset blue progress bar with a glossy shine. Visible only after
+ * the `floor1-xp-unlocked` goal flag is set. Public `sync`/`destroy` unchanged.
+ */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
 import { xpRequiredForLevel } from '../shared/xpMath.js';
+import {
+  PIXEL_UI,
+  PIXEL_UI_DEPTH,
+  PIXEL_ICON,
+  createBeveledPanel,
+  createStatBar,
+  addPixelIcon,
+} from './pixel-ui.js';
+
+const PAD = 7;
+const ICON_SIZE = 16;
+const BAR_WIDTH = 200;
+const BAR_HEIGHT = 12;
+const PANEL_W = PAD + ICON_SIZE + 6 + BAR_WIDTH + PAD;
+const PANEL_H = PAD + BAR_HEIGHT + PAD;
 
 const BAR_X = 16;
-const BAR_Y = GAME.HEIGHT - 82;
-const BAR_WIDTH = 220;
-const BAR_HEIGHT = 14;
-const BORDER = 2;
-const DEPTH = 1000;
-
-const COLORS = {
-  shell: 0x1e1b4b,
-  shellBorder: 0x312e81,
-  fill: 0x60a5fa,
-  label: '#dbeafe',
-  icon: '#93c5fd',
-} as const;
+const BAR_Y = GAME.HEIGHT - 84;
 
 export function createHudExperienceBar(scene: Phaser.Scene): {
   sync(world: GameWorld): void;
   destroy(): void;
 } {
-  const shell = scene.add
-    .rectangle(
-      BAR_X + BAR_WIDTH / 2,
-      BAR_Y + BAR_HEIGHT / 2,
-      BAR_WIDTH + BORDER * 2,
-      BAR_HEIGHT + BORDER * 2,
-      COLORS.shell,
-    )
-    .setStrokeStyle(1, COLORS.shellBorder)
-    .setScrollFactor(0)
-    .setDepth(DEPTH);
+  const panelX = BAR_X;
+  const panelY = BAR_Y + BAR_HEIGHT / 2 - PANEL_H / 2;
 
-  const fill = scene.add
-    .rectangle(BAR_X, BAR_Y + BAR_HEIGHT / 2, BAR_WIDTH, BAR_HEIGHT, COLORS.fill)
-    .setOrigin(0, 0.5)
-    .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
+  const panel = createBeveledPanel(scene, panelX, panelY, PANEL_W, PANEL_H);
+
+  const iconCx = panelX + PAD + ICON_SIZE / 2;
+  const iconCy = panelY + PANEL_H / 2;
+  const icon = addPixelIcon(scene, PIXEL_ICON.xp, iconCx, iconCy, {
+    depth: PIXEL_UI_DEPTH.overlay,
+  });
+
+  const innerBarX = panelX + PAD + ICON_SIZE + 6;
+  const innerBarY = panelY + (PANEL_H - BAR_HEIGHT) / 2;
+
+  const bar = createStatBar(scene, innerBarX, innerBarY, BAR_WIDTH, BAR_HEIGHT, {
+    fill: PIXEL_UI.xpFill,
+    depth: PIXEL_UI_DEPTH.content,
+  });
 
   const label = scene.add
-    .text(BAR_X + BAR_WIDTH + 10, BAR_Y + BAR_HEIGHT / 2, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: COLORS.label,
-      backgroundColor: '#0f172acc',
-      padding: { x: 6, y: 3 },
-    })
-    .setOrigin(0, 0.5)
-    .setScrollFactor(0)
-    .setDepth(DEPTH + 1);
-
-  const icon = scene.add
-    .text(BAR_X, BAR_Y - 14, '✦ XP', {
+    .text(innerBarX + BAR_WIDTH / 2, innerBarY + BAR_HEIGHT / 2, '', {
       fontFamily: 'monospace',
       fontSize: '11px',
-      color: COLORS.icon,
+      color: '#eaf6ff',
+      stroke: '#02040a',
+      strokeThickness: 3,
     })
+    .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
-    .setDepth(DEPTH);
+    .setDepth(PIXEL_UI_DEPTH.overlay);
 
   function setVisible(visible: boolean): void {
-    shell.setVisible(visible);
-    fill.setVisible(visible);
+    panel.setVisible(visible);
+    bar.setVisible(visible);
     label.setVisible(visible);
     icon.setVisible(visible);
   }
@@ -82,13 +84,13 @@ export function createHudExperienceBar(scene: Phaser.Scene): {
     const xpIntoLevel = Math.max(0, totalXp - currentLevelXp);
     const needed = Math.max(1, nextLevelXp - currentLevelXp);
     const pct = Math.max(0, Math.min(1, xpIntoLevel / needed));
-    fill.setSize(Math.max(1, Math.round(BAR_WIDTH * pct)), BAR_HEIGHT);
+    bar.setPercent(pct);
     label.setText(`Lv ${level}  ${xpIntoLevel}/${needed}`);
   }
 
   function destroy(): void {
-    shell.destroy();
-    fill.destroy();
+    panel.destroy();
+    bar.destroy();
     label.destroy();
     icon.destroy();
   }
