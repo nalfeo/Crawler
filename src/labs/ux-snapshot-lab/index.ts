@@ -15,7 +15,11 @@ import { createHudUI } from '../../engine/HudUI.js';
 import { createDialogueBox, type DialogueBox } from '../../engine/DialogueBox.js';
 import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
-import { spawnPlayer } from '../../core/index.js';
+import { spawnPlayer, spawnEnemy, spawnNpc } from '../../core/index.js';
+import { FloorMap } from '../../core/map/FloorMap.js';
+import { TileMap } from '../../core/map/TileMap.js';
+import { RoomGraph } from '../../core/map/RoomGraph.js';
+import { BiomeType, RoomRole, TerrainType, TilePresets } from '../../shared/map-types.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR1_BOSS_UNLOCK_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
@@ -41,6 +45,57 @@ const TILE = 64;
 const GW = Math.ceil(GAME.WIDTH / TILE); // 20
 const GH = Math.ceil(GAME.HEIGHT / TILE); // 12
 const DOOR_OPEN_COL = 9;
+const DOOR_CLOSED_ROW = Math.floor(GH / 2);
+
+/**
+ * Builds a synthetic FloorMap mirroring the visible Floor-1 room so the docked
+ * round radar shows real terrain (teal safe-room floor + wall ring + doors).
+ * `tileSizePx` matches the lab's TILE so ECS entity pixel coords line up with
+ * radar tile maths. Fully revealed (no FOV system runs in labs).
+ */
+function buildRadarFloorMap(): FloorMap {
+  const cfg = {
+    widthTiles: GW,
+    heightTiles: GH,
+    tileSizePx: TILE,
+    biome: BiomeType.DUNGEON as BiomeType,
+    seed: 7,
+    roomWidthRange: [4, 18] as [number, number],
+    roomHeightRange: [4, 10] as [number, number],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+
+  const tileMap = new TileMap(GW, GH);
+  const terrain = new Uint8Array(GW * GH);
+  for (let r = 0; r < GH; r += 1) {
+    for (let c = 0; c < GW; c += 1) {
+      const idx = r * GW + c;
+      const isBorder = c === 0 || r === 0 || c === GW - 1 || r === GH - 1;
+      if (isBorder) {
+        tileMap.flags[idx] = TilePresets.WALL;
+        terrain[idx] = TerrainType.STONE_WALL;
+      } else {
+        tileMap.flags[idx] = TilePresets.FLOOR;
+        terrain[idx] = TerrainType.SAFE_ROOM_FLOOR;
+      }
+    }
+  }
+  // Carve the two doorways shown in the scene.
+  terrain[0 * GW + DOOR_OPEN_COL] = TerrainType.DOOR;
+  tileMap.flags[0 * GW + DOOR_OPEN_COL] = TilePresets.FLOOR;
+  terrain[DOOR_CLOSED_ROW * GW + (GW - 1)] = TerrainType.DOOR;
+
+  const graph = new RoomGraph();
+  graph.add({ x: 1, y: 1, width: GW - 2, height: GH - 2 }, [], [], RoomRole.SAFE);
+
+  const map = new FloorMap(cfg, tileMap, graph, terrain, {
+    x: Math.floor(GW / 2),
+    y: Math.floor(GH / 2),
+  });
+  map.visible.fill(1);
+  return map;
+}
 
 /** Draw a faceted cyan crystal texture (scaled-up cousin of the in-world gem). */
 function ensureCrystalTexture(scene: Phaser.Scene, key: string, s: number): void {
@@ -293,7 +348,17 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       // -------- Synthetic world driving the real HUD --------
       world = createGameWorld({ seed: 7 });
       world.floor = 1;
+      // Revealed safe-room floorMap so the docked round radar shows real
+      // terrain + room; tileSizePx == TILE keeps ECS coords aligned.
+      world.floorMap = buildRadarFloorMap();
+      world.state = 'playing';
       playerEid = spawnPlayer(world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+
+      // ECS mobs + NPC co-located with the visible actors so radar blips match
+      // the on-screen sprites (red = enemy, green = NPC, white = player).
+      spawnNpc(world, 4 * TILE + TILE / 2, 3 * TILE + TILE / 2, 'shopkeeper');
+      spawnEnemy(world, 5 * TILE + TILE / 2, 8 * TILE + TILE / 2, 30);
+      spawnEnemy(world, 14 * TILE + TILE / 2, 7 * TILE + TILE / 2, 12);
 
       // XP unlocked so the experience bar is visible.
       world.goalFlags.set('floor1-xp-unlocked', true);
