@@ -182,7 +182,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
   const hint = document.createElement('p');
   hint.textContent =
-    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, quest tracker, minimap) plus the NPC dialogue box and choice modal, over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states; toggle the dialogue and open the choice modal from the controls.';
+    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, gold/junk loot counter, quest tracker, minimap) plus the NPC dialogue box and choice modal, over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states; toggle the dialogue and open the choice modal from the controls.';
   hint.style.cssText = 'margin-top:16px;color:#c9d4ff;line-height:1.6;';
   controls.append(hint);
 
@@ -411,6 +411,9 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
       syncQuests(world);
 
+      // Carry some loot so the gold/junk HUD counter reads non-zero.
+      world.playerGold = 137;
+
       hudUi = createHudUI(this);
 
       modalPicker = createModalPickerUI(this);
@@ -519,6 +522,6 @@ registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'UX Snapshot',
   description:
-    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, quest tracker, minimap, NPC dialogue box, and choice modal — over a Floor 1 room with in-world drops.',
+    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, gold/junk loot counter, quest tracker, minimap, NPC dialogue box, and choice modal — over a Floor 1 room with in-world drops.',
   create: createUxLab,
 });

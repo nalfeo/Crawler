@@ -282,6 +282,7 @@ export const PIXEL_ICON = {
   coin: '__cw_ui_coin',
   potion: '__cw_ui_potion',
   quest: '__cw_ui_quest',
+  junk: '__cw_ui_junk',
 } as const;
 
 /** Each glyph is an 8×8 grid drawn at `cell` px per pixel (→ 16×16 texture). */
@@ -393,6 +394,20 @@ const ICONS: readonly IconDef[] = [
       '        ',
     ],
     palette: { k: 0x5b4326, p: 0xf5e6c0, t: 0x9a7b45 },
+  },
+  {
+    key: PIXEL_ICON.junk,
+    rows: [
+      '  hhhh  ',
+      ' hDDDDh ',
+      'hDDkkDDh',
+      'hDkSSkDh',
+      'hDkSSkDh',
+      'hDDkkDDh',
+      ' hDDDDh ',
+      '  hhhh  ',
+    ],
+    palette: { h: 0x2a2e38, D: 0x8b94a3, k: 0x3a3f4a, S: 0xc2cad6 },
   },
 ];
 

@@ -1148,8 +1148,6 @@ export class MainGameScene extends Phaser.Scene {
         `Kill progress: ${killProgress}/${requiredTotalKills}`,
         `Rats: ${objective.ratsKilled}/${objective.requiredRats}`,
         `Slimes: ${objective.slimesKilled}/${objective.requiredSlimes}`,
-        `Gold: ${objective.goldCollected}/${objective.requiredGold}`,
-        `Junk: ${objective.junkCollected}/${objective.requiredJunk}`,
         stairStatus,
       ].join('\n'),
     );

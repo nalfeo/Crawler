@@ -9,6 +9,7 @@ import type { GameWorld } from '../core/world.js';
 import { createHudHealthBar } from './HudHealthBar.js';
 import { createHudExperienceBar } from './HudExperienceBar.js';
 import { createHudFloorTimer } from './HudFloorTimer.js';
+import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
 
@@ -20,6 +21,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const healthBar = createHudHealthBar(scene);
   const xpBar = createHudExperienceBar(scene);
   const floorTimer = createHudFloorTimer(scene);
+  const lootCounter = createHudLootCounter(scene);
   const minimap = createHudMinimap(scene);
   const questTracker = createHudQuestTracker(scene);
 
@@ -27,6 +29,7 @@ export function createHudUI(scene: Phaser.Scene): {
     healthBar.sync(world, playerEid);
     xpBar.sync(world);
     floorTimer.sync(world);
+    lootCounter.sync(world);
     minimap.sync(world, playerEid);
     questTracker.sync(world, playerEid);
   }
@@ -35,6 +38,7 @@ export function createHudUI(scene: Phaser.Scene): {
     healthBar.destroy();
     xpBar.destroy();
     floorTimer.destroy();
+    lootCounter.destroy();
     minimap.destroy();
     questTracker.destroy();
   }
