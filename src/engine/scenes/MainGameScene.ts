@@ -36,6 +36,7 @@ import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
+import { createGameOverUI } from '../GameOverUI.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import {
@@ -161,6 +162,11 @@ export class MainGameScene extends Phaser.Scene {
 
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
 
+  private gameOverUI?: ReturnType<typeof createGameOverUI>;
+
+  /** Latches true once the death-screen has been shown (to avoid re-triggering). */
+  private deathScreenShown = false;
+
   /** True when the prize was handed over during the current shopkeeper talk. */
   private shopkeeperJustReturned = false;
 
@@ -261,6 +267,7 @@ export class MainGameScene extends Phaser.Scene {
     this.warnedMissingDependencies = false;
     this.floorCompletionMessageShown = false;
     this.floorCompletionMessagePending = false;
+    this.deathScreenShown = false;
     this.commentaryHideAtMs = 0;
     this.commentaryMilestones = {
       floorIntro: false,
@@ -290,6 +297,16 @@ export class MainGameScene extends Phaser.Scene {
     this.keyInventory = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.I);
     this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
     this.inventoryUI = createInventoryUI(this);
+    this.gameOverUI = createGameOverUI(this, {
+      // Both actions reload for now — a title screen / main menu doesn't exist yet.
+      // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
+      onRestart: () => {
+        window.location.reload();
+      },
+      onQuit: () => {
+        window.location.reload();
+      },
+    });
     this.input.on('pointerdown', this.handlePointerDown, this);
     this.initializeUi();
     this.drawFloorTerrain();
@@ -351,6 +368,8 @@ export class MainGameScene extends Phaser.Scene {
       this.hudUi?.destroy();
       this.inventoryUI?.destroy();
       this.inventoryUI = undefined;
+      this.gameOverUI?.destroy();
+      this.gameOverUI = undefined;
       if (this.uiCamera) {
         this.cameras.remove(this.uiCamera);
         this.uiCamera = undefined;
@@ -421,6 +440,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.floorCompletionMessagePending = this.shouldShowFloorCompletionMessage();
     this.showFloorCompletionScreenIfNeeded();
+    this.showDeathScreenIfNeeded();
     this.refreshCameraMasks();
 
     if (this.modalPicker?.isOpen()) {
@@ -1218,6 +1238,26 @@ export class MainGameScene extends Phaser.Scene {
       return outcome;
     }
     return null;
+  }
+
+  /**
+   * Shows the death screen when the player was slain (world.state === 'game_over'
+   * and no floor-completion screen is handling the transition).
+   *
+   * Floor completion outcomes (cleared_floor, failed_timeout) take precedence:
+   * those cases are already handled by showFloorCompletionScreenIfNeeded() and
+   * should not additionally trigger the death screen.
+   */
+  private showDeathScreenIfNeeded(): void {
+    if (
+      this.world.state !== 'game_over' ||
+      this.deathScreenShown ||
+      this.getFloorRunOutcome() !== null
+    ) {
+      return;
+    }
+    this.deathScreenShown = true;
+    this.gameOverUI?.show();
   }
 
   private updateBossHealthBar(): void {
