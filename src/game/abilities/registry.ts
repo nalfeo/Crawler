@@ -32,6 +32,36 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
       { type: 'stat_add', stat: 'pickupRange', value: 6 },
     ],
   },
+  {
+    id: 'fireball',
+    name: 'Fireball',
+    description: 'Hurl a ball of fire that explodes in an area, burning enemies.',
+    category: 'combat',
+    kind: 'spell',
+    cooldownFrames: 60,
+    trigger: { kind: 'manual' },
+    effects: [{ type: 'spell_fireball', damagePercent: 1.5, radiusTiles: 3 }],
+  },
+  {
+    id: 'heal',
+    name: 'Heal',
+    description: 'Mend your wounds with restorative magic.',
+    category: 'defense',
+    kind: 'spell',
+    cooldownFrames: 90,
+    trigger: { kind: 'manual' },
+    effects: [{ type: 'spell_heal', baseHeal: 30 }],
+  },
+  {
+    id: 'pulse-shield',
+    name: 'Pulse Shield',
+    description: 'Release a shockwave of protective force that knocks back nearby enemies.',
+    category: 'defense',
+    kind: 'spell',
+    cooldownFrames: 75,
+    trigger: { kind: 'manual' },
+    effects: [{ type: 'spell_pulse_shield', knockbackForce: 8, radiusTiles: 4 }],
+  },
 ];
 
 export function parseAbilityCatalog(raw: unknown): AbilityDefinition[] {
