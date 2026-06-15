@@ -17,7 +17,7 @@ export {
   confirmFloor1StairDescend,
   floor1PlayerStatSystem,
   floor1EnemyDirectorSystem,
-  floor1ObjectiveSystem,
+  floorObjectiveSystem,
   meetTutorialGoon,
 } from './floor1Scenario.js';
 export {

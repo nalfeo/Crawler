@@ -3,6 +3,10 @@ name: Auto-rebase open PRs
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, reopened]
+  schedule:
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 concurrency:
@@ -89,7 +93,23 @@ jobs:
               fi
             else
               git rebase --abort || true
-              echo "  ⚠️ Rebase conflict on PR #$number; leaving branch unchanged."
+              echo "  ⚠️ Rebase conflict on PR #$number; delegating to Copilot."
+              marker="auto-rebase-conflict-delegation"
+              body="<!-- ${marker} -->"$'\n'"@copilot This PR has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically. Please resolve the conflict, update the branch, and ensure CI passes."
+              existing_comment_id=$(gh pr view "$number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json comments \
+                --jq ".comments[] | select(.author.login == \"github-actions[bot]\" and (.body | contains(\"${marker}\"))) | .id" | head -n 1)
+              if [ -n "$existing_comment_id" ]; then
+                gh api \
+                  --method PATCH \
+                  "repos/$GITHUB_REPOSITORY/issues/comments/$existing_comment_id" \
+                  --field body="$body" >/dev/null
+              else
+                gh pr comment "$number" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --body "$body"
+              fi
               conflicts=$((conflicts + 1))
             fi
           done < <(echo "$prs_json" | jq -c '.[]')

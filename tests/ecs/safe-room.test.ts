@@ -1,0 +1,258 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import fc from 'fast-check';
+import { spawnPlayer } from '../../src/core/helpers.js';
+import { safeRoomSystem, isInSafeContext, isPointInSafeSpace } from '../../src/core/safe-space.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { BiomeType, RoomRole, TilePresets } from '../../src/shared/map-types.js';
+import type { MapConfig } from '../../src/shared/map-types.js';
+import type { GameWorld } from '../../src/core/world.js';
+import { createTestWorld } from '../helpers/world-factory.js';
+import { equip } from '../../src/core/systems/equipmentSystem.js';
+import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+const MAP_CFG: MapConfig = {
+  widthTiles: 20,
+  heightTiles: 20,
+  tileSizePx: 32,
+  biome: BiomeType.DUNGEON,
+  seed: 1,
+  roomWidthRange: [4, 8],
+  roomHeightRange: [4, 8],
+  maxRooms: 4,
+  floorDensity: 0.5,
+};
+
+/**
+ * Build a minimal FloorMap with:
+ *   - a SAFE room at tiles (1,1)–(4,4) (exclusive), centre pixel ≈ (80, 80)
+ *   - a NORMAL room at tiles (10,10)–(14,14), centre pixel ≈ (384, 384)
+ */
+function makeMapWithSafeRoom(): FloorMap {
+  const w = 20;
+  const h = 20;
+  const tileMap = new TileMap(w, h);
+  const terrain = new Uint8Array(w * h);
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      tileMap.flags[y * w + x] = TilePresets.FLOOR;
+    }
+  }
+
+  const graph = new RoomGraph();
+  // Safe room: x=1, y=1, width=4, height=4 → tile centre at (3, 3)
+  const safeId = graph.add({ x: 1, y: 1, width: 4, height: 4 }, [], [], RoomRole.SAFE);
+  // Normal room: x=10, y=10, width=4, height=4
+  graph.add({ x: 10, y: 10, width: 4, height: 4 }, [], [], RoomRole.NORMAL);
+
+  void safeId; // id=0, role set at add
+
+  return new FloorMap(MAP_CFG, tileMap, graph, terrain, { x: 12, y: 12 });
+}
+
+/** Pixel centre of the safe room (tile 3,3 → pixel 3*32+16=112, same for y). */
+const SAFE_PX = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
+/** Pixel centre of the normal room (tile 12,12 → pixel 12*32+16=400). */
+const NORMAL_PX = { x: 12 * 32 + 16, y: 12 * 32 + 16 };
+
+// ---------------------------------------------------------------------------
+// isPointInSafeSpace
+// ---------------------------------------------------------------------------
+
+describe('isPointInSafeSpace', () => {
+  let world: GameWorld;
+
+  beforeEach(() => {
+    world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoom();
+  });
+
+  it('returns true when point is inside the safe room', () => {
+    expect(isPointInSafeSpace(world, SAFE_PX.x, SAFE_PX.y)).toBe(true);
+  });
+
+  it('returns false when point is in a normal room', () => {
+    expect(isPointInSafeSpace(world, NORMAL_PX.x, NORMAL_PX.y)).toBe(false);
+  });
+
+  it('returns false when world has no floorMap', () => {
+    world.floorMap = null;
+    expect(isPointInSafeSpace(world, SAFE_PX.x, SAFE_PX.y)).toBe(false);
+  });
+
+  it('returns false when there are no SAFE rooms', () => {
+    const graph = new RoomGraph();
+    graph.add({ x: 1, y: 1, width: 4, height: 4 }, [], [], RoomRole.NORMAL);
+    const tileMap = new TileMap(20, 20);
+    world.floorMap = new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(400), { x: 2, y: 2 });
+    expect(isPointInSafeSpace(world, SAFE_PX.x, SAFE_PX.y)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// safeRoomSystem
+// ---------------------------------------------------------------------------
+
+describe('safeRoomSystem', () => {
+  let world: GameWorld;
+  let playerEid: number;
+
+  beforeEach(() => {
+    world = createTestWorld();
+    world.floorMap = makeMapWithSafeRoom();
+    playerEid = spawnPlayer(world, SAFE_PX.x, SAFE_PX.y);
+  });
+
+  it('sets playerInSafeRoom=true when player is in a safe room', () => {
+    world.state = 'playing';
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(true);
+  });
+
+  it('sets playerInSafeRoom=false when player is outside safe rooms', () => {
+    world.stores.position.x[playerEid] = NORMAL_PX.x;
+    world.stores.position.y[playerEid] = NORMAL_PX.y;
+    world.state = 'playing';
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(false);
+  });
+
+  it('does not run when state is not playing', () => {
+    // Start inside safe room but change state — system should be a no-op
+    world.playerInSafeRoom = false;
+    world.state = 'paused';
+    safeRoomSystem(world);
+    // Should not have been updated
+    expect(world.playerInSafeRoom).toBe(false);
+  });
+
+  it('sets playerInSafeRoom=false when no player entity exists', () => {
+    world.playerInSafeRoom = true;
+    // Create a fresh world with no player
+    const emptyWorld = createTestWorld();
+    emptyWorld.floorMap = makeMapWithSafeRoom();
+    emptyWorld.state = 'playing';
+    safeRoomSystem(emptyWorld);
+    expect(emptyWorld.playerInSafeRoom).toBe(false);
+  });
+
+  it('updates correctly when player moves between zones', () => {
+    world.state = 'playing';
+
+    // Inside safe room
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(true);
+
+    // Move to normal room
+    world.stores.position.x[playerEid] = NORMAL_PX.x;
+    world.stores.position.y[playerEid] = NORMAL_PX.y;
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(false);
+
+    // Move back into safe room
+    world.stores.position.x[playerEid] = SAFE_PX.x;
+    world.stores.position.y[playerEid] = SAFE_PX.y;
+    safeRoomSystem(world);
+    expect(world.playerInSafeRoom).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isInSafeContext
+// ---------------------------------------------------------------------------
+
+describe('isInSafeContext', () => {
+  let world: GameWorld;
+
+  beforeEach(() => {
+    world = createTestWorld();
+  });
+
+  it('returns true when playerInSafeRoom is true', () => {
+    world.playerInSafeRoom = true;
+    expect(isInSafeContext(world)).toBe(true);
+  });
+
+  it('returns true when state is safe_room (end-of-run)', () => {
+    world.playerInSafeRoom = false;
+    world.state = 'safe_room';
+    expect(isInSafeContext(world)).toBe(true);
+  });
+
+  it('returns false during regular play outside a safe room', () => {
+    world.playerInSafeRoom = false;
+    world.state = 'playing';
+    expect(isInSafeContext(world)).toBe(false);
+  });
+
+  it('returns true when both flags are true', () => {
+    world.playerInSafeRoom = true;
+    world.state = 'safe_room';
+    expect(isInSafeContext(world)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Equipment gating: only allowed in safe context
+// ---------------------------------------------------------------------------
+
+describe('equipment safe-room gate', () => {
+  let world: GameWorld;
+  let playerEid: number;
+
+  beforeEach(() => {
+    world = createTestWorld();
+    playerEid = spawnPlayer(world, 0, 0);
+    world.featureUnlocks.equipment = true;
+  });
+
+  it('rejects equip outside safe context', () => {
+    world.playerInSafeRoom = false;
+    world.state = 'playing';
+    const result = equip(world, playerEid, MERCHANTS_CHARM_DEF);
+    expect(result.ok).toBe(false);
+  });
+
+  it('allows equip when playerInSafeRoom=true', () => {
+    world.playerInSafeRoom = true;
+    world.state = 'playing';
+    const result = equip(world, playerEid, MERCHANTS_CHARM_DEF);
+    expect(result.ok).toBe(true);
+  });
+
+  it('allows equip in end-of-run safe_room state', () => {
+    world.playerInSafeRoom = false;
+    world.state = 'safe_room';
+    const result = equip(world, playerEid, MERCHANTS_CHARM_DEF);
+    expect(result.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Property: safeRoomSystem always produces a boolean, never throws
+// ---------------------------------------------------------------------------
+
+describe('safeRoomSystem property tests', () => {
+  it('never throws regardless of player position', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: -2000, max: 2000 }),
+        fc.integer({ min: -2000, max: 2000 }),
+        (px, py) => {
+          const world = createTestWorld();
+          world.floorMap = makeMapWithSafeRoom();
+          world.state = 'playing';
+          spawnPlayer(world, px, py);
+          expect(() => safeRoomSystem(world)).not.toThrow();
+          expect(typeof world.playerInSafeRoom).toBe('boolean');
+        },
+      ),
+    );
+  });
+});

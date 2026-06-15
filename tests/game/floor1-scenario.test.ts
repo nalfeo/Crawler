@@ -5,7 +5,7 @@ import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
   floor1EnemyDirectorSystem,
-  floor1ObjectiveSystem,
+  floorObjectiveSystem,
   getShopkeeperStage,
   initializeFloor1Scenario,
   meetTutorialGoon,
@@ -63,7 +63,7 @@ describe('floor1Scenario', () => {
 
     const deadlineMs = world.floor1?.objective.deadlineMs ?? 0;
     world.elapsedMs = deadlineMs + 1;
-    floor1ObjectiveSystem(world);
+    floorObjectiveSystem(world);
 
     expect(world.state).toBe('game_over');
     expect(world.floor1?.failReason).toBe('stair_timeout');
@@ -123,25 +123,25 @@ describe('floor1Scenario', () => {
 
     // Kills do not complete boss-unlock until level quest completion unlocks it.
     world.elapsedMs = 1_000;
-    floor1ObjectiveSystem(world);
+    floorObjectiveSystem(world);
     expect(objective.questCompleted).toBe(false);
 
     meetTutorialGoon(world);
     world.playerLevel.level = 2;
-    floor1ObjectiveSystem(world);
+    floorObjectiveSystem(world);
     questSystem(world);
-    floor1ObjectiveSystem(world);
+    floorObjectiveSystem(world);
 
     expect(world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID)).toBe(true);
     expect(world.goalFlags.get('floor1-leveling-quest-complete')).toBe(true);
     expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
-    floor1ObjectiveSystem(world);
+    floorObjectiveSystem(world);
     expect(objective.questCompleted).toBe(true);
     expect(objective.staircaseBossEid).toBeNull();
 
     world.stores.position.x[player] = objective.staircasePos.x;
     world.stores.position.y[player] = objective.staircasePos.y;
-    floor1ObjectiveSystem(world);
+    floorObjectiveSystem(world);
     expect(objective.bossBattleStarted).toBe(true);
     expect(objective.staircaseDiscovered).toBe(false);
 
@@ -151,7 +151,7 @@ describe('floor1Scenario', () => {
     }
 
     removeEntity(world.ecs, bossEid);
-    floor1ObjectiveSystem(world);
+    floorObjectiveSystem(world);
     expect(objective.staircaseSpawned).toBe(true);
     expect(objective.staircaseLocked).toBe(false);
     expect(objective.staircaseUnlocked).toBe(true);
@@ -257,18 +257,18 @@ describe('floor1Scenario', () => {
       objective.ratsKilled = objective.requiredRats;
       objective.slimesKilled = objective.requiredSlimes;
       world.elapsedMs = 1_000;
-      floor1ObjectiveSystem(world);
+      floorObjectiveSystem(world);
 
       expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(false);
       meetTutorialGoon(world);
-      floor1ObjectiveSystem(world);
+      floorObjectiveSystem(world);
       questSystem(world);
       expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(false);
 
       world.playerLevel.level = 2;
-      floor1ObjectiveSystem(world);
+      floorObjectiveSystem(world);
       questSystem(world);
-      floor1ObjectiveSystem(world);
+      floorObjectiveSystem(world);
       expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
       expect(objective.questCompleted).toBe(true);
       // Boss-door unlock remains independent of the merchant errand.

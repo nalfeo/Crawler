@@ -5,7 +5,7 @@ import { MainGameScene } from '../../engine/scenes/MainGameScene.js';
 import {
   enemyAISystem,
   floor1EnemyDirectorSystem,
-  floor1ObjectiveSystem,
+  floorObjectiveSystem,
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
   meetTutorialGoon,
@@ -106,7 +106,7 @@ const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
     note: 'Wired, but currently inactive for this Floor 1 slice.',
   },
   {
-    name: 'floor1ObjectiveSystem',
+    name: 'floorObjectiveSystem',
     hook: 'Loop post hook',
     implementation: 'Real game implementation',
     activeInFloor1: true,
@@ -273,13 +273,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             floor1EnemyDirectorSystem,
             npcSystem,
           ],
-          postSystems: [
-            levelSystem,
-            skillSystem,
-            abilitySystem,
-            floor1ObjectiveSystem,
-            questSystem,
-          ],
+          postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
         }),
       ],
       scale: {

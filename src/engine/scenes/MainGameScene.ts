@@ -13,6 +13,7 @@ import {
   dropSystem,
   fovSystem,
   healthSystem,
+  isInSafeContext,
   itemPickupSystem,
   knockbackSystem,
   lifetimeSystem,
@@ -22,6 +23,7 @@ import {
   playerInputSystem,
   projectileCleanupSystem,
   returningProjectileSystem,
+  safeRoomSystem,
   spawnPlayer,
   trapSystem,
   type GameWorld,
@@ -512,6 +514,7 @@ export class MainGameScene extends Phaser.Scene {
       projectileCleanupSystem(this.world);
       doorSystem(this.world);
       fovSystem(this.world);
+      safeRoomSystem(this.world);
       npcSystem(this.world);
       for (const sys of this.options.postSystems ?? []) {
         sys(this.world);
@@ -552,18 +555,20 @@ export class MainGameScene extends Phaser.Scene {
    */
   private updateFeatureUnlocks(): void {
     const unlocks = this.world.featureUnlocks;
+    const safeCtx = isInSafeContext(this.world);
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
-      this.flashHint('Inventory unlocked! Press [I] to open your pack.');
+      this.flashHint('Inventory unlocked! Press [I] in a safe room to open your pack.');
     }
     if (unlocks.equipment && !this.equipmentUnlockNotified) {
       this.equipmentUnlockNotified = true;
-      this.flashHint('Equipment unlocked! Press [G] to equip your new gear.');
+      this.flashHint('Equipment unlocked! Press [G] in a safe room to equip your new gear.');
     }
 
     if (
       unlocks.inventory &&
+      safeCtx &&
       this.keyInventory &&
       Phaser.Input.Keyboard.JustDown(this.keyInventory)
     ) {
@@ -572,7 +577,12 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryUI.refresh(this.world);
     }
 
-    if (unlocks.equipment && this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip)) {
+    if (
+      unlocks.equipment &&
+      safeCtx &&
+      this.keyEquip &&
+      Phaser.Input.Keyboard.JustDown(this.keyEquip)
+    ) {
       const equipped = this.options.shopkeeper?.equip(this.world, this.playerEid) ?? false;
       if (equipped) {
         this.flashHint('Equipped! The merchant beams with unsettling pride.');

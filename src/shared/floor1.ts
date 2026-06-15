@@ -5,7 +5,12 @@ export interface Floor1ObjectiveState {
   readonly requiredSlimes: number;
   readonly requiredGold: number;
   readonly requiredJunk: number;
-  readonly deadlineMs: number;
+  /**
+   * Absolute elapsed-time threshold (ms) at which the floor collapses.
+   * Mutable so that `floorObjectiveSystem` can advance it while the player
+   * is in a safe room, effectively pausing the countdown.
+   */
+  deadlineMs: number;
   readonly staircaseSpawnCountdownMs: number;
   readonly safeRoomPos: { x: number; y: number };
   readonly staircasePos: { x: number; y: number };

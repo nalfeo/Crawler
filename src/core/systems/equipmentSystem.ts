@@ -29,6 +29,7 @@ import type {
   CanEquipResult,
   EquipFailureReason,
 } from '../../shared/equipment-types.js';
+import { isInSafeContext } from '../safe-space.js';
 
 // --- Side-map storage ---
 
@@ -333,8 +334,8 @@ export function equip(
   itemDef: EquipmentItemDef,
   options?: EquipOptions,
 ): EquipResult {
-  // State check (safe room only, unless forced)
-  if (!options?.force && world.state !== 'safe_room') {
+  // State check (safe context only, unless forced)
+  if (!options?.force && !isInSafeContext(world)) {
     return {
       ok: false,
       reasons: [{ type: 'invalidDef', message: 'Equipment changes only allowed in safe rooms' }],
@@ -366,7 +367,7 @@ export function unequip(
   slotId: EquipmentSlotId,
   options?: EquipOptions,
 ): UnequipResult {
-  if (!options?.force && world.state !== 'safe_room') {
+  if (!options?.force && !isInSafeContext(world)) {
     return { ok: false, reason: 'Equipment changes only allowed in safe rooms' };
   }
 
