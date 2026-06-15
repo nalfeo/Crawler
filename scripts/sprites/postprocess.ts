@@ -6,7 +6,7 @@
  *
  * Steps, in this exact order:
  *   1. Background removal: 4-corner flood fill -> alpha 0 on reachable pixels.
- *   2. Resample: nearest-neighbor resize to brief.size.
+ *   2. Resample: nearest-neighbor fit to brief.size (preserve aspect ratio).
  *   3. Palette quantize: snap each opaque pixel to its nearest palette entry
  *      by Euclidean RGB distance.
  *   4. Alpha hard-threshold: alpha > 128 -> 255, else -> 0.
@@ -36,18 +36,18 @@ interface RgbaImage {
 }
 
 export type SpeckleMode = 'edge-drop' | 'preserve-orphans' | 'disabled';
-export type BackgroundRemovalMode = 'legacy' | 'fringe-clean';
 
 export interface PostprocessOptions {
+  readonly background?: {
+    readonly colorToleranceSq?: number;
+    readonly fringeToleranceSq?: number;
+  };
   readonly speckle?: {
     readonly minChannel?: number;
     readonly maxOpaqueNeighbors?: number;
     readonly dropEdgeOrphans?: boolean;
   };
-  readonly modules?: {
-    readonly speckleMode?: SpeckleMode;
-    readonly backgroundRemovalMode?: BackgroundRemovalMode;
-  };
+  readonly modules?: { readonly speckleMode?: SpeckleMode };
 }
 
 export function postprocess(
@@ -85,13 +85,32 @@ export function postprocessWithTrace(
   };
 
   let image = decodePng(rawPng);
-  const backgroundRemovalMode = options.modules?.backgroundRemovalMode ?? 'legacy';
-  image =
-    backgroundRemovalMode === 'fringe-clean' ? removeBackgroundB(image) : removeBackground(image);
-  pushStep('background-removal', `Background removal (${backgroundRemovalMode})`, image);
+  const defaultBackgroundColorToleranceSq = BACKGROUND_B_COLOR_TOLERANCE_SQ;
+  const backgroundColorToleranceSq = normalizeTolerance(
+    options.background?.colorToleranceSq,
+    defaultBackgroundColorToleranceSq,
+  );
+  const backgroundFringeToleranceSq = normalizeTolerance(
+    options.background?.fringeToleranceSq,
+    BACKGROUND_B_FRINGE_TOLERANCE_SQ,
+  );
+  image = removeBackgroundB(image, {
+    colorToleranceSq: backgroundColorToleranceSq,
+    fringeToleranceSq: backgroundFringeToleranceSq,
+    clearEnclosedIslands: brief.type === 'enemy' || brief.type === 'character',
+  });
+  pushStep('background-removal', 'Background removal', image);
 
-  image = downscaleNearest(image, brief.size.width, brief.size.height);
-  pushStep('resize-nearest', 'Resize (nearest)', image);
+  const fitMode = brief.type === 'enemy' || brief.type === 'character';
+  const fitResize = fitWithinNearest(image, brief.size.width, brief.size.height, fitMode);
+  image = fitResize.image;
+  pushStep(
+    'resize-nearest',
+    fitMode
+      ? `Resize (nearest-fit, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${image.width}x${image.height})`
+      : `Resize (nearest, ${image.width}x${image.height})`,
+    image,
+  );
 
   const speckleMode = options.modules?.speckleMode ?? 'edge-drop';
   if (speckleMode !== 'disabled') {
@@ -232,8 +251,15 @@ function encodePng(image: RgbaImage): Buffer {
  */
 export const BACKGROUND_COLOR_TOLERANCE_SQ = 32 * 32; // squared Euclidean RGB tolerance
 export const BACKGROUND_FRINGE_TOLERANCE_SQ = 56 * 56; // post-flood edge cleanup tolerance
+export const BACKGROUND_B_COLOR_TOLERANCE_SQ = 4000; // fringe-clean default flood-fill tolerance
+export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 8000; // fringe-clean default cleanup tolerance
+export const BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS = 256;
+export const BACKGROUND_B_ENCLOSED_MAX_COMPONENT_DISTANCE_SQ = 25000;
 
-export function removeBackground(image: RgbaImage): RgbaImage {
+export function removeBackground(
+  image: RgbaImage,
+  toleranceSq: number = BACKGROUND_COLOR_TOLERANCE_SQ,
+): RgbaImage {
   const { width, height } = image;
   const out = new Uint8Array(image.data);
   const total = width * height;
@@ -260,63 +286,205 @@ export function removeBackground(image: RgbaImage): RgbaImage {
       visited[cy * width + cx] = 1;
       continue;
     }
-    floodFill(out, visited, width, height, cx, cy, cr, cg, cb);
+    floodFill(out, visited, width, height, cx, cy, cr, cg, cb, toleranceSq);
   }
 
   return { width, height, data: out };
 }
 
-export function removeBackgroundB(image: RgbaImage): RgbaImage {
-  const flooded = removeBackground(image);
-  return removeBackgroundFringe(flooded, image, BACKGROUND_FRINGE_TOLERANCE_SQ);
+export function removeBackgroundB(
+  image: RgbaImage,
+  options: {
+    readonly colorToleranceSq?: number;
+    readonly fringeToleranceSq?: number;
+    readonly clearEnclosedIslands?: boolean;
+  } = {},
+): RgbaImage {
+  const colorToleranceSq = options.colorToleranceSq ?? BACKGROUND_B_COLOR_TOLERANCE_SQ;
+  const fringeToleranceSq = options.fringeToleranceSq ?? BACKGROUND_B_FRINGE_TOLERANCE_SQ;
+  const flooded = removeBackground(image, colorToleranceSq);
+  return removeBackgroundFringe(
+    flooded,
+    image,
+    fringeToleranceSq,
+    options.clearEnclosedIslands ?? true,
+  );
 }
 
 function removeBackgroundFringe(
   flooded: RgbaImage,
   source: RgbaImage,
   toleranceSq: number,
+  clearEnclosedIslands: boolean,
 ): RgbaImage {
   const { width, height } = flooded;
   if (width === 0 || height === 0) return flooded;
   const dst = new Uint8Array(flooded.data);
   const cornerColors = getCornerColors(source);
+  const queue: number[] = [];
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = (y * width + x) * 4;
-      const alpha = dst[idx + 3] ?? 0;
-      if (alpha === 0) continue;
-      if (!touchesTransparentNeighbor(flooded, x, y)) continue;
-      const r = dst[idx] ?? 0;
-      const g = dst[idx + 1] ?? 0;
-      const b = dst[idx + 2] ?? 0;
-      const nearCorner = cornerColors.some(([cr, cg, cb]) => {
-        const dr = r - cr;
-        const dg = g - cg;
-        const db = b - cb;
-        return dr * dr + dg * dg + db * db <= toleranceSq;
-      });
-      if (nearCorner) dst[idx + 3] = 0;
+      if ((dst[idx + 3] ?? 0) === 0) queue.push(x, y);
     }
   }
-  return { width, height, data: dst };
-}
-
-function touchesTransparentNeighbor(image: RgbaImage, x: number, y: number): boolean {
-  const { width, height, data } = image;
   const offsets: ReadonlyArray<[number, number]> = [
     [1, 0],
     [-1, 0],
     [0, 1],
     [0, -1],
   ];
-  for (const [dx, dy] of offsets) {
-    const nx = x + dx;
-    const ny = y + dy;
-    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-    const nIdx = (ny * width + nx) * 4;
-    if ((data[nIdx + 3] ?? 0) === 0) return true;
+  while (queue.length > 0) {
+    const y = queue.pop() as number;
+    const x = queue.pop() as number;
+    for (const [dx, dy] of offsets) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const idx = (ny * width + nx) * 4;
+      if ((dst[idx + 3] ?? 0) === 0) continue;
+      if (!isNearCornerColor(dst, idx, cornerColors, toleranceSq)) continue;
+      dst[idx + 3] = 0;
+      queue.push(nx, ny);
+    }
   }
-  return false;
+  if (clearEnclosedIslands) {
+    clearEnclosedNearBackgroundIslands(dst, width, height, cornerColors, toleranceSq);
+  }
+  return { width, height, data: dst };
+}
+
+function clearEnclosedNearBackgroundIslands(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  cornerColors: ReadonlyArray<[number, number, number]>,
+  toleranceSq: number,
+): void {
+  const total = width * height;
+  const visitedNear = new Uint8Array(total);
+  const offsets: ReadonlyArray<[number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+
+  for (let linear = 0; linear < total; linear++) {
+    if (visitedNear[linear]) continue;
+    const idx = linear * 4;
+    if ((data[idx + 3] ?? 0) === 0) continue;
+    if (!isNearCornerColor(data, idx, cornerColors, toleranceSq)) continue;
+    const component: number[] = [];
+    const stack: number[] = [linear];
+    visitedNear[linear] = 1;
+    let touchesEdge = false;
+
+    while (stack.length > 0) {
+      const current = stack.pop() as number;
+      component.push(current);
+      const x = current % width;
+      const y = Math.floor(current / width);
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+        touchesEdge = true;
+      }
+
+      for (const [dx, dy] of offsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const neighbor = ny * width + nx;
+        const nIdx = neighbor * 4;
+        if ((data[nIdx + 3] ?? 0) === 0) continue;
+        if (visitedNear[neighbor]) continue;
+        if (!isNearCornerColor(data, nIdx, cornerColors, toleranceSq)) continue;
+        visitedNear[neighbor] = 1;
+        stack.push(neighbor);
+      }
+    }
+
+    // Guardrail: enclosed cleanup should only remove small trapped pockets.
+    // Large interior regions that happen to be near corner colours are likely
+    // legitimate foreground shading/hair/skin and should be preserved.
+    if (touchesEdge || component.length > BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS) continue;
+    for (const pixel of component) {
+      data[pixel * 4 + 3] = 0;
+    }
+  }
+
+  // Second pass: remove tiny enclosed residual islands that are entirely
+  // background-like but include anti-aliased shades slightly beyond the fringe
+  // threshold (e.g. pockets between legs/hair strands).
+  const visitedResidual = new Uint8Array(total);
+  for (let linear = 0; linear < total; linear++) {
+    if (visitedResidual[linear]) continue;
+    const idx = linear * 4;
+    if ((data[idx + 3] ?? 0) === 0) continue;
+
+    const component: number[] = [];
+    const stack: number[] = [linear];
+    visitedResidual[linear] = 1;
+    let touchesEdge = false;
+    let maxCornerDistanceSq = 0;
+
+    while (stack.length > 0) {
+      const current = stack.pop() as number;
+      component.push(current);
+      const x = current % width;
+      const y = Math.floor(current / width);
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
+        touchesEdge = true;
+      }
+      const currentDistanceSq = minCornerColorDistanceSq(data, current * 4, cornerColors);
+      maxCornerDistanceSq = Math.max(maxCornerDistanceSq, currentDistanceSq);
+
+      for (const [dx, dy] of offsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const neighbor = ny * width + nx;
+        const nIdx = neighbor * 4;
+        if ((data[nIdx + 3] ?? 0) === 0) continue;
+        if (visitedResidual[neighbor]) continue;
+        visitedResidual[neighbor] = 1;
+        stack.push(neighbor);
+      }
+    }
+
+    if (touchesEdge || component.length > BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS) continue;
+    if (maxCornerDistanceSq > BACKGROUND_B_ENCLOSED_MAX_COMPONENT_DISTANCE_SQ) continue;
+    for (const pixel of component) {
+      data[pixel * 4 + 3] = 0;
+    }
+  }
+}
+
+function isNearCornerColor(
+  data: Uint8Array,
+  idx: number,
+  cornerColors: ReadonlyArray<[number, number, number]>,
+  toleranceSq: number,
+): boolean {
+  return minCornerColorDistanceSq(data, idx, cornerColors) <= toleranceSq;
+}
+
+function minCornerColorDistanceSq(
+  data: Uint8Array,
+  idx: number,
+  cornerColors: ReadonlyArray<[number, number, number]>,
+): number {
+  const r = data[idx] ?? 0;
+  const g = data[idx + 1] ?? 0;
+  const b = data[idx + 2] ?? 0;
+  let minDistanceSq = Number.POSITIVE_INFINITY;
+  for (const [cr, cg, cb] of cornerColors) {
+    const dr = r - cr;
+    const dg = g - cg;
+    const db = b - cb;
+    const distanceSq = dr * dr + dg * dg + db * db;
+    if (distanceSq < minDistanceSq) minDistanceSq = distanceSq;
+  }
+  return minDistanceSq;
 }
 
 function getCornerColors(image: RgbaImage): ReadonlyArray<[number, number, number]> {
@@ -348,6 +516,7 @@ function floodFill(
   r: number,
   g: number,
   b: number,
+  toleranceSq: number,
 ): void {
   // Iterative stack-based 4-connected flood fill. We avoid recursion so this
   // works on large images without blowing the call stack.
@@ -362,38 +531,57 @@ function floodFill(
     const dr = (data[idx] ?? 0) - r;
     const dg = (data[idx + 1] ?? 0) - g;
     const db = (data[idx + 2] ?? 0) - b;
-    if (dr * dr + dg * dg + db * db > BACKGROUND_COLOR_TOLERANCE_SQ) continue;
+    if (dr * dr + dg * dg + db * db > toleranceSq) continue;
     visited[linear] = 1;
     data[idx + 3] = 0;
     stack.push(x + 1, y, x - 1, y, x, y + 1, x, y - 1);
   }
 }
 
-/**
- * Nearest-neighbor resize (supports both downscale and upscale).
- * For each destination pixel, sample the source pixel whose center maps to it.
- *
- * Determinism: tie-breaking falls out of integer truncation in a fixed order;
- * no random or floating-point comparisons are used.
- *
- * Internal helper — exercised end-to-end via `postprocess`.
- */
-function downscaleNearest(image: RgbaImage, dstW: number, dstH: number): RgbaImage {
-  const { width: srcW, height: srcH, data: src } = image;
-  const dst = new Uint8Array(dstW * dstH * 4);
-  for (let y = 0; y < dstH; y++) {
-    const sy = Math.min(srcH - 1, Math.floor(((y + 0.5) * srcH) / dstH));
-    for (let x = 0; x < dstW; x++) {
-      const sx = Math.min(srcW - 1, Math.floor(((x + 0.5) * srcW) / dstW));
-      const srcIdx = (sy * srcW + sx) * 4;
-      const dstIdx = (y * dstW + x) * 4;
-      dst[dstIdx] = src[srcIdx] ?? 0;
-      dst[dstIdx + 1] = src[srcIdx + 1] ?? 0;
-      dst[dstIdx + 2] = src[srcIdx + 2] ?? 0;
-      dst[dstIdx + 3] = src[srcIdx + 3] ?? 0;
+function normalizeTolerance(raw: number | undefined, fallback: number): number {
+  if (raw === undefined) return fallback;
+  if (!Number.isFinite(raw)) return fallback;
+  const normalized = Math.round(raw);
+  return normalized >= 0 ? normalized : fallback;
+}
+
+function fitWithinNearest(
+  image: RgbaImage,
+  boxW: number,
+  boxH: number,
+  centerSubject: boolean,
+): { image: RgbaImage; fittedWidth: number; fittedHeight: number } {
+  const subject = centerSubject ? trimTransparentEdges(image) : image;
+  const { width: srcW, height: srcH } = subject;
+  if (srcW <= 0 || srcH <= 0) {
+    return {
+      image: { width: boxW, height: boxH, data: new Uint8Array(boxW * boxH * 4) },
+      fittedWidth: 0,
+      fittedHeight: 0,
+    };
+  }
+  const scale = Math.min(boxW / srcW, boxH / srcH);
+  const fittedWidth = Math.max(1, Math.min(boxW, Math.round(srcW * scale)));
+  const fittedHeight = Math.max(1, Math.min(boxH, Math.round(srcH * scale)));
+  const scaled = upscaleNearest(subject, fittedWidth, fittedHeight);
+  const out = new Uint8Array(boxW * boxH * 4);
+  const offsetX = Math.floor((boxW - fittedWidth) / 2);
+  const offsetY = Math.floor((boxH - fittedHeight) / 2);
+  for (let y = 0; y < fittedHeight; y++) {
+    for (let x = 0; x < fittedWidth; x++) {
+      const srcIdx = (y * fittedWidth + x) * 4;
+      const dstIdx = ((offsetY + y) * boxW + (offsetX + x)) * 4;
+      out[dstIdx] = scaled.data[srcIdx] ?? 0;
+      out[dstIdx + 1] = scaled.data[srcIdx + 1] ?? 0;
+      out[dstIdx + 2] = scaled.data[srcIdx + 2] ?? 0;
+      out[dstIdx + 3] = scaled.data[srcIdx + 3] ?? 0;
     }
   }
-  return { width: dstW, height: dstH, data: dst };
+  return {
+    image: { width: boxW, height: boxH, data: out },
+    fittedWidth,
+    fittedHeight,
+  };
 }
 
 /**

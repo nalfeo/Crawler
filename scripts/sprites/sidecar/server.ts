@@ -54,7 +54,6 @@ import {
   createTextProvider,
   createVisionProvider,
 } from '../provider/factory.js';
-import { reprocessRuns, type ReprocessProfile } from '../reprocess.js';
 import { computeSliceMap, computeSliceMapV2 } from '../slice-sheet.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { loadBrief } from '../load-brief.js';
@@ -144,14 +143,6 @@ interface WorkflowMetadataBody {
   readonly force?: unknown;
   readonly provider?: unknown;
   readonly minScore?: unknown;
-}
-
-interface WorkflowReprocessBody {
-  readonly sourceBriefId?: unknown;
-  readonly sourceRunId?: unknown;
-  readonly briefPath?: unknown;
-  readonly profileA?: unknown;
-  readonly profileB?: unknown;
 }
 
 /**
@@ -763,162 +754,6 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
   });
 
-  app.post<{ Body: WorkflowReprocessBody }>('/api/workflow/reprocess', async (req, reply) => {
-    const body = (req.body ?? {}) as WorkflowReprocessBody;
-    if (typeof body.sourceBriefId !== 'string' || body.sourceBriefId.trim() === '') {
-      reply.code(400);
-      return { error: 'bad-request', message: 'body.sourceBriefId must be a non-empty string' };
-    }
-    if (typeof body.sourceRunId !== 'string' || body.sourceRunId.trim() === '') {
-      reply.code(400);
-      return { error: 'bad-request', message: 'body.sourceRunId must be a non-empty string' };
-    }
-    if (body.briefPath !== undefined && typeof body.briefPath !== 'string') {
-      reply.code(400);
-      return { error: 'bad-request', message: 'body.briefPath must be a string when provided' };
-    }
-    if (!isRecord(body.profileA)) {
-      reply.code(400);
-      return { error: 'bad-request', message: 'body.profileA must be an object' };
-    }
-    const parseProfile = (value: unknown, fieldName: string): ReprocessProfile | null => {
-      if (!isRecord(value)) return null;
-      const name = value.name;
-      if (typeof name !== 'string' || name.trim() === '') return null;
-      let tuning:
-        | {
-            minChannel?: number;
-            maxOpaqueNeighbors?: number;
-            dropEdgeOrphans?: boolean;
-          }
-        | undefined;
-      if (value.tuning !== undefined) {
-        if (!isRecord(value.tuning)) return null;
-        tuning = {
-          ...(typeof value.tuning.minChannel === 'number' &&
-          Number.isInteger(value.tuning.minChannel) &&
-          value.tuning.minChannel >= 0
-            ? { minChannel: value.tuning.minChannel }
-            : {}),
-          ...(typeof value.tuning.maxOpaqueNeighbors === 'number' &&
-          Number.isInteger(value.tuning.maxOpaqueNeighbors) &&
-          value.tuning.maxOpaqueNeighbors >= 0
-            ? { maxOpaqueNeighbors: value.tuning.maxOpaqueNeighbors }
-            : {}),
-          ...(typeof value.tuning.dropEdgeOrphans === 'boolean'
-            ? { dropEdgeOrphans: value.tuning.dropEdgeOrphans }
-            : {}),
-        };
-      }
-      let modules:
-        | {
-            speckleMode?: 'edge-drop' | 'preserve-orphans' | 'disabled';
-            backgroundRemovalMode?: 'legacy' | 'fringe-clean';
-          }
-        | undefined;
-      if (value.modules !== undefined) {
-        if (!isRecord(value.modules)) return null;
-        if (
-          value.modules.speckleMode !== undefined &&
-          value.modules.speckleMode !== 'edge-drop' &&
-          value.modules.speckleMode !== 'preserve-orphans' &&
-          value.modules.speckleMode !== 'disabled'
-        ) {
-          return null;
-        }
-        if (
-          value.modules.backgroundRemovalMode !== undefined &&
-          value.modules.backgroundRemovalMode !== 'legacy' &&
-          value.modules.backgroundRemovalMode !== 'fringe-clean'
-        ) {
-          return null;
-        }
-        modules = {
-          ...(value.modules.speckleMode !== undefined
-            ? {
-                speckleMode: value.modules.speckleMode as
-                  | 'edge-drop'
-                  | 'preserve-orphans'
-                  | 'disabled',
-              }
-            : {}),
-          ...(value.modules.backgroundRemovalMode !== undefined
-            ? {
-                backgroundRemovalMode: value.modules.backgroundRemovalMode as
-                  | 'legacy'
-                  | 'fringe-clean',
-              }
-            : {}),
-        };
-      }
-      if (name.trim().length === 0) {
-        app.log.warn({ fieldName }, 'Invalid reprocess profile');
-        return null;
-      }
-      return {
-        name: name.trim(),
-        ...(tuning ? { tuning } : {}),
-        ...(modules ? { modules } : {}),
-      };
-    };
-    const profileA = parseProfile(body.profileA, 'profileA');
-    if (!profileA) {
-      reply.code(400);
-      return { error: 'bad-request', message: 'body.profileA is invalid' };
-    }
-    let profileB: ReprocessProfile | null = null;
-    if (body.profileB !== undefined && body.profileB !== null) {
-      profileB = parseProfile(body.profileB, 'profileB');
-      if (!profileB) {
-        reply.code(400);
-        return { error: 'bad-request', message: 'body.profileB is invalid' };
-      }
-    }
-
-    const sourceRunDir = safeJoin(deps.runsDir, [body.sourceBriefId, body.sourceRunId]);
-    if (sourceRunDir === null || !existsSync(sourceRunDir)) {
-      reply.code(404);
-      return { error: 'run-not-found', message: 'source run not found under generated/runs' };
-    }
-
-    let briefPath: string | undefined;
-    if (typeof body.briefPath === 'string' && body.briefPath.trim() !== '') {
-      const resolved = resolveRepoPath(deps.repoRoot, body.briefPath);
-      if (!resolved || !existsSync(resolved)) {
-        reply.code(404);
-        return { error: 'brief-not-found', message: 'briefPath does not exist in repo' };
-      }
-      briefPath = resolved;
-    }
-
-    try {
-      const result = reprocessRuns({
-        repoRoot: deps.repoRoot,
-        sourceRunDir,
-        briefPath,
-        profileA,
-        profileB,
-      });
-      return {
-        sourceRunDir: toRepoRelativePath(deps.repoRoot, result.sourceRunDir),
-        briefPath: toRepoRelativePath(deps.repoRoot, result.briefPath),
-        runs: result.runs.map((run) => ({
-          profile: run.profile,
-          briefId: run.briefId,
-          runId: run.runId,
-          runDir: toRepoRelativePath(deps.repoRoot, run.runDir),
-          summaryPath: toRepoRelativePath(deps.repoRoot, run.summaryPath),
-        })),
-      };
-    } catch (err) {
-      reply.code(500);
-      return {
-        error: 'reprocess-failed',
-        message: err instanceof Error ? err.message : String(err),
-      };
-    }
-  });
-
   app.post<{
     Body: { briefPath?: unknown; rawPng?: unknown; options?: unknown };
   }>('/api/postprocess', async (req, reply) => {
@@ -1046,10 +881,6 @@ function resolveRepoPath(repoRoot: string, relativePath: string): string | null 
 
 function toRepoRelativePath(repoRoot: string, absolutePath: string): string {
   return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 /**

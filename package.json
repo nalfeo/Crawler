@@ -24,7 +24,6 @@
     "devtools": "vite --mode devtools",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
-    "sprites:reprocess": "tsx scripts/sprites/reprocess-cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
     "sprites:approve": "tsx scripts/sprites/approve-cli.ts",
     "sprites:synth": "tsx scripts/sprites/synth-cli.ts",

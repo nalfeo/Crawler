@@ -360,32 +360,6 @@ describe('buildServer routes (inject)', () => {
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('bad-request');
   });
-
-  it('POST /api/workflow/reprocess validates required fields', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/workflow/reprocess',
-      headers: { 'content-type': 'application/json' },
-      payload: {},
-    });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().error).toBe('bad-request');
-  });
-
-  it('POST /api/workflow/reprocess returns 404 for missing source run', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/workflow/reprocess',
-      headers: { 'content-type': 'application/json' },
-      payload: {
-        sourceBriefId: 'iron-sword',
-        sourceRunId: 'missing-run',
-        profileA: { name: 'edge-drop', modules: { speckleMode: 'edge-drop' } },
-      },
-    });
-    expect(res.statusCode).toBe(404);
-    expect(res.json().error).toBe('run-not-found');
-  });
 });
 
 describe('POST /api/runs/:briefId/:runId/approve', () => {

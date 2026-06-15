@@ -104,5 +104,15 @@
     "delta": 0,
     "verdict": "exact",
     "notes": "DevTools page routing, shared header, approval migration from Labs, run/variant picker, full postprocess debugger redesign as vertical pipeline trace, merge conflict resolution"
+  },
+  {
+    "date": "2026-06-12",
+    "session": "remove-postprocess-ab",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Removed the global postprocess A/B reprocess flow, simplified the debugger to a linear trace, cleaned stale UX copy, and verified the fast gate"
   }
 ]

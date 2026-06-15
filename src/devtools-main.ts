@@ -117,18 +117,6 @@ interface SliceMapResponse {
   algorithm?: string;
 }
 
-interface ReprocessResponse {
-  sourceRunDir: string;
-  briefPath: string;
-  runs: Array<{
-    profile: string;
-    briefId: string;
-    runId: string;
-    runDir: string;
-    summaryPath: string;
-  }>;
-}
-
 interface PostprocessDebugTarget {
   briefId: string;
   runId: string;
@@ -191,6 +179,24 @@ interface LivePostprocessResult {
   readonly steps: ReadonlyArray<{ id: string; label: string; png: string }>;
 }
 
+interface LivePostprocessOptions {
+  readonly background?: {
+    readonly colorToleranceSq?: number;
+    readonly fringeToleranceSq?: number;
+  };
+}
+
+const DEFAULT_BACKGROUND_TWEAKS = {
+  colorToleranceSq: 4000,
+  fringeToleranceSq: 8000,
+} as const;
+const MAX_BACKGROUND_TOLERANCE_SQ = 255 * 255 * 3;
+
+interface BackgroundTweakState {
+  colorToleranceSq: number;
+  fringeToleranceSq: number;
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const chunkSize = 0x8000;
@@ -204,6 +210,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 async function livePostprocess(
   rawPngSource: string,
   briefPath: string,
+  options?: LivePostprocessOptions,
 ): Promise<LivePostprocessResult> {
   // Fetch raw PNG as blob
   const pngRes = await fetch(rawPngSource);
@@ -220,6 +227,7 @@ async function livePostprocess(
     body: JSON.stringify({
       briefPath,
       rawPng: pngBase64,
+      ...(options ? { options } : {}),
     }),
   });
   return result;
@@ -259,7 +267,7 @@ function render(): void {
       ? isHomePage
         ? 'Pick a DevTool from the searchable index below.'
         : isPostprocessPage
-          ? 'Postprocess debugger: inspect pipeline steps, slicing, and A/B reprocess runs.'
+          ? 'Postprocess debugger: inspect pipeline steps, slicing, and live postprocess traces.'
           : 'Floor art tracker: visibility over placeholders, briefs, approvals, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
@@ -283,7 +291,7 @@ function render(): void {
         id: DEVTOOLS_PAGE_POSTPROCESS,
         name: 'Postprocess debugger',
         description:
-          'Inspect pipeline steps, validate sheet slicing, and run A/B postprocess reprocessing with profiles.',
+          'Inspect pipeline steps, validate sheet slicing, and trace live postprocess output.',
       },
     ] as const;
     const compact = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
@@ -672,7 +680,7 @@ function render(): void {
     style: { margin: '0 0 8px 0', fontSize: '16px', color: '#e5e7eb' },
   });
   const debuggerHint = el('p', {
-    text: 'Focused tool for pipeline steps, source-sheet slicing, and postprocess A/B reprocess runs.',
+    text: 'Focused tool for pipeline steps, source-sheet slicing, and live postprocess tracing.',
     style: { margin: '0 0 10px 0', fontSize: '12px', color: '#93c5fd' },
   });
   const debuggerTargetLabel = el('div', {
@@ -798,106 +806,91 @@ function render(): void {
     },
   }) as HTMLButtonElement;
   debuggerTargetForm.append(briefIdInput, runIdInput, variantIndexInput, loadTargetBtn);
-  const debuggerTraceHost = el('div', { style: { marginTop: '8px' } });
-  const debuggerReprocessSection = el('div', {
+  const tweakPanel = el('div', {
     style: {
-      margin: '8px 0 0',
-      padding: '8px',
-      border: '1px solid rgba(148,163,184,0.2)',
-      borderRadius: '6px',
-      background: 'rgba(15,23,42,0.7)',
+      marginTop: '10px',
+      padding: '10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(148,163,184,0.18)',
+      background: 'rgba(15,23,42,0.45)',
     },
   });
-  const debuggerReprocessStatus = el('div', {
-    text: 'Reprocess status: waiting for debug target.',
-    style: { fontSize: '11px', color: '#94a3b8', marginTop: '6px', whiteSpace: 'pre-wrap' },
+  const tweakTitle = el('div', {
+    text: 'Config — background removal',
+    style: { fontSize: '11px', color: '#93c5fd', marginBottom: '8px', fontWeight: '600' },
   });
-  const reprocessModes: ReadonlyArray<'edge-drop' | 'preserve-orphans' | 'disabled'> = [
-    'edge-drop',
-    'preserve-orphans',
-    'disabled',
-  ];
-  const reprocessARow = el('div', {
-    style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' },
+  const tweakIntro = el('div', {
+    text: `All values are squared Euclidean RGB distances in 8-bit channel space. 0 means exact color match; ${MAX_BACKGROUND_TOLERANCE_SQ.toLocaleString()} is the maximum possible RGB distance.`,
+    style: { fontSize: '10px', color: '#94a3b8', marginBottom: '8px', lineHeight: '1.4' },
   });
-  const reprocessALabel = document.createElement('input');
-  reprocessALabel.placeholder = 'A label';
-  reprocessALabel.value = 'A';
-  Object.assign(reprocessALabel.style, {
-    width: '100%',
-    padding: '4px 6px',
-    borderRadius: '4px',
-    border: '1px solid #475569',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    fontSize: '11px',
-  });
-  const reprocessAMode = document.createElement('select');
-  for (const mode of reprocessModes) {
-    const option = document.createElement('option');
-    option.value = mode;
-    option.textContent = mode;
-    reprocessAMode.append(option);
-  }
-  Object.assign(reprocessAMode.style, {
-    width: '100%',
-    padding: '4px 6px',
-    borderRadius: '4px',
-    border: '1px solid #475569',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    fontSize: '11px',
-  });
-  reprocessARow.append(reprocessALabel, reprocessAMode);
-  const reprocessBEnableLabel = el('label', {
+  const tweakGrid = el('div', {
     style: {
-      display: 'flex',
-      alignItems: 'center',
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gap: '8px',
+      marginBottom: '8px',
+    },
+  });
+  const makeTweakField = (
+    label: string,
+    defaultValue: number,
+    description: string,
+  ): { wrap: HTMLElement; input: HTMLInputElement } => {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.max = String(MAX_BACKGROUND_TOLERANCE_SQ);
+    input.step = '1';
+    input.value = String(defaultValue);
+    Object.assign(input.style, {
+      width: '100%',
+      padding: '4px 6px',
+      borderRadius: '4px',
+      border: '1px solid #475569',
+      background: '#0f172a',
+      color: '#e2e8f0',
       fontSize: '11px',
-      color: '#cbd5e1',
-      marginBottom: '6px',
-    },
+    });
+    const wrap = el('label', {
+      style: { display: 'grid', gap: '4px', fontSize: '10px', color: '#94a3b8' },
+    });
+    const detail = el('span', {
+      text: description,
+      style: { fontSize: '10px', color: '#64748b', lineHeight: '1.4' },
+    });
+    wrap.append(el('span', { text: label }), input, detail);
+    return { wrap, input };
+  };
+  const colorTolField = makeTweakField(
+    'Color tolerance (sq)',
+    DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
+    `Flood-fill background match radius before cleanup. Units: squared RGB distance. Min 0, max ${MAX_BACKGROUND_TOLERANCE_SQ.toLocaleString()}, default ${DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq.toLocaleString()}.`,
+  );
+  const fringeTolField = makeTweakField(
+    'Fringe tolerance (sq)',
+    DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
+    `Edge cleanup threshold for removing near-background leftovers after flood fill. Units: squared RGB distance. Min 0, max ${MAX_BACKGROUND_TOLERANCE_SQ.toLocaleString()}, default ${DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq.toLocaleString()}.`,
+  );
+  tweakGrid.append(colorTolField.wrap, fringeTolField.wrap);
+  const tweakButtonRow = el('div', {
+    style: { display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' },
   });
-  const reprocessBEnable = document.createElement('input');
-  reprocessBEnable.type = 'checkbox';
-  reprocessBEnable.style.margin = '0 6px 0 0';
-  reprocessBEnableLabel.append(reprocessBEnable, document.createTextNode('Enable B profile'));
-  const reprocessBRow = el('div', {
-    style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '6px' },
-  });
-  const reprocessBLabel = document.createElement('input');
-  reprocessBLabel.placeholder = 'B label';
-  reprocessBLabel.value = 'B';
-  Object.assign(reprocessBLabel.style, {
-    width: '100%',
-    padding: '4px 6px',
-    borderRadius: '4px',
-    border: '1px solid #475569',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    fontSize: '11px',
-  });
-  const reprocessBMode = document.createElement('select');
-  for (const mode of reprocessModes) {
-    const option = document.createElement('option');
-    option.value = mode;
-    option.textContent = mode;
-    reprocessBMode.append(option);
-  }
-  Object.assign(reprocessBMode.style, {
-    width: '100%',
-    padding: '4px 6px',
-    borderRadius: '4px',
-    border: '1px solid #475569',
-    background: '#0f172a',
-    color: '#e2e8f0',
-    fontSize: '11px',
-  });
-  reprocessBRow.append(reprocessBLabel, reprocessBMode);
-  const runReprocessBtn = el('button', {
-    text: 'Run reprocess',
+  const applyTweaksBtn = el('button', {
+    text: 'Apply tweaks',
     style: {
-      padding: '6px 10px',
+      padding: '4px 8px',
+      borderRadius: '6px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#082f49',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
+  const resetTweaksBtn = el('button', {
+    text: 'Reset to defaults',
+    style: {
+      padding: '4px 8px',
       borderRadius: '6px',
       border: '1px solid rgba(148,163,184,0.4)',
       background: '#1e293b',
@@ -905,18 +898,14 @@ function render(): void {
       cursor: 'pointer',
       fontSize: '11px',
     },
+  }) as HTMLButtonElement;
+  const tweakStatus = el('span', {
+    text: 'Using default background-removal parameters.',
+    style: { fontSize: '10px', color: '#64748b' },
   });
-  debuggerReprocessSection.append(
-    el('div', {
-      text: 'Postprocess A/B',
-      style: { fontSize: '12px', fontWeight: '600', marginBottom: '4px' },
-    }),
-    reprocessARow,
-    reprocessBEnableLabel,
-    reprocessBRow,
-    runReprocessBtn,
-    debuggerReprocessStatus,
-  );
+  tweakButtonRow.append(applyTweaksBtn, resetTweaksBtn, tweakStatus);
+  tweakPanel.append(tweakTitle, tweakIntro, tweakGrid, tweakButtonRow);
+  const debuggerTraceHost = el('div', { style: { marginTop: '8px' } });
   debuggerPanel.append(
     debuggerTitle,
     debuggerHint,
@@ -925,7 +914,6 @@ function render(): void {
     debuggerPickerStatus,
     debuggerTargetForm,
     debuggerTraceHost,
-    debuggerReprocessSection,
   );
   shell.append(debuggerPanel);
   const showFloorArtWorkflow = !isPostprocessPage;
@@ -945,7 +933,12 @@ function render(): void {
   let promotedBriefPath: string | null = null;
   let currentRun: WorkflowRunState | null = null;
   let debugTarget: PostprocessDebugTarget | null = null;
-  let preferredSliceVersion: 'v1' | 'v2' = 'v1';
+  let debuggerRenderToken = 0;
+  let rerenderPostprocessPipeline: (() => void) | null = null;
+  let appliedBackgroundTweaks: BackgroundTweakState = {
+    colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
+    fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
+  };
   const queuedAssetIds = new Set<string>();
   const initialParams = new URLSearchParams(window.location.search);
   const initialBriefId = initialParams.get('briefId');
@@ -968,12 +961,59 @@ function render(): void {
         Number.isFinite(initialVariantIndex) && initialVariantIndex >= 0 ? initialVariantIndex : 0,
     };
   }
+  const syncTweakInputsFromState = (): void => {
+    colorTolField.input.value = String(appliedBackgroundTweaks.colorToleranceSq);
+    fringeTolField.input.value = String(appliedBackgroundTweaks.fringeToleranceSq);
+  };
+  const rerenderDebuggerAfterTweaks = (): void => {
+    if (rerenderPostprocessPipeline) {
+      rerenderPostprocessPipeline();
+      return;
+    }
+    renderPostprocessDebugger();
+  };
+  const parseTweakField = (input: HTMLInputElement): number | null => {
+    const parsed = Number.parseInt(input.value, 10);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > MAX_BACKGROUND_TOLERANCE_SQ) return null;
+    return parsed;
+  };
+  const applyBackgroundTweaksFromInputs = (): boolean => {
+    const color = parseTweakField(colorTolField.input);
+    const fringe = parseTweakField(fringeTolField.input);
+    if (color === null || fringe === null) {
+      tweakStatus.textContent = `Invalid tweak values; use integers from 0 to ${MAX_BACKGROUND_TOLERANCE_SQ.toLocaleString()}.`;
+      tweakStatus.style.color = '#fca5a5';
+      return false;
+    }
+    appliedBackgroundTweaks = {
+      colorToleranceSq: color,
+      fringeToleranceSq: fringe,
+    };
+    tweakStatus.textContent = 'Tweaks applied.';
+    tweakStatus.style.color = '#93c5fd';
+    return true;
+  };
+  applyTweaksBtn.addEventListener('click', () => {
+    if (!applyBackgroundTweaksFromInputs()) return;
+    if (debugTarget) {
+      rerenderDebuggerAfterTweaks();
+    }
+  });
+  resetTweaksBtn.addEventListener('click', () => {
+    appliedBackgroundTweaks = {
+      colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
+      fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
+    };
+    syncTweakInputsFromState();
+    tweakStatus.textContent = 'Reset to defaults.';
+    tweakStatus.style.color = '#93c5fd';
+    if (debugTarget) {
+      rerenderDebuggerAfterTweaks();
+    }
+  });
+  syncTweakInputsFromState();
   let debuggerRuns: SidecarRunListEntry[] = [];
   const debuggerVariantCache = new Map<string, number[]>();
-  const experimentPartnerByRun = new Map<
-    string,
-    { briefId: string; runId: string; label: string }
-  >();
   const makeRunKey = (briefId: string, runId: string): string => `${briefId}::${runId}`;
   const findRunByKey = (key: string): SidecarRunListEntry | null => {
     for (const run of debuggerRuns) {
@@ -1298,24 +1338,14 @@ function render(): void {
     runResultsHost.append(title, grid);
   };
 
-  const syncReprocessBControls = (): void => {
-    const enabled = reprocessBEnable.checked;
-    reprocessBLabel.disabled = !enabled;
-    reprocessBMode.disabled = !enabled;
-    reprocessBLabel.style.opacity = enabled ? '1' : '0.55';
-    reprocessBMode.style.opacity = enabled ? '1' : '0.55';
-  };
-  syncReprocessBControls();
-  reprocessBEnable.addEventListener('change', syncReprocessBControls);
-
   const renderPostprocessDebugger = (): void => {
     const target = debugTarget;
+    const renderToken = ++debuggerRenderToken;
+    rerenderPostprocessPipeline = null;
     debuggerTraceHost.replaceChildren();
-    runReprocessBtn.disabled = target === null;
 
     if (!target) {
       debuggerTargetLabel.textContent = 'No target selected — use the picker above';
-      debuggerReprocessStatus.textContent = 'Waiting for debug target.';
       debuggerTraceHost.append(
         el('p', {
           text: 'Select a run above and click "Load selected" to trace the full postprocess pipeline.',
@@ -1428,27 +1458,19 @@ function render(): void {
       style: { fontSize: '10px', color: '#64748b' },
     });
     Object.assign(debuggerVariantSelect.style, { width: '120px' });
-    slicingVariantRow.append(slicingVariantLabel, debuggerVariantSelect);
-
-    const makeAbBtn = (label: string, active: boolean): HTMLButtonElement => {
-      const btn = el('button', {
-        text: label,
-        style: {
-          fontSize: '10px',
-          padding: '2px 8px',
-          borderRadius: '4px',
-          border: `1px solid ${active ? '#7dd3fc' : '#475569'}`,
-          background: active ? 'rgba(125,211,252,0.12)' : '#1e293b',
-          color: active ? '#7dd3fc' : '#94a3b8',
-          cursor: 'pointer',
-          fontWeight: active ? '600' : '400',
-        },
-      }) as HTMLButtonElement;
-      return btn;
-    };
-    let sliceVersion: 'v1' | 'v2' = preferredSliceVersion;
-    const btnV1 = makeAbBtn('A — v1 (nudge)', preferredSliceVersion === 'v1');
-    const btnV2 = makeAbBtn('B — v2 (bands)', preferredSliceVersion === 'v2');
+    const sliceModeBadge = el('span', {
+      text: 'A — bands',
+      style: {
+        fontSize: '10px',
+        padding: '2px 8px',
+        borderRadius: '999px',
+        border: '1px solid #7dd3fc',
+        background: 'rgba(125,211,252,0.12)',
+        color: '#7dd3fc',
+        fontWeight: '600',
+      },
+    });
+    slicingVariantRow.append(slicingVariantLabel, debuggerVariantSelect, sliceModeBadge);
 
     const slicingStatus = el('div', {
       text: 'Waiting for sheet…',
@@ -1486,28 +1508,8 @@ function render(): void {
       w: number;
       h: number;
     }> = [];
-    // currentSliceMap is a derived getter, not separate state
-    const getActiveSliceMap = (): SliceMapResponse | null =>
-      sliceVersion === 'v2' ? sliceMapV2 : sliceMapV1;
-
-    const setAbActive = (v: 'v1' | 'v2'): void => {
-      sliceVersion = v;
-      preferredSliceVersion = v;
-      const activeStyle = {
-        border: '1px solid #7dd3fc',
-        background: 'rgba(125,211,252,0.12)',
-        color: '#7dd3fc',
-        fontWeight: '600',
-      };
-      const idleStyle = {
-        border: '1px solid #475569',
-        background: '#1e293b',
-        color: '#94a3b8',
-        fontWeight: '400',
-      };
-      Object.assign(btnV1.style, v === 'v1' ? activeStyle : idleStyle);
-      Object.assign(btnV2.style, v === 'v2' ? activeStyle : idleStyle);
-    };
+    const getActiveSliceMap = (): SliceMapResponse | null => sliceMapV2 ?? sliceMapV1;
+    const getActiveSliceVersion = (): 'v1' | 'v2' => (sliceMapV2 ? 'v2' : 'v1');
 
     const drawSliceMapOnCanvas = (
       sourceImg: HTMLImageElement,
@@ -1636,19 +1638,18 @@ function render(): void {
     const onSliceMapKnown = (sliceMap: SliceMapResponse, v: 'v1' | 'v2'): void => {
       if (v === 'v1') sliceMapV1 = sliceMap;
       else sliceMapV2 = sliceMap;
-      if (v !== sliceVersion) return; // Not the active version, nothing to draw yet
+      const active = getActiveSliceMap();
+      if (!active) return;
       if (pendingSheetImgForSlice) {
-        drawSliceMapOnCanvas(pendingSheetImgForSlice, sliceMap);
+        drawSliceMapOnCanvas(pendingSheetImgForSlice, active);
         lastSheetImg = pendingSheetImgForSlice;
         pendingSheetImgForSlice = null;
       } else if (lastSheetImg) {
-        drawSliceMapOnCanvas(lastSheetImg, sliceMap);
+        drawSliceMapOnCanvas(lastSheetImg, active);
       }
     };
 
-    // Wire A/B buttons — redraw immediately from cached maps if sheet is available
     let lastSheetImg: HTMLImageElement | null = null;
-    // Button listeners are wired after renderPipelineSteps is defined (see line ~2258)
 
     const normalizeSheetFiles = (response: SidecarSheetsResponse): string[] =>
       Array.isArray(response.files)
@@ -1665,6 +1666,7 @@ function render(): void {
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         if (
+          renderToken !== debuggerRenderToken ||
           !debugTarget ||
           `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
         )
@@ -1716,6 +1718,7 @@ function render(): void {
       onBranchSelect: (branch: 'A' | 'B') => void,
       skipped: boolean,
       onSkipToggle: () => void,
+      inlineConfig: HTMLElement | null = null,
     ): HTMLElement => {
       const card = el('div', {
         style: {
@@ -1760,7 +1763,9 @@ function render(): void {
           },
         }) as HTMLButtonElement;
         btn.disabled = !enabled;
-        if (enabled) btn.addEventListener('click', () => onBranchSelect(branch));
+        if (enabled) {
+          btn.addEventListener('click', () => onBranchSelect(branch));
+        }
         return btn;
       };
       const makeSkipBtn = (): HTMLButtonElement => {
@@ -1797,7 +1802,11 @@ function render(): void {
             padding: '6px 10px',
           },
         });
-        card.append(title, badge);
+        card.append(title);
+        if (inlineConfig) {
+          card.append(inlineConfig);
+        }
+        card.append(badge);
         return card;
       }
       const row = el('div', {
@@ -1843,7 +1852,11 @@ function render(): void {
         makeBox('after (A)', afterASrc),
         makeBox(`after (${bLabel})`, afterBSrc, 'no experiment'),
       );
-      card.append(title, row);
+      card.append(title);
+      if (inlineConfig) {
+        card.append(inlineConfig);
+      }
+      card.append(row);
       return card;
     };
 
@@ -1919,7 +1932,7 @@ function render(): void {
         },
       }) as HTMLButtonElement;
       collapseBtn.addEventListener('click', onCollapseToggle);
-      btnRow.append(btnV1, btnV2, collapseBtn);
+      btnRow.append(collapseBtn);
       headerEl.append(titleText, btnRow);
       card.append(headerEl);
       if (!collapsed) {
@@ -1991,6 +2004,7 @@ function render(): void {
             try {
               const fb = await fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, src));
               if (
+                renderToken !== debuggerRenderToken ||
                 !debugTarget ||
                 `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !==
                   targetKey
@@ -2026,14 +2040,23 @@ function render(): void {
           }
         }
 
-        // Wire up slice-maps (drives the slicing canvas A/B)
-        if (sliceMapResult.status === 'fulfilled') {
-          onSliceMapKnown(sliceMapResult.value, 'v1');
+        let sliceMapForSheet = sliceMapResult;
+        let sliceMapV2ForSheet = sliceMapV2Result;
+        if (sheetRunId !== runId) {
+          [sliceMapForSheet, sliceMapV2ForSheet] = await Promise.allSettled([
+            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, 'v1')),
+            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, 'v2')),
+          ]);
+        }
+
+        // Wire up slice-maps for the slicing visualization
+        if (sliceMapForSheet.status === 'fulfilled') {
+          onSliceMapKnown(sliceMapForSheet.value, 'v1');
         } else {
           slicingStatus.textContent = 'Slice map unavailable — run may pre-date this feature.';
         }
-        if (sliceMapV2Result.status === 'fulfilled') {
-          onSliceMapKnown(sliceMapV2Result.value, 'v2');
+        if (sliceMapV2ForSheet.status === 'fulfilled') {
+          onSliceMapKnown(sliceMapV2ForSheet.value, 'v2');
         }
 
         // Load most recent (last) sheet
@@ -2045,6 +2068,7 @@ function render(): void {
         }
 
         if (
+          renderToken !== debuggerRenderToken ||
           !debugTarget ||
           `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
         )
@@ -2053,21 +2077,6 @@ function render(): void {
         // ── Pipeline trace ─────────────────────────────────────────
         pipelineBody.replaceChildren();
         const finalSrc = spriteUrl(briefId, runId, `${padded}.png`);
-        const experimentPartner = experimentPartnerByRun.get(makeRunKey(briefId, runId)) ?? null;
-        let partnerManifest: PipelineManifest | null = null;
-        if (experimentPartner) {
-          try {
-            partnerManifest = await fetchJson<PipelineManifest>(
-              spriteUrl(
-                experimentPartner.briefId,
-                experimentPartner.runId,
-                `${padded}.pipeline.json`,
-              ),
-            );
-          } catch {
-            partnerManifest = null;
-          }
-        }
 
         if (manifestResult.status === 'rejected') {
           pipelineBody.append(
@@ -2093,30 +2102,11 @@ function render(): void {
             }),
           );
         }
-        pipelineBody.append(
-          el('div', {
-            text:
-              experimentPartner && partnerManifest
-                ? `A/B: A=${briefId}/${runId} · B=${experimentPartner.label} (${experimentPartner.briefId}/${experimentPartner.runId})`
-                : 'A/B: no experiment',
-            style: { fontSize: '11px', color: '#64748b', marginBottom: '10px' },
-          }),
-        );
 
         const steps = (manifest.steps ?? []).filter(
           (s): s is Required<PipelineStepManifest> & { file: string } =>
             typeof s.file === 'string' && s.file.length > 0,
         );
-        const partnerSteps = ((partnerManifest?.steps ?? []).filter(
-          (s): s is Required<PipelineStepManifest> & { file: string } =>
-            typeof s.file === 'string' && s.file.length > 0,
-        ) ?? []) as Array<Required<PipelineStepManifest> & { file: string }>;
-        const partnerById = new Map(
-          partnerSteps
-            .filter((step) => typeof step.id === 'string' && step.id.length > 0)
-            .map((step) => [step.id as string, step] as const),
-        );
-        const bLabel = experimentPartner?.label ?? 'B';
 
         if (steps.length === 0) {
           const collapsedSteps0 = new Set<number>();
@@ -2133,16 +2123,10 @@ function render(): void {
           return;
         }
 
-        const stepEntries = steps.map((step, i) => {
+        const stepEntries = steps.map((step) => {
           const label = step.label ?? step.id ?? step.file;
           const afterASrc = spriteUrl(briefId, runId, step.file);
-          const partnerStep =
-            (step.id ? partnerById.get(step.id) : undefined) ?? partnerSteps[i] ?? null;
-          const afterBSrc =
-            partnerStep && experimentPartner
-              ? spriteUrl(experimentPartner.briefId, experimentPartner.runId, partnerStep.file)
-              : null;
-          return { label, afterASrc, afterBSrc };
+          return { label, afterASrc, afterBSrc: null as string | null };
         });
         const selectedBranches: Array<'A' | 'B'> = stepEntries.map(() => 'A');
         // index 0 = slicing step, 1..n = pipeline steps
@@ -2158,24 +2142,15 @@ function render(): void {
 
         // Cache for live-computed pipeline results (by rawCellUrl)
         const liveResultsCache = new Map<string, LivePostprocessResult>();
-
-        // Define button wiring function before renderPipelineSteps so it can be called
-        const wireSlicingButtons = (): void => {
-          btnV1.onclick = () => {
-            setAbActive('v1');
-            if (sliceMapV1 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV1);
-            else if (!sliceMapV1) slicingStatus.textContent = 'v1 slice map not yet loaded…';
-            void renderPipelineSteps();
-          };
-          btnV2.onclick = () => {
-            setAbActive('v2');
-            if (sliceMapV2 && lastSheetImg) drawSliceMapOnCanvas(lastSheetImg, sliceMapV2);
-            else if (!sliceMapV2) slicingStatus.textContent = 'v2 slice map not yet loaded…';
-            void renderPipelineSteps();
-          };
+        let pipelineRenderVersion = 0;
+        rerenderPostprocessPipeline = () => {
+          liveResultsCache.clear();
+          void renderPipelineSteps();
         };
 
         const renderPipelineSteps = async (): Promise<void> => {
+          if (renderToken !== debuggerRenderToken) return;
+          const renderVersion = ++pipelineRenderVersion;
           rerenderPipeline = () => {
             void renderPipelineSteps();
           };
@@ -2185,14 +2160,11 @@ function render(): void {
                 style: { fontSize: '11px', color: '#475569', marginBottom: '10px' },
               })
             : null;
-          const abNode = el('div', {
-            text:
-              experimentPartner && partnerManifest
-                ? `A/B: A=${briefId}/${runId} · B=${experimentPartner.label} (${experimentPartner.briefId}/${experimentPartner.runId})`
-                : 'A/B: no experiment',
+          const experimentInfoNode = el('div', {
+            text: 'Background removal runs a single promoted algorithm with configurable tolerances.',
             style: { fontSize: '11px', color: '#64748b', marginBottom: '10px' },
           });
-          pipelineBody.replaceChildren(...(profileNode ? [profileNode] : []), abNode);
+          pipelineBody.replaceChildren(...(profileNode ? [profileNode] : []), experimentInfoNode);
 
           // Slicing step is always first in the pipeline
           pipelineBody.append(
@@ -2206,16 +2178,16 @@ function render(): void {
             }),
           );
 
-          // Wire button listeners every time pipeline is re-rendered
-          wireSlicingButtons();
-
           // Start from current slicer selection when available; fallback to raw artifact.
           const selectedRawCellDataUrl = makeSelectedRawCellDataUrl();
           const rawCellSource =
             selectedRawCellDataUrl ?? rawSpriteUrl(briefId, runId, `${padded}.png`);
-          const cacheKey = `${briefId}/${runId}/${variantIndex}|${sliceVersion}|${selectedRawCellDataUrl ? 'sheet' : 'raw'}`;
+          const cacheKey =
+            `${briefId}/${runId}/${variantIndex}|${getActiveSliceVersion()}|` +
+            `${selectedRawCellDataUrl ? 'sheet' : 'raw'}|` +
+            `c=${appliedBackgroundTweaks.colorToleranceSq}|` +
+            `f=${appliedBackgroundTweaks.fringeToleranceSq}`;
           let selectedOutputForNextStep: string | null = rawCellSource;
-          let lastActiveBranch: 'A' | 'B' = 'A';
 
           // If we have briefPath, compute live pipeline steps; otherwise show pre-baked
           const useLivePostprocess = briefPathStr !== null;
@@ -2223,42 +2195,64 @@ function render(): void {
           if (useLivePostprocess) {
             // Compute all live steps from the raw cell
             try {
-              let liveResult = liveResultsCache.get(cacheKey);
+              const liveCacheKey = `${cacheKey}|bg=promoted`;
+              let liveResult = liveResultsCache.get(liveCacheKey);
               if (!liveResult) {
-                liveResult = await livePostprocess(rawCellSource, briefPathStr);
-                liveResultsCache.set(cacheKey, liveResult);
+                liveResult = await livePostprocess(rawCellSource, briefPathStr, {
+                  background: {
+                    colorToleranceSq: appliedBackgroundTweaks.colorToleranceSq,
+                    fringeToleranceSq: appliedBackgroundTweaks.fringeToleranceSq,
+                  },
+                });
+                liveResultsCache.set(liveCacheKey, liveResult);
               }
-              const steps = liveResult.steps;
-              if (steps.length > 0) {
+              if (renderVersion !== pipelineRenderVersion) {
+                return;
+              }
+              if (renderToken !== debuggerRenderToken) {
+                return;
+              }
+              const stepsA = liveResult.steps;
+              const stepCount = stepsA.length;
+
+              if (stepCount > 0) {
                 pipelineBody.append(
                   makeReprocessStepBridge(() => {
-                    liveResultsCache.delete(cacheKey);
+                    liveResultsCache.delete(liveCacheKey);
                     void renderPipelineSteps();
                   }),
                 );
               }
 
               // Render each step with live-computed images
-              for (let i = 0; i < steps.length; i++) {
-                const step = steps[i]!;
+              for (let i = 0; i < stepCount; i++) {
+                const stepA = stepsA[i];
+                if (!stepA) continue;
+                const stepId = stepA.id ?? `step-${i + 1}`;
+                const stepLabel = stepA.label ?? stepId;
                 const combinedIdx = i + 1;
                 const beforeSrc: string | null = selectedOutputForNextStep;
                 const selectedBranch = selectedBranches[i] ?? 'A';
                 const isSkipped = collapsedSteps.has(combinedIdx);
 
-                // Convert base64 to data URL
-                const afterASrc = `data:image/png;base64,${step.png}`;
+                const afterAFromStep: string = `data:image/png;base64,${stepA.png}`;
+                const afterASrc: string = afterAFromStep;
+                const afterBSrc: string | null = null;
+                const bLabel = 'B (n/a)';
 
                 pipelineBody.append(
                   makeComparisonStepCard(
-                    step.label,
+                    stepLabel,
                     beforeSrc,
                     afterASrc,
-                    null, // No B variant for live processing
-                    'B',
+                    afterBSrc,
+                    bLabel,
                     selectedBranch,
-                    () => {
-                      // Live postprocessing doesn't have variants yet
+                    (branch) => {
+                      const requested = branch === 'B' && afterBSrc === null ? 'A' : branch;
+                      if (selectedBranches[i] === requested) return;
+                      selectedBranches[i] = requested;
+                      void renderPipelineSteps();
                     },
                     isSkipped,
                     () => {
@@ -2269,19 +2263,19 @@ function render(): void {
                       }
                       void renderPipelineSteps();
                     },
+                    stepId === 'background-removal' ? tweakPanel : null,
                   ),
                 );
-                if (i < steps.length - 1) {
+                if (i < stepCount - 1) {
                   pipelineBody.append(
                     makeReprocessStepBridge(() => {
-                      liveResultsCache.delete(cacheKey);
+                      liveResultsCache.delete(liveCacheKey);
                       void renderPipelineSteps();
                     }),
                   );
                 }
 
                 if (!isSkipped) {
-                  lastActiveBranch = 'A';
                   selectedOutputForNextStep = afterASrc;
                 }
               }
@@ -2318,7 +2312,7 @@ function render(): void {
                   beforeSrc,
                   step.afterASrc,
                   step.afterBSrc,
-                  bLabel,
+                  'B',
                   selectedBranch,
                   (branch) => {
                     const requested = branch === 'B' && step.afterBSrc === null ? 'A' : branch;
@@ -2347,23 +2341,19 @@ function render(): void {
               if (isSkipped) {
                 selectedOutputForNextStep = beforeSrc;
               } else {
-                lastActiveBranch = selectedBranch;
                 selectedOutputForNextStep =
                   selectedBranch === 'B' && step.afterBSrc ? step.afterBSrc : step.afterASrc;
               }
             }
 
-            const finalOutputSrc =
-              lastActiveBranch === 'B' && experimentPartner
-                ? spriteUrl(experimentPartner.briefId, experimentPartner.runId, `${padded}.png`)
-                : finalSrc;
-            pipelineBody.append(makeFinalOutputCard(finalOutputSrc));
+            pipelineBody.append(makeFinalOutputCard(finalSrc));
           }
         };
 
         void renderPipelineSteps();
       } catch (error) {
         if (
+          renderToken !== debuggerRenderToken ||
           !debugTarget ||
           `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
         )
@@ -2386,7 +2376,6 @@ function render(): void {
     const variantIndex =
       Number.isFinite(variantIndexRaw) && variantIndexRaw >= 0 ? variantIndexRaw : 0;
     if (!briefId || !runId) {
-      debuggerReprocessStatus.textContent = 'Reprocess status: provide brief id and run id.';
       return;
     }
     debugTarget = { briefId, runId, variantIndex };
@@ -2410,79 +2399,6 @@ function render(): void {
     const variantIndex = cachedVariants[0] ?? 0;
     debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex };
     renderPostprocessDebugger();
-  });
-
-  runReprocessBtn.addEventListener('click', async () => {
-    if (!debugTarget) {
-      debuggerReprocessStatus.textContent = 'Select a debug target first.';
-      debuggerReprocessStatus.style.color = '#fecaca';
-      return;
-    }
-    setButtonBusy(runReprocessBtn as HTMLButtonElement, true, 'Run reprocess', 'Reprocessing...');
-    debuggerReprocessStatus.style.color = '#93c5fd';
-    debuggerReprocessStatus.textContent = 'Reprocessing…';
-    try {
-      const profileAName = reprocessALabel.value.trim() || 'A';
-      const profileBName = reprocessBLabel.value.trim() || 'B';
-      const result = await fetchJson<ReprocessResponse>(`${SIDECAR_BASE}/api/workflow/reprocess`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sourceBriefId: debugTarget.briefId,
-          sourceRunId: debugTarget.runId,
-          profileA: {
-            name: profileAName,
-            modules: {
-              speckleMode: reprocessAMode.value as 'edge-drop' | 'preserve-orphans' | 'disabled',
-            },
-          },
-          ...(reprocessBEnable.checked
-            ? {
-                profileB: {
-                  name: profileBName,
-                  modules: {
-                    speckleMode: reprocessBMode.value as
-                      | 'edge-drop'
-                      | 'preserve-orphans'
-                      | 'disabled',
-                  },
-                },
-              }
-            : {}),
-        }),
-      });
-      debuggerReprocessStatus.style.color = '#86efac';
-      debuggerReprocessStatus.textContent = `Created runs:\n${result.runs
-        .map((r) => `${r.profile}: ${r.briefId}/${r.runId}`)
-        .join('\n')}`;
-      if (result.runs[0] && result.runs[1]) {
-        const runA = result.runs[0];
-        const runB = result.runs[1];
-        experimentPartnerByRun.set(makeRunKey(runA.briefId, runA.runId), {
-          briefId: runB.briefId,
-          runId: runB.runId,
-          label: runB.profile,
-        });
-      }
-      if (result.runs[0]) {
-        debugTarget = {
-          briefId: result.runs[0].briefId,
-          runId: result.runs[0].runId,
-          variantIndex: debugTarget.variantIndex,
-        };
-        renderPostprocessDebugger();
-      }
-    } catch (error) {
-      debuggerReprocessStatus.style.color = '#fecaca';
-      debuggerReprocessStatus.textContent = error instanceof Error ? error.message : String(error);
-    } finally {
-      setButtonBusy(
-        runReprocessBtn as HTMLButtonElement,
-        false,
-        'Run reprocess',
-        'Reprocessing...',
-      );
-    }
   });
 
   clearQueueBtn.addEventListener('click', () => {

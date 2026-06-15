@@ -64,6 +64,161 @@ describe('removeBackground', () => {
       const out = removeBackgroundB(img);
       expect(alphaAt(out, 1, 4)).toBe(255);
     });
+
+    it('clears connected near-background corridors deeper than one pixel (leg-gap case)', () => {
+      const img = blank(8, 8, [255, 0, 255]);
+      // Build top/bottom "legs" so the middle row behaves like a narrow tunnel.
+      for (let x = 1; x <= 5; x++) {
+        setPixel(img, x, 3, 0, 180, 40);
+        setPixel(img, x, 5, 0, 180, 40);
+      }
+      // Close the right side so only the leftmost cell touches already-transparent bg.
+      setPixel(img, 5, 4, 0, 180, 40);
+      // Near-magenta corridor: outside flood-fill tolerance, inside fringe tolerance.
+      for (let x = 1; x <= 4; x++) {
+        setPixel(img, x, 4, 230, 20, 230);
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      expect(alphaAt(out, 1, 4)).toBe(0);
+      expect(alphaAt(out, 2, 4)).toBe(0);
+      expect(alphaAt(out, 3, 4)).toBe(0);
+      expect(alphaAt(out, 4, 4)).toBe(0);
+      expect(alphaAt(out, 5, 4)).toBe(255);
+    });
+
+    it('clears enclosed near-background islands disconnected from edges', () => {
+      const img = blank(9, 9, [255, 0, 255]);
+      // Foreground ring that seals an inner cavity.
+      for (let x = 2; x <= 6; x++) {
+        setPixel(img, x, 2, 0, 180, 40);
+        setPixel(img, x, 6, 0, 180, 40);
+      }
+      for (let y = 2; y <= 6; y++) {
+        setPixel(img, 2, y, 0, 180, 40);
+        setPixel(img, 6, y, 0, 180, 40);
+      }
+      // Inner cavity is near-background but not 4-connected to any edge.
+      for (let y = 3; y <= 5; y++) {
+        for (let x = 3; x <= 5; x++) {
+          setPixel(img, x, y, 235, 18, 235);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      expect(alphaAt(out, 4, 4)).toBe(0);
+      expect(alphaAt(out, 3, 3)).toBe(0);
+      expect(alphaAt(out, 2, 2)).toBe(255);
+      expect(alphaAt(out, 6, 6)).toBe(255);
+    });
+
+    it('clears darker enclosed magenta pockets that exceed fringe tolerance', () => {
+      const img = blank(9, 9, [255, 0, 255]);
+      for (let x = 2; x <= 6; x++) {
+        setPixel(img, x, 2, 0, 180, 40);
+        setPixel(img, x, 6, 0, 180, 40);
+      }
+      for (let y = 2; y <= 6; y++) {
+        setPixel(img, 2, y, 0, 180, 40);
+        setPixel(img, 6, y, 0, 180, 40);
+      }
+      // Near-magenta pocket: (240, 15, 240) has squared distance (15²+15²+15²)=675 from
+      // magenta — well within 8000 fringe tolerance but enclosed by foreground pixels.
+      for (let y = 3; y <= 5; y++) {
+        for (let x = 3; x <= 5; x++) {
+          setPixel(img, x, y, 240, 15, 240);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      expect(alphaAt(out, 4, 4)).toBe(0);
+      expect(alphaAt(out, 3, 5)).toBe(0);
+      expect(alphaAt(out, 2, 2)).toBe(255);
+    });
+
+    it('keeps enclosed interior colors that are far from background', () => {
+      const img = blank(9, 9, [255, 0, 255]);
+      for (let x = 2; x <= 6; x++) {
+        setPixel(img, x, 2, 0, 180, 40);
+        setPixel(img, x, 6, 0, 180, 40);
+      }
+      for (let y = 2; y <= 6; y++) {
+        setPixel(img, 2, y, 0, 180, 40);
+        setPixel(img, 6, y, 0, 180, 40);
+      }
+      for (let y = 3; y <= 5; y++) {
+        for (let x = 3; x <= 5; x++) {
+          setPixel(img, x, y, 200, 30, 20);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      expect(alphaAt(out, 4, 4)).toBe(255);
+      expect(alphaAt(out, 3, 3)).toBe(255);
+    });
+
+    it('keeps large enclosed near-background regions to avoid over-clearing foreground interiors', () => {
+      const img = blank(40, 40, [255, 0, 255]);
+      // Foreground frame that creates a large enclosed cavity.
+      for (let x = 5; x <= 34; x++) {
+        setPixel(img, x, 5, 0, 180, 40);
+        setPixel(img, x, 34, 0, 180, 40);
+      }
+      for (let y = 5; y <= 34; y++) {
+        setPixel(img, 5, y, 0, 180, 40);
+        setPixel(img, 34, y, 0, 180, 40);
+      }
+      // 20x20 enclosed near-background region (400 px) is intentionally
+      // larger than the enclosed-island cap and must be preserved.
+      for (let y = 10; y <= 29; y++) {
+        for (let x = 10; x <= 29; x++) {
+          setPixel(img, x, y, 240, 15, 240);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      expect(alphaAt(out, 20, 20)).toBe(255);
+      expect(alphaAt(out, 10, 10)).toBe(255);
+    });
+
+    it('clears a small enclosed residual pocket slightly beyond fringe tolerance', () => {
+      const img = blank(11, 11, [255, 0, 255]);
+      // Isolated 3x3 pocket with shades that are just beyond the default
+      // fringe threshold. The flood + near-color enclosed pass won't remove
+      // it, but residual enclosed cleanup should.
+      for (let y = 4; y <= 6; y++) {
+        for (let x = 4; x <= 6; x++) {
+          setPixel(img, x, y, 255, 95, 255); // dist^2 to magenta = 9025
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      expect(alphaAt(out, 5, 5)).toBe(0);
+      expect(alphaAt(out, 6, 6)).toBe(0);
+    });
+
+    it('preserves enclosed details when near-background seed coverage is too sparse', () => {
+      const img = blank(16, 16, [255, 0, 255]);
+      for (let x = 2; x <= 13; x++) {
+        setPixel(img, x, 2, 0, 180, 40);
+        setPixel(img, x, 13, 0, 180, 40);
+      }
+      for (let y = 2; y <= 13; y++) {
+        setPixel(img, 2, y, 0, 180, 40);
+        setPixel(img, 13, y, 0, 180, 40);
+      }
+      // 10x10 enclosed detail region (100 px) with only one near-bg seed pixel.
+      for (let y = 3; y <= 12; y++) {
+        for (let x = 3; x <= 12; x++) {
+          setPixel(img, x, y, 170, 110, 80);
+        }
+      }
+      setPixel(img, 8, 8, 255, 90, 255); // single near-background seed
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      expect(alphaAt(out, 8, 8)).toBe(255);
+      expect(alphaAt(out, 6, 6)).toBe(255);
+    });
   });
 
   it('leaves an interior region of a different color fully opaque', () => {
