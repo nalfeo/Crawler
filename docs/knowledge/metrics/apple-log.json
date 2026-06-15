@@ -288,5 +288,14 @@
     "delta": 0,
     "verdict": "exact",
     "notes": "Converted the docked minimap into a player-centered round radar pinned to the top-right corner, showing the current room + nearby entities (enemies red, NPCs green, gold-ringed white player dot). Fixed two live visual bugs: (1) terrain bleeding outside the gold dial when the player moved -- the geometry-mask Graphics was setVisible(false), which Phaser 4.1's stencil pass skips so it clipped nothing; removing that made the mask clip again. (2) entity/player blips invisible -- lazily-created terrainRt shared dotGraphics' depth and rendered over it; fixed with an explicit depth hierarchy (bg 1000 < terrain 1001 < dots 1002 < rings 1005 < compass 1006). Updated the HudMinimap architectural guard test to match the refactored outlined-dot drawing while preserving FOV-gating intent. verify:fast 1179 pass; full verify's only failures are the known-flaky sprite-pipeline integration timeouts (generate-one / synth-to-generate) under parallel load, unrelated to this change. Playwright-confirmed terrain stays clipped in the dial when moving + player dot centered."
+  },
+  {
+    "date": "2024-01-XX",
+    "session": "spell-system-lab-fixes",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Fixed spell-system-lab compilation errors: removed unused imports, corrected ability state access pattern (abilityStatesByEntity.get()), accessed spells via equippedActiveAbilityIds. Lab test harness now complete and passing all 1179 tests."
   }
 ]
