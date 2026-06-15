@@ -82,6 +82,7 @@ const SLIME_SPEED = 0.9;
 const SLIME_DETECT_RANGE = 320;
 const SPRITE_TEX_ENEMY_RAT = 1;
 const SPRITE_TEX_ENEMY_SLIME = 2;
+const SPRITE_TEX_WELCOME_SIGN = 3;
 const FLOOR_1_STAIR_BOSS_HP = 280;
 const FLOOR_1_STAIR_BOSS_SPEED = 1.15;
 const FLOOR_1_STAIR_BOSS_DETECT_RANGE = 540;
@@ -411,7 +412,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
             world.ecs,
             eid,
             set(Sprite, {
-              textureId: 3, // TEX_WELCOME_SIGN
+              textureId: SPRITE_TEX_WELCOME_SIGN,
               width: 32,
               height: 16,
             }),

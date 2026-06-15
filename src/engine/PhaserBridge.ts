@@ -46,6 +46,7 @@ const TEX_EXPLOSION = '__cw_explosion';
 const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
 const TEX_DEAD_SKULL = '__cw_dead_skull';
 const TEX_WELCOME_SIGN = '__cw_welcome_sign';
+const SPRITE_TEX_WELCOME_SIGN = 3;
 const DEAD_SKULL_Y_OFFSET = 18;
 const logger = createLogger('engine:phaser-bridge');
 
@@ -304,7 +305,10 @@ function getEntityType(world: GameWorld, eid: number): string {
   }
   if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
   if (hasComponent(world.ecs, eid, Projectile)) return 'proj';
-  if (hasComponent(world.ecs, eid, Sprite) && world.stores.sprite.textureId[eid] === 3)
+  if (
+    hasComponent(world.ecs, eid, Sprite) &&
+    world.stores.sprite.textureId[eid] === SPRITE_TEX_WELCOME_SIGN
+  )
     return 'welcome_sign';
   return 'default';
 }
