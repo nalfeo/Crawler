@@ -1,7 +1,7 @@
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME } from '../../shared/constants.js';
-import { MainGameScene } from '../../engine/scenes/MainGameScene.js';
+import { BootScene, MainGameScene } from '../../engine/index.js';
 import {
   enemyAISystem,
   floor1EnemyDirectorSystem,
@@ -241,7 +241,19 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       width: GAME.WIDTH,
       height: GAME.HEIGHT,
       backgroundColor: '#05070f',
+      // Match the real game (src/main.ts): without these, Phaser defaults to
+      // LINEAR filtering, which blurs the pixel-art tiles and samples the 1px
+      // sheet spacing into dark grid seams — the "muddy" look. Each entry point
+      // builds its own Phaser config, so this flag must be set per host.
+      pixelArt: true,
+      roundPixels: true,
       scene: [
+        // BootScene preloads the Kenney sprite sheets, then starts
+        // MainGameScene by key. Without it the tiny-dungeon textures never
+        // load and MainGameScene falls back to procedural primitives — which
+        // is why this slice previously rendered a flat-colored placeholder
+        // instead of the real Floor 1 art.
+        BootScene,
         new MainGameScene({
           configureWorld: (world, playerEid) => {
             initializeFloor1Scenario(world, playerEid);

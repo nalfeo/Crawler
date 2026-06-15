@@ -203,25 +203,26 @@ const colsOf = (key: string): number => {
 
 const ROGUELIKE_COLS = colsOf(KENNEY_ROGUELIKE_CHARS);
 const CUSTOM_COLS = colsOf(CUSTOM_PIXEL_SPRITES);
+const TD_COLS = colsOf(KENNEY_TINY_DUNGEON);
 
 export const SPRITES: ReadonlyArray<SpriteDef> = [
   {
     id: 'player',
-    sheetKey: CUSTOM_PIXEL_SPRITES,
-    frame: frameAt(CUSTOM_COLS, 0, 0),
-    note: 'Custom player sprite.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 0, 8),
+    note: 'Tiny Dungeon knight (frame 96) — temp CC0 art.',
   },
   {
     id: 'enemy.goblin',
-    sheetKey: CUSTOM_PIXEL_SPRITES,
-    frame: frameAt(CUSTOM_COLS, 1, 0),
-    note: 'Custom goblin sprite.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 1, 10),
+    note: 'Tiny Dungeon ghost (frame 121) — temp CC0 art.',
   },
   {
     id: 'enemy.orc',
-    sheetKey: CUSTOM_PIXEL_SPRITES,
-    frame: frameAt(CUSTOM_COLS, 2, 0),
-    note: 'Custom orc sprite.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 1, 9),
+    note: 'Tiny Dungeon brawler (frame 109) — temp CC0 art.',
   },
   {
     id: 'enemy.brigand',
@@ -237,27 +238,27 @@ export const SPRITES: ReadonlyArray<SpriteDef> = [
   },
   {
     id: 'enemy.rat',
-    sheetKey: CUSTOM_PIXEL_SPRITES,
-    frame: frameAt(CUSTOM_COLS, 3, 0),
-    note: 'Custom rat sprite.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 3, 10),
+    note: 'Tiny Dungeon rat (frame 123) — temp CC0 art.',
   },
   {
     id: 'enemy.slime',
-    sheetKey: CUSTOM_PIXEL_SPRITES,
-    frame: frameAt(CUSTOM_COLS, 4, 0),
-    note: 'Custom slime sprite.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 0, 9),
+    note: 'Tiny Dungeon teal slime (frame 108) — temp CC0 art.',
   },
   {
     id: 'enemy.boss',
-    sheetKey: CUSTOM_PIXEL_SPRITES,
-    frame: frameAt(CUSTOM_COLS, 5, 0),
-    note: 'Custom boss sprite.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 0, 10),
+    note: 'Tiny Dungeon bat-beast (frame 120) — temp CC0 art.',
   },
   {
     id: 'npc.guide',
-    sheetKey: CUSTOM_PIXEL_SPRITES,
-    frame: frameAt(CUSTOM_COLS, 6, 0),
-    note: 'Custom NPC guide sprite.',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 3, 8),
+    note: 'Tiny Dungeon princess (frame 99) — temp CC0 art.',
   },
   {
     id: 'item.gem',

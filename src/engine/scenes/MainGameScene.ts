@@ -135,6 +135,9 @@ export class MainGameScene extends Phaser.Scene {
 
   private doorGraphics?: Phaser.GameObjects.Graphics;
 
+  /** Per-door sprite Images (Tiny Dungeon door art), rebuilt on door updates. */
+  private doorImages: Phaser.GameObjects.Image[] = [];
+
   private safeRoomMarker?: Phaser.GameObjects.Arc;
 
   private staircaseMarker?: Phaser.GameObjects.Arc;
@@ -350,6 +353,10 @@ export class MainGameScene extends Phaser.Scene {
       this.bridge = undefined;
       this.mapRt?.destroy();
       this.doorGraphics?.destroy();
+      for (const img of this.doorImages) {
+        img.destroy();
+      }
+      this.doorImages.length = 0;
       this.safeRoomMarker?.destroy();
       this.staircaseMarker?.destroy();
       this.stairsLabel?.destroy();
@@ -877,6 +884,10 @@ export class MainGameScene extends Phaser.Scene {
   private drawFloorTerrain(): void {
     this.mapRt?.destroy();
     this.doorGraphics?.destroy();
+    for (const img of this.doorImages) {
+      img.destroy();
+    }
+    this.doorImages.length = 0;
     this.mapRt = undefined;
     this.doorGraphics = undefined;
 
@@ -995,17 +1006,57 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     g.clear();
+    for (const img of this.doorImages) {
+      img.destroy();
+    }
+    this.doorImages.length = 0;
+
     const tileSize = floorMap.config.tileSizePx;
+    const TD_KEY = 'kenney-tiny-dungeon';
+    const DOOR_CLOSED_FRAME = 46; // brown arched wooden door
+    const DOOR_OPEN_FRAME = 34; // door swung open, clear passage
+    const hasSheet = this.textures.exists(TD_KEY);
+
+    const tm = floorMap.tileMap;
+    // A wall is an in-bounds tile that is neither passable nor a door.
+    const isWall = (wx: number, wy: number): boolean =>
+      tm.inBounds(wx, wy) && !tm.isPassable(wx, wy) && !tm.isDoor(wx, wy);
+
     for (let y = 0; y < floorMap.height; y += 1) {
       for (let x = 0; x < floorMap.width; x += 1) {
-        if (!floorMap.tileMap.isDoor(x, y)) {
+        if (!tm.isDoor(x, y)) {
           continue;
         }
-        const isOpen = floorMap.tileMap.isPassable(x, y);
-        g.fillStyle(isOpen ? 0xd2b48c : 0x6b4423, 1);
-        g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-        g.lineStyle(1, isOpen ? 0xf5deb3 : 0x3d2615, 0.9);
-        g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+        // Only render a door where it reads as set into a wall: flanked by
+        // walls left+right (vertical wall run) or above+below (horizontal run).
+        // Doors that ended up surrounded by floor get no sprite — plain floor
+        // shows through instead of a door "floating" in the open.
+        const horizontalDoorway = isWall(x - 1, y) && isWall(x + 1, y);
+        const verticalDoorway = isWall(x, y - 1) && isWall(x, y + 1);
+        if (!horizontalDoorway && !verticalDoorway) {
+          continue;
+        }
+        const isOpen = tm.isPassable(x, y);
+        if (hasSheet) {
+          const frame = isOpen ? DOOR_OPEN_FRAME : DOOR_CLOSED_FRAME;
+          const img = this.add
+            .image(x * tileSize + tileSize / 2, y * tileSize + tileSize / 2, TD_KEY, frame)
+            .setDepth(-19)
+            .setScale(tileSize / 16);
+          // Door images are recreated every frame, after refreshCameraMasks()
+          // has already rebuilt the camera ignore lists. Without this, the
+          // scroll-locked UI camera renders them at raw world coordinates, so
+          // doors appear pinned to the screen and "follow" the player. Pinning
+          // the ignore here guarantees only the scrolling world camera draws them.
+          this.uiCamera?.ignore(img);
+          this.doorImages.push(img);
+        } else {
+          // Fallback for environments without the sprite sheet (e.g. tests).
+          g.fillStyle(isOpen ? 0xd2b48c : 0x6b4423, 1);
+          g.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+          g.lineStyle(1, isOpen ? 0xf5deb3 : 0x3d2615, 0.9);
+          g.strokeRect(x * tileSize + 0.5, y * tileSize + 0.5, tileSize - 1, tileSize - 1);
+        }
       }
     }
   }

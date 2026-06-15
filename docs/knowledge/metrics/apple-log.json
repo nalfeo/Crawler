@@ -214,5 +214,32 @@
     "delta": 0,
     "verdict": "exact",
     "notes": "Implemented quest phases 1-3: config pack loading, event-driven quest progression, template compiler, and quest-content lab"
+  },
+  {
+    "date": "2026-06-14",
+    "session": "cc0-visual-snapshot-art",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Temporary CC0 Kenney art bridge: bake script + rewritten visual-snapshot lab (clean grid, wall depth shadow, scattered floor detail, see-through door, glowing fireball) + stricter judge. Established VLM judge caps flat CC0 art at style ~3; user accepted shipping after concrete defects fixed."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "wire-cc0-art-into-main-game",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Wired approved CC0 tiny-dungeon art into actual gameplay: repointed entity sprites (registry) and tiles (tile-visuals) to clean frames, rewrote MainGameScene door overlay to stamp real door art. Corrected rat to frame 123 (123/124 are real rats; prior spider stand-in was wrong). Visually verified lab + main game via Playwright. verify:fast passes; full-verify failures are unrelated flaky sprite-pipeline integration timeouts that pass in isolation."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "fix-muddy-tiles-and-floating-doors",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Fixed two main-game art regressions. Muddy/seams: src/main.ts lacked pixelArt+roundPixels so Phaser used LINEAR filtering; enabled both. Doors 'following' the player: door overlay images are recreated every frame after refreshCameraMasks() rebuilds camera ignore lists, so the scroll-locked uiCamera drew them at raw world coords; added uiCamera.ignore(img) per door image. Stripped temp tint/label/ASCII-dump debug. verify:fast 1144 pass; Playwright-confirmed crisp tiles + doors set in walls, none flanking player."
   }
 ]
