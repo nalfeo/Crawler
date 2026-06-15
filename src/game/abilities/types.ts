@@ -82,6 +82,26 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
       dpsPercentOfDamage: z.number().positive(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('spell_fireball'),
+      damagePercent: z.number().positive(),
+      radiusTiles: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_heal'),
+      baseHeal: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_pulse_shield'),
+      knockbackForce: z.number().positive(),
+      radiusTiles: z.number().positive(),
+    })
+    .strict(),
 ]);
 
 const baseAbilitySchema = z

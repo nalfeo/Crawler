@@ -183,6 +183,27 @@ export const MOB_DEFS: ReadonlyMap<string, MobDef> = new Map([
     }),
   ],
 
+  // --- Neighborhood Boss (Tutorial) ---
+  [
+    'slime-rat',
+    def({
+      id: 'slime-rat',
+      name: 'Slime Rat',
+      baseHp: 45,
+      baseSpeed: 1.3,
+      baseDamage: 8,
+      sizeCategory: 'boss',
+      aiPattern: 'melee',
+      rarity: 'elite',
+      lootTableId: 'boss-drops',
+      spriteId: 'mob-placeholder',
+      knockbackMult: 0.6,
+      goreFactor: 0.4,
+      abilitySlots: 0,
+      xpMultiplier: 2.5,
+    }),
+  ],
+
   // --- Boss ---
   [
     'directors-proxy',

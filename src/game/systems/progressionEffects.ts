@@ -59,5 +59,21 @@ export function applyCatalogEffect(world: GameWorld, options: ApplyCatalogEffect
         expiresFrame,
       });
       break;
+
+    case 'spell_fireball':
+    case 'spell_heal':
+    case 'spell_pulse_shield':
+      // Spell effects are not applied as stat modifiers. They are executed directly
+      // by spell execution systems when the spell is triggered.
+      // Register a no-op modifier so the spell system can track spell availability.
+      addStatModifier(world, {
+        sourceType,
+        sourceId,
+        stat: 'damage',
+        op: 'add',
+        value: 0,
+        expiresFrame,
+      });
+      break;
   }
 }

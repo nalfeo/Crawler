@@ -121,7 +121,13 @@ export interface GameWorld {
     inventory: boolean;
     /** Equipment actions become usable once the player holds something equippable. */
     equipment: boolean;
+    /** Ability system and spells become usable once unlocked (Floor 1: after boss quest). */
+    spells: boolean;
   };
+  /** Player's current MP (mana points). */
+  playerMp: number;
+  /** Player's maximum MP (mana points). */
+  playerMaxMp: number;
   /**
    * True when the player entity's current position is inside a safe room.
    * Updated each tick by `safeRoomSystem`. Systems and UI use this to pause
@@ -244,7 +250,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     featureUnlocks: {
       inventory: false,
       equipment: false,
+      spells: false,
     },
+    playerMp: 100,
+    playerMaxMp: 100,
     debugFlags: {
       showAllRooms: false,
     },
