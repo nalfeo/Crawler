@@ -12,6 +12,8 @@ import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME, FLOOR } from '../../shared/constants.js';
 import { createHudUI } from '../../engine/HudUI.js';
+import { createDialogueBox, type DialogueBox } from '../../engine/DialogueBox.js';
+import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/index.js';
 import { acceptQuest } from '../../core/systems/questSystem.js';
@@ -29,6 +31,7 @@ interface UxLabSettings {
   playerLevel: number;
   timeRemainingS: number;
   activeQuests: number;
+  showDialog: boolean;
 }
 
 const LAB_ID = 'ux-snapshot-lab';
@@ -111,6 +114,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     playerLevel: 3,
     timeRemainingS: 50,
     activeQuests: 2,
+    showDialog: true,
   };
 
   const root = document.createElement('div');
@@ -123,7 +127,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
   const hint = document.createElement('p');
   hint.textContent =
-    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, quest tracker) over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states.';
+    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, quest tracker, minimap) plus the NPC dialogue box and choice modal, over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states; toggle the dialogue and open the choice modal from the controls.';
   hint.style.cssText = 'margin-top:16px;color:#c9d4ff;line-height:1.6;';
   controls.append(hint);
 
@@ -131,6 +135,37 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   let world: GameWorld | undefined;
   let playerEid = -1;
   let hudUi: ReturnType<typeof createHudUI> | undefined;
+  let dialogueBox: DialogueBox | undefined;
+  let modalPicker: ReturnType<typeof createModalPickerUI> | undefined;
+
+  const openSampleModal = (): void => {
+    modalPicker?.open(
+      {
+        title: 'Choose Your Starter',
+        subtitle: 'The Producer is watching. Pick a weapon to begin Floor 1.',
+        options: [
+          {
+            id: 'cleaver',
+            label: 'Rusty Cleaver',
+            description: 'Heavy melee swing. High damage, short reach.',
+          },
+          {
+            id: 'sparkwand',
+            label: 'Spark Wand',
+            description: 'Ranged bolts that chain to a nearby foe.',
+          },
+          {
+            id: 'caltrops',
+            label: 'Caltrops',
+            description: 'Drop a trail of spikes. Locked until Floor 2.',
+            disabled: true,
+          },
+        ],
+        allowCancel: true,
+      },
+      { onConfirm: () => modalPicker?.close() },
+    );
+  };
 
   function syncQuests(w: GameWorld): void {
     w.questLog.clear();
@@ -313,9 +348,27 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
       hudUi = createHudUI(this);
 
+      modalPicker = createModalPickerUI(this);
+      dialogueBox = createDialogueBox(this, {
+        onClose: () => {
+          settings.showDialog = false;
+          dialogueBox?.hide();
+        },
+      });
+      dialogueBox.showLine(
+        'The Guide',
+        '"Welcome to Floor 1, contestant. Clear the rats, grab the loot, and try not to die on camera."',
+      );
+      dialogueBox.setCloseVisible(true);
+      dialogueBox.setVisible(settings.showDialog);
+
       this.events.once('shutdown', () => {
         hudUi?.destroy();
         hudUi = undefined;
+        dialogueBox?.destroy();
+        dialogueBox = undefined;
+        modalPicker?.destroy();
+        modalPicker = undefined;
       });
     }
 
@@ -376,12 +429,21 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         syncQuests(world);
       }
     });
+  gui
+    .add(settings, 'showDialog')
+    .name('Show dialogue')
+    .onChange((v: boolean) => {
+      dialogueBox?.setVisible(v);
+    });
+  gui.add({ openModal: () => openSampleModal() }, 'openModal').name('Open choice modal');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
   createGame();
 
   return () => {
     hudUi?.destroy();
+    dialogueBox?.destroy();
+    modalPicker?.destroy();
     game?.destroy(true);
     hint.remove();
     root.remove();
@@ -392,6 +454,6 @@ registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'UX Snapshot',
   description:
-    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, quest tracker, and in-world drops — over a Floor 1 room.',
+    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, quest tracker, minimap, NPC dialogue box, and choice modal — over a Floor 1 room with in-world drops.',
   create: createUxLab,
 });

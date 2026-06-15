@@ -11,6 +11,7 @@ import {
   type MinimapViewState,
   type MinimapZoomLimits,
 } from './minimap-view-state.js';
+import { PIXEL_UI } from './pixel-ui.js';
 
 const HUD_DEPTH = 1000;
 const MAP_PADDING = 16;
@@ -124,25 +125,58 @@ export function createHudMinimap(scene: Phaser.Scene): {
   destroy(): void;
 } {
   const hudMapBg = scene.add
-    .rectangle(0, 0, HUD_MINIMAP_WIDTH, HUD_MINIMAP_HEIGHT, 0x0b1020, 0.95)
-    .setStrokeStyle(1, 0x334155)
+    .rectangle(0, 0, HUD_MINIMAP_WIDTH, HUD_MINIMAP_HEIGHT, PIXEL_UI.panelFill, 0.96)
+    .setStrokeStyle(2, PIXEL_UI.border)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH)
     .setInteractive({ useHandCursor: true });
+
+  // Raised pixel bevel + titled header strip for the docked minimap chrome.
+  const hudBevelTop = scene.add
+    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 2, PIXEL_UI.bevelLight)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 1);
+  const hudBevelLeft = scene.add
+    .rectangle(0, 0, 2, HUD_MINIMAP_HEIGHT, PIXEL_UI.bevelLight)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 1);
+  const hudBevelBottom = scene.add
+    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 2, PIXEL_UI.bevelDark)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 1);
+  const hudBevelRight = scene.add
+    .rectangle(0, 0, 2, HUD_MINIMAP_HEIGHT, PIXEL_UI.bevelDark)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 1);
+  const hudTitleStrip = scene.add
+    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 18, 0x222b41, 1)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 1);
+  const hudTitleRule = scene.add
+    .rectangle(0, 0, HUD_MINIMAP_WIDTH, 1, PIXEL_UI.gold, 0.65)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(HUD_DEPTH + 1);
 
   const hudMapLabel = scene.add
     .text(0, 0, 'MAP (M)', {
       fontFamily: 'monospace',
       fontSize: '11px',
-      color: '#e2e8f0',
+      fontStyle: 'bold',
+      color: '#fcd34d',
     })
     .setOrigin(0, 0)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2);
 
   const hudMapViewportFrame = scene.add
-    .rectangle(0, 0, 0, 0, 0x0f172a, 1)
-    .setStrokeStyle(1, 0x475569)
+    .rectangle(0, 0, 0, 0, PIXEL_UI.trackFill, 1)
+    .setStrokeStyle(1, PIXEL_UI.border)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 1);
 
@@ -154,8 +188,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setVisible(false);
 
   const panelBg = scene.add
-    .rectangle(0, 0, 0, 0, 0x0b1020, 0.95)
-    .setStrokeStyle(MAP_BORDER, 0x334155)
+    .rectangle(0, 0, 0, 0, PIXEL_UI.panelFill, 0.97)
+    .setStrokeStyle(MAP_BORDER, PIXEL_UI.border)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 1)
     .setVisible(false);
@@ -164,7 +198,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .text(0, 0, 'Dungeon Map', {
       fontFamily: 'monospace',
       fontSize: '16px',
-      color: '#cbd5e1',
+      fontStyle: 'bold',
+      color: '#fcd34d',
     })
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2)
@@ -181,8 +216,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setVisible(false);
 
   const viewportFrame = scene.add
-    .rectangle(0, 0, 0, 0, 0x0f172a, 1)
-    .setStrokeStyle(1, 0x475569)
+    .rectangle(0, 0, 0, 0, PIXEL_UI.trackFill, 1)
+    .setStrokeStyle(1, PIXEL_UI.border)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2)
     .setVisible(false);
@@ -191,7 +226,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .text(0, 0, '✕', {
       fontFamily: 'monospace',
       fontSize: '18px',
-      color: '#94a3b8',
+      color: '#fcd34d',
     })
     .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
@@ -200,8 +235,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setInteractive({ useHandCursor: true });
 
   const closeButtonBg = scene.add
-    .rectangle(0, 0, 44, 44, 0x0f172a, 0.96)
-    .setStrokeStyle(1, 0x475569)
+    .rectangle(0, 0, 44, 44, PIXEL_UI.panelFill, 0.97)
+    .setStrokeStyle(1, PIXEL_UI.border)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2)
     .setVisible(false)
@@ -258,7 +293,17 @@ export function createHudMinimap(scene: Phaser.Scene): {
     hudMapBg
       .setPosition(hudMapX + HUD_MINIMAP_WIDTH / 2, hudMapY + HUD_MINIMAP_HEIGHT / 2)
       .setSize(HUD_MINIMAP_WIDTH, HUD_MINIMAP_HEIGHT);
-    hudMapLabel.setPosition(hudMapX + 7, hudMapY + 6);
+    hudBevelTop.setPosition(hudMapX, hudMapY).setSize(HUD_MINIMAP_WIDTH, 2);
+    hudBevelLeft.setPosition(hudMapX, hudMapY).setSize(2, HUD_MINIMAP_HEIGHT);
+    hudBevelBottom
+      .setPosition(hudMapX, hudMapY + HUD_MINIMAP_HEIGHT - 2)
+      .setSize(HUD_MINIMAP_WIDTH, 2);
+    hudBevelRight
+      .setPosition(hudMapX + HUD_MINIMAP_WIDTH - 2, hudMapY)
+      .setSize(2, HUD_MINIMAP_HEIGHT);
+    hudTitleStrip.setPosition(hudMapX + 2, hudMapY + 2).setSize(HUD_MINIMAP_WIDTH - 4, 17);
+    hudTitleRule.setPosition(hudMapX + 2, hudMapY + 19).setSize(HUD_MINIMAP_WIDTH - 4, 1);
+    hudMapLabel.setPosition(hudMapX + 8, hudMapY + 5);
     hudViewport = new Phaser.Geom.Rectangle(hudMapInnerX, hudMapInnerY, hudMapInnerW, hudMapInnerH);
     hudMapViewportFrame
       .setPosition(hudViewport.centerX, hudViewport.centerY)
@@ -320,6 +365,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
     dotGraphics.setVisible(Boolean(lastFloorMap));
 
     hudMapBg.setVisible(!visible);
+    hudBevelTop.setVisible(!visible);
+    hudBevelLeft.setVisible(!visible);
+    hudBevelBottom.setVisible(!visible);
+    hudBevelRight.setVisible(!visible);
+    hudTitleStrip.setVisible(!visible);
+    hudTitleRule.setVisible(!visible);
     hudMapLabel.setVisible(!visible);
     hudMapViewportFrame.setVisible(!visible);
     if (visible) {
@@ -626,6 +677,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
     terrainRt?.destroy();
     dotGraphics.destroy();
     hudMapBg.destroy();
+    hudBevelTop.destroy();
+    hudBevelLeft.destroy();
+    hudBevelBottom.destroy();
+    hudBevelRight.destroy();
+    hudTitleStrip.destroy();
+    hudTitleRule.destroy();
     hudMapLabel.destroy();
     hudMapViewportFrame.destroy();
     overlayDimmer.destroy();
