@@ -11,6 +11,7 @@ import { BiomeType, RoomRole, TerrainType, type MapConfig } from '../shared/map-
 import { getGenerator } from '../core/map/generators/registry.js';
 import {
   Position,
+  Rotation,
   Player,
   Health,
   BroadcastScore,
@@ -81,6 +82,7 @@ const SLIME_SPEED = 0.9;
 const SLIME_DETECT_RANGE = 320;
 const SPRITE_TEX_ENEMY_RAT = 1;
 const SPRITE_TEX_ENEMY_SLIME = 2;
+const SPRITE_TEX_WELCOME_SIGN = 3;
 const FLOOR_1_STAIR_BOSS_HP = 280;
 const FLOOR_1_STAIR_BOSS_SPEED = 1.15;
 const FLOOR_1_STAIR_BOSS_DETECT_RANGE = 540;
@@ -305,6 +307,56 @@ function tagShopRoomAsSafe(world: GameWorld, shopRoomPos: { x: number; y: number
   }
 }
 
+function findRoomPath(
+  roomGraph: { get(id: number): { neighbors: Iterable<number> } | undefined },
+  startId: number,
+  targetId: number,
+): number[] | null {
+  const queue: number[] = [startId];
+  const visited = new Set<number>([startId]);
+  const parent = new Map<number, number>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === targetId) {
+      break;
+    }
+    const room = roomGraph.get(current);
+    if (!room) {
+      continue;
+    }
+    for (const neighborId of room.neighbors) {
+      if (visited.has(neighborId)) {
+        continue;
+      }
+      visited.add(neighborId);
+      parent.set(neighborId, current);
+      queue.push(neighborId);
+    }
+  }
+
+  if (!visited.has(targetId)) {
+    return null;
+  }
+
+  const path: number[] = [];
+  let current: number | undefined = targetId;
+  while (current !== undefined) {
+    path.push(current);
+    if (current === startId) {
+      break;
+    }
+    current = parent.get(current);
+  }
+
+  if (path[path.length - 1] !== startId) {
+    return null;
+  }
+
+  path.reverse();
+  return path;
+}
+
 /** Called the first time the player talks to the Tutorial Goon. Accepts the quest and unlocks quest tracking. */
 export function meetTutorialGoon(world: GameWorld): void {
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
@@ -335,6 +387,41 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   const { safeRoomPos, staircasePos, shopRoomPos, questItemPos } = chooseObjectiveTiles(world);
   tagShopRoomAsSafe(world, shopRoomPos);
+
+  if (floorMap.spawnRoom && floorMap.safeRoom) {
+    const startId = floorMap.spawnRoom.id;
+    const targetId = floorMap.safeRoom.id;
+    const path = findRoomPath(floorMap.roomGraph, startId, targetId);
+
+    if (path) {
+      for (let i = 1; i < path.length - 1; i += 2) {
+        const roomId = path[i]!;
+        const nextRoomId = path[i + 1]!;
+        const room = floorMap.roomGraph.get(roomId);
+        const nextRoom = floorMap.roomGraph.get(nextRoomId);
+        if (room && nextRoom) {
+          const c1 = centerOfRoom(room);
+          const c2 = centerOfRoom(nextRoom);
+          const pos = floorMap.tileToPixel(c1.x, c1.y);
+          const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
+
+          const eid = createEntity(world);
+          addComponent(world.ecs, eid, set(Position, { x: pos.x, y: pos.y }));
+          addComponent(world.ecs, eid, set(Rotation, { angle }));
+          addComponent(
+            world.ecs,
+            eid,
+            set(Sprite, {
+              textureId: SPRITE_TEX_WELCOME_SIGN,
+              width: 32,
+              height: 16,
+            }),
+          );
+        }
+      }
+    }
+  }
+
   world.floor1 = {
     protagonistName: FLOOR_1_PROTAGONIST,
     starterWeaponPool: FLOOR_1_STARTER_POOL,

@@ -13,6 +13,7 @@ import {
   Position,
   Projectile,
   Returning,
+  Rotation,
   Sprite,
   Team,
   Trap,
@@ -44,6 +45,8 @@ const TEX_TRAP_ARMING = '__cw_trap_arming';
 const TEX_EXPLOSION = '__cw_explosion';
 const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
 const TEX_DEAD_SKULL = '__cw_dead_skull';
+const TEX_WELCOME_SIGN = '__cw_welcome_sign';
+const SPRITE_TEX_WELCOME_SIGN = 3;
 const DEAD_SKULL_Y_OFFSET = 18;
 const logger = createLogger('engine:phaser-bridge');
 
@@ -252,6 +255,22 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillRect(7, 9, 2, 1);
   g.generateTexture(TEX_DEAD_SKULL, 16, 16);
 
+  // Welcome sign — wooden board with painted white arrow (pointing right)
+  g.clear();
+  g.fillStyle(0x8b5a2b, 1);
+  g.fillRect(0, 0, 32, 16);
+  g.lineStyle(2, 0x5c3a21, 1);
+  g.strokeRect(1, 1, 30, 14);
+  g.lineStyle(3, 0xffffff, 0.9);
+  g.beginPath();
+  g.moveTo(6, 8);
+  g.lineTo(26, 8);
+  g.moveTo(20, 3);
+  g.lineTo(26, 8);
+  g.lineTo(20, 13);
+  g.strokePath();
+  g.generateTexture(TEX_WELCOME_SIGN, 32, 16);
+
   g.destroy();
   logger.info('Generated procedural fallback textures');
 }
@@ -286,6 +305,11 @@ function getEntityType(world: GameWorld, eid: number): string {
   }
   if (hasComponent(world.ecs, eid, EnemyProjectile)) return 'enemy_proj';
   if (hasComponent(world.ecs, eid, Projectile)) return 'proj';
+  if (
+    hasComponent(world.ecs, eid, Sprite) &&
+    world.stores.sprite.textureId[eid] === SPRITE_TEX_WELCOME_SIGN
+  )
+    return 'welcome_sign';
   return 'default';
 }
 
@@ -398,6 +422,8 @@ function getProceduralTextureForType(type: string): string {
       return TEX_ENEMY_BULLET;
     case 'aoe_proj':
       return TEX_AOE_PROJ;
+    case 'welcome_sign':
+      return TEX_WELCOME_SIGN;
     case 'enemy_aoe_proj':
       return TEX_ENEMY_AOE_PROJ;
     case 'returning':
@@ -818,6 +844,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               // Arming blink
               const blink = Math.sin(renderElapsedMs * 0.02) > 0 ? 0.7 : 0.3;
               img.setAlpha(blink);
+            }
+            break;
+          }
+
+          case 'welcome_sign': {
+            if (hasComponent(world.ecs, eid, Rotation)) {
+              img.setRotation(world.stores.rotation.angle[eid] ?? 0);
             }
             break;
           }

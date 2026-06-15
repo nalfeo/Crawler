@@ -171,6 +171,15 @@
   },
   {
     "date": "2026-06-14",
+    "session": "welcome-signs",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Added procedural sign sprite, BFS pathfinding, and spawned signs along the path to the welcome guild"
+  },
+  {
+    "date": "2026-06-14",
     "session": "nightly-mutation-copilot-handoff",
     "estimated_apples": 3,
     "actual_apples": 2,
