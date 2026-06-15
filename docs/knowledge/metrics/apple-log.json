@@ -241,5 +241,14 @@
     "delta": 0,
     "verdict": "exact",
     "notes": "Fixed two main-game art regressions. Muddy/seams: src/main.ts lacked pixelArt+roundPixels so Phaser used LINEAR filtering; enabled both. Doors 'following' the player: door overlay images are recreated every frame after refreshCameraMasks() rebuilds camera ignore lists, so the scroll-locked uiCamera drew them at raw world coords; added uiCamera.ignore(img) per door image. Stripped temp tint/label/ASCII-dump debug. verify:fast 1144 pass; Playwright-confirmed crisp tiles + doors set in walls, none flanking player."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "ux-art-enhancements",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Polished HUD/UX art. New src/engine/pixel-ui.ts shared theme (beveled panels, inset stat bars with top shine + segment ticks, generated pixel-art icon textures) used to refactor HudHealthBar, HudExperienceBar, HudFloorTimer, HudQuestTracker while preserving sync/destroy APIs; upgraded procedural drop gem (TEX_GEM) to a faceted crystal. Fixed a real HUD collision: quest tracker overlapped the top-right minimap, so stacked it below (TOP_Y 16->200). Added ux-snapshot-lab driving the real HudUI over a Floor 1 room with in-world drops and lil-gui sliders for every surface state. verify:fast 1179 pass; full verify's only failure is an unrelated flaky sprite-pipeline beforeEach timeout that passes in isolation. Playwright-verified legibility + modern-pixel look."
   }
 ]
