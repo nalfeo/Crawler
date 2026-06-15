@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PIXEL_UI } from './pixel-ui.js';
 import {
   cancelModalPickerSelection,
   confirmModalPickerSelection,
@@ -45,25 +46,27 @@ const PANEL_WIDTH = 500;
 const PANEL_HEIGHT = 360;
 const PANEL_PADDING = 18;
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'Segoe UI, Arial, sans-serif',
-  fontSize: '24px',
-  color: '#f8fafc',
+  fontFamily: 'monospace',
+  fontSize: '22px',
+  fontStyle: 'bold',
+  color: '#fcd34d',
 };
 const SUBTITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'Segoe UI, Arial, sans-serif',
-  fontSize: '16px',
+  fontFamily: 'monospace',
+  fontSize: '15px',
   color: '#cbd5e1',
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
 const BODY_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'Segoe UI, Arial, sans-serif',
+  fontFamily: 'monospace',
   fontSize: '13px',
   color: '#94a3b8',
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 },
 };
 const LABEL_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'Segoe UI, Arial, sans-serif',
-  fontSize: '18px',
+  fontFamily: 'monospace',
+  fontSize: '17px',
+  fontStyle: 'bold',
   color: '#f8fafc',
 };
 const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
@@ -71,8 +74,8 @@ const LABEL_DISABLED_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   color: '#64748b',
 };
 const DESCRIPTION_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
-  fontFamily: 'Segoe UI, Arial, sans-serif',
-  fontSize: '13px',
+  fontFamily: 'monospace',
+  fontSize: '12px',
   color: '#94a3b8',
   wordWrap: { width: PANEL_WIDTH - PANEL_PADDING * 2 - 24 },
 };
@@ -95,12 +98,37 @@ export function createModalPickerUI(scene: Phaser.Scene): {
 
   const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
-    .rectangle(0, 0, scene.scale.width, scene.scale.height, 0x020617, 0.72)
+    .rectangle(0, 0, scene.scale.width, scene.scale.height, 0x020617, 0.78)
     .setOrigin(0, 0);
-  const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, 0x0f172a, 0.98);
+  const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, PIXEL_UI.panelFill, 0.98);
   panel.setOrigin(0, 0);
-  panel.setStrokeStyle(2, 0x334155, 1);
-  overlay.add([backdrop, panel]);
+  panel.setStrokeStyle(2, PIXEL_UI.border, 1);
+  const bevelTop = scene.add
+    .rectangle(0, 0, PANEL_WIDTH, 2, PIXEL_UI.bevelLight, 1)
+    .setOrigin(0, 0);
+  const bevelLeft = scene.add
+    .rectangle(0, 0, 2, PANEL_HEIGHT, PIXEL_UI.bevelLight, 1)
+    .setOrigin(0, 0);
+  const bevelBottom = scene.add
+    .rectangle(0, 0, PANEL_WIDTH, 2, PIXEL_UI.bevelDark, 1)
+    .setOrigin(0, 0);
+  const bevelRight = scene.add
+    .rectangle(0, 0, 2, PANEL_HEIGHT, PIXEL_UI.bevelDark, 1)
+    .setOrigin(0, 0);
+  const titleStrip = scene.add
+    .rectangle(0, 0, PANEL_WIDTH - 4, 38, PIXEL_UI.trackFill, 1)
+    .setOrigin(0, 0);
+  const titleRule = scene.add.rectangle(0, 0, PANEL_WIDTH - 4, 2, PIXEL_UI.gold, 1).setOrigin(0, 0);
+  overlay.add([
+    backdrop,
+    panel,
+    bevelTop,
+    bevelLeft,
+    bevelBottom,
+    bevelRight,
+    titleStrip,
+    titleRule,
+  ]);
 
   let state: ModalPickerState<string> | null = null;
   let hooks: ModalPickerOpenHooks<string> | undefined;
@@ -129,6 +157,12 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     panel.setSize(PANEL_WIDTH, PANEL_HEIGHT);
     panel.x = Math.round((scene.scale.width - PANEL_WIDTH) / 2);
     panel.y = Math.round((scene.scale.height - PANEL_HEIGHT) / 2);
+    bevelTop.setPosition(panel.x, panel.y).setSize(PANEL_WIDTH, 2);
+    bevelLeft.setPosition(panel.x, panel.y).setSize(2, PANEL_HEIGHT);
+    bevelBottom.setPosition(panel.x, panel.y + PANEL_HEIGHT - 2).setSize(PANEL_WIDTH, 2);
+    bevelRight.setPosition(panel.x + PANEL_WIDTH - 2, panel.y).setSize(2, PANEL_HEIGHT);
+    titleStrip.setPosition(panel.x + 2, panel.y + 2).setSize(PANEL_WIDTH - 4, 38);
+    titleRule.setPosition(panel.x + 2, panel.y + 40).setSize(PANEL_WIDTH - 4, 2);
   };
 
   const rerender = (): void => {
@@ -172,8 +206,8 @@ export function createModalPickerUI(scene: Phaser.Scene): {
       const isSelected = state.selectedIndex === index;
       const isDisabled = Boolean(option.disabled);
       const rowY = cursorY + index * (rowHeight + 8);
-      const bgColor = isSelected ? 0x1d4ed8 : 0x1e293b;
-      const bgAlpha = isDisabled ? 0.35 : isSelected ? 0.9 : 0.75;
+      const bgColor = isSelected ? 0x1d4ed8 : PIXEL_UI.panelFill;
+      const bgAlpha = isDisabled ? 0.4 : isSelected ? 0.95 : 0.85;
       const row = scene.add
         .rectangle(
           panelX + PANEL_PADDING,
@@ -184,7 +218,7 @@ export function createModalPickerUI(scene: Phaser.Scene): {
           bgAlpha,
         )
         .setOrigin(0, 0);
-      row.setStrokeStyle(isSelected ? 2 : 1, isSelected ? 0x93c5fd : 0x334155);
+      row.setStrokeStyle(isSelected ? 2 : 1, isSelected ? PIXEL_UI.gold : PIXEL_UI.bevelDark);
       row.setInteractive({ useHandCursor: !isDisabled });
       row.on('pointerdown', () => {
         if (!state || option.disabled) {

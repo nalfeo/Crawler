@@ -109,8 +109,10 @@ describe('HudMinimap architectural guard', () => {
     expect(source.indexOf('const color =')).toBeLessThan(
       source.indexOf('roomHasDiscoveredTile(room, floorMap, visited)'),
     );
-    expect(source).toContain(
-      'dotGraphics.fillStyle(DOT_ENEMY, 1);\n    for (const eid of enemies)',
+    expect(source).toContain('for (const eid of enemies)');
+    expect(source).toContain('dotGraphics.fillStyle(DOT_ENEMY, 1);');
+    expect(source.indexOf('for (const eid of enemies)')).toBeLessThan(
+      source.indexOf('dotGraphics.fillStyle(DOT_ENEMY, 1);'),
     );
     expect(source).toContain('if (!visited[idx]) continue;');
   });

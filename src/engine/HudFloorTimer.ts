@@ -1,27 +1,26 @@
 /**
  * HudFloorTimer — fixed-position floor number + countdown timer.
  *
- * Positioned top-center. Reads from world.floor1 (Floor 1) with a generic
- * FLOOR.MAX_DURATION_S fallback for future floors.
- * Visual states: neutral → amber (<60 s) → red+pulse (<30 s).
+ * Positioned top-center inside a beveled pixel-UI panel that auto-sizes to the
+ * text. Reads from world.floor1 (Floor 1) with a generic FLOOR.MAX_DURATION_S
+ * fallback. Visual states: neutral → amber (<60 s) → red+pulse (<30 s).
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME, FLOOR } from '../shared/constants.js';
+import { PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
 // ---------------------------------------------------------------------------
 
 const CENTER_X = GAME.WIDTH / 2;
-const TOP_Y = 16;
-const DEPTH = 1000;
+const TOP_Y = 14;
 
 const COLORS = {
   neutral: '#e5e7eb',
-  amber: '#f59e0b',
-  red: '#ef4444',
-  bg: '#111827cc',
+  amber: '#f2b542',
+  red: '#e23b3b',
 } as const;
 
 const AMBER_THRESHOLD_MS = 60_000;
@@ -31,18 +30,20 @@ export function createHudFloorTimer(scene: Phaser.Scene): {
   sync(world: GameWorld): void;
   destroy(): void;
 } {
+  const panel = createBeveledPanel(scene, CENTER_X - 80, TOP_Y, 160, 38);
+
   const timerText = scene.add
-    .text(CENTER_X, TOP_Y, '', {
+    .text(CENTER_X, TOP_Y + 19, '', {
       fontFamily: 'monospace',
       fontSize: '18px',
       color: COLORS.neutral,
-      backgroundColor: COLORS.bg,
-      padding: { x: 14, y: 8 },
+      stroke: '#02040a',
+      strokeThickness: 3,
       align: 'center',
     })
-    .setOrigin(0.5, 0)
+    .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
-    .setDepth(DEPTH);
+    .setDepth(PIXEL_UI_DEPTH.content);
 
   let pulseTween: Phaser.Tweens.Tween | undefined;
   let wasPulsing = false;
@@ -87,7 +88,13 @@ export function createHudFloorTimer(scene: Phaser.Scene): {
     }
 
     const timerStr = formatTimer(remainingMs);
-    timerText.setText(`Floor ${world.floor}  ${timerStr}`);
+    timerText.setText(`Floor ${world.floor}   ${timerStr}`);
+
+    // Resize the panel to hug the text.
+    const w = Math.ceil(timerText.width) + 28;
+    const h = 38;
+    panel.setPosition(CENTER_X - w / 2, TOP_Y);
+    panel.setSize(w, h);
 
     if (remainingMs <= RED_THRESHOLD_MS) {
       timerText.setColor(COLORS.red);
@@ -103,6 +110,7 @@ export function createHudFloorTimer(scene: Phaser.Scene): {
 
   function destroy(): void {
     pulseTween?.stop();
+    panel.destroy();
     timerText.destroy();
   }
 
