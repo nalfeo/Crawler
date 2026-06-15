@@ -40,7 +40,7 @@ describe('ability registry', () => {
     ).toThrow(/duplicate/i);
   });
 
-  it('rejects non-manual spell triggers', () => {
+  it('rejects spells without positive MP costs', () => {
     expect(() =>
       parseAbilityCatalog([
         {
@@ -49,11 +49,30 @@ describe('ability registry', () => {
           description: 'desc',
           category: 'combat',
           kind: 'spell',
+          mpCost: 0,
           cooldownFrames: 10,
-          trigger: { kind: 'skill_usage', metric: 'hits_landed' },
+          trigger: { kind: 'enemy_cluster', minEnemies: 2, withinFeet: 5 },
           effects: [{ type: 'stat_add', stat: 'damage', value: 1 }],
         },
       ]),
-    ).toThrow(/manual trigger/i);
+    ).toThrow(/positive mpcost/i);
+  });
+
+  it('rejects removed manual trigger kind', () => {
+    expect(() =>
+      parseAbilityCatalog([
+        {
+          id: 'spell-manual',
+          name: 'Manual',
+          description: 'desc',
+          category: 'combat',
+          kind: 'spell',
+          mpCost: 5,
+          cooldownFrames: 10,
+          trigger: { kind: 'manual' },
+          effects: [{ type: 'stat_add', stat: 'damage', value: 1 }],
+        },
+      ]),
+    ).toThrow();
   });
 });

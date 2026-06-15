@@ -149,7 +149,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     itemBonus: 0,
     selectedActiveAbility: activeOrSpell[0]?.id ?? '',
     selectedPassiveAbility: passives[0]?.id ?? '',
-    selectedTriggerKind: 'manual' as 'manual' | 'skill_usage',
+    selectedTriggerKind: 'skill_usage' as const,
     reset,
   };
 
@@ -250,7 +250,7 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
       .name('Grant Passive');
   }
 
-  gui.add(params, 'selectedTriggerKind', ['manual', 'skill_usage']).name('Trigger Kind');
+  gui.add(params, 'selectedTriggerKind', ['skill_usage']).name('Trigger Kind');
 
   gui
     .add(

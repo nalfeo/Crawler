@@ -1,7 +1,7 @@
 import { addComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { SkillHolder, Stats } from '../../src/core/components.js';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../src/game/abilities/types.js';
 import {
   abilitySystem,
@@ -33,7 +33,7 @@ describe('abilitySystem', () => {
       i < ACTIVE_ABILITY_SLOT_LIMIT - 1 ? `ability-${i}` : 'battle-focus',
     );
 
-    expect(() => equipActiveAbility(world, player, 'arcane-bolt')).toThrow(/slot cap/i);
+    expect(() => equipActiveAbility(world, player, 'fireball')).toThrow(/slot cap/i);
   });
 
   it('allows unlimited passive grants and applies them once through stat modifiers', () => {
@@ -59,10 +59,10 @@ describe('abilitySystem', () => {
 
   it('memorized spells are active abilities', () => {
     const { world, player } = setupPlayer();
-    memorizeSpell(world, player, 'arcane-bolt');
+    memorizeSpell(world, player, 'fireball');
 
     const state = world.abilityStatesByEntity.get(player)!;
-    expect(state.equippedActiveAbilityIds).toContain('arcane-bolt');
+    expect(state.equippedActiveAbilityIds).toContain('fireball');
   });
 
   it('triggers active ability when conditions match and enforces cooldown', () => {
@@ -139,5 +139,111 @@ describe('abilitySystem', () => {
 
     abilitySystem(world);
     expect(world.abilityTriggerEvents).toHaveLength(0);
+  });
+
+  it('auto-casts fireball on enemy clumps, spends MP, and honors 5s cooldown', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    memorizeSpell(world, player, 'fireball');
+
+    // Place enemies within 48px (6 feet) trigger radius and give them enough health to survive 2 spells
+    spawnEnemy(world, 8, 0, 100);
+    spawnEnemy(world, 12, 4, 100);
+    spawnEnemy(world, 14, -4, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+    expect(world.playerMp).toBe(15);
+
+    world.frameCount = 200;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+    expect(world.playerMp).toBe(15);
+
+    world.frameCount = 400;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(400);
+    expect(world.playerMp).toBe(10);
+  });
+
+  it('casts pulse shield only when low health and crowded, then spends 10 MP', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    memorizeSpell(world, player, 'pulse-shield');
+    world.stores.health.current[player] = 40;
+    world.stores.health.max[player] = 100;
+
+    spawnEnemy(world, 12, 0, 10);
+    spawnEnemy(world, -10, 6, 10);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.has('pulse-shield')).toBe(false);
+    expect(world.playerMp).toBe(20);
+
+    spawnEnemy(world, 6, -8, 10);
+    world.frameCount = 200;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(200);
+    expect(world.playerMp).toBe(10);
+
+    world.stores.health.current[player] = 85;
+    world.frameCount = 1600;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(200);
+    expect(world.playerMp).toBe(10);
+  });
+
+  it('does not trigger spells when MP is below cost', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 4;
+    memorizeSpell(world, player, 'fireball');
+
+    spawnEnemy(world, 20, 0, 10);
+    spawnEnemy(world, 24, 4, 10);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.has('fireball')).toBe(false);
+    expect(world.playerMp).toBe(4);
+  });
+
+  it('casts heal only when HP deficit reaches heal amount, with 30s cooldown and 10 MP cost', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 30;
+    memorizeSpell(world, player, 'heal');
+    world.stores.health.max[player] = 100;
+    world.stores.health.current[player] = 75; // deficit 25 (< 30)
+
+    world.frameCount = 100;
+    abilitySystem(world);
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.has('heal')).toBe(false);
+    expect(world.playerMp).toBe(30);
+
+    world.stores.health.current[player] = 70; // deficit 30
+    world.frameCount = 200;
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('heal')).toBe(200);
+    expect(world.playerMp).toBe(20);
+
+    world.stores.health.current[player] = 40;
+    world.frameCount = 1000; // still inside 1800-frame cooldown
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('heal')).toBe(200);
+    expect(world.playerMp).toBe(20);
+
+    world.frameCount = 2001; // cooldown elapsed
+    abilitySystem(world);
+    expect(state.cooldownByAbilityId.get('heal')).toBe(2001);
+    expect(world.playerMp).toBe(10);
   });
 });

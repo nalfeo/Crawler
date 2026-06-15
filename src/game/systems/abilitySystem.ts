@@ -1,13 +1,16 @@
+import { hasComponent, query } from 'bitecs';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
   type AbilityState,
   type AbilityTriggerCondition,
   type AbilityTriggerEvent,
 } from '../abilities/types.js';
+import { Enemy, Health, Player, Position } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
+import { ftToPx } from '../../shared/units.js';
 
 export function createAbilityState(): AbilityState {
   return {
@@ -78,13 +81,137 @@ export function queueAbilityTrigger(world: GameWorld, trigger: AbilityTriggerEve
 function triggerMatches(condition: AbilityTriggerCondition, event: AbilityTriggerEvent): boolean {
   if (condition.kind !== event.kind) return false;
 
-  if (condition.kind === 'skill_usage') {
-    if (condition.metric !== undefined && event.metric !== condition.metric) return false;
-    if (condition.skillId !== undefined && event.skillId !== condition.skillId) return false;
-    if ((event.amount ?? 0) < (condition.minAmount ?? 0)) return false;
-  }
+  if (condition.metric !== undefined && event.metric !== condition.metric) return false;
+  if (condition.skillId !== undefined && event.skillId !== condition.skillId) return false;
+  if ((event.amount ?? 0) < (condition.minAmount ?? 0)) return false;
 
   return true;
+}
+
+function getHealthRatio(world: GameWorld, holderEid: number): number {
+  const max = world.stores.health.max[holderEid] ?? 0;
+  if (max <= 0) return 1;
+  const current = world.stores.health.current[holderEid] ?? 0;
+  return current / max;
+}
+
+function countEnemiesWithin(world: GameWorld, x: number, y: number, radiusPx: number): number {
+  const enemies = query(world.ecs, [Enemy, Position, Health]);
+  const radiusSq = radiusPx * radiusPx;
+  let count = 0;
+  for (const enemyEid of enemies) {
+    if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
+    const ex = world.stores.position.x[enemyEid] ?? 0;
+    const ey = world.stores.position.y[enemyEid] ?? 0;
+    const dx = ex - x;
+    const dy = ey - y;
+    if (dx * dx + dy * dy <= radiusSq) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function getLargestEnemyClusterSizeNearCaster(
+  world: GameWorld,
+  casterEid: number,
+  radiusPx: number,
+): number {
+  const casterX = world.stores.position.x[casterEid] ?? 0;
+  const casterY = world.stores.position.y[casterEid] ?? 0;
+  const enemies = [...query(world.ecs, [Enemy, Position, Health])];
+  const radiusSq = radiusPx * radiusPx;
+  let clusterSize = 0;
+
+  for (const enemy of enemies) {
+    if ((world.stores.health.current[enemy] ?? 0) <= 0) continue;
+    const ex = world.stores.position.x[enemy] ?? 0;
+    const ey = world.stores.position.y[enemy] ?? 0;
+    const dx = ex - casterX;
+    const dy = ey - casterY;
+    if (dx * dx + dy * dy <= radiusSq) {
+      clusterSize += 1;
+    }
+  }
+
+  return clusterSize;
+}
+
+function shouldAutoTriggerAbility(
+  world: GameWorld,
+  holderEid: number,
+  trigger: Exclude<AbilityTriggerCondition, { kind: 'skill_usage' }>,
+): boolean {
+  switch (trigger.kind) {
+    case 'enemy_cluster': {
+      const clusterSize = getLargestEnemyClusterSizeNearCaster(
+        world,
+        holderEid,
+        ftToPx(trigger.withinFeet),
+      );
+      return clusterSize >= trigger.minEnemies;
+    }
+    case 'low_health':
+      return getHealthRatio(world, holderEid) < trigger.healthBelowRatio;
+    case 'low_health_crowded': {
+      if (getHealthRatio(world, holderEid) >= trigger.healthBelowRatio) {
+        return false;
+      }
+      const holderX = world.stores.position.x[holderEid] ?? 0;
+      const holderY = world.stores.position.y[holderEid] ?? 0;
+      return (
+        countEnemiesWithin(world, holderX, holderY, ftToPx(trigger.withinFeet)) >=
+        trigger.minEnemies
+      );
+    }
+    case 'health_deficit_at_least': {
+      const max = world.stores.health.max[holderEid] ?? 0;
+      const current = world.stores.health.current[holderEid] ?? 0;
+      return max - current >= trigger.deficitAmount;
+    }
+  }
+}
+
+function hasEnoughMp(world: GameWorld, holderEid: number, mpCost: number): boolean {
+  if (mpCost <= 0) return true;
+  if (!hasComponent(world.ecs, holderEid, Player)) return true;
+  return world.playerMp >= mpCost;
+}
+
+function spendMp(world: GameWorld, holderEid: number, mpCost: number): void {
+  if (mpCost <= 0) return;
+  if (!hasComponent(world.ecs, holderEid, Player)) return;
+  world.playerMp = Math.max(0, world.playerMp - mpCost);
+}
+
+function activateAbility(world: GameWorld, holderEid: number, abilityId: string): void {
+  const state = world.abilityStatesByEntity.get(holderEid);
+  const def = getAbilityDefinition(abilityId);
+  if (state === undefined || def === undefined || def.kind === 'passive') return;
+
+  if (def.kind === 'spell' && !world.featureUnlocks.spells) {
+    return;
+  }
+  if (!hasEnoughMp(world, holderEid, def.mpCost)) {
+    return;
+  }
+
+  const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
+  if (world.frameCount - lastTriggerFrame < def.cooldownFrames) {
+    return;
+  }
+
+  removeStatModifiers(world, 'ability', `${abilityId}:active:${holderEid}`);
+  for (const effect of def.effects) {
+    applyCatalogEffect(world, {
+      sourceType: 'ability',
+      sourceId: `${abilityId}:active:${holderEid}`,
+      effect,
+      holderEid,
+    });
+  }
+  spendMp(world, holderEid, def.mpCost);
+  state.cooldownByAbilityId.set(abilityId, world.frameCount);
 }
 
 export function abilitySystem(world: GameWorld): void {
@@ -117,22 +244,20 @@ export function abilitySystem(world: GameWorld): void {
     for (const abilityId of state.equippedActiveAbilityIds) {
       const def = getAbilityDefinition(abilityId);
       if (def === undefined || def.kind === 'passive') continue;
+      if (def.trigger.kind !== 'skill_usage') continue;
       if (!triggerMatches(def.trigger, event)) continue;
 
-      const lastTriggerFrame = state.cooldownByAbilityId.get(abilityId) ?? Number.NEGATIVE_INFINITY;
-      if (world.frameCount - lastTriggerFrame < def.cooldownFrames) {
-        continue;
-      }
+      activateAbility(world, holderEid, abilityId);
+    }
+  }
 
-      removeStatModifiers(world, 'ability', `${abilityId}:active:${holderEid}`);
-      for (const effect of def.effects) {
-        applyCatalogEffect(world, {
-          sourceType: 'ability',
-          sourceId: `${abilityId}:active:${holderEid}`,
-          effect,
-        });
-      }
-      state.cooldownByAbilityId.set(abilityId, world.frameCount);
+  for (const [holderEid, state] of world.abilityStatesByEntity.entries()) {
+    for (const abilityId of state.equippedActiveAbilityIds) {
+      const def = getAbilityDefinition(abilityId);
+      if (def === undefined || def.kind === 'passive') continue;
+      if (def.trigger.kind === 'skill_usage') continue;
+      if (!shouldAutoTriggerAbility(world, holderEid, def.trigger)) continue;
+      activateAbility(world, holderEid, abilityId);
     }
   }
 
