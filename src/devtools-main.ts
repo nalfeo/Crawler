@@ -18,9 +18,10 @@ import {
   postApprove,
   type SidecarRunListEntry,
 } from './devtools/sprite-approval-api.js';
+import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
-const SIDECAR_BASE = 'http://127.0.0.1:3010';
+const SIDECAR_BASE = getSpriteSidecarBaseUrl();
 const DEVTOOLS_PAGE_HOME = 'home';
 const DEVTOOLS_PAGE_FLOOR_ART = 'floor-art';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
