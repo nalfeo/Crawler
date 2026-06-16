@@ -94,6 +94,32 @@ const SHOPKEEPER_DEF: NpcDef = {
   heightPx: 28,
 };
 
+const SPELL_QUEST_GIVER_DEF: NpcDef = {
+  id: 'spell-quest-giver',
+  name: 'Spell Broker',
+  dialogue: [
+    {
+      text: 'I handle post-boss rewards. Beat the Slime Rat, then come back to me to claim your spellbook.',
+    },
+    {
+      text: 'When the Learn a Spell modal opens, pick Fireball, Heal, or Pulse Shield. Press [B] to configure your abilities bar.',
+    },
+    {
+      text: 'Your abilities bar supports up to ten spells. In this slice, unlocked spells auto-trigger from their cooldown + combat conditions.',
+    },
+  ],
+  quests: [
+    {
+      questId: 'floor1-boss-battle',
+      title: 'Neighborhood Watch',
+      description: 'Defeat the Slime Rat and pick a spellbook reward.',
+    },
+  ],
+  textureId: 10,
+  widthPx: 20,
+  heightPx: 28,
+};
+
 /** Lines shown when the player has the rat tail and is ready to hand it over. */
 export const SHOPKEEPER_RETURN_DIALOGUE: readonly string[] = [
   "Is that... oh, you actually got it. And it's still moist. Good contestant.",
@@ -117,6 +143,7 @@ export const SHOPKEEPER_DONE_DIALOGUE: readonly string[] = [
 
 const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [TUTORIAL_GOON_DEF.id, TUTORIAL_GOON_DEF],
+  [SPELL_QUEST_GIVER_DEF.id, SPELL_QUEST_GIVER_DEF],
   [SHOPKEEPER_DEF.id, SHOPKEEPER_DEF],
 ]);
 

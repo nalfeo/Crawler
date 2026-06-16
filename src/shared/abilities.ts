@@ -1,6 +1,8 @@
 import type { UsageMetric } from './skills.js';
 
 export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
+export const FLOOR1_BOSS_REWARD_SPELL_IDS = ['fireball', 'heal', 'pulse-shield'] as const;
+export type Floor1BossRewardSpellId = (typeof FLOOR1_BOSS_REWARD_SPELL_IDS)[number];
 
 export type AbilityTriggerKind =
   | 'skill_usage'
@@ -45,6 +47,7 @@ export interface AbilityTriggerEvent {
 }
 
 export interface AbilityState {
+  learnedSpellIds: string[];
   equippedActiveAbilityIds: string[];
   passiveAbilityIds: string[];
   cooldownByAbilityId: Map<string, number>;

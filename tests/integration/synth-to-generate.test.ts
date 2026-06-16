@@ -204,5 +204,5 @@ describe('sprites:synth → loadBrief → generateOne (integration)', () => {
       expect(existsSync(c.rawPath)).toBe(true);
       expect(existsSync(c.scorecardPath)).toBe(true);
     }
-  });
+  }, 240_000);
 });

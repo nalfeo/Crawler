@@ -14,6 +14,7 @@ import { ftToPx } from '../../shared/units.js';
 
 export function createAbilityState(): AbilityState {
   return {
+    learnedSpellIds: [],
     equippedActiveAbilityIds: [],
     passiveAbilityIds: [],
     cooldownByAbilityId: new Map(),
@@ -48,6 +49,14 @@ export function equipActiveAbility(world: GameWorld, holderEid: number, abilityI
   state.equippedActiveAbilityIds.push(abilityId);
 }
 
+export function unequipActiveAbility(world: GameWorld, holderEid: number, abilityId: string): void {
+  const state = getOrCreateAbilityState(world, holderEid);
+  const idx = state.equippedActiveAbilityIds.indexOf(abilityId);
+  if (idx >= 0) {
+    state.equippedActiveAbilityIds.splice(idx, 1);
+  }
+}
+
 export function memorizeSpell(world: GameWorld, holderEid: number, abilityId: string): void {
   const def = getAbilityDefinition(abilityId);
   if (def === undefined) {
@@ -55,6 +64,10 @@ export function memorizeSpell(world: GameWorld, holderEid: number, abilityId: st
   }
   if (def.kind !== 'spell') {
     throw new Error(`Ability ${abilityId} is not a spell`);
+  }
+  const state = getOrCreateAbilityState(world, holderEid);
+  if (!state.learnedSpellIds.includes(abilityId)) {
+    state.learnedSpellIds.push(abilityId);
   }
   equipActiveAbility(world, holderEid, abilityId);
 }
