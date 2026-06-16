@@ -14,6 +14,21 @@
     "cols": 19
   },
   {
+    "id": "sheet:junk-rat-critters",
+    "kind": "sheet",
+    "label": "junk-rat-critters",
+    "description": "Junk rat critters enemy sprite sheet generated from synthesized brief.",
+    "tags": ["sheet", "enemy", "generated"],
+    "sheetKey": "junk-rat-critters",
+    "path": "/assets/generated/junk-rat-critters.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 1,
+    "spacing": 1,
+    "cols": 4,
+    "briefed": true
+  },
+  {
     "id": "sheet:kenney-roguelike-characters",
     "kind": "sheet",
     "label": "kenney-roguelike-characters",
