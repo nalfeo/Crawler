@@ -25,4 +25,3 @@ _check-merge.sh
 # .env.local is already covered by the *.local rule above; listed explicitly for clarity.
 .env.local
 .env
-tmp/
