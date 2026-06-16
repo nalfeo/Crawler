@@ -5,6 +5,7 @@ coverage/
 .DS_Store
 .tsbuildinfo
 .vitest-cache/
+tmp/
 
 # Sprite-generation pipeline scratch artifacts (raw candidates, processed
 # variants, judge scorecards). Approved sprites live under public/assets/

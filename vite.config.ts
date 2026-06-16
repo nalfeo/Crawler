@@ -40,6 +40,11 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       open: mode === 'lab' ? '/lab.html' : mode === 'devtools' ? '/devtools.html' : '/',
+      watch: {
+        // Ignore directories written by the sprite pipeline so that creating/updating
+        // YAML briefs or generated assets does not trigger a full Vite page reload.
+        ignored: ['**/briefs/**', '**/generated/**'],
+      },
     },
   };
 });
