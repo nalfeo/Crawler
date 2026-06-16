@@ -251,14 +251,39 @@ function currentDevtoolsPage(): DevtoolsPage {
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
-function devtoolsPageHref(page: DevtoolsPage): string {
-  const url = new URL(window.location.href);
-  if (page === DEVTOOLS_PAGE_HOME) {
-    url.searchParams.delete('page');
-  } else {
-    url.searchParams.set('page', page);
+function devtoolsPageHref(page: DevtoolsPage, params?: Record<string, string>): string {
+  if (page === DEVTOOLS_PAGE_HOME) return 'devtools.html';
+  const searchParams = new URLSearchParams();
+  searchParams.set('page', page);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      searchParams.set(key, value);
+    }
   }
-  return url.toString();
+  return `devtools.html?${searchParams.toString()}`;
+}
+
+function postprocessDebuggerHref(briefId: string, runId: string, variantIndex: number): string {
+  return devtoolsPageHref(DEVTOOLS_PAGE_POSTPROCESS, {
+    briefId,
+    runId,
+    variantIndex: String(variantIndex),
+  });
+}
+
+function parseDebugTargetFromUrl(): {
+  briefId: string;
+  runId: string;
+  variantIndex: number;
+} | null {
+  const params = new URLSearchParams(window.location.search);
+  const briefId = params.get('briefId');
+  const runId = params.get('runId');
+  const variantIndexRaw = params.get('variantIndex');
+  if (!briefId || !runId || !variantIndexRaw) return null;
+  const variantIndex = Number.parseInt(variantIndexRaw, 10);
+  if (!Number.isFinite(variantIndex) || variantIndex < 0) return null;
+  return { briefId, runId, variantIndex };
 }
 
 function render(): void {
@@ -352,6 +377,7 @@ function render(): void {
       for (const tool of filtered) {
         const card = el('a', {
           style: {
+            width: '100%',
             display: 'block',
             padding: compact ? '12px 14px' : '16px 20px',
             border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -361,14 +387,11 @@ function render(): void {
             color: '#e0e0e0',
             textDecoration: 'none',
             transition: 'border-color 0.15s, transform 0.15s',
+            textAlign: 'left',
+            cursor: 'pointer',
           },
         });
-        const href = devtoolsPageHref(tool.id);
-        card.setAttribute('href', href);
-        card.addEventListener('click', (event) => {
-          event.preventDefault();
-          window.location.assign(href);
-        });
+        card.setAttribute('href', devtoolsPageHref(tool.id));
         card.addEventListener('mouseenter', () => {
           card.style.borderColor = 'rgba(126, 224, 255, 0.4)';
           card.style.transform = 'translateY(-1px)';
@@ -956,26 +979,12 @@ function render(): void {
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
   const queuedAssetIds = new Set<string>();
-  const initialParams = new URLSearchParams(window.location.search);
-  const initialBriefId = initialParams.get('briefId');
-  const initialRunId = initialParams.get('runId');
-  const initialVariantIndex = Number.parseInt(initialParams.get('variantIndex') ?? '0', 10);
-  if (initialBriefId) {
-    briefIdInput.value = initialBriefId;
-  }
-  if (initialRunId) {
-    runIdInput.value = initialRunId;
-  }
-  if (Number.isFinite(initialVariantIndex) && initialVariantIndex >= 0) {
-    variantIndexInput.value = String(initialVariantIndex);
-  }
-  if (initialBriefId && initialRunId) {
-    debugTarget = {
-      briefId: initialBriefId,
-      runId: initialRunId,
-      variantIndex:
-        Number.isFinite(initialVariantIndex) && initialVariantIndex >= 0 ? initialVariantIndex : 0,
-    };
+  const debugTargetFromUrl = parseDebugTargetFromUrl();
+  if (debugTargetFromUrl) {
+    briefIdInput.value = debugTargetFromUrl.briefId;
+    runIdInput.value = debugTargetFromUrl.runId;
+    variantIndexInput.value = String(debugTargetFromUrl.variantIndex);
+    debugTarget = debugTargetFromUrl;
   }
   const syncTweakInputsFromState = (): void => {
     colorTolField.input.value = String(appliedBackgroundTweaks.colorToleranceSq);
@@ -1327,8 +1336,7 @@ function render(): void {
         },
       });
       debugBtn.addEventListener('click', () => {
-        debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex: candidate.index };
-        renderPostprocessDebugger();
+        location.href = postprocessDebuggerHref(run.briefId, run.runId, candidate.index);
       });
       approveBtn.addEventListener('click', async () => {
         setButtonBusy(approveBtn, true, 'Approve', 'Approving...');
