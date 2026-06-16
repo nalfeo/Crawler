@@ -23,10 +23,12 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const SIDECAR_BASE = 'http://127.0.0.1:3010';
 const DEVTOOLS_PAGE_HOME = 'home';
 const DEVTOOLS_PAGE_FLOOR_ART = 'floor-art';
+const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
   | typeof DEVTOOLS_PAGE_FLOOR_ART
+  | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
   | typeof DEVTOOLS_PAGE_POSTPROCESS;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   ready: '#16a34a',
@@ -122,6 +124,16 @@ interface PostprocessDebugTarget {
   briefId: string;
   runId: string;
   variantIndex: number;
+}
+
+interface PersistedFloorArtWorkflowState {
+  selectedAssetId: string | null;
+  queuedAssetIds: string[];
+  selectedCandidatePath: string | null;
+  promotedBriefPath: string | null;
+  currentRun: WorkflowRunState | null;
+  debugTarget: PostprocessDebugTarget | null;
+  oneLinerValue: string;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -271,6 +283,33 @@ function postprocessDebuggerHref(briefId: string, runId: string, variantIndex: n
   });
 }
 
+function reviewHrefForApprovedAsset(asset: {
+  readonly briefId: string;
+  readonly sourceRun: string | null;
+  readonly variantIndex: number | null;
+  readonly approvedAssetExists: boolean;
+}): string | null {
+  if (!asset.approvedAssetExists || !asset.sourceRun || asset.variantIndex === null) {
+    return null;
+  }
+  const runId = asset.sourceRun.split('/').filter(Boolean).at(-1);
+  if (!runId) {
+    return null;
+  }
+  return devtoolsPageHref(DEVTOOLS_PAGE_SPRITE_REVIEW, {
+    briefId: asset.briefId,
+    runId,
+    variantIndex: String(asset.variantIndex),
+  });
+}
+
+function formatReviewStatus(status: FloorArtStatus): string {
+  if (status === 'approved') return 'Reviewed';
+  if (status === 'approved-not-integrated') return 'Reviewed not integrated';
+  if (status === 'approved-missing-file') return 'Reviewed missing file';
+  return status;
+}
+
 function parseDebugTargetFromUrl(): {
   briefId: string;
   runId: string;
@@ -296,6 +335,8 @@ function render(): void {
   const shell = el('section', { className: 'panel devtools-shell' });
   const currentPage = currentDevtoolsPage();
   const isHomePage = currentPage === DEVTOOLS_PAGE_HOME;
+  const isSpriteReviewPage = currentPage === DEVTOOLS_PAGE_SPRITE_REVIEW;
+  const isFloorArtPage = currentPage === DEVTOOLS_PAGE_FLOOR_ART || isSpriteReviewPage;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
@@ -304,7 +345,7 @@ function render(): void {
         ? 'Pick a DevTool from the searchable index below.'
         : isPostprocessPage
           ? 'Postprocess debugger: inspect pipeline steps, slicing, and live postprocess traces.'
-          : 'Floor art tracker: visibility over placeholders, briefs, approvals, and integration.'
+          : 'Sprite review + tracker: visibility over placeholders, briefs, reviews, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -318,10 +359,10 @@ function render(): void {
   if (isHomePage) {
     const tools = [
       {
-        id: DEVTOOLS_PAGE_FLOOR_ART,
-        name: 'Floor art + workflow',
+        id: DEVTOOLS_PAGE_SPRITE_REVIEW,
+        name: 'Sprite review + workflow',
         description:
-          'Track floor-art status, run synth/generate/approve/metadata workflow, and inspect generated candidates.',
+          'Track floor-art status, review generated sheets, run synth/generate/approve/metadata workflow, and inspect candidates.',
       },
       {
         id: DEVTOOLS_PAGE_POSTPROCESS,
@@ -478,7 +519,8 @@ function render(): void {
   for (const value of ['all', ...STATUS_ORDER]) {
     const option = document.createElement('option');
     option.value = value;
-    option.textContent = value === 'all' ? 'All statuses' : value;
+    option.textContent =
+      value === 'all' ? 'All statuses' : formatReviewStatus(value as FloorArtStatus);
     statusFilter.append(option);
   }
 
@@ -544,7 +586,7 @@ function render(): void {
     'Placeholder',
     'Briefed',
     'Drafted',
-    'Approved',
+    'Reviewed',
     'Integration',
     'Actions',
   ]) {
@@ -622,6 +664,9 @@ function render(): void {
     },
   });
   oneLinerInput.placeholder = 'One-liner subject for synthesis (e.g. "baby dragon")';
+  oneLinerInput.addEventListener('input', () => {
+    writeWorkflowState();
+  });
 
   const workflowButtons = el('div', {
     style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' },
@@ -955,7 +1000,7 @@ function render(): void {
     debuggerTraceHost,
   );
   shell.append(debuggerPanel);
-  const showFloorArtWorkflow = !isPostprocessPage;
+  const showFloorArtWorkflow = isFloorArtPage;
   controls.style.display = showFloorArtWorkflow ? 'flex' : 'none';
   summary.style.display = showFloorArtWorkflow ? 'grid' : 'none';
   manifestState.style.display = showFloorArtWorkflow ? 'block' : 'none';
@@ -979,6 +1024,66 @@ function render(): void {
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
   const queuedAssetIds = new Set<string>();
+  const workflowStorageKey = 'crawler.devtools.floor-art.workflow-state.v1';
+  const readWorkflowState = (): PersistedFloorArtWorkflowState | null => {
+    try {
+      const raw = window.localStorage.getItem(workflowStorageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<PersistedFloorArtWorkflowState>;
+      return {
+        selectedAssetId: typeof parsed.selectedAssetId === 'string' ? parsed.selectedAssetId : null,
+        queuedAssetIds: Array.isArray(parsed.queuedAssetIds)
+          ? parsed.queuedAssetIds.filter((value): value is string => typeof value === 'string')
+          : [],
+        selectedCandidatePath:
+          typeof parsed.selectedCandidatePath === 'string' ? parsed.selectedCandidatePath : null,
+        promotedBriefPath:
+          typeof parsed.promotedBriefPath === 'string' ? parsed.promotedBriefPath : null,
+        currentRun:
+          parsed.currentRun && typeof parsed.currentRun === 'object'
+            ? (parsed.currentRun as WorkflowRunState)
+            : null,
+        debugTarget:
+          parsed.debugTarget && typeof parsed.debugTarget === 'object'
+            ? (parsed.debugTarget as PostprocessDebugTarget)
+            : null,
+        oneLinerValue: typeof parsed.oneLinerValue === 'string' ? parsed.oneLinerValue : '',
+      };
+    } catch {
+      return null;
+    }
+  };
+  const writeWorkflowState = (): void => {
+    const snapshot: PersistedFloorArtWorkflowState = {
+      selectedAssetId,
+      queuedAssetIds: Array.from(queuedAssetIds),
+      selectedCandidatePath,
+      promotedBriefPath,
+      currentRun,
+      debugTarget,
+      oneLinerValue: oneLinerInput.value,
+    };
+    try {
+      window.localStorage.setItem(workflowStorageKey, JSON.stringify(snapshot));
+    } catch {
+      // Ignore storage failures; the UI still works without persistence.
+    }
+  };
+  const restoredWorkflowState = readWorkflowState();
+  if (restoredWorkflowState) {
+    selectedAssetId = restoredWorkflowState.selectedAssetId;
+    for (const assetId of restoredWorkflowState.queuedAssetIds) {
+      queuedAssetIds.add(assetId);
+    }
+    selectedCandidatePath = restoredWorkflowState.selectedCandidatePath;
+    promotedBriefPath = restoredWorkflowState.promotedBriefPath;
+    currentRun = restoredWorkflowState.currentRun;
+    debugTarget = restoredWorkflowState.debugTarget;
+    if (restoredWorkflowState.oneLinerValue) {
+      oneLinerInput.value = restoredWorkflowState.oneLinerValue;
+      delete oneLinerInput.dataset.assetId;
+    }
+  }
   const debugTargetFromUrl = parseDebugTargetFromUrl();
   if (debugTargetFromUrl) {
     briefIdInput.value = debugTargetFromUrl.briefId;
@@ -1175,6 +1280,7 @@ function render(): void {
         selectedAssetId = assetId;
         renderQueue();
         renderWorkflowSelection();
+        writeWorkflowState();
       });
       queueList.append(chip);
     }
@@ -1246,6 +1352,7 @@ function render(): void {
         runResultsHost.replaceChildren();
         renderPostprocessDebugger();
         renderWorkflowSelection();
+        writeWorkflowState();
       });
       summaryNode.append(
         chooseBtn,
@@ -1343,7 +1450,7 @@ function render(): void {
         try {
           const approved = await postApprove(run.briefId, run.runId, candidate.index);
           setWorkflowStatus(
-            `Approved ${run.briefId} variant ${candidate.index} -> ${approved.assetPath} (${approved.sensorScore}${approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''})`,
+            `Reviewed ${run.briefId} variant ${candidate.index} -> ${approved.assetPath} (${approved.sensorScore}${approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''})`,
             '#bef264',
           );
           void recompute();
@@ -1361,6 +1468,10 @@ function render(): void {
     }
     runResultsHost.append(title, grid);
   };
+
+  if (currentRun) {
+    renderRunCandidates();
+  }
 
   const renderPostprocessDebugger = (): void => {
     const target = debugTarget;
@@ -1638,6 +1749,8 @@ function render(): void {
         return;
       debugTarget = { ...debugTarget, variantIndex: clicked.cell.index };
       renderPostprocessDebugger();
+      writeWorkflowState();
+      writeWorkflowState();
     };
 
     debuggerVariantSelect.onchange = (): void => {
@@ -1648,6 +1761,8 @@ function render(): void {
       if (selectedIndex === debugTarget.variantIndex) return;
       debugTarget = { ...debugTarget, variantIndex: selectedIndex };
       renderPostprocessDebugger();
+      writeWorkflowState();
+      writeWorkflowState();
     };
 
     const tryDrawSliceMap = (sourceImg: HTMLImageElement): void => {
@@ -2404,6 +2519,8 @@ function render(): void {
     }
     debugTarget = { briefId, runId, variantIndex };
     renderPostprocessDebugger();
+    writeWorkflowState();
+    writeWorkflowState();
   });
 
   debuggerRunSelect.addEventListener('change', () => {
@@ -2423,11 +2540,14 @@ function render(): void {
     const variantIndex = cachedVariants[0] ?? 0;
     debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex };
     renderPostprocessDebugger();
+    writeWorkflowState();
+    writeWorkflowState();
   });
 
   clearQueueBtn.addEventListener('click', () => {
     queuedAssetIds.clear();
     renderQueue();
+    writeWorkflowState();
   });
 
   const recompute = async (): Promise<void> => {
@@ -2491,7 +2611,7 @@ function render(): void {
       ['Assets', String(plan.assets.length)],
       ['Unresolved placeholders', String(plan.unresolvedPlaceholders)],
       ['Ready', String(plan.counts.ready)],
-      ['Approved not integrated', String(plan.counts['approved-not-integrated'])],
+      ['Reviewed not integrated', String(plan.counts['approved-not-integrated'])],
       ['Drafts ready', String(plan.counts['draft-ready'] + plan.counts['draft-ready-placeholder'])],
       ['Needs art', String(plan.counts['needs-art-placeholder'])],
     ];
@@ -2541,8 +2661,9 @@ function render(): void {
       if (selectedAssetId === asset.id) {
         row.style.background = 'rgba(30,64,175,0.2)';
       }
+      const reviewHref = reviewHrefForApprovedAsset(asset);
       const statusPill = el('span', {
-        text: asset.status,
+        text: formatReviewStatus(asset.status),
         style: {
           display: 'inline-block',
           padding: '2px 8px',
@@ -2579,13 +2700,38 @@ function render(): void {
         renderQueue();
         renderWorkflowSelection();
         renderActivePlan();
+        writeWorkflowState();
       });
       actionsCell.append(queueBtn);
+      if (reviewHref) {
+        const reviewBtn = el('a', {
+          text: 'Review',
+          style: {
+            marginLeft: '8px',
+            padding: '4px 8px',
+            borderRadius: '6px',
+            border: '1px solid rgba(167,139,250,0.5)',
+            background: '#312e81',
+            color: '#ede9fe',
+            cursor: 'pointer',
+            fontSize: '11px',
+            textDecoration: 'none',
+            display: 'inline-block',
+          },
+        });
+        reviewBtn.setAttribute('href', reviewHref);
+        reviewBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+        });
+        actionsCell.append(reviewBtn);
+      }
       row.addEventListener('click', () => {
         selectedAssetId = asset.id;
         renderQueue();
         renderWorkflowSelection();
         renderActivePlan();
+        writeWorkflowState();
+        writeWorkflowState();
       });
 
       row.append(
@@ -2597,7 +2743,13 @@ function render(): void {
         el('td', { text: asset.briefAuthored ? 'yes' : 'no' }),
         el('td', { text: asset.draftAuthored ? 'yes' : 'no' }),
         el('td', {
-          text: asset.approvedAssetExists ? 'yes' : asset.approved ? 'manifest-only' : 'no',
+          text: asset.approvedAssetExists
+            ? reviewHref
+              ? 'Reviewed'
+              : 'yes'
+            : asset.approved
+              ? 'manifest-only'
+              : 'no',
         }),
         el('td', { text: `${integrationText} (${asset.integrationState})` }),
         actionsCell,
@@ -2654,6 +2806,7 @@ function render(): void {
       runResultsHost.replaceChildren();
       renderPostprocessDebugger();
       renderWorkflowSelection();
+      writeWorkflowState();
       const rejected =
         result.rejected.length > 0
           ? `\nRejected:\n${result.rejected.map((item) => `  - #${item.index}: ${item.reason}`).join('\n')}`
@@ -2697,6 +2850,7 @@ function render(): void {
       draftBriefKeys.add(briefKey(selected.type, selected.briefId));
       renderWorkflowSelection();
       setWorkflowStatus(`Promoted brief to ${result.briefPath}`, '#bef264');
+      writeWorkflowState();
       void recompute();
     } catch (error) {
       setWorkflowStatus(
@@ -2740,6 +2894,7 @@ function render(): void {
       renderPostprocessDebugger();
       void refreshDebuggerRuns();
       renderWorkflowSelection();
+      writeWorkflowState();
       setWorkflowStatus(
         `Generation completed for ${result.briefId} (${result.summary.candidates.length} candidates). Select a winner to approve.`,
         '#bef264',
