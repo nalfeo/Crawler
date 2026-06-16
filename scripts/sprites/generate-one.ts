@@ -473,9 +473,13 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
   const chosen = pickChosen(ranked, brief);
   const budgetSnap = judgeEnabled && options.judgeBudget ? options.judgeBudget.snapshot() : null;
   const cacheStats = judgeEnabled && options.judgeCache ? { ...options.judgeCache.stats } : null;
+
+  // Convert absolute briefPath to repo-relative with forward slashes (required by validation)
+  const repoRelativeBriefPath = path.relative(repoRoot, loaded.briefPath).replace(/\\/g, '/');
+
   const summary: RunSummary = {
     brief: brief.name,
-    briefPath: loaded.briefPath,
+    briefPath: repoRelativeBriefPath,
     runId,
     createdAt: now().toISOString(),
     promptHash: shortPromptHash(prompt),
