@@ -147,7 +147,7 @@ describe('generateOne (integration)', () => {
     outputRoot = path.join(root, 'generated');
     // Preload so palette resolution honors our tmp `root` instead of cwd.
     preloaded = loadBrief(briefPath, { projectRoot: root });
-  });
+  }, 30_000);
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });

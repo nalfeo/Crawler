@@ -19,6 +19,7 @@ export {
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
   meetTutorialGoon,
+  meetSpellQuestGiver,
 } from './floor1Scenario.js';
 export {
   getShopkeeperStage,
@@ -55,6 +56,7 @@ export {
   abilitySystem,
   createAbilityState,
   equipActiveAbility,
+  unequipActiveAbility,
   memorizeSpell,
   grantPassiveAbility,
   queueAbilityTrigger,

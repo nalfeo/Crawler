@@ -14,8 +14,12 @@ export interface Floor1ObjectiveState {
   readonly staircaseSpawnCountdownMs: number;
   readonly safeRoomPos: { x: number; y: number };
   readonly staircasePos: { x: number; y: number };
-  /** Position of the Welcome Office (spawn-room area) where the Tutorial Goon NPC stands. */
+  /** Position of the Welcome Office room where the Tutorial Goon NPC stands. */
   readonly welcomeOfficePos: { x: number; y: number };
+  /** Position of the dedicated Slime Rat encounter room (separate from stair boss room). */
+  readonly slimeRatRoomPos: { x: number; y: number };
+  /** Position of the spell quest giver room. */
+  readonly spellQuestGiverPos: { x: number; y: number };
   /** Position of the merchant's shop room where the Shopkeeper NPC stands. */
   readonly shopRoomPos: { x: number; y: number };
   /** Position where the shopkeeper's gross fetch item is dropped in the world. */
@@ -36,7 +40,11 @@ export interface Floor1ObjectiveState {
   staircaseLocked: boolean;
   staircaseUnlocked: boolean;
   staircaseDiscovered: boolean;
-  /** True once the player enters the boss room and the battle begins. */
+  /** True once the player enters the Slime Rat room and the battle begins. */
+  slimeRatBattleStarted: boolean;
+  slimeRatBossEid: number | null;
+  slimeRatBossDefeated: boolean;
+  /** True once the player enters the staircase boss room and the battle begins. */
   bossBattleStarted: boolean;
   staircaseBossEid: number | null;
   staircaseBossDefeated: boolean;
@@ -62,12 +70,16 @@ export interface Floor1ScenarioState {
   enemyArchetypes: Map<number, Floor1EnemyArchetype>;
   /** EID of the spawned Tutorial Goon NPC, or null if not yet spawned. */
   guideNpcEid: number | null;
+  /** EID of the spawned spell-quest giver NPC, or null if not yet spawned. */
+  spellQuestGiverNpcEid: number | null;
   /** EID of the spawned Shopkeeper NPC, or null if not yet spawned. */
   shopkeeperNpcEid: number | null;
   /** EID of the dropped fetch item, or null once collected/not spawned. */
   questItemEid: number | null;
-  /** Door entity IDs guarding the boss room. */
+  /** Door entity IDs guarding the staircase Rat Slime boss room. */
   bossDoorEids: number[];
+  /** Door entity IDs guarding the Slime Rat spell-quest boss room. */
+  slimeRatDoorEids: number[];
   objective: Floor1ObjectiveState;
   failReason: 'stair_timeout' | null;
   runSummary: Floor1RunSummary | null;
