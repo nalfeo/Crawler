@@ -2,30 +2,33 @@
 /**
  * sprites:gallery sidecar entry point.
  *
- * Binds the Fastify server from `./server.ts` to **127.0.0.1:3010** only —
- * never 0.0.0.0 — per the spec's secrets-stay-local rule (§F8). Runs in the
+ * Binds the Fastify server from `./server.ts` to **127.0.0.1** only — never
+ * 0.0.0.0 — and uses a deterministic per-session port by default.
+ * Per the spec's secrets-stay-local rule (§F8), it runs in the
  * foreground; Ctrl-C (SIGINT) or SIGTERM gracefully closes the server and
- * releases the port. An orphaned port-3010 process from a prior run would
+ * releases the port. An orphaned sidecar process from a prior run would
  * otherwise force operators to hunt PIDs.
  *
  * No CLI flags today: the sidecar's location is implicit (`process.cwd()`),
- * the port is fixed, and the routes are static. Add flags here if/when
- * those need to vary.
+ * the default port is derived from the current worktree, and the routes are
+ * static. Add flags here if/when those need to vary.
  */
 
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { getSessionServerPorts } from '../../shared/session-server-ports.js';
 import { buildServer } from './server.js';
 
 const HOST = '127.0.0.1';
-const DEFAULT_PORT = 3010;
 const VERSION = '0.2.0-workflow';
+const DEFAULT_PORT = getSessionServerPorts({ cwd: process.cwd(), env: process.env }).sidecarPort;
 
 function resolvePort(): number {
   // SPRITES_SIDECAR_PORT lets tests bind to a free port (commonly 0 →
-  // "any") so they never race a real instance on 3010. Production usage
-  // (`npm run sprites:gallery`) leaves it unset and gets the fixed port.
+  // "any") so they never race a real instance on the session sidecar port.
+  // Production usage (`npm run sprites:gallery`) leaves it unset and gets the
+  // deterministic per-session port.
   const raw = process.env['SPRITES_SIDECAR_PORT'];
   if (!raw) return DEFAULT_PORT;
   const n = Number(raw);
