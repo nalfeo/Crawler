@@ -12,7 +12,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { PNG } from 'pngjs';
-import { sliceSheet } from '../../../scripts/sprites/slice-sheet.js';
+import { computeSliceMapV2, sliceSheet } from '../../../scripts/sprites/slice-sheet.js';
 
 interface Rgb {
   r: number;
@@ -71,6 +71,59 @@ describe('sliceSheet', () => {
     }
   });
 
+  describe('computeSliceMapV2', () => {
+    it('trims large outer margins down to a 1px border around content', () => {
+      const width = 24;
+      const height = 12;
+      const png = new PNG({ width, height });
+      // White background.
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i] = 255;
+        png.data[i + 1] = 255;
+        png.data[i + 2] = 255;
+        png.data[i + 3] = 255;
+      }
+      // Two black sprites with a wide interior separator.
+      for (let y = 3; y <= 8; y++) {
+        for (let x = 5; x <= 8; x++) {
+          const i = (y * width + x) * 4;
+          png.data[i] = 0;
+          png.data[i + 1] = 0;
+          png.data[i + 2] = 0;
+        }
+        for (let x = 14; x <= 17; x++) {
+          const i = (y * width + x) * 4;
+          png.data[i] = 0;
+          png.data[i + 1] = 0;
+          png.data[i + 2] = 0;
+        }
+      }
+      // Sparse edge noise should not prevent margin trimming.
+      {
+        const i0 = (1 * width + 0) * 4;
+        png.data[i0] = 0;
+        png.data[i0 + 1] = 0;
+        png.data[i0 + 2] = 0;
+        const i1 = ((height - 2) * width + (width - 1)) * 4;
+        png.data[i1] = 0;
+        png.data[i1 + 1] = 0;
+        png.data[i1 + 2] = 0;
+      }
+
+      const map = computeSliceMapV2(PNG.sync.write(png));
+      expect(map.rows).toBe(1);
+      expect(map.cols).toBe(2);
+
+      const left = map.cells[0]!;
+      const right = map.cells[1]!;
+      // min content x/y is (5,3), max content x/y is (17,8) => trim to 1px border.
+      expect(left.x0).toBe(4);
+      expect(left.y0).toBe(2);
+      expect(right.x0 + right.w).toBe(19);
+      expect(left.y0 + left.h).toBe(10);
+    });
+  });
+
   it('emits cells at the cell-native resolution, not the whole sheet', () => {
     const sheet = encodeSolidGridSheet(2, 2, 8, () => ({ r: 0, g: 0, b: 0 }));
     const slices = sliceSheet(sheet, { rows: 2, cols: 2 });
@@ -110,6 +163,58 @@ describe('sliceSheet', () => {
     const sheet = encodeSolidGridSheet(1, 1, 4, () => ({ r: 0, g: 0, b: 0 }));
     expect(() => sliceSheet(sheet, { rows: 0, cols: 1 })).toThrow(/>= 1/);
     expect(() => sliceSheet(sheet, { rows: 1, cols: 0 })).toThrow(/>= 1/);
+  });
+
+  it('can nudge vertical slice bounds to recover bottom overflow from a cell', () => {
+    const width = 8;
+    const height = 16;
+    const png = new PNG({ width, height });
+    // White background.
+    for (let i = 0; i < png.data.length; i += 4) {
+      png.data[i] = 255;
+      png.data[i + 1] = 255;
+      png.data[i + 2] = 255;
+      png.data[i + 3] = 255;
+    }
+    // First-row sprite: red torso from y=2..7 and green "feet" that spill into y=8.
+    for (let y = 2; y <= 7; y++) {
+      for (let x = 3; x <= 4; x++) {
+        const i = (y * width + x) * 4;
+        png.data[i] = 220;
+        png.data[i + 1] = 30;
+        png.data[i + 2] = 30;
+      }
+    }
+    for (let x = 3; x <= 4; x++) {
+      const i = (8 * width + x) * 4;
+      png.data[i] = 40;
+      png.data[i + 1] = 220;
+      png.data[i + 2] = 40;
+    }
+    const sheet = PNG.sync.write(png);
+
+    const fixed = sliceSheet(sheet, { rows: 2, cols: 1 });
+    const nudged = sliceSheet(sheet, {
+      rows: 2,
+      cols: 1,
+      autoNudge: {
+        enabled: true,
+        maxVerticalShiftPx: 2,
+        backgroundDistanceThreshold: 16,
+      },
+    });
+    const fixedPng = PNG.sync.read(fixed[0]!);
+    const nudgedPng = PNG.sync.read(nudged[0]!);
+    const hasGreen = (img: PNG): boolean => {
+      for (let i = 0; i < img.data.length; i += 4) {
+        if (img.data[i] === 40 && img.data[i + 1] === 220 && img.data[i + 2] === 40) {
+          return true;
+        }
+      }
+      return false;
+    };
+    expect(hasGreen(fixedPng)).toBe(false);
+    expect(hasGreen(nudgedPng)).toBe(true);
   });
 
   // Property: for any small NxM grid with arbitrary distinct cell colors,

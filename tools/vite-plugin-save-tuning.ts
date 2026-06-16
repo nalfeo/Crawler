@@ -12,6 +12,7 @@
 import { readFileSync, renameSync, writeFileSync } from 'fs';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { resolve, relative, isAbsolute } from 'path';
+import { spawn } from 'child_process';
 import type { Plugin } from 'vite';
 import {
   DEFAULT_CATALOG_PATH,
@@ -30,6 +31,7 @@ const REPO_ROOT = resolve(__dirname, '..');
 const GENERATED_MANIFEST_PATH = resolve(__dirname, '../public/assets/generated/manifest.json');
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const SPRITE_SIDECAR_HEALTH_URL = 'http://127.0.0.1:3010/api/health';
 
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split('.');
@@ -77,6 +79,22 @@ function sortCatalog(records: SpriteCatalogRecord[]): SpriteCatalogRecord[] {
     return a.id.localeCompare(b.id);
   });
   return copy;
+}
+
+async function isSpriteGalleryRunning(timeoutMs = 1200): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(SPRITE_SIDECAR_HEALTH_URL, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    return response.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 interface GeneratedManifestEntry {
@@ -216,6 +234,44 @@ export function labTuningSavePlugin(): Plugin {
             );
           }
         });
+      });
+
+      server.middlewares.use('/__sprite-gallery-start', (req, res) => {
+        if (!enforceLocalOnly(req, res)) {
+          return;
+        }
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+        void (async () => {
+          res.setHeader('Content-Type', 'application/json');
+          if (await isSpriteGalleryRunning()) {
+            res.statusCode = 200;
+            res.end(JSON.stringify({ ok: true, alreadyRunning: true }));
+            return;
+          }
+          try {
+            const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+            const child = spawn(npmCmd, ['run', 'sprites:gallery'], {
+              cwd: REPO_ROOT,
+              detached: true,
+              stdio: 'ignore',
+            });
+            child.unref();
+            res.statusCode = 202;
+            res.end(JSON.stringify({ ok: true, started: true }));
+          } catch (err) {
+            res.statusCode = 500;
+            res.end(
+              JSON.stringify({
+                error: 'Failed to start sprite gallery',
+                detail: err instanceof Error ? err.message : String(err),
+              }),
+            );
+          }
+        })();
       });
 
       server.middlewares.use('/__sprite-catalog-add', (req, res) => {

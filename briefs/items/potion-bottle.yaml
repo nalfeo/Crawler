@@ -1,0 +1,23 @@
+type: item
+name: potion-bottle
+description: |
+  A small potion bottle suitable for pickup and inventory. Rounded glass
+  bottle with a cork stopper, held vertically. The bottle is about 1/3 full
+  with a translucent liquid using diverse hue families across variants — deep
+  violet, bright green, cyan, crimson, or amber. The liquid glows faintly
+  with a soft shimmer. Glass is clear
+  with subtle highlights and shadows suggesting depth and roundness. Cork
+  is light tan or burnished wood. Small label or band visible near the
+  bottom of the bottle. No splashing, no dripping, no broken glass. The
+  silhouette must clearly read as a potion bottle at a glance — iconic,
+  recognizable, thematic for a fantasy dungeon crawler.
+# Potion bottle is a small item. Default item anchor derives from band rows
+# and centers the bottle. Judge is enabled by default for item type.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - potion bottle with iridescent shimmer, color-shifting as it glows
+  - potion bottle with swirling magical tendrils inside the liquid
+  - potion bottle with ornate decorative band and ancient runes on label in cool-toned inks
+minVariations: 5

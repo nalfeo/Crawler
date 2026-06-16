@@ -2,9 +2,8 @@
  * Sprite gallery lab — read-only viewer for sprite-pipeline runs.
  *
  * This lab is the human review surface for unattended batch runs. It is
- * strictly read-only this PR (no approve / no mutation). Approve flows
- * land in a follow-up — see the spec at
- * `.specify/specs/sprite-generation-pipeline.md` §F7-F9.
+ * strictly read-only (no approve / no mutation). Approval now lives in the
+ * devtools workflow to keep labs focused on inspection and debugging.
  *
  * Layer note (per `src/labs/**` instructions): labs are unrestricted. We
  * still avoid Phaser here — this is a DOM/Canvas viewer, not a scene.
@@ -19,7 +18,8 @@
 import { registerLab } from '../registry.js';
 
 const SIDECAR_BASE = 'http://127.0.0.1:3010';
-const SPRITE_PIXEL_SCALE = 8;
+const SPRITE_BASE_SIZE = 64;
+const PREVIEW_SCALE_OPTIONS = [0.25, 0.5, 1, 2, 4] as const;
 
 interface SidecarRunListEntry {
   briefId: string;
@@ -42,9 +42,29 @@ interface SidecarHealth {
   version: string;
 }
 
+interface SidecarSheetsResponse {
+  files: string[];
+}
+
 interface CandidateRef {
   briefIndex: number;
   candidateIndex: number;
+}
+
+interface SensorFailureSummary {
+  sensor: string;
+  reason: string;
+}
+
+interface PipelineStepManifest {
+  id?: string;
+  label?: string;
+  file?: string;
+}
+
+interface PipelineManifest {
+  profile?: string;
+  steps?: PipelineStepManifest[];
 }
 
 type ElProps<K extends keyof HTMLElementTagNameMap> = Partial<
@@ -81,54 +101,37 @@ function summaryUrl(briefId: string, runId: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`;
 }
 
-function approveUrl(briefId: string, runId: string): string {
-  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/approve`;
+function sheetsUrl(briefId: string, runId: string): string {
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/sheets`;
 }
 
-interface ApproveResponse {
-  briefId: string;
-  spriteName: string;
-  assetPath: string;
-  approvedAt: string;
-  sourceRun: string;
-  variantIndex: number;
-  anchor: { x: number; y: number; source: string } | null;
-  sensorScore: string;
-  judgeScore: string | null;
+function sheetUrl(briefId: string, runId: string, filename: string): string {
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/sheet/${encodeURIComponent(filename)}`;
 }
 
-interface ApproveErrorBody {
-  error?: string;
-  message?: string;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
-/**
- * Post an approval to the sidecar. Exported so unit tests can exercise the
- * fetch contract without rendering the gallery DOM. On a non-2xx response
- * the body is read for an `{ error, message }` shape and surfaced verbatim.
- */
-export async function postApprove(
-  briefId: string,
-  runId: string,
-  variantIndex: number,
-  fetcher: typeof fetch = fetch,
-): Promise<ApproveResponse> {
-  const res = await fetcher(approveUrl(briefId, runId), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ variantIndex }),
-  });
-  if (!res.ok) {
-    let detail = '';
-    try {
-      const body = (await res.json()) as ApproveErrorBody;
-      detail = body.message ?? body.error ?? '';
-    } catch {
-      // Body wasn't JSON; fall through with status text only.
+export function extractSensorFailures(candidate: Record<string, unknown>): SensorFailureSummary[] {
+  const breakdown = Array.isArray(candidate.breakdown) ? candidate.breakdown : [];
+  const failures: SensorFailureSummary[] = [];
+  for (const item of breakdown) {
+    if (!isRecord(item)) continue;
+    const ok = item.ok;
+    const sensor = item.sensor;
+    const reason = item.reason;
+    if (
+      ok === false &&
+      typeof sensor === 'string' &&
+      sensor.length > 0 &&
+      typeof reason === 'string' &&
+      reason.length > 0
+    ) {
+      failures.push({ sensor, reason });
     }
-    throw new Error(`approve failed (${res.status}): ${detail || res.statusText}`);
   }
-  return (await res.json()) as ApproveResponse;
+  return failures;
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -137,6 +140,26 @@ async function fetchJson<T>(url: string): Promise<T> {
     throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
   }
   return (await res.json()) as T;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function requestGalleryStart(): Promise<void> {
+  const res = await fetch('/__sprite-gallery-start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    let detail: string;
+    try {
+      detail = JSON.stringify(await res.json());
+    } catch {
+      detail = await res.text();
+    }
+    throw new Error(`Auto-start failed (${res.status}): ${detail || res.statusText}`);
+  }
 }
 
 /** Render a value as a collapsible tree using <details> for object/array nodes. */
@@ -229,6 +252,7 @@ function createGalleryGrid(
   details: Map<string, Record<string, unknown>>,
   state: {
     showOverlay: boolean;
+    previewScale: number;
     onSelect: (ref: CandidateRef) => void;
     onDismiss?: (briefId: string, runId: string) => void;
   },
@@ -342,7 +366,7 @@ function createGalleryGrid(
           borderRadius: '8px',
           background: 'rgba(2,6,23,0.8)',
           cursor: 'pointer',
-          width: `${SPRITE_PIXEL_SCALE * 16 + 24}px`,
+          width: `${Math.max(16, Math.round(SPRITE_BASE_SIZE * state.previewScale)) + 24}px`,
           textAlign: 'left',
           color: '#f1f5f9',
           fontFamily: 'inherit',
@@ -353,8 +377,8 @@ function createGalleryGrid(
       const spriteHolder = el('div', {
         style: {
           position: 'relative',
-          width: `${SPRITE_PIXEL_SCALE * 16}px`,
-          height: `${SPRITE_PIXEL_SCALE * 16}px`,
+          width: `${Math.max(16, Math.round(SPRITE_BASE_SIZE * state.previewScale))}px`,
+          height: `${Math.max(16, Math.round(SPRITE_BASE_SIZE * state.previewScale))}px`,
           margin: '8px auto 6px',
           backgroundImage:
             'linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)',
@@ -394,6 +418,25 @@ function createGalleryGrid(
       const meta = el('div', {
         style: { padding: '0 8px 8px', display: 'flex', flexWrap: 'wrap', gap: '4px' },
       });
+      const sizeBadge = el('span', {
+        textContent: 'size …',
+        style: {
+          fontSize: '10px',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          background: '#1e293b',
+          color: '#cbd5e1',
+        },
+      });
+      spriteImg.addEventListener('load', () => {
+        const width = spriteImg.naturalWidth;
+        const height = spriteImg.naturalHeight;
+        sizeBadge.textContent = width > 0 && height > 0 ? `size ${width}x${height}` : 'size n/a';
+      });
+      spriteImg.addEventListener('error', () => {
+        sizeBadge.textContent = 'size n/a';
+      });
+      meta.append(sizeBadge);
 
       const sensorBadge = el('span', {
         textContent: passed ? 'sensor ✓' : 'sensor ✗',
@@ -449,6 +492,44 @@ function createGalleryGrid(
       }
 
       tile.append(meta);
+      const failedSensors = extractSensorFailures(cand);
+      const failureList = el('div', {
+        style: {
+          padding: '0 8px 8px',
+          fontSize: '10px',
+          color: failedSensors.length > 0 ? '#fecaca' : '#86efac',
+          lineHeight: '1.35',
+        },
+      });
+      if (failedSensors.length === 0) {
+        failureList.textContent = passed
+          ? 'No sensor failures'
+          : 'Sensor failed, but no per-sensor reasons were recorded for this run.';
+      } else {
+        const visible = failedSensors.slice(0, 2);
+        for (const failure of visible) {
+          failureList.append(
+            el('div', {
+              textContent: `${failure.sensor}: ${failure.reason}`,
+              title: `${failure.sensor}: ${failure.reason}`,
+              style: {
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              },
+            }),
+          );
+        }
+        if (failedSensors.length > visible.length) {
+          failureList.append(
+            el('div', {
+              textContent: `+${failedSensors.length - visible.length} more`,
+              style: { color: '#fda4af' },
+            }),
+          );
+        }
+      }
+      tile.append(failureList);
       tile.addEventListener('click', () => state.onSelect({ briefIndex: bi, candidateIndex: ci }));
       grid.append(tile);
     }
@@ -534,6 +615,62 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   });
   toolbar.append(overlayToggle);
 
+  const scaleGroup = el('div', {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      padding: '2px',
+      borderRadius: '8px',
+      border: '1px solid rgba(148,163,184,0.35)',
+      background: 'rgba(15,23,42,0.85)',
+    },
+  });
+  scaleGroup.append(
+    el('span', {
+      textContent: 'Scale',
+      style: {
+        fontSize: '11px',
+        color: '#cbd5e1',
+        padding: '0 6px',
+      },
+    }),
+  );
+  const scaleButtons = new Map<number, HTMLButtonElement>();
+  const updateScaleButtons = (): void => {
+    for (const [scale, button] of scaleButtons) {
+      const selected = state.previewScale === scale;
+      button.style.background = selected ? '#334155' : 'transparent';
+      button.style.borderColor = selected ? '#93c5fd' : 'rgba(148,163,184,0.35)';
+      button.style.color = selected ? '#f8fafc' : '#cbd5e1';
+      button.style.fontWeight = selected ? '700' : '500';
+    }
+  };
+  for (const scale of PREVIEW_SCALE_OPTIONS) {
+    const btn = el('button', {
+      type: 'button',
+      textContent: `${scale}x`,
+      style: {
+        padding: '4px 8px',
+        borderRadius: '6px',
+        border: '1px solid rgba(148,163,184,0.35)',
+        background: 'transparent',
+        color: '#cbd5e1',
+        fontSize: '12px',
+        cursor: 'pointer',
+      },
+    });
+    btn.addEventListener('click', () => {
+      state.previewScale = scale;
+      updateScaleButtons();
+      rerenderGrid();
+      renderSidePanel(state.selected);
+    });
+    scaleButtons.set(scale, btn);
+    scaleGroup.append(btn);
+  }
+  toolbar.append(scaleGroup);
+
   const refreshBtn = el('button', {
     type: 'button',
     textContent: 'Refresh',
@@ -567,15 +704,25 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   canvasHost.append(root);
 
   controls.style.display = 'none';
+  const controlsToggle = document.getElementById('controls-toggle');
+  if (controlsToggle instanceof HTMLElement) {
+    controlsToggle.style.display = 'none';
+  }
+  if (controlsToggle instanceof HTMLButtonElement) {
+    controlsToggle.hidden = true;
+  }
 
   const state = {
     showOverlay: true,
+    previewScale: 1,
     runs: [] as SidecarRunListEntry[],
     details: new Map<string, Record<string, unknown>>(),
     grid: null as CreatedGallery | null,
     selected: null as CandidateRef | null,
     healthy: false,
+    sidecarAutostartAttempted: false,
   };
+  updateScaleButtons();
 
   function setOverlayVisibility(show: boolean): void {
     state.showOverlay = show;
@@ -608,6 +755,12 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     const cand = candidatesArr[ref.candidateIndex];
     if (!cand) return;
     const variantIndex = typeof cand.index === 'number' ? cand.index : ref.candidateIndex;
+    const selectionSnapshot = state.selected
+      ? {
+          briefIndex: state.selected.briefIndex,
+          candidateIndex: state.selected.candidateIndex,
+        }
+      : null;
     const header = el('div', { style: { marginBottom: '10px' } }, [
       el('div', { textContent: run.briefId, style: { fontWeight: '700', color: '#f1f5f9' } }),
       el('div', {
@@ -616,39 +769,370 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       }),
     ]);
     sidePanel.append(header);
-
-    // Approve button — only enabled when the sidecar is reachable. The
-    // gallery's `load()` populates state.healthy on success; without a
-    // sidecar there's no mutation surface to call, matching spec §F9
-    // (review-only mode disables action buttons with a tooltip).
-    const approveRow = el('div', { style: { margin: '10px 0' } });
-    const approveBtn = el('button', {
-      type: 'button',
-      textContent: `Approve variant ${variantIndex}`,
+    const padded = String(variantIndex).padStart(2, '0');
+    const previewImg = el('img', {
+      src: spriteUrl(run.briefId, run.runId, `${padded}.png`),
+      alt: `${run.briefId} ${padded}`,
       style: {
-        padding: '8px 14px',
+        width: `${Math.max(16, Math.round(SPRITE_BASE_SIZE * state.previewScale))}px`,
+        height: `${Math.max(16, Math.round(SPRITE_BASE_SIZE * state.previewScale))}px`,
+        objectFit: 'contain',
+        imageRendering: 'pixelated' as CSSStyleDeclaration['imageRendering'],
+        background:
+          'linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)',
+        backgroundSize: '12px 12px',
+        backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0',
+        backgroundColor: '#334155',
+        border: '1px solid rgba(148,163,184,0.25)',
         borderRadius: '6px',
-        border: '1px solid rgba(250,204,21,0.6)',
-        background: state.healthy ? '#a16207' : '#374151',
-        color: '#fef3c7',
-        cursor: state.healthy ? 'pointer' : 'not-allowed',
-        fontSize: '13px',
-        fontWeight: '600',
       },
     });
-    approveBtn.disabled = !state.healthy;
-    if (!state.healthy) {
-      approveBtn.title =
-        'Sidecar not running — start it with `npm run sprites:gallery` to enable approval.';
+    const sizeLine = el('div', {
+      textContent: 'Sprite size: loading…',
+      style: { fontSize: '11px', color: '#cbd5e1', marginTop: '6px' },
+    });
+    previewImg.addEventListener('load', () => {
+      const width = previewImg.naturalWidth;
+      const height = previewImg.naturalHeight;
+      sizeLine.textContent =
+        width > 0 && height > 0 ? `Sprite size: ${width}x${height}px` : 'Sprite size: n/a';
+    });
+    previewImg.addEventListener('error', () => {
+      sizeLine.textContent = 'Sprite size: n/a';
+    });
+    sidePanel.append(previewImg, sizeLine);
+
+    const pipelineSection = el('div', {
+      style: {
+        margin: '10px 0 12px',
+        padding: '8px',
+        border: '1px solid rgba(148,163,184,0.2)',
+        borderRadius: '6px',
+        background: 'rgba(15,23,42,0.7)',
+      },
+    });
+    pipelineSection.append(
+      el('div', {
+        textContent: 'Postprocess pipeline',
+        style: { fontWeight: '600', fontSize: '12px', color: '#f1f5f9', marginBottom: '6px' },
+      }),
+    );
+    const pipelineMeta = el('div', {
+      textContent: 'Loading pipeline…',
+      style: { fontSize: '11px', color: '#94a3b8', marginBottom: '6px' },
+    });
+    const pipelineButtons = el('div', {
+      style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' },
+    });
+    const pipelineStepLabel = el('div', {
+      textContent: 'Step: final',
+      style: { fontSize: '11px', color: '#cbd5e1', marginBottom: '6px' },
+    });
+    const pipelineImg = el('img', {
+      src: spriteUrl(run.briefId, run.runId, `${padded}.png`),
+      alt: `${run.briefId} ${padded} pipeline`,
+      style: {
+        width: `${Math.max(16, Math.round(SPRITE_BASE_SIZE * state.previewScale))}px`,
+        height: `${Math.max(16, Math.round(SPRITE_BASE_SIZE * state.previewScale))}px`,
+        objectFit: 'contain',
+        imageRendering: 'pixelated' as CSSStyleDeclaration['imageRendering'],
+        background:
+          'linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)',
+        backgroundSize: '12px 12px',
+        backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0',
+        backgroundColor: '#334155',
+        border: '1px solid rgba(148,163,184,0.25)',
+        borderRadius: '6px',
+      },
+    });
+    pipelineSection.append(pipelineMeta, pipelineButtons, pipelineStepLabel, pipelineImg);
+    sidePanel.append(pipelineSection);
+
+    const setPipelineImage = (label: string, filename: string): void => {
+      pipelineStepLabel.textContent = `Step: ${label}`;
+      pipelineImg.src = spriteUrl(run.briefId, run.runId, filename);
+    };
+    const addPipelineButton = (label: string, filename: string): void => {
+      const button = el('button', {
+        textContent: label,
+        style: {
+          fontSize: '10px',
+          color: '#e2e8f0',
+          background: '#1e293b',
+          border: '1px solid #475569',
+          borderRadius: '4px',
+          padding: '2px 6px',
+          cursor: 'pointer',
+        },
+      });
+      button.addEventListener('click', () => setPipelineImage(label, filename));
+      pipelineButtons.append(button);
+    };
+    addPipelineButton('final', `${padded}.png`);
+    fetchJson<PipelineManifest>(spriteUrl(run.briefId, run.runId, `${padded}.pipeline.json`))
+      .then((manifest) => {
+        if (!selectionSnapshot || !state.selected) return;
+        if (
+          state.selected.briefIndex !== selectionSnapshot.briefIndex ||
+          state.selected.candidateIndex !== selectionSnapshot.candidateIndex
+        ) {
+          return;
+        }
+        const profile =
+          typeof manifest.profile === 'string' && manifest.profile.length > 0
+            ? manifest.profile
+            : null;
+        const steps = Array.isArray(manifest.steps) ? manifest.steps : [];
+        pipelineMeta.textContent = profile ? `Profile: ${profile}` : 'Profile: n/a';
+        for (const step of steps) {
+          if (typeof step.file !== 'string' || step.file.length === 0) continue;
+          const label =
+            typeof step.label === 'string' && step.label.length > 0
+              ? step.label
+              : typeof step.id === 'string' && step.id.length > 0
+                ? step.id
+                : step.file;
+          addPipelineButton(label, step.file);
+        }
+      })
+      .catch(() => {
+        if (!selectionSnapshot || !state.selected) return;
+        if (
+          state.selected.briefIndex !== selectionSnapshot.briefIndex ||
+          state.selected.candidateIndex !== selectionSnapshot.candidateIndex
+        ) {
+          return;
+        }
+        pipelineMeta.textContent = 'No pipeline trace available for this run.';
+      });
+
+    const slicingSection = el('div', {
+      style: {
+        margin: '10px 0 12px',
+        padding: '8px',
+        border: '1px solid rgba(148,163,184,0.2)',
+        borderRadius: '6px',
+        background: 'rgba(15,23,42,0.7)',
+      },
+    });
+    slicingSection.append(
+      el('div', {
+        textContent: 'Sheet slicing',
+        style: { fontWeight: '600', fontSize: '12px', color: '#f1f5f9', marginBottom: '6px' },
+      }),
+    );
+    const slicingMeta = el('div', {
+      textContent: 'Loading sheet…',
+      style: { fontSize: '11px', color: '#94a3b8', marginBottom: '6px' },
+    });
+    const slicingButtons = el('div', {
+      style: { display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '8px' },
+    });
+    const sheetWrap = el('div', {
+      style: {
+        position: 'relative',
+        display: 'inline-block',
+        background:
+          'linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%)',
+        backgroundSize: '12px 12px',
+        backgroundPosition: '0 0, 0 6px, 6px -6px, -6px 0',
+        backgroundColor: '#334155',
+        border: '1px solid rgba(148,163,184,0.25)',
+        borderRadius: '6px',
+        overflow: 'hidden',
+      },
+    });
+    const sheetImg = el('img', {
+      alt: `${run.briefId} source sheet`,
+      style: {
+        width: '256px',
+        height: '256px',
+        objectFit: 'contain',
+        imageRendering: 'pixelated' as CSSStyleDeclaration['imageRendering'],
+        display: 'block',
+      },
+    });
+    const cellMarker = el('div', {
+      style: {
+        position: 'absolute',
+        border: '2px solid #93c5fd',
+        boxShadow: '0 0 0 1px rgba(15,23,42,0.95) inset',
+        pointerEvents: 'none',
+        display: 'none',
+      },
+    });
+    sheetWrap.append(sheetImg, cellMarker);
+    const slicingInfo = el('div', {
+      textContent: 'Selected slice: loading…',
+      style: { fontSize: '11px', color: '#cbd5e1', marginTop: '6px' },
+    });
+    slicingSection.append(slicingMeta, slicingButtons, sheetWrap, slicingInfo);
+    sidePanel.append(slicingSection);
+
+    const updateSliceMarker = (): void => {
+      const sheetW = sheetImg.naturalWidth;
+      const sheetH = sheetImg.naturalHeight;
+      const spriteW = previewImg.naturalWidth;
+      const spriteH = previewImg.naturalHeight;
+      if (sheetW <= 0 || sheetH <= 0 || spriteW <= 0 || spriteH <= 0) {
+        cellMarker.style.display = 'none';
+        slicingInfo.textContent = 'Selected slice: unavailable';
+        return;
+      }
+      const cols = Math.max(1, Math.floor(sheetW / spriteW));
+      const rows = Math.max(1, Math.floor(sheetH / spriteH));
+      const total = Math.max(1, cols * rows);
+      const idx = Math.max(0, Math.min(total - 1, variantIndex));
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const scaleX = sheetImg.clientWidth / sheetW;
+      const scaleY = sheetImg.clientHeight / sheetH;
+      cellMarker.style.left = `${Math.round(col * spriteW * scaleX)}px`;
+      cellMarker.style.top = `${Math.round(row * spriteH * scaleY)}px`;
+      cellMarker.style.width = `${Math.max(1, Math.round(spriteW * scaleX))}px`;
+      cellMarker.style.height = `${Math.max(1, Math.round(spriteH * scaleY))}px`;
+      cellMarker.style.display = 'block';
+      slicingInfo.textContent = `Selected slice: #${idx} (row ${row + 1}, col ${col + 1}) on ${cols}x${rows} grid`;
+    };
+    sheetImg.addEventListener('load', updateSliceMarker);
+    previewImg.addEventListener('load', updateSliceMarker);
+    let activeSheetRunId = run.runId;
+    const setSheetImage = (filename: string, sheetRunId = activeSheetRunId): void => {
+      activeSheetRunId = sheetRunId;
+      sheetImg.src = sheetUrl(run.briefId, sheetRunId, filename);
+      slicingMeta.textContent =
+        sheetRunId === run.runId ? `Sheet: ${filename}` : `Sheet: ${filename} (from ${sheetRunId})`;
+    };
+    const addSheetButton = (filename: string, sheetRunId = activeSheetRunId): void => {
+      const button = el('button', {
+        textContent: filename.replace(/^sheet-/, 'attempt ').replace(/\.png$/i, ''),
+        style: {
+          fontSize: '10px',
+          color: '#e2e8f0',
+          background: '#1e293b',
+          border: '1px solid #475569',
+          borderRadius: '4px',
+          padding: '2px 6px',
+          cursor: 'pointer',
+        },
+      });
+      button.addEventListener('click', () => setSheetImage(filename, sheetRunId));
+      slicingButtons.append(button);
+    };
+    const normalizeSheetFiles = (response: SidecarSheetsResponse): string[] =>
+      Array.isArray(response.files)
+        ? response.files.filter(
+            (file): file is string => typeof file === 'string' && /^sheet-\d+\.png$/i.test(file),
+          )
+        : [];
+    const isSelectionCurrent = (): boolean => {
+      if (!selectionSnapshot || !state.selected) return false;
+      return (
+        state.selected.briefIndex === selectionSnapshot.briefIndex &&
+        state.selected.candidateIndex === selectionSnapshot.candidateIndex
+      );
+    };
+    const setNoSheets = (): void => {
+      slicingMeta.textContent = 'No source sheets found for this run.';
+      cellMarker.style.display = 'none';
+      slicingInfo.textContent = 'Selected slice: unavailable';
+    };
+    void (async () => {
+      try {
+        const primary = normalizeSheetFiles(
+          await fetchJson<SidecarSheetsResponse>(sheetsUrl(run.briefId, run.runId)),
+        );
+        if (!isSelectionCurrent()) return;
+        if (primary.length > 0) {
+          activeSheetRunId = run.runId;
+          for (const file of primary) addSheetButton(file, run.runId);
+          setSheetImage(primary[primary.length - 1]!, run.runId);
+          return;
+        }
+        let sourceRunId: string | null = null;
+        try {
+          const manifest = await fetchJson<{
+            sourceRunId?: unknown;
+          }>(spriteUrl(run.briefId, run.runId, `${padded}.pipeline.json`));
+          if (typeof manifest.sourceRunId === 'string' && manifest.sourceRunId.length > 0) {
+            sourceRunId = manifest.sourceRunId;
+          }
+        } catch {
+          sourceRunId = null;
+        }
+        if (!sourceRunId) {
+          setNoSheets();
+          return;
+        }
+        const fallback = normalizeSheetFiles(
+          await fetchJson<SidecarSheetsResponse>(sheetsUrl(run.briefId, sourceRunId)),
+        );
+        if (!isSelectionCurrent()) return;
+        if (fallback.length === 0) {
+          setNoSheets();
+          return;
+        }
+        activeSheetRunId = sourceRunId;
+        for (const file of fallback) addSheetButton(file, sourceRunId);
+        setSheetImage(fallback[fallback.length - 1]!, sourceRunId);
+      } catch {
+        if (!selectionSnapshot || !state.selected) return;
+        if (
+          state.selected.briefIndex !== selectionSnapshot.briefIndex ||
+          state.selected.candidateIndex !== selectionSnapshot.candidateIndex
+        ) {
+          return;
+        }
+        slicingMeta.textContent = 'Could not load source sheets for this run.';
+        cellMarker.style.display = 'none';
+        slicingInfo.textContent = 'Selected slice: unavailable';
+      }
+    })();
+
+    sidePanel.append(
+      el('div', {
+        textContent:
+          'Approval moved to DevTools asset-plan workflow. Use devtools.html to approve winners and run metadata.',
+        style: { fontSize: '11px', color: '#93c5fd', margin: '10px 0' },
+      }),
+    );
+    const failedSensors = extractSensorFailures(cand);
+    const sensorPassed = cand.passed === true;
+    const sensorSection = el('div', {
+      style: {
+        margin: '10px 0 12px',
+        padding: '8px',
+        border: '1px solid rgba(148,163,184,0.2)',
+        borderRadius: '6px',
+        background: 'rgba(15,23,42,0.7)',
+      },
+    });
+    sensorSection.append(
+      el('div', {
+        textContent: 'Sensor failures',
+        style: { fontWeight: '600', fontSize: '12px', color: '#f1f5f9', marginBottom: '6px' },
+      }),
+    );
+    if (failedSensors.length === 0) {
+      sensorSection.append(
+        el('div', {
+          textContent: sensorPassed
+            ? 'None — all sensors passed.'
+            : 'Sensor failed, but no per-sensor reasons were recorded for this run.',
+          style: { fontSize: '11px', color: sensorPassed ? '#86efac' : '#fecaca' },
+        }),
+      );
+    } else {
+      for (const failure of failedSensors) {
+        sensorSection.append(
+          el('div', {
+            textContent: `${failure.sensor}: ${failure.reason}`,
+            style: { fontSize: '11px', color: '#fecaca', marginBottom: '4px' },
+          }),
+        );
+      }
     }
-    const approveStatus = el('div', {
-      style: { fontSize: '11px', marginTop: '6px', color: '#94a3b8', whiteSpace: 'pre-wrap' },
-    });
-    approveBtn.addEventListener('click', () => {
-      void onApprove(run, variantIndex, approveBtn, approveStatus);
-    });
-    approveRow.append(approveBtn, approveStatus);
-    sidePanel.append(approveRow);
+    sidePanel.append(sensorSection);
 
     sidePanel.append(renderJsonTree(cand, 'candidate'));
 
@@ -664,12 +1148,6 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     );
     sidePanel.append(briefSection);
 
-    const selectionSnapshot = state.selected
-      ? {
-          briefIndex: state.selected.briefIndex,
-          candidateIndex: state.selected.candidateIndex,
-        }
-      : null;
     fetchJson<{ briefYaml: string | null; promptText: string | null }>(
       `${SIDECAR_BASE}/api/runs/${encodeURIComponent(run.briefId)}/${encodeURIComponent(run.runId)}/brief`,
     )
@@ -757,40 +1235,6 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       });
   }
 
-  async function onApprove(
-    run: SidecarRunListEntry,
-    variantIndex: number,
-    btn: HTMLButtonElement,
-    status: HTMLDivElement,
-  ): Promise<void> {
-    btn.disabled = true;
-    const prevLabel = btn.textContent;
-    btn.textContent = 'Approving…';
-    status.style.color = '#94a3b8';
-    status.textContent = '';
-    try {
-      const entry = await postApprove(run.briefId, run.runId, variantIndex);
-      status.style.color = '#bef264';
-      status.textContent = `Approved → ${entry.assetPath} (${entry.sensorScore}${entry.judgeScore !== null ? ` · judge ${entry.judgeScore}` : ''})`;
-      // Re-fetch the run summary so any sidecar-side metadata refreshes.
-      try {
-        const summary = await fetchJson<Record<string, unknown>>(
-          summaryUrl(run.briefId, run.runId),
-        );
-        state.details.set(`${run.briefId}/${run.runId}`, summary);
-        rerenderGrid();
-      } catch {
-        // Refresh is best-effort; the approval already succeeded.
-      }
-    } catch (err) {
-      status.style.color = '#fca5a5';
-      status.textContent = err instanceof Error ? err.message : String(err);
-    } finally {
-      btn.disabled = !state.healthy;
-      btn.textContent = prevLabel ?? `Approve variant ${variantIndex}`;
-    }
-  }
-
   function selectCandidate(ref: CandidateRef): void {
     state.selected = ref;
     renderSidePanel(ref);
@@ -819,6 +1263,7 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   function rerenderGrid(): void {
     state.grid = createGalleryGrid(gridHost, state.runs, state.details, {
       showOverlay: state.showOverlay,
+      previewScale: state.previewScale,
       onSelect: selectCandidate,
       onDismiss: dismissRun,
     });
@@ -838,6 +1283,30 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       health = await fetchJson<SidecarHealth>(`${SIDECAR_BASE}/api/health`);
       state.healthy = true;
     } catch (err) {
+      if (!state.sidecarAutostartAttempted) {
+        state.sidecarAutostartAttempted = true;
+        gridHost.replaceChildren(
+          el('div', {
+            textContent: 'Starting sprite sidecar + lab stack…',
+            style: { color: '#94a3b8', padding: '24px' },
+          }),
+        );
+        try {
+          await requestGalleryStart();
+          for (let i = 0; i < 20; i++) {
+            await delay(500);
+            try {
+              health = await fetchJson<SidecarHealth>(`${SIDECAR_BASE}/api/health`);
+              state.healthy = true;
+              return await load();
+            } catch {
+              // Keep polling until timeout.
+            }
+          }
+        } catch {
+          // Fall through to the existing fallback banner.
+        }
+      }
       state.healthy = false;
       gridHost.replaceChildren();
       renderBanner(
@@ -936,6 +1405,12 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
   return () => {
     window.removeEventListener('keydown', onKeyDown);
+    if (controlsToggle instanceof HTMLElement) {
+      controlsToggle.style.display = '';
+    }
+    if (controlsToggle instanceof HTMLButtonElement) {
+      controlsToggle.hidden = false;
+    }
     controls.style.display = '';
     canvasHost.replaceChildren();
   };

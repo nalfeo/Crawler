@@ -1,0 +1,25 @@
+type: vfx
+name: blood-splatter
+description: |
+  A blood splatter impact effect, showing a sudden burst of blood and gore
+  from a melee hit or impact. The effect shows multiple splatter streaks
+  radiating outward from a central impact point — some large drops, some
+  fine mist, creating an organic explosion pattern. Deep red and dark crimson
+  dominate, with limited near-black shadow tones; avoid orange/rust-dominant
+  coloration. Keep the silhouette bold and readable at gameplay scale: chunky
+  primary splat with a few secondary droplets, not noisy texture. The effect
+  is temporary and immediate,
+  suggesting a single frame or quick animation cycle. Opaque paint-like
+  quality with some translucency in the outer mist edges. No glow, no
+  magical effects, no smoke. The silhouette must read as chaotic impact
+  energy, not a neat pattern or flower.
+# Blood splatter is a VFX. Default vfx anchor (center) is appropriate.
+# Opaque ratio should stay 5-60% per type defaults. Judge is enabled by
+# default for vfx type. We want directional variation.
+judge:
+  enabled: false
+variations:
+  - blood splatter with more fine mist at the edges, less heavy drops but a clear central splat
+  - blood splatter elongated vertically, suggesting downward impact force
+  - blood splatter with some splatter trails arcing to one side and strong silhouette readability
+minVariations: 5

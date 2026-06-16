@@ -2,7 +2,7 @@
  * Anchor overlay PNG builder.
  *
  * Produces a transparent PNG the same size as a processed sprite (typically
- * 16x16) with exactly one fully opaque red pixel (`rgba(255, 0, 0, 255)`) at
+ * 64x64) with exactly one fully opaque red pixel (`rgba(255, 0, 0, 255)`) at
  * the derived anchor coordinate. Written next to every variant as
  * `processed/NN.anchor-overlay.png` so the gallery can composite it on top
  * of the sprite at the same scale without re-deriving the anchor or doing

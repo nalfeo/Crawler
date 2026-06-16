@@ -10,9 +10,9 @@ description: |
 # Iron-sword is intentionally side-profile / diagonal, so we override the
 # weapon-default vertical orientation. A 45-degree blade pointing up-and-right
 # puts the grip in the bottom-left quadrant rather than bottom-center, so we
-# also have to override the default (8, 14) anchor. Everything else (16x16,
+# also have to override the default (32, 56) anchor. Everything else (64x64,
 # palette, references, 4x4 sheet) is inherited from data/sprite-types/weapon.json.
-anchor: { x: 5, y: 12 }
+anchor: { x: 20, y: 48 }
 sensors:
   weapon:
     orientation: diagonal

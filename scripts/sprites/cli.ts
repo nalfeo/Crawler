@@ -24,6 +24,7 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { spawn } from 'node:child_process';
 import { JudgeBudget } from './cost-tracker.js';
 import { generateOne } from './generate-one.js';
 import { JudgeCache } from './judge-cache.js';
@@ -49,6 +50,59 @@ interface BriefRunOutcome {
   readonly briefPath: string;
   readonly success: boolean;
   readonly message?: string;
+}
+
+const SIDECAR_HEALTH_URL = 'http://127.0.0.1:3010/api/health';
+const LAB_URL = 'http://localhost:3001/lab.html?lab=sprite-gallery';
+
+async function isGalleryHealthy(timeoutMs = 1500): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(SIDECAR_HEALTH_URL, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ensureGalleryRunning(): Promise<void> {
+  if (await isGalleryHealthy()) {
+    process.stdout.write(`gallery : already running (${SIDECAR_HEALTH_URL})\n`);
+    return;
+  }
+  const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  try {
+    const child = spawn(npmCmd, ['run', 'sprites:gallery'], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  } catch (err) {
+    process.stderr.write(
+      `gallery : failed to auto-launch sprites:gallery (${err instanceof Error ? err.message : String(err)})\n`,
+    );
+    return;
+  }
+
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (await isGalleryHealthy()) {
+      process.stdout.write(`gallery : started (${SIDECAR_HEALTH_URL})\n`);
+      process.stdout.write(`lab     : ${LAB_URL}\n`);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  process.stderr.write(
+    `gallery : launch requested but health endpoint is still unavailable (${SIDECAR_HEALTH_URL})\n`,
+  );
 }
 
 function parseArgs(argv: ReadonlyArray<string>): CliArgs {
@@ -490,6 +544,7 @@ async function main(): Promise<number> {
   process.stdout.write(`\n${judgeBudget.format()}\n`);
   const cs = judgeCache.stats;
   process.stdout.write(`judge-cache: ${cs.hits} hit, ${cs.misses} miss, ${cs.bypassed} bypassed\n`);
+  await ensureGalleryRunning();
   const failed = outcomes.filter((o) => !o.success);
   if (failed.length > 0) {
     process.stderr.write('\nFailures:\n');

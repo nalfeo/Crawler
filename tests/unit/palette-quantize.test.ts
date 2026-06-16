@@ -4,6 +4,7 @@ import { PNG } from 'pngjs';
 import {
   quantizeToPalette,
   hardThresholdAlpha,
+  removeIsolatedNearWhiteSpeckles,
   type RgbaImage,
 } from '../../scripts/sprites/postprocess.js';
 import type { PaletteColors, RgbTriple } from '../../scripts/sprites/brief-schema.js';
@@ -135,6 +136,43 @@ describe('hardThresholdAlpha', () => {
     const out = hardThresholdAlpha(img);
     const alphas = [out.data[3], out.data[7], out.data[11], out.data[15], out.data[19]];
     expect(alphas).toEqual([0, 0, 255, 255, 255]);
+  });
+
+  describe('removeIsolatedNearWhiteSpeckles', () => {
+    it('recolors isolated near-white speckles to neighboring opaque color', () => {
+      const img = imageFromRgba(3, 1, [
+        [40, 50, 60, 255],
+        [255, 255, 255, 255],
+        [40, 50, 60, 255],
+      ]);
+      const out = removeIsolatedNearWhiteSpeckles(img);
+      expect([out.data[4], out.data[5], out.data[6], out.data[7]]).toEqual([40, 50, 60, 255]);
+    });
+
+    it('drops edge-adjacent near-white pixel when no opaque neighbors exist', () => {
+      const img = imageFromRgba(2, 1, [
+        [255, 255, 255, 255],
+        [0, 0, 0, 0],
+      ]);
+      const out = removeIsolatedNearWhiteSpeckles(img);
+      expect(out.data[3]).toBe(0);
+    });
+
+    it('recolors near-white edge fringe pixels that touch transparency', () => {
+      const img = imageFromRgba(3, 3, [
+        [0, 0, 0, 0],
+        [80, 60, 40, 255],
+        [0, 0, 0, 0],
+        [80, 60, 40, 255],
+        [252, 252, 252, 255],
+        [80, 60, 40, 255],
+        [80, 60, 40, 255],
+        [80, 60, 40, 255],
+        [80, 60, 40, 255],
+      ]);
+      const out = removeIsolatedNearWhiteSpeckles(img);
+      expect([out.data[16], out.data[17], out.data[18], out.data[19]]).toEqual([80, 60, 40, 255]);
+    });
   });
 });
 

@@ -281,6 +281,40 @@ describe('scoreCandidate', () => {
     expect(sensors).toContain('anchor-opaque');
     expect(sensors).not.toContain('anchor-derivable');
     expect(card.derivedAnchor).toBeNull();
+    expect(card.derivedAnchors.hold).toBeNull();
+    expect(card.derivedAnchors.centerOfGravity).not.toBeNull();
+  });
+
+  it('treats palette-membership as pass-through when paletteMode is not strict', () => {
+    const processed = buildProcessedFixture(16, 16, rectPixels(6, 6, 9, 9));
+    const png = PNG.sync.read(processed);
+    const idx = (7 * png.width + 7) * 4;
+    png.data[idx] = 123;
+    png.data[idx + 1] = 77;
+    png.data[idx + 2] = 201;
+    const mutated = PNG.sync.write(png);
+    const brief = makeBrief({
+      postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'none' },
+    });
+    const card = scoreCandidate(mutated, brief, PALETTE);
+    const paletteResult = card.breakdown.find((r) => r.sensor === 'palette-membership');
+    expect(paletteResult?.ok).toBe(true);
+  });
+
+  it('enforces palette-membership when paletteMode is strict', () => {
+    const processed = buildProcessedFixture(16, 16, rectPixels(6, 6, 9, 9));
+    const png = PNG.sync.read(processed);
+    const idx = (7 * png.width + 7) * 4;
+    png.data[idx] = 123;
+    png.data[idx + 1] = 77;
+    png.data[idx + 2] = 201;
+    const mutated = PNG.sync.write(png);
+    const brief = makeBrief({
+      postprocessing: { trimAndFit: false, minDimension: 64, paletteMode: 'strict' },
+    });
+    const card = scoreCandidate(mutated, brief, PALETTE);
+    const paletteResult = card.breakdown.find((r) => r.sensor === 'palette-membership');
+    expect(paletteResult?.ok).toBe(false);
   });
 
   it('swaps to anchor-derivable when sensors.anchor.derive=true and surfaces the anchor', () => {
@@ -298,12 +332,15 @@ describe('scoreCandidate', () => {
     const anchorResult = card.breakdown.find((r) => r.sensor === 'anchor-derivable');
     if (anchorResult?.ok) {
       expect(card.derivedAnchor).not.toBeNull();
+      expect(card.derivedAnchors.hold).not.toBeNull();
       // Carried value must equal the sensor's own anchor.
       expect(card.derivedAnchor).toEqual(
         (anchorResult as unknown as { anchor: { x: number; y: number } }).anchor,
       );
+      expect(card.derivedAnchors.hold).toEqual(card.derivedAnchor);
     } else {
       expect(card.derivedAnchor).toBeNull();
+      expect(card.derivedAnchors.hold).toBeNull();
     }
   });
 });

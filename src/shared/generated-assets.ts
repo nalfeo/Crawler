@@ -35,6 +35,13 @@ const anchorSchema = z
   })
   .strict();
 
+const anchorsSchema = z
+  .object({
+    hold: anchorSchema.nullable(),
+    centerOfGravity: anchorSchema.nullable(),
+  })
+  .strict();
+
 /**
  * Manifest entry schema. Mirrors `ManifestEntry` from
  * `scripts/sprites/approve.ts`. Kept loose (`.passthrough()`) on unknown
@@ -51,6 +58,7 @@ export const manifestEntrySchema = z
     sourceRun: z.string().min(1),
     variantIndex: z.number().int().min(0),
     anchor: anchorSchema.nullable(),
+    anchors: anchorsSchema.optional(),
     sensorScore: z.string().min(1),
     judgeScore: z.string().nullable(),
   })
@@ -80,6 +88,7 @@ export interface GeneratedSpriteEntry {
   /** `public/`-relative asset path, forward-slashed. */
   readonly assetPath: string;
   readonly anchor: { readonly x: number; readonly y: number };
+  readonly centerOfGravity: { readonly x: number; readonly y: number };
   /** True when the original manifest entry's anchor was null. */
   readonly anchorIsDefault: boolean;
   readonly approvedAt: string;
@@ -141,15 +150,17 @@ export function emptyGeneratedSpriteRegistry(): GeneratedSpriteRegistry {
 }
 
 function toRegistryEntry(entry: ManifestEntry): GeneratedSpriteEntry {
-  const anchor = entry.anchor
-    ? { x: entry.anchor.x, y: entry.anchor.y }
-    : { ...DEFAULT_GENERATED_ANCHOR };
+  const hold = entry.anchors?.hold ?? entry.anchor;
+  const center = entry.anchors?.centerOfGravity ?? hold;
+  const anchor = hold ? { x: hold.x, y: hold.y } : { ...DEFAULT_GENERATED_ANCHOR };
+  const centerOfGravity = center ? { x: center.x, y: center.y } : { ...anchor };
   return {
     briefId: entry.briefId,
     textureKey: entry.spriteName,
     assetPath: entry.assetPath,
     anchor,
-    anchorIsDefault: entry.anchor === null,
+    centerOfGravity,
+    anchorIsDefault: hold === null,
     approvedAt: entry.approvedAt,
     sourceRun: entry.sourceRun,
     variantIndex: entry.variantIndex,

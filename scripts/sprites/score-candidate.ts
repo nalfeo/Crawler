@@ -26,7 +26,7 @@ import { silhouetteOrientationAxis, weaponSensors } from './sensors/weapons.js';
 /**
  * Pure candidate scorer. Wraps the universal and family-specific sensors
  * (currently only `weapon`) into a single scorecard for one post-processed
- * 16x16 PNG.
+ * native-resolution PNG (typically 64x64).
  *
  * The scorecard is the JSON artifact written next to each variant by the
  * orchestrator. The CLI reads it back to rank candidates and the human picks
@@ -62,10 +62,22 @@ export interface Scorecard {
    * is still recorded in `breakdown`).
    */
   readonly derivedAnchor: DerivedAnchor | null;
+  /**
+   * Dual-anchor output for runtime attachment points:
+   * - hold: grip/hand attachment candidate
+   * - centerOfGravity: physical centroid for motion/rotation pivots
+   *
+   * These are surfaced regardless of which anchor sensor is used for pass/fail
+   * gating, so downstream tooling can consume both points.
+   */
+  readonly derivedAnchors: {
+    readonly hold: DerivedAnchor | null;
+    readonly centerOfGravity: DerivedAnchor | null;
+  };
 }
 
 /**
- * Score one post-processed 16x16 PNG against its brief.
+ * Score one post-processed PNG against its brief.
  *
  * The sensor option overrides on the brief (`brief.sensors`) are merged here
  * with sensor defaults. This is the only place those overrides are consumed,
@@ -95,12 +107,14 @@ export function scoreCandidate(
     })) {
       breakdown.push(result);
     }
-  } else if (brief.type === 'enemy') {
+  } else if (brief.type === 'enemy' || brief.type === 'character') {
     const facing = brief.sensors.enemy?.facing ?? 'front';
+    const toleranceDeg = brief.sensors.enemy?.toleranceDeg;
     if (facing === 'front') {
       breakdown.push(
         silhouetteOrientationAxis(image, {
           orientation: 'vertical',
+          toleranceDeg,
         }),
       );
     }
@@ -119,13 +133,19 @@ export function scoreCandidate(
       break;
     }
   }
+  const derivedHold = deriveHoldAnchor(image, brief);
+  const derivedCenterOfGravity = deriveCenterOfGravityAnchor(image);
 
   return {
     score,
     outOf,
     passed: score === outOf,
     breakdown,
-    derivedAnchor,
+    derivedAnchor: derivedHold ?? derivedAnchor,
+    derivedAnchors: {
+      hold: derivedHold ?? derivedAnchor,
+      centerOfGravity: derivedCenterOfGravity,
+    },
   };
 }
 
@@ -139,11 +159,22 @@ function runUniversal(image: RgbaImage, brief: Brief, palette: PaletteColors): S
   return [
     dimensionsExact(image, brief),
     alphaBinary(image),
-    paletteMembership(image, palette),
+    resolvePaletteMembership(image, brief, palette),
     resolveOpaqueBboxFits(image, brief),
     resolveOpaqueRatio(image, brief),
     resolveAnchorSensor(image, brief),
   ];
+}
+
+function resolvePaletteMembership(
+  image: RgbaImage,
+  brief: Brief,
+  palette: PaletteColors,
+): SensorResult {
+  if (brief.postprocessing?.paletteMode !== 'strict') {
+    return { ok: true, sensor: 'palette-membership' };
+  }
+  return paletteMembership(image, palette);
 }
 
 function resolveOpaqueBboxFits(image: RgbaImage, brief: Brief): SensorResult {
@@ -188,6 +219,20 @@ function isAnchorCenterOfMassOk(
   if (typeof candidate.anchor !== 'object' || candidate.anchor === null) return false;
   const a = candidate.anchor as { x?: unknown; y?: unknown };
   return typeof a.x === 'number' && typeof a.y === 'number';
+}
+
+function deriveHoldAnchor(image: RgbaImage, brief: Brief): DerivedAnchor | null {
+  const anchorOpts = brief.sensors.anchor;
+  const result = anchorDerivable(image, {
+    bandRows: anchorOpts?.bandRows,
+    centerToleranceX: anchorOpts?.centerToleranceX,
+  });
+  return isAnchorDerivableOk(result) ? result.anchor : null;
+}
+
+function deriveCenterOfGravityAnchor(image: RgbaImage): DerivedAnchor | null {
+  const result = anchorCenterOfMass(image);
+  return isAnchorCenterOfMassOk(result) ? result.anchor : null;
 }
 
 export { ANCHOR_DERIVABLE_SENSOR, ANCHOR_CENTER_OF_MASS_SENSOR };

@@ -24,8 +24,14 @@ interface FakeRunOptions {
   readonly variantIndices?: ReadonlyArray<number>;
   readonly chosenIndex?: number;
   readonly chosenAnchor?: { x: number; y: number; source: 'derived' | 'brief' } | null;
+  readonly chosenCenterOfGravityAnchor?: {
+    x: number;
+    y: number;
+    source: 'derived' | 'brief';
+  } | null;
   /** Write `processed/NN.anchor.json` for the given indices. */
   readonly derivedAnchorFor?: ReadonlyArray<number>;
+  readonly centerOfGravityFor?: ReadonlyArray<number>;
   /** Attach a judge scorecard with this minScore to the listed indices. */
   readonly judgeFor?: ReadonlyArray<{ index: number; minScore: number }>;
 }
@@ -40,6 +46,7 @@ function writeFakeRun(
   const chosenIndex = options.chosenIndex ?? indices[0]!;
   const judgeByIndex = new Map((options.judgeFor ?? []).map((j) => [j.index, j.minScore]));
   const derivedSet = new Set(options.derivedAnchorFor ?? []);
+  const centerOfGravitySet = new Set(options.centerOfGravityFor ?? []);
 
   const runDir = path.join(repoRoot, 'generated', 'runs', briefId, runId);
   const processedDir = path.join(runDir, 'processed');
@@ -59,6 +66,12 @@ function writeFakeRun(
         JSON.stringify({ x: 4 + idx, y: 12, source: 'derived' }),
       );
     }
+    if (centerOfGravitySet.has(idx)) {
+      writeFileSync(
+        path.join(processedDir, `${padded}.anchor.cog.json`),
+        JSON.stringify({ x: 7, y: 8, source: 'derived' }),
+      );
+    }
   }
 
   const candidates = indices.map((index) => ({
@@ -68,6 +81,10 @@ function writeFakeRun(
     passed: true,
     combinedPassed: true,
     derivedAnchor: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
+    derivedAnchors: {
+      hold: derivedSet.has(index) ? { x: 4 + index, y: 12 } : null,
+      centerOfGravity: centerOfGravitySet.has(index) ? { x: 7, y: 8 } : null,
+    },
     judgeScorecard:
       judgeByIndex.has(index) === false
         ? null
@@ -95,6 +112,16 @@ function writeFakeRun(
           options.chosenAnchor === undefined
             ? { x: 8, y: 13, source: 'brief' }
             : options.chosenAnchor,
+        anchors: {
+          hold:
+            options.chosenAnchor === undefined
+              ? { x: 8, y: 13, source: 'brief' }
+              : options.chosenAnchor,
+          centerOfGravity:
+            options.chosenCenterOfGravityAnchor === undefined
+              ? { x: 8, y: 13, source: 'brief' }
+              : options.chosenCenterOfGravityAnchor,
+        },
         judgeScorecard: null,
       },
     }),
@@ -177,6 +204,7 @@ describe('approveVariant', () => {
           sourceRun: 'generated/runs/zealot/old',
           variantIndex: 0,
           anchor: null,
+          anchors: { hold: null, centerOfGravity: null },
           sensorScore: '7/7',
           judgeScore: null,
         },
@@ -188,6 +216,7 @@ describe('approveVariant', () => {
           sourceRun: 'generated/runs/cloth-shirt/old',
           variantIndex: 0,
           anchor: null,
+          anchors: { hold: null, centerOfGravity: null },
           sensorScore: '7/7',
           judgeScore: null,
         },

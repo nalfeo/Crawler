@@ -3,8 +3,8 @@ name: skull-mace
 description: |
   A grim one-handed mace held vertically, head at the top, haft straight
   down. The head is a small bleached skull mounted on top of a short
-  straight haft — eye sockets and nasal cavity read as two dark dots and
-  a slit even at 16x16. Wrapped grip with a simple band or pommel at the
+  straight haft — eye sockets and nasal cavity should remain readable at
+  native size and after runtime downscaling. Wrapped grip with a simple band or pommel at the
   base. Bone-white skull with cool grey shadow on the underside; dark
   brown wrapped haft; muted grey/iron pommel and band. Single thin
   highlight along the top of the skull and one edge of the haft. No

@@ -154,7 +154,7 @@ export function buildSystemPrompt(request: SynthesizeBriefRequest): string {
   const wantClassify = request.type === null;
   const referenceList = formatCatalogForPrompt(request.referenceCatalog);
   const lines: string[] = [
-    'You are an art director writing concept briefs for tiny 16x16 pixel-art sprites in the Kenney roguelike style for an indie game called Crawler. Given a subject name, write multiple short concept briefs that a human collaborator will then pick from to send to an illustrator.',
+    'You are an art director writing concept briefs for 64x64-frame pixel-art sprites in the grungy indie style of the game Crawler — think expressive Earthbound characters crossed with worn Mad Max textures in a dark fantasy dungeon. Given a subject name, write multiple short concept briefs that a human collaborator will then pick from to send to an illustrator.',
     '',
     'A good brief is concrete. It names the pose, the silhouette, the orientation, and the dominant colour by name (no hex codes — leave RGB choices to the illustrator). Strong briefs use specific verbs and nouns; weak briefs use generic adjectives like "cool" or "nice", so prefer concrete language.',
     '',

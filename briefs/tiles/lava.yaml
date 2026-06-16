@@ -1,0 +1,24 @@
+type: tile
+name: lava
+description: |
+  A hazardous lava floor tile, glowing with heat and molten energy. The
+  tile shows a churning molten surface with dark cooled/crusted edges and
+  bright molten channels. Include heat variation that is not only orange:
+  white-hot cores, red/magenta pockets, and dark basalt crust around them.
+  Wavy, flowing surface suggesting motion and heat. Small floating cooled
+  ash particles or embers visible above the surface. Edge detail must show
+  clear depth and danger — hazard visual must read instantly at 64x64. No
+  smooth plastic appearance; must look solid molten rock. High-contrast
+  readability in dark dungeons. The silhouette must communicate "do not
+  step here" without ambiguity.
+# Lava tile is a floor hazard. Default tile anchor and edge settings apply.
+# Judge is enabled by default for tile type. We want a few seed variations
+# to ensure good visual variety in lava flow and crust patterns.
+sensors:
+  opaqueRatio:
+    max: 0.72
+variations:
+  - lava tile with more visible cooled black crust covering parts of the surface
+  - lava tile with bright white-hot center glow surrounded by dark cooled edges
+  - lava tile with small floating embers and ash particles visible above
+minVariations: 4

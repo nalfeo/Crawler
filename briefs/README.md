@@ -99,14 +99,14 @@ Subdirectories under `briefs/` are informational; the loader doesn't
 care. `type:` is the source of truth for which defaults file to merge.
 The repo uses these conventional family folders:
 
-| Type        | Folder         |
-| ----------- | -------------- |
-| `weapon`    | `weapons/`     |
-| `enemy`     | `enemies/`     |
-| `item`      | `items/`       |
-| `tile`      | `tiles/`       |
-| `vfx`       | `vfx/`         |
-| `character` | `characters/`  |
+| Type        | Folder        |
+| ----------- | ------------- |
+| `weapon`    | `weapons/`    |
+| `enemy`     | `enemies/`    |
+| `item`      | `items/`      |
+| `tile`      | `tiles/`      |
+| `vfx`       | `vfx/`        |
+| `character` | `characters/` |
 
 ## Per-type defaults
 
@@ -130,7 +130,7 @@ Examples:
 
 - **`iron-sword.yaml`** overrides `sensors.weapon.orientation: diagonal`
   because a side-profile sword reads at ~45° rather than vertical.
-- A larger boss enemy might override `size: { width: 32, height: 32 }`.
+- A larger boss enemy might override `size: { width: 96, height: 96 }`.
 - A brief that wants only one specific reference image overrides
   `references: [{ path: ..., note: ... }]` (always at least 2).
 

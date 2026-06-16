@@ -150,9 +150,9 @@ export class AzureOpenAIChatProvider implements TextProvider {
 }
 
 const SYSTEM_PROMPT = [
-  'You design visual variations for 16x16 pixel-art sprites in the Kenney roguelike palette.',
+  'You design visual variations for 64x64-frame pixel-art sprites in the grungy indie style of Crawler — bold colors, 3-5 shading stops per material, and worn dungeon-crawling character.',
   "Each variation is a discrete, on-theme embellishment that keeps the subject's identity intact.",
-  'Variations must be visually distinct from each other, free of fine detail that cannot render at 16x16, and described concisely (4-12 words).',
+  'Variations must be visually distinct from each other, free of detail that collapses when scaled down in-game, and described concisely (4-12 words).',
   'Output STRICT JSON only: an object with a single key "variations" whose value is an array of strings. No prose, no markdown.',
 ].join(' ');
 
@@ -174,7 +174,7 @@ function buildUserPrompt(request: ExpandVariationsRequest): string {
   lines.push(`- Keep the subject's silhouette family and role unchanged.`);
   lines.push(`- Each entry stands alone — do not combine multiple ideas with "and".`);
   lines.push(
-    `- Stay renderable at 16x16: avoid fine text, complex gradients, tiny secondary objects.`,
+    `- Stay readable after downscaling in-engine: avoid fine text, complex gradients, and tiny secondary objects.`,
   );
   lines.push(
     `- Be evocative, not prescriptive (e.g. "wolf skull replacing the human skull" not "use color #abc").`,

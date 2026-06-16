@@ -27,12 +27,15 @@ function makeEntry(overrides: Partial<RunSummaryEntry> = {}): RunSummaryEntry {
     index: 0,
     score: 7,
     outOf: 7,
+    breakdown: [],
     passed: true,
     rawPath: '/tmp/raw/00.png',
     processedPath: '/tmp/processed/00.png',
     scorecardPath: '/tmp/processed/00.scorecard.json',
     derivedAnchor: null,
+    derivedAnchors: { hold: null, centerOfGravity: null },
     anchorSidecarPath: null,
+    centerOfGravitySidecarPath: null,
     anchorOverlayPath: '/tmp/processed/00.anchor-overlay.png',
     judgeScorecard: null,
     judgeSkipReason: 'judge-disabled',
@@ -58,6 +61,7 @@ describe('pickChosen', () => {
     } as Partial<Brief>);
     const result = pickChosen([makeEntry({ derivedAnchor: { x: 7, y: 15 } })], brief);
     expect(result?.anchor).toEqual({ x: 7, y: 15, source: 'derived' });
+    expect(result?.anchors.hold).toEqual({ x: 7, y: 15, source: 'derived' });
   });
 
   it('returns anchor=null in derive mode when derivation failed (never falls back to brief)', () => {
@@ -78,7 +82,12 @@ describe('pickChosen', () => {
   });
 
   it('respects the ranked order: returns the top candidate, not necessarily index 0', () => {
-    const top = makeEntry({ index: 3, score: 7, derivedAnchor: { x: 7, y: 14 } });
+    const top = makeEntry({
+      index: 3,
+      score: 7,
+      derivedAnchor: { x: 7, y: 14 },
+      derivedAnchors: { hold: { x: 7, y: 14 }, centerOfGravity: { x: 8, y: 9 } },
+    });
     const next = makeEntry({ index: 0, score: 6 });
     const brief = makeBrief({
       sensors: { anchor: { derive: true, bandRows: 4, centerToleranceX: 3 } },

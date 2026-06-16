@@ -10,7 +10,7 @@
  *     run.json               -- metadata: brief id, prompt hash, timestamp, attempt count
  *     sheet-00.png           -- raw multi-variant sheet from the provider (one per attempt)
  *     raw/NN.png             -- raw N-th slice, before postprocessing
- *     processed/NN.png       -- post-processed 16x16 PNG
+ *     processed/NN.png       -- post-processed native-size PNG (typically 64x64)
  *     processed/NN.scorecard.json  -- sensor scorecard for processed/NN.png
  *     processed/NN.anchor.json     -- derived anchor sidecar (only when the brief opts
  *                                     into sensors.anchor.derive and derivation succeeded)
@@ -51,6 +51,11 @@ export interface RunSummaryEntry {
   readonly score: number;
   readonly outOf: number;
   /**
+   * Per-sensor breakdown mirrored from the candidate's scorecard so UIs can
+   * show exactly which sensor(s) failed without opening extra files.
+   */
+  readonly breakdown: Scorecard['breakdown'];
+  /**
    * Sensor-only passed flag. Reflects the deterministic scorecard. The
    * full pipeline-pass decision (sensor AND judge when judge is enabled)
    * is `combinedPassed` — consumers should rank on that, not on `passed`.
@@ -65,13 +70,19 @@ export interface RunSummaryEntry {
    * derivation failed.
    */
   readonly derivedAnchor: DerivedAnchor | null;
+  readonly derivedAnchors: {
+    readonly hold: DerivedAnchor | null;
+    readonly centerOfGravity: DerivedAnchor | null;
+  };
   /**
    * Path to the per-variant anchor sidecar JSON, when `derivedAnchor` is
    * non-null. Mirrors what gets surfaced in `RunSummary.chosen`.
    */
   readonly anchorSidecarPath: string | null;
+  readonly centerOfGravitySidecarPath: string | null;
   /**
-   * Path to the per-variant `anchor-overlay.png`: a 16x16 transparent PNG
+   * Path to the per-variant `anchor-overlay.png`: a transparent PNG matching
+   * the processed sprite dimensions
    * with one opaque red pixel at the derived anchor, or fully transparent
    * when derivation failed. Always written so the gallery can composite a
    * consistent layer on top of every candidate without special-casing
@@ -129,6 +140,10 @@ export interface ChosenCandidate {
    * the schema requires it today).
    */
   readonly anchor: ChosenAnchor | null;
+  readonly anchors: {
+    readonly hold: ChosenAnchor | null;
+    readonly centerOfGravity: ChosenAnchor | null;
+  };
   /**
    * Judge scorecard for the chosen variant, when the judge ran. Null
    * means either the brief didn't opt in or this variant wasn't judged
@@ -248,9 +263,8 @@ export function writeVariant(
   scorecard: Scorecard,
   options: {
     /**
-     * Sprite width/height for the anchor overlay PNG. Defaults to 16x16,
-     * which is the only size in the pipeline today. Passed explicitly so
-     * future per-brief sizes don't silently mis-render.
+     * Sprite width/height for the anchor overlay PNG. Defaults to 64x64.
+     * Passed explicitly so per-brief size overrides don't silently mis-render.
      */
     readonly overlaySize?: { readonly width: number; readonly height: number };
   } = {},
@@ -259,6 +273,7 @@ export function writeVariant(
   readonly processedPath: string;
   readonly scorecardPath: string;
   readonly anchorSidecarPath: string | null;
+  readonly centerOfGravitySidecarPath: string | null;
   readonly anchorOverlayPath: string;
 } {
   const id = String(index).padStart(2, '0');
@@ -270,21 +285,31 @@ export function writeVariant(
   writeFileSync(scorecardPath, `${JSON.stringify(scorecard, null, 2)}\n`);
 
   let anchorSidecarPath: string | null = null;
-  if (scorecard.derivedAnchor) {
+  if (scorecard.derivedAnchors.hold) {
     anchorSidecarPath = path.join(paths.processedDir, `${id}.anchor.json`);
     const sidecar = {
-      x: scorecard.derivedAnchor.x,
-      y: scorecard.derivedAnchor.y,
+      x: scorecard.derivedAnchors.hold.x,
+      y: scorecard.derivedAnchors.hold.y,
       source: 'derived' as const,
     };
     writeFileSync(anchorSidecarPath, `${JSON.stringify(sidecar, null, 2)}\n`);
+  }
+  let centerOfGravitySidecarPath: string | null = null;
+  if (scorecard.derivedAnchors.centerOfGravity) {
+    centerOfGravitySidecarPath = path.join(paths.processedDir, `${id}.anchor.cog.json`);
+    const cogSidecar = {
+      x: scorecard.derivedAnchors.centerOfGravity.x,
+      y: scorecard.derivedAnchors.centerOfGravity.y,
+      source: 'derived' as const,
+    };
+    writeFileSync(centerOfGravitySidecarPath, `${JSON.stringify(cogSidecar, null, 2)}\n`);
   }
 
   // Always emit the overlay PNG, even when the anchor is null. A consistent
   // file-per-variant means the gallery can blindly `<img>` it next to the
   // sprite without branching on whether derivation succeeded; null-anchor
   // overlays are fully transparent and so render as a no-op.
-  const overlaySize = options.overlaySize ?? { width: 16, height: 16 };
+  const overlaySize = options.overlaySize ?? { width: 64, height: 64 };
   const anchorOverlayPath = path.join(paths.processedDir, `${id}.anchor-overlay.png`);
   const overlayPng = buildAnchorOverlay({
     width: overlaySize.width,
@@ -295,7 +320,14 @@ export function writeVariant(
   });
   writeFileSync(anchorOverlayPath, overlayPng);
 
-  return { rawPath, processedPath, scorecardPath, anchorSidecarPath, anchorOverlayPath };
+  return {
+    rawPath,
+    processedPath,
+    scorecardPath,
+    anchorSidecarPath,
+    centerOfGravitySidecarPath,
+    anchorOverlayPath,
+  };
 }
 
 /** Write run summary JSON. Returns path. */
@@ -375,20 +407,31 @@ export function pickChosen(
   const top = ranked[0];
   if (!top) return null;
   const deriveMode = brief.sensors.anchor?.derive === true;
-  let anchor: ChosenAnchor | null;
-  if (top.derivedAnchor) {
-    anchor = { x: top.derivedAnchor.x, y: top.derivedAnchor.y, source: 'derived' };
-  } else if (deriveMode) {
-    anchor = null;
-  } else {
-    anchor = { x: brief.anchor.x, y: brief.anchor.y, source: 'brief' };
-  }
+  const resolvedHold = top.derivedAnchors.hold ?? top.derivedAnchor;
+  const holdAnchor: ChosenAnchor | null = resolvedHold
+    ? { x: resolvedHold.x, y: resolvedHold.y, source: 'derived' }
+    : deriveMode
+      ? null
+      : { x: brief.anchor.x, y: brief.anchor.y, source: 'brief' };
+  const centerOfGravityAnchor: ChosenAnchor | null = top.derivedAnchors.centerOfGravity
+    ? {
+        x: top.derivedAnchors.centerOfGravity.x,
+        y: top.derivedAnchors.centerOfGravity.y,
+        source: 'derived',
+      }
+    : holdAnchor
+      ? { x: holdAnchor.x, y: holdAnchor.y, source: holdAnchor.source }
+      : null;
   return {
     index: top.index,
     score: top.score,
     outOf: top.outOf,
     passed: top.passed,
-    anchor,
+    anchor: holdAnchor,
+    anchors: {
+      hold: holdAnchor,
+      centerOfGravity: centerOfGravityAnchor,
+    },
     judgeScorecard: top.judgeScorecard,
     combinedPassed: top.combinedPassed,
   };

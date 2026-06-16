@@ -47,7 +47,7 @@ import type { EvaluateRequest, VisionProvider } from './provider/vision-types.js
  * The judge cache mixes this into its hash key so a prompt change
  * automatically invalidates old verdicts without manual cache clears.
  */
-export const PROMPT_TEMPLATE_VERSION = 'v1';
+export const PROMPT_TEMPLATE_VERSION = 'v2';
 
 export const EVALUATORS = ['style_match', 'brief_match', 'readability'] as const;
 export type Evaluator = (typeof EVALUATORS)[number];
@@ -89,7 +89,7 @@ export interface JudgeScorecard {
 }
 
 export interface JudgeVariantOptions {
-  /** Processed 16x16 (or whatever `brief.size`) PNG bytes for this variant. */
+  /** Processed `brief.size` PNG bytes for this variant. */
   readonly processed: Buffer;
   /** Reference PNG buffers from the brief (already loaded). */
   readonly referencePngs: ReadonlyArray<Buffer>;
@@ -330,6 +330,10 @@ function buildSystemInstructions(styleGuide: string): string {
     '                    at game scale on a dark floor tile? 5 = silhouette pops; the subject',
     '                    is obvious in one glance. 1 = the sprite blends into the floor or',
     '                    the silhouette is illegible.',
+    '                    Explicitly penalize visual integrity defects: transparency holes',
+    '                    punched through the body, disconnected/floating pixel islands,',
+    '                    detached limbs/fragments, and broken contiguous silhouette.',
+    '                    These defects should score readability <= 2.',
     '',
     'Anything scoring below 3 auto-rejects the variant. Use the full 1-5 scale; do not',
     'default to 3 for borderline cases — pick 2 (fail) or 4 (pass) and justify briefly.',
@@ -380,7 +384,7 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
 
 /**
  * Nearest-neighbor upscale a PNG by an integer factor. Used to make a
- * 16x16 sprite legible to a vision model (which downsamples internally
+ * sprite legible to a vision model (which downsamples internally
  * anyway, but doesn't reason well about tiny inputs).
  *
  * Pure: same bytes in, same bytes out. No PRNG, no clock.

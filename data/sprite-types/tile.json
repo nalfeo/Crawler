@@ -17,6 +17,10 @@
   "generation": {
     "sheet": { "rows": 4, "cols": 4, "emptyCells": [], "nativeCanvas": 1024 }
   },
+  "postprocessing": {
+    "trimAndFit": false,
+    "minDimension": 64
+  },
   "sensors": {
     "edge": { "allowMainTouch": true },
     "anchor": { "derive": true, "bandRows": 8, "centerToleranceX": 8 }
