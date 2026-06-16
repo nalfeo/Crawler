@@ -10,6 +10,7 @@ import {
   type FloorArtPlanReport,
   type FloorArtStatus,
 } from './devtools/art-plan-model.js';
+import { briefKey } from './shared/art-plan-status.js';
 import {
   extractVariantIndices,
   fetchRunSummary,
@@ -250,6 +251,16 @@ function currentDevtoolsPage(): DevtoolsPage {
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
+function devtoolsPageHref(page: DevtoolsPage): string {
+  const url = new URL(window.location.href);
+  if (page === DEVTOOLS_PAGE_HOME) {
+    url.searchParams.delete('page');
+  } else {
+    url.searchParams.set('page', page);
+  }
+  return url.toString();
+}
+
 function render(): void {
   const root = document.getElementById('devtools-root');
   if (!(root instanceof HTMLElement)) {
@@ -352,7 +363,12 @@ function render(): void {
             transition: 'border-color 0.15s, transform 0.15s',
           },
         });
-        card.setAttribute('href', `/devtools.html?page=${encodeURIComponent(tool.id)}`);
+        const href = devtoolsPageHref(tool.id);
+        card.setAttribute('href', href);
+        card.addEventListener('click', (event) => {
+          event.preventDefault();
+          window.location.assign(href);
+        });
         card.addEventListener('mouseenter', () => {
           card.style.borderColor = 'rgba(126, 224, 255, 0.4)';
           card.style.transform = 'translateY(-1px)';
@@ -2670,6 +2686,7 @@ function render(): void {
         },
       );
       promotedBriefPath = result.briefPath;
+      draftBriefKeys.add(briefKey(selected.type, selected.briefId));
       renderWorkflowSelection();
       setWorkflowStatus(`Promoted brief to ${result.briefPath}`, '#bef264');
       void recompute();
