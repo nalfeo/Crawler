@@ -628,7 +628,9 @@ export class MainGameScene extends Phaser.Scene {
     }
     if (unlocks.spells && !this.spellsUnlockNotified) {
       this.spellsUnlockNotified = true;
-      this.flashHint('Abilities unlocked! Press [B] to open Abilities and configure your bar.');
+      this.flashHint(
+        'Abilities unlocked! Press [B] in a safe room to open Abilities and configure your bar.',
+      );
     }
 
     if (
@@ -655,7 +657,12 @@ export class MainGameScene extends Phaser.Scene {
       }
     }
 
-    if (unlocks.spells && this.keyAbilities && Phaser.Input.Keyboard.JustDown(this.keyAbilities)) {
+    if (
+      unlocks.spells &&
+      safeCtx &&
+      this.keyAbilities &&
+      Phaser.Input.Keyboard.JustDown(this.keyAbilities)
+    ) {
       this.openAbilitiesConfigModal();
     }
   }
