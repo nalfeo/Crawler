@@ -296,8 +296,19 @@
     "actual_apples": 2,
     "delta": 0,
     "verdict": "exact",
-    "notes": "Fixed spell-system-lab compilation errors: removed unused imports, corrected ability state access pattern (abilityStatesByEntity.get()), accessed spells via equippedActiveAbilityIds. Lab test harness now complete and passing all 1179 tests.",
-  "date": "2026-06-16",
+    "notes": "Fixed spell-system-lab compilation errors: removed unused imports, corrected ability state access pattern (abilityStatesByEntity.get()), accessed spells via equippedActiveAbilityIds. Lab test harness now complete and passing all 1179 tests."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "floor1-boss-spell-unlock-hardening",
+    "estimated_apples": 2,
+    "actual_apples": 3,
+    "delta": 1,
+    "verdict": "under",
+    "notes": "Consolidated Floor1 boss-reward spell IDs into a shared source, fixed reward callback to target scene playerEid, added regression test for 3 allowed spells + arcane-bolt rejection, and stabilized long integration timeouts under coverage load."
+  },
+  {
+    "date": "2026-06-16",
     "session": "guard-session-server-interference",
     "estimated_apples": 3,
     "actual_apples": 3,
@@ -334,6 +345,6 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.8,
-    "notes": "Implemented headless AI runner with rule-based input simulation (40,650 FPS achieved, 40x target), extracted simulation step, created AI runner lab for visual debugging, added CLI tool and npm script."
+    "notes": "Implemented headless AI runner with rule-based input simulation, extracted simulation step, created AI runner lab for visual debugging, added CLI tool and npm script."
   }
 ]

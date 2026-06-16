@@ -13,6 +13,7 @@ import { createHudFloorTimer } from './HudFloorTimer.js';
 import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
+import { createHudAbilityBar } from './HudAbilityBar.js';
 
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
@@ -26,6 +27,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const lootCounter = createHudLootCounter(scene);
   const minimap = createHudMinimap(scene);
   const questTracker = createHudQuestTracker(scene);
+  const abilityBar = createHudAbilityBar(scene);
 
   function sync(world: GameWorld, playerEid: number): void {
     healthBar.sync(world, playerEid);
@@ -35,6 +37,7 @@ export function createHudUI(scene: Phaser.Scene): {
     lootCounter.sync(world);
     minimap.sync(world, playerEid);
     questTracker.sync(world, playerEid);
+    abilityBar.sync(world, playerEid);
   }
 
   function destroy(): void {
@@ -45,6 +48,7 @@ export function createHudUI(scene: Phaser.Scene): {
     lootCounter.destroy();
     minimap.destroy();
     questTracker.destroy();
+    abilityBar.destroy();
   }
 
   return { sync, isMapOverlayOpen: minimap.isOverlayOpen, destroy };
