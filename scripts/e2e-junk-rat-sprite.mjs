@@ -1,3 +1,4 @@
+/* global console, process */
 /**
  * E2E: Junk Rat Critters sprite generation pipeline.
  *
@@ -26,6 +27,7 @@
  * Expected runtime: ~60–120 s (image generation dominates).
  */
 
+import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const SIDECAR = 'http://127.0.0.1:3010';
@@ -39,7 +41,7 @@ async function api(method, path, body) {
     headers: { 'Content-Type': 'application/json' },
   };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(`${SIDECAR}${path}`, opts);
+  const res = await globalThis.fetch(`${SIDECAR}${path}`, opts);
   const text = await res.text();
   let json;
   try {
@@ -123,23 +125,25 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
-  let galleryPassed = false;
+  let galleryPassed;
 
   try {
     await page.goto(GALLERY_URL, { waitUntil: 'networkidle', timeout: 30000 });
     await page.waitForTimeout(2000);
 
     const content = await page.content();
-    galleryPassed = content.toLowerCase().includes('junk');
+    galleryPassed = content.includes(BRIEF_NAME);
 
-    await page.screenshot({ path: 'junk-rat-e2e-gallery.png', fullPage: true });
+    mkdirSync('tmp', { recursive: true });
+    const screenshotPath = 'tmp/junk-rat-e2e-gallery.png';
+    await page.screenshot({ path: screenshotPath, fullPage: true });
 
     if (galleryPassed) {
       console.log(`✅ '${BRIEF_NAME}' visible in sprite gallery`);
     } else {
       console.warn('⚠️  Gallery loaded but junk-rat entry not yet visible');
     }
-    console.log('📸 Screenshot: junk-rat-e2e-gallery.png');
+    console.log(`📸 Screenshot: ${screenshotPath}`);
   } finally {
     await ctx.close();
     await browser.close();

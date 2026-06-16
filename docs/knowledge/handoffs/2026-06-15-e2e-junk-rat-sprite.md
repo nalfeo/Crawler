@@ -22,7 +22,7 @@ Declared: 🍎🍎 | Actual: 🍎🍎 — two key blockers (credentials, vision 
 
 3. **E2E script** — scripts/e2e-junk-rat-sprite.mjs exercises:
    - Synthesize brief (gpt-4o, 1 candidate)
-   - Promote to riefs/draft/enemys/junk-rat-critters.yaml
+   - Promote to briefs/draft/enemies/junk-rat-critters.yaml
    - Generate run (gpt-image-1, 16 candidates, ~50s)
    - Metadata pipeline (heuristic)
    - Playwright gallery check at http://localhost:3002/lab.html?lab=sprite-gallery
