@@ -4,12 +4,19 @@ import {
   deriveSessionPortBlock,
   getSessionServerPorts,
   getVitePortForMode,
+  hashWorkspaceKey,
   normalizeWorkspaceKey,
 } from '../../scripts/shared/session-server-ports.js';
 
 describe('session server ports', () => {
   it('derives a stable normalized workspace key', () => {
     expect(normalizeWorkspaceKey('C:/Repo/Crawler/Worktree')).toBe('c:\\repo\\crawler\\worktree');
+  });
+
+  it('hashes normalized workspace keys deterministically', () => {
+    const key = normalizeWorkspaceKey('C:/Repo/Crawler/alpha');
+    expect(hashWorkspaceKey(key)).toBe(hashWorkspaceKey(key));
+    expect(hashWorkspaceKey(key)).toBe(hashWorkspaceKey('c:\\repo\\crawler\\alpha'));
   });
 
   it('uses deterministic ports for the same workspace', () => {
@@ -25,6 +32,10 @@ describe('session server ports', () => {
     expect(ports.labPort).toBe(ports.gamePort + 1);
     expect(ports.devtoolsPort).toBe(ports.gamePort + 2);
     expect(ports.sidecarPort).toBe(ports.gamePort + 10);
+    expect(ports.gameBaseUrl).toBe(`http://localhost:${ports.gamePort}`);
+    expect(ports.labBaseUrl).toBe(`http://localhost:${ports.labPort}`);
+    expect(ports.devtoolsBaseUrl).toBe(`http://localhost:${ports.devtoolsPort}`);
+    expect(ports.sidecarBaseUrl).toBe(`http://127.0.0.1:${ports.sidecarPort}`);
   });
 
   it('changes port blocks across workspaces', () => {

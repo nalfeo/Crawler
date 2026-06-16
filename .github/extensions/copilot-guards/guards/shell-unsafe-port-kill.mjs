@@ -8,30 +8,8 @@ function normalizePath(value) {
   return value.toLowerCase().replaceAll('/', '\\');
 }
 
-function segmentUsesStopProcess(segment) {
-  return /\bStop-Process\b/i.test(segment);
-}
-
-function segmentUsesPortOwnershipLookup(segment) {
-  return (
-    /\bGet-NetTCPConnection\b/i.test(segment) &&
-    /\bOwningProcess\b/i.test(segment) &&
-    segmentUsesStopProcess(segment)
-  );
-}
-
 function segmentTargetsLegacySharedPorts(segment) {
   return LEGACY_SHARED_PORTS.some((port) => new RegExp(`\\b${port}\\b`).test(segment));
-}
-
-function segmentUsesBroadCrawlerProcessScan(segment) {
-  return (
-    /\bGet-CimInstance\b/i.test(segment) &&
-    /\bWin32_Process\b/i.test(segment) &&
-    /\bCommandLine\b/i.test(segment) &&
-    /\bCrawler\b/i.test(segment) &&
-    segmentUsesStopProcess(segment)
-  );
 }
 
 function segmentScopesToCurrentWorkspace(segment, cwd) {
