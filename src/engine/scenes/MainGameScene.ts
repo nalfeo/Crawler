@@ -942,12 +942,14 @@ export class MainGameScene extends Phaser.Scene {
         description: weapon ? `Starter weapon: ${weapon.name}` : id,
       };
     });
+    const baseBonuses = this.world.floor1.baseStatBonuses;
+    const baseBonusText = `Base bonuses: HP +${baseBonuses.maxHp}, Move +${baseBonuses.moveSpeed.toFixed(1)}, Pickup +${baseBonuses.pickupRange}`;
 
     this.modalPicker.open(
       {
         title: 'Choose your opening loadout',
-        subtitle: 'Floor 1 is paused until you confirm a starter weapon.',
-        body: 'Pick the weapon you want to begin with. The game stays frozen while this modal is open.',
+        subtitle: `${this.world.floor1.protagonistName} · Floor 1 is paused until you confirm a starter weapon.`,
+        body: `${baseBonusText}\nPick the weapon you want to begin with.`,
         options,
         allowCancel: true,
         initialSelectedId: this.world.floor1.starterChoices[0],
@@ -1153,7 +1155,11 @@ export class MainGameScene extends Phaser.Scene {
     );
 
     if (this.world.state === 'loadout') {
-      this.loadoutText?.setVisible(true);
+      const modalOpen = this.modalPicker?.isOpen() ?? false;
+      this.loadoutText?.setVisible(!modalOpen);
+      if (modalOpen) {
+        return;
+      }
       const choices = this.world.floor1.starterChoices
         .map((id, idx) => `${idx + 1}. ${id}`)
         .join('\n');
