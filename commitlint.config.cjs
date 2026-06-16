@@ -4,6 +4,14 @@
  */
 module.exports = {
   extends: ['@commitlint/config-conventional'],
+  ignores: [(message) => message.toLowerCase().startsWith('merge:')],
+  ignores: [
+    /**
+     * Agent-merge branch sync commits are generated as "merge: ...".
+     * Treat these as merge metadata, not user-authored conventional commits.
+     */
+    (message) => message.toLowerCase().startsWith('merge:'),
+  ],
   rules: {
     'type-enum': [
       2,
