@@ -31,7 +31,8 @@ function getProcessEnv() {
 }
 
 export function normalizeWorkspaceKey(cwd = getProcessCwd()) {
-  return path.resolve(cwd).replaceAll('/', '\\').toLowerCase();
+  // Always normalize to Windows-style paths for consistent port derivation across platforms
+  return path.win32.normalize(cwd).toLowerCase();
 }
 
 export function hashWorkspaceKey(key) {
