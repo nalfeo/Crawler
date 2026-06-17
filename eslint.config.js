@@ -13,7 +13,16 @@ const layerImportPatterns = (layer) => [
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'coverage/**',
+      'src/engine/sprites/*.js',
+      'src/devtools/*.js',
+      'src/devtools/*.d.ts',
+      'scripts/sprites/**/*.js',
+      'scripts/sprites/**/*.d.ts',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
