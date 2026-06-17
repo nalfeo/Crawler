@@ -346,5 +346,15 @@
     "verdict": "exact",
     "hello_kitties": 0.8,
     "notes": "Implemented headless AI runner with rule-based input simulation, extracted simulation step, created AI runner lab for visual debugging, added CLI tool and npm script."
+  },
+  {
+    "date": "2026-06-17",
+    "session": "floor1-config-unification",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8,
+    "notes": "Phase 1 of floor config refactoring: created Zod schema for floor1.json, added missing config fields (starterWeapons, bossVariants, sprites), refactored floor1Scenario.ts to replace ~60 hardcoded constants with config references. All 1253/1254 tests pass (1 pre-existing sprite test failure unrelated to changes)."
   }
 ]
