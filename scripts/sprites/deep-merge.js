@@ -1,0 +1,45 @@
+/**
+ * Recursive deep-merge for plain JSON-like objects.
+ *
+ * Used by the brief loader to layer overrides on top of per-type defaults.
+ * Semantics, intentionally narrow:
+ *  - Plain objects merge per-key. Override keys win when both sides have one.
+ *  - Arrays REPLACE — they are never concatenated. An override's array fully
+ *    replaces the defaults' array (this matters for `references`, where an
+ *    author who supplies references almost always wants only those).
+ *  - All other JSON-serialisable scalars (strings, numbers, booleans, null)
+ *    are taken from the override side if present.
+ *
+ * Non-JSON values (functions, class instances, Dates, RegExps, undefined)
+ * are NOT supported: the helper clones via JSON round-trip, which silently
+ * drops functions and converts class instances to plain objects. Briefs
+ * and per-type defaults are authored as YAML/JSON, so this is fine in
+ * practice — but if the merge ever needs to handle richer values, swap
+ * `cloneJson` for `structuredClone`.
+ *
+ * Inputs are treated as immutable; the merged result is a fresh structure.
+ */
+export function deepMergeDefaults(defaults, override) {
+  if (override === undefined) return cloneJson(defaults);
+  const result = cloneJson(defaults);
+  for (const [key, ovValue] of Object.entries(override)) {
+    if (ovValue === undefined) continue;
+    const dfValue = result[key];
+    if (isPlainObject(dfValue) && isPlainObject(ovValue)) {
+      result[key] = deepMergeDefaults(dfValue, ovValue);
+    } else {
+      result[key] = cloneJson(ovValue);
+    }
+  }
+  return result;
+}
+function isPlainObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function cloneJson(value) {
+  // structuredClone would also work but pulls in DOM lib types in older Node
+  // configs; JSON round-trip is sufficient for brief/defaults shapes (no Dates,
+  // RegExps, undefineds, etc.) and keeps this module dependency-free.
+  return JSON.parse(JSON.stringify(value));
+}
+//# sourceMappingURL=deep-merge.js.map

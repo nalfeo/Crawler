@@ -4,6 +4,7 @@ coverage/
 *.local
 .DS_Store
 .tsbuildinfo
+.tsbuildinfo-*
 .vitest-cache/
 .eslintcache
 tmp/
