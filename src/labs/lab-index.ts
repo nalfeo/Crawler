@@ -1,6 +1,13 @@
 import { getAllLabs } from './registry.js';
 import type { LabCategory, LabDefinition } from './registry.js';
 
+export interface LabIndexEntry {
+  id: string;
+  name: string;
+  description: string;
+  category?: LabCategory;
+}
+
 const CATEGORY_ORDER: LabCategory[] = [
   'Combat',
   'Movement & Physics',
@@ -161,7 +168,7 @@ function createCategorySection(
   return section;
 }
 
-export function renderLabIndex(): void {
+export function renderLabIndex(options: { entries?: ReadonlyArray<LabIndexEntry> } = {}): void {
   const canvas = document.getElementById('lab-canvas');
   const controls = document.getElementById('lab-controls');
 
@@ -175,9 +182,17 @@ export function renderLabIndex(): void {
   // Clear any inline style overrides so #lab-canvas reverts to its stylesheet/flex defaults.
   canvas.style.cssText = '';
 
-  const labs = [...getAllLabs().entries()].sort(([leftId], [rightId]) =>
-    leftId.localeCompare(rightId),
-  );
+  const labs = (
+    options.entries
+      ? options.entries.map(
+          (entry) =>
+            [
+              entry.id,
+              { name: entry.name, description: entry.description, category: entry.category },
+            ] as [string, LabDefinition],
+        )
+      : [...getAllLabs().entries()]
+  ).sort(([leftId], [rightId]) => leftId.localeCompare(rightId));
   const compact = isMobileViewport();
 
   // Group labs by category

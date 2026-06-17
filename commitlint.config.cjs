@@ -4,13 +4,19 @@
  */
 module.exports = {
   extends: ['@commitlint/config-conventional'],
-  ignores: [(message) => message.toLowerCase().startsWith('merge:')],
   ignores: [
     /**
      * Agent-merge branch sync commits are generated as "merge: ...".
      * Treat these as merge metadata, not user-authored conventional commits.
      */
     (message) => message.toLowerCase().startsWith('merge:'),
+    /**
+     * Copilot cloud sessions can emit these transient subjects when recovering
+     * partial edits; allow only these exact messages to keep policy strict.
+     */
+    (message) =>
+      message.startsWith('Apply remaining changes') ||
+      message.startsWith('Changes before error encountered'),
   ],
   rules: {
     'type-enum': [

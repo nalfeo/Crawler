@@ -138,6 +138,24 @@ export interface GameWorld {
 export interface CreateWorldOptions {
   seed?: number;
   floor?: number;
+  maxEntities?: number;
+  entityCapacityMode?: 'game' | 'lab' | 'test';
+}
+
+const DEFAULT_ENTITY_CAPACITY_BY_MODE = {
+  game: 10_000,
+  lab: 5_000,
+  test: 3_000,
+} as const;
+
+function getDefaultEntityCapacityMode(): keyof typeof DEFAULT_ENTITY_CAPACITY_BY_MODE {
+  if (typeof process !== 'undefined' && process.env.VITEST === 'true') {
+    return 'test';
+  }
+  if (typeof window !== 'undefined' && window.location.pathname.endsWith('lab.html')) {
+    return 'lab';
+  }
+  return 'game';
 }
 
 /** Helper to wire an onSet observer that copies fields into a typed-array store. */
@@ -155,7 +173,9 @@ function wireStore(ecs: ReturnType<typeof createBitecsWorld>, component: object,
 
 export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   const ecs = createBitecsWorld();
-  const stores = createComponentStores();
+  const mode = options.entityCapacityMode ?? getDefaultEntityCapacityMode();
+  const maxEntities = options.maxEntities ?? DEFAULT_ENTITY_CAPACITY_BY_MODE[mode];
+  const stores = createComponentStores(maxEntities);
 
   // Wire onSet observers so set(Component, data) populates typed arrays
   wireStore(ecs, Position, stores.position);
@@ -234,6 +254,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     seed: options.seed ?? 42,
     floor: world.floor,
     state: world.state,
+    entityCapacityMode: mode,
+    maxEntities,
   });
   return world;
 }
