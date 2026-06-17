@@ -60,12 +60,12 @@ import {
 } from '../core/systems/questSystem.js';
 import { memorizeSpell } from './systems/abilitySystem.js';
 import { floor1Config } from '../shared/floor1-config.js';
+import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 
 // Derived constants computed from config at module initialization
 const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
 const FLOOR_1_VIEWPORT_WIDTH_PX = GAME.WIDTH / FLOOR_1_CAMERA_ZOOM;
 const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 2;
-const FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 3;
 const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 
@@ -107,7 +107,8 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
   if (!world.floor1) {
     return;
   }
-  const maxDistanceSq = FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX * FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX;
+  const pack = floor1EnemyPack;
+  const maxDistanceSq = pack.despawnDistancePx * pack.despawnDistancePx;
   for (const eid of [...world.floor1.enemyArchetypes.keys()]) {
     if (!entityExists(world.ecs, eid)) {
       world.floor1.enemyArchetypes.delete(eid);
@@ -619,14 +620,14 @@ function resolveSpawnPosition(
   playerY: number,
 ): { x: number; y: number } {
   const floorMap = world.floorMap;
+  const pack = floor1EnemyPack;
   if (!floorMap) {
-    return { x: playerX + floor1Config.spawning.spawnRadiusMin, y: playerY };
+    return { x: playerX + pack.spawnRadiusMin, y: playerY };
   }
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius =
-      floor1Config.spawning.spawnRadiusMin +
-      world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - floor1Config.spawning.spawnRadiusMin);
+      pack.spawnRadiusMin + world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - pack.spawnRadiusMin);
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
@@ -655,10 +656,7 @@ function resolveSpawnPosition(
       }
     }
   }
-  const fallbackTile = floorMap.pixelToTile(
-    playerX + floor1Config.spawning.spawnRadiusMin,
-    playerY,
-  );
+  const fallbackTile = floorMap.pixelToTile(playerX + pack.spawnRadiusMin, playerY);
   return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
 }
 
@@ -973,12 +971,13 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     return;
   }
 
-  if (world.floor1.enemyArchetypes.size >= floor1Config.spawning.enemyCap) {
+  const pack = floor1EnemyPack;
+  if (world.floor1.enemyArchetypes.size >= pack.enemyCap) {
     return;
   }
 
   const state = getSpawnerState(world);
-  if (world.elapsedMs - state.lastSpawnMs < floor1Config.spawning.spawnIntervalMs) {
+  if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
     return;
   }
 
@@ -992,10 +991,10 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   const playerY = world.stores.position.y[player] ?? 0;
   pruneAmbientOutOfRange(world, playerX, playerY);
   const totalEnemies = query(world.ecs, [Enemy]).length;
-  if (totalEnemies > floor1Config.spawning.enemyCap) {
-    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - floor1Config.spawning.enemyCap);
+  if (totalEnemies > pack.enemyCap) {
+    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - pack.enemyCap);
   }
-  if (query(world.ecs, [Enemy]).length >= floor1Config.spawning.enemyCap) {
+  if (query(world.ecs, [Enemy]).length >= pack.enemyCap) {
     return;
   }
   const spawnMaxDistanceSq =
@@ -1041,35 +1040,27 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {
     return;
   }
-  const archetype: 'rat' | 'slime' =
-    world.rng.next() < floor1Config.enemies.rat.spawnWeight! ? 'rat' : 'slime';
-  const hp = archetype === 'rat' ? floor1Config.enemies.rat.hp : floor1Config.enemies.slime.hp;
-  const speed =
-    archetype === 'rat' ? floor1Config.enemies.rat.speed : floor1Config.enemies.slime.speed;
-  const detectRange =
-    archetype === 'rat'
-      ? floor1Config.enemies.rat.detectRange
-      : floor1Config.enemies.slime.detectRange;
+
+  // Pick enemy archetype using weighted selection from pack
+  const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+
   const eid = spawnBehaviorEnemy(
     world,
     spawnPoint.x,
     spawnPoint.y,
-    hp,
+    archetype.hp,
     AI_TYPE.CHASE,
-    speed,
-    detectRange,
+    archetype.speed,
+    archetype.detectRange,
     0,
   );
   setComponent(world.ecs, eid, Sprite, {
-    textureId:
-      archetype === 'rat'
-        ? floor1Config.enemies.rat.spriteTexture
-        : floor1Config.enemies.slime.spriteTexture,
-    width: 16,
-    height: 16,
+    textureId: archetype.spriteTexture,
+    width: archetype.spriteWidth,
+    height: archetype.spriteHeight,
   });
 
-  world.floor1.enemyArchetypes.set(eid, archetype);
+  world.floor1.enemyArchetypes.set(eid, archetype.id);
   state.lastSpawnMs = world.elapsedMs;
 }
 
