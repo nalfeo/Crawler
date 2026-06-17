@@ -8,14 +8,57 @@
  * - CI regression tests
  */
 import { query } from 'bitecs';
-import { Player, Health, createGameWorld, spawnPlayer, Enemy } from '../../core/index.js';
+import {
+  Player,
+  Health,
+  createGameWorld,
+  spawnPlayer,
+  Enemy,
+  type GameWorld,
+} from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import type { AIInputProvider, RunStats, LevelUpEvent } from './types.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
+import { meetTutorialGoon, meetShopkeeper, meetSpellQuestGiver } from '../index.js';
 
 const logger = createLogger('game:headless-runner');
+
+/**
+ * Headless-compatible NPC interaction system.
+ * Automatically meets NPCs when the player is nearby (simulates pressing E).
+ */
+function autoNpcInteractionSystem(
+  world: GameWorld,
+  _playerEid: number,
+  lastInteractionFrame: number,
+  currentFrame: number,
+  cooldown: number,
+): number {
+  if (currentFrame - lastInteractionFrame < cooldown) {
+    return lastInteractionFrame;
+  }
+
+  // Check if any NPC has nearbyPlayer flag set
+  for (const [_eid, instance] of world.npcs.entries()) {
+    if (instance.nearbyPlayer) {
+      // Simulate pressing E to interact
+      if (instance.defId === 'tutorial-goon') {
+        meetTutorialGoon(world);
+        return currentFrame;
+      } else if (instance.defId === 'shopkeeper') {
+        meetShopkeeper(world);
+        return currentFrame;
+      } else if (instance.defId === 'spell-quest-giver') {
+        meetSpellQuestGiver(world);
+        return currentFrame;
+      }
+    }
+  }
+
+  return lastInteractionFrame;
+}
 
 export interface HeadlessRunnerConfig {
   /** Random seed for deterministic runs */
@@ -93,6 +136,10 @@ export async function runHeadless(
   let mainQuestAcceptedMs: number | null = null;
   let mainQuestCompletedMs: number | null = null;
 
+  // NPC interaction tracking
+  let lastNpcInteractionFrame = -1000;
+  const NPC_INTERACTION_COOLDOWN = 30; // frames
+
   // Track initial state
   const playerMaxHealth = world.stores.health.max[playerEid] ?? 100;
   let lastHealthPercent = 1.0;
@@ -114,8 +161,20 @@ export async function runHeadless(
       // AI decides input for this frame
       aiProvider.poll(inputState, world);
 
-      // Run one simulation step
-      runSimulationStep(world, inputState, GAME.DELTA_MS, config.simulationOptions);
+      // Auto-interact with nearby NPCs (simulates pressing E)
+      lastNpcInteractionFrame = autoNpcInteractionSystem(
+        world,
+        playerEid,
+        lastNpcInteractionFrame,
+        frameCount,
+        NPC_INTERACTION_COOLDOWN,
+      );
+
+      // Run one simulation step with Floor1 systems enabled
+      runSimulationStep(world, inputState, GAME.DELTA_MS, {
+        ...config.simulationOptions,
+        enableFloor1: true,
+      });
 
       frameCount++;
 

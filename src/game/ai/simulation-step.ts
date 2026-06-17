@@ -29,6 +29,7 @@ import {
   npcSystem,
   type GameWorld,
 } from '../../core/index.js';
+import { questSystem, floorObjectiveSystem, floor1EnemyDirectorSystem } from '../index.js';
 import type { InputState } from '../../shared/input.js';
 
 /**
@@ -39,6 +40,8 @@ export interface SimulationOptions {
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   /** Custom systems to run after core pipeline */
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
+  /** Enable Floor 1 scenario systems */
+  enableFloor1?: boolean;
 }
 
 /**
@@ -89,6 +92,13 @@ export function runSimulationStep(
   fovSystem(world);
   safeRoomSystem(world);
   npcSystem(world);
+
+  // Floor 1 specific systems
+  if (options.enableFloor1 && world.floor1) {
+    floorObjectiveSystem(world);
+    floor1EnemyDirectorSystem(world);
+    questSystem(world);
+  }
 
   for (const sys of options.postSystems ?? []) {
     sys(world);
