@@ -159,6 +159,20 @@ export class RuleBasedAI implements AIInputProvider {
       return;
     }
 
+    // Find nearest NPC within scan radius
+    const nearestNpc = this.findNearestNpc(world, playerX, playerY);
+
+    // Prioritize NPC interaction if nearby (quest acceptance/completion)
+    if (nearestNpc && nearestNpc.distance < 100) {
+      // State: INTERACT - talk to NPC
+      this.decision.state = AIState.INTERACT;
+      this.decision.targetEid = nearestNpc.eid;
+      this.decision.targetX = nearestNpc.x;
+      this.decision.targetY = nearestNpc.y;
+      this.decision.reason = `Interacting with NPC at distance ${nearestNpc.distance.toFixed(0)}px`;
+      return;
+    }
+
     // Find nearest enemy within scan radius
     const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
 
@@ -182,19 +196,6 @@ export class RuleBasedAI implements AIInputProvider {
       this.decision.targetX = nearestGem.x;
       this.decision.targetY = nearestGem.y;
       this.decision.reason = `Collecting XP gem at distance ${nearestGem.distance.toFixed(0)}px`;
-      return;
-    }
-
-    // Find nearest NPC within scan radius
-    const nearestNpc = this.findNearestNpc(world, playerX, playerY);
-
-    if (nearestNpc && nearestNpc.distance < 100) {
-      // State: INTERACT - talk to NPC
-      this.decision.state = AIState.INTERACT;
-      this.decision.targetEid = nearestNpc.eid;
-      this.decision.targetX = nearestNpc.x;
-      this.decision.targetY = nearestNpc.y;
-      this.decision.reason = `Approaching NPC at distance ${nearestNpc.distance.toFixed(0)}px`;
       return;
     }
 
