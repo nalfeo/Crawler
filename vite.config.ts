@@ -43,8 +43,31 @@ export default defineConfig(({ mode }) => {
       target: 'es2022',
       outDir: process.env.BUILD_OUTDIR ?? 'dist',
       emptyOutDir: true,
+      minify: 'esbuild',
+      chunkSizeWarningLimit: 600,
       rollupOptions: {
         input,
+        output: {
+          manualChunks: (id) => {
+            // Split large vendor dependencies into separate chunks
+            if (id.includes('node_modules')) {
+              if (id.includes('phaser')) {
+                return 'vendor-phaser';
+              }
+              if (id.includes('bitecs') || id.includes('rot-js') || id.includes('loglevel')) {
+                return 'vendor-core';
+              }
+              return 'vendor-other';
+            }
+            // Split labs into separate chunks for lazy loading
+            if (id.includes('/src/labs/') && !id.includes('lab-main')) {
+              const labMatch = id.match(/\/src\/labs\/([^/]+)/);
+              if (labMatch) {
+                return `lab-${labMatch[1]}`;
+              }
+            }
+          },
+        },
       },
     },
     server: {
@@ -55,6 +78,9 @@ export default defineConfig(({ mode }) => {
         // YAML briefs or generated assets does not trigger a full Vite page reload.
         ignored: ['**/briefs/**', '**/generated/**'],
       },
+    },
+    optimizeDeps: {
+      include: ['phaser', 'bitecs', 'rot-js', 'loglevel'],
     },
   };
 });

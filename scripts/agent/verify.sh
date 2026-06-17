@@ -5,7 +5,7 @@ export CI=1
 echo "🔍 Step 1-2/7: Type checking + Linting (parallel)..."
 npx tsc --noEmit &
 TSC_PID=$!
-npx eslint src/ tests/ scripts/ --max-warnings 0 &
+npx eslint src/ tests/ scripts/ --max-warnings 0 --cache --cache-location .eslintcache &
 ESLINT_PID=$!
 trap 'kill "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true' EXIT
 
