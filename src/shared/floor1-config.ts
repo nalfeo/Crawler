@@ -1,11 +1,15 @@
 /**
  * Floor 1 configuration schema and loader.
  *
- * This module validates and loads floor1.json at module initialization,
- * replacing the hardcoded FLOOR_1_* constants in floor1Scenario.ts.
+ * DEPRECATED: This module is being replaced by floor-manifest.ts.
+ * For now, it provides backward compatibility by deriving config from the manifest.
+ *
+ * Phase 3 Migration: floor1Config now loads from floor1.manifest.json
+ * while maintaining the same interface for backward compatibility.
  */
 import { z } from 'zod';
-import floor1ConfigJson from './data/floor1.json';
+import { floor1Manifest } from './floor-manifest.js';
+import { floor1EnemyPack } from './enemy-packs.js';
 
 const enemyArchetypeConfigSchema = z
   .object({
@@ -128,15 +132,67 @@ export const floor1ConfigSchema = z
 export type Floor1Config = z.infer<typeof floor1ConfigSchema>;
 
 /**
- * Load and validate floor1.json. Throws if validation fails.
+ * Derive Floor1Config from the manifest and enemy pack for backward compatibility.
  */
-function loadFloor1Config(): Floor1Config {
-  const parsed = floor1ConfigSchema.parse(floor1ConfigJson);
-  return parsed;
+function loadFloor1ConfigFromManifest(): Floor1Config {
+  const manifest = floor1Manifest;
+  const enemyPack = floor1EnemyPack;
+
+  // Derive enemy config from enemy pack archetypes
+  const ratArchetype = enemyPack.archetypes.find((a) => a.id === 'rat')!;
+  const slimeArchetype = enemyPack.archetypes.find((a) => a.id === 'slime')!;
+
+  return {
+    protagonist: manifest.protagonist,
+    starterWeapons: manifest.starterWeapons,
+    timer: manifest.timer,
+    objectives: manifest.objectives,
+    map: manifest.map,
+    enemies: {
+      rat: {
+        hp: ratArchetype.hp,
+        speed: ratArchetype.speed,
+        detectRange: ratArchetype.detectRange,
+        spriteTexture: ratArchetype.spriteTexture,
+        spawnWeight: ratArchetype.spawnWeight,
+      },
+      slime: {
+        hp: slimeArchetype.hp,
+        speed: slimeArchetype.speed,
+        detectRange: slimeArchetype.detectRange,
+        spriteTexture: slimeArchetype.spriteTexture,
+      },
+      boss: {
+        hp: 280, // Hardcoded for now, will be in enemy pack in future
+        speed: 1.15,
+        detectRange: 540,
+        spawnRadiusMin: 64,
+        spawnRadiusMax: 110,
+        spriteWidth: 30,
+        spriteHeight: 30,
+        fireballCooldownMs: 5000,
+      },
+    },
+    bossVariants: manifest.bossVariants,
+    spawning: {
+      enemyCap: enemyPack.enemyCap,
+      spawnIntervalMs: enemyPack.spawnIntervalMs,
+      spawnRadiusMin: enemyPack.spawnRadiusMin,
+      ambientSpawnMaxDistancePx: 1280, // Derived from viewport
+      ambientDespawnDistancePx: enemyPack.despawnDistancePx,
+    },
+    player: manifest.player,
+    camera: manifest.camera,
+    sprites: manifest.sprites
+      ? {
+          welcomeSign: manifest.sprites.welcomeSign!,
+        }
+      : undefined,
+  };
 }
 
 /**
  * Validated Floor 1 configuration, loaded at module initialization.
- * This replaces all FLOOR_1_* constants previously hardcoded in floor1Scenario.ts.
+ * Now derived from floor1.manifest.json for Phase 3 compatibility.
  */
-export const floor1Config: Floor1Config = loadFloor1Config();
+export const floor1Config: Floor1Config = loadFloor1ConfigFromManifest();
