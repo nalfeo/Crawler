@@ -120,12 +120,64 @@ async function main(): Promise<void> {
   console.log(`Outcome:      ${stats.outcome.toUpperCase()}`);
   console.log(`Final Floor:  ${stats.finalFloor}`);
   console.log(`Final Score:  ${stats.finalScore}`);
+  console.log(`Final Level:  ${stats.finalLevel}`);
+  console.log(`Total XP:     ${stats.totalXp}`);
+  console.log('');
   console.log(`Total Frames: ${stats.totalFrames}`);
   console.log(`Game Time:    ${(stats.gameTimeMs / 1000).toFixed(1)}s`);
   console.log(`Wall Time:    ${(stats.wallTimeMs / 1000).toFixed(1)}s`);
   console.log(`Avg FPS:      ${((stats.totalFrames / stats.wallTimeMs) * 1000).toFixed(0)}`);
+  console.log('');
+  console.log('⚔️  Combat Metrics');
+  console.log(`  Kills:        ${stats.combat.totalKills}`);
+  console.log(`  Engagements:  ${stats.combat.engagementCount}`);
+  console.log(
+    `  Combat Time:  ${(stats.combat.combatTimeMs / 1000).toFixed(1)}s (${((stats.combat.combatTimeMs / stats.gameTimeMs) * 100).toFixed(1)}%)`,
+  );
+  console.log(
+    `  Damage Dealt: ${stats.combat.damageDealt.toFixed(0)} (${(stats.combat.damageDealt / (stats.gameTimeMs / 1000)).toFixed(1)}/s)`,
+  );
+  console.log(
+    `  Damage Taken: ${stats.combat.damageTaken.toFixed(0)} (${(stats.combat.damageTaken / (stats.gameTimeMs / 1000)).toFixed(1)}/s)`,
+  );
+  console.log('');
+  console.log('❤️  Health Metrics');
+  console.log(`  Min HP:       ${(stats.health.minHealthPercent * 100).toFixed(1)}%`);
+  console.log(`  Final HP:     ${(stats.health.finalHealthPercent * 100).toFixed(1)}%`);
+  console.log(`  Close Calls:  ${stats.health.closeCallCount} (below 20%)`);
+  console.log(`  Low Health:   ${stats.health.lowHealthCount} (below 50%)`);
+  console.log('');
+  console.log('📈 Level-Up Progression');
+  if (stats.levelUps.length > 0) {
+    stats.levelUps.forEach((levelUp, i) => {
+      const timeSincePrev =
+        i === 0 ? levelUp.gameTimeMs : levelUp.gameTimeMs - stats.levelUps[i - 1]!.gameTimeMs;
+      console.log(
+        `  Level ${levelUp.level}: ${(levelUp.gameTimeMs / 1000).toFixed(1)}s (+${(timeSincePrev / 1000).toFixed(1)}s)`,
+      );
+    });
+  } else {
+    console.log('  No level-ups');
+  }
+  console.log('');
+  console.log('📜 Quest Metrics');
+  console.log(`  Accepted:     ${stats.quests.questsAccepted}`);
+  console.log(`  Completed:    ${stats.quests.questsCompleted}`);
+  console.log(`  Failed:       ${stats.quests.questsFailed.length}`);
+  if (stats.quests.mainQuestAcceptedMs !== null) {
+    console.log(
+      `  Main Quest:   Accepted at ${(stats.quests.mainQuestAcceptedMs / 1000).toFixed(1)}s`,
+    );
+    if (stats.quests.mainQuestCompletedMs !== null) {
+      const duration = stats.quests.mainQuestCompletedMs - stats.quests.mainQuestAcceptedMs;
+      console.log(
+        `                Completed at ${(stats.quests.mainQuestCompletedMs / 1000).toFixed(1)}s (took ${(duration / 1000).toFixed(1)}s)`,
+      );
+    }
+  }
 
   if (stats.error) {
+    console.log('');
     console.log(`Error:        ${stats.error}`);
   }
 

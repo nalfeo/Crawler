@@ -85,7 +85,7 @@ export async function runHeadless(
   let engagementCount = 0;
   let inCombat = false;
   let combatStartFrame = 0;
-  let damageDealt = 0;
+  const damageDealt = 0;
   let damageTaken = 0;
   let questsAccepted = 0;
   let questsCompleted = 0;
