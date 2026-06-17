@@ -328,5 +328,13 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Added 34 source-string visual regression tests across two describe blocks: small/docked radar and enlarged overlay."
+  },
+  {
+    "date": "2026-06-17",
+    "session": "2026-06-17-e2e-visual-regression",
+    "task": "Playwright e2e visual regression tests + HudMinimap depth fix",
+    "estimate": "🍎🍎🍎",
+    "actual": "🍎🍎🍎",
+    "verdict": "on-target"
   }
 ]

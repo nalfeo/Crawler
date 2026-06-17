@@ -118,9 +118,11 @@ describe('HudMinimap architectural guard', () => {
   });
 });
 
-describe('HudMinimap small/docked radar visual regression', () => {
+describe('HudMinimap small/docked radar architectural guards', () => {
   // Reads the HudMinimap source and asserts critical rendering properties for
   // the round dial that appears in the top-right corner of the HUD.
+  // NOTE: These are source-code string assertions, not pixel-level visual tests.
+  // Pixel-level visual regression lives in tests/e2e/minimap-overlay.test.ts.
   let source: string;
   beforeAll(async () => {
     const { readFileSync } = await import('fs');
@@ -246,9 +248,11 @@ describe('HudMinimap small/docked radar visual regression', () => {
   });
 });
 
-describe('HudMinimap enlarged overlay visual regression', () => {
+describe('HudMinimap enlarged overlay architectural guards', () => {
   // Reads the HudMinimap source and asserts critical rendering properties for
   // the full-screen map overlay toggled with M or by clicking the radar dial.
+  // NOTE: These are source-code string assertions, not pixel-level visual tests.
+  // Pixel-level visual regression lives in tests/e2e/minimap-overlay.test.ts.
   let source: string;
   beforeAll(async () => {
     const { readFileSync } = await import('fs');
