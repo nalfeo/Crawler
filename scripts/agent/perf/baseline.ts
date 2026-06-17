@@ -5,8 +5,6 @@ import { performance } from 'node:perf_hooks';
 import { chromium } from 'playwright';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
-const DEV_PORT = 4173;
-const DEV_URL = `http://127.0.0.1:${DEV_PORT}/`;
 
 interface TimedResult {
   label: string;
@@ -44,11 +42,14 @@ async function clearCaches(): Promise<void> {
   );
 }
 
-async function measureViteStartup(): Promise<{ viteReadyMs: number; firstFrameMs: number }> {
+async function measureViteStartup(
+  port: number,
+): Promise<{ viteReadyMs: number; firstFrameMs: number }> {
+  const devUrl = `http://127.0.0.1:${port}/`;
   const started = performance.now();
   const child = spawn(
     'bash',
-    ['-lc', `cd "${repoRoot}" && npx vite --host 127.0.0.1 --port ${DEV_PORT} --strictPort`],
+    ['-lc', `cd "${repoRoot}" && exec npx vite --host 127.0.0.1 --port ${port} --strictPort`],
     {
       stdio: ['ignore', 'pipe', 'pipe'],
       env: process.env,
@@ -57,12 +58,19 @@ async function measureViteStartup(): Promise<{ viteReadyMs: number; firstFrameMs
 
   let resolved = false;
   const readyPromise = new Promise<number>((resolve, reject) => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const finish = (value: number): void => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      resolve(value);
+    };
     const onData = (chunk: Buffer): void => {
       const text = chunk.toString();
       process.stdout.write(text);
       if (!resolved && (text.includes('Local:') || text.includes('ready in'))) {
         resolved = true;
-        resolve(performance.now() - started);
+        finish(performance.now() - started);
       }
     };
     child.stdout.on('data', onData);
@@ -71,29 +79,41 @@ async function measureViteStartup(): Promise<{ viteReadyMs: number; firstFrameMs
     child.once('exit', (code) => {
       if (!resolved) reject(new Error(`vite dev exited before ready (code=${code ?? 'unknown'})`));
     });
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       if (!resolved) reject(new Error('Timed out waiting for Vite dev startup'));
     }, 60_000);
+    timeoutId.unref();
   });
 
   let browser;
   try {
     const viteReadyMs = await readyPromise;
-    browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-    await page.goto(DEV_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('canvas', { timeout: 60_000 });
-    const firstFrameMs = await page.evaluate(async () => {
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      return performance.now();
-    });
-    await browser.close();
+    let firstFrameMs = Number.NaN;
+    try {
+      browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage();
+      await page.goto(devUrl, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('canvas', { timeout: 60_000 });
+      firstFrameMs = await page.evaluate(async () => {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        return performance.now();
+      });
+      await browser.close();
+    } catch (error) {
+      console.warn(
+        `[perf:baseline] Skipping first-frame measurement: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     return { viteReadyMs, firstFrameMs };
   } finally {
     if (browser) {
       await browser.close();
     }
     child.kill('SIGTERM');
+    await new Promise<void>((resolve) => {
+      child.once('exit', () => resolve());
+      setTimeout(() => resolve(), 2_000);
+    });
   }
 }
 
@@ -104,8 +124,9 @@ function printResults(results: ScenarioResult[]): void {
     '--- | ---: | ---: | ---: | ---:',
   ];
   for (const row of results) {
+    const firstFrameCell = Number.isFinite(row.firstFrameMs) ? Math.round(row.firstFrameMs) : 'n/a';
     lines.push(
-      `${row.scenario} | ${Math.round(row.buildMs)} | ${Math.round(row.verifyFastMs)} | ${Math.round(row.viteReadyMs)} | ${Math.round(row.firstFrameMs)}`,
+      `${row.scenario} | ${Math.round(row.buildMs)} | ${Math.round(row.verifyFastMs)} | ${Math.round(row.viteReadyMs)} | ${firstFrameCell}`,
     );
   }
   console.log(lines.join('\n'));
@@ -123,7 +144,7 @@ async function measureScenario(scenario: 'cold' | 'warm'): Promise<ScenarioResul
   if (scenario === 'cold') {
     await clearCaches();
   }
-  const startup = await measureViteStartup();
+  const startup = await measureViteStartup(scenario === 'cold' ? 4173 : 4174);
   return {
     scenario,
     buildMs: build.ms,

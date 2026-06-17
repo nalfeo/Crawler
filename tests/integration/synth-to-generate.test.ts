@@ -22,6 +22,11 @@ import { loadBrief } from '../../scripts/sprites/load-brief.js';
 import { synthesizeBrief } from '../../scripts/sprites/synthesize-brief.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import type {
+  EvaluateRequest,
+  EvaluateResponse,
+  VisionProvider,
+} from '../../scripts/sprites/provider/vision-types.js';
+import type {
   SynthProvider,
   SynthesizeBriefRequest,
   SynthesizeBriefResponse,
@@ -58,6 +63,23 @@ function makeImageProvider(sheet: Buffer): ImageProvider {
   return {
     async generateSheet(_req: GenerateSheetRequest): Promise<Buffer> {
       return sheet;
+    },
+  };
+}
+
+function makeVisionProvider(): VisionProvider {
+  return {
+    modelDeployment: 'mock-vision-deployment',
+    async evaluate(_req: EvaluateRequest): Promise<EvaluateResponse> {
+      return {
+        json: {
+          style_match: { score: 5, rationale: 'mocked for integration coverage' },
+          brief_match: { score: 5, rationale: 'mocked for integration coverage' },
+          readability: { score: 5, rationale: 'mocked for integration coverage' },
+        },
+        modelDeployment: 'mock-vision-deployment',
+        usage: { promptTokens: 1500, completionTokens: 80, totalTokens: 1580 },
+      };
     },
   };
 }
@@ -193,6 +215,7 @@ describe('sprites:synth → loadBrief → generateOne (integration)', () => {
       briefPath: draftPath,
       preloaded: loaded,
       provider: makeImageProvider(sheet),
+      visionProvider: makeVisionProvider(),
       repoRoot: root,
       outputRoot: path.join(root, 'generated'),
       now: () => new Date('2026-06-05T12:00:00.000Z'),

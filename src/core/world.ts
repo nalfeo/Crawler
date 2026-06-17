@@ -152,11 +152,7 @@ function getDefaultEntityCapacityMode(): keyof typeof DEFAULT_ENTITY_CAPACITY_BY
   if (typeof process !== 'undefined' && process.env.VITEST === 'true') {
     return 'test';
   }
-  if (
-    typeof window !== 'undefined' &&
-    (window.location.pathname.endsWith('/lab.html') ||
-      window.location.pathname.endsWith('lab.html'))
-  ) {
+  if (typeof window !== 'undefined' && window.location.pathname.endsWith('lab.html')) {
     return 'lab';
   }
   return 'game';

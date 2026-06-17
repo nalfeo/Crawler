@@ -56,7 +56,7 @@ function humanizeLabId(labId: string): string {
     .trim()
     .split(/\s+/)
     .filter((token) => token.length > 0);
-  return tokens.map((token) => token[0]!.toUpperCase() + token.slice(1)).join(' ');
+  return tokens.map((token) => token.charAt(0).toUpperCase() + token.slice(1)).join(' ');
 }
 
 const CATEGORY_HINTS: Readonly<Record<string, LabCategory>> = {
