@@ -24,3 +24,9 @@
 - Difficulty scaling is verified across progression stages.
 - The "barely surviving to godlike" curve is confirmed.
 - Findings are documented clearly for follow-up tuning.
+
+## Collaborates with
+
+**Game Designer** (tuning informed by findings), **Content Designer** (floor
+pacing & difficulty), and **QA Engineer** (the Governor's balance-regression
+output feeds these checks).

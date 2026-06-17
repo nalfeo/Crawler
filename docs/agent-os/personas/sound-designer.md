@@ -24,3 +24,8 @@
 - No audio memory leaks are introduced.
 - Graceful degradation exists under load or missing-audio conditions.
 - Audio supports gameplay without harming performance.
+
+## Collaborates with
+
+**UX Designer** (audio-visual reward cues), **Game Designer** (reward/danger
+pacing), and **Systems Engineer** (performant runtime audio integration).

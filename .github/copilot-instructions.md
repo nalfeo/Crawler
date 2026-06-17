@@ -7,7 +7,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 ## Before Starting
 
 1. Run `bash scripts/agent/preflight.sh`
-2. Read your assigned persona in `docs/agent-os/personas/`
+2. Select your persona from the routing matrix in `docs/agent-os/personas/README.md` (default to **Producer** for multi-layer or ambiguous tasks), then read that persona doc
 3. Check recent handoffs in `docs/knowledge/handoffs/`
 4. **Declare your apple estimate** — read `docs/agent-os/policies/complexity-policy.md`, pick 🍎–🍎🍎🍎🍎, and state it in your first turn before writing any code
 

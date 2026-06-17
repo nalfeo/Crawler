@@ -3,7 +3,7 @@
 ## Quick Start
 
 1. Run `bash scripts/agent/preflight.sh` at session start
-2. Read your persona doc in `docs/agent-os/personas/`
+2. Select your persona from the routing matrix in `docs/agent-os/personas/README.md` (default to **Producer** for multi-layer or ambiguous tasks), then read that persona doc
 3. Check `docs/knowledge/handoffs/` for recent session context
 4. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
 5. Run `bash scripts/agent/verify.sh` before committing
