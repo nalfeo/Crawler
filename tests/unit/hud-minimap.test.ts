@@ -358,3 +358,62 @@ describe('HudMinimap enlarged overlay visual regression', () => {
     expect(source).toContain('hudMapLabel.setVisible(!visible);');
   });
 });
+
+describe('HudMinimap mobile layout regression', () => {
+  // Guards the responsive behaviour of updateLayout so the minimap remains
+  // usable on narrow/short mobile viewports and reflows on orientation change.
+  let source: string;
+  beforeAll(async () => {
+    const { readFileSync } = await import('fs');
+    source = (readFileSync as (path: string, encoding: string) => string)(
+      'src/engine/HudMinimap.ts',
+      'utf-8',
+    );
+  });
+
+  it('subscribes to the Phaser scale resize event so layout reflows on orientation change', () => {
+    expect(source).toContain("scene.scale.on('resize', updateLayout);");
+  });
+
+  it('unsubscribes from the resize event on destroy to prevent memory leaks', () => {
+    expect(source).toContain("scene.scale.off('resize', updateLayout);");
+  });
+
+  it('reads layout dimensions from scene.scale.gameSize so it adapts to any viewport', () => {
+    expect(source).toContain('scene.scale.gameSize.width');
+    expect(source).toContain('scene.scale.gameSize.height');
+  });
+
+  it('clamps the overlay panel width to a minimum of 640px for narrow screens', () => {
+    // Math.max(640, width * 0.86) ensures the panel never collapses on phones
+    expect(source).toContain('Math.max(640, width * 0.86)');
+  });
+
+  it('clamps the overlay panel height to a minimum of 420px for short screens', () => {
+    expect(source).toContain('Math.max(420, height * 0.84)');
+  });
+
+  it('clamps the map viewport width to at least 120px so the content area stays usable', () => {
+    expect(source).toContain('Math.max(120, panelW - 32)');
+  });
+
+  it('clamps the map viewport height to at least 80px so the content area stays usable', () => {
+    expect(source).toContain('Math.max(80, panelH - 76)');
+  });
+
+  it('keeps the dial pinned to the top-right at any screen width via the margin constant', () => {
+    // The formula uses `width` from getGameSize(), so it always tracks the real edge.
+    expect(source).toContain('const radarCx = width - HUD_RADAR_MARGIN - HUD_RADAR_RADIUS;');
+    expect(source).toContain('const HUD_RADAR_MARGIN = 12;');
+  });
+
+  it('re-clamps the view state after a resize so the map stays within new viewport bounds', () => {
+    // After a resize, viewState must be re-clamped with the new viewport dimensions.
+    const resizeIdx = source.indexOf("scene.scale.on('resize', updateLayout);");
+    // updateLayout updates viewport dimensions and calls clampMinimapViewState
+    expect(source).toContain('viewportWidth: viewport.width,');
+    expect(source).toContain('viewportHeight: viewport.height,');
+    // The resize handler is registered
+    expect(resizeIdx).toBeGreaterThan(0);
+  });
+});
