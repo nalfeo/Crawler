@@ -81,6 +81,66 @@ export interface AIInputProvider {
 }
 
 /**
+ * Level-up event for tracking progression pacing.
+ */
+export interface LevelUpEvent {
+  /** Level reached */
+  level: number;
+  /** Game time when level-up occurred (ms) */
+  gameTimeMs: number;
+  /** Frame count when level-up occurred */
+  frame: number;
+}
+
+/**
+ * Combat engagement tracking.
+ */
+export interface CombatMetrics {
+  /** Total enemies killed */
+  totalKills: number;
+  /** Kills broken down by enemy type */
+  killsByType: Record<string, number>;
+  /** Total time spent in combat (ms) */
+  combatTimeMs: number;
+  /** Number of distinct combat engagements */
+  engagementCount: number;
+  /** Total damage dealt */
+  damageDealt: number;
+  /** Total damage taken */
+  damageTaken: number;
+}
+
+/**
+ * Health tracking for difficulty assessment.
+ */
+export interface HealthMetrics {
+  /** Minimum health percentage reached (0-1) */
+  minHealthPercent: number;
+  /** Number of times health dropped below 20% */
+  closeCallCount: number;
+  /** Number of times health dropped below 50% */
+  lowHealthCount: number;
+  /** Final health when run ended */
+  finalHealthPercent: number;
+}
+
+/**
+ * Quest progression tracking.
+ */
+export interface QuestMetrics {
+  /** Quests accepted during run */
+  questsAccepted: number;
+  /** Quests completed during run */
+  questsCompleted: number;
+  /** Quest IDs that were failed */
+  questsFailed: string[];
+  /** Time when main quest was accepted (ms) */
+  mainQuestAcceptedMs: number | null;
+  /** Time when main quest was completed (ms) */
+  mainQuestCompletedMs: number | null;
+}
+
+/**
  * Run statistics for performance tracking.
  */
 export interface RunStats {
@@ -98,4 +158,18 @@ export interface RunStats {
   outcome: 'victory' | 'death' | 'timeout' | 'error';
   /** Error message if outcome is 'error' */
   error?: string;
+
+  // Detailed metrics for balance analysis
+  /** Level-up events with timestamps */
+  levelUps: LevelUpEvent[];
+  /** Combat engagement metrics */
+  combat: CombatMetrics;
+  /** Health tracking */
+  health: HealthMetrics;
+  /** Quest progression */
+  quests: QuestMetrics;
+  /** Final player level reached */
+  finalLevel: number;
+  /** Total XP earned */
+  totalXp: number;
 }

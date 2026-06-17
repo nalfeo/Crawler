@@ -8,11 +8,11 @@
  * - CI regression tests
  */
 import { query } from 'bitecs';
-import { Player, Health, createGameWorld, spawnPlayer } from '../../core/index.js';
+import { Player, Health, createGameWorld, spawnPlayer, Enemy } from '../../core/index.js';
 import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
-import type { AIInputProvider, RunStats } from './types.js';
+import type { AIInputProvider, RunStats, LevelUpEvent } from './types.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 
 const logger = createLogger('game:headless-runner');
@@ -73,6 +73,30 @@ export async function runHeadless(
   let lastProgressFrame = 0;
   let outcome: RunStats['outcome'] = 'timeout';
 
+  // Metric trackers
+  const levelUps: LevelUpEvent[] = [];
+  let previousLevel = 0;
+  const killsByType: Record<string, number> = {};
+  let totalKills = 0;
+  let minHealthPercent = 1.0;
+  let closeCallCount = 0;
+  let lowHealthCount = 0;
+  let combatTimeMs = 0;
+  let engagementCount = 0;
+  let inCombat = false;
+  let combatStartFrame = 0;
+  let damageDealt = 0;
+  let damageTaken = 0;
+  let questsAccepted = 0;
+  let questsCompleted = 0;
+  const questsFailed: string[] = [];
+  let mainQuestAcceptedMs: number | null = null;
+  let mainQuestCompletedMs: number | null = null;
+
+  // Track initial state
+  const playerMaxHealth = world.stores.health.max[playerEid] ?? 100;
+  let lastHealthPercent = 1.0;
+
   try {
     // Main simulation loop
     while (frameCount < mergedConfig.maxFrames) {
@@ -82,6 +106,10 @@ export async function runHeadless(
         outcome = 'timeout';
         break;
       }
+
+      // Track state before frame
+      const previousEnemyCount = query(world.ecs, [Enemy]).length;
+      const previousPlayerHealth = world.stores.health.current[playerEid] ?? 0;
 
       // AI decides input for this frame
       aiProvider.poll(inputState, world);
@@ -104,8 +132,79 @@ export async function runHeadless(
         break;
       }
 
-      // Check for victory (Floor 10+ or other win condition)
+      // Track metrics after frame
+      // 1. Level-ups
+      const currentLevel = world.playerLevel?.level ?? 0;
+      if (currentLevel > previousLevel) {
+        levelUps.push({
+          level: currentLevel,
+          gameTimeMs: world.elapsedMs,
+          frame: frameCount,
+        });
+        previousLevel = currentLevel;
+      }
+
+      // 2. Health tracking
+      const currentHealthPercent = playerHealth / playerMaxHealth;
+      if (currentHealthPercent < minHealthPercent) {
+        minHealthPercent = currentHealthPercent;
+      }
+      if (currentHealthPercent < 0.2 && lastHealthPercent >= 0.2) {
+        closeCallCount++;
+      }
+      if (currentHealthPercent < 0.5 && lastHealthPercent >= 0.5) {
+        lowHealthCount++;
+      }
+      lastHealthPercent = currentHealthPercent;
+
+      // Track damage taken
+      if (previousPlayerHealth > playerHealth) {
+        damageTaken += previousPlayerHealth - playerHealth;
+      }
+
+      // 3. Combat tracking
+      const currentEnemyCount = query(world.ecs, [Enemy]).length;
+      const enemiesNearby = currentEnemyCount > 0;
+
+      if (enemiesNearby && !inCombat) {
+        // Combat started
+        inCombat = true;
+        combatStartFrame = frameCount;
+        engagementCount++;
+      } else if (!enemiesNearby && inCombat) {
+        // Combat ended
+        inCombat = false;
+        const combatDurationFrames = frameCount - combatStartFrame;
+        combatTimeMs += combatDurationFrames * GAME.DELTA_MS;
+      }
+
+      // Track kills (enemy count decreased)
+      if (currentEnemyCount < previousEnemyCount) {
+        const enemiesKilled = previousEnemyCount - currentEnemyCount;
+        totalKills += enemiesKilled;
+        // For now, we don't have enemy type in this loop - would need event system
+        // This is simplified tracking
+      }
+
+      // 4. Quest tracking (basic - would need event system for full tracking)
+      if (world.floor1) {
+        const objective = world.floor1.objective;
+        if (objective.questAccepted && mainQuestAcceptedMs === null) {
+          mainQuestAcceptedMs = world.elapsedMs;
+          questsAccepted++;
+        }
+        if (objective.questCompleted && mainQuestCompletedMs === null) {
+          mainQuestCompletedMs = world.elapsedMs;
+          questsCompleted++;
+        }
+      }
+
+      // Check for victory (Floor 10+ or Floor 1 completion)
       if (world.floor >= 10) {
+        outcome = 'victory';
+        break;
+      }
+      if (world.floor1?.runSummary?.outcome === 'cleared_floor') {
         outcome = 'victory';
         break;
       }
@@ -121,16 +220,27 @@ export async function runHeadless(
           frame: frameCount,
           floor: world.floor,
           health: playerHealth,
+          level: currentLevel,
+          kills: totalKills,
           fps: fps.toFixed(0),
         });
         lastProgressFrame = frameCount;
       }
+    }
+
+    // If still in combat at end, add remaining time
+    if (inCombat) {
+      const combatDurationFrames = frameCount - combatStartFrame;
+      combatTimeMs += combatDurationFrames * GAME.DELTA_MS;
     }
   } catch (error) {
     logger.error('Headless run crashed', { error });
 
     const wallTimeMs = Date.now() - startTime;
     const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
+    const playerHealth = world.stores.health.current[playerEid] ?? 0;
+    const currentHealthPercent = playerHealth / playerMaxHealth;
+
     return {
       totalFrames: frameCount,
       wallTimeMs,
@@ -139,12 +249,38 @@ export async function runHeadless(
       finalScore,
       outcome: 'error',
       error: error instanceof Error ? error.message : String(error),
+      levelUps,
+      combat: {
+        totalKills,
+        killsByType,
+        combatTimeMs,
+        engagementCount,
+        damageDealt,
+        damageTaken,
+      },
+      health: {
+        minHealthPercent,
+        closeCallCount,
+        lowHealthCount,
+        finalHealthPercent: currentHealthPercent,
+      },
+      quests: {
+        questsAccepted,
+        questsCompleted,
+        questsFailed,
+        mainQuestAcceptedMs,
+        mainQuestCompletedMs,
+      },
+      finalLevel: world.playerLevel?.level ?? 0,
+      totalXp: world.playerLevel?.xp ?? 0,
     };
   }
 
   const wallTimeMs = Date.now() - startTime;
   const fps = (frameCount / wallTimeMs) * 1000;
   const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
+  const playerHealth = world.stores.health.current[playerEid] ?? 0;
+  const finalHealthPercent = playerHealth / playerMaxHealth;
 
   const stats: RunStats = {
     totalFrames: frameCount,
@@ -153,12 +289,37 @@ export async function runHeadless(
     finalFloor: world.floor,
     finalScore,
     outcome,
+    levelUps,
+    combat: {
+      totalKills,
+      killsByType,
+      combatTimeMs,
+      engagementCount,
+      damageDealt,
+      damageTaken,
+    },
+    health: {
+      minHealthPercent,
+      closeCallCount,
+      lowHealthCount,
+      finalHealthPercent,
+    },
+    quests: {
+      questsAccepted,
+      questsCompleted,
+      questsFailed,
+      mainQuestAcceptedMs,
+      mainQuestCompletedMs,
+    },
+    finalLevel: world.playerLevel?.level ?? 0,
+    totalXp: world.playerLevel?.xp ?? 0,
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
     logger.info('Headless run complete', {
       ...stats,
       fps: fps.toFixed(0),
+      combatTimePercent: ((combatTimeMs / world.elapsedMs) * 100).toFixed(1),
     });
   }
 
