@@ -60,10 +60,11 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
-  const playerEid = spawnPlayer(world, {
-    x: world.floorMap?.startPosition?.x ?? 400,
-    y: world.floorMap?.startPosition?.y ?? 400,
-  });
+  const playerEid = spawnPlayer(
+    world,
+    world.floorMap?.playerSpawn?.x ?? 400,
+    world.floorMap?.playerSpawn?.y ?? 400,
+  );
 
   world.state = 'playing';
   const inputState = createInputState();
@@ -126,16 +127,16 @@ export async function runHeadless(
       }
     }
   } catch (error) {
-    outcome = 'error';
     logger.error('Headless run crashed', { error });
 
     const wallTimeMs = Date.now() - startTime;
+    const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
     return {
       totalFrames: frameCount,
       wallTimeMs,
       gameTimeMs: world.elapsedMs,
       finalFloor: world.floor,
-      finalScore: world.broadcastScore,
+      finalScore,
       outcome: 'error',
       error: error instanceof Error ? error.message : String(error),
     };
@@ -143,13 +144,14 @@ export async function runHeadless(
 
   const wallTimeMs = Date.now() - startTime;
   const fps = (frameCount / wallTimeMs) * 1000;
+  const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
 
   const stats: RunStats = {
     totalFrames: frameCount,
     wallTimeMs,
     gameTimeMs: world.elapsedMs,
     finalFloor: world.floor,
-    finalScore: world.broadcastScore,
+    finalScore,
     outcome,
   };
 

@@ -4,7 +4,7 @@
  * Simulates human input by reading GameWorld state and making decisions.
  * Uses only the InputState interface - no special programmatic access.
  */
-import { query, hasComponent } from 'bitecs';
+import { query } from 'bitecs';
 import { Player, Position, Health, Enemy, XpGem, Npc, type GameWorld } from '../../core/index.js';
 import type { InputState } from '../../shared/input.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../../core/map/pathfinding.js';
@@ -143,7 +143,7 @@ export class RuleBasedAI implements AIInputProvider {
 
   private updateDecision(
     world: GameWorld,
-    playerEid: number,
+    _playerEid: number,
     playerX: number,
     playerY: number,
     healthPercent: number,
@@ -205,8 +205,8 @@ export class RuleBasedAI implements AIInputProvider {
 
     // Pick a random exploration target if we don't have one
     if (this.decision.targetX === null || this.decision.targetY === null) {
-      const angle = this.rng.float() * Math.PI * 2;
-      const distance = 200 + this.rng.float() * 200;
+      const angle = this.rng.next() * Math.PI * 2;
+      const distance = 200 + this.rng.next() * 200;
       this.decision.targetX = playerX + Math.cos(angle) * distance;
       this.decision.targetY = playerY + Math.sin(angle) * distance;
     }
@@ -215,8 +215,8 @@ export class RuleBasedAI implements AIInputProvider {
     if (this.decision.targetX !== null && this.decision.targetY !== null) {
       const dist = Math.hypot(playerX - this.decision.targetX, playerY - this.decision.targetY);
       if (dist < 50) {
-        const angle = this.rng.float() * Math.PI * 2;
-        const distance = 200 + this.rng.float() * 200;
+        const angle = this.rng.next() * Math.PI * 2;
+        const distance = 200 + this.rng.next() * 200;
         this.decision.targetX = playerX + Math.cos(angle) * distance;
         this.decision.targetY = playerY + Math.sin(angle) * distance;
       }
