@@ -320,6 +320,16 @@
     "notes": "Addressed persona-system review feedback: new deterministic check-personas.ts doc-lint (required sections + README index drift) wired into docs:check; added Persona(s) adopted + Routing verdict fields to handoff TEMPLATE.md; added worked routing-tie examples to personas/README.md. Deferred (objected to) the flaky sprite-pipeline timeout fix (QA test-infra) and the src/game/ai AI-safety lint (premature; dir doesn't exist yet). docs:check + eslint + prettier clean; negative test confirms the lint blocks on drift."
   },
   {
+    "date": "2026-06-17",
+    "session": "headless-ai-runner",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8,
+    "notes": "Implemented headless AI runner with rule-based input simulation (40,650 FPS achieved, 40x target), extracted simulation step, created AI runner lab for visual debugging, added CLI tool and npm script."
+  },
+  {
     "date": "2026-06-18",
     "branch": "copilot/add-visual-regression-tests-minimap",
     "session": "visual-regression-tests-minimap",
