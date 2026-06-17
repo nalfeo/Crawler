@@ -4,7 +4,9 @@ coverage/
 *.local
 .DS_Store
 .tsbuildinfo
+.tsbuildinfo-*
 .vitest-cache/
+.eslintcache
 tmp/
 
 # Sprite-generation pipeline scratch artifacts (raw candidates, processed
