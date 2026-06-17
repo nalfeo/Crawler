@@ -1,5 +1,6 @@
 {
   "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
   "timer": {
     "durationMs": 300000,
     "stairSpawnCountdownMs": 30000
@@ -47,6 +48,24 @@
       "fireballCooldownMs": 5000
     }
   },
+  "bossVariants": {
+    "slimeRat": {
+      "hp": 140,
+      "speed": 1.0,
+      "detectRange": 440,
+      "fireballCooldownMs": 7000
+    },
+    "ratSlime": {
+      "hp": 280,
+      "speed": 1.15,
+      "detectRange": 540,
+      "fireballCooldownMs": 5000,
+      "spawnRadiusMin": 64,
+      "spawnRadiusMax": 110,
+      "spriteWidth": 30,
+      "spriteHeight": 30
+    }
+  },
   "spawning": {
     "enemyCap": 14,
     "spawnIntervalMs": 900,
@@ -61,5 +80,8 @@
   },
   "camera": {
     "zoom": 2.0
+  },
+  "sprites": {
+    "welcomeSign": 3
   }
 }
