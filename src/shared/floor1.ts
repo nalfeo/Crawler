@@ -1,4 +1,8 @@
-export type Floor1EnemyArchetype = 'rat' | 'slime';
+/**
+ * Enemy archetype identifier from the current floor's enemy pack.
+ * Previously hardcoded as 'rat' | 'slime', now generalized to support any enemy ID.
+ */
+export type Floor1EnemyArchetype = string;
 
 export interface Floor1ObjectiveState {
   readonly requiredRats: number;

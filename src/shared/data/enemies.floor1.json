@@ -1,0 +1,34 @@
+{
+  "id": "floor1-ambient",
+  "name": "Floor 1 Ambient Pack",
+  "archetypes": [
+    {
+      "id": "rat",
+      "name": "Rat",
+      "hp": 20,
+      "speed": 32,
+      "detectRange": 200,
+      "spriteTexture": 123,
+      "spriteWidth": 16,
+      "spriteHeight": 16,
+      "aiType": "chase",
+      "spawnWeight": 0.7
+    },
+    {
+      "id": "slime",
+      "name": "Slime",
+      "hp": 40,
+      "speed": 24,
+      "detectRange": 150,
+      "spriteTexture": 103,
+      "spriteWidth": 16,
+      "spriteHeight": 16,
+      "aiType": "chase",
+      "spawnWeight": 0.3
+    }
+  ],
+  "enemyCap": 14,
+  "spawnIntervalMs": 800,
+  "spawnRadiusMin": 200,
+  "despawnDistancePx": 2400
+}
