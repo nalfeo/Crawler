@@ -2,6 +2,7 @@ import './labs/index.js';
 import { renderLabIndex } from './labs/lab-index.js';
 import { initLabShell } from './labs/lab-shell.js';
 import { runLab } from './labs/lab-runner.js';
+import type { LabCategory } from './labs/registry.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'combat-lab': '/src/labs/combat-lab/index.ts',
@@ -47,6 +48,69 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'ux-snapshot-lab': '/src/labs/ux-snapshot-lab/index.ts',
   'death-lab': '/src/labs/death-lab/index.ts',
 };
+
+function humanizeLabId(labId: string): string {
+  const tokens = labId
+    .replace(/-lab$/, '')
+    .replace(/-/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+  return tokens.map((token) => token[0]!.toUpperCase() + token.slice(1)).join(' ');
+}
+
+const CATEGORY_HINTS: Readonly<Record<string, LabCategory>> = {
+  combat: 'Combat',
+  collision: 'Movement & Physics',
+  damage: 'Combat',
+  health: 'Entities',
+  movement: 'Movement & Physics',
+  playerinput: 'Movement & Physics',
+  projectilecleanup: 'Combat',
+  enemy: 'Entities',
+  inventory: 'Items & Equipment',
+  itempickup: 'Items & Equipment',
+  knockback: 'Movement & Physics',
+  lifetime: 'Entities',
+  weapons: 'Combat',
+  equipment: 'Items & Equipment',
+  anchor: 'Meta',
+  stat: 'Progression',
+  stats: 'Progression',
+  xp: 'Progression',
+  skill: 'Progression',
+  tile: 'Meta',
+  mobile: 'Meta',
+  sprite: 'Meta',
+  weight: 'Entities',
+  drop: 'Items & Equipment',
+  visual: 'Meta',
+  gore: 'Combat',
+  fov: 'Movement & Physics',
+  door: 'Entities',
+  map: 'Meta',
+  pathfinding: 'Movement & Physics',
+  floor1: 'Meta',
+  npc: 'Entities',
+  quest: 'Progression',
+  safe: 'Entities',
+  deathtimer: 'Entities',
+  hud: 'Meta',
+  ux: 'Meta',
+  death: 'Entities',
+};
+
+function inferCategory(labId: string): LabCategory | undefined {
+  const token = labId.split('-')[0];
+  return token ? CATEGORY_HINTS[token] : undefined;
+}
+
+const LAB_INDEX_ENTRIES = Object.keys(LAB_MODULE_PATHS).map((id) => ({
+  id,
+  name: humanizeLabId(id),
+  description: `${humanizeLabId(id)} sandbox.`,
+  category: inferCategory(id),
+}));
 
 type GlobLoaderMap = Record<string, () => Promise<unknown>>;
 // @ts-expect-error Vite provides import.meta.glob at runtime.
@@ -96,16 +160,6 @@ async function loadLabModule(labId: string): Promise<void> {
   await loader();
 }
 
-async function loadAllLabs(): Promise<void> {
-  const modulePaths = Object.values(LAB_MODULE_PATHS);
-  for (const modulePath of modulePaths) {
-    const loader = loaders[modulePath];
-    if (loader) {
-      await loader();
-    }
-  }
-}
-
 async function main(): Promise<void> {
   const labId = new URLSearchParams(window.location.search).get('lab');
   initLabShell({ hasActiveLab: Boolean(labId) });
@@ -116,8 +170,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  await loadAllLabs();
-  renderLabIndex();
+  renderLabIndex({ entries: LAB_INDEX_ENTRIES });
 }
 
 void main().catch((error: unknown) => {

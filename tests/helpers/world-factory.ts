@@ -8,6 +8,7 @@ export function createTestWorld(options: CreateWorldOptions = {}) {
   return createGameWorld({
     seed: 42,
     floor: 1,
+    entityCapacityMode: 'test',
     ...options,
   });
 }

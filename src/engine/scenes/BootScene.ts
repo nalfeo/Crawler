@@ -10,6 +10,7 @@ import {
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 
 const logger = createLogger('engine:boot-scene');
+const CRITICAL_SHEET_KEYS = new Set(['kenney-tiny-dungeon', 'custom-pixel-sprites']);
 
 export class BootScene extends Phaser.Scene {
   static readonly KEY = 'BootScene';
@@ -33,9 +34,13 @@ export class BootScene extends Phaser.Scene {
       });
     });
 
-    logger.info('Preloading sprite sheets', { sheetCount: SHEETS.length });
+    const criticalSheets = SHEETS.filter((sheet) => CRITICAL_SHEET_KEYS.has(sheet.key));
+    logger.info('Preloading critical sprite sheets', {
+      criticalCount: criticalSheets.length,
+      deferredCount: SHEETS.length - criticalSheets.length,
+    });
 
-    for (const sheet of SHEETS) {
+    for (const sheet of criticalSheets) {
       logger.debug('Queueing sprite sheet', { key: sheet.key, path: sheet.path });
       this.load.spritesheet(sheet.key, sheet.path, {
         frameWidth: sheet.frameWidth,
@@ -51,45 +56,35 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    // The generated-sprite manifest is fetched in `create` (not `preload`)
-    // because Phaser's preload loader auto-starts as soon as `preload`
-    // returns, and we need an async hop to read the manifest. Running this
-    // pass in `create` lets us queue more loads and trigger a second
-    // loader pass before starting MainGameScene.
-    void this.loadGeneratedSpritesThenStart();
+    this.scene.start(MainGameScene.KEY);
+    void this.warmGeneratedSprites();
   }
 
-  private async loadGeneratedSpritesThenStart(): Promise<void> {
+  private async warmGeneratedSprites(): Promise<void> {
     try {
       const registry = await fetchGeneratedSpriteRegistry();
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
 
       if (registry.size === 0 || !this.load) {
-        logger.info('No generated sprites to load; starting main scene');
-        this.scene.start(MainGameScene.KEY);
+        logger.info('No generated sprites to warm after startup');
         return;
       }
 
       const queued = preloadGeneratedSprites(this.load, registry);
       if (queued.length === 0) {
-        this.scene.start(MainGameScene.KEY);
         return;
       }
 
-      // Second loader pass for the generated sprites; only start the
-      // main scene once the loader signals 'complete'.
       this.load.once(Phaser.Loader.Events.COMPLETE, () => {
-        logger.info('Generated sprite loads complete; starting main scene', {
+        logger.info('Generated sprite warm load complete', {
           count: queued.length,
         });
-        this.scene.start(MainGameScene.KEY);
       });
       this.load.start();
     } catch (err) {
-      logger.warn('Generated sprite load pass errored; starting main scene anyway', {
+      logger.warn('Generated sprite warm load errored; continuing with built-in sprites', {
         error: err instanceof Error ? err.message : String(err),
       });
-      this.scene.start(MainGameScene.KEY);
     }
   }
 }
