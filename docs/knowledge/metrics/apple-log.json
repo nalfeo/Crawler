@@ -91,8 +91,8 @@
   },
   {
     "session": "2026-06-11-mobile-review-fixes",
-    "estimate": "\ud83c\udf4e\ud83c\udf4e",
-    "actual": "\ud83c\udf4e\ud83c\udf4e",
+    "estimate": "🍎🍎",
+    "actual": "🍎🍎",
     "verdict": "on-target",
     "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
   },
