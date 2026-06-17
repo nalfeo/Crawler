@@ -1,0 +1,37 @@
+{
+  "id": "floor2",
+  "name": "Floor 2 - The Deeper Dungeon",
+  "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "timer": {
+    "durationMs": 360000,
+    "stairSpawnCountdownMs": 40000
+  },
+  "objectives": {
+    "requiredRats": 10,
+    "requiredSlimes": 6,
+    "requiredTotalKills": 20,
+    "requiredGold": 30,
+    "requiredJunk": 4,
+    "markerRadiusPx": 64
+  },
+  "map": {
+    "widthTiles": 140,
+    "heightTiles": 80,
+    "tileSizePx": 32,
+    "seed": 84,
+    "roomWidthRange": [7, 16],
+    "roomHeightRange": [6, 14],
+    "maxRooms": 55,
+    "floorDensity": 0.45
+  },
+  "enemyPackId": "floor2-ambient",
+  "player": {
+    "hpBonus": 30,
+    "moveSpeedBonus": 0.3,
+    "pickupRangeBonus": 12
+  },
+  "camera": {
+    "zoom": 2.0
+  }
+}
