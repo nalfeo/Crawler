@@ -91,8 +91,8 @@
   },
   {
     "session": "2026-06-11-mobile-review-fixes",
-    "estimate": "🍎🍎",
-    "actual": "🍎🍎",
+    "estimate": "\ud83c\udf4e\ud83c\udf4e",
+    "actual": "\ud83c\udf4e\ud83c\udf4e",
     "verdict": "on-target",
     "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
   },
@@ -298,5 +298,15 @@
     "verdict": "exact",
     "hello_kitties": 0.6,
     "notes": "Added a deny guard for unsafe shared-port/process-scan Stop-Process commands and moved dev/lab/devtools/sidecar automation onto deterministic per-session ports to stop cross-worktree server contamination."
+  },
+  {
+    "date": "2026-06-17",
+    "session": "agent-persona-system",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Implemented the agent persona-system plan (A-F): added a personas/README.md routing matrix and switched AGENTS.md + copilot-instructions.md step 2 from 'read assigned persona' to 'select from the matrix (default Producer)'; grounded the game-designer persona with a Design DNA & Guardrails section binding GDD inspirations (incl. Dungeon Crawler Carl) to measurable targets; added Producer (orchestrator), Content Designer (authored floor/quest content), and Reviewer (repo-specific high-signal review) personas; promoted The Director/The Governor to named sections and added 'Collaborates with' lines to every persona; added a non-blocking, LLM-free persona-routing hint to preflight.sh. Docs-only; prettier + docs:check + preflight syntax all clean."
   }
 ]
