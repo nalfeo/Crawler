@@ -46,6 +46,28 @@ These three roles overlap on "content" and are easy to confuse:
   _runtime generation_ of text. Content Designer authors the _static structure_
   they decorate.
 
+## Worked Routing Examples
+
+When two rows feel plausible, these decisions resolve the most common ties:
+
+- **"Make floor danger scale faster after the boss."** → **Game Designer.** This
+  is a _number/curve_ (mechanics & tuning), not authored floor data. If it also
+  needed a new authored encounter to showcase it, that slice goes to **Content
+  Designer** and the whole thing is **Producer**-orchestrated.
+- **"Add a goblin-warren quest pack to Floor 2."** → **Content Designer.** It
+  composes existing mechanics into authored data; no new mechanic or ECS change.
+  It only becomes **Systems Engineer** if it needs a new component/query to run.
+- **"Enemies should path around walls."** → **Systems Engineer.** Pathfinding is
+  ECS plumbing in `src/core/`/`src/game/`, even though it _feels_ like gameplay.
+  The _tuning_ of how aggressively they path is **Game Designer**.
+- **"The Director should taunt the player on death."** → **AI Content Engineer**
+  for the runtime generation/validation; **Story Designer** for the voice/canon
+  of what a taunt may say. If it ships static fallback lines only, it can be
+  **Story Designer** alone.
+- **"Fix the flaky sprite-pipeline test."** → **QA Engineer** (test
+  effectiveness), escalating to **DevOps Engineer** if the flake is a
+  harness/CI-timeout problem rather than a test logic problem.
+
 ## Conceptual Agents (harness, not personas)
 
 Some named "agents" in this project are **harness components**, not personas you
