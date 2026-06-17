@@ -6,3 +6,5 @@
 export { RuleBasedAI } from './ai-input-provider.js';
 export type { AIInputProvider, AIDecision, AIConfig, RunStats } from './types.js';
 export { AIState } from './types.js';
+export { runHeadless } from './headless-runner.js';
+export { runSimulationStep, type SimulationOptions } from './simulation-step.js';
