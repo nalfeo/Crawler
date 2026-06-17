@@ -30,6 +30,7 @@
     "test:e2e": "vitest run --project e2e",
     "lab": "vite --mode lab",
     "devtools": "vite --mode devtools",
+    "ai:headless": "tsx src/game/ai/headless-runner-cli.ts",
     "sprites:extract-palette": "tsx scripts/sprites/extract-palette.ts",
     "sprites:run": "tsx scripts/sprites/cli.ts",
     "sprites:gallery": "tsx scripts/sprites/sidecar/launcher.ts",
