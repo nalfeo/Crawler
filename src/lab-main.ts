@@ -5,6 +5,7 @@ import { runLab } from './labs/lab-runner.js';
 import type { LabCategory } from './labs/registry.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
+  'ai-runner': '/src/labs/ai-runner-lab/index.ts',
   'combat-lab': '/src/labs/combat-lab/index.ts',
   'collision-lab': '/src/labs/collision-lab/index.ts',
   'damage-lab': '/src/labs/damage-lab/index.ts',
