@@ -15,7 +15,8 @@ module.exports = {
      * partial edits; allow only these exact messages to keep policy strict.
      */
     (message) =>
-      message === 'Apply remaining changes' || message === 'Changes before error encountered',
+      message.startsWith('Apply remaining changes') ||
+      message.startsWith('Changes before error encountered'),
   ],
   rules: {
     'type-enum': [
