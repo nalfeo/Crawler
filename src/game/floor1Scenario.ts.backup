@@ -139,7 +139,7 @@ function getSpawnerState(world: GameWorld): Floor1SpawnerState {
 }
 
 function pickStarterChoices(world: GameWorld): string[] {
-  const pool = [...floor1Config.starterWeapons];
+  const pool = [...FLOOR_1_STARTER_POOL];
   const selected: string[] = [];
   while (pool.length > 0 && selected.length < 3) {
     const idx = world.rng.nextInt(0, pool.length - 1);
@@ -374,15 +374,8 @@ export function meetTutorialGoon(world: GameWorld): void {
 
 export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
   const config: MapConfig = {
-    widthTiles: floor1Config.map.widthTiles,
-    heightTiles: floor1Config.map.heightTiles,
-    tileSizePx: floor1Config.map.tileSizePx,
-    biome: BiomeType.DUNGEON,
+    ...FLOOR_1_MAP_CONFIG,
     seed: world.rng.nextInt(1, 2_000_000),
-    roomWidthRange: floor1Config.map.roomWidthRange,
-    roomHeightRange: floor1Config.map.roomHeightRange,
-    maxRooms: floor1Config.map.maxRooms,
-    floorDensity: floor1Config.map.floorDensity,
   };
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
@@ -395,7 +388,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
   }
 
-  const maxHp = (world.stores.health.max[playerEid] ?? 100) + floor1Config.player.hpBonus;
+  const maxHp = (world.stores.health.max[playerEid] ?? 100) + FLOOR_1_PLAYER_HP_BONUS;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
   const {
@@ -435,7 +428,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
             world.ecs,
             eid,
             set(Sprite, {
-              textureId: floor1Config.sprites!.welcomeSign,
+              textureId: SPRITE_TEX_WELCOME_SIGN,
               width: 32,
               height: 16,
             }),
@@ -446,15 +439,15 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   }
 
   world.floor1 = {
-    protagonistName: floor1Config.protagonist,
-    starterWeaponPool: floor1Config.starterWeapons,
+    protagonistName: FLOOR_1_PROTAGONIST,
+    starterWeaponPool: FLOOR_1_STARTER_POOL,
     starterChoices: pickStarterChoices(world),
     selectedWeaponId: null,
     selectedChoiceIndex: null,
     baseStatBonuses: {
-      maxHp: floor1Config.player.hpBonus,
-      moveSpeed: floor1Config.player.moveSpeedBonus,
-      pickupRange: floor1Config.player.pickupRangeBonus,
+      maxHp: FLOOR_1_PLAYER_HP_BONUS,
+      moveSpeed: FLOOR_1_PLAYER_MOVE_SPEED_BONUS,
+      pickupRange: FLOOR_1_PLAYER_PICKUP_RANGE_BONUS,
     },
     enemyArchetypes: new Map(),
     guideNpcEid: null,
@@ -464,12 +457,12 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     bossDoorEids: [],
     slimeRatDoorEids: [],
     objective: {
-      requiredRats: floor1Config.objectives.requiredRats,
-      requiredSlimes: floor1Config.objectives.requiredSlimes,
-      requiredGold: floor1Config.objectives.requiredGold,
-      requiredJunk: floor1Config.objectives.requiredJunk,
-      deadlineMs: floor1Config.timer.durationMs,
-      staircaseSpawnCountdownMs: floor1Config.timer.stairSpawnCountdownMs,
+      requiredRats: FLOOR_1_REQUIRED_RATS,
+      requiredSlimes: FLOOR_1_REQUIRED_SLIMES,
+      requiredGold: FLOOR_1_REQUIRED_GOLD,
+      requiredJunk: FLOOR_1_REQUIRED_JUNK,
+      deadlineMs: FLOOR_1_TIMER_MS,
+      staircaseSpawnCountdownMs: FLOOR_1_STAIR_SPAWN_COUNTDOWN_MS,
       safeRoomPos,
       staircasePos,
       welcomeOfficePos,
@@ -477,7 +470,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       spellQuestGiverPos,
       shopRoomPos,
       questItemPos,
-      markerRadiusPx: floor1Config.objectives.markerRadiusPx,
+      markerRadiusPx: FLOOR_1_MARKER_RADIUS_PX,
       questAccepted: false,
       questCompleted: false,
       ratsKilled: 0,
@@ -620,13 +613,13 @@ function resolveSpawnPosition(
 ): { x: number; y: number } {
   const floorMap = world.floorMap;
   if (!floorMap) {
-    return { x: playerX + floor1Config.spawning.spawnRadiusMin, y: playerY };
+    return { x: playerX + FLOOR_1_SPAWN_RADIUS_MIN, y: playerY };
   }
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius =
-      floor1Config.spawning.spawnRadiusMin +
-      world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - floor1Config.spawning.spawnRadiusMin);
+      FLOOR_1_SPAWN_RADIUS_MIN +
+      world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - FLOOR_1_SPAWN_RADIUS_MIN);
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
@@ -655,10 +648,7 @@ function resolveSpawnPosition(
       }
     }
   }
-  const fallbackTile = floorMap.pixelToTile(
-    playerX + floor1Config.spawning.spawnRadiusMin,
-    playerY,
-  );
+  const fallbackTile = floorMap.pixelToTile(playerX + FLOOR_1_SPAWN_RADIUS_MIN, playerY);
   return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
 }
 
@@ -689,15 +679,13 @@ function resolveBossSpawnPosition(
     }
   }
   if (!floorMap) {
-    return { x: stairX + floor1Config.bossVariants!.ratSlime.spawnRadiusMin, y: stairY };
+    return { x: stairX + FLOOR_1_BOSS_SPAWN_RADIUS_MIN, y: stairY };
   }
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius =
-      floor1Config.bossVariants!.ratSlime.spawnRadiusMin +
-      world.rng.next() *
-        (floor1Config.bossVariants!.ratSlime.spawnRadiusMax -
-          floor1Config.bossVariants!.ratSlime.spawnRadiusMin);
+      FLOOR_1_BOSS_SPAWN_RADIUS_MIN +
+      world.rng.next() * (FLOOR_1_BOSS_SPAWN_RADIUS_MAX - FLOOR_1_BOSS_SPAWN_RADIUS_MIN);
     const x = stairX + Math.cos(angle) * radius;
     const y = stairY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
@@ -705,10 +693,7 @@ function resolveBossSpawnPosition(
       return floorMap.tileToPixel(tile.x, tile.y);
     }
   }
-  const fallbackTile = floorMap.pixelToTile(
-    stairX + floor1Config.bossVariants!.ratSlime.spawnRadiusMin,
-    stairY,
-  );
+  const fallbackTile = floorMap.pixelToTile(stairX + FLOOR_1_BOSS_SPAWN_RADIUS_MIN, stairY);
   return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
 }
 
@@ -810,16 +795,16 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     world,
     spawnPoint.x,
     spawnPoint.y,
-    floor1Config.bossVariants!.ratSlime.hp,
+    FLOOR_1_RAT_SLIME_HP,
     AI_TYPE.CHASE,
-    floor1Config.bossVariants!.ratSlime.speed,
-    floor1Config.bossVariants!.ratSlime.detectRange,
+    FLOOR_1_RAT_SLIME_SPEED,
+    FLOOR_1_RAT_SLIME_DETECT_RANGE,
     280,
   );
   setComponent(world.ecs, eid, Sprite, {
-    textureId: floor1Config.enemies.slime.spriteTexture,
-    width: floor1Config.bossVariants!.ratSlime.spriteWidth,
-    height: floor1Config.bossVariants!.ratSlime.spriteHeight,
+    textureId: SPRITE_TEX_ENEMY_SLIME,
+    width: FLOOR_1_BOSS_SPRITE_WIDTH,
+    height: FLOOR_1_BOSS_SPRITE_HEIGHT,
   });
 
   // Boss has melee contact damage for swipe attacks.
@@ -829,8 +814,7 @@ function spawnFloor1StairBoss(world: GameWorld): number {
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
 
   // Boss fires acid projectiles every 5 seconds.
-  world.stores.enemyBehavior.fireCooldownMs[eid] =
-    floor1Config.bossVariants!.ratSlime.fireballCooldownMs;
+  world.stores.enemyBehavior.fireCooldownMs[eid] = FLOOR_1_RAT_SLIME_FIREBALL_COOLDOWN_MS;
 
   return eid;
 }
@@ -851,21 +835,20 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
     world,
     spawnPoint.x,
     spawnPoint.y,
-    floor1Config.bossVariants!.slimeRat.hp,
+    FLOOR_1_SLIME_RAT_HP,
     AI_TYPE.CHASE,
-    floor1Config.bossVariants!.slimeRat.speed,
-    floor1Config.bossVariants!.slimeRat.detectRange,
+    FLOOR_1_SLIME_RAT_SPEED,
+    FLOOR_1_SLIME_RAT_DETECT_RANGE,
     220,
   );
   setComponent(world.ecs, eid, Sprite, {
-    textureId: floor1Config.enemies.slime.spriteTexture,
-    width: floor1Config.bossVariants!.ratSlime.spriteWidth - 4,
-    height: floor1Config.bossVariants!.ratSlime.spriteHeight - 4,
+    textureId: SPRITE_TEX_ENEMY_SLIME,
+    width: FLOOR_1_BOSS_SPRITE_WIDTH - 4,
+    height: FLOOR_1_BOSS_SPRITE_HEIGHT - 4,
   });
   setComponent(world.ecs, eid, Damage, { amount: 8 });
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
-  world.stores.enemyBehavior.fireCooldownMs[eid] =
-    floor1Config.bossVariants!.slimeRat.fireballCooldownMs;
+  world.stores.enemyBehavior.fireCooldownMs[eid] = FLOOR_1_SLIME_RAT_FIREBALL_COOLDOWN_MS;
   return eid;
 }
 
@@ -973,12 +956,12 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     return;
   }
 
-  if (world.floor1.enemyArchetypes.size >= floor1Config.spawning.enemyCap) {
+  if (world.floor1.enemyArchetypes.size >= FLOOR_1_ENEMY_CAP) {
     return;
   }
 
   const state = getSpawnerState(world);
-  if (world.elapsedMs - state.lastSpawnMs < floor1Config.spawning.spawnIntervalMs) {
+  if (world.elapsedMs - state.lastSpawnMs < FLOOR_1_SPAWN_INTERVAL_MS) {
     return;
   }
 
@@ -992,10 +975,10 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   const playerY = world.stores.position.y[player] ?? 0;
   pruneAmbientOutOfRange(world, playerX, playerY);
   const totalEnemies = query(world.ecs, [Enemy]).length;
-  if (totalEnemies > floor1Config.spawning.enemyCap) {
-    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - floor1Config.spawning.enemyCap);
+  if (totalEnemies > FLOOR_1_ENEMY_CAP) {
+    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - FLOOR_1_ENEMY_CAP);
   }
-  if (query(world.ecs, [Enemy]).length >= floor1Config.spawning.enemyCap) {
+  if (query(world.ecs, [Enemy]).length >= FLOOR_1_ENEMY_CAP) {
     return;
   }
   const spawnMaxDistanceSq =
@@ -1041,15 +1024,10 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {
     return;
   }
-  const archetype: 'rat' | 'slime' =
-    world.rng.next() < floor1Config.enemies.rat.spawnWeight! ? 'rat' : 'slime';
-  const hp = archetype === 'rat' ? floor1Config.enemies.rat.hp : floor1Config.enemies.slime.hp;
-  const speed =
-    archetype === 'rat' ? floor1Config.enemies.rat.speed : floor1Config.enemies.slime.speed;
-  const detectRange =
-    archetype === 'rat'
-      ? floor1Config.enemies.rat.detectRange
-      : floor1Config.enemies.slime.detectRange;
+  const archetype: 'rat' | 'slime' = world.rng.next() < RAT_SPAWN_WEIGHT ? 'rat' : 'slime';
+  const hp = archetype === 'rat' ? RAT_HP : SLIME_HP;
+  const speed = archetype === 'rat' ? RAT_SPEED : SLIME_SPEED;
+  const detectRange = archetype === 'rat' ? RAT_DETECT_RANGE : SLIME_DETECT_RANGE;
   const eid = spawnBehaviorEnemy(
     world,
     spawnPoint.x,
@@ -1061,10 +1039,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     0,
   );
   setComponent(world.ecs, eid, Sprite, {
-    textureId:
-      archetype === 'rat'
-        ? floor1Config.enemies.rat.spriteTexture
-        : floor1Config.enemies.slime.spriteTexture,
+    textureId: archetype === 'rat' ? SPRITE_TEX_ENEMY_RAT : SPRITE_TEX_ENEMY_SLIME,
     width: 16,
     height: 16,
   });
@@ -1180,7 +1155,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const bossUnlockQuestAccepted = world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID);
   const meetsCombat =
     bossUnlockQuestAccepted &&
-    totalKills >= floor1Config.objectives.requiredTotalKills &&
+    totalKills >= FLOOR_1_REQUIRED_TOTAL_KILLS &&
     objective.ratsKilled >= objective.requiredRats &&
     objective.slimesKilled >= objective.requiredSlimes;
   const meetsLoot =
