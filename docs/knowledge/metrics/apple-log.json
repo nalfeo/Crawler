@@ -382,5 +382,15 @@
     "verdict": "exact",
     "hello_kitties": 0.8,
     "notes": "Phase 1 of floor config refactoring: created Zod schema for floor1.json, added missing config fields (starterWeapons, bossVariants, sprites), refactored floor1Scenario.ts to replace ~60 hardcoded constants with config references. All 1253/1254 tests pass (1 pre-existing sprite test failure unrelated to changes)."
+  },
+  {
+    "date": "2026-06-17",
+    "session": "floor-config-phases-2-5",
+    "estimated_apples": 5,
+    "actual_apples": 4,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.8,
+    "notes": "Phases 2-5 of floor config refactoring: implemented enemy pack abstraction (weighted selection), floor manifest schema (consolidated config), NPC placement schema foundation, and floor registry foundation. Phase 2-3 fully implemented with enemy pack system and manifest consolidation. Phases 4-5 foundation complete (schemas only, full implementation deferred). All 1263/1264 tests pass (1 pre-existing Azure Vision failure unrelated to changes). Estimated 5 apples assuming full NPC abstraction + MainGameScene integration; actual work focused on foundational schemas and enemy/manifest implementation (4 apples)."
   }
 ]
