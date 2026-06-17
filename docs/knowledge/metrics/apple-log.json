@@ -308,5 +308,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Implemented the agent persona-system plan (A-F): added a personas/README.md routing matrix and switched AGENTS.md + copilot-instructions.md step 2 from 'read assigned persona' to 'select from the matrix (default Producer)'; grounded the game-designer persona with a Design DNA & Guardrails section binding GDD inspirations (incl. Dungeon Crawler Carl) to measurable targets; added Producer (orchestrator), Content Designer (authored floor/quest content), and Reviewer (repo-specific high-signal review) personas; promoted The Director/The Governor to named sections and added 'Collaborates with' lines to every persona; added a non-blocking, LLM-free persona-routing hint to preflight.sh. Docs-only; prettier + docs:check + preflight syntax all clean."
+  },
+  {
+    "date": "2026-06-17",
+    "session": "persona-system-feedback",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Addressed persona-system review feedback: new deterministic check-personas.ts doc-lint (required sections + README index drift) wired into docs:check; added Persona(s) adopted + Routing verdict fields to handoff TEMPLATE.md; added worked routing-tie examples to personas/README.md. Deferred (objected to) the flaky sprite-pipeline timeout fix (QA test-infra) and the src/game/ai AI-safety lint (premature; dir doesn't exist yet). docs:check + eslint + prettier clean; negative test confirms the lint blocks on drift."
   }
 ]
