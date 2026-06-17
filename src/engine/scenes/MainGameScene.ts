@@ -242,6 +242,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** One-frame latch set by tapping the dialogue close button. */
   private queuedConversationClose = false;
+  /** One-frame latch for opening the abilities configurator from global keyboard capture. */
+  private queuedAbilitiesToggle = false;
 
   private floorCompletionMessageShown = false;
 
@@ -314,6 +316,9 @@ export class MainGameScene extends Phaser.Scene {
     this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this.handleWindowKeyDown, true);
+    }
     this.inventoryUI = createInventoryUI(this);
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
@@ -419,10 +424,14 @@ export class MainGameScene extends Phaser.Scene {
       this.tappedInteraction = false;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
+      this.queuedAbilitiesToggle = false;
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
       this.input.keyboard?.off('keydown-E', this.handleKeyboardE, this);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('keydown', this.handleWindowKeyDown, true);
+      }
       if (typeof window !== 'undefined' && window.__floor1Debug) {
         delete window.__floor1Debug;
       }
@@ -446,6 +455,29 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.queuedInteraction = true;
+  }
+
+  private isTextEntryTarget(event: KeyboardEvent): boolean {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
+  private handleWindowKeyDown(event: KeyboardEvent): void {
+    if (this.modalPicker?.isOpen() || this.isTextEntryTarget(event)) {
+      return;
+    }
+    if (event.code === 'KeyE') {
+      // Allow browser key-repeat so holding E can advance dialogue lines.
+      this.queuedInteraction = true;
+      return;
+    }
+    if (event.code === 'KeyB' && !event.repeat) {
+      this.queuedAbilitiesToggle = true;
+    }
   }
 
   private markCameraMasksDirty(): void {
@@ -628,9 +660,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     if (unlocks.spells && !this.spellsUnlockNotified) {
       this.spellsUnlockNotified = true;
-      this.flashHint(
-        'Abilities unlocked! Press [B] in a safe room to open Abilities and configure your bar.',
-      );
+      this.flashHint('Abilities unlocked! Press [B] to open Abilities and configure your bar.');
     }
 
     if (
@@ -657,12 +687,11 @@ export class MainGameScene extends Phaser.Scene {
       }
     }
 
-    if (
-      unlocks.spells &&
-      safeCtx &&
-      this.keyAbilities &&
-      Phaser.Input.Keyboard.JustDown(this.keyAbilities)
-    ) {
+    const abilitiesToggleRequested =
+      this.queuedAbilitiesToggle ||
+      Boolean(this.keyAbilities && Phaser.Input.Keyboard.JustDown(this.keyAbilities));
+    this.queuedAbilitiesToggle = false;
+    if (unlocks.spells && abilitiesToggleRequested) {
       this.openAbilitiesConfigModal();
     }
   }
