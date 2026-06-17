@@ -9,7 +9,7 @@ const SLOT_GAP = 8;
 const BAR_WIDTH =
   ACTIVE_ABILITY_SLOT_LIMIT * SLOT_SIZE + (ACTIVE_ABILITY_SLOT_LIMIT - 1) * SLOT_GAP;
 const BAR_X = Math.max(16, Math.round((GAME.WIDTH - BAR_WIDTH) / 2));
-const BAR_Y = GAME.HEIGHT - 80;
+const BAR_Y = GAME.HEIGHT - 148;
 
 const COLORS = {
   slotBg: 0x0f172a,

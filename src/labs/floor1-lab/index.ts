@@ -6,6 +6,7 @@ import type { GameWorld } from '../../core/world.js';
 import { GAME } from '../../shared/constants.js';
 import { BootScene, MainGameScene } from '../../engine/index.js';
 import {
+  acceptQuest,
   enemyAISystem,
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
@@ -15,6 +16,7 @@ import {
   selectFloor1StarterWeapon,
   startFloor1BossEncounter,
   questSystem,
+  setTrackedQuest,
   getShopkeeperStage,
   meetShopkeeper,
   returnShopkeeperPrize,
@@ -30,6 +32,15 @@ import {
   meetSpellQuestGiver,
   selectSpellFromBossBattle,
 } from '../../game/floor1Scenario.js';
+import { setGoalFlag } from '../../core/door-lock.js';
+import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+  getQuestDef,
+  objectiveTarget,
+} from '../../shared/quest-types.js';
 import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
@@ -278,6 +289,48 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   let game: Phaser.Game | undefined;
   let currentWorld: GameWorld | undefined;
   let currentPlayerEid: number | undefined;
+
+  const QUEST_DEBUG_TARGETS = {
+    'Tutorial: floor1-tutorial': FLOOR1_TUTORIAL_QUEST_ID,
+    'Boss unlock: floor1-boss-unlock': FLOOR1_BOSS_UNLOCK_QUEST_ID,
+    'Boss battle: floor1-boss-battle': FLOOR1_BOSS_BATTLE_QUEST_ID,
+    'Shopkeeper errand: floor1-shopkeeper-errand': FLOOR1_SHOP_QUEST_ID,
+  } as const;
+  const QUEST_DEBUG_ACTIONS = {
+    'Accept / enable quest': 'accept',
+    'Complete quest now': 'complete',
+  } as const;
+  const questDebug = {
+    questId: FLOOR1_TUTORIAL_QUEST_ID,
+    action: 'accept',
+    apply: () => {
+      if (!currentWorld) {
+        return;
+      }
+      const questId = questDebug.questId;
+      const quest = acceptQuest(currentWorld, questId);
+      if (!quest) {
+        return;
+      }
+      setTrackedQuest(currentWorld, questId);
+      if (questDebug.action === 'complete') {
+        const def = getQuestDef(questId);
+        if (def) {
+          for (const objective of def.objectives) {
+            quest.progress[objective.id] = objectiveTarget(objective);
+            quest.done[objective.id] = true;
+            if (objective.kind === 'goal' && objective.goalId) {
+              setGoalFlag(currentWorld, objective.goalId, true);
+            }
+          }
+          if (def.onCompleteGoalFlag) {
+            setGoalFlag(currentWorld, def.onCompleteGoalFlag, true);
+          }
+          questSystem(currentWorld);
+        }
+      }
+    },
+  };
 
   const getPlayerEid = (): number | undefined => {
     if (!currentWorld) {
@@ -541,6 +594,9 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       const scene = game?.scene.getScene(MainGameScene.KEY) as MainGameScene | undefined;
       scene?.setDebugFlag('showAllRooms', v);
     });
+  debugFolder.add(questDebug, 'questId', QUEST_DEBUG_TARGETS).name('Quest target');
+  debugFolder.add(questDebug, 'action', QUEST_DEBUG_ACTIONS).name('Quest action');
+  debugFolder.add(questDebug, 'apply').name('Apply quest debug');
 
   createGame();
 
