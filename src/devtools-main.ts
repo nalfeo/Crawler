@@ -1,5 +1,6 @@
 import { ITEM_CATALOG } from './shared/items.js';
 import { SPRITES } from './engine/sprites/index.js';
+import { DEVTOOLS_INDEX_ENTRIES } from './devtools/index.js';
 import {
   STATUS_ORDER,
   buildFloorArtPlanReport,
@@ -364,20 +365,7 @@ function render(): void {
   }
 
   if (isHomePage) {
-    const tools = [
-      {
-        id: DEVTOOLS_PAGE_SPRITE_REVIEW,
-        name: 'Sprite review + workflow',
-        description:
-          'Track floor-art status, review generated sheets, run synth/generate/approve/metadata workflow, and inspect candidates.',
-      },
-      {
-        id: DEVTOOLS_PAGE_POSTPROCESS,
-        name: 'Postprocess debugger',
-        description:
-          'Inspect pipeline steps, validate sheet slicing, and trace live postprocess output.',
-      },
-    ] as const;
+    const tools = DEVTOOLS_INDEX_ENTRIES;
     const compact = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
     const search = el('input', {
       style: {
