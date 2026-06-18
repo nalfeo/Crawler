@@ -24,3 +24,16 @@
 - Season quirks are distinct and memorable.
 - Tone matches the project style guide.
 - The Director's personality remains coherent across content surfaces.
+
+## The Director (personality & canon)
+
+The Story Designer owns The Director's personality, voice, and the per-season
+quirks in the lore bible. The **AI Content Engineer** owns the runtime generation
+that speaks in that voice. Define the canon and constraints here; review prompt
+inputs/outputs together so generated commentary never drifts off-character.
+
+## Collaborates with
+
+**AI Content Engineer** (runtime Director voice, prompt review), **Content
+Designer** (lore-consistent floor/quest framing), and **Game Designer** (season
+mechanics that reinforce the narrative frame).

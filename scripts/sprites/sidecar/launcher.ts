@@ -17,8 +17,10 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getSessionServerPorts } from '../../shared/session-server-ports.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const SESSION_PORTS = getSessionServerPorts({ cwd: REPO_ROOT, env: process.env });
 
 interface ChildSpec {
   readonly name: string;
@@ -118,8 +120,8 @@ function runLauncher(): void {
     [
       '',
       '[launcher] sprite gallery starting…',
-      '  sidecar  → http://127.0.0.1:3010/api/health',
-      '  lab page → http://localhost:3000/lab.html?lab=sprite-gallery',
+      `  sidecar  → ${SESSION_PORTS.sidecarBaseUrl}/api/health`,
+      `  lab page → ${SESSION_PORTS.labBaseUrl}/lab.html?lab=sprite-gallery`,
       '  press Ctrl-C to stop both',
       '',
     ].join('\n'),

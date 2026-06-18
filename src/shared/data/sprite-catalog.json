@@ -45,7 +45,7 @@
     "id": "sheet:kenney-roguelike-rpg-pack",
     "kind": "sheet",
     "label": "kenney-roguelike-rpg-pack",
-    "description": "kenney roguelike rpg pack spritesheet for game asset lookup.",
+    "description": "Kenney Roguelike RPG pack spritesheet with environment and prop tiles.",
     "tags": ["tiles", "kenney", "sheet"],
     "sheetKey": "kenney-roguelike-rpg-pack",
     "path": "/assets/kenney/roguelike-rpg-pack/spritesheet.png",
@@ -302,14 +302,14 @@
     "id": "sprite:enemy.goblin",
     "kind": "sprite",
     "label": "enemy.goblin",
-    "description": "Tiny Dungeon ghost (frame 121) — temp CC0 art.",
+    "description": "Green goblin (light variant).",
     "tags": ["enemy", "goblin", "sprite"],
     "spriteId": "enemy.goblin",
     "sheetKey": "kenney-tiny-dungeon",
     "frame": 121,
     "col": 1,
     "row": 10,
-    "note": "Tiny Dungeon ghost (frame 121) — temp CC0 art.",
+    "note": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }

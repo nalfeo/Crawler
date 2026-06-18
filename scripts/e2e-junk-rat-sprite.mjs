@@ -7,19 +7,19 @@
  *   2. Promote selected brief        (POST /api/workflow/promote-brief)
  *   3. Generate sprite run           (POST /api/workflow/generate, gpt-image-1)
  *   4. Run metadata pipeline         (POST /api/workflow/metadata, heuristic)
- *   5. Verify gallery via Playwright (http://localhost:3002/lab.html?lab=sprite-gallery)
+ *   5. Verify gallery via Playwright on this session's derived lab URL
  *
  * Prerequisites:
  *   1. Azure credentials in .env.local — run `pwsh scripts/setup-azure-env.ps1`
- *   2. Sprite sidecar running:
+ *   2. Sprite sidecar running (defaults to this session's derived sidecar port):
  *        $env:AZURE_OPENAI_ENDPOINT = ...
  *        $env:AZURE_OPENAI_API_KEY  = ...
  *        $env:AZURE_OPENAI_CHAT_DEPLOYMENT   = gpt-4o
  *        $env:AZURE_OPENAI_IMAGE_DEPLOYMENT  = gpt-image-1
  *        $env:AZURE_OPENAI_VISION_DEPLOYMENT = gpt-4o
  *        npx tsx scripts/sprites/sidecar/cli.ts
- *   3. Vite lab server running on port 3002:
- *        npx vite --mode lab --port 3002
+ *   3. Vite lab server running on this session's derived lab port:
+ *        npm run lab
  *
  * Usage:
  *   node scripts/e2e-junk-rat-sprite.mjs
@@ -29,9 +29,11 @@
 
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
+import { getSessionServerPorts } from './shared/session-server-ports.js';
 
-const SIDECAR = 'http://127.0.0.1:3010';
-const GALLERY_URL = 'http://localhost:3002/lab.html?lab=sprite-gallery';
+const SESSION_PORTS = getSessionServerPorts({ cwd: process.cwd(), env: process.env });
+const SIDECAR = SESSION_PORTS.sidecarBaseUrl;
+const GALLERY_URL = `${SESSION_PORTS.labBaseUrl}/lab.html?lab=sprite-gallery`;
 const BRIEF_NAME = 'junk-rat-critters';
 const BRIEF_TYPE = 'enemy';
 

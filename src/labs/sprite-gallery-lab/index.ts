@@ -8,7 +8,7 @@
  * Layer note (per `src/labs/**` instructions): labs are unrestricted. We
  * still avoid Phaser here — this is a DOM/Canvas viewer, not a scene.
  *
- * Sidecar contract: GET http://127.0.0.1:3010/api/health, /api/runs,
+ * Sidecar contract: GET {session sidecar}/api/health, /api/runs,
  * /api/runs/:brief/:run, and /api/runs/:brief/:run/processed/:filename.
  * When the sidecar is unreachable the lab degrades to a fallback banner
  * (spec §F9) — review-only mode without a data source — and continues
@@ -16,8 +16,9 @@
  */
 
 import { registerLab } from '../registry.js';
+import { getSpriteSidecarBaseUrl } from '../../shared/session-server-env.js';
 
-const SIDECAR_BASE = 'http://127.0.0.1:3010';
+const SIDECAR_BASE = getSpriteSidecarBaseUrl();
 const SPRITE_BASE_SIZE = 64;
 const PREVIEW_SCALE_OPTIONS = [0.25, 0.5, 1, 2, 4] as const;
 

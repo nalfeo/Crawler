@@ -123,6 +123,11 @@
         if (!isLocalHost && !isBetaHost) {
           document.documentElement.classList.add('hide-debug-header');
         }
+
+        const devtoolsLink = document.querySelector('#app-switcher a.app-switch-link--active');
+        if (devtoolsLink instanceof HTMLAnchorElement) {
+          devtoolsLink.href = `${window.location.pathname}${window.location.search}`;
+        }
       })();
     </script>
     <script type="module" src="/src/devtools-main.ts"></script>

@@ -18,9 +18,10 @@ import {
   postApprove,
   type SidecarRunListEntry,
 } from './devtools/sprite-approval-api.js';
+import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
-const SIDECAR_BASE = 'http://127.0.0.1:3010';
+const SIDECAR_BASE = getSpriteSidecarBaseUrl();
 const DEVTOOLS_PAGE_HOME = 'home';
 const DEVTOOLS_PAGE_FLOOR_ART = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
@@ -349,7 +350,9 @@ function render(): void {
         ? 'Pick a DevTool from the searchable index below.'
         : isPostprocessPage
           ? 'Postprocess debugger: inspect pipeline steps, slicing, and live postprocess traces.'
-          : 'Sprite review + tracker: visibility over placeholders, briefs, reviews, and integration.'
+          : isSpriteReviewPage
+            ? 'Sprite review — readonly viewer for approved sprite sheets.'
+            : 'Sprite review + tracker: visibility over placeholders, briefs, reviews, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -436,7 +439,12 @@ function render(): void {
             cursor: 'pointer',
           },
         });
-        card.setAttribute('href', devtoolsPageHref(tool.id));
+        const href = devtoolsPageHref(tool.id);
+        card.setAttribute('href', href);
+        card.addEventListener('click', (event) => {
+          event.preventDefault();
+          window.location.assign(href);
+        });
         card.addEventListener('mouseenter', () => {
           card.style.borderColor = 'rgba(126, 224, 255, 0.4)';
           card.style.transform = 'translateY(-1px)';
@@ -1765,7 +1773,6 @@ function render(): void {
       debugTarget = { ...debugTarget, variantIndex: clicked.cell.index };
       renderPostprocessDebugger();
       writeWorkflowState();
-      writeWorkflowState();
     };
 
     debuggerVariantSelect.onchange = (): void => {
@@ -1776,7 +1783,6 @@ function render(): void {
       if (selectedIndex === debugTarget.variantIndex) return;
       debugTarget = { ...debugTarget, variantIndex: selectedIndex };
       renderPostprocessDebugger();
-      writeWorkflowState();
       writeWorkflowState();
     };
 
@@ -2535,7 +2541,6 @@ function render(): void {
     debugTarget = { briefId, runId, variantIndex };
     renderPostprocessDebugger();
     writeWorkflowState();
-    writeWorkflowState();
   });
 
   debuggerRunSelect.addEventListener('change', () => {
@@ -2555,7 +2560,6 @@ function render(): void {
     const variantIndex = cachedVariants[0] ?? 0;
     debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex };
     renderPostprocessDebugger();
-    writeWorkflowState();
     writeWorkflowState();
   });
 
@@ -2746,7 +2750,6 @@ function render(): void {
         renderWorkflowSelection();
         renderActivePlan();
         writeWorkflowState();
-        writeWorkflowState();
       });
 
       row.append(
@@ -2845,12 +2848,6 @@ function render(): void {
     const params = new URLSearchParams(window.location.search);
     const briefId = params.get('briefId');
     const runId = params.get('runId');
-
-    const subtitle = el('p', {
-      text: 'Sprite review — readonly viewer for approved sprite sheets',
-      style: { marginBottom: '16px' },
-    });
-    shell.append(subtitle);
 
     if (!briefId || !runId) {
       shell.append(

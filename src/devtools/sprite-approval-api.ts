@@ -1,4 +1,6 @@
-const SIDECAR_BASE = 'http://127.0.0.1:3010';
+import { getSpriteSidecarBaseUrl } from '../shared/session-server-env.js';
+
+const SIDECAR_BASE = getSpriteSidecarBaseUrl();
 
 export interface SidecarRunListEntry {
   readonly briefId: string;

@@ -24,3 +24,8 @@
 - All gates emit clear error messages and remediation clues.
 - No LLM is used in CI.
 - Tooling changes improve reliability without weakening enforcement.
+
+## Collaborates with
+
+**QA Engineer** (test/coverage/mutation gates), **Reviewer** (gaps that should
+become deterministic gates), and every persona (fast, clear local verification).

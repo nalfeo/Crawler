@@ -14,6 +14,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { resolve, relative, isAbsolute } from 'path';
 import { spawn } from 'child_process';
 import type { Plugin } from 'vite';
+import { getSessionServerPorts } from '../scripts/shared/session-server-ports.js';
 import {
   DEFAULT_CATALOG_PATH,
   runMetadataPipeline,
@@ -29,9 +30,14 @@ import {
 const DATA_DIR = resolve(__dirname, '../src/shared/data');
 const REPO_ROOT = resolve(__dirname, '..');
 const GENERATED_MANIFEST_PATH = resolve(__dirname, '../public/assets/generated/manifest.json');
+const SPRITE_SIDECAR_HEALTH_URL = `${
+  getSessionServerPorts({
+    cwd: REPO_ROOT,
+    env: process.env,
+  }).sidecarBaseUrl
+}/api/health`;
 
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-const SPRITE_SIDECAR_HEALTH_URL = 'http://127.0.0.1:3010/api/health';
 
 function setNestedValue(obj: Record<string, unknown>, path: string, value: unknown): void {
   const keys = path.split('.');

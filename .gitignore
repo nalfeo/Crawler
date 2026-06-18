@@ -4,8 +4,25 @@ coverage/
 *.local
 .DS_Store
 .tsbuildinfo
+.tsbuildinfo-*
 .vitest-cache/
+.eslintcache
+.cache/
 tmp/
+
+# TypeScript in-place compiled outputs (scripts and source dirs that use tsc without outDir)
+scripts/sprites/**/*.js
+scripts/sprites/**/*.js.map
+scripts/sprites/**/*.d.ts
+scripts/sprites/**/*.d.ts.map
+src/devtools/*.js
+src/devtools/*.js.map
+src/devtools/*.d.ts
+src/devtools/*.d.ts.map
+src/engine/sprites/*.js
+src/engine/sprites/*.js.map
+src/engine/sprites/*.d.ts
+src/engine/sprites/*.d.ts.map
 
 # Sprite-generation pipeline scratch artifacts (raw candidates, processed
 # variants, judge scorecards). Approved sprites live under public/assets/

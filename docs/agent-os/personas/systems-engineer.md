@@ -24,3 +24,9 @@
 - Property-based invariants pass for core simulation rules.
 - A corresponding lab exists for every shipped system.
 - Core code stays isolated from engine/game/labs imports.
+
+## Collaborates with
+
+**Game Designer** (mechanics built on these systems), **Content Designer**
+(objective/map-generation plumbing), **QA Engineer** (invariant & property tests),
+and **Graphics Designer** (engine-side rendering of core state).

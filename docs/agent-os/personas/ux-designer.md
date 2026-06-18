@@ -24,3 +24,9 @@
 - Controls feel responsive and predictable.
 - Pause menu works reliably.
 - Accessibility defaults remain intact.
+
+## Collaborates with
+
+**Graphics Designer** (visual hierarchy & readability), **Game Designer** (feedback
+for systems), **Sound Designer** (audio-visual reward cues), and **Content
+Designer** (onboarding for new floor mechanics).

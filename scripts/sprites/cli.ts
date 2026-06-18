@@ -25,6 +25,7 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { spawn } from 'node:child_process';
+import { getSessionServerPorts } from '../shared/session-server-ports.js';
 import { JudgeBudget } from './cost-tracker.js';
 import { generateOne } from './generate-one.js';
 import { JudgeCache } from './judge-cache.js';
@@ -52,8 +53,9 @@ interface BriefRunOutcome {
   readonly message?: string;
 }
 
-const SIDECAR_HEALTH_URL = 'http://127.0.0.1:3010/api/health';
-const LAB_URL = 'http://localhost:3001/lab.html?lab=sprite-gallery';
+const SESSION_PORTS = getSessionServerPorts({ cwd: process.cwd(), env: process.env });
+const SIDECAR_HEALTH_URL = `${SESSION_PORTS.sidecarBaseUrl}/api/health`;
+const LAB_URL = `${SESSION_PORTS.labBaseUrl}/lab.html?lab=sprite-gallery`;
 
 async function isGalleryHealthy(timeoutMs = 1500): Promise<boolean> {
   const controller = new AbortController();
