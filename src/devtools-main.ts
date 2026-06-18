@@ -2834,24 +2834,8 @@ function render(): void {
   // Sprite review page — read-only viewer for approved sprite sheets
   if (isSpriteReviewPage) {
     const params = new URLSearchParams(window.location.search);
-    const briefId = params.get('briefId');
-    const runId = params.get('runId');
-
-    if (!briefId || !runId) {
-      shell.append(
-        el('div', {
-          style: {
-            padding: '16px',
-            borderRadius: '8px',
-            background: '#7f1d1d',
-            color: '#fef3c7',
-            border: '1px solid rgba(255,255,255,0.18)',
-          },
-          text: 'Missing briefId or runId in URL parameters',
-        }),
-      );
-      return;
-    }
+    const queryBriefId = params.get('briefId');
+    const queryRunId = params.get('runId');
 
     const viewerContainer = el('div', {
       style: {
@@ -2861,21 +2845,127 @@ function render(): void {
     });
     shell.append(viewerContainer);
 
+    const runPickerHost = el('div', {
+      style: {
+        display: 'grid',
+        gap: '8px',
+      },
+    });
+    const renderHost = el('div', {
+      style: {
+        display: 'grid',
+        gap: '12px',
+      },
+    });
     const loadingMsg = el('p', {
       text: 'Loading sprite sheet...',
       style: { color: '#93c5fd', fontSize: '14px' },
     });
-    viewerContainer.append(loadingMsg);
+    viewerContainer.append(runPickerHost, loadingMsg, renderHost);
 
     // Fetch and render the sprite sheet
     (async () => {
       try {
+        let briefId = queryBriefId;
+        let runId = queryRunId;
+        const runs = await listSidecarRuns();
+        let autoSelectedLatest = false;
+        if (
+          !briefId ||
+          !runId ||
+          !runs.some((run) => run.briefId === briefId && run.runId === runId)
+        ) {
+          loadingMsg.textContent = 'Selecting latest run...';
+          const latestRun = runs[0];
+          if (!latestRun) {
+            renderHost.replaceChildren(
+              el('div', {
+                style: {
+                  padding: '16px',
+                  borderRadius: '8px',
+                  background: '#78350f',
+                  color: '#fef3c7',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                },
+                text: 'No sprite runs found yet. Generate a run from Floor Art first, then open Sprite Review.',
+              }),
+            );
+            return;
+          }
+          briefId = latestRun.briefId;
+          runId = latestRun.runId;
+          autoSelectedLatest = true;
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set('page', DEVTOOLS_PAGE_SPRITE_REVIEW);
+          nextUrl.searchParams.set('briefId', briefId);
+          nextUrl.searchParams.set('runId', runId);
+          window.history.replaceState(null, '', nextUrl.toString());
+        }
+
+        const runPickerLabel = el('p', {
+          text: 'Select generated run:',
+          style: { margin: '0', fontSize: '12px', color: '#93c5fd' },
+        });
+        const runPickerRow = el('div', {
+          style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+        });
+        const runPicker = document.createElement('select');
+        Object.assign(runPicker.style, {
+          background: '#0f172a',
+          color: '#e2e8f0',
+          border: '1px solid rgba(148,163,184,0.35)',
+          borderRadius: '6px',
+          padding: '6px 10px',
+          fontSize: '13px',
+        });
+        const makeRunKey = (b: string, r: string): string => `${b}::${r}`;
+        for (const run of runs) {
+          const option = document.createElement('option');
+          option.value = makeRunKey(run.briefId, run.runId);
+          const countSuffix =
+            typeof run.candidateCount === 'number' && run.candidateCount >= 0
+              ? ` (${run.candidateCount} variants)`
+              : '';
+          option.textContent = `${run.briefId} / ${run.runId}${countSuffix}`;
+          if (run.briefId === briefId && run.runId === runId) option.selected = true;
+          runPicker.append(option);
+        }
+
+        const openRunBtn = document.createElement('button');
+        openRunBtn.type = 'button';
+        openRunBtn.textContent = 'Open run';
+        Object.assign(openRunBtn.style, {
+          background: '#1d4ed8',
+          color: '#f8fafc',
+          border: '1px solid rgba(148,163,184,0.35)',
+          borderRadius: '6px',
+          padding: '6px 12px',
+          cursor: 'pointer',
+          fontSize: '13px',
+        });
+
+        const navigateToSelectedRun = (): void => {
+          const [nextBriefId, nextRunId] = runPicker.value.split('::');
+          if (!nextBriefId || !nextRunId) return;
+          if (nextBriefId === briefId && nextRunId === runId) return;
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set('page', DEVTOOLS_PAGE_SPRITE_REVIEW);
+          nextUrl.searchParams.set('briefId', nextBriefId);
+          nextUrl.searchParams.set('runId', nextRunId);
+          window.location.assign(nextUrl.toString());
+        };
+        openRunBtn.addEventListener('click', navigateToSelectedRun);
+        runPicker.addEventListener('change', navigateToSelectedRun);
+        runPickerRow.append(runPicker, openRunBtn);
+        runPickerHost.replaceChildren(runPickerLabel, runPickerRow);
+
         // Get the list of available sheets for this run
         const sheetsResp = await fetchJson<{ files: string[] }>(sheetsUrl(briefId, runId));
         const sheets = sheetsResp.files || [];
 
         if (sheets.length === 0) {
-          viewerContainer.replaceChildren(
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(
             el('div', {
               style: {
                 padding: '16px',
@@ -2893,7 +2983,8 @@ function render(): void {
         // we would allow selection between multiple sheets.
         const selectedSheet = sheets[0];
         if (!selectedSheet) {
-          viewerContainer.replaceChildren(
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(
             el('div', {
               style: { color: '#fca5a5' },
               text: 'Unable to determine which sheet to display.',
@@ -2915,6 +3006,18 @@ function render(): void {
           const detailsDiv = el('div', {
             style: { marginBottom: '12px' },
           });
+          if (autoSelectedLatest) {
+            detailsDiv.append(
+              el('p', {
+                text: 'Auto-selected latest run because briefId/runId were missing from the URL.',
+                style: {
+                  margin: '0 0 8px 0',
+                  fontSize: '12px',
+                  color: '#fde68a',
+                },
+              }),
+            );
+          }
           const sheetNameEl = el('p', {
             text: `Sheet: ${selectedSheet}`,
             style: {
@@ -2944,11 +3047,13 @@ function render(): void {
           });
           viewerDiv.append(sheetImg);
 
-          viewerContainer.replaceChildren(detailsDiv, viewerDiv);
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(detailsDiv, viewerDiv);
         });
 
         sheetImg.addEventListener('error', () => {
-          viewerContainer.replaceChildren(
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(
             el('div', {
               style: { color: '#fca5a5' },
               text: `Failed to load sprite sheet: ${selectedSheet}`,
@@ -2956,7 +3061,8 @@ function render(): void {
           );
         });
       } catch (error) {
-        viewerContainer.replaceChildren(
+        loadingMsg.textContent = '';
+        renderHost.replaceChildren(
           el('div', {
             style: {
               padding: '16px',
