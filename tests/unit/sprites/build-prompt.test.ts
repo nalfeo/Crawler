@@ -13,6 +13,7 @@ import {
   buildPrompt,
   buildSheetPrompt,
   extractPreamble,
+  pickContrastingBackgroundColor,
 } from '../../../scripts/sprites/build-prompt.js';
 import type { Brief } from '../../../scripts/sprites/brief-schema.js';
 import { briefSchema } from '../../../scripts/sprites/brief-schema.js';
@@ -119,11 +120,12 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/hair and skin tones are clearly differentiated/i);
   });
 
-  it('includes per-variant constraints (no clipping, no text, neutral bg)', () => {
+  it('includes per-variant constraints (no clipping, no text, high-contrast bg)', () => {
     const out = buildPrompt(makeBrief(), FAKE_STYLE_GUIDE);
     expect(out).toMatch(/margin/i);
     expect(out).toMatch(/no text|no.*numbers/i);
-    expect(out).toMatch(/transparent|neutral/i);
+    expect(out).toMatch(/transparent|high-contrast/i);
+    expect(out).toMatch(/Do NOT use black backgrounds/i);
   });
 });
 
@@ -192,7 +194,8 @@ describe('buildSheetPrompt', () => {
     expect(out).toMatch(/square/i);
     expect(out).toMatch(/same dimensions/i);
     // Background rule.
-    expect(out).toMatch(/transparent.*background|neutral background/i);
+    expect(out).toMatch(/transparent.*background|high-contrast background/i);
+    expect(out).toMatch(/Do NOT use black backgrounds/i);
     // No decorative borders.
     expect(out).toMatch(/no.*decorative|no.*borders|no per-cell/i);
   });
@@ -250,6 +253,30 @@ describe('buildSheetPrompt — thematic variations', () => {
     const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
     expect(out).not.toMatch(/## Thematic variations/);
     expect(out).not.toMatch(/on-theme embellishments/);
+  });
+
+  describe('pickContrastingBackgroundColor', () => {
+    it('defaults to bright magenta when the brief palette has no inline colors', () => {
+      const out = pickContrastingBackgroundColor(makeBrief());
+      expect(out.name).toBe('bright magenta');
+      expect(out.hex).toBe('#ff00ff');
+    });
+
+    it('avoids magenta for red-heavy palettes by choosing a farther color', () => {
+      const brief = makeBrief({
+        palette: {
+          id: 'kenney-roguelike',
+          colors: [
+            [210, 25, 25],
+            [170, 40, 40],
+            [120, 20, 20],
+          ],
+        },
+      } as Partial<Brief>);
+      const out = pickContrastingBackgroundColor(brief);
+      expect(out.name).not.toBe('bright magenta');
+      expect(out.hex).not.toBe('#ff00ff');
+    });
   });
 
   it('emits the variations block with bullets in declared order', () => {
