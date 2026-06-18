@@ -11,6 +11,8 @@
 - Must add a regression test for every confirmed bug.
 - Must not rely on manual verification alone for repeatable issues.
 - Must not lower coverage expectations without an explicit policy change.
+- Must evaluate proven testing frameworks/libraries before creating custom test
+  harness primitives for fundamental verification needs.
 
 ## Tools & Workflows
 

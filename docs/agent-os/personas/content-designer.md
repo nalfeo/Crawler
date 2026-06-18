@@ -35,6 +35,9 @@
   **AI Content Engineer's** domain. Provide the static, authored fallback.
 - New floor content must respect lab-gating: a floor/quest scenario that needs a
   system change ships with the relevant lab.
+- When content needs new foundational runtime systems, must ask for and prefer
+  proven industry-standard framework/library options before green-lighting
+  custom system builds.
 
 ## Tools & Workflows
 
