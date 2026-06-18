@@ -11,14 +11,13 @@ Declared: 🍎🍎 | Actual: 🍎🍎 — two key blockers (credentials, vision 
 ## What Was Done
 
 1. **Credential setup** — identified and switched to
-   alfeo@hotmail.com (Visual Studio Enterprise sub 308f5463). The project already had scripts/setup-azure-env.ps1 which fetches from oai-crawler-nalfeo in
-   g-crawler-sprites. Running it writes .env.local.
+   [REDACTED EMAIL] (Visual Studio Enterprise sub [REDACTED SUBSCRIPTION]). The project already had scripts/setup-azure-env.ps1 which fetches from [REDACTED RESOURCE GROUP]. Running it writes .env.local.
 
-2. **Sidecar restart** — restarted sidecar with correct env vars:
-   - AZURE_OPENAI_ENDPOINT=https://aoai-crawler-nalfeo.openai.azure.com/
-   - AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o
-   - AZURE_OPENAI_IMAGE_DEPLOYMENT=gpt-image-1
-   - AZURE_OPENAI_VISION_DEPLOYMENT=gpt-4o (needed because synthesized briefs set judge.enabled: true)
+2. **Sidecar restart** — restarted sidecar with correct env vars (see `scripts/setup-azure-env.ps1` for credential values):
+   - `AZURE_OPENAI_ENDPOINT` — Azure OpenAI service endpoint
+   - `AZURE_OPENAI_CHAT_DEPLOYMENT` — chat model deployment (e.g. gpt-4o)
+   - `AZURE_OPENAI_IMAGE_DEPLOYMENT` — image generation deployment
+   - `AZURE_OPENAI_VISION_DEPLOYMENT` — vision model deployment (needed because synthesized briefs set judge.enabled: true)
 
 3. **E2E script** — scripts/e2e-junk-rat-sprite.mjs exercises:
    - Synthesize brief (gpt-4o, 1 candidate)
@@ -39,29 +38,24 @@ Declared: 🍎🍎 | Actual: 🍎🍎 — two key blockers (credentials, vision 
 
 ## How to Run
 
-`powershell
-
+```powershell
 # 1. Credentials (once per machine)
-
 pwsh scripts/setup-azure-env.ps1
 
-# 2. Load env vars
-
-foreach ( in Get-Content .env.local) {
-if ( -match '^([^#=]+)=(.\*)$') { [System.Environment]::SetEnvironmentVariable([1], [2]) }
+# 2. Load env vars into current shell
+foreach ($line in Get-Content .env.local) {
+  if ($line -match '^([^#=]+)=(.*)$') {
+    [System.Environment]::SetEnvironmentVariable($Matches[1], $Matches[2])
+  }
 }
-\ = "gpt-image-1"
-\ = "gpt-4o"
 
 # 3. Start sidecar + Vite lab
-
 npx tsx scripts/sprites/sidecar/cli.ts &
 npx vite --mode lab --port 3002 &
 
 # 4. Run E2E
-
 node scripts/e2e-junk-rat-sprite.mjs
-`
+```
 
 ## Branch
 
