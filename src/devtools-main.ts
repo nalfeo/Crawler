@@ -173,9 +173,12 @@ function sheetUrl(briefId: string, runId: string, filename: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/sheet/${encodeURIComponent(filename)}`;
 }
 
-function sliceMapUrl(briefId: string, runId: string, version: 'v1' | 'v2' = 'v1'): string {
-  const v = version === 'v2' ? '?v=2' : '';
-  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/slice-map${v}`;
+function sliceMapUrl(briefId: string, runId: string, sheetFile?: string): string {
+  const query =
+    typeof sheetFile === 'string' && sheetFile.length > 0
+      ? `?sheet=${encodeURIComponent(sheetFile)}`
+      : '';
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/slice-map${query}`;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -1611,7 +1614,7 @@ function render(): void {
     });
     Object.assign(debuggerVariantSelect.style, { width: '120px' });
     const sliceModeBadge = el('span', {
-      text: 'A — bands',
+      text: 'Canonical (v2)',
       style: {
         fontSize: '10px',
         padding: '2px 8px',
@@ -1650,8 +1653,7 @@ function render(): void {
 
     // ── Shared state for cross-section rendering ────────────────────
     let pendingSheetImgForSlice: HTMLImageElement | null = null;
-    let sliceMapV1: SliceMapResponse | null = null;
-    let sliceMapV2: SliceMapResponse | null = null;
+    let sliceMap: SliceMapResponse | null = null;
     let rerenderPipeline: (() => void) | null = null;
     let hitCells: Array<{
       cell: SliceMapResponse['cells'][number];
@@ -1660,8 +1662,8 @@ function render(): void {
       w: number;
       h: number;
     }> = [];
-    const getActiveSliceMap = (): SliceMapResponse | null => sliceMapV2 ?? sliceMapV1;
-    const getActiveSliceVersion = (): 'v1' | 'v2' => (sliceMapV2 ? 'v2' : 'v1');
+    const getActiveSliceMap = (): SliceMapResponse | null => sliceMap;
+    const getActiveSliceVersion = (): 'v2' => 'v2';
 
     const drawSliceMapOnCanvas = (
       sourceImg: HTMLImageElement,
@@ -1789,9 +1791,8 @@ function render(): void {
       }
     };
 
-    const onSliceMapKnown = (sliceMap: SliceMapResponse, v: 'v1' | 'v2'): void => {
-      if (v === 'v1') sliceMapV1 = sliceMap;
-      else sliceMapV2 = sliceMap;
+    const onSliceMapKnown = (nextSliceMap: SliceMapResponse): void => {
+      sliceMap = nextSliceMap;
       const active = getActiveSliceMap();
       if (!active) return;
       if (pendingSheetImgForSlice) {
@@ -1816,9 +1817,10 @@ function render(): void {
       sheetStatus.textContent = `Loading ${filename}…`;
       sheetStatus.style.display = '';
       sheetCanvas.style.display = 'none';
+      sliceMap = null;
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => {
+      img.onload = async () => {
         if (
           renderToken !== debuggerRenderToken ||
           !debugTarget ||
@@ -1826,6 +1828,18 @@ function render(): void {
         )
           return;
         lastSheetImg = img;
+        try {
+          const map = await fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, filename));
+          if (
+            renderToken !== debuggerRenderToken ||
+            !debugTarget ||
+            `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
+          )
+            return;
+          onSliceMapKnown(map);
+        } catch (error) {
+          slicingStatus.textContent = `Slice map unavailable: ${error instanceof Error ? error.message : String(error)}`;
+        }
         tryDrawSliceMap(img);
         rerenderPipeline?.();
       };
@@ -2063,7 +2077,7 @@ function render(): void {
       });
       const titleText = el('span', { text: 'Slicing — visualization only' });
       const vizNote = el('div', {
-        text: 'v1/v2 choice affects this visualization only. Cell selection controls which variant is traced below.',
+        text: 'Canonical slicer drives both this visualization and the traced pipeline.',
         style: {
           fontSize: '10px',
           color: '#64748b',
@@ -2121,19 +2135,16 @@ function render(): void {
       return card;
     };
 
-    // ── Async: fetch sheets + manifest + slice-map + run summary in parallel ──────
+    // ── Async: fetch sheets + manifest + run summary in parallel ──────
     void (async () => {
       try {
-        const [sheetResult, manifestResult, sliceMapResult, sliceMapV2Result, summaryResult] =
-          await Promise.allSettled([
-            fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
-            fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v1')),
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v2')),
-            fetchJson<Record<string, unknown>>(
-              `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`,
-            ),
-          ]);
+        const [sheetResult, manifestResult, summaryResult] = await Promise.allSettled([
+          fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
+          fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
+          fetchJson<Record<string, unknown>>(
+            `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`,
+          ),
+        ]);
 
         if (
           !debugTarget ||
@@ -2192,25 +2203,6 @@ function render(): void {
             btn.addEventListener('click', () => loadSheetFile(capturedFile, capturedRunId));
             sheetTabRow.append(btn);
           }
-        }
-
-        let sliceMapForSheet = sliceMapResult;
-        let sliceMapV2ForSheet = sliceMapV2Result;
-        if (sheetRunId !== runId) {
-          [sliceMapForSheet, sliceMapV2ForSheet] = await Promise.allSettled([
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, 'v1')),
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, 'v2')),
-          ]);
-        }
-
-        // Wire up slice-maps for the slicing visualization
-        if (sliceMapForSheet.status === 'fulfilled') {
-          onSliceMapKnown(sliceMapForSheet.value, 'v1');
-        } else {
-          slicingStatus.textContent = 'Slice map unavailable — run may pre-date this feature.';
-        }
-        if (sliceMapV2ForSheet.status === 'fulfilled') {
-          onSliceMapKnown(sliceMapV2ForSheet.value, 'v2');
         }
 
         // Load most recent (last) sheet

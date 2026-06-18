@@ -54,7 +54,7 @@ import {
   createTextProvider,
   createVisionProvider,
 } from '../provider/factory.js';
-import { computeSliceMap, computeSliceMapV2 } from '../slice-sheet.js';
+import { computeSliceMapV2 } from '../slice-sheet.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { loadBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
@@ -325,11 +325,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     },
   );
 
-  app.get<{ Params: { briefId: string; runId: string }; Querystring: { v?: string } }>(
+  app.get<{ Params: { briefId: string; runId: string }; Querystring: { sheet?: string } }>(
     '/api/runs/:briefId/:runId/slice-map',
     async (req, reply) => {
       const { briefId, runId } = req.params;
-      const version = req.query.v === '2' ? 'v2' : 'v1';
       if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
@@ -375,7 +374,20 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         reply.code(404);
         return { error: 'sheet-not-found' };
       }
-      const sheetKey = `${briefId}/${runId}/${sheetFiles[0]!}`;
+      const requestedSheet = req.query.sheet;
+      let sheetFile = sheetFiles[sheetFiles.length - 1]!;
+      if (typeof requestedSheet === 'string' && requestedSheet.length > 0) {
+        if (!/^sheet-\d+\.png$/i.test(requestedSheet)) {
+          reply.code(415);
+          return { error: 'unsupported-sheet-filename', sheet: requestedSheet };
+        }
+        if (!sheetFiles.includes(requestedSheet)) {
+          reply.code(404);
+          return { error: 'sheet-not-found', sheet: requestedSheet };
+        }
+        sheetFile = requestedSheet;
+      }
+      const sheetKey = `${briefId}/${runId}/${sheetFile}`;
       let sheetPng: Buffer;
       try {
         sheetPng = await store.get(sheetKey);
@@ -384,27 +396,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return { error: 'sheet-not-found' };
       }
       try {
-        if (version === 'v2') {
-          const sliceMap = computeSliceMapV2(sheetPng, {
-            emptyCells: brief.generation.sheet.emptyCells,
-          });
-          return { ...sliceMap, sheetFile: sheetFiles[0], algorithm: 'v2' };
-        }
-        const { rows, cols, emptyCells } = brief.generation.sheet;
-        const nudgeEnabled = brief.type === 'character' || brief.type === 'enemy';
-        const sliceMap = computeSliceMap(sheetPng, {
-          rows,
-          cols,
-          emptyCells,
-          autoNudge: nudgeEnabled
-            ? {
-                enabled: true,
-                maxVerticalShiftPx: 12,
-                backgroundDistanceThreshold: 24,
-              }
-            : undefined,
+        const sliceMap = computeSliceMapV2(sheetPng, {
+          emptyCells: brief.generation.sheet.emptyCells,
         });
-        return { ...sliceMap, sheetFile: sheetFiles[0], algorithm: 'v1' };
+        return { ...sliceMap, sheetFile, algorithm: 'v2' };
       } catch (err) {
         reply.code(500);
         return { error: 'slice-failed', message: String(err) };

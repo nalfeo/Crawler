@@ -264,7 +264,7 @@ function sheetConstraintsBlock(brief: Brief): string {
 export function pickContrastingBackgroundColor(brief: Brief): BackgroundCandidate {
   const paletteColors = brief.palette.colors ?? [];
   if (paletteColors.length === 0) {
-    return BACKGROUND_CANDIDATES[0];
+    return BACKGROUND_CANDIDATES[0]!;
   }
 
   let best = BACKGROUND_CANDIDATES[0]!;
