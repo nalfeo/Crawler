@@ -1,4 +1,3 @@
-import { query } from 'bitecs';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../game/systems/index.js';
 import {
   enemyAISystem,
@@ -21,7 +20,7 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floor1Scenario.js';
-import { Player, type GameWorld } from '../core/index.js';
+import type { GameWorld } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 
@@ -30,12 +29,8 @@ export function createFloor1MainSceneOptions() {
     configureWorld: initializeFloor1Scenario,
     selectLoadoutOption: selectFloor1StarterWeapon,
     onStairDescend: confirmFloor1StairDescend,
-    selectSpellFromBossBattle: (world: GameWorld, spellId: Floor1BossRewardSpellId) => {
-      const playerEntities = query(world.ecs, [Player]);
-      const playerEid = [...playerEntities][0];
-      if (playerEid !== undefined) {
-        selectSpellFromBossBattle(world, playerEid, spellId);
-      }
+    selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
+      selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
     },
     shopkeeper: {
       getStage: getShopkeeperStage,
