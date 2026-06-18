@@ -19,6 +19,7 @@ import {
 } from '../../src/game/floor1Scenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
+import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -357,8 +358,43 @@ describe('floor1Scenario', () => {
       floorObjectiveSystem(world);
       expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
       expect(objective.questCompleted).toBe(true);
-      // Boss-door unlock remains independent of the merchant errand.
+      // Boss-unlock QUEST acceptance + kill-completion stay independent of the
+      // merchant errand (the physical boss DOOR gate is covered by the test below).
       expect(getShopkeeperStage(world)).toBe('not-met');
+    });
+
+    it('keeps the final boss door locked until the kill, merchant, and spell quests are all complete', () => {
+      const world = createTestWorld({ seed: 123 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const bossDoorEids = world.floor1?.bossDoorEids ?? [];
+      expect(bossDoorEids.length).toBeGreaterThan(0);
+
+      const allLocked = (): boolean =>
+        bossDoorEids.every((eid) => (world.stores.doorState.isLocked[eid] ?? 0) === 1);
+      const allUnlocked = (): boolean =>
+        bossDoorEids.every((eid) => (world.stores.doorState.isLocked[eid] ?? 1) === 0);
+
+      // Doors start locked.
+      doorSystem(world);
+      expect(allLocked()).toBe(true);
+
+      // Only the kill quest done -> still locked.
+      world.goalFlags.set('floor1-goon-quest-complete', true);
+      doorSystem(world);
+      expect(allLocked()).toBe(true);
+
+      // Kill + merchant done -> still locked (spell quest outstanding).
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      doorSystem(world);
+      expect(allLocked()).toBe(true);
+
+      // All three tutorial quests complete -> door finally unlocks.
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      doorSystem(world);
+      expect(allUnlocked()).toBe(true);
     });
   });
 });

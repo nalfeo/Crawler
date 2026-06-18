@@ -639,7 +639,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   // Do not auto-accept NPC-given quests at init; shopkeeper errand starts on first meeting the merchant.
 
-  // Keep boss-room doors locked until the Tutorial Goon quest is completed.
+  // Keep the final boss-room doors locked until ALL Floor 1 tutorial quests are
+  // complete: the Tutorial Goon's "Pest Control" cull (floor1-goon-quest-complete),
+  // the Merchant's errand (floor1-shop-quest-complete), and the Spell Broker's
+  // spell-unlock quest (floor1-boss-battle-complete).
   setGoalFlag(world, 'floor1-goon-quest-complete', false);
   const bossStairRoom = floorMap.bossStairRoom;
   if (bossStairRoom) {
@@ -653,7 +656,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       setDoorLockConfig(world, doorEid, {
         unlock: {
           operator: 'all',
-          conditions: [{ type: 'goal', goalId: 'floor1-goon-quest-complete' }],
+          conditions: [
+            { type: 'goal', goalId: 'floor1-goon-quest-complete' },
+            { type: 'goal', goalId: 'floor1-shop-quest-complete' },
+            { type: 'goal', goalId: 'floor1-boss-battle-complete' },
+          ],
         },
       });
       world.floor1.bossDoorEids.push(doorEid);

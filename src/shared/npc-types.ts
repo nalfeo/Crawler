@@ -54,7 +54,9 @@ const TUTORIAL_GOON_DEF: NpcDef = {
     {
       text: 'No XP drops until you check in with me. Done now — watch the XP bar and hit level 2 first.',
     },
-    { text: 'After level 2, I unlock your boss-door quest: clear 6 rats + 4 slimes to open it.' },
+    {
+      text: 'After level 2, I unlock your boss-door quest: clear 6 rats + 4 slimes. But the boss door only opens once you have ALSO squared away the merchant and the spell broker.',
+    },
   ],
   quests: [
     {
