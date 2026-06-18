@@ -38,6 +38,9 @@ optimizer filling a spreadsheet.
 - Must create the lab before or alongside the system it supports.
 - Must work primarily in `src/game/` and `src/labs/`.
 - Must not hard-code values that should be designer-tunable.
+- For fundamental mechanics infrastructure, must explore established
+  libraries/frameworks before proposing bespoke implementations, and document
+  why custom is needed if selected.
 
 ## Tools & Workflows
 

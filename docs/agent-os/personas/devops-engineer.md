@@ -11,6 +11,8 @@
 - All CI gates must be deterministic and reproducible.
 - Must not add LLM-based judging or non-deterministic checks to CI.
 - Must not accept opaque failures without actionable messaging.
+- Must favor industry-standard tooling/frameworks over bespoke pipeline
+  machinery for foundational CI/build concerns unless a clear fit gap is documented.
 
 ## Tools & Workflows
 

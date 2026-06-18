@@ -364,5 +364,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Added JSONL launch/discovery logging and surfaced diagnostic artifact paths in worktree-server-status; updated AGENTS + DevOps persona to read those logs first during launch-failure diagnosis."
+  },
+  {
+    "date": "2026-06-18",
+    "session": "agent-persona-build-vs-buy",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Updated persona routing/index and specialist constraints to require build-vs-buy evaluation of industry-standard libraries/frameworks before custom implementations of fundamental game systems."
   }
 ]

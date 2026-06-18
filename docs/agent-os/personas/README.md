@@ -8,6 +8,12 @@ you. Read it _before_ you start, then read the persona doc you select.
 > **How to use this:** Match your task to a row in the routing table below.
 > When a task touches multiple layers or is ambiguous, default to **Producer**
 > (the orchestrator) — it decomposes the work and hands slices to specialists.
+>
+> **Build-vs-buy default:** For fundamental game systems, first evaluate
+> off-the-shelf, industry-standard libraries/frameworks before building custom
+> implementations. If custom code is chosen, record the fit-gap rationale (for
+> example determinism, performance, licensing, integration boundaries, or
+> maintenance risk).
 
 ## Routing Matrix
 
