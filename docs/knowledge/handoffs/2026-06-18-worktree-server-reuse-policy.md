@@ -16,15 +16,15 @@ Updated agent operating guidance to prevent duplicate dev/lab/devtools server la
 ## Verification run
 
 - `npm run verify:fast` (pass)
-- `npm run verify` (fail: dead-code gate reported existing unused files)
+- `npm run verify` (fail: dead-code gate reported 48 unused files)
 
 ## Unresolved issues
 
-- Full verify currently fails at the dead-code step due to existing unused files outside this change.
+- Full verify currently fails at the dead-code step and must be fixed before this work can be considered fully green.
 
 ## Recommended next steps
 
-1. Triage and clean up currently reported unused files so `npm run verify` passes in baseline.
+1. Fix the dead-code findings (or dead-code gate configuration) so `npm run verify` passes.
 2. Keep future server-launch automation aligned with the new single-server-per-session lifecycle rules.
 
 ## Apples
