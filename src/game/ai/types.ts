@@ -138,6 +138,16 @@ export interface QuestMetrics {
   mainQuestAcceptedMs: number | null;
   /** Time when main quest was completed (ms) */
   mainQuestCompletedMs: number | null;
+  /**
+   * Time (ms) when the first quest-log quest completed. Floor-agnostic: read
+   * from `world.questLog` (the canonical quest system) rather than any
+   * floor-specific objective struct. This is the headline "first quest" metric.
+   */
+  firstQuestCompletedMs: number | null;
+  /** questId → accept time (ms) for every quest observed in `world.questLog`. */
+  questLogAccepts: Record<string, number>;
+  /** questId → completion time (ms) for every quest observed in `world.questLog`. */
+  questLogCompletions: Record<string, number>;
 }
 
 /**

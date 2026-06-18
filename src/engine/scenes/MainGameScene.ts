@@ -77,6 +77,10 @@ const FLOOR_1_COMMENTARY = {
 } as const;
 const logger = createLogger('engine:main-game-scene');
 export interface MainGameSceneOptions {
+  inputCaptureOverride?: {
+    poll: (state: InputState, world: GameWorld) => void;
+    destroy?: () => void;
+  };
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
@@ -137,6 +141,12 @@ export class MainGameScene extends Phaser.Scene {
   private accumulator = 0;
 
   private accumulatorClampCount = 0;
+
+  private simulationPaused = false;
+
+  private simulationSpeed = 1;
+
+  private pendingSimulationSteps = 0;
 
   private warnedMissingDependencies = false;
 
@@ -270,15 +280,22 @@ export class MainGameScene extends Phaser.Scene {
   create(): void {
     this.world = createGameWorld();
     this.inputState = createInputState();
-    this.inputCapture = createInputCapture(this, {
-      getFollowOrigin: () =>
-        this.playerEid < 0
-          ? undefined
-          : {
-              x: this.world.stores.position.x[this.playerEid] ?? 0,
-              y: this.world.stores.position.y[this.playerEid] ?? 0,
-            },
-    });
+    if (this.options.inputCaptureOverride) {
+      this.inputCapture = {
+        poll: (state: InputState) => this.options.inputCaptureOverride?.poll(state, this.world),
+        destroy: () => this.options.inputCaptureOverride?.destroy?.(),
+      };
+    } else {
+      this.inputCapture = createInputCapture(this, {
+        getFollowOrigin: () =>
+          this.playerEid < 0
+            ? undefined
+            : {
+                x: this.world.stores.position.x[this.playerEid] ?? 0,
+                y: this.world.stores.position.y[this.playerEid] ?? 0,
+              },
+      });
+    }
     this.accumulator = 0;
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
@@ -537,6 +554,17 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
+      this.updateDoorOverlay();
+      this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      this.updateInteractions();
+      return;
+    }
+
     this.inputCapture.poll(this.inputState);
 
     if (this.world.state === 'loadout') {
@@ -577,16 +605,29 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     // Fixed-timestep accumulator: run simulation at GAME.DELTA_MS intervals
-    this.accumulator += delta;
+    if (this.simulationPaused) {
+      this.accumulator = GAME.DELTA_MS;
+    } else {
+      const scaledDelta = delta * this.simulationSpeed;
+      this.accumulator += scaledDelta;
+    }
     let steps = 0;
+    const maxStepsThisFrame = this.simulationPaused
+      ? 1
+      : Math.max(MAX_STEPS_PER_FRAME, Math.ceil(MAX_STEPS_PER_FRAME * this.simulationSpeed));
 
-    while (this.accumulator >= GAME.DELTA_MS && steps < MAX_STEPS_PER_FRAME) {
+    while (this.accumulator >= GAME.DELTA_MS && steps < maxStepsThisFrame) {
       this.world.frameCount += 1;
       this.world.elapsedMs += GAME.DELTA_MS;
 
       playerInputSystem(this.world, this.inputState);
       for (const sys of this.options.preSystems ?? []) {
         sys(this.world);
+      }
+
+      if (this.simulationPaused && this.pendingSimulationSteps > 0) {
+        this.pendingSimulationSteps = Math.max(0, this.pendingSimulationSteps - steps);
+        this.accumulator = 0;
       }
       movementSystem(this.world);
       returningProjectileSystem(this.world);
@@ -622,7 +663,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     // Cap accumulator to prevent spiral of death after long pauses
-    if (this.accumulator > GAME.DELTA_MS * MAX_STEPS_PER_FRAME) {
+    if (this.accumulator > GAME.DELTA_MS * maxStepsThisFrame) {
       this.accumulator = 0;
       this.accumulatorClampCount += 1;
       logger.warn('Fixed-step accumulator clamped to avoid spiral of death', {
@@ -762,6 +803,27 @@ export class MainGameScene extends Phaser.Scene {
     if (this.world) {
       this.world.debugFlags[key] = value;
     }
+  }
+
+  setSimulationPaused(paused: boolean): void {
+    this.simulationPaused = paused;
+  }
+
+  isSimulationPaused(): boolean {
+    return this.simulationPaused;
+  }
+
+  setSimulationSpeed(speed: number): void {
+    this.simulationSpeed = Math.max(1, speed);
+  }
+
+  getSimulationSpeed(): number {
+    return this.simulationSpeed;
+  }
+
+  advanceSimulationFrames(frames: number = 1): void {
+    const safeFrames = Math.max(1, Math.floor(frames));
+    this.pendingSimulationSteps += safeFrames;
   }
 
   private initializeUi(): void {

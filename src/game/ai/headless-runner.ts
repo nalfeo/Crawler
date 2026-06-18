@@ -19,10 +19,16 @@ import {
 import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
-import type { AIInputProvider, RunStats, LevelUpEvent } from './types.js';
+import { AIState, type AIInputProvider, type RunStats, type LevelUpEvent } from './types.js';
+import { AI_STATE_NAME, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import {
+  confirmFloor1StairDescend,
+  equipPurchasedGear,
   meetTutorialGoon,
+  purchaseShopkeeperEquipment,
+  returnShopkeeperPrize,
+  selectSpellFromBossBattle,
   meetShopkeeper,
   meetSpellQuestGiver,
   initializeFloor1Scenario,
@@ -37,7 +43,7 @@ const logger = createLogger('game:headless-runner');
  */
 function autoNpcInteractionSystem(
   world: GameWorld,
-  _playerEid: number,
+  aiProvider: AIInputProvider,
   lastInteractionFrame: number,
   currentFrame: number,
   cooldown: number,
@@ -46,24 +52,75 @@ function autoNpcInteractionSystem(
     return lastInteractionFrame;
   }
 
-  // Check if any NPC has nearbyPlayer flag set
-  for (const [_eid, instance] of world.npcs.entries()) {
-    if (instance.nearbyPlayer) {
-      // Simulate pressing E to interact
-      if (instance.defId === 'tutorial-goon') {
-        meetTutorialGoon(world);
-        return currentFrame;
-      } else if (instance.defId === 'shopkeeper') {
-        meetShopkeeper(world);
-        return currentFrame;
-      } else if (instance.defId === 'spell-quest-giver') {
-        meetSpellQuestGiver(world);
-        return currentFrame;
-      }
-    }
+  const decision = aiProvider.getDecision();
+  if (decision.state !== AIState.INTERACT) {
+    return lastInteractionFrame;
+  }
+
+  const targetEid = decision.targetEid;
+  if (targetEid === null || targetEid === undefined || targetEid < 0) {
+    return lastInteractionFrame;
+  }
+
+  const targetNpc = world.npcs.get(targetEid);
+  if (!targetNpc?.nearbyPlayer) {
+    return lastInteractionFrame;
+  }
+
+  // Simulate pressing E to interact with the AI-targeted NPC only.
+  if (targetNpc.defId === 'tutorial-goon') {
+    meetTutorialGoon(world);
+    return currentFrame;
+  }
+  if (targetNpc.defId === 'shopkeeper') {
+    meetShopkeeper(world);
+    return currentFrame;
+  }
+  if (targetNpc.defId === 'spell-quest-giver') {
+    meetSpellQuestGiver(world);
+    return currentFrame;
   }
 
   return lastInteractionFrame;
+}
+
+function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void {
+  if (!world.floor1) {
+    return;
+  }
+
+  if (world.goalFlags.get('floor1-boss-battle-complete') === true && !world.featureUnlocks.spells) {
+    selectSpellFromBossBattle(world, playerEid, 'fireball');
+  }
+
+  for (const [, instance] of world.npcs.entries()) {
+    if (!instance.nearbyPlayer || instance.defId !== 'shopkeeper') {
+      continue;
+    }
+
+    if (returnShopkeeperPrize(world, playerEid)) {
+      break;
+    }
+
+    if (purchaseShopkeeperEquipment(world, playerEid)) {
+      break;
+    }
+  }
+
+  equipPurchasedGear(world, playerEid);
+
+  const objective = world.floor1.objective;
+  if (!objective.staircaseUnlocked || objective.staircaseDiscovered) {
+    return;
+  }
+
+  const playerX = world.stores.position.x[playerEid] ?? 0;
+  const playerY = world.stores.position.y[playerEid] ?? 0;
+  const dx = playerX - objective.staircasePos.x;
+  const dy = playerY - objective.staircasePos.y;
+  if (Math.hypot(dx, dy) <= objective.markerRadiusPx) {
+    confirmFloor1StairDescend(world, playerEid);
+  }
 }
 
 export interface HeadlessRunnerConfig {
@@ -79,14 +136,19 @@ export interface HeadlessRunnerConfig {
   simulationOptions?: SimulationOptions;
   /** Enable verbose logging */
   debug?: boolean;
+  /** Optional sink for structured telemetry events (event log). */
+  recordEvent?: (event: SimEvent) => void;
+  /** Frames between periodic sample events when recording (default 15). */
+  eventSampleInterval?: number;
 }
 
-const DEFAULT_CONFIG: Required<Omit<HeadlessRunnerConfig, 'simulationOptions'>> = {
+const DEFAULT_CONFIG: Required<Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent'>> = {
   seed: 12345,
   maxFrames: 100_000, // ~27 min at 60 FPS
   maxWallTimeMs: 5 * 60 * 1000, // 5 minutes wall time
   progressInterval: 0,
   debug: false,
+  eventSampleInterval: 15,
 };
 
 /**
@@ -140,13 +202,20 @@ export async function runHeadless(
   let engagementCount = 0;
   let inCombat = false;
   let combatStartFrame = 0;
-  const damageDealt = 0;
+  let damageDealt = 0;
   let damageTaken = 0;
+  // Real damage measurement: track each enemy's HP frame-to-frame.
+  const enemyHpById = new Map<number, number>();
   let questsAccepted = 0;
   let questsCompleted = 0;
   const questsFailed: string[] = [];
   let mainQuestAcceptedMs: number | null = null;
   let mainQuestCompletedMs: number | null = null;
+  // General quest-log telemetry (floor-agnostic): tracks `world.questLog`, the
+  // canonical quest system, independent of any floor-specific objective struct.
+  // This is the source of truth for which quests were accepted/completed.
+  const questLogAcceptedMs = new Map<string, number>();
+  const questLogCompletedMs = new Map<string, number>();
 
   // NPC interaction tracking
   let lastNpcInteractionFrame = -1000;
@@ -155,6 +224,66 @@ export async function runHeadless(
   // Track initial state
   const playerMaxHealth = world.stores.health.max[playerEid] ?? 100;
   let lastHealthPercent = 1.0;
+
+  // Event-log / telemetry state
+  const recordEvent = config.recordEvent;
+  const sampleInterval = Math.max(1, mergedConfig.eventSampleInterval);
+  const navProvider = aiProvider as AIInputProvider & {
+    getNavigationDebug?: () => { stuckFrames: number; pathWaypoints: readonly unknown[] };
+  };
+  let lastFrameX = world.stores.position.x[playerEid] ?? 0;
+  let lastFrameY = world.stores.position.y[playerEid] ?? 0;
+  let pathTravelAccum = 0;
+  let lastSampleX = lastFrameX;
+  let lastSampleY = lastFrameY;
+  let lastLoggedState: number | null = null;
+
+  const buildEvent = (
+    type: SimEvent['type'],
+    enemyEids: ArrayLike<number> & Iterable<number>,
+    note?: string,
+  ): SimEvent => {
+    const decision = aiProvider.getDecision();
+    const px = world.stores.position.x[playerEid] ?? 0;
+    const py = world.stores.position.y[playerEid] ?? 0;
+    let nearestEnemyDist: number | null = null;
+    for (const enemy of enemyEids) {
+      const ex = world.stores.position.x[enemy] ?? 0;
+      const ey = world.stores.position.y[enemy] ?? 0;
+      const dist = Math.hypot(ex - px, ey - py);
+      if (nearestEnemyDist === null || dist < nearestEnemyDist) {
+        nearestEnemyDist = dist;
+      }
+    }
+    let targetDist: number | null = null;
+    if (decision.targetX !== null && decision.targetY !== null) {
+      targetDist = Math.hypot(decision.targetX - px, decision.targetY - py);
+    }
+    const nav = navProvider.getNavigationDebug?.();
+    const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
+    return {
+      type,
+      frame: frameCount,
+      gameMs: world.elapsedMs,
+      px: Math.round(px),
+      py: Math.round(py),
+      state: AI_STATE_NAME[decision.state] ?? String(decision.state),
+      reason: decision.reason,
+      targetEid: decision.targetEid,
+      targetDist: targetDist === null ? null : Math.round(targetDist),
+      enemyCount: enemyEids.length,
+      nearestEnemyDist: nearestEnemyDist === null ? null : Math.round(nearestEnemyDist),
+      level: world.playerLevel?.level ?? 0,
+      xp: world.playerLevel?.xp ?? 0,
+      kills: totalKills,
+      health: Math.round(world.stores.health.current[playerEid] ?? 0),
+      stuckFrames: nav?.stuckFrames ?? 0,
+      pathLen: nav?.pathWaypoints.length ?? 0,
+      netDisp: Math.round(netDisp),
+      pathTravel: Math.round(pathTravelAccum),
+      ...(note ? { note } : {}),
+    };
+  };
 
   try {
     // Main simulation loop
@@ -176,7 +305,7 @@ export async function runHeadless(
       // Auto-interact with nearby NPCs (simulates pressing E)
       lastNpcInteractionFrame = autoNpcInteractionSystem(
         world,
-        playerEid,
+        aiProvider,
         lastNpcInteractionFrame,
         frameCount,
         NPC_INTERACTION_COOLDOWN,
@@ -187,6 +316,7 @@ export async function runHeadless(
         ...config.simulationOptions,
         enableFloor1: true,
       });
+      autoFloor1ProgressionSystem(world, playerEid);
 
       frameCount++;
 
@@ -203,6 +333,36 @@ export async function runHeadless(
         break;
       }
 
+      // Per-frame enemy snapshot (reused for combat, damage, and telemetry).
+      const enemyEids = query(world.ecs, [Enemy]);
+      const currentEnemyCount = enemyEids.length;
+
+      // Real damage-dealt measurement via enemy HP deltas.
+      const seenEnemies = new Set<number>();
+      for (const enemy of enemyEids) {
+        seenEnemies.add(enemy);
+        const hp = world.stores.health.current[enemy] ?? 0;
+        const prevHp = enemyHpById.get(enemy);
+        if (prevHp !== undefined && hp < prevHp) {
+          damageDealt += prevHp - hp;
+        }
+        enemyHpById.set(enemy, hp);
+      }
+      for (const [enemy, prevHp] of enemyHpById) {
+        if (!seenEnemies.has(enemy)) {
+          // Enemy despawned (killed): count remaining HP as the lethal blow.
+          if (prevHp > 0) damageDealt += prevHp;
+          enemyHpById.delete(enemy);
+        }
+      }
+
+      // Movement accumulation for wiggle/stuck detection.
+      const frameX = world.stores.position.x[playerEid] ?? lastFrameX;
+      const frameY = world.stores.position.y[playerEid] ?? lastFrameY;
+      pathTravelAccum += Math.hypot(frameX - lastFrameX, frameY - lastFrameY);
+      lastFrameX = frameX;
+      lastFrameY = frameY;
+
       // Track metrics after frame
       // 1. Level-ups
       const currentLevel = world.playerLevel?.level ?? 0;
@@ -213,6 +373,7 @@ export async function runHeadless(
           frame: frameCount,
         });
         previousLevel = currentLevel;
+        recordEvent?.(buildEvent('levelup', enemyEids, `reached level ${currentLevel}`));
       }
 
       // 2. Health tracking
@@ -234,7 +395,6 @@ export async function runHeadless(
       }
 
       // 3. Combat tracking
-      const currentEnemyCount = query(world.ecs, [Enemy]).length;
       const enemiesNearby = currentEnemyCount > 0;
 
       if (enemiesNearby && !inCombat) {
@@ -253,8 +413,13 @@ export async function runHeadless(
       if (currentEnemyCount < previousEnemyCount) {
         const enemiesKilled = previousEnemyCount - currentEnemyCount;
         totalKills += enemiesKilled;
-        // For now, we don't have enemy type in this loop - would need event system
-        // This is simplified tracking
+        if (recordEvent) {
+          for (let k = 0; k < enemiesKilled; k += 1) {
+            recordEvent(
+              buildEvent('kill', enemyEids, `kill ${totalKills - enemiesKilled + k + 1}`),
+            );
+          }
+        }
       }
 
       // 4. Quest tracking (basic - would need event system for full tracking)
@@ -263,10 +428,49 @@ export async function runHeadless(
         if (objective.questAccepted && mainQuestAcceptedMs === null) {
           mainQuestAcceptedMs = world.elapsedMs;
           questsAccepted++;
+          recordEvent?.(buildEvent('quest', enemyEids, 'main quest accepted'));
         }
         if (objective.questCompleted && mainQuestCompletedMs === null) {
           mainQuestCompletedMs = world.elapsedMs;
           questsCompleted++;
+          recordEvent?.(buildEvent('quest', enemyEids, 'main quest completed'));
+        }
+      }
+
+      // General quest-log tracking — reads `world.questLog` (the canonical quest
+      // system) rather than floor1-specific objective flags, so every floor's
+      // quests are measured the same way. Emits an event the first time each
+      // quest is seen and the first time it flips to `complete`.
+      for (const [questId, questState] of world.questLog) {
+        if (!questLogAcceptedMs.has(questId)) {
+          questLogAcceptedMs.set(questId, world.elapsedMs);
+          recordEvent?.(buildEvent('quest', enemyEids, `questlog accepted: ${questId}`));
+        }
+        if (questState.status === 'complete' && !questLogCompletedMs.has(questId)) {
+          questLogCompletedMs.set(questId, world.elapsedMs);
+          recordEvent?.(buildEvent('quest', enemyEids, `questlog completed: ${questId}`));
+        }
+      }
+
+      // Telemetry: state-change annotations + periodic samples.
+      if (recordEvent) {
+        const decisionState = aiProvider.getDecision().state;
+        if (decisionState !== lastLoggedState) {
+          recordEvent(
+            buildEvent(
+              'state',
+              enemyEids,
+              `state -> ${AI_STATE_NAME[decisionState] ?? decisionState}`,
+            ),
+          );
+          lastLoggedState = decisionState;
+        }
+        if (frameCount % sampleInterval === 0) {
+          recordEvent(buildEvent('sample', enemyEids));
+          // Reset per-sample movement window.
+          pathTravelAccum = 0;
+          lastSampleX = world.stores.position.x[playerEid] ?? lastSampleX;
+          lastSampleY = world.stores.position.y[playerEid] ?? lastSampleY;
         }
       }
 
@@ -341,6 +545,10 @@ export async function runHeadless(
         questsFailed,
         mainQuestAcceptedMs,
         mainQuestCompletedMs,
+        firstQuestCompletedMs:
+          questLogCompletedMs.size > 0 ? Math.min(...questLogCompletedMs.values()) : null,
+        questLogAccepts: Object.fromEntries(questLogAcceptedMs),
+        questLogCompletions: Object.fromEntries(questLogCompletedMs),
       },
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
@@ -352,6 +560,12 @@ export async function runHeadless(
   const finalScore = world.stores.broadcastScore?.current[playerEid] ?? 0;
   const playerHealth = world.stores.health.current[playerEid] ?? 0;
   const finalHealthPercent = playerHealth / playerMaxHealth;
+
+  // Attribute kills by archetype from the Floor 1 objective tally (accurate).
+  if (world.floor1) {
+    killsByType.rat = world.floor1.objective.ratsKilled;
+    killsByType.slime = world.floor1.objective.slimesKilled;
+  }
 
   const stats: RunStats = {
     totalFrames: frameCount,
@@ -381,6 +595,10 @@ export async function runHeadless(
       questsFailed,
       mainQuestAcceptedMs,
       mainQuestCompletedMs,
+      firstQuestCompletedMs:
+        questLogCompletedMs.size > 0 ? Math.min(...questLogCompletedMs.values()) : null,
+      questLogAccepts: Object.fromEntries(questLogAcceptedMs),
+      questLogCompletions: Object.fromEntries(questLogCompletedMs),
     },
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,

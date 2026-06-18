@@ -6,9 +6,9 @@
  */
 
 import Phaser from 'phaser';
+import { createFloor1MainSceneOptions } from '../../bootstrap/floor1-main-scene-options.js';
 import { BootScene, MainGameScene } from '../../engine/index.js';
 import { BehaviorTreeAI } from '../../game/ai/bt-ai-provider.js';
-import { createInputState } from '../../shared/input.js';
 import type { GameWorld } from '../../core/world.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { createLogger } from '../../shared/logger.js';
@@ -142,12 +142,15 @@ export default {
       overflow-y: auto;
     `;
 
-    // Create scene with AI (using Phaser approach from ai-runner-lab)
-    const inputState = createInputState();
-
     // Custom input provider that uses AI instead of human input
     const aiInputProvider = {
-      poll(state: typeof inputState): void {
+      poll(state: {
+        moveX: number;
+        moveY: number;
+        action: boolean;
+        pointerX: number;
+        pointerY: number;
+      }): void {
         // AI needs access to world state - we'll get it from the scene
         const scene = game.scene.getScene('MainGameScene') as MainGameScene | null;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,22 +158,23 @@ export default {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const world = (scene as any).world as GameWorld;
           ai.poll(state, world);
-
-          // Copy AI decisions to our input state
-          state.moveX = inputState.moveX;
-          state.moveY = inputState.moveY;
-          state.action = inputState.action;
-          state.pointerX = inputState.pointerX;
-          state.pointerY = inputState.pointerY;
         } else {
           state.moveX = 0;
           state.moveY = 0;
           state.action = false;
+          state.pointerX = 0;
+          state.pointerY = 0;
         }
       },
       destroy(): void {
         // Nothing to clean up
       },
+    };
+
+    // Create scene with AI (using Phaser approach from ai-runner-lab)
+    const sceneOptions = {
+      ...createFloor1MainSceneOptions(),
+      inputCaptureOverride: aiInputProvider,
     };
 
     // Create Phaser game with custom input provider
@@ -181,7 +185,7 @@ export default {
       height: 720,
       backgroundColor: '#1a1a2e',
       pixelArt: true,
-      scene: [BootScene, MainGameScene],
+      scene: [BootScene, new MainGameScene(sceneOptions)],
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -196,16 +200,6 @@ export default {
     };
 
     const game = new Phaser.Game(config);
-
-    // Override input capture in MainGameScene
-    game.events.once('ready', () => {
-      const scene = game.scene.getScene('MainGameScene') as MainGameScene | null;
-      if (scene) {
-        // Replace the input capture with our AI provider
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (scene as any).inputCapture = aiInputProvider;
-      }
-    });
 
     // Initial render
     const tree = ai.getTree().serialize();
