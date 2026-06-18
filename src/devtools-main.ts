@@ -2996,7 +2996,7 @@ function render(): void {
         loadingMsg.textContent = `Fetching ${selectedSheet}...`;
 
         const sheetImg = document.createElement('img');
-        sheetImg.src = spriteUrl(briefId, runId, selectedSheet);
+        sheetImg.src = sheetUrl(briefId, runId, selectedSheet);
         sheetImg.style.maxWidth = '100%';
         sheetImg.style.border = '1px solid rgba(148,163,184,0.2)';
         sheetImg.style.borderRadius = '8px';
