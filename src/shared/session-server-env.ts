@@ -4,6 +4,8 @@ type SessionEnvMeta = ImportMeta & {
   };
 };
 
+declare const __CRAWLER_SPRITES_SIDECAR_BASE_URL__: string | undefined;
+
 const LEGACY_SPRITE_SIDECAR_FALLBACK = 'http://127.0.0.1:3010';
 let didWarnMissingSidecarBaseUrl = false;
 
@@ -18,6 +20,13 @@ function warnMissingSidecarBaseUrl(): void {
 }
 
 export function getSpriteSidecarBaseUrl(): string {
+  if (typeof __CRAWLER_SPRITES_SIDECAR_BASE_URL__ === 'string') {
+    const injectedValue = __CRAWLER_SPRITES_SIDECAR_BASE_URL__.trim();
+    if (injectedValue.length > 0) {
+      return injectedValue;
+    }
+  }
+
   const processValue =
     typeof process !== 'undefined' ? process.env?.VITE_SPRITES_SIDECAR_BASE_URL : undefined;
   if (processValue) {
