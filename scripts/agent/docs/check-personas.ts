@@ -18,6 +18,7 @@
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
+import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 
 const PERSONA_DIR = 'docs/agent-os/personas';
@@ -46,7 +47,7 @@ function headingSet(text: string): Set<string> {
   return headings;
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const report = new Report('docs-check-personas');
 
   let readmeText: string;
@@ -110,4 +111,7 @@ function main(): void {
   report.finish();
 }
 
-main();
+main().catch((err) => {
+  process.stderr.write(`check-personas crashed: ${err instanceof Error ? err.stack : err}\n`);
+  process.exit(2);
+});
