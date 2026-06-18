@@ -93,6 +93,8 @@ export interface AssetPlanAssetReport {
   readonly type: AssetPlanEntry['type'];
   readonly label: string;
   readonly briefId: string;
+  readonly sourceRun: string | null;
+  readonly variantIndex: number | null;
   readonly placeholderInUse: boolean;
   readonly integration: IntegrationTarget | null;
   readonly briefAuthored: boolean;
@@ -228,6 +230,8 @@ export function buildAssetPlanReport(
       type: asset.type,
       label: asset.label,
       briefId,
+      sourceRun: approvedRecord?.manifest.sourceRun ?? null,
+      variantIndex: approvedRecord?.manifest.variantIndex ?? null,
       placeholderInUse: asset.placeholderInUse,
       integration: asset.integration ?? null,
       briefAuthored,

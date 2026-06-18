@@ -50,7 +50,7 @@ function headingSet(text: string): Set<string> {
 async function main(): Promise<void> {
   const report = new Report('docs-check-personas');
 
-  let readmeText: string;
+  let readmeText = '';
   try {
     readmeText = readFileSync(fromRepo(README), 'utf8');
   } catch {

@@ -65,6 +65,8 @@ export type FloorArtStatus = ArtPlanStatus;
 export interface ApprovedSpriteEntry {
   readonly briefId: string;
   readonly assetPath: string;
+  readonly sourceRun: string;
+  readonly variantIndex: number;
   readonly exists: boolean;
 }
 
@@ -73,6 +75,8 @@ export interface FloorArtAssetReport {
   readonly type: FloorArtAsset['type'];
   readonly label: string;
   readonly briefId: string;
+  readonly sourceRun: string | null;
+  readonly variantIndex: number | null;
   readonly placeholderInUse: boolean;
   readonly integration: IntegrationTarget | null;
   readonly briefAuthored: boolean;
@@ -162,6 +166,8 @@ export function parseApprovedSprites(
     out.set(briefId, {
       briefId,
       assetPath: entry.assetPath,
+      sourceRun: entry.sourceRun,
+      variantIndex: entry.variantIndex,
       exists: options.existingAssets.has(entry.assetPath),
     });
   }
@@ -196,6 +202,8 @@ export function buildFloorArtPlanReport(
       type: asset.type,
       label: asset.label,
       briefId,
+      sourceRun: approvedEntry?.sourceRun ?? null,
+      variantIndex: approvedEntry?.variantIndex ?? null,
       placeholderInUse: asset.placeholderInUse,
       integration: asset.integration ?? null,
       briefAuthored,
@@ -239,6 +247,8 @@ const manifestEntrySchema = z
   .object({
     briefId: z.string().min(1),
     assetPath: z.string().min(1),
+    sourceRun: z.string().min(1),
+    variantIndex: z.number().int().min(0),
   })
   .passthrough();
 

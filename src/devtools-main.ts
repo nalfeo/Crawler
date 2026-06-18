@@ -24,10 +24,12 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const SIDECAR_BASE = getSpriteSidecarBaseUrl();
 const DEVTOOLS_PAGE_HOME = 'home';
 const DEVTOOLS_PAGE_FLOOR_ART = 'floor-art';
+const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
   | typeof DEVTOOLS_PAGE_FLOOR_ART
+  | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
   | typeof DEVTOOLS_PAGE_POSTPROCESS;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   ready: '#16a34a',
@@ -123,6 +125,19 @@ interface PostprocessDebugTarget {
   briefId: string;
   runId: string;
   variantIndex: number;
+}
+
+interface PersistedFloorArtWorkflowState {
+  selectedAssetId: string | null;
+  queuedAssetIds: string[];
+  selectedCandidatePath: string | null;
+  promotedBriefPath: string | null;
+  currentRun: WorkflowRunState | null;
+  debugTarget: PostprocessDebugTarget | null;
+  oneLinerValue: string;
+  selectedPlanId: string | null;
+  selectedStatus: string;
+  searchQuery: string;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -249,17 +264,70 @@ function currentDevtoolsPage(): DevtoolsPage {
   const value = new URLSearchParams(window.location.search).get('page');
   if (value === DEVTOOLS_PAGE_HOME) return DEVTOOLS_PAGE_HOME;
   if (value === DEVTOOLS_PAGE_FLOOR_ART) return DEVTOOLS_PAGE_FLOOR_ART;
+  if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
-function devtoolsPageHref(page: DevtoolsPage): string {
-  const url = new URL(window.location.href);
-  if (page === DEVTOOLS_PAGE_HOME) {
-    url.searchParams.delete('page');
-  } else {
-    url.searchParams.set('page', page);
+function devtoolsPageHref(page: DevtoolsPage, params?: Record<string, string>): string {
+  if (page === DEVTOOLS_PAGE_HOME) return 'devtools.html';
+  const searchParams = new URLSearchParams();
+  searchParams.set('page', page);
+  if (params) {
+    for (const [key, value] of Object.entries(params)) {
+      searchParams.set(key, value);
+    }
   }
-  return url.toString();
+  return `devtools.html?${searchParams.toString()}`;
+}
+
+function postprocessDebuggerHref(briefId: string, runId: string, variantIndex: number): string {
+  return devtoolsPageHref(DEVTOOLS_PAGE_POSTPROCESS, {
+    briefId,
+    runId,
+    variantIndex: String(variantIndex),
+  });
+}
+
+function reviewHrefForApprovedAsset(asset: {
+  readonly briefId: string;
+  readonly sourceRun: string | null;
+  readonly variantIndex: number | null;
+  readonly approvedAssetExists: boolean;
+}): string | null {
+  if (!asset.approvedAssetExists || !asset.sourceRun || asset.variantIndex === null) {
+    return null;
+  }
+  const runId = asset.sourceRun.split('/').filter(Boolean).at(-1);
+  if (!runId) {
+    return null;
+  }
+  return devtoolsPageHref(DEVTOOLS_PAGE_SPRITE_REVIEW, {
+    briefId: asset.briefId,
+    runId,
+    variantIndex: String(asset.variantIndex),
+  });
+}
+
+function formatReviewStatus(status: FloorArtStatus): string {
+  if (status === 'approved') return 'Reviewed';
+  if (status === 'approved-not-integrated') return 'Reviewed not integrated';
+  if (status === 'approved-missing-file') return 'Reviewed missing file';
+  return status;
+}
+
+function parseDebugTargetFromUrl(): {
+  briefId: string;
+  runId: string;
+  variantIndex: number;
+} | null {
+  const params = new URLSearchParams(window.location.search);
+  const briefId = params.get('briefId');
+  const runId = params.get('runId');
+  const variantIndexRaw = params.get('variantIndex');
+  if (!briefId || !runId || !variantIndexRaw) return null;
+  const variantIndex = Number.parseInt(variantIndexRaw, 10);
+  if (!Number.isFinite(variantIndex) || variantIndex < 0) return null;
+  return { briefId, runId, variantIndex };
 }
 
 function render(): void {
@@ -272,6 +340,8 @@ function render(): void {
   const shell = el('section', { className: 'panel devtools-shell' });
   const currentPage = currentDevtoolsPage();
   const isHomePage = currentPage === DEVTOOLS_PAGE_HOME;
+  const isSpriteReviewPage = currentPage === DEVTOOLS_PAGE_SPRITE_REVIEW;
+  const isFloorArtPage = currentPage === DEVTOOLS_PAGE_FLOOR_ART;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
@@ -280,7 +350,9 @@ function render(): void {
         ? 'Pick a DevTool from the searchable index below.'
         : isPostprocessPage
           ? 'Postprocess debugger: inspect pipeline steps, slicing, and live postprocess traces.'
-          : 'Floor art tracker: visibility over placeholders, briefs, approvals, and integration.'
+          : isSpriteReviewPage
+            ? 'Sprite review — readonly viewer for approved sprite sheets.'
+            : 'Sprite review + tracker: visibility over placeholders, briefs, reviews, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -294,10 +366,10 @@ function render(): void {
   if (isHomePage) {
     const tools = [
       {
-        id: DEVTOOLS_PAGE_FLOOR_ART,
-        name: 'Floor art + workflow',
+        id: DEVTOOLS_PAGE_SPRITE_REVIEW,
+        name: 'Sprite review + workflow',
         description:
-          'Track floor-art status, run synth/generate/approve/metadata workflow, and inspect generated candidates.',
+          'Track floor-art status, review generated sheets, run synth/generate/approve/metadata workflow, and inspect candidates.',
       },
       {
         id: DEVTOOLS_PAGE_POSTPROCESS,
@@ -353,6 +425,7 @@ function render(): void {
       for (const tool of filtered) {
         const card = el('a', {
           style: {
+            width: '100%',
             display: 'block',
             padding: compact ? '12px 14px' : '16px 20px',
             border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -362,6 +435,8 @@ function render(): void {
             color: '#e0e0e0',
             textDecoration: 'none',
             transition: 'border-color 0.15s, transform 0.15s',
+            textAlign: 'left',
+            cursor: 'pointer',
           },
         });
         const href = devtoolsPageHref(tool.id);
@@ -456,7 +531,8 @@ function render(): void {
   for (const value of ['all', ...STATUS_ORDER]) {
     const option = document.createElement('option');
     option.value = value;
-    option.textContent = value === 'all' ? 'All statuses' : value;
+    option.textContent =
+      value === 'all' ? 'All statuses' : formatReviewStatus(value as FloorArtStatus);
     statusFilter.append(option);
   }
 
@@ -522,7 +598,7 @@ function render(): void {
     'Placeholder',
     'Briefed',
     'Drafted',
-    'Approved',
+    'Reviewed',
     'Integration',
     'Actions',
   ]) {
@@ -600,6 +676,9 @@ function render(): void {
     },
   });
   oneLinerInput.placeholder = 'One-liner subject for synthesis (e.g. "baby dragon")';
+  oneLinerInput.addEventListener('input', () => {
+    writeWorkflowState();
+  });
 
   const workflowButtons = el('div', {
     style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' },
@@ -933,7 +1012,7 @@ function render(): void {
     debuggerTraceHost,
   );
   shell.append(debuggerPanel);
-  const showFloorArtWorkflow = !isPostprocessPage;
+  const showFloorArtWorkflow = isFloorArtPage;
   controls.style.display = showFloorArtWorkflow ? 'flex' : 'none';
   summary.style.display = showFloorArtWorkflow ? 'grid' : 'none';
   manifestState.style.display = showFloorArtWorkflow ? 'block' : 'none';
@@ -957,26 +1036,83 @@ function render(): void {
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
   const queuedAssetIds = new Set<string>();
-  const initialParams = new URLSearchParams(window.location.search);
-  const initialBriefId = initialParams.get('briefId');
-  const initialRunId = initialParams.get('runId');
-  const initialVariantIndex = Number.parseInt(initialParams.get('variantIndex') ?? '0', 10);
-  if (initialBriefId) {
-    briefIdInput.value = initialBriefId;
-  }
-  if (initialRunId) {
-    runIdInput.value = initialRunId;
-  }
-  if (Number.isFinite(initialVariantIndex) && initialVariantIndex >= 0) {
-    variantIndexInput.value = String(initialVariantIndex);
-  }
-  if (initialBriefId && initialRunId) {
-    debugTarget = {
-      briefId: initialBriefId,
-      runId: initialRunId,
-      variantIndex:
-        Number.isFinite(initialVariantIndex) && initialVariantIndex >= 0 ? initialVariantIndex : 0,
+  const workflowStorageKey = 'crawler.devtools.floor-art.workflow-state.v1';
+  const readWorkflowState = (): PersistedFloorArtWorkflowState | null => {
+    try {
+      const raw = window.localStorage.getItem(workflowStorageKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<PersistedFloorArtWorkflowState>;
+      return {
+        selectedAssetId: typeof parsed.selectedAssetId === 'string' ? parsed.selectedAssetId : null,
+        queuedAssetIds: Array.isArray(parsed.queuedAssetIds)
+          ? parsed.queuedAssetIds.filter((value): value is string => typeof value === 'string')
+          : [],
+        selectedCandidatePath:
+          typeof parsed.selectedCandidatePath === 'string' ? parsed.selectedCandidatePath : null,
+        promotedBriefPath:
+          typeof parsed.promotedBriefPath === 'string' ? parsed.promotedBriefPath : null,
+        currentRun:
+          parsed.currentRun && typeof parsed.currentRun === 'object'
+            ? (parsed.currentRun as WorkflowRunState)
+            : null,
+        debugTarget:
+          parsed.debugTarget && typeof parsed.debugTarget === 'object'
+            ? (parsed.debugTarget as PostprocessDebugTarget)
+            : null,
+        oneLinerValue: typeof parsed.oneLinerValue === 'string' ? parsed.oneLinerValue : '',
+        selectedPlanId: typeof parsed.selectedPlanId === 'string' ? parsed.selectedPlanId : null,
+        selectedStatus: typeof parsed.selectedStatus === 'string' ? parsed.selectedStatus : 'all',
+        searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
+      };
+    } catch {
+      return null;
+    }
+  };
+  const writeWorkflowState = (): void => {
+    const snapshot: PersistedFloorArtWorkflowState = {
+      selectedAssetId,
+      queuedAssetIds: Array.from(queuedAssetIds),
+      selectedCandidatePath,
+      promotedBriefPath,
+      currentRun,
+      debugTarget,
+      oneLinerValue: oneLinerInput.value,
+      selectedPlanId: planSelect.value || null,
+      selectedStatus: statusFilter.value,
+      searchQuery: searchInput.value,
     };
+    try {
+      window.localStorage.setItem(workflowStorageKey, JSON.stringify(snapshot));
+    } catch {
+      // Ignore storage failures; the UI still works without persistence.
+    }
+  };
+  const restoredWorkflowState = readWorkflowState();
+  if (restoredWorkflowState) {
+    selectedAssetId = restoredWorkflowState.selectedAssetId;
+    for (const assetId of restoredWorkflowState.queuedAssetIds) {
+      queuedAssetIds.add(assetId);
+    }
+    selectedCandidatePath = restoredWorkflowState.selectedCandidatePath;
+    promotedBriefPath = restoredWorkflowState.promotedBriefPath;
+    currentRun = restoredWorkflowState.currentRun;
+    debugTarget = restoredWorkflowState.debugTarget;
+    if (restoredWorkflowState.oneLinerValue) {
+      oneLinerInput.value = restoredWorkflowState.oneLinerValue;
+      delete oneLinerInput.dataset.assetId;
+    }
+    if (restoredWorkflowState.selectedPlanId) {
+      planSelect.value = restoredWorkflowState.selectedPlanId;
+    }
+    statusFilter.value = restoredWorkflowState.selectedStatus;
+    searchInput.value = restoredWorkflowState.searchQuery;
+  }
+  const debugTargetFromUrl = parseDebugTargetFromUrl();
+  if (debugTargetFromUrl) {
+    briefIdInput.value = debugTargetFromUrl.briefId;
+    runIdInput.value = debugTargetFromUrl.runId;
+    variantIndexInput.value = String(debugTargetFromUrl.variantIndex);
+    debugTarget = debugTargetFromUrl;
   }
   const syncTweakInputsFromState = (): void => {
     colorTolField.input.value = String(appliedBackgroundTweaks.colorToleranceSq);
@@ -1167,6 +1303,7 @@ function render(): void {
         selectedAssetId = assetId;
         renderQueue();
         renderWorkflowSelection();
+        writeWorkflowState();
       });
       queueList.append(chip);
     }
@@ -1238,6 +1375,7 @@ function render(): void {
         runResultsHost.replaceChildren();
         renderPostprocessDebugger();
         renderWorkflowSelection();
+        writeWorkflowState();
       });
       summaryNode.append(
         chooseBtn,
@@ -1328,15 +1466,14 @@ function render(): void {
         },
       });
       debugBtn.addEventListener('click', () => {
-        debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex: candidate.index };
-        renderPostprocessDebugger();
+        location.href = postprocessDebuggerHref(run.briefId, run.runId, candidate.index);
       });
       approveBtn.addEventListener('click', async () => {
         setButtonBusy(approveBtn, true, 'Approve', 'Approving...');
         try {
           const approved = await postApprove(run.briefId, run.runId, candidate.index);
           setWorkflowStatus(
-            `Approved ${run.briefId} variant ${candidate.index} -> ${approved.assetPath} (${approved.sensorScore}${approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''})`,
+            `Reviewed ${run.briefId} variant ${candidate.index} -> ${approved.assetPath} (${approved.sensorScore}${approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''})`,
             '#bef264',
           );
           void recompute();
@@ -1354,6 +1491,10 @@ function render(): void {
     }
     runResultsHost.append(title, grid);
   };
+
+  if (currentRun) {
+    renderRunCandidates();
+  }
 
   const renderPostprocessDebugger = (): void => {
     const target = debugTarget;
@@ -1631,6 +1772,7 @@ function render(): void {
         return;
       debugTarget = { ...debugTarget, variantIndex: clicked.cell.index };
       renderPostprocessDebugger();
+      writeWorkflowState();
     };
 
     debuggerVariantSelect.onchange = (): void => {
@@ -1641,6 +1783,7 @@ function render(): void {
       if (selectedIndex === debugTarget.variantIndex) return;
       debugTarget = { ...debugTarget, variantIndex: selectedIndex };
       renderPostprocessDebugger();
+      writeWorkflowState();
     };
 
     const tryDrawSliceMap = (sourceImg: HTMLImageElement): void => {
@@ -2397,6 +2540,7 @@ function render(): void {
     }
     debugTarget = { briefId, runId, variantIndex };
     renderPostprocessDebugger();
+    writeWorkflowState();
   });
 
   debuggerRunSelect.addEventListener('change', () => {
@@ -2416,11 +2560,13 @@ function render(): void {
     const variantIndex = cachedVariants[0] ?? 0;
     debugTarget = { briefId: run.briefId, runId: run.runId, variantIndex };
     renderPostprocessDebugger();
+    writeWorkflowState();
   });
 
   clearQueueBtn.addEventListener('click', () => {
     queuedAssetIds.clear();
     renderQueue();
+    writeWorkflowState();
   });
 
   const recompute = async (): Promise<void> => {
@@ -2484,7 +2630,7 @@ function render(): void {
       ['Assets', String(plan.assets.length)],
       ['Unresolved placeholders', String(plan.unresolvedPlaceholders)],
       ['Ready', String(plan.counts.ready)],
-      ['Approved not integrated', String(plan.counts['approved-not-integrated'])],
+      ['Reviewed not integrated', String(plan.counts['approved-not-integrated'])],
       ['Drafts ready', String(plan.counts['draft-ready'] + plan.counts['draft-ready-placeholder'])],
       ['Needs art', String(plan.counts['needs-art-placeholder'])],
     ];
@@ -2534,8 +2680,9 @@ function render(): void {
       if (selectedAssetId === asset.id) {
         row.style.background = 'rgba(30,64,175,0.2)';
       }
+      const reviewHref = reviewHrefForApprovedAsset(asset);
       const statusPill = el('span', {
-        text: asset.status,
+        text: formatReviewStatus(asset.status),
         style: {
           display: 'inline-block',
           padding: '2px 8px',
@@ -2572,13 +2719,37 @@ function render(): void {
         renderQueue();
         renderWorkflowSelection();
         renderActivePlan();
+        writeWorkflowState();
       });
       actionsCell.append(queueBtn);
+      if (reviewHref) {
+        const reviewBtn = el('a', {
+          text: 'Review',
+          style: {
+            marginLeft: '8px',
+            padding: '4px 8px',
+            borderRadius: '6px',
+            border: '1px solid rgba(167,139,250,0.5)',
+            background: '#312e81',
+            color: '#ede9fe',
+            cursor: 'pointer',
+            fontSize: '11px',
+            textDecoration: 'none',
+            display: 'inline-block',
+          },
+        });
+        reviewBtn.setAttribute('href', reviewHref);
+        reviewBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+        });
+        actionsCell.append(reviewBtn);
+      }
       row.addEventListener('click', () => {
         selectedAssetId = asset.id;
         renderQueue();
         renderWorkflowSelection();
         renderActivePlan();
+        writeWorkflowState();
       });
 
       row.append(
@@ -2590,7 +2761,13 @@ function render(): void {
         el('td', { text: asset.briefAuthored ? 'yes' : 'no' }),
         el('td', { text: asset.draftAuthored ? 'yes' : 'no' }),
         el('td', {
-          text: asset.approvedAssetExists ? 'yes' : asset.approved ? 'manifest-only' : 'no',
+          text: asset.approvedAssetExists
+            ? reviewHref
+              ? 'Reviewed'
+              : 'yes'
+            : asset.approved
+              ? 'manifest-only'
+              : 'no',
         }),
         el('td', { text: `${integrationText} (${asset.integrationState})` }),
         actionsCell,
@@ -2647,6 +2824,7 @@ function render(): void {
       runResultsHost.replaceChildren();
       renderPostprocessDebugger();
       renderWorkflowSelection();
+      writeWorkflowState();
       const rejected =
         result.rejected.length > 0
           ? `\nRejected:\n${result.rejected.map((item) => `  - #${item.index}: ${item.reason}`).join('\n')}`
@@ -2664,6 +2842,146 @@ function render(): void {
       setButtonBusy(synthBtn, false, '1) Synthesize brief candidates', 'Synthesizing...');
     }
   });
+
+  // Sprite review page — read-only viewer for approved sprite sheets
+  if (isSpriteReviewPage) {
+    const params = new URLSearchParams(window.location.search);
+    const briefId = params.get('briefId');
+    const runId = params.get('runId');
+
+    if (!briefId || !runId) {
+      shell.append(
+        el('div', {
+          style: {
+            padding: '16px',
+            borderRadius: '8px',
+            background: '#7f1d1d',
+            color: '#fef3c7',
+            border: '1px solid rgba(255,255,255,0.18)',
+          },
+          text: 'Missing briefId or runId in URL parameters',
+        }),
+      );
+      return;
+    }
+
+    const viewerContainer = el('div', {
+      style: {
+        display: 'grid',
+        gap: '16px',
+      },
+    });
+    shell.append(viewerContainer);
+
+    const loadingMsg = el('p', {
+      text: 'Loading sprite sheet...',
+      style: { color: '#93c5fd', fontSize: '14px' },
+    });
+    viewerContainer.append(loadingMsg);
+
+    // Fetch and render the sprite sheet
+    (async () => {
+      try {
+        // Get the list of available sheets for this run
+        const sheetsResp = await fetchJson<{ files: string[] }>(sheetsUrl(briefId, runId));
+        const sheets = sheetsResp.files || [];
+
+        if (sheets.length === 0) {
+          viewerContainer.replaceChildren(
+            el('div', {
+              style: {
+                padding: '16px',
+                borderRadius: '8px',
+                background: '#78350f',
+                color: '#fef3c7',
+              },
+              text: 'No sprite sheets available for this run.',
+            }),
+          );
+          return;
+        }
+
+        // For now, just show the first sheet. In a more complete implementation,
+        // we would allow selection between multiple sheets.
+        const selectedSheet = sheets[0];
+        if (!selectedSheet) {
+          viewerContainer.replaceChildren(
+            el('div', {
+              style: { color: '#fca5a5' },
+              text: 'Unable to determine which sheet to display.',
+            }),
+          );
+          return;
+        }
+
+        loadingMsg.textContent = `Fetching ${selectedSheet}...`;
+
+        const sheetImg = document.createElement('img');
+        sheetImg.src = spriteUrl(briefId, runId, selectedSheet);
+        sheetImg.style.maxWidth = '100%';
+        sheetImg.style.border = '1px solid rgba(148,163,184,0.2)';
+        sheetImg.style.borderRadius = '8px';
+        sheetImg.style.imageRendering = 'pixelated';
+
+        sheetImg.addEventListener('load', () => {
+          const detailsDiv = el('div', {
+            style: { marginBottom: '12px' },
+          });
+          const sheetNameEl = el('p', {
+            text: `Sheet: ${selectedSheet}`,
+            style: {
+              margin: '0 0 8px 0',
+              fontSize: '14px',
+              color: '#e5e7eb',
+            },
+          });
+          const briefRunEl = el('p', {
+            text: `${briefId} / ${runId}`,
+            style: {
+              margin: '0',
+              fontSize: '12px',
+              color: '#93c5fd',
+            },
+          });
+          detailsDiv.append(sheetNameEl, briefRunEl);
+
+          const viewerDiv = el('div', {
+            style: {
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '8px',
+              overflow: 'auto',
+              background: '#0f172a',
+              padding: '12px',
+            },
+          });
+          viewerDiv.append(sheetImg);
+
+          viewerContainer.replaceChildren(detailsDiv, viewerDiv);
+        });
+
+        sheetImg.addEventListener('error', () => {
+          viewerContainer.replaceChildren(
+            el('div', {
+              style: { color: '#fca5a5' },
+              text: `Failed to load sprite sheet: ${selectedSheet}`,
+            }),
+          );
+        });
+      } catch (error) {
+        viewerContainer.replaceChildren(
+          el('div', {
+            style: {
+              padding: '16px',
+              borderRadius: '8px',
+              background: '#7f1d1d',
+              color: '#fef3c7',
+            },
+            text: `Error loading sprite review: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+        );
+      }
+    })();
+  }
 
   promoteBtn.addEventListener('click', async () => {
     const selected = getSelectedAsset();
@@ -2690,6 +3008,7 @@ function render(): void {
       draftBriefKeys.add(briefKey(selected.type, selected.briefId));
       renderWorkflowSelection();
       setWorkflowStatus(`Promoted brief to ${result.briefPath}`, '#bef264');
+      writeWorkflowState();
       void recompute();
     } catch (error) {
       setWorkflowStatus(
@@ -2733,6 +3052,7 @@ function render(): void {
       renderPostprocessDebugger();
       void refreshDebuggerRuns();
       renderWorkflowSelection();
+      writeWorkflowState();
       setWorkflowStatus(
         `Generation completed for ${result.briefId} (${result.summary.candidates.length} candidates). Select a winner to approve.`,
         '#bef264',
@@ -2783,9 +3103,18 @@ function render(): void {
     }
   });
 
-  planSelect.addEventListener('change', renderActivePlan);
-  statusFilter.addEventListener('change', renderActivePlan);
-  searchInput.addEventListener('input', renderActivePlan);
+  planSelect.addEventListener('change', () => {
+    renderActivePlan();
+    writeWorkflowState();
+  });
+  statusFilter.addEventListener('change', () => {
+    renderActivePlan();
+    writeWorkflowState();
+  });
+  searchInput.addEventListener('input', () => {
+    renderActivePlan();
+    writeWorkflowState();
+  });
   refreshBtn.addEventListener('click', () => {
     void recompute();
   });

@@ -291,6 +291,16 @@
   },
   {
     "date": "2026-06-16",
+    "session": "devtools-review-persistence",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Split sprite review into a DevTools sprite-review page alias, persisted floor-art workflow state in localStorage, relinked reviewed assets into DevTools, and restored richer approved-sprite metadata through the tracker/reporting path. Direct typecheck, lint, and CI-mode unit suite passed; the npm/bach wrapper for verify:fast hangs in this environment even though the underlying commands complete."
+  },
+  {
+    "date": "2026-06-16",
     "session": "guard-session-server-interference",
     "estimated_apples": 3,
     "actual_apples": 3,
