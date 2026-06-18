@@ -15,12 +15,38 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSessionServerPorts } from '../../shared/session-server-ports.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SESSION_PORTS = getSessionServerPorts({ cwd: REPO_ROOT, env: process.env });
+
+/**
+ * Merges key=value pairs from `.env.local` into `process.env` without
+ * overwriting variables already set in the shell. This lets the sidecar
+ * pick up Azure credentials written by `scripts/setup-azure-env.ps1`
+ * without requiring the caller to source the file manually.
+ */
+function loadEnvLocal(): void {
+  const envFile = path.join(REPO_ROOT, '.env.local');
+  if (!existsSync(envFile)) return;
+  const lines = readFileSync(envFile, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx < 1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const value = trimmed.slice(eqIdx + 1).trim();
+    if (key && !(key in process.env)) {
+      process.env[key] = value;
+    }
+  }
+}
+
+loadEnvLocal();
 
 interface ChildSpec {
   readonly name: string;
