@@ -59,12 +59,14 @@ async function main(): Promise<void> {
       remediation: 'Restore the persona routing README that indexes every persona doc.',
     });
     report.finish();
+    return;
   }
 
   const personaFiles = listPersonaFiles();
   if (personaFiles.length === 0) {
     report.warn('No persona docs found under the personas directory.', { file: PERSONA_DIR });
     report.finish();
+    return;
   }
 
   // 1. Section completeness.

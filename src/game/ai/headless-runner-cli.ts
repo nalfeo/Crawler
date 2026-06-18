@@ -8,7 +8,7 @@
  * Or via npm:
  *   npm run ai:headless -- --seed 12345
  */
-import { RuleBasedAI } from './ai-input-provider.js';
+import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
 
 interface CLIArgs {
@@ -100,7 +100,7 @@ async function main(): Promise<void> {
   console.log(`Max time: ${args.maxTimeMs}ms`);
   console.log('');
 
-  const ai = new RuleBasedAI({
+  const ai = new BehaviorTreeAI({
     seed: args.seed,
     aggression: args.aggression,
     debug: args.debug,

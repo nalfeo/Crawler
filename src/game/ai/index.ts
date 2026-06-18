@@ -1,9 +1,8 @@
 /**
- * AI module - behavior tree and rule-based AI players.
+ * AI module - behavior tree AI player.
  *
  * Exports AI input providers and types for headless/visual runners.
  */
-export { RuleBasedAI } from './ai-input-provider.js';
 export { BehaviorTreeAI } from './bt-ai-provider.js';
 export type { AIInputProvider, AIDecision, AIConfig, RunStats } from './types.js';
 export { AIState } from './types.js';

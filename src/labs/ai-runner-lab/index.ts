@@ -9,7 +9,7 @@
  */
 import Phaser from 'phaser';
 import { BootScene, MainGameScene } from '../../engine/index.js';
-import { RuleBasedAI } from '../../game/ai/index.js';
+import { BehaviorTreeAI } from '../../game/ai/index.js';
 import { createInputState } from '../../shared/input.js';
 import type { GameWorld } from '../../core/world.js';
 
@@ -21,7 +21,7 @@ export default {
   description: 'Watch the AI play the game',
   create(canvas: HTMLElement, controls: HTMLElement): () => void {
     // Create AI input provider
-    const ai = new RuleBasedAI({
+    const ai = new BehaviorTreeAI({
       seed: AI_SEED,
       aggression: 1,
       retreatThreshold: 0.3,
