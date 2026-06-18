@@ -9,12 +9,14 @@
  * - Player stat bonuses
  * - Protagonist info
  * - Starter weapon pool
+ * - NPC placements
  *
  * This replaces individual config files (floor1.json, enemies.floor1.json)
  * with a single source of truth per floor.
  */
 import { z } from 'zod';
 import floor1ManifestJson from './data/floors/floor1.manifest.json';
+import { npcPlacementDefSchema } from './npc-placements.js';
 
 /**
  * Floor manifest configuration schema.
@@ -130,6 +132,8 @@ export const floorManifestDefSchema = z
       })
       .strict()
       .optional(),
+    /** NPC placements for this floor. */
+    npcPlacements: z.array(npcPlacementDefSchema).optional(),
   })
   .strict();
 
