@@ -24,3 +24,18 @@
 - Property tests cover core game invariants.
 - Every bug fix includes a regression test.
 - The Governor agent can play headlessly without breaking the test suite.
+
+## The Governor (headless player)
+
+"The Governor" is the deterministic headless player used for smoke and
+balance-regression checks — a **script**, never an LLM
+(`scripts/agent/health/governor-playthroughs.ts`,
+`scripts/agent/health/balance-regression.ts`). The QA Engineer owns keeping it
+green and using it as a headless regression harness; the **Playtester** consumes
+its balance output for difficulty-curve analysis.
+
+## Collaborates with
+
+**DevOps Engineer** (CI gates, mutation/coverage workflows), **Playtester**
+(balance-regression signal from the Governor), and every implementing persona
+(every bug fix becomes a regression test here).

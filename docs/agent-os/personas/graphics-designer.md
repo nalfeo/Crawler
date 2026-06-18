@@ -34,3 +34,9 @@
 - Approved sprites align with the style guide and read clearly when placed next to existing registry siblings.
 - Every newly approved sprite has a corresponding sensor entry so future PRs cannot silently break it.
 - Effects communicate gameplay without overwhelming the screen.
+
+## Collaborates with
+
+**UX Designer** (HUD/threat readability), **Content Designer** (set-piece & tile
+readability), **Systems Engineer** (registry integration), and **Game Designer**
+(reward/threat signaling).

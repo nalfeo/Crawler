@@ -4,6 +4,16 @@
 
 YYYY-MM-DD
 
+## Persona(s) adopted
+
+<!-- Which persona(s) you selected from docs/agent-os/personas/README.md, and why.
+     For orchestrated work, name the Producer plus the specialists it routed to. -->
+
+## Routing verdict
+
+<!-- Was the routing right? One of: ✅ right persona | 🔀 another persona would
+     have fit better (name it) | 🧩 needed Producer to split. One sentence why. -->
+
 ## Apples
 
 Estimated: 🍎 x N <!-- declared before work began -->
