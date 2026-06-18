@@ -134,6 +134,9 @@ interface PersistedFloorArtWorkflowState {
   currentRun: WorkflowRunState | null;
   debugTarget: PostprocessDebugTarget | null;
   oneLinerValue: string;
+  selectedPlanId: string | null;
+  selectedStatus: string;
+  searchQuery: string;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -260,6 +263,7 @@ function currentDevtoolsPage(): DevtoolsPage {
   const value = new URLSearchParams(window.location.search).get('page');
   if (value === DEVTOOLS_PAGE_HOME) return DEVTOOLS_PAGE_HOME;
   if (value === DEVTOOLS_PAGE_FLOOR_ART) return DEVTOOLS_PAGE_FLOOR_ART;
+  if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
@@ -1048,6 +1052,9 @@ function render(): void {
             ? (parsed.debugTarget as PostprocessDebugTarget)
             : null,
         oneLinerValue: typeof parsed.oneLinerValue === 'string' ? parsed.oneLinerValue : '',
+        selectedPlanId: typeof parsed.selectedPlanId === 'string' ? parsed.selectedPlanId : null,
+        selectedStatus: typeof parsed.selectedStatus === 'string' ? parsed.selectedStatus : 'all',
+        searchQuery: typeof parsed.searchQuery === 'string' ? parsed.searchQuery : '',
       };
     } catch {
       return null;
@@ -1062,6 +1069,9 @@ function render(): void {
       currentRun,
       debugTarget,
       oneLinerValue: oneLinerInput.value,
+      selectedPlanId: planSelect.value || null,
+      selectedStatus: statusFilter.value,
+      searchQuery: searchInput.value,
     };
     try {
       window.localStorage.setItem(workflowStorageKey, JSON.stringify(snapshot));
@@ -1083,6 +1093,11 @@ function render(): void {
       oneLinerInput.value = restoredWorkflowState.oneLinerValue;
       delete oneLinerInput.dataset.assetId;
     }
+    if (restoredWorkflowState.selectedPlanId) {
+      planSelect.value = restoredWorkflowState.selectedPlanId;
+    }
+    statusFilter.value = restoredWorkflowState.selectedStatus;
+    searchInput.value = restoredWorkflowState.searchQuery;
   }
   const debugTargetFromUrl = parseDebugTargetFromUrl();
   if (debugTargetFromUrl) {
@@ -2945,9 +2960,18 @@ function render(): void {
     }
   });
 
-  planSelect.addEventListener('change', renderActivePlan);
-  statusFilter.addEventListener('change', renderActivePlan);
-  searchInput.addEventListener('input', renderActivePlan);
+  planSelect.addEventListener('change', () => {
+    renderActivePlan();
+    writeWorkflowState();
+  });
+  statusFilter.addEventListener('change', () => {
+    renderActivePlan();
+    writeWorkflowState();
+  });
+  searchInput.addEventListener('input', () => {
+    renderActivePlan();
+    writeWorkflowState();
+  });
   refreshBtn.addEventListener('click', () => {
     void recompute();
   });
