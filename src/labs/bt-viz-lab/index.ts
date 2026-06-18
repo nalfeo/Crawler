@@ -5,9 +5,11 @@
  * Shows live tree structure, node states, and decision-making in real-time.
  */
 
-import { MainGameScene } from '../../engine/scenes/MainGameScene.js';
-import type { LabDefinition } from '../registry.js';
+import Phaser from 'phaser';
+import { BootScene, MainGameScene } from '../../engine/index.js';
 import { BehaviorTreeAI } from '../../game/ai/bt-ai-provider.js';
+import { createInputState } from '../../shared/input.js';
+import type { GameWorld } from '../../core/world.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { createLogger } from '../../shared/logger.js';
 
@@ -140,11 +142,69 @@ export default {
       overflow-y: auto;
     `;
 
-    // Create scene with AI
-    const scene = new MainGameScene({
-      canvas,
-      testMode: false,
-      aiInputProvider: ai,
+    // Create scene with AI (using Phaser approach from ai-runner-lab)
+    const inputState = createInputState();
+
+    // Custom input provider that uses AI instead of human input
+    const aiInputProvider = {
+      poll(state: typeof inputState): void {
+        // AI needs access to world state - we'll get it from the scene
+        const scene = game.scene.getScene('MainGameScene') as MainGameScene | null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (scene && (scene as any).world) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const world = (scene as any).world as GameWorld;
+          ai.poll(state, world);
+
+          // Copy AI decisions to our input state
+          state.moveX = inputState.moveX;
+          state.moveY = inputState.moveY;
+          state.action = inputState.action;
+          state.pointerX = inputState.pointerX;
+          state.pointerY = inputState.pointerY;
+        } else {
+          state.moveX = 0;
+          state.moveY = 0;
+          state.action = false;
+        }
+      },
+      destroy(): void {
+        // Nothing to clean up
+      },
+    };
+
+    // Create Phaser game with custom input provider
+    const config: Phaser.Types.Core.GameConfig = {
+      type: Phaser.WEBGL,
+      parent: canvas,
+      width: 1280,
+      height: 720,
+      backgroundColor: '#1a1a2e',
+      pixelArt: true,
+      scene: [BootScene, MainGameScene],
+      scale: {
+        mode: Phaser.Scale.FIT,
+        autoCenter: Phaser.Scale.CENTER_BOTH,
+      },
+      physics: {
+        default: 'arcade',
+        arcade: {
+          gravity: { x: 0, y: 0 },
+          debug: false,
+        },
+      },
+    };
+
+    const game = new Phaser.Game(config);
+
+    // Override input capture in MainGameScene
+    game.events.once('ready', () => {
+      const scene = game.scene.getScene('MainGameScene') as MainGameScene | null;
+      if (scene) {
+        // Replace the input capture with our AI provider
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (scene as any).inputCapture = aiInputProvider;
+      }
     });
 
     // Initial render
@@ -167,7 +227,7 @@ export default {
     // Cleanup
     return () => {
       clearInterval(updateInterval);
-      scene.destroy();
+      game.destroy(true);
       logger.info('Behavior Tree Visualization Lab stopped');
     };
   },

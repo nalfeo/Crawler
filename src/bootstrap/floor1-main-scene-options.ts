@@ -29,7 +29,7 @@ export function createFloor1MainSceneOptions() {
     configureWorld: initializeFloor1Scenario,
     selectLoadoutOption: selectFloor1StarterWeapon,
     onStairDescend: confirmFloor1StairDescend,
-    selectSpellFromBossBattle: (world, spellId) => {
+    selectSpellFromBossBattle: (world: GameWorld, spellId: Floor1BossRewardSpellId) => {
       const playerEntities = query(world.ecs, [Player]);
       const playerEid = [...playerEntities][0];
       if (playerEid !== undefined) {
