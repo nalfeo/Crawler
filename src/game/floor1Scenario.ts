@@ -61,6 +61,8 @@ import {
 import { memorizeSpell } from './systems/abilitySystem.js';
 import { floor1Config } from '../shared/floor1-config.js';
 import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1Manifest } from '../shared/floor-manifest.js';
+import type { NpcPlacementDef } from '../shared/npc-placements.js';
 
 // Derived constants computed from config at module initialization
 const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
@@ -362,6 +364,70 @@ function findRoomPath(
   return path;
 }
 
+/**
+ * Spawn an NPC based on its placement definition.
+ * Resolves room role to actual position, then spawns the NPC entity.
+ */
+function spawnNpcFromPlacement(
+  world: GameWorld,
+  placement: NpcPlacementDef,
+  objectiveTiles: {
+    welcomeOfficePos: { x: number; y: number };
+    safeRoomPos: { x: number; y: number };
+    staircasePos: { x: number; y: number };
+    slimeRatRoomPos: { x: number; y: number };
+    spellQuestGiverPos: { x: number; y: number };
+    shopRoomPos: { x: number; y: number };
+    questItemPos: { x: number; y: number };
+  },
+): number {
+  // Resolve position from room role or explicit position
+  let x: number;
+  let y: number;
+
+  if (placement.position) {
+    // Explicit position override
+    x = placement.position.x;
+    y = placement.position.y;
+  } else if (placement.roomRole) {
+    // Resolve from room role
+    switch (placement.roomRole) {
+      case 'spawn':
+        x = objectiveTiles.welcomeOfficePos.x;
+        y = objectiveTiles.welcomeOfficePos.y;
+        break;
+      case 'safe':
+        x = objectiveTiles.safeRoomPos.x;
+        y = objectiveTiles.safeRoomPos.y;
+        break;
+      case 'shop':
+        x = objectiveTiles.shopRoomPos.x;
+        y = objectiveTiles.shopRoomPos.y;
+        break;
+      case 'boss_stair':
+        x = objectiveTiles.staircasePos.x;
+        y = objectiveTiles.staircasePos.y;
+        break;
+      case 'any':
+        // Use spell quest giver position (which is questItemPos)
+        x = objectiveTiles.spellQuestGiverPos.x;
+        y = objectiveTiles.spellQuestGiverPos.y;
+        break;
+      default:
+        // Fallback to welcome office
+        x = objectiveTiles.welcomeOfficePos.x;
+        y = objectiveTiles.welcomeOfficePos.y;
+    }
+  } else {
+    // No position or room role specified, fallback to spawn
+    x = objectiveTiles.welcomeOfficePos.x;
+    y = objectiveTiles.welcomeOfficePos.y;
+  }
+
+  // Spawn the NPC entity
+  return spawnNpc(world, x, y, placement.npcTypeId);
+}
+
 /** Called the first time the player talks to the Tutorial Goon. Accepts the quest and unlocks quest tracking. */
 export function meetTutorialGoon(world: GameWorld): void {
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
@@ -518,22 +584,48 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, 'floor1-shop-prize-returned', false);
   setGoalFlag(world, 'floor1-shop-quest-complete', false);
 
-  // Spawn the tutorial guide NPC near the player's starting position.
-  world.floor1.guideNpcEid = spawnNpc(
-    world,
-    world.floor1.objective.welcomeOfficePos.x,
-    world.floor1.objective.welcomeOfficePos.y,
-    'tutorial-goon',
-  );
-  world.floor1.spellQuestGiverNpcEid = spawnNpc(
-    world,
-    world.floor1.objective.spellQuestGiverPos.x,
-    world.floor1.objective.spellQuestGiverPos.y,
-    'spell-quest-giver',
-  );
+  // Spawn NPCs from placement definitions (if available in manifest)
+  const npcPlacements = floor1Manifest.npcPlacements;
+  if (npcPlacements && npcPlacements.length > 0) {
+    // Data-driven NPC spawning
+    for (const placement of npcPlacements) {
+      const eid = spawnNpcFromPlacement(world, placement, {
+        welcomeOfficePos,
+        safeRoomPos,
+        staircasePos,
+        slimeRatRoomPos,
+        spellQuestGiverPos,
+        shopRoomPos,
+        questItemPos,
+      });
 
-  // Spawn the merchant in his shop room and drop his gross fetch item out in the dungeon.
-  world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
+      // Store EIDs based on NPC type for backward compatibility
+      if (placement.npcTypeId === 'tutorial-goon') {
+        world.floor1.guideNpcEid = eid;
+      } else if (placement.npcTypeId === 'spell-quest-giver') {
+        world.floor1.spellQuestGiverNpcEid = eid;
+      } else if (placement.npcTypeId === 'shopkeeper') {
+        world.floor1.shopkeeperNpcEid = eid;
+      }
+    }
+  } else {
+    // Fallback to hardcoded NPC spawning (backward compatibility)
+    world.floor1.guideNpcEid = spawnNpc(
+      world,
+      world.floor1.objective.welcomeOfficePos.x,
+      world.floor1.objective.welcomeOfficePos.y,
+      'tutorial-goon',
+    );
+    world.floor1.spellQuestGiverNpcEid = spawnNpc(
+      world,
+      world.floor1.objective.spellQuestGiverPos.x,
+      world.floor1.objective.spellQuestGiverPos.y,
+      'spell-quest-giver',
+    );
+    world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
+  }
+
+  // Spawn the merchant's fetch quest item
   world.floor1.questItemEid = spawnDroppedItem(
     world,
     questItemPos.x,
