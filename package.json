@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "prepare": "node scripts/agent/setup-git-hooks.mjs",
+    "postinstall": "playwright install chromium",
     "dev": "vite",
     "build": "vite build",
     "build:typed": "tsc --noEmit --project tsconfig.src.json && vite build",

@@ -153,9 +153,6 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
-      - name: Install Playwright Chromium browser
-        run: npx playwright install chromium --with-deps
-
       - name: E2E visual regression tests
         run: npx vitest run --project e2e --reporter=verbose
 

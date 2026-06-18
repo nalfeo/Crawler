@@ -120,7 +120,7 @@ describe('minimap visual regression', () => {
   });
 
   afterAll(async () => {
-    await browser.close();
+    await browser?.close();
   });
 
   // ── Full-screen map overlay ──────────────────────────────────────────────
