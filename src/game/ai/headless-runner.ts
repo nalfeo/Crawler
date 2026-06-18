@@ -122,7 +122,6 @@ export async function runHeadless(
   if (world.state !== 'playing') {
     throw new Error(`Failed to transition from loadout: state is ${world.state}`);
   }
-
   const inputState = createInputState();
 
   let frameCount = 0;
