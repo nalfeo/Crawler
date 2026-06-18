@@ -20,6 +20,8 @@
 - Maintain scripts, GitHub workflows, and harness checks with clear exit conditions.
 - Prefer portable, scripted verification paths that can run locally and in CI.
 - For dev/lab/devtools launch failures, read `files/worktree-server-launch.log` and `files/worktree-server-status.json` first, then diagnose from those artifacts before retrying.
+- Enforce one-server-per-session hygiene for dev/lab/devtools workflows: reuse an existing healthy session server for hot reload when possible; otherwise stop the current server tied to that same session/workspace before launching a replacement.
+- Every successful server launch output must include the URL to open.
 
 ## Quality Criteria
 

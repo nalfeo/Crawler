@@ -374,5 +374,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Updated persona routing/index and specialist constraints to require build-vs-buy evaluation of industry-standard libraries/frameworks before custom implementations of fundamental game systems."
+  },
+  {
+    "date": "2026-06-18",
+    "session": "worktree-server-reuse-policy",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Added explicit one-server-per-session lifecycle rules to AGENTS and DevOps persona guidance: reuse healthy servers for hot reload, otherwise stop the existing session-bound server before relaunch, and always print launch URLs."
   }
 ]
