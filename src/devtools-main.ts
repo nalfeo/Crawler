@@ -340,7 +340,7 @@ function render(): void {
   const currentPage = currentDevtoolsPage();
   const isHomePage = currentPage === DEVTOOLS_PAGE_HOME;
   const isSpriteReviewPage = currentPage === DEVTOOLS_PAGE_SPRITE_REVIEW;
-  const isFloorArtPage = currentPage === DEVTOOLS_PAGE_FLOOR_ART || isSpriteReviewPage;
+  const isFloorArtPage = currentPage === DEVTOOLS_PAGE_FLOOR_ART;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
@@ -2839,6 +2839,152 @@ function render(): void {
       setButtonBusy(synthBtn, false, '1) Synthesize brief candidates', 'Synthesizing...');
     }
   });
+
+  // Sprite review page — read-only viewer for approved sprite sheets
+  if (isSpriteReviewPage) {
+    const params = new URLSearchParams(window.location.search);
+    const briefId = params.get('briefId');
+    const runId = params.get('runId');
+
+    const subtitle = el('p', {
+      text: 'Sprite review — readonly viewer for approved sprite sheets',
+      style: { marginBottom: '16px' },
+    });
+    shell.append(subtitle);
+
+    if (!briefId || !runId) {
+      shell.append(
+        el('div', {
+          style: {
+            padding: '16px',
+            borderRadius: '8px',
+            background: '#7f1d1d',
+            color: '#fef3c7',
+            border: '1px solid rgba(255,255,255,0.18)',
+          },
+          text: 'Missing briefId or runId in URL parameters',
+        }),
+      );
+      return;
+    }
+
+    const viewerContainer = el('div', {
+      style: {
+        display: 'grid',
+        gap: '16px',
+      },
+    });
+    shell.append(viewerContainer);
+
+    const loadingMsg = el('p', {
+      text: 'Loading sprite sheet...',
+      style: { color: '#93c5fd', fontSize: '14px' },
+    });
+    viewerContainer.append(loadingMsg);
+
+    // Fetch and render the sprite sheet
+    (async () => {
+      try {
+        // Get the list of available sheets for this run
+        const sheetsResp = await fetchJson<{ files: string[] }>(sheetsUrl(briefId, runId));
+        const sheets = sheetsResp.files || [];
+
+        if (sheets.length === 0) {
+          viewerContainer.replaceChildren(
+            el('div', {
+              style: {
+                padding: '16px',
+                borderRadius: '8px',
+                background: '#78350f',
+                color: '#fef3c7',
+              },
+              text: 'No sprite sheets available for this run.',
+            }),
+          );
+          return;
+        }
+
+        // For now, just show the first sheet. In a more complete implementation,
+        // we would allow selection between multiple sheets.
+        const selectedSheet = sheets[0];
+        if (!selectedSheet) {
+          viewerContainer.replaceChildren(
+            el('div', {
+              style: { color: '#fca5a5' },
+              text: 'Unable to determine which sheet to display.',
+            }),
+          );
+          return;
+        }
+
+        loadingMsg.textContent = `Fetching ${selectedSheet}...`;
+
+        const sheetImg = document.createElement('img');
+        sheetImg.src = spriteUrl(briefId, runId, selectedSheet);
+        sheetImg.style.maxWidth = '100%';
+        sheetImg.style.border = '1px solid rgba(148,163,184,0.2)';
+        sheetImg.style.borderRadius = '8px';
+        sheetImg.style.imageRendering = 'pixelated';
+
+        sheetImg.addEventListener('load', () => {
+          const detailsDiv = el('div', {
+            style: { marginBottom: '12px' },
+          });
+          const sheetNameEl = el('p', {
+            text: `Sheet: ${selectedSheet}`,
+            style: {
+              margin: '0 0 8px 0',
+              fontSize: '14px',
+              color: '#e5e7eb',
+            },
+          });
+          const briefRunEl = el('p', {
+            text: `${briefId} / ${runId}`,
+            style: {
+              margin: '0',
+              fontSize: '12px',
+              color: '#93c5fd',
+            },
+          });
+          detailsDiv.append(sheetNameEl, briefRunEl);
+
+          const viewerDiv = el('div', {
+            style: {
+              border: '1px solid rgba(148,163,184,0.2)',
+              borderRadius: '8px',
+              overflow: 'auto',
+              background: '#0f172a',
+              padding: '12px',
+            },
+          });
+          viewerDiv.append(sheetImg);
+
+          viewerContainer.replaceChildren(detailsDiv, viewerDiv);
+        });
+
+        sheetImg.addEventListener('error', () => {
+          viewerContainer.replaceChildren(
+            el('div', {
+              style: { color: '#fca5a5' },
+              text: `Failed to load sprite sheet: ${selectedSheet}`,
+            }),
+          );
+        });
+      } catch (error) {
+        viewerContainer.replaceChildren(
+          el('div', {
+            style: {
+              padding: '16px',
+              borderRadius: '8px',
+              background: '#7f1d1d',
+              color: '#fef3c7',
+            },
+            text: `Error loading sprite review: ${error instanceof Error ? error.message : String(error)}`,
+          }),
+        );
+      }
+    })();
+  }
 
   promoteBtn.addEventListener('click', async () => {
     const selected = getSelectedAsset();
