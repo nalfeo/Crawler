@@ -348,9 +348,26 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
       function renderState(state) {
         const count = Number(state.activeServerCount || 0);
         const scannedAt = state.scannedAt ? new Date(state.scannedAt).toLocaleTimeString() : 'unknown';
+        const diagnostics = [];
+        if (state.launchLogPath) {
+          diagnostics.push('launch log: ' + escapeHtml(state.launchLogPath));
+        }
+        if (state.artifactPath) {
+          diagnostics.push('snapshot: ' + escapeHtml(state.artifactPath));
+        }
+        if (state.launchLogWriteError) {
+          diagnostics.push('launch-log write error: ' + escapeHtml(state.launchLogWriteError));
+        }
+        if (state.artifactWriteError) {
+          diagnostics.push('snapshot write error: ' + escapeHtml(state.artifactWriteError));
+        }
+        const diagnosticsMarkup =
+          diagnostics.length > 0
+            ? '<div class="meta">' + diagnostics.map((bit) => '<span>' + bit + '</span>').join('') + '</div>'
+            : '';
         summaryEl.innerHTML = count > 0
-          ? '<strong>' + escapeHtml(count) + '</strong> running Crawler worktree server' + (count === 1 ? '' : 's') + ' detected. <span class="meta"><span>Last scan: ' + escapeHtml(scannedAt) + '</span></span>'
-          : 'No running Crawler dev servers were found on the last scan.';
+          ? '<strong>' + escapeHtml(count) + '</strong> running Crawler worktree server' + (count === 1 ? '' : 's') + ' detected. <span class="meta"><span>Last scan: ' + escapeHtml(scannedAt) + '</span></span>' + diagnosticsMarkup
+          : 'No running Crawler dev servers were found on the last scan.' + diagnosticsMarkup;
 
         if (state.error) {
           errorEl.hidden = false;
@@ -366,7 +383,9 @@ export function renderHtml({ instanceId, pollIntervalMs, workspacePath }) {
             ? servers.map(renderServer).join('')
             : '<section class="empty"><strong>No running Crawler dev servers found</strong><div>Run <code>npm run lab</code>, <code>npm run devtools</code>, or <code>npm run dev</code> in a Crawler worktree to populate the links.</div><div class="meta"><span>Last scan: ' +
               escapeHtml(scannedAt) +
-              '</span></div></section>';
+              '</span></div>' +
+              diagnosticsMarkup +
+              '</section>';
       }
 
       async function loadState(url, options) {

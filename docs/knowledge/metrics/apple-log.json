@@ -354,5 +354,15 @@
     "estimate": "🍎",
     "actual": "🍎",
     "verdict": "on-target"
+  },
+  {
+    "date": "2026-06-18",
+    "session": "server-launch-logging-diagnostics",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Added JSONL launch/discovery logging and surfaced diagnostic artifact paths in worktree-server-status; updated AGENTS + DevOps persona to read those logs first during launch-failure diagnosis."
   }
 ]
