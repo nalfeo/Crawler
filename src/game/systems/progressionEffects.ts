@@ -14,6 +14,13 @@ interface ApplyCatalogEffectOptions {
   holderEid?: number;
 }
 
+const DEFAULT_TILE_SIZE_PX = 32;
+
+function tilesToPixels(world: GameWorld, radiusTiles: number): number {
+  const tileSizePx = world.floorMap?.config.tileSizePx ?? DEFAULT_TILE_SIZE_PX;
+  return radiusTiles * tileSizePx;
+}
+
 function castFireball(
   world: GameWorld,
   casterEid: number,
@@ -22,7 +29,7 @@ function castFireball(
 ): void {
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
-  const radiusPx = radiusTiles * 16;
+  const radiusPx = tilesToPixels(world, radiusTiles);
   const radiusSq = radiusPx * radiusPx;
   const baseDamage = world.stores.stats.damage[casterEid] ?? 10;
   const damage = Math.round(baseDamage * damagePercent);
@@ -57,7 +64,7 @@ function castPulseShield(
 ): void {
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
-  const radiusPx = radiusTiles * 16;
+  const radiusPx = tilesToPixels(world, radiusTiles);
   const radiusSq = radiusPx * radiusPx;
 
   const enemies = [...query(world.ecs, [Enemy, Position, Health])];

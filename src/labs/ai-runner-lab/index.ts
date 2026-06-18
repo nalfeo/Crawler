@@ -12,88 +12,76 @@ import { BootScene, MainGameScene } from '../../engine/index.js';
 import { BehaviorTreeAI } from '../../game/ai/index.js';
 import { createInputState } from '../../shared/input.js';
 import type { GameWorld } from '../../core/world.js';
+import { registerLab, type LabCategory } from '../registry.js';
 
 const AI_SEED = 42;
 
-export default {
-  id: 'ai-runner',
-  name: 'AI Runner',
-  description: 'Watch the AI play the game',
-  create(canvas: HTMLElement, controls: HTMLElement): () => void {
-    // Create AI input provider
-    const ai = new BehaviorTreeAI({
-      seed: AI_SEED,
-      aggression: 1,
-      retreatThreshold: 0.3,
-      debug: true,
-    });
+function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => void {
+  const ai = new BehaviorTreeAI({
+    seed: AI_SEED,
+    aggression: 1,
+    retreatThreshold: 0.3,
+    debug: true,
+  });
 
-    const inputState = createInputState();
+  const inputState = createInputState();
 
-    // Custom input provider that uses AI instead of human input
-    const aiInputProvider = {
-      poll(state: typeof inputState): void {
-        // AI needs access to world state - we'll get it from the scene
-        const scene = game.scene.getScene('MainGameScene') as MainGameScene | null;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (scene && (scene as any).world) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const world = (scene as any).world as GameWorld;
-          ai.poll(state, world);
-
-          // Copy AI decisions to our input state
-          state.moveX = inputState.moveX;
-          state.moveY = inputState.moveY;
-          state.action = inputState.action;
-          state.pointerX = inputState.pointerX;
-          state.pointerY = inputState.pointerY;
-        } else {
-          state.moveX = 0;
-          state.moveY = 0;
-          state.action = false;
-        }
-      },
-      destroy(): void {
-        // Nothing to clean up
-      },
-    };
-
-    // Create Phaser game with custom input provider
-    const config: Phaser.Types.Core.GameConfig = {
-      type: Phaser.WEBGL,
-      parent: canvas,
-      width: 1280,
-      height: 720,
-      backgroundColor: '#1a1a2e',
-      pixelArt: true,
-      scene: [BootScene, MainGameScene],
-      scale: {
-        mode: Phaser.Scale.FIT,
-        autoCenter: Phaser.Scale.CENTER_BOTH,
-      },
-      physics: {
-        default: 'arcade',
-        arcade: {
-          gravity: { x: 0, y: 0 },
-          debug: false,
-        },
-      },
-    };
-
-    const game = new Phaser.Game(config);
-
-    // Override input capture in MainGameScene
-    game.events.once('ready', () => {
+  const aiInputProvider = {
+    poll(state: typeof inputState): void {
       const scene = game.scene.getScene('MainGameScene') as MainGameScene | null;
-      if (scene) {
-        // Replace the input capture with our AI provider
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (scene && (scene as any).world) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (scene as any).inputCapture = aiInputProvider;
+        const world = (scene as any).world as GameWorld;
+        ai.poll(state, world);
+        state.moveX = inputState.moveX;
+        state.moveY = inputState.moveY;
+        state.action = inputState.action;
+        state.pointerX = inputState.pointerX;
+        state.pointerY = inputState.pointerY;
+      } else {
+        state.moveX = 0;
+        state.moveY = 0;
+        state.action = false;
       }
-    });
+    },
+    destroy(): void {
+      // Nothing to clean up.
+    },
+  };
 
-    // Create controls UI
-    controls.innerHTML = `
+  const config: Phaser.Types.Core.GameConfig = {
+    type: Phaser.WEBGL,
+    parent: canvas,
+    width: 1280,
+    height: 720,
+    backgroundColor: '#1a1a2e',
+    pixelArt: true,
+    scene: [BootScene, MainGameScene],
+    scale: {
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
+    },
+    physics: {
+      default: 'arcade',
+      arcade: {
+        gravity: { x: 0, y: 0 },
+        debug: false,
+      },
+    },
+  };
+
+  const game = new Phaser.Game(config);
+
+  game.events.once('ready', () => {
+    const scene = game.scene.getScene('MainGameScene') as MainGameScene | null;
+    if (scene) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (scene as any).inputCapture = aiInputProvider;
+    }
+  });
+
+  controls.innerHTML = `
       <div style="font-family: monospace; padding: 12px;">
         <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
         <div id="ai-info" style="font-size: 12px; line-height: 1.6;">
@@ -114,39 +102,44 @@ export default {
       </div>
     `;
 
-    // Update AI decision display
-    const updateInterval = setInterval(() => {
-      const decision = ai.getDecision();
-      const stateElem = document.getElementById('ai-state');
-      const reasonElem = document.getElementById('ai-reason');
-      const targetElem = document.getElementById('ai-target');
+  const updateInterval = setInterval(() => {
+    const decision = ai.getDecision();
+    const stateElem = document.getElementById('ai-state');
+    const reasonElem = document.getElementById('ai-reason');
+    const targetElem = document.getElementById('ai-target');
 
-      if (stateElem) {
-        const stateName = getStateName(decision.state);
-        stateElem.textContent = stateName;
+    if (stateElem) {
+      const stateName = getStateName(decision.state);
+      stateElem.textContent = stateName;
+    }
+
+    if (reasonElem) {
+      reasonElem.textContent = decision.reason;
+    }
+
+    if (targetElem) {
+      if (decision.targetX !== null && decision.targetY !== null) {
+        targetElem.textContent = `(${Math.round(decision.targetX)}, ${Math.round(decision.targetY)})`;
+      } else {
+        targetElem.textContent = 'None';
       }
+    }
+  }, 100);
 
-      if (reasonElem) {
-        reasonElem.textContent = decision.reason;
-      }
-
-      if (targetElem) {
-        if (decision.targetX !== null && decision.targetY !== null) {
-          targetElem.textContent = `(${Math.round(decision.targetX)}, ${Math.round(decision.targetY)})`;
-        } else {
-          targetElem.textContent = 'None';
-        }
-      }
-    }, 100);
-
-    return () => {
-      clearInterval(updateInterval);
-      game.destroy(true);
-    };
-  },
-};
+  return () => {
+    clearInterval(updateInterval);
+    game.destroy(true);
+  };
+}
 
 function getStateName(state: number): string {
   const names = ['EXPLORE', 'ENGAGE', 'RETREAT', 'COLLECT', 'INTERACT'];
   return names[state] ?? 'UNKNOWN';
 }
+
+registerLab('ai-runner', {
+  category: 'Meta' as LabCategory,
+  name: 'AI Runner',
+  description: 'Watch the AI play the game',
+  create: createAiRunnerLab,
+});

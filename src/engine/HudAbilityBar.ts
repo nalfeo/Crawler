@@ -93,6 +93,7 @@ export function createHudAbilityBar(scene: Phaser.Scene): {
     const state = world.abilityStatesByEntity.get(playerEid);
     const equipped = state?.equippedActiveAbilityIds ?? [];
     const cooldowns = state?.cooldownByAbilityId ?? new Map();
+    const cooldownFrames = state?.cooldownFramesByAbilityId ?? new Map();
 
     for (let i = 0; i < ACTIVE_ABILITY_SLOT_LIMIT; i += 1) {
       const id = equipped[i] ?? null;
@@ -104,13 +105,17 @@ export function createHudAbilityBar(scene: Phaser.Scene): {
         slot.setFillStyle(COLORS.slotActive, 0.92).setStrokeStyle(2, COLORS.slotActiveBorder);
         label.setText(shortAbilityLabel(id)).setColor('#f8fafc');
 
-        // Show cooldown indicator if on cooldown
-        const cooldown = cooldowns.get(id) ?? 0;
-        if (cooldown > 0) {
-          cooldownBar.setVisible(true);
-          // cooldown is a fraction from 0 to 1 of remaining time
-          const barWidth = Math.max(0, (SLOT_SIZE - 4) * cooldown);
-          cooldownBar.setSize(barWidth, 4);
+        const lastTriggerFrame = cooldowns.get(id);
+        const cooldownDuration = cooldownFrames.get(id) ?? 0;
+        if (lastTriggerFrame !== undefined && cooldownDuration > 0) {
+          const elapsedFrames = Math.max(0, world.frameCount - lastTriggerFrame);
+          const remainingRatio = Math.max(0, 1 - elapsedFrames / cooldownDuration);
+          if (remainingRatio > 0) {
+            cooldownBar.setVisible(true);
+            cooldownBar.setSize((SLOT_SIZE - 4) * remainingRatio, 4);
+          } else {
+            cooldownBar.setVisible(false);
+          }
         } else {
           cooldownBar.setVisible(false);
         }

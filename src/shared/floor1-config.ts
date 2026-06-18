@@ -122,7 +122,7 @@ export const floor1ConfigSchema = z
       .strict(),
     sprites: z
       .object({
-        welcomeSign: z.number().int().positive(),
+        welcomeSign: z.number().int().positive().optional(),
       })
       .strict()
       .optional(),
@@ -183,11 +183,12 @@ function loadFloor1ConfigFromManifest(): Floor1Config {
     },
     player: manifest.player,
     camera: manifest.camera,
-    sprites: manifest.sprites
-      ? {
-          welcomeSign: manifest.sprites.welcomeSign!,
-        }
-      : undefined,
+    sprites:
+      manifest.sprites?.welcomeSign !== undefined
+        ? {
+            welcomeSign: manifest.sprites.welcomeSign,
+          }
+        : undefined,
   };
 }
 

@@ -18,6 +18,7 @@ export function createAbilityState(): AbilityState {
     equippedActiveAbilityIds: [],
     passiveAbilityIds: [],
     cooldownByAbilityId: new Map(),
+    cooldownFramesByAbilityId: new Map(),
     appliedPassiveAbilityIds: new Set(),
   };
 }
@@ -225,6 +226,7 @@ function activateAbility(world: GameWorld, holderEid: number, abilityId: string)
   }
   spendMp(world, holderEid, def.mpCost);
   state.cooldownByAbilityId.set(abilityId, world.frameCount);
+  state.cooldownFramesByAbilityId.set(abilityId, def.cooldownFrames);
 }
 
 export function abilitySystem(world: GameWorld): void {

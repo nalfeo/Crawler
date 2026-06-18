@@ -478,7 +478,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   tagRoomAsSafe(world, shopRoomPos);
   tagRoomAsSafe(world, spellQuestGiverPos);
 
-  if (floorMap.spawnRoom && floorMap.safeRoom) {
+  const welcomeSignTextureId = floor1Config.sprites?.welcomeSign;
+  if (welcomeSignTextureId !== undefined && floorMap.spawnRoom && floorMap.safeRoom) {
     const startId = floorMap.spawnRoom.id;
     const targetId = floorMap.safeRoom.id;
     const path = findRoomPath(floorMap.roomGraph, startId, targetId);
@@ -502,7 +503,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
             world.ecs,
             eid,
             set(Sprite, {
-              textureId: floor1Config.sprites!.welcomeSign,
+              textureId: welcomeSignTextureId,
               width: 32,
               height: 16,
             }),

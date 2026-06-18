@@ -466,7 +466,7 @@ export class MainGameScene extends Phaser.Scene {
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
   }
 
-  private handleWindowKeyDown(event: KeyboardEvent): void {
+  private handleWindowKeyDown = (event: KeyboardEvent): void => {
     if (this.modalPicker?.isOpen() || this.isTextEntryTarget(event)) {
       return;
     }
@@ -478,7 +478,7 @@ export class MainGameScene extends Phaser.Scene {
     if (event.code === 'KeyB' && !event.repeat) {
       this.queuedAbilitiesToggle = true;
     }
-  }
+  };
 
   private markCameraMasksDirty(): void {
     this.cameraMasksDirty = true;
@@ -1134,6 +1134,7 @@ export class MainGameScene extends Phaser.Scene {
         equippedActiveAbilityIds: [],
         passiveAbilityIds: [],
         cooldownByAbilityId: new Map(),
+        cooldownFramesByAbilityId: new Map(),
         appliedPassiveAbilityIds: new Set(),
       } satisfies AbilityState;
       this.world.abilityStatesByEntity.set(this.playerEid, state);

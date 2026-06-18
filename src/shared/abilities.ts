@@ -51,5 +51,6 @@ export interface AbilityState {
   equippedActiveAbilityIds: string[];
   passiveAbilityIds: string[];
   cooldownByAbilityId: Map<string, number>;
+  cooldownFramesByAbilityId: Map<string, number>;
   appliedPassiveAbilityIds: Set<string>;
 }
