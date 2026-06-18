@@ -19,6 +19,7 @@
 - Order CI gates for fast failure and minimal wasted runtime.
 - Maintain scripts, GitHub workflows, and harness checks with clear exit conditions.
 - Prefer portable, scripted verification paths that can run locally and in CI.
+- For dev/lab/devtools launch failures, read `files/worktree-server-launch.log` and `files/worktree-server-status.json` first, then diagnose from those artifacts before retrying.
 
 ## Quality Criteria
 

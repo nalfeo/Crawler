@@ -47,6 +47,13 @@
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
 
+## Server Launch Diagnostics
+
+When diagnosing Crawler dev/lab/devtools launch failures, inspect these session artifacts before retrying commands:
+
+1. `files/worktree-server-launch.log` — append-only JSONL launch/discovery events and errors.
+2. `files/worktree-server-status.json` — latest structured discovery snapshot used by the Worktree Server canvas.
+
 ## Architecture
 
 - **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering
