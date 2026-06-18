@@ -540,7 +540,7 @@ export function weaponSystem(world: GameWorld): void {
       return;
     }
 
-    // Melee weapons: Fire toward nearest enemy when in combat (no range gate)
+    // Melee weapons: Fire only when an enemy is in legitimate reach.
     if (def.weaponType === WeaponType.MELEE) {
       if (!inCombat) {
         return;
@@ -553,34 +553,12 @@ export function weaponSystem(world: GameWorld): void {
       if (world.elapsedMs - lastFire < def.cooldownMs) {
         return;
       }
+      const gateRangePx = getWeaponGateRangePx(def) * ATTACK_TARGET_GATE_MULTIPLIER;
+      if (target.distanceSq > gateRangePx * gateRangePx) {
+        return;
+      }
 
-      // For distant enemies, extend the blade to actually reach them
-      // Only scale if significantly farther than the base aoeRadius
-      const baseAoeRadiusPx = ftToPx(def.aoeRadius);
-      const distToTarget = Math.sqrt(target.distanceSq);
-      const bladeLength =
-        distToTarget > baseAoeRadiusPx * 2 ? distToTarget + ftToPx(1) : baseAoeRadiusPx;
-
-      const px = world.stores.position.x[player]!;
-      const py = world.stores.position.y[player]!;
-      spawnMeleeSwing(
-        world,
-        px,
-        py,
-        player,
-        def.baseDamage,
-        bladeLength,
-        def.durationMs,
-        target.direction.x,
-        target.direction.y,
-        def.swingArcDeg,
-        TeamId.PLAYER,
-        def.meleeStyle,
-        ftToPx(def.headRadius),
-        def.shaftDamageMult,
-        ftToPx(def.knockback),
-      );
-
+      dispatchAttack(world, player, def, target.direction);
       state.aimX = target.direction.x;
       state.aimY = target.direction.y;
       state.lastFireMs = world.elapsedMs;
