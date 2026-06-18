@@ -4,6 +4,9 @@ set -euo pipefail
 echo "🔧 Preflight: Installing dependencies..."
 npm ci --prefer-offline --silent
 
+echo "🌐 Preflight: Installing Playwright Chromium browser..."
+npx playwright install chromium
+
 echo "🔍 Preflight: Type checking..."
 npx tsc --noEmit
 

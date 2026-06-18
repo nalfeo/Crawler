@@ -140,3 +140,26 @@ jobs:
           if [ "${{ needs.merge-gate.result }}" != "success" ]; then
             exit 1
           fi
+
+  # Job: E2E visual regression (advisory — non-blocking merge gate)
+  test-e2e:
+    name: E2E Visual Regression
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      - name: E2E visual regression tests
+        run: npx vitest run --project e2e --reporter=verbose
+
+      - name: Upload e2e screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: tmp/e2e-screenshots/
+          retention-days: 7

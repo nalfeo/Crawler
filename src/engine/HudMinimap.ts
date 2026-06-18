@@ -265,10 +265,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setInteractive({ useHandCursor: true });
 
   let terrainRt: Phaser.GameObjects.RenderTexture | undefined;
+  // dotGraphics must sit above terrainRt (HUD_DEPTH+4 > HUD_DEPTH+3) so blips
+  // render on top of the baked terrain tiles.
   const dotGraphics = scene.add
     .graphics()
     .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 2)
+    .setDepth(HUD_DEPTH + 4)
     .setVisible(false);
 
   // Fixed screen-space content for the docked radar dial. Terrain + blips are
@@ -692,10 +694,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
     if (terrainRt) {
       return;
     }
+    // Depth HUD_DEPTH+3: above panelBg (+1), radarRt (+1), and viewportFrame (+2)
+    // so terrain renders on top of the dark viewport background rectangle.
+    // dotGraphics is at HUD_DEPTH+4 to render blips above terrain.
     terrainRt = scene.add
       .renderTexture(viewport.x, viewport.y, floorMap.width, floorMap.height)
       .setOrigin(0, 0)
-      .setDepth(HUD_DEPTH + 1)
+      .setDepth(HUD_DEPTH + 3)
       .setScrollFactor(0);
     terrainRt.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
     terrainRt.setVisible(false);
