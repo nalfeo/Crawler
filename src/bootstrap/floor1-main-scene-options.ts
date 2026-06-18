@@ -21,8 +21,9 @@ import {
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floor1Scenario.js';
-import { Player } from '../core/components.js';
+import { Player, type GameWorld } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
+import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 
 export function createFloor1MainSceneOptions() {
   return {
