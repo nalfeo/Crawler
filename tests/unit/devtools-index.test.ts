@@ -4,7 +4,7 @@ import { DEVTOOLS_INDEX_ENTRIES } from '../../src/devtools/index.js';
 describe('devtools home index', () => {
   it('surfaces the backlog/workflow tool alongside review tools', () => {
     expect(DEVTOOLS_INDEX_ENTRIES.map((entry) => entry.id)).toEqual([
-      'floor-art',
+      'sprite-generation-workflow',
       'sprite-review',
       'postprocess',
     ]);

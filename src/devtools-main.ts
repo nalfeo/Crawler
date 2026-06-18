@@ -24,12 +24,13 @@ import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const SIDECAR_BASE = getSpriteSidecarBaseUrl();
 const DEVTOOLS_PAGE_HOME = 'home';
-const DEVTOOLS_PAGE_FLOOR_ART = 'floor-art';
+const DEVTOOLS_PAGE_SPRITE_WORKFLOW = 'sprite-generation-workflow';
+const DEVTOOLS_PAGE_FLOOR_ART_LEGACY = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
-  | typeof DEVTOOLS_PAGE_FLOOR_ART
+  | typeof DEVTOOLS_PAGE_SPRITE_WORKFLOW
   | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
   | typeof DEVTOOLS_PAGE_POSTPROCESS;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
@@ -264,7 +265,9 @@ function setButtonBusy(
 function currentDevtoolsPage(): DevtoolsPage {
   const value = new URLSearchParams(window.location.search).get('page');
   if (value === DEVTOOLS_PAGE_HOME) return DEVTOOLS_PAGE_HOME;
-  if (value === DEVTOOLS_PAGE_FLOOR_ART) return DEVTOOLS_PAGE_FLOOR_ART;
+  if (value === DEVTOOLS_PAGE_SPRITE_WORKFLOW || value === DEVTOOLS_PAGE_FLOOR_ART_LEGACY) {
+    return DEVTOOLS_PAGE_SPRITE_WORKFLOW;
+  }
   if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
@@ -342,7 +345,7 @@ function render(): void {
   const currentPage = currentDevtoolsPage();
   const isHomePage = currentPage === DEVTOOLS_PAGE_HOME;
   const isSpriteReviewPage = currentPage === DEVTOOLS_PAGE_SPRITE_REVIEW;
-  const isFloorArtPage = currentPage === DEVTOOLS_PAGE_FLOOR_ART;
+  const isSpriteWorkflowPage = currentPage === DEVTOOLS_PAGE_SPRITE_WORKFLOW;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
@@ -353,7 +356,7 @@ function render(): void {
           ? 'Postprocess debugger: inspect pipeline steps, slicing, and live postprocess traces.'
           : isSpriteReviewPage
             ? 'Sprite review — readonly viewer for approved sprite sheets.'
-            : 'Sprite review + tracker: visibility over placeholders, briefs, reviews, and integration.'
+            : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -470,7 +473,7 @@ function render(): void {
   if (plans.length === 0) {
     shell.append(
       el('p', {
-        text: 'No floor art plans found under plans/floor-art/*.art.yaml.',
+        text: 'No Sprite Generation Workflow plans found under plans/floor-art/*.art.yaml.',
         style: { color: '#fca5a5' },
       }),
     );
@@ -1000,13 +1003,13 @@ function render(): void {
     debuggerTraceHost,
   );
   shell.append(debuggerPanel);
-  const showFloorArtWorkflow = isFloorArtPage;
-  controls.style.display = showFloorArtWorkflow ? 'flex' : 'none';
-  summary.style.display = showFloorArtWorkflow ? 'grid' : 'none';
-  manifestState.style.display = showFloorArtWorkflow ? 'block' : 'none';
-  tableWrap.style.display = showFloorArtWorkflow ? 'block' : 'none';
-  emptyState.style.display = showFloorArtWorkflow ? emptyState.style.display : 'none';
-  workflowPanel.style.display = showFloorArtWorkflow ? 'block' : 'none';
+  const showSpriteWorkflow = isSpriteWorkflowPage;
+  controls.style.display = showSpriteWorkflow ? 'flex' : 'none';
+  summary.style.display = showSpriteWorkflow ? 'grid' : 'none';
+  manifestState.style.display = showSpriteWorkflow ? 'block' : 'none';
+  tableWrap.style.display = showSpriteWorkflow ? 'block' : 'none';
+  emptyState.style.display = showSpriteWorkflow ? emptyState.style.display : 'none';
+  workflowPanel.style.display = showSpriteWorkflow ? 'block' : 'none';
   debuggerPanel.style.display = isPostprocessPage ? 'block' : 'none';
 
   let reports: FloorArtPlanReport[] = [];
@@ -1024,10 +1027,13 @@ function render(): void {
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
   const queuedAssetIds = new Set<string>();
-  const workflowStorageKey = 'crawler.devtools.floor-art.workflow-state.v1';
+  const workflowStorageKey = 'crawler.devtools.sprite-generation-workflow-state.v1';
+  const workflowStorageKeyLegacy = 'crawler.devtools.floor-art.workflow-state.v1';
   const readWorkflowState = (): PersistedFloorArtWorkflowState | null => {
     try {
-      const raw = window.localStorage.getItem(workflowStorageKey);
+      const raw =
+        window.localStorage.getItem(workflowStorageKey) ??
+        window.localStorage.getItem(workflowStorageKeyLegacy);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Partial<PersistedFloorArtWorkflowState>;
       return {
@@ -2887,7 +2893,7 @@ function render(): void {
                   color: '#fef3c7',
                   border: '1px solid rgba(255,255,255,0.18)',
                 },
-                text: 'No sprite runs found yet. Generate a run from Floor Art first, then open Sprite Review.',
+                text: 'No sprite runs found yet. Generate a run from Sprite Generation Workflow first, then open Sprite Review.',
               }),
             );
             return;

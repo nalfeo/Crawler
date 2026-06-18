@@ -1,13 +1,13 @@
 export interface DevtoolsIndexEntry {
-  id: 'floor-art' | 'sprite-review' | 'postprocess';
+  id: 'sprite-generation-workflow' | 'sprite-review' | 'postprocess';
   name: string;
   description: string;
 }
 
 export const DEVTOOLS_INDEX_ENTRIES: readonly DevtoolsIndexEntry[] = [
   {
-    id: 'floor-art',
-    name: 'Floor art + workflow',
+    id: 'sprite-generation-workflow',
+    name: 'Sprite Generation Workflow',
     description:
       'Track the asset backlog, queue one-liner → brief → generation → approval → metadata, and inspect integration status.',
   },
