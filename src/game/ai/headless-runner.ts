@@ -21,7 +21,14 @@ import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import type { AIInputProvider, RunStats, LevelUpEvent } from './types.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
-import { meetTutorialGoon, meetShopkeeper, meetSpellQuestGiver } from '../index.js';
+import {
+  meetTutorialGoon,
+  meetShopkeeper,
+  meetSpellQuestGiver,
+  initializeFloor1Scenario,
+} from '../index.js';
+import { setActiveWeapon } from '../weaponSystem.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -103,11 +110,21 @@ export async function runHeadless(
 
   // Create world and spawn player
   const world = createGameWorld({ seed: mergedConfig.seed });
-  const playerEid = spawnPlayer(
-    world,
-    world.floorMap?.playerSpawn?.x ?? 400,
-    world.floorMap?.playerSpawn?.y ?? 400,
-  );
+  const playerEid = spawnPlayer(world, 400, 400);
+
+  // Initialize Floor1 scenario (generates map, sets up objectives, NPCs, etc.)
+  initializeFloor1Scenario(world, playerEid);
+
+  // Auto-equip first available starter weapon for headless mode
+  if (world.floor1 && world.floor1.starterWeaponPool.length > 0) {
+    const firstWeaponId = world.floor1.starterWeaponPool[0];
+    if (firstWeaponId) {
+      const weaponDef = getWeaponDef(firstWeaponId);
+      if (weaponDef) {
+        setActiveWeapon(world, weaponDef);
+      }
+    }
+  }
 
   world.state = 'playing';
   const inputState = createInputState();
