@@ -193,6 +193,7 @@ function getNearestEnemyTarget(
   world: GameWorld,
   playerX: number,
   playerY: number,
+  ignoreFov: boolean = false,
 ): EnemyTarget | undefined {
   const enemies = query(world.ecs, [Enemy, Position]);
   let nearestTarget: EnemyTarget | undefined;
@@ -203,7 +204,8 @@ function getNearestEnemyTarget(
     const ey = world.stores.position.y[enemy]!;
 
     // Only target enemies the player can currently see (FOV + open doors).
-    if (world.floorMap) {
+    // Exception: ignore FOV if player is in active combat (being attacked).
+    if (!ignoreFov && world.floorMap) {
       const tile = world.floorMap.pixelToTile(ex, ey);
       if (!world.floorMap.isVisible(tile.x, tile.y)) {
         continue;
@@ -508,6 +510,22 @@ export function weaponSystem(world: GameWorld): void {
   const playerX = world.stores.position.x[player]!;
   const playerY = world.stores.position.y[player]!;
 
+  // Detect if player is in active combat (enemies nearby within aggro range)
+  const enemies = query(world.ecs, [Enemy, Position]);
+  let inCombat = false;
+  const combatRadius = 1200; // Enemies spawn ~1000px away
+  for (const enemy of enemies) {
+    const ex = world.stores.position.x[enemy]!;
+    const ey = world.stores.position.y[enemy]!;
+    const dx = ex - playerX;
+    const dy = ey - playerY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < combatRadius * combatRadius) {
+      inCombat = true;
+      break;
+    }
+  }
+
   // Data-driven weapon mode
   if (state.activeWeaponDef !== undefined) {
     const def = state.activeWeaponDef;
@@ -522,7 +540,55 @@ export function weaponSystem(world: GameWorld): void {
       return;
     }
 
-    const target = getNearestEnemyTarget(world, playerX, playerY);
+    // Melee weapons: Fire toward nearest enemy when in combat (no range gate)
+    if (def.weaponType === WeaponType.MELEE) {
+      if (!inCombat) {
+        return;
+      }
+      const target = getNearestEnemyTarget(world, playerX, playerY, true);
+      if (!target) {
+        return;
+      }
+      const lastFire = state.lastFireMs;
+      if (world.elapsedMs - lastFire < def.cooldownMs) {
+        return;
+      }
+
+      // For distant enemies, extend the blade to actually reach them
+      // Only scale if significantly farther than the base aoeRadius
+      const baseAoeRadiusPx = ftToPx(def.aoeRadius);
+      const distToTarget = Math.sqrt(target.distanceSq);
+      const bladeLength =
+        distToTarget > baseAoeRadiusPx * 2 ? distToTarget + ftToPx(1) : baseAoeRadiusPx;
+
+      const px = world.stores.position.x[player]!;
+      const py = world.stores.position.y[player]!;
+      spawnMeleeSwing(
+        world,
+        px,
+        py,
+        player,
+        def.baseDamage,
+        bladeLength,
+        def.durationMs,
+        target.direction.x,
+        target.direction.y,
+        def.swingArcDeg,
+        TeamId.PLAYER,
+        def.meleeStyle,
+        ftToPx(def.headRadius),
+        def.shaftDamageMult,
+        ftToPx(def.knockback),
+      );
+
+      state.aimX = target.direction.x;
+      state.aimY = target.direction.y;
+      state.lastFireMs = world.elapsedMs;
+      return;
+    }
+
+    // Ignore FOV checks if in active combat (enemies nearby)
+    const target = getNearestEnemyTarget(world, playerX, playerY, inCombat);
     if (!target) {
       return;
     }
@@ -557,7 +623,7 @@ export function weaponSystem(world: GameWorld): void {
     return;
   }
 
-  const legacyTarget = getNearestEnemyTarget(world, playerX, playerY);
+  const legacyTarget = getNearestEnemyTarget(world, playerX, playerY, inCombat);
   if (!legacyTarget) {
     return;
   }

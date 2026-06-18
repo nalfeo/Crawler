@@ -26,9 +26,8 @@ import {
   meetShopkeeper,
   meetSpellQuestGiver,
   initializeFloor1Scenario,
+  selectFloor1StarterWeapon,
 } from '../index.js';
-import { setActiveWeapon } from '../weaponSystem.js';
-import { getWeaponDef } from '../../shared/weaponDefs.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -113,20 +112,17 @@ export async function runHeadless(
   const playerEid = spawnPlayer(world, 400, 400);
 
   // Initialize Floor1 scenario (generates map, sets up objectives, NPCs, etc.)
+  // This sets world.state = 'loadout'
   initializeFloor1Scenario(world, playerEid);
 
-  // Auto-equip first available starter weapon for headless mode
-  if (world.floor1 && world.floor1.starterWeaponPool.length > 0) {
-    const firstWeaponId = world.floor1.starterWeaponPool[0];
-    if (firstWeaponId) {
-      const weaponDef = getWeaponDef(firstWeaponId);
-      if (weaponDef) {
-        setActiveWeapon(world, weaponDef);
-      }
-    }
+  // Auto-select first starter weapon for headless mode (applies stat bonuses + equips weapon)
+  selectFloor1StarterWeapon(world, 0);
+
+  // Verify we transitioned to 'playing' state
+  if (world.state !== 'playing') {
+    throw new Error(`Failed to transition from loadout: state is ${world.state}`);
   }
 
-  world.state = 'playing';
   const inputState = createInputState();
 
   let frameCount = 0;

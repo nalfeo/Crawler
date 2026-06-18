@@ -29,7 +29,12 @@ import {
   npcSystem,
   type GameWorld,
 } from '../../core/index.js';
-import { questSystem, floorObjectiveSystem, floor1EnemyDirectorSystem } from '../index.js';
+import {
+  questSystem,
+  floorObjectiveSystem,
+  floor1EnemyDirectorSystem,
+  weaponSystem,
+} from '../index.js';
 import type { InputState } from '../../shared/input.js';
 
 /**
@@ -73,6 +78,7 @@ export function runSimulationStep(
 
   movementSystem(world);
   returningProjectileSystem(world);
+  weaponSystem(world);
   const collision = collisionSystem(world);
   aoeOnImpactPreDamage(world);
   damageSystem(world, collision);
