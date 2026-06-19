@@ -10,6 +10,11 @@ export default defineConfig({
     // instrumentation on a loaded machine, where a normally ~1s test can spike
     // past a tight 10s limit. Integration/e2e override this to 120s below.
     testTimeout: 30_000,
+    // Same rationale as testTimeout, but for setup/teardown hooks: suites that
+    // boot a server in beforeEach (e.g. the sprites sidecar Fastify server) can
+    // exceed the 10s default when the full unit suite runs under v8 coverage on
+    // a loaded box. Match testTimeout so heavy hooks don't flake.
+    hookTimeout: 30_000,
     benchmark: {
       include: ['tests/bench/**/*.bench.ts'],
       outputFile: {
@@ -81,6 +86,17 @@ export default defineConfig({
           include: ['tests/{integration,balance}/**/*.{test,spec}.ts'],
           testTimeout: 120_000,
           passWithNoTests: true,
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'headless',
+          include: ['tests/headless/**/*.{test,spec}.ts'],
+          // A full Floor 1 clear simulates ~10k frames; give it generous
+          // headroom so a slow CI runner never flakes on time alone.
+          testTimeout: 180_000,
+          hookTimeout: 180_000,
         },
       },
       {
