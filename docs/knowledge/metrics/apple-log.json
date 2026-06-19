@@ -442,5 +442,15 @@
     "verdict": "exact",
     "hello_kitties": 0.8,
     "notes": "Took over PR #150 behavior-tree AI. Deleted the dead RuleBasedAI; got the headless Floor 1 runner working end-to-end and root-caused the 3-segment quest-stall bug (headless pipeline never reset world.state level_up->playing, starving every state-gated floor system) -- first quest now completes 24.5s (seed 42), meeting the 2-min goal. Removed the melee blade-extension range cheat from weaponSystem (honest range gate + dispatchAttack). Gated the final boss door behind all three tutorial quests (kill + merchant + spell) via an operator:'all' door-lock group; verified non-circular and that AI routing already pursues all three before the staircase. Added AI runner lab debug tooling (path viz, decision-tree view, single-frame step) + floor-agnostic questLog telemetry. Fixed local verify/CI drift: scoped verify.sh coverage step to --project unit (was sweeping in the e2e project's port-5299 lab server -> false 0% coverage) and raised unit testTimeout 10s->30s for CPU-heavy sprite tests under coverage instrumentation. Resolved an apple-log.json merge conflict against main. Full npm run verify green; maintained a bug sidecar (A2-A8 floor1 coupling, B1 pipeline drift, B2 debug-hook marking, C1-C4 standing AI directives) for follow-up."
+  },
+  {
+    "date": "2026-06-18",
+    "session": "floor1-headless-victory-closeout",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Closed out the PR #150 headless clear. Root-caused and fixed the seed-2/12345 stall where the BT AI idled after accepting the Slime-Rat clear quest: findProgressObjective now falls through to a kill-grind stage (findNearestQuestEnemy) that hunts the remaining swarm until the required rat/slime counts latch, then descends. Proved a robust 10/10 VICTORY seed sweep within the 300s/18000-frame deadline (post-commit seed 7 confirmation cleared in 10847 frames/~181s). Restored the weaponSystem.ts 80% branch-coverage gate (full unit suite was 77.62%) with 4 targeted range-gating tests in weapon-system-coverage.test.ts, added a kill-grind regression test (behavior-tree-ai.test.ts 5/5), and removed leftover headless diagnostic scaffolding. Full npm run verify green; committed 0274c43 and pushed. Kept Date.now() in the headless CLI harness (legitimate out-of-sim wall-clock for --max-time-ms, not an ECS system). Deferred standing AI directives C1-C4 + floor-agnostic AI generalization (sidecar A2-A8) as larger follow-up not required for the clear."
   }
 ]
