@@ -1521,6 +1521,9 @@ export function purchaseShopkeeperEquipment(world: GameWorld, playerEid: number)
   if (world.goalFlags.get('floor1-shop-prize-returned') !== true) {
     return false;
   }
+  if (world.goalFlags.get('floor1-shop-quest-complete') === true) {
+    return false;
+  }
   if (hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
     return false;
   }

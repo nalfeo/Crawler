@@ -34,7 +34,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const ai = new BehaviorTreeAI({
     seed: AI_SEED,
     aggression: 1,
-    retreatThreshold: 0.3,
+    retreatThreshold: 0.15,
     debug: true,
   });
   let selectedSpeed = 1;

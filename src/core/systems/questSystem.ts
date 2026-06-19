@@ -179,10 +179,24 @@ function isLatchedComplete(
         return true;
       }
       const bag = playerEid === undefined ? undefined : world.inventories.get(playerEid);
-      if (!bag) {
-        return false;
+      if (bag && getEquippableItemIds().some((itemId) => hasItem(bag, itemId))) {
+        return true;
       }
-      return getEquippableItemIds().some((itemId) => hasItem(bag, itemId));
+      // Equipping purchased gear removes it from the bag. If buy + equip happen
+      // before this objective latches (e.g. on the same frame), the bag check
+      // alone would miss the acquisition forever. Already-equipped gear also
+      // satisfies "have equippable" — you cannot wear gear you never acquired.
+      if (playerEid !== undefined) {
+        const state = getEquipmentState(world, playerEid);
+        if (state) {
+          for (const instanceId of Object.values(state.equipped)) {
+            if (instanceId !== null) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
     }
     case 'equip': {
       if (playerEid === undefined) {

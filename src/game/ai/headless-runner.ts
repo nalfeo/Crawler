@@ -33,9 +33,25 @@ import {
   meetSpellQuestGiver,
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,
+  spendPoints,
 } from '../index.js';
+import type { StatKey } from '../../shared/stats.js';
 
 const logger = createLogger('game:headless-runner');
+
+/**
+ * Reads `world.state` outside the run loop's control-flow narrowing.
+ *
+ * `runHeadless` throws unless `world.state === 'playing'` right after setup,
+ * which makes TypeScript narrow `world.state` to the literal `'playing'` for the
+ * rest of that function. The systems invoked each frame can flip it to
+ * `'game_over'` (HP death or floor-collapse timeout), but TS cannot see those
+ * opaque mutations. Reading it here, in a separate scope, restores the full
+ * declared union so defeat detection type-checks honestly.
+ */
+function readRunState(world: GameWorld): GameWorld['state'] {
+  return world.state;
+}
 
 /**
  * Headless-compatible NPC interaction system.
@@ -90,7 +106,16 @@ function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void 
   }
 
   if (world.goalFlags.get('floor1-boss-battle-complete') === true && !world.featureUnlocks.spells) {
-    selectSpellFromBossBattle(world, playerEid, 'fireball');
+    // Pick the heal spell as the boss reward, not fireball. The spell is claimed
+    // only AFTER the boss battle is already won, so it has zero combat value for
+    // the fight itself; its entire value is post-boss survival. There is no
+    // passive HP/regen on Floor 1 (see autoAllocateStatPoints note), so a player
+    // who finishes the boss at low HP and still has to cross the swarm to the
+    // staircase would otherwise be stuck retreating forever. Heal auto-casts on a
+    // 30 HP health deficit (registry trigger) for 10 mp out of a 100 mp pool —
+    // ~10 casts, far more than the descent needs — and lifts the AI back above
+    // the 15% retreat threshold so it can actually reach the stairs.
+    selectSpellFromBossBattle(world, playerEid, 'heal');
   }
 
   for (const [, instance] of world.npcs.entries()) {
@@ -121,6 +146,80 @@ function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void 
   if (Math.hypot(dx, dy) <= objective.markerRadiusPx) {
     confirmFloor1StairDescend(world, playerEid);
   }
+}
+
+/**
+ * Headless-only: spend earned level-up points the way a survival-minded player
+ * would via the in-scene stat-allocation modal. The human-played scene exposes
+ * a UI to spend `unspentPoints`; the headless runner has no UI, so we automate
+ * it (same pattern as auto-talk / auto-buy / auto-equip). This is legitimate
+ * earned progression, not a cheat.
+ *
+ * Strategy (deterministic, no randomness). The starter sword's melee damage is a
+ * FIXED `def.baseDamage`, so the `damage` stat is inert for the headless player —
+ * every point on damage is wasted. That leaves armor and maxHp, and the spend
+ * ORDER matters as much as the totals, because allocating maxHp grants the delta
+ * as immediate current HP (see statsSystem) — i.e. each level-up maxHp point is a
+ * +10 HP heal. There is no passive regen on Floor 1, so those level-up heals are
+ * the ONLY mid-game sustain the player has before the post-boss heal spell unlocks.
+ *
+ * Armor is flat per-hit mitigation (`damageTaken = max(1, incoming - armor)`) with
+ * sharp diminishing returns: it floors swarm contact (~5) at armor 5 and staircase
+ * boss melee (12) at armor 11 — beyond those thresholds the extra armor buys
+ * nothing for that threat. The previous policy rushed armor to 12 FIRST, which
+ * spent the first four level-ups entirely on armor and banked zero maxHp heals
+ * through the long, bleed-heavy merchant/spell/gold phase. The player then sat at
+ * ~14% HP for the whole mid-game, livelocked near the shopkeeper (retreat at 15%
+ * fired before it could close to interact), and arrived at the boss room nearly
+ * dead. Spend order is therefore tiered to front-load sustain:
+ *   1. Armor -> ARMOR_SWARM_FLOOR (5): stop the mid-game swarm bleed first.
+ *   2. maxHp -> MAXHP_CUSHION_POINTS (6): bank ~6 level-up heals + a +60 HP pool
+ *      to break the retreat/approach livelock and survive the long mid-game.
+ *   3. Armor -> ARMOR_BOSS_TARGET (11): floor the staircase boss's melee.
+ *   4. maxHp: dump the entire remainder for pool depth in the boss room.
+ *
+ * maxHp is wired through to Health.max (see statsSystem), so points spent here grow
+ * the real HP pool — previously this was a no-op and was skipped.
+ */
+const ARMOR_SWARM_FLOOR = 5;
+const MAXHP_CUSHION_POINTS = 6;
+const ARMOR_BOSS_TARGET = 11;
+
+function autoAllocateStatPoints(world: GameWorld, playerEid: number): void {
+  const pl = world.playerLevel;
+  if (pl.unspentPoints <= 0) {
+    return;
+  }
+
+  const allocation: Partial<Record<StatKey, number>> = {};
+  let remaining = pl.unspentPoints;
+
+  const spendArmorUpTo = (target: number): void => {
+    const current = (world.stores.statPoints.armor[playerEid] ?? 0) + (allocation.armor ?? 0);
+    const spend = Math.min(Math.max(0, target - current), remaining);
+    if (spend > 0) {
+      allocation.armor = (allocation.armor ?? 0) + spend;
+      remaining -= spend;
+    }
+  };
+
+  const spendMaxHpUpTo = (targetPoints: number): void => {
+    const current = (world.stores.statPoints.maxHp[playerEid] ?? 0) + (allocation.maxHp ?? 0);
+    const spend = Math.min(Math.max(0, targetPoints - current), remaining);
+    if (spend > 0) {
+      allocation.maxHp = (allocation.maxHp ?? 0) + spend;
+      remaining -= spend;
+    }
+  };
+
+  spendArmorUpTo(ARMOR_SWARM_FLOOR);
+  spendMaxHpUpTo(MAXHP_CUSHION_POINTS);
+  spendArmorUpTo(ARMOR_BOSS_TARGET);
+  if (remaining > 0) {
+    allocation.maxHp = (allocation.maxHp ?? 0) + remaining;
+  }
+
+  spendPoints(world, allocation);
 }
 
 export interface HeadlessRunnerConfig {
@@ -317,6 +416,7 @@ export async function runHeadless(
         enableFloor1: true,
       });
       autoFloor1ProgressionSystem(world, playerEid);
+      autoAllocateStatPoints(world, playerEid);
 
       frameCount++;
 
@@ -481,6 +581,17 @@ export async function runHeadless(
       }
       if (world.floor1?.runSummary?.outcome === 'cleared_floor') {
         outcome = 'victory';
+        break;
+      }
+
+      // Check for defeat. The floor sets `world.state = 'game_over'` either when
+      // the player's HP hits zero (healthSystem) or when the in-game
+      // floor-collapse deadline expires before the staircase is discovered
+      // (floor1ObjectiveTick -> failReason 'stair_timeout'). Without this guard
+      // the loop spins uselessly until maxFrames while the simulation is frozen,
+      // misreporting the run and wasting thousands of frames.
+      if (readRunState(world) === 'game_over') {
+        outcome = world.floor1?.failReason === 'stair_timeout' ? 'timeout' : 'death';
         break;
       }
 

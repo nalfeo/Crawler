@@ -233,6 +233,56 @@ function getNearestEnemyTarget(
   return nearestTarget;
 }
 
+/**
+ * Boss-priority targeting: returns a target aimed at a permanently-aggroed boss
+ * (the elite marker, set only on Floor 1 bosses) when one is within `gateRangePx`
+ * and reachable. Auto-fire otherwise locks onto the strictly nearest enemy — in a
+ * room full of respawning adds an add is almost always nearer than the boss, so a
+ * single-target shot or arc swing rarely lands on the boss, leaving it effectively
+ * unkillable. Focusing the elite when it is already in legitimate reach is a
+ * standard combat heuristic: it does not bypass weapon range (still gated by
+ * `gateRangePx`), quest gating, or any UI-driven choice.
+ */
+function findBossTargetInRange(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+  gateRangePx: number,
+): EnemyTarget | undefined {
+  const behavior = world.stores.enemyBehavior;
+  if (behavior?.aggroedPermanently === undefined) {
+    return undefined;
+  }
+  const enemies = query(world.ecs, [Enemy, Position]);
+  const gateSq = gateRangePx * gateRangePx;
+  let best: EnemyTarget | undefined;
+  let bestDistanceSq = Number.POSITIVE_INFINITY;
+
+  for (const enemy of enemies) {
+    if ((behavior.aggroedPermanently[enemy] ?? 0) !== 1) {
+      continue;
+    }
+    const ex = world.stores.position.x[enemy]!;
+    const ey = world.stores.position.y[enemy]!;
+    const deltaX = ex - playerX;
+    const deltaY = ey - playerY;
+    const distanceSq = deltaX * deltaX + deltaY * deltaY;
+    if (distanceSq <= 0.0001 || distanceSq > gateSq || distanceSq >= bestDistanceSq) {
+      continue;
+    }
+    bestDistanceSq = distanceSq;
+    const enemyRadiusPx =
+      Math.max(world.stores.sprite.width[enemy] ?? 0, world.stores.sprite.height[enemy] ?? 0) * 0.5;
+    best = {
+      direction: normalizeVector(deltaX, deltaY),
+      distanceSq,
+      radiusPx: enemyRadiusPx,
+    };
+  }
+
+  return best;
+}
+
 function getWeaponGateRangePx(def: WeaponDef): number {
   switch (def.weaponType) {
     case WeaponType.MELEE:
@@ -558,9 +608,16 @@ export function weaponSystem(world: GameWorld): void {
         return;
       }
 
-      dispatchAttack(world, player, def, target.direction);
-      state.aimX = target.direction.x;
-      state.aimY = target.direction.y;
+      // Boss-priority aim: if a boss/elite is itself within legitimate reach,
+      // center the swing on it so the arc reliably lands on the boss instead of a
+      // transient add. Falls back to the nearest enemy when no boss is in range,
+      // preserving normal add-clearing.
+      const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangePx);
+      const fireTarget = bossTarget ?? target;
+
+      dispatchAttack(world, player, def, fireTarget.direction);
+      state.aimX = fireTarget.direction.x;
+      state.aimY = fireTarget.direction.y;
       state.lastFireMs = world.elapsedMs;
       return;
     }
