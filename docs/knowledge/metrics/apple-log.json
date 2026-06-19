@@ -452,5 +452,15 @@
     "verdict": "exact",
     "hello_kitties": 0.6,
     "notes": "Closed out the PR #150 headless clear. Root-caused and fixed the seed-2/12345 stall where the BT AI idled after accepting the Slime-Rat clear quest: findProgressObjective now falls through to a kill-grind stage (findNearestQuestEnemy) that hunts the remaining swarm until the required rat/slime counts latch, then descends. Proved a robust 10/10 VICTORY seed sweep within the 300s/18000-frame deadline (post-commit seed 7 confirmation cleared in 10847 frames/~181s). Restored the weaponSystem.ts 80% branch-coverage gate (full unit suite was 77.62%) with 4 targeted range-gating tests in weapon-system-coverage.test.ts, added a kill-grind regression test (behavior-tree-ai.test.ts 5/5), and removed leftover headless diagnostic scaffolding. Full npm run verify green; committed 0274c43 and pushed. Kept Date.now() in the headless CLI harness (legitimate out-of-sim wall-clock for --max-time-ms, not an ECS system). Deferred standing AI directives C1-C4 + floor-agnostic AI generalization (sidecar A2-A8) as larger follow-up not required for the clear."
+  },
+  {
+    "date": "2026-06-19",
+    "session": "headless-floor1-completion-gate",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Added the official, blocking headless Floor 1 completion gate (tests/headless/floor1-completion.test.ts): drives runHeadless(BehaviorTreeAI, seed 42) and asserts outcome=victory, all 4 Floor 1 quests, and gameTimeMs<5min, plus combat/progression sanity. Asserts deterministic game time (never wall time) so cross-platform CPU differences cannot flake CI, and caps maxFrames ~10% past the deadline so a non-clearing regression ends fast instead of grinding to the 100k-frame default. Wired a 'headless' vitest project, test:headless npm script, verify.sh Step 7, and a dedicated blocking test-headless CI job in merge-gate.needs + check block. Also committed the previously-staged browser/headless parity work: shared auto-progression.ts extraction (B7), spellQuestGiver.meet scene wiring + regression test (B5), per-sub-step AI re-poll in MainGameScene (B6), and melee stutter-step kiting. Caught a push-ref trap: the worktree branch is pr/150/copilot/design-headless-runner-ai but PR #150's head ref is copilot/design-headless-runner-ai (no prefix) -- first push hit a stray ref; fixed with git push origin HEAD:copilot/design-headless-runner-ai. Full npm run verify green (8/8 incl. build); deleted throwaway _seed-probe.mts. PR updated to 70cda5a, not merged."
   }
 ]
