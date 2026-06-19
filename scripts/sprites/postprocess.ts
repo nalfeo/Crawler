@@ -277,6 +277,10 @@ export const BACKGROUND_B_ENCLOSED_MAX_COMPONENT_DISTANCE_SQ = 25000;
 export const BACKGROUND_B_CENTER_SEED_TOLERANCE_SQ = 40000;
 export const BACKGROUND_B_CENTER_FILL_MIN_AREA = 12;
 export const BACKGROUND_B_CENTER_FILL_MAX_AREA = 384;
+export const BACKGROUND_B_CENTER_FILL_MAX_WIDE_AREA = 12000;
+export const BACKGROUND_B_CENTER_FILL_MIN_WIDE_ASPECT = 1.2;
+export const BACKGROUND_B_CENTER_FILL_MIN_WIDE_CENTROID_Y_RATIO = 0.45;
+export const BACKGROUND_B_CENTER_SEED_MIN_COSINE = 0.9;
 
 export function removeBackground(
   image: RgbaImage,
@@ -487,6 +491,9 @@ function clearEnclosedNearBackgroundIslands(
   }
 
   clearEnclosedBackgroundLikeRegionsFromCenter(data, width, height, cornerColors);
+  if (isMagentaFamilyBackground(cornerColors)) {
+    clearLowerHalfMagentaArtifacts(data, width, height);
+  }
 }
 
 function clearEnclosedBackgroundLikeRegionsFromCenter(
@@ -504,17 +511,22 @@ function clearEnclosedBackgroundLikeRegionsFromCenter(
     [0, -1],
   ];
   const seedToleranceSq = BACKGROUND_B_CENTER_SEED_TOLERANCE_SQ;
+  const seedMinCosine = BACKGROUND_B_CENTER_SEED_MIN_COSINE;
   for (let linear = 0; linear < total; linear++) {
     if (visited[linear]) continue;
     const idx = linear * 4;
     if ((data[idx + 3] ?? 0) === 0) continue;
-    if (minCornerColorDistanceSq(data, idx, cornerColors) > seedToleranceSq) continue;
+    if (!isBackgroundLikeColor(data, idx, cornerColors, seedToleranceSq, seedMinCosine)) continue;
 
     const component: number[] = [];
     const stack: number[] = [linear];
     visited[linear] = 1;
     let sumX = 0;
     let sumY = 0;
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
 
     while (stack.length > 0) {
       const current = stack.pop() as number;
@@ -523,6 +535,10 @@ function clearEnclosedBackgroundLikeRegionsFromCenter(
       const y = Math.floor(current / width);
       sumX += x;
       sumY += y;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
       for (const [dx, dy] of offsets) {
         const nx = x + dx;
         const ny = y + dy;
@@ -531,14 +547,23 @@ function clearEnclosedBackgroundLikeRegionsFromCenter(
         if (visited[neighbor]) continue;
         const nIdx = neighbor * 4;
         if ((data[nIdx + 3] ?? 0) === 0) continue;
-        if (minCornerColorDistanceSq(data, nIdx, cornerColors) > seedToleranceSq) continue;
+        if (!isBackgroundLikeColor(data, nIdx, cornerColors, seedToleranceSq, seedMinCosine))
+          continue;
         visited[neighbor] = 1;
         stack.push(neighbor);
       }
     }
 
     if (component.length < BACKGROUND_B_CENTER_FILL_MIN_AREA) continue;
-    if (component.length > BACKGROUND_B_CENTER_FILL_MAX_AREA) continue;
+    const bboxW = maxX - minX + 1;
+    const bboxH = maxY - minY + 1;
+    const centroidY = sumY / component.length;
+    const wideShadowLike =
+      bboxW >= bboxH * BACKGROUND_B_CENTER_FILL_MIN_WIDE_ASPECT &&
+      component.length <= BACKGROUND_B_CENTER_FILL_MAX_WIDE_AREA &&
+      centroidY >= height * BACKGROUND_B_CENTER_FILL_MIN_WIDE_CENTROID_Y_RATIO;
+    const clearByArea = component.length <= BACKGROUND_B_CENTER_FILL_MAX_AREA;
+    if (!clearByArea && !wideShadowLike) continue;
 
     // Pick a seed nearest to the component center and clear from there.
     const centerX = sumX / component.length;
@@ -556,7 +581,15 @@ function clearEnclosedBackgroundLikeRegionsFromCenter(
         seed = pixel;
       }
     }
-    floodClearNearBackgroundFromSeed(data, width, height, seed, cornerColors, seedToleranceSq);
+    floodClearNearBackgroundFromSeed(
+      data,
+      width,
+      height,
+      seed,
+      cornerColors,
+      seedToleranceSq,
+      seedMinCosine,
+    );
   }
 }
 
@@ -567,6 +600,7 @@ function floodClearNearBackgroundFromSeed(
   seed: number,
   cornerColors: ReadonlyArray<[number, number, number]>,
   toleranceSq: number,
+  minCosine: number,
 ): void {
   const offsets: ReadonlyArray<[number, number]> = [
     [1, 0],
@@ -582,7 +616,7 @@ function floodClearNearBackgroundFromSeed(
     visited[current] = 1;
     const idx = current * 4;
     if ((data[idx + 3] ?? 0) === 0) continue;
-    if (minCornerColorDistanceSq(data, idx, cornerColors) > toleranceSq) continue;
+    if (!isBackgroundLikeColor(data, idx, cornerColors, toleranceSq, minCosine)) continue;
     data[idx + 3] = 0;
     const x = current % width;
     const y = Math.floor(current / width);
@@ -593,6 +627,115 @@ function floodClearNearBackgroundFromSeed(
       stack.push(ny * width + nx);
     }
   }
+}
+
+function isBackgroundLikeColor(
+  data: Uint8Array,
+  idx: number,
+  cornerColors: ReadonlyArray<[number, number, number]>,
+  toleranceSq: number,
+  minCosine: number,
+): boolean {
+  const nearest = nearestCornerColorMatch(data, idx, cornerColors);
+  return nearest.distanceSq <= toleranceSq && nearest.cosine >= minCosine;
+}
+
+function nearestCornerColorMatch(
+  data: Uint8Array,
+  idx: number,
+  cornerColors: ReadonlyArray<[number, number, number]>,
+): { distanceSq: number; cosine: number } {
+  const r = data[idx] ?? 0;
+  const g = data[idx + 1] ?? 0;
+  const b = data[idx + 2] ?? 0;
+  let minDistanceSq = Number.POSITIVE_INFINITY;
+  let bestCosine = -1;
+  const pLen = Math.sqrt(r * r + g * g + b * b) || 1;
+  for (const [cr, cg, cb] of cornerColors) {
+    const dr = r - cr;
+    const dg = g - cg;
+    const db = b - cb;
+    const distanceSq = dr * dr + dg * dg + db * db;
+    if (distanceSq > minDistanceSq) continue;
+    const cLen = Math.sqrt(cr * cr + cg * cg + cb * cb) || 1;
+    const dot = r * cr + g * cg + b * cb;
+    const cosine = dot / (pLen * cLen);
+    if (distanceSq < minDistanceSq || cosine > bestCosine) {
+      minDistanceSq = distanceSq;
+      bestCosine = cosine;
+    }
+  }
+  return { distanceSq: minDistanceSq, cosine: bestCosine };
+}
+
+function isMagentaFamilyBackground(cornerColors: ReadonlyArray<[number, number, number]>): boolean {
+  if (cornerColors.length === 0) return false;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  for (const [cr, cg, cb] of cornerColors) {
+    r += cr;
+    g += cg;
+    b += cb;
+  }
+  const n = cornerColors.length;
+  const ar = r / n;
+  const ag = g / n;
+  const ab = b / n;
+  return ar >= 120 && ab >= 120 && ag <= 190 && Math.abs(ar - ab) <= 80;
+}
+
+function clearLowerHalfMagentaArtifacts(data: Uint8Array, width: number, height: number): void {
+  const total = width * height;
+  const visited = new Uint8Array(total);
+  const offsets: ReadonlyArray<[number, number]> = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (let linear = 0; linear < total; linear++) {
+    if (visited[linear]) continue;
+    const idx = linear * 4;
+    if ((data[idx + 3] ?? 0) === 0) continue;
+    if (!isMagentaLikePixel(data, idx)) continue;
+    const stack: number[] = [linear];
+    visited[linear] = 1;
+    const component: number[] = [];
+    let sumY = 0;
+    while (stack.length > 0) {
+      const current = stack.pop() as number;
+      const ci = current * 4;
+      if ((data[ci + 3] ?? 0) === 0) continue;
+      if (!isMagentaLikePixel(data, ci)) continue;
+      component.push(current);
+      const x = current % width;
+      const y = Math.floor(current / width);
+      sumY += y;
+      for (const [dx, dy] of offsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const neighbor = ny * width + nx;
+        if (visited[neighbor]) continue;
+        visited[neighbor] = 1;
+        stack.push(neighbor);
+      }
+    }
+    if (component.length < 8 || component.length > BACKGROUND_B_CENTER_FILL_MAX_AREA) continue;
+    const centroidY = sumY / component.length;
+    if (centroidY < height * BACKGROUND_B_CENTER_FILL_MIN_WIDE_CENTROID_Y_RATIO) continue;
+    for (const pixel of component) {
+      data[pixel * 4 + 3] = 0;
+    }
+  }
+}
+
+function isMagentaLikePixel(data: Uint8Array, idx: number): boolean {
+  const r = data[idx] ?? 0;
+  const g = data[idx + 1] ?? 0;
+  const b = data[idx + 2] ?? 0;
+  return r >= 120 && b >= 120 && g <= 175 && Math.abs(r - b) <= 110;
 }
 
 function isNearCornerColor(

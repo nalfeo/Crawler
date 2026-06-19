@@ -109,25 +109,27 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 8, 4)).toBe(255);
     });
 
-    it('center-seeded region cleanup clears edge-connected medium pockets beyond fringe tolerance', () => {
-      const img = blank(24, 24, [255, 0, 255]);
-      // Foreground "legs" around y=10 lane with one narrow edge connection.
-      for (let x = 2; x <= 20; x++) {
-        setPixel(img, x, 9, 0, 180, 40);
-        setPixel(img, x, 11, 0, 180, 40);
+    it('center-seeded region cleanup clears wide edge-connected pockets beyond fringe tolerance', () => {
+      const img = blank(96, 96, [255, 0, 255]);
+      // Foreground "legs" around y=40..47 lane with one narrow edge connection.
+      for (let x = 2; x <= 80; x++) {
+        setPixel(img, x, 39, 0, 180, 40);
+        setPixel(img, x, 48, 0, 180, 40);
       }
-      // 18 px lane of pink remnants connected to edge at x=0.
+      // 64x8 remnant blob (512 px) connected to edge at x=0.
       // dist^2 to magenta = 14,400 (> 12,000 fringe; < 40,000 center-seed tolerance).
-      for (let x = 0; x <= 17; x++) {
-        setPixel(img, x, 10, 255, 120, 255);
+      for (let y = 40; y <= 47; y++) {
+        for (let x = 0; x <= 63; x++) {
+          setPixel(img, x, y, 255, 120, 255);
+        }
       }
-      setPixel(img, 18, 10, 0, 180, 40); // stopper
+      setPixel(img, 64, 44, 0, 180, 40); // stopper
 
       const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
-      expect(alphaAt(out, 0, 10)).toBe(0);
-      expect(alphaAt(out, 8, 10)).toBe(0);
-      expect(alphaAt(out, 17, 10)).toBe(0);
-      expect(alphaAt(out, 18, 10)).toBe(255);
+      expect(alphaAt(out, 0, 44)).toBe(0);
+      expect(alphaAt(out, 32, 44)).toBe(0);
+      expect(alphaAt(out, 63, 44)).toBe(0);
+      expect(alphaAt(out, 64, 44)).toBe(255);
     });
 
     it('clears enclosed near-background islands disconnected from edges', () => {
@@ -286,6 +288,27 @@ describe('removeBackground', () => {
       const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
       expect(alphaAt(out, 8, 8)).toBe(255);
       expect(alphaAt(out, 6, 6)).toBe(255);
+    });
+
+    it('clears lower-half magenta-family artifacts on magenta backgrounds', () => {
+      const img = blank(32, 32, [255, 0, 255]);
+      // Mid-body foreground rails.
+      for (let x = 3; x <= 24; x++) {
+        setPixel(img, x, 14, 0, 180, 40);
+        setPixel(img, x, 20, 0, 180, 40);
+      }
+      // Artifact blob under the body; color is magenta-family but farther than center seed tolerance.
+      for (let y = 15; y <= 19; y++) {
+        for (let x = 4; x <= 20; x++) {
+          setPixel(img, x, y, 140, 120, 140); // dist^2 to magenta = 41,425
+        }
+      }
+      setPixel(img, 21, 17, 0, 180, 40); // stopper
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 10, 17)).toBe(0);
+      expect(alphaAt(out, 20, 17)).toBe(0);
+      expect(alphaAt(out, 21, 17)).toBe(255);
     });
   });
 
