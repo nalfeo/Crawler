@@ -30,7 +30,11 @@ echo "🔍 Step 4/7: Dead code detection..."
 npx knip || echo "⚠️  Knip found unused exports (non-blocking for now)"
 
 echo "🔍 Step 5/7: Unit tests with coverage..."
-npx vitest run --coverage --reporter=dot
+# Scope coverage to the unit project to match CI (ci.yml test-unit job).
+# Without --project unit, vitest also runs the e2e project, whose globalSetup
+# spawns a lab server; if that server is slow/unavailable the unhandled error
+# aborts coverage collection and reports a false 0% for every file.
+npx vitest run --project unit --coverage --reporter=dot
 
 echo "🔍 Step 6/7: Integration tests..."
 npx vitest run --project integration --reporter=dot 2>/dev/null || echo "ℹ️  No integration tests yet"

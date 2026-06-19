@@ -5,7 +5,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['tests/setup.ts'],
-    testTimeout: 10_000,
+    // 30s (not the Vitest 5s default) gives CPU-heavy unit tests — notably the
+    // sprite scoring/postprocess suites — headroom when run under v8 coverage
+    // instrumentation on a loaded machine, where a normally ~1s test can spike
+    // past a tight 10s limit. Integration/e2e override this to 120s below.
+    testTimeout: 30_000,
     benchmark: {
       include: ['tests/bench/**/*.bench.ts'],
       outputFile: {
