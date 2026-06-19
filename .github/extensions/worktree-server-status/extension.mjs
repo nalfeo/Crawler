@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { createServer, request as httpRequest } from 'node:http';
 import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -18,6 +18,7 @@ const ROUTES = [
 const POLL_INTERVAL_MS = 5000;
 const WORKSPACE_METADATA_TTL_MS = 15_000;
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
+const LAUNCH_LOG_FILENAME = 'worktree-server-launch.log';
 const WORKTREE_MARKER = '\\repos\\copilot-worktrees\\crawler\\';
 const MAIN_CHECKOUT_MARKER = '\\repos\\crawler';
 
@@ -455,6 +456,38 @@ function getArtifactPath(session) {
   return join(workspacePath, 'files', 'worktree-server-status.json');
 }
 
+function getLaunchLogPath(session) {
+  const workspacePath = getSessionWorkspacePath(session);
+  if (!workspacePath) {
+    return null;
+  }
+  return join(workspacePath, 'files', LAUNCH_LOG_FILENAME);
+}
+
+async function logLaunchEvent(session, event, details = {}) {
+  const logPath = getLaunchLogPath(session);
+  if (!logPath) {
+    return { logPath: null, logWriteError: null };
+  }
+
+  const payload = {
+    timestamp: new Date().toISOString(),
+    event,
+    ...details,
+  };
+
+  try {
+    await mkdir(dirname(logPath), { recursive: true });
+    await appendFile(logPath, `${JSON.stringify(payload)}\n`, 'utf8');
+    return { logPath, logWriteError: null };
+  } catch (error) {
+    return {
+      logPath,
+      logWriteError: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function persistState(session, state) {
   const artifactPath = getArtifactPath(session);
   if (!artifactPath) {
@@ -500,6 +533,7 @@ function getCachedState() {
 
 async function discoverState(session) {
   const worktreePath = getTrackedWorktreePath();
+  const launchLogPath = getLaunchLogPath(session);
   const baseState = {
     workspaceName: worktreePath ? basename(worktreePath) : null,
     workspacePath: worktreePath,
@@ -508,6 +542,7 @@ async function discoverState(session) {
     discoveryMethod: 'windows-process-scan',
     activeServerCount: 0,
     servers: [],
+    launchLogPath,
   };
 
   if (!worktreePath) {
@@ -525,6 +560,9 @@ async function discoverState(session) {
   }
 
   try {
+    const discoveryStartLog = await logLaunchEvent(session, 'discovery-start', {
+      workspacePath: worktreePath,
+    });
     const rawResult = await runPowerShellJson(buildProcessScanScript());
     const rawCandidates = Array.isArray(rawResult) ? rawResult : rawResult ? [rawResult] : [];
     const candidates = dedupeCandidates(rawCandidates);
@@ -540,6 +578,18 @@ async function discoverState(session) {
       hasVerifiedServer: runningServers.length > 0,
       servers: runningServers,
     };
+    if (discoveryStartLog.logWriteError) {
+      nextState.launchLogWriteError = discoveryStartLog.logWriteError;
+    }
+
+    const discoverySuccessLog = await logLaunchEvent(session, 'discovery-success', {
+      workspacePath: worktreePath,
+      candidateCount: candidates.length,
+      verifiedServerCount: runningServers.length,
+    });
+    if (discoverySuccessLog.logWriteError) {
+      nextState.launchLogWriteError = discoverySuccessLog.logWriteError;
+    }
 
     try {
       const artifactPath = await persistState(session, nextState);
@@ -553,10 +603,17 @@ async function discoverState(session) {
     return nextState;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const discoveryErrorLog = await logLaunchEvent(session, 'discovery-failed', {
+      workspacePath: worktreePath,
+      error: message,
+    });
     const failedState = {
       ...baseState,
       error: `Server discovery failed: ${message}`,
     };
+    if (discoveryErrorLog.logWriteError) {
+      failedState.launchLogWriteError = discoveryErrorLog.logWriteError;
+    }
 
     try {
       const artifactPath = await persistState(session, failedState);
@@ -664,16 +721,58 @@ async function openInSystemBrowser(rawUrl) {
 }
 
 async function startServer(instanceId, session) {
+  const launchStartLog = await logLaunchEvent(session, 'server-launch-start', {
+    instanceId,
+    workspacePath: getSessionWorkspacePath(session),
+  });
   const server = createServer((req, res) => {
     void handleRequest(req, res, instanceId, session).catch((error) => {
+      void logLaunchEvent(session, 'request-handler-failed', {
+        instanceId,
+        method: req.method ?? null,
+        url: req.url ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
       setJsonResponse(res, { error: error instanceof Error ? error.message : String(error) }, 500);
     });
   });
 
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    await new Promise((resolve, reject) => {
+      const onError = (error) => {
+        server.off('error', onError);
+        reject(error);
+      };
+      server.once('error', onError);
+      server.listen(0, '127.0.0.1', () => {
+        server.off('error', onError);
+        resolve();
+      });
+    });
+  } catch (error) {
+    void logLaunchEvent(session, 'server-launch-failed', {
+      instanceId,
+      workspacePath: getSessionWorkspacePath(session),
+      error: error instanceof Error ? error.message : String(error),
+      launchLogWriteError: launchStartLog.logWriteError,
+    });
+    throw error;
+  }
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : 0;
-  return { server, url: `http://127.0.0.1:${port}/` };
+  const url = `http://127.0.0.1:${port}/`;
+  const launchSuccessLog = await logLaunchEvent(session, 'server-launch-success', {
+    instanceId,
+    workspacePath: getSessionWorkspacePath(session),
+    url,
+    launchLogWriteError: launchStartLog.logWriteError,
+  });
+  return {
+    server,
+    url,
+    launchLogPath: launchSuccessLog.logPath ?? launchStartLog.logPath,
+    launchLogWriteError: launchSuccessLog.logWriteError ?? launchStartLog.logWriteError,
+  };
 }
 
 async function handleRequest(req, res, instanceId, session) {
@@ -804,6 +903,12 @@ const session = await joinSession({
         if (!entry) {
           return;
         }
+        void logLaunchEvent(session, 'server-closed', {
+          instanceId: ctx.instanceId,
+          url: entry.url,
+          launchLogPath: entry.launchLogPath ?? null,
+          launchLogWriteError: entry.launchLogWriteError ?? null,
+        });
         servers.delete(ctx.instanceId);
         await new Promise((resolve) => entry.server.close(() => resolve()));
         if (servers.size === 0 && refreshTimer) {

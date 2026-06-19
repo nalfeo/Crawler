@@ -11,6 +11,9 @@
 - Must not import from `src/engine/`, `src/game/`, or `src/labs/` inside core code.
 - Must use the bitecs 0.4 API and established project ECS patterns.
 - Must not ship an ECS system without a matching lab and test coverage.
+- Must evaluate off-the-shelf, industry-standard libraries/frameworks before
+  custom-building fundamental systems (pathfinding, physics, state machines,
+  navigation, etc.); choose custom only with explicit fit-gap rationale.
 
 ## Tools & Workflows
 

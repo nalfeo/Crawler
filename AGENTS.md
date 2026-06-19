@@ -47,6 +47,21 @@
 For sprite workflow details and when to use sprite commands, see
 `scripts/sprites/` for implementation details or `docs/knowledge/game-design/art-style-guide.md` for art context.
 
+## Server Launch Diagnostics
+
+When diagnosing Crawler dev/lab/devtools launch failures, inspect these session artifacts before retrying commands:
+
+1. `files/worktree-server-launch.log` — append-only JSONL launch/discovery events and errors.
+2. `files/worktree-server-status.json` — latest structured discovery snapshot used by the Worktree Server canvas.
+
+## Session Server Lifecycle Policy
+
+When working in a Copilot worktree session, keep **at most one active dev/lab/devtools server per session** unless there is an explicit reason to run more.
+
+1. **Reuse first (hot reload path):** if the session already has a healthy server that serves the route you need, reuse it instead of launching another.
+2. **Replace cleanly when needed:** if you must relaunch (hung process, wrong mode, wrong flags), stop the existing server process tied to the same session/workspace first, then start the new one.
+3. **Always print the URL on launch:** every successful launch command must output the URL that should be opened (base URL, or specific route URL if relevant).
+
 ## Architecture
 
 - **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering

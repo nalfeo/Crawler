@@ -29,6 +29,9 @@
 - Must not let a multi-persona task fragment into multiple conflicting handoffs;
   produce one coordinating handoff that links any sub-work.
 - Must not inflate or skip the apple estimate to make sequencing easier.
+- For fundamental game systems, must require a build-vs-buy check in the slice
+  plan: evaluate industry-standard libraries/frameworks first, and capture
+  rationale if a custom implementation is selected.
 
 ## Tools & Workflows
 

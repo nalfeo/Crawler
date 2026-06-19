@@ -33,6 +33,8 @@
   gates ran and focus human attention on judgment calls they can't make.
 - Must not raise style/formatting/naming opinions handled by Prettier/ESLint.
 - Must not approve a diff that violates a non-negotiable, however small.
+- Must flag bespoke re-implementations of fundamental systems when a credible
+  off-the-shelf industry-standard option was not evaluated and justified.
 
 ## Tools & Workflows
 
