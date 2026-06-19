@@ -179,6 +179,31 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 3, 3)).toBe(255);
     });
 
+    it('clears medium enclosed background-like regions by center-seeded fill', () => {
+      const img = blank(32, 32, [255, 0, 255]);
+      // Foreground frame around an 18x18 cavity (324 px).
+      for (let x = 6; x <= 25; x++) {
+        setPixel(img, x, 6, 0, 180, 40);
+        setPixel(img, x, 25, 0, 180, 40);
+      }
+      for (let y = 6; y <= 25; y++) {
+        setPixel(img, 6, y, 0, 180, 40);
+        setPixel(img, 25, y, 0, 180, 40);
+      }
+      // Background-like but beyond legacy enclosed threshold in places.
+      for (let y = 7; y <= 24; y++) {
+        for (let x = 7; x <= 24; x++) {
+          setPixel(img, x, y, 255, 170, 255); // dist^2 to magenta = 28900
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 16, 16)).toBe(0);
+      expect(alphaAt(out, 10, 20)).toBe(0);
+      expect(alphaAt(out, 6, 6)).toBe(255);
+      expect(alphaAt(out, 25, 25)).toBe(255);
+    });
+
     it('keeps large enclosed near-background regions to avoid over-clearing foreground interiors', () => {
       const img = blank(40, 40, [255, 0, 255]);
       // Foreground frame that creates a large enclosed cavity.
