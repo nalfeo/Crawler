@@ -329,7 +329,7 @@ export function removeBackgroundB(
   const colorToleranceSq = options.colorToleranceSq ?? BACKGROUND_B_COLOR_TOLERANCE_SQ;
   const fringeToleranceSq = options.fringeToleranceSq ?? BACKGROUND_B_FRINGE_TOLERANCE_SQ;
   const flooded = removeBackground(image, colorToleranceSq);
-  const fringeCleaned = removeBackgroundFringe(flooded, image, fringeToleranceSq, false);
+  const fringeCleaned = removeBackgroundFringe(flooded, image, fringeToleranceSq);
   if (!(options.clearEnclosedIslands ?? true)) return fringeCleaned;
   return removeEnclosedBackgroundRegions(fringeCleaned, image, fringeToleranceSq);
 }

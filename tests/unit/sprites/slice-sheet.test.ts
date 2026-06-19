@@ -12,7 +12,13 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { PNG } from 'pngjs';
-import { computeSliceMapV2, sliceSheet } from '../../../scripts/sprites/slice-sheet.js';
+import {
+  computeSliceMapV2,
+  sliceSheet,
+  sliceSheetFromBrief,
+  sliceSheetV2,
+} from '../../../scripts/sprites/slice-sheet.js';
+import type { Brief } from '../../../scripts/sprites/brief-schema.js';
 
 interface Rgb {
   r: number;
@@ -256,5 +262,117 @@ describe('sliceSheet', () => {
       ),
       { numRuns: 30 },
     );
+  });
+
+  describe('sliceSheetV2 / sliceSheetFromBrief', () => {
+    const BG: Rgb = { r: 255, g: 255, b: 255 };
+    // 2x2 content blocks on a white background, separated by background gutters.
+    // Block (r,c) gets a distinct, far-from-white solid color so we can verify
+    // which extracted cell ended up where (order) and that no cell leaks a
+    // neighbor's color (non-overlapping bounds).
+    const BLOCK_COLORS: Rgb[][] = [
+      [
+        { r: 200, g: 20, b: 20 },
+        { r: 20, g: 200, b: 20 },
+      ],
+      [
+        { r: 20, g: 20, b: 200 },
+        { r: 200, g: 200, b: 20 },
+      ],
+    ];
+
+    function encodeContentGridSheet(): Buffer {
+      const margin = 4;
+      const block = 6;
+      const gutter = 4;
+      const size = margin + block + gutter + block + margin; // 24
+      const png = new PNG({ width: size, height: size });
+      for (let i = 0; i < png.data.length; i += 4) {
+        png.data[i] = BG.r;
+        png.data[i + 1] = BG.g;
+        png.data[i + 2] = BG.b;
+        png.data[i + 3] = 255;
+      }
+      const origin = (idx: number): number => margin + idx * (block + gutter);
+      for (let r = 0; r < 2; r++) {
+        for (let c = 0; c < 2; c++) {
+          const color = BLOCK_COLORS[r]![c]!;
+          const x0 = origin(c);
+          const y0 = origin(r);
+          for (let y = y0; y < y0 + block; y++) {
+            for (let x = x0; x < x0 + block; x++) {
+              const i = (y * size + x) * 4;
+              png.data[i] = color.r;
+              png.data[i + 1] = color.g;
+              png.data[i + 2] = color.b;
+            }
+          }
+        }
+      }
+      return PNG.sync.write(png);
+    }
+
+    function containsColor(buf: Buffer, color: Rgb): boolean {
+      const png = PNG.sync.read(buf);
+      for (let i = 0; i < png.data.length; i += 4) {
+        if (png.data[i] === color.r && png.data[i + 1] === color.g && png.data[i + 2] === color.b) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    it('extracts content-aware cells in reading order with non-overlapping bounds', () => {
+      const sheet = encodeContentGridSheet();
+      const map = computeSliceMapV2(sheet);
+      expect(map.rows).toBe(2);
+      expect(map.cols).toBe(2);
+
+      const cells = sliceSheetV2(sheet);
+      expect(cells).toHaveLength(4);
+
+      // Reading order is row-major: (0,0), (0,1), (1,0), (1,1).
+      const expectedOrder: Rgb[] = [
+        BLOCK_COLORS[0]![0]!,
+        BLOCK_COLORS[0]![1]!,
+        BLOCK_COLORS[1]![0]!,
+        BLOCK_COLORS[1]![1]!,
+      ];
+      cells.forEach((cell, i) => {
+        const own = expectedOrder[i]!;
+        expect(containsColor(cell, own)).toBe(true);
+        // No neighbor leakage: this cell must not contain any other block color.
+        for (const other of expectedOrder) {
+          if (other === own) continue;
+          expect(containsColor(cell, other)).toBe(false);
+        }
+      });
+    });
+
+    it('sliceSheetFromBrief skips brief-declared empty cells and preserves order', () => {
+      const sheet = encodeContentGridSheet();
+      // Minimal brief: sliceSheetFromBrief only reads generation.sheet.emptyCells.
+      const brief = {
+        generation: { sheet: { emptyCells: [[0, 0]] as ReadonlyArray<readonly [number, number]> } },
+      } as unknown as Brief;
+
+      const cells = sliceSheetFromBrief(sheet, brief);
+      expect(cells).toHaveLength(3);
+
+      // (0,0) is skipped; the rest stay in reading order.
+      const expectedOrder: Rgb[] = [
+        BLOCK_COLORS[0]![1]!,
+        BLOCK_COLORS[1]![0]!,
+        BLOCK_COLORS[1]![1]!,
+      ];
+      const skipped = BLOCK_COLORS[0]![0]!;
+      cells.forEach((cell, i) => {
+        expect(containsColor(cell, expectedOrder[i]!)).toBe(true);
+      });
+      // The skipped cell's color must not appear in any extracted cell.
+      for (const cell of cells) {
+        expect(containsColor(cell, skipped)).toBe(false);
+      }
+    });
   });
 });
