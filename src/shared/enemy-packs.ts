@@ -18,9 +18,9 @@ export const enemyArchetypeDefSchema = z
     name: z.string().min(1),
     /** Base hit points. */
     hp: z.number().int().positive(),
-    /** Movement speed in feet per second. */
+    /** Movement speed in ECS world units (pixels per frame). */
     speed: z.number().positive(),
-    /** Detection range in feet. */
+    /** Detection range in pixels. */
     detectRange: z.number().nonnegative(),
     /** Sprite texture ID from the sprite catalog. */
     spriteTexture: z.number().int().positive(),

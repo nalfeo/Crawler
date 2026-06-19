@@ -482,5 +482,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Added the official, blocking headless Floor 1 completion gate (tests/headless/floor1-completion.test.ts): drives runHeadless(BehaviorTreeAI, seed 42) and asserts outcome=victory, all 4 Floor 1 quests, and gameTimeMs<5min, plus combat/progression sanity. Asserts deterministic game time (never wall time) so cross-platform CPU differences cannot flake CI, and caps maxFrames ~10% past the deadline so a non-clearing regression ends fast instead of grinding to the 100k-frame default. Wired a 'headless' vitest project, test:headless npm script, verify.sh Step 7, and a dedicated blocking test-headless CI job in merge-gate.needs + check block. Also committed the previously-staged browser/headless parity work: shared auto-progression.ts extraction (B7), spellQuestGiver.meet scene wiring + regression test (B5), per-sub-step AI re-poll in MainGameScene (B6), and melee stutter-step kiting. Caught a push-ref trap: the worktree branch is pr/150/copilot/design-headless-runner-ai but PR #150's head ref is copilot/design-headless-runner-ai (no prefix) -- first push hit a stray ref; fixed with git push origin HEAD:copilot/design-headless-runner-ai. Full npm run verify green (8/8 incl. build); deleted throwaway _seed-probe.mts. PR updated to 70cda5a, not merged."
+  },
+  {
+    "date": "2026-06-19",
+    "session": "pr150-review-followup",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Audited all resolved PR #150 review threads after merge. Shipped targeted follow-up fixes: registered bt-viz lab in registry, removed orphaned floor1.json, corrected floor1-config test wording, fixed HudManaBar default-position docstring, corrected enemy-pack unit docs, hoisted weaponSystem combat radius constant, and renamed misleading ability helper. verify:fast and full verify passed."
   }
 ]
