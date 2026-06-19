@@ -210,7 +210,7 @@ interface LivePostprocessOptions {
 
 const DEFAULT_BACKGROUND_TWEAKS = {
   colorToleranceSq: 4000,
-  fringeToleranceSq: 8000,
+  fringeToleranceSq: 12000,
 } as const;
 const MAX_BACKGROUND_TOLERANCE_SQ = 255 * 255 * 3;
 

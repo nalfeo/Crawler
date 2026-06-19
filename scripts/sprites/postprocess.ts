@@ -252,7 +252,7 @@ function encodePng(image: RgbaImage): Buffer {
 export const BACKGROUND_COLOR_TOLERANCE_SQ = 32 * 32; // squared Euclidean RGB tolerance
 export const BACKGROUND_FRINGE_TOLERANCE_SQ = 56 * 56; // post-flood edge cleanup tolerance
 export const BACKGROUND_B_COLOR_TOLERANCE_SQ = 4000; // fringe-clean default flood-fill tolerance
-export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 8000; // fringe-clean default cleanup tolerance
+export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 12000; // fringe-clean default cleanup tolerance
 export const BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS = 256;
 export const BACKGROUND_B_ENCLOSED_MAX_COMPONENT_DISTANCE_SQ = 25000;
 

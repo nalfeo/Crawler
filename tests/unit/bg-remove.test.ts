@@ -87,6 +87,28 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 5, 4)).toBe(255);
     });
 
+    it('default fringe tolerance clears edge-connected remnants that block leg-gap cleanup', () => {
+      const img = blank(10, 10, [255, 0, 255]);
+      // Foreground rails create a narrow corridor lane at y=4.
+      for (let x = 2; x <= 8; x++) {
+        setPixel(img, x, 3, 0, 180, 40);
+        setPixel(img, x, 5, 0, 180, 40);
+      }
+      // Slightly-dark magenta remnant chain (dist^2=8100 to pure magenta),
+      // including an edge-touching seed at x=0 that old defaults missed.
+      for (let x = 0; x <= 7; x++) {
+        setPixel(img, x, 4, 255, 90, 255);
+      }
+      // Foreground stopper to ensure we only clear the corridor.
+      setPixel(img, 8, 4, 0, 180, 40);
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024 });
+      expect(alphaAt(out, 0, 4)).toBe(0);
+      expect(alphaAt(out, 3, 4)).toBe(0);
+      expect(alphaAt(out, 7, 4)).toBe(0);
+      expect(alphaAt(out, 8, 4)).toBe(255);
+    });
+
     it('clears enclosed near-background islands disconnected from edges', () => {
       const img = blank(9, 9, [255, 0, 255]);
       // Foreground ring that seals an inner cavity.
