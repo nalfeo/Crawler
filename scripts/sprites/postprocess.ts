@@ -275,7 +275,7 @@ export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 12000; // fringe-clean default c
 export const BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS = 256;
 export const BACKGROUND_B_ENCLOSED_MAX_COMPONENT_DISTANCE_SQ = 25000;
 export const BACKGROUND_B_CENTER_SEED_TOLERANCE_SQ = 40000;
-export const BACKGROUND_B_CENTER_FILL_MIN_AREA = 24;
+export const BACKGROUND_B_CENTER_FILL_MIN_AREA = 12;
 export const BACKGROUND_B_CENTER_FILL_MAX_AREA = 384;
 
 export function removeBackground(
@@ -513,7 +513,6 @@ function clearEnclosedBackgroundLikeRegionsFromCenter(
     const component: number[] = [];
     const stack: number[] = [linear];
     visited[linear] = 1;
-    let touchesEdge = false;
     let sumX = 0;
     let sumY = 0;
 
@@ -524,9 +523,6 @@ function clearEnclosedBackgroundLikeRegionsFromCenter(
       const y = Math.floor(current / width);
       sumX += x;
       sumY += y;
-      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
-        touchesEdge = true;
-      }
       for (const [dx, dy] of offsets) {
         const nx = x + dx;
         const ny = y + dy;
@@ -541,7 +537,6 @@ function clearEnclosedBackgroundLikeRegionsFromCenter(
       }
     }
 
-    if (touchesEdge) continue;
     if (component.length < BACKGROUND_B_CENTER_FILL_MIN_AREA) continue;
     if (component.length > BACKGROUND_B_CENTER_FILL_MAX_AREA) continue;
 

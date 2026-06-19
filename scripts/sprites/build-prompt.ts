@@ -182,7 +182,7 @@ function singleConstraintsBlock(brief: Brief): string {
     '## Output requirements',
     '- Exactly one subject, centered in a square frame.',
     '- Subject must not be clipped at any edge — leave at least 10% margin on all sides.',
-    `- Transparent background, or a single flat high-contrast background color that is clearly distinct from the sprite palette. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. No decorative borders, gradients, or scene elements.`,
+    `- Transparent background, or a single flat high-contrast background color that is clearly distinct from the sprite palette. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No decorative borders, gradients, or scene elements.`,
     '- No text, numbers, digits, captions, watermarks, signatures, or UI overlays anywhere in the image.',
   ].join('\n');
 }
@@ -256,7 +256,7 @@ function sheetConstraintsBlock(brief: Brief): string {
       : '- Each variant must fit fully within its grid cell — none cut off at any edge. Leave at least a 10% margin between the subject and the cell edge.',
     '- All variants are square, share the same dimensions, and use the same orientation and scale.',
     '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
-    `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. No per-cell background variation, no decorative borders between cells.`,
+    `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No per-cell background variation, no decorative borders between cells.`,
     '- Do not draw a frame, header, or footer around the grid.',
   ].join('\n');
 }

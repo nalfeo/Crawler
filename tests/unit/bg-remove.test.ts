@@ -109,6 +109,27 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 8, 4)).toBe(255);
     });
 
+    it('center-seeded region cleanup clears edge-connected medium pockets beyond fringe tolerance', () => {
+      const img = blank(24, 24, [255, 0, 255]);
+      // Foreground "legs" around y=10 lane with one narrow edge connection.
+      for (let x = 2; x <= 20; x++) {
+        setPixel(img, x, 9, 0, 180, 40);
+        setPixel(img, x, 11, 0, 180, 40);
+      }
+      // 18 px lane of pink remnants connected to edge at x=0.
+      // dist^2 to magenta = 14,400 (> 12,000 fringe; < 40,000 center-seed tolerance).
+      for (let x = 0; x <= 17; x++) {
+        setPixel(img, x, 10, 255, 120, 255);
+      }
+      setPixel(img, 18, 10, 0, 180, 40); // stopper
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 0, 10)).toBe(0);
+      expect(alphaAt(out, 8, 10)).toBe(0);
+      expect(alphaAt(out, 17, 10)).toBe(0);
+      expect(alphaAt(out, 18, 10)).toBe(255);
+    });
+
     it('clears enclosed near-background islands disconnected from edges', () => {
       const img = blank(9, 9, [255, 0, 255]);
       // Foreground ring that seals an inner cavity.

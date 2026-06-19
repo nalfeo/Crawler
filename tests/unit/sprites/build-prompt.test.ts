@@ -126,6 +126,8 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no text|no.*numbers/i);
     expect(out).toMatch(/transparent|high-contrast/i);
     expect(out).toMatch(/Do NOT use black backgrounds/i);
+    expect(out).toMatch(/shadows must be neutral\/dark/i);
+    expect(out).toMatch(/must NOT be in the same color family as the background/i);
   });
 });
 
@@ -196,6 +198,8 @@ describe('buildSheetPrompt', () => {
     // Background rule.
     expect(out).toMatch(/transparent.*background|high-contrast background/i);
     expect(out).toMatch(/Do NOT use black backgrounds/i);
+    expect(out).toMatch(/shadows must be neutral\/dark/i);
+    expect(out).toMatch(/must NOT be in the same color family as the background/i);
     // No decorative borders.
     expect(out).toMatch(/no.*decorative|no.*borders|no per-cell/i);
   });
