@@ -193,6 +193,7 @@ function getNearestEnemyTarget(
   world: GameWorld,
   playerX: number,
   playerY: number,
+  ignoreFov: boolean = false,
 ): EnemyTarget | undefined {
   const enemies = query(world.ecs, [Enemy, Position]);
   let nearestTarget: EnemyTarget | undefined;
@@ -203,7 +204,8 @@ function getNearestEnemyTarget(
     const ey = world.stores.position.y[enemy]!;
 
     // Only target enemies the player can currently see (FOV + open doors).
-    if (world.floorMap) {
+    // Exception: ignore FOV if player is in active combat (being attacked).
+    if (!ignoreFov && world.floorMap) {
       const tile = world.floorMap.pixelToTile(ex, ey);
       if (!world.floorMap.isVisible(tile.x, tile.y)) {
         continue;
@@ -229,6 +231,56 @@ function getNearestEnemyTarget(
   }
 
   return nearestTarget;
+}
+
+/**
+ * Boss-priority targeting: returns a target aimed at a permanently-aggroed boss
+ * (the elite marker, set only on Floor 1 bosses) when one is within `gateRangePx`
+ * and reachable. Auto-fire otherwise locks onto the strictly nearest enemy — in a
+ * room full of respawning adds an add is almost always nearer than the boss, so a
+ * single-target shot or arc swing rarely lands on the boss, leaving it effectively
+ * unkillable. Focusing the elite when it is already in legitimate reach is a
+ * standard combat heuristic: it does not bypass weapon range (still gated by
+ * `gateRangePx`), quest gating, or any UI-driven choice.
+ */
+function findBossTargetInRange(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+  gateRangePx: number,
+): EnemyTarget | undefined {
+  const behavior = world.stores.enemyBehavior;
+  if (behavior?.aggroedPermanently === undefined) {
+    return undefined;
+  }
+  const enemies = query(world.ecs, [Enemy, Position]);
+  const gateSq = gateRangePx * gateRangePx;
+  let best: EnemyTarget | undefined;
+  let bestDistanceSq = Number.POSITIVE_INFINITY;
+
+  for (const enemy of enemies) {
+    if ((behavior.aggroedPermanently[enemy] ?? 0) !== 1) {
+      continue;
+    }
+    const ex = world.stores.position.x[enemy]!;
+    const ey = world.stores.position.y[enemy]!;
+    const deltaX = ex - playerX;
+    const deltaY = ey - playerY;
+    const distanceSq = deltaX * deltaX + deltaY * deltaY;
+    if (distanceSq <= 0.0001 || distanceSq > gateSq || distanceSq >= bestDistanceSq) {
+      continue;
+    }
+    bestDistanceSq = distanceSq;
+    const enemyRadiusPx =
+      Math.max(world.stores.sprite.width[enemy] ?? 0, world.stores.sprite.height[enemy] ?? 0) * 0.5;
+    best = {
+      direction: normalizeVector(deltaX, deltaY),
+      distanceSq,
+      radiusPx: enemyRadiusPx,
+    };
+  }
+
+  return best;
 }
 
 function getWeaponGateRangePx(def: WeaponDef): number {
@@ -492,6 +544,25 @@ export function getActiveWeapon(world: GameWorld): WeaponDef | undefined {
   return getWeaponState(world).activeWeaponDef;
 }
 
+/**
+ * Active-weapon cooldown readiness, mirroring the gate the melee/data-driven fire
+ * path uses (`world.elapsedMs - state.lastFireMs >= def.cooldownMs`). Returns
+ * `null` when there is no data-driven weapon (legacy projectile mode). Exposed so
+ * the headless AI can stutter-step: dart into strike range when `ready`, ease back
+ * out while a swing is on cooldown instead of standing still and trading blows.
+ */
+export function getActiveWeaponReadiness(
+  world: GameWorld,
+): { ready: boolean; remainingMs: number; cooldownMs: number } | null {
+  const state = getWeaponState(world);
+  const def = state.activeWeaponDef;
+  if (def === undefined) {
+    return null;
+  }
+  const remainingMs = Math.max(0, def.cooldownMs - (world.elapsedMs - state.lastFireMs));
+  return { ready: remainingMs <= 0, remainingMs, cooldownMs: def.cooldownMs };
+}
+
 export function weaponSystem(world: GameWorld): void {
   const player = getPlayerEntity(world);
 
@@ -508,6 +579,22 @@ export function weaponSystem(world: GameWorld): void {
   const playerX = world.stores.position.x[player]!;
   const playerY = world.stores.position.y[player]!;
 
+  // Detect if player is in active combat (enemies nearby within aggro range)
+  const enemies = query(world.ecs, [Enemy, Position]);
+  let inCombat = false;
+  const combatRadius = 1200; // Enemies spawn ~1000px away
+  for (const enemy of enemies) {
+    const ex = world.stores.position.x[enemy]!;
+    const ey = world.stores.position.y[enemy]!;
+    const dx = ex - playerX;
+    const dy = ey - playerY;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < combatRadius * combatRadius) {
+      inCombat = true;
+      break;
+    }
+  }
+
   // Data-driven weapon mode
   if (state.activeWeaponDef !== undefined) {
     const def = state.activeWeaponDef;
@@ -522,7 +609,40 @@ export function weaponSystem(world: GameWorld): void {
       return;
     }
 
-    const target = getNearestEnemyTarget(world, playerX, playerY);
+    // Melee weapons: Fire only when an enemy is in legitimate reach.
+    if (def.weaponType === WeaponType.MELEE) {
+      if (!inCombat) {
+        return;
+      }
+      const target = getNearestEnemyTarget(world, playerX, playerY, true);
+      if (!target) {
+        return;
+      }
+      const lastFire = state.lastFireMs;
+      if (world.elapsedMs - lastFire < def.cooldownMs) {
+        return;
+      }
+      const gateRangePx = getWeaponGateRangePx(def) * ATTACK_TARGET_GATE_MULTIPLIER;
+      if (target.distanceSq > gateRangePx * gateRangePx) {
+        return;
+      }
+
+      // Boss-priority aim: if a boss/elite is itself within legitimate reach,
+      // center the swing on it so the arc reliably lands on the boss instead of a
+      // transient add. Falls back to the nearest enemy when no boss is in range,
+      // preserving normal add-clearing.
+      const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangePx);
+      const fireTarget = bossTarget ?? target;
+
+      dispatchAttack(world, player, def, fireTarget.direction);
+      state.aimX = fireTarget.direction.x;
+      state.aimY = fireTarget.direction.y;
+      state.lastFireMs = world.elapsedMs;
+      return;
+    }
+
+    // Ignore FOV checks if in active combat (enemies nearby)
+    const target = getNearestEnemyTarget(world, playerX, playerY, inCombat);
     if (!target) {
       return;
     }
@@ -557,7 +677,7 @@ export function weaponSystem(world: GameWorld): void {
     return;
   }
 
-  const legacyTarget = getNearestEnemyTarget(world, playerX, playerY);
+  const legacyTarget = getNearestEnemyTarget(world, playerX, playerY, inCombat);
   if (!legacyTarget) {
     return;
   }

@@ -1,5 +1,5 @@
-import { query } from 'bitecs';
-import { Player, Stats } from '../../core/components.js';
+import { hasComponent, query } from 'bitecs';
+import { Health, Player, Stats } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import {
   STAT_KEYS,
@@ -38,6 +38,13 @@ export function statsSystem(world: GameWorld): void {
   const { stores } = world;
   const pointsStore = stores.statPoints;
 
+  // Capture the previous computed maxHp *stat* before the loop overwrites it,
+  // so we can sync the change through to the Health.max component as a delta.
+  // Default to STAT_BASE.maxHp when the store is still uninitialised (0) so the
+  // very first compute does not spuriously shove +base into the HP pool.
+  const prevRawMaxHp = stores.stats.maxHp[player] ?? 0;
+  const prevMaxHp = prevRawMaxHp > 0 ? prevRawMaxHp : STAT_BASE.maxHp;
+
   for (const stat of STAT_KEYS) {
     const base = STAT_BASE[stat];
     const pointBonus = (pointsStore[stat][player] ?? 0) * STAT_POINT_INCREMENT[stat];
@@ -57,6 +64,32 @@ export function statsSystem(world: GameWorld): void {
     const raw = base + pointBonus + additive;
     const clamped = Math.max(STAT_MIN[stat], raw);
     stores.stats[stat][player] = clamped * (1 + multiplicative);
+  }
+
+  // Wire the computed maxHp stat through to the Health.max component. statsSystem
+  // owns the maxHp *stat*, but combat, healing, and the AI retreat logic all read
+  // Health.max — so without this sync, allocating or buffing maxHp is a no-op for
+  // the actual HP pool (the original bug). Apply it as a delta so it composes
+  // additively with other Health.max sources (e.g. per-floor HP bonuses) and only
+  // moves the pool by the amount the stat itself changed.
+  if (hasComponent(world.ecs, player, Health)) {
+    const newMaxHp = stores.stats.maxHp[player] ?? STAT_BASE.maxHp;
+    const delta = newMaxHp - prevMaxHp;
+    if (delta !== 0) {
+      const currentMax = stores.health.max[player] ?? STAT_BASE.maxHp;
+      const nextMax = Math.max(1, currentMax + delta);
+      stores.health.max[player] = nextMax;
+      const currentHp = stores.health.current[player] ?? 0;
+      if (delta > 0) {
+        // Gaining max HP grants the extra HP immediately (RPG convention) so the
+        // boost aids survival right away, not only after the next heal tick.
+        stores.health.current[player] = currentHp + delta;
+      } else {
+        // Losing max HP (e.g. an expiring +maxHp buff) must not leave current HP
+        // above the new ceiling.
+        stores.health.current[player] = Math.min(currentHp, nextMax);
+      }
+    }
   }
 
   world.statsDirty = false;

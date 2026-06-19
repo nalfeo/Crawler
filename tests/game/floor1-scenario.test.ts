@@ -8,15 +8,18 @@ import {
   floorObjectiveSystem,
   getShopkeeperStage,
   initializeFloor1Scenario,
+  meetSpellQuestGiver,
   meetTutorialGoon,
   meetShopkeeper,
   purchaseShopkeeperEquipment,
   returnShopkeeperPrize,
   selectFloor1StarterWeapon,
+  selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floor1Scenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
+import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -102,7 +105,7 @@ describe('floor1Scenario', () => {
     expect(worldA.stores.position.y[eidA]).toBeCloseTo(worldB.stores.position.y[eidB] ?? 0, 5);
   });
 
-  it('starts boss battle on boss-room entry after goon quest, then spawns stairs after boss death', () => {
+  it('runs Slime Rat boss first, then staircase Rat Slime boss', () => {
     const world = createTestWorld({ seed: 123 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
@@ -138,6 +141,33 @@ describe('floor1Scenario', () => {
     floorObjectiveSystem(world);
     expect(objective.questCompleted).toBe(true);
     expect(objective.staircaseBossEid).toBeNull();
+    meetSpellQuestGiver(world);
+
+    world.stores.position.x[player] = objective.slimeRatRoomPos.x;
+    world.stores.position.y[player] = objective.slimeRatRoomPos.y;
+    floorObjectiveSystem(world);
+    expect(objective.slimeRatBattleStarted).toBe(true);
+    if (world.floor1 && world.floor1.slimeRatDoorEids.length > 0) {
+      for (const doorEid of world.floor1.slimeRatDoorEids) {
+        expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
+      }
+    }
+    const slimeRatBossEid = objective.slimeRatBossEid;
+    if (slimeRatBossEid === null) {
+      throw new Error('Expected Slime Rat boss to exist');
+    }
+    removeEntity(world.ecs, slimeRatBossEid);
+    floorObjectiveSystem(world);
+    expect(objective.slimeRatBossDefeated).toBe(true);
+    if (world.floor1 && world.floor1.slimeRatDoorEids.length > 0) {
+      for (const doorEid of world.floor1.slimeRatDoorEids) {
+        expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
+      }
+    }
+    expect(world.goalFlags.get('floor1-boss-battle-complete')).toBe(false);
+    meetSpellQuestGiver(world);
+    questSystem(world);
+    expect(world.goalFlags.get('floor1-boss-battle-complete')).toBe(true);
 
     world.stores.position.x[player] = objective.staircasePos.x;
     world.stores.position.y[player] = objective.staircasePos.y;
@@ -164,18 +194,75 @@ describe('floor1Scenario', () => {
     expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
   });
 
+  it('starts Slime Rat battle from spell quest acceptance without goon combat completion', () => {
+    const world = createTestWorld({ seed: 321 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const objective = world.floor1?.objective;
+    if (!objective) {
+      throw new Error('Expected floor1 objective to exist');
+    }
+
+    expect(objective.questCompleted).toBe(false);
+    meetSpellQuestGiver(world);
+    world.stores.position.x[player] = objective.slimeRatRoomPos.x;
+    world.stores.position.y[player] = objective.slimeRatRoomPos.y;
+    floorObjectiveSystem(world);
+
+    expect(objective.slimeRatBattleStarted).toBe(true);
+    expect(objective.slimeRatBossEid).not.toBeNull();
+    if (world.floor1 && world.floor1.slimeRatDoorEids.length > 0) {
+      for (const doorEid of world.floor1.slimeRatDoorEids) {
+        expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
+      }
+    }
+  });
+
+  it('only allows the three boss-reward spells and unlocks abilities after a valid pick', () => {
+    const makeWorld = () => {
+      const world = createTestWorld({ seed: 123 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      return { world, player };
+    };
+
+    const validSpells = ['fireball', 'heal', 'pulse-shield'] as const;
+    for (const spellId of validSpells) {
+      const { world, player } = makeWorld();
+      const learned = selectSpellFromBossBattle(world, player, spellId);
+      expect(learned).toBe(true);
+      expect(world.featureUnlocks.spells).toBe(true);
+      expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(spellId);
+    }
+
+    const { world: invalidWorld, player: invalidPlayer } = makeWorld();
+    const rejected = selectSpellFromBossBattle(invalidWorld, invalidPlayer, 'arcane-bolt');
+    expect(rejected).toBe(false);
+    expect(invalidWorld.featureUnlocks.spells).toBe(false);
+    expect(invalidWorld.abilityStatesByEntity.get(invalidPlayer)).toBeUndefined();
+  });
+
   describe('shopkeeper errand questline', () => {
-    it('accepts only the shop quest on initialization', () => {
+    it('waits to accept NPC quests until you meet the NPC', () => {
       const world = createTestWorld({ seed: 5 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
 
-      expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(true);
+      expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
       expect(world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID)).toBe(false);
       expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(false);
       expect(getShopkeeperStage(world)).toBe('not-met');
       expect(world.featureUnlocks.inventory).toBe(false);
       expect(world.featureUnlocks.equipment).toBe(false);
+
+      meetShopkeeper(world);
+      questSystem(world);
+      expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(true);
+      expect(getShopkeeperStage(world)).toBe('awaiting-prize');
     });
 
     it('walks the merchant errand: meet → fetch → return → buy → equip', () => {
@@ -271,8 +358,43 @@ describe('floor1Scenario', () => {
       floorObjectiveSystem(world);
       expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
       expect(objective.questCompleted).toBe(true);
-      // Boss-door unlock remains independent of the merchant errand.
+      // Boss-unlock QUEST acceptance + kill-completion stay independent of the
+      // merchant errand (the physical boss DOOR gate is covered by the test below).
       expect(getShopkeeperStage(world)).toBe('not-met');
+    });
+
+    it('keeps the final boss door locked until the kill, merchant, and spell quests are all complete', () => {
+      const world = createTestWorld({ seed: 123 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const bossDoorEids = world.floor1?.bossDoorEids ?? [];
+      expect(bossDoorEids.length).toBeGreaterThan(0);
+
+      const allLocked = (): boolean =>
+        bossDoorEids.every((eid) => (world.stores.doorState.isLocked[eid] ?? 0) === 1);
+      const allUnlocked = (): boolean =>
+        bossDoorEids.every((eid) => (world.stores.doorState.isLocked[eid] ?? 1) === 0);
+
+      // Doors start locked.
+      doorSystem(world);
+      expect(allLocked()).toBe(true);
+
+      // Only the kill quest done -> still locked.
+      world.goalFlags.set('floor1-goon-quest-complete', true);
+      doorSystem(world);
+      expect(allLocked()).toBe(true);
+
+      // Kill + merchant done -> still locked (spell quest outstanding).
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      doorSystem(world);
+      expect(allLocked()).toBe(true);
+
+      // All three tutorial quests complete -> door finally unlocks.
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      doorSystem(world);
+      expect(allUnlocked()).toBe(true);
     });
   });
 });

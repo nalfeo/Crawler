@@ -1,8 +1,12 @@
 import GUI from 'lil-gui';
+import { query } from 'bitecs';
 import Phaser from 'phaser';
+import { Player } from '../../core/components.js';
+import type { GameWorld } from '../../core/world.js';
 import { GAME } from '../../shared/constants.js';
 import { BootScene, MainGameScene } from '../../engine/index.js';
 import {
+  acceptQuest,
   enemyAISystem,
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
@@ -12,6 +16,7 @@ import {
   selectFloor1StarterWeapon,
   startFloor1BossEncounter,
   questSystem,
+  setTrackedQuest,
   getShopkeeperStage,
   meetShopkeeper,
   returnShopkeeperPrize,
@@ -22,7 +27,20 @@ import {
 } from '../../game/index.js';
 import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../../game/systems/index.js';
 import { npcSystem } from '../../core/index.js';
-import { confirmFloor1StairDescend } from '../../game/floor1Scenario.js';
+import {
+  confirmFloor1StairDescend,
+  meetSpellQuestGiver,
+  selectSpellFromBossBattle,
+} from '../../game/floor1Scenario.js';
+import { setGoalFlag } from '../../core/door-lock.js';
+import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+  getQuestDef,
+  objectiveTarget,
+} from '../../shared/quest-types.js';
 import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
@@ -32,8 +50,18 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 interface Floor1LabSettings {
   autoPickStarter: boolean;
   starterChoice: number;
-  quickStartBossFight: boolean;
+  jumpTarget: JumpTarget;
 }
+
+type JumpTarget =
+  | 'spawn-room'
+  | 'welcome-office'
+  | 'slime-rat-room'
+  | 'quest-item-room'
+  | 'staircase-room'
+  | 'spell-quest-giver'
+  | 'shopkeeper'
+  | 'boss-encounter';
 
 interface SubsystemStatus {
   name: string;
@@ -44,6 +72,34 @@ interface SubsystemStatus {
 }
 
 const LAB_ID = 'floor1-lab';
+const JUMP_TARGET_LABELS: Record<JumpTarget, string> = {
+  'spawn-room': 'Spawn room',
+  'welcome-office': 'Welcome office',
+  'slime-rat-room': 'Slime Rat room',
+  'quest-item-room': 'Quest item room',
+  'staircase-room': 'Staircase/boss room',
+  'spell-quest-giver': 'Spell quest giver NPC',
+  shopkeeper: 'Shopkeeper NPC',
+  'boss-encounter': 'Boss encounter (force)',
+};
+const JUMP_TARGET_PRIORITY: Record<Exclude<JumpTarget, 'boss-encounter'>, number> = {
+  'spawn-room': 1,
+  'welcome-office': 1,
+  'slime-rat-room': 1,
+  'quest-item-room': 1,
+  'staircase-room': 1,
+  'spell-quest-giver': 2,
+  shopkeeper: 2,
+};
+const JUMP_TARGET_ORDER: readonly Exclude<JumpTarget, 'boss-encounter'>[] = [
+  'spell-quest-giver',
+  'shopkeeper',
+  'spawn-room',
+  'welcome-office',
+  'slime-rat-room',
+  'quest-item-room',
+  'staircase-room',
+];
 
 const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
   {
@@ -135,7 +191,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   // URL params:
   // - ?autopick=1 skips loadout modal
   // - ?weapon=1|2|3 selects auto-picked starter
-  // - ?boss=1 teleports to boss room and immediately starts boss fight
+  // - ?boss=1 starts at boss encounter (legacy quick-start)
   // e.g. http://localhost:3004/lab.html?lab=floor1-lab&boss=1
   const urlParams = new URLSearchParams(window.location.search);
   const urlAutoPick = urlParams.get('autopick') === '1';
@@ -145,12 +201,11 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   const settings: Floor1LabSettings = {
     autoPickStarter: urlAutoPick,
     starterChoice: urlWeapon >= 1 && urlWeapon <= 3 ? urlWeapon : 1,
-    quickStartBossFight: urlBoss,
+    jumpTarget: 'spawn-room',
     ...(loadLabState<Floor1LabSettings>(LAB_ID) ?? {}),
     // URL params always override persisted state
     ...(urlAutoPick ? { autoPickStarter: true } : {}),
     ...(urlWeapon >= 1 && urlWeapon <= 3 ? { starterChoice: urlWeapon } : {}),
-    ...(urlBoss ? { quickStartBossFight: true } : {}),
   };
 
   const root = document.createElement('div');
@@ -232,6 +287,197 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   controls.append(subsystemNotes);
 
   let game: Phaser.Game | undefined;
+  let currentWorld: GameWorld | undefined;
+  let currentPlayerEid: number | undefined;
+
+  const QUEST_DEBUG_TARGETS = {
+    'Tutorial: floor1-tutorial': FLOOR1_TUTORIAL_QUEST_ID,
+    'Boss unlock: floor1-boss-unlock': FLOOR1_BOSS_UNLOCK_QUEST_ID,
+    'Boss battle: floor1-boss-battle': FLOOR1_BOSS_BATTLE_QUEST_ID,
+    'Shopkeeper errand: floor1-shopkeeper-errand': FLOOR1_SHOP_QUEST_ID,
+  } as const;
+  const QUEST_DEBUG_ACTIONS = {
+    'Accept / enable quest': 'accept',
+    'Complete quest now': 'complete',
+  } as const;
+  const questDebug = {
+    questId: FLOOR1_TUTORIAL_QUEST_ID,
+    action: 'accept',
+    apply: () => {
+      if (!currentWorld) {
+        return;
+      }
+      const questId = questDebug.questId;
+      const quest = acceptQuest(currentWorld, questId);
+      if (!quest) {
+        return;
+      }
+      setTrackedQuest(currentWorld, questId);
+      if (questDebug.action === 'complete') {
+        const def = getQuestDef(questId);
+        if (def) {
+          for (const objective of def.objectives) {
+            quest.progress[objective.id] = objectiveTarget(objective);
+            quest.done[objective.id] = true;
+            if (objective.kind === 'goal' && objective.goalId) {
+              setGoalFlag(currentWorld, objective.goalId, true);
+            }
+          }
+          if (def.onCompleteGoalFlag) {
+            setGoalFlag(currentWorld, def.onCompleteGoalFlag, true);
+          }
+          questSystem(currentWorld);
+        }
+      }
+    },
+  };
+
+  const getPlayerEid = (): number | undefined => {
+    if (!currentWorld) {
+      return undefined;
+    }
+    if (currentPlayerEid !== undefined && currentPlayerEid >= 0) {
+      return currentPlayerEid;
+    }
+    return query(currentWorld.ecs, [Player])[0];
+  };
+
+  const movePlayerTo = (x: number, y: number): boolean => {
+    const world = currentWorld;
+    const playerEid = getPlayerEid();
+    if (!world || playerEid === undefined) {
+      return false;
+    }
+    world.stores.position.x[playerEid] = x;
+    world.stores.position.y[playerEid] = y;
+    world.stores.velocity.x[playerEid] = 0;
+    world.stores.velocity.y[playerEid] = 0;
+    return true;
+  };
+
+  const resolveJumpPosition = (
+    world: NonNullable<typeof currentWorld>,
+    target: Exclude<JumpTarget, 'boss-encounter'>,
+  ): { x: number; y: number } | null => {
+    const objective = world.floor1?.objective;
+    if (!objective) {
+      return null;
+    }
+    switch (target) {
+      case 'spawn-room': {
+        const spawnTile = world.floorMap?.playerSpawn;
+        if (spawnTile && world.floorMap) {
+          return world.floorMap.tileToPixel(spawnTile.x, spawnTile.y);
+        }
+        return null;
+      }
+      case 'welcome-office':
+        return objective.welcomeOfficePos;
+      case 'slime-rat-room':
+        return objective.slimeRatRoomPos;
+      case 'quest-item-room':
+        return objective.questItemPos;
+      case 'staircase-room':
+        return objective.staircasePos;
+      case 'spell-quest-giver': {
+        const eid = world.floor1?.spellQuestGiverNpcEid;
+        if (eid === null || eid === undefined) {
+          return objective.spellQuestGiverPos;
+        }
+        return {
+          x: world.stores.position.x[eid] ?? objective.spellQuestGiverPos.x,
+          y: world.stores.position.y[eid] ?? objective.spellQuestGiverPos.y,
+        };
+      }
+      case 'shopkeeper': {
+        const eid = world.floor1?.shopkeeperNpcEid;
+        if (eid === null || eid === undefined) {
+          return objective.shopRoomPos;
+        }
+        return {
+          x: world.stores.position.x[eid] ?? objective.shopRoomPos.x,
+          y: world.stores.position.y[eid] ?? objective.shopRoomPos.y,
+        };
+      }
+    }
+  };
+
+  const computeJumpTargetOptions = (): Record<string, JumpTarget> => {
+    if (!currentWorld) {
+      return {
+        [JUMP_TARGET_LABELS['spell-quest-giver']]: 'spell-quest-giver',
+        [JUMP_TARGET_LABELS.shopkeeper]: 'shopkeeper',
+        [JUMP_TARGET_LABELS['spawn-room']]: 'spawn-room',
+        [JUMP_TARGET_LABELS['welcome-office']]: 'welcome-office',
+        [JUMP_TARGET_LABELS['slime-rat-room']]: 'slime-rat-room',
+        [JUMP_TARGET_LABELS['quest-item-room']]: 'quest-item-room',
+        [JUMP_TARGET_LABELS['staircase-room']]: 'staircase-room',
+        [JUMP_TARGET_LABELS['boss-encounter']]: 'boss-encounter',
+      };
+    }
+    const chosenByCoord = new Map<string, Exclude<JumpTarget, 'boss-encounter'>>();
+    for (const target of JUMP_TARGET_ORDER) {
+      const pos = resolveJumpPosition(currentWorld, target);
+      if (!pos) {
+        continue;
+      }
+      const key = `${Math.round(pos.x)}:${Math.round(pos.y)}`;
+      const prior = chosenByCoord.get(key);
+      if (!prior || JUMP_TARGET_PRIORITY[target] > JUMP_TARGET_PRIORITY[prior]) {
+        chosenByCoord.set(key, target);
+      }
+    }
+
+    const keep = new Set(chosenByCoord.values());
+    const options: Record<string, JumpTarget> = {};
+    for (const target of JUMP_TARGET_ORDER) {
+      if (keep.has(target)) {
+        options[JUMP_TARGET_LABELS[target]] = target;
+      }
+    }
+    options[JUMP_TARGET_LABELS['boss-encounter']] = 'boss-encounter';
+    return options;
+  };
+
+  let jumpTargetController: ReturnType<GUI['add']> | undefined;
+  const refreshJumpTargetController = (): void => {
+    const options = computeJumpTargetOptions();
+    const values = Object.values(options);
+    if (values.length === 0) {
+      return;
+    }
+    if (!values.includes(settings.jumpTarget)) {
+      settings.jumpTarget = values[0]!;
+    }
+    if (!jumpTargetController) {
+      jumpTargetController = gui
+        .add(settings, 'jumpTarget', options)
+        .name('Jump target')
+        .onChange(() => {
+          saveLabState(LAB_ID, settings);
+        });
+      return;
+    }
+    jumpTargetController.options(options);
+    jumpTargetController.updateDisplay();
+  };
+
+  const jumpToTarget = (target: JumpTarget): void => {
+    const world = currentWorld;
+    const playerEid = getPlayerEid();
+    if (!world || playerEid === undefined) {
+      return;
+    }
+    if (target === 'boss-encounter') {
+      startFloor1BossEncounter(world, playerEid);
+      return;
+    }
+    const pos = resolveJumpPosition(world, target);
+    if (!pos) {
+      return;
+    }
+    movePlayerTo(pos.x, pos.y);
+  };
 
   const createGame = (): void => {
     game?.destroy(true);
@@ -256,17 +502,23 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
         BootScene,
         new MainGameScene({
           configureWorld: (world, playerEid) => {
+            currentWorld = world;
+            currentPlayerEid = playerEid;
             initializeFloor1Scenario(world, playerEid);
-            if (settings.autoPickStarter || settings.quickStartBossFight) {
+            if (settings.autoPickStarter || urlBoss) {
               const clamped = Math.max(1, Math.min(3, Math.floor(settings.starterChoice)));
               selectFloor1StarterWeapon(world, clamped - 1);
             }
-            if (settings.quickStartBossFight) {
+            if (urlBoss) {
               startFloor1BossEncounter(world, playerEid);
             }
+            refreshJumpTargetController();
           },
           selectLoadoutOption: selectFloor1StarterWeapon,
           onStairDescend: confirmFloor1StairDescend,
+          selectSpellFromBossBattle: (world, playerEid, spellId) => {
+            selectSpellFromBossBattle(world, playerEid, spellId);
+          },
           shopkeeper: {
             getStage: getShopkeeperStage,
             meet: meetShopkeeper,
@@ -277,6 +529,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             equipmentName: MERCHANTS_CHARM_DEF.name,
           },
           tutorialGoon: { meet: meetTutorialGoon },
+          spellQuestGiver: { meet: meetSpellQuestGiver },
           preSystems: [
             statsSystem,
             floor1PlayerStatSystem,
@@ -314,13 +567,15 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
         createGame();
       }
     });
+  refreshJumpTargetController();
   gui
-    .add(settings, 'quickStartBossFight')
-    .name('Quick boss start')
-    .onChange(() => {
-      saveLabState(LAB_ID, settings);
-      createGame();
-    });
+    .add(
+      {
+        jumpNow: () => jumpToTarget(settings.jumpTarget),
+      },
+      'jumpNow',
+    )
+    .name('Jump now');
   gui
     .add(
       {
@@ -339,11 +594,16 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       const scene = game?.scene.getScene(MainGameScene.KEY) as MainGameScene | undefined;
       scene?.setDebugFlag('showAllRooms', v);
     });
+  debugFolder.add(questDebug, 'questId', QUEST_DEBUG_TARGETS).name('Quest target');
+  debugFolder.add(questDebug, 'action', QUEST_DEBUG_ACTIONS).name('Quest action');
+  debugFolder.add(questDebug, 'apply').name('Apply quest debug');
 
   createGame();
 
   return () => {
     game?.destroy(true);
+    currentWorld = undefined;
+    currentPlayerEid = undefined;
     hint.remove();
     hookNote.remove();
     subsystemTitle.remove();

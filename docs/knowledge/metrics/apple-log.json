@@ -290,6 +290,24 @@
     "notes": "Converted the docked minimap into a player-centered round radar pinned to the top-right corner, showing the current room + nearby entities (enemies red, NPCs green, gold-ringed white player dot). Fixed two live visual bugs: (1) terrain bleeding outside the gold dial when the player moved -- the geometry-mask Graphics was setVisible(false), which Phaser 4.1's stencil pass skips so it clipped nothing; removing that made the mask clip again. (2) entity/player blips invisible -- lazily-created terrainRt shared dotGraphics' depth and rendered over it; fixed with an explicit depth hierarchy (bg 1000 < terrain 1001 < dots 1002 < rings 1005 < compass 1006). Updated the HudMinimap architectural guard test to match the refactored outlined-dot drawing while preserving FOV-gating intent. verify:fast 1179 pass; full verify's only failures are the known-flaky sprite-pipeline integration timeouts (generate-one / synth-to-generate) under parallel load, unrelated to this change. Playwright-confirmed terrain stays clipped in the dial when moving + player dot centered."
   },
   {
+    "date": "2026-06-15",
+    "session": "spell-system-lab-fixes",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "notes": "Fixed spell-system-lab compilation errors: removed unused imports, corrected ability state access pattern (abilityStatesByEntity.get()), accessed spells via equippedActiveAbilityIds. Lab test harness now complete and passing all 1179 tests."
+  },
+  {
+    "date": "2026-06-15",
+    "session": "floor1-boss-spell-unlock-hardening",
+    "estimated_apples": 2,
+    "actual_apples": 3,
+    "delta": 1,
+    "verdict": "under",
+    "notes": "Consolidated Floor1 boss-reward spell IDs into a shared source, fixed reward callback to target scene playerEid, added regression test for 3 allowed spells + arcane-bolt rejection, and stabilized long integration timeouts under coverage load."
+  },
+  {
     "date": "2026-06-16",
     "session": "devtools-review-persistence",
     "estimated_apples": 3,
@@ -330,6 +348,16 @@
     "notes": "Addressed persona-system review feedback: new deterministic check-personas.ts doc-lint (required sections + README index drift) wired into docs:check; added Persona(s) adopted + Routing verdict fields to handoff TEMPLATE.md; added worked routing-tie examples to personas/README.md. Deferred (objected to) the flaky sprite-pipeline timeout fix (QA test-infra) and the src/game/ai AI-safety lint (premature; dir doesn't exist yet). docs:check + eslint + prettier clean; negative test confirms the lint blocks on drift."
   },
   {
+    "date": "2026-06-17",
+    "session": "headless-ai-runner",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8,
+    "notes": "Implemented headless AI runner with rule-based input simulation (40,650 FPS achieved, 40x target), extracted simulation step, created AI runner lab for visual debugging, added CLI tool and npm script."
+  },
+  {
     "date": "2026-06-18",
     "branch": "copilot/add-visual-regression-tests-minimap",
     "session": "visual-regression-tests-minimap",
@@ -354,6 +382,26 @@
     "estimate": "🍎",
     "actual": "🍎",
     "verdict": "on-target"
+  },
+  {
+    "date": "2026-06-17",
+    "session": "floor1-config-unification",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8,
+    "notes": "Phase 1 of floor config refactoring: created Zod schema for floor1.json, added missing config fields (starterWeapons, bossVariants, sprites), refactored floor1Scenario.ts to replace ~60 hardcoded constants with config references. All 1253/1254 tests pass (1 pre-existing sprite test failure unrelated to changes)."
+  },
+  {
+    "date": "2026-06-17",
+    "session": "floor-config-phases-2-5",
+    "estimated_apples": 5,
+    "actual_apples": 4,
+    "delta": -1,
+    "verdict": "over",
+    "hello_kitties": 0.8,
+    "notes": "Phases 2-5 of floor config refactoring: implemented enemy pack abstraction (weighted selection), floor manifest schema (consolidated config), NPC placement schema foundation, and floor registry foundation. Phase 2-3 fully implemented with enemy pack system and manifest consolidation. Phases 4-5 foundation complete (schemas only, full implementation deferred). All 1263/1264 tests pass (1 pre-existing Azure Vision failure unrelated to changes). Estimated 5 apples assuming full NPC abstraction + MainGameScene integration; actual work focused on foundational schemas and enemy/manifest implementation (4 apples)."
   },
   {
     "date": "2026-06-18",
@@ -404,5 +452,35 @@
     "verdict": "exact",
     "hello_kitties": 0.6,
     "notes": "Rewrote enclosed background-region cleanup from scratch as a single topology-gated region clear (clear background-coloured connected components not touching the image border). Removed ~415 lines of heuristic helpers (size cap, center-seed, magenta-family, lower-half passes) that over-cleared shadows/arms/feet/sword. Verified visually via Playwright on rat-bruiser: big leg-gap magenta region removed, body detail preserved. 111 tests pass."
+  },
+  {
+    "date": "2026-06-18",
+    "session": "headless-bt-ai-takeover-pr150",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.8,
+    "notes": "Took over PR #150 behavior-tree AI. Deleted the dead RuleBasedAI; got the headless Floor 1 runner working end-to-end and root-caused the 3-segment quest-stall bug (headless pipeline never reset world.state level_up->playing, starving every state-gated floor system) -- first quest now completes 24.5s (seed 42), meeting the 2-min goal. Removed the melee blade-extension range cheat from weaponSystem (honest range gate + dispatchAttack). Gated the final boss door behind all three tutorial quests (kill + merchant + spell) via an operator:'all' door-lock group; verified non-circular and that AI routing already pursues all three before the staircase. Added AI runner lab debug tooling (path viz, decision-tree view, single-frame step) + floor-agnostic questLog telemetry. Fixed local verify/CI drift: scoped verify.sh coverage step to --project unit (was sweeping in the e2e project's port-5299 lab server -> false 0% coverage) and raised unit testTimeout 10s->30s for CPU-heavy sprite tests under coverage instrumentation. Resolved an apple-log.json merge conflict against main. Full npm run verify green; maintained a bug sidecar (A2-A8 floor1 coupling, B1 pipeline drift, B2 debug-hook marking, C1-C4 standing AI directives) for follow-up."
+  },
+  {
+    "date": "2026-06-18",
+    "session": "floor1-headless-victory-closeout",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Closed out the PR #150 headless clear. Root-caused and fixed the seed-2/12345 stall where the BT AI idled after accepting the Slime-Rat clear quest: findProgressObjective now falls through to a kill-grind stage (findNearestQuestEnemy) that hunts the remaining swarm until the required rat/slime counts latch, then descends. Proved a robust 10/10 VICTORY seed sweep within the 300s/18000-frame deadline (post-commit seed 7 confirmation cleared in 10847 frames/~181s). Restored the weaponSystem.ts 80% branch-coverage gate (full unit suite was 77.62%) with 4 targeted range-gating tests in weapon-system-coverage.test.ts, added a kill-grind regression test (behavior-tree-ai.test.ts 5/5), and removed leftover headless diagnostic scaffolding. Full npm run verify green; committed 0274c43 and pushed. Kept Date.now() in the headless CLI harness (legitimate out-of-sim wall-clock for --max-time-ms, not an ECS system). Deferred standing AI directives C1-C4 + floor-agnostic AI generalization (sidecar A2-A8) as larger follow-up not required for the clear."
+  },
+  {
+    "date": "2026-06-19",
+    "session": "headless-floor1-completion-gate",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Added the official, blocking headless Floor 1 completion gate (tests/headless/floor1-completion.test.ts): drives runHeadless(BehaviorTreeAI, seed 42) and asserts outcome=victory, all 4 Floor 1 quests, and gameTimeMs<5min, plus combat/progression sanity. Asserts deterministic game time (never wall time) so cross-platform CPU differences cannot flake CI, and caps maxFrames ~10% past the deadline so a non-clearing regression ends fast instead of grinding to the 100k-frame default. Wired a 'headless' vitest project, test:headless npm script, verify.sh Step 7, and a dedicated blocking test-headless CI job in merge-gate.needs + check block. Also committed the previously-staged browser/headless parity work: shared auto-progression.ts extraction (B7), spellQuestGiver.meet scene wiring + regression test (B5), per-sub-step AI re-poll in MainGameScene (B6), and melee stutter-step kiting. Caught a push-ref trap: the worktree branch is pr/150/copilot/design-headless-runner-ai but PR #150's head ref is copilot/design-headless-runner-ai (no prefix) -- first push hit a stray ref; fixed with git push origin HEAD:copilot/design-headless-runner-ai. Full npm run verify green (8/8 incl. build); deleted throwaway _seed-probe.mts. PR updated to 70cda5a, not merged."
   }
 ]

@@ -43,12 +43,14 @@ import {
 } from '../shared/equipmentDefs.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type ShopkeeperStage,
 } from '../shared/quest-types.js';
+import { FLOOR1_BOSS_REWARD_SPELL_IDS, type Floor1BossRewardSpellId } from '../shared/abilities.js';
 import {
   acceptQuest,
   notifyQuestTalk,
@@ -56,59 +58,17 @@ import {
   setQuestCounter,
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
+import { memorizeSpell } from './systems/abilitySystem.js';
+import { floor1Config } from '../shared/floor1-config.js';
+import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
+import { floor1Manifest } from '../shared/floor-manifest.js';
+import type { NpcPlacementDef } from '../shared/npc-placements.js';
 
-const FLOOR_1_PROTAGONIST = 'Rhea Vale';
-const FLOOR_1_STARTER_POOL = ['sword', 'knife', 'bow', 'pistol', 'throwing-knife'] as const;
-const FLOOR_1_TIMER_MS = 300_000;
-const FLOOR_1_REQUIRED_RATS = 6;
-const FLOOR_1_REQUIRED_SLIMES = 4;
-const FLOOR_1_REQUIRED_TOTAL_KILLS = 10;
-const FLOOR_1_REQUIRED_GOLD = 15;
-const FLOOR_1_REQUIRED_JUNK = 2;
-const FLOOR_1_MARKER_RADIUS_PX = 64;
-const FLOOR_1_STAIR_SPAWN_COUNTDOWN_MS = 30_000;
-
-const FLOOR_1_MAP_CONFIG: MapConfig = {
-  widthTiles: 120,
-  heightTiles: 70,
-  tileSizePx: 32,
-  biome: BiomeType.DUNGEON,
-  seed: 42,
-  roomWidthRange: [6, 14],
-  roomHeightRange: [5, 13],
-  maxRooms: 45,
-  floorDensity: 0.42,
-};
-
-const RAT_SPAWN_WEIGHT = 0.62;
-const RAT_HP = 20;
-const RAT_SPEED = 1.25;
-const RAT_DETECT_RANGE = 420;
-const SLIME_HP = 30;
-const SLIME_SPEED = 0.9;
-const SLIME_DETECT_RANGE = 320;
-const SPRITE_TEX_ENEMY_RAT = 1;
-const SPRITE_TEX_ENEMY_SLIME = 2;
-const SPRITE_TEX_WELCOME_SIGN = 3;
-const FLOOR_1_STAIR_BOSS_HP = 280;
-const FLOOR_1_STAIR_BOSS_SPEED = 1.15;
-const FLOOR_1_STAIR_BOSS_DETECT_RANGE = 540;
-const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN = 64;
-const FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MAX = 110;
-const FLOOR_1_STAIR_BOSS_SPRITE_WIDTH = 30;
-const FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT = 30;
-const FLOOR_1_STAIR_BOSS_FIREBALL_COOLDOWN_MS = 5000;
-const FLOOR_1_ENEMY_CAP = 14;
-const FLOOR_1_SPAWN_INTERVAL_MS = 900;
-const FLOOR_1_CAMERA_ZOOM = 2.0;
+// Derived constants computed from config at module initialization
+const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
 const FLOOR_1_VIEWPORT_WIDTH_PX = GAME.WIDTH / FLOOR_1_CAMERA_ZOOM;
 const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 2;
-const FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 3;
-const FLOOR_1_SPAWN_RADIUS_MIN = 160;
 const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
-const FLOOR_1_PLAYER_HP_BONUS = 20;
-const FLOOR_1_PLAYER_MOVE_SPEED_BONUS = 0.2;
-const FLOOR_1_PLAYER_PICKUP_RANGE_BONUS = 8;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 
 interface Floor1SpawnerState {
@@ -149,7 +109,8 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
   if (!world.floor1) {
     return;
   }
-  const maxDistanceSq = FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX * FLOOR_1_AMBIENT_DESPAWN_DISTANCE_PX;
+  const pack = floor1EnemyPack;
+  const maxDistanceSq = pack.despawnDistancePx * pack.despawnDistancePx;
   for (const eid of [...world.floor1.enemyArchetypes.keys()]) {
     if (!entityExists(world.ecs, eid)) {
       world.floor1.enemyArchetypes.delete(eid);
@@ -181,7 +142,7 @@ function getSpawnerState(world: GameWorld): Floor1SpawnerState {
 }
 
 function pickStarterChoices(world: GameWorld): string[] {
-  const pool = [...FLOOR_1_STARTER_POOL];
+  const pool = [...floor1Config.starterWeapons];
   const selected: string[] = [];
   while (pool.length > 0 && selected.length < 3) {
     const idx = world.rng.nextInt(0, pool.length - 1);
@@ -204,41 +165,45 @@ function centerOfRoom(room: { bounds: { x: number; y: number; width: number; hei
 }
 
 function chooseObjectiveTiles(world: GameWorld): {
+  welcomeOfficePos: { x: number; y: number };
   safeRoomPos: { x: number; y: number };
   staircasePos: { x: number; y: number };
+  slimeRatRoomPos: { x: number; y: number };
+  spellQuestGiverPos: { x: number; y: number };
   shopRoomPos: { x: number; y: number };
   questItemPos: { x: number; y: number };
 } {
   const floorMap = world.floorMap;
-  const fallbackSafe = { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 120 };
+  const fallbackWelcome = { x: 120, y: 120 };
   const fallbackStair = { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 560 };
+  const fallbackSlimeRat = {
+    x: floorMap?.widthPx ? Math.floor(floorMap.widthPx * 0.75) : 960,
+    y: 520,
+  };
   const fallbackShop = { x: floorMap?.widthPx ? floorMap.widthPx - 240 : 880, y: 340 };
   const fallbackItem = { x: floorMap?.widthPx ? Math.floor(floorMap.widthPx / 2) : 640, y: 340 };
 
   if (!floorMap) {
     return {
-      safeRoomPos: fallbackSafe,
+      welcomeOfficePos: fallbackWelcome,
+      safeRoomPos: fallbackWelcome,
       staircasePos: fallbackStair,
+      slimeRatRoomPos: fallbackSlimeRat,
+      spellQuestGiverPos: fallbackItem,
       shopRoomPos: fallbackShop,
       questItemPos: fallbackItem,
     };
   }
 
-  // Prefer role-tagged rooms assigned by the generator
+  // Prefer role-tagged boss stair room for the end-of-floor encounter.
   const bossStairRoom = floorMap.bossStairRoom;
-  const safeRoom = floorMap.safeRoom;
-
-  let safeRoomPos: { x: number; y: number };
   let staircasePos: { x: number; y: number };
-
-  if (bossStairRoom && safeRoom) {
-    safeRoomPos = floorMap.tileToPixel(centerOfRoom(safeRoom).x, centerOfRoom(safeRoom).y);
+  if (bossStairRoom) {
     staircasePos = floorMap.tileToPixel(
       centerOfRoom(bossStairRoom).x,
       centerOfRoom(bossStairRoom).y,
     );
   } else if (floorMap.rooms.length < 2) {
-    safeRoomPos = fallbackSafe;
     staircasePos = fallbackStair;
   } else {
     const spawnTile = floorMap.playerSpawn;
@@ -251,12 +216,6 @@ function chooseObjectiveTiles(world: GameWorld): {
     scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
     const staircaseRoom = scored[0]?.room ?? floorMap.rooms[floorMap.rooms.length - 1]!;
-    const safeRoomFallback =
-      scored[1]?.room ?? floorMap.rooms[Math.max(0, floorMap.rooms.length - 2)]!;
-    safeRoomPos = floorMap.tileToPixel(
-      centerOfRoom(safeRoomFallback).x,
-      centerOfRoom(safeRoomFallback).y,
-    );
     staircasePos = floorMap.tileToPixel(
       centerOfRoom(staircaseRoom).x,
       centerOfRoom(staircaseRoom).y,
@@ -281,23 +240,64 @@ function chooseObjectiveTiles(world: GameWorld): {
     })
     .sort((a, b) => a.distanceSq - b.distanceSq);
 
-  const shopEntry = candidates[0];
-  const itemEntry = candidates.length > 1 ? candidates[candidates.length - 1] : candidates[0];
+  const welcomeEntry = candidates[0];
+  const shopEntry = candidates.length > 1 ? candidates[1] : candidates[0];
+  const itemEntry = [...candidates]
+    .reverse()
+    .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
+  const welcomeOfficePos = welcomeEntry
+    ? floorMap.tileToPixel(welcomeEntry.center.x, welcomeEntry.center.y)
+    : fallbackWelcome;
   const shopRoomPos = shopEntry
     ? floorMap.tileToPixel(shopEntry.center.x, shopEntry.center.y)
     : fallbackShop;
   const questItemPos = itemEntry
     ? floorMap.tileToPixel(itemEntry.center.x, itemEntry.center.y)
     : fallbackItem;
+  const safeRoomPos = welcomeOfficePos;
+  const specialPoints = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
+  const slimeRatEntry = candidates
+    .filter((entry) => entry !== shopEntry && entry !== itemEntry)
+    .sort((a, b) => {
+      const aPos = floorMap.tileToPixel(a.center.x, a.center.y);
+      const bPos = floorMap.tileToPixel(b.center.x, b.center.y);
+      const aScore = Math.min(
+        ...specialPoints.map((p) => {
+          const dx = aPos.x - p.x;
+          const dy = aPos.y - p.y;
+          return dx * dx + dy * dy;
+        }),
+      );
+      const bScore = Math.min(
+        ...specialPoints.map((p) => {
+          const dx = bPos.x - p.x;
+          const dy = bPos.y - p.y;
+          return dx * dx + dy * dy;
+        }),
+      );
+      return bScore - aScore;
+    })[0];
+  const slimeRatRoomPos = slimeRatEntry
+    ? floorMap.tileToPixel(slimeRatEntry.center.x, slimeRatEntry.center.y)
+    : questItemPos;
+  const spellQuestGiverPos = questItemPos;
 
-  return { safeRoomPos, staircasePos, shopRoomPos, questItemPos };
+  return {
+    welcomeOfficePos,
+    safeRoomPos,
+    staircasePos,
+    slimeRatRoomPos,
+    spellQuestGiverPos,
+    shopRoomPos,
+    questItemPos,
+  };
 }
 
 /** Tag the shop room as a safe room and repaint its floor tiles so it renders correctly. */
-function tagShopRoomAsSafe(world: GameWorld, shopRoomPos: { x: number; y: number }): void {
+function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
-  const tile = floorMap.pixelToTile(shopRoomPos.x, shopRoomPos.y);
+  const tile = floorMap.pixelToTile(roomPos.x, roomPos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) return;
   floorMap.roomGraph.setRole(roomId, RoomRole.SAFE);
@@ -364,6 +364,70 @@ function findRoomPath(
   return path;
 }
 
+/**
+ * Spawn an NPC based on its placement definition.
+ * Resolves room role to actual position, then spawns the NPC entity.
+ */
+function spawnNpcFromPlacement(
+  world: GameWorld,
+  placement: NpcPlacementDef,
+  objectiveTiles: {
+    welcomeOfficePos: { x: number; y: number };
+    safeRoomPos: { x: number; y: number };
+    staircasePos: { x: number; y: number };
+    slimeRatRoomPos: { x: number; y: number };
+    spellQuestGiverPos: { x: number; y: number };
+    shopRoomPos: { x: number; y: number };
+    questItemPos: { x: number; y: number };
+  },
+): number {
+  // Resolve position from room role or explicit position
+  let x: number;
+  let y: number;
+
+  if (placement.position) {
+    // Explicit position override
+    x = placement.position.x;
+    y = placement.position.y;
+  } else if (placement.roomRole) {
+    // Resolve from room role
+    switch (placement.roomRole) {
+      case 'spawn':
+        x = objectiveTiles.welcomeOfficePos.x;
+        y = objectiveTiles.welcomeOfficePos.y;
+        break;
+      case 'safe':
+        x = objectiveTiles.safeRoomPos.x;
+        y = objectiveTiles.safeRoomPos.y;
+        break;
+      case 'shop':
+        x = objectiveTiles.shopRoomPos.x;
+        y = objectiveTiles.shopRoomPos.y;
+        break;
+      case 'boss_stair':
+        x = objectiveTiles.staircasePos.x;
+        y = objectiveTiles.staircasePos.y;
+        break;
+      case 'any':
+        // Use spell quest giver position (which is questItemPos)
+        x = objectiveTiles.spellQuestGiverPos.x;
+        y = objectiveTiles.spellQuestGiverPos.y;
+        break;
+      default:
+        // Fallback to welcome office
+        x = objectiveTiles.welcomeOfficePos.x;
+        y = objectiveTiles.welcomeOfficePos.y;
+    }
+  } else {
+    // No position or room role specified, fallback to spawn
+    x = objectiveTiles.welcomeOfficePos.x;
+    y = objectiveTiles.welcomeOfficePos.y;
+  }
+
+  // Spawn the NPC entity
+  return spawnNpc(world, x, y, placement.npcTypeId);
+}
+
 /** Called the first time the player talks to the Tutorial Goon. Accepts the quest and unlocks quest tracking. */
 export function meetTutorialGoon(world: GameWorld): void {
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
@@ -377,8 +441,15 @@ export function meetTutorialGoon(world: GameWorld): void {
 
 export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
   const config: MapConfig = {
-    ...FLOOR_1_MAP_CONFIG,
+    widthTiles: floor1Config.map.widthTiles,
+    heightTiles: floor1Config.map.heightTiles,
+    tileSizePx: floor1Config.map.tileSizePx,
+    biome: BiomeType.DUNGEON,
     seed: world.rng.nextInt(1, 2_000_000),
+    roomWidthRange: floor1Config.map.roomWidthRange,
+    roomHeightRange: floor1Config.map.roomHeightRange,
+    maxRooms: floor1Config.map.maxRooms,
+    floorDensity: floor1Config.map.floorDensity,
   };
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
@@ -391,13 +462,24 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     addComponent(world.ecs, playerEid, set(BroadcastScore, { current: 0 }));
   }
 
-  const maxHp = (world.stores.health.max[playerEid] ?? 100) + FLOOR_1_PLAYER_HP_BONUS;
+  const maxHp = (world.stores.health.max[playerEid] ?? 100) + floor1Config.player.hpBonus;
   setComponent(world.ecs, playerEid, Health, { current: maxHp, max: maxHp });
 
-  const { safeRoomPos, staircasePos, shopRoomPos, questItemPos } = chooseObjectiveTiles(world);
-  tagShopRoomAsSafe(world, shopRoomPos);
+  const {
+    welcomeOfficePos,
+    safeRoomPos,
+    staircasePos,
+    slimeRatRoomPos,
+    spellQuestGiverPos,
+    shopRoomPos,
+    questItemPos,
+  } = chooseObjectiveTiles(world);
+  tagRoomAsSafe(world, welcomeOfficePos);
+  tagRoomAsSafe(world, shopRoomPos);
+  tagRoomAsSafe(world, spellQuestGiverPos);
 
-  if (floorMap.spawnRoom && floorMap.safeRoom) {
+  const welcomeSignTextureId = floor1Config.sprites?.welcomeSign;
+  if (welcomeSignTextureId !== undefined && floorMap.spawnRoom && floorMap.safeRoom) {
     const startId = floorMap.spawnRoom.id;
     const targetId = floorMap.safeRoom.id;
     const path = findRoomPath(floorMap.roomGraph, startId, targetId);
@@ -420,7 +502,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
         world.ecs,
         eid,
         set(Sprite, {
-          textureId: SPRITE_TEX_WELCOME_SIGN,
+          textureId: welcomeSignTextureId,
           width: 32,
           height: 16,
         }),
@@ -442,34 +524,38 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   }
 
   world.floor1 = {
-    protagonistName: FLOOR_1_PROTAGONIST,
-    starterWeaponPool: FLOOR_1_STARTER_POOL,
+    protagonistName: floor1Config.protagonist,
+    starterWeaponPool: floor1Config.starterWeapons,
     starterChoices: pickStarterChoices(world),
     selectedWeaponId: null,
     selectedChoiceIndex: null,
     baseStatBonuses: {
-      maxHp: FLOOR_1_PLAYER_HP_BONUS,
-      moveSpeed: FLOOR_1_PLAYER_MOVE_SPEED_BONUS,
-      pickupRange: FLOOR_1_PLAYER_PICKUP_RANGE_BONUS,
+      maxHp: floor1Config.player.hpBonus,
+      moveSpeed: floor1Config.player.moveSpeedBonus,
+      pickupRange: floor1Config.player.pickupRangeBonus,
     },
     enemyArchetypes: new Map(),
     guideNpcEid: null,
+    spellQuestGiverNpcEid: null,
     shopkeeperNpcEid: null,
     questItemEid: null,
     bossDoorEids: [],
+    slimeRatDoorEids: [],
     objective: {
-      requiredRats: FLOOR_1_REQUIRED_RATS,
-      requiredSlimes: FLOOR_1_REQUIRED_SLIMES,
-      requiredGold: FLOOR_1_REQUIRED_GOLD,
-      requiredJunk: FLOOR_1_REQUIRED_JUNK,
-      deadlineMs: FLOOR_1_TIMER_MS,
-      staircaseSpawnCountdownMs: FLOOR_1_STAIR_SPAWN_COUNTDOWN_MS,
+      requiredRats: floor1Config.objectives.requiredRats,
+      requiredSlimes: floor1Config.objectives.requiredSlimes,
+      requiredGold: floor1Config.objectives.requiredGold,
+      requiredJunk: floor1Config.objectives.requiredJunk,
+      deadlineMs: floor1Config.timer.durationMs,
+      staircaseSpawnCountdownMs: floor1Config.timer.stairSpawnCountdownMs,
       safeRoomPos,
       staircasePos,
-      welcomeOfficePos: safeRoomPos,
+      welcomeOfficePos,
+      slimeRatRoomPos,
+      spellQuestGiverPos,
       shopRoomPos,
       questItemPos,
-      markerRadiusPx: FLOOR_1_MARKER_RADIUS_PX,
+      markerRadiusPx: floor1Config.objectives.markerRadiusPx,
       questAccepted: false,
       questCompleted: false,
       ratsKilled: 0,
@@ -483,6 +569,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircaseLocked: true,
       staircaseUnlocked: false,
       staircaseDiscovered: false,
+      slimeRatBattleStarted: false,
+      slimeRatBossEid: null,
+      slimeRatBossDefeated: false,
       bossBattleStarted: false,
       staircaseBossEid: null,
       staircaseBossDefeated: false,
@@ -499,20 +588,55 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, 'floor1-leveling-quest-complete', false);
   setGoalFlag(world, 'floor1-xp-unlocked', false);
   setGoalFlag(world, 'floor1-defeat-boss', false);
+  setGoalFlag(world, 'floor1-boss-battle-active', false);
+  setGoalFlag(world, 'floor1-boss-battle-complete', false);
+  setGoalFlag(world, 'floor1-boss-spellbook-claimed', false);
   setGoalFlag(world, 'floor1-boss-active', false);
   setGoalFlag(world, 'floor1-shop-prize-returned', false);
   setGoalFlag(world, 'floor1-shop-quest-complete', false);
 
-  // Spawn the tutorial guide NPC near the player's starting position.
-  world.floor1.guideNpcEid = spawnNpc(
-    world,
-    world.floor1.objective.welcomeOfficePos.x,
-    world.floor1.objective.welcomeOfficePos.y,
-    'tutorial-goon',
-  );
+  // Spawn NPCs from placement definitions (if available in manifest)
+  const npcPlacements = floor1Manifest.npcPlacements;
+  if (npcPlacements && npcPlacements.length > 0) {
+    // Data-driven NPC spawning
+    for (const placement of npcPlacements) {
+      const eid = spawnNpcFromPlacement(world, placement, {
+        welcomeOfficePos,
+        safeRoomPos,
+        staircasePos,
+        slimeRatRoomPos,
+        spellQuestGiverPos,
+        shopRoomPos,
+        questItemPos,
+      });
 
-  // Spawn the merchant in his shop room and drop his gross fetch item out in the dungeon.
-  world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
+      // Store EIDs based on NPC type for backward compatibility
+      if (placement.npcTypeId === 'tutorial-goon') {
+        world.floor1.guideNpcEid = eid;
+      } else if (placement.npcTypeId === 'spell-quest-giver') {
+        world.floor1.spellQuestGiverNpcEid = eid;
+      } else if (placement.npcTypeId === 'shopkeeper') {
+        world.floor1.shopkeeperNpcEid = eid;
+      }
+    }
+  } else {
+    // Fallback to hardcoded NPC spawning (backward compatibility)
+    world.floor1.guideNpcEid = spawnNpc(
+      world,
+      world.floor1.objective.welcomeOfficePos.x,
+      world.floor1.objective.welcomeOfficePos.y,
+      'tutorial-goon',
+    );
+    world.floor1.spellQuestGiverNpcEid = spawnNpc(
+      world,
+      world.floor1.objective.spellQuestGiverPos.x,
+      world.floor1.objective.spellQuestGiverPos.y,
+      'spell-quest-giver',
+    );
+    world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
+  }
+
+  // Spawn the merchant's fetch quest item
   world.floor1.questItemEid = spawnDroppedItem(
     world,
     questItemPos.x,
@@ -523,10 +647,12 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
 
-  // Seed the quest log: the merchant's errand only. Tutorial quest is accepted when meeting the Goon.
-  acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+  // Do not auto-accept NPC-given quests at init; shopkeeper errand starts on first meeting the merchant.
 
-  // Keep boss-room doors locked until the Tutorial Goon quest is completed.
+  // Keep the final boss-room doors locked until ALL Floor 1 tutorial quests are
+  // complete: the Tutorial Goon's "Pest Control" cull (floor1-goon-quest-complete),
+  // the Merchant's errand (floor1-shop-quest-complete), and the Spell Broker's
+  // spell-unlock quest (floor1-boss-battle-complete).
   setGoalFlag(world, 'floor1-goon-quest-complete', false);
   const bossStairRoom = floorMap.bossStairRoom;
   if (bossStairRoom) {
@@ -540,10 +666,36 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       setDoorLockConfig(world, doorEid, {
         unlock: {
           operator: 'all',
-          conditions: [{ type: 'goal', goalId: 'floor1-goon-quest-complete' }],
+          conditions: [
+            { type: 'goal', goalId: 'floor1-goon-quest-complete' },
+            { type: 'goal', goalId: 'floor1-shop-quest-complete' },
+            { type: 'goal', goalId: 'floor1-boss-battle-complete' },
+          ],
         },
       });
       world.floor1.bossDoorEids.push(doorEid);
+    }
+  }
+  const slimeRatRoom = roomAtPosition(world, slimeRatRoomPos);
+  if (slimeRatRoom) {
+    for (const door of slimeRatRoom.doors) {
+      const doorEid = createEntity(world);
+      addComponent(
+        world.ecs,
+        doorEid,
+        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 1, isLocked: 0, wasUnlocked: 1 }),
+      );
+      setDoorLockConfig(world, doorEid, {
+        unlock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-complete' }],
+        },
+        relock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-active' }],
+        },
+      });
+      world.floor1.slimeRatDoorEids.push(doorEid);
     }
   }
 
@@ -578,14 +730,14 @@ function resolveSpawnPosition(
   playerY: number,
 ): { x: number; y: number } {
   const floorMap = world.floorMap;
+  const pack = floor1EnemyPack;
   if (!floorMap) {
-    return { x: playerX + FLOOR_1_SPAWN_RADIUS_MIN, y: playerY };
+    return { x: playerX + pack.spawnRadiusMin, y: playerY };
   }
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius =
-      FLOOR_1_SPAWN_RADIUS_MIN +
-      world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - FLOOR_1_SPAWN_RADIUS_MIN);
+      pack.spawnRadiusMin + world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - pack.spawnRadiusMin);
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
@@ -614,7 +766,7 @@ function resolveSpawnPosition(
       }
     }
   }
-  const fallbackTile = floorMap.pixelToTile(playerX + FLOOR_1_SPAWN_RADIUS_MIN, playerY);
+  const fallbackTile = floorMap.pixelToTile(playerX + pack.spawnRadiusMin, playerY);
   return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
 }
 
@@ -645,14 +797,15 @@ function resolveBossSpawnPosition(
     }
   }
   if (!floorMap) {
-    return { x: stairX + FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN, y: stairY };
+    return { x: stairX + floor1Config.bossVariants!.ratSlime.spawnRadiusMin, y: stairY };
   }
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius =
-      FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN +
+      floor1Config.bossVariants!.ratSlime.spawnRadiusMin +
       world.rng.next() *
-        (FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MAX - FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN);
+        (floor1Config.bossVariants!.ratSlime.spawnRadiusMax -
+          floor1Config.bossVariants!.ratSlime.spawnRadiusMin);
     const x = stairX + Math.cos(angle) * radius;
     const y = stairY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
@@ -660,7 +813,10 @@ function resolveBossSpawnPosition(
       return floorMap.tileToPixel(tile.x, tile.y);
     }
   }
-  const fallbackTile = floorMap.pixelToTile(stairX + FLOOR_1_STAIR_BOSS_SPAWN_RADIUS_MIN, stairY);
+  const fallbackTile = floorMap.pixelToTile(
+    stairX + floor1Config.bossVariants!.ratSlime.spawnRadiusMin,
+    stairY,
+  );
   return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
 }
 
@@ -684,6 +840,45 @@ function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolea
   }
   const playerTile = floorMap.pixelToTile(px, py);
   for (const door of bossRoom.doors) {
+    if (playerTile.x === door.x && playerTile.y === door.y) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function roomAtPosition(
+  world: GameWorld,
+  pos: { x: number; y: number },
+): {
+  bounds: { x: number; y: number; width: number; height: number };
+  doors: readonly { x: number; y: number }[];
+} | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return null;
+  }
+  const tile = floorMap.pixelToTile(pos.x, pos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return null;
+  }
+  return floorMap.roomGraph.get(roomId) ?? null;
+}
+
+function isFullyInsideObjectiveRoom(
+  world: GameWorld,
+  px: number,
+  py: number,
+  roomPos: { x: number; y: number },
+): boolean {
+  const floorMap = world.floorMap;
+  const room = roomAtPosition(world, roomPos);
+  if (!floorMap || !room || !isInRoom(world, px, py, room)) {
+    return false;
+  }
+  const playerTile = floorMap.pixelToTile(px, py);
+  for (const door of room.doors) {
     if (playerTile.x === door.x && playerTile.y === door.y) {
       return false;
     }
@@ -723,16 +918,16 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     world,
     spawnPoint.x,
     spawnPoint.y,
-    FLOOR_1_STAIR_BOSS_HP,
+    floor1Config.bossVariants!.ratSlime.hp,
     AI_TYPE.CHASE,
-    FLOOR_1_STAIR_BOSS_SPEED,
-    FLOOR_1_STAIR_BOSS_DETECT_RANGE,
+    floor1Config.bossVariants!.ratSlime.speed,
+    floor1Config.bossVariants!.ratSlime.detectRange,
     280,
   );
   setComponent(world.ecs, eid, Sprite, {
-    textureId: SPRITE_TEX_ENEMY_SLIME,
-    width: FLOOR_1_STAIR_BOSS_SPRITE_WIDTH,
-    height: FLOOR_1_STAIR_BOSS_SPRITE_HEIGHT,
+    textureId: floor1Config.enemies.slime.spriteTexture,
+    width: floor1Config.bossVariants!.ratSlime.spriteWidth,
+    height: floor1Config.bossVariants!.ratSlime.spriteHeight,
   });
 
   // Boss has melee contact damage for swipe attacks.
@@ -742,9 +937,81 @@ function spawnFloor1StairBoss(world: GameWorld): number {
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
 
   // Boss fires acid projectiles every 5 seconds.
-  world.stores.enemyBehavior.fireCooldownMs[eid] = FLOOR_1_STAIR_BOSS_FIREBALL_COOLDOWN_MS;
+  world.stores.enemyBehavior.fireCooldownMs[eid] =
+    floor1Config.bossVariants!.ratSlime.fireballCooldownMs;
 
   return eid;
+}
+
+function spawnFloor1SlimeRatBoss(world: GameWorld): number {
+  const objective = world.floor1?.objective;
+  if (!objective) {
+    throw new Error('Cannot spawn Slime Rat without floor1 objective state.');
+  }
+  const bossRoom = roomAtPosition(world, objective.slimeRatRoomPos);
+  const spawnPoint = resolveBossSpawnPosition(
+    world,
+    bossRoom,
+    objective.slimeRatRoomPos.x,
+    objective.slimeRatRoomPos.y,
+  );
+  const eid = spawnBehaviorEnemy(
+    world,
+    spawnPoint.x,
+    spawnPoint.y,
+    floor1Config.bossVariants!.slimeRat.hp,
+    AI_TYPE.CHASE,
+    floor1Config.bossVariants!.slimeRat.speed,
+    floor1Config.bossVariants!.slimeRat.detectRange,
+    220,
+  );
+  setComponent(world.ecs, eid, Sprite, {
+    textureId: floor1Config.enemies.slime.spriteTexture,
+    width: floor1Config.bossVariants!.ratSlime.spriteWidth - 4,
+    height: floor1Config.bossVariants!.ratSlime.spriteHeight - 4,
+  });
+  setComponent(world.ecs, eid, Damage, { amount: 8 });
+  world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
+  world.stores.enemyBehavior.fireCooldownMs[eid] =
+    floor1Config.bossVariants!.slimeRat.fireballCooldownMs;
+  return eid;
+}
+
+function beginFloor1SlimeRatBattle(world: GameWorld): void {
+  const floor1 = world.floor1;
+  const objective = floor1?.objective;
+  if (
+    !objective ||
+    objective.slimeRatBattleStarted ||
+    !world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)
+  ) {
+    return;
+  }
+  objective.slimeRatBattleStarted = true;
+  setGoalFlag(world, 'floor1-boss-battle-active', true);
+  const slimeRatRoom = roomAtPosition(world, objective.slimeRatRoomPos);
+  if (slimeRatRoom) {
+    for (const door of slimeRatRoom.doors) {
+      world.floorMap?.tileMap.closeDoor(door.x, door.y);
+    }
+  }
+  if (floor1) {
+    for (const doorEid of floor1.slimeRatDoorEids) {
+      world.stores.doorState.isLocked[doorEid] = 1;
+      world.stores.doorState.isOpen[doorEid] = 0;
+      setDoorLockConfig(world, doorEid, {
+        unlock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-complete' }],
+        },
+        relock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-active' }],
+        },
+      });
+    }
+  }
+  objective.slimeRatBossEid = spawnFloor1SlimeRatBoss(world);
 }
 
 function beginFloor1BossBattle(world: GameWorld): void {
@@ -758,6 +1025,8 @@ function beginFloor1BossBattle(world: GameWorld): void {
   objective.staircaseLocked = true;
   objective.staircaseUnlocked = false;
   setGoalFlag(world, 'floor1-boss-active', true);
+
+  // Staircase boss is Rat Slime (stronger), separate from the Slime Rat spell-quest boss.
   objective.staircaseBossEid = spawnFloor1StairBoss(world);
   const floorMap = world.floorMap;
   const bossRoom = floorMap?.bossStairRoom;
@@ -812,12 +1081,13 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     return;
   }
 
-  if (world.floor1.enemyArchetypes.size >= FLOOR_1_ENEMY_CAP) {
+  const pack = floor1EnemyPack;
+  if (world.floor1.enemyArchetypes.size >= pack.enemyCap) {
     return;
   }
 
   const state = getSpawnerState(world);
-  if (world.elapsedMs - state.lastSpawnMs < FLOOR_1_SPAWN_INTERVAL_MS) {
+  if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
     return;
   }
 
@@ -831,10 +1101,10 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   const playerY = world.stores.position.y[player] ?? 0;
   pruneAmbientOutOfRange(world, playerX, playerY);
   const totalEnemies = query(world.ecs, [Enemy]).length;
-  if (totalEnemies > FLOOR_1_ENEMY_CAP) {
-    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - FLOOR_1_ENEMY_CAP);
+  if (totalEnemies > pack.enemyCap) {
+    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - pack.enemyCap);
   }
-  if (query(world.ecs, [Enemy]).length >= FLOOR_1_ENEMY_CAP) {
+  if (query(world.ecs, [Enemy]).length >= pack.enemyCap) {
     return;
   }
   const spawnMaxDistanceSq =
@@ -880,27 +1150,27 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {
     return;
   }
-  const archetype: 'rat' | 'slime' = world.rng.next() < RAT_SPAWN_WEIGHT ? 'rat' : 'slime';
-  const hp = archetype === 'rat' ? RAT_HP : SLIME_HP;
-  const speed = archetype === 'rat' ? RAT_SPEED : SLIME_SPEED;
-  const detectRange = archetype === 'rat' ? RAT_DETECT_RANGE : SLIME_DETECT_RANGE;
+
+  // Pick enemy archetype using weighted selection from pack
+  const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
+
   const eid = spawnBehaviorEnemy(
     world,
     spawnPoint.x,
     spawnPoint.y,
-    hp,
+    archetype.hp,
     AI_TYPE.CHASE,
-    speed,
-    detectRange,
+    archetype.speed,
+    archetype.detectRange,
     0,
   );
   setComponent(world.ecs, eid, Sprite, {
-    textureId: archetype === 'rat' ? SPRITE_TEX_ENEMY_RAT : SPRITE_TEX_ENEMY_SLIME,
-    width: 16,
-    height: 16,
+    textureId: archetype.spriteTexture,
+    width: archetype.spriteWidth,
+    height: archetype.spriteHeight,
   });
 
-  world.floor1.enemyArchetypes.set(eid, archetype);
+  world.floor1.enemyArchetypes.set(eid, archetype.id);
   state.lastSpawnMs = world.elapsedMs;
 }
 
@@ -1011,7 +1281,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const bossUnlockQuestAccepted = world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID);
   const meetsCombat =
     bossUnlockQuestAccepted &&
-    totalKills >= FLOOR_1_REQUIRED_TOTAL_KILLS &&
+    totalKills >= floor1Config.objectives.requiredTotalKills &&
     objective.ratsKilled >= objective.requiredRats &&
     objective.slimesKilled >= objective.requiredSlimes;
   const meetsLoot =
@@ -1027,9 +1297,38 @@ function floor1ObjectiveTick(world: GameWorld): void {
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, objective.questCompleted);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, meetsLoot);
 
-  // Boss battle starts only after the player fully enters the boss room.
+  // Slime Rat (weaker) battle starts in its dedicated boss room.
   if (
-    objective.questCompleted &&
+    world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID) &&
+    isFullyInsideObjectiveRoom(world, playerX, playerY, objective.slimeRatRoomPos) &&
+    !objective.slimeRatBattleStarted
+  ) {
+    beginFloor1SlimeRatBattle(world);
+  }
+
+  const slimeRatEid = objective.slimeRatBossEid;
+  const slimeRatAlive = slimeRatEid !== null && entityExists(world.ecs, slimeRatEid);
+  if (objective.slimeRatBattleStarted && !slimeRatAlive && !objective.slimeRatBossDefeated) {
+    objective.slimeRatBossDefeated = true;
+    objective.slimeRatBossEid = null;
+    setGoalFlag(world, 'floor1-boss-battle-active', false);
+    const slimeRatRoom = roomAtPosition(world, objective.slimeRatRoomPos);
+    if (slimeRatRoom) {
+      for (const door of slimeRatRoom.doors) {
+        world.floorMap?.tileMap.openDoor(door.x, door.y);
+      }
+    }
+    for (const doorEid of world.floor1.slimeRatDoorEids) {
+      world.stores.doorState.isLocked[doorEid] = 0;
+      world.stores.doorState.isOpen[doorEid] = 1;
+    }
+    setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
+    questSystem(world);
+  }
+
+  // Staircase Rat Slime (stronger) starts only after the Slime Rat is defeated.
+  if (
+    objective.slimeRatBossDefeated &&
     isFullyInsideBossRoom(world, playerX, playerY) &&
     !objective.bossBattleStarted
   ) {
@@ -1045,6 +1344,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
     objective.staircaseBossDefeated = true;
     objective.staircaseBossEid = null;
     setGoalFlag(world, 'floor1-boss-active', false);
+
     const floorMap = world.floorMap;
     if (floorMap?.bossStairRoom) {
       for (const door of floorMap.bossStairRoom.doors) {
@@ -1106,6 +1406,12 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   setGoalFlag(world, 'floor1-reach-level-2', true);
   setGoalFlag(world, 'floor1-leveling-quest-complete', true);
   setGoalFlag(world, 'floor1-goon-quest-complete', true);
+  objective.slimeRatBattleStarted = true;
+  objective.slimeRatBossDefeated = true;
+  objective.slimeRatBossEid = null;
+  setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
+  setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);
+  setGoalFlag(world, 'floor1-boss-battle-complete', true);
   questSystem(world);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, true);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);
@@ -1174,7 +1480,23 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 
 /** Mark the merchant as met (advances the first quest step). */
 export function meetShopkeeper(world: GameWorld): void {
+  if (!world.questLog.has(FLOOR1_SHOP_QUEST_ID)) {
+    acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_SHOP_QUEST_ID);
+  }
   notifyQuestTalk(world, 'shopkeeper');
+}
+
+/** Mark the spell quest giver as met and accept the Slime Rat quest. */
+export function meetSpellQuestGiver(world: GameWorld): void {
+  if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {
+    acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+  }
+  if (world.floor1?.objective.slimeRatBossDefeated === true) {
+    setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);
+  }
+  notifyQuestTalk(world, 'spell-quest-giver');
 }
 
 /**
@@ -1207,6 +1529,9 @@ export function purchaseShopkeeperEquipment(world: GameWorld, playerEid: number)
     return false;
   }
   if (world.goalFlags.get('floor1-shop-prize-returned') !== true) {
+    return false;
+  }
+  if (world.goalFlags.get('floor1-shop-quest-complete') === true) {
     return false;
   }
   if (hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)) {
@@ -1242,5 +1567,57 @@ export function equipPurchasedGear(world: GameWorld, playerEid: number): boolean
     return false;
   }
   removeItem(bag, slot.itemId, 1);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Boss battle spell selection flow
+// ---------------------------------------------------------------------------
+
+/** Check if the boss battle quest is available for selection. */
+export function shouldShowSpellSelector(world: GameWorld): boolean {
+  // Show the spell selector if the boss battle quest just completed
+  return (
+    world.goalFlags.get('floor1-boss-battle-complete') === true &&
+    world.featureUnlocks.spells === false
+  );
+}
+
+/** Show the spell selector modal with available spells. */
+export function showSpellSelector(world: GameWorld, showModal: (spellIds: string[]) => void): void {
+  if (!shouldShowSpellSelector(world)) {
+    return;
+  }
+  // The showModal callback receives the list of available spell IDs to display
+  showModal(Array.from(FLOOR1_BOSS_REWARD_SPELL_IDS));
+}
+
+/** Select a spell to equip. Returns true when the spell was successfully learned. */
+export function selectSpellFromBossBattle(
+  world: GameWorld,
+  playerEid: number,
+  spellId: string,
+): boolean {
+  // Verify the spell is one of the allowed options
+  if (!FLOOR1_BOSS_REWARD_SPELL_IDS.includes(spellId as Floor1BossRewardSpellId)) {
+    return false;
+  }
+
+  // Verify the quest completion goal flag is set
+  if (world.goalFlags.get('floor1-boss-battle-complete') !== true) {
+    return false;
+  }
+
+  // Verify the feature unlock hasn't already been triggered
+  if (world.featureUnlocks.spells === true) {
+    return false;
+  }
+
+  // Equip the selected spell
+  memorizeSpell(world, playerEid, spellId);
+
+  // Unlock the spells feature (MP bar + ability system)
+  world.featureUnlocks.spells = true;
+
   return true;
 }

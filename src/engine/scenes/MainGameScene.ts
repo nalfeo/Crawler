@@ -29,6 +29,12 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { GAME } from '../../shared/constants.js';
+import {
+  ACTIVE_ABILITY_SLOT_LIMIT,
+  FLOOR1_BOSS_REWARD_SPELL_IDS,
+  type AbilityState,
+  type Floor1BossRewardSpellId,
+} from '../../shared/abilities.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { buildTerrainLayer } from '../terrain-renderer.js';
 import { createInputCapture } from '../InputCapture.js';
@@ -71,6 +77,15 @@ const FLOOR_1_COMMENTARY = {
 } as const;
 const logger = createLogger('engine:main-game-scene');
 export interface MainGameSceneOptions {
+  inputCaptureOverride?: {
+    poll: (state: InputState, world: GameWorld) => void;
+    destroy?: () => void;
+  };
+  /**
+   * Seed for the simulation world RNG. When omitted, the world defaults to its
+   * built-in seed (42). Exposed so labs/harnesses can replay or randomize runs.
+   */
+  worldSeed?: number;
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
@@ -90,6 +105,11 @@ export interface MainGameSceneOptions {
   tutorialGoon?: {
     meet: (world: GameWorld) => void;
   };
+  spellQuestGiver?: {
+    meet: (world: GameWorld) => void;
+  };
+  /** Spell selection callback for floor1 boss battle reward. */
+  selectSpellFromBossBattle?: (world: GameWorld, playerEid: number, spellId: string) => void;
 }
 
 declare global {
@@ -127,6 +147,12 @@ export class MainGameScene extends Phaser.Scene {
 
   private accumulatorClampCount = 0;
 
+  private simulationPaused = false;
+
+  private simulationSpeed = 1;
+
+  private pendingSimulationSteps = 0;
+
   private warnedMissingDependencies = false;
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
@@ -163,6 +189,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyEquip?: Phaser.Input.Keyboard.Key;
 
+  private keyAbilities?: Phaser.Input.Keyboard.Key;
+
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
@@ -177,6 +205,8 @@ export class MainGameScene extends Phaser.Scene {
   private inventoryUnlockNotified = false;
 
   private equipmentUnlockNotified = false;
+
+  private spellsUnlockNotified = false;
 
   /** World-space label shown above the staircase marker. */
   private stairsLabel?: Phaser.GameObjects.Text;
@@ -227,6 +257,8 @@ export class MainGameScene extends Phaser.Scene {
 
   /** One-frame latch set by tapping the dialogue close button. */
   private queuedConversationClose = false;
+  /** One-frame latch for opening the abilities configurator from global keyboard capture. */
+  private queuedAbilitiesToggle = false;
 
   private floorCompletionMessageShown = false;
 
@@ -251,17 +283,24 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.world = createGameWorld();
+    this.world = createGameWorld({ seed: this.options.worldSeed });
     this.inputState = createInputState();
-    this.inputCapture = createInputCapture(this, {
-      getFollowOrigin: () =>
-        this.playerEid < 0
-          ? undefined
-          : {
-              x: this.world.stores.position.x[this.playerEid] ?? 0,
-              y: this.world.stores.position.y[this.playerEid] ?? 0,
-            },
-    });
+    if (this.options.inputCaptureOverride) {
+      this.inputCapture = {
+        poll: (state: InputState) => this.options.inputCaptureOverride?.poll(state, this.world),
+        destroy: () => this.options.inputCaptureOverride?.destroy?.(),
+      };
+    } else {
+      this.inputCapture = createInputCapture(this, {
+        getFollowOrigin: () =>
+          this.playerEid < 0
+            ? undefined
+            : {
+                x: this.world.stores.position.x[this.playerEid] ?? 0,
+                y: this.world.stores.position.y[this.playerEid] ?? 0,
+              },
+      });
+    }
     this.accumulator = 0;
     this.previousWorldState = this.world.state;
     this.accumulatorClampCount = 0;
@@ -297,6 +336,11 @@ export class MainGameScene extends Phaser.Scene {
     this.keyEsc = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.keyInventory = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.I);
     this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
+    this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+    this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this.handleWindowKeyDown, true);
+    }
     this.inventoryUI = createInventoryUI(this);
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
@@ -397,13 +441,19 @@ export class MainGameScene extends Phaser.Scene {
       this.objectiveText = undefined;
       this.loadoutText = undefined;
       this.hudUi = undefined;
+      this.keyAbilities = undefined;
       this.conversationNpcEid = null;
       this.tappedInteraction = false;
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
+      this.queuedAbilitiesToggle = false;
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
+      this.input.keyboard?.off('keydown-E', this.handleKeyboardE, this);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('keydown', this.handleWindowKeyDown, true);
+      }
       if (typeof window !== 'undefined' && window.__floor1Debug) {
         delete window.__floor1Debug;
       }
@@ -421,6 +471,36 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.tappedInteraction = true;
   }
+
+  private handleKeyboardE(): void {
+    if (this.modalPicker?.isOpen()) {
+      return;
+    }
+    this.queuedInteraction = true;
+  }
+
+  private isTextEntryTarget(event: KeyboardEvent): boolean {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+    const tag = target.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+  }
+
+  private handleWindowKeyDown = (event: KeyboardEvent): void => {
+    if (this.modalPicker?.isOpen() || this.isTextEntryTarget(event)) {
+      return;
+    }
+    if (event.code === 'KeyE') {
+      // Allow browser key-repeat so holding E can advance dialogue lines.
+      this.queuedInteraction = true;
+      return;
+    }
+    if (event.code === 'KeyB' && !event.repeat) {
+      this.queuedAbilitiesToggle = true;
+    }
+  };
 
   private markCameraMasksDirty(): void {
     this.cameraMasksDirty = true;
@@ -479,6 +559,17 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
+      this.updateDoorOverlay();
+      this.bridge.sync(this.world);
+      this.playBossSpawnIntro();
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      this.updateInteractions();
+      return;
+    }
+
     this.inputCapture.poll(this.inputState);
 
     if (this.world.state === 'loadout') {
@@ -507,17 +598,52 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    // Fixed-timestep accumulator: run simulation at GAME.DELTA_MS intervals
-    this.accumulator += delta;
-    let steps = 0;
+    // Check if spell selection modal should be shown (before simulation)
+    this.openSpellSelectionModal();
+    if (this.modalPicker?.isOpen()) {
+      this.updateDoorOverlay();
+      this.bridge.sync(this.world);
+      this.updateCamera();
+      this.updateObjectiveMarkers();
+      this.updateOverlayText();
+      return;
+    }
 
-    while (this.accumulator >= GAME.DELTA_MS && steps < MAX_STEPS_PER_FRAME) {
+    // Fixed-timestep accumulator: run simulation at GAME.DELTA_MS intervals
+    if (this.simulationPaused) {
+      this.accumulator = GAME.DELTA_MS;
+    } else {
+      const scaledDelta = delta * this.simulationSpeed;
+      this.accumulator += scaledDelta;
+    }
+    let steps = 0;
+    const maxStepsThisFrame = this.simulationPaused
+      ? 1
+      : Math.max(MAX_STEPS_PER_FRAME, Math.ceil(MAX_STEPS_PER_FRAME * this.simulationSpeed));
+
+    while (this.accumulator >= GAME.DELTA_MS && steps < maxStepsThisFrame) {
       this.world.frameCount += 1;
       this.world.elapsedMs += GAME.DELTA_MS;
+
+      // The input override (headless-parity AI) is polled once per rendered frame
+      // above, but at high simulation speeds this loop runs many sim steps per
+      // frame. Replaying a single stale move vector for N steps makes the AI
+      // overshoot waypoint-reached radii and vibrate in place. Re-poll the
+      // override every sim step (after the first, which used the poll above) so
+      // in-browser AI runs share the headless runner's strict 1:1 poll:step
+      // cadence. Human input keeps its once-per-frame poll.
+      if (this.options.inputCaptureOverride && steps > 0) {
+        this.inputCapture.poll(this.inputState);
+      }
 
       playerInputSystem(this.world, this.inputState);
       for (const sys of this.options.preSystems ?? []) {
         sys(this.world);
+      }
+
+      if (this.simulationPaused && this.pendingSimulationSteps > 0) {
+        this.pendingSimulationSteps = Math.max(0, this.pendingSimulationSteps - steps);
+        this.accumulator = 0;
       }
       movementSystem(this.world);
       returningProjectileSystem(this.world);
@@ -553,7 +679,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     // Cap accumulator to prevent spiral of death after long pauses
-    if (this.accumulator > GAME.DELTA_MS * MAX_STEPS_PER_FRAME) {
+    if (this.accumulator > GAME.DELTA_MS * maxStepsThisFrame) {
       this.accumulator = 0;
       this.accumulatorClampCount += 1;
       logger.warn('Fixed-step accumulator clamped to avoid spiral of death', {
@@ -589,6 +715,10 @@ export class MainGameScene extends Phaser.Scene {
       this.equipmentUnlockNotified = true;
       this.flashHint('Equipment unlocked! Press [G] in a safe room to equip your new gear.');
     }
+    if (unlocks.spells && !this.spellsUnlockNotified) {
+      this.spellsUnlockNotified = true;
+      this.flashHint('Abilities unlocked! Press [B] to open Abilities and configure your bar.');
+    }
 
     if (
       unlocks.inventory &&
@@ -612,6 +742,14 @@ export class MainGameScene extends Phaser.Scene {
         this.flashHint('Equipped! The merchant beams with unsettling pride.');
         this.inventoryUI?.refresh(this.world);
       }
+    }
+
+    const abilitiesToggleRequested =
+      this.queuedAbilitiesToggle ||
+      Boolean(this.keyAbilities && Phaser.Input.Keyboard.JustDown(this.keyAbilities));
+    this.queuedAbilitiesToggle = false;
+    if (unlocks.spells && abilitiesToggleRequested) {
+      this.openAbilitiesConfigModal();
     }
   }
 
@@ -681,6 +819,27 @@ export class MainGameScene extends Phaser.Scene {
     if (this.world) {
       this.world.debugFlags[key] = value;
     }
+  }
+
+  setSimulationPaused(paused: boolean): void {
+    this.simulationPaused = paused;
+  }
+
+  isSimulationPaused(): boolean {
+    return this.simulationPaused;
+  }
+
+  setSimulationSpeed(speed: number): void {
+    this.simulationSpeed = Math.max(1, speed);
+  }
+
+  getSimulationSpeed(): number {
+    return this.simulationSpeed;
+  }
+
+  advanceSimulationFrames(frames: number = 1): void {
+    const safeFrames = Math.max(1, Math.floor(frames));
+    this.pendingSimulationSteps += safeFrames;
   }
 
   private initializeUi(): void {
@@ -964,6 +1123,175 @@ export class MainGameScene extends Phaser.Scene {
         },
         onCancel: () => {
           this.options.selectLoadoutOption?.(this.world, 0);
+          this.updateOverlayText();
+        },
+      },
+    );
+  }
+
+  private openSpellSelectionModal(): void {
+    if (!this.modalPicker || this.world.state !== 'playing') {
+      return;
+    }
+    if (this.modalPicker.isOpen()) {
+      return;
+    }
+
+    // Check if spell selection should be shown: boss quest completed and spells not yet unlocked
+    if (
+      this.world.goalFlags.get('floor1-boss-battle-complete') !== true ||
+      this.world.featureUnlocks.spells === true
+    ) {
+      return;
+    }
+
+    // The three available spells for the boss battle reward
+    const spellIds = FLOOR1_BOSS_REWARD_SPELL_IDS;
+
+    const options = spellIds.map((spellId) => {
+      // Spell name and description (matching ability definitions)
+      const spellNames: Record<Floor1BossRewardSpellId, string> = {
+        fireball: 'Fireball',
+        heal: 'Heal',
+        'pulse-shield': 'Pulse Shield',
+      };
+
+      const spellDescriptions: Record<Floor1BossRewardSpellId, string> = {
+        fireball: 'Unleash a fireball that damages enemies in an area',
+        heal: 'Restore your health',
+        'pulse-shield': 'Create a shockwave that knocks back nearby enemies',
+      };
+
+      return {
+        id: spellId,
+        label: spellNames[spellId],
+        description: spellDescriptions[spellId],
+      };
+    });
+
+    this.modalPicker.open(
+      {
+        title: 'Learn a Spell',
+        subtitle: 'You defeated the Slime Rat boss!',
+        body: 'Choose a spellbook to unlock your ability system. Your pick is slotted onto your abilities bar and will auto-trigger by its combat rules.',
+        options,
+        allowCancel: false,
+        initialSelectedId: 'fireball',
+      },
+      {
+        onConfirm: ({ option }) => {
+          this.options.selectSpellFromBossBattle?.(this.world, this.playerEid, option.id as string);
+          this.flashHint('Spell learned! Press [B] to configure your abilities bar.');
+          this.updateOverlayText();
+        },
+        onCancel: () => {
+          // No cancellation allowed for spell selection
+          this.updateOverlayText();
+        },
+      },
+    );
+  }
+
+  private formatAbilityTrigger(abilityId: string): string {
+    const triggerText: Record<string, string> = {
+      fireball: 'Auto: fires at enemy clusters (2+ targets)',
+      heal: 'Auto: casts when HP deficit warrants it',
+      'pulse-shield': 'Auto: casts at low HP when surrounded',
+    };
+    return triggerText[abilityId] ?? 'Auto trigger';
+  }
+
+  private openAbilitiesConfigModal(): void {
+    if (!this.modalPicker || this.world.state !== 'playing' || this.modalPicker.isOpen()) {
+      return;
+    }
+    let state = this.world.abilityStatesByEntity.get(this.playerEid);
+    if (!state) {
+      state = {
+        learnedSpellIds: [],
+        equippedActiveAbilityIds: [],
+        passiveAbilityIds: [],
+        cooldownByAbilityId: new Map(),
+        cooldownFramesByAbilityId: new Map(),
+        appliedPassiveAbilityIds: new Set(),
+      } satisfies AbilityState;
+      this.world.abilityStatesByEntity.set(this.playerEid, state);
+    }
+    const learned =
+      state.learnedSpellIds.length > 0 ? state.learnedSpellIds : state.equippedActiveAbilityIds;
+    if (learned.length === 0) {
+      this.flashHint('No learned spells yet. Defeat the Slime Rat and claim a spellbook first.');
+      return;
+    }
+
+    const options = learned.map((abilityId) => {
+      const equipped = state.equippedActiveAbilityIds.includes(abilityId);
+      const spellMeta: Record<
+        string,
+        { name: string; mpCost: number; cooldownSec: number; description: string }
+      > = {
+        fireball: {
+          name: 'Fireball',
+          mpCost: 5,
+          cooldownSec: 5,
+          description: 'Launches a fireball at clumps of enemies.',
+        },
+        heal: {
+          name: 'Heal',
+          mpCost: 10,
+          cooldownSec: 30,
+          description: 'Restores health when missing HP is high enough.',
+        },
+        'pulse-shield': {
+          name: 'Pulse Shield',
+          mpCost: 10,
+          cooldownSec: 20,
+          description: 'Knocks back nearby enemies when you are in danger.',
+        },
+      };
+      const meta = spellMeta[abilityId];
+      const label = meta?.name ?? abilityId;
+      return {
+        id: abilityId,
+        label: equipped ? `${label} (Equipped)` : label,
+        description: `${meta?.description ?? 'Configured ability'} • ${
+          meta ? `${meta.mpCost} MP • ${meta.cooldownSec}s CD` : 'Spell'
+        } • ${this.formatAbilityTrigger(abilityId)}`,
+      };
+    });
+
+    this.modalPicker.open(
+      {
+        title: 'Abilities',
+        subtitle: `Slots used: ${state.equippedActiveAbilityIds.length}/${ACTIVE_ABILITY_SLOT_LIMIT}`,
+        body: 'Select a learned spell to toggle it on/off your abilities bar. Equipped spells auto-trigger from cooldown + combat rules.',
+        options,
+        allowCancel: true,
+        initialSelectedId: learned[0],
+      },
+      {
+        onConfirm: ({ option }) => {
+          const abilityId = option.id;
+          const equipped = state.equippedActiveAbilityIds.includes(abilityId);
+          if (equipped) {
+            const idx = state.equippedActiveAbilityIds.indexOf(abilityId);
+            if (idx >= 0) {
+              state.equippedActiveAbilityIds.splice(idx, 1);
+            }
+            this.flashHint(
+              `${option.label.replace(' (Equipped)', '')} removed from abilities bar.`,
+            );
+          } else if (state.equippedActiveAbilityIds.length >= ACTIVE_ABILITY_SLOT_LIMIT) {
+            this.flashHint(
+              `Abilities bar is full (${ACTIVE_ABILITY_SLOT_LIMIT} slots). Unequip one first.`,
+            );
+          } else {
+            state.equippedActiveAbilityIds.push(abilityId);
+            this.flashHint(`${option.label} added to abilities bar.`);
+          }
+          this.updateOverlayText();
+        },
+        onCancel: () => {
           this.updateOverlayText();
         },
       },
@@ -1315,7 +1643,7 @@ export class MainGameScene extends Phaser.Scene {
     const width = 360;
     fill.setSize(Math.max(1, Math.round(width * pct)), 20);
     fill.setFillStyle(pct > 0.5 ? 0x22c55e : pct >= 0.25 ? 0xf59e0b : 0xef4444);
-    name.setText(`Rat-Slime Hybrid  ${Math.ceil(current)} / ${Math.ceil(max)}`);
+    name.setText(`Rat Slime  ${Math.ceil(current)} / ${Math.ceil(max)}`);
   }
 
   private updateInteractions(): void {
@@ -1408,6 +1736,9 @@ export class MainGameScene extends Phaser.Scene {
             this.conversationNpcEid = nearNpcEid;
             if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
               this.options.tutorialGoon.meet(this.world);
+            }
+            if (instance.defId === 'spell-quest-giver' && this.options.spellQuestGiver) {
+              this.options.spellQuestGiver.meet(this.world);
             }
             instance.dialogueIndex = 0;
             const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
@@ -1502,6 +1833,7 @@ export class MainGameScene extends Phaser.Scene {
         return true;
       }
       const affordable = this.world.playerGold >= shop.equipmentCost;
+      const shortfall = Math.max(0, shop.equipmentCost - this.world.playerGold);
       this.modalPicker.open(
         {
           title: "The Merchant's Wares",
@@ -1517,13 +1849,19 @@ export class MainGameScene extends Phaser.Scene {
                   description: 'A faintly damp, weirdly lucky charm.',
                 },
               ]
-            : [],
+            : [
+                {
+                  id: 'need-more-gold',
+                  label: `Need ${shortfall} more gold`,
+                  description: 'Leave and come back after looting a little more.',
+                },
+              ],
           allowCancel: true,
-          initialSelectedId: 'buy-equipment',
+          initialSelectedId: affordable ? 'buy-equipment' : 'need-more-gold',
         },
         {
           onConfirm: () => {
-            if (shop.purchase(this.world, this.playerEid)) {
+            if (affordable && shop.purchase(this.world, this.playerEid)) {
               this.flashHint('Purchased! Press [I] then [G] to equip your gear.');
               this.inventoryUI?.refresh(this.world);
             }

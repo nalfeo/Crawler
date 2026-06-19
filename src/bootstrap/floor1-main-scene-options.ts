@@ -15,17 +15,24 @@ import {
   equipPurchasedGear,
   getShopkeeperStage,
   meetShopkeeper,
+  meetSpellQuestGiver,
   purchaseShopkeeperEquipment,
   returnShopkeeperPrize,
+  selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../game/floor1Scenario.js';
+import type { GameWorld } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
+import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 
 export function createFloor1MainSceneOptions() {
   return {
     configureWorld: initializeFloor1Scenario,
     selectLoadoutOption: selectFloor1StarterWeapon,
     onStairDescend: confirmFloor1StairDescend,
+    selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
+      selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
+    },
     shopkeeper: {
       getStage: getShopkeeperStage,
       meet: meetShopkeeper,
@@ -36,6 +43,7 @@ export function createFloor1MainSceneOptions() {
       equipmentName: MERCHANTS_CHARM_DEF.name,
     },
     tutorialGoon: { meet: meetTutorialGoon },
+    spellQuestGiver: { meet: meetSpellQuestGiver },
     preSystems: [
       statsSystem,
       floor1PlayerStatSystem,

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AreaDamage,
   Damage,
+  MeleeSwing,
   Owner,
   Position,
   Projectile,
@@ -219,5 +220,62 @@ describe('weaponEntitySystem coverage paths', () => {
 
     expect(query(world.ecs, [Projectile]).length).toBe(1);
     expect(world.stores.weapon.lastFireMs[weapon]).toBe(10);
+  });
+
+  it('skips firing when the owner has a position but no enemy is present', () => {
+    const world = createTestWorld();
+    const owner = spawnPlayer(world, 0, 0);
+    const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 12, 50, 100, 300, TeamId.PLAYER);
+    world.elapsedMs = 50;
+
+    weaponEntitySystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+    expect(world.stores.weapon.lastFireMs[weapon]).toBe(-50);
+  });
+
+  it('skips firing when the nearest enemy is beyond the weapon gate range', () => {
+    const world = createTestWorld();
+    const owner = spawnPlayer(world, 0, 0);
+    // Enemy is found (no FOV map) but sits far beyond the 10px gate range.
+    spawnEnemy(world, 5000, 0, 50);
+    const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 12, 50, 10, 300, TeamId.PLAYER);
+    world.elapsedMs = 50;
+
+    weaponEntitySystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+    expect(world.stores.weapon.lastFireMs[weapon]).toBe(-50);
+  });
+});
+
+describe('weaponSystem range-gating paths', () => {
+  it('does not fire in legacy mode when the only enemy is beyond combat and gate range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Enemy beyond the 1200px combat radius (inCombat stays false) and far past
+    // the legacy thrown gate range, so the legacy gate-range guard returns.
+    spawnEnemy(world, 5000, 0, 50);
+    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+  });
+
+  it('does not swing a melee weapon when the only in-combat enemy overlaps the player', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Enemy at the player's exact position: inside the combat radius (so the
+    // player counts as in-combat) but skipped by nearest-target selection
+    // because distanceSq is ~0, leaving no target to swing at.
+    spawnEnemy(world, 0, 0, 50);
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
   });
 });

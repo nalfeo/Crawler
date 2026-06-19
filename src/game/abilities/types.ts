@@ -22,6 +22,7 @@ export interface AbilityDefinitionBase {
 
 export interface ActiveAbilityDefinition extends AbilityDefinitionBase {
   kind: 'active' | 'spell';
+  mpCost: number;
   cooldownFrames: number;
   trigger: SharedAbilityTriggerCondition;
   effects: CatalogEffect[];
@@ -34,23 +35,43 @@ export interface PassiveAbilityDefinition extends AbilityDefinitionBase {
 
 export type AbilityDefinition = ActiveAbilityDefinition | PassiveAbilityDefinition;
 
-const triggerConditionSchema = z
-  .object({
-    kind: z.enum(['manual', 'skill_usage']),
-    metric: z.enum(['hits_landed', 'damage_dealt', 'distance_dodged_near_threat']).optional(),
-    skillId: z.string().trim().min(1).optional(),
-    minAmount: z.number().nonnegative().optional(),
-  })
-  .strict()
-  .superRefine((value, ctx) => {
-    if (value.kind === 'skill_usage' && value.metric === undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'skill_usage triggers require a metric',
-        path: ['metric'],
-      });
-    }
-  });
+const triggerConditionSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('skill_usage'),
+      metric: z.enum(['hits_landed', 'damage_dealt', 'distance_dodged_near_threat']),
+      skillId: z.string().trim().min(1).optional(),
+      minAmount: z.number().nonnegative().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('enemy_cluster'),
+      minEnemies: z.number().int().min(2),
+      withinFeet: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('low_health'),
+      healthBelowRatio: z.number().positive().max(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('low_health_crowded'),
+      healthBelowRatio: z.number().positive().max(1),
+      minEnemies: z.number().int().min(1),
+      withinFeet: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('health_deficit_at_least'),
+      deficitAmount: z.number().positive(),
+    })
+    .strict(),
+]);
 
 const statKeySchema = z.enum(STAT_KEYS);
 
@@ -82,6 +103,26 @@ const effectSchema: z.ZodType<CatalogEffect> = z.discriminatedUnion('type', [
       dpsPercentOfDamage: z.number().positive(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('spell_fireball'),
+      damagePercent: z.number().positive(),
+      radiusTiles: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_heal'),
+      baseHeal: z.number().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('spell_pulse_shield'),
+      knockbackForce: z.number().positive(),
+      radiusTiles: z.number().positive(),
+    })
+    .strict(),
 ]);
 
 const baseAbilitySchema = z
@@ -100,6 +141,7 @@ const baseAbilitySchema = z
 const activeAbilitySchema = baseAbilitySchema
   .extend({
     kind: z.enum(['active', 'spell']),
+    mpCost: z.number().nonnegative(),
     cooldownFrames: z.number().int().positive(),
     trigger: triggerConditionSchema,
     effects: z.array(effectSchema).min(1),
@@ -133,11 +175,11 @@ export const abilityCatalogSchema = z
     }
 
     for (const def of definitions) {
-      if (def.kind === 'spell' && def.trigger.kind !== 'manual') {
+      if (def.kind === 'spell' && def.mpCost <= 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `Spell ${def.id} must use a manual trigger`,
-          path: ['trigger', 'kind'],
+          message: `Spell ${def.id} must have positive mpCost`,
+          path: ['mpCost'],
         });
       }
     }
