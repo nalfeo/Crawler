@@ -38,6 +38,27 @@
       }
     },
     {
+      "id": "floor1-boss-battle",
+      "title": "Neighborhood Watch",
+      "summary": "Defeat the Slime Rat, then return to the Spell Broker to claim your spellbook and unlock abilities.",
+      "giverNpcId": "spell-quest-giver",
+      "onCompleteGoalFlag": "floor1-boss-battle-complete",
+      "objectives": [
+        {
+          "id": "kill-slime-rat",
+          "label": "Defeat the Slime Rat",
+          "kind": "counter",
+          "target": 1
+        },
+        {
+          "id": "claim-spellbook",
+          "label": "Return to the Spell Broker and claim your spellbook",
+          "kind": "goal",
+          "goalId": "floor1-boss-spellbook-claimed"
+        }
+      ]
+    },
+    {
       "id": "floor1-shopkeeper-errand",
       "title": "The Merchant's Disgusting Little Errand",
       "summary": "A clammy shopkeeper will only trade with contestants who fetch him a very particular souvenir. Try not to think about what he does with it.",

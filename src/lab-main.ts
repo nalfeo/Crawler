@@ -5,6 +5,8 @@ import { runLab } from './labs/lab-runner.js';
 import type { LabCategory } from './labs/registry.js';
 
 const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
+  'ai-runner': '/src/labs/ai-runner-lab/index.ts',
+  'bt-viz': '/src/labs/bt-viz-lab/index.ts',
   'combat-lab': '/src/labs/combat-lab/index.ts',
   'collision-lab': '/src/labs/collision-lab/index.ts',
   'damage-lab': '/src/labs/damage-lab/index.ts',
@@ -47,6 +49,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'hud-lab': '/src/labs/hud-lab/index.ts',
   'ux-snapshot-lab': '/src/labs/ux-snapshot-lab/index.ts',
   'death-lab': '/src/labs/death-lab/index.ts',
+  'spell-system-lab': '/src/labs/spell-system-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {

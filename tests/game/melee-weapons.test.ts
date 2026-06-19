@@ -285,6 +285,33 @@ describe('melee weapons', () => {
     expect(world.stores.health.current[right]).toBeLessThan(50);
     expect(world.stores.health.current[left]).toBeLessThan(50);
   });
+
+  it('melee weapon does not swing when no enemy is in combat range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    // No enemies spawned: the player is not in active combat, so the melee
+    // weapon must hold fire rather than swing at empty air.
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.elapsedMs = 1000;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
+  });
+
+  it('melee weapon does not swing at an in-combat enemy beyond gate range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    // Enemy is well within the combat radius (1200px) so the player counts as
+    // "in combat", but far outside the sword gate range (~60px), so no swing.
+    spawnEnemy(world, 600, 100, 50);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+    world.elapsedMs = 1000;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
+  });
 });
 
 describe('unarmed weapons', () => {

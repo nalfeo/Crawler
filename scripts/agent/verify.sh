@@ -2,7 +2,7 @@
 set -euo pipefail
 export CI=1
 
-echo "🔍 Step 1-2/7: Type checking + Linting (parallel)..."
+echo "🔍 Step 1-2/8: Type checking + Linting (parallel)..."
 npx tsc --noEmit &
 TSC_PID=$!
 npx eslint src/ tests/ scripts/ --max-warnings 0 --cache --cache-location .eslintcache &
@@ -23,19 +23,26 @@ if [ "$eslint_status" -ne 0 ]; then
   exit "$eslint_status"
 fi
 
-echo "🔍 Step 3/7: Format checking..."
+echo "🔍 Step 3/8: Format checking..."
 npx prettier --check --log-level warn "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"
 
-echo "🔍 Step 4/7: Dead code detection..."
+echo "🔍 Step 4/8: Dead code detection..."
 npx knip || echo "⚠️  Knip found unused exports (non-blocking for now)"
 
-echo "🔍 Step 5/7: Unit tests with coverage..."
-npx vitest run --coverage --reporter=dot
+echo "🔍 Step 5/8: Unit tests with coverage..."
+# Scope coverage to the unit project to match CI (ci.yml test-unit job).
+# Without --project unit, vitest also runs the e2e project, whose globalSetup
+# spawns a lab server; if that server is slow/unavailable the unhandled error
+# aborts coverage collection and reports a false 0% for every file.
+npx vitest run --project unit --coverage --reporter=dot
 
-echo "🔍 Step 6/7: Integration tests..."
+echo "🔍 Step 6/8: Integration tests..."
 npx vitest run --project integration --reporter=dot 2>/dev/null || echo "ℹ️  No integration tests yet"
 
-echo "🔍 Step 7/7: Building..."
+echo "🔍 Step 7/8: Headless Floor 1 completion gate..."
+npx vitest run --project headless --reporter=dot
+
+echo "🔍 Step 8/8: Building..."
 npx vite build
 
 echo "✅ Full verification passed."

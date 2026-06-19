@@ -1,0 +1,87 @@
+{
+  "protagonist": "Rhea Vale",
+  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "timer": {
+    "durationMs": 300000,
+    "stairSpawnCountdownMs": 30000
+  },
+  "objectives": {
+    "requiredRats": 6,
+    "requiredSlimes": 4,
+    "requiredTotalKills": 10,
+    "requiredGold": 15,
+    "requiredJunk": 2,
+    "markerRadiusPx": 64
+  },
+  "map": {
+    "widthTiles": 120,
+    "heightTiles": 70,
+    "tileSizePx": 32,
+    "seed": 42,
+    "roomWidthRange": [6, 14],
+    "roomHeightRange": [5, 13],
+    "maxRooms": 45,
+    "floorDensity": 0.42
+  },
+  "enemies": {
+    "rat": {
+      "hp": 20,
+      "speed": 1.25,
+      "detectRange": 420,
+      "spawnWeight": 0.62,
+      "spriteTexture": 1
+    },
+    "slime": {
+      "hp": 30,
+      "speed": 0.9,
+      "detectRange": 320,
+      "spriteTexture": 2
+    },
+    "boss": {
+      "hp": 280,
+      "speed": 1.15,
+      "detectRange": 540,
+      "spawnRadiusMin": 64,
+      "spawnRadiusMax": 110,
+      "spriteWidth": 30,
+      "spriteHeight": 30,
+      "fireballCooldownMs": 5000
+    }
+  },
+  "bossVariants": {
+    "slimeRat": {
+      "hp": 140,
+      "speed": 1.0,
+      "detectRange": 440,
+      "fireballCooldownMs": 7000
+    },
+    "ratSlime": {
+      "hp": 280,
+      "speed": 1.15,
+      "detectRange": 540,
+      "fireballCooldownMs": 5000,
+      "spawnRadiusMin": 64,
+      "spawnRadiusMax": 110,
+      "spriteWidth": 30,
+      "spriteHeight": 30
+    }
+  },
+  "spawning": {
+    "enemyCap": 14,
+    "spawnIntervalMs": 900,
+    "spawnRadiusMin": 160,
+    "ambientSpawnMaxDistancePx": 1280,
+    "ambientDespawnDistancePx": 1920
+  },
+  "player": {
+    "hpBonus": 20,
+    "moveSpeedBonus": 0.2,
+    "pickupRangeBonus": 8
+  },
+  "camera": {
+    "zoom": 2.0
+  },
+  "sprites": {
+    "welcomeSign": 3
+  }
+}

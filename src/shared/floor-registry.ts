@@ -1,0 +1,59 @@
+/**
+ * Floor Registry — centralized floor manifest loader.
+ *
+ * This module provides a registry for loading floor manifests by ID,
+ * enabling multi-floor support and floor progression.
+ */
+import { floor1Manifest, type FloorManifestDef } from './floor-manifest.js';
+
+/**
+ * Registry of available floor manifests.
+ */
+const FLOOR_REGISTRY = new Map<string, FloorManifestDef>([['floor1', floor1Manifest]]);
+
+/**
+ * Get a floor manifest by ID.
+ * @param floorId - Floor identifier (e.g., "floor1", "floor2").
+ * @returns Floor manifest if found, undefined otherwise.
+ */
+export function getFloorManifest(floorId: string): FloorManifestDef | undefined {
+  return FLOOR_REGISTRY.get(floorId);
+}
+
+/**
+ * Get all available floor IDs.
+ */
+export function getAvailableFloorIds(): string[] {
+  return Array.from(FLOOR_REGISTRY.keys());
+}
+
+/**
+ * Register a floor manifest (for testing or dynamic loading).
+ * @param floorId - Floor identifier.
+ * @param manifest - Floor manifest definition.
+ */
+export function registerFloorManifest(floorId: string, manifest: FloorManifestDef): void {
+  FLOOR_REGISTRY.set(floorId, manifest);
+}
+
+/**
+ * Check if a floor manifest exists.
+ * @param floorId - Floor identifier.
+ */
+export function hasFloorManifest(floorId: string): boolean {
+  return FLOOR_REGISTRY.has(floorId);
+}
+
+/**
+ * Get the next floor ID in sequence, or undefined if this is the last floor.
+ * @param currentFloorId - Current floor identifier.
+ * @returns Next floor ID, or undefined if no next floor.
+ */
+export function getNextFloorId(currentFloorId: string): string | undefined {
+  const floorIds = getAvailableFloorIds();
+  const currentIndex = floorIds.indexOf(currentFloorId);
+  if (currentIndex === -1 || currentIndex === floorIds.length - 1) {
+    return undefined;
+  }
+  return floorIds[currentIndex + 1];
+}

@@ -31,7 +31,13 @@
   },
   "xp": {
     "basePerLevel": 10,
-    "scalingFactor": 1.15
+    "scalingFactor": 1.15,
+    "gemAttractionRadius": 32,
+    "dropAmounts": {
+      "small": 1,
+      "medium": 3,
+      "large": 10
+    }
   },
   "floor": {
     "minDurationS": 120,
@@ -45,5 +51,11 @@
   },
   "projectileCleanup": {
     "cullMargin": 12.5
+  },
+  "balanceTargets": {
+    "floor1SuccessRate": 0.8,
+    "levelUpIntervalMinS": 60,
+    "levelUpIntervalMaxS": 90,
+    "combatTimePercent": 0.65
   }
 }

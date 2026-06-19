@@ -17,6 +17,11 @@ module.exports = {
     (message) =>
       message.startsWith('Apply remaining changes') ||
       message.startsWith('Changes before error encountered'),
+    /**
+     * GitHub auto-merge commits have format "Title (#number)".
+     * These are merge metadata, not conventional commits.
+     */
+    (message) => /^.+\s+\(#\d+\)$/.test(message.split('\n')[0]),
   ],
   rules: {
     'type-enum': [

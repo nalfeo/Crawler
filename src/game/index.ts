@@ -19,6 +19,7 @@ export {
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
   meetTutorialGoon,
+  meetSpellQuestGiver,
 } from './floor1Scenario.js';
 export {
   getShopkeeperStage,
@@ -27,6 +28,7 @@ export {
   purchaseShopkeeperEquipment,
   equipPurchasedGear,
   SHOPKEEPER_EQUIPMENT_COST,
+  selectSpellFromBossBattle,
 } from './floor1Scenario.js';
 export type { ShopkeeperStage } from '../shared/quest-types.js';
 export {
@@ -55,6 +57,7 @@ export {
   abilitySystem,
   createAbilityState,
   equipActiveAbility,
+  unequipActiveAbility,
   memorizeSpell,
   grantPassiveAbility,
   queueAbilityTrigger,

@@ -11,6 +11,15 @@ export interface PathfindingOptions {
   maxPathLength?: number;
   /** @deprecated Use maxPathLength instead. */
   maxVisited?: number;
+  /**
+   * Optional passability override for GROUND traversal. When provided, this
+   * predicate decides whether a tile may be traversed instead of the default
+   * `tileMap.isPassable` check. Callers use this to plan routes through doors
+   * (which auto-open on approach) while still treating known-locked doors as
+   * walls. Out-of-bounds tiles are rejected before this is consulted. The
+   * FLYING traversal mode ignores this override.
+   */
+  isTilePassable?: (x: number, y: number) => boolean;
 }
 
 export interface TilePoint {
@@ -25,6 +34,7 @@ function isTileTraversable(
   x: number,
   y: number,
   traversalMode: number,
+  isTilePassable?: (x: number, y: number) => boolean,
 ): boolean {
   if (!floorMap.tileMap.inBounds(x, y)) {
     return false;
@@ -32,6 +42,10 @@ function isTileTraversable(
 
   if (traversalMode === PATH_TRAVERSAL.FLYING) {
     return true;
+  }
+
+  if (isTilePassable) {
+    return isTilePassable(x, y);
   }
 
   return floorMap.tileMap.isPassable(x, y);
@@ -44,6 +58,7 @@ export function findTilePath(
   options: PathfindingOptions = {},
 ): TilePoint[] {
   const traversalMode = options.traversalMode ?? PATH_TRAVERSAL.GROUND;
+  const isTilePassable = options.isTilePassable;
   const maxPathLength = Math.max(
     1,
     options.maxPathLength ?? options.maxVisited ?? DEFAULT_MAX_PATH_LENGTH,
@@ -52,8 +67,8 @@ export function findTilePath(
   if (
     !floorMap.tileMap.inBounds(start.x, start.y) ||
     !floorMap.tileMap.inBounds(goal.x, goal.y) ||
-    !isTileTraversable(floorMap, start.x, start.y, traversalMode) ||
-    !isTileTraversable(floorMap, goal.x, goal.y, traversalMode)
+    !isTileTraversable(floorMap, start.x, start.y, traversalMode, isTilePassable) ||
+    !isTileTraversable(floorMap, goal.x, goal.y, traversalMode, isTilePassable)
   ) {
     return [];
   }
@@ -65,7 +80,7 @@ export function findTilePath(
   const astar = new Path.AStar(
     goal.x,
     goal.y,
-    (x: number, y: number) => isTileTraversable(floorMap, x, y, traversalMode),
+    (x: number, y: number) => isTileTraversable(floorMap, x, y, traversalMode, isTilePassable),
     { topology: 4 },
   );
   const result: TilePoint[] = [];
