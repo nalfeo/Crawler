@@ -402,32 +402,42 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     const targetId = floorMap.safeRoom.id;
     const path = findRoomPath(floorMap.roomGraph, startId, targetId);
 
-    if (path) {
-      for (let i = 1; i < path.length - 1; i += 2) {
-        const roomId = path[i]!;
-        const nextRoomId = path[i + 1]!;
-        const room = floorMap.roomGraph.get(roomId);
-        const nextRoom = floorMap.roomGraph.get(nextRoomId);
-        if (room && nextRoom) {
-          const c1 = centerOfRoom(room);
-          const c2 = centerOfRoom(nextRoom);
-          const pos = floorMap.tileToPixel(c1.x, c1.y);
-          const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
-
-          const eid = createEntity(world);
-          addComponent(world.ecs, eid, set(Position, { x: pos.x, y: pos.y }));
-          addComponent(world.ecs, eid, set(Rotation, { angle }));
-          addComponent(
-            world.ecs,
-            eid,
-            set(Sprite, {
-              textureId: SPRITE_TEX_WELCOME_SIGN,
-              width: 32,
-              height: 16,
-            }),
-          );
-        }
+    const placeWelcomeSign = (fromRoomId: number, toRoomId: number): void => {
+      const room = floorMap.roomGraph.get(fromRoomId);
+      const nextRoom = floorMap.roomGraph.get(toRoomId);
+      if (!room || !nextRoom) {
+        return;
       }
+      const c1 = centerOfRoom(room);
+      const c2 = centerOfRoom(nextRoom);
+      const pos = floorMap.tileToPixel(c1.x, c1.y);
+      const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
+
+      const eid = createEntity(world);
+      addComponent(world.ecs, eid, set(Position, { x: pos.x, y: pos.y }));
+      addComponent(world.ecs, eid, set(Rotation, { angle }));
+      addComponent(
+        world.ecs,
+        eid,
+        set(Sprite, {
+          textureId: SPRITE_TEX_WELCOME_SIGN,
+          width: 32,
+          height: 16,
+        }),
+      );
+    };
+
+    if (path && path.length >= 2) {
+      // Directional breadcrumb trail from the spawn room toward the safe room.
+      // Starting at i = 0 guarantees a sign in the spawn room itself; every
+      // other room along the path also gets one pointing to the next.
+      for (let i = 0; i < path.length - 1; i += 2) {
+        placeWelcomeSign(path[i]!, path[i + 1]!);
+      }
+    } else {
+      // Spawn and safe aren't path-connected (rare). Still guarantee the
+      // spawn-room welcome sign, oriented straight toward the safe room.
+      placeWelcomeSign(startId, targetId);
     }
   }
 
