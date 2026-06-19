@@ -27,9 +27,6 @@ export class DungeonGenerator implements MapGenerator {
     // Seed rot-js's internal RNG for deterministic generation
     RNG.setSeed(config.seed);
 
-    // Tracks rot-js room data extracted during generation
-    let rotRooms: ReturnType<InstanceType<typeof ROTMap.Uniform>['getRooms']> = [];
-
     // rot-js Uniform generator — evenly distributed rooms with corridors
     const rotMap = new ROTMap.Uniform(w, h, {
       roomWidth: [config.roomWidthRange[0], config.roomWidthRange[1]],
@@ -48,7 +45,7 @@ export class DungeonGenerator implements MapGenerator {
       }
     });
 
-    rotRooms = rotMap.getRooms();
+    const rotRooms = rotMap.getRooms();
 
     // Extract rooms from rot-js results
     const roomIndexMap = new Map<number, number>(); // rot-js room index → our room ID
@@ -65,7 +62,11 @@ export class DungeonGenerator implements MapGenerator {
       roomIndexMap.set(i, roomId);
     }
 
-    // Extract doors from rot-js rooms and place them
+    // Extract doors from rot-js rooms and place them.
+    // Note: room adjacency is NOT derived here. A door opens onto a corridor,
+    // not directly onto the target room, so the target is almost never within
+    // the other room's bounds. Real connectivity is computed below by
+    // flood-filling the corridor/door tiles (see "Derive room adjacency").
     for (let i = 0; i < rotRooms.length; i++) {
       const rotRoom = rotRooms[i]!;
       const roomId = roomIndexMap.get(i)!;
@@ -76,32 +77,10 @@ export class DungeonGenerator implements MapGenerator {
         const idx = y * w + x;
         tileMap.flags[idx] = TilePresets.DOOR_CLOSED;
         terrain[idx] = TerrainType.DOOR;
-
-        // Find which other room this door connects to
-        let connectsTo = -1;
-        for (let j = 0; j < rotRooms.length; j++) {
-          if (j === i) continue;
-          const other = rotRooms[j]!;
-          // Check if door is adjacent to other room
-          if (
-            x >= other.getLeft() - 1 &&
-            x <= other.getRight() + 1 &&
-            y >= other.getTop() - 1 &&
-            y <= other.getBottom() + 1
-          ) {
-            connectsTo = roomIndexMap.get(j) ?? -1;
-            break;
-          }
-        }
-
-        doors.push({ x, y, connectsTo });
+        doors.push({ x, y, connectsTo: -1 });
       });
 
-      // Update room with doors and neighbors
-      const neighbors = doors.map((d) => d.connectsTo).filter((n) => n !== -1);
-      const updatedRoom = { ...room, doors, neighbors };
-      // Overwrite in the graph (add returns sequential IDs)
-      Object.assign(roomGraph.get(roomId)!, updatedRoom);
+      Object.assign(roomGraph.get(roomId)!, { ...room, doors });
     }
 
     // Mark corridors with corridor terrain type
@@ -118,7 +97,94 @@ export class DungeonGenerator implements MapGenerator {
       }
     }
 
-    // --- Assign room roles ---
+    // --- Derive room adjacency from real walkable connectivity ---
+    // Rooms are linked by corridors (and occasionally a shared door), so we
+    // flood-fill connected components over CORRIDOR + DOOR tiles and treat every
+    // room touching the same component as a mutual neighbor. This is the source
+    // of truth for the RoomGraph adjacency that pathfinding, AI, and
+    // welcome-sign placement depend on — the previous bounds-proximity check
+    // almost always failed because doors open onto corridors, not rooms.
+    {
+      const isConnector = (idx: number): boolean =>
+        terrain[idx] === TerrainType.CORRIDOR || terrain[idx] === TerrainType.DOOR;
+
+      const componentId = new Int32Array(w * h).fill(-1);
+      const componentRooms: Set<number>[] = [];
+
+      for (let startY = 0; startY < h; startY++) {
+        for (let startX = 0; startX < w; startX++) {
+          const startIdx = startY * w + startX;
+          if (componentId[startIdx] !== -1 || !isConnector(startIdx)) continue;
+
+          const cid = componentRooms.length;
+          const roomsTouched = new Set<number>();
+          const stack: number[] = [startIdx];
+          componentId[startIdx] = cid;
+
+          while (stack.length > 0) {
+            const idx = stack.pop()!;
+            const cx = idx % w;
+            const cy = (idx - cx) / w;
+            const adj: ReadonlyArray<readonly [number, number]> = [
+              [cx + 1, cy],
+              [cx - 1, cy],
+              [cx, cy + 1],
+              [cx, cy - 1],
+            ];
+            for (const [nx, ny] of adj) {
+              if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+              const nIdx = ny * w + nx;
+              // A room interior orthogonally adjacent to this connector is linked here.
+              const roomAt = roomGraph.getRoomAt(nx, ny);
+              if (roomAt !== -1) roomsTouched.add(roomAt);
+              if (componentId[nIdx] === -1 && isConnector(nIdx)) {
+                componentId[nIdx] = cid;
+                stack.push(nIdx);
+              }
+            }
+          }
+          componentRooms.push(roomsTouched);
+        }
+      }
+
+      // Build mutual adjacency: rooms sharing a corridor component are neighbors.
+      const neighborSets: Set<number>[] = roomGraph.getAll().map(() => new Set<number>());
+      for (const rooms of componentRooms) {
+        const ids = [...rooms];
+        for (let a = 0; a < ids.length; a++) {
+          for (let b = a + 1; b < ids.length; b++) {
+            neighborSets[ids[a]!]!.add(ids[b]!);
+            neighborSets[ids[b]!]!.add(ids[a]!);
+          }
+        }
+      }
+
+      // Persist neighbors and point each door at a room it actually reaches.
+      // RoomData.doors/neighbors (and DoorLocation.connectsTo) are readonly, so
+      // rebuild them as fresh values and write them back via Object.assign.
+      const allRooms = roomGraph.getAll();
+      for (let id = 0; id < allRooms.length; id++) {
+        const room = roomGraph.get(id)!;
+        const resolvedDoors = room.doors.map((door) => {
+          const comp = componentId[door.y * w + door.x] ?? -1;
+          let target = -1;
+          if (comp !== -1) {
+            for (const r of componentRooms[comp]!) {
+              if (r !== id) {
+                target = r;
+                break;
+              }
+            }
+          }
+          return { ...door, connectsTo: target };
+        });
+        Object.assign(room, {
+          doors: resolvedDoors,
+          neighbors: [...neighborSets[id]!],
+        });
+      }
+    }
+
     // Room 0 is spawn. Score remaining rooms by distance from spawn center;
     // furthest → BOSS_STAIR, second-furthest → SAFE, rest → NORMAL.
     const spawnRoom = roomGraph.get(0);
