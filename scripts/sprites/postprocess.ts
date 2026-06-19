@@ -288,6 +288,8 @@ export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_CENTROID_Y_RATIO = 0.5;
 export const BACKGROUND_B_MAGENTA_ARTIFACT_MAX_DISTANCE_SQ = 46000;
 export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_COSINE = 0.85;
 export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_BG_LIKE_RATIO = 0.85;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_TRANSPARENT_CONTACTS = 8;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_TRANSPARENT_CONTACT_RATIO = 0.2;
 
 export function removeBackground(
   image: RgbaImage,
@@ -771,6 +773,31 @@ function clearLowerHalfMagentaArtifacts(
     const centroidY = sumY / component.length;
     if (centroidY < height * BACKGROUND_B_MAGENTA_ARTIFACT_MIN_CENTROID_Y_RATIO) continue;
     if (centroidX < 1 || centroidX >= width - 1) continue;
+    const componentMask = new Uint8Array(total);
+    for (const pixel of component) {
+      componentMask[pixel] = 1;
+    }
+    let transparentContacts = 0;
+    let boundarySamples = 0;
+    for (const pixel of component) {
+      const x = pixel % width;
+      const y = Math.floor(pixel / width);
+      for (const [dx, dy] of offsets) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const neighbor = ny * width + nx;
+        if (componentMask[neighbor]) continue;
+        boundarySamples += 1;
+        if ((data[neighbor * 4 + 3] ?? 0) === 0) {
+          transparentContacts += 1;
+        }
+      }
+    }
+    const transparentContactRatio = boundarySamples > 0 ? transparentContacts / boundarySamples : 0;
+    if (transparentContacts < BACKGROUND_B_MAGENTA_ARTIFACT_MIN_TRANSPARENT_CONTACTS) continue;
+    if (transparentContactRatio < BACKGROUND_B_MAGENTA_ARTIFACT_MIN_TRANSPARENT_CONTACT_RATIO)
+      continue;
     for (const pixel of component) {
       data[pixel * 4 + 3] = 0;
     }

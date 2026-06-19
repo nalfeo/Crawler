@@ -331,6 +331,26 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 15, 21)).toBe(255);
       expect(alphaAt(out, 13, 24)).toBe(255);
     });
+
+    it('preserves wide lower-half magenta shading when not exposed to transparent background', () => {
+      const img = blank(40, 40, [255, 0, 255]);
+      // Opaque body region.
+      for (let y = 8; y <= 33; y++) {
+        for (let x = 6; x <= 33; x++) {
+          setPixel(img, x, y, 0, 180, 40);
+        }
+      }
+      // Wide interior shadow-like stripe (would match the magenta-family heuristic by shape).
+      for (let y = 22; y <= 25; y++) {
+        for (let x = 12; x <= 30; x++) {
+          setPixel(img, x, y, 142, 120, 142);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 20, 23)).toBe(255);
+      expect(alphaAt(out, 30, 25)).toBe(255);
+    });
   });
 
   it('leaves an interior region of a different color fully opaque', () => {
