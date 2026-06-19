@@ -52,6 +52,7 @@ interface EnemyTarget {
 }
 
 const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
+// Enemies spawn around 1000px away, so keep combat targeting slightly beyond that.
 const COMBAT_RADIUS_PX = 1200;
 
 const weaponConfigs = new WeakMap<GameWorld, WeaponConfig>();
