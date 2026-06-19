@@ -1093,7 +1093,7 @@ function createGalleryLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     sidePanel.append(
       el('div', {
         textContent:
-          'Approval moved to DevTools asset-plan workflow. Use devtools.html to approve winners and run metadata.',
+          'Sprite review moved to DevTools. Use devtools.html?page=sprite-review to review winners and run metadata.',
         style: { fontSize: '11px', color: '#93c5fd', margin: '10px 0' },
       }),
     );

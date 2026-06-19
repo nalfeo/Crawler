@@ -54,7 +54,13 @@ describe('devtools art-plan model', () => {
       approvedSprites: new Map([
         [
           'rat-bruiser',
-          { briefId: 'rat-bruiser', assetPath: 'generated/rat-bruiser.png', exists: true },
+          {
+            briefId: 'rat-bruiser',
+            assetPath: 'generated/rat-bruiser.png',
+            sourceRun: 'runs/rat-bruiser/run-1',
+            variantIndex: 0,
+            exists: true,
+          },
         ],
       ]),
       spriteRegistryIds: new Set(['enemy.rat-bruiser']),
@@ -63,6 +69,8 @@ describe('devtools art-plan model', () => {
 
     const byId = new Map(report.assets.map((asset) => [asset.id, asset]));
     expect(byId.get('rat-bruiser')?.status).toBe('ready');
+    expect(byId.get('rat-bruiser')?.sourceRun).toBe('runs/rat-bruiser/run-1');
+    expect(byId.get('rat-bruiser')?.variantIndex).toBe(0);
     expect(byId.get('rat-mage')?.status).toBe('brief-ready-placeholder');
     expect(report.unresolvedPlaceholders).toBe(1);
   });
@@ -115,6 +123,8 @@ describe('devtools art-plan model', () => {
           'rat-bruiser': {
             briefId: 'rat-bruiser',
             assetPath: 'generated/rat-bruiser.png',
+            sourceRun: 'runs/rat-bruiser/run-1',
+            variantIndex: 0,
           },
         },
       },

@@ -11,6 +11,9 @@
 - Must never make runtime AI calls during active gameplay.
 - AI generation may run only during floor-load transitions or equivalent load boundaries.
 - Must not trust model output without validation or ship prompt surfaces vulnerable to injection.
+- Must prefer mature, industry-standard AI/runtime orchestration libraries
+  before introducing custom foundational glue for prompting, validation, or
+  inference flows.
 
 ## Tools & Workflows
 

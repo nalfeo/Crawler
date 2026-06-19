@@ -14,6 +14,20 @@
     "cols": 19
   },
   {
+    "id": "sheet:junk-rat-critters",
+    "kind": "sheet",
+    "label": "junk-rat-critters",
+    "description": "junk rat critters spritesheet for game asset lookup.",
+    "tags": ["sheet", "enemy", "generated"],
+    "sheetKey": "junk-rat-critters",
+    "path": "/assets/generated/junk-rat-critters.png",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "margin": 1,
+    "spacing": 1,
+    "cols": 4
+  },
+  {
     "id": "sheet:kenney-roguelike-characters",
     "kind": "sheet",
     "label": "kenney-roguelike-characters",
@@ -272,7 +286,7 @@
     "id": "sprite:enemy.ghost",
     "kind": "sprite",
     "label": "enemy.ghost",
-    "description": "A pale ghost enemy sprite.",
+    "description": "Pale spectral character (last row).",
     "tags": ["enemy", "undead", "sprite"],
     "spriteId": "enemy.ghost",
     "sheetKey": "kenney-roguelike-characters",
@@ -295,7 +309,7 @@
     "frame": 121,
     "col": 1,
     "row": 10,
-    "note": "Tiny Dungeon ghost (frame 121) — temp CC0 art.",
+    "note": "Tiny Dungeon goblin (frame 121) — temp CC0 art.",
     "animation": {
       "clips": ["idle", "move"]
     }
@@ -390,7 +404,7 @@
     "id": "sprite:player",
     "kind": "sprite",
     "label": "player",
-    "description": "Tan/orange knight, base hero palette.",
+    "description": "Tiny Dungeon knight (frame 96) — temp CC0 art.",
     "tags": ["player", "hero", "sprite"],
     "spriteId": "player",
     "sheetKey": "kenney-tiny-dungeon",

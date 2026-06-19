@@ -102,6 +102,8 @@ describe('asset-plan report', () => {
 
     const byId = new Map(report.assets.map((asset) => [asset.id, asset]));
     expect(byId.get('rat-bruiser')?.status).toBe('ready');
+    expect(byId.get('rat-bruiser')?.sourceRun).toBe('generated/runs/rat-bruiser/run');
+    expect(byId.get('rat-bruiser')?.variantIndex).toBe(0);
     expect(byId.get('rat-mage')?.status).toBe('approved-missing-file');
     expect(byId.get('rat-king')?.status).toBe('brief-ready-placeholder');
     expect(byId.get('rat-trash')?.status).toBe('brief-ready');
