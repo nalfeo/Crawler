@@ -126,11 +126,7 @@ function countEnemiesWithin(world: GameWorld, x: number, y: number, radiusPx: nu
   return count;
 }
 
-function getLargestEnemyClusterSizeNearCaster(
-  world: GameWorld,
-  casterEid: number,
-  radiusPx: number,
-): number {
+function countEnemiesNearCaster(world: GameWorld, casterEid: number, radiusPx: number): number {
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
   const enemies = [...query(world.ecs, [Enemy, Position, Health])];
@@ -158,11 +154,7 @@ function shouldAutoTriggerAbility(
 ): boolean {
   switch (trigger.kind) {
     case 'enemy_cluster': {
-      const clusterSize = getLargestEnemyClusterSizeNearCaster(
-        world,
-        holderEid,
-        ftToPx(trigger.withinFeet),
-      );
+      const clusterSize = countEnemiesNearCaster(world, holderEid, ftToPx(trigger.withinFeet));
       return clusterSize >= trigger.minEnemies;
     }
     case 'low_health':

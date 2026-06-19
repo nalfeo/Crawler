@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { floor1Config } from '../../src/shared/floor1-config.js';
 
 describe('floor1Config', () => {
-  it('should load and validate floor1.json', () => {
+  it('should load and validate the manifest-derived floor1 config', () => {
     expect(floor1Config).toBeDefined();
     expect(floor1Config.protagonist).toBe('Rhea Vale');
     expect(floor1Config.starterWeapons).toHaveLength(5);
