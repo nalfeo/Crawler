@@ -405,21 +405,28 @@ export function computeSliceMapV2(sheetPng: Buffer, options: SliceOptionsV2 = {}
 }
 
 /**
+ * Canonical sheet slicer.
+ *
+ * Uses the same content-aware map as the debugger (computeSliceMapV2), then
+ * extracts one PNG per non-empty cell in reading order.
+ */
+export function sliceSheetV2(sheetPng: Buffer, options: SliceOptionsV2 = {}): Buffer[] {
+  const sheet = PNG.sync.read(sheetPng);
+  const sliceMap = computeSliceMapV2(sheetPng, options);
+  const out: Buffer[] = [];
+  for (const cell of sliceMap.cells) {
+    if (cell.empty) continue;
+    out.push(extractCell(sheet, cell.x0, cell.y0, cell.w, cell.h));
+  }
+  return out;
+}
+
+/**
  * Convenience wrapper that pulls grid shape and empty cells from a brief.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
-  const nudgeEnabled = brief.type === 'character' || brief.type === 'enemy';
-  return sliceSheet(sheetPng, {
-    rows: brief.generation.sheet.rows,
-    cols: brief.generation.sheet.cols,
+  return sliceSheetV2(sheetPng, {
     emptyCells: brief.generation.sheet.emptyCells,
-    autoNudge: nudgeEnabled
-      ? {
-          enabled: true,
-          maxVerticalShiftPx: 12,
-          backgroundDistanceThreshold: 24,
-        }
-      : undefined,
   });
 }
 

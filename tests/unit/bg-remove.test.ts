@@ -87,6 +87,28 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 5, 4)).toBe(255);
     });
 
+    it('default fringe tolerance clears edge-connected remnants that block leg-gap cleanup', () => {
+      const img = blank(10, 10, [255, 0, 255]);
+      // Foreground rails create a narrow corridor lane at y=4.
+      for (let x = 2; x <= 8; x++) {
+        setPixel(img, x, 3, 0, 180, 40);
+        setPixel(img, x, 5, 0, 180, 40);
+      }
+      // Slightly-dark magenta remnant chain (dist^2=8100 to pure magenta),
+      // including an edge-touching seed at x=0 that old defaults missed.
+      for (let x = 0; x <= 7; x++) {
+        setPixel(img, x, 4, 255, 90, 255);
+      }
+      // Foreground stopper to ensure we only clear the corridor.
+      setPixel(img, 8, 4, 0, 180, 40);
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024 });
+      expect(alphaAt(out, 0, 4)).toBe(0);
+      expect(alphaAt(out, 3, 4)).toBe(0);
+      expect(alphaAt(out, 7, 4)).toBe(0);
+      expect(alphaAt(out, 8, 4)).toBe(255);
+    });
+
     it('clears enclosed near-background islands disconnected from edges', () => {
       const img = blank(9, 9, [255, 0, 255]);
       // Foreground ring that seals an inner cavity.
@@ -157,7 +179,33 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 3, 3)).toBe(255);
     });
 
-    it('keeps large enclosed near-background regions to avoid over-clearing foreground interiors', () => {
+    it('clears large enclosed background-coloured regions regardless of size (leg-gap fix)', () => {
+      const img = blank(32, 32, [255, 0, 255]);
+      // Foreground frame around an 18x18 cavity (324 px) — the kind of large
+      // pocket that forms between a character's legs. It must be fully cleared.
+      for (let x = 6; x <= 25; x++) {
+        setPixel(img, x, 6, 0, 180, 40);
+        setPixel(img, x, 25, 0, 180, 40);
+      }
+      for (let y = 6; y <= 25; y++) {
+        setPixel(img, 6, y, 0, 180, 40);
+        setPixel(img, 25, y, 0, 180, 40);
+      }
+      // Cavity is pure-ish background colour (dist^2 to magenta = 1600, within fringe).
+      for (let y = 7; y <= 24; y++) {
+        for (let x = 7; x <= 24; x++) {
+          setPixel(img, x, y, 255, 40, 255);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 16, 16)).toBe(0);
+      expect(alphaAt(out, 10, 20)).toBe(0);
+      expect(alphaAt(out, 6, 6)).toBe(255);
+      expect(alphaAt(out, 25, 25)).toBe(255);
+    });
+
+    it('preserves large enclosed shadow-coloured regions that are not background-like', () => {
       const img = blank(40, 40, [255, 0, 255]);
       // Foreground frame that creates a large enclosed cavity.
       for (let x = 5; x <= 34; x++) {
@@ -168,33 +216,42 @@ describe('removeBackground', () => {
         setPixel(img, 5, y, 0, 180, 40);
         setPixel(img, 34, y, 0, 180, 40);
       }
-      // 20x20 enclosed near-background region (400 px) is intentionally
-      // larger than the enclosed-island cap and must be preserved.
+      // 20x20 enclosed shadow region: semi-transparent grey painted over pink
+      // reads as (180,120,170), dist^2 to magenta = 27250 (far beyond fringe).
+      // Body shadows like this must be preserved even when fully enclosed.
       for (let y = 10; y <= 29; y++) {
         for (let x = 10; x <= 29; x++) {
-          setPixel(img, x, y, 240, 15, 240);
+          setPixel(img, x, y, 180, 120, 170);
         }
       }
 
-      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
       expect(alphaAt(out, 20, 20)).toBe(255);
       expect(alphaAt(out, 10, 10)).toBe(255);
     });
 
-    it('clears a small enclosed residual pocket slightly beyond fringe tolerance', () => {
+    it('clears a small enclosed background pocket sealed from the border', () => {
       const img = blank(11, 11, [255, 0, 255]);
-      // Isolated 3x3 pocket with shades that are just beyond the default
-      // fringe threshold. The flood + near-color enclosed pass won't remove
-      // it, but residual enclosed cleanup should.
+      // Foreground frame sealing a 3x3 cavity away from the image border.
+      for (let x = 3; x <= 7; x++) {
+        setPixel(img, x, 3, 0, 180, 40);
+        setPixel(img, x, 7, 0, 180, 40);
+      }
+      for (let y = 3; y <= 7; y++) {
+        setPixel(img, 3, y, 0, 180, 40);
+        setPixel(img, 7, y, 0, 180, 40);
+      }
+      // Cavity colour (255,80,255) has dist^2 = 6400 to magenta — within fringe.
       for (let y = 4; y <= 6; y++) {
         for (let x = 4; x <= 6; x++) {
-          setPixel(img, x, y, 255, 95, 255); // dist^2 to magenta = 9025
+          setPixel(img, x, y, 255, 80, 255);
         }
       }
 
       const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
       expect(alphaAt(out, 5, 5)).toBe(0);
       expect(alphaAt(out, 6, 6)).toBe(0);
+      expect(alphaAt(out, 3, 3)).toBe(255);
     });
 
     it('preserves enclosed details when near-background seed coverage is too sparse', () => {
@@ -218,6 +275,47 @@ describe('removeBackground', () => {
       const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 8000 });
       expect(alphaAt(out, 8, 8)).toBe(255);
       expect(alphaAt(out, 6, 6)).toBe(255);
+    });
+
+    it('preserves compact lower-half magenta shading that is not a wide artifact blob', () => {
+      const img = blank(32, 32, [255, 0, 255]);
+      // Foreground body block.
+      for (let y = 10; y <= 27; y++) {
+        for (let x = 8; x <= 24; x++) {
+          setPixel(img, x, y, 0, 180, 40);
+        }
+      }
+      // Compact magenta-like patch inside the body (6x6; aspect ~= 1.0).
+      // This resembles stylized shading and should not be treated as a wide background blob.
+      for (let y = 19; y <= 24; y++) {
+        for (let x = 13; x <= 18; x++) {
+          setPixel(img, x, y, 145, 120, 145);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 15, 21)).toBe(255);
+      expect(alphaAt(out, 13, 24)).toBe(255);
+    });
+
+    it('preserves wide lower-half magenta shading when not exposed to transparent background', () => {
+      const img = blank(40, 40, [255, 0, 255]);
+      // Opaque body region.
+      for (let y = 8; y <= 33; y++) {
+        for (let x = 6; x <= 33; x++) {
+          setPixel(img, x, y, 0, 180, 40);
+        }
+      }
+      // Wide interior shadow-like stripe (would match the magenta-family heuristic by shape).
+      for (let y = 22; y <= 25; y++) {
+        for (let x = 12; x <= 30; x++) {
+          setPixel(img, x, y, 142, 120, 142);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 20, 23)).toBe(255);
+      expect(alphaAt(out, 30, 25)).toBe(255);
     });
   });
 

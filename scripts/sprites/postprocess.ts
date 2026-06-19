@@ -36,6 +36,7 @@ interface RgbaImage {
 }
 
 export type SpeckleMode = 'edge-drop' | 'preserve-orphans' | 'disabled';
+export type EnclosedBackgroundMode = 'enabled' | 'disabled';
 
 export interface PostprocessOptions {
   readonly background?: {
@@ -47,7 +48,10 @@ export interface PostprocessOptions {
     readonly maxOpaqueNeighbors?: number;
     readonly dropEdgeOrphans?: boolean;
   };
-  readonly modules?: { readonly speckleMode?: SpeckleMode };
+  readonly modules?: {
+    readonly speckleMode?: SpeckleMode;
+    readonly enclosedBackgroundMode?: EnclosedBackgroundMode;
+  };
 }
 
 export function postprocess(
@@ -85,6 +89,7 @@ export function postprocessWithTrace(
   };
 
   let image = decodePng(rawPng);
+  const backgroundSource = image;
   const defaultBackgroundColorToleranceSq = BACKGROUND_B_COLOR_TOLERANCE_SQ;
   const backgroundColorToleranceSq = normalizeTolerance(
     options.background?.colorToleranceSq,
@@ -97,9 +102,23 @@ export function postprocessWithTrace(
   image = removeBackgroundB(image, {
     colorToleranceSq: backgroundColorToleranceSq,
     fringeToleranceSq: backgroundFringeToleranceSq,
-    clearEnclosedIslands: brief.type === 'enemy' || brief.type === 'character',
+    clearEnclosedIslands: false,
   });
   pushStep('background-removal', 'Background removal', image);
+  const enclosedRegionMode: EnclosedBackgroundMode =
+    options.modules?.enclosedBackgroundMode ?? 'enabled';
+  const shouldRunEnclosedBackgroundCleanup =
+    enclosedRegionMode !== 'disabled' && (brief.type === 'enemy' || brief.type === 'character');
+  if (shouldRunEnclosedBackgroundCleanup) {
+    image = removeEnclosedBackgroundRegions(image, backgroundSource, backgroundFringeToleranceSq);
+    pushStep('background-enclosed-regions', 'Background enclosed-region cleanup', image);
+  } else {
+    pushStep(
+      'background-enclosed-regions-disabled',
+      'Background enclosed-region cleanup (disabled)',
+      image,
+    );
+  }
 
   const fitMode = brief.type === 'enemy' || brief.type === 'character';
   const fitResize = fitWithinNearest(image, brief.size.width, brief.size.height, fitMode);
@@ -252,9 +271,16 @@ function encodePng(image: RgbaImage): Buffer {
 export const BACKGROUND_COLOR_TOLERANCE_SQ = 32 * 32; // squared Euclidean RGB tolerance
 export const BACKGROUND_FRINGE_TOLERANCE_SQ = 56 * 56; // post-flood edge cleanup tolerance
 export const BACKGROUND_B_COLOR_TOLERANCE_SQ = 4000; // fringe-clean default flood-fill tolerance
-export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 8000; // fringe-clean default cleanup tolerance
-export const BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS = 256;
-export const BACKGROUND_B_ENCLOSED_MAX_COMPONENT_DISTANCE_SQ = 25000;
+export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 12000; // fringe-clean default cleanup tolerance
+/**
+ * Minimum pixel area for an enclosed background-coloured region to be cleared.
+ *
+ * Enclosure (a region the edge flood cannot reach) is the primary gate; this
+ * threshold only suppresses 1-3px interior specks that happen to match the
+ * background colour. There is intentionally NO upper size cap — a large trapped
+ * pocket (the gap between a character's legs) is exactly what we want to clear.
+ */
+export const BACKGROUND_B_ENCLOSED_MIN_AREA = 4;
 
 export function removeBackground(
   image: RgbaImage,
@@ -303,19 +329,29 @@ export function removeBackgroundB(
   const colorToleranceSq = options.colorToleranceSq ?? BACKGROUND_B_COLOR_TOLERANCE_SQ;
   const fringeToleranceSq = options.fringeToleranceSq ?? BACKGROUND_B_FRINGE_TOLERANCE_SQ;
   const flooded = removeBackground(image, colorToleranceSq);
-  return removeBackgroundFringe(
-    flooded,
-    image,
-    fringeToleranceSq,
-    options.clearEnclosedIslands ?? true,
-  );
+  const fringeCleaned = removeBackgroundFringe(flooded, image, fringeToleranceSq);
+  if (!(options.clearEnclosedIslands ?? true)) return fringeCleaned;
+  return removeEnclosedBackgroundRegions(fringeCleaned, image, fringeToleranceSq);
+}
+
+export function removeEnclosedBackgroundRegions(
+  image: RgbaImage,
+  source: RgbaImage,
+  toleranceSq: number = BACKGROUND_B_FRINGE_TOLERANCE_SQ,
+): RgbaImage {
+  const { width, height } = image;
+  if (width === 0 || height === 0) return image;
+  const dst = new Uint8Array(image.data);
+  const cornerColors = getCornerColors(source);
+  if (cornerColors.length === 0) return { width, height, data: dst };
+  clearEnclosedBackgroundRegions(dst, width, height, cornerColors, toleranceSq);
+  return { width, height, data: dst };
 }
 
 function removeBackgroundFringe(
   flooded: RgbaImage,
   source: RgbaImage,
   toleranceSq: number,
-  clearEnclosedIslands: boolean,
 ): RgbaImage {
   const { width, height } = flooded;
   if (width === 0 || height === 0) return flooded;
@@ -348,13 +384,29 @@ function removeBackgroundFringe(
       queue.push(nx, ny);
     }
   }
-  if (clearEnclosedIslands) {
-    clearEnclosedNearBackgroundIslands(dst, width, height, cornerColors, toleranceSq);
-  }
   return { width, height, data: dst };
 }
 
-function clearEnclosedNearBackgroundIslands(
+/**
+ * Clear enclosed background-coloured regions in place.
+ *
+ * Algorithm (topology-gated, no shape/size/colour-family heuristics):
+ *   1. A pixel is a "background candidate" if it is opaque AND its colour is
+ *      within `toleranceSq` of any corner (background) colour.
+ *   2. Flood-fill (4-connected) candidate pixels into connected components.
+ *   3. A component is "enclosed" iff none of its pixels touch the image border.
+ *   4. Clear (make transparent) every enclosed component whose area is at least
+ *      `BACKGROUND_B_ENCLOSED_MIN_AREA`.
+ *
+ * Why this preserves foreground detail: shadows and shaded body pixels sit far
+ * (in squared RGB distance) from the pure background colour, so they are never
+ * candidates. Only pixels that genuinely match the background colour AND are
+ * trapped inside the silhouette (the edge flood can't reach them) are removed.
+ * The exterior background is already transparent from the prior passes, so it is
+ * not a candidate; any candidate touching the border is treated as exterior and
+ * left alone.
+ */
+function clearEnclosedBackgroundRegions(
   data: Uint8Array,
   width: number,
   height: number,
@@ -362,99 +414,84 @@ function clearEnclosedNearBackgroundIslands(
   toleranceSq: number,
 ): void {
   const total = width * height;
-  const visitedNear = new Uint8Array(total);
-  const offsets: ReadonlyArray<[number, number]> = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
+  if (total === 0) return;
 
-  for (let linear = 0; linear < total; linear++) {
-    if (visitedNear[linear]) continue;
-    const idx = linear * 4;
-    if ((data[idx + 3] ?? 0) === 0) continue;
-    if (!isNearCornerColor(data, idx, cornerColors, toleranceSq)) continue;
+  const isCandidate = (idx: number): boolean => {
+    const offset = idx * 4;
+    const alpha = data[offset + 3] ?? 0;
+    if (alpha === 0) return false;
+    const r = data[offset] ?? 0;
+    const g = data[offset + 1] ?? 0;
+    const b = data[offset + 2] ?? 0;
+    for (const [cr, cg, cb] of cornerColors) {
+      const dr = r - cr;
+      const dg = g - cg;
+      const db = b - cb;
+      if (dr * dr + dg * dg + db * db <= toleranceSq) return true;
+    }
+    return false;
+  };
+
+  const visited = new Uint8Array(total);
+  const stack: number[] = [];
+
+  for (let start = 0; start < total; start += 1) {
+    if (visited[start]) continue;
+    visited[start] = 1;
+    if (!isCandidate(start)) continue;
+
+    // BFS/DFS over this connected component of background-coloured pixels.
     const component: number[] = [];
-    const stack: number[] = [linear];
-    visitedNear[linear] = 1;
     let touchesEdge = false;
+    stack.length = 0;
+    stack.push(start);
 
     while (stack.length > 0) {
-      const current = stack.pop() as number;
-      component.push(current);
-      const x = current % width;
-      const y = Math.floor(current / width);
+      const idx = stack.pop() as number;
+      component.push(idx);
+
+      const x = idx % width;
+      const y = (idx - x) / width;
       if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
         touchesEdge = true;
       }
 
-      for (const [dx, dy] of offsets) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        const neighbor = ny * width + nx;
-        const nIdx = neighbor * 4;
-        if ((data[nIdx + 3] ?? 0) === 0) continue;
-        if (visitedNear[neighbor]) continue;
-        if (!isNearCornerColor(data, nIdx, cornerColors, toleranceSq)) continue;
-        visitedNear[neighbor] = 1;
-        stack.push(neighbor);
+      // 4-connected neighbours.
+      if (x > 0) {
+        const n = idx - 1;
+        if (!visited[n]) {
+          visited[n] = 1;
+          if (isCandidate(n)) stack.push(n);
+        }
+      }
+      if (x < width - 1) {
+        const n = idx + 1;
+        if (!visited[n]) {
+          visited[n] = 1;
+          if (isCandidate(n)) stack.push(n);
+        }
+      }
+      if (y > 0) {
+        const n = idx - width;
+        if (!visited[n]) {
+          visited[n] = 1;
+          if (isCandidate(n)) stack.push(n);
+        }
+      }
+      if (y < height - 1) {
+        const n = idx + width;
+        if (!visited[n]) {
+          visited[n] = 1;
+          if (isCandidate(n)) stack.push(n);
+        }
       }
     }
 
-    // Guardrail: enclosed cleanup should only remove small trapped pockets.
-    // Large interior regions that happen to be near corner colours are likely
-    // legitimate foreground shading/hair/skin and should be preserved.
-    if (touchesEdge || component.length > BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS) continue;
-    for (const pixel of component) {
-      data[pixel * 4 + 3] = 0;
-    }
-  }
+    if (touchesEdge) continue;
+    if (component.length < BACKGROUND_B_ENCLOSED_MIN_AREA) continue;
 
-  // Second pass: remove tiny enclosed residual islands that are entirely
-  // background-like but include anti-aliased shades slightly beyond the fringe
-  // threshold (e.g. pockets between legs/hair strands).
-  const visitedResidual = new Uint8Array(total);
-  for (let linear = 0; linear < total; linear++) {
-    if (visitedResidual[linear]) continue;
-    const idx = linear * 4;
-    if ((data[idx + 3] ?? 0) === 0) continue;
-
-    const component: number[] = [];
-    const stack: number[] = [linear];
-    visitedResidual[linear] = 1;
-    let touchesEdge = false;
-    let maxCornerDistanceSq = 0;
-
-    while (stack.length > 0) {
-      const current = stack.pop() as number;
-      component.push(current);
-      const x = current % width;
-      const y = Math.floor(current / width);
-      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) {
-        touchesEdge = true;
-      }
-      const currentDistanceSq = minCornerColorDistanceSq(data, current * 4, cornerColors);
-      maxCornerDistanceSq = Math.max(maxCornerDistanceSq, currentDistanceSq);
-
-      for (const [dx, dy] of offsets) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-        const neighbor = ny * width + nx;
-        const nIdx = neighbor * 4;
-        if ((data[nIdx + 3] ?? 0) === 0) continue;
-        if (visitedResidual[neighbor]) continue;
-        visitedResidual[neighbor] = 1;
-        stack.push(neighbor);
-      }
-    }
-
-    if (touchesEdge || component.length > BACKGROUND_B_MAX_ENCLOSED_ISLAND_PIXELS) continue;
-    if (maxCornerDistanceSq > BACKGROUND_B_ENCLOSED_MAX_COMPONENT_DISTANCE_SQ) continue;
-    for (const pixel of component) {
-      data[pixel * 4 + 3] = 0;
+    for (const idx of component) {
+      data[idx * 4 + 3] = 0;
     }
   }
 }

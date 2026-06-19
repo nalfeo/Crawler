@@ -405,6 +405,16 @@
   },
   {
     "date": "2026-06-18",
+    "session": "launching-sprites",
+    "estimated_apples": 2,
+    "actual_apples": 2,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "Built the repo, launched the sprite gallery stack, restored the DevTools home index entry for the floor-art workflow, and added a regression unit test so surfaced tools/labs stay indexed."
+  },
+  {
+    "date": "2026-06-18",
     "session": "server-launch-logging-diagnostics",
     "estimated_apples": 2,
     "actual_apples": 2,
@@ -432,6 +442,16 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Added explicit one-server-per-session lifecycle rules to AGENTS and DevOps persona guidance: reuse healthy servers for hot reload, otherwise stop the existing session-bound server before relaunch, and always print launch URLs."
+  },
+  {
+    "date": "2026-06-18",
+    "session": "enclosed-bg-cleanup-rewrite",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Rewrote enclosed background-region cleanup from scratch as a single topology-gated region clear (clear background-coloured connected components not touching the image border). Removed ~415 lines of heuristic helpers (size cap, center-seed, magenta-family, lower-half passes) that over-cleared shadows/arms/feet/sword. Verified visually via Playwright on rat-bruiser: big leg-gap magenta region removed, body detail preserved. 111 tests pass."
   },
   {
     "date": "2026-06-18",

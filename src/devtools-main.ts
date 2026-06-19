@@ -1,5 +1,6 @@
 import { ITEM_CATALOG } from './shared/items.js';
 import { SPRITES } from './engine/sprites/index.js';
+import { DEVTOOLS_INDEX_ENTRIES } from './devtools/index.js';
 import {
   STATUS_ORDER,
   buildFloorArtPlanReport,
@@ -23,12 +24,13 @@ import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const SIDECAR_BASE = getSpriteSidecarBaseUrl();
 const DEVTOOLS_PAGE_HOME = 'home';
-const DEVTOOLS_PAGE_FLOOR_ART = 'floor-art';
+const DEVTOOLS_PAGE_SPRITE_WORKFLOW = 'sprite-generation-workflow';
+const DEVTOOLS_PAGE_FLOOR_ART_LEGACY = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
-  | typeof DEVTOOLS_PAGE_FLOOR_ART
+  | typeof DEVTOOLS_PAGE_SPRITE_WORKFLOW
   | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
   | typeof DEVTOOLS_PAGE_POSTPROCESS;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
@@ -171,9 +173,12 @@ function sheetUrl(briefId: string, runId: string, filename: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/sheet/${encodeURIComponent(filename)}`;
 }
 
-function sliceMapUrl(briefId: string, runId: string, version: 'v1' | 'v2' = 'v1'): string {
-  const v = version === 'v2' ? '?v=2' : '';
-  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/slice-map${v}`;
+function sliceMapUrl(briefId: string, runId: string, sheetFile?: string): string {
+  const query =
+    typeof sheetFile === 'string' && sheetFile.length > 0
+      ? `?sheet=${encodeURIComponent(sheetFile)}`
+      : '';
+  return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/slice-map${query}`;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -205,7 +210,7 @@ interface LivePostprocessOptions {
 
 const DEFAULT_BACKGROUND_TWEAKS = {
   colorToleranceSq: 4000,
-  fringeToleranceSq: 8000,
+  fringeToleranceSq: 12000,
 } as const;
 const MAX_BACKGROUND_TOLERANCE_SQ = 255 * 255 * 3;
 
@@ -263,7 +268,9 @@ function setButtonBusy(
 function currentDevtoolsPage(): DevtoolsPage {
   const value = new URLSearchParams(window.location.search).get('page');
   if (value === DEVTOOLS_PAGE_HOME) return DEVTOOLS_PAGE_HOME;
-  if (value === DEVTOOLS_PAGE_FLOOR_ART) return DEVTOOLS_PAGE_FLOOR_ART;
+  if (value === DEVTOOLS_PAGE_SPRITE_WORKFLOW || value === DEVTOOLS_PAGE_FLOOR_ART_LEGACY) {
+    return DEVTOOLS_PAGE_SPRITE_WORKFLOW;
+  }
   if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
@@ -341,7 +348,7 @@ function render(): void {
   const currentPage = currentDevtoolsPage();
   const isHomePage = currentPage === DEVTOOLS_PAGE_HOME;
   const isSpriteReviewPage = currentPage === DEVTOOLS_PAGE_SPRITE_REVIEW;
-  const isFloorArtPage = currentPage === DEVTOOLS_PAGE_FLOOR_ART;
+  const isSpriteWorkflowPage = currentPage === DEVTOOLS_PAGE_SPRITE_WORKFLOW;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
@@ -352,7 +359,7 @@ function render(): void {
           ? 'Postprocess debugger: inspect pipeline steps, slicing, and live postprocess traces.'
           : isSpriteReviewPage
             ? 'Sprite review — readonly viewer for approved sprite sheets.'
-            : 'Sprite review + tracker: visibility over placeholders, briefs, reviews, and integration.'
+            : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -364,20 +371,7 @@ function render(): void {
   }
 
   if (isHomePage) {
-    const tools = [
-      {
-        id: DEVTOOLS_PAGE_SPRITE_REVIEW,
-        name: 'Sprite review + workflow',
-        description:
-          'Track floor-art status, review generated sheets, run synth/generate/approve/metadata workflow, and inspect candidates.',
-      },
-      {
-        id: DEVTOOLS_PAGE_POSTPROCESS,
-        name: 'Postprocess debugger',
-        description:
-          'Inspect pipeline steps, validate sheet slicing, and trace live postprocess output.',
-      },
-    ] as const;
+    const tools = DEVTOOLS_INDEX_ENTRIES;
     const compact = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
     const search = el('input', {
       style: {
@@ -482,7 +476,7 @@ function render(): void {
   if (plans.length === 0) {
     shell.append(
       el('p', {
-        text: 'No floor art plans found under plans/floor-art/*.art.yaml.',
+        text: 'No Sprite Generation Workflow plans found under plans/floor-art/*.art.yaml.',
         style: { color: '#fca5a5' },
       }),
     );
@@ -1012,13 +1006,13 @@ function render(): void {
     debuggerTraceHost,
   );
   shell.append(debuggerPanel);
-  const showFloorArtWorkflow = isFloorArtPage;
-  controls.style.display = showFloorArtWorkflow ? 'flex' : 'none';
-  summary.style.display = showFloorArtWorkflow ? 'grid' : 'none';
-  manifestState.style.display = showFloorArtWorkflow ? 'block' : 'none';
-  tableWrap.style.display = showFloorArtWorkflow ? 'block' : 'none';
-  emptyState.style.display = showFloorArtWorkflow ? emptyState.style.display : 'none';
-  workflowPanel.style.display = showFloorArtWorkflow ? 'block' : 'none';
+  const showSpriteWorkflow = isSpriteWorkflowPage;
+  controls.style.display = showSpriteWorkflow ? 'flex' : 'none';
+  summary.style.display = showSpriteWorkflow ? 'grid' : 'none';
+  manifestState.style.display = showSpriteWorkflow ? 'block' : 'none';
+  tableWrap.style.display = showSpriteWorkflow ? 'block' : 'none';
+  emptyState.style.display = showSpriteWorkflow ? emptyState.style.display : 'none';
+  workflowPanel.style.display = showSpriteWorkflow ? 'block' : 'none';
   debuggerPanel.style.display = isPostprocessPage ? 'block' : 'none';
 
   let reports: FloorArtPlanReport[] = [];
@@ -1036,10 +1030,13 @@ function render(): void {
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
   const queuedAssetIds = new Set<string>();
-  const workflowStorageKey = 'crawler.devtools.floor-art.workflow-state.v1';
+  const workflowStorageKey = 'crawler.devtools.sprite-generation-workflow-state.v1';
+  const workflowStorageKeyLegacy = 'crawler.devtools.floor-art.workflow-state.v1';
   const readWorkflowState = (): PersistedFloorArtWorkflowState | null => {
     try {
-      const raw = window.localStorage.getItem(workflowStorageKey);
+      const raw =
+        window.localStorage.getItem(workflowStorageKey) ??
+        window.localStorage.getItem(workflowStorageKeyLegacy);
       if (!raw) return null;
       const parsed = JSON.parse(raw) as Partial<PersistedFloorArtWorkflowState>;
       return {
@@ -1617,7 +1614,7 @@ function render(): void {
     });
     Object.assign(debuggerVariantSelect.style, { width: '120px' });
     const sliceModeBadge = el('span', {
-      text: 'A — bands',
+      text: 'Canonical (v2)',
       style: {
         fontSize: '10px',
         padding: '2px 8px',
@@ -1656,8 +1653,7 @@ function render(): void {
 
     // ── Shared state for cross-section rendering ────────────────────
     let pendingSheetImgForSlice: HTMLImageElement | null = null;
-    let sliceMapV1: SliceMapResponse | null = null;
-    let sliceMapV2: SliceMapResponse | null = null;
+    let sliceMap: SliceMapResponse | null = null;
     let rerenderPipeline: (() => void) | null = null;
     let hitCells: Array<{
       cell: SliceMapResponse['cells'][number];
@@ -1666,8 +1662,8 @@ function render(): void {
       w: number;
       h: number;
     }> = [];
-    const getActiveSliceMap = (): SliceMapResponse | null => sliceMapV2 ?? sliceMapV1;
-    const getActiveSliceVersion = (): 'v1' | 'v2' => (sliceMapV2 ? 'v2' : 'v1');
+    const getActiveSliceMap = (): SliceMapResponse | null => sliceMap;
+    const getActiveSliceVersion = (): 'v2' => 'v2';
 
     const drawSliceMapOnCanvas = (
       sourceImg: HTMLImageElement,
@@ -1795,9 +1791,8 @@ function render(): void {
       }
     };
 
-    const onSliceMapKnown = (sliceMap: SliceMapResponse, v: 'v1' | 'v2'): void => {
-      if (v === 'v1') sliceMapV1 = sliceMap;
-      else sliceMapV2 = sliceMap;
+    const onSliceMapKnown = (nextSliceMap: SliceMapResponse): void => {
+      sliceMap = nextSliceMap;
       const active = getActiveSliceMap();
       if (!active) return;
       if (pendingSheetImgForSlice) {
@@ -1822,9 +1817,10 @@ function render(): void {
       sheetStatus.textContent = `Loading ${filename}…`;
       sheetStatus.style.display = '';
       sheetCanvas.style.display = 'none';
+      sliceMap = null;
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.onload = () => {
+      img.onload = async () => {
         if (
           renderToken !== debuggerRenderToken ||
           !debugTarget ||
@@ -1832,6 +1828,18 @@ function render(): void {
         )
           return;
         lastSheetImg = img;
+        try {
+          const map = await fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, filename));
+          if (
+            renderToken !== debuggerRenderToken ||
+            !debugTarget ||
+            `${debugTarget.briefId}/${debugTarget.runId}/${debugTarget.variantIndex}` !== targetKey
+          )
+            return;
+          onSliceMapKnown(map);
+        } catch (error) {
+          slicingStatus.textContent = `Slice map unavailable: ${error instanceof Error ? error.message : String(error)}`;
+        }
         tryDrawSliceMap(img);
         rerenderPipeline?.();
       };
@@ -2069,7 +2077,7 @@ function render(): void {
       });
       const titleText = el('span', { text: 'Slicing — visualization only' });
       const vizNote = el('div', {
-        text: 'v1/v2 choice affects this visualization only. Cell selection controls which variant is traced below.',
+        text: 'Canonical slicer drives both this visualization and the traced pipeline.',
         style: {
           fontSize: '10px',
           color: '#64748b',
@@ -2127,19 +2135,16 @@ function render(): void {
       return card;
     };
 
-    // ── Async: fetch sheets + manifest + slice-map + run summary in parallel ──────
+    // ── Async: fetch sheets + manifest + run summary in parallel ──────
     void (async () => {
       try {
-        const [sheetResult, manifestResult, sliceMapResult, sliceMapV2Result, summaryResult] =
-          await Promise.allSettled([
-            fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
-            fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v1')),
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, runId, 'v2')),
-            fetchJson<Record<string, unknown>>(
-              `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`,
-            ),
-          ]);
+        const [sheetResult, manifestResult, summaryResult] = await Promise.allSettled([
+          fetchJson<SidecarSheetsResponse>(sheetsUrl(briefId, runId)),
+          fetchJson<PipelineManifest>(spriteUrl(briefId, runId, `${padded}.pipeline.json`)),
+          fetchJson<Record<string, unknown>>(
+            `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`,
+          ),
+        ]);
 
         if (
           !debugTarget ||
@@ -2198,25 +2203,6 @@ function render(): void {
             btn.addEventListener('click', () => loadSheetFile(capturedFile, capturedRunId));
             sheetTabRow.append(btn);
           }
-        }
-
-        let sliceMapForSheet = sliceMapResult;
-        let sliceMapV2ForSheet = sliceMapV2Result;
-        if (sheetRunId !== runId) {
-          [sliceMapForSheet, sliceMapV2ForSheet] = await Promise.allSettled([
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, 'v1')),
-            fetchJson<SliceMapResponse>(sliceMapUrl(briefId, sheetRunId, 'v2')),
-          ]);
-        }
-
-        // Wire up slice-maps for the slicing visualization
-        if (sliceMapForSheet.status === 'fulfilled') {
-          onSliceMapKnown(sliceMapForSheet.value, 'v1');
-        } else {
-          slicingStatus.textContent = 'Slice map unavailable — run may pre-date this feature.';
-        }
-        if (sliceMapV2ForSheet.status === 'fulfilled') {
-          onSliceMapKnown(sliceMapV2ForSheet.value, 'v2');
         }
 
         // Load most recent (last) sheet
@@ -2846,24 +2832,8 @@ function render(): void {
   // Sprite review page — read-only viewer for approved sprite sheets
   if (isSpriteReviewPage) {
     const params = new URLSearchParams(window.location.search);
-    const briefId = params.get('briefId');
-    const runId = params.get('runId');
-
-    if (!briefId || !runId) {
-      shell.append(
-        el('div', {
-          style: {
-            padding: '16px',
-            borderRadius: '8px',
-            background: '#7f1d1d',
-            color: '#fef3c7',
-            border: '1px solid rgba(255,255,255,0.18)',
-          },
-          text: 'Missing briefId or runId in URL parameters',
-        }),
-      );
-      return;
-    }
+    const queryBriefId = params.get('briefId');
+    const queryRunId = params.get('runId');
 
     const viewerContainer = el('div', {
       style: {
@@ -2873,21 +2843,127 @@ function render(): void {
     });
     shell.append(viewerContainer);
 
+    const runPickerHost = el('div', {
+      style: {
+        display: 'grid',
+        gap: '8px',
+      },
+    });
+    const renderHost = el('div', {
+      style: {
+        display: 'grid',
+        gap: '12px',
+      },
+    });
     const loadingMsg = el('p', {
       text: 'Loading sprite sheet...',
       style: { color: '#93c5fd', fontSize: '14px' },
     });
-    viewerContainer.append(loadingMsg);
+    viewerContainer.append(runPickerHost, loadingMsg, renderHost);
 
     // Fetch and render the sprite sheet
     (async () => {
       try {
+        let briefId = queryBriefId;
+        let runId = queryRunId;
+        const runs = await listSidecarRuns();
+        let autoSelectedLatest = false;
+        if (
+          !briefId ||
+          !runId ||
+          !runs.some((run) => run.briefId === briefId && run.runId === runId)
+        ) {
+          loadingMsg.textContent = 'Selecting latest run...';
+          const latestRun = runs[0];
+          if (!latestRun) {
+            renderHost.replaceChildren(
+              el('div', {
+                style: {
+                  padding: '16px',
+                  borderRadius: '8px',
+                  background: '#78350f',
+                  color: '#fef3c7',
+                  border: '1px solid rgba(255,255,255,0.18)',
+                },
+                text: 'No sprite runs found yet. Generate a run from Sprite Generation Workflow first, then open Sprite Review.',
+              }),
+            );
+            return;
+          }
+          briefId = latestRun.briefId;
+          runId = latestRun.runId;
+          autoSelectedLatest = true;
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set('page', DEVTOOLS_PAGE_SPRITE_REVIEW);
+          nextUrl.searchParams.set('briefId', briefId);
+          nextUrl.searchParams.set('runId', runId);
+          window.history.replaceState(null, '', nextUrl.toString());
+        }
+
+        const runPickerLabel = el('p', {
+          text: 'Select generated run:',
+          style: { margin: '0', fontSize: '12px', color: '#93c5fd' },
+        });
+        const runPickerRow = el('div', {
+          style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+        });
+        const runPicker = document.createElement('select');
+        Object.assign(runPicker.style, {
+          background: '#0f172a',
+          color: '#e2e8f0',
+          border: '1px solid rgba(148,163,184,0.35)',
+          borderRadius: '6px',
+          padding: '6px 10px',
+          fontSize: '13px',
+        });
+        const makeRunKey = (b: string, r: string): string => `${b}::${r}`;
+        for (const run of runs) {
+          const option = document.createElement('option');
+          option.value = makeRunKey(run.briefId, run.runId);
+          const countSuffix =
+            typeof run.candidateCount === 'number' && run.candidateCount >= 0
+              ? ` (${run.candidateCount} variants)`
+              : '';
+          option.textContent = `${run.briefId} / ${run.runId}${countSuffix}`;
+          if (run.briefId === briefId && run.runId === runId) option.selected = true;
+          runPicker.append(option);
+        }
+
+        const openRunBtn = document.createElement('button');
+        openRunBtn.type = 'button';
+        openRunBtn.textContent = 'Open run';
+        Object.assign(openRunBtn.style, {
+          background: '#1d4ed8',
+          color: '#f8fafc',
+          border: '1px solid rgba(148,163,184,0.35)',
+          borderRadius: '6px',
+          padding: '6px 12px',
+          cursor: 'pointer',
+          fontSize: '13px',
+        });
+
+        const navigateToSelectedRun = (): void => {
+          const [nextBriefId, nextRunId] = runPicker.value.split('::');
+          if (!nextBriefId || !nextRunId) return;
+          if (nextBriefId === briefId && nextRunId === runId) return;
+          const nextUrl = new URL(window.location.href);
+          nextUrl.searchParams.set('page', DEVTOOLS_PAGE_SPRITE_REVIEW);
+          nextUrl.searchParams.set('briefId', nextBriefId);
+          nextUrl.searchParams.set('runId', nextRunId);
+          window.location.assign(nextUrl.toString());
+        };
+        openRunBtn.addEventListener('click', navigateToSelectedRun);
+        runPicker.addEventListener('change', navigateToSelectedRun);
+        runPickerRow.append(runPicker, openRunBtn);
+        runPickerHost.replaceChildren(runPickerLabel, runPickerRow);
+
         // Get the list of available sheets for this run
         const sheetsResp = await fetchJson<{ files: string[] }>(sheetsUrl(briefId, runId));
         const sheets = sheetsResp.files || [];
 
         if (sheets.length === 0) {
-          viewerContainer.replaceChildren(
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(
             el('div', {
               style: {
                 padding: '16px',
@@ -2905,7 +2981,8 @@ function render(): void {
         // we would allow selection between multiple sheets.
         const selectedSheet = sheets[0];
         if (!selectedSheet) {
-          viewerContainer.replaceChildren(
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(
             el('div', {
               style: { color: '#fca5a5' },
               text: 'Unable to determine which sheet to display.',
@@ -2917,7 +2994,7 @@ function render(): void {
         loadingMsg.textContent = `Fetching ${selectedSheet}...`;
 
         const sheetImg = document.createElement('img');
-        sheetImg.src = spriteUrl(briefId, runId, selectedSheet);
+        sheetImg.src = sheetUrl(briefId, runId, selectedSheet);
         sheetImg.style.maxWidth = '100%';
         sheetImg.style.border = '1px solid rgba(148,163,184,0.2)';
         sheetImg.style.borderRadius = '8px';
@@ -2927,6 +3004,18 @@ function render(): void {
           const detailsDiv = el('div', {
             style: { marginBottom: '12px' },
           });
+          if (autoSelectedLatest) {
+            detailsDiv.append(
+              el('p', {
+                text: 'Auto-selected latest run because briefId/runId were missing from the URL.',
+                style: {
+                  margin: '0 0 8px 0',
+                  fontSize: '12px',
+                  color: '#fde68a',
+                },
+              }),
+            );
+          }
           const sheetNameEl = el('p', {
             text: `Sheet: ${selectedSheet}`,
             style: {
@@ -2956,11 +3045,13 @@ function render(): void {
           });
           viewerDiv.append(sheetImg);
 
-          viewerContainer.replaceChildren(detailsDiv, viewerDiv);
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(detailsDiv, viewerDiv);
         });
 
         sheetImg.addEventListener('error', () => {
-          viewerContainer.replaceChildren(
+          loadingMsg.textContent = '';
+          renderHost.replaceChildren(
             el('div', {
               style: { color: '#fca5a5' },
               text: `Failed to load sprite sheet: ${selectedSheet}`,
@@ -2968,7 +3059,8 @@ function render(): void {
           );
         });
       } catch (error) {
-        viewerContainer.replaceChildren(
+        loadingMsg.textContent = '';
+        renderHost.replaceChildren(
           el('div', {
             style: {
               padding: '16px',

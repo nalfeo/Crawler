@@ -36,6 +36,7 @@ export default defineConfig(({ mode }) => {
   return {
     base: basePaths[deployEnv] ?? '/',
     define: {
+      __CRAWLER_SPRITES_SIDECAR_BASE_URL__: JSON.stringify(sessionPorts.sidecarBaseUrl),
       'import.meta.env.VITE_SPRITES_SIDECAR_BASE_URL': JSON.stringify(sessionPorts.sidecarBaseUrl),
     },
     plugins: mode === 'lab' ? [labTuningSavePlugin()] : [],

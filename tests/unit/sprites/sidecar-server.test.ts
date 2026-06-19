@@ -19,6 +19,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
 import { buildServer, listRuns, safeJoin } from '../../../scripts/sprites/sidecar/server.js';
 import type { FastifyInstance } from 'fastify';
@@ -60,6 +61,21 @@ function writeMinimalRun(
     );
   }
   return runDir;
+}
+
+function makeSolidPng(
+  width: number,
+  height: number,
+  rgb: readonly [number, number, number],
+): Buffer {
+  const png = new PNG({ width, height });
+  for (let i = 0; i < png.data.length; i += 4) {
+    png.data[i] = rgb[0];
+    png.data[i + 1] = rgb[1];
+    png.data[i + 2] = rgb[2];
+    png.data[i + 3] = 255;
+  }
+  return PNG.sync.write(png);
 }
 
 describe('safeJoin (path-traversal guard)', () => {
@@ -250,6 +266,110 @@ describe('buildServer routes (inject)', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().files).toEqual(['sheet-00.png', 'sheet-01.png']);
+  });
+
+  it('GET /api/runs/:brief/:run/slice-map uses canonical v2 and defaults to latest sheet', async () => {
+    const runId = '2026-06-04T12-00-00-deadbeef';
+    const runDir = path.join(root, 'runs', 'iron-sword', runId);
+    mkdirSync(path.join(root, 'briefs'), { recursive: true });
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+      '[[0,0,0],[255,255,255]]',
+    );
+    writeFileSync(
+      path.join(root, 'briefs', 'iron-sword.yaml'),
+      [
+        'type: weapon',
+        'name: iron-sword',
+        'description: iron sword',
+        'size: { width: 16, height: 16 }',
+        'palette: { id: kenney-roguelike }',
+        'anchor: { x: 8, y: 14 }',
+        'references:',
+        '  - { path: public/assets/ref-a.png }',
+        '  - { path: public/assets/ref-b.png }',
+      ].join('\n'),
+    );
+    writeFileSync(
+      path.join(runDir, 'summary.json'),
+      JSON.stringify({
+        brief: 'iron-sword',
+        runId,
+        briefPath: 'briefs/iron-sword.yaml',
+        promptHash: 'deadbeef',
+        chosen: { index: 0 },
+        candidates: [{ index: 0, judgeScorecard: null }],
+      }),
+    );
+    writeFileSync(path.join(runDir, 'sheet-00.png'), makeSolidPng(12, 12, [255, 255, 255]));
+    writeFileSync(path.join(runDir, 'sheet-01.png'), makeSolidPng(14, 10, [255, 255, 255]));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/runs/iron-sword/${runId}/slice-map`,
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.algorithm).toBe('v2');
+    expect(body.sheetFile).toBe('sheet-01.png');
+    expect(body.sheetW).toBe(14);
+    expect(body.sheetH).toBe(10);
+  });
+
+  it('GET /api/runs/:brief/:run/slice-map supports explicit ?sheet= selection', async () => {
+    const runId = '2026-06-04T12-00-00-deadbeef';
+    const runDir = path.join(root, 'runs', 'iron-sword', runId);
+    mkdirSync(path.join(root, 'briefs'), { recursive: true });
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+      '[[0,0,0],[255,255,255]]',
+    );
+    writeFileSync(
+      path.join(root, 'briefs', 'iron-sword.yaml'),
+      [
+        'type: weapon',
+        'name: iron-sword',
+        'description: iron sword',
+        'size: { width: 16, height: 16 }',
+        'palette: { id: kenney-roguelike }',
+        'anchor: { x: 8, y: 14 }',
+        'references:',
+        '  - { path: public/assets/ref-a.png }',
+        '  - { path: public/assets/ref-b.png }',
+      ].join('\n'),
+    );
+    writeFileSync(
+      path.join(runDir, 'summary.json'),
+      JSON.stringify({
+        brief: 'iron-sword',
+        runId,
+        briefPath: 'briefs/iron-sword.yaml',
+        promptHash: 'deadbeef',
+        chosen: { index: 0 },
+        candidates: [{ index: 0, judgeScorecard: null }],
+      }),
+    );
+    writeFileSync(path.join(runDir, 'sheet-00.png'), makeSolidPng(9, 11, [255, 255, 255]));
+    writeFileSync(path.join(runDir, 'sheet-01.png'), makeSolidPng(13, 7, [255, 255, 255]));
+
+    const selected = await app.inject({
+      method: 'GET',
+      url: `/api/runs/iron-sword/${runId}/slice-map?sheet=sheet-00.png`,
+    });
+    expect(selected.statusCode).toBe(200);
+    const selectedBody = selected.json();
+    expect(selectedBody.algorithm).toBe('v2');
+    expect(selectedBody.sheetFile).toBe('sheet-00.png');
+    expect(selectedBody.sheetW).toBe(9);
+    expect(selectedBody.sheetH).toBe(11);
+
+    const badSheetName = await app.inject({
+      method: 'GET',
+      url: `/api/runs/iron-sword/${runId}/slice-map?sheet=not-allowed.png`,
+    });
+    expect(badSheetName.statusCode).toBe(415);
   });
 
   it('GET /api/runs/:brief/:run/sheet/:filename serves sheet PNGs', async () => {

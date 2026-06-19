@@ -21,6 +21,21 @@ const STYLE_GUIDE_RELATIVE_PATH = 'docs/agent-os/sprite-style.md';
 const PREAMBLE_START = '--- STYLE PREAMBLE (do not deviate) ---';
 const PREAMBLE_END = '--- END STYLE PREAMBLE ---';
 
+interface BackgroundCandidate {
+  readonly name: string;
+  readonly hex: string;
+  readonly rgb: readonly [number, number, number];
+}
+
+const BACKGROUND_CANDIDATES: readonly BackgroundCandidate[] = [
+  { name: 'bright magenta', hex: '#ff00ff', rgb: [255, 0, 255] },
+  { name: 'electric cyan', hex: '#00ffff', rgb: [0, 255, 255] },
+  { name: 'neon lime', hex: '#39ff14', rgb: [57, 255, 20] },
+  { name: 'vivid yellow', hex: '#fff200', rgb: [255, 242, 0] },
+  { name: 'bright sky blue', hex: '#00a2ff', rgb: [0, 162, 255] },
+  { name: 'safety orange', hex: '#ff6a00', rgb: [255, 106, 0] },
+];
+
 /**
  * Read and parse the style guide markdown file.
  *
@@ -162,11 +177,12 @@ function singleConstraintsBlock(brief: Brief): string {
       '- No text, numbers, digits, captions, watermarks, signatures, or UI overlays anywhere in the image.',
     ].join('\n');
   }
+  const bg = pickContrastingBackgroundColor(brief);
   return [
     '## Output requirements',
     '- Exactly one subject, centered in a square frame.',
     '- Subject must not be clipped at any edge — leave at least 10% margin on all sides.',
-    '- Transparent background or solid neutral fill (pure white, pure black, or pure magenta). No decorative borders, gradients, or scene elements.',
+    `- Transparent background, or a single flat high-contrast background color that is clearly distinct from the sprite palette. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No decorative borders, gradients, or scene elements.`,
     '- No text, numbers, digits, captions, watermarks, signatures, or UI overlays anywhere in the image.',
   ].join('\n');
 }
@@ -232,6 +248,7 @@ function sheetConstraintsBlock(brief: Brief): string {
       '- Do not draw a frame, header, or footer around the grid.',
     ].join('\n');
   }
+  const bg = pickContrastingBackgroundColor(brief);
   return [
     '## Per-variant requirements (apply to every cell)',
     brief.type === 'character' || brief.type === 'enemy'
@@ -239,7 +256,32 @@ function sheetConstraintsBlock(brief: Brief): string {
       : '- Each variant must fit fully within its grid cell — none cut off at any edge. Leave at least a 10% margin between the subject and the cell edge.',
     '- All variants are square, share the same dimensions, and use the same orientation and scale.',
     '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
-    '- Use a transparent background, or a single flat neutral background color (pure white, pure black, or pure magenta) consistently across the whole sheet. No per-cell background variation, no decorative borders between cells.',
+    `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No per-cell background variation, no decorative borders between cells.`,
     '- Do not draw a frame, header, or footer around the grid.',
   ].join('\n');
+}
+
+export function pickContrastingBackgroundColor(brief: Brief): BackgroundCandidate {
+  const paletteColors = brief.palette.colors ?? [];
+  if (paletteColors.length === 0) {
+    return BACKGROUND_CANDIDATES[0]!;
+  }
+
+  let best = BACKGROUND_CANDIDATES[0]!;
+  let bestMinDistance = -1;
+  for (const candidate of BACKGROUND_CANDIDATES) {
+    const minDistance = paletteColors.reduce((min, color) => {
+      const [r, g, b] = color;
+      const dr = candidate.rgb[0] - r;
+      const dg = candidate.rgb[1] - g;
+      const db = candidate.rgb[2] - b;
+      const distSq = dr * dr + dg * dg + db * db;
+      return Math.min(min, distSq);
+    }, Number.POSITIVE_INFINITY);
+    if (minDistance > bestMinDistance) {
+      bestMinDistance = minDistance;
+      best = candidate;
+    }
+  }
+  return best;
 }
