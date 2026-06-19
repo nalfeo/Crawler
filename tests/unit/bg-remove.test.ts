@@ -310,6 +310,27 @@ describe('removeBackground', () => {
       expect(alphaAt(out, 20, 17)).toBe(0);
       expect(alphaAt(out, 21, 17)).toBe(255);
     });
+
+    it('preserves compact lower-half magenta shading that is not a wide artifact blob', () => {
+      const img = blank(32, 32, [255, 0, 255]);
+      // Foreground body block.
+      for (let y = 10; y <= 27; y++) {
+        for (let x = 8; x <= 24; x++) {
+          setPixel(img, x, y, 0, 180, 40);
+        }
+      }
+      // Compact magenta-like patch inside the body (6x6; aspect ~= 1.0).
+      // This resembles stylized shading and should not be treated as a wide background blob.
+      for (let y = 19; y <= 24; y++) {
+        for (let x = 13; x <= 18; x++) {
+          setPixel(img, x, y, 145, 120, 145);
+        }
+      }
+
+      const out = removeBackgroundB(img, { colorToleranceSq: 1024, fringeToleranceSq: 12000 });
+      expect(alphaAt(out, 15, 21)).toBe(255);
+      expect(alphaAt(out, 13, 24)).toBe(255);
+    });
   });
 
   it('leaves an interior region of a different color fully opaque', () => {

@@ -281,6 +281,13 @@ export const BACKGROUND_B_CENTER_FILL_MAX_WIDE_AREA = 12000;
 export const BACKGROUND_B_CENTER_FILL_MIN_WIDE_ASPECT = 1.2;
 export const BACKGROUND_B_CENTER_FILL_MIN_WIDE_CENTROID_Y_RATIO = 0.45;
 export const BACKGROUND_B_CENTER_SEED_MIN_COSINE = 0.9;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_AREA = 12;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MAX_AREA = 256;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_ASPECT = 1.6;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_CENTROID_Y_RATIO = 0.5;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MAX_DISTANCE_SQ = 46000;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_COSINE = 0.85;
+export const BACKGROUND_B_MAGENTA_ARTIFACT_MIN_BG_LIKE_RATIO = 0.85;
 
 export function removeBackground(
   image: RgbaImage,
@@ -492,7 +499,7 @@ function clearEnclosedNearBackgroundIslands(
 
   clearEnclosedBackgroundLikeRegionsFromCenter(data, width, height, cornerColors);
   if (isMagentaFamilyBackground(cornerColors)) {
-    clearLowerHalfMagentaArtifacts(data, width, height);
+    clearLowerHalfMagentaArtifacts(data, width, height, cornerColors);
   }
 }
 
@@ -685,7 +692,12 @@ function isMagentaFamilyBackground(cornerColors: ReadonlyArray<[number, number, 
   return ar >= 120 && ab >= 120 && ag <= 190 && Math.abs(ar - ab) <= 80;
 }
 
-function clearLowerHalfMagentaArtifacts(data: Uint8Array, width: number, height: number): void {
+function clearLowerHalfMagentaArtifacts(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  cornerColors: ReadonlyArray<[number, number, number]>,
+): void {
   const total = width * height;
   const visited = new Uint8Array(total);
   const offsets: ReadonlyArray<[number, number]> = [
@@ -703,6 +715,12 @@ function clearLowerHalfMagentaArtifacts(data: Uint8Array, width: number, height:
     visited[linear] = 1;
     const component: number[] = [];
     let sumY = 0;
+    let sumX = 0;
+    let minX = width;
+    let minY = height;
+    let maxX = -1;
+    let maxY = -1;
+    let backgroundLikeCount = 0;
     while (stack.length > 0) {
       const current = stack.pop() as number;
       const ci = current * 4;
@@ -711,7 +729,23 @@ function clearLowerHalfMagentaArtifacts(data: Uint8Array, width: number, height:
       component.push(current);
       const x = current % width;
       const y = Math.floor(current / width);
+      sumX += x;
       sumY += y;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (
+        isBackgroundLikeColor(
+          data,
+          ci,
+          cornerColors,
+          BACKGROUND_B_MAGENTA_ARTIFACT_MAX_DISTANCE_SQ,
+          BACKGROUND_B_MAGENTA_ARTIFACT_MIN_COSINE,
+        )
+      ) {
+        backgroundLikeCount += 1;
+      }
       for (const [dx, dy] of offsets) {
         const nx = x + dx;
         const ny = y + dy;
@@ -722,9 +756,21 @@ function clearLowerHalfMagentaArtifacts(data: Uint8Array, width: number, height:
         stack.push(neighbor);
       }
     }
-    if (component.length < 8 || component.length > BACKGROUND_B_CENTER_FILL_MAX_AREA) continue;
+    if (
+      component.length < BACKGROUND_B_MAGENTA_ARTIFACT_MIN_AREA ||
+      component.length > BACKGROUND_B_MAGENTA_ARTIFACT_MAX_AREA
+    ) {
+      continue;
+    }
+    const bboxW = maxX - minX + 1;
+    const bboxH = maxY - minY + 1;
+    if (bboxW < bboxH * BACKGROUND_B_MAGENTA_ARTIFACT_MIN_ASPECT) continue;
+    const backgroundLikeRatio = backgroundLikeCount / component.length;
+    if (backgroundLikeRatio < BACKGROUND_B_MAGENTA_ARTIFACT_MIN_BG_LIKE_RATIO) continue;
+    const centroidX = sumX / component.length;
     const centroidY = sumY / component.length;
-    if (centroidY < height * BACKGROUND_B_CENTER_FILL_MIN_WIDE_CENTROID_Y_RATIO) continue;
+    if (centroidY < height * BACKGROUND_B_MAGENTA_ARTIFACT_MIN_CENTROID_Y_RATIO) continue;
+    if (centroidX < 1 || centroidX >= width - 1) continue;
     for (const pixel of component) {
       data[pixel * 4 + 3] = 0;
     }
