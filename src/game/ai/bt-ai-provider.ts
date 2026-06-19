@@ -53,7 +53,7 @@ import {
   type BTNode,
 } from './behavior-tree.js';
 import { getShopkeeperStage, SHOPKEEPER_EQUIPMENT_COST } from '../floor1Scenario.js';
-import { getActiveWeapon } from '../weaponSystem.js';
+import { getActiveWeapon, getActiveWeaponReadiness } from '../weaponSystem.js';
 
 const logger = createLogger('game:bt-ai-provider');
 
@@ -69,7 +69,46 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
 
 const DIRECT_MOVE_EPSILON_PX = 10;
 const MELEE_APPROACH_BUFFER_PX = 8;
+// --- Melee kiting (stutter-step orbit) ---
+// When in melee, the player must NOT park on the enemy and trade blows. Instead
+// it orbits the target inside its own weapon strike gate (so swings still land —
+// melee auto-fires on proximity+cooldown regardless of player velocity) while
+// continuously strafing tangentially so it stays a moving, dodging target.
+// Outer edge of the reliable strike band as a fraction of the raw weapon reach.
+// The fire gate is reach*1.5; orbiting at reach (1.0x) keeps swings landing with
+// margin while maximizing standoff distance for dodging.
+// Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
+// to reach*1.5, so this is the outer radius at which kiting can still land hits.
+const ATTACK_GATE_MULTIPLIER = 1.5;
+// Extra px held beyond a (smaller-than-reach) enemy's own attackRange when we can
+// safely poke from outside its strike range. Ignored for long-range bosses whose
+// attackRange dwarfs our reach (geometrically impossible to outrange).
+const KITE_DODGE_BUFFER_PX = 14;
+// Per-step orbit travel target distance. Small (< CLOSE_APPROACH_DIRECT_PX) so the
+// move primitive's close-approach branch drives it with obstacle-sliding local
+// navigation instead of tile A*, yielding smooth strafing rather than wiggle.
+const KITE_STEP_PX = 28;
+// Max radial correction blended per step toward the desired orbit radius. Keeping
+// this below KITE_STEP_PX makes motion mostly tangential (orbit) with gentle
+// radius keeping, so the player circles instead of lunging in and out.
+const KITE_RADIAL_STEP_PX = 16;
+// Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
+// reversal keeps the player juking and prevents it from grinding into one wall
+// forever; far longer than any oscillation so it reads as intentional kiting.
+const KITE_FLIP_FRAMES = 132;
 const NAVIGATION_LOOKAHEAD_PX = 24;
+// Close-range direct approach threshold (~1.5 tiles). Within this distance, and
+// with a clear straight corridor, the AI abandons tile-granular A* and slides
+// straight at the exact target pixel. Tile A* targets tile CENTERS and cannot
+// step the 24px player body onto an 8px pickup; resolveReachableGoalTile also
+// diverts to an adjacent tile whenever the target sits in the player's own tile
+// (same-tile A* is trivial), producing the walk-away/walk-back "wiggling on
+// pickups" oscillation. Direct approach drives the body to physically overlap
+// the pickup (AABB overlap fires within 16px/axis) so collision collects it.
+const CLOSE_APPROACH_DIRECT_PX = 48;
+// Step (px) used to sample the corridor for hasClearLineOfSight. Half a tile so
+// a wall tile between the player and target cannot be skipped over.
+const LINE_OF_SIGHT_SAMPLE_PX = 8;
 // Wedge recovery for path-following: if the player is aiming at a waypoint but
 // collision keeps it from advancing more than MOVE_WEDGE_PROGRESS_PX per frame
 // for MOVE_WEDGE_FRAMES straight frames, it is wedged on a choke/corner (e.g. a
@@ -315,6 +354,14 @@ export class BehaviorTreeAI implements AIInputProvider {
   private retreatTargetX: number | null = null;
   private retreatTargetY: number | null = null;
   private retreatRepickFrame: number = 0;
+  /**
+   * Persistent melee-kite orbit direction (+1 / -1) and the frame it was last
+   * flipped. Held across polls so the player circles the enemy steadily instead
+   * of jittering; reversed every {@link KITE_FLIP_FRAMES} frames so it juke-dodges
+   * and never grinds into a single wall.
+   */
+  private kiteOrbitSign: 1 | -1 = 1;
+  private kiteSignFrame: number = 0;
   private readonly ignoredLootUntilFrame = new Map<number, number>();
   private readonly ignoredEnemyUntilFrame = new Map<number, number>();
   private engageTargetEid: number | null = null;
@@ -1402,6 +1449,33 @@ export class BehaviorTreeAI implements AIInputProvider {
       return;
     }
 
+    // Close-range direct approach. Tile-granular A* targets tile centers and
+    // cannot step the 24px player body onto a small (8px) pickup; worse,
+    // resolveReachableGoalTile diverts to an ADJACENT tile whenever the target
+    // sits in the player's own tile (same-tile A* is trivial), so the player
+    // oscillates walk-away/walk-back around a gem/gold it never overlaps (the
+    // "wiggling on pickups" bug). When the target is within ~1.5 tiles and a
+    // straight corridor is clear, skip A* and slide straight at the exact pixel
+    // with obstacle-aware local navigation so the body physically overlaps the
+    // pickup and collision collects it.
+    if (
+      distance <= CLOSE_APPROACH_DIRECT_PX &&
+      this.hasClearLineOfSight(world, playerX, playerY, targetX, targetY)
+    ) {
+      this.pathWaypoints = [];
+      this.pathIndex = 0;
+      this.pathGoalKey = null;
+      this.moveWithLocalNavigation(
+        state,
+        world,
+        playerX,
+        playerY,
+        deltaX / distance,
+        deltaY / distance,
+      );
+      return;
+    }
+
     const floorMap = world.floorMap;
     if (floorMap) {
       const startTile = floorMap.pixelToTile(playerX, playerY);
@@ -1574,6 +1648,40 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return bestGoal ?? goalTile;
+  }
+
+  /**
+   * Sample the straight corridor between two world points and report whether
+   * every sampled position is on passable ground. Used to decide when the AI may
+   * abandon tile-granular A* for a direct sub-tile approach onto a close target
+   * (see CLOSE_APPROACH_DIRECT_PX). Returns false when no floor map is present so
+   * the caller keeps its existing A* / local-nav fallback.
+   */
+  private hasClearLineOfSight(
+    world: GameWorld,
+    startX: number,
+    startY: number,
+    endX: number,
+    endY: number,
+  ): boolean {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const distance = Math.hypot(endX - startX, endY - startY);
+    if (distance <= 0) {
+      return floorMap.isPassableAt(endX, endY);
+    }
+    const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_SAMPLE_PX));
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const sampleX = startX + (endX - startX) * t;
+      const sampleY = startY + (endY - startY) * t;
+      if (!floorMap.isPassableAt(sampleX, sampleY)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   private moveWithLocalNavigation(
@@ -2361,22 +2469,124 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const reachPx = ftToPx(Math.max(weapon.range, weapon.aoeRadius));
-    const desiredDistancePx = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx - MELEE_APPROACH_BUFFER_PX);
-    if (target.distance <= desiredDistancePx) {
-      return {
-        targetX: playerX,
-        targetY: playerY,
-        reason: `Holding melee range (${(reachPx / 8).toFixed(1)}ft) on enemy at ${target.distance.toFixed(0)}px`,
-      };
+    // Actual gate at which a melee swing connects (weaponSystem fires when an enemy
+    // is within reach*1.5 and the cooldown has elapsed — independent of whether the
+    // player is moving). Once inside it we KITE instead of parking.
+    const strikeGatePx = reachPx * ATTACK_GATE_MULTIPLIER;
+    if (target.distance <= strikeGatePx) {
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx, strikeGatePx);
     }
 
+    // Out of strike range: close in toward the orbit band (just inside the gate) so
+    // the next poll can start kiting and landing hits.
+    const engageBandPx = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx - MELEE_APPROACH_BUFFER_PX);
     const deltaX = target.x - playerX;
     const deltaY = target.y - playerY;
-    const scale = (target.distance - desiredDistancePx) / target.distance;
+    const scale = (target.distance - engageBandPx) / target.distance;
     return {
       targetX: playerX + deltaX * scale,
       targetY: playerY + deltaY * scale,
       reason: `Closing to melee range (${(reachPx / 8).toFixed(1)}ft) from ${target.distance.toFixed(0)}px`,
+    };
+  }
+
+  /**
+   * Melee kite: orbit the enemy inside the player's own strike gate while strafing
+   * tangentially so the player stays mobile and dodges instead of standing still.
+   *
+   * - Desired orbit radius stutter-steps with weapon cooldown: pull into the inner
+   *   strike band when a swing is READY (so the hit lands), ease out to the gate
+   *   edge while on cooldown (max dodge distance, still able to resume).
+   * - If the enemy's own attackRange is smaller than our gate, hug just outside it
+   *   so we poke from safety. For long-range bosses (attackRange >> reach) this is
+   *   geometrically impossible, so we simply orbit in close and rely on motion.
+   * - Orbit direction is persistent and reverses periodically (or immediately when
+   *   the strafe direction is walled), producing steady juking — distinct from the
+   *   walk-away/walk-back pickup wiggle.
+   */
+  private computeMeleeKiteTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    target: WorldTarget,
+    reachPx: number,
+    strikeGatePx: number,
+  ): { targetX: number; targetY: number; reason: string } {
+    const readiness = getActiveWeaponReadiness(world);
+    const ready = readiness?.ready ?? true;
+
+    const innerOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx - MELEE_APPROACH_BUFFER_PX);
+    const outerOrbit = Math.max(innerOrbit, strikeGatePx - MELEE_APPROACH_BUFFER_PX);
+    let desiredOrbit = ready ? innerOrbit : outerOrbit;
+
+    const enemyAttackPx = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
+    if (enemyAttackPx > 0) {
+      const safeOrbit = enemyAttackPx + KITE_DODGE_BUFFER_PX;
+      if (safeOrbit <= outerOrbit) {
+        // We can stand outside the enemy's strike range and still land hits.
+        desiredOrbit = Math.min(outerOrbit, Math.max(desiredOrbit, safeOrbit));
+      }
+    }
+
+    // Deterministic periodic orbit reversal so the player keeps juking.
+    if (world.frameCount - this.kiteSignFrame >= KITE_FLIP_FRAMES) {
+      this.kiteOrbitSign = this.kiteOrbitSign === 1 ? -1 : 1;
+      this.kiteSignFrame = world.frameCount;
+    }
+
+    let rx = playerX - target.x;
+    let ry = playerY - target.y;
+    let dist = Math.hypot(rx, ry);
+    if (dist < 1) {
+      // Enemy is on top of us — pick an arbitrary outward axis to escape along.
+      rx = 1;
+      ry = 0;
+      dist = 1;
+    }
+    const ux = rx / dist;
+    const uy = ry / dist;
+    // Radial correction toward the desired orbit radius (+ux pushes outward).
+    const radialMag = Math.max(
+      -KITE_RADIAL_STEP_PX,
+      Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
+    );
+
+    const buildStep = (sign: 1 | -1): { x: number; y: number } => {
+      const tx = -uy * sign;
+      const ty = ux * sign;
+      let sx = ux * radialMag + tx * KITE_STEP_PX;
+      let sy = uy * radialMag + ty * KITE_STEP_PX;
+      const slen = Math.hypot(sx, sy) || 1;
+      sx = (sx / slen) * KITE_STEP_PX;
+      sy = (sy / slen) * KITE_STEP_PX;
+      return { x: sx, y: sy };
+    };
+
+    let step = buildStep(this.kiteOrbitSign);
+    // Wall-aware juking: if the strafe direction is blocked, reverse so the player
+    // dodges along open space instead of grinding the wall.
+    if (!this.hasClearLineOfSight(world, playerX, playerY, playerX + step.x, playerY + step.y)) {
+      const flipped: 1 | -1 = this.kiteOrbitSign === 1 ? -1 : 1;
+      const flippedStep = buildStep(flipped);
+      if (
+        this.hasClearLineOfSight(
+          world,
+          playerX,
+          playerY,
+          playerX + flippedStep.x,
+          playerY + flippedStep.y,
+        )
+      ) {
+        this.kiteOrbitSign = flipped;
+        this.kiteSignFrame = world.frameCount;
+        step = flippedStep;
+      }
+    }
+
+    return {
+      targetX: playerX + step.x,
+      targetY: playerY + step.y,
+      reason: `Kiting enemy at ${target.distance.toFixed(0)}px (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(0)}px)`,
     };
   }
 

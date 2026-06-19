@@ -15,6 +15,7 @@ import {
   equipPurchasedGear,
   getShopkeeperStage,
   meetShopkeeper,
+  meetSpellQuestGiver,
   purchaseShopkeeperEquipment,
   returnShopkeeperPrize,
   selectSpellFromBossBattle,
@@ -42,6 +43,7 @@ export function createFloor1MainSceneOptions() {
       equipmentName: MERCHANTS_CHARM_DEF.name,
     },
     tutorialGoon: { meet: meetTutorialGoon },
+    spellQuestGiver: { meet: meetSpellQuestGiver },
     preSystems: [
       statsSystem,
       floor1PlayerStatSystem,

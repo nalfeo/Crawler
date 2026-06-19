@@ -544,6 +544,25 @@ export function getActiveWeapon(world: GameWorld): WeaponDef | undefined {
   return getWeaponState(world).activeWeaponDef;
 }
 
+/**
+ * Active-weapon cooldown readiness, mirroring the gate the melee/data-driven fire
+ * path uses (`world.elapsedMs - state.lastFireMs >= def.cooldownMs`). Returns
+ * `null` when there is no data-driven weapon (legacy projectile mode). Exposed so
+ * the headless AI can stutter-step: dart into strike range when `ready`, ease back
+ * out while a swing is on cooldown instead of standing still and trading blows.
+ */
+export function getActiveWeaponReadiness(
+  world: GameWorld,
+): { ready: boolean; remainingMs: number; cooldownMs: number } | null {
+  const state = getWeaponState(world);
+  const def = state.activeWeaponDef;
+  if (def === undefined) {
+    return null;
+  }
+  const remainingMs = Math.max(0, def.cooldownMs - (world.elapsedMs - state.lastFireMs));
+  return { ready: remainingMs <= 0, remainingMs, cooldownMs: def.cooldownMs };
+}
+
 export function weaponSystem(world: GameWorld): void {
   const player = getPlayerEntity(world);
 

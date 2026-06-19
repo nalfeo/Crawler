@@ -8,15 +8,78 @@
  * - Comparing AI vs human performance
  */
 import Phaser from 'phaser';
+import { query } from 'bitecs';
 import { createFloor1MainSceneOptions } from '../../bootstrap/floor1-main-scene-options.js';
 import { BootScene, MainGameScene } from '../../engine/index.js';
 import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
+import {
+  autoAllocateStatPoints,
+  autoFloor1ProgressionSystem,
+} from '../../game/ai/auto-progression.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
+import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
-const AI_SEED = 42;
+const INITIAL_SEED = 42;
 const SPEED_OPTIONS = [1, 4, 16] as const;
+
+/**
+ * Live telemetry snapshot exposed on `window.__aiRunnerDebug()` for headless
+ * test harnesses (e.g. Playwright). Mirrors the headless event-log `sample`
+ * schema so a browser run can be aligned frame-for-frame against a headless run
+ * of the same seed. Debug-only; lab scope, never shipped to the game build.
+ */
+export interface AiRunnerDebugSnapshot {
+  polls: number;
+  paused: boolean;
+  speed: number;
+  scenePaused: boolean | null;
+  worldState: string | null;
+  gameMs: number | null;
+  px: number | null;
+  py: number | null;
+  health: number | null;
+  level: number;
+  gold: number;
+  spellsUnlocked: boolean;
+  state: string;
+  reason: string;
+  targetEid: number | null;
+  targetX: number | null;
+  targetY: number | null;
+  targetDist: number | null;
+  stuckFrames: number;
+  pathLen: number;
+  pathIndex: number;
+  moveX: number;
+  moveY: number;
+  nextWpX: number | null;
+  nextWpY: number | null;
+  pathGoalKey: string | null;
+  npcMem: { discovered: string[]; talked: string[]; needed: number };
+  conversationNpcEid: number | null;
+  modalOpen: boolean;
+  runOutcome: string | null;
+  quests: Record<string, { status: string; done: number; total: number }>;
+}
+
+declare global {
+  interface Window {
+    __aiRunnerDebug?: () => AiRunnerDebugSnapshot;
+  }
+}
+
+/**
+ * Pick a fresh run seed from a non-simulation entropy source. Uses
+ * `crypto.getRandomValues` (NOT `Math.random`/`Date.now`) so the lab harness
+ * stays clear of the sim-determinism rules while still giving a varied seed.
+ */
+function randomRunSeed(): number {
+  const buf = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(buf);
+  return (buf[0] ?? 0) % 1_000_000;
+}
 
 interface RunnerSceneInternals {
   world?: GameWorld;
@@ -31,8 +94,9 @@ interface RunnerSceneInternals {
 }
 
 function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => void {
-  const ai = new BehaviorTreeAI({
-    seed: AI_SEED,
+  let currentSeed = INITIAL_SEED;
+  let ai = new BehaviorTreeAI({
+    seed: currentSeed,
     aggression: 1,
     retreatThreshold: 0.15,
     debug: true,
@@ -40,6 +104,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let selectedSpeed = 1;
   let isPaused = true;
   let pollCount = 0;
+  const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   let lastStepReason = '';
 
@@ -56,6 +121,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       if (scene?.world) {
         const world = scene.world as GameWorld;
         ai.poll(state, world);
+        lastMove.x = state.moveX;
+        lastMove.y = state.moveY;
+        lastMove.action = state.action;
       } else {
         state.moveX = 0;
         state.moveY = 0;
@@ -68,9 +136,28 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       // Nothing to clean up.
     },
   };
+  // Headless-parity AI driver. The headless runner spends earned stat points and
+  // claims the boss-reward heal spell every step; the in-scene level-up and
+  // boss-reward flows are modal-gated, and an input-override AI cannot operate a
+  // modal. Without this the browser AI keeps base HP (its only Floor 1 sustain is
+  // level-up maxHp heals) and death-spirals at low health, or stalls forever on
+  // the boss-reward modal. Run the same auto-driver as a post-system so the
+  // browser AI matches the headless runner's progression. NPC talk is left to the
+  // scene's own E-press interaction handling.
+  const aiAutoDriverSystem = (world: GameWorld): void => {
+    const playerEid = query(world.ecs, [Player])[0];
+    if (playerEid === undefined) {
+      return;
+    }
+    autoFloor1ProgressionSystem(world, playerEid);
+    autoAllocateStatPoints(world, playerEid);
+  };
+  const baseSceneOptions = createFloor1MainSceneOptions();
   const sceneOptions = {
-    ...createFloor1MainSceneOptions(),
+    ...baseSceneOptions,
     inputCaptureOverride: aiInputProvider,
+    worldSeed: currentSeed,
+    postSystems: [...baseSceneOptions.postSystems, aiAutoDriverSystem],
   };
 
   const config: Phaser.Types.Core.GameConfig = {
@@ -111,6 +198,37 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     scene.setSimulationPaused(isPaused);
   };
 
+  /**
+   * Restart the run with a new seed: reseeds the world RNG (via scene options)
+   * and rebuilds the AI brain so its internal RNG matches. The scene is fully
+   * restarted so the floor regenerates deterministically from the new seed.
+   * Always lands paused so the new opening state can be inspected.
+   */
+  const reseed = (nextSeed: number): void => {
+    currentSeed = nextSeed;
+    sceneOptions.worldSeed = currentSeed;
+    ai = new BehaviorTreeAI({
+      seed: currentSeed,
+      aggression: 1,
+      retreatThreshold: 0.15,
+      debug: true,
+    });
+    pollCount = 0;
+    lastStepReason = '';
+    isPaused = true;
+    pathGraphics?.destroy();
+    pathGraphics = null;
+
+    const phaserScene = getPhaserScene();
+    if (phaserScene) {
+      // Re-sync sim speed/pause once the restarted scene finishes create().
+      phaserScene.events.once(Phaser.Scenes.Events.CREATE, () => {
+        syncSceneSimulationState();
+      });
+      phaserScene.scene.restart();
+    }
+  };
+
   const autoAdvanceSceneUi = (): void => {
     const scene = getScene();
     const world = scene?.world;
@@ -128,7 +246,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
 
+    // An open NPC conversation freezes the simulation until the dialogue is
+    // advanced/closed. Keep tapping interact so the AI drives the conversation
+    // to completion instead of stalling on the open dialogue box. Quests are
+    // accepted on conversation open (meet*), so re-tapping never re-targets the
+    // NPC — it only walks the dialogue forward until it closes.
     if (scene.conversationNpcEid !== null) {
+      scene.queuedInteraction = true;
       return;
     }
 
@@ -320,7 +444,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       <div style="font-family: monospace; padding: 12px;">
         <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
         <div id="ai-info" style="font-size: 12px; line-height: 1.6;">
-          <div>Seed: ${AI_SEED}</div>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+            <label for="ai-seed-input"><strong>Seed:</strong></label>
+            <input id="ai-seed-input" type="number" value="${currentSeed}" style="width:96px; padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;" />
+            <button id="ai-seed-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply</button>
+            <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize</button>
+          </div>
           <div id="ai-runner-status">Paused</div>
           <div id="ai-runner-debug">polls: 0</div>
           <div style="display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;">
@@ -394,6 +523,29 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         renderControls();
       };
     }
+
+    const seedInput = document.getElementById('ai-seed-input') as HTMLInputElement | null;
+    const applySeed = (nextSeed: number): void => {
+      reseed(nextSeed);
+      renderControls();
+    };
+    const applyButton = document.getElementById('ai-seed-apply') as HTMLButtonElement | null;
+    if (applyButton) {
+      applyButton.onclick = () => {
+        const parsed = Number.parseInt(seedInput?.value ?? '', 10);
+        applySeed(Number.isFinite(parsed) ? parsed : currentSeed);
+      };
+    }
+    const randomButton = document.getElementById('ai-seed-random') as HTMLButtonElement | null;
+    if (randomButton) {
+      randomButton.onclick = () => {
+        const nextSeed = randomRunSeed();
+        if (seedInput) {
+          seedInput.value = String(nextSeed);
+        }
+        applySeed(nextSeed);
+      };
+    }
   };
 
   game.events.once('ready', () => {
@@ -415,6 +567,76 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   window.addEventListener('keydown', onKeyDown);
 
   renderControls();
+
+  const buildDebugSnapshot = (): AiRunnerDebugSnapshot => {
+    const scene = getScene();
+    const world = scene?.world;
+    const playerEid = scene?.playerEid;
+    const decision = ai.getDecision();
+    const nav = ai.getNavigationDebug();
+    const npcMemory = ai.getNpcMemoryDebug();
+    const hasPlayer = !!world && typeof playerEid === 'number' && playerEid >= 0;
+    const px = hasPlayer ? Math.round(world.stores.position.x[playerEid] ?? 0) : null;
+    const py = hasPlayer ? Math.round(world.stores.position.y[playerEid] ?? 0) : null;
+    const targetDist =
+      px !== null && py !== null && decision.targetX !== null && decision.targetY !== null
+        ? Math.round(Math.hypot(decision.targetX - px, decision.targetY - py))
+        : null;
+    const quests: AiRunnerDebugSnapshot['quests'] = {};
+    if (world) {
+      for (const [questId, quest] of world.questLog.entries()) {
+        const doneVals = Object.values(quest.done);
+        quests[questId] = {
+          status: quest.status,
+          done: doneVals.filter(Boolean).length,
+          total: doneVals.length,
+        };
+      }
+    }
+    const neededCount = Object.values(npcMemory.neededInteractionReasons).filter(
+      (reason) => typeof reason === 'string' && reason.length > 0,
+    ).length;
+    return {
+      polls: pollCount,
+      paused: isPaused,
+      speed: selectedSpeed,
+      scenePaused: scene?.isSimulationPaused?.() ?? null,
+      worldState: world?.state ?? null,
+      gameMs: world?.elapsedMs ?? null,
+      px,
+      py,
+      health: hasPlayer ? Math.round(world.stores.health.current[playerEid] ?? 0) : null,
+      level: world?.playerLevel?.level ?? 0,
+      gold: world?.playerGold ?? 0,
+      spellsUnlocked: world?.featureUnlocks?.spells === true,
+      state: getStateName(decision.state),
+      reason: decision.reason,
+      targetEid: decision.targetEid,
+      targetX: decision.targetX === null ? null : Math.round(decision.targetX),
+      targetY: decision.targetY === null ? null : Math.round(decision.targetY),
+      targetDist,
+      stuckFrames: nav.stuckFrames,
+      pathLen: nav.pathWaypoints.length,
+      pathIndex: nav.pathIndex,
+      moveX: Math.round(lastMove.x * 1000) / 1000,
+      moveY: Math.round(lastMove.y * 1000) / 1000,
+      nextWpX: nav.pathWaypoints[nav.pathIndex]?.x ?? null,
+      nextWpY: nav.pathWaypoints[nav.pathIndex]?.y ?? null,
+      pathGoalKey: nav.pathGoalKey,
+      npcMem: {
+        discovered: npcMemory.discoveredNpcDefs,
+        talked: npcMemory.talkedNpcDefs,
+        needed: neededCount,
+      },
+      conversationNpcEid: scene?.conversationNpcEid ?? null,
+      modalOpen: scene?.modalPicker?.isOpen?.() ?? false,
+      runOutcome: world?.floor1?.runSummary?.outcome ?? null,
+      quests,
+    };
+  };
+  if (typeof window !== 'undefined') {
+    window.__aiRunnerDebug = buildDebugSnapshot;
+  }
 
   const updateInterval = setInterval(() => {
     autoAdvanceSceneUi();
@@ -466,6 +688,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   return () => {
     clearInterval(updateInterval);
     window.removeEventListener('keydown', onKeyDown);
+    if (typeof window !== 'undefined') {
+      delete window.__aiRunnerDebug;
+    }
     pathGraphics?.destroy();
     pathGraphics = null;
     game.destroy(true);

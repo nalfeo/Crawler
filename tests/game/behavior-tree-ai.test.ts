@@ -59,6 +59,46 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetX!).toBeLessThan(100);
   });
 
+  it('kites inside strike range instead of standing still and trading blows', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    // Sword reach = ftToPx(5) = 40px, strike gate = 60px. Place the enemy at 30px
+    // so the player is already inside the gate: the old behavior parked on the
+    // enemy (returned the player's own position); the kite must keep it moving.
+    spawnEnemy(world, 30, 0, 20);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).toContain('Kiting');
+    // Must not park on the player's current position (the regression).
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const movedPx = Math.hypot(decision.targetX! - px, decision.targetY! - py);
+    expect(movedPx).toBeGreaterThan(10);
+    // Strafe target stays within the strike gate (still able to land hits).
+    const gatePx = (40 * 3) / 2;
+    const distToEnemy = Math.hypot(decision.targetX! - 30, decision.targetY! - 0);
+    expect(distToEnemy).toBeLessThanOrEqual(gatePx + 0.001);
+  });
+
+  it('strafes tangentially when kiting rather than only closing the gap', () => {
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // Enemy purely along +X: a stand-still or pure-radial plan keeps targetY ~0.
+    // A tangential orbit step moves the player substantially along Y.
+    spawnEnemy(world, 30, 0, 20);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(Math.abs(decision.targetY!)).toBeGreaterThan(10);
+  });
+
   it('collects gold as loot when no higher-priority progression target is active', () => {
     const world = createTestWorld({ seed: 99 });
     spawnPlayer(world, 0, 0);

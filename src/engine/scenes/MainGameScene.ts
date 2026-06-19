@@ -81,6 +81,11 @@ export interface MainGameSceneOptions {
     poll: (state: InputState, world: GameWorld) => void;
     destroy?: () => void;
   };
+  /**
+   * Seed for the simulation world RNG. When omitted, the world defaults to its
+   * built-in seed (42). Exposed so labs/harnesses can replay or randomize runs.
+   */
+  worldSeed?: number;
   preSystems?: ReadonlyArray<(world: GameWorld) => void>;
   postSystems?: ReadonlyArray<(world: GameWorld) => void>;
   configureWorld?: (world: GameWorld, playerEid: number) => void;
@@ -278,7 +283,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.world = createGameWorld();
+    this.world = createGameWorld({ seed: this.options.worldSeed });
     this.inputState = createInputState();
     if (this.options.inputCaptureOverride) {
       this.inputCapture = {
@@ -619,6 +624,17 @@ export class MainGameScene extends Phaser.Scene {
     while (this.accumulator >= GAME.DELTA_MS && steps < maxStepsThisFrame) {
       this.world.frameCount += 1;
       this.world.elapsedMs += GAME.DELTA_MS;
+
+      // The input override (headless-parity AI) is polled once per rendered frame
+      // above, but at high simulation speeds this loop runs many sim steps per
+      // frame. Replaying a single stale move vector for N steps makes the AI
+      // overshoot waypoint-reached radii and vibrate in place. Re-poll the
+      // override every sim step (after the first, which used the poll above) so
+      // in-browser AI runs share the headless runner's strict 1:1 poll:step
+      // cadence. Human input keeps its once-per-frame poll.
+      if (this.options.inputCaptureOverride && steps > 0) {
+        this.inputCapture.poll(this.inputState);
+      }
 
       playerInputSystem(this.world, this.inputState);
       for (const sys of this.options.preSystems ?? []) {
