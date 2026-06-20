@@ -502,5 +502,12 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "String-driven sprite workflow: pure queue module (sprite-workflow-queue.ts, 28 tests) with localStorage persistence; full devtools-main.ts rewire to a single-page string composer + persistent stepper queue; advisory/human-overridable approve UX (Approve anyway + confirm + judge axis chips + best-first ranking); judge axis scores plumbed generate->persist->restore for refresh survival; approve-time sprite TYPE tagging in approve.ts (reads brief YAML via summary.briefPath, prepends type so catalog entry tags are item/generated/pipeline-approved). Drove live E2E for Purple Potion Bottle to done; sprite in catalog. Also committed prior fixes: judge.ts Azure jailbreak reword + setup-azure-env.ps1 PS5.1 Join-Path. Full npm run verify green. Surfaced 10 pre-existing integration failures (sensor grid slicing / judge pipeline) confirmed on base #161 via stash; documented as out-of-scope in handoff."
+  },
+  {
+    "pr": "pr164-rebase-and-fixes",
+    "description": "Rebase PR #164, fix approve handler, fix 10 advisory integration test failures (slicer equal-division)",
+    "estimate": "🍎🍎",
+    "actual": "🍎🍎",
+    "verdict": "on-estimate"
   }
 ]
