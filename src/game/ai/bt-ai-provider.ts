@@ -720,7 +720,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       }),
       action('Set Progress State', (ctx) => {
         const target = ctx.blackboard['progressTarget'] as ProgressTarget;
-        // If this progress goal points at a living enemy (hunting quest mobs,
+        // If this progress goal points at a living enemy (e.g. hunting quest mobs,
         // farming the swarm for charm gold), reuse the shared engagement kite so
         // the AI strafes and holds a safe strike distance instead of walking
         // straight onto the enemy and trading blows. Position objectives and
@@ -1707,8 +1707,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
   ): void {
-    // Scan from the end so we pick the farthest visible waypoint in one pass,
-    // maximizing diagonal shortcutting while preserving wall safety.
+    // Scan backward from the path end to find the farthest visible waypoint in a
+    // single pass, maximizing diagonal shortcuts while preserving wall safety.
     for (let i = this.pathWaypoints.length - 1; i > this.pathIndex; i--) {
       const wp = this.pathWaypoints[i];
       if (!wp) {

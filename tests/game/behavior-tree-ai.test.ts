@@ -20,7 +20,7 @@ import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-typ
 
 /**
  * Build an all-open room (walls only on the border) so A* has a clear straight
- * shot between any two interior tiles. Used to prove the path-follow string-pulls
+ * shot between any two interior tiles. Used to prove the path-follow string-pull
  * the 4-connected A* path into diagonal motion instead of stair-stepping.
  */
 function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
