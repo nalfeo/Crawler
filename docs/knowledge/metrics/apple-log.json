@@ -492,5 +492,15 @@
     "verdict": "exact",
     "hello_kitties": 0.6,
     "notes": "Audited all resolved PR #150 review threads after merge. Shipped targeted follow-up fixes: registered bt-viz lab in registry, removed orphaned floor1.json, corrected floor1-config test wording, fixed HudManaBar default-position docstring, corrected enemy-pack unit docs, hoisted weaponSystem combat radius constant, and renamed misleading ability helper. verify:fast and full verify passed."
+  },
+  {
+    "date": "2026-06-19",
+    "session": "e2e-sprite-workflow",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "String-driven sprite workflow: pure queue module (sprite-workflow-queue.ts, 28 tests) with localStorage persistence; full devtools-main.ts rewire to a single-page string composer + persistent stepper queue; advisory/human-overridable approve UX (Approve anyway + confirm + judge axis chips + best-first ranking); judge axis scores plumbed generate->persist->restore for refresh survival; approve-time sprite TYPE tagging in approve.ts (reads brief YAML via summary.briefPath, prepends type so catalog entry tags are item/generated/pipeline-approved). Drove live E2E for Purple Potion Bottle to done; sprite in catalog. Also committed prior fixes: judge.ts Azure jailbreak reword + setup-azure-env.ps1 PS5.1 Join-Path. Full npm run verify green. Surfaced 10 pre-existing integration failures (sensor grid slicing / judge pipeline) confirmed on base #161 via stash; documented as out-of-scope in handoff."
   }
 ]
