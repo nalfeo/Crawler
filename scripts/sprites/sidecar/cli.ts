@@ -17,6 +17,8 @@
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createAssetQueue } from '../queue/index.js';
+import { createRunStore } from '../store/index.js';
 import { getSessionServerPorts } from '../../shared/session-server-ports.js';
 import { buildServer } from './server.js';
 
@@ -44,7 +46,9 @@ function resolvePort(): number {
 async function main(): Promise<number> {
   const repoRoot = process.cwd();
   const runsDir = path.join(repoRoot, 'generated', 'runs');
-  const app = buildServer({ repoRoot, runsDir, version: VERSION, logger: true });
+  const store = createRunStore({ repoRoot });
+  const queue = createAssetQueue();
+  const app = buildServer({ repoRoot, runsDir, version: VERSION, logger: true, store, queue });
   const port = resolvePort();
 
   // SIGINT / SIGTERM both trigger a clean Fastify close so the port is
@@ -79,6 +83,8 @@ async function main(): Promise<number> {
     process.stdout.write(`sprites:gallery sidecar listening on ${url}\n`);
     process.stdout.write(`  repoRoot: ${repoRoot}\n`);
     process.stdout.write(`  runsDir : ${runsDir}\n`);
+    process.stdout.write(`  store   : ${store.backend}\n`);
+    process.stdout.write(`  queue   : ${queue.backend}\n`);
     process.stdout.write(
       `  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file\n`,
     );

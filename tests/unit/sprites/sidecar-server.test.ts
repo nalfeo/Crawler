@@ -22,6 +22,7 @@ import path from 'node:path';
 import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
 import { buildServer, listRuns, safeJoin } from '../../../scripts/sprites/sidecar/server.js';
+import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
 import type { FastifyInstance } from 'fastify';
 
 function writeMinimalRun(
@@ -200,6 +201,8 @@ describe('buildServer routes (inject)', () => {
     expect(body.status).toBe('ok');
     expect(body.version).toBe('test');
     expect(body.runsDir).toContain('runs');
+    expect(body.storeBackend).toBe('local');
+    expect(body.queueBackend).toBe('noop');
   });
 
   it('CORS allows loopback origins only', async () => {
@@ -470,6 +473,39 @@ describe('buildServer routes (inject)', () => {
     expect(res.json().error).toBe('bad-request');
   });
 
+  it('POST /api/workflow/generate enqueues work when a real queue backend is injected', async () => {
+    mkdirSync(path.join(root, 'briefs', 'weapons'), { recursive: true });
+    writeFileSync(path.join(root, 'briefs', 'weapons', 'iron-sword.yaml'), 'name: iron-sword\n');
+    const enqueued: Array<Record<string, unknown>> = [];
+    await app.close();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      queue: {
+        backend: 'azure-queue',
+        enqueue: async (request) => {
+          enqueued.push(request);
+        },
+        dequeue: async () => null,
+        peek: async () => [],
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/generate',
+      headers: { 'content-type': 'application/json' },
+      payload: { briefPath: 'briefs/weapons/iron-sword.yaml' },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.json().status).toBe('queued');
+    expect(res.json().queueBackend).toBe('azure-queue');
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.briefId).toBe('iron-sword');
+    expect(enqueued[0]?.briefPath).toBe('briefs/weapons/iron-sword.yaml');
+  });
+
   it('POST /api/workflow/metadata validates provider', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -479,6 +515,18 @@ describe('buildServer routes (inject)', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('bad-request');
+  });
+
+  it('DELETE /api/runs/:brief/:run removes the run', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/runs/iron-sword/2026-06-04T12-00-00-deadbeef',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().deleted).toBe('iron-sword/2026-06-04T12-00-00-deadbeef');
+    expect(existsSync(path.join(root, 'runs', 'iron-sword', '2026-06-04T12-00-00-deadbeef'))).toBe(
+      false,
+    );
   });
 });
 
@@ -582,6 +630,40 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     // Manifest was created on disk too.
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
     expect(manifest.entries[`${briefId}-var-1`].variantIndex).toBe(1);
+  });
+
+  it('approves using the injected store even when runsDir has no local run', async () => {
+    await app.close();
+    const remoteStore = new LocalRunStore(runsDir);
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'missing-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: {
+        backend: 'azure-blob',
+        put: async (key, data) => remoteStore.put(key, data),
+        get: async (key) => remoteStore.get(key),
+        has: async (key) => remoteStore.has(key),
+        list: async (prefix) => remoteStore.list(prefix),
+        remove: async (key) => remoteStore.remove(key),
+        resolve: (key) => remoteStore.resolve(key),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(
+      readFileSync(path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`), 'utf8'),
+    ).toBe('PNG-01');
+    expect(existsSync(path.join(root, 'missing-runs', briefId, runId))).toBe(false);
   });
 
   it('refuses with 403 when process.env.CI is set', async () => {

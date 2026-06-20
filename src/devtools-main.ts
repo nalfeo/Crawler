@@ -142,6 +142,21 @@ interface WorkflowRunState {
   candidates: WorkflowRunCandidate[];
 }
 
+interface WorkflowGenerateCompletedResponse {
+  status: 'completed';
+  briefId: string;
+  runId: string;
+  summary: { candidates: RawGenerateCandidate[] };
+}
+
+interface WorkflowGenerateQueuedResponse {
+  status: 'queued';
+  briefId: string;
+  briefPath: string;
+  requestedAt: string;
+  queueBackend: string;
+}
+
 interface PipelineStepManifest {
   id?: string;
   label?: string;
@@ -1145,6 +1160,7 @@ function render(): void {
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
   let queueState: QueueState = createEmptyQueue();
+  const pendingGenerationPolls = new Set<string>();
   const writeQueueState = (): void => {
     try {
       window.localStorage.setItem(QUEUE_STORAGE_KEY, serializeQueue(queueState));
@@ -1602,6 +1618,7 @@ function render(): void {
             stage: 'candidates',
             briefPath: null,
             run: null,
+            generationRequestedAt: null,
             approvedAssetPath: null,
             lastError: null,
           });
@@ -1808,6 +1825,7 @@ function render(): void {
             queueState = queueUpdateItem(queueState, active.id, {
               stage: 'approved',
               approvedAssetPath: approved.assetPath,
+              generationRequestedAt: null,
               approvalSummary,
               lastError: null,
             });
@@ -3215,6 +3233,7 @@ function render(): void {
         chosenCandidatePath: firstPath,
         briefPath: null,
         run: null,
+        generationRequestedAt: null,
         approvedAssetPath: null,
         metadataSummary: null,
         lastError: null,
@@ -3524,6 +3543,7 @@ function render(): void {
       queueState = queueUpdateItem(queueState, item.id, {
         stage: 'promoted',
         briefPath: result.briefPath,
+        generationRequestedAt: null,
         lastError: null,
       });
       writeQueueState();
@@ -3548,66 +3568,150 @@ function render(): void {
     }
   });
 
+  const toWorkflowRunState = (
+    briefId: string,
+    runId: string,
+    candidates: RawGenerateCandidate[],
+  ): WorkflowRunState => ({
+    briefId,
+    runId,
+    candidates: candidates.map((candidate) => ({
+      index: candidate.index,
+      score: candidate.score,
+      outOf: candidate.outOf,
+      passed: candidate.passed,
+      combinedPassed: candidate.combinedPassed,
+      judge: toJudgeSummary(candidate.judgeScorecard),
+    })),
+  });
+
+  const applyGeneratedRunToQueue = (
+    itemId: string,
+    briefId: string,
+    runId: string,
+    candidates: RawGenerateCandidate[],
+  ): void => {
+    queueState = queueUpdateItem(queueState, itemId, {
+      stage: 'variants',
+      run: toWorkflowRunState(briefId, runId, candidates),
+      generationRequestedAt: null,
+      approvedAssetPath: null,
+      lastError: null,
+    });
+    writeQueueState();
+    debugTarget = candidates[0]
+      ? {
+          briefId,
+          runId,
+          variantIndex: candidates[0].index,
+        }
+      : null;
+    renderPostprocessDebugger();
+    void refreshDebuggerRuns();
+    renderQueue();
+    renderWorkflowSelection();
+    writeWorkflowState();
+    setWorkflowStatus(
+      `Generation completed for ${briefId} (${candidates.length} candidates). Approve a passing variant.`,
+      '#bef264',
+    );
+  };
+
+  const beginQueuedRunPolling = (itemId: string): void => {
+    if (pendingGenerationPolls.has(itemId)) {
+      return;
+    }
+    pendingGenerationPolls.add(itemId);
+    void (async () => {
+      try {
+        while (true) {
+          const item = queueState.items.find((candidate) => candidate.id === itemId) ?? null;
+          if (!item || item.stage !== 'generating' || !item.generationRequestedAt) {
+            return;
+          }
+          const runs = await listSidecarRuns();
+          const requestedAt = Date.parse(item.generationRequestedAt);
+          const match = runs.find((run) => {
+            if (run.briefId !== item.kebabName || !run.timestamp) {
+              return false;
+            }
+            const runTime = Date.parse(run.timestamp);
+            return Number.isFinite(runTime) && runTime >= requestedAt;
+          });
+          if (match) {
+            const summary = (await fetchRunSummary(match.briefId, match.runId)) as {
+              candidates?: RawGenerateCandidate[];
+            };
+            applyGeneratedRunToQueue(itemId, match.briefId, match.runId, summary.candidates ?? []);
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        queueState = queueUpdateItem(queueState, itemId, {
+          stage: 'promoted',
+          generationRequestedAt: null,
+          lastError: message,
+        });
+        writeQueueState();
+        renderQueue();
+        renderWorkflowSelection();
+        setWorkflowStatus(`Queued generate failed: ${message}`, '#fca5a5');
+      } finally {
+        pendingGenerationPolls.delete(itemId);
+      }
+    })();
+  };
+
   generateBtn.addEventListener('click', async () => {
     const item = getSelectedItem(queueState);
     if (!item || !item.briefPath) {
       setWorkflowStatus('Promote a brief first.', '#fca5a5');
       return;
     }
-    queueState = queueUpdateItem(queueState, item.id, { stage: 'generating', lastError: null });
+    queueState = queueUpdateItem(queueState, item.id, {
+      stage: 'generating',
+      generationRequestedAt: null,
+      lastError: null,
+    });
     writeQueueState();
     renderQueue();
     setButtonBusy(generateBtn, true, 'Generate run', 'Generating...');
     try {
-      const result = await fetchJson<{
-        briefId: string;
-        runId: string;
-        summary: { candidates: RawGenerateCandidate[] };
-      }>(`${SIDECAR_BASE}/api/workflow/generate`, {
+      const result = await fetchJson<
+        WorkflowGenerateCompletedResponse | WorkflowGenerateQueuedResponse
+      >(`${SIDECAR_BASE}/api/workflow/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ briefPath: item.briefPath }),
       });
-      queueState = queueUpdateItem(queueState, item.id, {
-        stage: 'variants',
-        run: {
-          briefId: result.briefId,
-          runId: result.runId,
-          candidates: result.summary.candidates.map((candidate) => {
-            const judge = toJudgeSummary(candidate.judgeScorecard);
-            return {
-              index: candidate.index,
-              score: candidate.score,
-              outOf: candidate.outOf,
-              passed: candidate.passed,
-              combinedPassed: candidate.combinedPassed,
-              judge,
-            };
-          }),
-        },
-        approvedAssetPath: null,
-        lastError: null,
-      });
-      writeQueueState();
-      debugTarget = result.summary.candidates[0]
-        ? {
-            briefId: result.briefId,
-            runId: result.runId,
-            variantIndex: result.summary.candidates[0].index,
-          }
-        : null;
-      renderPostprocessDebugger();
-      void refreshDebuggerRuns();
-      renderQueue();
-      renderWorkflowSelection();
-      writeWorkflowState();
-      setWorkflowStatus(
-        `Generation completed for ${result.briefId} (${result.summary.candidates.length} candidates). Approve a passing variant.`,
-        '#bef264',
-      );
+      if (result.status === 'queued') {
+        queueState = queueUpdateItem(queueState, item.id, {
+          stage: 'generating',
+          generationRequestedAt: result.requestedAt,
+          run: null,
+          approvedAssetPath: null,
+          lastError: null,
+        });
+        writeQueueState();
+        renderQueue();
+        renderWorkflowSelection();
+        setWorkflowStatus(
+          `Generation queued on ${result.queueBackend} for ${result.briefId}. Waiting for worker output…`,
+          '#bef264',
+        );
+        beginQueuedRunPolling(item.id);
+      } else {
+        applyGeneratedRunToQueue(item.id, result.briefId, result.runId, result.summary.candidates);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      queueState = queueUpdateItem(queueState, item.id, { stage: 'promoted', lastError: message });
+      queueState = queueUpdateItem(queueState, item.id, {
+        stage: 'promoted',
+        generationRequestedAt: null,
+        lastError: message,
+      });
       writeQueueState();
       renderQueue();
       renderWorkflowSelection();
@@ -3682,6 +3786,11 @@ function render(): void {
     void recompute();
   });
 
+  for (const item of queueState.items) {
+    if (item.stage === 'generating' && item.generationRequestedAt) {
+      beginQueuedRunPolling(item.id);
+    }
+  }
   renderPostprocessDebugger();
   renderQueue();
   renderWorkflowSelection();
