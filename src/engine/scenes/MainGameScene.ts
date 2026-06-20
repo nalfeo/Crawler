@@ -60,6 +60,13 @@ import type { ShopkeeperStage } from '../../shared/quest-types.js';
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
 const UI_DEPTH_CUTOFF = 900;
+/**
+ * Render frames the level-up modal is held open before an `autoLevelUpAllocator`
+ * (AI driver) auto-confirms it. ~0.4s at 60fps — long enough for a viewer to see
+ * the screen, short enough not to stall the AI playthrough. Counts render frames
+ * (the modal freeze skips the fixed-step), so it is independent of sim speed.
+ */
+const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
 const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
   'You did it! Boss dropped, room cleared.',
   'Stairs are live. Descend when you are ready.',
@@ -122,6 +129,18 @@ export interface MainGameSceneOptions {
     playerEid: number,
     allocations: Partial<Record<StatKey, number>>,
   ) => void;
+  /**
+   * Optional AI driver for the level-up screen. When set, the scene lets the
+   * level-up modal render for a brief, deterministic hold (so a viewer can see
+   * it) and then auto-confirms it with this allocator's chosen points — driving
+   * the real level-up UX instead of bypassing it. Used by the AI Runner Lab;
+   * omitted for human play so the player allocates manually.
+   */
+  autoLevelUpAllocator?: (
+    world: GameWorld,
+    playerEid: number,
+    available: number,
+  ) => Partial<Record<StatKey, number>>;
 }
 
 declare global {
@@ -208,6 +227,13 @@ export class MainGameScene extends Phaser.Scene {
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
   private levelUpUI?: ReturnType<typeof createLevelUpUI>;
+
+  /**
+   * Frames the level-up modal has been held open while an `autoLevelUpAllocator`
+   * (AI driver) is wired. Counts render frames so the modal stays visible briefly
+   * before the AI auto-confirms it. Reset whenever the modal is not open.
+   */
+  private levelUpAutoHoldFrames = 0;
 
   /** Latches true once the death-screen has been shown (to avoid re-triggering). */
   private deathScreenShown = false;
@@ -583,6 +609,7 @@ export class MainGameScene extends Phaser.Scene {
     if (this.world.state === 'level_up') {
       this.showLevelUpScreenIfNeeded();
       if (this.levelUpUI?.isOpen()) {
+        this.driveAutoLevelUp();
         this.bridge.sync(this.world);
         this.updateCamera();
         this.updateOverlayText();
@@ -1658,6 +1685,30 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.deathScreenShown = true;
     this.gameOverUI?.show();
+  }
+
+  /**
+   * AI level-up driver. When an `autoLevelUpAllocator` is wired (AI Runner Lab),
+   * hold the open modal for {@link LEVEL_UP_AUTO_HOLD_FRAMES} render frames so a
+   * viewer can see it, then auto-confirm via `LevelUpUI.autoResolve` with the
+   * allocator's chosen points. This makes the AI go through the real level-up UX
+   * (modal render + confirm + `allocateStatPoints`) rather than bypassing it.
+   * No-op for human play (allocator omitted).
+   */
+  private driveAutoLevelUp(): void {
+    const allocator = this.options.autoLevelUpAllocator;
+    if (!allocator || !this.levelUpUI?.isOpen() || this.playerEid < 0) {
+      this.levelUpAutoHoldFrames = 0;
+      return;
+    }
+    this.levelUpAutoHoldFrames += 1;
+    if (this.levelUpAutoHoldFrames < LEVEL_UP_AUTO_HOLD_FRAMES) {
+      return;
+    }
+    const available = this.world.playerLevel.unspentPoints;
+    const allocations = allocator(this.world, this.playerEid, available);
+    this.levelUpUI.autoResolve(allocations);
+    this.levelUpAutoHoldFrames = 0;
   }
 
   /**

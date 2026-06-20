@@ -47,6 +47,14 @@ export interface LevelUpUIHooks {
 
 export interface LevelUpUI {
   open(params: LevelUpUIParams): void;
+  /**
+   * Programmatically apply `allocations` and confirm the screen, driving the
+   * real allocation state machine (the same transitions a clicking player would
+   * trigger) before firing `onConfirm`. Used by AI playthroughs so the in-browser
+   * AI exercises the actual level-up UX instead of bypassing it. No-op unless the
+   * screen is currently open.
+   */
+  autoResolve(allocations: Partial<Record<StatKey, number>>): void;
   close(): void;
   isOpen(): boolean;
   destroy(): void;
@@ -411,6 +419,23 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       params = nextParams;
       state = createLevelUpAllocationState(nextParams.available);
       rerender();
+    },
+    autoResolve(allocations: Partial<Record<StatKey, number>>): void {
+      if (!state || state.status !== 'open') {
+        return;
+      }
+      // Drive the real reducers point-by-point so the same clamp/selection rules
+      // a human's clicks go through are exercised, then confirm (which closes the
+      // overlay and fires onConfirm with the resulting draft).
+      for (const stat of STAT_KEYS) {
+        const points = allocations[stat] ?? 0;
+        for (let i = 0; i < points; i += 1) {
+          dispatch(incrementStat(state, stat));
+        }
+      }
+      if (state && state.status === 'open') {
+        dispatch(confirm(state));
+      }
     },
     close,
     isOpen(): boolean {
