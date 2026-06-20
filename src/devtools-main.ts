@@ -20,6 +20,28 @@ import {
   type SidecarRunListEntry,
 } from './devtools/sprite-approval-api.js';
 import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
+import {
+  QUEUE_STORAGE_KEY,
+  SPRITE_TYPES,
+  addItem as queueAddItem,
+  clearQueue as queueClear,
+  createEmptyQueue,
+  deserializeQueue,
+  getSelectedItem,
+  isBusyStage,
+  primaryActionLabel,
+  removeItem as queueRemoveItem,
+  selectItem as queueSelectItem,
+  serializeQueue,
+  slugify,
+  stepperFor,
+  updateItem as queueUpdateItem,
+  type QueueItem,
+  type QueueState,
+  type RequestedType,
+  type SpriteType,
+  type WorkflowStage,
+} from './devtools/sprite-workflow-queue.js';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 const SIDECAR_BASE = getSpriteSidecarBaseUrl();
@@ -67,13 +89,51 @@ interface WorkflowSynthCandidate {
   yaml: string;
 }
 
+interface WorkflowJudgeSummary {
+  passed: boolean;
+  minScore: number;
+  styleMatch: number;
+  briefMatch: number;
+  readability: number;
+  rejectedBy: string[];
+}
+
 interface WorkflowRunCandidate {
   index: number;
   score: number;
   outOf: number;
   passed: boolean;
   combinedPassed: boolean;
-  judgeScorecard: { passed: boolean; minScore: number } | null;
+  judge: WorkflowJudgeSummary | null;
+}
+
+/** Raw per-candidate shape returned by the sidecar generate summary. */
+interface RawGenerateCandidate {
+  index: number;
+  score: number;
+  outOf: number;
+  passed: boolean;
+  combinedPassed: boolean;
+  judgeScorecard: {
+    passed: boolean;
+    minScore: number;
+    styleMatch?: { score: number };
+    briefMatch?: { score: number };
+    readability?: { score: number };
+    rejectedBy?: string[];
+  } | null;
+}
+
+function toJudgeSummary(raw: RawGenerateCandidate['judgeScorecard']): WorkflowJudgeSummary | null {
+  if (!raw) return null;
+  return {
+    passed: raw.passed === true,
+    minScore: typeof raw.minScore === 'number' ? raw.minScore : 0,
+    styleMatch: raw.styleMatch?.score ?? 0,
+    briefMatch: raw.briefMatch?.score ?? 0,
+    readability: raw.readability?.score ?? 0,
+    rejectedBy: Array.isArray(raw.rejectedBy) ? raw.rejectedBy : [],
+  };
 }
 
 interface WorkflowRunState {
@@ -620,13 +680,64 @@ function render(): void {
     },
   });
   const workflowTitle = el('h2', {
-    text: 'Sprite workflow (asset-plan integrated)',
+    text: 'Sprite workflow',
     style: { margin: '0 0 8px 0', fontSize: '16px', color: '#e5e7eb' },
   });
   const workflowHint = el('p', {
-    text: 'Queue assets from this plan and drive one-liner → brief → generation → winner approval → metadata from DevTools.',
+    text: 'Type a one-line brief (e.g. "Purple Potion Bottle"), add it to the queue, then drive it to a tagged catalog sprite. Progress is saved and survives refresh.',
     style: { margin: '0 0 10px 0', fontSize: '12px', color: '#93c5fd' },
   });
+
+  const composerRow = el('div', {
+    style: {
+      display: 'flex',
+      gap: '8px',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      marginBottom: '10px',
+    },
+  });
+  const briefInput = el('input', {
+    style: {
+      flex: '1 1 280px',
+      minWidth: '220px',
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+    },
+  });
+  briefInput.placeholder = 'One-line brief, e.g. "Purple Potion Bottle"';
+  const typeSelect = el('select', {
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+    },
+  }) as HTMLSelectElement;
+  for (const value of ['auto', ...SPRITE_TYPES]) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value === 'auto' ? 'Auto-detect type' : value;
+    typeSelect.append(option);
+  }
+  const addToQueueBtn = el('button', {
+    text: 'Add to queue',
+    style: {
+      padding: '8px 14px',
+      borderRadius: '8px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#0c4a6e',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      fontWeight: '600',
+    },
+  });
+  composerRow.append(briefInput, typeSelect, addToQueueBtn);
+
   const queueBar = el('div', {
     style: {
       display: 'flex',
@@ -636,49 +747,41 @@ function render(): void {
       alignItems: 'center',
     },
   });
+  const queueBarLabel = el('span', {
+    text: 'Queue',
+    style: { fontSize: '12px', color: '#94a3b8', fontWeight: '600' },
+  });
   const clearQueueBtn = el('button', {
-    text: 'Clear queue',
+    text: 'Clear',
     style: {
-      padding: '6px 10px',
+      padding: '4px 8px',
       borderRadius: '8px',
       border: '1px solid rgba(229,231,235,0.3)',
       background: '#1f2937',
       color: '#e5e7eb',
       cursor: 'pointer',
-      fontSize: '12px',
+      fontSize: '11px',
     },
   });
   const queueList = el('div', {
     style: { display: 'flex', gap: '6px', flexWrap: 'wrap', flex: '1 1 auto' },
   });
-  queueBar.append(clearQueueBtn, queueList);
+  queueBar.append(queueBarLabel, clearQueueBtn, queueList);
 
-  const selectedAssetLabel = el('p', {
-    text: 'Selected asset: none',
-    style: { margin: '0 0 8px 0', fontSize: '12px', color: '#cbd5e1' },
+  const activeItemLabel = el('p', {
+    text: 'Active item: none — add a brief above to begin.',
+    style: { margin: '0 0 8px 0', fontSize: '13px', color: '#cbd5e1', fontWeight: '600' },
   });
 
-  const oneLinerInput = el('input', {
-    style: {
-      width: '100%',
-      marginBottom: '8px',
-      padding: '8px 10px',
-      borderRadius: '8px',
-      border: '1px solid rgba(229,231,235,0.3)',
-      background: '#111827',
-      color: '#e5e7eb',
-    },
-  });
-  oneLinerInput.placeholder = 'One-liner subject for synthesis (e.g. "baby dragon")';
-  oneLinerInput.addEventListener('input', () => {
-    writeWorkflowState();
+  const stepperHost = el('div', {
+    style: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '10px' },
   });
 
   const workflowButtons = el('div', {
     style: { display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' },
   });
   const synthBtn = el('button', {
-    text: '1) Synthesize brief candidates',
+    text: 'Synthesize',
     style: {
       padding: '8px 10px',
       borderRadius: '8px',
@@ -689,7 +792,7 @@ function render(): void {
     },
   });
   const promoteBtn = el('button', {
-    text: '2) Promote selected brief',
+    text: 'Promote brief',
     style: {
       padding: '8px 10px',
       borderRadius: '8px',
@@ -700,7 +803,7 @@ function render(): void {
     },
   });
   const generateBtn = el('button', {
-    text: '3) Generate run',
+    text: 'Generate run',
     style: {
       padding: '8px 10px',
       borderRadius: '8px',
@@ -711,7 +814,7 @@ function render(): void {
     },
   });
   const metadataBtn = el('button', {
-    text: '4) Generate metadata',
+    text: 'Tag (metadata)',
     style: {
       padding: '8px 10px',
       borderRadius: '8px',
@@ -721,7 +824,19 @@ function render(): void {
       cursor: 'pointer',
     },
   });
-  workflowButtons.append(synthBtn, promoteBtn, generateBtn, metadataBtn);
+  const removeItemBtn = el('button', {
+    text: 'Remove item',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(248,113,113,0.5)',
+      background: '#3f1d1d',
+      color: '#fecaca',
+      cursor: 'pointer',
+      marginLeft: 'auto',
+    },
+  });
+  workflowButtons.append(synthBtn, promoteBtn, generateBtn, metadataBtn, removeItemBtn);
 
   const workflowStatus = el('pre', {
     style: {
@@ -746,9 +861,10 @@ function render(): void {
   workflowPanel.append(
     workflowTitle,
     workflowHint,
+    composerRow,
     queueBar,
-    selectedAssetLabel,
-    oneLinerInput,
+    activeItemLabel,
+    stepperHost,
     workflowButtons,
     workflowStatus,
     synthResultsHost,
@@ -1017,7 +1133,6 @@ function render(): void {
 
   let reports: FloorArtPlanReport[] = [];
   let manifestError: string | null = null;
-  let currentPlan: FloorArtPlanReport | null = null;
   let selectedAssetId: string | null = null;
   let selectedCandidatePath: string | null = null;
   let promotedBriefPath: string | null = null;
@@ -1029,7 +1144,19 @@ function render(): void {
     colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
     fringeToleranceSq: DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq,
   };
-  const queuedAssetIds = new Set<string>();
+  let queueState: QueueState = createEmptyQueue();
+  const writeQueueState = (): void => {
+    try {
+      window.localStorage.setItem(QUEUE_STORAGE_KEY, serializeQueue(queueState));
+    } catch {
+      // Ignore storage failures; the UI still works without persistence.
+    }
+  };
+  try {
+    queueState = deserializeQueue(window.localStorage.getItem(QUEUE_STORAGE_KEY));
+  } catch {
+    queueState = createEmptyQueue();
+  }
   const workflowStorageKey = 'crawler.devtools.sprite-generation-workflow-state.v1';
   const workflowStorageKeyLegacy = 'crawler.devtools.floor-art.workflow-state.v1';
   const readWorkflowState = (): PersistedFloorArtWorkflowState | null => {
@@ -1068,12 +1195,12 @@ function render(): void {
   const writeWorkflowState = (): void => {
     const snapshot: PersistedFloorArtWorkflowState = {
       selectedAssetId,
-      queuedAssetIds: Array.from(queuedAssetIds),
+      queuedAssetIds: [],
       selectedCandidatePath,
       promotedBriefPath,
       currentRun,
       debugTarget,
-      oneLinerValue: oneLinerInput.value,
+      oneLinerValue: '',
       selectedPlanId: planSelect.value || null,
       selectedStatus: statusFilter.value,
       searchQuery: searchInput.value,
@@ -1087,17 +1214,10 @@ function render(): void {
   const restoredWorkflowState = readWorkflowState();
   if (restoredWorkflowState) {
     selectedAssetId = restoredWorkflowState.selectedAssetId;
-    for (const assetId of restoredWorkflowState.queuedAssetIds) {
-      queuedAssetIds.add(assetId);
-    }
     selectedCandidatePath = restoredWorkflowState.selectedCandidatePath;
     promotedBriefPath = restoredWorkflowState.promotedBriefPath;
     currentRun = restoredWorkflowState.currentRun;
     debugTarget = restoredWorkflowState.debugTarget;
-    if (restoredWorkflowState.oneLinerValue) {
-      oneLinerInput.value = restoredWorkflowState.oneLinerValue;
-      delete oneLinerInput.dataset.assetId;
-    }
     if (restoredWorkflowState.selectedPlanId) {
       planSelect.value = restoredWorkflowState.selectedPlanId;
     }
@@ -1265,64 +1385,173 @@ function render(): void {
     }
   };
 
-  const getSelectedAsset = () =>
-    currentPlan?.assets.find((asset) => asset.id === selectedAssetId) ?? null;
-
   const setWorkflowStatus = (message: string, color = '#cbd5e1') => {
     workflowStatus.style.color = color;
     workflowStatus.textContent = message;
   };
 
+  const STAGE_BADGES: Readonly<Record<WorkflowStage, { text: string; color: string }>> = {
+    draft: { text: 'Draft', color: '#94a3b8' },
+    synthesizing: { text: 'Synthesizing…', color: '#38bdf8' },
+    candidates: { text: 'Choose candidate', color: '#7dd3fc' },
+    promoting: { text: 'Promoting…', color: '#34d399' },
+    promoted: { text: 'Promoted', color: '#34d399' },
+    generating: { text: 'Generating…', color: '#facc15' },
+    variants: { text: 'Pick winner', color: '#fbbf24' },
+    approved: { text: 'Approved', color: '#a78bfa' },
+    tagging: { text: 'Tagging…', color: '#a78bfa' },
+    done: { text: 'Done ✓', color: '#bef264' },
+  };
+
+  /** Mirror the active queue item's artifacts onto the legacy projection vars. */
+  const projectActiveItem = (): void => {
+    const item = getSelectedItem(queueState);
+    if (!item) {
+      selectedCandidatePath = null;
+      promotedBriefPath = null;
+      currentRun = null;
+      return;
+    }
+    selectedCandidatePath = item.chosenCandidatePath;
+    promotedBriefPath = item.briefPath;
+    currentRun = item.run
+      ? {
+          briefId: item.run.briefId,
+          runId: item.run.runId,
+          candidates: item.run.candidates.map((candidate) => ({
+            index: candidate.index,
+            score: candidate.score,
+            outOf: candidate.outOf,
+            passed: candidate.passed,
+            combinedPassed: candidate.combinedPassed,
+            judge: candidate.judge
+              ? {
+                  passed: candidate.judge.passed,
+                  minScore: candidate.judge.minScore,
+                  styleMatch: candidate.judge.styleMatch,
+                  briefMatch: candidate.judge.briefMatch,
+                  readability: candidate.judge.readability,
+                  rejectedBy: [...candidate.judge.rejectedBy],
+                }
+              : null,
+          })),
+        }
+      : null;
+  };
+
   const renderQueue = () => {
     queueList.replaceChildren();
-    const plan = currentPlan;
-    if (!plan || queuedAssetIds.size === 0) {
+    if (queueState.items.length === 0) {
       queueList.append(
-        el('span', { text: 'Queue is empty', style: { fontSize: '12px', color: '#64748b' } }),
+        el('span', {
+          text: 'Queue is empty — add a brief above.',
+          style: { fontSize: '12px', color: '#64748b' },
+        }),
       );
       return;
     }
-    for (const assetId of queuedAssetIds) {
-      const asset = plan.assets.find((candidate) => candidate.id === assetId);
+    for (const item of queueState.items) {
+      const isSelected = queueState.selectedId === item.id;
+      const badge = STAGE_BADGES[item.stage];
       const chip = el('button', {
-        text: asset ? `${asset.id} (${asset.type})` : assetId,
         style: {
-          padding: '4px 8px',
-          borderRadius: '999px',
-          border: '1px solid rgba(125,211,252,0.5)',
-          background: selectedAssetId === assetId ? '#0c4a6e' : '#082f49',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          gap: '2px',
+          padding: '6px 10px',
+          borderRadius: '10px',
+          border: isSelected
+            ? '1px solid rgba(125,211,252,0.9)'
+            : '1px solid rgba(125,211,252,0.35)',
+          background: isSelected ? '#0c4a6e' : '#0b2433',
           color: '#e0f2fe',
           cursor: 'pointer',
           fontSize: '11px',
+          textAlign: 'left',
         },
       });
+      chip.append(
+        el('span', {
+          text: item.brief,
+          style: { fontWeight: '600', fontSize: '12px' },
+        }),
+        el('span', {
+          text: `${item.resolvedType ?? item.requestedType} · ${badge.text}`,
+          style: { color: badge.color, fontSize: '10px' },
+        }),
+      );
       chip.addEventListener('click', () => {
-        selectedAssetId = assetId;
+        queueState = queueSelectItem(queueState, item.id);
+        writeQueueState();
         renderQueue();
         renderWorkflowSelection();
-        writeWorkflowState();
       });
       queueList.append(chip);
     }
   };
 
+  const renderStepper = (item: QueueItem | null): void => {
+    stepperHost.replaceChildren();
+    if (!item) return;
+    const cells = stepperFor(item.stage);
+    cells.forEach((cell, index) => {
+      const color =
+        cell.status === 'done' ? '#bef264' : cell.status === 'active' ? '#fbbf24' : '#475569';
+      const mark = cell.status === 'done' ? '✓' : cell.busy ? '…' : String(index + 1);
+      stepperHost.append(
+        el('span', {
+          text: `${mark} ${cell.label}`,
+          style: {
+            padding: '4px 8px',
+            borderRadius: '999px',
+            border: `1px solid ${color}`,
+            color: cell.status === 'todo' ? '#64748b' : color,
+            background: cell.status === 'active' ? 'rgba(251,191,36,0.12)' : 'transparent',
+            fontSize: '11px',
+            fontWeight: cell.status === 'active' ? '700' : '500',
+          },
+        }),
+      );
+    });
+  };
+
   const renderWorkflowSelection = () => {
-    const selected = getSelectedAsset();
-    if (!selected) {
-      selectedAssetLabel.textContent = 'Selected asset: none';
+    projectActiveItem();
+    const item = getSelectedItem(queueState);
+    if (!item) {
+      activeItemLabel.textContent = 'Active item: none — add a brief above to begin.';
+      renderStepper(null);
+      synthBtn.disabled = true;
       promoteBtn.disabled = true;
       generateBtn.disabled = true;
       metadataBtn.disabled = true;
+      removeItemBtn.disabled = true;
+      renderSynthCandidates([]);
+      renderRunCandidates();
       return;
     }
-    selectedAssetLabel.textContent = `Selected asset: ${selected.id} — ${selected.label} [${selected.type}]`;
-    if (oneLinerInput.value.trim() === '' || oneLinerInput.dataset.assetId !== selected.id) {
-      oneLinerInput.value = selected.label;
-      oneLinerInput.dataset.assetId = selected.id;
+    const badge = STAGE_BADGES[item.stage];
+    activeItemLabel.textContent = `Active: "${item.brief}" → ${item.kebabName} [${item.resolvedType ?? item.requestedType}] · ${badge.text}`;
+    activeItemLabel.style.color = badge.color;
+    renderStepper(item);
+    const busy = isBusyStage(item.stage);
+    synthBtn.disabled = busy || !(item.stage === 'draft' || item.stage === 'candidates');
+    promoteBtn.disabled = busy || item.stage !== 'candidates' || item.chosenCandidatePath === null;
+    generateBtn.disabled =
+      busy || !(item.stage === 'promoted' || item.stage === 'variants') || item.briefPath === null;
+    metadataBtn.disabled = busy || !(item.stage === 'approved' || item.stage === 'done');
+    removeItemBtn.disabled = false;
+    const nextAction = primaryActionLabel(item.stage);
+    if (item.lastError) {
+      setWorkflowStatus(`Error: ${item.lastError}`, '#fca5a5');
+    } else if (item.metadataSummary && item.stage === 'done') {
+      setWorkflowStatus(item.metadataSummary, '#bef264');
+    } else if (nextAction) {
+      setWorkflowStatus(`Next: ${nextAction}`, '#cbd5e1');
     }
-    promoteBtn.disabled = selectedCandidatePath === null;
-    generateBtn.disabled = promotedBriefPath === null;
-    metadataBtn.disabled = currentRun === null;
+    renderSynthCandidates(item.candidates);
+    renderRunCandidates();
   };
 
   const renderSynthCandidates = (candidates: WorkflowSynthCandidate[]) => {
@@ -1364,11 +1593,22 @@ function render(): void {
       chooseBtn.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
+        const active = getSelectedItem(queueState);
+        if (active) {
+          queueState = queueUpdateItem(queueState, active.id, {
+            chosenCandidatePath: candidate.yamlPath,
+            stage: 'candidates',
+            briefPath: null,
+            run: null,
+            approvedAssetPath: null,
+            lastError: null,
+          });
+          writeQueueState();
+        }
         selectedCandidatePath = candidate.yamlPath;
         promotedBriefPath = null;
         currentRun = null;
         debugTarget = null;
-        renderSynthCandidates(candidates);
         runResultsHost.replaceChildren();
         renderPostprocessDebugger();
         renderWorkflowSelection();
@@ -1397,23 +1637,68 @@ function render(): void {
     }
   };
 
+  /** A small colored chip showing one judge axis score (1-5, fail < 3). */
+  const judgeAxisChip = (label: string, score: number): HTMLElement => {
+    const ok = score >= 3;
+    return el('span', {
+      text: `${label} ${score || '–'}`,
+      style: {
+        display: 'inline-block',
+        padding: '1px 5px',
+        borderRadius: '4px',
+        fontSize: '9px',
+        fontWeight: '600',
+        color: ok ? '#bbf7d0' : '#fecaca',
+        background: ok ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.18)',
+        border: `1px solid ${ok ? 'rgba(34,197,94,0.4)' : 'rgba(239,68,68,0.45)'}`,
+      },
+    });
+  };
+
+  /** Rank best-first: combined-pass wins, then sensor score, then judge minScore. */
+  const rankRunCandidates = (candidates: readonly WorkflowRunCandidate[]): WorkflowRunCandidate[] =>
+    [...candidates].sort((a, b) => {
+      if (a.combinedPassed !== b.combinedPassed) return a.combinedPassed ? -1 : 1;
+      if (b.score !== a.score) return b.score - a.score;
+      const am = a.judge?.minScore ?? 0;
+      const bm = b.judge?.minScore ?? 0;
+      if (bm !== am) return bm - am;
+      return a.index - b.index;
+    });
+
   const renderRunCandidates = () => {
     runResultsHost.replaceChildren();
     if (!currentRun) return;
     const run = currentRun;
+    const ranked = rankRunCandidates(run.candidates);
+    const passingCount = ranked.filter((c) => c.combinedPassed).length;
     const title = el('div', {
-      text: `Run ${run.briefId}/${run.runId}`,
-      style: { fontSize: '12px', color: '#93c5fd', marginBottom: '4px' },
+      text: `Run ${run.briefId}/${run.runId} — ${passingCount}/${ranked.length} pass the judge`,
+      style: { fontSize: '12px', color: '#93c5fd', marginBottom: '2px' },
+    });
+    const hint = el('div', {
+      text:
+        passingCount > 0
+          ? 'Approve a recommended variant, or override any other with “Approve anyway”.'
+          : 'The judge flagged every variant. Pick the best and use “Approve anyway” — the judge is advisory; you have the final say.',
+      style: { fontSize: '10px', color: '#94a3b8', marginBottom: '6px' },
     });
     const grid = el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } });
-    for (const candidate of run.candidates) {
+    ranked.forEach((candidate, rankIndex) => {
+      const isTop = rankIndex === 0;
       const card = el('div', {
         style: {
-          border: '1px solid rgba(148,163,184,0.25)',
+          border: `1px solid ${
+            candidate.combinedPassed
+              ? 'rgba(34,197,94,0.55)'
+              : isTop
+                ? 'rgba(250,204,21,0.55)'
+                : 'rgba(148,163,184,0.25)'
+          }`,
           borderRadius: '8px',
           padding: '6px',
           background: '#111827',
-          width: '120px',
+          width: '128px',
         },
       });
       const padded = String(candidate.index).padStart(2, '0');
@@ -1427,27 +1712,58 @@ function render(): void {
         margin: '0 auto 6px',
         background: '#334155',
       });
-      card.append(
-        sprite,
-        el('div', {
-          text: `#${candidate.index} ${candidate.score}/${candidate.outOf} ${candidate.combinedPassed ? 'PASS' : 'fail'}`,
-          style: { fontSize: '10px', color: '#cbd5e1', marginBottom: '4px' },
+      const statusLabel = candidate.combinedPassed ? 'PASS' : 'judge fail';
+      const header = el('div', {
+        style: {
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '4px',
+        },
+      });
+      header.append(
+        el('span', {
+          text: `#${candidate.index} · ${candidate.score}/${candidate.outOf}`,
+          style: { fontSize: '10px', color: '#cbd5e1' },
+        }),
+        el('span', {
+          text: isTop ? `${statusLabel} · best` : statusLabel,
+          style: {
+            fontSize: '9px',
+            fontWeight: '600',
+            color: candidate.combinedPassed ? '#86efac' : '#fca5a5',
+          },
         }),
       );
+      card.append(sprite, header);
+      if (candidate.judge) {
+        const chips = el('div', {
+          style: { display: 'flex', gap: '3px', flexWrap: 'wrap', marginBottom: '5px' },
+        });
+        chips.append(
+          judgeAxisChip('S', candidate.judge.styleMatch),
+          judgeAxisChip('B', candidate.judge.briefMatch),
+          judgeAxisChip('R', candidate.judge.readability),
+        );
+        card.append(chips);
+      }
+      const overrideNeeded = !candidate.combinedPassed;
       const approveBtn = el('button', {
-        text: 'Approve',
+        text: overrideNeeded ? 'Approve anyway' : 'Approve',
         style: {
           width: '100%',
           padding: '4px 6px',
           borderRadius: '6px',
-          border: '1px solid rgba(250,204,21,0.5)',
-          background: '#422006',
-          color: '#fef3c7',
+          border: overrideNeeded
+            ? '1px solid rgba(250,204,21,0.6)'
+            : '1px solid rgba(34,197,94,0.6)',
+          background: overrideNeeded ? '#422006' : '#052e16',
+          color: overrideNeeded ? '#fef3c7' : '#bbf7d0',
           cursor: 'pointer',
           fontSize: '11px',
+          fontWeight: '600',
         },
       });
-      approveBtn.disabled = !candidate.combinedPassed;
       const debugBtn = el('button', {
         text: 'Debug',
         style: {
@@ -1466,13 +1782,38 @@ function render(): void {
         location.href = postprocessDebuggerHref(run.briefId, run.runId, candidate.index);
       });
       approveBtn.addEventListener('click', async () => {
-        setButtonBusy(approveBtn, true, 'Approve', 'Approving...');
+        if (overrideNeeded) {
+          const axes = candidate.judge?.rejectedBy?.length
+            ? candidate.judge.rejectedBy.join(', ')
+            : 'judge';
+          const ok = window.confirm(
+            `Variant #${candidate.index} was flagged by the judge (${axes}). ` +
+              'Approve it anyway and write it to the catalog?',
+          );
+          if (!ok) return;
+        }
+        const busyLabel = overrideNeeded ? 'Approve anyway' : 'Approve';
+        setButtonBusy(approveBtn, true, busyLabel, 'Approving...');
         try {
           const approved = await postApprove(run.briefId, run.runId, candidate.index);
+          const active = getSelectedItem(queueState);
+          if (active) {
+            queueState = queueUpdateItem(queueState, active.id, {
+              stage: 'approved',
+              approvedAssetPath: approved.assetPath,
+              lastError: null,
+            });
+            writeQueueState();
+          }
           setWorkflowStatus(
-            `Reviewed ${run.briefId} variant ${candidate.index} -> ${approved.assetPath} (${approved.sensorScore}${approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''})`,
+            `Approved ${run.briefId} variant ${candidate.index}${
+              overrideNeeded ? ' (judge override)' : ''
+            } -> ${approved.assetPath} (${approved.sensorScore}${
+              approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''
+            }). Now Tag to add catalog metadata.`,
             '#bef264',
           );
+          renderWorkflowSelection();
           void recompute();
         } catch (error) {
           setWorkflowStatus(
@@ -1480,13 +1821,13 @@ function render(): void {
             '#fca5a5',
           );
         } finally {
-          setButtonBusy(approveBtn, false, 'Approve', 'Approving...');
+          setButtonBusy(approveBtn, false, busyLabel, 'Approving...');
         }
       });
       card.append(approveBtn, debugBtn);
       grid.append(card);
-    }
-    runResultsHost.append(title, grid);
+    });
+    runResultsHost.append(title, hint, grid);
   };
 
   if (currentRun) {
@@ -2549,10 +2890,59 @@ function render(): void {
     writeWorkflowState();
   });
 
-  clearQueueBtn.addEventListener('click', () => {
-    queuedAssetIds.clear();
+  const addBriefToQueue = (): void => {
+    const text = briefInput.value;
+    const requested = typeSelect.value as RequestedType;
+    const next = queueAddItem(queueState, text, requested, 'manual');
+    if (next === queueState) {
+      setWorkflowStatus(
+        'Enter a brief (letters or numbers) before adding to the queue.',
+        '#fca5a5',
+      );
+      return;
+    }
+    queueState = next;
+    briefInput.value = '';
+    writeQueueState();
     renderQueue();
-    writeWorkflowState();
+    renderWorkflowSelection();
+    const active = getSelectedItem(queueState);
+    setWorkflowStatus(
+      active
+        ? `Added "${active.brief}" to the queue. Click Synthesize to start.`
+        : 'Added to queue.',
+      '#bef264',
+    );
+  };
+
+  addToQueueBtn.addEventListener('click', () => {
+    addBriefToQueue();
+  });
+  briefInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addBriefToQueue();
+    }
+  });
+
+  clearQueueBtn.addEventListener('click', () => {
+    queueState = queueClear(queueState);
+    writeQueueState();
+    renderQueue();
+    renderWorkflowSelection();
+    setWorkflowStatus('Queue cleared.', '#cbd5e1');
+  });
+
+  removeItemBtn.addEventListener('click', () => {
+    const active = getSelectedItem(queueState);
+    if (!active) {
+      return;
+    }
+    queueState = queueRemoveItem(queueState, active.id);
+    writeQueueState();
+    renderQueue();
+    renderWorkflowSelection();
+    setWorkflowStatus(`Removed "${active.brief}" from the queue.`, '#cbd5e1');
   });
 
   const recompute = async (): Promise<void> => {
@@ -2606,7 +2996,6 @@ function render(): void {
     if (!plan) {
       return;
     }
-    currentPlan = plan;
     if (planSelect.value !== plan.planId) {
       planSelect.value = plan.planId;
     }
@@ -2686,13 +3075,20 @@ function render(): void {
       const statusCell = document.createElement('td');
       statusCell.append(statusPill);
       const actionsCell = document.createElement('td');
+      const alreadyQueued = queueState.items.some(
+        (queueItem) =>
+          queueItem.source === 'asset-plan' && queueItem.kebabName === slugify(asset.label),
+      );
+      const requestedType: RequestedType = (SPRITE_TYPES as readonly string[]).includes(asset.type)
+        ? (asset.type as RequestedType)
+        : 'auto';
       const queueBtn = el('button', {
-        text: queuedAssetIds.has(asset.id) ? 'Queued' : 'Queue',
+        text: alreadyQueued ? 'Queued' : 'Queue',
         style: {
           padding: '4px 8px',
           borderRadius: '6px',
           border: '1px solid rgba(125,211,252,0.5)',
-          background: queuedAssetIds.has(asset.id) ? '#0c4a6e' : '#082f49',
+          background: alreadyQueued ? '#0c4a6e' : '#082f49',
           color: '#e0f2fe',
           cursor: 'pointer',
           fontSize: '11px',
@@ -2700,8 +3096,9 @@ function render(): void {
       });
       queueBtn.addEventListener('click', (event) => {
         event.stopPropagation();
-        queuedAssetIds.add(asset.id);
         selectedAssetId = asset.id;
+        queueState = queueAddItem(queueState, asset.label, requestedType, 'asset-plan');
+        writeQueueState();
         renderQueue();
         renderWorkflowSelection();
         renderActivePlan();
@@ -2732,8 +3129,6 @@ function render(): void {
       }
       row.addEventListener('click', () => {
         selectedAssetId = asset.id;
-        renderQueue();
-        renderWorkflowSelection();
         renderActivePlan();
         writeWorkflowState();
       });
@@ -2781,51 +3176,73 @@ function render(): void {
   };
 
   synthBtn.addEventListener('click', async () => {
-    const selected = getSelectedAsset();
-    if (!selected) {
-      setWorkflowStatus('Select an asset from the table first.', '#fca5a5');
+    const item = getSelectedItem(queueState);
+    if (!item) {
+      setWorkflowStatus('Add a brief to the queue first.', '#fca5a5');
       return;
     }
-    const subject = oneLinerInput.value.trim();
+    const subject = item.brief.trim();
     if (subject === '') {
-      setWorkflowStatus('Enter a one-liner subject before synthesizing.', '#fca5a5');
+      setWorkflowStatus('This item has no brief text.', '#fca5a5');
       return;
     }
-    setButtonBusy(synthBtn, true, '1) Synthesize brief candidates', 'Synthesizing...');
-    setWorkflowStatus(`Synthesizing ${selected.type} brief candidates for "${subject}"...`);
+    const requestedType = item.requestedType === 'auto' ? undefined : item.requestedType;
+    queueState = queueUpdateItem(queueState, item.id, { stage: 'synthesizing', lastError: null });
+    writeQueueState();
+    renderQueue();
+    setButtonBusy(synthBtn, true, 'Synthesize', 'Synthesizing...');
+    setWorkflowStatus(`Synthesizing brief candidates for "${subject}"...`);
     try {
       const result = await fetchJson<{
+        type: SpriteType;
         written: WorkflowSynthCandidate[];
         rejected: Array<{ index: number; reason: string }>;
       }>(`${SIDECAR_BASE}/api/workflow/synthesize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: subject, type: selected.type, candidates: 3 }),
+        body: JSON.stringify({ name: subject, type: requestedType, candidates: 3 }),
       });
-      selectedCandidatePath = result.written[0]?.yamlPath ?? null;
-      promotedBriefPath = null;
-      currentRun = null;
+      const firstPath = result.written[0]?.yamlPath ?? null;
+      queueState = queueUpdateItem(queueState, item.id, {
+        stage: 'candidates',
+        resolvedType: result.type,
+        candidates: result.written.map((candidate) => ({
+          id: candidate.id,
+          yamlPath: candidate.yamlPath,
+          description: candidate.description,
+          yaml: candidate.yaml,
+        })),
+        chosenCandidatePath: firstPath,
+        briefPath: null,
+        run: null,
+        approvedAssetPath: null,
+        metadataSummary: null,
+        lastError: null,
+      });
+      writeQueueState();
       debugTarget = null;
-      renderSynthCandidates(result.written);
       runResultsHost.replaceChildren();
       renderPostprocessDebugger();
+      renderQueue();
       renderWorkflowSelection();
       writeWorkflowState();
       const rejected =
         result.rejected.length > 0
-          ? `\nRejected:\n${result.rejected.map((item) => `  - #${item.index}: ${item.reason}`).join('\n')}`
+          ? `\nRejected:\n${result.rejected.map((entry) => `  - #${entry.index}: ${entry.reason}`).join('\n')}`
           : '';
       setWorkflowStatus(
-        `Synthesis completed: ${result.written.length} candidate(s).${rejected}`,
+        `Synthesis completed: ${result.written.length} candidate(s) [type: ${result.type}]. Choose one, then Promote.${rejected}`,
         '#bef264',
       );
     } catch (error) {
-      setWorkflowStatus(
-        `Synthesis failed: ${error instanceof Error ? error.message : String(error)}`,
-        '#fca5a5',
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      queueState = queueUpdateItem(queueState, item.id, { stage: 'draft', lastError: message });
+      writeQueueState();
+      renderQueue();
+      renderWorkflowSelection();
+      setWorkflowStatus(`Synthesis failed: ${message}`, '#fca5a5');
     } finally {
-      setButtonBusy(synthBtn, false, '1) Synthesize brief candidates', 'Synthesizing...');
+      setButtonBusy(synthBtn, false, 'Synthesize', 'Synthesizing...');
     }
   });
 
@@ -3076,12 +3493,20 @@ function render(): void {
   }
 
   promoteBtn.addEventListener('click', async () => {
-    const selected = getSelectedAsset();
-    if (!selected || !selectedCandidatePath) {
-      setWorkflowStatus('Select an asset and a synthesized candidate first.', '#fca5a5');
+    const item = getSelectedItem(queueState);
+    if (!item || !item.chosenCandidatePath) {
+      setWorkflowStatus('Synthesize and choose a candidate brief first.', '#fca5a5');
       return;
     }
-    setButtonBusy(promoteBtn, true, '2) Promote selected brief', 'Promoting...');
+    const type = item.resolvedType ?? (item.requestedType === 'auto' ? null : item.requestedType);
+    if (!type) {
+      setWorkflowStatus('Cannot promote: sprite type is unknown. Re-run Synthesize.', '#fca5a5');
+      return;
+    }
+    queueState = queueUpdateItem(queueState, item.id, { stage: 'promoting', lastError: null });
+    writeQueueState();
+    renderQueue();
+    setButtonBusy(promoteBtn, true, 'Promote brief', 'Promoting...');
     try {
       const result = await fetchJson<{ briefPath: string }>(
         `${SIDECAR_BASE}/api/workflow/promote-brief`,
@@ -3089,50 +3514,81 @@ function render(): void {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sourceYamlPath: selectedCandidatePath,
-            type: selected.type,
-            name: selected.briefId,
+            sourceYamlPath: item.chosenCandidatePath,
+            type,
+            name: item.kebabName,
             target: 'draft',
           }),
         },
       );
-      promotedBriefPath = result.briefPath;
-      draftBriefKeys.add(briefKey(selected.type, selected.briefId));
+      queueState = queueUpdateItem(queueState, item.id, {
+        stage: 'promoted',
+        briefPath: result.briefPath,
+        lastError: null,
+      });
+      writeQueueState();
+      draftBriefKeys.add(briefKey(type, item.kebabName));
+      renderQueue();
       renderWorkflowSelection();
-      setWorkflowStatus(`Promoted brief to ${result.briefPath}`, '#bef264');
+      setWorkflowStatus(`Promoted brief to ${result.briefPath}. Click Generate run.`, '#bef264');
       writeWorkflowState();
       void recompute();
     } catch (error) {
-      setWorkflowStatus(
-        `Promote failed: ${error instanceof Error ? error.message : String(error)}`,
-        '#fca5a5',
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      queueState = queueUpdateItem(queueState, item.id, {
+        stage: 'candidates',
+        lastError: message,
+      });
+      writeQueueState();
+      renderQueue();
+      renderWorkflowSelection();
+      setWorkflowStatus(`Promote failed: ${message}`, '#fca5a5');
     } finally {
-      setButtonBusy(promoteBtn, false, '2) Promote selected brief', 'Promoting...');
+      setButtonBusy(promoteBtn, false, 'Promote brief', 'Promoting...');
     }
   });
 
   generateBtn.addEventListener('click', async () => {
-    if (!promotedBriefPath) {
+    const item = getSelectedItem(queueState);
+    if (!item || !item.briefPath) {
       setWorkflowStatus('Promote a brief first.', '#fca5a5');
       return;
     }
-    setButtonBusy(generateBtn, true, '3) Generate run', 'Generating...');
+    queueState = queueUpdateItem(queueState, item.id, { stage: 'generating', lastError: null });
+    writeQueueState();
+    renderQueue();
+    setButtonBusy(generateBtn, true, 'Generate run', 'Generating...');
     try {
       const result = await fetchJson<{
         briefId: string;
         runId: string;
-        summary: { candidates: WorkflowRunCandidate[] };
+        summary: { candidates: RawGenerateCandidate[] };
       }>(`${SIDECAR_BASE}/api/workflow/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ briefPath: promotedBriefPath }),
+        body: JSON.stringify({ briefPath: item.briefPath }),
       });
-      currentRun = {
-        briefId: result.briefId,
-        runId: result.runId,
-        candidates: result.summary.candidates,
-      };
+      queueState = queueUpdateItem(queueState, item.id, {
+        stage: 'variants',
+        run: {
+          briefId: result.briefId,
+          runId: result.runId,
+          candidates: result.summary.candidates.map((candidate) => {
+            const judge = toJudgeSummary(candidate.judgeScorecard);
+            return {
+              index: candidate.index,
+              score: candidate.score,
+              outOf: candidate.outOf,
+              passed: candidate.passed,
+              combinedPassed: candidate.combinedPassed,
+              judge,
+            };
+          }),
+        },
+        approvedAssetPath: null,
+        lastError: null,
+      });
+      writeQueueState();
       debugTarget = result.summary.candidates[0]
         ? {
             briefId: result.briefId,
@@ -3140,32 +3596,37 @@ function render(): void {
             variantIndex: result.summary.candidates[0].index,
           }
         : null;
-      renderRunCandidates();
       renderPostprocessDebugger();
       void refreshDebuggerRuns();
+      renderQueue();
       renderWorkflowSelection();
       writeWorkflowState();
       setWorkflowStatus(
-        `Generation completed for ${result.briefId} (${result.summary.candidates.length} candidates). Select a winner to approve.`,
+        `Generation completed for ${result.briefId} (${result.summary.candidates.length} candidates). Approve a passing variant.`,
         '#bef264',
       );
     } catch (error) {
-      setWorkflowStatus(
-        `Generate failed: ${error instanceof Error ? error.message : String(error)}`,
-        '#fca5a5',
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      queueState = queueUpdateItem(queueState, item.id, { stage: 'promoted', lastError: message });
+      writeQueueState();
+      renderQueue();
+      renderWorkflowSelection();
+      setWorkflowStatus(`Generate failed: ${message}`, '#fca5a5');
     } finally {
-      setButtonBusy(generateBtn, false, '3) Generate run', 'Generating...');
+      setButtonBusy(generateBtn, false, 'Generate run', 'Generating...');
     }
   });
 
   metadataBtn.addEventListener('click', async () => {
-    const selected = getSelectedAsset();
-    if (!selected) {
-      setWorkflowStatus('Select an asset first.', '#fca5a5');
+    const item = getSelectedItem(queueState);
+    if (!item) {
+      setWorkflowStatus('Add and approve an item first.', '#fca5a5');
       return;
     }
-    setButtonBusy(metadataBtn, true, '4) Generate metadata', 'Generating metadata...');
+    queueState = queueUpdateItem(queueState, item.id, { stage: 'tagging', lastError: null });
+    writeQueueState();
+    renderQueue();
+    setButtonBusy(metadataBtn, true, 'Tag (metadata)', 'Tagging...');
     try {
       const result = await fetchJson<{
         provider: string;
@@ -3176,22 +3637,31 @@ function render(): void {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ids: [selected.briefId],
+          ids: [item.kebabName],
           provider: 'auto',
           minScore: 70,
         }),
       });
-      setWorkflowStatus(
-        `Metadata done via ${result.provider}: processed=${result.processedCount}, changed=${result.changedCount}, rejected=${result.rejectedCount}`,
-        '#bef264',
-      );
+      const summaryText = `Tagged via ${result.provider}: processed=${result.processedCount}, changed=${result.changedCount}, rejected=${result.rejectedCount}`;
+      queueState = queueUpdateItem(queueState, item.id, {
+        stage: 'done',
+        metadataSummary: summaryText,
+        lastError: null,
+      });
+      writeQueueState();
+      renderQueue();
+      renderWorkflowSelection();
+      setWorkflowStatus(`${summaryText}. Sprite is in the catalog and ready to use.`, '#bef264');
+      void recompute();
     } catch (error) {
-      setWorkflowStatus(
-        `Metadata failed: ${error instanceof Error ? error.message : String(error)}`,
-        '#fca5a5',
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      queueState = queueUpdateItem(queueState, item.id, { stage: 'approved', lastError: message });
+      writeQueueState();
+      renderQueue();
+      renderWorkflowSelection();
+      setWorkflowStatus(`Metadata failed: ${message}`, '#fca5a5');
     } finally {
-      setButtonBusy(metadataBtn, false, '4) Generate metadata', 'Generating metadata...');
+      setButtonBusy(metadataBtn, false, 'Tag (metadata)', 'Tagging...');
     }
   });
 
@@ -3212,6 +3682,8 @@ function render(): void {
   });
 
   renderPostprocessDebugger();
+  renderQueue();
+  renderWorkflowSelection();
   void refreshDebuggerRuns();
   void checkWorkflowHealth();
   void recompute();
