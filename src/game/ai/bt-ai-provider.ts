@@ -100,7 +100,7 @@ const NAVIGATION_LOOKAHEAD_PX = 24;
 // Per-frame blend fraction for output-direction smoothing. Exponential decay
 // toward the desired move vector so waypoint transitions and kite reversals
 // produce a smooth arc rather than an instant 90° snap. Value is tuned so a
-// full cardinal-direction change completes in ~8 frames (~133ms at 60fps) while
+// full cardinal-direction change completes in ~4-5 frames (~70ms at 60fps) while
 // keeping top speed virtually unaffected during straight-line travel.
 const MOVE_SMOOTH_FACTOR = 0.5;
 // Close-range direct approach threshold (~1.5 tiles). Within this distance, and

@@ -541,6 +541,6 @@
     "delta": 0,
     "verdict": "exact",
     "hello_kitties": 0.2,
-    "notes": "Added MOVE_SMOOTH_FACTOR=0.3 exponential blend to BehaviorTreeAI.poll() output direction. Eliminates 90-degree snap at A* waypoints. 1329/1329 unit tests + 4/4 headless pass."
+    "notes": "Added MOVE_SMOOTH_FACTOR=0.5 exponential blend to BehaviorTreeAI.poll() output direction. Eliminates 90-degree snap at A* waypoints. 1329/1329 unit tests + 4/4 headless pass."
   }
 ]

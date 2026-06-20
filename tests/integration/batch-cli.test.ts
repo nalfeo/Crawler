@@ -62,23 +62,10 @@ references:
   - { path: refs/a.png }
   - { path: refs/b.png }
 generation:
-  sheet:
-    rows: 3
-    cols: 3
-    emptyCells:
-      - [0, 1]
-      - [1, 0]
-      - [1, 1]
-      - [1, 2]
-      - [2, 1]
-    nativeCanvas: 1536
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
   weapon:
     orientation: diagonal
-  edge:
-    allowMainTouch: true
-    allowDetachedEdgeComponents: true
-    maxDetachedEdgePixels: 16
 judge:
   enabled: true
   maxVariants: 16
@@ -87,30 +74,14 @@ judge:
 
 function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): Buffer {
   const cellSize = 1024;
-  const gutter = 64;
-  const margin = 64;
-  const sheet = new PNG({
-    width: margin * 2 + cols * cellSize + (cols - 1) * gutter,
-    height: margin * 2 + rows * cellSize + (rows - 1) * gutter,
-  });
-  for (let y = 0; y < sheet.height; y++) {
-    for (let x = 0; x < sheet.width; x++) {
-      const idx = (y * sheet.width + x) * 4;
-      sheet.data[idx] = 255;
-      sheet.data[idx + 1] = 0;
-      sheet.data[idx + 2] = 255;
-      sheet.data[idx + 3] = 255;
-    }
-  }
+  const sheet = new PNG({ width: cols * cellSize, height: rows * cellSize });
   for (let i = 0; i < variants.length; i++) {
     const cell = PNG.sync.read(variants[i]!);
     const r = Math.floor(i / cols);
     const c = i % cols;
-    const x0 = margin + c * (cellSize + gutter);
-    const y0 = margin + r * (cellSize + gutter);
     for (let y = 0; y < cellSize; y++) {
       const srcStart = y * cellSize * 4;
-      const dstStart = ((y0 + y) * sheet.width + x0) * 4;
+      const dstStart = ((r * cellSize + y) * sheet.width + c * cellSize) * 4;
       cell.data.copy(sheet.data, dstStart, srcStart, srcStart + cellSize * 4);
     }
   }

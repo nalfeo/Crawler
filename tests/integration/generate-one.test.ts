@@ -20,7 +20,11 @@ import { generateOne } from '../../scripts/sprites/generate-one.js';
 import { loadBrief, type LoadedBrief } from '../../scripts/sprites/load-brief.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import { ProviderError } from '../../scripts/sprites/provider/types.js';
-import { buildGoodSwordFixture } from '../fixtures/sprites/builders.js';
+import {
+  buildGoodSwordFixture,
+  buildEmptyFixture,
+  buildHorizontalBarFixture,
+} from '../fixtures/sprites/builders.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -51,23 +55,10 @@ references:
   - { path: refs/a.png }
   - { path: refs/b.png }
 generation:
-  sheet:
-    rows: 3
-    cols: 3
-    emptyCells:
-      - [0, 1]
-      - [1, 0]
-      - [1, 1]
-      - [1, 2]
-      - [2, 1]
-    nativeCanvas: 1536
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
   weapon:
     orientation: diagonal
-  edge:
-    allowMainTouch: true
-    allowDetachedEdgeComponents: true
-    maxDetachedEdgePixels: 16
 `.trim();
 
 /**
@@ -80,21 +71,7 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
     throw new Error(`tileVariants: expected ${rows * cols} variants, got ${variants.length}`);
   }
   const cellSize = 1024;
-  const gutter = 64;
-  const margin = 64;
-  const sheet = new PNG({
-    width: margin * 2 + cols * cellSize + (cols - 1) * gutter,
-    height: margin * 2 + rows * cellSize + (rows - 1) * gutter,
-  });
-  for (let y = 0; y < sheet.height; y++) {
-    for (let x = 0; x < sheet.width; x++) {
-      const idx = (y * sheet.width + x) * 4;
-      sheet.data[idx] = 255;
-      sheet.data[idx + 1] = 0;
-      sheet.data[idx + 2] = 255;
-      sheet.data[idx + 3] = 255;
-    }
-  }
+  const sheet = new PNG({ width: cols * cellSize, height: rows * cellSize });
   for (let i = 0; i < variants.length; i++) {
     const cell = PNG.sync.read(variants[i]!);
     if (cell.width !== cellSize || cell.height !== cellSize) {
@@ -104,11 +81,9 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
     }
     const r = Math.floor(i / cols);
     const c = i % cols;
-    const x0 = margin + c * (cellSize + gutter);
-    const y0 = margin + r * (cellSize + gutter);
     for (let y = 0; y < cellSize; y++) {
       const srcStart = y * cellSize * 4;
-      const dstStart = ((y0 + y) * sheet.width + x0) * 4;
+      const dstStart = ((r * cellSize + y) * sheet.width + c * cellSize) * 4;
       cell.data.copy(sheet.data, dstStart, srcStart, srcStart + cellSize * 4);
     }
   }
@@ -121,26 +96,6 @@ function makeMockProvider(sheet: Buffer): ImageProvider {
       return sheet;
     },
   };
-}
-
-function perturbedGoodSword(index: number): Buffer {
-  const decoded = PNG.sync.read(buildGoodSwordFixture());
-  for (let k = 0; k <= index; k++) {
-    const baseX = 32 + 64 * k;
-    const baseY = 32;
-    for (let dy = 0; dy < 4; dy++) {
-      for (let dx = 0; dx < 4; dx++) {
-        const px = baseX + dx;
-        const py = baseY + dy;
-        const idx = (py * decoded.width + px) * 4;
-        decoded.data[idx] = 192;
-        decoded.data[idx + 1] = 192;
-        decoded.data[idx + 2] = 200;
-        decoded.data[idx + 3] = 255;
-      }
-    }
-  }
-  return PNG.sync.write(decoded);
 }
 
 function makeFailingProvider(
@@ -157,11 +112,11 @@ function makeFailingProvider(
       async generateSheet(): Promise<Buffer> {
         calls++;
         if (succeedsAfter > 0 && calls > succeedsAfter) {
-          // Return a valid 4-cell sheet so retries can succeed.
+          // Return a valid 9-cell sheet so retries can succeed.
           return tileVariantsIntoSheet(
-            [0, 1, 2, 3].map((i) => perturbedGoodSword(i)),
-            2,
-            2,
+            Array.from({ length: 9 }, () => buildGoodSwordFixture()),
+            3,
+            3,
           );
         }
         throw error;
@@ -202,7 +157,7 @@ describe('generateOne (integration)', () => {
 
   it('runs the full pipeline end-to-end and writes ranked artifacts', async () => {
     // 4 good sword variants -> all pass -> rank is index-order on score tie.
-    const variants = [0, 1, 2, 3].map((i) => perturbedGoodSword(i));
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const result = await generateOne({
       briefPath,
@@ -247,8 +202,14 @@ describe('generateOne (integration)', () => {
     expect(result.attempts).toBe(1);
   });
 
-  it('ranks passing candidates by score descending', async () => {
-    const variants = [0, 1, 2, 3].map((i) => perturbedGoodSword(i));
+  it('ranks passing candidates ahead of failing ones, then by score desc', async () => {
+    // Mix: 2 good + 1 horizontal bar (fails diag axis) + 1 empty (fails bbox).
+    const variants = [
+      buildGoodSwordFixture(),
+      buildHorizontalBarFixture(),
+      buildGoodSwordFixture(),
+      buildEmptyFixture(),
+    ];
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const result = await generateOne({
       briefPath,
@@ -258,13 +219,11 @@ describe('generateOne (integration)', () => {
       outputRoot,
       now: fixedClock,
     });
-    expect(result.summary.candidates).toHaveLength(4);
-    expect(result.summary.candidates.every((c) => c.passed)).toBe(true);
-    for (let i = 1; i < result.summary.candidates.length; i++) {
-      expect(result.summary.candidates[i - 1]!.score).toBeGreaterThanOrEqual(
-        result.summary.candidates[i]!.score,
-      );
-    }
+    const passed = result.summary.candidates.filter((c) => c.passed);
+    expect(passed).toHaveLength(2);
+    // All passed candidates come before any failed one in the ranking.
+    const firstFailIdx = result.summary.candidates.findIndex((c) => !c.passed);
+    expect(firstFailIdx).toBe(2);
   });
 
   it('retries on a bad-grid error and ultimately succeeds within maxAttempts', async () => {

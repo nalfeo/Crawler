@@ -243,7 +243,7 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.COLLECT);
     // Pre-fix: one axis is ~0 (cardinal first hop). Post-fix: diagonal steer.
-    // With MOVE_SMOOTH_FACTOR=0.5, first-frame diagonal components are ~0.21; keep
+    // With MOVE_SMOOTH_FACTOR=0.5, first-frame diagonal components are ~0.35; keep
     // 0.15 low enough to allow smoothing while high enough to reject cardinal hops.
     expect(Math.abs(input.moveX)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);
     expect(Math.abs(input.moveY)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);

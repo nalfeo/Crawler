@@ -25,7 +25,7 @@ fast to read as intentional motion.
 Added exponential output-direction smoothing to `BehaviorTreeAI` in
 `src/game/ai/bt-ai-provider.ts`:
 
-- **`MOVE_SMOOTH_FACTOR = 0.3`** — per-frame blend fraction (new constant).
+- **`MOVE_SMOOTH_FACTOR = 0.5`** — per-frame blend fraction (new constant).
 - **`smoothMoveX / smoothMoveY`** — persistent private fields, initialized to
   `(0, 0)` at construction and never explicitly reset; the blend carries over
   every poll for the lifetime of the AI instance.
@@ -39,8 +39,8 @@ Added exponential output-direction smoothing to `BehaviorTreeAI` in
   length > 1, so sub-unit blended values pass through unchanged — the character
   naturally slows slightly through turns and accelerates out.
 
-With factor 0.3 a full 90° cardinal-direction change completes in ~8 frames
-(~133 ms at 60 fps), producing a smooth curved arc at waypoints. Straight-line
+With factor 0.5 a full 90° cardinal-direction change completes in ~4–5 frames
+(~70 ms at 60 fps), producing a smooth curved arc at waypoints. Straight-line
 travel is unaffected (smooth value converges to unit magnitude within ~30 frames
 and stays there).
 

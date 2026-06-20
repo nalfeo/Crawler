@@ -56,23 +56,10 @@ references:
   - { path: refs/a.png }
   - { path: refs/b.png }
 generation:
-  sheet:
-    rows: 3
-    cols: 3
-    emptyCells:
-      - [0, 1]
-      - [1, 0]
-      - [1, 1]
-      - [1, 2]
-      - [2, 1]
-    nativeCanvas: 1536
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
   weapon:
     orientation: diagonal
-  edge:
-    allowMainTouch: true
-    allowDetachedEdgeComponents: true
-    maxDetachedEdgePixels: 16
 judge:
 ${judgeBlock}
 `.trim();
@@ -83,30 +70,14 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
     throw new Error(`tileVariants: expected ${rows * cols} variants, got ${variants.length}`);
   }
   const cellSize = 1024;
-  const gutter = 64;
-  const margin = 64;
-  const sheet = new PNG({
-    width: margin * 2 + cols * cellSize + (cols - 1) * gutter,
-    height: margin * 2 + rows * cellSize + (rows - 1) * gutter,
-  });
-  for (let y = 0; y < sheet.height; y++) {
-    for (let x = 0; x < sheet.width; x++) {
-      const idx = (y * sheet.width + x) * 4;
-      sheet.data[idx] = 255;
-      sheet.data[idx + 1] = 0;
-      sheet.data[idx + 2] = 255;
-      sheet.data[idx + 3] = 255;
-    }
-  }
+  const sheet = new PNG({ width: cols * cellSize, height: rows * cellSize });
   for (let i = 0; i < variants.length; i++) {
     const cell = PNG.sync.read(variants[i]!);
     const r = Math.floor(i / cols);
     const c = i % cols;
-    const x0 = margin + c * (cellSize + gutter);
-    const y0 = margin + r * (cellSize + gutter);
     for (let y = 0; y < cellSize; y++) {
       const srcStart = y * cellSize * 4;
-      const dstStart = ((y0 + y) * sheet.width + x0) * 4;
+      const dstStart = ((r * cellSize + y) * sheet.width + c * cellSize) * 4;
       cell.data.copy(sheet.data, dstStart, srcStart, srcStart + cellSize * 4);
     }
   }
@@ -119,26 +90,6 @@ function makeMockProvider(sheet: Buffer): ImageProvider {
       return sheet;
     },
   };
-}
-
-function perturbedGoodSword(index: number): Buffer {
-  const decoded = PNG.sync.read(buildGoodSwordFixture());
-  for (let k = 0; k <= index; k++) {
-    const baseX = 32 + 64 * k;
-    const baseY = 32;
-    for (let dy = 0; dy < 4; dy++) {
-      for (let dx = 0; dx < 4; dx++) {
-        const px = baseX + dx;
-        const py = baseY + dy;
-        const idx = (py * decoded.width + px) * 4;
-        decoded.data[idx] = 192;
-        decoded.data[idx + 1] = 192;
-        decoded.data[idx + 2] = 200;
-        decoded.data[idx + 3] = 255;
-      }
-    }
-  }
-  return PNG.sync.write(decoded);
 }
 
 interface CapturedCall {
@@ -230,10 +181,10 @@ describe('generateOne + VLM judge (integration)', () => {
     // order, all good fixtures score identically (~7/7), so call order is
     // index 0 then index 3.
     const variants = [
-      perturbedGoodSword(0),
+      buildGoodSwordFixture(),
       buildEmptyFixture(),
       buildEmptyFixture(),
-      perturbedGoodSword(1),
+      buildGoodSwordFixture(),
     ];
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([
@@ -313,7 +264,7 @@ describe('generateOne + VLM judge (integration)', () => {
 
   it('throws when judge.enabled but no visionProvider supplied', async () => {
     setupBrief('  enabled: true\n  maxVariants: 16');
-    const variants = [0, 1, 2, 3].map((i) => perturbedGoodSword(i));
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
 
     await expect(
@@ -332,7 +283,7 @@ describe('generateOne + VLM judge (integration)', () => {
 
   it('caps judging to maxVariants and tags the rest with judgeSkipReason: over-cap', async () => {
     setupBrief('  enabled: true\n  maxVariants: 1');
-    const variants = [0, 1, 2, 3].map((i) => perturbedGoodSword(i));
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([
       scorecard({ style: 5, brief: 5, readability: 5 }),
@@ -366,7 +317,7 @@ describe('generateOne + VLM judge (integration)', () => {
 
   it('with judge disabled, combinedPassed equals sensors.passed (back-compat)', async () => {
     setupBrief('  enabled: false');
-    const variants = [0, 1, 2, 3].map((i) => perturbedGoodSword(i));
+    const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([]);
 
