@@ -20,8 +20,9 @@ import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-typ
 
 /**
  * Build an all-open room (walls only on the border) so A* has a clear straight
- * shot between any two interior tiles. Used to prove the path-follow string-pull
- * the 4-connected A* path into diagonal motion instead of stair-stepping.
+ * shot between any two interior tiles. Used to prove that path-follow
+ * string-pulling converts the 4-connected A* path into diagonal motion instead
+ * of stair-stepping.
  */
 function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   const tileMap = new TileMap(widthTiles, heightTiles);
@@ -46,6 +47,8 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   }
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
+
+const MIN_DIAGONAL_COMPONENT = 0.15;
 
 /**
  * Advance a freshly-initialised Floor 1 world into the boss-unlock kill-grind
@@ -241,9 +244,9 @@ describe('BehaviorTreeAI', () => {
     expect(decision.state).toBe(AIState.COLLECT);
     // Pre-fix: one axis is ~0 (cardinal first hop). Post-fix: diagonal steer.
     // With MOVE_SMOOTH_FACTOR=0.5, first-frame diagonal components are ~0.21; keep
-    // the threshold low enough to allow smoothing while still rejecting cardinal hops.
-    expect(Math.abs(input.moveX)).toBeGreaterThan(0.15);
-    expect(Math.abs(input.moveY)).toBeGreaterThan(0.15);
+    // 0.15 low enough to allow smoothing while high enough to reject cardinal hops.
+    expect(Math.abs(input.moveX)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);
+    expect(Math.abs(input.moveY)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);
   });
 
   it('reuses the engagement kite while farming quest mobs instead of trading blows', () => {
