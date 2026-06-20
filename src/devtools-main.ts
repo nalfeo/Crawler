@@ -1547,6 +1547,8 @@ function render(): void {
       setWorkflowStatus(`Error: ${item.lastError}`, '#fca5a5');
     } else if (item.metadataSummary && item.stage === 'done') {
       setWorkflowStatus(item.metadataSummary, '#bef264');
+    } else if (item.approvalSummary && item.stage === 'approved') {
+      setWorkflowStatus(item.approvalSummary, '#bef264');
     } else if (nextAction) {
       setWorkflowStatus(`Next: ${nextAction}`, '#cbd5e1');
     }
@@ -1798,21 +1800,19 @@ function render(): void {
           const approved = await postApprove(run.briefId, run.runId, candidate.index);
           const active = getSelectedItem(queueState);
           if (active) {
+            const approvalSummary = `Approved ${run.briefId} variant ${candidate.index}${
+              overrideNeeded ? ' (judge override)' : ''
+            } -> ${approved.assetPath} (${approved.sensorScore}${
+              approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''
+            }). Now Tag to add catalog metadata.`;
             queueState = queueUpdateItem(queueState, active.id, {
               stage: 'approved',
               approvedAssetPath: approved.assetPath,
+              approvalSummary,
               lastError: null,
             });
             writeQueueState();
           }
-          setWorkflowStatus(
-            `Approved ${run.briefId} variant ${candidate.index}${
-              overrideNeeded ? ' (judge override)' : ''
-            } -> ${approved.assetPath} (${approved.sensorScore}${
-              approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''
-            }). Now Tag to add catalog metadata.`,
-            '#bef264',
-          );
           renderWorkflowSelection();
           void recompute();
         } catch (error) {
@@ -3646,6 +3646,7 @@ function render(): void {
       queueState = queueUpdateItem(queueState, item.id, {
         stage: 'done',
         metadataSummary: summaryText,
+        approvalSummary: null,
         lastError: null,
       });
       writeQueueState();

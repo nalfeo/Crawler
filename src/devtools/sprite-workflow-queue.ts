@@ -116,6 +116,7 @@ export interface QueueItem {
   briefPath: string | null;
   run: QueueRun | null;
   approvedAssetPath: string | null;
+  approvalSummary: string | null;
   metadataSummary: string | null;
   lastError: string | null;
 }
@@ -172,6 +173,7 @@ function makeItem(
     briefPath: null,
     run: null,
     approvedAssetPath: null,
+    approvalSummary: null,
     metadataSummary: null,
     lastError: null,
   };
@@ -363,6 +365,7 @@ function sanitizeItem(value: unknown): QueueItem | null {
     briefPath: typeof raw.briefPath === 'string' ? raw.briefPath : null,
     run: sanitizeRun(raw.run),
     approvedAssetPath: typeof raw.approvedAssetPath === 'string' ? raw.approvedAssetPath : null,
+    approvalSummary: typeof raw.approvalSummary === 'string' ? raw.approvalSummary : null,
     metadataSummary: typeof raw.metadataSummary === 'string' ? raw.metadataSummary : null,
     lastError: typeof raw.lastError === 'string' ? raw.lastError : null,
   };
