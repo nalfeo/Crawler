@@ -708,6 +708,21 @@ export class BehaviorTreeAI implements AIInputProvider {
       }),
       action('Set Progress State', (ctx) => {
         const target = ctx.blackboard['progressTarget'] as ProgressTarget;
+        // If this progress goal points at a living enemy (hunting quest mobs,
+        // farming the swarm for charm gold), reuse the shared engagement kite so
+        // the AI strafes and holds a safe strike distance instead of walking
+        // straight onto the enemy and trading blows. Position objectives and
+        // non-enemy entities (gold piles, NPCs) keep the direct-approach path.
+        const enemyTarget = this.progressTargetAsEnemy(ctx.world, target, ctx.playerX, ctx.playerY);
+        if (enemyTarget) {
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
+          this.decision.state = AIState.ENGAGE;
+          this.decision.targetEid = enemyTarget.eid;
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `${target.reason} — ${plan.reason}`;
+          return BTStatus.SUCCESS;
+        }
         this.decision.state = AIState.EXPLORE;
         this.decision.targetEid = target.eid;
         this.decision.targetX = target.x;
@@ -1516,6 +1531,11 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Follow path if we have one
     if (this.pathWaypoints.length > 0 && this.pathIndex < this.pathWaypoints.length) {
+      // String-pull the 4-connected A* path so the AI cuts diagonally toward the
+      // farthest waypoint it can see, instead of stair-stepping cardinal hops.
+      if (floorMap) {
+        this.smoothPathIndex(world, floorMap, playerX, playerY);
+      }
       const waypoint = this.pathWaypoints[this.pathIndex];
       if (!waypoint) {
         this.pathWaypoints = [];
@@ -1648,6 +1668,34 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return bestGoal ?? goalTile;
+  }
+
+  /**
+   * String-pulling path smoothing. {@link findTilePath} is 4-connected, so its
+   * waypoints stair-step in cardinal hops; following them one at a time yields
+   * the characteristic right-angle motion. Advance {@link pathIndex} to the
+   * farthest upcoming waypoint the player has an unobstructed straight line to,
+   * so the AI steers diagonally across open ground. The line-of-sight check
+   * keeps it from cutting through walls; wedge recovery and the local-navigation
+   * fallback handle any corner it does clip.
+   */
+  private smoothPathIndex(
+    world: GameWorld,
+    floorMap: FloorMap,
+    playerX: number,
+    playerY: number,
+  ): void {
+    for (let i = this.pathWaypoints.length - 1; i > this.pathIndex; i--) {
+      const wp = this.pathWaypoints[i];
+      if (!wp) {
+        continue;
+      }
+      const wpWorld = floorMap.tileToPixel(wp.x, wp.y);
+      if (this.hasClearLineOfSight(world, playerX, playerY, wpWorld.x, wpWorld.y)) {
+        this.pathIndex = i;
+        return;
+      }
+    }
   }
 
   /**
@@ -2128,6 +2176,38 @@ export class BehaviorTreeAI implements AIInputProvider {
       y,
       distance: Math.hypot(x - playerX, y - playerY),
       reason,
+    };
+  }
+
+  /**
+   * Project a combat-flavored Progress objective onto a {@link WorldTarget} at
+   * the enemy's current position so it can be routed through the shared
+   * {@link planEngagement} kite logic. Returns null for position objectives
+   * (eid &lt; 0), dead/despawned entities, and non-enemy entities such as gold
+   * piles — those should be approached directly, not kited.
+   */
+  private progressTargetAsEnemy(
+    world: GameWorld,
+    target: ProgressTarget,
+    playerX: number,
+    playerY: number,
+  ): WorldTarget | null {
+    if (target.eid < 0 || !entityExists(world.ecs, target.eid)) {
+      return null;
+    }
+    if (!hasComponent(world.ecs, target.eid, Enemy)) {
+      return null;
+    }
+    const ex = world.stores.position.x[target.eid];
+    const ey = world.stores.position.y[target.eid];
+    if (ex === undefined || ey === undefined) {
+      return null;
+    }
+    return {
+      eid: target.eid,
+      x: ex,
+      y: ey,
+      distance: Math.hypot(ex - playerX, ey - playerY),
     };
   }
 
