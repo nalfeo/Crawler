@@ -110,6 +110,13 @@ jobs:
                   --repo "$GITHUB_REPOSITORY" \
                   --body "$body"
               fi
+              if gh pr edit "$number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --add-assignee "copilot"; then
+                echo "  🤖 Assigned @copilot to PR #$number."
+              else
+                echo "  ⚠️ Failed to assign @copilot to PR #$number."
+              fi
               conflicts=$((conflicts + 1))
             fi
           done < <(echo "$prs_json" | jq -c '.[]')
