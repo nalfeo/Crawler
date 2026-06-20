@@ -3651,8 +3651,10 @@ function render(): void {
             const expectedBriefId = chosenCandidate?.id ?? item.kebabName;
             if (!chosenCandidate) {
               console.warn(
-                `Queue item ${itemId}: chosen candidate path does not match any candidate; ` +
-                  `falling back to kebabName for run matching.`,
+                `Queue item ${itemId}: chosen candidate path does not match any candidate. ` +
+                  `Chosen path: ${item.chosenCandidatePath ?? 'null'}, ` +
+                  `available: [${item.candidates.map((c) => c.yamlPath).join(', ')}]. ` +
+                  `Falling back to kebabName (${item.kebabName}) for run matching.`,
               );
             }
             const match = runs.find((run) => {

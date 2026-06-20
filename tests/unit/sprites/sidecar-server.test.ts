@@ -749,8 +749,9 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
 
   it('deletes using the injected remote store backend', async () => {
     await app.close();
-    const remoteStore = new LocalRunStore(runsDir);
-    // Write the run to the "remote" store
+    // Use a LocalRunStore as a test double for the remote Azure store
+    const injectedStore = new LocalRunStore(runsDir);
+    // Write the run to the injected store
     writeFullRun();
     app = buildServer({
       repoRoot: root,
@@ -763,17 +764,17 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
       env: {},
       store: {
         backend: 'azure-blob',
-        put: async (key, data) => remoteStore.put(key, data),
-        get: async (key) => remoteStore.get(key),
-        has: async (key) => remoteStore.has(key),
-        list: async (prefix) => remoteStore.list(prefix),
-        remove: async (key) => remoteStore.remove(key),
-        resolve: (key) => remoteStore.resolve(key),
+        put: async (key, data) => injectedStore.put(key, data),
+        get: async (key) => injectedStore.get(key),
+        has: async (key) => injectedStore.has(key),
+        list: async (prefix) => injectedStore.list(prefix),
+        remove: async (key) => injectedStore.remove(key),
+        resolve: (key) => injectedStore.resolve(key),
       },
     });
 
-    // Confirm the run exists in the remote store
-    const beforeKeys = await remoteStore.list(`${briefId}/${runId}/`);
+    // Confirm the run exists in the injected store
+    const beforeKeys = await injectedStore.list(`${briefId}/${runId}/`);
     expect(beforeKeys.length).toBeGreaterThan(0);
 
     // DELETE the run
@@ -784,8 +785,8 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().deleted).toBe(`${briefId}/${runId}`);
 
-    // Confirm the run was removed from the remote store
-    const afterKeys = await remoteStore.list(`${briefId}/${runId}/`);
+    // Confirm the run was removed from the injected store
+    const afterKeys = await injectedStore.list(`${briefId}/${runId}/`);
     expect(afterKeys.length).toBe(0);
   });
 });
