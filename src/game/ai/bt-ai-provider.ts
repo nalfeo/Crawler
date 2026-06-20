@@ -1707,6 +1707,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
   ): void {
+    // Scan from the end so we pick the farthest visible waypoint in one pass,
+    // maximizing diagonal shortcutting while preserving wall safety.
     for (let i = this.pathWaypoints.length - 1; i > this.pathIndex; i--) {
       const wp = this.pathWaypoints[i];
       if (!wp) {
@@ -2205,7 +2207,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * Project a combat-flavored Progress objective onto a {@link WorldTarget} at
    * the enemy's current position so it can be routed through the shared
    * {@link planEngagement} kite logic. Returns null for position objectives
-   * (eid &lt; 0), dead/despawned entities, and non-enemy entities such as gold
+   * (eid < 0), dead/despawned entities, and non-enemy entities such as gold
    * piles — those should be approached directly, not kited.
    */
   private progressTargetAsEnemy(
