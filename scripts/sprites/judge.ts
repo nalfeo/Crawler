@@ -377,7 +377,7 @@ function buildUserPrompt(brief: Brief, referenceCount: number): string {
     '',
     refSummary,
     '',
-    'Return your three scores and rationales as the strict JSON object described in the system prompt.',
+    'Return your three scores and rationales as a strict JSON object.',
   );
   return lines.filter((s) => s !== '').join('\n');
 }
