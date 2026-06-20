@@ -112,11 +112,11 @@ function makeFailingProvider(
       async generateSheet(): Promise<Buffer> {
         calls++;
         if (succeedsAfter > 0 && calls > succeedsAfter) {
-          // Return a valid 9-cell sheet so retries can succeed.
+          // Return a valid 2x2 (4-cell) sheet matching the test brief so the retry succeeds.
           return tileVariantsIntoSheet(
-            Array.from({ length: 9 }, () => buildGoodSwordFixture()),
-            3,
-            3,
+            Array.from({ length: 4 }, () => buildGoodSwordFixture()),
+            2,
+            2,
           );
         }
         throw error;

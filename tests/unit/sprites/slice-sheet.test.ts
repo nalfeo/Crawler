@@ -351,9 +351,15 @@ describe('sliceSheet', () => {
 
     it('sliceSheetFromBrief skips brief-declared empty cells and preserves order', () => {
       const sheet = encodeContentGridSheet();
-      // Minimal brief: sliceSheetFromBrief only reads generation.sheet.emptyCells.
+      // Minimal brief: sliceSheetFromBrief reads generation.sheet.{rows,cols,emptyCells}.
       const brief = {
-        generation: { sheet: { emptyCells: [[0, 0]] as ReadonlyArray<readonly [number, number]> } },
+        generation: {
+          sheet: {
+            rows: 2,
+            cols: 2,
+            emptyCells: [[0, 0]] as ReadonlyArray<readonly [number, number]>,
+          },
+        },
       } as unknown as Brief;
 
       const cells = sliceSheetFromBrief(sheet, brief);

@@ -203,6 +203,16 @@ export interface SliceOptionsV2 {
   readonly minBandPx?: number;
   /** Cells to mark as empty by (row, col). */
   readonly emptyCells?: ReadonlyArray<readonly [number, number]>;
+  /**
+   * Expected number of rows in the sheet grid. When provided together with
+   * `cols`, the slicer uses equal-division cuts (sheet.width/cols and
+   * sheet.height/rows) instead of content-aware band detection. This avoids
+   * false-positive bands from within-cell background areas and preserves full
+   * cell boundaries so edge-touching sensors work correctly.
+   */
+  readonly rows?: number;
+  /** Expected number of columns — see `rows`. */
+  readonly cols?: number;
 }
 
 interface Band {
@@ -333,40 +343,63 @@ function uniqueSorted(values: readonly number[]): number[] {
  * inferred entirely from pixel data.
  */
 export function computeSliceMapV2(sheetPng: Buffer, options: SliceOptionsV2 = {}): SliceMap {
-  const bgThreshold = options.bgThreshold ?? 24;
-  const minBandPx = options.minBandPx ?? 2;
-  const outerBorderPx = 1;
   const sheet = PNG.sync.read(sheetPng);
-  const bg = estimateSheetBackgroundRgb(sheet);
 
-  const content = inferContentBounds(sheet, bg, bgThreshold);
-  const xStart = content ? Math.max(0, content.minX - outerBorderPx) : 0;
-  const xEnd = content ? Math.min(sheet.width, content.maxX + outerBorderPx + 1) : sheet.width;
-  const yStart = content ? Math.max(0, content.minY - outerBorderPx) : 0;
-  const yEnd = content ? Math.min(sheet.height, content.maxY + outerBorderPx + 1) : sheet.height;
+  let xCuts: number[];
+  let yCuts: number[];
+  let xStart: number;
+  let xEnd: number;
+  let yStart: number;
+  let yEnd: number;
 
-  const colBands = maskToBands(findBgColumns(sheet, bg, bgThreshold), minBandPx);
-  const rowBands = maskToBands(findBgRows(sheet, bg, bgThreshold), minBandPx);
+  if (options.rows !== undefined && options.cols !== undefined) {
+    // When the caller knows the grid dimensions, use equal cell division rather
+    // than content-aware band detection. Equal division avoids false-positive
+    // bands from within-cell background areas and preserves full cell
+    // boundaries so edge-touching sensors behave correctly.
+    const cellW = sheet.width / options.cols;
+    const cellH = sheet.height / options.rows;
+    xStart = 0;
+    xEnd = sheet.width;
+    yStart = 0;
+    yEnd = sheet.height;
+    xCuts = Array.from({ length: options.cols + 1 }, (_, i) => Math.round(i * cellW));
+    yCuts = Array.from({ length: options.rows + 1 }, (_, i) => Math.round(i * cellH));
+  } else {
+    const bgThreshold = options.bgThreshold ?? 24;
+    const minBandPx = options.minBandPx ?? 2;
+    const outerBorderPx = 1;
+    const bg = estimateSheetBackgroundRgb(sheet);
 
-  // Cut positions = trimmed content bounds + centre of each interior background band.
-  // Bands that touch the trimmed edges are outer margins and should not become cuts.
-  const innerColBands = colBands.filter((b) => b.start > xStart && b.end < xEnd - 1);
-  const innerRowBands = rowBands.filter((b) => b.start > yStart && b.end < yEnd - 1);
+    const content = inferContentBounds(sheet, bg, bgThreshold);
+    xStart = content ? Math.max(0, content.minX - outerBorderPx) : 0;
+    xEnd = content ? Math.min(sheet.width, content.maxX + outerBorderPx + 1) : sheet.width;
+    yStart = content ? Math.max(0, content.minY - outerBorderPx) : 0;
+    yEnd = content ? Math.min(sheet.height, content.maxY + outerBorderPx + 1) : sheet.height;
 
-  const xCuts = uniqueSorted([
-    xStart,
-    ...innerColBands
-      .map((b) => Math.round((b.start + b.end) / 2))
-      .filter((x) => x > xStart && x < xEnd),
-    xEnd,
-  ]);
-  const yCuts = uniqueSorted([
-    yStart,
-    ...innerRowBands
-      .map((b) => Math.round((b.start + b.end) / 2))
-      .filter((y) => y > yStart && y < yEnd),
-    yEnd,
-  ]);
+    const colBands = maskToBands(findBgColumns(sheet, bg, bgThreshold), minBandPx);
+    const rowBands = maskToBands(findBgRows(sheet, bg, bgThreshold), minBandPx);
+
+    // Cut positions = trimmed content bounds + centre of each interior background band.
+    // Bands that touch the trimmed edges are outer margins and should not become cuts.
+    const innerColBands = colBands.filter((b) => b.start > xStart && b.end < xEnd - 1);
+    const innerRowBands = rowBands.filter((b) => b.start > yStart && b.end < yEnd - 1);
+
+    xCuts = uniqueSorted([
+      xStart,
+      ...innerColBands
+        .map((b) => Math.round((b.start + b.end) / 2))
+        .filter((x) => x > xStart && x < xEnd),
+      xEnd,
+    ]);
+    yCuts = uniqueSorted([
+      yStart,
+      ...innerRowBands
+        .map((b) => Math.round((b.start + b.end) / 2))
+        .filter((y) => y > yStart && y < yEnd),
+      yEnd,
+    ]);
+  }
 
   const cols = xCuts.length - 1;
   const rows = yCuts.length - 1;
@@ -425,9 +458,8 @@ export function sliceSheetV2(sheetPng: Buffer, options: SliceOptionsV2 = {}): Bu
  * Convenience wrapper that pulls grid shape and empty cells from a brief.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
-  return sliceSheetV2(sheetPng, {
-    emptyCells: brief.generation.sheet.emptyCells,
-  });
+  const { rows, cols, emptyCells } = brief.generation.sheet;
+  return sliceSheetV2(sheetPng, { rows, cols, emptyCells });
 }
 
 function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: number): Buffer {
