@@ -52,6 +52,8 @@ interface EnemyTarget {
 }
 
 const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
+// Enemies spawn around 1000px away, so keep combat targeting slightly beyond that.
+const COMBAT_RADIUS_PX = 1200;
 
 const weaponConfigs = new WeakMap<GameWorld, WeaponConfig>();
 const weaponStates = new WeakMap<GameWorld, WeaponState>();
@@ -582,14 +584,13 @@ export function weaponSystem(world: GameWorld): void {
   // Detect if player is in active combat (enemies nearby within aggro range)
   const enemies = query(world.ecs, [Enemy, Position]);
   let inCombat = false;
-  const combatRadius = 1200; // Enemies spawn ~1000px away
   for (const enemy of enemies) {
     const ex = world.stores.position.x[enemy]!;
     const ey = world.stores.position.y[enemy]!;
     const dx = ex - playerX;
     const dy = ey - playerY;
     const distSq = dx * dx + dy * dy;
-    if (distSq < combatRadius * combatRadius) {
+    if (distSq < COMBAT_RADIUS_PX * COMBAT_RADIUS_PX) {
       inCombat = true;
       break;
     }

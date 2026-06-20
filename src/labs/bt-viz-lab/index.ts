@@ -12,6 +12,7 @@ import { BehaviorTreeAI } from '../../game/ai/bt-ai-provider.js';
 import type { GameWorld } from '../../core/world.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { createLogger } from '../../shared/logger.js';
+import { registerLab } from '../registry.js';
 
 const logger = createLogger('lab:bt-viz');
 
@@ -120,8 +121,7 @@ function renderBehaviorTree(
   container.appendChild(legend);
 }
 
-export default {
-  id: 'bt-viz',
+registerLab('bt-viz', {
   name: 'Behavior Tree Visualization',
   description: 'Visualize and debug AI behavior trees in real-time',
 
@@ -225,4 +225,4 @@ export default {
       logger.info('Behavior Tree Visualization Lab stopped');
     };
   },
-};
+});
