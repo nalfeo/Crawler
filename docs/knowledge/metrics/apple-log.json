@@ -502,5 +502,25 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "String-driven sprite workflow: pure queue module (sprite-workflow-queue.ts, 28 tests) with localStorage persistence; full devtools-main.ts rewire to a single-page string composer + persistent stepper queue; advisory/human-overridable approve UX (Approve anyway + confirm + judge axis chips + best-first ranking); judge axis scores plumbed generate->persist->restore for refresh survival; approve-time sprite TYPE tagging in approve.ts (reads brief YAML via summary.briefPath, prepends type so catalog entry tags are item/generated/pipeline-approved). Drove live E2E for Purple Potion Bottle to done; sprite in catalog. Also committed prior fixes: judge.ts Azure jailbreak reword + setup-azure-env.ps1 PS5.1 Join-Path. Full npm run verify green. Surfaced 10 pre-existing integration failures (sensor grid slicing / judge pipeline) confirmed on base #161 via stash; documented as out-of-scope in handoff."
+  },
+  {
+    "date": "2026-06-20",
+    "session": "level-up-stat-allocation-ux",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.5,
+    "notes": "Built the level-up stat-allocation UX. Added a pure, unit-tested allocation state module (src/shared/level-up-allocation.ts) and stat display metadata/formatting (src/shared/stat-display.ts), a Phaser LevelUpUI overlay (src/engine/LevelUpUI.ts) with per-stat -/+ controls, value preview, Reset/Confirm, and keyboard+pointer nav, and wired it into MainGameScene so world.state==='level_up' freezes the sim and opens the screen (spendPoints injected via the new allocateStatPoints scene option in floor1-main-scene-options.ts; leftover points bank toward next level). Replaced the old 'Floor 1 has no allocation UI -> immediately resume' stub. Added level-up-lab (registered in lab-main.ts) + README, 16 new unit tests, and updated docs/systems/05-progression.md and the levelSystem docstring. Headless path unchanged (auto-progression still automates allocation). Full unit suite green (1344) and verify:fast green."
+  },
+  {
+    "date": "2026-06-20",
+    "session": "ai-playthrough-levelup-ux",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Made the in-browser AI Runner Lab use the REAL level-up modal UX instead of bypassing it. The lab previously ran autoAllocateStatPoints as a post-system, zeroing unspentPoints before MainGameScene could open the level-up screen, so the AI never exercised the shipped UX. Extracted the pure decision computeAutoStatAllocation(world, playerEid, available) out of autoAllocateStatPoints (same armor->5/maxHp->6/armor->11/dump spend order, now clamped + side-effect-free). Added LevelUpUI.autoResolve(allocations) that drives the real reducers (incrementStat) then confirm, firing the same onConfirm->allocateStatPoints path a clicking player hits. Added optional autoLevelUpAllocator scene option + driveAutoLevelUp() in MainGameScene: holds the open modal LEVEL_UP_AUTO_HOLD_FRAMES (24 render frames ~0.4s, sim-speed-independent since the modal freeze skips fixed-step) then auto-confirms; omitted for human play. Wired the lab to set autoLevelUpAllocator: computeAutoStatAllocation and dropped the auto-spend post-system. Headless runner keeps direct allocation (no DOM). 11 new unit tests (auto-stat-allocation + ai-level-up-ux-wiring). Full verify green (typecheck/lint/format, 1355 unit tests, headless Floor 1 gate 4/4, vite build, lab gate). Browser smoke skipped: Playwright MCP chrome profile had a stale root-owned lock. Pre-existing sprite-pipeline integration failures (need external VLM/image providers) confirmed unrelated."
   }
 ]
