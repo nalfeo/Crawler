@@ -97,6 +97,12 @@ const KITE_RADIAL_STEP_PX = 16;
 // forever; far longer than any oscillation so it reads as intentional kiting.
 const KITE_FLIP_FRAMES = 132;
 const NAVIGATION_LOOKAHEAD_PX = 24;
+// Per-frame blend fraction for output-direction smoothing. Exponential decay
+// toward the desired move vector so waypoint transitions and kite reversals
+// produce a smooth arc rather than an instant 90° snap. Value is tuned so a
+// full cardinal-direction change completes in ~8 frames (~133ms at 60fps) while
+// keeping top speed virtually unaffected during straight-line travel.
+const MOVE_SMOOTH_FACTOR = 0.3;
 // Close-range direct approach threshold (~1.5 tiles). Within this distance, and
 // with a clear straight corridor, the AI abandons tile-granular A* and slides
 // straight at the exact target pixel. Tile A* targets tile CENTERS and cannot
@@ -338,6 +344,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   private stuckFrames: number = 0;
   private lastPlayerX: number = 0;
   private lastPlayerY: number = 0;
+  /** Smoothed output direction, updated each poll via {@link MOVE_SMOOTH_FACTOR}.
+   * Initialized to (0, 0) at construction and persists across all polls for the
+   * lifetime of this AI instance; never explicitly reset, so the blend always
+   * carries over from the previous frame. */
+  private smoothMoveX: number = 0;
+  private smoothMoveY: number = 0;
   /**
    * Whether the AI is currently committed to a retreat. Latched so the retreat
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
@@ -1373,6 +1385,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveX = 0;
       state.moveY = 0;
     }
+
+    // Smooth the output direction so waypoint transitions and kite reversals
+    // produce a fluid arc rather than an instant direction snap. The blended
+    // values are passed directly to playerInputSystem; normalizeInputDirection
+    // keeps them unchanged when their length is ≤ 1, so the player naturally
+    // accelerates/decelerates through turns at sub-full speed.
+    this.smoothMoveX += (state.moveX - this.smoothMoveX) * MOVE_SMOOTH_FACTOR;
+    this.smoothMoveY += (state.moveY - this.smoothMoveY) * MOVE_SMOOTH_FACTOR;
+    state.moveX = this.smoothMoveX;
+    state.moveY = this.smoothMoveY;
 
     state.action = false;
 

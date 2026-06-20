@@ -157,4 +157,34 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.reason).not.toContain('Hunting quest enemies');
   });
+
+  it('smoothly blends output direction across polls instead of snapping instantly', () => {
+    // Verify that the exponential smoothing produces a gradual transition:
+    // on the first poll the output direction must be closer to zero than to the
+    // full target, and after several polls it converges to within a small epsilon
+    // of the desired direction.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // Place an enemy 200px to the right so the AI targets it and outputs (1, 0).
+    spawnEnemy(world, 200, 0, 20);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    const input = createInputState();
+
+    // Poll once — the AI starts from (0,0) and blends toward the desired
+    // direction, so the first output must be smaller in magnitude than 1.
+    ai.poll(input, world);
+    const firstMag = Math.hypot(input.moveX, input.moveY);
+    expect(firstMag).toBeGreaterThan(0);
+    expect(firstMag).toBeLessThan(1);
+
+    // After enough polls the output converges to near the desired magnitude.
+    let finalMag = firstMag;
+    for (let i = 0; i < 30; i++) {
+      ai.poll(input, world);
+      finalMag = Math.hypot(input.moveX, input.moveY);
+    }
+    expect(finalMag).toBeGreaterThan(0.95);
+  });
 });
