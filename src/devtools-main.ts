@@ -50,6 +50,7 @@ const DEVTOOLS_PAGE_SPRITE_WORKFLOW = 'sprite-generation-workflow';
 const DEVTOOLS_PAGE_FLOOR_ART_LEGACY = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
+const QUEUED_RUN_POLL_MS = 2000;
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
   | typeof DEVTOOLS_PAGE_SPRITE_WORKFLOW
@@ -3645,7 +3646,7 @@ function render(): void {
             applyGeneratedRunToQueue(itemId, match.briefId, match.runId, summary.candidates ?? []);
             return;
           }
-          await new Promise((resolve) => window.setTimeout(resolve, 2000));
+          await new Promise((resolve) => window.setTimeout(resolve, QUEUED_RUN_POLL_MS));
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

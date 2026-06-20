@@ -921,6 +921,15 @@ function toRepoRelativePath(repoRoot: string, absolutePath: string): string {
   return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
 }
 
+function safeStoreJoin(base: string, relativePath: string): string | null {
+  const normalized = path.normalize(relativePath);
+  const segments = normalized.split(path.sep).filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return null;
+  }
+  return safeJoin(base, segments);
+}
+
 interface HydratedRunDir {
   readonly runDir: string;
   cleanup(): void;
@@ -942,7 +951,10 @@ async function hydrateRunDirFromStore(
   for (const key of keys) {
     const rel = key.slice(prefix.length);
     if (rel === '') continue;
-    const target = path.join(runDir, rel);
+    const target = safeStoreJoin(runDir, rel);
+    if (target === null) {
+      continue;
+    }
     mkdirSync(path.dirname(target), { recursive: true });
     writeFileSync(target, await store.get(key));
   }
