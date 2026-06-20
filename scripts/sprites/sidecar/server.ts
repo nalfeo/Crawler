@@ -946,7 +946,11 @@ async function hydrateRunDirFromStore(
     return null;
   }
   const tempRoot = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-run-'));
-  const runDir = path.join(tempRoot, briefId, runId);
+  const runDir = safeJoin(tempRoot, [briefId, runId]);
+  if (runDir === null) {
+    rmSync(tempRoot, { recursive: true, force: true });
+    return null;
+  }
   mkdirSync(runDir, { recursive: true });
   for (const key of keys) {
     const rel = key.slice(prefix.length);
