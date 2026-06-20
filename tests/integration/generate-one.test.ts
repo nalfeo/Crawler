@@ -112,7 +112,7 @@ function makeFailingProvider(
       async generateSheet(): Promise<Buffer> {
         calls++;
         if (succeedsAfter > 0 && calls > succeedsAfter) {
-          // Return a valid 9-cell sheet so retries can succeed.
+          // Return a valid brief-sized (3x3 => 9-cell) sheet so retries can succeed.
           return tileVariantsIntoSheet(
             Array.from({ length: 9 }, () => buildGoodSwordFixture()),
             3,
@@ -224,6 +224,14 @@ describe('generateOne (integration)', () => {
     // All passed candidates come before any failed one in the ranking.
     const firstFailIdx = result.summary.candidates.findIndex((c) => !c.passed);
     expect(firstFailIdx).toBe(2);
+    // Within each pass/fail bucket, candidates are score-descending.
+    for (let i = 1; i < result.summary.candidates.length; i++) {
+      const prev = result.summary.candidates[i - 1]!;
+      const curr = result.summary.candidates[i]!;
+      if (prev.passed === curr.passed) {
+        expect(prev.score).toBeGreaterThanOrEqual(curr.score);
+      }
+    }
   });
 
   it('retries on a bad-grid error and ultimately succeeds within maxAttempts', async () => {
