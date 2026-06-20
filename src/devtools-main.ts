@@ -1805,6 +1805,7 @@ function render(): void {
             });
             writeQueueState();
           }
+          renderWorkflowSelection();
           setWorkflowStatus(
             `Approved ${run.briefId} variant ${candidate.index}${
               overrideNeeded ? ' (judge override)' : ''
@@ -1813,7 +1814,6 @@ function render(): void {
             }). Now Tag to add catalog metadata.`,
             '#bef264',
           );
-          renderWorkflowSelection();
           void recompute();
         } catch (error) {
           setWorkflowStatus(
