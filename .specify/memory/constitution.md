@@ -64,6 +64,20 @@ Every test, lint, typecheck, and build failure encountered during a session must
 - `src/game/` → must not import `src/engine/` or `src/labs/`
 - `src/labs/` → unrestricted
 
+### 12. AI Simulator Lab Compatibility
+
+Every game system must be exercisable inside the AI simulator lab (`src/labs/ai-runner-lab/`). A system is not considered complete until the AI can drive it end-to-end without human input.
+
+UX state — including menus, modals, HUD flags, conversation state, world-state strings, and any other player-facing control surface — must be discoverable and operable programmatically. Labs that host interactive UX must expose it via a well-known `window.__<labId>Debug()` snapshot function (following the pattern established in `AiRunnerDebugSnapshot`) and, where mutation is needed, a `window.__<labId>Control` interface. These interfaces are debug-only and must never ship to the production build.
+
+This means:
+
+- No UX gate (modal, menu, dialog, lock) may be permanently impassable without a programmatic bypass.
+- Every boolean or enum UX state must appear in the snapshot so the AI can observe it.
+- Every user-triggerable action must have a corresponding programmatic entry point callable from the control interface.
+
+CI enforcement: the lab-gate check (`scripts/agent/lab-gate-check.sh`) must verify that any lab hosting interactive UX exports both a snapshot and a control interface.
+
 ## Non-Negotiable
 
 - No `Math.random()` anywhere in game code
