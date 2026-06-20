@@ -53,6 +53,20 @@ graph TD
 
 Each step, accumulates XP in `world.playerLevel.xp` (XP is added elsewhere, typically by `itemPickupSystem`). Advances `playerLevel.level` as far as `xpRequiredForLevel(n)` allows, granting `pointsPerLevel` unspent stat points per level. Sets `world.statsDirty = true` and transitions to `level_up` state so the UI can show an allocation screen.
 
+### Allocation UX
+
+The visual game surfaces the earned points through the **level-up overlay**
+(`src/engine/LevelUpUI.ts`, sandboxed in `level-up-lab`). When
+`world.state === 'level_up'` and the player has unspent points, `MainGameScene`
+freezes the simulation and opens the overlay, where the player distributes
+points across the gameplay stats (−/+ per row or keyboard), previews the
+resulting values, and confirms. Confirming calls `spendPoints` (injected via the
+scene's `allocateStatPoints` option) and resumes play; leftover points are banked
+toward the next level. All clamp/navigation rules live in the pure, unit-tested
+`src/shared/level-up-allocation.ts` module, with display labels/formatting in
+`src/shared/stat-display.ts`. The headless runner has no UI and instead automates
+allocation via `auto-progression.ts`.
+
 ### Contract
 
 ```

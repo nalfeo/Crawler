@@ -44,6 +44,8 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
+import { createLevelUpUI } from '../LevelUpUI.js';
+import { STAT_KEYS, type StatKey } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import {
@@ -58,6 +60,13 @@ import type { ShopkeeperStage } from '../../shared/quest-types.js';
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
 const UI_DEPTH_CUTOFF = 900;
+/**
+ * Render frames the level-up modal is held open before an `autoLevelUpAllocator`
+ * (AI driver) auto-confirms it. ~0.4s at 60fps — long enough for a viewer to see
+ * the screen, short enough not to stall the AI playthrough. Counts render frames
+ * (the modal freeze skips the fixed-step), so it is independent of sim speed.
+ */
+const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
 const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
   'You did it! Boss dropped, room cleared.',
   'Stairs are live. Descend when you are ready.',
@@ -110,6 +119,28 @@ export interface MainGameSceneOptions {
   };
   /** Spell selection callback for floor1 boss battle reward. */
   selectSpellFromBossBattle?: (world: GameWorld, playerEid: number, spellId: string) => void;
+  /**
+   * Apply level-up stat allocations (game-layer `spendPoints` injected from
+   * main.ts). When omitted, the level-up screen is skipped and the run resumes
+   * immediately — labs/harnesses without progression wiring keep working.
+   */
+  allocateStatPoints?: (
+    world: GameWorld,
+    playerEid: number,
+    allocations: Partial<Record<StatKey, number>>,
+  ) => void;
+  /**
+   * Optional AI driver for the level-up screen. When set, the scene lets the
+   * level-up modal render for a brief, deterministic hold (so a viewer can see
+   * it) and then auto-confirms it with this allocator's chosen points — driving
+   * the real level-up UX instead of bypassing it. Used by the AI Runner Lab;
+   * omitted for human play so the player allocates manually.
+   */
+  autoLevelUpAllocator?: (
+    world: GameWorld,
+    playerEid: number,
+    available: number,
+  ) => Partial<Record<StatKey, number>>;
 }
 
 declare global {
@@ -194,6 +225,15 @@ export class MainGameScene extends Phaser.Scene {
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
+
+  private levelUpUI?: ReturnType<typeof createLevelUpUI>;
+
+  /**
+   * Frames the level-up modal has been held open while an `autoLevelUpAllocator`
+   * (AI driver) is wired. Counts render frames so the modal stays visible briefly
+   * before the AI auto-confirms it. Reset whenever the modal is not open.
+   */
+  private levelUpAutoHoldFrames = 0;
 
   /** Latches true once the death-screen has been shown (to avoid re-triggering). */
   private deathScreenShown = false;
@@ -352,6 +392,16 @@ export class MainGameScene extends Phaser.Scene {
         window.location.reload();
       },
     });
+    this.levelUpUI = createLevelUpUI(this, {
+      onConfirm: (allocations) => {
+        // Apply the player's allocation (no-op if empty / points banked), then
+        // resume the run. statsSystem (preSystems) recomputes next frame.
+        if (this.playerEid >= 0) {
+          this.options.allocateStatPoints?.(this.world, this.playerEid, allocations);
+        }
+        this.world.state = 'playing';
+      },
+    });
     this.input.on('pointerdown', this.handlePointerDown, this);
     this.initializeUi();
     this.drawFloorTerrain();
@@ -418,6 +468,8 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryUI = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
+      this.levelUpUI?.destroy();
+      this.levelUpUI = undefined;
       if (this.uiCamera) {
         this.cameras.remove(this.uiCamera);
         this.uiCamera = undefined;
@@ -531,6 +583,16 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    // While the level-up allocation screen is open, freeze the simulation (no
+    // fixed-step) but keep rendering/camera responsive — mirrors the modal/pause
+    // freeze branches below.
+    if (this.levelUpUI?.isOpen()) {
+      this.bridge.sync(this.world);
+      this.updateCamera();
+      this.updateOverlayText();
+      return;
+    }
+
     if (this.hudUi?.isMapOverlayOpen()) {
       this.updateDoorOverlay();
       this.bridge.sync(this.world);
@@ -541,9 +603,18 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    // Floor 1 doesn't expose a stat-allocation UI, so keep the simulation flowing
-    // instead of parking the whole scene on the level_up flag.
+    // On level-up, open the stat-allocation screen so the player can spend the
+    // points they earned. If there are no points to spend (or no allocation
+    // callback is wired), just resume the run.
     if (this.world.state === 'level_up') {
+      this.showLevelUpScreenIfNeeded();
+      if (this.levelUpUI?.isOpen()) {
+        this.driveAutoLevelUp();
+        this.bridge.sync(this.world);
+        this.updateCamera();
+        this.updateOverlayText();
+        return;
+      }
       this.world.state = 'playing';
     }
 
@@ -1614,6 +1685,55 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.deathScreenShown = true;
     this.gameOverUI?.show();
+  }
+
+  /**
+   * AI level-up driver. When an `autoLevelUpAllocator` is wired (AI Runner Lab),
+   * hold the open modal for {@link LEVEL_UP_AUTO_HOLD_FRAMES} render frames so a
+   * viewer can see it, then auto-confirm via `LevelUpUI.autoResolve` with the
+   * allocator's chosen points. This makes the AI go through the real level-up UX
+   * (modal render + confirm + `allocateStatPoints`) rather than bypassing it.
+   * No-op for human play (allocator omitted).
+   */
+  private driveAutoLevelUp(): void {
+    const allocator = this.options.autoLevelUpAllocator;
+    if (!allocator || !this.levelUpUI?.isOpen() || this.playerEid < 0) {
+      this.levelUpAutoHoldFrames = 0;
+      return;
+    }
+    this.levelUpAutoHoldFrames += 1;
+    if (this.levelUpAutoHoldFrames < LEVEL_UP_AUTO_HOLD_FRAMES) {
+      return;
+    }
+    const available = this.world.playerLevel.unspentPoints;
+    const allocations = allocator(this.world, this.playerEid, available);
+    this.levelUpUI.autoResolve(allocations);
+    this.levelUpAutoHoldFrames = 0;
+  }
+
+  /**
+   * Opens the level-up stat-allocation screen when the player has unspent points
+   * and an allocation callback is wired. No-ops if the screen is already open,
+   * there are no points to spend, or the player entity is unknown — in those
+   * cases the caller resumes the run.
+   */
+  private showLevelUpScreenIfNeeded(): void {
+    if (!this.levelUpUI || this.levelUpUI.isOpen() || !this.options.allocateStatPoints) {
+      return;
+    }
+    const available = this.world.playerLevel.unspentPoints;
+    if (available <= 0 || this.playerEid < 0) {
+      return;
+    }
+    const currentStats = {} as Record<StatKey, number>;
+    for (const stat of STAT_KEYS) {
+      currentStats[stat] = this.world.stores.stats[stat][this.playerEid] ?? 0;
+    }
+    this.levelUpUI.open({
+      level: this.world.playerLevel.level,
+      available,
+      currentStats,
+    });
   }
 
   private updateBossHealthBar(): void {
