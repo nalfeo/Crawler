@@ -118,6 +118,7 @@ export class ApproveError extends Error {
 
 interface RunSummaryShape {
   readonly brief?: string;
+  readonly briefPath?: string;
   readonly runId?: string;
   readonly chosen?: {
     readonly index?: number;
@@ -260,8 +261,36 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
-  upsertCatalog(fs, options.catalogPath, entry, variantId);
+  upsertCatalog(
+    fs,
+    options.catalogPath,
+    entry,
+    variantId,
+    resolveBriefType(fs, options.repoRoot, summary.briefPath),
+  );
   return entry;
+}
+
+/**
+ * Read the brief's declared `type` (e.g. `item`, `enemy`) from the brief YAML
+ * referenced by the run summary. Used to tag the catalog entry with its sprite
+ * type so it is discoverable in-game. Returns `null` when the brief path is
+ * missing/unreadable or has no top-level `type:` field.
+ */
+function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): string | null {
+  if (!briefPath) return null;
+  const absPath = path.isAbsolute(briefPath) ? briefPath : path.join(repoRoot, briefPath);
+  if (!fs.existsSync(absPath)) return null;
+  let raw: string;
+  try {
+    raw = fs.readFileSync(absPath, 'utf8');
+  } catch {
+    return null;
+  }
+  const match = raw.match(/^type:\s*([A-Za-z][\w-]*)\s*$/m);
+  const captured = match?.[1];
+  if (!captured) return null;
+  return captured.toLowerCase();
 }
 
 /**
@@ -322,6 +351,7 @@ function upsertCatalog(
   catalogPath: string,
   manifestEntry: ManifestEntry,
   catalogId: string,
+  briefType: string | null,
 ): void {
   let catalog: Array<Record<string, unknown>>;
 
@@ -337,13 +367,17 @@ function upsertCatalog(
     catalog = [];
   }
 
-  // Create catalog entry from manifest entry
+  // Create catalog entry from manifest entry. The sprite type (from the brief)
+  // is included as the first tag so generated sprites are discoverable by type.
+  const tags = briefType
+    ? [briefType, 'generated', 'pipeline-approved']
+    : ['generated', 'pipeline-approved'];
   const catalogEntry: Record<string, unknown> = {
     id: `generated:${catalogId}`,
     kind: 'sprite',
     label: manifestEntry.spriteName,
     description: `Generated sprite from brief: ${manifestEntry.briefId}.`,
-    tags: ['generated', 'pipeline-approved'],
+    tags,
     spriteId: manifestEntry.spriteName,
     sheetKey: 'generated-manifest',
     assetPath: manifestEntry.assetPath,

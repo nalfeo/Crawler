@@ -482,5 +482,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Added the official, blocking headless Floor 1 completion gate (tests/headless/floor1-completion.test.ts): drives runHeadless(BehaviorTreeAI, seed 42) and asserts outcome=victory, all 4 Floor 1 quests, and gameTimeMs<5min, plus combat/progression sanity. Asserts deterministic game time (never wall time) so cross-platform CPU differences cannot flake CI, and caps maxFrames ~10% past the deadline so a non-clearing regression ends fast instead of grinding to the 100k-frame default. Wired a 'headless' vitest project, test:headless npm script, verify.sh Step 7, and a dedicated blocking test-headless CI job in merge-gate.needs + check block. Also committed the previously-staged browser/headless parity work: shared auto-progression.ts extraction (B7), spellQuestGiver.meet scene wiring + regression test (B5), per-sub-step AI re-poll in MainGameScene (B6), and melee stutter-step kiting. Caught a push-ref trap: the worktree branch is pr/150/copilot/design-headless-runner-ai but PR #150's head ref is copilot/design-headless-runner-ai (no prefix) -- first push hit a stray ref; fixed with git push origin HEAD:copilot/design-headless-runner-ai. Full npm run verify green (8/8 incl. build); deleted throwaway _seed-probe.mts. PR updated to 70cda5a, not merged."
+  },
+  {
+    "date": "2026-06-19",
+    "session": "e2e-sprite-workflow",
+    "estimated_apples": 4,
+    "actual_apples": 4,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.4,
+    "notes": "String-driven sprite workflow: pure queue module (sprite-workflow-queue.ts, 28 tests) with localStorage persistence; full devtools-main.ts rewire to a single-page string composer + persistent stepper queue; advisory/human-overridable approve UX (Approve anyway + confirm + judge axis chips + best-first ranking); judge axis scores plumbed generate->persist->restore for refresh survival; approve-time sprite TYPE tagging in approve.ts (reads brief YAML via summary.briefPath, prepends type so catalog entry tags are item/generated/pipeline-approved). Drove live E2E for Purple Potion Bottle to done; sprite in catalog. Also committed prior fixes: judge.ts Azure jailbreak reword + setup-azure-env.ps1 PS5.1 Join-Path. Full npm run verify green. Surfaced 10 pre-existing integration failures (sensor grid slicing / judge pipeline) confirmed on base #161 via stash; documented as out-of-scope in handoff."
   }
 ]
