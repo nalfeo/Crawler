@@ -551,5 +551,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Updated auto-rebase conflict delegation so the workflow assigns @copilot on conflicted PRs in addition to leaving the existing bot-authored handoff comment, making the escalation an explicit Copilot task."
+  },
+  {
+    "date": "2026-06-20",
+    "session": "pr169-review-fixes",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Fixed review comments for PR #169 (sprite workflow Azure wiring): timestamp precision (floor requestedAt to seconds to match parseRunIdTimestamp), briefId matching (poll against chosen candidate id not kebabName), duplicate queue guard (check alreadyQueued flag), transient poll retries (max 3 attempts), emoji encoding revert (apple-log.json consistency), remote deletion test coverage."
   }
 ]
