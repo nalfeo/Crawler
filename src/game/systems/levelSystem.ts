@@ -6,8 +6,9 @@ import { xpRequiredForLevel } from '../../shared/xpMath.js';
 /**
  * Accumulates XP into world.playerLevel and grants stat points on level-up.
  * Does NOT render UI — just sets world.statsDirty and increments unspentPoints.
- * In v1 there is no pause: the level_up state is a flag for the UI layer to show
- * an allocation screen. Labs/tests use spendPoints() directly.
+ * The level_up state is a flag for the UI layer (MainGameScene's LevelUpUI) to
+ * pause and show the stat-allocation screen. Labs/tests/headless use
+ * spendPoints() directly.
  */
 export function levelSystem(world: GameWorld): void {
   const players = query(world.ecs, [Player]);

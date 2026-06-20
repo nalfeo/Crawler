@@ -91,8 +91,8 @@
   },
   {
     "session": "2026-06-11-mobile-review-fixes",
-    "estimate": "🍎🍎",
-    "actual": "🍎🍎",
+    "estimate": "\ud83c\udf4e\ud83c\udf4e",
+    "actual": "\ud83c\udf4e\ud83c\udf4e",
     "verdict": "on-target",
     "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
   },
@@ -371,16 +371,16 @@
     "date": "2026-06-17",
     "session": "2026-06-17-e2e-visual-regression",
     "task": "Playwright e2e visual regression tests + HudMinimap depth fix",
-    "estimate": "🍎🍎🍎",
-    "actual": "🍎🍎🍎",
+    "estimate": "\ud83c\udf4e\ud83c\udf4e\ud83c\udf4e",
+    "actual": "\ud83c\udf4e\ud83c\udf4e\ud83c\udf4e",
     "verdict": "on-target"
   },
   {
     "date": "2026-06-18",
     "session": "2026-06-18-playwright-chromium-all-envs",
     "task": "Ensure Playwright Chromium installs in all environments",
-    "estimate": "🍎",
-    "actual": "🍎",
+    "estimate": "\ud83c\udf4e",
+    "actual": "\ud83c\udf4e",
     "verdict": "on-target"
   },
   {
@@ -492,5 +492,25 @@
     "verdict": "exact",
     "hello_kitties": 0.6,
     "notes": "Audited all resolved PR #150 review threads after merge. Shipped targeted follow-up fixes: registered bt-viz lab in registry, removed orphaned floor1.json, corrected floor1-config test wording, fixed HudManaBar default-position docstring, corrected enemy-pack unit docs, hoisted weaponSystem combat radius constant, and renamed misleading ability helper. verify:fast and full verify passed."
+  },
+  {
+    "date": "2026-06-20",
+    "session": "level-up-stat-allocation-ux",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.5,
+    "notes": "Built the level-up stat-allocation UX. Added a pure, unit-tested allocation state module (src/shared/level-up-allocation.ts) and stat display metadata/formatting (src/shared/stat-display.ts), a Phaser LevelUpUI overlay (src/engine/LevelUpUI.ts) with per-stat -/+ controls, value preview, Reset/Confirm, and keyboard+pointer nav, and wired it into MainGameScene so world.state==='level_up' freezes the sim and opens the screen (spendPoints injected via the new allocateStatPoints scene option in floor1-main-scene-options.ts; leftover points bank toward next level). Replaced the old 'Floor 1 has no allocation UI -> immediately resume' stub. Added level-up-lab (registered in lab-main.ts) + README, 16 new unit tests, and updated docs/systems/05-progression.md and the levelSystem docstring. Headless path unchanged (auto-progression still automates allocation). Full unit suite green (1344) and verify:fast green."
+  },
+  {
+    "date": "2026-06-20",
+    "session": "ai-playthrough-levelup-ux",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Made the in-browser AI Runner Lab use the REAL level-up modal UX instead of bypassing it. The lab previously ran autoAllocateStatPoints as a post-system, zeroing unspentPoints before MainGameScene could open the level-up screen, so the AI never exercised the shipped UX. Extracted the pure decision computeAutoStatAllocation(world, playerEid, available) out of autoAllocateStatPoints (same armor->5/maxHp->6/armor->11/dump spend order, now clamped + side-effect-free). Added LevelUpUI.autoResolve(allocations) that drives the real reducers (incrementStat) then confirm, firing the same onConfirm->allocateStatPoints path a clicking player hits. Added optional autoLevelUpAllocator scene option + driveAutoLevelUp() in MainGameScene: holds the open modal LEVEL_UP_AUTO_HOLD_FRAMES (24 render frames ~0.4s, sim-speed-independent since the modal freeze skips fixed-step) then auto-confirms; omitted for human play. Wired the lab to set autoLevelUpAllocator: computeAutoStatAllocation and dropped the auto-spend post-system. Headless runner keeps direct allocation (no DOM). 11 new unit tests (auto-stat-allocation + ai-level-up-ux-wiring). Full verify green (typecheck/lint/format, 1355 unit tests, headless Floor 1 gate 4/4, vite build, lab gate). Browser smoke skipped: Playwright MCP chrome profile had a stale root-owned lock. Pre-existing sprite-pipeline integration failures (need external VLM/image providers) confirmed unrelated."
   }
 ]

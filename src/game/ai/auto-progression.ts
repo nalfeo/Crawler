@@ -162,14 +162,28 @@ const ARMOR_SWARM_FLOOR = 5;
 const MAXHP_CUSHION_POINTS = 6;
 const ARMOR_BOSS_TARGET = 11;
 
-export function autoAllocateStatPoints(world: GameWorld, playerEid: number): void {
-  const pl = world.playerLevel;
-  if (pl.unspentPoints <= 0) {
-    return;
-  }
-
+/**
+ * Compute the survival-tiered stat allocation for `available` unspent points,
+ * WITHOUT spending them. Pure read of the player's current `statPoints` stores;
+ * returns the per-stat point map to hand to `spendPoints` (or to drive the
+ * level-up modal via `LevelUpUI.autoResolve`).
+ *
+ * Split out from {@link autoAllocateStatPoints} so the in-browser AI Runner Lab
+ * can feed the same decision through the real level-up UX (the modal's
+ * confirm/`spendPoints` path) instead of bypassing it, while the headless runner
+ * — which has no DOM/modal — keeps spending directly. See the spend-order
+ * rationale on the constants above.
+ */
+export function computeAutoStatAllocation(
+  world: GameWorld,
+  playerEid: number,
+  available: number,
+): Partial<Record<StatKey, number>> {
   const allocation: Partial<Record<StatKey, number>> = {};
-  let remaining = pl.unspentPoints;
+  let remaining = Number.isFinite(available) ? Math.max(0, Math.floor(available)) : 0;
+  if (remaining <= 0) {
+    return allocation;
+  }
 
   const spendArmorUpTo = (target: number): void => {
     const current = (world.stores.statPoints.armor[playerEid] ?? 0) + (allocation.armor ?? 0);
@@ -196,5 +210,13 @@ export function autoAllocateStatPoints(world: GameWorld, playerEid: number): voi
     allocation.maxHp = (allocation.maxHp ?? 0) + remaining;
   }
 
-  spendPoints(world, allocation);
+  return allocation;
+}
+
+export function autoAllocateStatPoints(world: GameWorld, playerEid: number): void {
+  const pl = world.playerLevel;
+  if (pl.unspentPoints <= 0) {
+    return;
+  }
+  spendPoints(world, computeAutoStatAllocation(world, playerEid, pl.unspentPoints));
 }
