@@ -476,7 +476,7 @@ describe('buildServer routes (inject)', () => {
   it('POST /api/workflow/generate enqueues work when a real queue backend is injected', async () => {
     mkdirSync(path.join(root, 'briefs', 'weapons'), { recursive: true });
     writeFileSync(path.join(root, 'briefs', 'weapons', 'iron-sword.yaml'), 'name: iron-sword\n');
-    const enqueued: Array<Record<string, unknown>> = [];
+    const enqueued: Array<{ briefId: string; briefPath: string }> = [];
     await app.close();
     app = buildServer({
       repoRoot: root,
@@ -485,7 +485,7 @@ describe('buildServer routes (inject)', () => {
       queue: {
         backend: 'azure-queue',
         enqueue: async (request) => {
-          enqueued.push(request);
+          enqueued.push({ briefId: request.briefId, briefPath: request.briefPath });
         },
         dequeue: async () => null,
         peek: async () => [],
