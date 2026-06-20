@@ -24,6 +24,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'anchor-lab': '/src/labs/anchor-lab/index.ts',
   'stat-lab': '/src/labs/stat-lab/index.ts',
   'stats-lab': '/src/labs/stats-lab/index.ts',
+  'level-up-lab': '/src/labs/level-up-lab/index.ts',
   'xp-curve-lab': '/src/labs/xp-curve-lab/index.ts',
   'skill-lab': '/src/labs/skill-lab/index.ts',
   'tile-explorer': '/src/labs/tile-explorer-lab/index.ts',
