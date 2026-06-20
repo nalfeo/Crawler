@@ -754,7 +754,9 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     writeFullRun();
     app = buildServer({
       repoRoot: root,
-      runsDir: path.join(root, 'missing-runs'),
+      // Use a non-existent local runsDir to verify deletion operates through
+      // the injected remote store, not the local filesystem.
+      runsDir: path.join(root, 'unused-runs-dir'),
       version: 'test',
       publicAssetsDir,
       manifestPath,

@@ -3637,13 +3637,24 @@ function render(): void {
           }
           try {
             const runs = await listSidecarRuns();
-            // Floor to the second to match parseRunIdTimestamp precision
+            // Floor to the second to match parseRunIdTimestamp precision.
+            // parseRunIdTimestamp extracts YYYY-MM-DDTHH:MM:SS (no milliseconds),
+            // so same-second runs produced 100-999ms after request would otherwise
+            // fail the >= comparison and never be adopted.
             const requestedAt = Math.floor(Date.parse(item.generationRequestedAt) / 1000) * 1000;
-            // Match against the chosen candidate's id (the brief name), not kebabName
+            // Match against the chosen candidate's id (the brief name), not kebabName.
+            // The promote step copies the candidate YAML without rewriting its internal
+            // `name:` field, so generateOne keys the run as `${brief.name}/${runId}`.
             const chosenCandidate = item.candidates.find(
               (c) => c.yamlPath === item.chosenCandidatePath,
             );
             const expectedBriefId = chosenCandidate?.id ?? item.kebabName;
+            if (!chosenCandidate) {
+              console.warn(
+                `Queue item ${itemId}: chosen candidate path does not match any candidate; ` +
+                  `falling back to kebabName for run matching.`,
+              );
+            }
             const match = runs.find((run) => {
               if (run.briefId !== expectedBriefId || !run.timestamp) {
                 return false;
