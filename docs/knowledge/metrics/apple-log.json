@@ -485,6 +485,16 @@
   },
   {
     "date": "2026-06-19",
+    "session": "pr150-review-followup",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Audited all resolved PR #150 review threads after merge. Shipped targeted follow-up fixes: registered bt-viz lab in registry, removed orphaned floor1.json, corrected floor1-config test wording, fixed HudManaBar default-position docstring, corrected enemy-pack unit docs, hoisted weaponSystem combat radius constant, and renamed misleading ability helper. verify:fast and full verify passed."
+  },
+  {
+    "date": "2026-06-19",
     "session": "player-ai-diagonal-behavior-reuse",
     "estimated_apples": 3,
     "actual_apples": 3,

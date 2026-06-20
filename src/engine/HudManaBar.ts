@@ -31,7 +31,7 @@ const COLORS = {
 export interface HudManaBarOptions {
   /** Horizontal position of left edge. Defaults to 16. */
   x?: number;
-  /** Vertical position of top edge. Defaults to above health bar. */
+  /** Vertical position of top edge. Defaults to below health bar. */
   y?: number;
 }
 
