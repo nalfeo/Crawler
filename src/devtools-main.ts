@@ -3115,6 +3115,9 @@ function render(): void {
       });
       queueBtn.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (alreadyQueued) {
+          return; // Prevent duplicate queue items
+        }
         selectedAssetId = asset.id;
         queueState = queueAddItem(queueState, asset.label, requestedType, 'asset-plan');
         writeQueueState();
@@ -3624,27 +3627,54 @@ function render(): void {
     }
     pendingGenerationPolls.add(itemId);
     void (async () => {
+      let retryCount = 0;
+      const MAX_RETRIES = 3;
       try {
         while (true) {
           const item = queueState.items.find((candidate) => candidate.id === itemId) ?? null;
           if (!item || item.stage !== 'generating' || !item.generationRequestedAt) {
             return;
           }
-          const runs = await listSidecarRuns();
-          const requestedAt = Date.parse(item.generationRequestedAt);
-          const match = runs.find((run) => {
-            if (run.briefId !== item.kebabName || !run.timestamp) {
-              return false;
+          try {
+            const runs = await listSidecarRuns();
+            // Floor to the second to match parseRunIdTimestamp precision
+            const requestedAt = Math.floor(Date.parse(item.generationRequestedAt) / 1000) * 1000;
+            // Match against the chosen candidate's id (the brief name), not kebabName
+            const chosenCandidate = item.candidates.find(
+              (c) => c.yamlPath === item.chosenCandidatePath,
+            );
+            const expectedBriefId = chosenCandidate?.id ?? item.kebabName;
+            const match = runs.find((run) => {
+              if (run.briefId !== expectedBriefId || !run.timestamp) {
+                return false;
+              }
+              const runTime = Date.parse(run.timestamp);
+              return Number.isFinite(runTime) && runTime >= requestedAt;
+            });
+            if (match) {
+              const summary = (await fetchRunSummary(match.briefId, match.runId)) as {
+                candidates?: RawGenerateCandidate[];
+              };
+              applyGeneratedRunToQueue(
+                itemId,
+                match.briefId,
+                match.runId,
+                summary.candidates ?? [],
+              );
+              return;
             }
-            const runTime = Date.parse(run.timestamp);
-            return Number.isFinite(runTime) && runTime >= requestedAt;
-          });
-          if (match) {
-            const summary = (await fetchRunSummary(match.briefId, match.runId)) as {
-              candidates?: RawGenerateCandidate[];
-            };
-            applyGeneratedRunToQueue(itemId, match.briefId, match.runId, summary.candidates ?? []);
-            return;
+            // Reset retry count on successful poll
+            retryCount = 0;
+          } catch (pollError) {
+            // Retry transient errors instead of aborting immediately
+            retryCount++;
+            if (retryCount > MAX_RETRIES) {
+              throw pollError;
+            }
+            const pollMessage = pollError instanceof Error ? pollError.message : String(pollError);
+            console.warn(
+              `Queued-run poll attempt ${retryCount}/${MAX_RETRIES} failed: ${pollMessage}`,
+            );
           }
           await new Promise((resolve) => window.setTimeout(resolve, QUEUED_RUN_POLL_MS));
         }

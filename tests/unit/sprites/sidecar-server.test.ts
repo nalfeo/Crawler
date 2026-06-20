@@ -746,6 +746,46 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     });
     expect(stringy.statusCode).toBe(400);
   });
+
+  it('deletes using the injected remote store backend', async () => {
+    await app.close();
+    const remoteStore = new LocalRunStore(runsDir);
+    // Write the run to the "remote" store
+    writeFullRun();
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'missing-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: {
+        backend: 'azure-blob',
+        put: async (key, data) => remoteStore.put(key, data),
+        get: async (key) => remoteStore.get(key),
+        has: async (key) => remoteStore.has(key),
+        list: async (prefix) => remoteStore.list(prefix),
+        remove: async (key) => remoteStore.remove(key),
+        resolve: (key) => remoteStore.resolve(key),
+      },
+    });
+
+    // Confirm the run exists in the remote store
+    const beforeKeys = await remoteStore.list(`${briefId}/${runId}/`);
+    expect(beforeKeys.length).toBeGreaterThan(0);
+
+    // DELETE the run
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/runs/${briefId}/${runId}`,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().deleted).toBe(`${briefId}/${runId}`);
+
+    // Confirm the run was removed from the remote store
+    const afterKeys = await remoteStore.list(`${briefId}/${runId}/`);
+    expect(afterKeys.length).toBe(0);
+  });
 });
 
 describe('buildServer listen (binding)', () => {
