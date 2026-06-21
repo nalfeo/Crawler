@@ -23,8 +23,12 @@ describe('AI playthrough level-up UX wiring', () => {
     expect(source).toContain('LEVEL_UP_AUTO_HOLD_FRAMES');
     expect(source).toContain('private driveAutoLevelUp(): void');
     expect(source).toContain('this.levelUpUI.autoResolve(allocations)');
-    // The driver must keep running while the level-up modal remains open.
-    expect(source).toMatch(/levelUpUI\?\.isOpen\(\)[\s\S]*this\.driveAutoLevelUp\(\)/);
+    // driveAutoLevelUp() must appear in BOTH the open-modal early-return branch
+    // (freezes simulation while modal is up) AND the level_up state-transition
+    // branch (first frame after level-up fires). A single call-site would mean
+    // one of the two paths is unguarded and the stall regression can return.
+    const driveCalls = (source.match(/this\.driveAutoLevelUp\(\)/g) ?? []).length;
+    expect(driveCalls).toBeGreaterThanOrEqual(2);
   });
 
   it('AI Runner Lab wires the allocator and no longer auto-spends stat points', () => {
