@@ -330,7 +330,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       misses: firstRunMisses,
       bypassed: 0,
     });
-    expect(result2.summary.judgeCache!.hits).toBeGreaterThan(result1.summary.judgeCache!.hits);
+    expect(result2.summary.judgeCache!.hits).toBeGreaterThan(firstRunCache?.hits ?? 0);
 
     // Every judged candidate still has a judge scorecard.
     const judgedCandidates = result2.summary.candidates.filter(isJudgedCandidate);
