@@ -186,6 +186,8 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       headRadius: new Float32Array(maxEntities),
       shaftDamageMult: new Float32Array(maxEntities),
       knockback: new Float32Array(maxEntities),
+      /** Sprite ID hint: 0=default sword, 1=sword, 2=bat/hammer. Used by the renderer. */
+      spriteId: new Uint8Array(maxEntities),
     },
     knockback: {
       dirX: new Float32Array(maxEntities),

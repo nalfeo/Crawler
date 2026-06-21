@@ -3,7 +3,7 @@ import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { type ModalPickerScenario } from '../../shared/modal-picker.js';
 import { setActiveWeapon } from '../weaponSystem.js';
 
-export type Floor1LoadoutChoiceId = 'sword' | 'pistol' | 'fireball';
+export type Floor1LoadoutChoiceId = 'sword' | 'bow' | 'baseball-bat';
 
 export const DEFAULT_FLOOR1_LOADOUT_CHOICE: Floor1LoadoutChoiceId = 'sword';
 
@@ -11,22 +11,22 @@ const FLOOR1_LOADOUT_OPTIONS = [
   {
     id: 'sword',
     label: 'Blade Dancer',
-    description: 'Sword: steady melee control with reliable cleave.',
+    description: 'Sword: reliable mid-range cleave with balanced speed and damage.',
   },
   {
-    id: 'pistol',
-    label: 'Showstopper',
-    description: 'Pistol: safe ranged pressure while kiting packs.',
+    id: 'bow',
+    label: 'Sharpshooter',
+    description: 'Bow: slow but hard-hitting arrow that punches through one enemy.',
   },
   {
-    id: 'fireball',
-    label: 'Arcane Producer',
-    description: 'Fireball: explosive magic hits with area splash.',
+    id: 'baseball-bat',
+    label: 'Crowd Control',
+    description: 'Baseball Bat: wide slow swing that launches enemies across the room.',
   },
 ] as const;
 
 function resolveFloor1LoadoutChoice(choiceId: string | undefined): Floor1LoadoutChoiceId {
-  if (choiceId === 'sword' || choiceId === 'pistol' || choiceId === 'fireball') {
+  if (choiceId === 'sword' || choiceId === 'bow' || choiceId === 'baseball-bat') {
     return choiceId;
   }
   return DEFAULT_FLOOR1_LOADOUT_CHOICE;

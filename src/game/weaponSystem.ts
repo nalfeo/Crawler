@@ -338,7 +338,21 @@ function fireMeleeAttack(
     ftToPx(def.headRadius),
     def.shaftDamageMult,
     ftToPx(def.knockback),
+    getMeleeSpriteId(def.id),
   );
+}
+
+/** Map weapon id to a renderer sprite hint: 0=sword, 1=sword, 2=bat. */
+function getMeleeSpriteId(weaponId: string): number {
+  switch (weaponId) {
+    case 'sword':
+      return 1;
+    case 'baseball-bat':
+    case 'hammer':
+      return 2;
+    default:
+      return 0;
+  }
 }
 
 function fireRangedAttack(

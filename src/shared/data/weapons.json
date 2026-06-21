@@ -41,6 +41,21 @@
     "pierce": 0
   },
   {
+    "id": "baseball-bat",
+    "name": "Baseball Bat",
+    "weaponType": 0,
+    "baseDamage": 20,
+    "cooldownMs": 900,
+    "range": 5.5,
+    "aoeRadius": 5.5,
+    "durationMs": 300,
+    "swingArcDeg": 120,
+    "headRadius": 1.75,
+    "shaftDamageMult": 0.4,
+    "knockback": 5,
+    "pierce": 0
+  },
+  {
     "id": "pistol",
     "name": "Pistol",
     "weaponType": 1,
@@ -55,12 +70,12 @@
     "id": "bow",
     "name": "Bow",
     "weaponType": 1,
-    "baseDamage": 12,
-    "cooldownMs": 700,
+    "baseDamage": 16,
+    "cooldownMs": 900,
     "range": 44,
     "projectileSpeed": 6.0,
     "knockback": 0,
-    "pierce": 0
+    "pierce": 1
   },
   {
     "id": "crossbow",
