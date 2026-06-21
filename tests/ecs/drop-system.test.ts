@@ -1,21 +1,24 @@
 import { query, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
+  Damage,
   DeathTimer,
   DroppedItem,
   Enemy,
+  EnemyBehavior,
   Gold,
   Health,
   Position,
   XpGem,
 } from '../../src/core/components.js';
-import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBehaviorEnemy, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
   selectFloor1StarterWeapon,
 } from '../../src/game/floor1Scenario.js';
+import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('dropSystem', () => {
@@ -146,5 +149,35 @@ describe('dropSystem', () => {
     }
     expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(1);
     expect(query(world.ecs, [Gold]).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('gives dead slimes a 50% split roll to spawn two mini slimes with half health and strength', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const slime = spawnBehaviorEnemy(world, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
+    world.floor1?.enemyArchetypes.set(slime, 'slime');
+    setComponent(world.ecs, slime, Damage, { amount: 7 });
+    setComponent(world.ecs, slime, Health, { current: 0, max: 30 });
+
+    const rng = world.rng as unknown as { next: () => number };
+    const originalNext = rng.next.bind(world.rng);
+    rng.next = () => 0;
+    dropSystem(world, { spawnLoot: false });
+    rng.next = originalNext;
+
+    const enemies = query(world.ecs, [Enemy, Health]);
+    const miniSlimes = enemies.filter((eid) => eid !== slime);
+    expect(miniSlimes).toHaveLength(2);
+    for (const miniEid of miniSlimes) {
+      expect(world.stores.health.max[miniEid]).toBe(15);
+      expect(world.stores.health.current[miniEid]).toBe(15);
+      expect(world.stores.damage.amount[miniEid]).toBe(4);
+      expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
+      expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
+    }
+    expect(query(world.ecs, [EnemyBehavior])).toContain(slime);
   });
 });

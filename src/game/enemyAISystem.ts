@@ -18,7 +18,7 @@ import { getWeaponDef } from '../shared/weaponDefs.js';
 import { ftToPx } from '../shared/units.js';
 import { SeededRandom } from '../shared/random.js';
 
-export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2 } as const;
+export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
 
 const DEFAULT_ENEMY_SPEED = 1.5;
@@ -41,6 +41,14 @@ const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Ma
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
+const SLIME_PREP_MIN_FRAMES = 14;
+const SLIME_PREP_MAX_FRAMES = 26;
+const SLIME_LEAP_MIN_FRAMES = 5;
+const SLIME_LEAP_MAX_FRAMES = 9;
+const SLIME_PREP_SPEED_MULT = 0.4;
+const SLIME_LEAP_SPEED_MULT = 2.2;
+const SLIME_WIGGLE_BLEND = 0.7;
+const SLIME_WIGGLE_FREQUENCY = 0.35;
 const FIREBALL_DEF = getWeaponDef('fireball');
 
 interface PathState {
@@ -62,15 +70,33 @@ interface WanderState {
   untilFrame: number;
 }
 
+interface SlimeLeapState {
+  phase: 'prep' | 'leap';
+  untilFrame: number;
+  leapDirX: number;
+  leapDirY: number;
+  wiggleSign: number;
+}
+
 const pathStatesByWorld = new WeakMap<GameWorld, Map<number, PathState>>();
 const doorRevisionByWorld = new WeakMap<GameWorld, DoorRevisionState>();
 const wanderStatesByWorld = new WeakMap<GameWorld, Map<number, WanderState>>();
+const slimeLeapStatesByWorld = new WeakMap<GameWorld, Map<number, SlimeLeapState>>();
 
 function getWanderStateMap(world: GameWorld): Map<number, WanderState> {
   let map = wanderStatesByWorld.get(world);
   if (!map) {
     map = new Map();
     wanderStatesByWorld.set(world, map);
+  }
+
+  function getSlimeLeapStateMap(world: GameWorld): Map<number, SlimeLeapState> {
+    let map = slimeLeapStatesByWorld.get(world);
+    if (!map) {
+      map = new Map();
+      slimeLeapStatesByWorld.set(world, map);
+    }
+    return map;
   }
   return map;
 }
@@ -122,6 +148,65 @@ function applyIdleWander(world: GameWorld, eid: number, speed: number): void {
       untilFrame: world.frameCount + world.rng.nextInt(24, 96),
     };
     wanderMap.set(eid, state);
+  }
+
+  function createSlimePrepState(world: GameWorld, previousSign = 1): SlimeLeapState {
+    return {
+      phase: 'prep',
+      untilFrame:
+        world.frameCount + world.rng.nextInt(SLIME_PREP_MIN_FRAMES, SLIME_PREP_MAX_FRAMES),
+      leapDirX: 0,
+      leapDirY: 0,
+      wiggleSign: previousSign,
+    };
+  }
+
+  function applySlimeLeapBehavior(
+    world: GameWorld,
+    eid: number,
+    playerDx: number,
+    playerDy: number,
+    speed: number,
+  ): void {
+    const slimeMap = getSlimeLeapStateMap(world);
+    let state = slimeMap.get(eid);
+    if (!state) {
+      state = createSlimePrepState(world, world.rng.next() < 0.5 ? -1 : 1);
+      slimeMap.set(eid, state);
+    }
+
+    if (world.frameCount >= state.untilFrame) {
+      if (state.phase === 'prep') {
+        const toPlayer = normalize(playerDx, playerDy);
+        state.phase = 'leap';
+        state.untilFrame =
+          world.frameCount + world.rng.nextInt(SLIME_LEAP_MIN_FRAMES, SLIME_LEAP_MAX_FRAMES);
+        state.leapDirX = toPlayer.x;
+        state.leapDirY = toPlayer.y;
+        state.wiggleSign *= -1;
+      } else {
+        state.phase = 'prep';
+        state.untilFrame =
+          world.frameCount + world.rng.nextInt(SLIME_PREP_MIN_FRAMES, SLIME_PREP_MAX_FRAMES);
+      }
+    }
+
+    if (state.phase === 'prep') {
+      const toPlayer = normalize(playerDx, playerDy);
+      const wigglePulse = 0.5 + Math.sin((world.frameCount + eid) * SLIME_WIGGLE_FREQUENCY) * 0.5;
+      const wiggleX = toPlayer.length > EPSILON ? -toPlayer.y * state.wiggleSign : state.wiggleSign;
+      const wiggleY = toPlayer.length > EPSILON ? toPlayer.x * state.wiggleSign : 0;
+      const desired = normalize(
+        wiggleX * SLIME_WIGGLE_BLEND + toPlayer.x * (1 - SLIME_WIGGLE_BLEND),
+        wiggleY * SLIME_WIGGLE_BLEND + toPlayer.y * (1 - SLIME_WIGGLE_BLEND),
+      );
+      const prepSpeed = Math.max(0.2, speed * SLIME_PREP_SPEED_MULT * (0.7 + wigglePulse * 0.3));
+      setNavigatingVelocity(world, eid, desired.x, desired.y, prepSpeed);
+      return;
+    }
+
+    const leapSpeed = Math.max(speed + 0.25, speed * SLIME_LEAP_SPEED_MULT);
+    setNavigatingVelocity(world, eid, state.leapDirX, state.leapDirY, leapSpeed);
   }
 
   if (!state) {
@@ -960,9 +1045,11 @@ export function enemyAISystem(world: GameWorld): void {
   }
 
   if (playerEid === undefined) {
+    const slimeMap = getSlimeLeapStateMap(world);
     for (const eid of enemies) {
       setVelocity(world, eid, 0, 0);
       pathStates.delete(eid);
+      slimeMap.delete(eid);
     }
     return;
   }
@@ -973,9 +1060,15 @@ export function enemyAISystem(world: GameWorld): void {
   if (world.frameCount % 60 === 0) {
     const activeEnemySet = new Set(enemyList);
     const wanderMap = getWanderStateMap(world);
+    const slimeMap = getSlimeLeapStateMap(world);
     for (const eid of [...wanderMap.keys()]) {
       if (!activeEnemySet.has(eid)) {
         wanderMap.delete(eid);
+      }
+    }
+    for (const eid of [...slimeMap.keys()]) {
+      if (!activeEnemySet.has(eid)) {
+        slimeMap.delete(eid);
       }
     }
   }
@@ -1011,6 +1104,7 @@ export function enemyAISystem(world: GameWorld): void {
     }
 
     if (!canDetectPlayer) {
+      getSlimeLeapStateMap(world).delete(eid);
       if (!inAggroRange) {
         applyIdleWander(world, eid, speed);
       } else {
@@ -1022,7 +1116,9 @@ export function enemyAISystem(world: GameWorld): void {
 
     const usePathing = floorMap !== null && persona !== PATH_PERSONA.STUPID;
 
-    if (!usePathing) {
+    if (behaviorType === AI_TYPE.LEAPER) {
+      applySlimeLeapBehavior(world, eid, playerDx, playerDy, speed);
+    } else if (!usePathing) {
       switch (behaviorType) {
         case AI_TYPE.SWARM:
           applyLegacySwarm(

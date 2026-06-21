@@ -346,6 +346,33 @@ describe('enemyAISystem', () => {
     ).toBeGreaterThan(0.1);
   });
 
+  it('makes leaper enemies pause-wiggle before fast leaps', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 120, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
+
+    enemyAISystem(world);
+    const firstSpeed = Math.hypot(
+      world.stores.velocity.x[enemy] ?? 0,
+      world.stores.velocity.y[enemy] ?? 0,
+    );
+    expect(firstSpeed).toBeLessThan(1);
+    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.05);
+
+    let observedLeapSpeed = 0;
+    for (let i = 0; i < 80; i += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      enemyAISystem(world);
+      observedLeapSpeed = Math.max(
+        observedLeapSpeed,
+        Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+      );
+    }
+
+    expect(observedLeapSpeed).toBeGreaterThan(2);
+  });
+
   it('keeps room enemies idle until their room door opens', () => {
     const world = createTestWorld();
     world.floorMap = createOneRoomMapWithDoor(false);
