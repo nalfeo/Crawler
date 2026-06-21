@@ -440,4 +440,51 @@ describe('approveVariant', () => {
       tags: expect.arrayContaining(['generated', 'pipeline-approved']),
     });
   });
+
+  it('tags the catalog entry with the brief sprite type when the brief YAML is present', () => {
+    const { runDir, briefId } = writeFakeRun(repoRoot, {
+      variantIndices: [0, 1],
+      chosenIndex: 1,
+    });
+    // The summary writes briefPath = briefs/weapons/<briefId>.yaml; create it
+    // with a declared type so approveVariant can resolve and tag it.
+    const briefAbsPath = path.join(repoRoot, 'briefs', 'weapons', `${briefId}.yaml`);
+    mkdirSync(path.dirname(briefAbsPath), { recursive: true });
+    writeFileSync(briefAbsPath, `type: item\nname: ${briefId}\ndescription: A test sprite.\n`);
+
+    approveVariant({
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
+    const catalogEntry = catalog.find((e) => e.id === `generated:${briefId}-var-1`);
+    expect(catalogEntry).toBeDefined();
+    expect(catalogEntry!.tags).toEqual(['item', 'generated', 'pipeline-approved']);
+  });
+
+  it('falls back to default tags when the brief YAML is missing', () => {
+    const { runDir, briefId } = writeFakeRun(repoRoot, {
+      variantIndices: [0, 1],
+      chosenIndex: 1,
+    });
+    approveVariant({
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    });
+
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8')) as Array<Record<string, unknown>>;
+    const catalogEntry = catalog.find((e) => e.id === `generated:${briefId}-var-1`);
+    expect(catalogEntry!.tags).toEqual(['generated', 'pipeline-approved']);
+  });
 });
