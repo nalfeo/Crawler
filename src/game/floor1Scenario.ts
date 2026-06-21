@@ -153,6 +153,10 @@ function pickStarterChoices(world: GameWorld): string[] {
       selected.push(id);
     }
   }
+  // Once the authored starter pool grows beyond the fixed 3-slot opening loadout,
+  // we keep the random presentation order so larger pools can still rotate which
+  // three options are offered. For the current 3-item starter trio, sort back to
+  // manifest order after consuming RNG so the visible choices stay stable.
   if (floor1Config.starterWeapons.length <= FIXED_STARTER_CHOICE_COUNT) {
     const indexById = new Map(floor1Config.starterWeapons.map((id, index) => [id, index]));
     // `selected` is built exclusively from the `pool` above via `splice()`, so it is

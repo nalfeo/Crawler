@@ -381,6 +381,11 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
   melee_bat: 2.1,
 };
 
+const MELEE_SPRITE_RADIUS_FACTOR = 0.58;
+const MELEE_SPRITE_FADE_MS = 70;
+const MELEE_SPRITE_BASE_PULSE = 0.92;
+const MELEE_SPRITE_PULSE_AMPLITUDE = 0.16;
+
 function isSpriteDrivenMeleeVisual(type: string): boolean {
   return type === 'melee_sword' || type === 'melee_bat';
 }
@@ -766,10 +771,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             const startAngle = arcCenter + arcHalf;
             const endAngle = arcCenter - arcHalf;
             const currentAngle = startAngle + (endAngle - startAngle) * progress;
-            const radius = bladeLen * 0.58;
+            const radius = bladeLen * MELEE_SPRITE_RADIUS_FACTOR;
             const remaining = Math.max(0, expiresAt - renderElapsedMs);
-            const alpha = Math.min(1, remaining / 70);
-            const pulse = 0.92 + 0.16 * Math.sin(progress * Math.PI);
+            const alpha = Math.min(1, remaining / MELEE_SPRITE_FADE_MS);
+            const pulse =
+              MELEE_SPRITE_BASE_PULSE + MELEE_SPRITE_PULSE_AMPLITUDE * Math.sin(progress * Math.PI);
 
             const staleAg = arcGraphics.get(eid);
             if (staleAg) {
