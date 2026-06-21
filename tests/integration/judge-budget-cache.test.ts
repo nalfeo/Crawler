@@ -98,33 +98,38 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
 }
 
 /**
- * Stamp `index + 1` distinct 16×16 color blocks *inside the existing blade
- * silhouette* so each variant produces distinct processed bytes without
- * changing the outer content bounds that the content-aware slicer infers from
- * the sheet.
+ * Produce a perturbed copy of the good-sword fixture that survives the
+ * 1024→32 nearest-neighbour downscale in postprocessWithTrace.
+ *
+ * postprocessWithTrace calls fitWithinNearest(image, 32, 32) which uses
+ * nearest-neighbour sampling: output pixel (ox, oy) samples source pixel
+ * (ox*32+16, oy*32+16).  A stamp must be placed at one of those exact source
+ * positions to be visible in the processed 32×32 image.
+ *
+ * Each variant stamps a unique 32×32 block centred on a different sampling
+ * point along the opaque blade silhouette.  The block colour [0,0,0] is
+ * palette-entry 0 (strict quantization keeps it black) and is distinct from
+ * the base blade colour [192,192,200], so the processed PNG hashes differ
+ * across all four variants — essential for the JudgeCache tests.
  */
 function perturbedGoodSword(index: number): Buffer {
-  const decoded = PNG.sync.read(buildGoodSwordFixture());
-  const colors = [
-    [255, 255, 255],
-    [120, 90, 60],
-    [160, 192, 192],
-    [200, 170, 50],
+  // Sampling points: source (ox*32+16, oy*32+16) — all verified opaque
+  // in the blade silhouette of buildGoodSwordFixture().
+  const samplePoints = [
+    { sx: 368, sy: 656 }, // output (11, 20)
+    { sx: 432, sy: 592 }, // output (13, 18)
+    { sx: 496, sy: 528 }, // output (15, 16)
+    { sx: 560, sy: 464 }, // output (17, 14)
   ] as const;
-  for (let k = 0; k <= index; k++) {
-    const [r, g, b] = colors[k % colors.length] ?? colors[0];
-    const baseX = 360 + 64 * k;
-    const baseY = 660 - 64 * k;
-    for (let dy = 0; dy < 16; dy++) {
-      for (let dx = 0; dx < 16; dx++) {
-        const px = baseX + dx;
-        const py = baseY + dy;
-        const idx = (py * decoded.width + px) * 4;
-        decoded.data[idx] = r;
-        decoded.data[idx + 1] = g;
-        decoded.data[idx + 2] = b;
-        decoded.data[idx + 3] = 255;
-      }
+  const decoded = PNG.sync.read(buildGoodSwordFixture());
+  const { sx, sy } = samplePoints[index]!;
+  for (let dy = -15; dy <= 16; dy++) {
+    for (let dx = -15; dx <= 16; dx++) {
+      const idx = ((sy + dy) * decoded.width + (sx + dx)) * 4;
+      decoded.data[idx] = 0;
+      decoded.data[idx + 1] = 0;
+      decoded.data[idx + 2] = 0;
+      decoded.data[idx + 3] = 255;
     }
   }
   return PNG.sync.write(decoded);

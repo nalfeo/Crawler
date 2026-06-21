@@ -111,7 +111,7 @@ describe('autoNpcInteractionSystem', () => {
       30,
     );
     expect(result).toBe(100);
-    // meetTutorialGoon unlocks Floor 1 drops.
+    // meetTutorialGoon unlocks drops.
     expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
   });
 
