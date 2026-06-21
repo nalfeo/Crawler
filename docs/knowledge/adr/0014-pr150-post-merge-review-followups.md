@@ -27,7 +27,8 @@ The fix set crosses 2+ architectural areas, which requires an ADR under reposito
 Ship a focused post-merge follow-up PR that only includes low-risk, high-confidence fixes from the audited comments:
 
 - register `bt-viz` through `registerLab('bt-viz', ...)`,
-- remove unused `src/shared/data/floor1.json`,
+- remove the unused legacy Floor 1 config file, now superseded by
+  `src/shared/data/floors/floor1.manifest.json`,
 - align test/docs/comments/names with current behavior and units,
 - hoist one gameplay magic number to a named constant.
 
@@ -50,7 +51,8 @@ Explicitly defer higher-risk behavior changes (for example behavior-tree schedul
 ### Risks
 
 - Deferring behavior-level comments may leave latent gameplay concerns until a later PR addresses them.
-- Removing `floor1.json` could surprise contributors who still expect that legacy file to exist.
+- Removing the legacy Floor 1 config file could surprise contributors who still
+  expect the old pre-manifest layout to exist.
 
 ## Alternatives Considered
 
