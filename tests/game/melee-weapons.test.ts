@@ -145,6 +145,14 @@ describe('melee weapons', () => {
     expect(knife.cooldownMs).toBeLessThan(sword.cooldownMs);
   });
 
+  it('baseball bat has a slower, wider swing than sword and applies stronger knockback', () => {
+    const bat = getWeaponDef('baseball-bat')!;
+    const sword = getWeaponDef('sword')!;
+    expect(bat.cooldownMs).toBeGreaterThan(sword.cooldownMs);
+    expect(bat.swingArcDeg).toBeGreaterThan(sword.swingArcDeg);
+    expect(bat.knockback).toBeGreaterThan(sword.knockback);
+  });
+
   it('hammer head hit deals full damage', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 100);

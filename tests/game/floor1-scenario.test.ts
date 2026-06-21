@@ -46,6 +46,9 @@ describe('floor1Scenario', () => {
     expect(world.floor1?.protagonistName).toBe('Rhea Vale');
     expect(world.floor1?.starterChoices).toHaveLength(3);
     expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(3);
+    expect(new Set(world.floor1?.starterChoices ?? [])).toEqual(
+      new Set(['sword', 'bow', 'baseball-bat']),
+    );
   });
 
   it('places the rat-tail fetch item in a different room from the Spell Broker', () => {

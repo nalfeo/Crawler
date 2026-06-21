@@ -24,7 +24,7 @@ import {
 import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import { isEntityInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
-import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
+import { SpriteTextureId, TeamId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { ftToPx } from '../shared/units.js';
@@ -322,6 +322,12 @@ function fireMeleeAttack(
 
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
+  const textureId =
+    def.id === 'sword'
+      ? SpriteTextureId.STARTER_SWORD
+      : def.id === 'baseball-bat'
+        ? SpriteTextureId.BASEBALL_BAT
+        : SpriteTextureId.DEFAULT;
   spawnMeleeSwing(
     world,
     px,
@@ -338,6 +344,7 @@ function fireMeleeAttack(
     ftToPx(def.headRadius),
     def.shaftDamageMult,
     ftToPx(def.knockback),
+    textureId,
   );
 }
 
@@ -349,6 +356,7 @@ function fireRangedAttack(
 ): void {
   const px = world.stores.position.x[player]!;
   const py = world.stores.position.y[player]!;
+  const textureId = def.id === 'bow' ? SpriteTextureId.BOW_ARROW : SpriteTextureId.DEFAULT;
   spawnProjectile(
     world,
     px,
@@ -358,6 +366,8 @@ function fireRangedAttack(
     def.baseDamage,
     def.pierce,
     ftToPx(def.range),
+    1,
+    textureId,
   );
 }
 

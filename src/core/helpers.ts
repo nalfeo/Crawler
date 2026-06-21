@@ -32,7 +32,7 @@ import {
   DroppedItem,
 } from './components.js';
 import type { GameWorld } from './world.js';
-import type { WeaponTypeValue } from '../shared/constants.js';
+import { SpriteTextureId, type WeaponTypeValue } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
@@ -187,13 +187,15 @@ export function spawnProjectile(
   pierce: number = 0,
   maxRange: number = 0,
   weight: number = 1,
+  textureId: number = SpriteTextureId.DEFAULT,
 ): number {
   const eid = createEntity(world);
+  const spriteSize = textureId === SpriteTextureId.BOW_ARROW ? 12 : 6;
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: vx, y: vy }));
   addComponent(world.ecs, eid, set(Damage, { amount: damage, cooldownMs: 0, lastFireMs: 0 }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 6, height: 6 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId, width: spriteSize, height: spriteSize }));
   addComponent(
     world.ecs,
     eid,
@@ -450,6 +452,7 @@ export function spawnMeleeSwing(
   headRadius: number = 0,
   shaftDamageMult: number = 1,
   knockback: number = 0,
+  textureId: number = SpriteTextureId.DEFAULT,
 ): number {
   const eid = createEntity(world);
   const arcCenterRad = Math.atan2(dirY, dirX);
@@ -479,7 +482,7 @@ export function spawnMeleeSwing(
   addComponent(
     world.ecs,
     eid,
-    set(Sprite, { textureId: 0, width: bladeLength * 2, height: bladeLength * 2 }),
+    set(Sprite, { textureId, width: bladeLength * 2, height: bladeLength * 2 }),
   );
   return eid;
 }

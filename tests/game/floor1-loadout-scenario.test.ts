@@ -20,9 +20,9 @@ describe('floor1LoadoutScenario', () => {
   it('applies selected loadout choice by equipping active weapon', () => {
     const world = createTestWorld();
 
-    const selected = applyFloor1LoadoutChoice(world, 'fireball');
-    expect(selected).toBe('fireball');
-    expect(getActiveWeapon(world)?.id).toBe('fireball');
+    const selected = applyFloor1LoadoutChoice(world, 'baseball-bat');
+    expect(selected).toBe('baseball-bat');
+    expect(getActiveWeapon(world)?.id).toBe('baseball-bat');
   });
 
   it('falls back to default when choice id is unknown', () => {

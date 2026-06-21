@@ -82,6 +82,7 @@ const KENNEY_TINY_BATTLE = 'kenney-tiny-battle';
 const KENNEY_TINY_SKI = 'kenney-tiny-ski';
 const KENNEY_ROGUELIKE_RPG = 'kenney-roguelike-rpg-pack';
 const CUSTOM_PIXEL_SPRITES = 'custom-pixel-sprites';
+const STARTER_WEAPONS = 'starter-weapons';
 
 type ImportMetaWithEnv = ImportMeta & { env?: { BASE_URL?: string } };
 const ENV_BASE_PATH = (import.meta as ImportMetaWithEnv).env?.BASE_URL;
@@ -184,6 +185,17 @@ export const SHEETS: ReadonlyArray<SpriteSheetDef> = [
     rows: 1,
     description: 'Custom generated pixel art sprites. 16x16 with 1px margin/spacing.',
   },
+  {
+    key: STARTER_WEAPONS,
+    path: withBasePath('/assets/generated/starter-weapons.png'),
+    frameWidth: 16,
+    frameHeight: 16,
+    margin: 0,
+    spacing: 0,
+    cols: 4,
+    rows: 1,
+    description: 'Starter weapon pixel sprites for sword, bow, baseball bat, and arrow.',
+  },
 ];
 
 /** `(col, row) -> frame index` for a sheet with the given column count. */
@@ -204,6 +216,7 @@ const colsOf = (key: string): number => {
 const ROGUELIKE_COLS = colsOf(KENNEY_ROGUELIKE_CHARS);
 const CUSTOM_COLS = colsOf(CUSTOM_PIXEL_SPRITES);
 const TD_COLS = colsOf(KENNEY_TINY_DUNGEON);
+const STARTER_WEAPON_COLS = colsOf(STARTER_WEAPONS);
 
 export const SPRITES: ReadonlyArray<SpriteDef> = [
   {
@@ -331,6 +344,30 @@ export const SPRITES: ReadonlyArray<SpriteDef> = [
     sheetKey: CUSTOM_PIXEL_SPRITES,
     frame: frameAt(CUSTOM_COLS, 18, 0),
     note: 'Custom dead marker sprite.',
+  },
+  {
+    id: 'weapon.starter-sword',
+    sheetKey: STARTER_WEAPONS,
+    frame: frameAt(STARTER_WEAPON_COLS, 0, 0),
+    note: 'Starter sword sprite.',
+  },
+  {
+    id: 'weapon.starter-bow',
+    sheetKey: STARTER_WEAPONS,
+    frame: frameAt(STARTER_WEAPON_COLS, 1, 0),
+    note: 'Starter bow sprite.',
+  },
+  {
+    id: 'weapon.baseball-bat',
+    sheetKey: STARTER_WEAPONS,
+    frame: frameAt(STARTER_WEAPON_COLS, 2, 0),
+    note: 'Starter baseball bat sprite.',
+  },
+  {
+    id: 'weapon.bow-arrow',
+    sheetKey: STARTER_WEAPONS,
+    frame: frameAt(STARTER_WEAPON_COLS, 3, 0),
+    note: 'Starter bow arrow sprite.',
   },
 ];
 

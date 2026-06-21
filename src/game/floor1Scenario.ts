@@ -152,6 +152,10 @@ function pickStarterChoices(world: GameWorld): string[] {
       selected.push(id);
     }
   }
+  if (floor1Config.starterWeapons.length <= 3) {
+    const indexById = new Map(floor1Config.starterWeapons.map((id, index) => [id, index]));
+    selected.sort((a, b) => (indexById.get(a) ?? 0) - (indexById.get(b) ?? 0));
+  }
   return selected;
 }
 

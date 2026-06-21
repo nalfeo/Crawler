@@ -1,13 +1,24 @@
 import { addComponent, addEntity, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
-import { DeathTimer, Enemy, Player, Position, Sprite } from '../../src/core/components.js';
+import {
+  DeathTimer,
+  Enemy,
+  Lifetime,
+  MeleeSwing,
+  Player,
+  Position,
+  Projectile,
+  Sprite,
+  Velocity,
+} from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
+import { SpriteTextureId } from '../../src/shared/constants.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
 class MockImage {
@@ -207,6 +218,66 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.textureKey).toBe('kenney-tiny-dungeon');
     expect(images[0]?.frame).toBe(96); // player → Tiny Dungeon knight (frame 96)
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
+  });
+
+  it('renders bow projectiles with the starter weapon sheet when loaded', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 0, y: 0 }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(Sprite, { textureId: SpriteTextureId.BOW_ARROW, width: 12, height: 12 }),
+    );
+    addComponent(world.ecs, eid, Projectile);
+    addComponent(world.ecs, eid, set(Velocity, { x: 1, y: 0 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('starter-weapons');
+    expect(images[0]?.frame).toBe(3);
+  });
+
+  it('renders starter sword swings with sprite visuals instead of procedural fallbacks', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 32, y: 48 }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(Sprite, { textureId: SpriteTextureId.STARTER_SWORD, width: 24, height: 24 }),
+    );
+    addComponent(
+      world.ecs,
+      eid,
+      set(MeleeSwing, {
+        bladeLength: 32,
+        arcCenterRad: 0,
+        arcHalfRad: Math.PI / 4,
+        damage: 15,
+        spawnAtMs: 0,
+        durationMs: 200,
+        style: 0,
+        headRadius: 0,
+        shaftDamageMult: 1,
+        knockback: 0,
+      }),
+    );
+    addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: 200 }));
+
+    bridge.sync(world, 100);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('starter-weapons');
+    expect(images[0]?.frame).toBe(0);
+    expect(images[0]?.visible).toBe(true);
   });
 
   it('adds a skull marker above enemies during their death linger window', () => {

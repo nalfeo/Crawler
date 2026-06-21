@@ -24,7 +24,7 @@ import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createLogger } from '../shared/logger.js';
-import { TeamId } from '../shared/constants.js';
+import { SpriteTextureId, TeamId } from '../shared/constants.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -346,6 +346,9 @@ const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
   explosion: 'effect.explosion',
   enemy_explosion: 'effect.enemy_explosion',
   dead_skull: 'effect.dead',
+  proj_bow_arrow: 'weapon.bow-arrow',
+  melee_sword: 'weapon.starter-sword',
+  melee_bat: 'weapon.baseball-bat',
 };
 
 /**
@@ -373,6 +376,9 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
   explosion: 4.0,
   enemy_explosion: 4.0,
   dead_skull: 1.0,
+  proj_bow_arrow: 1.25,
+  melee_sword: 2.0,
+  melee_bat: 2.1,
 };
 
 interface ResolvedTexture {
@@ -512,16 +518,32 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         activeEntities.add(eid);
 
         const entityType = getEntityType(world, eid);
-        const visualType =
+        let visualType =
           entityType === 'enemy'
             ? world.floor1?.objective.staircaseBossEid === eid
               ? 'enemy_boss'
-              : world.stores.sprite.textureId[eid] === 1
+              : world.stores.sprite.textureId[eid] === SpriteTextureId.RAT
                 ? 'enemy_rat'
-                : world.stores.sprite.textureId[eid] === 2
+                : world.stores.sprite.textureId[eid] === SpriteTextureId.SLIME
                   ? 'enemy_slime'
                   : 'enemy'
             : entityType;
+        if (
+          entityType === 'proj' &&
+          world.stores.sprite.textureId[eid] === SpriteTextureId.BOW_ARROW
+        ) {
+          visualType = 'proj_bow_arrow';
+        } else if (
+          entityType === 'melee_swing' &&
+          world.stores.sprite.textureId[eid] === SpriteTextureId.STARTER_SWORD
+        ) {
+          visualType = 'melee_sword';
+        } else if (
+          entityType === 'melee_swing' &&
+          world.stores.sprite.textureId[eid] === SpriteTextureId.BASEBALL_BAT
+        ) {
+          visualType = 'melee_bat';
+        }
         const x = (position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha;
         const y = (position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha;
 
@@ -566,7 +588,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
 
         // --- Melee swing rendering (uses Graphics, not Image) ---
-        if (entityType === 'melee_swing') {
+        if (
+          entityType === 'melee_swing' &&
+          visualType !== 'melee_sword' &&
+          visualType !== 'melee_bat'
+        ) {
           let ag = arcGraphics.get(eid);
           if (!ag) {
             ag = scene.add.graphics();
@@ -725,6 +751,40 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             if (Math.abs(vx) > 0.001 || Math.abs(vy) > 0.001) {
               img.setRotation(Math.atan2(vy, vx) + Math.PI / 2);
             }
+            break;
+          }
+
+          case 'melee_swing': {
+            const bladeLen = meleeSwing.bladeLength[eid] ?? 0;
+            const arcCenter = meleeSwing.arcCenterRad[eid] ?? 0;
+            const arcHalf = meleeSwing.arcHalfRad[eid] ?? 0;
+            const spawnTime = arcSpawnMs.get(eid) ?? renderElapsedMs;
+            const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
+            const totalDuration = Math.max(1, expiresAt - spawnTime);
+            const elapsed = renderElapsedMs - spawnTime;
+            const progress = Math.min(1, Math.max(0, elapsed / totalDuration));
+            const startAngle = arcCenter + arcHalf;
+            const endAngle = arcCenter - arcHalf;
+            const currentAngle = startAngle + (endAngle - startAngle) * progress;
+            const radius = bladeLen * 0.58;
+            const remaining = Math.max(0, expiresAt - renderElapsedMs);
+            const alpha = Math.min(1, remaining / 70);
+            const pulse = 0.92 + 0.16 * Math.sin(progress * Math.PI);
+
+            const staleAg = arcGraphics.get(eid);
+            if (staleAg) {
+              staleAg.destroy();
+              arcGraphics.delete(eid);
+              arcSpawnMs.delete(eid);
+            }
+
+            img.setPosition(
+              x + Math.cos(currentAngle) * radius,
+              y + Math.sin(currentAngle) * radius,
+            );
+            img.setRotation(currentAngle + Math.PI / 2);
+            img.setScale(visual.baseScale * pulse);
+            img.setAlpha(alpha);
             break;
           }
 

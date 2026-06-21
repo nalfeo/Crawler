@@ -2,7 +2,7 @@
   "id": "floor2",
   "name": "Floor 2 - The Deeper Dungeon",
   "protagonist": "Rhea Vale",
-  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "starterWeapons": ["sword", "bow", "baseball-bat"],
   "timer": {
     "durationMs": 360000,
     "stairSpawnCountdownMs": 40000

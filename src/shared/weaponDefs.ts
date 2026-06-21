@@ -150,10 +150,11 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       id: 'bow',
       name: 'Bow',
       weaponType: WeaponType.RANGED,
-      baseDamage: 12,
-      cooldownMs: 700,
+      baseDamage: 14,
+      cooldownMs: 800,
       range: 44,
-      projectileSpeed: 6.0,
+      projectileSpeed: 5.5,
+      pierce: 1,
       goreFactor: 0.8,
     }),
   ],
@@ -172,6 +173,24 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
   ],
 
   // --- Unarmed ---
+  [
+    'baseball-bat',
+    def({
+      id: 'baseball-bat',
+      name: 'Baseball Bat',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 18,
+      cooldownMs: 900,
+      range: 5.5,
+      aoeRadius: 5.5,
+      durationMs: 260,
+      swingArcDeg: 140,
+      headRadius: 1.4,
+      shaftDamageMult: 0.85,
+      knockback: 5.5,
+      goreFactor: 0.05,
+    }),
+  ],
   [
     'punch',
     def({

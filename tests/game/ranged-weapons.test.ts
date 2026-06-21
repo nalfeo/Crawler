@@ -33,6 +33,7 @@ describe('ranged weapons', () => {
     const pistol = getWeaponDef('pistol')!;
     expect(bow.cooldownMs).toBeGreaterThan(pistol.cooldownMs);
     expect(bow.baseDamage).toBeGreaterThan(pistol.baseDamage);
+    expect(bow.pierce).toBe(1);
   });
 
   it('crossbow is the slowest ranged weapon with highest damage', () => {

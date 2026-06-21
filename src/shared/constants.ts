@@ -40,6 +40,17 @@ export const TeamId = {
 } as const;
 export type TeamIdValue = (typeof TeamId)[keyof typeof TeamId];
 
+export const SpriteTextureId = {
+  DEFAULT: 0,
+  RAT: 1,
+  SLIME: 2,
+  WELCOME_SIGN: 3,
+  BOW_ARROW: 4,
+  STARTER_SWORD: 5,
+  BASEBALL_BAT: 6,
+} as const;
+export type SpriteTextureIdValue = (typeof SpriteTextureId)[keyof typeof SpriteTextureId];
+
 export const WEAPON = {
   PROJECTILE_SPEED: tuning.weapon.projectileSpeed,
   FIRE_RATE_MS: tuning.weapon.fireRateMs,
