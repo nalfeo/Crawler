@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "entries": {
+    "bent-pipe-v1-var-1": {
+      "briefId": "bent-pipe-v1",
+      "spriteName": "bent-pipe-v1",
+      "assetPath": "generated/bent-pipe-v1-var-1.png",
+      "approvedAt": "2026-06-08T19:08:15.218Z",
+      "sourceRun": "generated/runs/bent-pipe-v1/2026-06-08T17-00-57-6d29558d",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 18,
+        "y": 67,
+        "source": "derived"
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "4"
+    },
+    "bent-pipe-v1-var-5": {
+      "briefId": "bent-pipe-v1",
+      "spriteName": "bent-pipe-v1",
+      "assetPath": "generated/bent-pipe-v1-var-5.png",
+      "approvedAt": "2026-06-08T19:08:16.273Z",
+      "sourceRun": "generated/runs/bent-pipe-v1/2026-06-08T17-00-57-6d29558d",
+      "variantIndex": 5,
+      "anchor": {
+        "x": 16,
+        "y": 67,
+        "source": "derived"
+      },
+      "sensorScore": "7/7",
+      "judgeScore": "3"
+    },
+    "purple-potion-bottle-v1-var-4": {
+      "briefId": "purple-potion-bottle-v1",
+      "spriteName": "purple-potion-bottle-v1",
+      "assetPath": "generated/purple-potion-bottle-v1-var-4.png",
+      "approvedAt": "2026-06-19T23:58:53.403Z",
+      "sourceRun": "generated/runs/purple-potion-bottle-v1/2026-06-19T23-50-46-2dc4b366",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 29,
+        "y": 62,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 62,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/6",
+      "judgeScore": "2"
+    }
+  }
+}
