@@ -10,6 +10,7 @@ const basePaths: Record<string, string> = {
   local: '/',
   dev: '/Crawler/dev/',
   beta: '/Crawler/beta/',
+  preview: '/Crawler/preview/',
   prod: '/Crawler/',
 };
 
