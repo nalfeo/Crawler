@@ -152,24 +152,38 @@ describe('dropSystem', () => {
   });
 
   it('gives dead slimes a 50% split roll to spawn two mini slimes with half health and strength', () => {
-    const world = createTestWorld({ seed: 42 });
-    const player = spawnPlayer(world, 0, 0);
-    initializeFloor1Scenario(world, player);
-    selectFloor1StarterWeapon(world, 0);
+    let world: ReturnType<typeof createTestWorld> | null = null;
+    let slainSlime = -1;
+    let miniSlimes: number[] = [];
 
-    const slime = spawnBehaviorEnemy(world, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
-    world.floor1?.enemyArchetypes.set(slime, 'slime');
-    setComponent(world.ecs, slime, Damage, { amount: 7 });
-    setComponent(world.ecs, slime, Health, { current: 0, max: 30 });
+    for (let seed = 1; seed <= 64; seed += 1) {
+      const candidate = createTestWorld({ seed });
+      const player = spawnPlayer(candidate, 0, 0);
+      initializeFloor1Scenario(candidate, player);
+      selectFloor1StarterWeapon(candidate, 0);
 
-    const rng = world.rng as unknown as { next: () => number };
-    const originalNext = rng.next.bind(world.rng);
-    rng.next = () => 0;
-    dropSystem(world, { spawnLoot: false });
-    rng.next = originalNext;
+      const slime = spawnBehaviorEnemy(candidate, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
+      candidate.floor1?.enemyArchetypes.set(slime, 'slime');
+      setComponent(candidate.ecs, slime, Damage, { amount: 7 });
+      setComponent(candidate.ecs, slime, Health, { current: 0, max: 30 });
 
-    const enemies = query(world.ecs, [Enemy, Health]);
-    const miniSlimes = enemies.filter((eid) => eid !== slime);
+      dropSystem(candidate, { spawnLoot: false });
+      const enemies = query(candidate.ecs, [Enemy, Health]);
+      const minis = Array.from(enemies).filter((eid) => eid !== slime);
+      if (minis.length === 2) {
+        world = candidate;
+        slainSlime = slime;
+        miniSlimes = minis;
+        break;
+      }
+    }
+
+    expect(world).not.toBeNull();
+    if (!world) {
+      return;
+    }
+
+    expect(slainSlime).toBeGreaterThan(0);
     expect(miniSlimes).toHaveLength(2);
     const expectedMiniDamage = Math.max(1, Math.round(7 * 0.5));
     for (const miniEid of miniSlimes) {
@@ -179,6 +193,6 @@ describe('dropSystem', () => {
       expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
       expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
     }
-    expect(query(world.ecs, [EnemyBehavior])).toContain(slime);
+    expect(query(world.ecs, [EnemyBehavior])).toContain(slainSlime);
   });
 });

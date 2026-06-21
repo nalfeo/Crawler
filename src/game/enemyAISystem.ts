@@ -47,6 +47,7 @@ const SLIME_LEAP_MIN_FRAMES = 5;
 const SLIME_LEAP_MAX_FRAMES = 9;
 const SLIME_PREP_SPEED_MULT = 0.4;
 const SLIME_LEAP_SPEED_MULT = 2.2;
+const SLIME_LEAP_BONUS_SPEED = 0.25;
 const SLIME_WIGGLE_BLEND = 0.7;
 const SLIME_WIGGLE_FREQUENCY = 0.35;
 const FIREBALL_DEF = getWeaponDef('fireball');
@@ -138,7 +139,7 @@ function getEnemySpeedCap(world: GameWorld, eid: number): number {
   if (leapState?.phase !== 'leap') {
     return baseSpeed;
   }
-  return Math.max(baseSpeed + 0.25, baseSpeed * SLIME_LEAP_SPEED_MULT);
+  return Math.max(baseSpeed + SLIME_LEAP_BONUS_SPEED, baseSpeed * SLIME_LEAP_SPEED_MULT);
 }
 
 function applyIdleWander(world: GameWorld, eid: number, speed: number): void {
@@ -211,6 +212,7 @@ function applySlimeLeapBehavior(
 
   if (state.phase === 'prep') {
     const toPlayer = normalize(playerDx, playerDy);
+    // Offset phase per enemy so nearby slimes do not wiggle in perfect sync.
     const wigglePulse = 0.5 + Math.sin((world.frameCount + eid) * SLIME_WIGGLE_FREQUENCY) * 0.5;
     const wiggleX = toPlayer.length > EPSILON ? -toPlayer.y * state.wiggleSign : state.wiggleSign;
     const wiggleY = toPlayer.length > EPSILON ? toPlayer.x * state.wiggleSign : 0;
@@ -223,7 +225,7 @@ function applySlimeLeapBehavior(
     return;
   }
 
-  const leapSpeed = Math.max(speed + 0.25, speed * SLIME_LEAP_SPEED_MULT);
+  const leapSpeed = Math.max(speed + SLIME_LEAP_BONUS_SPEED, speed * SLIME_LEAP_SPEED_MULT);
   setNavigatingVelocity(world, eid, state.leapDirX, state.leapDirY, leapSpeed);
 }
 
