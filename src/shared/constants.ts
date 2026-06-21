@@ -33,6 +33,12 @@ export const MeleeStyle = {
 } as const;
 export type MeleeStyleValue = (typeof MeleeStyle)[keyof typeof MeleeStyle];
 
+/** Sprite hint IDs stored in the meleeSwing.spriteId ECS field and read by PhaserBridge. */
+export const MeleeSpriteId = {
+  SWORD: 1,
+  BAT: 2,
+} as const;
+
 export const TeamId = {
   PLAYER: 0,
   ENEMY: 1,

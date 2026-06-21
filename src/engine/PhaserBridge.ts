@@ -24,7 +24,7 @@ import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createLogger } from '../shared/logger.js';
-import { TeamId } from '../shared/constants.js';
+import { TeamId, MeleeSpriteId } from '../shared/constants.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -635,7 +635,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           // --- Weapon sprite at tip ---
           const swingSprite = meleeSwing.spriteId[eid] ?? 0;
-          const weaponSpriteKey = swingSprite === 2 ? 'weapon.bat' : 'weapon.sword';
+          const weaponSpriteKey = swingSprite === MeleeSpriteId.BAT ? 'weapon.bat' : 'weapon.sword';
           const weaponSpriteDef = getSprite(weaponSpriteKey);
 
           let visual = visuals.get(eid);

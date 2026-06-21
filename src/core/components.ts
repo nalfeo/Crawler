@@ -186,7 +186,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       headRadius: new Float32Array(maxEntities),
       shaftDamageMult: new Float32Array(maxEntities),
       knockback: new Float32Array(maxEntities),
-      /** Sprite ID hint: 0=default sword, 1=sword, 2=bat/hammer. Used by the renderer. */
+      /** Sprite ID hint: see MELEE_SPRITE_ID in weaponSystem.ts. 0|1=sword, 2=bat. */
       spriteId: new Uint8Array(maxEntities),
     },
     knockback: {
