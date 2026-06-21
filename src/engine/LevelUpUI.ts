@@ -14,6 +14,7 @@
  */
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
+import { fitUiScale } from './ui-scale.js';
 import { STAT_KEYS, STAT_POINT_INCREMENT, type StatKey } from '../shared/stats.js';
 import { STAT_DISPLAY, formatStatValue, formatStatIncrement } from '../shared/stat-display.js';
 import {
@@ -119,7 +120,15 @@ const FOOTER_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
 };
 
 export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): LevelUpUI {
-  const textResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  // Responsive UI: on small screens the FIT-scaled canvas shrinks this overlay
+  // until the text and −/+ buttons are unreadable/untappable. We lay the panel
+  // out in a "virtual" viewport (real size ÷ uiScale) and scale the whole
+  // overlay container back up by uiScale, so the panel stays centred while its
+  // text and controls grow with the device. Text resolution is bumped by the
+  // same factor to keep the upscaled glyphs crisp.
+  let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
+  const baseResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  let textResolution = Math.max(1, Math.round(baseResolution * uiScale));
   const snap = (value: number): number => Math.round(value);
   const crispText = (
     x: number,
@@ -129,9 +138,14 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
   ): Phaser.GameObjects.Text =>
     scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
 
+  /** Virtual viewport width the panel is centred within (real width ÷ uiScale). */
+  const viewWidth = (): number => scene.scale.width / uiScale;
+  /** Virtual viewport height the panel is centred within (real height ÷ uiScale). */
+  const viewHeight = (): number => scene.scale.height / uiScale;
+
   const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
-    .rectangle(0, 0, scene.scale.width, scene.scale.height, 0x020617, 0.78)
+    .rectangle(0, 0, viewWidth(), viewHeight(), 0x020617, 0.78)
     .setOrigin(0, 0);
   const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, PIXEL_UI.panelFill, 0.98);
   panel.setOrigin(0, 0);
@@ -158,9 +172,9 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     (params?.currentStats[stat] ?? 0) + draftPoints * STAT_POINT_INCREMENT[stat];
 
   const layoutPanel = (): void => {
-    backdrop.setSize(scene.scale.width, scene.scale.height);
-    panel.x = Math.round((scene.scale.width - PANEL_WIDTH) / 2);
-    panel.y = Math.round((scene.scale.height - PANEL_HEIGHT) / 2);
+    backdrop.setSize(viewWidth(), viewHeight());
+    panel.x = Math.round((viewWidth() - PANEL_WIDTH) / 2);
+    panel.y = Math.round((viewHeight() - PANEL_HEIGHT) / 2);
     titleStrip.setPosition(panel.x + 2, panel.y + 2);
     titleRule.setPosition(panel.x + 2, panel.y + 40);
   };
@@ -216,6 +230,10 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       overlay.setVisible(false);
       return;
     }
+    // Refresh responsive scale before laying out (handles resize/rotation).
+    uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
+    textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+    overlay.setScale(uiScale);
     layoutPanel();
     const panelX = panel.x;
     const panelY = panel.y;

@@ -12,12 +12,20 @@ import {
   type MinimapZoomLimits,
 } from './minimap-view-state.js';
 import { PIXEL_UI } from './pixel-ui.js';
+import { getUiScale } from './ui-scale.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
 // Round radar minimap pinned to the very top-right corner.
 const HUD_RADAR_DIAMETER = 152;
 const HUD_RADAR_MARGIN = 12;
+/**
+ * Upper bound on docked-radar magnification on small screens. The dial is a
+ * spatial widget anchored to the top-right corner; capping the scale keeps it
+ * legible/tappable on mobile while leaving room for the quest tracker that
+ * stacks beneath it. At scale 1 (desktop) the dial is pixel-identical.
+ */
+const HUD_RADAR_MAX_SCALE = 1.4;
 const HUD_RADAR_RADIUS = HUD_RADAR_DIAMETER / 2;
 // Inner radius the radar content is clipped to (leaves a thin rim for the rings).
 const RADAR_CLIP_RADIUS = HUD_RADAR_RADIUS - 4;
@@ -315,20 +323,28 @@ export function createHudMinimap(scene: Phaser.Scene): {
     const viewportW = Math.max(120, panelW - 32);
     const viewportH = Math.max(80, panelH - 76);
 
-    const radarCx = width - HUD_RADAR_MARGIN - HUD_RADAR_RADIUS;
-    const radarCy = HUD_RADAR_MARGIN + HUD_RADAR_RADIUS;
-    hudRadarCenterX = radarCx;
-    hudRadarCenterY = radarCy;
+    // Enlarge the docked dial on small screens (mirrors the responsive HUD).
+    // The radar content composites into a fixed-size, dial-local RenderTexture,
+    // so scaling the chrome + radarRt display uniformly grows the whole widget
+    // without touching the per-tile clip math in drawRadar.
+    const radarScale = Math.min(getUiScale(scene), HUD_RADAR_MAX_SCALE);
+    const scaledRadius = HUD_RADAR_RADIUS * radarScale;
+    const scaledCx = width - HUD_RADAR_MARGIN - scaledRadius;
+    const scaledCy = HUD_RADAR_MARGIN + scaledRadius;
+    hudRadarCenterX = scaledCx;
+    hudRadarCenterY = scaledCy;
 
-    hudMapBg.setPosition(radarCx, radarCy);
-    hudRingOuter.setPosition(radarCx, radarCy);
-    hudRingGold.setPosition(radarCx, radarCy);
-    hudRingInner.setPosition(radarCx, radarCy);
-    hudCompass.setPosition(radarCx, radarCy - HUD_RADAR_RADIUS + 9);
-    hudMapLabel.setPosition(radarCx, radarCy + HUD_RADAR_RADIUS + 4);
+    hudMapBg.setPosition(scaledCx, scaledCy).setScale(radarScale);
+    hudRingOuter.setPosition(scaledCx, scaledCy).setScale(radarScale);
+    hudRingGold.setPosition(scaledCx, scaledCy).setScale(radarScale);
+    hudRingInner.setPosition(scaledCx, scaledCy).setScale(radarScale);
+    hudCompass.setPosition(scaledCx, scaledCy - scaledRadius + 9 * radarScale).setScale(radarScale);
+    hudMapLabel
+      .setPosition(scaledCx, scaledCy + scaledRadius + 4 * radarScale)
+      .setScale(radarScale);
 
     // Pin the docked radar content to the dial's bounding box (top-left origin).
-    radarRt.setPosition(radarCx - HUD_RADAR_RADIUS, radarCy - HUD_RADAR_RADIUS);
+    radarRt.setPosition(scaledCx - scaledRadius, scaledCy - scaledRadius).setScale(radarScale);
 
     overlayDimmer.setSize(width, height);
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);

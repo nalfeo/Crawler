@@ -34,11 +34,17 @@ const COLORS = {
   objectiveDone: '#6ee7b7',
 } as const;
 
-export function createHudQuestTracker(scene: Phaser.Scene): {
+export function createHudQuestTracker(
+  scene: Phaser.Scene,
+  options: { parent?: Phaser.GameObjects.Container } = {},
+): {
   sync(world: GameWorld, playerEid?: number): void;
   destroy(): void;
 } {
-  const panel = createBeveledPanel(scene, RIGHT_X - MIN_WIDTH, TOP_Y, MIN_WIDTH, TITLE_H + PAD);
+  const parent = options.parent;
+  const panel = createBeveledPanel(scene, RIGHT_X - MIN_WIDTH, TOP_Y, MIN_WIDTH, TITLE_H + PAD, {
+    parent,
+  });
 
   const titleStrip = scene.add
     .rectangle(RIGHT_X - MIN_WIDTH + 2, TOP_Y + 2, MIN_WIDTH - 4, TITLE_H, 0x3a2f12, 1)
@@ -54,6 +60,7 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
     {
       depth: PIXEL_UI_DEPTH.content,
       scale: 0.85,
+      parent,
     },
   );
 
@@ -80,6 +87,7 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
     .setOrigin(1, 0)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
+  parent?.add([titleStrip, titleText, body]);
 
   function setVisible(visible: boolean): void {
     panel.setVisible(visible);

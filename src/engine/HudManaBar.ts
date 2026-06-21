@@ -33,6 +33,8 @@ export interface HudManaBarOptions {
   x?: number;
   /** Vertical position of top edge. Defaults to below health bar. */
   y?: number;
+  /** Optional container to parent all created objects into (for group scaling). */
+  parent?: Phaser.GameObjects.Container;
 }
 
 export function createHudManaBar(
@@ -44,6 +46,7 @@ export function createHudManaBar(
 } {
   const x = options.x ?? BAR_X;
   const y = options.y ?? BAR_Y;
+  const parent = options.parent;
 
   // Shell (background track)
   const shell = scene.add
@@ -93,6 +96,8 @@ export function createHudManaBar(
   fill.setVisible(false);
   label.setVisible(false);
   icon.setVisible(false);
+
+  parent?.add([shell, fill, label, icon]);
 
   function sync(world: GameWorld): void {
     // Only show mana bar when spells feature is unlocked
