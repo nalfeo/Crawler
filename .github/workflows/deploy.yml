@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
   issues: write
   pages: write
   pull-requests: write
@@ -25,6 +26,9 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
@@ -164,8 +168,8 @@ jobs:
             echo "{\"commit\":\"$PROD_SHA\",\"env\":\"prod\",\"builtAt\":\"$NOW\"}" > site/version.json
           fi
 
-      - name: Deploy to gh-pages branch
-        id: deploy-gh-pages
+      - name: Sync gh-pages branch (preserves PR preview directories)
+        id: sync-gh-pages
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -202,14 +206,14 @@ jobs:
 
           git add -A
           if git diff --cached --quiet; then
-            echo "No changes to deploy"
+            echo "No changes to gh-pages branch"
           else
-            git commit -m "chore: deploy to GitHub Pages [${GITHUB_SHA:0:7}]"
+            git commit -m "chore: sync gh-pages staging [${GITHUB_SHA:0:7}]"
 
             MAX_RETRIES=3
             for attempt in $(seq 1 $MAX_RETRIES); do
               if git push origin HEAD:gh-pages; then
-                echo "Deployed to ${PAGES_BASE}/"
+                echo "Synced gh-pages branch"
                 break
               fi
               if [ "$attempt" -lt "$MAX_RETRIES" ]; then
@@ -225,16 +229,22 @@ jobs:
 
           echo "PAGES_URL=${PAGES_BASE}/" >> "$GITHUB_ENV"
 
-      - name: Ensure GitHub Pages source is set to gh-pages branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # --- Copy PR previews from gh-pages into the Pages artifact ---
+      - name: Merge PR previews into site artifact
         run: |
-          echo '{"source":{"branch":"gh-pages","path":"/"}}' | \
-            gh api repos/${{ github.repository }}/pages \
-              --method PUT \
-              --input - \
-            2>/dev/null && echo "Pages source: branch=gh-pages path=/" || \
-            echo "::notice::Pages source could not be updated automatically (may already be correct)"
+          for dir in /tmp/gh-pages/pr-*/; do
+            [ -d "$dir" ] && cp -r "$dir" "$GITHUB_WORKSPACE/site/"
+          done
+
+      # --- Deploy via GitHub Actions Pages ---
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
       - name: Label and comment on released PRs
         if: success()
