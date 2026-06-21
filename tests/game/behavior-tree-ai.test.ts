@@ -20,8 +20,9 @@ import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-typ
 
 /**
  * Build an all-open room (walls only on the border) so A* has a clear straight
- * shot between any two interior tiles. Used to prove the path-follow string-pulls
- * the 4-connected A* path into diagonal motion instead of stair-stepping.
+ * shot between any two interior tiles. Used to prove that path-follow
+ * string-pulling converts the 4-connected A* path into diagonal motion instead
+ * of stair-stepping.
  */
 function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   const tileMap = new TileMap(widthTiles, heightTiles);
@@ -46,6 +47,8 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   }
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
+
+const MIN_DIAGONAL_COMPONENT = 0.15;
 
 /**
  * Advance a freshly-initialised Floor 1 world into the boss-unlock kill-grind
@@ -192,6 +195,36 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).not.toContain('Hunting quest enemies');
   });
 
+  it('smoothly blends output direction across polls instead of snapping instantly', () => {
+    // Verify that the exponential smoothing produces a gradual transition:
+    // on the first poll the output direction must be closer to zero than to the
+    // full target, and after several polls it converges to within a small epsilon
+    // of the desired direction.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // Place an enemy 200px to the right so the AI targets it and outputs (1, 0).
+    spawnEnemy(world, 200, 0, 20);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    const input = createInputState();
+
+    // Poll once — the AI starts from (0,0) and blends toward the desired
+    // direction, so the first output must be smaller in magnitude than 1.
+    ai.poll(input, world);
+    const firstMag = Math.hypot(input.moveX, input.moveY);
+    expect(firstMag).toBeGreaterThan(0);
+    expect(firstMag).toBeLessThan(1);
+
+    // After enough polls the output converges to near the desired magnitude.
+    let finalMag = firstMag;
+    for (let i = 0; i < 30; i++) {
+      ai.poll(input, world);
+      finalMag = Math.hypot(input.moveX, input.moveY);
+    }
+    expect(finalMag).toBeGreaterThan(0.95);
+  });
+
   it('steers diagonally across open ground instead of stair-stepping cardinal hops', () => {
     const world = createTestWorld({ seed: 99 });
     world.floorMap = makeOpenRoom(16, 16);
@@ -210,8 +243,10 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(AIState.COLLECT);
     // Pre-fix: one axis is ~0 (cardinal first hop). Post-fix: diagonal steer.
-    expect(Math.abs(input.moveX)).toBeGreaterThan(0.3);
-    expect(Math.abs(input.moveY)).toBeGreaterThan(0.3);
+    // With MOVE_SMOOTH_FACTOR=0.5, first-frame diagonal components are ~0.35; keep
+    // 0.15 low enough to allow smoothing while high enough to reject cardinal hops.
+    expect(Math.abs(input.moveX)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);
+    expect(Math.abs(input.moveY)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);
   });
 
   it('reuses the engagement kite while farming quest mobs instead of trading blows', () => {

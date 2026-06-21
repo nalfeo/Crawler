@@ -91,8 +91,8 @@
   },
   {
     "session": "2026-06-11-mobile-review-fixes",
-    "estimate": "\ud83c\udf4e\ud83c\udf4e",
-    "actual": "\ud83c\udf4e\ud83c\udf4e",
+    "estimate": "🍎🍎",
+    "actual": "🍎🍎",
     "verdict": "on-target",
     "notes": "CI fixes + mobile UX (pinch-to-zoom, hint text, trusted dep)"
   },
@@ -371,16 +371,16 @@
     "date": "2026-06-17",
     "session": "2026-06-17-e2e-visual-regression",
     "task": "Playwright e2e visual regression tests + HudMinimap depth fix",
-    "estimate": "\ud83c\udf4e\ud83c\udf4e\ud83c\udf4e",
-    "actual": "\ud83c\udf4e\ud83c\udf4e\ud83c\udf4e",
+    "estimate": "🍎🍎🍎",
+    "actual": "🍎🍎🍎",
     "verdict": "on-target"
   },
   {
     "date": "2026-06-18",
     "session": "2026-06-18-playwright-chromium-all-envs",
     "task": "Ensure Playwright Chromium installs in all environments",
-    "estimate": "\ud83c\udf4e",
-    "actual": "\ud83c\udf4e",
+    "estimate": "🍎",
+    "actual": "🍎",
     "verdict": "on-target"
   },
   {
@@ -532,5 +532,15 @@
     "verdict": "exact",
     "hello_kitties": 0.4,
     "notes": "Updated auto-rebase conflict delegation so the workflow assigns @copilot on conflicted PRs in addition to leaving the existing bot-authored handoff comment, making the escalation an explicit Copilot task."
+  },
+  {
+    "date": "2026-06-20",
+    "session": "ai-movement-smoothing",
+    "estimated_apples": 1,
+    "actual_apples": 1,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.2,
+    "notes": "Added MOVE_SMOOTH_FACTOR=0.5 exponential blend to BehaviorTreeAI.poll() output direction. Eliminates 90-degree snap at A* waypoints. 1329/1329 unit tests + 4/4 headless pass."
   }
 ]
