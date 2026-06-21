@@ -30,6 +30,33 @@
       },
       "sensorScore": "7/7",
       "judgeScore": "3"
+    },
+    "purple-potion-bottle-v1-var-4": {
+      "briefId": "purple-potion-bottle-v1",
+      "spriteName": "purple-potion-bottle-v1",
+      "assetPath": "generated/purple-potion-bottle-v1-var-4.png",
+      "approvedAt": "2026-06-19T23:58:53.403Z",
+      "sourceRun": "generated/runs/purple-potion-bottle-v1/2026-06-19T23-50-46-2dc4b366",
+      "variantIndex": 4,
+      "anchor": {
+        "x": 29,
+        "y": 62,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 29,
+          "y": 62,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 29,
+          "y": 36,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/6",
+      "judgeScore": "2"
     }
   }
 }
