@@ -13,8 +13,8 @@ import { createFloor1MainSceneOptions } from '../../bootstrap/floor1-main-scene-
 import { BootScene, MainGameScene } from '../../engine/index.js';
 import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
 import {
-  autoAllocateStatPoints,
   autoFloor1ProgressionSystem,
+  computeAutoStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { Player } from '../../core/index.js';
@@ -136,21 +136,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       // Nothing to clean up.
     },
   };
-  // Headless-parity AI driver. The headless runner spends earned stat points and
-  // claims the boss-reward heal spell every step; the in-scene level-up and
-  // boss-reward flows are modal-gated, and an input-override AI cannot operate a
-  // modal. Without this the browser AI keeps base HP (its only Floor 1 sustain is
-  // level-up maxHp heals) and death-spirals at low health, or stalls forever on
-  // the boss-reward modal. Run the same auto-driver as a post-system so the
-  // browser AI matches the headless runner's progression. NPC talk is left to the
-  // scene's own E-press interaction handling.
+  // Headless-parity AI driver. The headless runner claims the boss-reward heal
+  // spell and confirms shop/stair flows every step; the in-scene boss-reward and
+  // shop flows are modal-gated, and an input-override AI cannot operate a modal.
+  // Without this the browser AI stalls forever on the boss-reward modal. Run the
+  // same auto-driver as a post-system so the browser AI matches the headless
+  // runner's progression. NPC talk is left to the scene's own E-press handling.
+  //
+  // Stat-point allocation is NOT auto-spent here: unlike the headless runner, the
+  // in-browser scene renders the real level-up modal, so the AI drives that UX via
+  // `autoLevelUpAllocator` below (using the same allocation heuristic). Spending
+  // points here would zero `unspentPoints` before the modal could open.
   const aiAutoDriverSystem = (world: GameWorld): void => {
     const playerEid = query(world.ecs, [Player])[0];
     if (playerEid === undefined) {
       return;
     }
     autoFloor1ProgressionSystem(world, playerEid);
-    autoAllocateStatPoints(world, playerEid);
   };
   const baseSceneOptions = createFloor1MainSceneOptions();
   const sceneOptions = {
@@ -158,6 +160,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
     postSystems: [...baseSceneOptions.postSystems, aiAutoDriverSystem],
+    autoLevelUpAllocator: computeAutoStatAllocation,
   };
 
   const config: Phaser.Types.Core.GameConfig = {

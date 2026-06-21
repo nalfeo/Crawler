@@ -8,12 +8,13 @@ Give agents a shared, honest vocabulary for estimating task size. The goal is **
 
 ## The Scale
 
-| Apples   | Label   | What it means                                                                             |
-| -------- | ------- | ----------------------------------------------------------------------------------------- |
-| 🍎       | Trivial | Single file. Doc edits, renames, config tweaks, one-liner fixes. No new types or systems. |
-| 🍎🍎     | Small   | 1–3 files. New function or type, simple bug fix, a test suite. No lab required.           |
-| 🍎🍎🍎   | Medium  | New module or sub-system. 3–10 files. Tests required. May need a lab. Usually no ADR.     |
-| 🍎🍎🍎🍎 | Large   | New ECS system + lab + tests + ADR. Multi-system coordination or architectural impact.    |
+| Apples     | Label   | What it means                                                                             |
+| ---------- | ------- | ----------------------------------------------------------------------------------------- |
+| 🍎         | Trivial | Single file. Doc edits, renames, config tweaks, one-liner fixes. No new types or systems. |
+| 🍎🍎       | Small   | 1–3 files. New function or type, simple bug fix, a test suite. No lab required.           |
+| 🍎🍎🍎     | Medium  | New module or sub-system. 3–10 files. Tests required. May need a lab. Usually no ADR.     |
+| 🍎🍎🍎🍎   | Large   | New ECS system + lab + tests + ADR. Multi-system coordination or architectural impact.    |
+| 🍎🍎🍎🍎🍎 | Massive | Full feature spanning multiple systems, new pipeline, ADR required. Equals 1 hello kitty. |
 
 **5 apples = 1 hello kitty 🎀**
 
@@ -23,20 +24,20 @@ A hello kitty is the planning unit for a session. A session that ships 1 hello k
 
 ## Codebase Examples
 
-| Task                                                              | Apples   |
-| ----------------------------------------------------------------- | -------- |
-| Fix a typo in a policy doc                                        | 🍎       |
-| Add a constant to `src/shared/`                                   | 🍎       |
-| Fix a lint warning or config knob                                 | 🍎       |
-| Add a new test file for an existing system                        | 🍎🍎     |
-| Add a helper function to `src/shared/`                            | 🍎🍎     |
-| Fix a bug in an existing ECS system                               | 🍎🍎     |
-| Add a new automation health script                                | 🍎🍎🍎   |
-| Add a new ECS component + query                                   | 🍎🍎🍎   |
-| Implement a new game sub-system (e.g. drops) with tests           | 🍎🍎🍎   |
-| New ECS system from scratch (e.g. `movementSystem`) + lab + tests | 🍎🍎🍎🍎 |
-| New multi-system pipeline with ADR                                | 🍎🍎🍎🍎 |
-| Full new game feature (e.g. crafting system)                      | 🍎🍎🍎🍎 |
+| Task                                                              | Apples     |
+| ----------------------------------------------------------------- | ---------- |
+| Fix a typo in a policy doc                                        | 🍎         |
+| Add a constant to `src/shared/`                                   | 🍎         |
+| Fix a lint warning or config knob                                 | 🍎         |
+| Add a new test file for an existing system                        | 🍎🍎       |
+| Add a helper function to `src/shared/`                            | 🍎🍎       |
+| Fix a bug in an existing ECS system                               | 🍎🍎       |
+| Add a new automation health script                                | 🍎🍎🍎     |
+| Add a new ECS component + query                                   | 🍎🍎🍎     |
+| Implement a new game sub-system (e.g. drops) with tests           | 🍎🍎🍎     |
+| New ECS system from scratch (e.g. `movementSystem`) + lab + tests | 🍎🍎🍎🍎   |
+| New multi-system pipeline with ADR                                | 🍎🍎🍎🍎   |
+| Full new game feature (e.g. crafting system)                      | 🍎🍎🍎🍎🍎 |
 
 ---
 
@@ -61,7 +62,7 @@ At the end of every session, score the **actual** apples and compute the verdict
 | −1                         | 📈 Over  | Task was easier than expected  |
 | ±2 or more                 | 💥 Miss  | Estimation needs recalibration |
 
-Write one sentence explaining the gap. Over time `apple-log.json` surfaces whether you systematically over- or under-estimate a particular apple level.
+Write one sentence explaining the gap. Over time the apple log surfaces whether you systematically over- or under-estimate a particular apple level.
 
 ---
 
@@ -71,12 +72,13 @@ Write one sentence explaining the gap. Over time `apple-log.json` surfaces wheth
 - **Inflation.** Marking a doc edit as 🍎🍎🍎 to make the session look bigger.
 - **Deflation.** Marking a new ECS system as 🍎 to seem efficient.
 - **Skipping the estimate.** The system only works if you declare before starting.
+- **5-apple avoidance.** Refusing to call a task 🍎🍎🍎🍎🍎 and instead calling it "4 apples with scope creep". If it genuinely spans multiple systems with an ADR, call it 5.
 
 ---
 
 ## Splitting Large Tasks
 
-If a task feels like 5+ apples, split it. A single session should not attempt more than 4 apples in one shot without an explicit scope note. Prefer:
+If a task feels like 6+ apples, split it. A single session should not attempt more than 5 apples in one shot without an explicit scope note. Prefer:
 
 1. Identify the minimum deliverable that compiles and passes tests.
 2. Rate that slice.
@@ -84,9 +86,17 @@ If a task feels like 5+ apples, split it. A single session should not attempt mo
 
 ---
 
-## Recording in `apple-log.json`
+## Recording Apple Entries
 
-Add one entry to `docs/knowledge/metrics/apple-log.json` at the end of every session:
+At the end of every session create a **single new file** at:
+
+```
+docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json
+```
+
+where `<slug>` matches the handoff filename slug (e.g. `2026-06-21-movement-system`).
+
+File contents — one JSON object (not an array):
 
 ```json
 {
@@ -101,3 +111,5 @@ Add one entry to `docs/knowledge/metrics/apple-log.json` at the end of every ses
 ```
 
 `hello_kitties` = `actual_apples / 5` (rounded to 2 decimal places).
+
+**Why individual files?** Each session writes its own file so concurrent PRs never conflict on the same file. The legacy `docs/knowledge/metrics/apple-log.json` is kept as historical data and is still read by the calibration script.

@@ -97,6 +97,12 @@ const KITE_RADIAL_STEP_PX = 16;
 // forever; far longer than any oscillation so it reads as intentional kiting.
 const KITE_FLIP_FRAMES = 132;
 const NAVIGATION_LOOKAHEAD_PX = 24;
+// Per-frame blend fraction for output-direction smoothing. Exponential decay
+// toward the desired move vector so waypoint transitions and kite reversals
+// produce a smooth arc rather than an instant 90° snap. Value is tuned so a
+// full cardinal-direction change completes in ~4-5 frames (~70ms at 60fps) while
+// keeping top speed virtually unaffected during straight-line travel.
+const MOVE_SMOOTH_FACTOR = 0.5;
 // Close-range direct approach threshold (~1.5 tiles). Within this distance, and
 // with a clear straight corridor, the AI abandons tile-granular A* and slides
 // straight at the exact target pixel. Tile A* targets tile CENTERS and cannot
@@ -338,6 +344,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   private stuckFrames: number = 0;
   private lastPlayerX: number = 0;
   private lastPlayerY: number = 0;
+  /** Smoothed output direction, updated each poll via {@link MOVE_SMOOTH_FACTOR}.
+   * Initialized to (0, 0) at construction and persists across all polls for the
+   * lifetime of this AI instance; never explicitly reset, so the blend always
+   * carries over from the previous frame. */
+  private smoothMoveX: number = 0;
+  private smoothMoveY: number = 0;
   /**
    * Whether the AI is currently committed to a retreat. Latched so the retreat
    * condition can apply hysteresis (see {@link RETREAT_HYSTERESIS_MULT}) instead
@@ -708,6 +720,21 @@ export class BehaviorTreeAI implements AIInputProvider {
       }),
       action('Set Progress State', (ctx) => {
         const target = ctx.blackboard['progressTarget'] as ProgressTarget;
+        // If this progress goal points at a living enemy (e.g. hunting quest mobs,
+        // farming the swarm for charm gold), reuse the shared engagement kite so
+        // the AI strafes and holds a safe strike distance instead of walking
+        // straight onto the enemy and trading blows. Position objectives and
+        // non-enemy entities (gold piles, NPCs) keep the direct-approach path.
+        const enemyTarget = this.progressTargetAsEnemy(ctx.world, target, ctx.playerX, ctx.playerY);
+        if (enemyTarget) {
+          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
+          this.decision.state = AIState.ENGAGE;
+          this.decision.targetEid = enemyTarget.eid;
+          this.decision.targetX = plan.targetX;
+          this.decision.targetY = plan.targetY;
+          this.decision.reason = `${target.reason} — ${plan.reason}`;
+          return BTStatus.SUCCESS;
+        }
         this.decision.state = AIState.EXPLORE;
         this.decision.targetEid = target.eid;
         this.decision.targetX = target.x;
@@ -1374,6 +1401,16 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.moveY = 0;
     }
 
+    // Smooth the output direction so waypoint transitions and kite reversals
+    // produce a fluid arc rather than an instant direction snap. The blended
+    // values are passed directly to playerInputSystem; normalizeInputDirection
+    // keeps them unchanged when their length is ≤ 1, so the player naturally
+    // accelerates/decelerates through turns at sub-full speed.
+    this.smoothMoveX += (state.moveX - this.smoothMoveX) * MOVE_SMOOTH_FACTOR;
+    this.smoothMoveY += (state.moveY - this.smoothMoveY) * MOVE_SMOOTH_FACTOR;
+    state.moveX = this.smoothMoveX;
+    state.moveY = this.smoothMoveY;
+
     state.action = false;
 
     if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
@@ -1516,6 +1553,11 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Follow path if we have one
     if (this.pathWaypoints.length > 0 && this.pathIndex < this.pathWaypoints.length) {
+      // String-pull the 4-connected A* path so the AI cuts diagonally toward the
+      // farthest waypoint it can see, instead of stair-stepping cardinal hops.
+      if (floorMap) {
+        this.smoothPathIndex(world, floorMap, playerX, playerY);
+      }
       const waypoint = this.pathWaypoints[this.pathIndex];
       if (!waypoint) {
         this.pathWaypoints = [];
@@ -1648,6 +1690,36 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     return bestGoal ?? goalTile;
+  }
+
+  /**
+   * String-pulling path smoothing. {@link findTilePath} is 4-connected, so its
+   * waypoints stair-step in cardinal hops; following them one at a time yields
+   * the characteristic right-angle motion. Advance {@link pathIndex} to the
+   * farthest upcoming waypoint the player has an unobstructed straight line to,
+   * so the AI steers diagonally across open ground. The line-of-sight check
+   * keeps it from cutting through walls; wedge recovery and the local-navigation
+   * fallback handle any corner it does clip.
+   */
+  private smoothPathIndex(
+    world: GameWorld,
+    floorMap: FloorMap,
+    playerX: number,
+    playerY: number,
+  ): void {
+    // Scan backward from the path end to find the farthest visible waypoint in a
+    // single pass, maximizing diagonal shortcuts while preserving wall safety.
+    for (let i = this.pathWaypoints.length - 1; i > this.pathIndex; i--) {
+      const wp = this.pathWaypoints[i];
+      if (!wp) {
+        continue;
+      }
+      const wpWorld = floorMap.tileToPixel(wp.x, wp.y);
+      if (this.hasClearLineOfSight(world, playerX, playerY, wpWorld.x, wpWorld.y)) {
+        this.pathIndex = i;
+        return;
+      }
+    }
   }
 
   /**
@@ -2128,6 +2200,38 @@ export class BehaviorTreeAI implements AIInputProvider {
       y,
       distance: Math.hypot(x - playerX, y - playerY),
       reason,
+    };
+  }
+
+  /**
+   * Project a combat-flavored Progress objective onto a {@link WorldTarget} at
+   * the enemy's current position so it can be routed through the shared
+   * {@link planEngagement} kite logic. Returns null for position objectives
+   * (eid < 0), dead/despawned entities, and non-enemy entities such as gold
+   * piles — those should be approached directly, not kited.
+   */
+  private progressTargetAsEnemy(
+    world: GameWorld,
+    target: ProgressTarget,
+    playerX: number,
+    playerY: number,
+  ): WorldTarget | null {
+    if (target.eid < 0 || !entityExists(world.ecs, target.eid)) {
+      return null;
+    }
+    if (!hasComponent(world.ecs, target.eid, Enemy)) {
+      return null;
+    }
+    const ex = world.stores.position.x[target.eid];
+    const ey = world.stores.position.y[target.eid];
+    if (ex === undefined || ey === undefined) {
+      return null;
+    }
+    return {
+      eid: target.eid,
+      x: ex,
+      y: ey,
+      distance: Math.hypot(ex - playerX, ey - playerY),
     };
   }
 

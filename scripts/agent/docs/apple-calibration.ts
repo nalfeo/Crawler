@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 /**
- * docs/apple-calibration.ts — Read `docs/knowledge/metrics/apple-log.json`
- * and report calibration health for the apple complexity system.
+ * docs/apple-calibration.ts — Read per-session apple entry files from
+ * `docs/knowledge/metrics/apples/` and the legacy
+ * `docs/knowledge/metrics/apple-log.json`, then report calibration health
+ * for the apple complexity system.
  *
  * Metrics computed:
  *   - Entry count
@@ -14,15 +16,18 @@
  *   - error if miss rate  > 0.40 (40 %)
  *   - warn  if |mean delta| > 0.5 (systematic bias)
  *
- * Reads `docs/knowledge/metrics/apple-log.json` — skips cleanly when the file
- * is empty or has fewer than MIN_ENTRIES entries (not enough data yet).
+ * New entries go in `docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json`
+ * (one JSON object per file). The legacy apple-log.json array is still read
+ * for historical data. Skips cleanly when there are fewer than MIN_ENTRIES.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
 
-const LOG_PATH = 'docs/knowledge/metrics/apple-log.json';
+const LEGACY_LOG_PATH = 'docs/knowledge/metrics/apple-log.json';
+const APPLES_DIR = 'docs/knowledge/metrics/apples';
 const MIN_ENTRIES = 5;
 const MISS_WARN_THRESHOLD = 0.2;
 const MISS_ERROR_THRESHOLD = 0.4;
@@ -53,37 +58,65 @@ function verdictEmoji(v: Verdict): string {
   }
 }
 
+function loadLegacyEntries(report: Report): AppleEntry[] {
+  const path = fromRepo(LEGACY_LOG_PATH);
+  if (!existsSync(path)) return [];
+  try {
+    const raw = readFileSync(path, 'utf8').trim();
+    if (!raw || raw === '[]') return [];
+    return JSON.parse(raw) as AppleEntry[];
+  } catch {
+    report.error(`${LEGACY_LOG_PATH} is not valid JSON.`, {
+      remediation: 'Fix the JSON manually or reset the file to `[]`.',
+    });
+    return [];
+  }
+}
+
+function loadDirEntries(report: Report): AppleEntry[] {
+  const dir = fromRepo(APPLES_DIR);
+  if (!existsSync(dir)) return [];
+  const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  const entries: AppleEntry[] = [];
+  for (const file of files) {
+    const filePath = join(dir, file);
+    try {
+      const raw = readFileSync(filePath, 'utf8').trim();
+      entries.push(JSON.parse(raw) as AppleEntry);
+    } catch {
+      report.error(`${APPLES_DIR}/${file} is not valid JSON.`, {
+        remediation: `Fix or remove ${APPLES_DIR}/${file}.`,
+      });
+    }
+  }
+  return entries;
+}
+
 async function main(): Promise<void> {
   const report = new Report('docs-apple-calibration');
 
-  if (!existsSync(fromRepo(LOG_PATH))) {
-    report.skip(`${LOG_PATH} not found — no data to analyse.`);
+  const legacyEntries = loadLegacyEntries(report);
+  const dirEntries = loadDirEntries(report);
+
+  // Deduplicate by session key — dir entries win over legacy entries.
+  const bySession = new Map<string, AppleEntry>();
+  for (const e of legacyEntries) bySession.set(e.session, e);
+  for (const e of dirEntries) bySession.set(e.session, e);
+  const entries = [...bySession.values()];
+
+  if (entries.length === 0) {
+    report.skip('No apple entries found — no data to analyse.');
     report.finish();
   }
 
-  let entries: AppleEntry[];
-  try {
-    const raw = readFileSync(fromRepo(LOG_PATH), 'utf8').trim();
-    if (!raw || raw === '[]') {
-      report.skip('apple-log.json is empty — no data to analyse.');
-      report.finish();
-    }
-    entries = JSON.parse(raw) as AppleEntry[];
-  } catch {
-    report.error(`${LOG_PATH} is not valid JSON.`, {
-      remediation: 'Fix the JSON manually or reset the file to `[]`.',
-    });
-    report.finish();
-  }
-
-  if (entries!.length < MIN_ENTRIES) {
+  if (entries.length < MIN_ENTRIES) {
     report.skip(
-      `Only ${entries!.length} entr${entries!.length === 1 ? 'y' : 'ies'} in apple-log.json (need ${MIN_ENTRIES} for meaningful analysis).`,
+      `Only ${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} in apple log (need ${MIN_ENTRIES} for meaningful analysis).`,
     );
     report.finish();
   }
 
-  const log = entries!;
+  const log = entries;
 
   // ── Overall metrics ──────────────────────────────────────────────────────
   const totalSessions = log.length;
@@ -104,7 +137,7 @@ async function main(): Promise<void> {
     byLevel.set(e.estimated_apples, bucket);
   }
 
-  for (const level of [1, 2, 3, 4]) {
+  for (const level of [1, 2, 3, 4, 5]) {
     const bucket = byLevel.get(level);
     if (!bucket || bucket.length === 0) continue;
     const levelMiss = bucket.filter((e) => Math.abs(e.delta) >= 2).length;

@@ -1,4 +1,10 @@
-import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../game/systems/index.js';
+import {
+  abilitySystem,
+  levelSystem,
+  skillSystem,
+  spendPoints,
+  statsSystem,
+} from '../game/systems/index.js';
 import {
   enemyAISystem,
   floor1EnemyDirectorSystem,
@@ -32,6 +38,13 @@ export function createFloor1MainSceneOptions() {
     onStairDescend: confirmFloor1StairDescend,
     selectSpellFromBossBattle: (world: GameWorld, playerEid: number, spellId: string) => {
       selectSpellFromBossBattle(world, playerEid, spellId as Floor1BossRewardSpellId);
+    },
+    allocateStatPoints: (
+      world: GameWorld,
+      _playerEid: number,
+      allocations: Parameters<typeof spendPoints>[1],
+    ) => {
+      spendPoints(world, allocations);
     },
     shopkeeper: {
       getStage: getShopkeeperStage,

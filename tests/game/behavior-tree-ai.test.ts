@@ -12,6 +12,43 @@ import { acceptQuest } from '../../src/core/systems/questSystem.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
+import { AIState } from '../../src/game/ai/types.js';
+import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+
+/**
+ * Build an all-open room (walls only on the border) so A* has a clear straight
+ * shot between any two interior tiles. Used to prove that path-follow
+ * string-pulling converts the 4-connected A* path into diagonal motion instead
+ * of stair-stepping.
+ */
+function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  const terrain = new Uint8Array(widthTiles * heightTiles);
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizePx: 32,
+    biome: BiomeType.ARENA,
+    seed: 1,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+  for (let y = 0; y < heightTiles; y += 1) {
+    for (let x = 0; x < widthTiles; x += 1) {
+      const idx = y * widthTiles + x;
+      const isBorder = x === 0 || y === 0 || x === widthTiles - 1 || y === heightTiles - 1;
+      tileMap.flags[idx] = isBorder ? TilePresets.WALL : TilePresets.FLOOR;
+    }
+  }
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
+}
+
+const MIN_DIAGONAL_COMPONENT = 0.15;
 
 /**
  * Advance a freshly-initialised Floor 1 world into the boss-unlock kill-grind
@@ -156,5 +193,89 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(decision.reason).not.toContain('Hunting quest enemies');
+  });
+
+  it('smoothly blends output direction across polls instead of snapping instantly', () => {
+    // Verify that the exponential smoothing produces a gradual transition:
+    // on the first poll the output direction must be closer to zero than to the
+    // full target, and after several polls it converges to within a small epsilon
+    // of the desired direction.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    // Place an enemy 200px to the right so the AI targets it and outputs (1, 0).
+    spawnEnemy(world, 200, 0, 20);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    const input = createInputState();
+
+    // Poll once — the AI starts from (0,0) and blends toward the desired
+    // direction, so the first output must be smaller in magnitude than 1.
+    ai.poll(input, world);
+    const firstMag = Math.hypot(input.moveX, input.moveY);
+    expect(firstMag).toBeGreaterThan(0);
+    expect(firstMag).toBeLessThan(1);
+
+    // After enough polls the output converges to near the desired magnitude.
+    let finalMag = firstMag;
+    for (let i = 0; i < 30; i++) {
+      ai.poll(input, world);
+      finalMag = Math.hypot(input.moveX, input.moveY);
+    }
+    expect(finalMag).toBeGreaterThan(0.95);
+  });
+
+  it('steers diagonally across open ground instead of stair-stepping cardinal hops', () => {
+    const world = createTestWorld({ seed: 99 });
+    world.floorMap = makeOpenRoom(16, 16);
+    // Player at interior tile (3,3) center; gold diagonally at tile (8,8) center.
+    // Distance ~226px: beyond CLOSE_APPROACH_DIRECT_PX (48) so A* builds a path,
+    // and inside scanRadius (400) so Collect fires. The 4-connected path's first
+    // waypoint is a cardinal neighbour (~zero on one axis); string-pulling must
+    // advance to the line-of-sight-visible goal so BOTH axes drive.
+    spawnPlayer(world, 112, 112);
+    spawnGold(world, 272, 272, 3);
+
+    const ai = new BehaviorTreeAI({ seed: 99 });
+    const input = createInputState();
+    ai.poll(input, world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.COLLECT);
+    // Pre-fix: one axis is ~0 (cardinal first hop). Post-fix: diagonal steer.
+    // With MOVE_SMOOTH_FACTOR=0.5, first-frame diagonal components are ~0.35; keep
+    // 0.15 low enough to allow smoothing while high enough to reject cardinal hops.
+    expect(Math.abs(input.moveX)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);
+    expect(Math.abs(input.moveY)).toBeGreaterThan(MIN_DIAGONAL_COMPONENT);
+  });
+
+  it('reuses the engagement kite while farming quest mobs instead of trading blows', () => {
+    const world = createTestWorld({ seed: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    enterKillGrindStage(world);
+    setActiveWeapon(world, getWeaponDef('sword')!);
+
+    // Quest enemy inside the sword strike gate (reach 40px, gate 60px). The old
+    // Progress branch walked straight onto the enemy center; it must now route
+    // through planEngagement and kite (same as Engage/Hunt).
+    const px = world.stores.position.x[player]!;
+    const py = world.stores.position.y[player]!;
+    const rat = spawnEnemy(world, px + 45, py, 20);
+    world.floor1!.enemyArchetypes.set(rat, 'rat');
+
+    const ai = new BehaviorTreeAI({ seed: 2 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Hunting quest enemies');
+    expect(decision.reason).toContain('Kiting');
+    // Must not park on the enemy center (the single-minded regression).
+    const ex = world.stores.position.x[rat]!;
+    const ey = world.stores.position.y[rat]!;
+    const distToEnemy = Math.hypot(decision.targetX! - ex, decision.targetY! - ey);
+    expect(distToEnemy).toBeGreaterThan(10);
   });
 });
