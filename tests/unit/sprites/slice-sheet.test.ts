@@ -351,8 +351,7 @@ describe('sliceSheet', () => {
 
     it('sliceSheetFromBrief skips brief-declared empty cells and preserves order', () => {
       const sheet = encodeContentGridSheet();
-      // The 24x24 fixture is a 2x2 layout (margin=4, block=6, gutter=4).
-      // sliceSheetFromBrief uses the grid-based slicer, so rows/cols must be provided.
+      // Minimal brief: sliceSheetFromBrief reads generation.sheet.{rows,cols,emptyCells}.
       const brief = {
         generation: {
           sheet: {
