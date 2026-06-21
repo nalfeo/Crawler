@@ -121,7 +121,7 @@ jobs:
               # unlike @mentions, which are ignored when posted by any bot account.
               conflict_title="Merge conflict: PR #${number}"
               pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${number}"
-              conflict_body="PR #${number} (branch \`${head_ref}\`) has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically."$'\n\n'"**PR:** ${pr_url}"$'\n\n'"Please resolve the conflict on branch \`${head_ref}\`, push the resolved changes, and ensure CI passes. This issue will be closed automatically once the rebase succeeds."
+              conflict_body="PR #${number} (branch \`${head_ref}\`) has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically."$'\n\n'"**PR:** ${pr_url}"$'\n\n'"Please resolve the conflict directly in PR #${number} by pushing the resolved changes to branch \`${head_ref}\` and ensuring CI passes. This issue will be closed automatically once the rebase succeeds."
 
               existing_conflict_issue=$(gh issue list \
                 --repo "$GITHUB_REPOSITORY" \
@@ -144,5 +144,28 @@ jobs:
               conflicts=$((conflicts + 1))
             fi
           done < <(echo "$prs_json" | jq -c '.[]')
+
+          echo "Checking for stale merge-conflict issues whose PRs are no longer open..."
+          stale_issues=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --label "merge-conflict" \
+            --state open \
+            --json number,title \
+            --jq '.[]')
+          while IFS= read -r issue_entry; do
+            [ -z "$issue_entry" ] && continue
+            issue_num=$(echo "$issue_entry" | jq -r '.number')
+            issue_title=$(echo "$issue_entry" | jq -r '.title')
+            # Extract PR number from title "Merge conflict: PR #N"
+            pr_num=$(echo "$issue_title" | grep -oP '(?<=PR #)\d+' | head -n 1)
+            [ -z "$pr_num" ] && continue
+            pr_state=$(gh pr view "$pr_num" --repo "$GITHUB_REPOSITORY" --json state --jq '.state' 2>/dev/null || echo "")
+            if [ "$pr_state" != "OPEN" ] && [ -n "$pr_state" ]; then
+              gh issue close "$issue_num" \
+                --repo "$GITHUB_REPOSITORY" \
+                --comment "PR #${pr_num} is no longer open (state: ${pr_state}). Closing stale conflict issue."
+              echo "  ✅ Closed stale conflict issue #$issue_num (PR #$pr_num is $pr_state)."
+            fi
+          done < <(echo "$stale_issues" | jq -c '.')
 
           echo "Done. Rebasing summary: rebased=$rebased conflicts=$conflicts skipped=$skipped failed=$failed"
