@@ -111,8 +111,8 @@ describe('autoNpcInteractionSystem', () => {
       30,
     );
     expect(result).toBe(100);
-    // meetTutorialGoon unlocks XP drops.
-    expect(world.goalFlags.get('floor1-xp-unlocked')).toBe(true);
+    // meetTutorialGoon unlocks Floor 1 drops.
+    expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
   });
 
   it('ignores NPCs with an unrecognized defId', () => {
