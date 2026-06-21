@@ -61,6 +61,31 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
+            // If the PR is already merged there is nothing left to fix — close any
+            // open tracking issue and bail out.
+            const pr = await github.rest.pulls.get({ owner, repo, pull_number: issueNumber });
+            if (pr.data.merged) {
+              core.info(`PR #${issueNumber} is already merged. Cleaning up any open coverage issue.`);
+              const issueLabel = 'coverage-gap';
+              const issueTitle = `Coverage gaps: PR #${issueNumber}`;
+              const staleIssues = await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo,
+                state: 'open',
+                labels: issueLabel,
+                per_page: 100,
+              });
+              const stale = staleIssues.find((i) => i.title === issueTitle);
+              if (stale) {
+                await github.rest.issues.update({
+                  owner, repo,
+                  issue_number: stale.number,
+                  state: 'closed',
+                });
+                core.info(`Closed stale coverage issue #${stale.number} because PR #${issueNumber} was merged.`);
+              }
+              return;
+            }
+
             const lines = belowGoal
               .map((gap) => `- ${gap.category}: ${gap.actual.toFixed(2)}% / goal ${gap.goal.toFixed(2)}%`)
               .join('\n');
@@ -76,7 +101,7 @@ jobs:
               'Below-goal categories:',
               lines,
               '',
-              'Please add targeted, deterministic tests to address these gaps.',
+              `Please add targeted, deterministic tests to address these gaps directly in PR #${issueNumber}.`,
             ].join('\n');
 
             // Ensure the tracking label exists (idempotent).
