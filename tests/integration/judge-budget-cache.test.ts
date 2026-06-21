@@ -53,9 +53,9 @@ function briefYaml(): string {
   return `
 type: weapon
 name: iron-sword
-size: { width: 16, height: 16 }
+size: { width: 32, height: 32 }
 palette: { id: test-palette }
-anchor: { x: 8, y: 8 }
+anchor: { x: 16, y: 16 }
 tags: [sword]
 prompt: An iron sword.
 references:
@@ -70,6 +70,11 @@ sensors:
     allowMainTouch: true
     allowDetachedEdgeComponents: true
     maxDetachedEdgePixels: 16
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
 judge:
   enabled: true
   maxVariants: 16
@@ -93,29 +98,30 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
 }
 
 /**
- * Stamp `index + 1` distinct opaque blocks at sampled source positions
- * so each variant produces distinct processed bytes after palette
- * quantize + downscale. (Brightness-only perturbation tended to
- * collapse pairs into the same palette bucket; varying the *count* of
- * stamped output pixels is more robust.)
- *
- * Nearest-neighbor 1024->32 samples source (32 + 64*k). We paint 4x4
- * source blocks at (32 + 64*k, 32) for k=0..index so processed pixel
- * (k, 0) flips from background to palette color (192, 192, 200).
+ * Stamp `index + 1` small color accents *inside the existing blade silhouette*
+ * so each variant produces distinct processed bytes without changing the outer
+ * content bounds that the content-aware slicer infers from the sheet.
  */
 function perturbedGoodSword(index: number): Buffer {
   const decoded = PNG.sync.read(buildGoodSwordFixture());
+  const colors = [
+    [255, 255, 255],
+    [120, 90, 60],
+    [160, 192, 192],
+    [200, 170, 50],
+  ] as const;
   for (let k = 0; k <= index; k++) {
-    const baseX = 32 + 64 * k;
-    const baseY = 32;
-    for (let dy = 0; dy < 4; dy++) {
-      for (let dx = 0; dx < 4; dx++) {
+    const [r, g, b] = colors[k % colors.length]!;
+    const baseX = 360 + 64 * k;
+    const baseY = 660 - 64 * k;
+    for (let dy = 0; dy < 16; dy++) {
+      for (let dx = 0; dx < 16; dx++) {
         const px = baseX + dx;
         const py = baseY + dy;
         const idx = (py * decoded.width + px) * 4;
-        decoded.data[idx] = 192;
-        decoded.data[idx + 1] = 192;
-        decoded.data[idx + 2] = 200;
+        decoded.data[idx] = r;
+        decoded.data[idx + 1] = g;
+        decoded.data[idx + 2] = b;
         decoded.data[idx + 3] = 255;
       }
     }
