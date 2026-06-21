@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-21",
+  "slug": "fix-gh-pages-404",
+  "estimate": 1,
+  "actual": 1,
+  "verdict": "on-target",
+  "notes": "Simple CI config change: added deploy-pages action to deploy.yml and pr-preview.yml. Diagnosis took most of the effort."
+}
