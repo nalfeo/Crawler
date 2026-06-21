@@ -155,7 +155,16 @@ function pickStarterChoices(world: GameWorld): string[] {
   }
   if (floor1Config.starterWeapons.length <= FIXED_STARTER_CHOICE_COUNT) {
     const indexById = new Map(floor1Config.starterWeapons.map((id, index) => [id, index]));
-    selected.sort((a, b) => (indexById.get(a) ?? 0) - (indexById.get(b) ?? 0));
+    // `selected` is built exclusively from the `pool` above via `splice()`, so it is
+    // always a de-duplicated subset of `floor1Config.starterWeapons`.
+    selected.sort((a, b) => {
+      const aIndex = indexById.get(a);
+      const bIndex = indexById.get(b);
+      if (aIndex === undefined || bIndex === undefined) {
+        return 0;
+      }
+      return aIndex - bIndex;
+    });
   }
   return selected;
 }

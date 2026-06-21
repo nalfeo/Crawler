@@ -381,6 +381,10 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
   melee_bat: 2.1,
 };
 
+function isSpriteDrivenMeleeVisual(type: string): boolean {
+  return type === 'melee_sword' || type === 'melee_bat';
+}
+
 interface ResolvedTexture {
   key: string;
   /** Frame index when `key` references a spritesheet. */
@@ -588,11 +592,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         }
 
         // --- Melee swing rendering (uses Graphics, not Image) ---
-        if (
-          entityType === 'melee_swing' &&
-          visualType !== 'melee_sword' &&
-          visualType !== 'melee_bat'
-        ) {
+        if (entityType === 'melee_swing' && !isSpriteDrivenMeleeVisual(visualType)) {
           let ag = arcGraphics.get(eid);
           if (!ag) {
             ag = scene.add.graphics();
