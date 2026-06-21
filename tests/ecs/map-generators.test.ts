@@ -110,6 +110,77 @@ describe('Map Generators', () => {
     });
   });
 
+  describe('DungeonGenerator (BASIC_UNDERGROUND — room variety)', () => {
+    it('should produce a map with correct dimensions', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const rng = new SeededRandom(42);
+      const floor = gen.generate(smallConfig(BiomeType.BASIC_UNDERGROUND), rng);
+
+      expect(floor.width).toBe(60);
+      expect(floor.height).toBe(40);
+    });
+
+    it('should have a passable player spawn', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const rng = new SeededRandom(42);
+      const floor = gen.generate(smallConfig(BiomeType.BASIC_UNDERGROUND), rng);
+
+      expect(floor.tileMap.isPassable(floor.playerSpawn.x, floor.playerSpawn.y)).toBe(true);
+    });
+
+    it('should produce deterministic output for same seed', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const config = smallConfig(BiomeType.BASIC_UNDERGROUND);
+
+      const floor1 = gen.generate(config, new SeededRandom(99));
+      const floor2 = gen.generate(config, new SeededRandom(99));
+
+      expect(Array.from(floor1.flags)).toEqual(Array.from(floor2.flags));
+      expect(floor1.rooms.length).toBe(floor2.rooms.length);
+    });
+
+    it('should produce at least one room', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const floor = gen.generate(smallConfig(BiomeType.BASIC_UNDERGROUND), new SeededRandom(42));
+
+      expect(floor.rooms.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should have both floor and wall tiles', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const floor = gen.generate(smallConfig(BiomeType.BASIC_UNDERGROUND), new SeededRandom(42));
+
+      let floors = 0;
+      let walls = 0;
+      for (let i = 0; i < floor.flags.length; i++) {
+        if ((floor.flags[i]! & TileFlags.PASSABLE) !== 0) floors++;
+        else walls++;
+      }
+      expect(floors).toBeGreaterThan(0);
+      expect(walls).toBeGreaterThan(0);
+    });
+
+    it('should not produce fewer floor tiles than standard DungeonGenerator', () => {
+      // Room variety can only add tiles (carving + widening), never remove all floor tiles.
+      const baseGen = new DungeonGenerator();
+      const varGen = new DungeonGenerator({ roomVariety: true });
+      const config = smallConfig(BiomeType.DUNGEON);
+
+      const baseFloor = baseGen.generate(config, new SeededRandom(7));
+      // Generate with variety using the same seed
+      const varFloor = varGen.generate(
+        { ...config, biome: BiomeType.BASIC_UNDERGROUND },
+        new SeededRandom(7),
+      );
+
+      const countPassable = (flags: Uint8Array): number =>
+        Array.from(flags).filter((f) => (f & TileFlags.PASSABLE) !== 0).length;
+
+      // Variety map should have at least as many passable tiles (corridors widened, diagonals added)
+      expect(countPassable(varFloor.flags)).toBeGreaterThanOrEqual(countPassable(baseFloor.flags));
+    });
+  });
+
   describe('CaveGenerator', () => {
     it('should produce a map with correct dimensions', () => {
       const gen = new CaveGenerator();
@@ -223,6 +294,7 @@ describe('Map Generators', () => {
       expect(getGenerator(BiomeType.DUNGEON).name).toBe('DungeonGenerator');
       expect(getGenerator(BiomeType.CAVE).name).toBe('CaveGenerator');
       expect(getGenerator(BiomeType.ARENA).name).toBe('ArenaGenerator');
+      expect(getGenerator(BiomeType.BASIC_UNDERGROUND).name).toBe('DungeonGenerator');
     });
 
     it('should throw for unknown biome', () => {

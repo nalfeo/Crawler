@@ -465,7 +465,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     widthTiles: floor1Config.map.widthTiles,
     heightTiles: floor1Config.map.heightTiles,
     tileSizePx: floor1Config.map.tileSizePx,
-    biome: BiomeType.DUNGEON,
+    biome: BiomeType.BASIC_UNDERGROUND,
     seed: world.rng.nextInt(1, 2_000_000),
     roomWidthRange: floor1Config.map.roomWidthRange,
     roomHeightRange: floor1Config.map.roomHeightRange,

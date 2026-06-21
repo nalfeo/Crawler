@@ -3,21 +3,37 @@
  *
  * Produces rooms connected by corridors with automatic door placement.
  * Best for: castle, dungeon, and structured interior biomes.
+ *
+ * When constructed with `{ roomVariety: true }`, applies post-processing for:
+ * - Round rooms (ellipse-inscribed interiors)
+ * - L-shaped rooms (one quadrant filled)
+ * - Wide corridors (1-tile perpendicular expansion)
+ * - Diagonal shortcuts (Bresenham diagonal paths between nearby rooms)
  */
 
 import { Map as ROTMap, RNG } from 'rot-js';
 import type { MapConfig, DoorLocation, RoomBounds } from '../../../shared/map-types';
-import { TilePresets, TerrainType, RoomRole } from '../../../shared/map-types';
+import { TilePresets, TileFlags, TerrainType, RoomRole } from '../../../shared/map-types';
 import type { SeededRandom } from '../../../shared/random';
 import { TileMap } from '../TileMap';
 import { RoomGraph } from '../RoomGraph';
 import { FloorMap } from '../FloorMap';
 import type { MapGenerator } from './types';
 
+export interface DungeonGeneratorOptions {
+  /** When true, applies round/L-shaped rooms, wide corridors, and diagonal shortcuts. */
+  readonly roomVariety?: boolean;
+}
+
 export class DungeonGenerator implements MapGenerator {
   readonly name = 'DungeonGenerator';
+  private readonly roomVariety: boolean;
 
-  generate(config: MapConfig, _rng: SeededRandom): FloorMap {
+  constructor(options: DungeonGeneratorOptions = {}) {
+    this.roomVariety = options.roomVariety ?? false;
+  }
+
+  generate(config: MapConfig, rng: SeededRandom): FloorMap {
     const { widthTiles: w, heightTiles: h } = config;
 
     const tileMap = new TileMap(w, h);
@@ -97,7 +113,13 @@ export class DungeonGenerator implements MapGenerator {
       }
     }
 
-    // --- Derive room adjacency from real walkable connectivity ---
+    // --- Room variety post-processing (BASIC_UNDERGROUND and opt-in biomes) ---
+    if (this.roomVariety) {
+      applyRoomShapes(tileMap, terrain, roomGraph, w, rng);
+      widenCorridors(tileMap, terrain, w, h, rng);
+      addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng);
+    }
+
     // Rooms are linked by corridors (and occasionally a shared door), so we
     // flood-fill connected components over CORRIDOR + DOOR tiles and treat every
     // room touching the same component as a mutual neighbor. This is the source
@@ -245,6 +267,362 @@ function paintRoomFloor(
       if (terrain[idx] === TerrainType.STONE_FLOOR) {
         terrain[idx] = terrainType;
       }
+    }
+  }
+}
+
+// ─── Room Variety Helpers ──────────────────────────────────────────────────
+
+/**
+ * Apply shape variety to rooms: round (ellipse) or L-shaped.
+ * Only rooms with interior size ≥ 5×5 are candidates.
+ * Rooms smaller than the threshold keep their rectangular shape.
+ */
+function applyRoomShapes(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  roomGraph: RoomGraph,
+  w: number,
+  rng: SeededRandom,
+): void {
+  for (const room of roomGraph.getAll()) {
+    const { x: rx, y: ry, width: rw, height: rh } = room.bounds;
+    // Interior dimensions: (rw-2) × (rh-2); require at least 5×5 interior
+    if (rw < 7 || rh < 7) continue;
+
+    const roll = rng.next();
+    if (roll < 0.25) {
+      applyEllipseShape(tileMap, terrain, w, rx, ry, rw, rh);
+    } else if (roll < 0.5) {
+      applyLShape(tileMap, terrain, w, rx, ry, rw, rh, room.doors, rng);
+    }
+    // 50% stay rectangular — also includes any oversized rooms naturally
+  }
+}
+
+/**
+ * Carve room interior into an ellipse, walling off tiles outside the
+ * inscribed ellipse. Boundary tiles (where doors live) are untouched.
+ */
+function applyEllipseShape(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+): void {
+  // Centre of the room (may be fractional)
+  const cx = rx + (rw - 1) / 2;
+  const cy = ry + (rh - 1) / 2;
+  // Semi-radii of the inscribed ellipse (reach to just inside the boundary)
+  const ex = (rw - 2) / 2;
+  const ey = (rh - 2) / 2;
+
+  for (let ty = ry + 1; ty < ry + rh - 1; ty++) {
+    for (let tx = rx + 1; tx < rx + rw - 1; tx++) {
+      const dx = (tx - cx) / ex;
+      const dy = (ty - cy) / ey;
+      if (dx * dx + dy * dy > 1.0) {
+        const idx = ty * w + tx;
+        terrain[idx] = TerrainType.STONE_WALL;
+        tileMap.flags[idx] = TilePresets.WALL;
+      }
+    }
+  }
+}
+
+/**
+ * Remove one interior quadrant of the room to produce an L-shape.
+ * The quadrant furthest from any door is selected to keep connectivity safe.
+ * After removal, tiles immediately inside each door are guaranteed floor.
+ */
+function applyLShape(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+  doors: readonly DoorLocation[],
+  rng: SeededRandom,
+): void {
+  // Interior bounds (exclusive)
+  const ix1 = rx + 1;
+  const iy1 = ry + 1;
+  const ix2 = rx + rw - 1; // exclusive right edge of interior
+  const iy2 = ry + rh - 1; // exclusive bottom edge of interior
+  const halfW = Math.floor((rw - 2) / 2);
+  const halfH = Math.floor((rh - 2) / 2);
+  if (halfW < 1 || halfH < 1) return;
+
+  // Quadrant corners: 0=TL 1=TR 2=BL 3=BR
+  // Score each by counting doors whose tile is inside or adjacent to it
+  const quadrantScore = [0, 0, 0, 0];
+  for (const door of doors) {
+    const isLeft = door.x <= rx + halfW;
+    const isTop = door.y <= ry + halfH;
+    // For each side the door is on, penalise adjacent quadrants
+    if (isTop && isLeft) quadrantScore[0]! += 2;
+    if (isTop && !isLeft) quadrantScore[1]! += 2;
+    if (!isTop && isLeft) quadrantScore[2]! += 2;
+    if (!isTop && !isLeft) quadrantScore[3]! += 2;
+  }
+
+  // Pick the quadrant with the lowest door-adjacency score; break ties with rng
+  const minScore = Math.min(...quadrantScore);
+  const candidates = quadrantScore
+    .map((s, i) => ({ s, i }))
+    .filter((e) => e.s === minScore)
+    .map((e) => e.i);
+  const quadrant = candidates[rng.nextInt(0, candidates.length - 1)]!;
+
+  // Determine the tile range to fill for the chosen quadrant
+  let qx1: number, qy1: number, qx2: number, qy2: number;
+  switch (quadrant) {
+    case 0:
+      qx1 = ix1;
+      qy1 = iy1;
+      qx2 = ix1 + halfW;
+      qy2 = iy1 + halfH;
+      break; // TL
+    case 1:
+      qx1 = ix1 + halfW;
+      qy1 = iy1;
+      qx2 = ix2;
+      qy2 = iy1 + halfH;
+      break; // TR
+    case 2:
+      qx1 = ix1;
+      qy1 = iy1 + halfH;
+      qx2 = ix1 + halfW;
+      qy2 = iy2;
+      break; // BL
+    default:
+      qx1 = ix1 + halfW;
+      qy1 = iy1 + halfH;
+      qx2 = ix2;
+      qy2 = iy2;
+      break; // BR
+  }
+
+  for (let ty = qy1; ty < qy2; ty++) {
+    for (let tx = qx1; tx < qx2; tx++) {
+      const idx = ty * w + tx;
+      terrain[idx] = TerrainType.STONE_WALL;
+      tileMap.flags[idx] = TilePresets.WALL;
+    }
+  }
+
+  // Ensure every door still has a reachable interior tile on its inner side
+  ensureDoorAccess(tileMap, terrain, w, rx, ry, rw, rh, doors);
+}
+
+/**
+ * For each door, guarantee the immediately adjacent interior tile is passable.
+ * This repairs any case where room reshaping accidentally blocked a doorway.
+ */
+function ensureDoorAccess(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+  doors: readonly DoorLocation[],
+): void {
+  for (const door of doors) {
+    for (const [nx, ny] of [
+      [door.x - 1, door.y],
+      [door.x + 1, door.y],
+      [door.x, door.y - 1],
+      [door.x, door.y + 1],
+    ] as [number, number][]) {
+      // Must be strictly inside the room bounds (interior tile)
+      if (nx > rx && nx < rx + rw - 1 && ny > ry && ny < ry + rh - 1) {
+        const idx = ny * w + nx;
+        if ((tileMap.flags[idx]! & TileFlags.PASSABLE) === 0) {
+          terrain[idx] = TerrainType.STONE_FLOOR;
+          tileMap.flags[idx] = TilePresets.FLOOR;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Widen corridors by one tile perpendicular to their primary direction.
+ * Horizontal corridors (neighboured E/W by floor) get a north or south tile added;
+ * vertical corridors get an east or west tile added. Uses a two-pass approach
+ * to avoid cascading widening from a single pass.
+ * ~60 % of corridor tiles are widened to preserve some narrow sections.
+ */
+function widenCorridors(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  h: number,
+  rng: SeededRandom,
+): void {
+  const toWiden = new Set<number>();
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      if (terrain[idx] !== TerrainType.CORRIDOR) continue;
+      if (rng.next() > 0.6) continue; // only widen ~60 % of corridor tiles
+
+      const tN = terrain[(y - 1) * w + x]!;
+      const tS = terrain[(y + 1) * w + x]!;
+      const tE = terrain[y * w + (x + 1)]!;
+      const tW = terrain[y * w + (x - 1)]!;
+
+      const floorOrCorridor = (t: number): boolean =>
+        t === TerrainType.CORRIDOR ||
+        t === TerrainType.STONE_FLOOR ||
+        t === TerrainType.DOOR ||
+        t === TerrainType.SAFE_ROOM_FLOOR ||
+        t === TerrainType.BOSS_STAIR_FLOOR;
+
+      const hasNS = floorOrCorridor(tN) || floorOrCorridor(tS);
+      const hasEW = floorOrCorridor(tE) || floorOrCorridor(tW);
+
+      if (hasNS && !hasEW) {
+        // Vertical corridor — try to expand east
+        if (x + 1 < w - 1 && terrain[y * w + (x + 1)] === TerrainType.STONE_WALL) {
+          toWiden.add(y * w + (x + 1));
+        }
+      } else if (hasEW && !hasNS) {
+        // Horizontal corridor — try to expand south
+        if (y + 1 < h - 1 && terrain[(y + 1) * w + x] === TerrainType.STONE_WALL) {
+          toWiden.add((y + 1) * w + x);
+        }
+      }
+    }
+  }
+
+  for (const idx of toWiden) {
+    terrain[idx] = TerrainType.CORRIDOR;
+    tileMap.flags[idx] = TilePresets.FLOOR;
+  }
+}
+
+/**
+ * Add diagonal shortcut corridors between rooms that are positioned diagonally
+ * and not yet directly connected. Uses Bresenham's line algorithm to carve a
+ * staircase-style diagonal path. Only wall tiles are overwritten; existing
+ * floor/corridor/door tiles are preserved.
+ */
+function addDiagonalShortcuts(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  roomGraph: RoomGraph,
+  w: number,
+  h: number,
+  rng: SeededRandom,
+): void {
+  const rooms = roomGraph.getAll();
+  const connected = new Set<string>();
+
+  for (let i = 0; i < rooms.length; i++) {
+    if (rng.next() > 0.3) continue; // ~30 % of rooms get a diagonal shortcut attempt
+
+    const a = rooms[i]!;
+    const cxA = Math.floor(a.bounds.x + a.bounds.width / 2);
+    const cyA = Math.floor(a.bounds.y + a.bounds.height / 2);
+
+    let bestDist = Infinity;
+    let bestJ = -1;
+
+    for (let j = 0; j < rooms.length; j++) {
+      if (j === i) continue;
+      const key = `${Math.min(i, j)}:${Math.max(i, j)}`;
+      if (connected.has(key)) continue;
+
+      const b = rooms[j]!;
+      const cxB = Math.floor(b.bounds.x + b.bounds.width / 2);
+      const cyB = Math.floor(b.bounds.y + b.bounds.height / 2);
+      const dx = Math.abs(cxB - cxA);
+      const dy = Math.abs(cyB - cyA);
+
+      // Both components must be significant (truly diagonal)
+      if (dx < 8 || dy < 8) continue;
+      // Not too far to be a useful shortcut
+      const dist = dx + dy; // Manhattan, fast
+      if (dist > 60) continue;
+      // Diagonal ratio: neither axis should dominate more than ~3:1
+      if (dx > dy * 3 || dy > dx * 3) continue;
+
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestJ = j;
+      }
+    }
+
+    if (bestJ >= 0) {
+      const b = rooms[bestJ]!;
+      const cxB = Math.floor(b.bounds.x + b.bounds.width / 2);
+      const cyB = Math.floor(b.bounds.y + b.bounds.height / 2);
+      carveBresenhamPath(tileMap, terrain, cxA, cyA, cxB, cyB, w, h);
+      connected.add(`${Math.min(i, bestJ)}:${Math.max(i, bestJ)}`);
+    }
+  }
+}
+
+/**
+ * Carve a Bresenham-line path from (x0,y0) to (x1,y1), converting STONE_WALL
+ * tiles to CORRIDOR. Existing floor/door tiles are left unchanged.
+ * Each step also widens the path by one tile perpendicular to the major axis
+ * so the diagonal corridor is 2 tiles wide and freely navigable.
+ */
+function carveBresenhamPath(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  w: number,
+  h: number,
+): void {
+  const carve = (x: number, y: number): void => {
+    if (x <= 0 || x >= w - 1 || y <= 0 || y >= h - 1) return;
+    const idx = y * w + x;
+    if (terrain[idx] === TerrainType.STONE_WALL) {
+      terrain[idx] = TerrainType.CORRIDOR;
+      tileMap.flags[idx] = TilePresets.FLOOR;
+    }
+  };
+
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+
+  while (true) {
+    carve(x, y);
+    // Widen perpendicular to major axis so the corridor is 2 tiles wide
+    if (dx >= dy) {
+      carve(x, y + sy); // widen north/south for horizontal-dominant paths
+    } else {
+      carve(x + sx, y); // widen east/west for vertical-dominant paths
+    }
+
+    if (x === x1 && y === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
     }
   }
 }
