@@ -24,7 +24,7 @@ import {
 import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import { isEntityInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
-import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
+import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { ftToPx } from '../shared/units.js';
@@ -338,7 +338,20 @@ function fireMeleeAttack(
     ftToPx(def.headRadius),
     def.shaftDamageMult,
     ftToPx(def.knockback),
+    getMeleeSpriteId(def.id),
   );
+}
+
+/** Map weapon id to a renderer sprite hint (0 = default sword). */
+function getMeleeSpriteId(weaponId: string): number {
+  switch (weaponId) {
+    case 'sword':
+      return MeleeSpriteId.SWORD;
+    case 'baseball-bat':
+      return MeleeSpriteId.BAT;
+    default:
+      return 0;
+  }
 }
 
 function fireRangedAttack(

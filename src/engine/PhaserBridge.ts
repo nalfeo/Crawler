@@ -24,7 +24,7 @@ import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
 import { createLogger } from '../shared/logger.js';
-import { TeamId } from '../shared/constants.js';
+import { TeamId, MeleeSpriteId } from '../shared/constants.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -335,7 +335,7 @@ const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
   enemy_boss: 'enemy.boss',
   npc: 'npc.guide',
   gem: 'item.gem',
-  proj: 'effect.proj',
+  proj: 'weapon.arrow',
   enemy_proj: 'effect.enemy_proj',
   aoe_proj: 'effect.aoe',
   enemy_aoe_proj: 'effect.enemy_aoe',
@@ -565,7 +565,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           continue;
         }
 
-        // --- Melee swing rendering (uses Graphics, not Image) ---
+        // --- Melee swing rendering (Graphics arc + weapon sprite at tip) ---
         if (entityType === 'melee_swing') {
           let ag = arcGraphics.get(eid);
           if (!ag) {
@@ -592,6 +592,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           let tipX: number;
           let tipY: number;
+          let tipAngle: number;
 
           if (style === 1) {
             // Stab: extend forward then retract
@@ -599,25 +600,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               progress <= 0.5 ? (progress / 0.5) * bladeLen : ((1 - progress) / 0.5) * bladeLen;
             tipX = x + Math.cos(arcCenter) * reach;
             tipY = y + Math.sin(arcCenter) * reach;
+            tipAngle = arcCenter;
 
-            // Shaft line
-            ag.lineStyle(headRadius > 0 ? 1 : 2, 0xdddddd, alpha);
+            // Shaft line (faint trail)
+            ag.lineStyle(headRadius > 0 ? 1 : 2, 0xdddddd, alpha * 0.4);
             ag.beginPath();
             ag.moveTo(x, y);
             ag.lineTo(tipX, tipY);
             ag.strokePath();
-
-            if (headRadius > 0) {
-              // Fist/head — larger filled circle at the tip
-              ag.fillStyle(0xccaa88, alpha);
-              ag.fillCircle(tipX, tipY, headRadius);
-              ag.lineStyle(2, 0xddccaa, alpha);
-              ag.strokeCircle(tipX, tipY, headRadius);
-            } else {
-              // Sharp tip for knives
-              ag.fillStyle(0xffffff, alpha);
-              ag.fillCircle(tipX, tipY, 2);
-            }
           } else {
             // Slash: sweep through arc
             const startAngle = arcCenter + arcHalf;
@@ -625,39 +615,48 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             const currentAngle = startAngle + (endAngle - startAngle) * progress;
             tipX = x + Math.cos(currentAngle) * bladeLen;
             tipY = y + Math.sin(currentAngle) * bladeLen;
-
-            // Shaft line
-            ag.lineStyle(headRadius > 0 ? 2 : 3, 0xcccccc, alpha);
-            ag.beginPath();
-            ag.moveTo(x, y);
-            ag.lineTo(tipX, tipY);
-            ag.strokePath();
-
-            if (headRadius > 0) {
-              // Hammer head — larger filled rectangle at the tip
-              ag.fillStyle(0xaaaaaa, alpha);
-              ag.fillCircle(tipX, tipY, headRadius);
-              ag.lineStyle(2, 0xdddddd, alpha);
-              ag.strokeCircle(tipX, tipY, headRadius);
-            } else {
-              // Bright tip for swords
-              ag.fillStyle(0xffffff, alpha);
-              ag.fillCircle(tipX, tipY, 3);
-            }
+            tipAngle = currentAngle;
 
             // Faint trail arc showing the swept area
             if (progress > 0.05) {
-              ag.lineStyle(1, 0xffffaa, 0.15 * alpha);
+              ag.lineStyle(2, 0xffffaa, 0.12 * alpha);
               ag.beginPath();
               ag.arc(x, y, bladeLen, startAngle, currentAngle, startAngle > endAngle);
               ag.strokePath();
             }
+
+            // Shaft line (faint)
+            ag.lineStyle(headRadius > 0 ? 1 : 2, 0xcccccc, alpha * 0.3);
+            ag.beginPath();
+            ag.moveTo(x, y);
+            ag.lineTo(tipX, tipY);
+            ag.strokePath();
           }
 
-          // Hide the image for melee swing entities
-          const existingSwing = visuals.get(eid);
-          if (existingSwing) {
-            existingSwing.obj.setVisible(false);
+          // --- Weapon sprite at tip ---
+          const swingSprite = meleeSwing.spriteId[eid] ?? 0;
+          const weaponSpriteKey = swingSprite === MeleeSpriteId.BAT ? 'weapon.bat' : 'weapon.sword';
+          const weaponSpriteDef = getSprite(weaponSpriteKey);
+
+          let visual = visuals.get(eid);
+          if (!visual && weaponSpriteDef) {
+            const img = scene.add.image(
+              tipX,
+              tipY,
+              weaponSpriteDef.sheetKey,
+              weaponSpriteDef.frame,
+            );
+            img.setScale(1.8);
+            visuals.set(eid, { obj: img, type: entityType, baseScale: 1.8 });
+            visual = visuals.get(eid);
+          }
+
+          if (visual) {
+            visual.obj.setVisible(alpha > 0.05);
+            visual.obj.setAlpha(alpha);
+            visual.obj.setPosition(tipX, tipY);
+            // +PI/2 rotates so the blade tip points away from player along the swing arc
+            visual.obj.setRotation(tipAngle + Math.PI / 2);
           }
           continue;
         }

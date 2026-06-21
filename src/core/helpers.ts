@@ -450,6 +450,7 @@ export function spawnMeleeSwing(
   headRadius: number = 0,
   shaftDamageMult: number = 1,
   knockback: number = 0,
+  spriteId: number = 0,
 ): number {
   const eid = createEntity(world);
   const arcCenterRad = Math.atan2(dirY, dirX);
@@ -469,6 +470,7 @@ export function spawnMeleeSwing(
       headRadius,
       shaftDamageMult,
       knockback,
+      spriteId,
     }),
   );
   // Clear any stale hit tracking from a recycled entity ID
