@@ -15,6 +15,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
@@ -29,10 +30,6 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # User PAT so @copilot mentions post as a human and trigger the Copilot
-          # coding agent. Bot identities (github-actions[bot], GitHub Apps) are
-          # ignored by Copilot regardless of which app issued the token.
-          COPILOT_PAT: ${{ secrets.COPILOT_PAT }}
         run: |
           set -euo pipefail
 
@@ -91,37 +88,58 @@ jobs:
               if git push --force-with-lease origin "HEAD:$head_ref"; then
                 echo "  ✅ Rebasing complete for PR #$number."
                 rebased=$((rebased + 1))
+                # Close any open merge-conflict issue for this PR now that it's resolved.
+                conflict_title="Merge conflict: PR #${number}"
+                resolved_issue=$(gh issue list \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --label "merge-conflict" \
+                  --state open \
+                  --json number,title \
+                  --jq ".[] | select(.title == \"${conflict_title}\") | .number" | head -n 1)
+                if [ -n "$resolved_issue" ]; then
+                  gh issue close "$resolved_issue" \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --comment "Conflict resolved — PR #${number} has been successfully rebased onto \`main\`."
+                  echo "  ✅ Closed conflict issue #$resolved_issue."
+                fi
               else
                 echo "  ⚠️ Rebase succeeded but push failed for PR #$number; leaving branch unchanged."
                 failed=$((failed + 1))
               fi
             else
               git rebase --abort || true
-              echo "  ⚠️ Rebase conflict on PR #$number; delegating to Copilot."
-              marker="auto-rebase-conflict-delegation"
-              body="<!-- ${marker} -->"$'\n'"@copilot This PR has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically. Please resolve the conflict, update the branch, and ensure CI passes."
-              # Delete any existing delegation comment first, then post a fresh one.
-              # Editing in-place does not re-fire the @copilot notification, but a
-              # new comment always does. The PAT posts as the human token owner so
-              # Copilot actually picks up the mention (bot identities are ignored).
-              existing_comment_id=$(gh pr view "$number" \
+              echo "  ⚠️ Rebase conflict on PR #$number; filing issue for Copilot."
+
+              # Ensure the tracking label exists (idempotent).
+              gh label create "merge-conflict" \
+                --color "e11d48" \
+                --description "Branch has a merge conflict requiring resolution" \
+                --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+              # File a GitHub issue and assign to copilot. Issue assignment triggers the
+              # Copilot coding agent regardless of which identity makes the assignment —
+              # unlike @mentions, which are ignored when posted by any bot account.
+              conflict_title="Merge conflict: PR #${number}"
+              pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${number}"
+              conflict_body="PR #${number} (branch \`${head_ref}\`) has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically."$'\n\n'"**PR:** ${pr_url}"$'\n\n'"Please resolve the conflict on branch \`${head_ref}\`, push the resolved changes, and ensure CI passes. This issue will be closed automatically once the rebase succeeds."
+
+              existing_conflict_issue=$(gh issue list \
                 --repo "$GITHUB_REPOSITORY" \
-                --json comments \
-                --jq ".comments[] | select(.body | contains(\"${marker}\")) | .id" | head -n 1)
-              if [ -n "$existing_comment_id" ]; then
-                GH_TOKEN="$COPILOT_PAT" gh api \
-                  --method DELETE \
-                  "repos/$GITHUB_REPOSITORY/issues/comments/$existing_comment_id" >/dev/null || true
-              fi
-              GH_TOKEN="$COPILOT_PAT" gh pr comment "$number" \
-                --repo "$GITHUB_REPOSITORY" \
-                --body "$body"
-              if gh pr edit "$number" \
-                --repo "$GITHUB_REPOSITORY" \
-                --add-assignee "copilot"; then
-                echo "  🤖 Assigned @copilot to PR #$number."
+                --label "merge-conflict" \
+                --state open \
+                --json number,title \
+                --jq ".[] | select(.title == \"${conflict_title}\") | .number" | head -n 1)
+
+              if [ -z "$existing_conflict_issue" ]; then
+                gh issue create \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --title "$conflict_title" \
+                  --body "$conflict_body" \
+                  --label "merge-conflict" \
+                  --assignee "copilot"
+                echo "  🤖 Filed conflict issue for PR #$number and assigned to Copilot."
               else
-                echo "  ⚠️ Failed to assign @copilot to PR #$number."
+                echo "  ℹ️ Conflict issue #$existing_conflict_issue already open for PR #$number."
               fi
               conflicts=$((conflicts + 1))
             fi
