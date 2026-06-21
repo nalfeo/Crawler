@@ -125,9 +125,8 @@ export function fitUiScale(
 
 /**
  * Subscribe to UI-scale changes. The callback fires whenever the canvas is
- * resized in a way that changes the rounded scale (and once on the next resize
- * after subscribing is unnecessary — call `getUiScale` for the initial value).
- * Returns an unsubscribe function.
+ * resized. The callback does not fire on subscription — call `getUiScale` for
+ * the initial value. Returns an unsubscribe function.
  */
 export function onUiScaleChange(
   scene: Phaser.Scene,

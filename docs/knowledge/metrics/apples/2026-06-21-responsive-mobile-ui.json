@@ -1,0 +1,8 @@
+{
+  "slug": "responsive-mobile-ui",
+  "date": "2026-06-21",
+  "estimate": 3,
+  "actual": 3,
+  "verdict": "on-target",
+  "description": "Responsive mobile UI scaling: ui-scale foundation, fully-scaling interactive menus, group-scaled HUD"
+}
