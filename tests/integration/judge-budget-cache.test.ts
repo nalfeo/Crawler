@@ -98,31 +98,46 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
 }
 
 /**
- * Stamp `index + 1` distinct 16×16 color blocks *inside the existing blade
- * silhouette* so each variant produces distinct processed bytes without
- * changing the outer content bounds that the content-aware slicer infers from
- * the sheet.
+ * Stamp `index + 1` distinct 3×3 blocks at the exact nearest-neighbour
+ * sample points for output pixels on the blade so each variant produces a
+ * unique 32×32 processed PNG.
+ *
+ * The downscaler samples input pixel (32*ox+16, 32*oy+16) for output pixel
+ * (ox, oy). Patches smaller than the 32-pixel cell stride fall between
+ * sample points and are invisible after downscaling, so we must centre each
+ * patch precisely on a sample point.
+ *
+ * We use black [0,0,0] — a palette entry — rather than white, because the
+ * speckle-cleanup step removes isolated near-white pixels (all channels ≥ 245).
+ *
+ * Chosen sample points (all verified to be within the blade's 160px-thick
+ * silhouette, well away from image edges):
+ *   k=0 → output (6,24)  → input centre (208, 784)
+ *   k=1 → output (9,21)  → input centre (304, 688)
+ *   k=2 → output (12,18) → input centre (400, 592)
+ *   k=3 → output (15,16) → input centre (496, 528)
  */
 function perturbedGoodSword(index: number): Buffer {
   const decoded = PNG.sync.read(buildGoodSwordFixture());
-  const colors = [
-    [255, 255, 255],
-    [120, 90, 60],
-    [160, 192, 192],
-    [200, 170, 50],
+  // Each sample point is the exact pixel the nearest-neighbour scaler reads.
+  // Black [0,0,0] is a palette entry distinct from the blade's [192,192,200]
+  // and is NOT near-white, so it survives the speckle-cleanup step.
+  const samplePoints = [
+    [208, 784],
+    [304, 688],
+    [400, 592],
+    [496, 528],
   ] as const;
   for (let k = 0; k <= index; k++) {
-    const [r, g, b] = colors[k % colors.length] ?? colors[0];
-    const baseX = 360 + 64 * k;
-    const baseY = 660 - 64 * k;
-    for (let dy = 0; dy < 16; dy++) {
-      for (let dx = 0; dx < 16; dx++) {
-        const px = baseX + dx;
-        const py = baseY + dy;
+    const [cx, cy] = samplePoints[k % samplePoints.length]!;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const px = cx + dx;
+        const py = cy + dy;
         const idx = (py * decoded.width + px) * 4;
-        decoded.data[idx] = r;
-        decoded.data[idx + 1] = g;
-        decoded.data[idx + 2] = b;
+        decoded.data[idx] = 0;
+        decoded.data[idx + 1] = 0;
+        decoded.data[idx + 2] = 0;
         decoded.data[idx + 3] = 255;
       }
     }
