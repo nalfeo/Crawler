@@ -21,13 +21,6 @@ jobs:
   rebase-prs:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App token
-        uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -36,9 +29,10 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GitHub App token so Copilot Coding Agent picks up the @copilot mention
-          # (the agent ignores mentions from github-actions[bot]).
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          # User PAT so @copilot mentions post as a human and trigger the Copilot
+          # coding agent. Bot identities (github-actions[bot], GitHub Apps) are
+          # ignored by Copilot regardless of which app issued the token.
+          COPILOT_PAT: ${{ secrets.COPILOT_PAT }}
         run: |
           set -euo pipefail
 
@@ -106,23 +100,22 @@ jobs:
               echo "  ⚠️ Rebase conflict on PR #$number; delegating to Copilot."
               marker="auto-rebase-conflict-delegation"
               body="<!-- ${marker} -->"$'\n'"@copilot This PR has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically. Please resolve the conflict, update the branch, and ensure CI passes."
-              COMMENT_TOKEN="$APP_TOKEN"
-              # Match existing delegation comment by marker only (works regardless of which
-              # account posted it, and survives token rotation between bot and PAT).
+              # Delete any existing delegation comment first, then post a fresh one.
+              # Editing in-place does not re-fire the @copilot notification, but a
+              # new comment always does. The PAT posts as the human token owner so
+              # Copilot actually picks up the mention (bot identities are ignored).
               existing_comment_id=$(gh pr view "$number" \
                 --repo "$GITHUB_REPOSITORY" \
                 --json comments \
                 --jq ".comments[] | select(.body | contains(\"${marker}\")) | .id" | head -n 1)
               if [ -n "$existing_comment_id" ]; then
-                GH_TOKEN="$COMMENT_TOKEN" gh api \
-                  --method PATCH \
-                  "repos/$GITHUB_REPOSITORY/issues/comments/$existing_comment_id" \
-                  --field body="$body" >/dev/null
-              else
-                GH_TOKEN="$COMMENT_TOKEN" gh pr comment "$number" \
-                  --repo "$GITHUB_REPOSITORY" \
-                  --body "$body"
+                GH_TOKEN="$COPILOT_PAT" gh api \
+                  --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/issues/comments/$existing_comment_id" >/dev/null || true
               fi
+              GH_TOKEN="$COPILOT_PAT" gh pr comment "$number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --body "$body"
               if gh pr edit "$number" \
                 --repo "$GITHUB_REPOSITORY" \
                 --add-assignee "copilot"; then

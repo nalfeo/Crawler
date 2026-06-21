@@ -15,19 +15,13 @@ jobs:
     if: ${{ github.event.issue.pull_request != null }}
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App token
-        uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
       - name: Detect below-goal coverage and request help
         uses: actions/github-script@v7
         with:
-          # GitHub App token so Copilot Coding Agent picks up the @copilot mention
-          # (the agent ignores mentions from github-actions[bot]).
-          github-token: ${{ steps.app-token.outputs.token }}
+          # User PAT so @copilot mentions post as a human and trigger the Copilot
+          # coding agent. Bot identities (github-actions[bot], GitHub Apps) are
+          # ignored by Copilot regardless of which app issued the token.
+          github-token: ${{ secrets.COPILOT_PAT }}
           script: |
             const comment = context.payload.comment;
             const body = comment.body ?? '';
@@ -88,21 +82,20 @@ jobs:
               per_page: 100,
             });
 
-            // Match by marker only — works regardless of which account posted the
-            // previous comment and survives token rotation between bot and PAT.
+            // Delete any existing ping comment, then post a fresh one.
+            // Editing in-place does not re-fire the @copilot notification, but a
+            // new comment always does.
             const existing = existingComments.find(
               (item) => (item.body ?? '').includes(marker),
             );
 
             if (existing) {
-              await github.rest.issues.updateComment({
+              await github.rest.issues.deleteComment({
                 owner,
                 repo,
                 comment_id: existing.id,
-                body: copilotBody,
               });
-              core.info(`Updated existing Copilot ping comment ${existing.id}.`);
-              return;
+              core.info(`Deleted existing Copilot ping comment ${existing.id}.`);
             }
 
             const created = await github.rest.issues.createComment({
