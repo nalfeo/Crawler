@@ -33,7 +33,7 @@ jobs:
         run: npm run build
         env:
           DEPLOY_ENV: dev
-          BUILD_BASE_PATH: /Crawler/pr-${{ github.event.pull_request.number }}/
+          BUILD_BASE_PATH: /${{ github.event.repository.name }}/pr-${{ github.event.pull_request.number }}/
           BUILD_OUTDIR: pr-build
 
       - name: Guard — build must include index.html
@@ -115,7 +115,7 @@ jobs:
               `| Environment | URL |`,
               `|-------------|-----|`,
               `| Preview     | [${previewUrl}](${previewUrl}) |`,
-              `| Labs        | [${previewUrl}lab.html](${previewUrl}lab.html) |`,
+              `| Labs        | [lab.html](${previewUrl}lab.html) |`,
               '',
               `Last updated: \`${sha}\` — [workflow run](${runUrl})`,
             ].join('\n');

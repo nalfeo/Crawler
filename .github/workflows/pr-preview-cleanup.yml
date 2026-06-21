@@ -5,7 +5,7 @@ on:
     types: [closed]
     branches: [main]
   schedule:
-    # Daily at 03:00 UTC — removes orphaned previews for PRs no longer open
+    # Daily at 03:00 UTC -- removes orphaned previews for PRs no longer open
     - cron: '0 3 * * *'
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ permissions:
   pull-requests: read
 
 jobs:
-  # ── Triggered when a PR is closed (merged or abandoned) ──────────────────────
+  # -- Triggered when a PR is closed (merged or abandoned) --
   cleanup-on-close:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -61,7 +61,7 @@ jobs:
             fi
           done
 
-  # ── Daily fallback — cleans up previews for any PRs that are no longer open ──
+  # -- Daily fallback -- cleans up previews for any PRs that are no longer open --
   cleanup-orphans:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
