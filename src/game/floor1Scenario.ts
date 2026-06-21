@@ -61,6 +61,7 @@ import {
 } from '../core/systems/questSystem.js';
 import { memorizeSpell } from './systems/abilitySystem.js';
 import { floor1Config } from '../shared/floor1-config.js';
+import { FIXED_STARTER_CHOICE_COUNT } from '../shared/weapon-visuals.js';
 import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
@@ -152,7 +153,7 @@ function pickStarterChoices(world: GameWorld): string[] {
       selected.push(id);
     }
   }
-  if (floor1Config.starterWeapons.length <= 3) {
+  if (floor1Config.starterWeapons.length <= FIXED_STARTER_CHOICE_COUNT) {
     const indexById = new Map(floor1Config.starterWeapons.map((id, index) => [id, index]));
     selected.sort((a, b) => (indexById.get(a) ?? 0) - (indexById.get(b) ?? 0));
   }

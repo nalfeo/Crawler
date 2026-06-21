@@ -37,6 +37,7 @@ import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
 import { getNpcDef, type NpcInstance } from '../shared/npc-types.js';
+import { getProjectileSpriteSize } from '../shared/weapon-visuals.js';
 
 // Re-export applyDamage for backward compatibility
 export { applyDamage } from './apply-damage.js';
@@ -190,7 +191,7 @@ export function spawnProjectile(
   textureId: number = SpriteTextureId.DEFAULT,
 ): number {
   const eid = createEntity(world);
-  const spriteSize = textureId === SpriteTextureId.BOW_ARROW ? 12 : 6;
+  const spriteSize = getProjectileSpriteSize(textureId);
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: vx, y: vy }));
