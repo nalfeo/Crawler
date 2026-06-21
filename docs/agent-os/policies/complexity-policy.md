@@ -61,7 +61,7 @@ At the end of every session, score the **actual** apples and compute the verdict
 | −1                         | 📈 Over  | Task was easier than expected  |
 | ±2 or more                 | 💥 Miss  | Estimation needs recalibration |
 
-Write one sentence explaining the gap. Over time `apple-log.json` surfaces whether you systematically over- or under-estimate a particular apple level.
+Write one sentence explaining the gap. Over time the apple log surfaces whether you systematically over- or under-estimate a particular apple level.
 
 ---
 
@@ -84,9 +84,17 @@ If a task feels like 5+ apples, split it. A single session should not attempt mo
 
 ---
 
-## Recording in `apple-log.json`
+## Recording Apple Entries
 
-Add one entry to `docs/knowledge/metrics/apple-log.json` at the end of every session:
+At the end of every session create a **single new file** at:
+
+```
+docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json
+```
+
+where `<slug>` matches the handoff filename slug (e.g. `2026-06-21-movement-system`).
+
+File contents — one JSON object (not an array):
 
 ```json
 {
@@ -101,3 +109,5 @@ Add one entry to `docs/knowledge/metrics/apple-log.json` at the end of every ses
 ```
 
 `hello_kitties` = `actual_apples / 5` (rounded to 2 decimal places).
+
+**Why individual files?** Each session writes its own file so concurrent PRs never conflict on the same file. The legacy `docs/knowledge/metrics/apple-log.json` is kept as historical data and is still read by the calibration script.
