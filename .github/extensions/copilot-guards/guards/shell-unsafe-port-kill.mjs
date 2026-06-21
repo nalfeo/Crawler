@@ -13,7 +13,7 @@ function normalizeWorkspacePath(value) {
     return '';
   }
   const trimmed = String(value).trim();
-  return normalizePath(resolveWorkspacePath(value));
+  return normalizePath(resolveWorkspacePath(trimmed));
 }
 
 function resolveWorkspacePath(value) {

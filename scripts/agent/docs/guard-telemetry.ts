@@ -6,8 +6,9 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { basename } from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { Report, fromRepo } from '../shared/report.js';
 
 const HANDOFFS_DIR = 'docs/knowledge/handoffs';
@@ -259,7 +260,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   await reportMode();
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && basename(process.argv[1]) === basename(fileURLToPath(import.meta.url))) {
   main().catch((err) => {
     process.stderr.write(
       `guard-telemetry crashed: ${err instanceof Error ? err.stack : String(err)}\n`,
