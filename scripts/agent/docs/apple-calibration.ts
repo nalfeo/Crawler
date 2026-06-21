@@ -137,7 +137,7 @@ async function main(): Promise<void> {
     byLevel.set(e.estimated_apples, bucket);
   }
 
-  for (const level of [1, 2, 3, 4]) {
+  for (const level of [1, 2, 3, 4, 5]) {
     const bucket = byLevel.get(level);
     if (!bucket || bucket.length === 0) continue;
     const levelMiss = bucket.filter((e) => Math.abs(e.delta) >= 2).length;
