@@ -34,12 +34,7 @@ describe('level-up-allocation no-op branches', () => {
   it('selectStat is a no-op for an unknown stat or the already-selected row', () => {
     const state = openState();
     expect(selectStat(state, BOGUS)).toBe(state);
-    const selected = STAT_KEYS[state.selectedIndex];
-    expect(selected).toBeDefined();
-    if (!selected) {
-      throw new Error('expected selected stat to exist');
-    }
-    expect(selectStat(state, selected)).toBe(state);
+    expect(selectStat(state, STAT_KEYS[state.selectedIndex]!)).toBe(state);
   });
 
   it('incrementStat is a no-op for an unknown stat', () => {

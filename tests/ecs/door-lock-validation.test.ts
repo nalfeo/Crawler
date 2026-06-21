@@ -99,12 +99,8 @@ describe('door-lock validation and evaluation', () => {
         conditions: [{ type: 'timer', elapsedMs: 100 }],
       };
       setDoorLockConfig(world, door, { unlock });
-      const firstCondition = unlock.conditions[0];
-      expect(firstCondition).toBeDefined();
-      firstCondition!.type = 'goal';
+      unlock.conditions[0]!.type = 'goal';
       const stored = getDoorLockConfig(world, door);
-      expect(stored).toBeDefined();
-      expect(stored!.unlock.conditions[0]).toBeDefined();
       expect(stored!.unlock.conditions[0]!.type).toBe('timer');
     });
   });

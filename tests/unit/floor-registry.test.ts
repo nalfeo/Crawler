@@ -61,9 +61,7 @@ describe('floor-registry', () => {
   describe('getNextFloorId', () => {
     it('returns undefined for the last floor in sequence', () => {
       const ids = getAvailableFloorIds();
-      const lastId = ids.at(-1);
-      expect(lastId).toBeDefined();
-      expect(getNextFloorId(lastId!)).toBeUndefined();
+      expect(getNextFloorId(ids.at(-1)!)).toBeUndefined();
     });
 
     it('returns undefined for an unknown floor id', () => {
@@ -76,11 +74,7 @@ describe('floor-registry', () => {
       registerFloorManifest('floor-test-next-b', makeManifest('floor-test-next-b'));
 
       const ids = getAvailableFloorIds();
-      const idxA = ids.indexOf('floor-test-next-a');
-      expect(idxA).toBeGreaterThanOrEqual(0);
-      const nextId = ids[idxA + 1];
-      expect(nextId).toBeDefined();
-      expect(getNextFloorId('floor-test-next-a')).toBe(nextId);
+      expect(getNextFloorId('floor-test-next-a')).toBe(ids[ids.indexOf('floor-test-next-a') + 1]);
     });
   });
 });

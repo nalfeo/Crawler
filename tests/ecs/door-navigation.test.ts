@@ -81,8 +81,7 @@ describe('door-navigation', () => {
       const infos = getDoorNavInfos(world);
       expect(infos).toHaveLength(1);
       const [info] = infos;
-      expect(info).toBeDefined();
-      expect(info).toMatchObject({
+      expect(info!).toMatchObject({
         tileX: 5,
         tileY: 5,
         isLocked: true,
@@ -97,14 +96,10 @@ describe('door-navigation', () => {
       setDoorLockConfig(world, door, {
         unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'open-sesame' }] },
       });
-      const lockedInfo = getDoorNavInfos(world)[0];
-      expect(lockedInfo).toBeDefined();
-      expect(lockedInfo!.navigationBlocked).toBe(true);
+      expect(getDoorNavInfos(world)[0]!.navigationBlocked).toBe(true);
 
       setGoalFlag(world, 'open-sesame', true);
-      const unlockedInfo = getDoorNavInfos(world)[0];
-      expect(unlockedInfo).toBeDefined();
-      expect(unlockedInfo!.navigationBlocked).toBe(false);
+      expect(getDoorNavInfos(world)[0]!.navigationBlocked).toBe(false);
     });
 
     it('marks a door blocked again when its relock condition becomes satisfied', () => {
@@ -114,14 +109,10 @@ describe('door-navigation', () => {
         unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'unlocked' }] },
         relock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'relocked' }] },
       });
-      const unlockedInfo = getDoorNavInfos(world)[0];
-      expect(unlockedInfo).toBeDefined();
-      expect(unlockedInfo!.navigationBlocked).toBe(false);
+      expect(getDoorNavInfos(world)[0]!.navigationBlocked).toBe(false);
 
       setGoalFlag(world, 'relocked', true);
-      const relockedInfo = getDoorNavInfos(world)[0];
-      expect(relockedInfo).toBeDefined();
-      expect(relockedInfo!.navigationBlocked).toBe(true);
+      expect(getDoorNavInfos(world)[0]!.navigationBlocked).toBe(true);
     });
   });
 
@@ -134,7 +125,6 @@ describe('door-navigation', () => {
       });
       const result = getNavigationBlockedDoors(world);
       expect(result).toHaveLength(1);
-      expect(result[0]).toBeDefined();
       expect(result[0]!.tileX).toBe(5);
     });
   });
