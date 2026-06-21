@@ -14,6 +14,7 @@
 import Phaser from 'phaser';
 
 import { PIXEL_UI } from './pixel-ui.js';
+import { getUiScale, onUiScaleChange } from './ui-scale.js';
 
 export interface DialogueBoxOptions {
   /** Panel width in px. Defaults to a readable width clamped to the screen. */
@@ -55,7 +56,14 @@ export function createDialogueBox(
 ): DialogueBox {
   const screenW = scene.scale.width;
   const screenH = scene.scale.height;
-  const width = Math.round(options.width ?? Math.min(560, screenW - 48));
+  // Responsive UI: the dialogue box is built in local (design) coordinates and
+  // the whole container is scaled by uiScale so its text and close button grow
+  // on small screens. The panel width is clamped to the *virtual* viewport
+  // (real width ÷ uiScale) so the scaled box never overflows the canvas.
+  let uiScale = getUiScale(scene);
+  const baseResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const virtualWidth = (): number => screenW / uiScale;
+  const width = Math.round(options.width ?? Math.min(560, virtualWidth() - 48));
   const depth = options.depth ?? 1100;
   const anchorX = options.anchorX ?? screenW / 2;
   const bottomY = options.bottomY ?? screenH - 88;
@@ -84,7 +92,8 @@ export function createDialogueBox(
       fontStyle: 'bold',
       color: NAME_COLOR,
     })
-    .setOrigin(0, 0.5);
+    .setOrigin(0, 0.5)
+    .setResolution(Math.max(1, Math.round(baseResolution * uiScale)));
 
   // Wrapped body line.
   const bodyText = scene.add
@@ -95,7 +104,8 @@ export function createDialogueBox(
       wordWrap: { width: width - PAD * 2 },
       lineSpacing: 3,
     })
-    .setOrigin(0, 0);
+    .setOrigin(0, 0)
+    .setResolution(Math.max(1, Math.round(baseResolution * uiScale)));
 
   // Beveled close button (top-right of the panel).
   const closeW = 64;
@@ -118,7 +128,8 @@ export function createDialogueBox(
       fontStyle: 'bold',
       color: '#ffe2e2',
     })
-    .setOrigin(0.5, 0.5);
+    .setOrigin(0.5, 0.5)
+    .setResolution(Math.max(1, Math.round(baseResolution * uiScale)));
 
   closeBg.on('pointerover', () => closeBg.setFillStyle(0x8c2a30));
   closeBg.on('pointerout', () => closeBg.setFillStyle(0x6e1f24));
@@ -152,10 +163,24 @@ export function createDialogueBox(
     bevelLeft.setSize(2, h);
     bevelBottom.setPosition(0, h - 2).setSize(width, 2);
     bevelRight.setPosition(width - 2, 0).setSize(2, h);
-    container.setPosition(Math.round(anchorX - width / 2), Math.round(bottomY - h));
+    // Scale the whole box, then anchor its (scaled) bottom-centre at the target.
+    container.setScale(uiScale);
+    container.setPosition(
+      Math.round(anchorX - (width * uiScale) / 2),
+      Math.round(bottomY - h * uiScale),
+    );
   }
 
   relayout();
+
+  const unsubscribeScale = onUiScaleChange(scene, (next) => {
+    uiScale = next;
+    const resolution = Math.max(1, Math.round(baseResolution * uiScale));
+    nameText.setResolution(resolution);
+    bodyText.setResolution(resolution);
+    closeText.setResolution(resolution);
+    relayout();
+  });
 
   function setCloseVisible(visible: boolean): void {
     closeVisible = visible;
@@ -193,6 +218,7 @@ export function createDialogueBox(
       else if (!closeVisible) setCloseVisible(false);
     },
     destroy(): void {
+      unsubscribeScale();
       container.destroy();
     },
   };
