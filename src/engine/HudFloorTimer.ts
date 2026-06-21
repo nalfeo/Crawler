@@ -26,11 +26,15 @@ const COLORS = {
 const AMBER_THRESHOLD_MS = 60_000;
 const RED_THRESHOLD_MS = 30_000;
 
-export function createHudFloorTimer(scene: Phaser.Scene): {
+export function createHudFloorTimer(
+  scene: Phaser.Scene,
+  options: { parent?: Phaser.GameObjects.Container } = {},
+): {
   sync(world: GameWorld): void;
   destroy(): void;
 } {
-  const panel = createBeveledPanel(scene, CENTER_X - 80, TOP_Y, 160, 38);
+  const parent = options.parent;
+  const panel = createBeveledPanel(scene, CENTER_X - 80, TOP_Y, 160, 38, { parent });
 
   const timerText = scene.add
     .text(CENTER_X, TOP_Y + 19, '', {
@@ -44,6 +48,7 @@ export function createHudFloorTimer(scene: Phaser.Scene): {
     .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
+  parent?.add(timerText);
 
   let pulseTween: Phaser.Tweens.Tween | undefined;
   let wasPulsing = false;

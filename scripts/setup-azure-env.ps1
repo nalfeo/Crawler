@@ -36,7 +36,7 @@ if ($env:CI -or $env:GITHUB_ACTIONS -or $env:CODESPACES) {
 }
 
 # --- Already set up? -------------------------------------------------------
-$envFile = Join-Path $PSScriptRoot '..' '.env.local' | Resolve-Path -ErrorAction SilentlyContinue
+$envFile = Join-Path (Join-Path $PSScriptRoot '..') '.env.local' | Resolve-Path -ErrorAction SilentlyContinue
 if (-not $envFile) {
     $envFile = Join-Path (Split-Path $PSScriptRoot) '.env.local'
 }

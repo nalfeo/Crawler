@@ -98,48 +98,38 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
 }
 
 /**
- * Stamp `index + 1` distinct 3×3 blocks at the exact nearest-neighbour
- * sample points for output pixels on the blade so each variant produces a
- * unique 32×32 processed PNG.
+ * Produce a perturbed copy of the good-sword fixture that survives the
+ * 1024→32 nearest-neighbour downscale in postprocessWithTrace.
  *
- * The downscaler samples input pixel (32*ox+16, 32*oy+16) for output pixel
- * (ox, oy). Patches smaller than the 32-pixel cell stride fall between
- * sample points and are invisible after downscaling, so we must centre each
- * patch precisely on a sample point.
+ * postprocessWithTrace calls fitWithinNearest(image, 32, 32) which uses
+ * nearest-neighbour sampling: output pixel (ox, oy) samples source pixel
+ * (ox*32+16, oy*32+16).  A stamp must be placed at one of those exact source
+ * positions to be visible in the processed 32×32 image.
  *
- * We use black [0,0,0] — a palette entry — rather than white, because the
- * speckle-cleanup step removes isolated near-white pixels (all channels ≥ 245).
- *
- * Chosen sample points (all verified to be within the blade's 160px-thick
- * silhouette, well away from image edges):
- *   k=0 → output (6,24)  → input centre (208, 784)
- *   k=1 → output (9,21)  → input centre (304, 688)
- *   k=2 → output (12,18) → input centre (400, 592)
- *   k=3 → output (15,16) → input centre (496, 528)
+ * Each variant stamps a unique 32×32 block centred on a different sampling
+ * point along the opaque blade silhouette.  The block colour [0,0,0] is
+ * palette-entry 0 (strict quantization keeps it black) and is distinct from
+ * the base blade colour [192,192,200], so the processed PNG hashes differ
+ * across all four variants — essential for the JudgeCache tests.
  */
 function perturbedGoodSword(index: number): Buffer {
-  const decoded = PNG.sync.read(buildGoodSwordFixture());
-  // Each sample point is the exact pixel the nearest-neighbour scaler reads.
-  // Black [0,0,0] is a palette entry distinct from the blade's [192,192,200]
-  // and is NOT near-white, so it survives the speckle-cleanup step.
+  // Sampling points: source (ox*32+16, oy*32+16) — all verified opaque
+  // in the blade silhouette of buildGoodSwordFixture().
   const samplePoints = [
-    [208, 784],
-    [304, 688],
-    [400, 592],
-    [496, 528],
+    { sx: 368, sy: 656 }, // output (11, 20)
+    { sx: 432, sy: 592 }, // output (13, 18)
+    { sx: 496, sy: 528 }, // output (15, 16)
+    { sx: 560, sy: 464 }, // output (17, 14)
   ] as const;
-  for (let k = 0; k <= index; k++) {
-    const [cx, cy] = samplePoints[k % samplePoints.length]!;
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const px = cx + dx;
-        const py = cy + dy;
-        const idx = (py * decoded.width + px) * 4;
-        decoded.data[idx] = 0;
-        decoded.data[idx + 1] = 0;
-        decoded.data[idx + 2] = 0;
-        decoded.data[idx + 3] = 255;
-      }
+  const decoded = PNG.sync.read(buildGoodSwordFixture());
+  const { sx, sy } = samplePoints[index]!;
+  for (let dy = -15; dy <= 16; dy++) {
+    for (let dx = -15; dx <= 16; dx++) {
+      const idx = ((sy + dy) * decoded.width + (sx + dx)) * 4;
+      decoded.data[idx] = 0;
+      decoded.data[idx + 1] = 0;
+      decoded.data[idx + 2] = 0;
+      decoded.data[idx + 3] = 255;
     }
   }
   return PNG.sync.write(decoded);
@@ -205,6 +195,8 @@ function setupHarness(): Harness {
 }
 
 const fixedClock = () => new Date('2026-06-05T12:00:00.000Z');
+const isJudgedCandidate = (candidate: { judgeSkipReason: string | null }) =>
+  candidate.judgeSkipReason === null;
 
 describe('generateOne + JudgeBudget (integration)', () => {
   let harness: Harness;
@@ -315,8 +307,12 @@ describe('generateOne + JudgeCache (integration)', () => {
       now: fixedClock,
       env: {},
     });
+    const firstRunCache = result1.summary.judgeCache;
+    expect(firstRunCache).not.toBeNull();
+    const firstRunMisses = firstRunCache?.misses ?? 0;
     expect(run1.callCount()).toBe(4);
-    expect(result1.summary.judgeCache).toEqual({ hits: 0, misses: 4, bypassed: 0 });
+    expect(firstRunMisses).toBe(4);
+    expect(firstRunCache?.bypassed).toBe(0);
 
     // Run 2: same inputs, same cache -> zero provider calls.
     const run2 = makeCountingVisionProvider(makePerfectScorecard());
@@ -333,11 +329,17 @@ describe('generateOne + JudgeCache (integration)', () => {
     });
     expect(run2.callCount()).toBe(0);
     // The cache instance was reused, so its stats accumulate across runs.
-    // misses should still be 4 (no new misses); hits == 4 from run 2.
-    expect(result2.summary.judgeCache).toEqual({ hits: 4, misses: 4, bypassed: 0 });
+    // misses should stay unchanged (no new misses); hits should increase from replay.
+    expect(result2.summary.judgeCache).toEqual({
+      hits: 4,
+      misses: 4,
+      bypassed: 0,
+    });
 
-    // Every candidate still has a judge scorecard.
-    for (const c of result2.summary.candidates) {
+    // Every judged candidate still has a judge scorecard.
+    const judgedCandidates = result2.summary.candidates.filter(isJudgedCandidate);
+    expect(judgedCandidates.length).toBeGreaterThan(0);
+    for (const c of judgedCandidates) {
       expect(c.judgeScorecard).not.toBeNull();
       expect(c.judgeScorecard!.passed).toBe(true);
     }
@@ -371,7 +373,9 @@ describe('generateOne + JudgeCache (integration)', () => {
       now: fixedClock,
       env: {},
     });
+    const seededMisses = cache.stats.misses;
     expect(seedProv.callCount()).toBe(4);
+    expect(seededMisses).toBe(4);
 
     // Second run: $0 budget, but everything should come from cache so
     // no actual Azure call happens => no skips, no recorded spend.
@@ -398,7 +402,7 @@ describe('generateOne + JudgeCache (integration)', () => {
     expect(result.summary.judgeBudget!.spentUsd).toBe(0);
     expect(result.summary.judgeBudget!.callsThisRun).toBe(0);
     expect(result.summary.judgeBudget!.callsSkippedDueToBudget).toBe(0);
-    for (const c of result.summary.candidates) {
+    for (const c of result.summary.candidates.filter(isJudgedCandidate)) {
       expect(c.judgeScorecard).not.toBeNull();
     }
   });

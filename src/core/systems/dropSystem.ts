@@ -78,7 +78,7 @@ function spawnDrops(
   x: number,
   y: number,
   drops: LootDrop[],
-  allowXpDrops: boolean,
+  allowDrops: boolean,
 ): void {
   logger.debug('Spawning drops', {
     dropCount: drops.length,
@@ -97,24 +97,28 @@ function spawnDrops(
     switch (drop.type) {
       case 'gold':
         for (let i = 0; i < drop.quantity; i++) {
+          // Always consume RNG to keep the seeded sequence stable regardless
+          // of whether drops are currently gated (Floor 1 onboarding pacing).
           const gx = dx + (world.rng.next() - 0.5) * 8;
           const gy = dy + (world.rng.next() - 0.5) * 8;
-          spawnGold(world, gx, gy, drop.value);
+          if (allowDrops) {
+            spawnGold(world, gx, gy, drop.value);
+          }
         }
         break;
       case 'xp':
         for (let i = 0; i < drop.quantity; i++) {
           // Always consume RNG to keep the seeded sequence stable regardless
-          // of whether XP drops are currently gated.
+          // of whether drops are currently gated.
           const ex = dx + (world.rng.next() - 0.5) * 8;
           const ey = dy + (world.rng.next() - 0.5) * 8;
-          if (allowXpDrops) {
+          if (allowDrops) {
             spawnXpGem(world, ex, ey, drop.value);
           }
         }
         break;
       case 'item':
-        if (drop.itemId) {
+        if (drop.itemId && allowDrops) {
           const itemIndex = getItemIndex(drop.itemId);
           if (itemIndex >= 0) {
             for (let i = 0; i < drop.quantity; i++) {
@@ -133,8 +137,10 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   const processed = getProcessedDeaths(world);
   const spawnLoot = options.spawnLoot ?? true;
   const deathLingerMs = options.deathLingerMs ?? DEATH_LINGER_MS;
-  // Floor 1 tutorial pacing: XP starts dropping only after the Tutorial Goon intro.
-  const allowXpDrops = !world.floor1 || world.goalFlags.get('floor1-xp-unlocked') === true;
+  // Floor 1 onboarding pacing: gold, XP, and junk only start dropping after the
+  // player finds the Welcome Office and the Tutorial Goon explains the rules.
+  // Off-floor (e.g. labs) drops are always enabled.
+  const allowDrops = !world.floor1 || world.goalFlags.get('floor1-drops-unlocked') === true;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -217,7 +223,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      spawnDrops(world, x, y, drops, allowXpDrops);
+      spawnDrops(world, x, y, drops, allowDrops);
       logger.info('Processed enemy death drops', {
         eid,
         x,

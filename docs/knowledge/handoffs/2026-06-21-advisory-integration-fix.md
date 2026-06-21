@@ -22,9 +22,9 @@ Hello kitties: 3/5 = 0.60 🎀
 
 ## What Was Done
 
-- Fixed advisory integration instability by making `sliceSheetFromBrief` resilient:
-  - Try content-aware V2 slicing first.
-  - If the inferred cell count mismatches the authored grid count, gracefully fall back to grid slicing using `rows/cols`.
+- Fixed advisory integration instability by making `sliceSheetFromBrief` always use the authored `rows/cols` grid via `sliceSheet`, replacing the previous content-aware V2 approach.
+  - The brief is the single source of truth for sheet layout.
+  - Note: an earlier iteration of this session explored a V2-fallback approach, but that was superseded by the grid-only approach already on main (PR #165).
 - Updated integration fixtures in:
   - `tests/integration/generate-one.test.ts`
   - `tests/integration/judge-pipeline.test.ts`
@@ -46,7 +46,7 @@ Hello kitties: 3/5 = 0.60 🎀
 
 ## Branch State
 
-- Branch: `copilot/ai-runner-fix-level-up-selection`
+- Branch: `copilot/resolve-integration-test-failures`
 - PR created: no
 
 ## Key Decisions

@@ -141,9 +141,21 @@ describe('HudMinimap small/docked radar architectural guards', () => {
     expect(source).toContain('const RADAR_CLIP_RADIUS = HUD_RADAR_RADIUS - 4;');
   });
 
-  it('pins the dial to the top-right corner using margin and radius', () => {
-    expect(source).toContain('const radarCx = width - HUD_RADAR_MARGIN - HUD_RADAR_RADIUS;');
-    expect(source).toContain('const radarCy = HUD_RADAR_MARGIN + HUD_RADAR_RADIUS;');
+  it('pins the dial to the top-right corner using margin and the responsive radius', () => {
+    expect(source).toContain('const scaledCx = width - HUD_RADAR_MARGIN - scaledRadius;');
+    expect(source).toContain('const scaledCy = HUD_RADAR_MARGIN + scaledRadius;');
+  });
+
+  it('scales the docked dial up on small screens (capped, mirrors the HUD)', () => {
+    expect(source).toContain('const HUD_RADAR_MAX_SCALE = 1.4;');
+    expect(source).toContain(
+      'const radarScale = Math.min(getUiScale(scene), HUD_RADAR_MAX_SCALE);',
+    );
+    expect(source).toContain('const scaledRadius = HUD_RADAR_RADIUS * radarScale;');
+    expect(source).toContain('hudMapBg.setPosition(scaledCx, scaledCy).setScale(radarScale);');
+    expect(source).toContain(
+      'radarRt.setPosition(scaledCx - scaledRadius, scaledCy - scaledRadius).setScale(radarScale);',
+    );
   });
 
   it('has a gold beveled ring around the dial', () => {
@@ -154,12 +166,14 @@ describe('HudMinimap small/docked radar architectural guards', () => {
   it('renders a compass "N" label at the top of the dial', () => {
     expect(source).toContain(".text(0, 0, 'N', {");
     // N marker is positioned near the top of the dial circumference
-    expect(source).toContain('hudCompass.setPosition(radarCx, radarCy - HUD_RADAR_RADIUS + 9);');
+    expect(source).toContain(
+      'hudCompass.setPosition(scaledCx, scaledCy - scaledRadius + 9 * radarScale).setScale(radarScale);',
+    );
   });
 
   it('renders the "MAP (M)" hint label beneath the dial', () => {
     expect(source).toContain(".text(0, 0, 'MAP (M)', {");
-    expect(source).toContain('hudMapLabel.setPosition(radarCx, radarCy + HUD_RADAR_RADIUS + 4);');
+    expect(source).toContain('.setPosition(scaledCx, scaledCy + scaledRadius + 4 * radarScale)');
   });
 
   it('allocates the radar RenderTexture at the exact dial pixel dimensions', () => {
@@ -407,7 +421,7 @@ describe('HudMinimap mobile layout regression', () => {
 
   it('keeps the dial pinned to the top-right at any screen width via the margin constant', () => {
     // The formula uses `width` from getGameSize(), so it always tracks the real edge.
-    expect(source).toContain('const radarCx = width - HUD_RADAR_MARGIN - HUD_RADAR_RADIUS;');
+    expect(source).toContain('const scaledCx = width - HUD_RADAR_MARGIN - scaledRadius;');
     expect(source).toContain('const HUD_RADAR_MARGIN = 12;');
   });
 

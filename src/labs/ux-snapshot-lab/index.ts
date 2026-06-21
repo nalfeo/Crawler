@@ -361,7 +361,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       spawnEnemy(world, 14 * TILE + TILE / 2, 7 * TILE + TILE / 2, 12);
 
       // XP unlocked so the experience bar is visible.
-      world.goalFlags.set('floor1-xp-unlocked', true);
+      world.goalFlags.set('floor1-drops-unlocked', true);
 
       world.floor1 = {
         protagonistName: 'UX Lab Player',

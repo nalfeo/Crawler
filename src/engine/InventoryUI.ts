@@ -10,6 +10,7 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
+import { fitUiScale } from './ui-scale.js';
 import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
 import {
   createTabPreferences,
@@ -80,7 +81,8 @@ export function createInventoryUI(
   scene.cameras.main.roundPixels = true;
 
   const snap = (value: number): number => Math.round(value);
-  const textResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const baseResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  let textResolution = baseResolution;
   const crispText = (
     x: number,
     y: number,
@@ -92,6 +94,14 @@ export function createInventoryUI(
   const basePanelWidth = COLS * (CELL_SIZE + CELL_GAP) + CELL_GAP + PANEL_PADDING * 2;
   const panelWidth = config.width ?? Math.max(basePanelWidth, 520);
   const panelHeight = config.height ?? 480;
+
+  // Responsive UI: lay the panel out in a "virtual" viewport (real size ÷
+  // uiScale) and scale the whole container up by uiScale so the inventory grid,
+  // tabs and text grow on small screens while staying centred and on-canvas.
+  let uiScale = fitUiScale(scene, panelWidth, panelHeight);
+  textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+  const viewWidth = (): number => scene.scale.width / uiScale;
+  const viewHeight = (): number => scene.scale.height / uiScale;
 
   let visible = false;
   let activeTag: ItemTag | null = null;
@@ -119,8 +129,8 @@ export function createInventoryUI(
   container.setVisible(false);
 
   // Panel background
-  let panelX = snap((scene.scale.width - panelWidth) / 2);
-  let panelY = snap((scene.scale.height - panelHeight) / 2);
+  let panelX = snap((viewWidth() - panelWidth) / 2);
+  let panelY = snap((viewHeight() - panelHeight) / 2);
 
   const bg = scene.add.rectangle(
     panelX + panelWidth / 2,
@@ -198,18 +208,25 @@ export function createInventoryUI(
   container.add(searchText);
 
   function applyLayout(): void {
-    panelX = snap((scene.scale.width - panelWidth) / 2);
-    panelY = snap((scene.scale.height - panelHeight) / 2);
+    uiScale = fitUiScale(scene, panelWidth, panelHeight);
+    textResolution = Math.max(1, Math.round(baseResolution * uiScale));
+    container.setScale(uiScale);
+    panelX = snap((viewWidth() - panelWidth) / 2);
+    panelY = snap((viewHeight() - panelHeight) / 2);
     tabY = snap(panelY + PANEL_PADDING + 28);
     searchY = snap(tabY + TAB_HEIGHT + TAB_GAP);
     gridY = snap(searchY + SEARCH_HEIGHT + TAB_GAP + 4);
     gridHeight = panelY + panelHeight - gridY - PANEL_PADDING;
 
     bg.setPosition(panelX + panelWidth / 2, panelY + panelHeight / 2);
-    title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING);
-    sortBtn.setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING);
+    title.setPosition(panelX + PANEL_PADDING, panelY + PANEL_PADDING).setResolution(textResolution);
+    sortBtn
+      .setPosition(panelX + panelWidth - PANEL_PADDING, panelY + PANEL_PADDING)
+      .setResolution(textResolution);
     searchBg.setPosition(panelX + panelWidth / 2, searchY + SEARCH_HEIGHT / 2);
-    searchText.setPosition(panelX + PANEL_PADDING + 8, searchY + SEARCH_HEIGHT / 2);
+    searchText
+      .setPosition(panelX + PANEL_PADDING + 8, searchY + SEARCH_HEIGHT / 2)
+      .setResolution(textResolution);
 
     if (visible) {
       renderTabs();
@@ -557,6 +574,7 @@ export function createInventoryUI(
 
     if (visible) {
       searchQuery = '';
+      applyLayout();
       updateSearchDisplay();
       refresh(world);
     } else {

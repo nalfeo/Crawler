@@ -112,6 +112,19 @@
     "cols": 12
   },
   {
+    "id": "generated:purple-potion-bottle-v1-var-4",
+    "kind": "sprite",
+    "label": "purple-potion-bottle-v1",
+    "description": "Generated sprite from brief: purple-potion-bottle-v1.",
+    "tags": ["item", "generated", "pipeline-approved"],
+    "spriteId": "purple-potion-bottle-v1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/purple-potion-bottle-v1-var-4.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
     "id": "sprite:effect.aoe",
     "kind": "sprite",
     "label": "effect.aoe",
