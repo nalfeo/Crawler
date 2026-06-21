@@ -4,6 +4,7 @@ import {
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   getQuestDef,
+  getAllQuestDefs,
   getQuestPacks,
   installDefaultQuestPacks,
   installQuestPacks,
@@ -108,5 +109,40 @@ describe('quest content packs', () => {
         ],
       }),
     ).toThrow();
+  });
+
+  it('getAllQuestDefs returns every compiled default quest', () => {
+    const ids = getAllQuestDefs().map((d) => d.id);
+    expect(ids).toContain(FLOOR1_TUTORIAL_QUEST_ID);
+    expect(ids).toContain(FLOOR1_SHOP_QUEST_ID);
+    expect(ids).toContain(FLOOR1_BOSS_UNLOCK_QUEST_ID);
+  });
+
+  it('rejects a quest source that provides both objectives and a template', () => {
+    expect(() =>
+      questPackSchema.parse({
+        version: 1,
+        packId: 'both',
+        quests: [
+          {
+            id: 'both-quest',
+            title: 'Both',
+            summary: 'Both',
+            objectives: [{ id: 'o', label: 'O', kind: 'goal', goalId: 'g' }],
+            template: { kind: 'goalFlag', objectiveId: 'o2', label: 'O2', goalId: 'g2' },
+          },
+        ],
+      }),
+    ).toThrow(/exactly one/);
+  });
+
+  it('rejects a quest source that provides neither objectives nor a template', () => {
+    expect(() =>
+      questPackSchema.parse({
+        version: 1,
+        packId: 'neither',
+        quests: [{ id: 'empty-quest', title: 'Empty', summary: 'Empty' }],
+      }),
+    ).toThrow(/exactly one/);
   });
 });

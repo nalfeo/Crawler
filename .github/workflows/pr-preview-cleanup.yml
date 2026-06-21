@@ -1,0 +1,131 @@
+name: PR Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  schedule:
+    # Daily at 03:00 UTC -- removes orphaned previews for PRs no longer open
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  # -- Triggered when a PR is closed (merged or abandoned) --
+  cleanup-on-close:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove PR preview from gh-pages branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          if ! git clone --depth=1 --branch=gh-pages "$REPO_URL" /tmp/gh-pages 2>/dev/null; then
+            echo "No gh-pages branch found, nothing to clean up"
+            exit 0
+          fi
+
+          cd /tmp/gh-pages
+
+          if [ ! -d "pr-${PR_NUMBER}" ]; then
+            echo "No preview directory for PR #${PR_NUMBER}, nothing to clean up"
+            exit 0
+          fi
+
+          rm -rf "pr-${PR_NUMBER}"
+          git add -A
+          git commit -m "chore: remove PR #${PR_NUMBER} preview [closed]"
+
+          MAX_RETRIES=3
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            if git push origin HEAD:gh-pages; then
+              echo "Removed preview for PR #${PR_NUMBER}"
+              break
+            fi
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "Push failed (attempt $attempt), rebasing..."
+              git fetch origin gh-pages
+              git rebase origin/gh-pages
+            else
+              echo "::error::Failed to push after $MAX_RETRIES attempts"
+              exit 1
+            fi
+          done
+
+  # -- Daily fallback -- cleans up previews for any PRs that are no longer open --
+  cleanup-orphans:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove orphaned PR previews from gh-pages branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          if ! git clone --depth=1 --branch=gh-pages "$REPO_URL" /tmp/gh-pages 2>/dev/null; then
+            echo "No gh-pages branch found, nothing to clean up"
+            exit 0
+          fi
+
+          cd /tmp/gh-pages
+
+          # Find all pr-* directories
+          PR_DIRS=$(find . -maxdepth 1 -type d -name 'pr-*' | sed 's|^\./||' | sort)
+
+          if [ -z "$PR_DIRS" ]; then
+            echo "No PR preview directories found"
+            exit 0
+          fi
+
+          REMOVED=0
+          for dir in $PR_DIRS; do
+            PR_NUM="${dir#pr-}"
+
+            # Check if the PR is still open
+            STATE=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUM}" --jq '.state' 2>/dev/null || echo "not_found")
+
+            if [ "$STATE" = "open" ]; then
+              echo "PR #${PR_NUM} is still open — keeping preview"
+            else
+              echo "PR #${PR_NUM} is ${STATE} — removing preview"
+              rm -rf "$dir"
+              REMOVED=$((REMOVED + 1))
+            fi
+          done
+
+          if [ "$REMOVED" -eq 0 ]; then
+            echo "No orphaned previews to remove"
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "chore: remove ${REMOVED} orphaned PR preview(s) [daily cleanup]"
+
+          MAX_RETRIES=3
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            if git push origin HEAD:gh-pages; then
+              echo "Cleaned up ${REMOVED} orphaned preview(s)"
+              break
+            fi
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "Push failed (attempt $attempt), rebasing..."
+              git fetch origin gh-pages
+              git rebase origin/gh-pages
+            else
+              echo "::error::Failed to push after $MAX_RETRIES attempts"
+              exit 1
+            fi
+          done
