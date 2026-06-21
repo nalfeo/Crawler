@@ -15,6 +15,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pages: write
   pull-requests: write
 
 concurrency:
@@ -223,6 +224,17 @@ jobs:
           fi
 
           echo "PAGES_URL=${PAGES_BASE}/" >> "$GITHUB_ENV"
+
+      - name: Ensure GitHub Pages source is set to gh-pages branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo '{"source":{"branch":"gh-pages","path":"/"}}' | \
+            gh api repos/${{ github.repository }}/pages \
+              --method PUT \
+              --input - \
+            2>/dev/null && echo "Pages source: branch=gh-pages path=/" || \
+            echo "::notice::Pages source could not be updated automatically (may already be correct)"
 
       - name: Label and comment on released PRs
         if: success()
