@@ -7,15 +7,7 @@
  * and applies death knockback.
  */
 import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
-import {
-  Damage,
-  DeathTimer,
-  Enemy,
-  EnemyBehavior,
-  Health,
-  Knockback,
-  Sprite,
-} from '../components.js';
+import { Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
 import { spawnBehaviorEnemy, spawnDroppedItem, spawnGold, spawnXpGem } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
@@ -117,59 +109,6 @@ function spawnDrops(
           if (allowDrops) {
             spawnGold(world, gx, gy, drop.value);
           }
-
-          function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): void {
-            if (world.floor1?.enemyArchetypes.get(eid) !== 'slime') {
-              return;
-            }
-            if (world.rng.next() >= SLIME_SPLIT_CHANCE) {
-              return;
-            }
-
-            const parentMaxHp = world.stores.health.max[eid] ?? 0;
-            const miniHp = Math.max(1, Math.round(parentMaxHp * 0.5));
-            const parentDamage = hasComponent(world.ecs, eid, Damage)
-              ? Math.max(1, world.stores.damage.amount[eid] ?? DEFAULT_CONTACT_DAMAGE)
-              : DEFAULT_CONTACT_DAMAGE;
-            const miniDamage = Math.max(1, Math.round(parentDamage * 0.5));
-            const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.9;
-            const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 320;
-            const parentSpriteTexture = world.stores.sprite.textureId[eid] ?? 0;
-            const parentSpriteWidth = world.stores.sprite.width[eid] ?? 16;
-            const parentSpriteHeight = world.stores.sprite.height[eid] ?? 16;
-            const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
-            const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
-
-            for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
-              const angle = world.rng.next() * Math.PI * 2;
-              const distance = 4 + world.rng.next() * 12;
-              const miniEid = spawnBehaviorEnemy(
-                world,
-                x + Math.cos(angle) * distance,
-                y + Math.sin(angle) * distance,
-                miniHp,
-                SLIME_LEAPER_AI_TYPE,
-                Math.max(0.4, parentSpeed),
-                Math.max(48, parentAggroRange),
-                0,
-                {
-                  persona: world.stores.enemyBehavior.persona[eid] ?? 0,
-                  traversalMode: world.stores.enemyBehavior.traversalMode[eid] ?? 0,
-                  flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 96,
-                  pathRefreshFrames: world.stores.enemyBehavior.pathRefreshFrames[eid] ?? 10,
-                  isFlying: (world.stores.enemyBehavior.traversalMode[eid] ?? 0) === 1,
-                  weight: Math.max(1, (world.stores.weight.value[eid] ?? 120) * 0.5),
-                },
-              );
-              setComponent(world.ecs, miniEid, Sprite, {
-                textureId: parentSpriteTexture,
-                width: miniWidth,
-                height: miniHeight,
-              });
-              addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));
-              world.floor1?.enemyArchetypes.set(miniEid, 'slime-mini');
-            }
-          }
         }
         break;
       case 'xp':
@@ -182,6 +121,7 @@ function spawnDrops(
             spawnXpGem(world, ex, ey, drop.value);
           }
         }
+
         break;
       case 'item':
         if (drop.itemId && allowDrops) {
@@ -194,6 +134,59 @@ function spawnDrops(
         }
         break;
     }
+  }
+}
+
+function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): void {
+  if (world.floor1?.enemyArchetypes.get(eid) !== 'slime') {
+    return;
+  }
+  if (world.rng.next() >= SLIME_SPLIT_CHANCE) {
+    return;
+  }
+
+  const parentMaxHp = world.stores.health.max[eid] ?? 0;
+  const miniHp = Math.max(1, Math.round(parentMaxHp * 0.5));
+  const parentDamage = hasComponent(world.ecs, eid, Damage)
+    ? Math.max(1, world.stores.damage.amount[eid] ?? DEFAULT_CONTACT_DAMAGE)
+    : DEFAULT_CONTACT_DAMAGE;
+  const miniDamage = Math.max(1, Math.round(parentDamage * 0.5));
+  const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.9;
+  const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 320;
+  const parentSpriteTexture = world.stores.sprite.textureId[eid] ?? 0;
+  const parentSpriteWidth = world.stores.sprite.width[eid] ?? 16;
+  const parentSpriteHeight = world.stores.sprite.height[eid] ?? 16;
+  const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
+  const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
+
+  for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
+    const angle = world.rng.next() * Math.PI * 2;
+    const distance = 4 + world.rng.next() * 12;
+    const miniEid = spawnBehaviorEnemy(
+      world,
+      x + Math.cos(angle) * distance,
+      y + Math.sin(angle) * distance,
+      miniHp,
+      SLIME_LEAPER_AI_TYPE,
+      Math.max(0.4, parentSpeed),
+      Math.max(48, parentAggroRange),
+      0,
+      {
+        persona: world.stores.enemyBehavior.persona[eid] ?? 0,
+        traversalMode: world.stores.enemyBehavior.traversalMode[eid] ?? 0,
+        flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 96,
+        pathRefreshFrames: world.stores.enemyBehavior.pathRefreshFrames[eid] ?? 10,
+        isFlying: (world.stores.enemyBehavior.traversalMode[eid] ?? 0) === 1,
+        weight: Math.max(1, (world.stores.weight.value[eid] ?? 120) * 0.5),
+      },
+    );
+    setComponent(world.ecs, miniEid, Sprite, {
+      textureId: parentSpriteTexture,
+      width: miniWidth,
+      height: miniHeight,
+    });
+    addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));
+    world.floor1?.enemyArchetypes.set(miniEid, 'slime-mini');
   }
 }
 
