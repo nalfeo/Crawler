@@ -1813,6 +1813,7 @@ function render(): void {
             });
             writeQueueState();
           }
+          renderQueue();
           renderWorkflowSelection();
           void recompute();
         } catch (error) {
@@ -3090,12 +3091,17 @@ function render(): void {
           border: '1px solid rgba(125,211,252,0.5)',
           background: alreadyQueued ? '#0c4a6e' : '#082f49',
           color: '#e0f2fe',
-          cursor: 'pointer',
+          cursor: alreadyQueued ? 'not-allowed' : 'pointer',
+          opacity: alreadyQueued ? '0.7' : '1',
           fontSize: '11px',
         },
-      });
+      }) as HTMLButtonElement;
+      queueBtn.disabled = alreadyQueued;
       queueBtn.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (alreadyQueued) {
+          return;
+        }
         selectedAssetId = asset.id;
         queueState = queueAddItem(queueState, asset.label, requestedType, 'asset-plan');
         writeQueueState();
