@@ -37,7 +37,14 @@ echo "🔍 Step 5/8: Unit tests with coverage..."
 npx vitest run --project unit --coverage --reporter=dot
 
 echo "🔍 Step 6/8: Integration tests..."
-npx vitest run --project integration --reporter=dot 2>/dev/null || echo "ℹ️  No integration tests yet"
+if [ ! -d tests/integration ]; then
+  echo "ℹ️  No integration tests directory found; skipping."
+# `find -print -quit` emits only the first match; grep confirms at least one file exists.
+elif find tests/integration -type f -name '*.test.ts' -print -quit | grep -q .; then
+  npx vitest run --project integration --reporter=dot
+else
+  echo "ℹ️  No integration tests found; skipping."
+fi
 
 echo "🔍 Step 7/8: Headless Floor 1 completion gate..."
 npx vitest run --project headless --reporter=dot

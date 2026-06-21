@@ -55,10 +55,14 @@ references:
   - { path: refs/a.png }
   - { path: refs/b.png }
 generation:
-  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
+  sheet: { rows: 1, cols: 4, emptyCells: [], nativeCanvas: 1024 }
 sensors:
   weapon:
     orientation: diagonal
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: true
+    maxDetachedEdgePixels: 16
 `.trim();
 
 /**
@@ -112,11 +116,11 @@ function makeFailingProvider(
       async generateSheet(): Promise<Buffer> {
         calls++;
         if (succeedsAfter > 0 && calls > succeedsAfter) {
-          // Return a valid 9-cell sheet so retries can succeed.
+          // Return a valid 4-cell sheet so retries can succeed.
           return tileVariantsIntoSheet(
-            Array.from({ length: 9 }, () => buildGoodSwordFixture()),
-            3,
-            3,
+            Array.from({ length: 4 }, () => buildGoodSwordFixture()),
+            1,
+            4,
           );
         }
         throw error;
@@ -158,7 +162,7 @@ describe('generateOne (integration)', () => {
   it('runs the full pipeline end-to-end and writes ranked artifacts', async () => {
     // 4 good sword variants -> all pass -> rank is index-order on score tie.
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
-    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const sheet = tileVariantsIntoSheet(variants, 1, 4);
     const result = await generateOne({
       briefPath,
       preloaded,
@@ -210,7 +214,7 @@ describe('generateOne (integration)', () => {
       buildGoodSwordFixture(),
       buildEmptyFixture(),
     ];
-    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const sheet = tileVariantsIntoSheet(variants, 1, 4);
     const result = await generateOne({
       briefPath,
       preloaded,

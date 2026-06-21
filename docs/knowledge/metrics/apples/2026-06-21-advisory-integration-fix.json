@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-21",
+  "slug": "advisory-integration-fix",
+  "estimate": 3,
+  "actual": 3,
+  "verdict": "exact",
+  "notes": "Resolved advisory integration failures by adding slice fallback and updating integration fixtures; removed integration-failure swallowing in verify.sh; full verify and parallel validation passed."
+}
