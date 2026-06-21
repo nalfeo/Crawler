@@ -24,4 +24,15 @@ describe('getSpriteSidecarBaseUrl', () => {
     expect(getSpriteSidecarBaseUrl()).toBe('http://127.0.0.1:3010');
     expect(warn).toHaveBeenCalled();
   });
+
+  it('warns at most once even across repeated fallbacks', () => {
+    delete process.env.VITE_SPRITES_SIDECAR_BASE_URL;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // The first call may or may not warn depending on suite order, but the
+    // second call must hit the already-warned guard and never warn again.
+    getSpriteSidecarBaseUrl();
+    const callsAfterFirst = warn.mock.calls.length;
+    getSpriteSidecarBaseUrl();
+    expect(warn.mock.calls.length).toBe(callsAfterFirst);
+  });
 });

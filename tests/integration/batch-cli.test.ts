@@ -53,9 +53,9 @@ function briefYaml(): string {
   return `
 type: weapon
 name: iron-sword
-size: { width: 16, height: 16 }
+size: { width: 32, height: 32 }
 palette: { id: test-palette }
-anchor: { x: 8, y: 8 }
+anchor: { x: 16, y: 16 }
 tags: [sword]
 prompt: An iron sword.
 references:
@@ -64,10 +64,21 @@ references:
 generation:
   sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: true
+    maxDetachedEdgePixels: 16
   weapon:
     orientation: diagonal
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
 judge:
-  enabled: true
+  # Intentionally disabled: this batch test covers deterministic summary/cache
+  # behavior without any vision-judge calls.
+  enabled: false
   maxVariants: 16
 `.trim();
 }
@@ -90,17 +101,24 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
 
 function perturbedGoodSword(index: number): Buffer {
   const decoded = PNG.sync.read(buildGoodSwordFixture());
+  const colors = [
+    [255, 255, 255],
+    [120, 90, 60],
+    [160, 192, 192],
+    [200, 170, 50],
+  ] as const;
   for (let k = 0; k <= index; k++) {
-    const baseX = 32 + 64 * k;
-    const baseY = 32;
-    for (let dy = 0; dy < 4; dy++) {
-      for (let dx = 0; dx < 4; dx++) {
+    const [r, g, b] = colors[k % colors.length] ?? colors[0];
+    const baseX = 360 + 64 * k;
+    const baseY = 660 - 64 * k;
+    for (let dy = 0; dy < 16; dy++) {
+      for (let dx = 0; dx < 16; dx++) {
         const px = baseX + dx;
         const py = baseY + dy;
         const idx = (py * decoded.width + px) * 4;
-        decoded.data[idx] = 192;
-        decoded.data[idx + 1] = 192;
-        decoded.data[idx + 2] = 200;
+        decoded.data[idx] = r;
+        decoded.data[idx + 1] = g;
+        decoded.data[idx + 2] = b;
         decoded.data[idx + 3] = 255;
       }
     }
@@ -184,7 +202,7 @@ describe('runBatch (integration)', () => {
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
 
     // Keep a shared budget wired in; this path does not consume it because
-    // without a text provider no candidate reaches the judge pass.
+    // judge is disabled for these briefs.
     const stateFile = path.join(harness.root, 'cost-state.json');
     const budget = new JudgeBudget({
       budgetUsd: 0.001,
@@ -208,9 +226,8 @@ describe('runBatch (integration)', () => {
       generate: (options) => generateOne({ ...options, env: {} }),
     });
 
-    // This harness intentionally provides no text provider, so each brief
-    // keeps an empty variation seed and no candidate reaches the judge pass.
-    // The batch still succeeds and emits deterministic aggregate output.
+    // Judge is disabled for this harness, so the batch still succeeds and
+    // emits deterministic aggregate output without any vision calls.
     expect(callCount()).toBe(0);
 
     // Brief outcomes: all briefs complete and produce summaries.
