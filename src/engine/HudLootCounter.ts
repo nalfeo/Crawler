@@ -33,17 +33,22 @@ const PANEL_X = 16;
 /** Sits just above the XP bar panel (which starts ~GAME.HEIGHT - 91). */
 const PANEL_Y = GAME.HEIGHT - 124;
 
-export function createHudLootCounter(scene: Phaser.Scene): {
+export function createHudLootCounter(
+  scene: Phaser.Scene,
+  options: { parent?: Phaser.GameObjects.Container } = {},
+): {
   sync(world: GameWorld): void;
   destroy(): void;
 } {
-  const panel = createBeveledPanel(scene, PANEL_X, PANEL_Y, PANEL_W, PANEL_H);
+  const parent = options.parent;
+  const panel = createBeveledPanel(scene, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, { parent });
 
   const cy = PANEL_Y + PANEL_H / 2;
 
   const goldIconCx = PANEL_X + PAD + ICON_SIZE / 2;
   const goldIcon = addPixelIcon(scene, PIXEL_ICON.coin, goldIconCx, cy, {
     depth: PIXEL_UI_DEPTH.overlay,
+    parent,
   });
   const goldTextX = PANEL_X + PAD + ICON_SIZE + GAP_ICON_TEXT;
   const goldText = scene.add
@@ -62,6 +67,7 @@ export function createHudLootCounter(scene: Phaser.Scene): {
   const junkIconCx = goldTextX + VALUE_W + PAIR_GAP + ICON_SIZE / 2;
   const junkIcon = addPixelIcon(scene, PIXEL_ICON.junk, junkIconCx, cy, {
     depth: PIXEL_UI_DEPTH.overlay,
+    parent,
   });
   const junkTextX = junkIconCx + ICON_SIZE / 2 + GAP_ICON_TEXT;
   const junkText = scene.add
@@ -76,6 +82,7 @@ export function createHudLootCounter(scene: Phaser.Scene): {
     .setOrigin(0, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.overlay);
+  parent?.add([goldText, junkText]);
 
   let lastGold = -1;
   let lastJunk = -1;

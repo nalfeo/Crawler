@@ -25,10 +25,14 @@ function shortAbilityLabel(id: string): string {
   return head.slice(0, 3).toUpperCase();
 }
 
-export function createHudAbilityBar(scene: Phaser.Scene): {
+export function createHudAbilityBar(
+  scene: Phaser.Scene,
+  options: { parent?: Phaser.GameObjects.Container } = {},
+): {
   sync(world: GameWorld, playerEid: number): void;
   destroy(): void;
 } {
+  const parent = options.parent;
   const slots: Phaser.GameObjects.Rectangle[] = [];
   const labels: Phaser.GameObjects.Text[] = [];
   const cooldownBars: Phaser.GameObjects.Rectangle[] = [];
@@ -42,6 +46,7 @@ export function createHudAbilityBar(scene: Phaser.Scene): {
     .setScrollFactor(0)
     .setDepth(DEPTH)
     .setOrigin(0, 1);
+  parent?.add(title);
 
   for (let i = 0; i < ACTIVE_ABILITY_SLOT_LIMIT; i += 1) {
     const x = BAR_X + i * (SLOT_SIZE + SLOT_GAP);
@@ -76,6 +81,7 @@ export function createHudAbilityBar(scene: Phaser.Scene): {
     cooldownBars.push(cooldownBar);
   }
 
+  parent?.add([...slots, ...labels, ...cooldownBars]);
   const setVisible = (visible: boolean): void => {
     title.setVisible(visible);
     for (const node of slots) node.setVisible(visible);
