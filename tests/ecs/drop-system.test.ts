@@ -127,7 +127,6 @@ describe('dropSystem', () => {
 
     // Before meeting the Tutorial Goon, nothing the enemies drop should appear.
     // (The merchant's fetch item is spawned at init, so measure deltas.)
-    const goldBefore = world.playerGold;
     const itemsAtInit = query(world.ecs, [DroppedItem]).length;
     const lockedEnemy = spawnEnemy(world, 100, 200, 10);
     setComponent(world.ecs, lockedEnemy, Health, { current: 0, max: 10 });
@@ -140,12 +139,12 @@ describe('dropSystem', () => {
     meetTutorialGoon(world);
     expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
 
-    const unlockedEnemy = spawnEnemy(world, 140, 220, 10);
-    setComponent(world.ecs, unlockedEnemy, Health, { current: 0, max: 10 });
-    dropSystem(world);
+    for (let i = 0; i < 4; i++) {
+      const unlockedEnemy = spawnEnemy(world, 140 + i * 8, 220 + i * 8, 10);
+      setComponent(world.ecs, unlockedEnemy, Health, { current: 0, max: 10 });
+      dropSystem(world);
+    }
     expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(1);
-    // Sanity: gold currency progression is no longer permanently zero once
-    // drops are on (gold gems either spawn as entities or are auto-collected).
-    expect(world.playerGold).toBeGreaterThanOrEqual(goldBefore);
+    expect(query(world.ecs, [Gold]).length).toBeGreaterThanOrEqual(1);
   });
 });

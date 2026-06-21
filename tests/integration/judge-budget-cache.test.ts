@@ -310,8 +310,8 @@ describe('generateOne + JudgeCache (integration)', () => {
     const firstRunCache = result1.summary.judgeCache;
     expect(firstRunCache).not.toBeNull();
     const firstRunMisses = firstRunCache?.misses ?? 0;
-    expect(run1.callCount()).toBe(firstRunMisses);
-    expect(firstRunMisses).toBeGreaterThan(0);
+    expect(run1.callCount()).toBe(4);
+    expect(firstRunMisses).toBe(4);
     expect(firstRunCache?.bypassed).toBe(0);
 
     // Run 2: same inputs, same cache -> zero provider calls.
@@ -331,11 +331,10 @@ describe('generateOne + JudgeCache (integration)', () => {
     // The cache instance was reused, so its stats accumulate across runs.
     // misses should stay unchanged (no new misses); hits should increase from replay.
     expect(result2.summary.judgeCache).toEqual({
-      hits: expect.any(Number),
-      misses: firstRunMisses,
+      hits: 4,
+      misses: 4,
       bypassed: 0,
     });
-    expect(result2.summary.judgeCache!.hits).toBeGreaterThan(firstRunCache?.hits ?? 0);
 
     // Every judged candidate still has a judge scorecard.
     const judgedCandidates = result2.summary.candidates.filter(isJudgedCandidate);
@@ -375,8 +374,8 @@ describe('generateOne + JudgeCache (integration)', () => {
       env: {},
     });
     const seededMisses = cache.stats.misses;
-    expect(seedProv.callCount()).toBe(seededMisses);
-    expect(seededMisses).toBeGreaterThan(0);
+    expect(seedProv.callCount()).toBe(4);
+    expect(seededMisses).toBe(4);
 
     // Second run: $0 budget, but everything should come from cache so
     // no actual Azure call happens => no skips, no recorded spend.
