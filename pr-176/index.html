@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Crawler</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        background: #111;
+        height: 100svh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      #app-header {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 16px 8px;
+        background: rgba(8, 12, 24, 0.82);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+      }
+      #app-header-title {
+        font-size: 12px;
+        color: #cbd5e1;
+        letter-spacing: 0.04em;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+          monospace;
+      }
+      #app-switcher {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .app-switch-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        color: #cbd5e1;
+        text-decoration: none;
+        font-size: 12px;
+        line-height: 1;
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+          monospace;
+      }
+      .app-switch-link--active {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: rgba(126, 224, 255, 0.5);
+        color: #7ee0ff;
+      }
+      .hide-debug-header #app-header {
+        display: none;
+      }
+      #game-container {
+        width: 100%;
+        flex: 1;
+        min-height: 0;
+      }
+    </style>
+    <script type="module" crossorigin src="/Crawler/pr-176/assets/index-Dv6ca0AS.js"></script>
+    <link rel="modulepreload" crossorigin href="/Crawler/pr-176/assets/preload-helper-l_YdMTRf.js">
+    <link rel="modulepreload" crossorigin href="/Crawler/pr-176/assets/rolldown-runtime-b3L32Ng1.js">
+    <link rel="modulepreload" crossorigin href="/Crawler/pr-176/assets/lab-ai-runner-lab-CEtLjSZs.js">
+  </head>
+  <body>
+    <header id="app-header">
+      <div id="app-header-title">Crawler Workspace</div>
+      <nav id="app-switcher" aria-label="Workspace switcher">
+        <a class="app-switch-link" href="/lab.html">Labs</a>
+        <a class="app-switch-link" href="/devtools.html">DevTools</a>
+        <a class="app-switch-link app-switch-link--active" href="/">Game</a>
+      </nav>
+    </header>
+    <div id="game-container"></div>
+    <script>
+      (() => {
+        const host = window.location.hostname.toLowerCase();
+        const isLocalHost = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+        const isBetaHost = host.includes('beta');
+        if (!isLocalHost && !isBetaHost) {
+          document.documentElement.classList.add('hide-debug-header');
+        }
+      })();
+    </script>
+  </body>
+</html>
