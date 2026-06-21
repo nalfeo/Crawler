@@ -587,6 +587,7 @@ export class MainGameScene extends Phaser.Scene {
     // fixed-step) but keep rendering/camera responsive — mirrors the modal/pause
     // freeze branches below.
     if (this.levelUpUI?.isOpen()) {
+      this.driveAutoLevelUp();
       this.bridge.sync(this.world);
       this.updateCamera();
       this.updateOverlayText();

@@ -23,8 +23,8 @@ describe('AI playthrough level-up UX wiring', () => {
     expect(source).toContain('LEVEL_UP_AUTO_HOLD_FRAMES');
     expect(source).toContain('private driveAutoLevelUp(): void');
     expect(source).toContain('this.levelUpUI.autoResolve(allocations)');
-    // The driver runs while the modal is open during the level_up branch.
-    expect(source).toMatch(/level_up'[\s\S]*this\.driveAutoLevelUp\(\)/);
+    // The driver must keep running while the level-up modal remains open.
+    expect(source).toMatch(/levelUpUI\?\.isOpen\(\)[\s\S]*this\.driveAutoLevelUp\(\)/);
   });
 
   it('AI Runner Lab wires the allocator and no longer auto-spends stat points', () => {
