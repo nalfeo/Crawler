@@ -48,8 +48,9 @@ export function createHudUI(scene: Phaser.Scene): {
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
   const questTracker = createHudQuestTracker(scene, { parent: topRight });
 
-  // Minimap is a spatial widget (least affected by small text) and manages its
-  // own dynamic children/overlay, so it is left unscaled this pass.
+  // Minimap manages its own dynamic children/overlay and screen-space layout,
+  // so it scales its docked radar dial internally (see HudMinimap.updateLayout)
+  // rather than being grouped into a corner container here.
   const minimap = createHudMinimap(scene);
 
   // Phaser containers render children in insertion order; pixel-ui builders set
