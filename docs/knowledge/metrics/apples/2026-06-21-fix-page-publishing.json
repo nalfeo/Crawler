@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-21",
+  "slug": "fix-page-publishing",
+  "estimate": 1,
+  "actual": 1,
+  "verdict": "on-target",
+  "notes": "CI-only task: 2 workflow YAML files + handoff. No src/ changes."
+}

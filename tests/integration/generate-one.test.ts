@@ -46,23 +46,28 @@ const PALETTE_JSON = JSON.stringify([
 const BRIEF_YAML = `
 type: weapon
 name: iron-sword
-size: { width: 16, height: 16 }
+size: { width: 32, height: 32 }
 palette: { id: test-palette }
-anchor: { x: 8, y: 8 }
+anchor: { x: 16, y: 16 }
 tags: [sword]
 prompt: An iron sword.
 references:
   - { path: refs/a.png }
   - { path: refs/b.png }
 generation:
-  sheet: { rows: 1, cols: 4, emptyCells: [], nativeCanvas: 1024 }
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
-  weapon:
-    orientation: diagonal
   edge:
     allowMainTouch: true
     allowDetachedEdgeComponents: true
     maxDetachedEdgePixels: 16
+  weapon:
+    orientation: diagonal
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
 `.trim();
 
 /**
@@ -119,8 +124,8 @@ function makeFailingProvider(
           // Return a valid 4-cell sheet so retries can succeed.
           return tileVariantsIntoSheet(
             Array.from({ length: 4 }, () => buildGoodSwordFixture()),
-            1,
-            4,
+            2,
+            2,
           );
         }
         throw error;
@@ -162,7 +167,7 @@ describe('generateOne (integration)', () => {
   it('runs the full pipeline end-to-end and writes ranked artifacts', async () => {
     // 4 good sword variants -> all pass -> rank is index-order on score tie.
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
-    const sheet = tileVariantsIntoSheet(variants, 1, 4);
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const result = await generateOne({
       briefPath,
       preloaded,
@@ -214,7 +219,7 @@ describe('generateOne (integration)', () => {
       buildGoodSwordFixture(),
       buildEmptyFixture(),
     ];
-    const sheet = tileVariantsIntoSheet(variants, 1, 4);
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const result = await generateOne({
       briefPath,
       preloaded,

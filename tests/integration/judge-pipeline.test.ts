@@ -47,23 +47,28 @@ function briefYaml(judgeBlock: string): string {
   return `
 type: weapon
 name: iron-sword
-size: { width: 16, height: 16 }
+size: { width: 32, height: 32 }
 palette: { id: test-palette }
-anchor: { x: 8, y: 8 }
+anchor: { x: 16, y: 16 }
 tags: [sword]
 prompt: An iron sword.
 references:
   - { path: refs/a.png }
   - { path: refs/b.png }
 generation:
-  sheet: { rows: 1, cols: 4, emptyCells: [], nativeCanvas: 1024 }
+  sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
-  weapon:
-    orientation: diagonal
   edge:
     allowMainTouch: true
     allowDetachedEdgeComponents: true
     maxDetachedEdgePixels: 16
+  weapon:
+    orientation: diagonal
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
 judge:
 ${judgeBlock}
 `.trim();
@@ -190,7 +195,7 @@ describe('generateOne + VLM judge (integration)', () => {
       buildEmptyFixture(),
       buildGoodSwordFixture(),
     ];
-    const sheet = tileVariantsIntoSheet(variants, 1, 4);
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([
       scorecard({ style: 4, brief: 4, readability: 4 }), // index 0: minScore 4
       scorecard({ style: 5, brief: 5, readability: 5 }), // index 3: minScore 5 (winner)
@@ -269,7 +274,7 @@ describe('generateOne + VLM judge (integration)', () => {
   it('throws when judge.enabled but no visionProvider supplied', async () => {
     setupBrief('  enabled: true\n  maxVariants: 16');
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
-    const sheet = tileVariantsIntoSheet(variants, 1, 4);
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
 
     await expect(
       generateOne({
@@ -288,7 +293,7 @@ describe('generateOne + VLM judge (integration)', () => {
   it('caps judging to maxVariants and tags the rest with judgeSkipReason: over-cap', async () => {
     setupBrief('  enabled: true\n  maxVariants: 1');
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
-    const sheet = tileVariantsIntoSheet(variants, 1, 4);
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([
       scorecard({ style: 5, brief: 5, readability: 5 }),
     ]);
@@ -322,7 +327,7 @@ describe('generateOne + VLM judge (integration)', () => {
   it('with judge disabled, combinedPassed equals sensors.passed (back-compat)', async () => {
     setupBrief('  enabled: false');
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
-    const sheet = tileVariantsIntoSheet(variants, 1, 4);
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([]);
 
     const result = await generateOne({

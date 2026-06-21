@@ -535,6 +535,15 @@
   },
   {
     "date": "2026-06-20",
+    "session": "coverage-improvement-loop",
+    "estimated_apples": 3,
+    "actual_apples": 3,
+    "delta": 0,
+    "verdict": "exact",
+    "hello_kitties": 0.6,
+    "notes": "Coverage-improvement loop (10+ iterations) adding focused unit tests for low-coverage source files. New/updated tests: floor-registry (0->100%), door-lock validation (65->92%), door-navigation (83->100%), logger (59->98%), questSystem (85->93%), areaDamageSystem (76->96%), doorSystem safe-room (82->100%), beamSystem (88->98%), aoeOnImpactSystem (64->100%), dropSystem knockback (88->100%), level-up-allocation (89->98%), session-server-env + quest-types, behavior-tree framework (45->91.6%), auto-progression NPC interactions (36->65%), knockbackSystem (88->100%), skill-registry superRefine validation (87->100%), damageSystem enemy-projectile/safe-space/armor branches. Unit-project directory line coverage: core 91.9->96.5%, shared 91.2->96.9% (both exceed 90% target); game 65.7->67.6% (unit-only; dragged by AI bt-ai-provider/headless-runner files covered by the headless project, not the unit project); engine unchanged (browser/e2e projects). Full `npm run verify` / all-projects coverage still blocked by PRE-EXISTING sprite-pipeline integration failures (generate-one, judge-budget-cache, judge-pipeline) that need external VLM/image providers and are unrelated to coverage. verify:fast green throughout. Test-only changes; no src modified."
+  },
+  {
     "session": "ai-movement-smoothing",
     "estimated_apples": 1,
     "actual_apples": 1,

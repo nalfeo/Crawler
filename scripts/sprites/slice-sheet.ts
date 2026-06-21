@@ -425,22 +425,8 @@ export function sliceSheetV2(sheetPng: Buffer, options: SliceOptionsV2 = {}): Bu
  * Convenience wrapper that pulls grid shape and empty cells from a brief.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
-  const rows = brief.generation.sheet.rows;
-  const cols = brief.generation.sheet.cols;
-  const hasExplicitGrid = Number.isInteger(rows) && rows > 0 && Number.isInteger(cols) && cols > 0;
-  const v2 = sliceSheetV2(sheetPng, {
-    emptyCells: brief.generation.sheet.emptyCells,
-  });
-  if (!hasExplicitGrid) return v2;
-  const expectedNonEmpty = rows * cols - brief.generation.sheet.emptyCells.length;
-  if (v2.length === expectedNonEmpty) return v2;
-  // Graceful fallback: if content-aware segmentation infers a different
-  // cell count than the brief's declared grid, trust the authored grid.
-  return sliceSheet(sheetPng, {
-    rows,
-    cols,
-    emptyCells: brief.generation.sheet.emptyCells,
-  });
+  const { rows, cols, emptyCells } = brief.generation.sheet;
+  return sliceSheet(sheetPng, { rows, cols, emptyCells });
 }
 
 function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: number): Buffer {

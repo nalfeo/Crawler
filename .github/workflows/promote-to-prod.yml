@@ -11,6 +11,7 @@ on:
 permissions:
   contents: write
   issues: write
+  pages: write
 
 concurrency:
   group: gh-pages-deploy
@@ -189,6 +190,17 @@ jobs:
               fi
             done
           fi
+
+      - name: Ensure GitHub Pages source is set to gh-pages branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo '{"source":{"branch":"gh-pages","path":"/"}}' | \
+            gh api repos/${{ github.repository }}/pages \
+              --method PUT \
+              --input - \
+            2>/dev/null && echo "Pages source: branch=gh-pages path=/" || \
+            echo "::notice::Pages source could not be updated automatically (may already be correct)"
 
       - name: Summary
         run: |
