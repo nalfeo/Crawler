@@ -359,25 +359,26 @@ function applyLShape(
   if (halfW < 1 || halfH < 1) return;
 
   // Quadrant corners: 0=TL 1=TR 2=BL 3=BR
-  // Score each by counting doors whose tile is inside or adjacent to it
+  // Penalise the quadrant closest to each door to avoid removing floor tiles near connectivity points.
   const quadrantScore = [0, 0, 0, 0];
   for (const door of doors) {
     const isLeft = door.x <= rx + halfW;
     const isTop = door.y <= ry + halfH;
-    // For each side the door is on, penalise adjacent quadrants
     if (isTop && isLeft) quadrantScore[0]! += 2;
     if (isTop && !isLeft) quadrantScore[1]! += 2;
     if (!isTop && isLeft) quadrantScore[2]! += 2;
     if (!isTop && !isLeft) quadrantScore[3]! += 2;
   }
 
-  // Pick the quadrant with the lowest door-adjacency score; break ties with rng
+  // Pick the quadrant with the lowest door-adjacency score; break ties with rng.
+  // Guard: when only one candidate exists, skip rng to avoid nextInt(0,0) ambiguity.
   const minScore = Math.min(...quadrantScore);
   const candidates = quadrantScore
     .map((s, i) => ({ s, i }))
     .filter((e) => e.s === minScore)
     .map((e) => e.i);
-  const quadrant = candidates[rng.nextInt(0, candidates.length - 1)]!;
+  const quadrant =
+    candidates.length === 1 ? candidates[0]! : candidates[rng.nextInt(0, candidates.length - 1)]!;
 
   // Determine the tile range to fill for the chosen quadrant
   let qx1: number, qy1: number, qx2: number, qy2: number;
@@ -528,7 +529,7 @@ function addDiagonalShortcuts(
   const connected = new Set<string>();
 
   for (let i = 0; i < rooms.length; i++) {
-    if (rng.next() > 0.3) continue; // ~30 % of rooms get a diagonal shortcut attempt
+    if (rng.next() >= 0.7) continue; // attempt a diagonal shortcut for ~30 % of rooms
 
     const a = rooms[i]!;
     const cxA = Math.floor(a.bounds.x + a.bounds.width / 2);
@@ -607,11 +608,12 @@ function carveBresenhamPath(
 
   while (true) {
     carve(x, y);
-    // Widen perpendicular to major axis so the corridor is 2 tiles wide
+    // Widen by one tile in a fixed perpendicular direction so the corridor is
+    // consistently 2 tiles wide regardless of path direction.
     if (dx >= dy) {
-      carve(x, y + sy); // widen north/south for horizontal-dominant paths
+      carve(x, y + 1); // horizontal-dominant: always expand south
     } else {
-      carve(x + sx, y); // widen east/west for vertical-dominant paths
+      carve(x + 1, y); // vertical-dominant: always expand east
     }
 
     if (x === x1 && y === y1) break;
