@@ -1,21 +1,24 @@
 import { query, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
+  Damage,
   DeathTimer,
   DroppedItem,
   Enemy,
+  EnemyBehavior,
   Gold,
   Health,
   Position,
   XpGem,
 } from '../../src/core/components.js';
-import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBehaviorEnemy, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
   selectFloor1StarterWeapon,
 } from '../../src/game/floor1Scenario.js';
+import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('dropSystem', () => {
@@ -146,5 +149,50 @@ describe('dropSystem', () => {
     }
     expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(1);
     expect(query(world.ecs, [Gold]).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('gives dead slimes a 50% split roll to spawn two mini slimes with half health and strength', () => {
+    let world: ReturnType<typeof createTestWorld> | null = null;
+    let slainSlime = -1;
+    let miniSlimes: number[] = [];
+
+    for (let seed = 1; seed <= 64; seed += 1) {
+      const candidate = createTestWorld({ seed });
+      const player = spawnPlayer(candidate, 0, 0);
+      initializeFloor1Scenario(candidate, player);
+      selectFloor1StarterWeapon(candidate, 0);
+
+      const slime = spawnBehaviorEnemy(candidate, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
+      candidate.floor1?.enemyArchetypes.set(slime, 'slime');
+      setComponent(candidate.ecs, slime, Damage, { amount: 7 });
+      setComponent(candidate.ecs, slime, Health, { current: 0, max: 30 });
+
+      dropSystem(candidate, { spawnLoot: false });
+      const enemies = query(candidate.ecs, [Enemy, Health]);
+      const minis = Array.from(enemies).filter((eid) => eid !== slime);
+      if (minis.length === 2) {
+        world = candidate;
+        slainSlime = slime;
+        miniSlimes = minis;
+        break;
+      }
+    }
+
+    expect(world).not.toBeNull();
+    if (!world) {
+      return;
+    }
+
+    expect(slainSlime).toBeGreaterThan(0);
+    expect(miniSlimes).toHaveLength(2);
+    const expectedMiniDamage = Math.max(1, Math.round(7 * 0.5));
+    for (const miniEid of miniSlimes) {
+      expect(world.stores.health.max[miniEid]).toBe(15);
+      expect(world.stores.health.current[miniEid]).toBe(15);
+      expect(world.stores.damage.amount[miniEid]).toBe(expectedMiniDamage);
+      expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
+      expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
+    }
+    expect(query(world.ecs, [EnemyBehavior])).toContain(slainSlime);
   });
 });

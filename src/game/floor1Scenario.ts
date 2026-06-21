@@ -1196,7 +1196,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     spawnPoint.x,
     spawnPoint.y,
     archetype.hp,
-    AI_TYPE.CHASE,
+    archetype.id === 'slime' ? AI_TYPE.LEAPER : AI_TYPE.CHASE,
     archetype.speed,
     archetype.detectRange,
     0,

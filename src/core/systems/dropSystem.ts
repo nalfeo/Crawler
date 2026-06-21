@@ -7,8 +7,8 @@
  * and applies death knockback.
  */
 import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
-import { DeathTimer, Enemy, Health, Knockback } from '../components.js';
-import { spawnXpGem, spawnGold, spawnDroppedItem } from '../helpers.js';
+import { Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
+import { spawnBehaviorEnemy, spawnDroppedItem, spawnGold, spawnXpGem } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
   rollLootTable,
@@ -31,6 +31,12 @@ const DEATH_KNOCKBACK_MAX = ftToPx(8);
 const DEATH_KNOCKBACK_SPEED = 6;
 /** How long a dead entity persists before removal (ms). */
 const DEATH_LINGER_MS = 300;
+const DEFAULT_CONTACT_DAMAGE = 5;
+// Keep in sync with AI_TYPE.LEAPER in src/game/enemyAISystem.ts.
+const SLIME_LEAPER_AI_TYPE = 3;
+const SLIME_SPLIT_CHANCE = 0.5;
+const MINI_SLIME_COUNT = 2;
+const MINI_SLIME_SIZE_SCALE = 0.65;
 
 export interface DropSystemOptions {
   readonly spawnLoot?: boolean;
@@ -116,6 +122,7 @@ function spawnDrops(
             spawnXpGem(world, ex, ey, drop.value);
           }
         }
+
         break;
       case 'item':
         if (drop.itemId && allowDrops) {
@@ -128,6 +135,60 @@ function spawnDrops(
         }
         break;
     }
+  }
+}
+
+function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): void {
+  if (world.floor1?.enemyArchetypes.get(eid) !== 'slime') {
+    return;
+  }
+  if (world.rng.next() >= SLIME_SPLIT_CHANCE) {
+    return;
+  }
+
+  const parentMaxHp = world.stores.health.max[eid] ?? 0;
+  const miniHp = Math.max(1, Math.round(parentMaxHp * 0.5));
+  const parentDamage = hasComponent(world.ecs, eid, Damage)
+    ? Math.max(1, world.stores.damage.amount[eid] ?? DEFAULT_CONTACT_DAMAGE)
+    : DEFAULT_CONTACT_DAMAGE;
+  const miniDamage = Math.max(1, Math.round(parentDamage * 0.5));
+  const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.9;
+  const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 320;
+  const hasSprite = hasComponent(world.ecs, eid, Sprite);
+  const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
+  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 16) : 16;
+  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 16) : 16;
+  const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
+  const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
+
+  for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
+    const angle = world.rng.next() * Math.PI * 2;
+    const distance = 4 + world.rng.next() * 12;
+    const miniEid = spawnBehaviorEnemy(
+      world,
+      x + Math.cos(angle) * distance,
+      y + Math.sin(angle) * distance,
+      miniHp,
+      SLIME_LEAPER_AI_TYPE,
+      Math.max(0.4, parentSpeed),
+      Math.max(48, parentAggroRange),
+      0,
+      {
+        persona: world.stores.enemyBehavior.persona[eid] ?? 0,
+        traversalMode: world.stores.enemyBehavior.traversalMode[eid] ?? 0,
+        flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 96,
+        pathRefreshFrames: world.stores.enemyBehavior.pathRefreshFrames[eid] ?? 10,
+        isFlying: (world.stores.enemyBehavior.traversalMode[eid] ?? 0) === 1,
+        weight: Math.max(1, (world.stores.weight.value[eid] ?? 120) * 0.5),
+      },
+    );
+    setComponent(world.ecs, miniEid, Sprite, {
+      textureId: parentSpriteTexture,
+      width: miniWidth,
+      height: miniHeight,
+    });
+    addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));
+    world.floor1?.enemyArchetypes.set(miniEid, 'slime-mini');
   }
 }
 
@@ -161,6 +222,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
+    maybeSplitSlime(world, eid, x, y);
     const maxHp = health.max[eid] ?? 0;
     // Overkill tracking: applyDamage clamps HP to 0, so we cannot derive
     // true overkill here. Currently always 0; will be properly tracked once
