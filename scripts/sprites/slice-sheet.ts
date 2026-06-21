@@ -425,9 +425,8 @@ export function sliceSheetV2(sheetPng: Buffer, options: SliceOptionsV2 = {}): Bu
  * Convenience wrapper that pulls grid shape and empty cells from a brief.
  */
 export function sliceSheetFromBrief(sheetPng: Buffer, brief: Brief): Buffer[] {
-  return sliceSheetV2(sheetPng, {
-    emptyCells: brief.generation.sheet.emptyCells,
-  });
+  const { rows, cols, emptyCells } = brief.generation.sheet;
+  return sliceSheet(sheetPng, { rows, cols, emptyCells });
 }
 
 function extractCell(sheet: PNG, x0: number, y0: number, width: number, height: number): Buffer {
