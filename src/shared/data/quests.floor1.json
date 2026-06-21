@@ -3,9 +3,24 @@
   "packId": "floor1",
   "quests": [
     {
+      "id": "floor1-find-welcome",
+      "title": "Orientation",
+      "summary": "Find the Welcome Office and let the Tutorial Goon explain how this twisted little game show works.",
+      "giverNpcId": "tutorial-goon",
+      "onCompleteGoalFlag": "floor1-welcome-room-found",
+      "objectives": [
+        {
+          "id": "find-welcome-room",
+          "label": "Find the Welcome Office and talk to the Tutorial Goon",
+          "kind": "talk",
+          "npcId": "tutorial-goon"
+        }
+      ]
+    },
+    {
       "id": "floor1-tutorial",
       "title": "Trial by XP",
-      "summary": "Meet the Tutorial Goon, unlock experience, and hit level 2.",
+      "summary": "The Goon turned on your loot. Now grind the swarm and hit level 2.",
       "giverNpcId": "tutorial-goon",
       "onCompleteGoalFlag": "floor1-leveling-quest-complete",
       "template": {

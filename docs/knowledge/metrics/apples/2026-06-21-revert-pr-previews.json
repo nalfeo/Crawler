@@ -1,0 +1,8 @@
+{
+  "slug": "revert-pr-previews",
+  "date": "2026-06-21",
+  "estimate": 1,
+  "actual": 1,
+  "verdict": "on-target",
+  "description": "Revert per-PR GitHub Pages preview system (PR #175 + fix commit)"
+}

@@ -10,15 +10,20 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
   issues: write
 
 concurrency:
-  group: gh-pages-deploy
+  group: pages
   cancel-in-progress: true
 
 jobs:
   promote:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Admin check
         env:
@@ -132,63 +137,14 @@ jobs:
           echo "{\"commit\":\"$HEAD_SHA\",\"env\":\"beta\",\"builtAt\":\"$NOW\"}" > site/beta/version.json
           echo "{\"commit\":\"$PROD_SHA\",\"env\":\"prod\",\"builtAt\":\"$NOW\",\"promotedAt\":\"$NOW\"}" > site/version.json
 
-      - name: Deploy to gh-pages branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          PAGES_BASE="https://$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]').github.io/$(basename "$GITHUB_REPOSITORY")"
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
 
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-          if git clone --depth=1 --branch=gh-pages "$REPO_URL" /tmp/gh-pages 2>/dev/null; then
-            echo "Cloned existing gh-pages branch"
-          else
-            echo "Creating new gh-pages branch"
-            mkdir /tmp/gh-pages
-            cd /tmp/gh-pages
-            git init
-            git remote add origin "$REPO_URL"
-            git checkout --orphan gh-pages
-          fi
-
-          cd /tmp/gh-pages
-
-          # Remove everything except .git and pr-* subdirectories (preserves active PR previews)
-          for item in * .[^.]*; do
-            case "$item" in
-              pr-*|.git|.nojekyll) continue ;;
-              *) [ -e "$item" ] && rm -rf "$item" ;;
-            esac
-          done
-
-          # Copy new site content
-          cp -r "$GITHUB_WORKSPACE/site/." .
-          touch .nojekyll
-
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No changes to deploy"
-          else
-            git commit -m "chore: promote to production [${GITHUB_SHA:0:7}]"
-
-            MAX_RETRIES=3
-            for attempt in $(seq 1 $MAX_RETRIES); do
-              if git push origin HEAD:gh-pages; then
-                echo "Deployed to ${PAGES_BASE}/"
-                break
-              fi
-              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-                echo "Push failed (attempt $attempt), rebasing..."
-                git fetch origin gh-pages
-                git rebase origin/gh-pages
-              else
-                echo "::error::Failed to push after $MAX_RETRIES attempts"
-                exit 1
-              fi
-            done
-          fi
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 
       - name: Summary
         run: |

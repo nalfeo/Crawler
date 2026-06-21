@@ -29,6 +29,12 @@ module.exports = {
      * so no future commits benefit from it.
      */
     (message) => message.startsWith('refine: improve warning details and test clarity'),
+    /**
+     * Historical rebase-reconciliation merge subject emitted by earlier agent
+     * workflow recovery. Treat it as merge metadata so old PR history still
+     * passes the repo's commitlint gate.
+     */
+    (message) => message.startsWith('Merge rebased commits (keep local rebase history)'),
   ],
   rules: {
     'type-enum': [

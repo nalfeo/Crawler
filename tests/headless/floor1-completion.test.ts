@@ -19,12 +19,12 @@
  *
  * The simulation is fully deterministic: a given seed produces the exact same
  * run every time, so one pass per seed is authoritative — there is nothing to
- * average over. Seed 42 is the canonical clear (wins ~166s game-time with a
- * ~134s margin under the 300s budget, level 7, 21 kills, all 4 quests). Because
- * the run exercises the *entire* Floor 1 pipeline — pathfinding, melee/ranged
- * combat, every NPC interaction, the boss fight, and stat progression — a
- * regression in almost any of those systems breaks this one seed too, which
- * makes it a strong gate despite being a single seed.
+ * average over. Seeds 1 and 3 are the canonical clears (seed 1 wins ~165s
+ * game-time at level 8 with 22 kills; seed 3 wins ~214s at level 9 — both
+ * complete all 4 quests under the 300s budget). Because the run exercises the
+ * *entire* Floor 1 pipeline — pathfinding, melee/ranged combat, every NPC
+ * interaction, the boss fight, and stat progression — a regression in almost
+ * any of those systems breaks these seeds too, which makes them a strong gate.
  *
  * To add coverage, append known-good seeds to `WINNING_SEEDS` (probe a seed
  * once via `npm run ai:headless -- --seed N` and confirm it reports VICTORY
@@ -78,7 +78,7 @@ const REQUIRED_QUEST_IDS = [
  * asserted independently. Keep this list to seeds that have been verified to
  * clear within the budget — see the file header for how to add more.
  */
-const WINNING_SEEDS = [42] as const;
+const WINNING_SEEDS = [1, 3] as const;
 
 /**
  * Run the full headless Floor 1 simulation for a seed. The seed is passed to

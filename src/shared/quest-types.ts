@@ -71,6 +71,8 @@ export interface QuestState {
 /** Maximum number of active quests surfaced in the tracker at once. */
 export const MAX_ACTIVE_QUESTS = 3;
 
+/** First Floor 1 quest: find the Welcome Office and hear the Tutorial Goon out. */
+export const FLOOR1_FIND_WELCOME_QUEST_ID = 'floor1-find-welcome';
 export const FLOOR1_TUTORIAL_QUEST_ID = 'floor1-tutorial';
 export const FLOOR1_BOSS_UNLOCK_QUEST_ID = 'floor1-boss-unlock';
 export const FLOOR1_BOSS_BATTLE_QUEST_ID = 'floor1-boss-battle';

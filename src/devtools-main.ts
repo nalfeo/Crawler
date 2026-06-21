@@ -1832,6 +1832,7 @@ function render(): void {
             });
             writeQueueState();
           }
+          renderQueue();
           renderWorkflowSelection();
           setWorkflowStatus(
             `Approved ${run.briefId} variant ${candidate.index}${
@@ -3117,10 +3118,12 @@ function render(): void {
           border: '1px solid rgba(125,211,252,0.5)',
           background: alreadyQueued ? '#0c4a6e' : '#082f49',
           color: '#e0f2fe',
-          cursor: 'pointer',
+          cursor: alreadyQueued ? 'not-allowed' : 'pointer',
+          opacity: alreadyQueued ? '0.7' : '1',
           fontSize: '11px',
         },
-      });
+      }) as HTMLButtonElement;
+      queueBtn.disabled = alreadyQueued;
       queueBtn.addEventListener('click', (event) => {
         event.stopPropagation();
         if (alreadyQueued) {
