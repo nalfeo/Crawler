@@ -76,6 +76,8 @@ postprocessing:
   minDimension: 64
   paletteMode: strict
 judge:
+  # Intentionally disabled: this batch test covers deterministic summary/cache
+  # behavior without any vision-judge calls.
   enabled: false
   maxVariants: 16
 `.trim();
@@ -106,11 +108,7 @@ function perturbedGoodSword(index: number): Buffer {
     [200, 170, 50],
   ] as const;
   for (let k = 0; k <= index; k++) {
-    const color = colors[k % colors.length];
-    if (!color) {
-      throw new Error('expected perturbation color to exist');
-    }
-    const [r, g, b] = color;
+    const [r, g, b] = colors[k % colors.length] ?? colors[0];
     const baseX = 360 + 64 * k;
     const baseY = 660 - 64 * k;
     for (let dy = 0; dy < 16; dy++) {
