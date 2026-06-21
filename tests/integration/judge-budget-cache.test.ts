@@ -190,6 +190,8 @@ function setupHarness(): Harness {
 }
 
 const fixedClock = () => new Date('2026-06-05T12:00:00.000Z');
+const isJudgedCandidate = (candidate: { judgeSkipReason: string | null }) =>
+  candidate.judgeSkipReason === null;
 
 describe('generateOne + JudgeBudget (integration)', () => {
   let harness: Harness;
@@ -302,7 +304,6 @@ describe('generateOne + JudgeCache (integration)', () => {
     });
     const firstRunCache = result1.summary.judgeCache;
     expect(firstRunCache).not.toBeNull();
-    const firstRunHits = firstRunCache?.hits ?? 0;
     const firstRunMisses = firstRunCache?.misses ?? 0;
     expect(run1.callCount()).toBe(firstRunMisses);
     expect(firstRunMisses).toBeGreaterThan(0);
@@ -329,10 +330,10 @@ describe('generateOne + JudgeCache (integration)', () => {
       misses: firstRunMisses,
       bypassed: 0,
     });
-    expect(result2.summary.judgeCache!.hits).toBeGreaterThan(firstRunHits);
+    expect(result2.summary.judgeCache!.hits).toBeGreaterThan(result1.summary.judgeCache!.hits);
 
     // Every judged candidate still has a judge scorecard.
-    const judgedCandidates = result2.summary.candidates.filter((c) => c.judgeSkipReason === null);
+    const judgedCandidates = result2.summary.candidates.filter(isJudgedCandidate);
     expect(judgedCandidates.length).toBeGreaterThan(0);
     for (const c of judgedCandidates) {
       expect(c.judgeScorecard).not.toBeNull();
@@ -397,9 +398,7 @@ describe('generateOne + JudgeCache (integration)', () => {
     expect(result.summary.judgeBudget!.spentUsd).toBe(0);
     expect(result.summary.judgeBudget!.callsThisRun).toBe(0);
     expect(result.summary.judgeBudget!.callsSkippedDueToBudget).toBe(0);
-    for (const c of result.summary.candidates.filter(
-      (candidate) => candidate.judgeSkipReason === null,
-    )) {
+    for (const c of result.summary.candidates.filter(isJudgedCandidate)) {
       expect(c.judgeScorecard).not.toBeNull();
     }
   });
