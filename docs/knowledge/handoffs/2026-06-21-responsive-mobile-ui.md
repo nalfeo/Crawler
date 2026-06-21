@@ -52,8 +52,10 @@ are larger on small screens (the game renders at a fixed 1280×720 with
   1.4× cap is a modest improvement; a ~390px-wide portrait phone still
   letterboxes the 16:9 canvas heavily). This is a larger effort, deliberately
   out of scope this pass.
-- Minimap (`HudMinimap.ts`) remains unscaled — it manages its own dynamic
-  children/overlay and is a spatial widget least affected by small text.
+- Minimap (`HudMinimap.ts`) is now responsive too: a follow-up pass scales the
+  docked radar dial up on small screens (capped at 1.4×, anchored top-right),
+  mirroring the HUD. It manages its own dynamic children/overlay, so the scaling
+  lives in `HudMinimap.updateLayout` rather than a corner container.
 
 ## Blockers
 
