@@ -68,6 +68,7 @@
   "license": "UNLICENSED",
   "dependencies": {
     "bitecs": "^0.4.0",
+    "canvas": "^3.2.3",
     "loglevel": "^1.9.2",
     "phaser": "^4.1.0",
     "rot-js": "^2.2.1"
