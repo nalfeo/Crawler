@@ -32,6 +32,7 @@ const DEATH_KNOCKBACK_SPEED = 6;
 /** How long a dead entity persists before removal (ms). */
 const DEATH_LINGER_MS = 300;
 const DEFAULT_CONTACT_DAMAGE = 5;
+// Keep in sync with AI_TYPE.LEAPER in src/game/enemyAISystem.ts.
 const SLIME_LEAPER_AI_TYPE = 3;
 const SLIME_SPLIT_CHANCE = 0.5;
 const MINI_SLIME_COUNT = 2;
@@ -153,9 +154,10 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const miniDamage = Math.max(1, Math.round(parentDamage * 0.5));
   const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.9;
   const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 320;
-  const parentSpriteTexture = world.stores.sprite.textureId[eid] ?? 0;
-  const parentSpriteWidth = world.stores.sprite.width[eid] ?? 16;
-  const parentSpriteHeight = world.stores.sprite.height[eid] ?? 16;
+  const hasSprite = hasComponent(world.ecs, eid, Sprite);
+  const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
+  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 16) : 16;
+  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 16) : 16;
   const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
   const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
 

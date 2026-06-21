@@ -171,10 +171,11 @@ describe('dropSystem', () => {
     const enemies = query(world.ecs, [Enemy, Health]);
     const miniSlimes = enemies.filter((eid) => eid !== slime);
     expect(miniSlimes).toHaveLength(2);
+    const expectedMiniDamage = Math.max(1, Math.round(7 * 0.5));
     for (const miniEid of miniSlimes) {
       expect(world.stores.health.max[miniEid]).toBe(15);
       expect(world.stores.health.current[miniEid]).toBe(15);
-      expect(world.stores.damage.amount[miniEid]).toBe(4);
+      expect(world.stores.damage.amount[miniEid]).toBe(expectedMiniDamage);
       expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
       expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
     }
