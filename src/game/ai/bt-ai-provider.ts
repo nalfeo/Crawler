@@ -52,7 +52,11 @@ import {
   action,
   type BTNode,
 } from './behavior-tree.js';
-import { getShopkeeperStage, SHOPKEEPER_EQUIPMENT_COST } from '../floor1Scenario.js';
+import {
+  FLOOR1_QUEST_UNLOCK_LEVEL,
+  getShopkeeperStage,
+  SHOPKEEPER_EQUIPMENT_COST,
+} from '../floor1Scenario.js';
 import { getActiveWeapon, getActiveWeaponReadiness } from '../weaponSystem.js';
 
 const logger = createLogger('game:bt-ai-provider');
@@ -2763,7 +2767,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       case 'tutorial-goon':
         return world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID) ? null : 'accept-tutorial-quest';
       case 'shopkeeper':
-        if (world.playerLevel.level < 2) {
+        if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
           // The merchant errand is gated behind reaching level 2.
           return null;
         }
@@ -2778,7 +2782,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         return null;
       case 'spell-quest-giver':
-        if (world.playerLevel.level < 2 && !world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {
+        if (
+          world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL &&
+          !world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)
+        ) {
           // The Spell Broker's quest is gated behind reaching level 2.
           return null;
         }

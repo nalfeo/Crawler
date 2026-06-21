@@ -1516,7 +1516,7 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 }
 
 /** Character level required before the merchant / spell-broker quests unlock. */
-const FLOOR1_QUEST_UNLOCK_LEVEL = 2;
+export const FLOOR1_QUEST_UNLOCK_LEVEL = 2;
 
 /**
  * Mark the merchant as met (advances the first quest step). The errand only
