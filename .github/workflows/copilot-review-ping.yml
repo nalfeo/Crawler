@@ -1,0 +1,160 @@
+name: Copilot Review Comment Ping
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  ping-copilot-on-review-comments:
+    name: File issue for open Copilot review comments
+    # Only run when the reviewer is the Copilot code-review bot.
+    if: ${{ github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect unresolved threads and file issue
+        uses: actions/github-script@v7
+        with:
+          # Default GITHUB_TOKEN is sufficient: we create an issue and assign it to
+          # copilot. Issue assignment triggers the Copilot coding agent regardless of
+          # which identity makes the assignment — unlike @mentions, which are ignored
+          # when posted by any bot account.
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const reviewHtmlUrl = context.payload.review.html_url;
+
+            // If the PR is already merged there is nothing left to fix — close any
+            // open tracking issue and bail out.
+            const pr = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+            if (pr.data.merged) {
+              core.info(`PR #${prNumber} is already merged. Cleaning up any open review-comment issue.`);
+              const issueLabel = 'copilot-review-comments';
+              const issueTitle = `Copilot review comments: PR #${prNumber}`;
+              const staleIssues = await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo,
+                state: 'open',
+                labels: issueLabel,
+                per_page: 100,
+              });
+              const stale = staleIssues.find((i) => i.title === issueTitle);
+              if (stale) {
+                await github.rest.issues.update({
+                  owner, repo,
+                  issue_number: stale.number,
+                  state: 'closed',
+                });
+                core.info(`Closed stale review issue #${stale.number} because PR #${prNumber} was merged.`);
+              }
+              return;
+            }
+
+            // Fetch all review threads via GraphQL to find unresolved ones.
+            const query = `
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    reviewThreads(first: 100) {
+                      nodes {
+                        isResolved
+                        isOutdated
+                        comments(first: 1) {
+                          nodes {
+                            author { login }
+                            body
+                            url
+                            path
+                            line
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const result = await github.graphql(query, { owner, repo, number: prNumber });
+            const threads = result.repository.pullRequest.reviewThreads.nodes;
+
+            // Keep only unresolved, non-outdated threads started by the Copilot reviewer.
+            const openThreads = threads.filter((t) => {
+              if (t.isResolved || t.isOutdated) return false;
+              const firstComment = t.comments.nodes[0];
+              return firstComment?.author?.login === 'copilot-pull-request-reviewer[bot]';
+            });
+
+            if (openThreads.length === 0) {
+              core.info('No unresolved Copilot review threads found.');
+              return;
+            }
+
+            const threadLines = openThreads.map((t) => {
+              const c = t.comments.nodes[0];
+              const location = c.path ? `\`${c.path}\`` + (c.line ? ` line ${c.line}` : '') : 'general';
+              const excerpt = (c.body ?? '').split('\n')[0].slice(0, 120);
+              return `- [${location}](${c.url}): ${excerpt}`;
+            });
+
+            const issueLabel = 'copilot-review-comments';
+            const issueTitle = `Copilot review comments: PR #${prNumber}`;
+
+            const issueBody = [
+              `PR #${prNumber} has ${openThreads.length} unresolved Copilot review thread(s).`,
+              '',
+              `Review: ${reviewHtmlUrl}`,
+              '',
+              'Open threads:',
+              ...threadLines,
+              '',
+              `For each thread, please either address the feedback directly in PR #${prNumber} or reply to the thread explaining why the change will not be made (won't fix).`,
+            ].join('\n');
+
+            // Ensure the tracking label exists (idempotent).
+            try {
+              await github.rest.issues.createLabel({
+                owner, repo,
+                name: issueLabel,
+                color: 'c084fc',
+                description: 'PR has unresolved Copilot code-review comments',
+              });
+            } catch (_) {
+              // Label already exists — ignore.
+            }
+
+            // Find any existing open issue for this PR.
+            const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo,
+              state: 'open',
+              labels: issueLabel,
+              per_page: 100,
+            });
+            const existing = existingIssues.find((i) => i.title === issueTitle);
+
+            // Close old issue and create a fresh one so that the new assignment
+            // re-triggers the Copilot coding agent (re-assigning an existing issue
+            // may not fire the trigger a second time).
+            if (existing) {
+              await github.rest.issues.update({
+                owner, repo,
+                issue_number: existing.number,
+                state: 'closed',
+              });
+              core.info(`Closed stale review issue #${existing.number}.`);
+            }
+
+            const created = await github.rest.issues.create({
+              owner, repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: [issueLabel],
+              assignees: ['copilot'],
+            });
+
+            core.info(`Created review issue #${created.data.number} and assigned to Copilot.`);

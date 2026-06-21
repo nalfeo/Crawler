@@ -15,19 +15,13 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
   rebase-prs:
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App token
-        uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -36,9 +30,6 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GitHub App token so Copilot Coding Agent picks up the @copilot mention
-          # (the agent ignores mentions from github-actions[bot]).
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -97,41 +88,84 @@ jobs:
               if git push --force-with-lease origin "HEAD:$head_ref"; then
                 echo "  ✅ Rebasing complete for PR #$number."
                 rebased=$((rebased + 1))
+                # Close any open merge-conflict issue for this PR now that it's resolved.
+                conflict_title="Merge conflict: PR #${number}"
+                resolved_issue=$(gh issue list \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --label "merge-conflict" \
+                  --state open \
+                  --json number,title \
+                  --jq ".[] | select(.title == \"${conflict_title}\") | .number" | head -n 1)
+                if [ -n "$resolved_issue" ]; then
+                  gh issue close "$resolved_issue" \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --comment "Conflict resolved — PR #${number} has been successfully rebased onto \`main\`."
+                  echo "  ✅ Closed conflict issue #$resolved_issue."
+                fi
               else
                 echo "  ⚠️ Rebase succeeded but push failed for PR #$number; leaving branch unchanged."
                 failed=$((failed + 1))
               fi
             else
               git rebase --abort || true
-              echo "  ⚠️ Rebase conflict on PR #$number; delegating to Copilot."
-              marker="auto-rebase-conflict-delegation"
-              body="<!-- ${marker} -->"$'\n'"@copilot This PR has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically. Please resolve the conflict, update the branch, and ensure CI passes."
-              COMMENT_TOKEN="$APP_TOKEN"
-              # Match existing delegation comment by marker only (works regardless of which
-              # account posted it, and survives token rotation between bot and PAT).
-              existing_comment_id=$(gh pr view "$number" \
+              echo "  ⚠️ Rebase conflict on PR #$number; filing issue for Copilot."
+
+              # Ensure the tracking label exists (idempotent).
+              gh label create "merge-conflict" \
+                --color "e11d48" \
+                --description "Branch has a merge conflict requiring resolution" \
+                --repo "$GITHUB_REPOSITORY" 2>/dev/null || true
+
+              # File a GitHub issue and assign to copilot. Issue assignment triggers the
+              # Copilot coding agent regardless of which identity makes the assignment —
+              # unlike @mentions, which are ignored when posted by any bot account.
+              conflict_title="Merge conflict: PR #${number}"
+              pr_url="https://github.com/${GITHUB_REPOSITORY}/pull/${number}"
+              conflict_body="PR #${number} (branch \`${head_ref}\`) has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically."$'\n\n'"**PR:** ${pr_url}"$'\n\n'"Please resolve the conflict directly in PR #${number} by pushing the resolved changes to branch \`${head_ref}\` and ensuring CI passes. This issue will be closed automatically once the rebase succeeds."
+
+              existing_conflict_issue=$(gh issue list \
                 --repo "$GITHUB_REPOSITORY" \
-                --json comments \
-                --jq ".comments[] | select(.body | contains(\"${marker}\")) | .id" | head -n 1)
-              if [ -n "$existing_comment_id" ]; then
-                GH_TOKEN="$COMMENT_TOKEN" gh api \
-                  --method PATCH \
-                  "repos/$GITHUB_REPOSITORY/issues/comments/$existing_comment_id" \
-                  --field body="$body" >/dev/null
-              else
-                GH_TOKEN="$COMMENT_TOKEN" gh pr comment "$number" \
+                --label "merge-conflict" \
+                --state open \
+                --json number,title \
+                --jq ".[] | select(.title == \"${conflict_title}\") | .number" | head -n 1)
+
+              if [ -z "$existing_conflict_issue" ]; then
+                gh issue create \
                   --repo "$GITHUB_REPOSITORY" \
-                  --body "$body"
-              fi
-              if gh pr edit "$number" \
-                --repo "$GITHUB_REPOSITORY" \
-                --add-assignee "copilot"; then
-                echo "  🤖 Assigned @copilot to PR #$number."
+                  --title "$conflict_title" \
+                  --body "$conflict_body" \
+                  --label "merge-conflict" \
+                  --assignee "copilot"
+                echo "  🤖 Filed conflict issue for PR #$number and assigned to Copilot."
               else
-                echo "  ⚠️ Failed to assign @copilot to PR #$number."
+                echo "  ℹ️ Conflict issue #$existing_conflict_issue already open for PR #$number."
               fi
               conflicts=$((conflicts + 1))
             fi
           done < <(echo "$prs_json" | jq -c '.[]')
+
+          echo "Checking for stale merge-conflict issues whose PRs are no longer open..."
+          stale_issues=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --label "merge-conflict" \
+            --state open \
+            --json number,title \
+            --jq '.[]')
+          while IFS= read -r issue_entry; do
+            [ -z "$issue_entry" ] && continue
+            issue_num=$(echo "$issue_entry" | jq -r '.number')
+            issue_title=$(echo "$issue_entry" | jq -r '.title')
+            # Extract PR number from title "Merge conflict: PR #N"
+            pr_num=$(echo "$issue_title" | grep -oP '(?<=PR #)\d+' | head -n 1)
+            [ -z "$pr_num" ] && continue
+            pr_state=$(gh pr view "$pr_num" --repo "$GITHUB_REPOSITORY" --json state --jq '.state' 2>/dev/null || echo "")
+            if [ "$pr_state" != "OPEN" ] && [ -n "$pr_state" ]; then
+              gh issue close "$issue_num" \
+                --repo "$GITHUB_REPOSITORY" \
+                --comment "PR #${pr_num} is no longer open (state: ${pr_state}). Closing stale conflict issue."
+              echo "  ✅ Closed stale conflict issue #$issue_num (PR #$pr_num is $pr_state)."
+            fi
+          done < <(echo "$stale_issues" | jq -c '.')
 
           echo "Done. Rebasing summary: rebased=$rebased conflicts=$conflicts skipped=$skipped failed=$failed"
