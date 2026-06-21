@@ -98,9 +98,10 @@ function tileVariantsIntoSheet(variants: Buffer[], rows: number, cols: number): 
 }
 
 /**
- * Stamp `index + 1` small color accents *inside the existing blade silhouette*
- * so each variant produces distinct processed bytes without changing the outer
- * content bounds that the content-aware slicer infers from the sheet.
+ * Stamp `index + 1` distinct 16×16 color blocks *inside the existing blade
+ * silhouette* so each variant produces distinct processed bytes without
+ * changing the outer content bounds that the content-aware slicer infers from
+ * the sheet.
  */
 function perturbedGoodSword(index: number): Buffer {
   const decoded = PNG.sync.read(buildGoodSwordFixture());
