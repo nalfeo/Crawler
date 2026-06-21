@@ -280,7 +280,19 @@ function chooseObjectiveTiles(world: GameWorld): {
   const slimeRatRoomPos = slimeRatEntry
     ? floorMap.tileToPixel(slimeRatEntry.center.x, slimeRatEntry.center.y)
     : questItemPos;
-  const spellQuestGiverPos = questItemPos;
+  // The Spell Broker gets a room of its own — explicitly NOT the room that holds
+  // the merchant's gross fetch item (the rat tail). Pick the nearest unused
+  // candidate so the broker is still discoverable; fall back to a room that is
+  // guaranteed distinct from the fetch-item room on degenerate (tiny) maps.
+  const usedEntries = new Set([welcomeEntry, shopEntry, itemEntry, slimeRatEntry]);
+  const spellEntry = candidates.find((entry) => !usedEntries.has(entry));
+  const spellFallbackPos =
+    shopRoomPos.x !== questItemPos.x || shopRoomPos.y !== questItemPos.y
+      ? shopRoomPos
+      : welcomeOfficePos;
+  const spellQuestGiverPos = spellEntry
+    ? floorMap.tileToPixel(spellEntry.center.x, spellEntry.center.y)
+    : spellFallbackPos;
 
   return {
     welcomeOfficePos,
@@ -409,7 +421,7 @@ function spawnNpcFromPlacement(
         y = objectiveTiles.staircasePos.y;
         break;
       case 'any':
-        // Use spell quest giver position (which is questItemPos)
+        // Spell Broker's dedicated room (distinct from the rat-tail fetch room).
         x = objectiveTiles.spellQuestGiverPos.x;
         y = objectiveTiles.spellQuestGiverPos.y;
         break;
@@ -428,12 +440,17 @@ function spawnNpcFromPlacement(
   return spawnNpc(world, x, y, placement.npcTypeId);
 }
 
-/** Called the first time the player talks to the Tutorial Goon. Accepts the quest and unlocks quest tracking. */
+/**
+ * Called the first time the player talks to the Tutorial Goon (the reward for
+ * finding the Welcome Office). Accepts the tutorial quest, focuses the tracker,
+ * and unlocks drops — gold, XP, and junk only start dropping once the Goon has
+ * explained the rules. See `dropSystem` for the gate.
+ */
 export function meetTutorialGoon(world: GameWorld): void {
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
   setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
   notifyQuestTalk(world, 'tutorial-goon');
-  setGoalFlag(world, 'floor1-xp-unlocked', true);
+  setGoalFlag(world, 'floor1-drops-unlocked', true);
   if (world.floor1) {
     world.floor1.objective.questAccepted = true;
   }
@@ -495,8 +512,20 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       const pos = floorMap.tileToPixel(c1.x, c1.y);
       const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
 
+      // Never plant a sign directly under the player. If this room's sign tile
+      // coincides with the player's spawn tile, push it one tile forward (toward
+      // the next room) so it reads as a directional pointer the player walks up
+      // to, rather than spawning on top of it.
+      let signX = pos.x;
+      let signY = pos.y;
+      if (c1.x === floorMap.playerSpawn.x && c1.y === floorMap.playerSpawn.y) {
+        const step = floorMap.config.tileSizePx;
+        signX += Math.cos(angle) * step;
+        signY += Math.sin(angle) * step;
+      }
+
       const eid = createEntity(world);
-      addComponent(world.ecs, eid, set(Position, { x: pos.x, y: pos.y }));
+      addComponent(world.ecs, eid, set(Position, { x: signX, y: signY }));
       addComponent(world.ecs, eid, set(Rotation, { angle }));
       addComponent(
         world.ecs,
@@ -586,7 +615,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, false);
   setGoalFlag(world, 'floor1-reach-level-2', false);
   setGoalFlag(world, 'floor1-leveling-quest-complete', false);
-  setGoalFlag(world, 'floor1-xp-unlocked', false);
+  setGoalFlag(world, 'floor1-drops-unlocked', false);
   setGoalFlag(world, 'floor1-defeat-boss', false);
   setGoalFlag(world, 'floor1-boss-battle-active', false);
   setGoalFlag(world, 'floor1-boss-battle-complete', false);
@@ -1402,7 +1431,7 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   objective.junkCollected = Math.max(objective.junkCollected, objective.requiredJunk);
   setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-rats', objective.ratsKilled);
   setQuestCounter(world, FLOOR1_BOSS_UNLOCK_QUEST_ID, 'kill-slimes', objective.slimesKilled);
-  setGoalFlag(world, 'floor1-xp-unlocked', true);
+  setGoalFlag(world, 'floor1-drops-unlocked', true);
   setGoalFlag(world, 'floor1-reach-level-2', true);
   setGoalFlag(world, 'floor1-leveling-quest-complete', true);
   setGoalFlag(world, 'floor1-goon-quest-complete', true);

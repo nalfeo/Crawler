@@ -1531,7 +1531,7 @@ export class MainGameScene extends Phaser.Scene {
     const totalKills = objective.ratsKilled + objective.slimesKilled;
     const requiredTotalKills = objective.requiredRats + objective.requiredSlimes;
     const killProgress = Math.min(totalKills, requiredTotalKills);
-    const xpUnlocked = this.world.goalFlags.get('floor1-xp-unlocked') === true;
+    const xpUnlocked = this.world.goalFlags.get('floor1-drops-unlocked') === true;
     const reachedLevel2 = this.world.goalFlags.get('floor1-leveling-quest-complete') === true;
     const questStatus = !xpUnlocked
       ? 'Quest 1: talk to Tutorial Goon'

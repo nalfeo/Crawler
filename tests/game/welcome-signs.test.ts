@@ -34,7 +34,7 @@ describe('floor 1 welcome signs', () => {
     }
   });
 
-  it('always places a welcome sign in the spawn room', () => {
+  it('always places a welcome sign in the spawn room, but never on the player spawn tile', () => {
     for (const seed of SEEDS) {
       const world = initFloor1(seed);
       const floorMap = world.floorMap;
@@ -43,16 +43,22 @@ describe('floor 1 welcome signs', () => {
       const spawnRoom = floorMap!.spawnRoom;
       expect(spawnRoom, `seed ${seed} should have a spawn room`).not.toBeNull();
 
-      const cx = Math.floor(spawnRoom!.bounds.x + spawnRoom!.bounds.width / 2);
-      const cy = Math.floor(spawnRoom!.bounds.y + spawnRoom!.bounds.height / 2);
-      const expected = floorMap!.tileToPixel(cx, cy);
+      const { x: rx, y: ry, width, height } = spawnRoom!.bounds;
+      const spawnTile = floorMap!.playerSpawn;
 
-      const hasSpawnRoomSign = welcomeSignEids(world).some(
-        (eid) =>
-          world.stores.position.x[eid] === expected.x &&
-          world.stores.position.y[eid] === expected.y,
+      const signTiles = welcomeSignEids(world).map((eid) =>
+        floorMap!.pixelToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
+      );
+
+      // A sign still guides the player out of the spawn room...
+      const hasSpawnRoomSign = signTiles.some(
+        (t) => t.x >= rx && t.x < rx + width && t.y >= ry && t.y < ry + height,
       );
       expect(hasSpawnRoomSign, `seed ${seed} should place a sign in the spawn room`).toBe(true);
+
+      // ...but no sign is ever planted directly under the player's spawn tile.
+      const onSpawnTile = signTiles.some((t) => t.x === spawnTile.x && t.y === spawnTile.y);
+      expect(onSpawnTile, `seed ${seed} must not place a sign on the spawn tile`).toBe(false);
     }
   });
 });

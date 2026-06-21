@@ -1,6 +1,14 @@
 import { query, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { DeathTimer, Enemy, Gold, Health, Position, XpGem } from '../../src/core/components.js';
+import {
+  DeathTimer,
+  DroppedItem,
+  Enemy,
+  Gold,
+  Health,
+  Position,
+  XpGem,
+} from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
 import {
@@ -111,21 +119,33 @@ describe('dropSystem', () => {
     expect(world.combatEvents.filter((event) => event.type === 'death')).toHaveLength(1);
   });
 
-  it('suppresses floor1 XP drops until the tutorial goon unlocks XP', () => {
+  it('suppresses ALL floor1 drops (gold, xp, junk) until the tutorial goon unlocks them', () => {
     const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
 
+    // Before meeting the Tutorial Goon, nothing the enemies drop should appear.
+    // (The merchant's fetch item is spawned at init, so measure deltas.)
+    const goldBefore = world.playerGold;
+    const itemsAtInit = query(world.ecs, [DroppedItem]).length;
     const lockedEnemy = spawnEnemy(world, 100, 200, 10);
     setComponent(world.ecs, lockedEnemy, Health, { current: 0, max: 10 });
     dropSystem(world);
     expect(query(world.ecs, [XpGem]).length).toBe(0);
+    expect(query(world.ecs, [Gold]).length).toBe(0);
+    expect(query(world.ecs, [DroppedItem]).length).toBe(itemsAtInit);
 
+    // Finding the Welcome Office and meeting the Goon unlocks drops.
     meetTutorialGoon(world);
+    expect(world.goalFlags.get('floor1-drops-unlocked')).toBe(true);
+
     const unlockedEnemy = spawnEnemy(world, 140, 220, 10);
     setComponent(world.ecs, unlockedEnemy, Health, { current: 0, max: 10 });
     dropSystem(world);
     expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(1);
+    // Sanity: gold currency progression is no longer permanently zero once
+    // drops are on (gold gems either spawn as entities or are auto-collected).
+    expect(world.playerGold).toBeGreaterThanOrEqual(goldBefore);
   });
 });

@@ -1,5 +1,6 @@
-import { removeEntity } from 'bitecs';
+import { query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
+import { Position, Rotation, Sprite } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
@@ -43,6 +44,62 @@ describe('floor1Scenario', () => {
     expect(world.floor1?.protagonistName).toBe('Rhea Vale');
     expect(world.floor1?.starterChoices).toHaveLength(3);
     expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(3);
+  });
+
+  it('places the rat-tail fetch item in a different room from the Spell Broker', () => {
+    // Run several seeds: the Spell Broker must never share a room with the
+    // merchant's gross fetch item (spec: "rat tail is not in the same room as
+    // the spell guy").
+    const roomIdAt = (world: ReturnType<typeof createTestWorld>, pos: { x: number; y: number }) => {
+      const map = world.floorMap!;
+      const tile = map.pixelToTile(pos.x, pos.y);
+      const room = map.rooms.find(
+        (r) =>
+          tile.x >= r.bounds.x &&
+          tile.x < r.bounds.x + r.bounds.width &&
+          tile.y >= r.bounds.y &&
+          tile.y < r.bounds.y + r.bounds.height,
+      );
+      return room?.id ?? -1;
+    };
+
+    for (const seed of [42, 7, 99, 123, 2024]) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      const objective = world.floor1!.objective;
+      const spellPos = objective.spellQuestGiverPos;
+      const itemPos = objective.questItemPos;
+      // Positions must differ outright...
+      expect(`${spellPos.x},${spellPos.y}`).not.toBe(`${itemPos.x},${itemPos.y}`);
+      // ...and resolve to distinct rooms.
+      const spellRoom = roomIdAt(world, spellPos);
+      const itemRoom = roomIdAt(world, itemPos);
+      expect(spellRoom).not.toBe(-1);
+      expect(itemRoom).not.toBe(-1);
+      expect(spellRoom).not.toBe(itemRoom);
+    }
+  });
+
+  it('never plants a welcome sign on the player spawn tile', () => {
+    const WELCOME_SIGN_TEXTURE = 3;
+    for (const seed of [42, 7, 99, 123]) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      const map = world.floorMap!;
+      const spawnTile = map.playerSpawn;
+
+      // Signs carry Position + Rotation + Sprite; the player does not have Rotation.
+      const signs = query(world.ecs, [Position, Rotation, Sprite]);
+      for (const eid of signs) {
+        if (world.stores.sprite.textureId[eid] !== WELCOME_SIGN_TEXTURE) continue;
+        const sx = world.stores.position.x[eid] ?? 0;
+        const sy = world.stores.position.y[eid] ?? 0;
+        const signTile = map.pixelToTile(sx, sy);
+        expect(`${signTile.x},${signTile.y}`).not.toBe(`${spawnTile.x},${spawnTile.y}`);
+      }
+    }
   });
 
   it('applies selected starter weapon and transitions to playing', () => {
