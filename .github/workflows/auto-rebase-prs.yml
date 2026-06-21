@@ -21,6 +21,13 @@ jobs:
   rebase-prs:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -29,10 +36,9 @@ jobs:
       - name: Rebase active PR branches onto main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional: set COPILOT_PAT to a personal access token from a human account.
-          # github-actions[bot] comments are ignored by the Copilot Coding Agent; a human
-          # token is required so Copilot picks up the @copilot delegation comment.
-          COPILOT_PAT: ${{ secrets.COPILOT_PAT }}
+          # GitHub App token so Copilot Coding Agent picks up the @copilot mention
+          # (the agent ignores mentions from github-actions[bot]).
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -100,9 +106,7 @@ jobs:
               echo "  ⚠️ Rebase conflict on PR #$number; delegating to Copilot."
               marker="auto-rebase-conflict-delegation"
               body="<!-- ${marker} -->"$'\n'"@copilot This PR has a merge conflict with \`main\` that the auto-rebase workflow could not resolve automatically. Please resolve the conflict, update the branch, and ensure CI passes."
-              # Use a human PAT when available so Copilot Coding Agent picks up the
-              # @copilot mention (the agent ignores mentions from github-actions[bot]).
-              COMMENT_TOKEN="${COPILOT_PAT:-$GH_TOKEN}"
+              COMMENT_TOKEN="$APP_TOKEN"
               # Match existing delegation comment by marker only (works regardless of which
               # account posted it, and survives token rotation between bot and PAT).
               existing_comment_id=$(gh pr view "$number" \

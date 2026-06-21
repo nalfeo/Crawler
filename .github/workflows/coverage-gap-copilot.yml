@@ -15,12 +15,19 @@ jobs:
     if: ${{ github.event.issue.pull_request != null }}
     runs-on: ubuntu-latest
     steps:
+      - name: Generate GitHub App token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Detect below-goal coverage and request help
         uses: actions/github-script@v7
         with:
-          # Use a human PAT when available so Copilot Coding Agent picks up the
-          # @copilot mention (the agent ignores mentions from github-actions[bot]).
-          github-token: ${{ secrets.COPILOT_PAT || secrets.GITHUB_TOKEN }}
+          # GitHub App token so Copilot Coding Agent picks up the @copilot mention
+          # (the agent ignores mentions from github-actions[bot]).
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const comment = context.payload.comment;
             const body = comment.body ?? '';
