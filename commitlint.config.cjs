@@ -22,6 +22,13 @@ module.exports = {
      * These are merge metadata, not conventional commits.
      */
     (message) => /^.+\s+\(#\d+\)$/.test(message.split('\n')[0]),
+    /**
+     * One historical commit used 'refine:' before the type was standardised to
+     * 'refactor:'. Rewriting it requires a force-push which the automation
+     * tooling does not support. This ignore is scoped to the exact subject line
+     * so no future commits benefit from it.
+     */
+    (message) => message.startsWith('refine: improve warning details and test clarity'),
   ],
   rules: {
     'type-enum': [

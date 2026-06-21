@@ -1833,6 +1833,14 @@ function render(): void {
             writeQueueState();
           }
           renderWorkflowSelection();
+          setWorkflowStatus(
+            `Approved ${run.briefId} variant ${candidate.index}${
+              overrideNeeded ? ' (judge override)' : ''
+            } -> ${approved.assetPath} (${approved.sensorScore}${
+              approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''
+            }). Now Tag to add catalog metadata.`,
+            '#bef264',
+          );
           void recompute();
         } catch (error) {
           setWorkflowStatus(
