@@ -46,9 +46,9 @@ const PALETTE_JSON = JSON.stringify([
 const BRIEF_YAML = `
 type: weapon
 name: iron-sword
-size: { width: 16, height: 16 }
+size: { width: 32, height: 32 }
 palette: { id: test-palette }
-anchor: { x: 8, y: 8 }
+anchor: { x: 16, y: 16 }
 tags: [sword]
 prompt: An iron sword.
 references:
@@ -57,8 +57,17 @@ references:
 generation:
   sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 }
 sensors:
+  edge:
+    allowMainTouch: true
+    allowDetachedEdgeComponents: true
+    maxDetachedEdgePixels: 16
   weapon:
     orientation: diagonal
+minVariations: 0
+postprocessing:
+  trimAndFit: false
+  minDimension: 64
+  paletteMode: strict
 `.trim();
 
 /**
@@ -112,11 +121,11 @@ function makeFailingProvider(
       async generateSheet(): Promise<Buffer> {
         calls++;
         if (succeedsAfter > 0 && calls > succeedsAfter) {
-          // Return a valid 9-cell sheet so retries can succeed.
+          // Return a valid 4-cell sheet so retries can succeed.
           return tileVariantsIntoSheet(
-            Array.from({ length: 9 }, () => buildGoodSwordFixture()),
-            3,
-            3,
+            Array.from({ length: 4 }, () => buildGoodSwordFixture()),
+            2,
+            2,
           );
         }
         throw error;

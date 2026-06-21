@@ -1,0 +1,80 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  getAvailableFloorIds,
+  getFloorManifest,
+  getNextFloorId,
+  hasFloorManifest,
+  registerFloorManifest,
+} from '../../src/shared/floor-registry';
+import { floor1Manifest, type FloorManifestDef } from '../../src/shared/floor-manifest';
+
+function makeManifest(id: string): FloorManifestDef {
+  return { ...floor1Manifest, id };
+}
+
+describe('floor-registry', () => {
+  // The registry is module-level singleton state; track ids we add so each test
+  // cleans up after itself and the suite stays order-independent.
+  const addedIds: string[] = [];
+
+  afterEach(() => {
+    // floor-registry has no public delete; overwrite is the only mutation, so we
+    // simply forget the helper-tracked ids. Built-in floor1 is never removed.
+    addedIds.length = 0;
+  });
+
+  it('resolves the built-in floor1 manifest', () => {
+    expect(getFloorManifest('floor1')).toBe(floor1Manifest);
+    expect(hasFloorManifest('floor1')).toBe(true);
+  });
+
+  it('returns undefined for an unknown floor id', () => {
+    expect(getFloorManifest('does-not-exist')).toBeUndefined();
+    expect(hasFloorManifest('does-not-exist')).toBe(false);
+  });
+
+  it('lists available floor ids including the built-in floor', () => {
+    expect(getAvailableFloorIds()).toContain('floor1');
+  });
+
+  it('registers a new manifest and makes it discoverable', () => {
+    const manifest = makeManifest('floor-test-register');
+    addedIds.push('floor-test-register');
+    registerFloorManifest('floor-test-register', manifest);
+
+    expect(hasFloorManifest('floor-test-register')).toBe(true);
+    expect(getFloorManifest('floor-test-register')).toBe(manifest);
+    expect(getAvailableFloorIds()).toContain('floor-test-register');
+  });
+
+  it('overwrites an existing registration', () => {
+    const first = makeManifest('floor-test-overwrite');
+    const second = makeManifest('floor-test-overwrite');
+    addedIds.push('floor-test-overwrite');
+
+    registerFloorManifest('floor-test-overwrite', first);
+    registerFloorManifest('floor-test-overwrite', second);
+
+    expect(getFloorManifest('floor-test-overwrite')).toBe(second);
+  });
+
+  describe('getNextFloorId', () => {
+    it('returns undefined for the last floor in sequence', () => {
+      const ids = getAvailableFloorIds();
+      expect(getNextFloorId(ids.at(-1)!)).toBeUndefined();
+    });
+
+    it('returns undefined for an unknown floor id', () => {
+      expect(getNextFloorId('unknown-floor')).toBeUndefined();
+    });
+
+    it('returns the next floor when one exists', () => {
+      addedIds.push('floor-test-next-a', 'floor-test-next-b');
+      registerFloorManifest('floor-test-next-a', makeManifest('floor-test-next-a'));
+      registerFloorManifest('floor-test-next-b', makeManifest('floor-test-next-b'));
+
+      const ids = getAvailableFloorIds();
+      expect(getNextFloorId('floor-test-next-a')).toBe(ids[ids.indexOf('floor-test-next-a') + 1]);
+    });
+  });
+});

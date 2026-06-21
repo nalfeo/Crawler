@@ -80,4 +80,49 @@ describe('skill registry', () => {
       ]),
     ).toThrow(/duplicate/i);
   });
+
+  it('rejects usageThresholds with the wrong number of entries', () => {
+    const base = getAllSkillDefinitions()[0]!;
+    expect(() =>
+      parseSkillCatalog([
+        {
+          ...base,
+          usageThresholds: base.usageThresholds.slice(0, -1),
+        },
+      ]),
+    ).toThrow(/usageThresholds must have exactly/i);
+  });
+
+  it('rejects usageThresholds that are not strictly increasing', () => {
+    const base = getAllSkillDefinitions()[0]!;
+    const broken = [...base.usageThresholds];
+    broken[1] = broken[0]!; // equal -> not strictly increasing
+    expect(() =>
+      parseSkillCatalog([
+        {
+          ...base,
+          usageThresholds: broken,
+        },
+      ]),
+    ).toThrow(/strictly increasing/i);
+  });
+
+  it('rejects milestones that do not cover levels 5, 10, 15, 20 exactly', () => {
+    const base = getAllSkillDefinitions()[0]!;
+    const milestones = base.milestones.map((m) => ({ ...m }));
+    // Duplicate level 5, dropping the level-20 milestone.
+    milestones[milestones.length - 1] = {
+      ...milestones[0]!,
+      name: 'Dup',
+      description: 'Dup level.',
+    };
+    expect(() =>
+      parseSkillCatalog([
+        {
+          ...base,
+          milestones,
+        },
+      ]),
+    ).toThrow(/milestones must contain levels/i);
+  });
 });
