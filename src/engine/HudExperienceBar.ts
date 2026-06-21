@@ -3,7 +3,7 @@
  *
  * Mirrors the health bar's pixel-UI styling: a beveled panel with an XP-spark
  * icon and an inset blue progress bar with a glossy shine. Visible only after
- * the `floor1-xp-unlocked` goal flag is set. Public `sync`/`destroy` unchanged.
+ * the `floor1-drops-unlocked` goal flag is set. Public `sync`/`destroy` unchanged.
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
@@ -71,7 +71,7 @@ export function createHudExperienceBar(scene: Phaser.Scene): {
   }
 
   function sync(world: GameWorld): void {
-    const unlocked = world.goalFlags.get('floor1-xp-unlocked') === true;
+    const unlocked = world.goalFlags.get('floor1-drops-unlocked') === true;
     setVisible(unlocked);
     if (!unlocked) {
       return;

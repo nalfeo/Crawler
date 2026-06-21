@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
   process.env.VITE_SPRITES_SIDECAR_BASE_URL = sessionPorts.sidecarBaseUrl;
 
   return {
-    base: process.env.BUILD_BASE_PATH ?? basePaths[deployEnv] ?? '/',
+    base: basePaths[deployEnv] ?? '/',
     define: {
       __CRAWLER_SPRITES_SIDECAR_BASE_URL__: JSON.stringify(sessionPorts.sidecarBaseUrl),
       'import.meta.env.VITE_SPRITES_SIDECAR_BASE_URL': JSON.stringify(sessionPorts.sidecarBaseUrl),
