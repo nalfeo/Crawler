@@ -21,6 +21,8 @@ describe('createFloor1MainSceneOptions', () => {
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(false);
 
+    // The Spell Broker only offers the quest once the player has reached level 2.
+    world.playerLevel.level = 2;
     options.spellQuestGiver.meet(world);
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(true);

@@ -45,6 +45,7 @@ import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
+  FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
@@ -442,14 +443,17 @@ function spawnNpcFromPlacement(
 
 /**
  * Called the first time the player talks to the Tutorial Goon (the reward for
- * finding the Welcome Office). Accepts the tutorial quest, focuses the tracker,
- * and unlocks drops — gold, XP, and junk only start dropping once the Goon has
- * explained the rules. See `dropSystem` for the gate.
+ * finding the Welcome Office). Completes the opening "find the welcome room"
+ * quest, accepts the level-2 grind quest, focuses the tracker, and unlocks
+ * drops — gold, XP, and junk only start dropping once the Goon has explained
+ * the rules. See `dropSystem` for the gate.
  */
 export function meetTutorialGoon(world: GameWorld): void {
+  // Completes the opening "find the welcome room" quest (talk objective).
+  notifyQuestTalk(world, 'tutorial-goon');
+  // The Goon's exposition hands off the level-2 grind as the gating quest.
   acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
   setTrackedQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
-  notifyQuestTalk(world, 'tutorial-goon');
   setGoalFlag(world, 'floor1-drops-unlocked', true);
   if (world.floor1) {
     world.floor1.objective.questAccepted = true;
@@ -614,6 +618,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, false);
   setGoalFlag(world, 'floor1-reach-level-2', false);
+  setGoalFlag(world, 'floor1-welcome-room-found', false);
   setGoalFlag(world, 'floor1-leveling-quest-complete', false);
   setGoalFlag(world, 'floor1-drops-unlocked', false);
   setGoalFlag(world, 'floor1-defeat-boss', false);
@@ -676,12 +681,16 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
 
-  // Do not auto-accept NPC-given quests at init; shopkeeper errand starts on first meeting the merchant.
+  // The opening quest is the only one the player starts with: find the Welcome
+  // Office and talk to the Tutorial Goon. NPC-given quests (shopkeeper errand,
+  // spell broker) and the level-2 grind quest are accepted on first meeting the
+  // relevant NPC — see meetTutorialGoon / meetShopkeeper / meetSpellQuestGiver.
+  acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
+  setTrackedQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
 
-  // Keep the final boss-room doors locked until ALL Floor 1 tutorial quests are
-  // complete: the Tutorial Goon's "Pest Control" cull (floor1-goon-quest-complete),
-  // the Merchant's errand (floor1-shop-quest-complete), and the Spell Broker's
-  // spell-unlock quest (floor1-boss-battle-complete).
+  // Keep the final boss-room doors locked until the gating Floor 1 quests are
+  // complete: the Merchant's errand (floor1-shop-quest-complete) and the Spell
+  // Broker's Slime Rat spell-unlock quest (floor1-boss-battle-complete).
   setGoalFlag(world, 'floor1-goon-quest-complete', false);
   const bossStairRoom = floorMap.bossStairRoom;
   if (bossStairRoom) {
@@ -696,7 +705,6 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
         unlock: {
           operator: 'all',
           conditions: [
-            { type: 'goal', goalId: 'floor1-goon-quest-complete' },
             { type: 'goal', goalId: 'floor1-shop-quest-complete' },
             { type: 'goal', goalId: 'floor1-boss-battle-complete' },
           ],
@@ -1507,8 +1515,18 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
   return 'awaiting-prize';
 }
 
-/** Mark the merchant as met (advances the first quest step). */
+/** Character level required before the merchant / spell-broker quests unlock. */
+const FLOOR1_QUEST_UNLOCK_LEVEL = 2;
+
+/**
+ * Mark the merchant as met (advances the first quest step). The errand only
+ * unlocks once the contestant has reached level 2 — before then the merchant
+ * has nothing to say.
+ */
 export function meetShopkeeper(world: GameWorld): void {
+  if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
+    return;
+  }
   if (!world.questLog.has(FLOOR1_SHOP_QUEST_ID)) {
     acceptQuest(world, FLOOR1_SHOP_QUEST_ID);
     setTrackedQuest(world, FLOOR1_SHOP_QUEST_ID);
@@ -1516,8 +1534,15 @@ export function meetShopkeeper(world: GameWorld): void {
   notifyQuestTalk(world, 'shopkeeper');
 }
 
-/** Mark the spell quest giver as met and accept the Slime Rat quest. */
+/**
+ * Mark the spell quest giver as met and accept the Slime Rat quest. Like the
+ * merchant, the Spell Broker only offers the quest once the player has reached
+ * level 2.
+ */
 export function meetSpellQuestGiver(world: GameWorld): void {
+  if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
+    return;
+  }
   if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {
     acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
     setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
