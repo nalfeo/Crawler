@@ -13,14 +13,12 @@ on:
         default: false
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
   issues: write
   pull-requests: write
 
 concurrency:
-  group: pages
+  group: gh-pages-deploy
   cancel-in-progress: true
 
 jobs:
@@ -29,9 +27,6 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success'
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Admin check (manual triggers only)
         if: github.event_name == 'workflow_dispatch'
@@ -168,20 +163,72 @@ jobs:
             echo "{\"commit\":\"$PROD_SHA\",\"env\":\"prod\",\"builtAt\":\"$NOW\"}" > site/version.json
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
+      - name: Deploy to gh-pages branch
+        id: deploy-gh-pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          PAGES_BASE="https://$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]').github.io/$(basename "$GITHUB_REPOSITORY")"
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git clone --depth=1 --branch=gh-pages "$REPO_URL" /tmp/gh-pages 2>/dev/null; then
+            echo "Cloned existing gh-pages branch"
+          else
+            echo "Creating new gh-pages branch"
+            mkdir /tmp/gh-pages
+            cd /tmp/gh-pages
+            git init
+            git remote add origin "$REPO_URL"
+            git checkout --orphan gh-pages
+          fi
+
+          cd /tmp/gh-pages
+
+          # Remove everything except .git and pr-* subdirectories (preserves active PR previews)
+          for item in * .[^.]*; do
+            case "$item" in
+              pr-*|.git|.nojekyll) continue ;;
+              *) [ -e "$item" ] && rm -rf "$item" ;;
+            esac
+          done
+
+          # Copy new site content
+          cp -r "$GITHUB_WORKSPACE/site/." .
+          touch .nojekyll
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to deploy"
+          else
+            git commit -m "chore: deploy to GitHub Pages [${GITHUB_SHA:0:7}]"
+
+            MAX_RETRIES=3
+            for attempt in $(seq 1 $MAX_RETRIES); do
+              if git push origin HEAD:gh-pages; then
+                echo "Deployed to ${PAGES_BASE}/"
+                break
+              fi
+              if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+                echo "Push failed (attempt $attempt), rebasing..."
+                git fetch origin gh-pages
+                git rebase origin/gh-pages
+              else
+                echo "::error::Failed to push after $MAX_RETRIES attempts"
+                exit 1
+              fi
+            done
+          fi
+
+          echo "PAGES_URL=${PAGES_BASE}/" >> "$GITHUB_ENV"
 
       - name: Label and comment on released PRs
         if: success()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAGES_URL: ${{ steps.deployment.outputs.page_url }}
+          PAGES_URL: ${{ env.PAGES_URL }}
         run: |
           # Ensure the "released" label exists
           if ! gh label create "released" --repo "${{ github.repository }}" \

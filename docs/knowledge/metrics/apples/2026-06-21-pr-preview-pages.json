@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-21",
+  "slug": "pr-preview-pages",
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "on-target",
+  "notes": "CI-only task: 5 files changed (3 workflow YAML, 1 build config, handoff). No src/ changes."
+}
