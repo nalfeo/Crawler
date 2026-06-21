@@ -1,7 +1,6 @@
-import { removeEntity } from 'bitecs';
+import { query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { AreaDamage } from '../../src/core/components.js';
-import { query } from 'bitecs';
 import { spawnAoeProjectile, spawnPlayer } from '../../src/core/helpers.js';
 import {
   aoeOnImpactPostDamage,

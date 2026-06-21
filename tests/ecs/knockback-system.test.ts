@@ -8,7 +8,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 describe('knockbackSystem', () => {
   it('removes the Knockback component immediately when speed is zero', () => {
     const world = createTestWorld();
-    const eid = spawnEnemy(world, 0, 0);
+    const eid = spawnEnemy(world, 0, 0, 10);
     addComponent(world.ecs, eid, set(Knockback, { dirX: 1, dirY: 0, remaining: 10, speed: 0 }));
 
     knockbackSystem(world);
@@ -18,7 +18,7 @@ describe('knockbackSystem', () => {
 
   it('removes the Knockback component when no distance remains', () => {
     const world = createTestWorld();
-    const eid = spawnEnemy(world, 0, 0);
+    const eid = spawnEnemy(world, 0, 0, 10);
     addComponent(world.ecs, eid, set(Knockback, { dirX: 1, dirY: 0, remaining: 0, speed: 5 }));
 
     knockbackSystem(world);
@@ -28,7 +28,7 @@ describe('knockbackSystem', () => {
 
   it('displaces the entity by one step and clears the component once exhausted', () => {
     const world = createTestWorld();
-    const eid = spawnEnemy(world, 100, 100);
+    const eid = spawnEnemy(world, 100, 100, 10);
     // remaining < speed so a single step exhausts the knockback.
     addComponent(world.ecs, eid, set(Knockback, { dirX: 1, dirY: 0, remaining: 4, speed: 10 }));
 
@@ -41,7 +41,7 @@ describe('knockbackSystem', () => {
 
   it('keeps the component while distance remains across multiple frames', () => {
     const world = createTestWorld();
-    const eid = spawnEnemy(world, 0, 0);
+    const eid = spawnEnemy(world, 0, 0, 10);
     addComponent(world.ecs, eid, set(Knockback, { dirX: 0, dirY: 1, remaining: 10, speed: 4 }));
 
     knockbackSystem(world);

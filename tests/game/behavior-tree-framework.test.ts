@@ -113,8 +113,10 @@ describe('behavior-tree framework', () => {
       expect(serialized).toMatchObject({ name: 'root', type: 'Selector' });
       expect(serialized.children).toHaveLength(2);
       expect(serialized.children[0]).toMatchObject({ name: 'cond', type: 'Condition' });
-      expect(serialized.children[1]).toMatchObject({ name: 'inv', type: 'Inverter' });
-      expect(serialized.children[1].children[0]).toMatchObject({ name: 'leaf', type: 'Action' });
+      const inverterNode = serialized.children[1];
+      expect(inverterNode).toBeDefined();
+      expect(inverterNode).toMatchObject({ name: 'inv', type: 'Inverter' });
+      expect(inverterNode!.children[0]).toMatchObject({ name: 'leaf', type: 'Action' });
     });
   });
 });

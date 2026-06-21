@@ -57,11 +57,16 @@ describe('dropSystem death knockback', () => {
     const enemy = spawnEnemy(world, 100, 100, 10);
     setComponent(world.ecs, enemy, Health, { current: 0, max: 10 });
     addComponent(world.ecs, enemy, set(DeathTimer, { expiresAtMs: world.elapsedMs + 1000 }));
+    const deathEventCountBefore = world.combatEvents.filter(
+      (event) => event.type === 'death' && event.targetEid === enemy,
+    ).length;
 
     dropSystem(world);
 
-    // Already-lingering enemy is skipped → no XP/loot spawned for it.
-    const before = query(world.ecs, [Enemy]).length;
-    expect(before).toBeGreaterThanOrEqual(1);
+    const deathEventCountAfter = world.combatEvents.filter(
+      (event) => event.type === 'death' && event.targetEid === enemy,
+    ).length;
+    expect(deathEventCountAfter).toBe(deathEventCountBefore);
+    expect(query(world.ecs, [Enemy])).toContain(enemy);
   });
 });

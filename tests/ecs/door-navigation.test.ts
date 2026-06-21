@@ -80,14 +80,16 @@ describe('door-navigation', () => {
       spawnDoor(world, 5, 5);
       const infos = getDoorNavInfos(world);
       expect(infos).toHaveLength(1);
-      expect(infos[0]).toMatchObject({
+      const [info] = infos;
+      expect(info).toBeDefined();
+      expect(info).toMatchObject({
         tileX: 5,
         tileY: 5,
         isLocked: true,
         navigationBlocked: false,
       });
-      expect(infos[0].unlock).toBeUndefined();
-      expect(infos[0].unlockRequirement).toEqual({ goalIds: [], itemIds: [], timerMs: [] });
+      expect(info!.unlock).toBeUndefined();
+      expect(info!.unlockRequirement).toEqual({ goalIds: [], itemIds: [], timerMs: [] });
     });
 
     it('marks a configured door blocked until the unlock condition is met', () => {
@@ -95,10 +97,14 @@ describe('door-navigation', () => {
       setDoorLockConfig(world, door, {
         unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'open-sesame' }] },
       });
-      expect(getDoorNavInfos(world)[0].navigationBlocked).toBe(true);
+      const lockedInfo = getDoorNavInfos(world)[0];
+      expect(lockedInfo).toBeDefined();
+      expect(lockedInfo!.navigationBlocked).toBe(true);
 
       setGoalFlag(world, 'open-sesame', true);
-      expect(getDoorNavInfos(world)[0].navigationBlocked).toBe(false);
+      const unlockedInfo = getDoorNavInfos(world)[0];
+      expect(unlockedInfo).toBeDefined();
+      expect(unlockedInfo!.navigationBlocked).toBe(false);
     });
 
     it('marks a door blocked again when its relock condition becomes satisfied', () => {
@@ -108,10 +114,14 @@ describe('door-navigation', () => {
         unlock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'unlocked' }] },
         relock: { operator: 'all', conditions: [{ type: 'goal', goalId: 'relocked' }] },
       });
-      expect(getDoorNavInfos(world)[0].navigationBlocked).toBe(false);
+      const unlockedInfo = getDoorNavInfos(world)[0];
+      expect(unlockedInfo).toBeDefined();
+      expect(unlockedInfo!.navigationBlocked).toBe(false);
 
       setGoalFlag(world, 'relocked', true);
-      expect(getDoorNavInfos(world)[0].navigationBlocked).toBe(true);
+      const relockedInfo = getDoorNavInfos(world)[0];
+      expect(relockedInfo).toBeDefined();
+      expect(relockedInfo!.navigationBlocked).toBe(true);
     });
   });
 
@@ -124,7 +134,8 @@ describe('door-navigation', () => {
       });
       const result = getNavigationBlockedDoors(world);
       expect(result).toHaveLength(1);
-      expect(result[0].tileX).toBe(5);
+      expect(result[0]).toBeDefined();
+      expect(result[0]!.tileX).toBe(5);
     });
   });
 
@@ -151,7 +162,7 @@ describe('door-navigation', () => {
     });
 
     it('returns an always-false predicate when there is no floor map', () => {
-      world.floorMap = undefined;
+      world.floorMap = null;
       const passable = buildDoorAwarePassable(world);
       expect(passable(3, 3)).toBe(false);
     });
