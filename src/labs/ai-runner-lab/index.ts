@@ -23,6 +23,7 @@ import { registerLab, type LabCategory } from '../registry.js';
 
 const INITIAL_SEED = 42;
 const SPEED_OPTIONS = [1, 4, 16] as const;
+const INVENTORY_PREVIEW_TICKS = 4;
 
 /**
  * Live telemetry snapshot exposed on `window.__aiRunnerDebug()` for headless
@@ -87,6 +88,9 @@ interface RunnerSceneInternals {
   modalPicker?: { isOpen(): boolean; close(): void };
   conversationNpcEid?: number | null;
   queuedInteraction?: boolean;
+  requestInventoryToggle(): void;
+  requestEquipAction(): void;
+  isInventoryOpen(): boolean;
   setSimulationSpeed(speed: number): void;
   setSimulationPaused(paused: boolean): void;
   isSimulationPaused(): boolean;
@@ -104,6 +108,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let selectedSpeed = 1;
   let isPaused = true;
   let pollCount = 0;
+  let pendingGearPreviewTicks = 0;
+  let pendingGearEquipPreview = false;
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   let lastStepReason = '';
@@ -219,6 +225,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pollCount = 0;
     lastStepReason = '';
     isPaused = true;
+    pendingGearPreviewTicks = 0;
+    pendingGearEquipPreview = false;
     pathGraphics?.destroy();
     pathGraphics = null;
 
@@ -264,12 +272,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         continue;
       }
       sceneOptions.shopkeeper?.returnPrize(world, playerEid);
-      if (sceneOptions.shopkeeper && world.playerGold >= sceneOptions.shopkeeper.equipmentCost) {
-        sceneOptions.shopkeeper.purchase(world, playerEid);
-      }
       break;
     }
-    sceneOptions.shopkeeper?.equip(world, playerEid);
 
     if (modalPicker?.isOpen()) {
       if (
@@ -294,12 +298,32 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       }
       if (sceneOptions.shopkeeper && sceneOptions.shopkeeper.getStage(world) === 'ready-to-buy') {
         if (world.playerGold >= sceneOptions.shopkeeper.equipmentCost) {
-          sceneOptions.shopkeeper.purchase(world, playerEid);
+          if (sceneOptions.shopkeeper.purchase(world, playerEid)) {
+            pendingGearPreviewTicks = INVENTORY_PREVIEW_TICKS;
+            pendingGearEquipPreview = true;
+          }
         }
         modalPicker.close();
         return;
       }
     }
+
+    if (pendingGearEquipPreview && sceneOptions.shopkeeper?.getStage(world) === 'awaiting-equip') {
+      if (!scene.isInventoryOpen()) {
+        scene.requestInventoryToggle();
+        return;
+      }
+      if (pendingGearPreviewTicks > 0) {
+        pendingGearPreviewTicks -= 1;
+        return;
+      }
+      scene.requestEquipAction();
+      pendingGearEquipPreview = false;
+      pendingGearPreviewTicks = 0;
+      return;
+    }
+    pendingGearEquipPreview = false;
+    pendingGearPreviewTicks = 0;
 
     const decision = ai.getDecision();
     const shouldInteractNpc =
