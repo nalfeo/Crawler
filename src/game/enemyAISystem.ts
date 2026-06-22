@@ -41,23 +41,29 @@ const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Ma
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
-// Distance (px) at which a slime stops chasing normally and commits to a pounce.
-// Outside this range the slime paths toward the player like a normal enemy.
-// Kept tight so the slime only pounces from close range and spends most of its
-// time in the slow, hittable approach rather than juking from afar.
+// The slime is a leaper: it runs a telegraph → committed leap → frozen recovery
+// loop. Because the player should essentially never stop moving, a leap that
+// commits toward the player's *current* position generally whiffs — the player
+// sidesteps it. The dedicated counterplay is the frozen recovery: after landing,
+// the slime sits still and exposed, and that is the window the player attacks
+// into. The freeze (not the prep crouch) is now the reliable hittable window, so
+// the slime can keep pouncing instead of reverting to an evasive juke.
+//
+// Distance (px) at which a slime commits to a pounce. Outside this range the
+// slime paths toward the player like a normal enemy. Kept tight so the slime
+// only pounces from close range.
 const SLIME_LEAP_RANGE = 96;
-// Inner range (px) below which a slime stops pouncing and reverts to a normal,
-// slow, hittable approach. Once the slime is already in melee range, continuing
-// to juke makes it impossible for a melee attacker to land a killing blow — the
-// slime blinks out of every strike, which deadlocked the headless Floor 1 clear
-// (the AI orbit-strikes at ~36px and could never finish an evasive slime). Below
-// this range the slime closes in like a normal enemy and becomes hittable.
+// Inner range (px) below which a slime will not *start* a new pounce and instead
+// closes like a normal enemy. A slime that is already close has nowhere to leap,
+// so it just chases — this is the reliable melee regime the Floor 1 clear gate
+// depends on (the AI orbit-strikes at ~36px; see the "decouple slime leap" fix).
+// An in-flight pounce always finishes its full prep → leap → frozen-recovery
+// cycle even if it lands inside this range, guaranteeing the player a stationary
+// window to attack.
 const SLIME_LEAP_INNER_RANGE = 52;
-// Anticipation crouch before the pounce. This is the slime's slow, hittable
-// recovery/telegraph window: long enough that a melee attacker reliably lands
-// hits between pounces (so a slime cannot chain-pounce out of every strike and
-// stall the floor — that regressed the headless Floor 1 clear; see handoff
-// 2026-06-22) while still reading as a coil-and-spring.
+// Anticipation crouch before the pounce: a short, readable wind-up telegraph
+// that tells the player a leap is coming. It no longer has to be the hittable
+// window — the frozen recovery is — but it stays long enough to read clearly.
 const SLIME_PREP_MIN_FRAMES = 14;
 const SLIME_PREP_MAX_FRAMES = 24;
 // A brief, low hop rather than a long juking rocket. Short enough and slow
@@ -65,6 +71,12 @@ const SLIME_PREP_MAX_FRAMES = 24;
 // instead of blinking through it.
 const SLIME_LEAP_MIN_FRAMES = 6;
 const SLIME_LEAP_MAX_FRAMES = 9;
+// Frozen recovery after the slime lands. Velocity is zeroed for this window so
+// the slime sits still and exposed — the deliberate opening for the player to
+// land hits after dodging the leap. Sized generously (~0.33–0.57s at 60fps) so a
+// moving player reliably gets a counter-attack in every cycle.
+const SLIME_RECOVER_MIN_FRAMES = 20;
+const SLIME_RECOVER_MAX_FRAMES = 34;
 const SLIME_PREP_SPEED_MULT = 0.25;
 // The leap reads as "jump quickly, maybe 1.5x speed". The bonus floor keeps the
 // hop visibly fast for very slow slimes whose 1.5x is still sluggish. A slower
@@ -100,7 +112,7 @@ interface WanderState {
 }
 
 interface SlimeLeapState {
-  phase: 'prep' | 'leap';
+  phase: 'prep' | 'leap' | 'recover';
   untilFrame: number;
   leapDirX: number;
   leapDirY: number;
@@ -243,22 +255,58 @@ function createSlimePrepState(world: GameWorld, eid: number, previousSign = 1): 
   };
 }
 
+/**
+ * Drive the slime's telegraph → committed leap → frozen recovery loop.
+ *
+ * Returns `true` when the slime is mid-cycle and this function owns its movement,
+ * or `false` when there is no active pounce and the caller should fall back to a
+ * normal chase.
+ *
+ * Only the *prep* wind-up is gated on the pounce band: if the player leaves the
+ * band before the slime commits (closes inside the inner range, or escapes past
+ * the outer range), the wind-up is abandoned and the slime chases normally. This
+ * preserves the anti-deadlock guarantee that a slime is never *evasive* at melee
+ * range — at close range it just closes in and stays hittable. Once the slime
+ * commits, though, the leap (which travels toward the player) and the frozen
+ * recovery (which is stationary) always run to completion regardless of distance,
+ * since neither is evasive — guaranteeing the player a stationary window to
+ * counter-attack after dodging the pounce.
+ */
 function applySlimeLeapBehavior(
   world: GameWorld,
   eid: number,
   playerDx: number,
   playerDy: number,
+  distanceToPlayer: number,
   speed: number,
-): void {
+): boolean {
   const slimeMap = getSlimeLeapStateMap(world);
   let state = slimeMap.get(eid);
+  const outsideBand =
+    distanceToPlayer > SLIME_LEAP_RANGE || distanceToPlayer <= SLIME_LEAP_INNER_RANGE;
   if (!state) {
+    // Only *begin* a pounce from within the pounce band. Too far → normal chase
+    // closes the gap; already on top of the player → nothing to leap at, chase.
+    if (outsideBand) {
+      return false;
+    }
     state = createSlimePrepState(world, eid, (eid & 1) === 0 ? -1 : 1);
     slimeMap.set(eid, state);
   }
 
+  // Abandon an un-committed wind-up the moment the player leaves the band so the
+  // slime never juke-wiggles at melee range (which deadlocked the Floor 1 clear).
+  // A committed leap/recovery is allowed to finish below — it is not evasive.
+  if (state.phase === 'prep' && outsideBand) {
+    slimeMap.delete(eid);
+    return false;
+  }
+
   if (world.frameCount >= state.untilFrame) {
     if (state.phase === 'prep') {
+      // Commit the leap toward where the player is *right now*. A moving player
+      // will have slipped aside by the time the slime lands, so it generally
+      // whiffs — that is by design.
       const toPlayer = normalize(playerDx, playerDy);
       const leapFrames = deterministicLeapDuration(
         eid,
@@ -272,7 +320,24 @@ function applySlimeLeapBehavior(
       state.leapDirX = toPlayer.x;
       state.leapDirY = toPlayer.y;
       state.wiggleSign *= -1;
+    } else if (state.phase === 'leap') {
+      // Land and freeze: the slime is now exposed and stationary.
+      state.phase = 'recover';
+      state.untilFrame =
+        world.frameCount +
+        deterministicLeapDuration(
+          eid,
+          world.frameCount,
+          SLIME_RECOVER_MIN_FRAMES,
+          SLIME_RECOVER_MAX_FRAMES,
+        );
     } else {
+      // Recovery finished. Decide whether to wind up another pounce or hand the
+      // slime back to a normal chase if the player has left the pounce band.
+      if (outsideBand) {
+        slimeMap.delete(eid);
+        return false;
+      }
       state.phase = 'prep';
       state.untilFrame =
         world.frameCount +
@@ -283,6 +348,12 @@ function applySlimeLeapBehavior(
           SLIME_PREP_MAX_FRAMES,
         );
     }
+  }
+
+  if (state.phase === 'recover') {
+    // Frozen recovery window: hold still so the player can land hits.
+    setVelocity(world, eid, 0, 0);
+    return true;
   }
 
   if (state.phase === 'prep') {
@@ -297,7 +368,7 @@ function applySlimeLeapBehavior(
     );
     const prepSpeed = Math.max(0.2, speed * SLIME_PREP_SPEED_MULT * (0.7 + wigglePulse * 0.3));
     setNavigatingVelocity(world, eid, desired.x, desired.y, prepSpeed);
-    return;
+    return true;
   }
 
   // Leap: travel along the committed direction with a parabolic lateral arc so
@@ -310,6 +381,7 @@ function applySlimeLeapBehavior(
   const leapDir = normalize(state.leapDirX + perpX * arc, state.leapDirY + perpY * arc);
   const leapSpeed = Math.max(speed + SLIME_LEAP_BONUS_SPEED, speed * SLIME_LEAP_SPEED_MULT);
   setNavigatingVelocity(world, eid, leapDir.x, leapDir.y, leapSpeed);
+  return true;
 }
 
 function rotate(x: number, y: number, angle: number): { x: number; y: number } {
@@ -1214,17 +1286,15 @@ export function enemyAISystem(world: GameWorld): void {
 
     if (
       behaviorType === AI_TYPE.LEAPER &&
-      distanceToPlayer <= SLIME_LEAP_RANGE &&
-      distanceToPlayer > SLIME_LEAP_INNER_RANGE
+      applySlimeLeapBehavior(world, eid, playerDx, playerDy, distanceToPlayer, speed)
     ) {
-      applySlimeLeapBehavior(world, eid, playerDx, playerDy, speed);
+      // The slime is mid-pounce (telegraph, leap, or frozen recovery) and owns
+      // its own movement; nothing else to do this frame.
     } else if (behaviorType === AI_TYPE.LEAPER) {
-      // Either still out of pounce range, or already inside the inner range where
-      // the slime should stop juking and close like a normal enemy so a melee
-      // attacker can actually land the killing blow. Reset the leap cadence and
-      // fall through to normal movement (the short crouch + leap only triggers in
-      // the pounce band between the inner range and SLIME_LEAP_RANGE).
-      getSlimeLeapStateMap(world).delete(eid);
+      // No active pounce: the player is outside the pounce band, or already
+      // inside the inner range with no leap in flight. Close like a normal enemy
+      // so a melee attacker can land hits; the leap state has already been
+      // cleared by applySlimeLeapBehavior.
       if (usePathing) {
         applyPathDrivenBehavior(
           world,
