@@ -1,12 +1,13 @@
 /**
- * Pure XP math helpers — no game state, no imports.
+ * Pure XP math helpers — formulas driven by tuning (via shared/constants).
  * Formulas:
  *   xpThresholdForLevel(n) = floor(XP.BASE_PER_LEVEL * XP.SCALING_FACTOR^n)
  *   xpRequiredForLevel(n)  = cumulative sum of thresholds 0..n-1
  */
+import { XP } from './constants.js';
 
-const BASE_PER_LEVEL = 10;
-const SCALING_FACTOR = 1.15;
+const BASE_PER_LEVEL = XP.BASE_PER_LEVEL;
+const SCALING_FACTOR = XP.SCALING_FACTOR;
 const MAX_LEVEL_LOOKUP = 1000;
 const xpRequiredCache: number[] = [0];
 

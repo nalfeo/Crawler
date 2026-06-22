@@ -21,8 +21,8 @@
       "speed": 0.9,
       "detectRange": 320,
       "spriteTexture": 2,
-      "spriteWidth": 16,
-      "spriteHeight": 16,
+      "spriteWidth": 24,
+      "spriteHeight": 24,
       "aiType": "chase",
       "spawnWeight": 0.38
     }

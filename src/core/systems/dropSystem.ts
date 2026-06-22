@@ -34,7 +34,7 @@ const DEATH_LINGER_MS = 300;
 const DEFAULT_CONTACT_DAMAGE = 5;
 // Keep in sync with AI_TYPE.LEAPER in src/game/enemyAISystem.ts.
 const SLIME_LEAPER_AI_TYPE = 3;
-const SLIME_SPLIT_CHANCE = 0.5;
+const SLIME_SPLIT_CHANCE = 0.35;
 const MINI_SLIME_COUNT = 2;
 const MINI_SLIME_SIZE_SCALE = 0.65;
 
