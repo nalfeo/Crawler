@@ -6,18 +6,37 @@
  * consults this table when building the world tilemap; any TerrainType without an
  * entry falls back to the solid-color rendering path.
  *
- * Frame indices reference the Kenney Tiny Dungeon sheet (key: 'kenney-tiny-dungeon',
- * 12 cols × 11 rows, 16×16 px tiles, 1 px gap). Use the tile-explorer-lab
- * (?lab=tile-explorer) to browse frames visually and verify/update mappings here.
+ * Sheets used:
+ *   kenney-tiny-dungeon   12 cols × 11 rows, 16×16 px, 1 px gap (132 tiles)
+ *   kenney-tiny-town      12 cols × 11 rows, 16×16 px, 1 px gap (132 tiles)
+ *   kenney-roguelike-rpg-pack  57 cols × 31 rows, 16×16 px, 1 px gap (1767 tiles)
  *
- * Frame index formula: row * 12 + col
+ * Frame index formula: row * numCols + col
  *
- * Layout quick-reference (verify in tile-explorer-lab):
- *   Row 0  (frames  0-11):  Stone wall / carved block tiles
- *   Row 1  (frames 12-23):  Stone floor tiles (basic walkable)
- *   Row 2  (frames 24-35):  Stone floor variants (darker, worn)
- *   Row 3  (frames 36-47):  Props — stairs, chests, barrels, bones
- *   Rows 4+ :               Sprite characters, items, weapons
+ * Use the tile-explorer-lab (?lab=tile-explorer) to browse frames visually and
+ * verify/update mappings here.
+ *
+ * kenney-tiny-dungeon layout quick-reference (verified via colour analysis):
+ *   Rows 0–2  (frames  0–35): Warm pink/brown wall blocks + cool blue-gray accents
+ *   Row  3    (frames 36–47): Blue-gray stone blocks (f36–f40) + warm props (f41–f47)
+ *   Row  4    (frames 48–59): Floor tiles — warm tan (f48–f53) + cool blue-gray (f54–f59)
+ *   Rows 5–7  (frames 60–95): Items, weapons, UI elements
+ *   Rows 8–10 (frames 96–131): Characters (player, enemies, NPCs)
+ *
+ * kenney-tiny-town layout quick-reference (verified via colour analysis):
+ *   Row  0    (frames  0–11): Grass tiles (f0–f8) + brown dirt/road (f9–f11)
+ *   Rows 1–3  (frames 12–47): More grass variants, path/tan floors, tree tops
+ *   Row  4    (frames 48–59): Blue-gray tiles (water/stone)
+ *   Rows 6+   (frames 72+):   Buildings, walls, characters
+ *
+ * kenney-roguelike-rpg-pack layout quick-reference (verified via colour analysis):
+ *   Row  0    (frames  0–56): Bright cyan water (f0–f4), grass (f5), warm terrain (f6+)
+ *                              Hot orange lava/fire tiles at col 49–54
+ *
+ * All mappings in this file are PLACEHOLDER quality — best available from the
+ * current CC0 Kenney sheets. Custom-generated tile sprites will replace them.
+ * Terrain types with no suitable sheet tile are left unmapped and fall back to the
+ * solid-color rendering path defined in src/shared/terrain-colors.ts.
  *
  * Blob-tile autotiling (4-directional)
  * ------------------------------------
@@ -160,41 +179,53 @@ export function resolveFrame(
 }
 
 const TD = 'kenney-tiny-dungeon';
+const TT = 'kenney-tiny-town';
+const RPG = 'kenney-roguelike-rpg-pack';
 
-/** col/row → frame index for kenney-tiny-dungeon (12 columns). */
+/** col/row → frame index for kenney-tiny-dungeon and kenney-tiny-town (both 12 columns). */
 function td(col: number, row: number): number {
   return row * 12 + col;
 }
 
+/** col/row → frame index for kenney-tiny-town (12 columns, same formula as td). */
+function tt(col: number, row: number): number {
+  return row * 12 + col;
+}
+
+/** col/row → frame index for kenney-roguelike-rpg-pack (57 columns). */
+function rpg(col: number, row: number): number {
+  return row * 57 + col;
+}
+
 /**
- * Tile visual map — sparse by design.
+ * Tile visual map — placeholder quality, using best available CC0 Kenney frames.
  *
- * Only TerrainTypes that have confirmed spritesheet coverage are listed here.
- * Add entries as sprites are visually verified in the tile-explorer-lab.
- *
- * NOTE: These frame indices are initial best-guess values derived from the
- * typical Kenney Tiny Dungeon sheet layout. Open the tile-explorer-lab
- * (?lab=tile-explorer) and select 'kenney-tiny-dungeon' to confirm each
- * frame before shipping a floor that relies on these.
+ * All entries here are interim placeholders; custom-generated sprites will
+ * replace them. Terrain types with no suitable sheet tile remain unmapped and
+ * fall back to the solid-color rendering path (terrain-colors.ts):
+ *   - VOID   → near-black solid (0x05060f)
+ *   - LAVA   → deep red solid   (0xb91c1c)
  *
  * Blob-tile `frames` arrays
  * -------------------------
  * Each 16-entry array is indexed by the 4-dir neighbor mask (N=bit0, E=bit1,
- * S=bit2, W=bit3).  All entries currently default to the base `frame` value
- * and must be tuned in ?lab=tile-render-lab once the sheet layout is confirmed
- * in ?lab=tile-explorer.  Replace each entry with the correct frame index for
- * that connectivity pattern and the renderer will pick it up automatically.
+ * S=bit2, W=bit3). The Tiny Dungeon sheet has no directional wall corner
+ * variants, so every mask entry uses the same frame — this keeps wall areas
+ * cohesive rather than mixing in unrelated tiles. Tune these in
+ * ?lab=tile-render-lab once purpose-built autotile sheets are available.
  */
 export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>> = {
-  // ── Dungeon biome ──────────────────────────────────────────────────────────
-  /** Basic walkable stone floor (clean tan, frame 48). Row 4, col 0. */
+  // ── Stone dungeon biome ────────────────────────────────────────────────────
+
+  /**
+   * Stone floor — warm sandy tan (row 4, col 0; ~rgb 234,165,108).
+   * Classic cut-stone dungeon room floor.
+   */
   [TerrainType.STONE_FLOOR]: { sheetKey: TD, frame: td(0, 4) },
 
   /**
-   * Stone wall block (clean grey brick, frame 40) with 4-dir autotiling.
-   * The Tiny Dungeon sheet has no directional wall corner variants, so every
-   * mask entry uses the same clean block; this keeps walls cohesive instead of
-   * mixing in grated/banded tiles.
+   * Stone wall block — mid blue-gray (row 3, col 4; ~rgb 123,138,163) with
+   * 4-dir autotiling. Reads as dressed stone blocks.
    */
   [TerrainType.STONE_WALL]: {
     sheetKey: TD,
@@ -220,56 +251,121 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   },
 
   /**
-   * Corridor floor — speckled tan variant (frame 49) to distinguish narrow
-   * passages from open rooms. Row 4, col 1.
+   * Corridor floor — cool blue-gray (row 4, col 9; ~rgb 120,129,152).
+   * Visually cooler and darker than the warm stone room floor, distinguishing
+   * cut-stone passages from open rooms at a glance.
    */
-  [TerrainType.CORRIDOR]: { sheetKey: TD, frame: td(1, 4) },
+  [TerrainType.CORRIDOR]: { sheetKey: TD, frame: td(9, 4) },
 
   /**
-   * Door tile — rendered via the door overlay system but also given a base
-   * floor sprite (frame 48) so the path through the door reads as walkable
-   * floor. Row 4, col 0.
+   * Door tile — base floor sprite so the passable path reads as walkable;
+   * the door overlay system draws the actual door glyph on top.
    */
   [TerrainType.DOOR]: { sheetKey: TD, frame: td(0, 4) },
 
   // ── Cave biome ─────────────────────────────────────────────────────────────
-  /** Cave floor — speckled tan (frame 49). Row 4, col 1. */
-  [TerrainType.CAVE_FLOOR]: { sheetKey: TD, frame: td(1, 4) },
 
   /**
-   * Cave wall — same clean grey brick block (frame 40) with 4-dir autotiling.
+   * Cave floor — dark blue-gray (row 4, col 6; ~rgb 88,97,122).
+   * Noticeably darker than the stone corridor floor, giving organic caves a
+   * distinctly different look from cut-stone areas.
+   */
+  [TerrainType.CAVE_FLOOR]: { sheetKey: TD, frame: td(6, 4) },
+
+  /**
+   * Cave wall — very dark blue-gray (row 0, col 9; ~rgb 74,77,98) with 4-dir
+   * autotiling. Much darker than STONE_WALL, reads as raw uncut rock.
    */
   [TerrainType.CAVE_WALL]: {
     sheetKey: TD,
-    frame: td(4, 3),
+    frame: td(9, 0),
     frames: [
-      td(4, 3), //  0: isolated
-      td(4, 3), //  1: N
-      td(4, 3), //  2: E
-      td(4, 3), //  3: N+E
-      td(4, 3), //  4: S
-      td(4, 3), //  5: N+S
-      td(4, 3), //  6: E+S
-      td(4, 3), //  7: N+E+S
-      td(4, 3), //  8: W
-      td(4, 3), //  9: N+W
-      td(4, 3), // 10: E+W
-      td(4, 3), // 11: N+E+W
-      td(4, 3), // 12: S+W
-      td(4, 3), // 13: N+S+W
-      td(4, 3), // 14: E+S+W
-      td(4, 3), // 15: N+E+S+W
+      td(9, 0), //  0: isolated
+      td(9, 0), //  1: N
+      td(9, 0), //  2: E
+      td(9, 0), //  3: N+E
+      td(9, 0), //  4: S
+      td(9, 0), //  5: N+S
+      td(9, 0), //  6: E+S
+      td(9, 0), //  7: N+E+S
+      td(9, 0), //  8: W
+      td(9, 0), //  9: N+W
+      td(9, 0), // 10: E+W
+      td(9, 0), // 11: N+E+W
+      td(9, 0), // 12: S+W
+      td(9, 0), // 13: N+S+W
+      td(9, 0), // 14: E+S+W
+      td(9, 0), // 15: N+E+S+W
     ],
   },
 
-  // ── Rubble ─────────────────────────────────────────────────────────────────
-  /** Rubble / debris tile. Row 2, col 2. */
+  // ── Surface-world imported biome ───────────────────────────────────────────
+
+  /**
+   * Wood floor — warm brown plank (tiny-town row 3, col 8; ~rgb 136,88,71).
+   * Used for surface-world rooms transported into the dungeon.
+   */
+  [TerrainType.WOOD_FLOOR]: { sheetKey: TT, frame: tt(8, 3) },
+
+  /**
+   * Wood wall — warm red-brown facade (tiny-town row 6, col 1; ~rgb 192,114,78).
+   * Replaces the previous blue-gray stone stand-in.
+   */
+  [TerrainType.WOOD_WALL]: { sheetKey: TT, frame: tt(1, 6) },
+
+  // ── Outdoor / natural terrain ──────────────────────────────────────────────
+
+  /**
+   * Grass — bright green (tiny-town row 0, col 0; ~rgb 132,198,105).
+   * Used for outdoor-feel surface rooms and naturalist floors.
+   */
+  [TerrainType.GRASS]: { sheetKey: TT, frame: tt(0, 0) },
+
+  /**
+   * Dirt — warm brown (tiny-town row 0, col 3; ~rgb 158,112,63).
+   * Paths, earthen floors, and exposed ground.
+   */
+  [TerrainType.DIRT]: { sheetKey: TT, frame: tt(3, 0) },
+
+  /**
+   * Tree — green canopy top (tiny-town row 3, col 7; ~rgb 143,195,130).
+   * Impassable solid; renders the tree-top silhouette.
+   */
+  [TerrainType.TREE]: { sheetKey: TT, frame: tt(7, 3) },
+
+  /**
+   * Water — bright cyan (RPG pack row 0, col 0; ~rgb 99,197,207).
+   * Shallow-water passable tiles; the brighter hue reads clearly against the
+   * muted dungeon palette.
+   */
+  [TerrainType.WATER]: { sheetKey: RPG, frame: rpg(0, 0) },
+
+  /**
+   * Lava — hot orange (RPG pack row 0, col 49; ~rgb 187,95,37).
+   * Impassable; the saturated orange contrasts sharply with stone and cave.
+   */
+  [TerrainType.LAVA]: { sheetKey: RPG, frame: rpg(49, 0) },
+
+  // ── Special room floors ────────────────────────────────────────────────────
+
+  /**
+   * Rubble / debris tile (row 2, col 2; ~rgb 130,106,113).
+   */
   [TerrainType.RUBBLE]: { sheetKey: TD, frame: td(2, 2) },
 
-  // ── Boss/Safe room floors ───────────────────────────────────────────────────
-  [TerrainType.BOSS_STAIR_FLOOR]: { sheetKey: TD, frame: td(0, 4) },
-  [TerrainType.SAFE_ROOM_FLOOR]: { sheetKey: TD, frame: td(1, 4) },
-  [TerrainType.WOOD_WALL]: { sheetKey: TD, frame: td(0, 3) },
+  /**
+   * Boss / staircase room floor — slightly darker warm tan (row 4, col 4;
+   * ~rgb 219,146,95). A subtle step darker than the standard stone floor so
+   * the boss room reads as distinct without jarring contrast.
+   */
+  [TerrainType.BOSS_STAIR_FLOOR]: { sheetKey: TD, frame: td(4, 4) },
+
+  /**
+   * Safe room floor — cool medium blue (row 4, col 10; ~rgb 115,119,140).
+   * The cooler blue tone reinforces the "backstage commercial break" calm
+   * intended for safe rooms.
+   */
+  [TerrainType.SAFE_ROOM_FLOOR]: { sheetKey: TD, frame: td(10, 4) },
 } as const;
 
 /**
