@@ -3,6 +3,8 @@ name: Copilot Review Comment Ping
 on:
   pull_request_review:
     types: [submitted]
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions:
   contents: read
@@ -12,8 +14,13 @@ permissions:
 jobs:
   ping-copilot-on-review-comments:
     name: File issue for open Copilot review comments
-    # Only run when the reviewer is the Copilot code-review bot.
-    if: ${{ github.event.review.user.login == 'copilot-pull-request-reviewer[bot]' }}
+    # Run for Copilot review submissions (bot/app identities) and for PR-target
+    # fallback events so we still scan when review-triggered runs are blocked.
+    if: >-
+      ${{
+        github.event_name == 'pull_request_target' ||
+        github.event_name == 'pull_request_review'
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Collect unresolved threads and file issue
@@ -28,7 +35,12 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const prNumber = context.payload.pull_request.number;
-            const reviewHtmlUrl = context.payload.review.html_url;
+            const reviewHtmlUrl =
+              context.payload.review?.html_url ?? context.payload.pull_request.html_url;
+            const copilotReviewAuthors = new Set([
+              'copilot-pull-request-reviewer[bot]',
+              'copilot',
+            ]);
 
             // If the PR is already merged there is nothing left to fix — close any
             // open tracking issue and bail out.
@@ -87,7 +99,8 @@ jobs:
             const openThreads = threads.filter((t) => {
               if (t.isResolved || t.isOutdated) return false;
               const firstComment = t.comments.nodes[0];
-              return firstComment?.author?.login === 'copilot-pull-request-reviewer[bot]';
+              const authorLogin = firstComment?.author?.login?.toLowerCase();
+              return authorLogin ? copilotReviewAuthors.has(authorLogin) : false;
             });
 
             if (openThreads.length === 0) {
