@@ -1,0 +1,26 @@
+{
+  "date": "2026-06-22",
+  "slug": "weapon-skills-accuracy",
+  "persona": "Producer",
+  "estimate": 5,
+  "actual": 5,
+  "verdict": "accurate",
+  "label": "Massive",
+  "description": "Weapon class/type skill taxonomy (17 new skills), accuracy stat + roll system, WeaponDef augmentation (15 weapons), skill registry expansion, weaponSystem combat loop integration, new lab, 18 unit tests.",
+  "files_created": [
+    "src/shared/weapon-skills.ts",
+    "src/labs/weapon-skill-lab/index.ts",
+    "tests/game/weapon-skills.test.ts",
+    "docs/knowledge/handoffs/2026-06-22-weapon-skills-accuracy.md"
+  ],
+  "files_modified": [
+    "src/shared/skills.ts",
+    "src/shared/stats.ts",
+    "src/shared/stat-display.ts",
+    "src/shared/weaponDefs.ts",
+    "src/core/components.ts",
+    "src/game/skills/registry.ts",
+    "src/game/weaponSystem.ts",
+    "src/lab-main.ts"
+  ]
+}
