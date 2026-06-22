@@ -388,8 +388,9 @@ describe('enemyAISystem', () => {
       );
     }
 
-    // The leap is a deliberate, gentler hop (≈1.7× base speed) so it stays
-    // hittable, but is still clearly faster than the slow prep crouch.
+    // The leap is a deliberate, gentler hop (≈1.5× base speed, with a bonus-speed
+    // floor) so it stays hittable, but is still clearly faster than the slow prep
+    // crouch.
     expect(observedLeapSpeed).toBeGreaterThan(1.5);
   });
 

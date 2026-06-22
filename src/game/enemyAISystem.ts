@@ -66,7 +66,10 @@ const SLIME_PREP_MAX_FRAMES = 24;
 const SLIME_LEAP_MIN_FRAMES = 6;
 const SLIME_LEAP_MAX_FRAMES = 9;
 const SLIME_PREP_SPEED_MULT = 0.25;
-const SLIME_LEAP_SPEED_MULT = 1.7;
+// The leap reads as "jump quickly, maybe 1.5x speed". The bonus floor keeps the
+// hop visibly fast for very slow slimes whose 1.5x is still sluggish. A slower
+// leap also keeps the pounce hittable (it cannot blink through a strike).
+const SLIME_LEAP_SPEED_MULT = 1.5;
 const SLIME_LEAP_BONUS_SPEED = 0.6;
 // Lateral arc applied across the leap so the pounce curves instead of tracking
 // in a dead-straight line. Peaks at mid-leap (parabolic) and returns to zero.
