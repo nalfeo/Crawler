@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-21",
+  "slug": "manual-preview-slot",
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "on-target",
+  "notes": "Added preview base path and a workflow_dispatch Pages deploy that publishes a single /preview slot from any ref and comments the URL on the PR."
+}
