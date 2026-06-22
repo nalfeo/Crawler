@@ -266,36 +266,40 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   // ── Cave biome ─────────────────────────────────────────────────────────────
 
   /**
-   * Cave floor — dark blue-gray (row 4, col 6; ~rgb 88,97,122).
-   * Noticeably darker than the stone corridor floor, giving organic caves a
-   * distinctly different look from cut-stone areas.
+   * Cave floor — warm earthen tan with scattered pebbles (row 4, col 5;
+   * frame 53). A continuous, open ground surface (no centred furniture motif)
+   * that reads clearly as walkable cavern floor, in strong value contrast to
+   * the solid CAVE_WALL rock so passages no longer blend into the walls.
    */
-  [TerrainType.CAVE_FLOOR]: { sheetKey: TD, frame: td(6, 4) },
+  [TerrainType.CAVE_FLOOR]: { sheetKey: TD, frame: td(5, 4) },
 
   /**
-   * Cave wall — very dark blue-gray (row 0, col 9; ~rgb 74,77,98) with 4-dir
-   * autotiling. Much darker than STONE_WALL, reads as raw uncut rock.
+   * Cave wall — solid dark earthen rock block (row 0, col 0; frame 0) with
+   * 4-dir autotiling. A fully-filled tile with no interior motif, so it reads
+   * unambiguously as an impassable rock mass rather than a prop; its warm
+   * brown also distinguishes organic caves from the gray cut-stone dungeon
+   * walls.
    */
   [TerrainType.CAVE_WALL]: {
     sheetKey: TD,
-    frame: td(9, 0),
+    frame: td(0, 0),
     frames: [
-      td(9, 0), //  0: isolated
-      td(9, 0), //  1: N
-      td(9, 0), //  2: E
-      td(9, 0), //  3: N+E
-      td(9, 0), //  4: S
-      td(9, 0), //  5: N+S
-      td(9, 0), //  6: E+S
-      td(9, 0), //  7: N+E+S
-      td(9, 0), //  8: W
-      td(9, 0), //  9: N+W
-      td(9, 0), // 10: E+W
-      td(9, 0), // 11: N+E+W
-      td(9, 0), // 12: S+W
-      td(9, 0), // 13: N+S+W
-      td(9, 0), // 14: E+S+W
-      td(9, 0), // 15: N+E+S+W
+      td(0, 0), //  0: isolated
+      td(0, 0), //  1: N
+      td(0, 0), //  2: E
+      td(0, 0), //  3: N+E
+      td(0, 0), //  4: S
+      td(0, 0), //  5: N+S
+      td(0, 0), //  6: E+S
+      td(0, 0), //  7: N+E+S
+      td(0, 0), //  8: W
+      td(0, 0), //  9: N+W
+      td(0, 0), // 10: E+W
+      td(0, 0), // 11: N+E+W
+      td(0, 0), // 12: S+W
+      td(0, 0), // 13: N+S+W
+      td(0, 0), // 14: E+S+W
+      td(0, 0), // 15: N+E+S+W
     ],
   },
 
