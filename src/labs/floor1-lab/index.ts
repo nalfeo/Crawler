@@ -25,8 +25,13 @@ import {
   SHOPKEEPER_EQUIPMENT_COST,
   weaponSystem,
 } from '../../game/index.js';
-import { abilitySystem, levelSystem, skillSystem, statsSystem } from '../../game/systems/index.js';
-import { npcSystem } from '../../core/index.js';
+import {
+  abilitySystem,
+  levelSystem,
+  skillSystem,
+  spendPoints,
+  statsSystem,
+} from '../../game/systems/index.js';
 import {
   confirmFloor1StairDescend,
   meetSpellQuestGiver,
@@ -138,7 +143,7 @@ const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
     hook: 'Loop pre hook',
     implementation: 'Real game implementation',
     activeInFloor1: true,
-    note: 'Updates nearbyPlayer proximity flag for NPC dialogue interactions.',
+    note: 'Updates nearbyPlayer proximity flag for NPC dialogue interactions. Called directly by MainGameScene (not via preSystems hook) between core systems and postSystems.',
   },
   {
     name: 'levelSystem',
@@ -486,7 +491,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       parent: gameHost,
       width: GAME.WIDTH,
       height: GAME.HEIGHT,
-      backgroundColor: '#05070f',
+      backgroundColor: '#111111',
       // Match the real game (src/main.ts): without these, Phaser defaults to
       // LINEAR filtering, which blurs the pixel-art tiles and samples the 1px
       // sheet spacing into dark grid seams — the "muddy" look. Each entry point
@@ -519,6 +524,9 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
           selectSpellFromBossBattle: (world, playerEid, spellId) => {
             selectSpellFromBossBattle(world, playerEid, spellId);
           },
+          allocateStatPoints: (world, _playerEid, allocations) => {
+            spendPoints(world, allocations);
+          },
           shopkeeper: {
             getStage: getShopkeeperStage,
             meet: meetShopkeeper,
@@ -536,7 +544,6 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             weaponSystem,
             enemyAISystem,
             floor1EnemyDirectorSystem,
-            npcSystem,
           ],
           postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
         }),
