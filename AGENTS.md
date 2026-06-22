@@ -8,6 +8,7 @@
 4. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
 5. Run `bash scripts/agent/verify.sh` before committing
 6. Write a handoff file before ending your session
+7. **Unlock the session lock** — run the `gh workflow run` unlock command from the [Session Lock](#session-lock) section
 
 ## Commands
 
@@ -107,6 +108,27 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 > [`.github/extensions/copilot-guards/README.md`](.github/extensions/copilot-guards/README.md)
 > for the full list, bypass mechanism, and rationale for items that are NOT
 > enforced.
+
+## Session Lock
+
+Every push to a `copilot/**` branch automatically sets a `copilot/session-active`
+commit status to **pending**, which blocks merging when branch protection is
+configured (see `.github/workflows/copilot-session-guard.yml` for setup
+instructions).
+
+**At the end of every session**, after writing your handoff, unlock the branch:
+
+```bash
+gh workflow run .github/workflows/copilot-session-guard.yml \
+  --ref main \
+  -f sha="$(git rev-parse HEAD)" \
+  -f state=success \
+  -f description="Session complete"
+```
+
+If the session ended with unresolved issues, use `state=failure` instead.
+The status stays locked until you explicitly unlock it — mid-session pushes
+will re-lock automatically, so you only need to unlock once at the very end.
 
 ## Merge Policy
 
