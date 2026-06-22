@@ -54,49 +54,18 @@ Guard telemetry artifact: `files/guard-telemetry.jsonl`
 {
   "schema": "agent-os-guard-telemetry-summary/v1",
   "artifact": "files/guard-telemetry.jsonl",
-  "events": 30,
+  "events": 6,
   "guards": {
-    "boom": {
-      "crash": 4
-    },
-    "ctx": {
-      "allow": 2
-    },
-    "ctx-a": {
-      "allow": 2
-    },
-    "ctx-b": {
-      "allow": 2
-    },
-    "edit-bad": {
-      "bypass": 2
-    },
     "edit-guard-self-protection": {
       "ask": 4
     },
-    "pr-a": {
+    "pr-preflight": {
       "deny": 2
-    },
-    "pr-b": {
-      "deny": 2
-    },
-    "pr-hard": {
-      "deny": 2
-    },
-    "pr-warn": {
-      "allow": 2
-    },
-    "shell-a": {
-      "deny": 2
-    },
-    "shell-bad": {
-      "deny": 4
     }
   },
   "tools": {
-    "create_pull_request": 8,
-    "edit": 12,
-    "powershell": 10
+    "create_pull_request": 2,
+    "edit": 4
   }
 }
 ```

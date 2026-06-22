@@ -86,4 +86,24 @@ describe('guard telemetry docs helpers', () => {
       },
     });
   });
+
+  it('skips malformed JSONL lines instead of throwing', () => {
+    const events = parseGuardTelemetryJsonl(
+      [
+        '{"guard_id":"pr-preflight","tool_name":"create_pull_request","decision":"deny","ts":"2026-06-21T00:00:00.000Z"}',
+        '{"guard_id":"truncated"',
+      ].join('\n'),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0]?.guard_id).toBe('pr-preflight');
+  });
+
+  it('returns null for malformed handoff JSON blocks', () => {
+    const parsed = parseGuardTelemetrySummaryFromHandoff(
+      `# Session Handoff: Example\n\n## Agent-OS Telemetry\n\n\`\`\`json\n{"schema":"agent-os-guard-telemetry-summary/v1"\n\`\`\`\n`,
+    );
+
+    expect(parsed).toBeNull();
+  });
 });

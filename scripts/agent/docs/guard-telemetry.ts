@@ -48,12 +48,20 @@ interface HandoffTelemetryRecord {
 }
 
 export function parseGuardTelemetryJsonl(text: string): GuardTelemetryEvent[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => JSON.parse(line) as GuardTelemetryEvent)
-    .filter((event) => event.guard_id && event.tool_name && event.decision);
+  const events: GuardTelemetryEvent[] = [];
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    try {
+      const event = JSON.parse(line) as GuardTelemetryEvent;
+      if (event.guard_id && event.tool_name && event.decision) {
+        events.push(event);
+      }
+    } catch {
+      continue;
+    }
+  }
+  return events;
 }
 
 export function summarizeGuardTelemetry(
@@ -97,7 +105,12 @@ export function parseGuardTelemetrySummaryFromHandoff(
   if (!sectionMatch?.[1]) return null;
   const jsonMatch = /```json\s*([\s\S]*?)```/.exec(sectionMatch[1]);
   if (!jsonMatch?.[1]) return null;
-  const parsed = JSON.parse(jsonMatch[1]) as GuardTelemetrySummary;
+  let parsed: GuardTelemetrySummary;
+  try {
+    parsed = JSON.parse(jsonMatch[1]) as GuardTelemetrySummary;
+  } catch {
+    return null;
+  }
   if (parsed?.schema !== HANDOFF_SUMMARY_SCHEMA) return null;
   if (typeof parsed.events !== 'number' || !parsed.guards || !parsed.tools) return null;
   return parsed;
