@@ -1,10 +1,10 @@
 /**
- * LevelUpUI — the level-up stat-allocation overlay.
+ * LevelUpUI — the level-up core-stat allocation overlay.
  *
  * Shown by `MainGameScene` when `world.state === 'level_up'` and the player has
- * unspent points. The player distributes points across the gameplay stats with
- * per-row −/+ controls (or keyboard), previews the resulting value, and confirms
- * to spend them. Any points left unspent are banked toward the next level.
+ * unspent points. The player distributes points across the PRIMARY_STATS (Strength,
+ * Dexterity, …) which then derive STAT_KEYS gameplay values via CORE_STAT_GAINS.
+ * Any points left unspent are banked toward the next level.
  *
  * All allocation/clamp/navigation rules live in the pure
  * `shared/level-up-allocation` module; this file only renders that state and
@@ -15,8 +15,8 @@
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
 import { fitUiScale } from './ui-scale.js';
-import { STAT_KEYS, STAT_POINT_INCREMENT, type StatKey } from '../shared/stats.js';
-import { STAT_DISPLAY, formatStatValue, formatStatIncrement } from '../shared/stat-display.js';
+import { PRIMARY_STATS, type PrimaryStatId } from '../shared/stats.js';
+import { PRIMARY_STAT_DISPLAY, formatCoreStatGains } from '../shared/stat-display.js';
 import {
   cancel,
   confirm,
@@ -37,13 +37,13 @@ export interface LevelUpUIParams {
   readonly level: number;
   /** Unspent points available to allocate this opening. */
   readonly available: number;
-  /** Current gameplay stat values, keyed by StatKey. */
-  readonly currentStats: Readonly<Record<StatKey, number>>;
+  /** Current core-stat point allocations, keyed by PrimaryStatId. */
+  readonly currentStats: Readonly<Record<PrimaryStatId, number>>;
 }
 
 export interface LevelUpUIHooks {
-  /** Called once when the player confirms; receives the points to spend. */
-  readonly onConfirm: (allocations: Partial<Record<StatKey, number>>) => void;
+  /** Called once when the player confirms; receives the core-stat points to spend. */
+  readonly onConfirm: (allocations: Partial<Record<PrimaryStatId, number>>) => void;
 }
 
 export interface LevelUpUI {
@@ -55,7 +55,7 @@ export interface LevelUpUI {
    * AI exercises the actual level-up UX instead of bypassing it. No-op unless the
    * screen is currently open.
    */
-  autoResolve(allocations: Partial<Record<StatKey, number>>): void;
+  autoResolve(allocations: Partial<Record<PrimaryStatId, number>>): void;
   close(): void;
   isOpen(): boolean;
   destroy(): void;
@@ -68,7 +68,7 @@ const ROW_GAP = 4;
 const HEADER_HEIGHT = 70;
 const FOOTER_HEIGHT = 64;
 const PANEL_HEIGHT =
-  HEADER_HEIGHT + STAT_KEYS.length * (ROW_HEIGHT + ROW_GAP) + FOOTER_HEIGHT + PANEL_PADDING;
+  HEADER_HEIGHT + PRIMARY_STATS.length * (ROW_HEIGHT + ROW_GAP) + FOOTER_HEIGHT + PANEL_PADDING;
 
 const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: 'monospace',
@@ -168,8 +168,8 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     dynamicNodes = [];
   };
 
-  const previewValue = (stat: StatKey, draftPoints: number): number =>
-    (params?.currentStats[stat] ?? 0) + draftPoints * STAT_POINT_INCREMENT[stat];
+  const previewValue = (stat: PrimaryStatId, draftPoints: number): number =>
+    (params?.currentStats[stat] ?? 0) + draftPoints;
 
   const layoutPanel = (): void => {
     backdrop.setSize(viewWidth(), viewHeight());
@@ -252,8 +252,8 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
 
     const rowsTop = panelY + HEADER_HEIGHT;
     const active = selectedStat(state);
-    for (let index = 0; index < STAT_KEYS.length; index += 1) {
-      const stat = STAT_KEYS[index]!;
+    for (let index = 0; index < PRIMARY_STATS.length; index += 1) {
+      const stat = PRIMARY_STATS[index]!;
       const rowY = rowsTop + index * (ROW_HEIGHT + ROW_GAP);
       const isSelected = stat === active;
       const draftPoints = state.draft[stat];
@@ -275,16 +275,17 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       overlay.add(row);
 
       const marker = isSelected ? '▶ ' : '  ';
+      const currentPts = params?.currentStats[stat] ?? 0;
       const label = crispText(
         left + 10,
         rowY + 4,
-        `${marker}${STAT_DISPLAY[stat].label}`,
+        `${marker}${PRIMARY_STAT_DISPLAY[stat].label}`,
         LABEL_STYLE,
       );
       const value = crispText(
         left + 10,
         rowY + 21,
-        `${formatStatValue(stat, params.currentStats[stat] ?? 0)}  (${formatStatIncrement(stat)}/pt)`,
+        `${currentPts} pts  (${formatCoreStatGains(stat)}/pt)`,
         VALUE_STYLE,
       );
       dynamicNodes.push(label, value);
@@ -294,7 +295,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
         const preview = crispText(
           left + 220,
           rowY + 12,
-          `→ ${formatStatValue(stat, previewValue(stat, draftPoints))}  (+${draftPoints})`,
+          `→ ${previewValue(stat, draftPoints)} pts  (+${draftPoints})`,
           PREVIEW_STYLE,
         );
         dynamicNodes.push(preview);
@@ -319,8 +320,13 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       addButton(plusX, btnY, '+', remaining > 0, () => dispatch(incrementStat(state!, stat)));
     }
 
-    const footerTop = rowsTop + STAT_KEYS.length * (ROW_HEIGHT + ROW_GAP) + 4;
-    const desc = crispText(left, footerTop, STAT_DISPLAY[active].description, DESCRIPTION_STYLE);
+    const footerTop = rowsTop + PRIMARY_STATS.length * (ROW_HEIGHT + ROW_GAP) + 4;
+    const desc = crispText(
+      left,
+      footerTop,
+      PRIMARY_STAT_DISPLAY[active].description,
+      DESCRIPTION_STYLE,
+    );
     dynamicNodes.push(desc);
     overlay.add(desc);
 
@@ -438,14 +444,14 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       state = createLevelUpAllocationState(nextParams.available);
       rerender();
     },
-    autoResolve(allocations: Partial<Record<StatKey, number>>): void {
+    autoResolve(allocations: Partial<Record<PrimaryStatId, number>>): void {
       if (!state || state.status !== 'open') {
         return;
       }
       // Drive the real reducers point-by-point so the same clamp/selection rules
       // a human's clicks go through are exercised, then confirm (which closes the
       // overlay and fires onConfirm with the resulting draft).
-      for (const stat of STAT_KEYS) {
+      for (const stat of PRIMARY_STATS) {
         const points = allocations[stat] ?? 0;
         for (let i = 0; i < points; i += 1) {
           dispatch(incrementStat(state, stat));

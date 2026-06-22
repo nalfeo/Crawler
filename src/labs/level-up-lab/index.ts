@@ -16,7 +16,7 @@ import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/index.js';
 import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import { spendPoints, statsSystem } from '../../game/systems/statsSystem.js';
-import { STAT_KEYS } from '../../shared/stats.js';
+import { PRIMARY_STATS } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -64,9 +64,9 @@ function createLevelUpLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       world.playerLevel.unspentPoints += settings.pointsToGrant;
       world.playerLevel.level += 1;
     }
-    const currentStats = {} as Record<(typeof STAT_KEYS)[number], number>;
-    for (const stat of STAT_KEYS) {
-      currentStats[stat] = world.stores.stats[stat][playerEid] ?? 0;
+    const currentStats = {} as Record<(typeof PRIMARY_STATS)[number], number>;
+    for (const stat of PRIMARY_STATS) {
+      currentStats[stat] = world.stores.coreStatPoints[stat][playerEid] ?? 0;
     }
     levelUpUI.open({
       level: world.playerLevel.level,

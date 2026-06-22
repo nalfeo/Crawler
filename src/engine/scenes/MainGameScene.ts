@@ -46,7 +46,7 @@ import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
-import { STAT_KEYS, type StatKey } from '../../shared/stats.js';
+import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import {
@@ -134,7 +134,7 @@ export interface MainGameSceneOptions {
   allocateStatPoints?: (
     world: GameWorld,
     playerEid: number,
-    allocations: Partial<Record<StatKey, number>>,
+    allocations: Partial<Record<PrimaryStatId, number>>,
   ) => void;
   /**
    * Optional AI driver for the level-up screen. When set, the scene lets the
@@ -147,7 +147,7 @@ export interface MainGameSceneOptions {
     world: GameWorld,
     playerEid: number,
     available: number,
-  ) => Partial<Record<StatKey, number>>;
+  ) => Partial<Record<PrimaryStatId, number>>;
 }
 
 declare global {
@@ -1757,9 +1757,9 @@ export class MainGameScene extends Phaser.Scene {
     if (available <= 0 || this.playerEid < 0) {
       return;
     }
-    const currentStats = {} as Record<StatKey, number>;
-    for (const stat of STAT_KEYS) {
-      currentStats[stat] = this.world.stores.stats[stat][this.playerEid] ?? 0;
+    const currentStats = {} as Record<PrimaryStatId, number>;
+    for (const stat of PRIMARY_STATS) {
+      currentStats[stat] = this.world.stores.coreStatPoints[stat][this.playerEid] ?? 0;
     }
     this.levelUpUI.open({
       level: this.world.playerLevel.level,

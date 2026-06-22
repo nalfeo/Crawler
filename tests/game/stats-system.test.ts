@@ -9,7 +9,7 @@ import {
   addStatModifier,
   removeStatModifiers,
 } from '../../src/game/systems/statsSystem.js';
-import { STAT_BASE, STAT_POINT_INCREMENT, STAT_MIN } from '../../src/shared/stats.js';
+import { STAT_BASE, STAT_MIN, CORE_STAT_GAINS } from '../../src/shared/stats.js';
 
 function setupPlayerWithStats(seed = 42) {
   const world = createTestWorld({ seed });
@@ -36,7 +36,7 @@ describe('statsSystem', () => {
     expect(world.statsDirty).toBe(true);
   });
 
-  it('computes base stats from STAT_BASE when no points or modifiers', () => {
+  it('computes base stats from STAT_BASE when no core points or modifiers', () => {
     const { world, player } = setupPlayerWithStats();
     statsSystem(world);
     expect(world.stores.stats.maxHp[player]).toBeCloseTo(STAT_BASE.maxHp);
@@ -49,20 +49,42 @@ describe('statsSystem', () => {
     statsSystem(world);
     expect(world.statsDirty).toBe(false);
   });
+
+  it('derives maxHp from constitution points', () => {
+    const { world, player } = setupPlayerWithStats();
+    statsSystem(world);
+    world.playerLevel.unspentPoints = 3;
+    spendPoints(world, { constitution: 3 });
+    statsSystem(world);
+    const expected = STAT_BASE.maxHp + 3 * (CORE_STAT_GAINS.constitution.maxHp ?? 0);
+    expect(world.stores.stats.maxHp[player]).toBeCloseTo(expected);
+  });
+
+  it('derives armor and damage from strength points', () => {
+    const { world, player } = setupPlayerWithStats();
+    statsSystem(world);
+    world.playerLevel.unspentPoints = 2;
+    spendPoints(world, { strength: 2 });
+    statsSystem(world);
+    const expectedArmor = STAT_BASE.armor + 2 * (CORE_STAT_GAINS.strength.armor ?? 0);
+    const expectedDamage = STAT_BASE.damage + 2 * (CORE_STAT_GAINS.strength.damage ?? 0);
+    expect(world.stores.stats.armor[player]).toBeCloseTo(expectedArmor);
+    expect(world.stores.stats.damage[player]).toBeCloseTo(expectedDamage);
+  });
 });
 
 describe('spendPoints', () => {
-  it('adds point bonuses and marks dirty', () => {
+  it('adds core-stat points, reduces unspent, and marks dirty', () => {
     const { world, player } = setupPlayerWithStats();
-    statsSystem(world); // initial
+    statsSystem(world);
     world.playerLevel.unspentPoints = 5;
-    spendPoints(world, { maxHp: 2, damage: 1 });
+    spendPoints(world, { constitution: 2, strength: 1 });
     expect(world.playerLevel.unspentPoints).toBe(2);
     expect(world.statsDirty).toBe(true);
 
-    statsSystem(world); // recompute
-    const expectedMaxHp = STAT_BASE.maxHp + 2 * STAT_POINT_INCREMENT.maxHp;
-    const expectedDamage = STAT_BASE.damage + 1 * STAT_POINT_INCREMENT.damage;
+    statsSystem(world);
+    const expectedMaxHp = STAT_BASE.maxHp + 2 * (CORE_STAT_GAINS.constitution.maxHp ?? 0);
+    const expectedDamage = STAT_BASE.damage + 1 * (CORE_STAT_GAINS.strength.damage ?? 0);
     expect(world.stores.stats.maxHp[player]).toBeCloseTo(expectedMaxHp);
     expect(world.stores.stats.damage[player]).toBeCloseTo(expectedDamage);
   });
@@ -70,16 +92,14 @@ describe('spendPoints', () => {
   it('throws when spending more points than available', () => {
     const { world } = setupPlayerWithStats();
     world.playerLevel.unspentPoints = 2;
-    expect(() => spendPoints(world, { maxHp: 3 })).toThrow();
+    expect(() => spendPoints(world, { constitution: 3 })).toThrow();
   });
 
   it('throws for unknown allocation keys', () => {
     const { world } = setupPlayerWithStats();
     world.playerLevel.unspentPoints = 10;
     expect(() =>
-      spendPoints(world, { lucky: 1 } as unknown as Partial<
-        Record<keyof typeof STAT_BASE, number>
-      >),
+      spendPoints(world, { lucky: 1 } as unknown as Parameters<typeof spendPoints>[1]),
     ).toThrow();
   });
 });
