@@ -22,7 +22,7 @@ import { getUiScale, onUiScaleChange } from './ui-scale.js';
  * too aggressively. A conservative cap keeps mobile text/icons larger while
  * avoiding overlap. At scale 1 (desktop) the layout is pixel-identical.
  */
-const HUD_MAX_SCALE = 1.4;
+const HUD_MAX_SCALE = 1.6;
 
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;

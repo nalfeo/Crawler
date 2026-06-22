@@ -21,8 +21,9 @@ describe('createFloor1MainSceneOptions', () => {
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(false);
 
-    // The Spell Broker only offers the quest once the player has reached level 2.
+    // The Spell Broker only offers the quest once the welcome Goon quest is done.
     world.playerLevel.level = 2;
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
     options.spellQuestGiver.meet(world);
 
     expect(world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)).toBe(true);

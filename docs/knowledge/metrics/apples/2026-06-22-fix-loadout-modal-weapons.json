@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-22",
+  "slug": "fix-loadout-modal-weapons",
+  "estimate": 1,
+  "actual": 1,
+  "verdict": "on-target",
+  "note": "Single data file fix; root cause was manifest not updated after weapons-sprites overhaul."
+}
