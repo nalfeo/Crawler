@@ -43,20 +43,36 @@ const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
 // Distance (px) at which a slime stops chasing normally and commits to a pounce.
 // Outside this range the slime paths toward the player like a normal enemy.
-const SLIME_LEAP_RANGE = 144;
-// Short anticipation crouch before the pounce — kept brief so it reads as a
-// quick coil rather than a long hesitation.
-const SLIME_PREP_MIN_FRAMES = 6;
-const SLIME_PREP_MAX_FRAMES = 11;
-// A longer, committed leap so the pounce travels far and reads as dramatic.
-const SLIME_LEAP_MIN_FRAMES = 11;
-const SLIME_LEAP_MAX_FRAMES = 16;
+// Kept tight so the slime only pounces from close range and spends most of its
+// time in the slow, hittable approach rather than juking from afar.
+const SLIME_LEAP_RANGE = 96;
+// Inner range (px) below which a slime stops pouncing and reverts to a normal,
+// slow, hittable approach. Once the slime is already in melee range, continuing
+// to juke makes it impossible for a melee attacker to land a killing blow — the
+// slime blinks out of every strike, which deadlocked the headless Floor 1 clear
+// (the AI orbit-strikes at ~36px and could never finish an evasive slime). Below
+// this range the slime closes in like a normal enemy and becomes hittable.
+const SLIME_LEAP_INNER_RANGE = 52;
+// Anticipation crouch before the pounce. This is the slime's slow, hittable
+// recovery/telegraph window: long enough that a melee attacker reliably lands
+// hits between pounces (so a slime cannot chain-pounce out of every strike and
+// stall the floor — that regressed the headless Floor 1 clear; see handoff
+// 2026-06-22) while still reading as a coil-and-spring.
+const SLIME_PREP_MIN_FRAMES = 14;
+const SLIME_PREP_MAX_FRAMES = 24;
+// A brief, low hop rather than a long juking rocket. Short enough and slow
+// enough that the pounce stays inside an orbiting attacker's strike range
+// instead of blinking through it.
+const SLIME_LEAP_MIN_FRAMES = 6;
+const SLIME_LEAP_MAX_FRAMES = 9;
 const SLIME_PREP_SPEED_MULT = 0.25;
-const SLIME_LEAP_SPEED_MULT = 3.6;
+const SLIME_LEAP_SPEED_MULT = 1.7;
 const SLIME_LEAP_BONUS_SPEED = 0.6;
 // Lateral arc applied across the leap so the pounce curves instead of tracking
 // in a dead-straight line. Peaks at mid-leap (parabolic) and returns to zero.
-const SLIME_LEAP_ARC = 0.55;
+// Kept small so the pounce stays readable and hittable rather than juking the
+// player entirely.
+const SLIME_LEAP_ARC = 0.15;
 const SLIME_WIGGLE_BLEND = 0.7;
 const SLIME_WIGGLE_FREQUENCY = 0.35;
 const FIREBALL_DEF = getWeaponDef('fireball');
@@ -110,6 +126,32 @@ function getSlimeLeapStateMap(world: GameWorld): Map<number, SlimeLeapState> {
     slimeLeapStatesByWorld.set(world, map);
   }
   return map;
+}
+
+/**
+ * Deterministic per-slime leap/prep duration in `[min, max]` frames.
+ *
+ * Intentionally does NOT draw from `world.rng`: the leap cadence is a cosmetic
+ * movement flourish, and consuming the shared gameplay RNG here would shift the
+ * entire deterministic stream that drives world generation, loot, spawns, and
+ * the headless AI's own decisions. That coupling regressed the Floor 1
+ * completion gate (a "known-good" seed reshuffled into a stuck run). Deriving
+ * the duration from a stable hash of `eid` and `frameCount` keeps every slime's
+ * timing varied and deterministic while leaving the gameplay RNG untouched.
+ */
+function deterministicLeapDuration(
+  eid: number,
+  frameCount: number,
+  min: number,
+  max: number,
+): number {
+  // FNV-1a-style integer mix over (eid, frameCount) for a well-distributed hash.
+  let h = 2166136261;
+  h = Math.imul(h ^ (eid | 0), 16777619);
+  h = Math.imul(h ^ (frameCount | 0), 16777619);
+  h ^= h >>> 15;
+  const range = max - min + 1;
+  return min + ((h >>> 0) % range);
 }
 
 function setVelocity(world: GameWorld, eid: number, x: number, y: number): void {
@@ -180,10 +222,17 @@ function applyIdleWander(world: GameWorld, eid: number, speed: number): void {
   setNavigatingVelocity(world, eid, state.dirX, state.dirY, Math.max(0.2, speed * 0.45));
 }
 
-function createSlimePrepState(world: GameWorld, previousSign = 1): SlimeLeapState {
+function createSlimePrepState(world: GameWorld, eid: number, previousSign = 1): SlimeLeapState {
   return {
     phase: 'prep',
-    untilFrame: world.frameCount + world.rng.nextInt(SLIME_PREP_MIN_FRAMES, SLIME_PREP_MAX_FRAMES),
+    untilFrame:
+      world.frameCount +
+      deterministicLeapDuration(
+        eid,
+        world.frameCount,
+        SLIME_PREP_MIN_FRAMES,
+        SLIME_PREP_MAX_FRAMES,
+      ),
     leapDirX: 0,
     leapDirY: 0,
     wiggleSign: previousSign,
@@ -201,14 +250,19 @@ function applySlimeLeapBehavior(
   const slimeMap = getSlimeLeapStateMap(world);
   let state = slimeMap.get(eid);
   if (!state) {
-    state = createSlimePrepState(world, world.rng.next() < 0.5 ? -1 : 1);
+    state = createSlimePrepState(world, eid, (eid & 1) === 0 ? -1 : 1);
     slimeMap.set(eid, state);
   }
 
   if (world.frameCount >= state.untilFrame) {
     if (state.phase === 'prep') {
       const toPlayer = normalize(playerDx, playerDy);
-      const leapFrames = world.rng.nextInt(SLIME_LEAP_MIN_FRAMES, SLIME_LEAP_MAX_FRAMES);
+      const leapFrames = deterministicLeapDuration(
+        eid,
+        world.frameCount,
+        SLIME_LEAP_MIN_FRAMES,
+        SLIME_LEAP_MAX_FRAMES,
+      );
       state.phase = 'leap';
       state.leapTotalFrames = leapFrames;
       state.untilFrame = world.frameCount + leapFrames;
@@ -218,7 +272,13 @@ function applySlimeLeapBehavior(
     } else {
       state.phase = 'prep';
       state.untilFrame =
-        world.frameCount + world.rng.nextInt(SLIME_PREP_MIN_FRAMES, SLIME_PREP_MAX_FRAMES);
+        world.frameCount +
+        deterministicLeapDuration(
+          eid,
+          world.frameCount,
+          SLIME_PREP_MIN_FRAMES,
+          SLIME_PREP_MAX_FRAMES,
+        );
     }
   }
 
@@ -1149,12 +1209,18 @@ export function enemyAISystem(world: GameWorld): void {
 
     const usePathing = floorMap !== null && persona !== PATH_PERSONA.STUPID;
 
-    if (behaviorType === AI_TYPE.LEAPER && distanceToPlayer <= SLIME_LEAP_RANGE) {
+    if (
+      behaviorType === AI_TYPE.LEAPER &&
+      distanceToPlayer <= SLIME_LEAP_RANGE &&
+      distanceToPlayer > SLIME_LEAP_INNER_RANGE
+    ) {
       applySlimeLeapBehavior(world, eid, playerDx, playerDy, speed);
     } else if (behaviorType === AI_TYPE.LEAPER) {
-      // Detected but still out of pounce range: reset the leap cadence and close
-      // the gap with normal movement (so the short crouch + leap only triggers
-      // once the slime is actually close enough to commit).
+      // Either still out of pounce range, or already inside the inner range where
+      // the slime should stop juking and close like a normal enemy so a melee
+      // attacker can actually land the killing blow. Reset the leap cadence and
+      // fall through to normal movement (the short crouch + leap only triggers in
+      // the pounce band between the inner range and SLIME_LEAP_RANGE).
       getSlimeLeapStateMap(world).delete(eid);
       if (usePathing) {
         applyPathDrivenBehavior(

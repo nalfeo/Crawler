@@ -365,7 +365,9 @@ describe('enemyAISystem', () => {
   it('makes leaper enemies pause-wiggle before fast leaps', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 120, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
+    // Spawn inside the pounce band: beyond the inner range (where the slime
+    // reverts to a hittable normal approach) but within SLIME_LEAP_RANGE.
+    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
 
     enemyAISystem(world);
     const firstSpeed = Math.hypot(
@@ -386,7 +388,9 @@ describe('enemyAISystem', () => {
       );
     }
 
-    expect(observedLeapSpeed).toBeGreaterThan(2);
+    // The leap is a deliberate, gentler hop (≈1.7× base speed) so it stays
+    // hittable, but is still clearly faster than the slow prep crouch.
+    expect(observedLeapSpeed).toBeGreaterThan(1.5);
   });
 
   it('keeps room enemies idle until their room door opens', () => {
