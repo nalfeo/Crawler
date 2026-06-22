@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { neighborMask } from '../../src/engine/sprites/tile-visuals.js';
+import {
+  getTileVisual,
+  neighborMask,
+  resolveFrame,
+} from '../../src/engine/sprites/tile-visuals.js';
 import { TerrainType } from '../../src/shared/map-types.js';
 
 // Helper — build a flat terrain array from a 2-D string grid.
@@ -84,5 +88,44 @@ describe('neighborMask', () => {
     const { terrain, width, height } = makeMap(['.W', 'WW']);
     // tile (1,1): S and E are out-of-bounds → bits 0 (N) and 3 (W) = 9
     expect(neighborMask(terrain, width, height, 1, 1, TerrainType.STONE_WALL)).toBe(9);
+  });
+});
+
+describe('tile visuals mapping and frame resolution', () => {
+  it('maps updated cave/corridor/safe-room placeholders to expected frames', () => {
+    expect(getTileVisual(TerrainType.CAVE_WALL)?.frame).toBe(0);
+    expect(getTileVisual(TerrainType.CAVE_FLOOR)?.frame).toBe(53);
+    expect(getTileVisual(TerrainType.CORRIDOR)?.frame).toBe(8);
+    expect(getTileVisual(TerrainType.SAFE_ROOM_FLOOR)?.frame).toBe(9);
+  });
+
+  it('leaves known broken placeholders unmapped so renderers use color fallback', () => {
+    expect(getTileVisual(TerrainType.LAVA)).toBeUndefined();
+    expect(getTileVisual(TerrainType.DIRT)).toBeUndefined();
+    expect(getTileVisual(TerrainType.WOOD_FLOOR)).toBeUndefined();
+  });
+
+  it('resolveFrame returns base frame for non-autotiled terrain', () => {
+    const visual = getTileVisual(TerrainType.CORRIDOR);
+    expect(visual).toBeDefined();
+    const { terrain, width, height } = makeMap(['...', '.W.', '...']);
+    expect(resolveFrame(visual!, terrain, width, height, 1, 1, TerrainType.CORRIDOR)).toBe(8);
+  });
+
+  it('resolveFrame uses the neighbour mask for blob-tile autotiling', () => {
+    const visual = getTileVisual(TerrainType.CAVE_WALL);
+    expect(visual?.frames).toBeDefined();
+    const terrain = new Uint8Array([
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+      TerrainType.CAVE_WALL,
+    ]);
+    expect(resolveFrame(visual!, terrain, 3, 3, 1, 1, TerrainType.CAVE_WALL)).toBe(0);
   });
 });
