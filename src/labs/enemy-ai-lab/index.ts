@@ -29,6 +29,7 @@ interface EnemyAiLabSettings {
   chaseSpeed: number;
   swarmSpeed: number;
   rangedSpeed: number;
+  leaperSpeed: number;
   aggroRange: number;
   attackRange: number;
 }
@@ -77,7 +78,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Move with WASD or arrow keys. Spawn chasers, swarmers, and ranged enemies to compare their movement live.';
+    'Move with WASD or arrow keys. Spawn chasers, swarmers, ranged, and leapers (slimes) to compare their movement live. Keep moving near a leaper to watch it pounce, miss, and freeze.';
   hint.style.marginTop = '16px';
   hint.style.color = '#d7d2ff';
   hint.style.lineHeight = '1.6';
@@ -90,6 +91,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     chaseSpeed: 1.8,
     swarmSpeed: 1.4,
     rangedSpeed: 1.1,
+    leaperSpeed: 1.5,
     aggroRange: 260,
     attackRange: 180,
     ...(loadLabState<EnemyAiLabSettings>(LAB_ID) ?? {}),
@@ -98,6 +100,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   let spawnChasersFromGui = () => undefined;
   let spawnSwarmFromGui = () => undefined;
   let spawnRangedFromGui = () => undefined;
+  let spawnLeapersFromGui = () => undefined;
   let clearEnemiesFromGui = () => undefined;
   let resetFromGui = () => undefined;
   let syncSettingsFromGui = () => undefined;
@@ -145,6 +148,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.spawnGroup(AI_TYPE.CHASE, 5);
       this.spawnGroup(AI_TYPE.SWARM, 10);
       this.spawnGroup(AI_TYPE.RANGED, 5);
+      this.spawnGroup(AI_TYPE.LEAPER, 4);
 
       this.bridge = createPhaserBridge(this);
       this.bridge.sync(this.world);
@@ -158,6 +162,9 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       };
       spawnRangedFromGui = () => {
         this.spawnGroup(AI_TYPE.RANGED, 5);
+      };
+      spawnLeapersFromGui = () => {
+        this.spawnGroup(AI_TYPE.LEAPER, 4);
       };
       clearEnemiesFromGui = () => {
         this.clearEnemies();
@@ -178,6 +185,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         spawnChasersFromGui = () => undefined;
         spawnSwarmFromGui = () => undefined;
         spawnRangedFromGui = () => undefined;
+        spawnLeapersFromGui = () => undefined;
         clearEnemiesFromGui = () => undefined;
         resetFromGui = () => undefined;
         syncSettingsFromGui = () => undefined;
@@ -324,6 +332,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           return { x: centerX, y: centerY - GROUP_OFFSET };
         case AI_TYPE.RANGED:
           return { x: centerX + GROUP_OFFSET, y: centerY };
+        case AI_TYPE.LEAPER:
+          return { x: centerX, y: centerY + GROUP_OFFSET };
         case AI_TYPE.CHASE:
         default:
           return { x: centerX - GROUP_OFFSET, y: centerY };
@@ -336,6 +346,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           return settings.swarmSpeed;
         case AI_TYPE.RANGED:
           return settings.rangedSpeed;
+        case AI_TYPE.LEAPER:
+          return settings.leaperSpeed;
         case AI_TYPE.CHASE:
         default:
           return settings.chaseSpeed;
@@ -399,6 +411,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       let chasers = 0;
       let swarmers = 0;
       let ranged = 0;
+      let leapers = 0;
 
       for (const eid of query(this.world.ecs, [Enemy, EnemyBehavior])) {
         const behaviorType = this.world.stores.enemyBehavior.type[eid] ?? AI_TYPE.CHASE;
@@ -407,6 +420,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           swarmers += 1;
         } else if (behaviorType === AI_TYPE.RANGED) {
           ranged += 1;
+        } else if (behaviorType === AI_TYPE.LEAPER) {
+          leapers += 1;
         } else {
           chasers += 1;
         }
@@ -417,9 +432,9 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
       info.textContent = [
         `Player HP: ${playerHealth.toFixed(0)}  State: ${this.world.state}`,
-        `Chasers: ${chasers}  Swarm: ${swarmers}  Ranged: ${ranged}`,
+        `Chasers: ${chasers}  Swarm: ${swarmers}  Ranged: ${ranged}  Leapers: ${leapers}`,
         `Aggro: ${settings.aggroRange.toFixed(0)}  Attack: ${settings.attackRange.toFixed(0)}`,
-        `Speeds → Chase ${settings.chaseSpeed.toFixed(1)} | Swarm ${settings.swarmSpeed.toFixed(1)} | Ranged ${settings.rangedSpeed.toFixed(1)}`,
+        `Speeds → Chase ${settings.chaseSpeed.toFixed(1)} | Swarm ${settings.swarmSpeed.toFixed(1)} | Ranged ${settings.rangedSpeed.toFixed(1)} | Leaper ${settings.leaperSpeed.toFixed(1)}`,
       ].join('\n');
     }
   }
@@ -434,6 +449,9 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     spawnRanged: () => {
       spawnRangedFromGui();
     },
+    spawnLeapers: () => {
+      spawnLeapersFromGui();
+    },
     clearEnemies: () => {
       clearEnemiesFromGui();
     },
@@ -445,6 +463,7 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   gui.add(controlsApi, 'spawnChasers').name('Spawn Chasers (5)');
   gui.add(controlsApi, 'spawnSwarm').name('Spawn Swarm (10)');
   gui.add(controlsApi, 'spawnRanged').name('Spawn Ranged (5)');
+  gui.add(controlsApi, 'spawnLeapers').name('Spawn Leapers (4)');
   gui
     .add(settings, 'chaseSpeed', 0.5, 5, 0.1)
     .name('Chase Speed')
@@ -456,6 +475,10 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   gui
     .add(settings, 'rangedSpeed', 0.5, 3, 0.1)
     .name('Ranged Speed')
+    .onChange(() => syncSettingsFromGui());
+  gui
+    .add(settings, 'leaperSpeed', 0.5, 3, 0.1)
+    .name('Leaper Speed')
     .onChange(() => syncSettingsFromGui());
   gui
     .add(settings, 'aggroRange', 50, 400, 5)
