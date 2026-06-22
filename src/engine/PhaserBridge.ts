@@ -907,7 +907,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         lastRenderMs === null ? 16 : Math.max(1, Math.min(50, renderElapsedMs - lastRenderMs));
       lastRenderMs = renderElapsedMs;
       if (goreVfx) {
-        goreVfx.update(world, renderElapsedMs, deltaMs);
+        goreVfx.update(world, renderElapsedMs, deltaMs, interpAlpha);
       }
       // Process combat VFX (floating damage numbers)
       combatVfx.update(world, renderElapsedMs);

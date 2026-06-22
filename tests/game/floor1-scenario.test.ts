@@ -266,6 +266,7 @@ describe('floor1Scenario', () => {
 
     expect(objective.questCompleted).toBe(false);
     world.playerLevel.level = 2;
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
     meetSpellQuestGiver(world);
     world.stores.position.x[player] = objective.slimeRatRoomPos.x;
     world.stores.position.y[player] = objective.slimeRatRoomPos.y;
@@ -312,6 +313,7 @@ describe('floor1Scenario', () => {
     initializeFloor1Scenario(world, player);
     selectFloor1StarterWeapon(world, 0);
     world.playerLevel.level = 2;
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
 
     const objective = world.floor1?.objective;
     if (!objective) {
@@ -356,8 +358,7 @@ describe('floor1Scenario', () => {
       const world = createTestWorld({ seed: 5 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
-
-      // The opening "find the welcome room" quest is the only one accepted at init.
+      selectFloor1StarterWeapon(world, 0);
       expect(world.questLog.has(FLOOR1_FIND_WELCOME_QUEST_ID)).toBe(true);
       expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
       expect(world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID)).toBe(false);
@@ -372,15 +373,18 @@ describe('floor1Scenario', () => {
       expect(isQuestComplete(world, FLOOR1_FIND_WELCOME_QUEST_ID)).toBe(true);
       expect(world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID)).toBe(true);
 
-      // The merchant errand is gated behind reaching level 2.
+      // The merchant errand is gated behind completing the goon's level-2 quest.
       world.playerLevel.level = 1;
       meetShopkeeper(world);
       questSystem(world);
       expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(false);
       expect(getShopkeeperStage(world)).toBe('not-met');
 
-      // At level 2 the merchant finally offers the errand.
+      // Once the goon's quest completes (reach level 2), the merchant offers the errand.
       world.playerLevel.level = 2;
+      floorObjectiveSystem(world);
+      questSystem(world);
+      expect(world.goalFlags.get('floor1-leveling-quest-complete')).toBe(true);
       meetShopkeeper(world);
       questSystem(world);
       expect(world.questLog.has(FLOOR1_SHOP_QUEST_ID)).toBe(true);
@@ -393,6 +397,7 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(world, player);
       selectFloor1StarterWeapon(world, 0);
       world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
       world.playerGold = SHOPKEEPER_EQUIPMENT_COST + 10;
       const bag = world.inventories.get(player)!;
 
@@ -435,6 +440,7 @@ describe('floor1Scenario', () => {
       const bag = world.inventories.get(player)!;
       world.playerGold = SHOPKEEPER_EQUIPMENT_COST - 1;
       world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
 
       meetShopkeeper(world);
       addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
@@ -450,6 +456,7 @@ describe('floor1Scenario', () => {
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
       world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
       meetShopkeeper(world);
 
       expect(returnShopkeeperPrize(world, player)).toBe(false);
