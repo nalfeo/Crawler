@@ -6,8 +6,9 @@ import { createTestWorld } from '../helpers/world-factory.js';
 /**
  * `computeAutoStatAllocation` is the pure decision the AI playthrough feeds into
  * BOTH the headless runner (`spendPoints`) and the in-browser level-up modal
- * (`LevelUpUI.autoResolve`). The survival-tiered spend order is: armor→5,
- * maxHp→6, armor→11, then dump the remainder into maxHp.
+ * (`LevelUpUI.autoResolve`). With the core-stat system the survival-tiered spend
+ * order is: strength→5 (armor), constitution→6 (maxHp heals), strength→11
+ * (boss armor), then dump the remainder into constitution.
  */
 describe('computeAutoStatAllocation', () => {
   const setup = () => {
@@ -27,27 +28,36 @@ describe('computeAutoStatAllocation', () => {
     expect(computeAutoStatAllocation(world, playerEid, Number.NaN)).toEqual({});
   });
 
-  it('front-loads armor up to the swarm floor (5) for a fresh player', () => {
+  it('front-loads strength (→ armor) up to the swarm floor (5) for a fresh player', () => {
     const { world, playerEid } = setup();
-    expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ armor: 3 });
-    expect(computeAutoStatAllocation(world, playerEid, 5)).toEqual({ armor: 5 });
+    expect(computeAutoStatAllocation(world, playerEid, 3)).toEqual({ strength: 3 });
+    expect(computeAutoStatAllocation(world, playerEid, 5)).toEqual({ strength: 5 });
   });
 
-  it('banks the maxHp cushion (6) after the swarm floor', () => {
+  it('banks constitution (→ maxHp) cushion (6) after the swarm floor', () => {
     const { world, playerEid } = setup();
-    expect(computeAutoStatAllocation(world, playerEid, 11)).toEqual({ armor: 5, maxHp: 6 });
+    expect(computeAutoStatAllocation(world, playerEid, 11)).toEqual({
+      strength: 5,
+      constitution: 6,
+    });
   });
 
-  it('tops armor toward the boss target before dumping the rest into maxHp', () => {
+  it('tops strength toward the boss target before dumping the rest into constitution', () => {
     const { world, playerEid } = setup();
-    expect(computeAutoStatAllocation(world, playerEid, 12)).toEqual({ armor: 6, maxHp: 6 });
-    expect(computeAutoStatAllocation(world, playerEid, 20)).toEqual({ armor: 11, maxHp: 9 });
+    expect(computeAutoStatAllocation(world, playerEid, 12)).toEqual({
+      strength: 6,
+      constitution: 6,
+    });
+    expect(computeAutoStatAllocation(world, playerEid, 20)).toEqual({
+      strength: 11,
+      constitution: 9,
+    });
   });
 
-  it('accounts for points already spent on a stat', () => {
+  it('accounts for core stat points already spent', () => {
     const { world, playerEid } = setup();
-    world.stores.statPoints.armor[playerEid] = 5;
-    expect(computeAutoStatAllocation(world, playerEid, 6)).toEqual({ maxHp: 6 });
+    world.stores.coreStatPoints.strength[playerEid] = 5;
+    expect(computeAutoStatAllocation(world, playerEid, 6)).toEqual({ constitution: 6 });
   });
 
   it('never spends more than the available points', () => {
@@ -59,10 +69,10 @@ describe('computeAutoStatAllocation', () => {
     }
   });
 
-  it('does not mutate the stat-point stores (pure computation)', () => {
+  it('does not mutate the core stat-point stores (pure computation)', () => {
     const { world, playerEid } = setup();
     computeAutoStatAllocation(world, playerEid, 20);
-    expect(world.stores.statPoints.armor[playerEid]).toBe(0);
-    expect(world.stores.statPoints.maxHp[playerEid]).toBe(0);
+    expect(world.stores.coreStatPoints.strength[playerEid]).toBe(0);
+    expect(world.stores.coreStatPoints.constitution[playerEid]).toBe(0);
   });
 });

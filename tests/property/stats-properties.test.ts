@@ -5,14 +5,17 @@ import { Stats } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { statsSystem, spendPoints, addStatModifier } from '../../src/game/systems/statsSystem.js';
-import { STAT_KEYS, STAT_MIN } from '../../src/shared/stats.js';
+import { PRIMARY_STATS, STAT_KEYS, STAT_MIN } from '../../src/shared/stats.js';
 import { xpThresholdForLevel, xpRequiredForLevel, levelForXp } from '../../src/shared/xpMath.js';
 
 describe('stats invariants (property-based)', () => {
-  it('final stats are always >= STAT_MIN after arbitrary point allocation', () => {
+  it('final stats are always >= STAT_MIN after arbitrary core-stat point allocation', () => {
     fc.assert(
       fc.property(
-        fc.array(fc.integer({ min: 0, max: 5 }), { minLength: 8, maxLength: 8 }),
+        fc.array(fc.integer({ min: 0, max: 5 }), {
+          minLength: PRIMARY_STATS.length,
+          maxLength: PRIMARY_STATS.length,
+        }),
         (pointCounts) => {
           const world = createTestWorld({ seed: 1 });
           const player = spawnPlayer(world, 0, 0);
@@ -21,9 +24,9 @@ describe('stats invariants (property-based)', () => {
           const totalPoints = pointCounts.reduce((a, b) => a + b, 0);
           world.playerLevel.unspentPoints = totalPoints;
 
-          const allocations: Partial<Record<(typeof STAT_KEYS)[number], number>> = {};
-          for (let i = 0; i < STAT_KEYS.length; i++) {
-            const key = STAT_KEYS[i]!;
+          const allocations: Partial<Record<(typeof PRIMARY_STATS)[number], number>> = {};
+          for (let i = 0; i < PRIMARY_STATS.length; i++) {
+            const key = PRIMARY_STATS[i]!;
             if ((pointCounts[i] ?? 0) > 0) {
               allocations[key] = pointCounts[i];
             }

@@ -142,3 +142,45 @@ export const STAT_MIN: Record<StatKey, number> = {
   projectileCount: 0,
   projectileSpeed: 0.1,
 };
+
+// --- Core stat (primary stat) to gameplay stat derivation ---
+
+/**
+ * How many points each PRIMARY_STAT starts with at character creation.
+ * Used for display in the level-up UI ("you have X points in Strength").
+ */
+export const CORE_STAT_BASE: Readonly<Record<PrimaryStatId, number>> = {
+  strength: 0,
+  dexterity: 0,
+  constitution: 0,
+  intelligence: 0,
+  wisdom: 0,
+  charisma: 0,
+  luck: 0,
+};
+
+/**
+ * Per-point contribution of each PRIMARY_STAT to STAT_KEYS gameplay stats.
+ *
+ * When `statsSystem` recomputes, it sums:
+ *   STAT_BASE[key] + (Σ coreStatPoints[p] × CORE_STAT_GAINS[p][key]) + modifiers
+ *
+ * Stats not listed here (wisdom, charisma) are reserved for future systems
+ * (mana, XP multiplier, NPC relations) that do not yet have STAT_KEYS entries.
+ */
+export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<StatKey, number>>>> = {
+  /** Strength: raw damage output and physical resilience. */
+  strength: { damage: 2, armor: 1 },
+  /** Dexterity: speed of attack and foot movement. */
+  dexterity: { attackSpeed: 0.05, moveSpeed: 0.1 },
+  /** Constitution: health pool depth. */
+  constitution: { maxHp: 10 },
+  /** Intelligence: projectile control and arcane precision. */
+  intelligence: { projectileSpeed: 0.05 },
+  /** Wisdom: reserved — will gate mana pool / cooldown reduction. */
+  wisdom: {},
+  /** Charisma: reserved — will affect XP gain and NPC prices. */
+  charisma: {},
+  /** Luck: item magnetism and fortune. */
+  luck: { pickupRange: 4 },
+};

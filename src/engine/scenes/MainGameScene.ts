@@ -40,20 +40,23 @@ import { buildTerrainLayer } from '../terrain-renderer.js';
 import { createInputCapture } from '../InputCapture.js';
 import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
+import { getUiScale, onUiScaleChange } from '../ui-scale.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
-import { STAT_KEYS, type StatKey } from '../../shared/stats.js';
+import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import {
   getNpcDef,
   SHOPKEEPER_DONE_DIALOGUE,
   SHOPKEEPER_EQUIP_HINT_DIALOGUE,
+  SHOPKEEPER_LOCKED_DIALOGUE,
   SHOPKEEPER_RETURN_DIALOGUE,
   SHOPKEEPER_SHOP_DIALOGUE,
+  SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../shared/npc-types.js';
 import type { ShopkeeperStage } from '../../shared/quest-types.js';
 
@@ -109,6 +112,8 @@ export interface MainGameSceneOptions {
     equip: (world: GameWorld, playerEid: number) => boolean;
     equipmentCost: number;
     equipmentName: string;
+    /** True while the merchant is gated behind the welcome-goon quest. */
+    isLocked?: (world: GameWorld) => boolean;
   };
   /** Tutorial Goon callbacks — fired on first player-NPC interaction. */
   tutorialGoon?: {
@@ -116,6 +121,8 @@ export interface MainGameSceneOptions {
   };
   spellQuestGiver?: {
     meet: (world: GameWorld) => void;
+    /** True while the Spell Broker is gated behind the welcome-goon quest. */
+    isLocked?: (world: GameWorld) => boolean;
   };
   /** Spell selection callback for floor1 boss battle reward. */
   selectSpellFromBossBattle?: (world: GameWorld, playerEid: number, spellId: string) => void;
@@ -127,7 +134,7 @@ export interface MainGameSceneOptions {
   allocateStatPoints?: (
     world: GameWorld,
     playerEid: number,
-    allocations: Partial<Record<StatKey, number>>,
+    allocations: Partial<Record<PrimaryStatId, number>>,
   ) => void;
   /**
    * Optional AI driver for the level-up screen. When set, the scene lets the
@@ -140,7 +147,7 @@ export interface MainGameSceneOptions {
     world: GameWorld,
     playerEid: number,
     available: number,
-  ) => Partial<Record<StatKey, number>>;
+  ) => Partial<Record<PrimaryStatId, number>>;
 }
 
 declare global {
@@ -200,8 +207,6 @@ export class MainGameScene extends Phaser.Scene {
 
   private staircaseMarker?: Phaser.GameObjects.Arc;
 
-  private objectiveText?: Phaser.GameObjects.Text;
-
   private loadoutText?: Phaser.GameObjects.Text;
 
   private hudUi?: ReturnType<typeof createHudUI>;
@@ -254,6 +259,8 @@ export class MainGameScene extends Phaser.Scene {
   /** Screen-space interaction hint shown when near an NPC or the stairs. */
   private interactionHint?: Phaser.GameObjects.Text;
 
+  private offInteractionHintScale?: () => void;
+
   /** Screen-space pixel-themed NPC dialogue box shown while a line is active. */
   private dialogueBox?: DialogueBox;
 
@@ -299,6 +306,16 @@ export class MainGameScene extends Phaser.Scene {
   private queuedConversationClose = false;
   /** One-frame latch for opening the abilities configurator from global keyboard capture. */
   private queuedAbilitiesToggle = false;
+  /** One-frame latch set by tapping the on-screen inventory button. */
+  private queuedInventoryToggle = false;
+  /** One-frame latch set by tapping the on-screen equip button. */
+  private queuedEquip = false;
+
+  private inventoryButton?: Phaser.GameObjects.Text;
+
+  private equipButton?: Phaser.GameObjects.Text;
+
+  private offMobileButtonScale?: () => void;
 
   private floorCompletionMessageShown = false;
 
@@ -454,6 +471,14 @@ export class MainGameScene extends Phaser.Scene {
       this.staircaseMarker?.destroy();
       this.stairsLabel?.destroy();
       this.interactionHint?.destroy();
+      this.offInteractionHintScale?.();
+      this.offInteractionHintScale = undefined;
+      this.inventoryButton?.destroy();
+      this.inventoryButton = undefined;
+      this.equipButton?.destroy();
+      this.equipButton = undefined;
+      this.offMobileButtonScale?.();
+      this.offMobileButtonScale = undefined;
       this.dialogueBox?.destroy();
       this.directorCommentaryText?.destroy();
       this.floorCompletionScreen?.destroy();
@@ -461,7 +486,6 @@ export class MainGameScene extends Phaser.Scene {
       this.bossHealthFill?.destroy();
       this.bossHealthLabel?.destroy();
       this.bossHealthName?.destroy();
-      this.objectiveText?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
       this.inventoryUI?.destroy();
@@ -490,7 +514,6 @@ export class MainGameScene extends Phaser.Scene {
       this.bossHealthFill = undefined;
       this.bossHealthLabel = undefined;
       this.bossHealthName = undefined;
-      this.objectiveText = undefined;
       this.loadoutText = undefined;
       this.hudUi = undefined;
       this.keyAbilities = undefined;
@@ -779,36 +802,37 @@ export class MainGameScene extends Phaser.Scene {
     const unlocks = this.world.featureUnlocks;
     const safeCtx = isInSafeContext(this.world);
 
+    // Toggle the on-screen touch buttons in step with the key affordances.
+    this.inventoryButton?.setVisible(unlocks.inventory && safeCtx);
+    this.equipButton?.setVisible(unlocks.equipment && safeCtx);
+
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
-      this.flashHint('Inventory unlocked! Press [I] in a safe room to open your pack.');
+      this.flashHint('Inventory unlocked! Press [I] or tap Bag in a safe room to open your pack.');
     }
     if (unlocks.equipment && !this.equipmentUnlockNotified) {
       this.equipmentUnlockNotified = true;
-      this.flashHint('Equipment unlocked! Press [G] in a safe room to equip your new gear.');
+      this.flashHint('Equipment unlocked! Press [G] or tap Gear in a safe room to equip new gear.');
     }
     if (unlocks.spells && !this.spellsUnlockNotified) {
       this.spellsUnlockNotified = true;
       this.flashHint('Abilities unlocked! Press [B] to open Abilities and configure your bar.');
     }
 
-    if (
-      unlocks.inventory &&
-      safeCtx &&
-      this.keyInventory &&
-      Phaser.Input.Keyboard.JustDown(this.keyInventory)
-    ) {
+    const inventoryToggleRequested =
+      this.queuedInventoryToggle ||
+      Boolean(this.keyInventory && Phaser.Input.Keyboard.JustDown(this.keyInventory));
+    this.queuedInventoryToggle = false;
+    if (unlocks.inventory && safeCtx && inventoryToggleRequested) {
       this.inventoryUI?.toggle(this.world);
     } else if (this.inventoryUI?.isOpen()) {
       this.inventoryUI.refresh(this.world);
     }
 
-    if (
-      unlocks.equipment &&
-      safeCtx &&
-      this.keyEquip &&
-      Phaser.Input.Keyboard.JustDown(this.keyEquip)
-    ) {
+    const equipRequested =
+      this.queuedEquip || Boolean(this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip));
+    this.queuedEquip = false;
+    if (unlocks.equipment && safeCtx && equipRequested) {
       const equipped = this.options.shopkeeper?.equip(this.world, this.playerEid) ?? false;
       if (equipped) {
         this.flashHint('Equipped! The merchant beams with unsettling pride.');
@@ -915,18 +939,6 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private initializeUi(): void {
-    // Objective tracker — top-left, keeps floor1 kill/loot progress
-    this.objectiveText = this.add
-      .text(16, 16, '', {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: '#e5e7eb',
-        backgroundColor: '#111827cc',
-        padding: { x: 10, y: 8 },
-      })
-      .setDepth(1000)
-      .setScrollFactor(0);
-
     // Loadout info overlay — top-center, visible during weapon selection
     this.loadoutText = this.add
       .text(GAME.WIDTH / 2, 56, '', {
@@ -944,14 +956,15 @@ export class MainGameScene extends Phaser.Scene {
     // HUD — health bar, floor timer, minimap
     this.hudUi = createHudUI(this);
 
-    // Screen-space interaction hint — bottom-center, shows [E] Talk / [E] Descend prompts
+    // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHint = this.add
       .text(GAME.WIDTH / 2, GAME.HEIGHT - 56, '', {
         fontFamily: 'monospace',
-        fontSize: '16px',
+        fontSize: '22px',
+        fontStyle: 'bold',
         color: '#fef9c3',
-        backgroundColor: '#422006cc',
-        padding: { x: 14, y: 8 },
+        backgroundColor: '#422006ee',
+        padding: { x: 22, y: 14 },
         align: 'center',
       })
       .setOrigin(0.5, 1)
@@ -962,11 +975,57 @@ export class MainGameScene extends Phaser.Scene {
     this.interactionHint.on('pointerdown', () => {
       this.queuedInteraction = true;
     });
+    const applyInteractionHintScale = (scale: number): void => {
+      this.interactionHint?.setScale(scale);
+    };
+    applyInteractionHintScale(getUiScale(this));
+    this.offInteractionHintScale = onUiScaleChange(this, applyInteractionHintScale);
+
+    // Top-left on-screen buttons for inventory ([I]) and equipment ([G]) so the
+    // pack and gear are reachable on touch devices with no keyboard.
+    const makeCornerButton = (
+      y: number,
+      label: string,
+      onTap: () => void,
+    ): Phaser.GameObjects.Text =>
+      this.add
+        .text(16, y, label, {
+          fontFamily: 'monospace',
+          fontSize: '20px',
+          fontStyle: 'bold',
+          color: '#e5e7eb',
+          backgroundColor: '#1f2937ee',
+          padding: { x: 16, y: 12 },
+          align: 'left',
+        })
+        .setOrigin(0, 0)
+        .setDepth(1100)
+        .setScrollFactor(0)
+        .setInteractive({ useHandCursor: true })
+        .setVisible(false)
+        .on('pointerdown', onTap);
+    this.inventoryButton = makeCornerButton(16, '🎒 Bag', () => {
+      this.queuedInventoryToggle = true;
+    });
+    this.equipButton = makeCornerButton(72, '⚔ Gear', () => {
+      this.queuedEquip = true;
+    });
+    const applyMobileButtonScale = (scale: number): void => {
+      this.inventoryButton?.setScale(scale);
+      this.equipButton?.setScale(scale);
+      // Keep the second button clear of the (scaled) first button.
+      this.equipButton?.setY(16 + (this.inventoryButton?.height ?? 44) * scale + 8);
+    };
+    applyMobileButtonScale(getUiScale(this));
+    this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
 
     // Screen-space NPC dialogue box — bottom-center, well above the interaction hint
     this.dialogueBox = createDialogueBox(this, {
       onClose: () => {
         this.queuedConversationClose = true;
+      },
+      onAdvance: () => {
+        this.queuedInteraction = true;
       },
     });
 
@@ -1522,37 +1581,9 @@ export class MainGameScene extends Phaser.Scene {
     this.updateDirectorCommentary();
 
     if (!this.world.floor1) {
-      this.objectiveText?.setText(`State: ${this.world.state}`);
       this.loadoutText?.setVisible(false);
       return;
     }
-
-    const objective = this.world.floor1.objective;
-    const totalKills = objective.ratsKilled + objective.slimesKilled;
-    const requiredTotalKills = objective.requiredRats + objective.requiredSlimes;
-    const killProgress = Math.min(totalKills, requiredTotalKills);
-    const dropsUnlocked = this.world.goalFlags.get('floor1-drops-unlocked') === true;
-    const reachedLevel2 = this.world.goalFlags.get('floor1-leveling-quest-complete') === true;
-    const questStatus = !dropsUnlocked
-      ? 'Quest 1: talk to Tutorial Goon'
-      : !reachedLevel2
-        ? `Quest 1: reach level 2 (Lv ${this.world.playerLevel.level}/2)`
-        : objective.questCompleted
-          ? 'Quest 2: boss door unlocked'
-          : `Quest 2: kill rats + slimes ${killProgress}/${requiredTotalKills}`;
-    const stairStatus = objective.staircaseSpawned
-      ? 'Stairs: spawned in boss room'
-      : 'Stairs: defeat the boss to spawn';
-    this.objectiveText?.setText(
-      [
-        `Floor 1 Tutorial`,
-        questStatus,
-        `Kill progress: ${killProgress}/${requiredTotalKills}`,
-        `Rats: ${objective.ratsKilled}/${objective.requiredRats}`,
-        `Slimes: ${objective.slimesKilled}/${objective.requiredSlimes}`,
-        stairStatus,
-      ].join('\n'),
-    );
 
     if (this.world.state === 'loadout') {
       const modalOpen = this.modalPicker?.isOpen() ?? false;
@@ -1726,9 +1757,9 @@ export class MainGameScene extends Phaser.Scene {
     if (available <= 0 || this.playerEid < 0) {
       return;
     }
-    const currentStats = {} as Record<StatKey, number>;
-    for (const stat of STAT_KEYS) {
-      currentStats[stat] = this.world.stores.stats[stat][this.playerEid] ?? 0;
+    const currentStats = {} as Record<PrimaryStatId, number>;
+    for (const stat of PRIMARY_STATS) {
+      currentStats[stat] = this.world.stores.coreStatPoints[stat][this.playerEid] ?? 0;
     }
     this.levelUpUI.open({
       level: this.world.playerLevel.level,
@@ -1824,6 +1855,11 @@ export class MainGameScene extends Phaser.Scene {
           instance.dialogueIndex = nextIndex;
           const line = activeDialogue[instance.dialogueIndex] ?? '';
           this.dialogueBox?.showLine(def?.name ?? 'NPC', `"${line}"`);
+          this.dialogueBox?.setHint(
+            instance.dialogueIndex + 1 >= activeDialogue.length
+              ? 'Tap to close ▶'
+              : 'Tap to continue ▶',
+          );
         }
       }
       return;
@@ -1864,6 +1900,9 @@ export class MainGameScene extends Phaser.Scene {
             instance.dialogueIndex = 0;
             const text = activeDialogue[instance.dialogueIndex] ?? activeDialogue[0] ?? '';
             this.dialogueBox?.showLine(def.name, `"${text}"`);
+            this.dialogueBox?.setHint(
+              activeDialogue.length <= 1 ? 'Tap to close ▶' : 'Tap to continue ▶',
+            );
           }
         }
       }
@@ -1913,6 +1952,9 @@ export class MainGameScene extends Phaser.Scene {
       return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
     }
     if (defId === 'shopkeeper' && this.options.shopkeeper) {
+      if (this.options.shopkeeper.isLocked?.(this.world)) {
+        return [...SHOPKEEPER_LOCKED_DIALOGUE];
+      }
       const stage = this.options.shopkeeper.getStage(this.world);
       if (stage === 'complete') {
         return [...SHOPKEEPER_DONE_DIALOGUE];
@@ -1926,6 +1968,9 @@ export class MainGameScene extends Phaser.Scene {
           : [...SHOPKEEPER_SHOP_DIALOGUE];
       }
       // not-met / awaiting-prize: the merchant's initial fetch request.
+    }
+    if (defId === 'spell-quest-giver' && this.options.spellQuestGiver?.isLocked?.(this.world)) {
+      return [...SPELL_QUEST_GIVER_LOCKED_DIALOGUE];
     }
     const def = getNpcDef(defId);
     return def?.dialogue.map((line) => line.text) ?? [];

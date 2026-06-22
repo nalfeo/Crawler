@@ -27,6 +27,8 @@ export interface DialogueBoxOptions {
   bottomY?: number;
   /** Invoked when the close button is clicked. */
   onClose?: () => void;
+  /** Invoked when the player taps the panel body to advance the dialogue. */
+  onAdvance?: () => void;
 }
 
 export interface DialogueBox {
@@ -36,6 +38,8 @@ export interface DialogueBox {
   setBodyVisible(visible: boolean): void;
   /** Toggle the close button independently of the body. */
   setCloseVisible(visible: boolean): void;
+  /** Set the footer hint (e.g. "Tap to continue"). Pass null to hide it. */
+  setHint(hint: string | null): void;
   /** Hide the whole box (body + close button). */
   hide(): void;
   /** Show/hide the entire container. */
@@ -107,6 +111,18 @@ export function createDialogueBox(
     .setOrigin(0, 0)
     .setResolution(Math.max(1, Math.round(baseResolution * uiScale)));
 
+  // Footer hint (e.g. "Tap to continue ▶") — bottom-right, dim gold.
+  const hintText = scene.add
+    .text(width - PAD, 0, '', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: '#fcd34d',
+    })
+    .setOrigin(1, 1)
+    .setResolution(Math.max(1, Math.round(baseResolution * uiScale)))
+    .setVisible(false);
+
   // Beveled close button (top-right of the panel).
   const closeW = 64;
   const closeH = 22;
@@ -142,6 +158,12 @@ export function createDialogueBox(
     closeText,
   ];
 
+  // Tapping the panel body advances the dialogue (mobile-friendly target).
+  if (options.onAdvance) {
+    body.setInteractive({ useHandCursor: true });
+    body.on('pointerdown', () => options.onAdvance?.());
+  }
+
   container.add([
     body,
     bevelTop,
@@ -151,18 +173,23 @@ export function createDialogueBox(
     namePlate,
     nameText,
     bodyText,
+    hintText,
     ...closeParts,
   ]);
 
   let closeVisible = false;
 
+  const HINT_RESERVE = 18;
+
   function relayout(): void {
-    const h = Math.round(PAD + NAME_H + GAP + bodyText.height + PAD);
+    const hintReserve = hintText.visible ? HINT_RESERVE : 0;
+    const h = Math.round(PAD + NAME_H + GAP + bodyText.height + hintReserve + PAD);
     body.setSize(width, h);
     bevelTop.setSize(width, 2);
     bevelLeft.setSize(2, h);
     bevelBottom.setPosition(0, h - 2).setSize(width, 2);
     bevelRight.setPosition(width - 2, 0).setSize(2, h);
+    hintText.setPosition(width - PAD, h - PAD + 2);
     // Scale the whole box, then anchor its (scaled) bottom-centre at the target.
     container.setScale(uiScale);
     container.setPosition(
@@ -179,6 +206,7 @@ export function createDialogueBox(
     nameText.setResolution(resolution);
     bodyText.setResolution(resolution);
     closeText.setResolution(resolution);
+    hintText.setResolution(resolution);
     relayout();
   });
 
@@ -208,6 +236,14 @@ export function createDialogueBox(
       }
     },
     setCloseVisible,
+    setHint(hint: string | null): void {
+      if (hint) {
+        hintText.setText(hint).setVisible(true);
+      } else {
+        hintText.setVisible(false);
+      }
+      relayout();
+    },
     hide(): void {
       setCloseVisible(false);
       container.setVisible(false);

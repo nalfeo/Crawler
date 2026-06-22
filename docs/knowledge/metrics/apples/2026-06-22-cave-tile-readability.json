@@ -4,7 +4,7 @@
   "estimated_apples": 2,
   "actual_apples": 3,
   "delta": 1,
-  "verdict": "underestimated",
-  "hello_kitties": 0.4,
-  "note": "Scope grew after a follow-up full-sweep request: also fixed corridor/safe-room 'bars', lava/dirt/wood placeholder mis-maps."
+  "verdict": "under",
+  "hello_kitties": 0.6,
+  "notes": "Scope grew after a follow-up full-sweep request: also fixed corridor/safe-room 'bars', lava/dirt/wood placeholder mis-maps."
 }
