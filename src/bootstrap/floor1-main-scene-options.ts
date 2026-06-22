@@ -55,12 +55,12 @@ export function createFloor1MainSceneOptions() {
       equip: equipPurchasedGear,
       equipmentCost: SHOPKEEPER_EQUIPMENT_COST,
       equipmentName: MERCHANTS_CHARM_DEF.name,
-      isLocked: (world) => !hasCompletedWelcomeGoonQuest(world),
+      isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
     },
     tutorialGoon: { meet: meetTutorialGoon },
     spellQuestGiver: {
       meet: meetSpellQuestGiver,
-      isLocked: (world) => !hasCompletedWelcomeGoonQuest(world),
+      isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
     },
     preSystems: [
       statsSystem,
