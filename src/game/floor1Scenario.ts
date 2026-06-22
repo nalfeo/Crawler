@@ -1519,12 +1519,23 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 export const FLOOR1_QUEST_UNLOCK_LEVEL = 2;
 
 /**
+ * Whether the contestant has completed the Tutorial Goon's opening quest
+ * ("Trial by XP" — reach level 2). The merchant and Spell Broker refuse to
+ * start their own quests until this is done; until then they send the player
+ * back to the Goon. Drops are locked until the Goon is met, so completing this
+ * quest also guarantees the player has actually spoken to him.
+ */
+export function hasCompletedWelcomeGoonQuest(world: GameWorld): boolean {
+  return world.goalFlags.get('floor1-leveling-quest-complete') === true;
+}
+
+/**
  * Mark the merchant as met (advances the first quest step). The errand only
- * unlocks once the contestant has reached level 2 — before then the merchant
- * has nothing to say.
+ * unlocks once the contestant has finished the Tutorial Goon's opening quest —
+ * before then the merchant just sends them back to the Goon.
  */
 export function meetShopkeeper(world: GameWorld): void {
-  if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
+  if (!hasCompletedWelcomeGoonQuest(world)) {
     return;
   }
   if (!world.questLog.has(FLOOR1_SHOP_QUEST_ID)) {
@@ -1536,11 +1547,11 @@ export function meetShopkeeper(world: GameWorld): void {
 
 /**
  * Mark the spell quest giver as met and accept the Slime Rat quest. Like the
- * merchant, the Spell Broker only offers the quest once the player has reached
- * level 2.
+ * merchant, the Spell Broker only offers the quest once the player has finished
+ * the Tutorial Goon's opening quest.
  */
 export function meetSpellQuestGiver(world: GameWorld): void {
-  if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
+  if (!hasCompletedWelcomeGoonQuest(world)) {
     return;
   }
   if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {

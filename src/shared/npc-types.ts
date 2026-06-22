@@ -143,6 +143,24 @@ export const SHOPKEEPER_DONE_DIALOGUE: readonly string[] = [
   'Looks marvellous on you. Pleasure doing business, contestant. Bring me more tails sometime.',
 ];
 
+/**
+ * Lines shown by the merchant before the player has finished the Tutorial
+ * Goon's opening quest. The merchant refuses to do business and sends them back.
+ */
+export const SHOPKEEPER_LOCKED_DIALOGUE: readonly string[] = [
+  "Whoa — I don't deal with fresh meat. Go check in with the Tutorial Goon first.",
+  'Finish his warm-up, then come back and we can talk business.',
+];
+
+/**
+ * Lines shown by the Spell Broker before the player has finished the Tutorial
+ * Goon's opening quest.
+ */
+export const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
+  'Not yet, contestant. Go see the Tutorial Goon and finish his warm-up first.',
+  "Once the Goon clears you, come back and we'll talk spellbooks.",
+];
+
 const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [TUTORIAL_GOON_DEF.id, TUTORIAL_GOON_DEF],
   [SPELL_QUEST_GIVER_DEF.id, SPELL_QUEST_GIVER_DEF],
