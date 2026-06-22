@@ -11,7 +11,7 @@ describe('floor1Config', () => {
   });
 
   it('should have valid timer configuration', () => {
-    expect(floor1Config.timer.durationMs).toBe(600_000);
+    expect(floor1Config.timer.durationMs).toBe(300_000);
     expect(floor1Config.timer.stairSpawnCountdownMs).toBe(30_000);
   });
 
@@ -25,13 +25,13 @@ describe('floor1Config', () => {
   });
 
   it('should have valid map configuration', () => {
-    expect(floor1Config.map.widthTiles).toBe(240);
-    expect(floor1Config.map.heightTiles).toBe(140);
+    expect(floor1Config.map.widthTiles).toBe(120);
+    expect(floor1Config.map.heightTiles).toBe(70);
     expect(floor1Config.map.tileSizePx).toBe(32);
     expect(floor1Config.map.seed).toBe(42);
-    expect(floor1Config.map.roomWidthRange).toEqual([5, 22]);
-    expect(floor1Config.map.roomHeightRange).toEqual([5, 18]);
-    expect(floor1Config.map.maxRooms).toBe(100);
+    expect(floor1Config.map.roomWidthRange).toEqual([6, 14]);
+    expect(floor1Config.map.roomHeightRange).toEqual([5, 13]);
+    expect(floor1Config.map.maxRooms).toBe(45);
     expect(floor1Config.map.floorDensity).toBe(0.42);
   });
 

@@ -292,7 +292,7 @@ function applyRoomShapes(
 
     const roll = rng.next();
     if (roll < 0.25) {
-      applyEllipseShape(tileMap, terrain, w, rx, ry, rw, rh);
+      applyEllipseShape(tileMap, terrain, w, rx, ry, rw, rh, room.doors);
     } else if (roll < 0.5) {
       applyLShape(tileMap, terrain, w, rx, ry, rw, rh, room.doors, rng);
     }
@@ -312,6 +312,7 @@ function applyEllipseShape(
   ry: number,
   rw: number,
   rh: number,
+  doors: readonly DoorLocation[],
 ): void {
   // Centre of the room (may be fractional)
   const cx = rx + (rw - 1) / 2;
@@ -331,6 +332,8 @@ function applyEllipseShape(
       }
     }
   }
+
+  ensureDoorAccess(tileMap, terrain, w, rx, ry, rw, rh, doors);
 }
 
 /**

@@ -7,6 +7,10 @@ import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
 import { ArenaGenerator } from '../../src/core/map/generators/ArenaGenerator';
 import { getGenerator, getRegisteredBiomes } from '../../src/core/map/generators/registry';
 
+type GeneratedFloor = ReturnType<DungeonGenerator['generate']>;
+type GeneratedRoom = GeneratedFloor['rooms'][number];
+type GeneratedDoor = GeneratedRoom['doors'][number];
+
 /** Small map config for fast test generation. */
 function smallConfig(biome: BiomeType): MapConfig {
   return {
@@ -20,6 +24,42 @@ function smallConfig(biome: BiomeType): MapConfig {
     maxRooms: 10,
     floorDensity: 0.3,
   };
+}
+
+function hasReachableInteriorTile(
+  floor: GeneratedFloor,
+  room: GeneratedRoom,
+  door: GeneratedDoor,
+): boolean {
+  const { x, y, width, height } = room.bounds;
+  const adjacentInteriorTiles: ReadonlyArray<readonly [number, number]> = [
+    [door.x - 1, door.y],
+    [door.x + 1, door.y],
+    [door.x, door.y - 1],
+    [door.x, door.y + 1],
+  ];
+  return adjacentInteriorTiles.some(
+    ([tx, ty]) =>
+      tx > x &&
+      tx < x + width - 1 &&
+      ty > y &&
+      ty < y + height - 1 &&
+      floor.tileMap.isPassable(tx, ty),
+  );
+}
+
+function connectedRoomIds(startId: number, rooms: readonly GeneratedRoom[]): Set<number> {
+  const visited = new Set<number>([startId]);
+  const queue = [startId];
+  while (queue.length > 0) {
+    const roomId = queue.shift()!;
+    for (const neighbor of rooms[roomId]?.neighbors ?? []) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+      queue.push(neighbor);
+    }
+  }
+  return visited;
 }
 
 describe('Map Generators', () => {
@@ -160,24 +200,34 @@ describe('Map Generators', () => {
       expect(walls).toBeGreaterThan(0);
     });
 
-    it('should not produce fewer floor tiles than standard DungeonGenerator', () => {
-      // Room variety can only add tiles (carving + widening), never remove all floor tiles.
-      const baseGen = new DungeonGenerator();
-      const varGen = new DungeonGenerator({ roomVariety: true });
-      const config = smallConfig(BiomeType.DUNGEON);
+    it('should keep every room reachable from the spawn room across representative seeds', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
 
-      const baseFloor = baseGen.generate(config, new SeededRandom(7));
-      // Generate with variety using the same seed
-      const varFloor = varGen.generate(
-        { ...config, biome: BiomeType.BASIC_UNDERGROUND },
-        new SeededRandom(7),
-      );
+      for (const seed of [1, 2, 3, 5, 8, 13, 21]) {
+        const floor = gen.generate(
+          smallConfig(BiomeType.BASIC_UNDERGROUND),
+          new SeededRandom(seed),
+        );
+        if (!floor.spawnRoom) continue;
 
-      const countPassable = (flags: Uint8Array): number =>
-        Array.from(flags).filter((f) => (f & TileFlags.PASSABLE) !== 0).length;
+        expect(connectedRoomIds(floor.spawnRoom.id, floor.rooms).size).toBe(floor.rooms.length);
+      }
+    });
 
-      // Variety map should have at least as many passable tiles (corridors widened, diagonals added)
-      expect(countPassable(varFloor.flags)).toBeGreaterThanOrEqual(countPassable(baseFloor.flags));
+    it('should preserve a passable interior tile next to every room door after reshaping', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+
+      for (const seed of [1, 2, 3, 5, 8, 13, 21]) {
+        const floor = gen.generate(
+          smallConfig(BiomeType.BASIC_UNDERGROUND),
+          new SeededRandom(seed),
+        );
+        for (const room of floor.rooms) {
+          for (const door of room.doors) {
+            expect(hasReachableInteriorTile(floor, room, door)).toBe(true);
+          }
+        }
+      }
     });
   });
 

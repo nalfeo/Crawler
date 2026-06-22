@@ -1,10 +1,10 @@
 {
   "id": "floor1",
-  "name": "Floor 1 - Basic Underground",
+  "name": "Floor 1 - Welcome to the Dungeon",
   "protagonist": "Rhea Vale",
   "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
   "timer": {
-    "durationMs": 600000,
+    "durationMs": 300000,
     "stairSpawnCountdownMs": 30000
   },
   "objectives": {
@@ -16,13 +16,13 @@
     "markerRadiusPx": 64
   },
   "map": {
-    "widthTiles": 240,
-    "heightTiles": 140,
+    "widthTiles": 120,
+    "heightTiles": 70,
     "tileSizePx": 32,
     "seed": 42,
-    "roomWidthRange": [5, 22],
-    "roomHeightRange": [5, 18],
-    "maxRooms": 100,
+    "roomWidthRange": [6, 14],
+    "roomHeightRange": [5, 13],
+    "maxRooms": 45,
     "floorDensity": 0.42
   },
   "enemyPackId": "floor1-ambient",

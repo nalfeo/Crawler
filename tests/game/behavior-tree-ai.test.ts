@@ -5,11 +5,10 @@ import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import {
   initializeFloor1Scenario,
+  meetTutorialGoon,
   selectFloor1StarterWeapon,
 } from '../../src/game/floor1Scenario.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
-import { acceptQuest } from '../../src/core/systems/questSystem.js';
-import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
@@ -57,7 +56,7 @@ const MIN_DIAGONAL_COMPONENT = 0.15;
  * ambient swarm (regression: seed 2 wandered ~285s without a single kill).
  */
 function enterKillGrindStage(world: GameWorld): void {
-  acceptQuest(world, FLOOR1_TUTORIAL_QUEST_ID);
+  meetTutorialGoon(world);
   world.playerLevel.level = 2;
   world.floor1!.objective.questCompleted = false;
 }
@@ -256,13 +255,16 @@ describe('BehaviorTreeAI', () => {
     selectFloor1StarterWeapon(world, 0);
     enterKillGrindStage(world);
     setActiveWeapon(world, getWeaponDef('sword')!);
+    world.floorMap = makeOpenRoom(16, 16);
+    world.stores.position.x[player] = 112;
+    world.stores.position.y[player] = 112;
 
-    // Quest enemy inside the sword strike gate (reach 40px, gate 60px). The old
-    // Progress branch walked straight onto the enemy center; it must now route
-    // through planEngagement and kite (same as Engage/Hunt).
-    const px = world.stores.position.x[player]!;
-    const py = world.stores.position.y[player]!;
-    const rat = spawnEnemy(world, px + 45, py, 20);
+    // Quest enemy inside the sword strike gate (reach 40px, gate 60px). Use an
+    // open-room floor map so the fixture isolates the progress-to-engage handoff
+    // from dungeon reachability noise. The old Progress branch walked straight
+    // onto the enemy center; it must now route through planEngagement and kite
+    // (same as Engage/Hunt).
+    const rat = spawnEnemy(world, 142, 112, 20);
     world.floor1!.enemyArchetypes.set(rat, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 2 });

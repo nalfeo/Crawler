@@ -24,7 +24,7 @@
  *   Rows 8–10 (frames 96–131): Characters (player, enemies, NPCs)
  *
  * kenney-tiny-town layout quick-reference (verified via colour analysis):
- *   Row  0    (frames  0–11): Grass tiles (f0–f8) + brown dirt/road (f9–f11)
+ *   Row  0    (frames  0–11): Grass/earth tiles — bright grass (f0–f2), warm brown dirt (f3), more grass (f4–f8), brown dirt/road (f9–f11)
  *   Rows 1–3  (frames 12–47): More grass variants, path/tan floors, tree tops
  *   Row  4    (frames 48–59): Blue-gray tiles (water/stone)
  *   Rows 6+   (frames 72+):   Buildings, walls, characters
