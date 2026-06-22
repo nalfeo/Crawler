@@ -30,8 +30,9 @@
  *   Rows 6+   (frames 72+):   Buildings, walls, characters
  *
  * kenney-roguelike-rpg-pack layout quick-reference (verified via colour analysis):
- *   Row  0    (frames  0–56): Bright cyan water (f0–f4), grass (f5), warm terrain (f6+)
- *                              Hot orange lava/fire tiles at col 49–54
+ *   Row  0    (frames  0–56): Bright cyan water (f0–f4), grass (f5), warm terrain
+ *                              (f6+), light cobblestone floors (f8–f10). Cols
+ *                              49–54 are hanging banners/curtains (NOT lava).
  *
  * All mappings in this file are PLACEHOLDER quality — best available from the
  * current CC0 Kenney sheets. Custom-generated tile sprites will replace them.
@@ -251,11 +252,12 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   },
 
   /**
-   * Corridor floor — cool blue-gray (row 4, col 9; ~rgb 120,129,152).
-   * Visually cooler and darker than the warm stone room floor, distinguishing
-   * cut-stone passages from open rooms at a glance.
+   * Corridor floor — clean cool-gray cobblestone (RPG pack row 0, col 8;
+   * frame 8). Full-bleed with no transparent gaps, so 1-tile-wide passages no
+   * longer render as vertical "bars". The cool gray distinguishes cut-stone
+   * passages from the warm tan room floor at a glance.
    */
-  [TerrainType.CORRIDOR]: { sheetKey: TD, frame: td(9, 4) },
+  [TerrainType.CORRIDOR]: { sheetKey: RPG, frame: rpg(8, 0) },
 
   /**
    * Door tile — base floor sprite so the passable path reads as walkable;
@@ -305,11 +307,10 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
 
   // ── Surface-world imported biome ───────────────────────────────────────────
 
-  /**
-   * Wood floor — warm brown plank (tiny-town row 3, col 8; ~rgb 136,88,71).
-   * Used for surface-world rooms transported into the dungeon.
-   */
-  [TerrainType.WOOD_FLOOR]: { sheetKey: TT, frame: tt(8, 3) },
+  // WOOD_FLOOR intentionally has no sprite mapping: the only tiny-town wood
+  // frames are plank objects with transparent backgrounds that tile into
+  // disconnected fragments. It falls back to the warm-brown fill in
+  // terrain-colors.ts until a seamless wood-plank floor tile is authored.
 
   /**
    * Wood wall — warm red-brown facade (tiny-town row 6, col 1; ~rgb 192,114,78).
@@ -325,11 +326,10 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
    */
   [TerrainType.GRASS]: { sheetKey: TT, frame: tt(0, 0) },
 
-  /**
-   * Dirt — warm brown (tiny-town row 0, col 3; ~rgb 158,112,63).
-   * Paths, earthen floors, and exposed ground.
-   */
-  [TerrainType.DIRT]: { sheetKey: TT, frame: tt(3, 0) },
+  // DIRT intentionally has no sprite mapping: the available sheet frames are
+  // either prop motifs on transparent backgrounds (tiny-town) or read as gray
+  // stone (RPG pack), neither of which looks like earth. It falls back to the
+  // warm-brown fill in terrain-colors.ts until a proper dirt tile is authored.
 
   /**
    * Tree — green canopy top (tiny-town row 3, col 7; ~rgb 143,195,130).
@@ -344,11 +344,11 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
    */
   [TerrainType.WATER]: { sheetKey: RPG, frame: rpg(0, 0) },
 
-  /**
-   * Lava — hot orange (RPG pack row 0, col 49; ~rgb 187,95,37).
-   * Impassable; the saturated orange contrasts sharply with stone and cave.
-   */
-  [TerrainType.LAVA]: { sheetKey: RPG, frame: rpg(49, 0) },
+  // LAVA intentionally has no sprite mapping: the Kenney sheets carry no clean
+  // molten-lava floor tile (frame rpg(49,0) was actually a hanging banner).
+  // It falls back to the solid deep-red fill in terrain-colors.ts, which reads
+  // as lava far better than any available sheet frame. Replace with a
+  // purpose-built lava tile when custom art lands.
 
   // ── Special room floors ────────────────────────────────────────────────────
 
@@ -365,11 +365,13 @@ export const TILE_SPRITES: Readonly<Partial<Record<TerrainType, TileVisualDef>>>
   [TerrainType.BOSS_STAIR_FLOOR]: { sheetKey: TD, frame: td(4, 4) },
 
   /**
-   * Safe room floor — cool medium blue (row 4, col 10; ~rgb 115,119,140).
-   * The cooler blue tone reinforces the "backstage commercial break" calm
-   * intended for safe rooms.
+   * Safe room floor — clean light-gray flagstone (RPG pack row 0, col 9;
+   * frame 9). Full-bleed (the previous tiny-dungeon frame 58 was a portcullis
+   * sprite with transparent gaps that rendered as vertical "bars"). The calm,
+   * pale stone distinguishes safe rooms from the warm room floor and the darker
+   * corridor cobblestone.
    */
-  [TerrainType.SAFE_ROOM_FLOOR]: { sheetKey: TD, frame: td(10, 4) },
+  [TerrainType.SAFE_ROOM_FLOOR]: { sheetKey: RPG, frame: rpg(9, 0) },
 } as const;
 
 /**
