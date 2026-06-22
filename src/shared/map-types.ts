@@ -61,6 +61,8 @@ export enum BiomeType {
   FIRE_SWAMP = 'fire_swamp',
   TOWN = 'town',
   OPEN_WORLD = 'open_world',
+  /** Starter floor — structured rooms with high variety (round, L-shaped, wide corridors). */
+  BASIC_UNDERGROUND = 'basic_underground',
 }
 
 // --- Map Configuration ---

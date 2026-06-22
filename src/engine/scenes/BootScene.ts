@@ -10,7 +10,12 @@ import {
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 
 const logger = createLogger('engine:boot-scene');
-const CRITICAL_SHEET_KEYS = new Set(['kenney-tiny-dungeon', 'custom-pixel-sprites']);
+const CRITICAL_SHEET_KEYS = new Set([
+  'kenney-tiny-dungeon',
+  'kenney-tiny-town',
+  'kenney-roguelike-rpg-pack',
+  'custom-pixel-sprites',
+]);
 
 export class BootScene extends Phaser.Scene {
   static readonly KEY = 'BootScene';
