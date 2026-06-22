@@ -137,6 +137,14 @@ export const STAT_POINT_INCREMENT: Record<StatKey, number> = {
   pickupRange: 8,
   projectileCount: 1,
   projectileSpeed: 0.05,
+  /**
+   * Direct stat-point allocation to accuracy is not currently exposed in the
+   * level-up UI (accuracy is trained via weapon type skills + dexterity).
+   * This entry satisfies the Record<StatKey> constraint; the value is reserved
+   * for any future direct-allocation path. Dexterity contributes 0.01/pt
+   * (see CORE_STAT_GAINS) — intentionally lower than a direct allocation would
+   * grant, because dexterity also buys attackSpeed and moveSpeed.
+   */
   accuracy: 0.02,
 };
 
