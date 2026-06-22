@@ -197,13 +197,34 @@ jobs:
             --json number,labels \
             --jq '[.[] | select(.labels | map(.name) | index("released") | not)] | .[].number')
 
+          LAB_BASE="${PAGES_URL}dev/lab.html"
+
           for PR in $PR_NUMBERS; do
             echo "Marking PR #$PR as released"
             if ! gh pr edit "$PR" --repo "${{ github.repository }}" --add-label "released"; then
               echo "::warning::Failed to label PR #$PR"
             fi
-            if ! gh pr comment "$PR" --repo "${{ github.repository }}" \
-              --body "🚀 Released in [deploy #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) → [${PAGES_URL}dev/](${PAGES_URL}dev/)"; then
+
+            # Detect relevant labs for this PR's changed files
+            CHANGED_FILES_JSON=$(gh pr view "$PR" --repo "${{ github.repository }}" \
+              --json files --jq '[.files[].path]' 2>/dev/null || echo '[]')
+            RELEVANT_LAB_IDS=$(echo "$CHANGED_FILES_JSON" | \
+              node scripts/agent/pr-lab-links.mjs 2>/dev/null || echo '[]')
+
+            # Build a "Related labs" line when relevant labs were found
+            RELATED_LABS_LINE=$(RELEVANT_LAB_IDS="$RELEVANT_LAB_IDS" LAB_BASE="$LAB_BASE" \
+              node -e "
+                const ids = JSON.parse(process.env.RELEVANT_LAB_IDS);
+                const base = process.env.LAB_BASE;
+                if (ids.length > 0) {
+                  const links = ids.map(id => '[' + id + '](' + base + '?lab=' + id + ')').join(', ');
+                  process.stdout.write('\n\u{1F52C} Related labs: ' + links);
+                }
+              " 2>/dev/null || true)
+
+            BODY="🚀 Released in [deploy #${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) → [${PAGES_URL}dev/](${PAGES_URL}dev/)"$'\n'"🤖 [AI Runner lab](${LAB_BASE}?lab=ai-runner)${RELATED_LABS_LINE}"
+
+            if ! gh pr comment "$PR" --repo "${{ github.repository }}" --body "$BODY"; then
               echo "::warning::Failed to comment on PR #$PR"
             fi
           done
