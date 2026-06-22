@@ -488,12 +488,53 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
   );
 }
 
+/**
+ * Emit weapon_fired skill usage events for the active weapon's class and type skills.
+ * Called on every attack attempt (hit or miss) so skills always progress with use.
+ */
+export function emitWeaponSkillEvents(world: GameWorld, player: number, def: WeaponDef): void {
+  world.skillUsageEvents.push({
+    holderEid: player,
+    skillId: def.weaponClassSkillId,
+    metric: 'weapon_fired',
+    amount: 1,
+  });
+  world.skillUsageEvents.push({
+    holderEid: player,
+    skillId: def.weaponTypeSkillId,
+    metric: 'weapon_fired',
+    amount: 1,
+  });
+}
+
+/**
+ * Compute effective hit chance for an attack.
+ * effectiveAccuracy = clamp(0, 1, def.baseAccuracy + player accuracy bonus)
+ * Traps (TRAP type) always hit regardless of accuracy.
+ */
+export function computeEffectiveAccuracy(world: GameWorld, player: number, def: WeaponDef): number {
+  if (def.weaponType === WeaponType.TRAP) return 1.0;
+  const bonus = hasComponent(world.ecs, player, Stats)
+    ? (world.stores.stats.accuracy[player] ?? 0)
+    : 0;
+  return Math.min(1.0, Math.max(0, def.baseAccuracy + bonus));
+}
+
 function dispatchAttack(
   world: GameWorld,
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
+  // Emit skill progression events on every weapon fire (hit or miss).
+  emitWeaponSkillEvents(world, player, def);
+
+  // Accuracy roll: if the attack misses, skip spawning the attack entity.
+  const effectiveAccuracy = computeEffectiveAccuracy(world, player, def);
+  if (world.rng.next() >= effectiveAccuracy) {
+    return;
+  }
+
   switch (def.weaponType) {
     case WeaponType.MELEE:
       fireMeleeAttack(world, player, def, dir);
