@@ -50,25 +50,7 @@ Hello kitties: 3/5 = 0.60 🎀
 
 Guard telemetry artifact: `files/guard-telemetry.jsonl`
 
-```json
-{
-  "schema": "agent-os-guard-telemetry-summary/v1",
-  "artifact": "files/guard-telemetry.jsonl",
-  "events": 6,
-  "guards": {
-    "edit-guard-self-protection": {
-      "ask": 4
-    },
-    "pr-preflight": {
-      "deny": 2
-    }
-  },
-  "tools": {
-    "create_pull_request": 2,
-    "edit": 4
-  }
-}
-```
+_Telemetry summary omitted from this historical handoff because the previously pasted sample was fixture data, not session capture._
 
 ## Test Results
 
