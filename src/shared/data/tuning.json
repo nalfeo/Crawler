@@ -30,8 +30,8 @@
     "muzzleOffset": 1.5
   },
   "xp": {
-    "basePerLevel": 10,
-    "scalingFactor": 1.15,
+    "basePerLevel": 25,
+    "scalingFactor": 1.2,
     "gemAttractionRadius": 32,
     "dropAmounts": {
       "small": 1,

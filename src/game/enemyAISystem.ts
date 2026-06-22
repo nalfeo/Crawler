@@ -41,13 +41,22 @@ const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Ma
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
 const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
-const SLIME_PREP_MIN_FRAMES = 14;
-const SLIME_PREP_MAX_FRAMES = 26;
-const SLIME_LEAP_MIN_FRAMES = 5;
-const SLIME_LEAP_MAX_FRAMES = 9;
-const SLIME_PREP_SPEED_MULT = 0.4;
-const SLIME_LEAP_SPEED_MULT = 2.2;
-const SLIME_LEAP_BONUS_SPEED = 0.25;
+// Distance (px) at which a slime stops chasing normally and commits to a pounce.
+// Outside this range the slime paths toward the player like a normal enemy.
+const SLIME_LEAP_RANGE = 144;
+// Short anticipation crouch before the pounce — kept brief so it reads as a
+// quick coil rather than a long hesitation.
+const SLIME_PREP_MIN_FRAMES = 6;
+const SLIME_PREP_MAX_FRAMES = 11;
+// A longer, committed leap so the pounce travels far and reads as dramatic.
+const SLIME_LEAP_MIN_FRAMES = 11;
+const SLIME_LEAP_MAX_FRAMES = 16;
+const SLIME_PREP_SPEED_MULT = 0.25;
+const SLIME_LEAP_SPEED_MULT = 3.6;
+const SLIME_LEAP_BONUS_SPEED = 0.6;
+// Lateral arc applied across the leap so the pounce curves instead of tracking
+// in a dead-straight line. Peaks at mid-leap (parabolic) and returns to zero.
+const SLIME_LEAP_ARC = 0.55;
 const SLIME_WIGGLE_BLEND = 0.7;
 const SLIME_WIGGLE_FREQUENCY = 0.35;
 const FIREBALL_DEF = getWeaponDef('fireball');
@@ -77,6 +86,7 @@ interface SlimeLeapState {
   leapDirX: number;
   leapDirY: number;
   wiggleSign: number;
+  leapTotalFrames: number;
 }
 
 const pathStatesByWorld = new WeakMap<GameWorld, Map<number, PathState>>();
@@ -177,6 +187,7 @@ function createSlimePrepState(world: GameWorld, previousSign = 1): SlimeLeapStat
     leapDirX: 0,
     leapDirY: 0,
     wiggleSign: previousSign,
+    leapTotalFrames: 1,
   };
 }
 
@@ -197,9 +208,10 @@ function applySlimeLeapBehavior(
   if (world.frameCount >= state.untilFrame) {
     if (state.phase === 'prep') {
       const toPlayer = normalize(playerDx, playerDy);
+      const leapFrames = world.rng.nextInt(SLIME_LEAP_MIN_FRAMES, SLIME_LEAP_MAX_FRAMES);
       state.phase = 'leap';
-      state.untilFrame =
-        world.frameCount + world.rng.nextInt(SLIME_LEAP_MIN_FRAMES, SLIME_LEAP_MAX_FRAMES);
+      state.leapTotalFrames = leapFrames;
+      state.untilFrame = world.frameCount + leapFrames;
       state.leapDirX = toPlayer.x;
       state.leapDirY = toPlayer.y;
       state.wiggleSign *= -1;
@@ -225,8 +237,16 @@ function applySlimeLeapBehavior(
     return;
   }
 
+  // Leap: travel along the committed direction with a parabolic lateral arc so
+  // the pounce curves dramatically instead of homing in a straight line.
+  const framesIntoLeap = state.leapTotalFrames - Math.max(0, state.untilFrame - world.frameCount);
+  const leapProgress = Math.min(1, Math.max(0, framesIntoLeap / state.leapTotalFrames));
+  const arc = Math.sin(leapProgress * Math.PI) * SLIME_LEAP_ARC * state.wiggleSign;
+  const perpX = -state.leapDirY;
+  const perpY = state.leapDirX;
+  const leapDir = normalize(state.leapDirX + perpX * arc, state.leapDirY + perpY * arc);
   const leapSpeed = Math.max(speed + SLIME_LEAP_BONUS_SPEED, speed * SLIME_LEAP_SPEED_MULT);
-  setNavigatingVelocity(world, eid, state.leapDirX, state.leapDirY, leapSpeed);
+  setNavigatingVelocity(world, eid, leapDir.x, leapDir.y, leapSpeed);
 }
 
 function rotate(x: number, y: number, angle: number): { x: number; y: number } {
@@ -1129,8 +1149,28 @@ export function enemyAISystem(world: GameWorld): void {
 
     const usePathing = floorMap !== null && persona !== PATH_PERSONA.STUPID;
 
-    if (behaviorType === AI_TYPE.LEAPER) {
+    if (behaviorType === AI_TYPE.LEAPER && distanceToPlayer <= SLIME_LEAP_RANGE) {
       applySlimeLeapBehavior(world, eid, playerDx, playerDy, speed);
+    } else if (behaviorType === AI_TYPE.LEAPER) {
+      // Detected but still out of pounce range: reset the leap cadence and close
+      // the gap with normal movement (so the short crouch + leap only triggers
+      // once the slime is actually close enough to commit).
+      getSlimeLeapStateMap(world).delete(eid);
+      if (usePathing) {
+        applyPathDrivenBehavior(
+          world,
+          eid,
+          AI_TYPE.CHASE,
+          playerX,
+          playerY,
+          distanceToPlayer,
+          speed,
+          attackRange,
+          doorRevision,
+        );
+      } else {
+        applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
+      }
     } else if (!usePathing) {
       switch (behaviorType) {
         case AI_TYPE.SWARM:

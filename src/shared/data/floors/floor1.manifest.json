@@ -2,7 +2,7 @@
   "id": "floor1",
   "name": "Floor 1 - Welcome to the Dungeon",
   "protagonist": "Rhea Vale",
-  "starterWeapons": ["sword", "knife", "bow", "pistol", "throwing-knife"],
+  "starterWeapons": ["sword", "bow", "baseball-bat"],
   "timer": {
     "durationMs": 300000,
     "stairSpawnCountdownMs": 30000

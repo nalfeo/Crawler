@@ -1,15 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { xpThresholdForLevel, xpRequiredForLevel, levelForXp } from '../../src/shared/xpMath.js';
+import { XP } from '../../src/shared/constants.js';
 
 describe('xpThresholdForLevel', () => {
-  it('level 0 equals BASE_PER_LEVEL (10)', () => {
-    expect(xpThresholdForLevel(0)).toBe(10);
+  it('level 0 equals BASE_PER_LEVEL', () => {
+    expect(xpThresholdForLevel(0)).toBe(XP.BASE_PER_LEVEL);
   });
 
-  it('returns floor of 10 * 1.15^n', () => {
-    expect(xpThresholdForLevel(1)).toBe(Math.floor(10 * 1.15));
-    expect(xpThresholdForLevel(2)).toBe(Math.floor(10 * 1.15 ** 2));
-    expect(xpThresholdForLevel(5)).toBe(Math.floor(10 * 1.15 ** 5));
+  it('returns floor of BASE_PER_LEVEL * SCALING_FACTOR^n', () => {
+    expect(xpThresholdForLevel(1)).toBe(Math.floor(XP.BASE_PER_LEVEL * XP.SCALING_FACTOR));
+    expect(xpThresholdForLevel(2)).toBe(Math.floor(XP.BASE_PER_LEVEL * XP.SCALING_FACTOR ** 2));
+    expect(xpThresholdForLevel(5)).toBe(Math.floor(XP.BASE_PER_LEVEL * XP.SCALING_FACTOR ** 5));
   });
 
   it('strictly increases', () => {

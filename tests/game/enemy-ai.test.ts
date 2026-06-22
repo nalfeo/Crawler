@@ -346,6 +346,22 @@ describe('enemyAISystem', () => {
     ).toBeGreaterThan(0.1);
   });
 
+  it('moves a leaper toward the player at normal speed while out of pounce range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Spawn well outside the leap range but inside aggro range.
+    const enemy = spawnBehaviorEnemy(world, 300, 0, 20, AI_TYPE.LEAPER, 1, 400, 0);
+
+    enemyAISystem(world);
+
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    // It should commit a normal-speed approach straight at the player (−x), not
+    // a slow sideways prep wiggle.
+    expect(vx).toBeLessThan(-0.5);
+    expect(Math.abs(vy)).toBeLessThan(0.2);
+  });
+
   it('makes leaper enemies pause-wiggle before fast leaps', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
