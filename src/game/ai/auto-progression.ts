@@ -25,7 +25,7 @@ import {
   meetSpellQuestGiver,
   spendPoints,
 } from '../index.js';
-import type { StatKey } from '../../shared/stats.js';
+import type { PrimaryStatId } from '../../shared/stats.js';
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
 export const NPC_INTERACTION_COOLDOWN = 30; // frames
@@ -132,41 +132,33 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
  * it (same pattern as auto-talk / auto-buy / auto-equip). This is legitimate
  * earned progression, not a cheat.
  *
- * Strategy (deterministic, no randomness). The starter sword's melee damage is a
- * FIXED `def.baseDamage`, so the `damage` stat is inert for the headless player —
- * every point on damage is wasted. That leaves armor and maxHp, and the spend
- * ORDER matters as much as the totals, because allocating maxHp grants the delta
- * as immediate current HP (see statsSystem) — i.e. each level-up maxHp point is a
- * +10 HP heal. There is no passive regen on Floor 1, so those level-up heals are
- * the ONLY mid-game sustain the player has before the post-boss heal spell unlocks.
+ * Strategy (deterministic, no randomness). With the core-stat system, points go
+ * into PRIMARY_STATS (Strength, Constitution, …) which derive STAT_KEYS via
+ * CORE_STAT_GAINS:
+ *   - Strength  → +2 Damage · +1 Armor per point
+ *   - Constitution → +10 Max HP per point
  *
- * Armor is flat per-hit mitigation (`damageTaken = max(1, incoming - armor)`) with
- * sharp diminishing returns: it floors swarm contact (~5) at armor 5 and staircase
- * boss melee (12) at armor 11 — beyond those thresholds the extra armor buys
- * nothing for that threat. The previous policy rushed armor to 12 FIRST, which
- * spent the first four level-ups entirely on armor and banked zero maxHp heals
- * through the long, bleed-heavy merchant/spell/gold phase. The player then sat at
- * ~14% HP for the whole mid-game, livelocked near the shopkeeper (retreat at 15%
- * fired before it could close to interact), and arrived at the boss room nearly
- * dead. Spend order is therefore tiered to front-load sustain:
- *   1. Armor -> ARMOR_SWARM_FLOOR (5): stop the mid-game swarm bleed first.
- *   2. maxHp -> MAXHP_CUSHION_POINTS (6): bank ~6 level-up heals + a +60 HP pool
- *      to break the retreat/approach livelock and survive the long mid-game.
- *   3. Armor -> ARMOR_BOSS_TARGET (11): floor the staircase boss's melee.
- *   4. maxHp: dump the entire remainder for pool depth in the boss room.
+ * The starter sword's melee damage is a FIXED `def.baseDamage`, so extra damage
+ * from Strength is wasted. That leaves armor (via Strength) and maxHp (via
+ * Constitution), and the spend ORDER matters — allocating Constitution grants
+ * the maxHp delta as immediate current HP (see statsSystem), so each level-up
+ * Constitution point is a +10 HP heal. There is no passive regen on Floor 1.
  *
- * maxHp is wired through to Health.max (see statsSystem), so points spent here grow
- * the real HP pool — previously this was a no-op and was skipped.
+ * Spend order is tiered to front-load sustain:
+ *   1. Strength → ARMOR_SWARM_FLOOR (5): 5 Strength pts → 5 armor, stops swarm bleed.
+ *   2. Constitution → MAXHP_CUSHION_POINTS (6): 6 pts → +60 HP pool and immediate heals.
+ *   3. Strength → ARMOR_BOSS_TARGET (11): 11 Strength pts → 11 armor, floors boss melee.
+ *   4. Constitution: dump remainder for HP depth in the boss room.
  */
 const ARMOR_SWARM_FLOOR = 5;
 const MAXHP_CUSHION_POINTS = 6;
 const ARMOR_BOSS_TARGET = 11;
 
 /**
- * Compute the survival-tiered stat allocation for `available` unspent points,
- * WITHOUT spending them. Pure read of the player's current `statPoints` stores;
- * returns the per-stat point map to hand to `spendPoints` (or to drive the
- * level-up modal via `LevelUpUI.autoResolve`).
+ * Compute the survival-tiered core-stat allocation for `available` unspent
+ * points, WITHOUT spending them. Pure read of the player's `coreStatPoints`
+ * stores; returns the per-stat point map to hand to `spendPoints` (or to drive
+ * the level-up modal via `LevelUpUI.autoResolve`).
  *
  * Split out from {@link autoAllocateStatPoints} so the in-browser AI Runner Lab
  * can feed the same decision through the real level-up UX (the modal's
@@ -178,36 +170,40 @@ export function computeAutoStatAllocation(
   world: GameWorld,
   playerEid: number,
   available: number,
-): Partial<Record<StatKey, number>> {
-  const allocation: Partial<Record<StatKey, number>> = {};
+): Partial<Record<PrimaryStatId, number>> {
+  const allocation: Partial<Record<PrimaryStatId, number>> = {};
   let remaining = Number.isFinite(available) ? Math.max(0, Math.floor(available)) : 0;
   if (remaining <= 0) {
     return allocation;
   }
 
-  const spendArmorUpTo = (target: number): void => {
-    const current = (world.stores.statPoints.armor[playerEid] ?? 0) + (allocation.armor ?? 0);
+  // Strength → armor (1 strength = 1 armor). Spend strength up to armor target.
+  const spendStrengthUpTo = (target: number): void => {
+    const current =
+      (world.stores.coreStatPoints.strength[playerEid] ?? 0) + (allocation.strength ?? 0);
     const spend = Math.min(Math.max(0, target - current), remaining);
     if (spend > 0) {
-      allocation.armor = (allocation.armor ?? 0) + spend;
+      allocation.strength = (allocation.strength ?? 0) + spend;
       remaining -= spend;
     }
   };
 
-  const spendMaxHpUpTo = (targetPoints: number): void => {
-    const current = (world.stores.statPoints.maxHp[playerEid] ?? 0) + (allocation.maxHp ?? 0);
+  // Constitution → maxHp (+10 maxHp per point). Spend constitution up to target.
+  const spendConstitutionUpTo = (targetPoints: number): void => {
+    const current =
+      (world.stores.coreStatPoints.constitution[playerEid] ?? 0) + (allocation.constitution ?? 0);
     const spend = Math.min(Math.max(0, targetPoints - current), remaining);
     if (spend > 0) {
-      allocation.maxHp = (allocation.maxHp ?? 0) + spend;
+      allocation.constitution = (allocation.constitution ?? 0) + spend;
       remaining -= spend;
     }
   };
 
-  spendArmorUpTo(ARMOR_SWARM_FLOOR);
-  spendMaxHpUpTo(MAXHP_CUSHION_POINTS);
-  spendArmorUpTo(ARMOR_BOSS_TARGET);
+  spendStrengthUpTo(ARMOR_SWARM_FLOOR);
+  spendConstitutionUpTo(MAXHP_CUSHION_POINTS);
+  spendStrengthUpTo(ARMOR_BOSS_TARGET);
   if (remaining > 0) {
-    allocation.maxHp = (allocation.maxHp ?? 0) + remaining;
+    allocation.constitution = (allocation.constitution ?? 0) + remaining;
   }
 
   return allocation;

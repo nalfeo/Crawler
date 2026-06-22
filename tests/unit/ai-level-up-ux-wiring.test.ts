@@ -11,7 +11,9 @@ import { readFileSync } from 'node:fs';
 describe('AI playthrough level-up UX wiring', () => {
   it('LevelUpUI exposes autoResolve that drives the real allocation state machine', () => {
     const source = readFileSync('src/engine/LevelUpUI.ts', 'utf-8');
-    expect(source).toContain('autoResolve(allocations: Partial<Record<StatKey, number>>): void');
+    expect(source).toContain(
+      'autoResolve(allocations: Partial<Record<PrimaryStatId, number>>): void',
+    );
     // Drives the same reducers a clicking player would, then confirms.
     expect(source).toMatch(/autoResolve[\s\S]*incrementStat\(state, stat\)/);
     expect(source).toMatch(/autoResolve[\s\S]*dispatch\(confirm\(state\)\)/);
