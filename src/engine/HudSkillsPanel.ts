@@ -46,7 +46,7 @@ const TITLE_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
 };
 
 // ---------------------------------------------------------------------------
-// Bar colours
+// Bar colors
 // ---------------------------------------------------------------------------
 const CLASS_BAR_COLOR = 0xe2543b; // warm red — damage class
 const TYPE_BAR_COLOR = 0x4ea8ff; // blue — accuracy type

@@ -53,7 +53,7 @@ export function computeAccuracy(world: GameWorld, playerEid: number, weaponDef: 
  * Applies angular spread to a normalized direction vector based on accuracy.
  * Uses the world RNG for determinism.
  *
- * Returns the (potentially spread) direction; the caller should re-normalise if
+ * Returns the (potentially spread) direction; the caller should re-normalize if
  * needed (this function preserves the unit-vector invariant via cos/sin).
  */
 export function applyAccuracySpread(

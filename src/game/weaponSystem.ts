@@ -520,26 +520,26 @@ function dispatchAttack(
 ): void {
   // Apply accuracy spread to the aim direction (melee is excluded — swing arc already handles spread)
   const accuracy = computeAccuracy(world, player, def);
-  const spreadDir =
+  const aimDir =
     def.weaponType === WeaponType.MELEE || def.weaponType === WeaponType.TRAP
       ? dir
       : applyAccuracySpread(dir, accuracy, world);
 
   switch (def.weaponType) {
     case WeaponType.MELEE:
-      fireMeleeAttack(world, player, def, spreadDir);
+      fireMeleeAttack(world, player, def, aimDir);
       break;
     case WeaponType.RANGED:
-      fireRangedAttack(world, player, def, spreadDir);
+      fireRangedAttack(world, player, def, aimDir);
       break;
     case WeaponType.MAGIC:
-      fireMagicAttack(world, player, def, spreadDir);
+      fireMagicAttack(world, player, def, aimDir);
       break;
     case WeaponType.THROWN:
-      fireThrownAttack(world, player, def, spreadDir);
+      fireThrownAttack(world, player, def, aimDir);
       break;
     case WeaponType.BEAM:
-      fireBeamAttack(world, player, def, spreadDir);
+      fireBeamAttack(world, player, def, aimDir);
       break;
     case WeaponType.TRAP:
       fireTrapAttack(world, player, def);
