@@ -26,9 +26,10 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const reviewerLogin = (process.env.REVIEWER_LOGIN ?? '').trim().toLowerCase();
+            const reviewerLoginRaw = (process.env.REVIEWER_LOGIN ?? '').trim();
+            const reviewerLogin = reviewerLoginRaw.toLowerCase();
 
-            if (!reviewerLogin) {
+            if (!reviewerLoginRaw) {
               throw new Error('REVIEWER_LOGIN is required');
             }
 
@@ -83,7 +84,7 @@ jobs:
                   owner,
                   repo,
                   pull_number: prNumber,
-                  reviewers: [reviewerLogin],
+                  reviewers: [reviewerLoginRaw],
                 });
 
                 reviewerRemovals += 1;
