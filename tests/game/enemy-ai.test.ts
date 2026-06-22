@@ -394,6 +394,53 @@ describe('enemyAISystem', () => {
     expect(observedLeapSpeed).toBeGreaterThan(1.5);
   });
 
+  it('freezes leaper enemies in a recovery window after each leap', () => {
+    const world = createTestWorld();
+    // Stationary player: the slime commits a leap toward this point, then must
+    // sit frozen in its recovery window — the deliberate opening for the player
+    // to attack after dodging the pounce.
+    spawnPlayer(world, 0, 0);
+    // Spawn inside the pounce band (beyond the inner range, within leap range).
+    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1.5, 200, 0);
+
+    let maxSpeed = 0;
+    let longestFrozenStreak = 0;
+    let currentFrozenStreak = 0;
+    let frozenAfterLeap = false;
+    let sawLeap = false;
+
+    for (let i = 0; i < 150; i += 1) {
+      enemyAISystem(world);
+      const speed = Math.hypot(
+        world.stores.velocity.x[enemy] ?? 0,
+        world.stores.velocity.y[enemy] ?? 0,
+      );
+      maxSpeed = Math.max(maxSpeed, speed);
+      if (speed > 1.5) {
+        sawLeap = true;
+      }
+      if (speed < 1e-6) {
+        currentFrozenStreak += 1;
+        // Only count a freeze that follows a leap as the recovery window (the
+        // slime is not frozen before it has pounced).
+        if (sawLeap && currentFrozenStreak > longestFrozenStreak) {
+          longestFrozenStreak = currentFrozenStreak;
+          frozenAfterLeap = true;
+        }
+      } else {
+        currentFrozenStreak = 0;
+      }
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+    }
+
+    // The pounce reaches a clearly fast leap speed before the freeze.
+    expect(maxSpeed).toBeGreaterThan(1.5);
+    // After leaping the slime holds completely still for a meaningful window.
+    expect(frozenAfterLeap).toBe(true);
+    expect(longestFrozenStreak).toBeGreaterThanOrEqual(15);
+  });
+
   it('keeps room enemies idle until their room door opens', () => {
     const world = createTestWorld();
     world.floorMap = createOneRoomMapWithDoor(false);
