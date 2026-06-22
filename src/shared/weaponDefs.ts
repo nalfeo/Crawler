@@ -5,6 +5,7 @@ import {
   type MeleeStyleValue,
   type WeaponTypeValue,
 } from './constants.js';
+import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
 
 export interface WeaponDef {
   readonly id: string;
@@ -50,6 +51,23 @@ export interface WeaponDef {
   /** Gore factor 0..1 — how likely/intense blood splatter is on hit.
    *  Bladed/piercing weapons are high (~0.8–1.0), blunt weapons low (~0.1–0.2). */
   readonly goreFactor: number;
+  /**
+   * Weapon class skill id — broad attack category (e.g. 'slashing', 'ranged').
+   * Using this weapon emits a usage event for this skill, which grants damage bonuses.
+   * null for weapons without a class (traps, environmental).
+   */
+  readonly classSkillId: WeaponClassSkillId | null;
+  /**
+   * Weapon type skill id — specific weapon family (e.g. 'sword', 'dagger').
+   * Using this weapon emits a usage event for this skill, which grants accuracy bonuses.
+   * null for weapons without a type (magic, beams without a physical form).
+   */
+  readonly typeSkillId: WeaponTypeSkillId | null;
+  /**
+   * Base accuracy of this weapon, 0.0–1.0 (1.0 = perfect aim, no spread).
+   * Modified at fire time by dexterity and the weapon's type skill level.
+   */
+  readonly baseAccuracy: number;
 }
 
 function def(
@@ -76,6 +94,9 @@ function def(
     pierce: 0,
     bounceCount: 0,
     goreFactor: 0.5,
+    classSkillId: null,
+    typeSkillId: null,
+    baseAccuracy: 1.0,
     ...partial,
   };
 }
@@ -95,6 +116,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       durationMs: WEAPON.MELEE_DURATION_MS,
       swingArcDeg: 90,
       goreFactor: 0.9,
+      classSkillId: 'slashing',
+      typeSkillId: 'sword',
+      baseAccuracy: 0.85,
     }),
   ],
   [
@@ -110,6 +134,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       durationMs: 150,
       meleeStyle: MeleeStyle.STAB,
       goreFactor: 1.0,
+      classSkillId: 'stabbing',
+      typeSkillId: 'dagger',
+      baseAccuracy: 0.8,
     }),
   ],
   [
@@ -127,6 +154,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       shaftDamageMult: 0.5,
       knockback: 4,
       goreFactor: 0.15,
+      classSkillId: 'smashing',
+      typeSkillId: 'heavy-weapon',
+      baseAccuracy: 0.75,
     }),
   ],
   [
@@ -145,6 +175,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       shaftDamageMult: 0.4,
       knockback: 5,
       goreFactor: 0.15,
+      classSkillId: 'smashing',
+      typeSkillId: 'sports-equipment',
+      baseAccuracy: 0.8,
     }),
   ],
 
@@ -160,6 +193,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       range: 40,
       projectileSpeed: WEAPON.PROJECTILE_SPEED,
       goreFactor: 0.3,
+      classSkillId: 'ranged',
+      typeSkillId: 'pistol',
+      baseAccuracy: 0.82,
     }),
   ],
   [
@@ -174,6 +210,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       projectileSpeed: 6.0,
       pierce: 1,
       goreFactor: 0.8,
+      classSkillId: 'ranged',
+      typeSkillId: 'bow',
+      baseAccuracy: 0.78,
     }),
   ],
   [
@@ -187,6 +226,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       range: 50,
       projectileSpeed: 8.0,
       goreFactor: 0.85,
+      classSkillId: 'ranged',
+      typeSkillId: 'crossbow',
+      baseAccuracy: 0.88,
     }),
   ],
 
@@ -207,6 +249,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       shaftDamageMult: 0,
       knockback: 2.5,
       goreFactor: 0.1,
+      classSkillId: 'forearms',
+      typeSkillId: null,
+      baseAccuracy: 0.9,
     }),
   ],
   [
@@ -221,6 +266,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       aoeRadius: 4,
       durationMs: 200,
       goreFactor: 0.1,
+      classSkillId: 'forearms',
+      typeSkillId: null,
+      baseAccuracy: 0.9,
     }),
   ],
 
@@ -237,6 +285,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       projectileSpeed: 4.0,
       aoeRadius: 6,
       goreFactor: 0.0,
+      classSkillId: 'ranged',
+      typeSkillId: null,
+      baseAccuracy: 0.92,
     }),
   ],
 
@@ -254,6 +305,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       returnSpeed: WEAPON.THROWN_RETURN_SPEED,
       maxRange: 25,
       goreFactor: 0.2,
+      classSkillId: 'ranged',
+      typeSkillId: 'sports-equipment',
+      baseAccuracy: 0.8,
     }),
   ],
   [
@@ -269,6 +323,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       returnSpeed: 0,
       maxRange: 0,
       goreFactor: 0.95,
+      classSkillId: 'stabbing',
+      typeSkillId: 'thrown',
+      baseAccuracy: 0.75,
     }),
   ],
   [
@@ -284,6 +341,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       pierce: 12,
       bounceCount: 6,
       goreFactor: 0.05,
+      classSkillId: 'smashing',
+      typeSkillId: 'sports-equipment',
+      baseAccuracy: 0.6,
     }),
   ],
 
@@ -301,6 +361,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       durationMs: WEAPON.BEAM_DURATION_MS,
       beamTickMs: WEAPON.BEAM_TICK_MS,
       goreFactor: 0.0,
+      classSkillId: 'ranged',
+      typeSkillId: null,
+      baseAccuracy: 1.0,
     }),
   ],
 
@@ -318,6 +381,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       trapTriggerRadius: 4,
       trapExplosionRadius: 8,
       goreFactor: 0.4,
+      classSkillId: null,
+      typeSkillId: null,
+      baseAccuracy: 1.0,
     }),
   ],
 ]);

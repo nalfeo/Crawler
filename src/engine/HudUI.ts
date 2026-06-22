@@ -14,6 +14,7 @@ import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
 import { createHudAbilityBar } from './HudAbilityBar.js';
+import { createHudSkillsPanel } from './HudSkillsPanel.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 
 /**
@@ -53,6 +54,10 @@ export function createHudUI(scene: Phaser.Scene): {
   // rather than being grouped into a corner container here.
   const minimap = createHudMinimap(scene);
 
+  // Skills panel: standalone (not in a corner group) so it is not scaled by the
+  // corner-group mechanism; it manages its own visibility based on activeWeaponId.
+  const skillsPanel = createHudSkillsPanel(scene);
+
   // Phaser containers render children in insertion order; pixel-ui builders set
   // explicit depths, so sort each group to preserve intended layering.
   for (const group of [bottomLeft, bottomCenter, topCenter, topRight]) {
@@ -83,6 +88,7 @@ export function createHudUI(scene: Phaser.Scene): {
     minimap.sync(world, playerEid);
     questTracker.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
+    skillsPanel.sync(world, playerEid);
   }
 
   function destroy(): void {
@@ -95,6 +101,7 @@ export function createHudUI(scene: Phaser.Scene): {
     minimap.destroy();
     questTracker.destroy();
     abilityBar.destroy();
+    skillsPanel.destroy();
     bottomLeft.destroy();
     bottomCenter.destroy();
     topCenter.destroy();

@@ -28,6 +28,7 @@ import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.j
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { ftToPx } from '../shared/units.js';
+import { computeAccuracy, applyAccuracySpread } from './systems/accuracySystem.js';
 
 export interface WeaponConfig {
   projectileSpeed: number;
@@ -488,27 +489,57 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
   );
 }
 
+/**
+ * Emit skill usage events for the weapon just fired.
+ * Both the class skill and the type skill receive one usage point per use.
+ */
+function emitWeaponSkillEvents(world: GameWorld, player: number, def: WeaponDef): void {
+  if (def.classSkillId !== null) {
+    world.skillUsageEvents.push({
+      holderEid: player,
+      skillId: def.classSkillId,
+      metric: 'hits_landed',
+      amount: 1,
+    });
+  }
+  if (def.typeSkillId !== null) {
+    world.skillUsageEvents.push({
+      holderEid: player,
+      skillId: def.typeSkillId,
+      metric: 'hits_landed',
+      amount: 1,
+    });
+  }
+}
+
 function dispatchAttack(
   world: GameWorld,
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
+  // Apply accuracy spread to the aim direction (melee is excluded — swing arc already handles spread)
+  const accuracy = computeAccuracy(world, player, def);
+  const spreadDir =
+    def.weaponType === WeaponType.MELEE || def.weaponType === WeaponType.TRAP
+      ? dir
+      : applyAccuracySpread(dir, accuracy, world);
+
   switch (def.weaponType) {
     case WeaponType.MELEE:
-      fireMeleeAttack(world, player, def, dir);
+      fireMeleeAttack(world, player, def, spreadDir);
       break;
     case WeaponType.RANGED:
-      fireRangedAttack(world, player, def, dir);
+      fireRangedAttack(world, player, def, spreadDir);
       break;
     case WeaponType.MAGIC:
-      fireMagicAttack(world, player, def, dir);
+      fireMagicAttack(world, player, def, spreadDir);
       break;
     case WeaponType.THROWN:
-      fireThrownAttack(world, player, def, dir);
+      fireThrownAttack(world, player, def, spreadDir);
       break;
     case WeaponType.BEAM:
-      fireBeamAttack(world, player, def, dir);
+      fireBeamAttack(world, player, def, spreadDir);
       break;
     case WeaponType.TRAP:
       fireTrapAttack(world, player, def);
@@ -516,6 +547,9 @@ function dispatchAttack(
     default:
       break;
   }
+
+  // Emit skill usage events so weapon class/type skills can level up
+  emitWeaponSkillEvents(world, player, def);
 }
 
 export function configureWeaponSystem(world: GameWorld, config: Partial<WeaponConfig>): void {
@@ -538,6 +572,7 @@ export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
   state.activeWeaponId = weaponDef.id;
   state.activeWeaponDef = weaponDef;
   state.lastFireMs = world.elapsedMs - weaponDef.cooldownMs;
+  world.activeWeaponId = weaponDef.id;
   logger.info('Equipped active weapon', {
     weaponId: weaponDef.id,
     weaponType: weaponDef.weaponType,
@@ -551,6 +586,7 @@ export function clearActiveWeapon(world: GameWorld): void {
   const previousWeaponId = state.activeWeaponId;
   state.activeWeaponId = undefined;
   state.activeWeaponDef = undefined;
+  world.activeWeaponId = null;
   logger.info('Cleared active weapon; returning to legacy projectile mode', { previousWeaponId });
 }
 

@@ -4,7 +4,11 @@ import { Stats, SkillHolder } from '../../core/components.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer } from '../../core/helpers.js';
 import { getAllAbilityDefinitions } from '../../game/abilities/registry.js';
-import { getAllSkillDefinitions } from '../../game/skills/registry.js';
+import {
+  getAllSkillDefinitions,
+  getWeaponClassSkills,
+  getWeaponTypeSkills,
+} from '../../game/skills/registry.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP, type SkillState } from '../../game/skills/types.js';
 import {
   abilitySystem,
@@ -67,30 +71,45 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     const activeIds = abilityState?.equippedActiveAbilityIds ?? [];
     const passiveIds = abilityState?.passiveAbilityIds ?? [];
 
-    const skillRows = allSkills
-      .map((skill) => {
-        const state = world.playerSkills.get(skill.id);
-        if (!state) return '';
-        const effectiveCap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
-        const nextThreshold =
-          state.level < effectiveCap ? (skill.usageThresholds[state.level] ?? '—') : 'Maxed';
-        const milestones = skill.milestones
-          .map((m) => {
-            const done = state.triggeredMilestones.has(m.level);
-            return `<span style="color:${done ? '#4f8' : '#555'};margin-right:4px">${m.level}${done ? '✓' : '○'}</span>`;
-          })
-          .join('');
+    function skillTableRows(skills: ReturnType<typeof getAllSkillDefinitions>): string {
+      return skills
+        .map((skill) => {
+          const state = world.playerSkills.get(skill.id);
+          if (!state) return '';
+          const effectiveCap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
+          const nextThreshold =
+            state.level < effectiveCap ? (skill.usageThresholds[state.level] ?? '—') : 'Maxed';
+          const milestones = skill.milestones
+            .map((m) => {
+              const done = state.triggeredMilestones.has(m.level);
+              return `<span style="color:${done ? '#4f8' : '#555'};margin-right:4px">${m.level}${done ? '✓' : '○'}</span>`;
+            })
+            .join('');
+          return `
+          <tr>
+            <td style="padding:5px 10px;color:#9ba">${skill.name}</td>
+            <td style="padding:5px 10px;text-align:center;color:#aef">${state.level}/${effectiveCap}</td>
+            <td style="padding:5px 10px;text-align:right;color:#888">${state.usage}</td>
+            <td style="padding:5px 10px;text-align:right;color:#888">${nextThreshold}</td>
+            <td style="padding:5px 10px">${milestones}</td>
+          </tr>`;
+        })
+        .join('');
+    }
 
-        return `
-        <tr>
-          <td style="padding:5px 10px;color:#9ba">${skill.name}</td>
-          <td style="padding:5px 10px;text-align:center;color:#aef">${state.level}/${effectiveCap}</td>
-          <td style="padding:5px 10px;text-align:right;color:#888">${state.usage}</td>
-          <td style="padding:5px 10px;text-align:right;color:#888">${nextThreshold}</td>
-          <td style="padding:5px 10px">${milestones}</td>
-        </tr>`;
-      })
-      .join('');
+    const skillTableHead = `<thead><tr>
+      <th style="text-align:left;padding:5px 10px;color:#aaa">Skill</th>
+      <th style="padding:5px 10px;color:#aaa">Level</th>
+      <th style="text-align:right;padding:5px 10px;color:#aaa">Usage</th>
+      <th style="text-align:right;padding:5px 10px;color:#aaa">Next&nbsp;Threshold</th>
+      <th style="padding:5px 10px;color:#aaa">Milestones</th>
+    </tr></thead>`;
+
+    const combatSkills = allSkills.filter((s) =>
+      ['combat', 'defense', 'utility'].includes(s.category),
+    );
+    const classSkills = getWeaponClassSkills();
+    const typeSkills = getWeaponTypeSkills();
 
     const abilityRows = allAbilities
       .map((ability) => {
@@ -102,7 +121,6 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
             ? undefined
             : Math.max(0, ability.cooldownFrames - (world.frameCount - cooldown));
         const cooldownText = remaining === undefined ? '—' : `${remaining}`;
-
         return `
         <tr>
           <td style="padding:5px 10px;color:#9ba">${ability.name}</td>
@@ -118,17 +136,22 @@ function createSkillLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
     root.innerHTML = `
       <h2 style="color:#cde;margin:0 0 8px">Skill + Ability Lab</h2>
       <p style="margin:0 0 12px;color:#89a">Active slots: ${activeIds.length}/10 • Passive grants: ${passiveIds.length}</p>
-      <h3 style="margin:10px 0 6px;color:#bcd">Skill Catalog</h3>
+
+      <h3 style="margin:10px 0 4px;color:#bcd">General Skills</h3>
       <table style="border-collapse:collapse;width:100%;max-width:860px;margin-bottom:14px">
-        <thead><tr>
-          <th style="text-align:left;padding:5px 10px;color:#aaa">Skill</th>
-          <th style="padding:5px 10px;color:#aaa">Level</th>
-          <th style="text-align:right;padding:5px 10px;color:#aaa">Usage</th>
-          <th style="text-align:right;padding:5px 10px;color:#aaa">Next Threshold</th>
-          <th style="padding:5px 10px;color:#aaa">Milestones</th>
-        </tr></thead>
-        <tbody>${skillRows}</tbody>
+        ${skillTableHead}<tbody>${skillTableRows(combatSkills)}</tbody>
       </table>
+
+      <h3 style="margin:10px 0 4px;color:#e2543b">Weapon Class Skills <span style="font-size:11px;color:#888">(damage bonus • slow leveling)</span></h3>
+      <table style="border-collapse:collapse;width:100%;max-width:860px;margin-bottom:14px">
+        ${skillTableHead}<tbody>${skillTableRows(classSkills)}</tbody>
+      </table>
+
+      <h3 style="margin:10px 0 4px;color:#4ea8ff">Weapon Type Skills <span style="font-size:11px;color:#888">(accuracy bonus • fast leveling)</span></h3>
+      <table style="border-collapse:collapse;width:100%;max-width:860px;margin-bottom:14px">
+        ${skillTableHead}<tbody>${skillTableRows(typeSkills)}</tbody>
+      </table>
+
       <h3 style="margin:10px 0 6px;color:#bcd">Ability Catalog</h3>
       <table style="border-collapse:collapse;width:100%;max-width:860px">
         <thead><tr>

@@ -24,7 +24,7 @@ export interface SkillDefinition {
   id: string;
   name: string;
   description: string;
-  category: 'combat' | 'defense' | 'utility';
+  category: 'combat' | 'defense' | 'utility' | 'weapon_class' | 'weapon_type';
   usageMetric: UsageMetric;
   usageThresholds: number[];
   perLevelBonus: Partial<Record<StatKey, number>>;

@@ -46,17 +46,25 @@ describe('skill registry', () => {
   });
 
   it('skill categories are valid enum values', () => {
-    const validCategories = new Set(['combat', 'defense', 'utility']);
+    const validCategories = new Set([
+      'combat',
+      'defense',
+      'utility',
+      'weapon_class',
+      'weapon_type',
+    ]);
     for (const skill of getAllSkillDefinitions()) {
       expect(validCategories.has(skill.category)).toBe(true);
     }
   });
 
-  it('covers all three categories (combat, defense, utility)', () => {
+  it('covers all five categories (combat, defense, utility, weapon_class, weapon_type)', () => {
     const categories = new Set(getAllSkillDefinitions().map((s) => s.category));
     expect(categories.has('combat')).toBe(true);
     expect(categories.has('defense')).toBe(true);
     expect(categories.has('utility')).toBe(true);
+    expect(categories.has('weapon_class')).toBe(true);
+    expect(categories.has('weapon_type')).toBe(true);
   });
 
   it('all usageThresholds are positive integers', () => {

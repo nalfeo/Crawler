@@ -70,6 +70,13 @@ export interface GameWorld {
   floor: number;
   /** Game state */
   state: 'loading' | 'loadout' | 'playing' | 'paused' | 'safe_room' | 'game_over' | 'level_up';
+  /**
+   * ID of the weapon currently equipped by the player, or null when no data-driven
+   * weapon is active (legacy mode). Set by weaponSystem.setActiveWeapon /
+   * clearActiveWeapon so the engine HUD layer can look up skill tags without
+   * importing from src/game/.
+   */
+  activeWeaponId: string | null;
 
   // --- Stats/Skills/Levels (player-singleton, stored at world level) ---
 
@@ -223,6 +230,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     elapsedMs: 0,
     floor: options.floor ?? 1,
     state: 'playing',
+    activeWeaponId: null,
     playerLevel: {
       xp: 0,
       level: 0,
