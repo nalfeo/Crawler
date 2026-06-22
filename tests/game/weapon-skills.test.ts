@@ -273,11 +273,17 @@ describe('emitWeaponSkillEvents', () => {
     const { world, player } = setupPlayerWithWeaponSkills();
     const def = WEAPON_DEFS.get('pistol')!;
 
-    // Fire enough to level pistol type skill to level 1 (threshold = 10)
-    for (let i = 0; i < 10; i++) {
+    // Verify level 1 threshold boundary: 9 fires → still level 0
+    const threshold = TYPE_SKILL_THRESHOLDS[0]!; // = 10 fires for level 1
+    for (let i = 0; i < threshold - 1; i++) {
       emitWeaponSkillEvents(world, player, def);
       skillSystem(world);
     }
+    expect(world.playerSkills.get('pistol')?.level).toBe(0);
+
+    // Fire once more (now at threshold) → level 1
+    emitWeaponSkillEvents(world, player, def);
+    skillSystem(world);
     statsSystem(world);
 
     const pistolState = world.playerSkills.get('pistol');

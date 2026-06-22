@@ -529,9 +529,10 @@ function dispatchAttack(
   // Emit skill progression events on every weapon fire (hit or miss).
   emitWeaponSkillEvents(world, player, def);
 
-  // Accuracy roll: if the attack misses, skip spawning the attack entity.
+  // Accuracy roll: miss if roll > effectiveAccuracy.
+  // rng.next() returns [0,1); roll exactly at the threshold counts as a hit.
   const effectiveAccuracy = computeEffectiveAccuracy(world, player, def);
-  if (world.rng.next() >= effectiveAccuracy) {
+  if (world.rng.next() > effectiveAccuracy) {
     return;
   }
 
