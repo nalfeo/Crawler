@@ -52,8 +52,10 @@ import {
   getNpcDef,
   SHOPKEEPER_DONE_DIALOGUE,
   SHOPKEEPER_EQUIP_HINT_DIALOGUE,
+  SHOPKEEPER_LOCKED_DIALOGUE,
   SHOPKEEPER_RETURN_DIALOGUE,
   SHOPKEEPER_SHOP_DIALOGUE,
+  SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../shared/npc-types.js';
 import type { ShopkeeperStage } from '../../shared/quest-types.js';
 
@@ -109,6 +111,8 @@ export interface MainGameSceneOptions {
     equip: (world: GameWorld, playerEid: number) => boolean;
     equipmentCost: number;
     equipmentName: string;
+    /** True while the merchant is gated behind the welcome-goon quest. */
+    isLocked?: (world: GameWorld) => boolean;
   };
   /** Tutorial Goon callbacks — fired on first player-NPC interaction. */
   tutorialGoon?: {
@@ -116,6 +120,8 @@ export interface MainGameSceneOptions {
   };
   spellQuestGiver?: {
     meet: (world: GameWorld) => void;
+    /** True while the Spell Broker is gated behind the welcome-goon quest. */
+    isLocked?: (world: GameWorld) => boolean;
   };
   /** Spell selection callback for floor1 boss battle reward. */
   selectSpellFromBossBattle?: (world: GameWorld, playerEid: number, spellId: string) => void;
@@ -1913,6 +1919,9 @@ export class MainGameScene extends Phaser.Scene {
       return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
     }
     if (defId === 'shopkeeper' && this.options.shopkeeper) {
+      if (this.options.shopkeeper.isLocked?.(this.world)) {
+        return [...SHOPKEEPER_LOCKED_DIALOGUE];
+      }
       const stage = this.options.shopkeeper.getStage(this.world);
       if (stage === 'complete') {
         return [...SHOPKEEPER_DONE_DIALOGUE];
@@ -1926,6 +1935,9 @@ export class MainGameScene extends Phaser.Scene {
           : [...SHOPKEEPER_SHOP_DIALOGUE];
       }
       // not-met / awaiting-prize: the merchant's initial fetch request.
+    }
+    if (defId === 'spell-quest-giver' && this.options.spellQuestGiver?.isLocked?.(this.world)) {
+      return [...SPELL_QUEST_GIVER_LOCKED_DIALOGUE];
     }
     const def = getNpcDef(defId);
     return def?.dialogue.map((line) => line.text) ?? [];

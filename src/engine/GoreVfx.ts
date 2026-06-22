@@ -42,7 +42,7 @@ export function createGoreVfx(
   scene: Phaser.Scene,
   config: Partial<GoreVfxConfig> = {},
 ): {
-  update(world: GameWorld, renderElapsedMs: number, deltaMs: number): void;
+  update(world: GameWorld, renderElapsedMs: number, deltaMs: number, interpAlpha?: number): void;
   destroy(): void;
   config: GoreVfxConfig;
 } {
@@ -86,7 +86,34 @@ export function createGoreVfx(
     }
   }
 
-  function handleHitEvent(event: CombatEvent, renderElapsedMs: number): void {
+  /**
+   * Resolve the spawn position for an event. The renderer draws entities at an
+   * interpolated position (`position + velocity * interpAlpha`, see
+   * PhaserBridge), so gore must use the same interpolation or it visibly lags
+   * behind fast-moving mobs (e.g. leaping slimes). Falls back to the event's
+   * recorded position when the target entity is gone.
+   */
+  function resolvePosition(
+    world: GameWorld,
+    event: CombatEvent,
+    interpAlpha: number,
+  ): { x: number; y: number } {
+    const eid = event.targetEid;
+    if (eid === undefined) return { x: event.x, y: event.y };
+    const px = world.stores.position.x[eid];
+    const py = world.stores.position.y[eid];
+    if (!Number.isFinite(px) || !Number.isFinite(py)) return { x: event.x, y: event.y };
+    const vx = world.stores.velocity.x[eid] ?? 0;
+    const vy = world.stores.velocity.y[eid] ?? 0;
+    return { x: px! + vx * interpAlpha, y: py! + vy * interpAlpha };
+  }
+
+  function handleHitEvent(
+    world: GameWorld,
+    event: CombatEvent,
+    renderElapsedMs: number,
+    interpAlpha: number,
+  ): void {
     if (!cfg.hitGoreEnabled) return;
     if (event.targetType !== 'enemy') return;
 
@@ -117,10 +144,16 @@ export function createGoreVfx(
       dirY = Math.sin(angle);
     }
 
-    spawnParticles(event.x, event.y, particleCount, dirX, dirY, Math.PI * 1.0, renderElapsedMs);
+    const { x: spawnX, y: spawnY } = resolvePosition(world, event, interpAlpha);
+    spawnParticles(spawnX, spawnY, particleCount, dirX, dirY, Math.PI * 1.0, renderElapsedMs);
   }
 
-  function handleDeathEvent(event: CombatEvent, renderElapsedMs: number): void {
+  function handleDeathEvent(
+    world: GameWorld,
+    event: CombatEvent,
+    renderElapsedMs: number,
+    interpAlpha: number,
+  ): void {
     const overkill = event.overkill ?? 0;
     const overkillMult = 1 + Math.min(overkill / 20, 3);
     const count = Math.round(DEATH_BASE_PARTICLES * overkillMult);
@@ -144,9 +177,10 @@ export function createGoreVfx(
       hasDir = true;
     }
 
+    const { x: spawnX, y: spawnY } = resolvePosition(world, event, interpAlpha);
     spawnParticles(
-      event.x,
-      event.y,
+      spawnX,
+      spawnY,
       count,
       hasDir ? dirX : 0,
       hasDir ? dirY : -1,
@@ -158,13 +192,13 @@ export function createGoreVfx(
   return {
     config: cfg,
 
-    update(world: GameWorld, renderElapsedMs: number, deltaMs: number): void {
+    update(world: GameWorld, renderElapsedMs: number, deltaMs: number, interpAlpha = 0): void {
       // Process events (do NOT drain — CombatVfx does that)
       for (const event of world.combatEvents) {
         if (event.type === 'hit') {
-          handleHitEvent(event, renderElapsedMs);
+          handleHitEvent(world, event, renderElapsedMs, interpAlpha);
         } else if (event.type === 'death') {
-          handleDeathEvent(event, renderElapsedMs);
+          handleDeathEvent(world, event, renderElapsedMs, interpAlpha);
         }
       }
 
