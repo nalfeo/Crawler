@@ -112,7 +112,7 @@ describe('tile visuals mapping and frame resolution', () => {
     expect(resolveFrame(visual!, terrain, width, height, 1, 1, TerrainType.CORRIDOR)).toBe(8);
   });
 
-  it('resolveFrame uses the neighbour mask for blob-tile autotiling', () => {
+  it('resolveFrame uses the neighbor mask for blob-tile autotiling', () => {
     const visual = getTileVisual(TerrainType.CAVE_WALL);
     expect(visual?.frames).toBeDefined();
     const terrain = new Uint8Array([
