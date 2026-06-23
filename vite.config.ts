@@ -10,12 +10,13 @@ const basePaths: Record<string, string> = {
   local: '/',
   dev: '/Crawler/dev/',
   beta: '/Crawler/beta/',
+  preview: '/Crawler/preview/',
   prod: '/Crawler/',
 };
 
 export default defineConfig(({ mode }) => {
   const deployEnv = process.env.DEPLOY_ENV ?? 'local';
-  const includeLabs = deployEnv === 'dev' || mode === 'lab';
+  const includeLabs = deployEnv === 'dev' || deployEnv === 'preview' || mode === 'lab';
   const includeDevTools = deployEnv === 'local' && mode === 'devtools';
   const sessionPorts = getSessionServerPorts({ cwd: __dirname, env: process.env });
 

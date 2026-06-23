@@ -60,6 +60,8 @@ import {
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
 import { memorizeSpell } from './systems/abilitySystem.js';
+import { getAllSkillDefinitions } from './skills/registry.js';
+import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor1-config.js';
 import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
@@ -460,12 +462,46 @@ export function meetTutorialGoon(world: GameWorld): void {
   }
 }
 
+/**
+ * Initialize weapon skill states for the player entity, seeding every registered
+ * skill at level 0 so the skill system and HUD can track progress from the start.
+ */
+function initializePlayerWeaponSkills(world: GameWorld, playerEid: number): void {
+  const allSkills = getAllSkillDefinitions();
+  const skillMap = new Map<string, SkillState>();
+  for (const skill of allSkills) {
+    skillMap.set(skill.id, {
+      level: 0,
+      usage: 0,
+      itemBonus: 0,
+      triggeredMilestones: new Set(),
+    });
+  }
+  // Merge into any existing v1 playerSkills map so pre-set entries are preserved.
+  for (const [id, state] of skillMap) {
+    if (!world.playerSkills.has(id)) {
+      world.playerSkills.set(id, state);
+    }
+  }
+  // v2 path: scope skills to the entity.
+  if (!world.skillStatesByEntity.has(playerEid)) {
+    world.skillStatesByEntity.set(playerEid, skillMap);
+  } else {
+    const existing = world.skillStatesByEntity.get(playerEid)!;
+    for (const [id, state] of skillMap) {
+      if (!existing.has(id)) {
+        existing.set(id, state);
+      }
+    }
+  }
+}
+
 export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
   const config: MapConfig = {
     widthTiles: floor1Config.map.widthTiles,
     heightTiles: floor1Config.map.heightTiles,
     tileSizePx: floor1Config.map.tileSizePx,
-    biome: BiomeType.DUNGEON,
+    biome: BiomeType.BASIC_UNDERGROUND,
     seed: world.rng.nextInt(1, 2_000_000),
     roomWidthRange: floor1Config.map.roomWidthRange,
     roomHeightRange: floor1Config.map.roomHeightRange,
@@ -680,6 +716,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
+  // Initialize weapon skill states for the player so HUD and skill system track progress.
+  initializePlayerWeaponSkills(world, playerEid);
 
   // The opening quest is the only one the player starts with: find the Welcome
   // Office and talk to the Tutorial Goon. NPC-given quests (shopkeeper errand,
@@ -1196,7 +1234,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     spawnPoint.x,
     spawnPoint.y,
     archetype.hp,
-    AI_TYPE.CHASE,
+    archetype.id === 'slime' ? AI_TYPE.LEAPER : AI_TYPE.CHASE,
     archetype.speed,
     archetype.detectRange,
     0,
@@ -1519,12 +1557,23 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 export const FLOOR1_QUEST_UNLOCK_LEVEL = 2;
 
 /**
+ * Whether the contestant has completed the Tutorial Goon's opening quest
+ * ("Trial by XP" — reach level 2). The merchant and Spell Broker refuse to
+ * start their own quests until this is done; until then they send the player
+ * back to the Goon. Drops are locked until the Goon is met, so completing this
+ * quest also guarantees the player has actually spoken to him.
+ */
+export function hasCompletedWelcomeGoonQuest(world: GameWorld): boolean {
+  return world.goalFlags.get('floor1-leveling-quest-complete') === true;
+}
+
+/**
  * Mark the merchant as met (advances the first quest step). The errand only
- * unlocks once the contestant has reached level 2 — before then the merchant
- * has nothing to say.
+ * unlocks once the contestant has finished the Tutorial Goon's opening quest —
+ * before then the merchant just sends them back to the Goon.
  */
 export function meetShopkeeper(world: GameWorld): void {
-  if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
+  if (!hasCompletedWelcomeGoonQuest(world)) {
     return;
   }
   if (!world.questLog.has(FLOOR1_SHOP_QUEST_ID)) {
@@ -1536,11 +1585,11 @@ export function meetShopkeeper(world: GameWorld): void {
 
 /**
  * Mark the spell quest giver as met and accept the Slime Rat quest. Like the
- * merchant, the Spell Broker only offers the quest once the player has reached
- * level 2.
+ * merchant, the Spell Broker only offers the quest once the player has finished
+ * the Tutorial Goon's opening quest.
  */
 export function meetSpellQuestGiver(world: GameWorld): void {
-  if (world.playerLevel.level < FLOOR1_QUEST_UNLOCK_LEVEL) {
+  if (!hasCompletedWelcomeGoonQuest(world)) {
     return;
   }
   if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {

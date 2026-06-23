@@ -21,8 +21,8 @@ export const TERRAIN_FALLBACK_COLORS: Readonly<Record<number, number>> = {
   [TerrainType.DIRT]: 0x6b3f24,
   [TerrainType.WOOD_FLOOR]: 0x5b4430,
   [TerrainType.WOOD_WALL]: 0x1a1108,
-  [TerrainType.CAVE_FLOOR]: 0x2a2a3d,
-  [TerrainType.CAVE_WALL]: 0x0d0d18,
+  [TerrainType.CAVE_FLOOR]: 0x6b4a2e, // warm earthen tan — open cavern floor
+  [TerrainType.CAVE_WALL]: 0x2c1a16, // dark earthen rock — solid cave wall mass
   [TerrainType.TREE]: 0x14532d,
   [TerrainType.RUBBLE]: 0x3d3d3d,
   [TerrainType.BOSS_STAIR_FLOOR]: 0x3d0a18, // deep red — boss room

@@ -186,6 +186,8 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       headRadius: new Float32Array(maxEntities),
       shaftDamageMult: new Float32Array(maxEntities),
       knockback: new Float32Array(maxEntities),
+      /** Sprite ID hint: see MELEE_SPRITE_ID in weaponSystem.ts. 0|1=sword, 2=bat. */
+      spriteId: new Uint8Array(maxEntities),
     },
     knockback: {
       dirX: new Float32Array(maxEntities),
@@ -260,16 +262,21 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       pickupRange: new Float32Array(maxEntities),
       projectileCount: new Float32Array(maxEntities),
       projectileSpeed: new Float32Array(maxEntities),
+      /** Accuracy bonus stacked on top of a weapon's baseAccuracy (0..1 range). */
+      accuracy: new Float32Array(maxEntities),
     },
-    statPoints: {
-      maxHp: new Float32Array(maxEntities),
-      moveSpeed: new Float32Array(maxEntities),
-      damage: new Float32Array(maxEntities),
-      armor: new Float32Array(maxEntities),
-      attackSpeed: new Float32Array(maxEntities),
-      pickupRange: new Float32Array(maxEntities),
-      projectileCount: new Float32Array(maxEntities),
-      projectileSpeed: new Float32Array(maxEntities),
+    /**
+     * How many level-up points the player has allocated to each PRIMARY_STAT.
+     * statsSystem reads these and derives STAT_KEYS values via CORE_STAT_GAINS.
+     */
+    coreStatPoints: {
+      strength: new Float32Array(maxEntities),
+      dexterity: new Float32Array(maxEntities),
+      constitution: new Float32Array(maxEntities),
+      intelligence: new Float32Array(maxEntities),
+      wisdom: new Float32Array(maxEntities),
+      charisma: new Float32Array(maxEntities),
+      luck: new Float32Array(maxEntities),
     },
   };
 }

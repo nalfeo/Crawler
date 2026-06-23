@@ -3,7 +3,12 @@ import type { StatKey } from './stats.js';
 export const SKILL_NATURAL_CAP = 15;
 export const SKILL_HARD_CAP = 20;
 
-export type UsageMetric = 'hits_landed' | 'damage_dealt' | 'distance_dodged_near_threat';
+export type UsageMetric =
+  | 'hits_landed'
+  | 'damage_dealt'
+  | 'distance_dodged_near_threat'
+  /** Emitted by weaponSystem on every weapon fire (class and type skills). */
+  | 'weapon_fired';
 
 export interface SkillUsageEvent {
   holderEid?: number;

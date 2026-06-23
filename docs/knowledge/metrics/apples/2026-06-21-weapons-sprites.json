@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-21",
+  "slug": "weapons-sprites",
+  "estimate": 4,
+  "actual": 4,
+  "verdict": "on-target",
+  "notes": "Accurate estimate. Four layers touched (ECS store, game logic, renderer, loadout scenario) plus sprite registration and test updates. Canvas accidental dep added noise but was caught in review."
+}

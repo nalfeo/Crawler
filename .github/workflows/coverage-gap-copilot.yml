@@ -15,19 +15,14 @@ jobs:
     if: ${{ github.event.issue.pull_request != null }}
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App token
-        uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
       - name: Detect below-goal coverage and request help
         uses: actions/github-script@v7
         with:
-          # GitHub App token so Copilot Coding Agent picks up the @copilot mention
-          # (the agent ignores mentions from github-actions[bot]).
-          github-token: ${{ steps.app-token.outputs.token }}
+          # Default GITHUB_TOKEN is sufficient: we create an issue and assign it to
+          # copilot. Issue assignment triggers the Copilot coding agent regardless of
+          # which identity makes the assignment — unlike @mentions, which are ignored
+          # when posted by any bot account.
+          github-token: ${{ github.token }}
           script: |
             const comment = context.payload.comment;
             const body = comment.body ?? '';
@@ -62,54 +57,92 @@ jobs:
               return;
             }
 
-            const marker = `<!-- copilot-coverage-gap:${comment.id} -->`;
             const issueNumber = context.payload.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+
+            // If the PR is already merged there is nothing left to fix — close any
+            // open tracking issue and bail out.
+            const pr = await github.rest.pulls.get({ owner, repo, pull_number: issueNumber });
+            if (pr.data.merged) {
+              core.info(`PR #${issueNumber} is already merged. Cleaning up any open coverage issue.`);
+              const issueLabel = 'coverage-gap';
+              const issueTitle = `Coverage gaps: PR #${issueNumber}`;
+              const staleIssues = await github.paginate(github.rest.issues.listForRepo, {
+                owner, repo,
+                state: 'open',
+                labels: issueLabel,
+                per_page: 100,
+              });
+              const stale = staleIssues.find((i) => i.title === issueTitle);
+              if (stale) {
+                await github.rest.issues.update({
+                  owner, repo,
+                  issue_number: stale.number,
+                  state: 'closed',
+                });
+                core.info(`Closed stale coverage issue #${stale.number} because PR #${issueNumber} was merged.`);
+              }
+              return;
+            }
 
             const lines = belowGoal
               .map((gap) => `- ${gap.category}: ${gap.actual.toFixed(2)}% / goal ${gap.goal.toFixed(2)}%`)
               .join('\n');
 
-            const copilotBody = [
-              marker,
-              '@copilot Please analyze this coverage report and try to address the gaps below with targeted, deterministic tests.',
+            const issueTitle = `Coverage gaps: PR #${issueNumber}`;
+            const issueLabel = 'coverage-gap';
+
+            const issueBody = [
+              `PR #${issueNumber} has code coverage below the configured goals.`,
               '',
-              `Coverage comment: ${comment.html_url}`,
+              `Coverage report: ${comment.html_url}`,
               '',
               'Below-goal categories:',
               lines,
+              '',
+              `Please add targeted, deterministic tests to address these gaps directly in PR #${issueNumber}.`,
             ].join('\n');
 
-            const existingComments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number: issueNumber,
-              per_page: 100,
-            });
-
-            // Match by marker only — works regardless of which account posted the
-            // previous comment and survives token rotation between bot and PAT.
-            const existing = existingComments.find(
-              (item) => (item.body ?? '').includes(marker),
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body: copilotBody,
+            // Ensure the tracking label exists (idempotent).
+            try {
+              await github.rest.issues.createLabel({
+                owner, repo,
+                name: issueLabel,
+                color: 'fbbf24',
+                description: 'PR has coverage metrics below goal thresholds',
               });
-              core.info(`Updated existing Copilot ping comment ${existing.id}.`);
-              return;
+            } catch (_) {
+              // Label already exists — ignore.
             }
 
-            const created = await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: issueNumber,
-              body: copilotBody,
+            // Find any existing open coverage-gap issue for this PR.
+            const existingIssues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo,
+              state: 'open',
+              labels: issueLabel,
+              per_page: 100,
+            });
+            const existing = existingIssues.find((i) => i.title === issueTitle);
+
+            // Close old issue and create a fresh one so that the new assignment
+            // re-triggers the Copilot coding agent (re-assigning an existing issue
+            // may not fire the trigger a second time).
+            if (existing) {
+              await github.rest.issues.update({
+                owner, repo,
+                issue_number: existing.number,
+                state: 'closed',
+              });
+              core.info(`Closed stale coverage issue #${existing.number}.`);
+            }
+
+            const created = await github.rest.issues.create({
+              owner, repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: [issueLabel],
+              assignees: ['copilot'],
             });
 
-            core.info(`Created Copilot ping comment ${created.data.id}.`);
+            core.info(`Created coverage issue #${created.data.number} and assigned to Copilot.`);

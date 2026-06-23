@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
+import { fitUiScale } from './ui-scale.js';
 import {
   cancelModalPickerSelection,
   confirmModalPickerSelection,
@@ -86,7 +87,16 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   isOpen(): boolean;
   destroy(): void;
 } {
+  // Responsive UI: lay the panel out in a "virtual" viewport (real size ÷
+  // uiScale) and scale the whole overlay container back up by uiScale, so the
+  // menu stays centred while its text and rows grow on small screens. Text
+  // resolution is bumped by the same factor to keep upscaled glyphs crisp.
   const textResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
+  let effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+  const viewWidth = (): number => scene.scale.width / uiScale;
+  const viewHeight = (): number => scene.scale.height / uiScale;
+
   const snap = (value: number): number => Math.round(value);
   const crispText = (
     x: number,
@@ -94,11 +104,11 @@ export function createModalPickerUI(scene: Phaser.Scene): {
     text: string,
     style: Phaser.Types.GameObjects.Text.TextStyle,
   ): Phaser.GameObjects.Text =>
-    scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
+    scene.add.text(snap(x), snap(y), text, style).setResolution(effectiveResolution);
 
   const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
-    .rectangle(0, 0, scene.scale.width, scene.scale.height, 0x020617, 0.78)
+    .rectangle(0, 0, viewWidth(), viewHeight(), 0x020617, 0.78)
     .setOrigin(0, 0);
   const panel = scene.add.rectangle(0, 0, PANEL_WIDTH, PANEL_HEIGHT, PIXEL_UI.panelFill, 0.98);
   panel.setOrigin(0, 0);
@@ -153,10 +163,10 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   };
 
   const layoutPanel = (): void => {
-    backdrop.setSize(scene.scale.width, scene.scale.height);
+    backdrop.setSize(viewWidth(), viewHeight());
     panel.setSize(PANEL_WIDTH, PANEL_HEIGHT);
-    panel.x = Math.round((scene.scale.width - PANEL_WIDTH) / 2);
-    panel.y = Math.round((scene.scale.height - PANEL_HEIGHT) / 2);
+    panel.x = Math.round((viewWidth() - PANEL_WIDTH) / 2);
+    panel.y = Math.round((viewHeight() - PANEL_HEIGHT) / 2);
     bevelTop.setPosition(panel.x, panel.y).setSize(PANEL_WIDTH, 2);
     bevelLeft.setPosition(panel.x, panel.y).setSize(2, PANEL_HEIGHT);
     bevelBottom.setPosition(panel.x, panel.y + PANEL_HEIGHT - 2).setSize(PANEL_WIDTH, 2);
@@ -175,6 +185,11 @@ export function createModalPickerUI(scene: Phaser.Scene): {
 
     clearEntries();
     clearTextNodes();
+
+    // Refresh responsive scale before laying out (handles resize/rotation).
+    uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
+    effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
+    overlay.setScale(uiScale);
 
     layoutPanel();
     const panelX = panel.x;

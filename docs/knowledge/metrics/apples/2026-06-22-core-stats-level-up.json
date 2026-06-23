@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-22",
+  "slug": "core-stats-level-up",
+  "persona": "Producer",
+  "task": "Level-up system: allocate to core stats (Strength, Dexterity, Intelligence, Constitution, Luck, Charisma) that derive gameplay stats",
+  "estimate": 3,
+  "actual": 3,
+  "verdict": "accurate",
+  "notes": "Multi-layer refactor: ECS store rename, statsSystem derivation formula, LevelUpUI rendering, auto-progression strategy, all tests updated. No scope creep."
+}

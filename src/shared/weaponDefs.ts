@@ -5,6 +5,7 @@ import {
   type MeleeStyleValue,
   type WeaponTypeValue,
 } from './constants.js';
+import type { WeaponClassSkillId, WeaponTypeSkillId } from './weapon-skills.js';
 
 export interface WeaponDef {
   readonly id: string;
@@ -50,11 +51,30 @@ export interface WeaponDef {
   /** Gore factor 0..1 — how likely/intense blood splatter is on hit.
    *  Bladed/piercing weapons are high (~0.8–1.0), blunt weapons low (~0.1–0.2). */
   readonly goreFactor: number;
+  /**
+   * Base hit chance (0.0–1.0) before dexterity and skill bonuses.
+   * Accuracy bonuses from stats are added on top; result is clamped to [0,1].
+   * Ranged weapons are less forgiving than melee; traps always hit.
+   */
+  readonly baseAccuracy: number;
+  /** Weapon class skill that levels up (slowly) when this weapon fires. Grants damage. */
+  readonly weaponClassSkillId: WeaponClassSkillId;
+  /** Weapon type skill that levels up (quickly) when this weapon fires. Grants accuracy. */
+  readonly weaponTypeSkillId: WeaponTypeSkillId;
 }
 
 function def(
   partial: Partial<WeaponDef> &
-    Pick<WeaponDef, 'id' | 'name' | 'weaponType' | 'baseDamage' | 'cooldownMs'>,
+    Pick<
+      WeaponDef,
+      | 'id'
+      | 'name'
+      | 'weaponType'
+      | 'baseDamage'
+      | 'cooldownMs'
+      | 'weaponClassSkillId'
+      | 'weaponTypeSkillId'
+    >,
 ): WeaponDef {
   return {
     range: 0,
@@ -76,6 +96,7 @@ function def(
     pierce: 0,
     bounceCount: 0,
     goreFactor: 0.5,
+    baseAccuracy: 0.85,
     ...partial,
   };
 }
@@ -95,6 +116,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       durationMs: WEAPON.MELEE_DURATION_MS,
       swingArcDeg: 90,
       goreFactor: 0.9,
+      baseAccuracy: 0.9,
+      weaponClassSkillId: 'slashing',
+      weaponTypeSkillId: 'sword',
     }),
   ],
   [
@@ -110,6 +134,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       durationMs: 150,
       meleeStyle: MeleeStyle.STAB,
       goreFactor: 1.0,
+      baseAccuracy: 0.85,
+      weaponClassSkillId: 'stabbing',
+      weaponTypeSkillId: 'dagger',
     }),
   ],
   [
@@ -127,6 +154,30 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       shaftDamageMult: 0.5,
       knockback: 4,
       goreFactor: 0.15,
+      baseAccuracy: 0.85,
+      weaponClassSkillId: 'smashing',
+      weaponTypeSkillId: 'hammer',
+    }),
+  ],
+  [
+    'baseball-bat',
+    def({
+      id: 'baseball-bat',
+      name: 'Baseball Bat',
+      weaponType: WeaponType.MELEE,
+      baseDamage: 20,
+      cooldownMs: 900,
+      range: 5.5,
+      aoeRadius: 5.5,
+      durationMs: 300,
+      swingArcDeg: 120,
+      headRadius: 1.75,
+      shaftDamageMult: 0.4,
+      knockback: 5,
+      goreFactor: 0.15,
+      baseAccuracy: 0.85,
+      weaponClassSkillId: 'smashing',
+      weaponTypeSkillId: 'sports-equipment',
     }),
   ],
 
@@ -142,6 +193,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       range: 40,
       projectileSpeed: WEAPON.PROJECTILE_SPEED,
       goreFactor: 0.3,
+      baseAccuracy: 0.8,
+      weaponClassSkillId: 'ranged',
+      weaponTypeSkillId: 'pistol',
     }),
   ],
   [
@@ -150,11 +204,15 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       id: 'bow',
       name: 'Bow',
       weaponType: WeaponType.RANGED,
-      baseDamage: 12,
-      cooldownMs: 700,
+      baseDamage: 16,
+      cooldownMs: 900,
       range: 44,
       projectileSpeed: 6.0,
+      pierce: 1,
       goreFactor: 0.8,
+      baseAccuracy: 0.75,
+      weaponClassSkillId: 'ranged',
+      weaponTypeSkillId: 'bow',
     }),
   ],
   [
@@ -168,6 +226,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       range: 50,
       projectileSpeed: 8.0,
       goreFactor: 0.85,
+      baseAccuracy: 0.8,
+      weaponClassSkillId: 'ranged',
+      weaponTypeSkillId: 'crossbow',
     }),
   ],
 
@@ -188,6 +249,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       shaftDamageMult: 0,
       knockback: 2.5,
       goreFactor: 0.1,
+      baseAccuracy: 0.85,
+      weaponClassSkillId: 'forearms',
+      weaponTypeSkillId: 'unarmed',
     }),
   ],
   [
@@ -202,6 +266,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       aoeRadius: 4,
       durationMs: 200,
       goreFactor: 0.1,
+      baseAccuracy: 0.85,
+      weaponClassSkillId: 'forearms',
+      weaponTypeSkillId: 'unarmed',
     }),
   ],
 
@@ -218,6 +285,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       projectileSpeed: 4.0,
       aoeRadius: 6,
       goreFactor: 0.0,
+      baseAccuracy: 0.85,
+      weaponClassSkillId: 'arcane',
+      weaponTypeSkillId: 'spellcraft',
     }),
   ],
 
@@ -235,6 +305,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       returnSpeed: WEAPON.THROWN_RETURN_SPEED,
       maxRange: 25,
       goreFactor: 0.2,
+      baseAccuracy: 0.7,
+      weaponClassSkillId: 'throwing',
+      weaponTypeSkillId: 'throwing-weapons',
     }),
   ],
   [
@@ -250,6 +323,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       returnSpeed: 0,
       maxRange: 0,
       goreFactor: 0.95,
+      baseAccuracy: 0.75,
+      weaponClassSkillId: 'throwing',
+      weaponTypeSkillId: 'throwing-weapons',
     }),
   ],
   [
@@ -265,6 +341,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       pierce: 12,
       bounceCount: 6,
       goreFactor: 0.05,
+      baseAccuracy: 0.65,
+      weaponClassSkillId: 'smashing',
+      weaponTypeSkillId: 'sports-equipment',
     }),
   ],
 
@@ -282,6 +361,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       durationMs: WEAPON.BEAM_DURATION_MS,
       beamTickMs: WEAPON.BEAM_TICK_MS,
       goreFactor: 0.0,
+      baseAccuracy: 0.95,
+      weaponClassSkillId: 'arcane',
+      weaponTypeSkillId: 'spellcraft',
     }),
   ],
 
@@ -299,6 +381,9 @@ export const WEAPON_DEFS: ReadonlyMap<string, WeaponDef> = new Map([
       trapTriggerRadius: 4,
       trapExplosionRadius: 8,
       goreFactor: 0.4,
+      baseAccuracy: 1.0,
+      weaponClassSkillId: 'arcane',
+      weaponTypeSkillId: 'spellcraft',
     }),
   ],
 ]);

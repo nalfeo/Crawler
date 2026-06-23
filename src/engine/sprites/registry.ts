@@ -332,6 +332,28 @@ export const SPRITES: ReadonlyArray<SpriteDef> = [
     frame: frameAt(CUSTOM_COLS, 18, 0),
     note: 'Custom dead marker sprite.',
   },
+  // --- Weapon sprites (Kenney Tiny Dungeon CC0) ---
+  {
+    id: 'weapon.sword',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 8, 8),
+    note: 'Tiny Dungeon short sword — row 8 col 8 (frame 104).',
+    anchor: { x: 8, y: 14 },
+  },
+  {
+    id: 'weapon.bat',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 9, 9),
+    note: 'Tiny Dungeon wooden mallet used as baseball bat — row 9 col 9 (frame 117).',
+    anchor: { x: 8, y: 14 },
+  },
+  {
+    id: 'weapon.arrow',
+    sheetKey: KENNEY_TINY_DUNGEON,
+    frame: frameAt(TD_COLS, 11, 10),
+    note: 'Tiny Dungeon arrow/bolt projectile — row 10 col 11 (frame 131).',
+    anchor: { x: 8, y: 8 },
+  },
 ];
 
 const SPRITES_BY_ID: ReadonlyMap<string, SpriteDef> = new Map(SPRITES.map((s) => [s.id, s]));

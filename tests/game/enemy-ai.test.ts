@@ -346,6 +346,101 @@ describe('enemyAISystem', () => {
     ).toBeGreaterThan(0.1);
   });
 
+  it('moves a leaper toward the player at normal speed while out of pounce range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Spawn well outside the leap range but inside aggro range.
+    const enemy = spawnBehaviorEnemy(world, 300, 0, 20, AI_TYPE.LEAPER, 1, 400, 0);
+
+    enemyAISystem(world);
+
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    // It should commit a normal-speed approach straight at the player (−x), not
+    // a slow sideways prep wiggle.
+    expect(vx).toBeLessThan(-0.5);
+    expect(Math.abs(vy)).toBeLessThan(0.2);
+  });
+
+  it('makes leaper enemies pause-wiggle before fast leaps', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Spawn inside the pounce band: beyond the inner range (where the slime
+    // reverts to a hittable normal approach) but within SLIME_LEAP_RANGE.
+    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
+
+    enemyAISystem(world);
+    const firstSpeed = Math.hypot(
+      world.stores.velocity.x[enemy] ?? 0,
+      world.stores.velocity.y[enemy] ?? 0,
+    );
+    expect(firstSpeed).toBeLessThan(1);
+    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.05);
+
+    let observedLeapSpeed = 0;
+    for (let i = 0; i < 80; i += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      enemyAISystem(world);
+      observedLeapSpeed = Math.max(
+        observedLeapSpeed,
+        Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+      );
+    }
+
+    // The leap is a deliberate, gentler hop (≈1.5× base speed, with a bonus-speed
+    // floor) so it stays hittable, but is still clearly faster than the slow prep
+    // crouch.
+    expect(observedLeapSpeed).toBeGreaterThan(1.5);
+  });
+
+  it('freezes leaper enemies in a recovery window after each leap', () => {
+    const world = createTestWorld();
+    // Stationary player: the slime commits a leap toward this point, then must
+    // sit frozen in its recovery window — the deliberate opening for the player
+    // to attack after dodging the pounce.
+    spawnPlayer(world, 0, 0);
+    // Spawn inside the pounce band (beyond the inner range, within leap range).
+    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1.5, 200, 0);
+
+    let maxSpeed = 0;
+    let longestFrozenStreak = 0;
+    let currentFrozenStreak = 0;
+    let frozenAfterLeap = false;
+    let sawLeap = false;
+
+    for (let i = 0; i < 150; i += 1) {
+      enemyAISystem(world);
+      const speed = Math.hypot(
+        world.stores.velocity.x[enemy] ?? 0,
+        world.stores.velocity.y[enemy] ?? 0,
+      );
+      maxSpeed = Math.max(maxSpeed, speed);
+      if (speed > 1.5) {
+        sawLeap = true;
+      }
+      if (speed < 1e-6) {
+        currentFrozenStreak += 1;
+        // Only count a freeze that follows a leap as the recovery window (the
+        // slime is not frozen before it has pounced).
+        if (sawLeap && currentFrozenStreak > longestFrozenStreak) {
+          longestFrozenStreak = currentFrozenStreak;
+          frozenAfterLeap = true;
+        }
+      } else {
+        currentFrozenStreak = 0;
+      }
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+    }
+
+    // The pounce reaches a clearly fast leap speed before the freeze.
+    expect(maxSpeed).toBeGreaterThan(1.5);
+    // After leaping the slime holds completely still for a meaningful window.
+    expect(frozenAfterLeap).toBe(true);
+    expect(longestFrozenStreak).toBeGreaterThanOrEqual(15);
+  });
+
   it('keeps room enemies idle until their room door opens', () => {
     const world = createTestWorld();
     world.floorMap = createOneRoomMapWithDoor(false);

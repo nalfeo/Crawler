@@ -34,11 +34,35 @@ const COLORS = {
   objectiveDone: '#6ee7b7',
 } as const;
 
-export function createHudQuestTracker(scene: Phaser.Scene): {
+const COLLAPSE_STORAGE_KEY = 'crawler:quest-tracker-collapsed';
+
+function readCollapsedPref(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(COLLAPSE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeCollapsedPref(collapsed: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(COLLAPSE_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Ignore storage failures (private mode, headless, etc.).
+  }
+}
+
+export function createHudQuestTracker(
+  scene: Phaser.Scene,
+  options: { parent?: Phaser.GameObjects.Container } = {},
+): {
   sync(world: GameWorld, playerEid?: number): void;
   destroy(): void;
 } {
-  const panel = createBeveledPanel(scene, RIGHT_X - MIN_WIDTH, TOP_Y, MIN_WIDTH, TITLE_H + PAD);
+  const parent = options.parent;
+  const panel = createBeveledPanel(scene, RIGHT_X - MIN_WIDTH, TOP_Y, MIN_WIDTH, TITLE_H + PAD, {
+    parent,
+  });
 
   const titleStrip = scene.add
     .rectangle(RIGHT_X - MIN_WIDTH + 2, TOP_Y + 2, MIN_WIDTH - 4, TITLE_H, 0x3a2f12, 1)
@@ -54,6 +78,7 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
     {
       depth: PIXEL_UI_DEPTH.content,
       scale: 0.85,
+      parent,
     },
   );
 
@@ -65,6 +90,18 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
       color: COLORS.title,
     })
     .setOrigin(0, 0.5)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+
+  // Collapse/expand chevron, right-aligned inside the title strip.
+  const chevron = scene.add
+    .text(RIGHT_X - PAD, TOP_Y + 2 + TITLE_H / 2, '▾', {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      fontStyle: 'bold',
+      color: COLORS.title,
+    })
+    .setOrigin(1, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
 
@@ -80,13 +117,31 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
     .setOrigin(1, 0)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
+  parent?.add([titleStrip, titleText, chevron, body]);
+
+  let collapsed = readCollapsedPref();
+  let lastWorld: GameWorld | null = null;
+  let lastPlayerEid: number | undefined;
+  chevron.setText(collapsed ? '▸' : '▾');
+
+  // Tapping the title strip collapses/expands the tracker (mobile-friendly).
+  titleStrip.setInteractive({ useHandCursor: true });
+  titleStrip.on('pointerdown', () => {
+    collapsed = !collapsed;
+    writeCollapsedPref(collapsed);
+    chevron.setText(collapsed ? '▸' : '▾');
+    if (lastWorld) {
+      sync(lastWorld, lastPlayerEid);
+    }
+  });
 
   function setVisible(visible: boolean): void {
     panel.setVisible(visible);
     titleStrip.setVisible(visible);
     titleIcon.setVisible(visible);
     titleText.setVisible(visible);
-    body.setVisible(visible);
+    chevron.setVisible(visible);
+    body.setVisible(visible && !collapsed);
   }
 
   function formatObjective(view: QuestObjectiveView): string {
@@ -98,6 +153,8 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
   }
 
   function sync(world: GameWorld, playerEid?: number): void {
+    lastWorld = world;
+    lastPlayerEid = playerEid;
     const active = getActiveQuests(world).slice(0, MAX_ACTIVE_QUESTS);
     if (active.length === 0) {
       body.setText('');
@@ -126,15 +183,17 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
     }
     body.setText(lines.join('\n'));
 
-    // Resize the panel + title strip to hug the content.
-    const contentW = Math.max(MIN_WIDTH, Math.ceil(body.width) + PAD * 2);
-    const contentH = TITLE_H + 6 + Math.ceil(body.height) + PAD;
+    // Resize the panel + title strip to hug the content. When collapsed, the
+    // body is hidden and the panel shrinks to just the title strip.
+    const contentW = collapsed ? MIN_WIDTH : Math.max(MIN_WIDTH, Math.ceil(body.width) + PAD * 2);
+    const contentH = collapsed ? TITLE_H + PAD : TITLE_H + 6 + Math.ceil(body.height) + PAD;
     const panelX = RIGHT_X - contentW;
     panel.setPosition(panelX, TOP_Y);
     panel.setSize(contentW, contentH);
     titleStrip.setPosition(panelX + 2, TOP_Y + 2).setSize(contentW - 4, TITLE_H);
     titleIcon.setPosition(panelX + 14, TOP_Y + 2 + TITLE_H / 2);
     titleText.setPosition(panelX + 26, TOP_Y + 2 + TITLE_H / 2);
+    chevron.setPosition(panelX + contentW - PAD, TOP_Y + 2 + TITLE_H / 2);
   }
 
   function destroy(): void {
@@ -142,6 +201,7 @@ export function createHudQuestTracker(scene: Phaser.Scene): {
     titleStrip.destroy();
     titleIcon.destroy();
     titleText.destroy();
+    chevron.destroy();
     body.destroy();
   }
 

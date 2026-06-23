@@ -1,31 +1,34 @@
 /**
- * level-up-allocation — pure, deterministic state for the level-up stat
+ * level-up-allocation — pure, deterministic state for the level-up core-stat
  * allocation screen.
  *
  * The Phaser overlay (`src/engine/LevelUpUI.ts`) and the lab render this state
  * and dispatch transitions; all of the spend/clamp/navigation rules live here so
  * they can be unit-tested without a renderer. No Phaser/DOM imports.
  *
+ * Players allocate points to PRIMARY_STATS (Strength, Dexterity, …) which then
+ * derive the STAT_KEYS gameplay stats via `CORE_STAT_GAINS` in stats.ts.
+ *
  * Mirrors the immutable-transition shape of `src/shared/modal-picker.ts`:
  * every mutator returns a new state object and never mutates its input.
  */
-import { STAT_KEYS, type StatKey } from './stats.js';
+import { PRIMARY_STATS, type PrimaryStatId } from './stats.js';
 
 export type LevelUpStatus = 'open' | 'confirmed' | 'cancelled';
 
 export interface LevelUpAllocationState {
   /** Total points granted by the level-up(s) being allocated. */
   readonly available: number;
-  /** Points tentatively assigned to each stat (the draft). */
-  readonly draft: Readonly<Record<StatKey, number>>;
-  /** Index into STAT_KEYS of the currently highlighted row. */
+  /** Points tentatively assigned to each core stat (the draft). */
+  readonly draft: Readonly<Record<PrimaryStatId, number>>;
+  /** Index into PRIMARY_STATS of the currently highlighted row. */
   readonly selectedIndex: number;
   readonly status: LevelUpStatus;
 }
 
-function emptyDraft(): Record<StatKey, number> {
-  const draft = {} as Record<StatKey, number>;
-  for (const stat of STAT_KEYS) {
+function emptyDraft(): Record<PrimaryStatId, number> {
+  const draft = {} as Record<PrimaryStatId, number>;
+  for (const stat of PRIMARY_STATS) {
     draft[stat] = 0;
   }
   return draft;
@@ -45,7 +48,7 @@ export function createLevelUpAllocationState(available: number): LevelUpAllocati
 /** Total points spent across all stats in the current draft. */
 export function spentTotal(state: LevelUpAllocationState): number {
   let total = 0;
-  for (const stat of STAT_KEYS) {
+  for (const stat of PRIMARY_STATS) {
     total += state.draft[stat];
   }
   return total;
@@ -56,9 +59,9 @@ export function remainingPoints(state: LevelUpAllocationState): number {
   return state.available - spentTotal(state);
 }
 
-/** The StatKey currently highlighted. */
-export function selectedStat(state: LevelUpAllocationState): StatKey {
-  return STAT_KEYS[state.selectedIndex] ?? STAT_KEYS[0]!;
+/** The PrimaryStatId currently highlighted. */
+export function selectedStat(state: LevelUpAllocationState): PrimaryStatId {
+  return PRIMARY_STATS[state.selectedIndex] ?? PRIMARY_STATS[0]!;
 }
 
 /**
@@ -72,7 +75,7 @@ export function moveSelection(
   if (state.status !== 'open') {
     return state;
   }
-  const count = STAT_KEYS.length;
+  const count = PRIMARY_STATS.length;
   const next = (((state.selectedIndex + delta) % count) + count) % count;
   if (next === state.selectedIndex) {
     return state;
@@ -81,11 +84,14 @@ export function moveSelection(
 }
 
 /** Highlight a specific stat by id. No-op if the id is unknown or closed. */
-export function selectStat(state: LevelUpAllocationState, stat: StatKey): LevelUpAllocationState {
+export function selectStat(
+  state: LevelUpAllocationState,
+  stat: PrimaryStatId,
+): LevelUpAllocationState {
   if (state.status !== 'open') {
     return state;
   }
-  const index = STAT_KEYS.indexOf(stat);
+  const index = PRIMARY_STATS.indexOf(stat);
   if (index < 0 || index === state.selectedIndex) {
     return state;
   }
@@ -95,12 +101,12 @@ export function selectStat(state: LevelUpAllocationState, stat: StatKey): LevelU
 /** Add one point to `stat`, capped by remaining points. */
 export function incrementStat(
   state: LevelUpAllocationState,
-  stat: StatKey,
+  stat: PrimaryStatId,
 ): LevelUpAllocationState {
   if (state.status !== 'open' || remainingPoints(state) <= 0) {
     return state;
   }
-  const index = STAT_KEYS.indexOf(stat);
+  const index = PRIMARY_STATS.indexOf(stat);
   if (index < 0) {
     return state;
   }
@@ -114,12 +120,12 @@ export function incrementStat(
 /** Remove one point from `stat`, floored at zero. */
 export function decrementStat(
   state: LevelUpAllocationState,
-  stat: StatKey,
+  stat: PrimaryStatId,
 ): LevelUpAllocationState {
   if (state.status !== 'open') {
     return state;
   }
-  const index = STAT_KEYS.indexOf(stat);
+  const index = PRIMARY_STATS.indexOf(stat);
   if (index < 0 || state.draft[stat] <= 0) {
     return state;
   }
@@ -169,9 +175,11 @@ export function cancel(state: LevelUpAllocationState): LevelUpAllocationState {
  * (e.g. cancelled or untouched) the result is an empty object so no points are
  * spent and the unspent total is banked toward the next level.
  */
-export function toAllocations(state: LevelUpAllocationState): Partial<Record<StatKey, number>> {
-  const allocations: Partial<Record<StatKey, number>> = {};
-  for (const stat of STAT_KEYS) {
+export function toAllocations(
+  state: LevelUpAllocationState,
+): Partial<Record<PrimaryStatId, number>> {
+  const allocations: Partial<Record<PrimaryStatId, number>> = {};
+  for (const stat of PRIMARY_STATS) {
     if (state.draft[stat] > 0) {
       allocations[stat] = state.draft[stat];
     }

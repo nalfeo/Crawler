@@ -1,6 +1,5 @@
-import { hasComponent, query, removeEntity, setComponent } from 'bitecs';
+import { hasComponent, query, removeEntity } from 'bitecs';
 import {
-  Damage,
   Enemy,
   MeleeSwing,
   Owner,
@@ -24,22 +23,16 @@ import {
 import { clearMeleeSwingHits } from '../core/systems/meleeSwingSystem.js';
 import { isEntityInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
-import { TeamId, WEAPON, WeaponType } from '../shared/constants.js';
+import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
 import { ftToPx } from '../shared/units.js';
-
-export interface WeaponConfig {
-  projectileSpeed: number;
-  fireRateMs: number;
-  baseDamage: number;
-}
 
 interface WeaponState {
   lastFireMs: number;
   aimX: number;
   aimY: number;
-  /** Active weapon definition id, or undefined for legacy projectile mode. */
+  /** Active weapon definition id, or undefined when no weapon is equipped. */
   activeWeaponId: string | undefined;
   /** Cached weapon def for the active weapon. */
   activeWeaponDef: WeaponDef | undefined;
@@ -55,28 +48,8 @@ const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
 // Enemies spawn around 1000px away, so keep combat targeting slightly beyond that.
 const COMBAT_RADIUS_PX = 1200;
 
-const weaponConfigs = new WeakMap<GameWorld, WeaponConfig>();
 const weaponStates = new WeakMap<GameWorld, WeaponState>();
 const logger = createLogger('game:weapon-system');
-
-function createDefaultConfig(): WeaponConfig {
-  return {
-    projectileSpeed: WEAPON.PROJECTILE_SPEED,
-    fireRateMs: WEAPON.FIRE_RATE_MS,
-    baseDamage: WEAPON.BASE_DAMAGE,
-  };
-}
-
-function getWeaponConfig(world: GameWorld): WeaponConfig {
-  let config = weaponConfigs.get(world);
-
-  if (config === undefined) {
-    config = createDefaultConfig();
-    weaponConfigs.set(world, config);
-  }
-
-  return config;
-}
 
 function getWeaponState(world: GameWorld): WeaponState {
   let state = weaponStates.get(world);
@@ -113,69 +86,6 @@ function normalizeVector(x: number, y: number): { x: number; y: number } {
 function getPlayerEntity(world: GameWorld): number | undefined {
   const players = query(world.ecs, [Player, Position]);
   return players[0];
-}
-
-/**
- * Resolves the effective weapon config for the current frame.
- * If the player has a Stats component, reads from the stats store:
- *   - effectiveCooldownMs = baseCooldownMs / max(0.1, attackSpeed)
- *   - baseDamage = stats.damage
- * Falls back to the WeaponConfig set via configureWeaponSystem.
- */
-function resolveWeaponConfig(world: GameWorld, player: number): WeaponConfig {
-  const config = getWeaponConfig(world);
-
-  if (hasComponent(world.ecs, player, Stats)) {
-    const attackSpeed = Math.max(0.1, world.stores.stats.attackSpeed[player]!);
-    const rawDamage = world.stores.stats.damage[player]!;
-    const damage = rawDamage;
-    return {
-      projectileSpeed: config.projectileSpeed,
-      fireRateMs: config.fireRateMs / attackSpeed,
-      baseDamage: damage,
-    };
-  }
-
-  if (!hasComponent(world.ecs, player, Damage)) {
-    return config;
-  }
-
-  const baseDamage = world.stores.damage.amount[player]!;
-  const fireRateMs = world.stores.damage.cooldownMs[player]!;
-
-  return {
-    projectileSpeed: config.projectileSpeed,
-    fireRateMs: fireRateMs > 0 ? fireRateMs : config.fireRateMs,
-    baseDamage: baseDamage > 0 ? baseDamage : config.baseDamage,
-  };
-}
-
-function readLastFireMs(world: GameWorld, player: number): number {
-  const state = getWeaponState(world);
-
-  if (hasComponent(world.ecs, player, Damage)) {
-    return world.stores.damage.lastFireMs[player]!;
-  }
-
-  return state.lastFireMs;
-}
-
-function writeLastFireMs(
-  world: GameWorld,
-  player: number,
-  config: WeaponConfig,
-  lastFireMs: number,
-): void {
-  const state = getWeaponState(world);
-  state.lastFireMs = lastFireMs;
-
-  if (hasComponent(world.ecs, player, Damage)) {
-    setComponent(world.ecs, player, Damage, {
-      amount: config.baseDamage,
-      cooldownMs: config.fireRateMs,
-      lastFireMs,
-    });
-  }
 }
 
 function updateAimFromVelocity(world: GameWorld, player: number, state: WeaponState): void {
@@ -338,7 +248,20 @@ function fireMeleeAttack(
     ftToPx(def.headRadius),
     def.shaftDamageMult,
     ftToPx(def.knockback),
+    getMeleeSpriteId(def.id),
   );
+}
+
+/** Map weapon id to a renderer sprite hint (0 = default sword). */
+function getMeleeSpriteId(weaponId: string): number {
+  switch (weaponId) {
+    case 'sword':
+      return MeleeSpriteId.SWORD;
+    case 'baseball-bat':
+      return MeleeSpriteId.BAT;
+    default:
+      return 0;
+  }
 }
 
 function fireRangedAttack(
@@ -475,12 +398,64 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
   );
 }
 
+/**
+ * Emit weapon_fired skill usage events for the active weapon's class and type skills.
+ * Called on every attack attempt (hit or miss) so skills always progress with use.
+ */
+export function emitWeaponSkillEvents(world: GameWorld, player: number, def: WeaponDef): void {
+  world.skillUsageEvents.push({
+    holderEid: player,
+    skillId: def.weaponClassSkillId,
+    metric: 'weapon_fired',
+    amount: 1,
+  });
+  world.skillUsageEvents.push({
+    holderEid: player,
+    skillId: def.weaponTypeSkillId,
+    metric: 'weapon_fired',
+    amount: 1,
+  });
+}
+
+/**
+ * Compute effective hit chance for an attack.
+ * effectiveAccuracy = clamp(0, 1, def.baseAccuracy + player accuracy bonus)
+ * Traps (TRAP type) always hit regardless of accuracy.
+ */
+export function computeEffectiveAccuracy(world: GameWorld, player: number, def: WeaponDef): number {
+  if (def.weaponType === WeaponType.TRAP) return 1.0;
+  const bonus = hasComponent(world.ecs, player, Stats)
+    ? (world.stores.stats.accuracy[player] ?? 0)
+    : 0;
+  return Math.min(1.0, Math.max(0, def.baseAccuracy + bonus));
+}
+
 function dispatchAttack(
   world: GameWorld,
   player: number,
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
+  // Emit skill progression events on every weapon fire (hit or miss).
+  emitWeaponSkillEvents(world, player, def);
+
+  // Accuracy roll: miss if roll > effectiveAccuracy.
+  // rng.next() returns [0,1); roll exactly at the threshold counts as a hit.
+  const effectiveAccuracy = computeEffectiveAccuracy(world, player, def);
+  if (world.rng.next() > effectiveAccuracy) {
+    const px = world.stores.position.x[player] ?? 0;
+    const py = world.stores.position.y[player] ?? 0;
+    world.combatEvents.push({
+      type: 'miss',
+      x: px,
+      y: py,
+      amount: 0,
+      targetType: 'enemy',
+      timestamp: world.elapsedMs,
+    });
+    return;
+  }
+
   switch (def.weaponType) {
     case WeaponType.MELEE:
       fireMeleeAttack(world, player, def, dir);
@@ -505,14 +480,6 @@ function dispatchAttack(
   }
 }
 
-export function configureWeaponSystem(world: GameWorld, config: Partial<WeaponConfig>): void {
-  weaponConfigs.set(world, {
-    ...getWeaponConfig(world),
-    ...config,
-  });
-  logger.info('Configured weapon system', { ...getWeaponConfig(world) });
-}
-
 /** Set the active weapon definition for the weapon system. */
 export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
   const state = getWeaponState(world);
@@ -532,13 +499,13 @@ export function setActiveWeapon(world: GameWorld, weaponDef: WeaponDef): void {
   });
 }
 
-/** Clear the active weapon, reverting to legacy projectile mode. */
+/** Clear the active weapon. The player will not auto-fire until a new weapon is set. */
 export function clearActiveWeapon(world: GameWorld): void {
   const state = getWeaponState(world);
   const previousWeaponId = state.activeWeaponId;
   state.activeWeaponId = undefined;
   state.activeWeaponDef = undefined;
-  logger.info('Cleared active weapon; returning to legacy projectile mode', { previousWeaponId });
+  logger.info('Cleared active weapon', { previousWeaponId });
 }
 
 /** Get the active weapon definition, if any. */
@@ -549,9 +516,9 @@ export function getActiveWeapon(world: GameWorld): WeaponDef | undefined {
 /**
  * Active-weapon cooldown readiness, mirroring the gate the melee/data-driven fire
  * path uses (`world.elapsedMs - state.lastFireMs >= def.cooldownMs`). Returns
- * `null` when there is no data-driven weapon (legacy projectile mode). Exposed so
- * the headless AI can stutter-step: dart into strike range when `ready`, ease back
- * out while a swing is on cooldown instead of standing still and trading blows.
+ * `null` when no weapon is equipped. Exposed so the headless AI can stutter-step:
+ * dart into strike range when `ready`, ease back out while a swing is on cooldown
+ * instead of standing still and trading blows.
  */
 export function getActiveWeaponReadiness(
   world: GameWorld,
@@ -667,65 +634,7 @@ export function weaponSystem(world: GameWorld): void {
       weaponType: def.weaponType,
       elapsedMs: world.elapsedMs,
     });
-    return;
   }
-
-  // Legacy projectile mode (backwards compatible)
-  const config = resolveWeaponConfig(world, player);
-  const lastFireMs = readLastFireMs(world, player);
-
-  if (world.elapsedMs - lastFireMs < config.fireRateMs) {
-    return;
-  }
-
-  const legacyTarget = getNearestEnemyTarget(world, playerX, playerY, inCombat);
-  if (!legacyTarget) {
-    return;
-  }
-  const legacyGateRangePx = WEAPON.THROWN_MAX_RANGE * ATTACK_TARGET_GATE_MULTIPLIER;
-  if (legacyTarget.distanceSq > legacyGateRangePx * legacyGateRangePx) {
-    return;
-  }
-
-  // Determine how many projectiles to fire (1 + floor(projectileCount bonus))
-  const extraProjectiles = hasComponent(world.ecs, player, Stats)
-    ? Math.floor(world.stores.stats.projectileCount[player]!)
-    : 0;
-  const totalProjectiles = 1 + extraProjectiles;
-
-  for (let i = 0; i < totalProjectiles; i++) {
-    // Spread extra projectiles slightly so they don't perfectly overlap
-    let dx = legacyTarget.direction.x;
-    let dy = legacyTarget.direction.y;
-    if (i > 0) {
-      const spreadAngle = (i % 2 === 1 ? 1 : -1) * (Math.ceil(i / 2) * 0.15);
-      const cos = Math.cos(spreadAngle);
-      const sin = Math.sin(spreadAngle);
-      dx = legacyTarget.direction.x * cos - legacyTarget.direction.y * sin;
-      dy = legacyTarget.direction.x * sin + legacyTarget.direction.y * cos;
-      const len = Math.hypot(dx, dy);
-      dx /= len;
-      dy /= len;
-    }
-
-    spawnProjectile(
-      world,
-      playerX,
-      playerY,
-      dx * config.projectileSpeed,
-      dy * config.projectileSpeed,
-      config.baseDamage,
-    );
-  }
-
-  state.aimX = legacyTarget.direction.x;
-  state.aimY = legacyTarget.direction.y;
-  writeLastFireMs(world, player, config, world.elapsedMs);
-  logger.debug('Fired legacy projectile volley', {
-    projectileCount: totalProjectiles,
-    baseDamage: config.baseDamage,
-    elapsedMs: world.elapsedMs,
-  });
 }
 
 /** Process weapon entities (for multi-weapon support). */

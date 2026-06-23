@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-22",
+  "session": "cave-tile-readability",
+  "estimated_apples": 2,
+  "actual_apples": 3,
+  "delta": 1,
+  "verdict": "under",
+  "hello_kitties": 0.6,
+  "notes": "Scope grew after a follow-up full-sweep request: also fixed corridor/safe-room 'bars', lava/dirt/wood placeholder mis-maps."
+}

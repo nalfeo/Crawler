@@ -130,22 +130,25 @@ jobs:
     steps:
       - name: Check required jobs
         run: |
-          if [ "${{ needs.check-types-and-lint.result }}" != "success" ]; then
-            echo "❌ Types & Lint checks failed"
-            exit 1
-          fi
-          if [ "${{ needs.check-format-and-labs.result }}" != "success" ]; then
-            echo "❌ Format & Labs checks failed"
-            exit 1
-          fi
-          if [ "${{ needs.test-unit.result }}" != "success" ]; then
-            echo "❌ Unit tests failed"
-            exit 1
-          fi
-          if [ "${{ needs.test-headless.result }}" != "success" ]; then
-            echo "❌ Headless Floor 1 completion gate failed"
-            exit 1
-          fi
+          check() {
+            local name="$1" result="$2" allow_skipped="${3:-false}"
+            if [ "$result" = "success" ]; then
+              echo "✅ $name: $result"
+              return
+            fi
+            if [ "$allow_skipped" = "true" ] && [ "$result" = "skipped" ]; then
+              echo "✅ $name: $result"
+              return
+            fi
+            if [ "$result" != "success" ]; then
+              echo "❌ $name failed (result: $result)"
+              exit 1
+            fi
+          }
+          check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"
+          check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
+          check "Unit tests"                    "${{ needs.test-unit.result }}"
+          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"
           echo "✅ All required checks passed"
 
   ci:

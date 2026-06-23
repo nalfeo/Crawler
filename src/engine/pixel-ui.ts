@@ -60,6 +60,8 @@ export interface BeveledPanelOptions {
   border?: number;
   depth?: number;
   scrollFactor?: number;
+  /** Optional container to parent all created rectangles into (for group scaling). */
+  parent?: Phaser.GameObjects.Container;
 }
 
 export interface BeveledPanel {
@@ -125,6 +127,8 @@ export function createBeveledPanel(
     .setScrollFactor(scrollFactor)
     .setDepth(depth);
 
+  options.parent?.add([body, top, left, bottom, right]);
+
   function reflow(): void {
     body.setPosition(px, py).setSize(pw, ph);
     top.setPosition(px, py).setSize(pw, 2);
@@ -171,6 +175,8 @@ export interface StatBarOptions {
   scrollFactor?: number;
   /** Pixel width of one segment tick gap. 0 disables ticks. */
   segment?: number;
+  /** Optional container to parent all created objects into (for group scaling). */
+  parent?: Phaser.GameObjects.Container;
 }
 
 export interface StatBar {
@@ -238,6 +244,8 @@ export function createStatBar(
   }
 
   let lastPct = 1;
+
+  options.parent?.add([track, fill, shine, ...ticks]);
 
   function applyWidth(pct: number): void {
     const w = Math.max(0, Math.min(1, pct)) * innerW;
@@ -439,13 +447,21 @@ export function addPixelIcon(
   key: string,
   x: number,
   y: number,
-  options: { depth?: number; scrollFactor?: number; scale?: number; origin?: number } = {},
+  options: {
+    depth?: number;
+    scrollFactor?: number;
+    scale?: number;
+    origin?: number;
+    parent?: Phaser.GameObjects.Container;
+  } = {},
 ): Phaser.GameObjects.Image {
   ensurePixelUiTextures(scene);
-  return scene.add
+  const image = scene.add
     .image(x, y, key)
     .setOrigin(options.origin ?? 0.5, options.origin ?? 0.5)
     .setScale(options.scale ?? 1)
     .setScrollFactor(options.scrollFactor ?? 0)
     .setDepth(options.depth ?? PIXEL_UI_DEPTH.overlay);
+  options.parent?.add(image);
+  return image;
 }

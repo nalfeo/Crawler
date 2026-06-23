@@ -39,6 +39,8 @@ export interface HudHealthBarOptions {
   x?: number;
   /** Vertical position of bar top edge. Defaults to bottom-left corner. */
   y?: number;
+  /** Optional container to parent all created objects into (for group scaling). */
+  parent?: Phaser.GameObjects.Container;
 }
 
 export function createHudHealthBar(
@@ -50,16 +52,18 @@ export function createHudHealthBar(
 } {
   const barX = options.x ?? BAR_X;
   const barY = options.y ?? BAR_Y;
+  const parent = options.parent;
 
   const panelX = barX;
   const panelY = barY + BAR_HEIGHT / 2 - PANEL_H / 2;
 
-  const panel = createBeveledPanel(scene, panelX, panelY, PANEL_W, PANEL_H);
+  const panel = createBeveledPanel(scene, panelX, panelY, PANEL_W, PANEL_H, { parent });
 
   const iconCx = panelX + PAD + ICON_SIZE / 2;
   const iconCy = panelY + PANEL_H / 2;
   const icon = addPixelIcon(scene, PIXEL_ICON.heart, iconCx, iconCy, {
     depth: PIXEL_UI_DEPTH.overlay,
+    parent,
   });
 
   const innerBarX = panelX + PAD + ICON_SIZE + 6;
@@ -69,6 +73,7 @@ export function createHudHealthBar(
     fill: PIXEL_UI.hpHigh,
     depth: PIXEL_UI_DEPTH.content,
     segment: 25,
+    parent,
   });
 
   const label = scene.add
@@ -82,6 +87,7 @@ export function createHudHealthBar(
     .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.overlay);
+  parent?.add(label);
 
   let pulseTween: Phaser.Tweens.Tween | undefined;
   let wasPulsing = false;
