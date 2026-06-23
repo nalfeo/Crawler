@@ -72,8 +72,8 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   scanRadius: 400,
   rangedSafeDistance: 120,
   opportunisticGrabRadius: 120,
-  dodgeWeight: 0.4,
-  collectPullWeight: 0.25,
+  dodgeWeight: 0.25,
+  collectPullWeight: 0.15,
   debug: false,
 };
 
@@ -329,10 +329,13 @@ const GOLD_FARM_COLLECT_RADIUS_PX = 260;
 // grab-radius checks around the player position itself.
 const WAYPOINT_SWEEP_RADIUS_PX = 64;
 // Enemy must be within this radius (px) to count as a dodge threat.
-const DODGE_THREAT_RADIUS_PX = 200;
+// Kept small (≈12 ft) so dodge only fires when an enemy is genuinely
+// imminent — a large radius caused the AI to route around enemy pockets
+// during EXPLORE/PROGRESS instead of engaging them.
+const DODGE_THREAT_RADIUS_PX = 96;
 // Minimum closing speed (px/frame): dot product of enemy velocity with the
-// unit toward-player vector. Lower = more sensitive to slow closers.
-const DODGE_CLOSING_SPEED_PX_PER_FRAME = 0.8;
+// unit toward-player vector. Higher threshold = only fast chargers trigger dodge.
+const DODGE_CLOSING_SPEED_PX_PER_FRAME = 1.5;
 
 type LootKind = 'xp' | 'gold' | 'item';
 
