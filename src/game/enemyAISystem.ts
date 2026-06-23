@@ -66,9 +66,9 @@ const SLIME_LEAP_INNER_RANGE = 52;
 // window — the frozen recovery is — but it stays long enough to read clearly.
 const SLIME_PREP_MIN_FRAMES = 14;
 const SLIME_PREP_MAX_FRAMES = 24;
-// A longer pounce window so slimes travel farther each leap cycle, making
-// them feel impactful rather than static. Still capped so the pounce
-// stays readable and the player gets a fair counter-attack in recovery.
+// A longer but still committed hop: enough travel to carry past the player's
+// current position and force a dodge, while staying readable and leaving the
+// punish window in the frozen recovery after landing.
 const SLIME_LEAP_MIN_FRAMES = 10;
 const SLIME_LEAP_MAX_FRAMES = 14;
 // Frozen recovery after the slime lands. Velocity is zeroed for this window so
