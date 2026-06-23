@@ -1,0 +1,20 @@
+type: item
+name: pebble
+description: |
+  A small, smooth stone sitting at rest, viewed slightly from above and the
+  side. The pebble is roughly oval with a flat base — the kind of river stone
+  that fits easily in a palm. Surface is smooth and slightly reflective with
+  a dull matte sheen. Color is a neutral mid-grey with faint darker grey
+  striations running through it, suggesting compressed sediment layers. A
+  subtle highlight on the upper-left face catches light. The base where it
+  sits is slightly flattened and darker. Absolutely unremarkable. The whole
+  point is that this is the most ordinary object imaginable — a pebble is a
+  pebble. Silhouette must clearly read as a small smooth rounded stone.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - pebble with a warm brownish-tan tone, faint white quartz vein line running across the face
+  - dark charcoal-grey pebble with a smooth reflective surface, one flat edge
+  - pale cream-colored pebble with subtle pink mineral flecks distributed across the surface
+minVariations: 5

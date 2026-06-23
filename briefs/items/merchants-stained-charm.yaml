@@ -1,0 +1,22 @@
+type: item
+name: merchants-stained-charm
+description: |
+  A worn amulet pendant on a short chain, held vertically with the charm at
+  the bottom. The pendant itself is a small, irregular disc or teardrop shape
+  made of tarnished brass or bronze. Surface is covered in dark smudges and
+  stains that no amount of cleaning removes — the origins of these stains are
+  best not contemplated. Despite the grime, there is a faint engraved pattern
+  on the face: a simple geometric symbol or rune that still catches light.
+  The chain links are thick and uneven, clearly handmade. A single small stone
+  or bead is embedded at the center of the pendant — dull but faintly present.
+  The whole thing looks like it came from somewhere unspeakable, yet feels
+  oddly warm to the touch. Silhouette of the pendant + short chain must read
+  clearly as a wearable charm at a glance.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - pendant with a deep amber stone at center, the rest heavily patinated bronze-brown
+  - charm with a carved sigil glowing faintly green through the grime, chain corroded dark
+  - pendant in tarnished silver with a dark stain bloom spreading from the center outward
+minVariations: 5
