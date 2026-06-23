@@ -1098,7 +1098,24 @@ function applyPathDrivenBehavior(
       return;
     }
     const fallback = normalize(waypoint.x - enemyX, waypoint.y - enemyY);
-    setVelocity(world, eid, fallback.x * speed, fallback.y * speed);
+    if (fallback.length > EPSILON) {
+      setVelocity(world, eid, fallback.x * speed, fallback.y * speed);
+      return;
+    }
+    // Tile center already reached but the player may have drifted within the
+    // tile. Close the remaining pixel-level gap directly so the enemy does not
+    // stall at the tile centre while the player is still a few pixels away.
+    if (
+      distanceToPlayer > MIN_MOB_PLAYER_DISTANCE &&
+      (behaviorType === AI_TYPE.CHASE ||
+        behaviorType === AI_TYPE.SWARM ||
+        behaviorType === AI_TYPE.LEAPER)
+    ) {
+      const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
+      setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
+      return;
+    }
+    setVelocity(world, eid, 0, 0);
     return;
   }
 
@@ -1122,6 +1139,11 @@ function applyPathDrivenBehavior(
       if (blended.length > EPSILON) {
         setNavigatingVelocity(world, eid, blended.x, blended.y, speed);
       }
+    } else if (pathDirection.length <= EPSILON && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {
+      // Path waypoints exhausted (enemy on or very near the player's tile) but
+      // the player has drifted within the tile. Drive toward the player's exact
+      // pixel position so the enemy commits to contact range instead of stopping.
+      setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     }
   }
 }
