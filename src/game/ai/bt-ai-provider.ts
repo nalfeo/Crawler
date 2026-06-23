@@ -72,15 +72,15 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
 };
 
 const DIRECT_MOVE_EPSILON_PX = 10;
-const MELEE_APPROACH_BUFFER_PX = 8;
 // --- Melee kiting (stutter-step orbit) ---
 // When in melee, the player must NOT park on the enemy and trade blows. Instead
-// it orbits the target inside its own weapon strike gate (so swings still land —
-// melee auto-fires on proximity+cooldown regardless of player velocity) while
-// continuously strafing tangentially so it stays a moving, dodging target.
-// Outer edge of the reliable strike band as a fraction of the raw weapon reach.
-// The fire gate is reach*1.5; orbiting at reach (1.0x) keeps swings landing with
-// margin while maximizing standoff distance for dodging.
+// it orbits the target at MELEE_HOLD_FRACTION of weapon reach so swings reliably
+// land (the shaft passes through the enemy body every arc) while the player stays
+// a moving, dodging target. 0.75 puts the enemy on the blade mid-shaft — well
+// inside BLADE_HIT_HALF_WIDTH on every swing rather than just grazing the tip.
+// The approach band matches this fraction so the player commits to the distance
+// instead of dancing on the edge.
+const MELEE_HOLD_FRACTION = 0.75;
 // Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
 // to reach*1.5, so this is the outer radius at which kiting can still land hits.
 const ATTACK_GATE_MULTIPLIER = 1.5;
@@ -136,6 +136,14 @@ const ENEMY_IGNORE_FRAMES = 240;
 const ENGAGE_PROGRESS_EPSILON_PX = 6;
 // Frames of no distance/HP progress against the same enemy before we abandon it.
 const ENGAGE_GIVEUP_FRAMES = 120;
+// Minimum px from the enemy the player stops actively pursuing. Mirrors
+// MIN_MOB_PLAYER_DISTANCE in enemyAISystem so the player closes to the same
+// near-contact range as melee mobs before the kite/orbit loop takes over.
+const MIN_PLAYER_ENEMY_CONTACT_PX = 12;
+// Smoothed-velocity magnitude below which the player is considered stalled
+// during ENGAGE. When stalled but enemy is still far, direct pursuit replaces
+// the stall — mirrors enemyAISystem's pathDirection.length ≤ EPSILON check.
+const ENGAGE_STALL_VELOCITY_THRESHOLD = 0.15;
 // Frames of no distance progress toward a COLLECT loot target before we abandon
 // it. Retained for the engage watchdog's epsilon reuse; the COLLECT deadlock is
 // handled by the dwell watchdog below.
@@ -165,6 +173,13 @@ const COLLECT_DWELL_CLUSTER_RADIUS_PX = 96;
 const EXPLORE_DWELL_ESCAPE_PX = 64;
 // Frames parked inside the dwell circle before we force a new explore target.
 const EXPLORE_DWELL_FRAMES = 180;
+// After a dwell-watchdog fires on a position-based progress target (Tutorial Goon,
+// Shopkeeper, boss room, etc.) the BT immediately re-assigns the same unreachable
+// position on the next frame, creating a permanent freeze. Suppress ALL position-
+// progress goals for this many frames so the tree falls through to Hunt/Engage
+// and the AI keeps fighting while the path is blocked. The goal re-evaluates once
+// the window expires, so it catches up when a door opens or the player moves closer.
+const PROGRESS_SUPPRESS_FRAMES = 360;
 // EXPLORE reachability sampling: the dwell watchdog stops the AI wiggling against
 // a single unreachable frontier forever, but if pickExploreTarget keeps re-rolling
 // random passable tiles that happen to be unreachable from the player's current
@@ -392,6 +407,14 @@ export class BehaviorTreeAI implements AIInputProvider {
   private exploreDwellAnchorX: number = 0;
   private exploreDwellAnchorY: number = 0;
   private exploreDwellFrames: number = 0;
+  /**
+   * Frame after which a suppressed position-based progress goal (Tutorial Goon,
+   * Shopkeeper, boss room, staircase…) becomes eligible again. Set by
+   * {@link updateExploreWatchdog} when a dwell-watchdog fires on a non-enemy EXPLORE
+   * target so the BT falls through to Hunt/Engage instead of freezing on the same
+   * unreachable position forever.
+   */
+  private progressGoalSuppressedUntilFrame: number = 0;
   /**
    * Cumulative fog-of-war "seen" bitmap (one byte per tile, 1 = ever seen),
    * OR-accumulated from {@link FloorMap.visible} every poll. This is exactly the
@@ -1116,7 +1139,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * the current frontier is unreachable — clear it so the Explore node selects a
    * fresh target next tick.
    */
-  private updateExploreWatchdog(playerX: number, playerY: number): void {
+  private updateExploreWatchdog(playerX: number, playerY: number, currentFrame: number): void {
     if (this.decision.state !== AIState.EXPLORE) {
       this.exploreDwellActive = false;
       this.exploreDwellFrames = 0;
@@ -1152,6 +1175,14 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.pathGoalKey = null;
       this.exploreDwellActive = false;
       this.exploreDwellFrames = 0;
+      // If the frozen target was a position-based progress goal (non-enemy,
+      // targetEid < 0 — e.g. Tutorial Goon, Shopkeeper, boss room), suppress ALL
+      // position progress goals temporarily. Without this the BT immediately
+      // re-assigns the same unreachable position on the next frame, the dwell
+      // counter resets to 0, and the AI freezes forever without ever fighting.
+      if (this.decision.targetEid === null || this.decision.targetEid < 0) {
+        this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
+      }
       if (this.config.debug) {
         logger.debug(
           `AI abandoning unreachable explore frontier (dwell ${String(EXPLORE_DWELL_FRAMES)}f)`,
@@ -1366,7 +1397,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Abandon EXPLORE frontiers we cannot reach (behind a locked door or across an
     // unpathable gap). Without this the AI wiggles against the obstacle forever,
     // never re-picking because it never closes within 50px of the target.
-    this.updateExploreWatchdog(playerX, playerY);
+    this.updateExploreWatchdog(playerX, playerY, world.frameCount);
 
     // State-agnostic backstop: break cross-state thrash (ENGAGE<->COLLECT every
     // frame at a navigation choke) that none of the per-state watchdogs above can
@@ -1415,6 +1446,27 @@ export class BehaviorTreeAI implements AIInputProvider {
     state.moveX = this.smoothMoveX;
     state.moveY = this.smoothMoveY;
 
+    // Anti-stall for ENGAGE: when the blended direction drops below the stall
+    // threshold (kite reversal or state-transition blend passing through zero)
+    // while the enemy is still outside minimum contact range, bypass the
+    // smooth stall and drive directly toward the enemy's pixel position.
+    // Mirrors the enemyAISystem pathDirection.length ≤ EPSILON → direct
+    // pursuit correction that fixed enemy "dancing" at tile-center distance.
+    if (
+      this.decision.state === AIState.ENGAGE &&
+      this.decision.targetEid !== null &&
+      Math.hypot(this.smoothMoveX, this.smoothMoveY) < ENGAGE_STALL_VELOCITY_THRESHOLD
+    ) {
+      const pursuit = this.enemyPursuitDirection(world, playerX, playerY, this.decision.targetEid);
+      if (pursuit !== null) {
+        const norm = normalizeInputDirection(pursuit.dx / pursuit.dist, pursuit.dy / pursuit.dist);
+        state.moveX = norm.moveX;
+        state.moveY = norm.moveY;
+        this.smoothMoveX = norm.moveX;
+        this.smoothMoveY = norm.moveY;
+      }
+    }
+
     state.action = false;
 
     if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
@@ -1431,6 +1483,28 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.pointerX = playerX;
       state.pointerY = playerY;
     }
+  }
+
+  /**
+   * Returns the normalised direction vector from the player to the given enemy
+   * EID, or null if the enemy position is unavailable or already within
+   * MIN_PLAYER_ENEMY_CONTACT_PX. Used by both the anti-stall override and the
+   * ENGAGE fallback to avoid duplicating the position-validity + range check.
+   */
+  private enemyPursuitDirection(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    targetEid: number,
+  ): { dx: number; dy: number; dist: number } | null {
+    const ex = world.stores.position.x[targetEid];
+    const ey = world.stores.position.y[targetEid];
+    if (typeof ex !== 'number' || typeof ey !== 'number') return null;
+    const dx = ex - playerX;
+    const dy = ey - playerY;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= MIN_PLAYER_ENEMY_CONTACT_PX) return null;
+    return { dx, dy, dist };
   }
 
   /**
@@ -1634,7 +1708,25 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
-    // Fallback: direct movement toward target
+    // Fallback: direct movement toward target. In ENGAGE mode, prefer the
+    // enemy's current pixel position over the plan target so the player closes
+    // the sub-tile gap precisely — mirrors the enemy AI's direct pursuit when
+    // its path waypoints are exhausted but the player has drifted within the
+    // tile (see enemyAISystem "Tile center already reached" fix).
+    if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
+      const pursuit = this.enemyPursuitDirection(world, playerX, playerY, this.decision.targetEid);
+      if (pursuit !== null) {
+        this.moveWithLocalNavigation(
+          state,
+          world,
+          playerX,
+          playerY,
+          pursuit.dx / pursuit.dist,
+          pursuit.dy / pursuit.dist,
+        );
+        return;
+      }
+    }
     this.moveWithLocalNavigation(
       state,
       world,
@@ -2002,8 +2094,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;
     const tutorialAccepted = world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
     const bossBattleAccepted = world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID);
+    // True while the dwell-watchdog has flagged all position-based progress goals
+    // as temporarily unreachable. Entity-based goals (quest enemies, gold piles) are
+    // NOT affected — only fixed-position NPC/room targets get suppressed.
+    const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
 
     if (!tutorialAccepted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.welcomeOfficePos.x,
         objective.welcomeOfficePos.y,
@@ -2048,6 +2145,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (shopStage === 'not-met') {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.shopRoomPos.x,
         objective.shopRoomPos.y,
@@ -2058,6 +2156,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (shopStage === 'awaiting-prize') {
+      if (progressSuppressed) return null;
       const target = hasFetchItem ? objective.shopRoomPos : objective.questItemPos;
       return this.createProgressTarget(
         target.x,
@@ -2070,6 +2169,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (shopStage === 'ready-to-buy') {
       if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
+        if (progressSuppressed) return null;
         return this.createProgressTarget(
           objective.shopRoomPos.x,
           objective.shopRoomPos.y,
@@ -2138,6 +2238,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!bossBattleAccepted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.spellQuestGiverPos.x,
         objective.spellQuestGiverPos.y,
@@ -2148,6 +2249,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!objective.slimeRatBattleStarted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.slimeRatRoomPos.x,
         objective.slimeRatRoomPos.y,
@@ -2158,6 +2260,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.slimeRatBossDefeated && !world.featureUnlocks.spells) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.spellQuestGiverPos.x,
         objective.spellQuestGiverPos.y,
@@ -2168,6 +2271,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.slimeRatBossDefeated && !objective.bossBattleStarted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.staircasePos.x,
         objective.staircasePos.y,
@@ -2178,6 +2282,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.staircasePos.x,
         objective.staircasePos.y,
@@ -2580,12 +2685,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     // player is moving). Once inside it we KITE instead of parking.
     const strikeGatePx = reachPx * ATTACK_GATE_MULTIPLIER;
     if (target.distance <= strikeGatePx) {
-      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx, strikeGatePx);
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx);
     }
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
     // the next poll can start kiting and landing hits.
-    const engageBandPx = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx - MELEE_APPROACH_BUFFER_PX);
+    const engageBandPx = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
     const deltaX = target.x - playerX;
     const deltaY = target.y - playerY;
     const scale = (target.distance - engageBandPx) / target.distance;
@@ -2616,13 +2721,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachPx: number,
-    strikeGatePx: number,
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
 
-    const innerOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx - MELEE_APPROACH_BUFFER_PX);
-    const outerOrbit = Math.max(innerOrbit, strikeGatePx - MELEE_APPROACH_BUFFER_PX);
+    const innerOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
+    const outerOrbit = innerOrbit;
     let desiredOrbit = ready ? innerOrbit : outerOrbit;
 
     const enemyAttackPx = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
