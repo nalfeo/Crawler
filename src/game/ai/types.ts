@@ -206,4 +206,6 @@ export interface RunStats {
   finalLevel: number;
   /** Total XP earned */
   totalXp: number;
+  /** Gold held by the player at run end */
+  totalGold: number;
 }

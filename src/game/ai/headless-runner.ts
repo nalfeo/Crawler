@@ -491,6 +491,7 @@ export async function runHeadless(
       },
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
+      totalGold: world.playerGold,
     };
   }
 
@@ -541,6 +542,7 @@ export async function runHeadless(
     },
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
+    totalGold: world.playerGold,
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
