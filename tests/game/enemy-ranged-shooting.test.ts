@@ -1,5 +1,5 @@
 import { hasComponent, query } from 'bitecs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Damage, EnemyProjectile, Position, Projectile } from '../../src/core/components.js';
 import {
   collisionSystem,
@@ -13,6 +13,10 @@ import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('enemy ranged shooting', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('ranged enemy fires a projectile when within attack range', () => {
     const world = createTestWorld();
     world.elapsedMs = 100; // ensure cooldown passes
