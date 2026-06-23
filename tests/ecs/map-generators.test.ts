@@ -299,7 +299,11 @@ describe('Map Generators', () => {
       }
     });
 
-    it('should keep SAFE and BOSS_STAIR room perimeter walls intact after room variety', () => {
+    it('should keep SAFE room perimeter walls intact after room variety', () => {
+      // BOSS_STAIR rooms are intentionally excluded: the pathfinder navigates to
+      // the boss room centre every frame after its door unlocks, and rot-js's
+      // array-based A* becomes O(n²) on a sealed room. Deferred until the AI
+      // rework ships a heap-based pathfinder.
       const gen = new DungeonGenerator({ roomVariety: true });
       const config: MapConfig = {
         widthTiles: 120,
@@ -318,7 +322,7 @@ describe('Map Generators', () => {
         const { width: w } = floor;
 
         for (const room of floor.rooms) {
-          if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+          if (room.role !== RoomRole.SAFE) continue;
           const { x, y, width, height } = room.bounds;
 
           // Build the set of door positions on this room's perimeter for exclusion

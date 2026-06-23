@@ -354,22 +354,27 @@ function preAssignRoles(roomGraph: RoomGraph): void {
     .map((room) => {
       const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
       const cy = Math.floor(room.bounds.y + room.bounds.height / 2);
-      return { id: room.id, distanceSq: (cx - refX) * (cx - refX) + (cy - refY) * (cy - refY) };
+      return { id: room.id, distanceSq: (cx - refX) ** 2 + (cy - refY) ** 2 };
     });
   scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
   if (scored[0]) roomGraph.setRole(scored[0].id, RoomRole.BOSS_STAIR);
-  // SAFE requires a third room: room 0 = SPAWN, scored[0] = BOSS_STAIR, scored[1] = SAFE.
-  // With only 2 rooms there is no candidate left for the safe role.
   if (roomGraph.count >= 3 && scored[1]) roomGraph.setRole(scored[1].id, RoomRole.SAFE);
 }
 
 /**
- * Seal the perimeter of SAFE and BOSS_STAIR rooms by converting any passable
- * non-door tile on their boundary to a wall. rot-js can place corridor tiles at
- * positions that overlap the 1-tile padding of adjacent room bounds, creating
- * unintended secondary openings before variety post-processing even runs.
- * This pass guarantees the perimeter is walls + doors from the outset.
+ * Seal the perimeter of SAFE rooms by converting any passable non-door tile on
+ * their boundary to a wall. rot-js can place corridor tiles at positions that
+ * overlap the 1-tile padding of adjacent room bounds, creating unintended
+ * secondary openings before variety post-processing even runs. This pass
+ * guarantees the perimeter is walls + doors from the outset.
+ *
+ * BOSS_STAIR rooms are intentionally excluded: the pathfinding system navigates
+ * to the boss room centre every frame after its door unlocks, and rot-js's
+ * array-based A* priority queue becomes O(n²) when forced to explore the entire
+ * dungeon via a single door rather than through the short-circuit breach tiles.
+ * Breach-sealing for BOSS_STAIR is deferred until the AI rework ships a
+ * heap-based pathfinder that handles isolated rooms efficiently.
  */
 function sealSpecialRoomPerimeters(
   tileMap: TileMap,
@@ -378,7 +383,7 @@ function sealSpecialRoomPerimeters(
   w: number,
 ): void {
   for (const room of roomGraph.getAll()) {
-    if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+    if (room.role !== RoomRole.SAFE) continue;
     const { x, y, width, height } = room.bounds;
 
     // Collect door tile indices so we never seal an intentional opening.
@@ -405,15 +410,21 @@ function sealSpecialRoomPerimeters(
 }
 
 /**
- * Return the set of tile indices that form the perimeter walls of all SAFE and
- * BOSS_STAIR rooms. These tiles are off-limits to corridor widening and diagonal
- * shortcut carving so that special rooms remain fully walled with only their
- * door tiles as openings.
+ * Return the set of tile indices that form the perimeter walls of SAFE rooms.
+ * These tiles are off-limits to corridor widening and diagonal shortcut carving
+ * so that safe rooms remain fully walled with only their door tiles as openings.
+ *
+ * BOSS_STAIR rooms are intentionally excluded: the variety passes (widenCorridors,
+ * addDiagonalShortcuts) can create extra openings in the boss room perimeter that
+ * the A* pathfinder uses as short-circuit tiles. Protecting BOSS_STAIR causes the
+ * pathfinder to explore the entire dungeon via the single rot-js door, triggering
+ * an O(n²) hang. Perimeter protection for BOSS_STAIR is deferred until the AI
+ * rework ships a heap-based pathfinder that handles isolated rooms efficiently.
  */
 function buildSpecialRoomWalls(roomGraph: RoomGraph, w: number): ReadonlySet<number> {
   const walls = new Set<number>();
   for (const room of roomGraph.getAll()) {
-    if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+    if (room.role !== RoomRole.SAFE) continue;
     const { x, y, width, height } = room.bounds;
     // Top and bottom rows
     for (let tx = x; tx < x + width; tx++) {
@@ -466,15 +477,43 @@ function applyRoomShapes(
   rng: SeededRandom,
 ): void {
   for (const room of roomGraph.getAll()) {
-    // Safe and boss rooms must remain rectangular with walls fully intact.
-    // Skipping them here preserves their full interior volume and wall perimeter.
-    if (room.role === RoomRole.SAFE || room.role === RoomRole.BOSS_STAIR) continue;
-
     const { x: rx, y: ry, width: rw, height: rh } = room.bounds;
     // Interior dimensions: (rw-2) × (rh-2); require at least 5×5 interior
     if (rw < 7 || rh < 7) continue;
 
     const roll = rng.next();
+
+    // SAFE rooms remain fully rectangular — skip shape application. The roll is
+    // consumed above (and applyLShape's tie-break RNG consumed below) so that the
+    // RNG sequence for all subsequent rooms matches the pre-roles baseline.
+    if (room.role === RoomRole.SAFE) {
+      if (roll >= 0.25 && roll < 0.5) {
+        // applyLShape uses rng.nextInt when multiple tie candidates exist; replicate
+        // that consumption so the RNG stream stays identical to an unguarded run.
+        const halfW = Math.floor((rw - 2) / 2);
+        const halfH = Math.floor((rh - 2) / 2);
+        if (halfW >= 1 && halfH >= 1) {
+          const quadrantScore = [0, 0, 0, 0];
+          for (const door of room.doors) {
+            const isLeft = door.x <= rx + halfW;
+            const isTop = door.y <= ry + halfH;
+            if (isTop && isLeft) quadrantScore[0]! += 2;
+            if (isTop && !isLeft) quadrantScore[1]! += 2;
+            if (!isTop && isLeft) quadrantScore[2]! += 2;
+            if (!isTop && !isLeft) quadrantScore[3]! += 2;
+          }
+          const minScore = Math.min(...quadrantScore);
+          const candidates = quadrantScore
+            .map((s, i) => ({ s, i }))
+            .filter((e) => e.s === minScore);
+          if (candidates.length > 1) {
+            rng.nextInt(0, candidates.length - 1);
+          }
+        }
+      }
+      continue;
+    }
+
     if (roll < 0.25) {
       applyEllipseShape(tileMap, terrain, w, rx, ry, rw, rh, room.doors);
     } else if (roll < 0.5) {
