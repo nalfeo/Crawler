@@ -15,6 +15,7 @@
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
+import { CLASS_SKILL_THRESHOLDS, TYPE_SKILL_THRESHOLDS } from '../shared/weapon-skills.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../shared/skills.js';
@@ -158,6 +159,7 @@ export function createHudSkillTracker(
     row: ReturnType<typeof makeSkillRow>,
     skillId: string,
     skillName: string,
+    thresholds: readonly number[],
     world: GameWorld,
     playerEid: number,
   ): void {
@@ -180,42 +182,52 @@ export function createHudSkillTracker(
     if (level >= cap) {
       row.barFill.setSize(BAR_W, BAR_H);
     } else {
-      // usageThresholds for next level (level index = level, since thresholds[0] = usage for level 1)
-      // We don't have threshold data here; use fractional progress from usage/nextThreshold.
-      // Since we can't import skill defs from game layer, use a simple visual placeholder.
-      // Show a pulsing "full" bar at max or a usage-proportional bar using raw usage.
-      const progress = Math.min(1, state.usage > 0 ? (state.usage % 100) / 100 : 0);
+      const previousThreshold = level > 0 ? (thresholds[level - 1] ?? 0) : 0;
+      const nextThreshold = thresholds[level];
+      const progress =
+        nextThreshold === undefined || nextThreshold <= previousThreshold
+          ? 0
+          : Math.min(
+              1,
+              Math.max(0, (state.usage - previousThreshold) / (nextThreshold - previousThreshold)),
+            );
       row.barFill.setSize(Math.max(2, Math.round(BAR_W * progress)), BAR_H);
     }
   }
-
-  let lastWeaponId: string | null = null;
 
   function sync(world: GameWorld, playerEid: number): void {
     const weaponId = world.floor1?.selectedWeaponId ?? null;
     if (!weaponId) {
       setAllVisible(false);
-      lastWeaponId = null;
       return;
     }
 
     const def = getWeaponDef(weaponId);
     if (!def) {
       setAllVisible(false);
-      lastWeaponId = null;
       return;
-    }
-
-    if (weaponId !== lastWeaponId) {
-      lastWeaponId = weaponId;
     }
 
     setAllVisible(true);
 
     // Class skill (damage focus)
-    updateRow(classRow, def.weaponClassSkillId, def.weaponClassSkillId, world, playerEid);
+    updateRow(
+      classRow,
+      def.weaponClassSkillId,
+      def.weaponClassSkillId,
+      CLASS_SKILL_THRESHOLDS,
+      world,
+      playerEid,
+    );
     // Type skill (accuracy focus)
-    updateRow(typeRow, def.weaponTypeSkillId, def.weaponTypeSkillId, world, playerEid);
+    updateRow(
+      typeRow,
+      def.weaponTypeSkillId,
+      def.weaponTypeSkillId,
+      TYPE_SKILL_THRESHOLDS,
+      world,
+      playerEid,
+    );
   }
 
   function destroy(): void {

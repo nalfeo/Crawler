@@ -1,13 +1,9 @@
 {
   "date": "2026-06-22",
-  "slug": "hud-miss-vfx-retire-legacy",
-  "estimate": 5,
-  "actual": 5,
-  "verdict": "on-target",
-  "description": "Build HUD skill tracker panel, add miss VFX floaters, retire legacy projectile system. Three distinct slices across engine (HUD), game (miss events), and test infrastructure (coverage restore).",
-  "slices": [
-    { "name": "Miss VFX", "apples": 1 },
-    { "name": "HUD Skill Tracker", "apples": 2 },
-    { "name": "Retire legacy projectile system + coverage", "apples": 2 }
-  ]
+  "session": "hud-miss-vfx-retire-legacy",
+  "estimated_apples": 5,
+  "actual_apples": 5,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 1
 }
