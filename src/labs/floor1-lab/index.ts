@@ -140,7 +140,7 @@ const FLOOR1_SUBSYSTEM_STATUS: readonly SubsystemStatus[] = [
   },
   {
     name: 'npcSystem',
-    hook: 'Loop pre hook',
+    hook: 'Loop post hook',
     implementation: 'Real game implementation',
     activeInFloor1: true,
     note: 'Updates nearbyPlayer proximity flag for NPC dialogue interactions. Called directly by MainGameScene (not via preSystems hook) between core systems and postSystems.',
