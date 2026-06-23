@@ -96,13 +96,12 @@ const RANGED_APPROACH_BUFFER_PX = 24;
 
 // --- Melee kiting (stutter-step orbit) ---
 // When in melee, the player must NOT park on the enemy and trade blows. Instead
-// it orbits the target at MELEE_HOLD_FRACTION of weapon reach so swings reliably
-// land (the shaft passes through the enemy body every arc) while the player stays
-// a moving, dodging target. 0.75 puts the enemy on the blade mid-shaft — well
-// inside BLADE_HIT_HALF_WIDTH on every swing rather than just grazing the tip.
-// The approach band matches this fraction so the player commits to the distance
-// instead of dancing on the edge.
-const MELEE_HOLD_FRACTION = 0.75;
+// it advances/retreats along the enemy axis (keeping the weapon on target) while
+// slightly strafing as a juke. MELEE_HOLD_FRACTION places the preferred orbit
+// well inside weapon reach so every swing lands reliably.
+// 0.5 puts the player at half weapon reach — deep inside the strike band so hits
+// land solidly and the player commits to the fight instead of hovering on the edge.
+const MELEE_HOLD_FRACTION = 0.5;
 // Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
 // to reach*1.5, so this is the outer radius at which kiting can still land hits.
 const ATTACK_GATE_MULTIPLIER = 1.5;
@@ -114,10 +113,15 @@ const KITE_DODGE_BUFFER_PX = 14;
 // move primitive's close-approach branch drives it with obstacle-sliding local
 // navigation instead of tile A*, yielding smooth strafing rather than wiggle.
 const KITE_STEP_PX = 28;
-// Max radial correction blended per step toward the desired orbit radius. Keeping
-// this below KITE_STEP_PX makes motion mostly tangential (orbit) with gentle
-// radius keeping, so the player circles instead of lunging in and out.
-const KITE_RADIAL_STEP_PX = 16;
+// Max radial correction blended per step toward the desired orbit radius. Set equal
+// to KITE_STEP_PX so forward/backward corrections fully dominate when off-radius.
+const KITE_RADIAL_STEP_PX = KITE_STEP_PX;
+// Lateral strafe component when no back-threat is detected. Keep small so the
+// primary motion is radial (advance/retreat) with just a juke twitch; full orbit
+// is reserved for enemies approaching from behind. ~25 % of KITE_STEP_PX.
+const KITE_STRAFE_PX = Math.round(KITE_STEP_PX * 0.25);
+// Radius (px) within which a non-primary enemy counts as a back threat.
+const KITE_BACK_THREAT_RADIUS_PX = 160;
 // Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
 // reversal keeps the player juking and prevents it from grinding into one wall
 // forever; far longer than any oscillation so it reads as intentional kiting.
@@ -3014,8 +3018,43 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Melee kite: orbit the enemy inside the player's own strike gate while strafing
-   * tangentially so the player stays mobile and dodges instead of standing still.
+   * Returns true when any enemy other than `primaryTarget` is within
+   * KITE_BACK_THREAT_RADIUS_PX AND is positioned behind or to the side of the
+   * player relative to the primary target direction. Used to decide whether to
+   * use full lateral orbit (back-threat dodge) or a mostly-radial advance/retreat.
+   */
+  private hasThreatFromBehind(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    primaryTarget: WorldTarget,
+  ): boolean {
+    const fwdX = primaryTarget.x - playerX;
+    const fwdY = primaryTarget.y - playerY;
+    const fwdLen = Math.hypot(fwdX, fwdY);
+    if (fwdLen < 1) return false;
+    const fwdNx = fwdX / fwdLen;
+    const fwdNy = fwdY / fwdLen;
+
+    for (const eid of query(world.ecs, [Enemy, Position])) {
+      if (eid === primaryTarget.eid) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const dx = ex - playerX;
+      const dy = ey - playerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > KITE_BACK_THREAT_RADIUS_PX || dist < 1) continue;
+      // Dot < 0 means the enemy is behind the player relative to primary target.
+      const dot = (dx / dist) * fwdNx + (dy / dist) * fwdNy;
+      if (dot < 0) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Melee kite: advance/retreat along the enemy axis so the weapon lands reliably,
+   * while adding a small lateral juke to stay a moving target. Full lateral orbit
+   * is used only when another enemy is approaching from behind.
    *
    * - Desired orbit radius stutter-steps with weapon cooldown: pull into the inner
    *   strike band when a swing is READY (so the hit lands), ease out to the gate
@@ -3073,11 +3112,17 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
     );
 
+    // Use full lateral orbit only when an enemy is closing from behind; otherwise
+    // favour forward/backward motion (radial) with a small lateral juke so the
+    // weapon stays on target instead of constantly circling past it.
+    const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
+    const strafePx = backThreat ? KITE_STEP_PX : KITE_STRAFE_PX;
+
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * KITE_STEP_PX;
-      let sy = uy * radialMag + ty * KITE_STEP_PX;
+      let sx = ux * radialMag + tx * strafePx;
+      let sy = uy * radialMag + ty * strafePx;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_PX;
       sy = (sy / slen) * KITE_STEP_PX;
@@ -3147,9 +3192,11 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Ranged orbit step: strafe tangentially around the enemy at the desired standoff
-   * radius, using the same orbit-sign flip infrastructure as melee kiting. The
-   * radial correction component automatically retreats when the enemy closes in.
+   * Ranged orbit step: move along the player-enemy axis (advance to close gap,
+   * retreat when enemy pushes in) with a small lateral juke, using the same
+   * orbit-sign flip infrastructure as melee kiting. Full lateral orbit activates
+   * when an enemy is approaching from behind. The radial correction component
+   * automatically retreats when the enemy closes in.
    */
   private computeRangedKiteTarget(
     world: GameWorld,
@@ -3182,11 +3229,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
     );
 
+    // Prefer radial (forward/backward) motion; orbit fully only when flanked.
+    const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
+    const strafePx = backThreat ? KITE_STEP_PX : KITE_STRAFE_PX;
+
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * KITE_STEP_PX;
-      let sy = uy * radialMag + ty * KITE_STEP_PX;
+      let sx = ux * radialMag + tx * strafePx;
+      let sy = uy * radialMag + ty * strafePx;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_PX;
       sy = (sy / slen) * KITE_STEP_PX;
