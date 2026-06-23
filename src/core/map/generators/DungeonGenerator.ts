@@ -25,6 +25,8 @@ export interface DungeonGeneratorOptions {
   readonly roomVariety?: boolean;
 }
 
+type RoomDoorSide = 'left' | 'right' | 'top' | 'bottom';
+
 export class DungeonGenerator implements MapGenerator {
   readonly name = 'DungeonGenerator';
   private readonly roomVariety: boolean;
@@ -134,6 +136,7 @@ export class DungeonGenerator implements MapGenerator {
       applyRoomShapes(tileMap, terrain, roomGraph, w, rng);
       widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
       addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng, protectedWalls);
+      expandDoorsForWideCorridors(tileMap, terrain, roomGraph, w, h);
     }
 
     // Rooms are linked by corridors (and occasionally a shared door), so we
@@ -458,6 +461,97 @@ function paintRoomFloor(
 }
 
 // ─── Room Variety Helpers ──────────────────────────────────────────────────
+
+function getDoorSide(bounds: RoomBounds, door: DoorLocation): RoomDoorSide | null {
+  if (door.x === bounds.x) return 'left';
+  if (door.x === bounds.x + bounds.width - 1) return 'right';
+  if (door.y === bounds.y) return 'top';
+  if (door.y === bounds.y + bounds.height - 1) return 'bottom';
+  return null;
+}
+
+function expandDoorsForWideCorridors(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  roomGraph: RoomGraph,
+  w: number,
+  h: number,
+): void {
+  const corridorTouchesDoorway = (x: number, y: number): boolean =>
+    x >= 0 && x < w && y >= 0 && y < h && terrain[y * w + x] === TerrainType.CORRIDOR;
+
+  const carveInteriorTile = (idx: number): void => {
+    if ((tileMap.flags[idx]! & TileFlags.PASSABLE) !== 0) return;
+    tileMap.flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = TerrainType.STONE_FLOOR;
+  };
+
+  for (const room of roomGraph.getAll()) {
+    const { bounds } = room;
+    const doorKeys = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+    const addedDoors: DoorLocation[] = [];
+
+    const maybeAddDoor = (
+      doorX: number,
+      doorY: number,
+      outsideX: number,
+      outsideY: number,
+      insideX: number,
+      insideY: number,
+    ): void => {
+      const key = `${doorX},${doorY}`;
+      if (doorKeys.has(key) || !corridorTouchesDoorway(outsideX, outsideY)) {
+        return;
+      }
+      if (!tileMap.inBounds(doorX, doorY) || !tileMap.inBounds(insideX, insideY)) {
+        return;
+      }
+      const isCorner =
+        (doorX === bounds.x || doorX === bounds.x + bounds.width - 1) &&
+        (doorY === bounds.y || doorY === bounds.y + bounds.height - 1);
+      if (isCorner) {
+        return;
+      }
+      const idx = doorY * w + doorX;
+      if ((tileMap.flags[idx]! & TileFlags.DOOR) !== 0) {
+        return;
+      }
+      carveInteriorTile(insideY * w + insideX);
+      tileMap.flags[idx] = TilePresets.DOOR_CLOSED;
+      terrain[idx] = TerrainType.DOOR;
+      addedDoors.push({ x: doorX, y: doorY, connectsTo: -1 });
+      doorKeys.add(key);
+    };
+
+    for (const door of room.doors) {
+      const side = getDoorSide(room.bounds, door);
+      if (side === null) continue;
+
+      switch (side) {
+        case 'left':
+          maybeAddDoor(door.x, door.y - 1, door.x - 1, door.y - 1, door.x + 1, door.y - 1);
+          maybeAddDoor(door.x, door.y + 1, door.x - 1, door.y + 1, door.x + 1, door.y + 1);
+          break;
+        case 'right':
+          maybeAddDoor(door.x, door.y - 1, door.x + 1, door.y - 1, door.x - 1, door.y - 1);
+          maybeAddDoor(door.x, door.y + 1, door.x + 1, door.y + 1, door.x - 1, door.y + 1);
+          break;
+        case 'top':
+          maybeAddDoor(door.x - 1, door.y, door.x - 1, door.y - 1, door.x - 1, door.y + 1);
+          maybeAddDoor(door.x + 1, door.y, door.x + 1, door.y - 1, door.x + 1, door.y + 1);
+          break;
+        case 'bottom':
+          maybeAddDoor(door.x - 1, door.y, door.x - 1, door.y + 1, door.x - 1, door.y - 1);
+          maybeAddDoor(door.x + 1, door.y, door.x + 1, door.y + 1, door.x + 1, door.y - 1);
+          break;
+      }
+    }
+
+    if (addedDoors.length > 0) {
+      Object.assign(room, { doors: [...room.doors, ...addedDoors] });
+    }
+  }
+}
 
 /**
  * Apply shape variety to rooms: round (ellipse) or L-shaped.
