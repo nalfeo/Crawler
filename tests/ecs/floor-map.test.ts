@@ -20,8 +20,8 @@ describe('FloorMap', () => {
     const floor = createSmallFloorMap();
     expect(floor.width).toBe(20);
     expect(floor.height).toBe(15);
-    expect(floor.widthPx).toBe(20 * 32);
-    expect(floor.heightPx).toBe(15 * 32);
+    expect(floor.widthFt).toBe(20 * 32);
+    expect(floor.heightFt).toBe(15 * 32);
   });
 
   it('should delegate flags to TileMap', () => {
@@ -40,21 +40,21 @@ describe('FloorMap', () => {
     expect(floor.playerSpawn).toEqual({ x: 5, y: 5 });
   });
 
-  describe('pixelToTile', () => {
+  describe('worldToTile', () => {
     it('should convert pixel coords to tile coords', () => {
       const floor = createSmallFloorMap();
-      expect(floor.pixelToTile(0, 0)).toEqual({ x: 0, y: 0 });
-      expect(floor.pixelToTile(32, 32)).toEqual({ x: 1, y: 1 });
-      expect(floor.pixelToTile(48, 48)).toEqual({ x: 1, y: 1 }); // within same tile
-      expect(floor.pixelToTile(64, 96)).toEqual({ x: 2, y: 3 });
+      expect(floor.worldToTile(0, 0)).toEqual({ x: 0, y: 0 });
+      expect(floor.worldToTile(32, 32)).toEqual({ x: 1, y: 1 });
+      expect(floor.worldToTile(48, 48)).toEqual({ x: 1, y: 1 }); // within same tile
+      expect(floor.worldToTile(64, 96)).toEqual({ x: 2, y: 3 });
     });
   });
 
-  describe('tileToPixel', () => {
+  describe('tileToWorld', () => {
     it('should convert tile coords to pixel center', () => {
       const floor = createSmallFloorMap();
-      expect(floor.tileToPixel(0, 0)).toEqual({ x: 16, y: 16 });
-      expect(floor.tileToPixel(1, 1)).toEqual({ x: 48, y: 48 });
+      expect(floor.tileToWorld(0, 0)).toEqual({ x: 16, y: 16 });
+      expect(floor.tileToWorld(1, 1)).toEqual({ x: 48, y: 48 });
     });
   });
 

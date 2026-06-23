@@ -45,7 +45,7 @@ function buildLabMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: GRID_W,
     heightTiles: GRID_H,
-    tileSizePx: CELL_SIZE,
+    tileSizeFt: CELL_SIZE,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 7],
@@ -191,7 +191,7 @@ function createDoorLockLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   function configureWorld(): void {
     world = createGameWorld({ seed: 42 });
     world.floorMap = buildLabMap();
-    const spawn = world.floorMap.tileToPixel(5, DOOR_Y);
+    const spawn = world.floorMap.tileToWorld(5, DOOR_Y);
     player = spawnPlayer(world, spawn.x, spawn.y);
 
     door = addEntity(world.ecs);

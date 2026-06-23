@@ -113,7 +113,7 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
     return;
   }
   const pack = floor1EnemyPack;
-  const maxDistanceSq = pack.despawnDistancePx * pack.despawnDistancePx;
+  const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
   for (const eid of [...world.floor1.enemyArchetypes.keys()]) {
     if (!entityExists(world.ecs, eid)) {
       world.floor1.enemyArchetypes.delete(eid);
@@ -178,13 +178,13 @@ function chooseObjectiveTiles(world: GameWorld): {
 } {
   const floorMap = world.floorMap;
   const fallbackWelcome = { x: 120, y: 120 };
-  const fallbackStair = { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 560 };
+  const fallbackStair = { x: floorMap?.widthFt ? floorMap.widthFt - 120 : 1120, y: 560 };
   const fallbackSlimeRat = {
-    x: floorMap?.widthPx ? Math.floor(floorMap.widthPx * 0.75) : 960,
+    x: floorMap?.widthFt ? Math.floor(floorMap.widthFt * 0.75) : 960,
     y: 520,
   };
-  const fallbackShop = { x: floorMap?.widthPx ? floorMap.widthPx - 240 : 880, y: 340 };
-  const fallbackItem = { x: floorMap?.widthPx ? Math.floor(floorMap.widthPx / 2) : 640, y: 340 };
+  const fallbackShop = { x: floorMap?.widthFt ? floorMap.widthFt - 240 : 880, y: 340 };
+  const fallbackItem = { x: floorMap?.widthFt ? Math.floor(floorMap.widthFt / 2) : 640, y: 340 };
 
   if (!floorMap) {
     return {
@@ -202,7 +202,7 @@ function chooseObjectiveTiles(world: GameWorld): {
   const bossStairRoom = floorMap.bossStairRoom;
   let staircasePos: { x: number; y: number };
   if (bossStairRoom) {
-    staircasePos = floorMap.tileToPixel(
+    staircasePos = floorMap.tileToWorld(
       centerOfRoom(bossStairRoom).x,
       centerOfRoom(bossStairRoom).y,
     );
@@ -219,7 +219,7 @@ function chooseObjectiveTiles(world: GameWorld): {
     scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
     const staircaseRoom = scored[0]?.room ?? floorMap.rooms[floorMap.rooms.length - 1]!;
-    staircasePos = floorMap.tileToPixel(
+    staircasePos = floorMap.tileToWorld(
       centerOfRoom(staircaseRoom).x,
       centerOfRoom(staircaseRoom).y,
     );
@@ -249,21 +249,21 @@ function chooseObjectiveTiles(world: GameWorld): {
     .reverse()
     .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
   const welcomeOfficePos = welcomeEntry
-    ? floorMap.tileToPixel(welcomeEntry.center.x, welcomeEntry.center.y)
+    ? floorMap.tileToWorld(welcomeEntry.center.x, welcomeEntry.center.y)
     : fallbackWelcome;
   const shopRoomPos = shopEntry
-    ? floorMap.tileToPixel(shopEntry.center.x, shopEntry.center.y)
+    ? floorMap.tileToWorld(shopEntry.center.x, shopEntry.center.y)
     : fallbackShop;
   const questItemPos = itemEntry
-    ? floorMap.tileToPixel(itemEntry.center.x, itemEntry.center.y)
+    ? floorMap.tileToWorld(itemEntry.center.x, itemEntry.center.y)
     : fallbackItem;
   const safeRoomPos = welcomeOfficePos;
   const specialPoints = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
   const slimeRatEntry = candidates
     .filter((entry) => entry !== shopEntry && entry !== itemEntry)
     .sort((a, b) => {
-      const aPos = floorMap.tileToPixel(a.center.x, a.center.y);
-      const bPos = floorMap.tileToPixel(b.center.x, b.center.y);
+      const aPos = floorMap.tileToWorld(a.center.x, a.center.y);
+      const bPos = floorMap.tileToWorld(b.center.x, b.center.y);
       const aScore = Math.min(
         ...specialPoints.map((p) => {
           const dx = aPos.x - p.x;
@@ -281,7 +281,7 @@ function chooseObjectiveTiles(world: GameWorld): {
       return bScore - aScore;
     })[0];
   const slimeRatRoomPos = slimeRatEntry
-    ? floorMap.tileToPixel(slimeRatEntry.center.x, slimeRatEntry.center.y)
+    ? floorMap.tileToWorld(slimeRatEntry.center.x, slimeRatEntry.center.y)
     : questItemPos;
   // The Spell Broker gets a room of its own — explicitly NOT the room that holds
   // the merchant's gross fetch item (the rat tail). Pick the nearest unused
@@ -294,7 +294,7 @@ function chooseObjectiveTiles(world: GameWorld): {
       ? shopRoomPos
       : welcomeOfficePos;
   const spellQuestGiverPos = spellEntry
-    ? floorMap.tileToPixel(spellEntry.center.x, spellEntry.center.y)
+    ? floorMap.tileToWorld(spellEntry.center.x, spellEntry.center.y)
     : spellFallbackPos;
 
   return {
@@ -312,7 +312,7 @@ function chooseObjectiveTiles(world: GameWorld): {
 function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
-  const tile = floorMap.pixelToTile(roomPos.x, roomPos.y);
+  const tile = floorMap.worldToTile(roomPos.x, roomPos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) return;
   floorMap.roomGraph.setRole(roomId, RoomRole.SAFE);
@@ -500,7 +500,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const config: MapConfig = {
     widthTiles: floor1Config.map.widthTiles,
     heightTiles: floor1Config.map.heightTiles,
-    tileSizePx: floor1Config.map.tileSizePx,
+    tileSizeFt: floor1Config.map.tileSizeFt,
     biome: BiomeType.BASIC_UNDERGROUND,
     seed: world.rng.nextInt(1, 2_000_000),
     roomWidthRange: floor1Config.map.roomWidthRange,
@@ -511,7 +511,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
 
-  const spawn = floorMap.tileToPixel(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
+  const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
   if (hasComponent(world.ecs, playerEid, Position)) {
     setComponent(world.ecs, playerEid, Position, { x: spawn.x, y: spawn.y });
   }
@@ -549,7 +549,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       }
       const c1 = centerOfRoom(room);
       const c2 = centerOfRoom(nextRoom);
-      const pos = floorMap.tileToPixel(c1.x, c1.y);
+      const pos = floorMap.tileToWorld(c1.x, c1.y);
       const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
 
       // Never plant a sign directly under the player. If this room's sign tile
@@ -559,7 +559,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       let signX = pos.x;
       let signY = pos.y;
       if (c1.x === floorMap.playerSpawn.x && c1.y === floorMap.playerSpawn.y) {
-        const step = floorMap.config.tileSizePx;
+        const step = floorMap.config.tileSizeFt;
         signX += Math.cos(angle) * step;
         signY += Math.sin(angle) * step;
       }
@@ -624,7 +624,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       spellQuestGiverPos,
       shopRoomPos,
       questItemPos,
-      markerRadiusPx: floor1Config.objectives.markerRadiusPx,
+      markerRadiusFt: floor1Config.objectives.markerRadiusFt,
       questAccepted: false,
       questCompleted: false,
       ratsKilled: 0,
@@ -816,8 +816,8 @@ function resolveSpawnPosition(
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
-      const tile = floorMap.pixelToTile(x, y);
-      const candidate = floorMap.tileToPixel(tile.x, tile.y);
+      const tile = floorMap.worldToTile(x, y);
+      const candidate = floorMap.tileToWorld(tile.x, tile.y);
       if (isInAnyRoom(world, candidate.x, candidate.y)) {
         return candidate;
       }
@@ -835,14 +835,14 @@ function resolveSpawnPosition(
       const maxY = Math.max(minY, room.bounds.y + room.bounds.height - 2);
       const tx = world.rng.nextInt(minX, maxX);
       const ty = world.rng.nextInt(minY, maxY);
-      const candidate = floorMap.tileToPixel(tx, ty);
+      const candidate = floorMap.tileToWorld(tx, ty);
       if (floorMap.isPassableAt(candidate.x, candidate.y)) {
         return candidate;
       }
     }
   }
-  const fallbackTile = floorMap.pixelToTile(playerX + pack.spawnRadiusMin, playerY);
-  return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
+  const fallbackTile = floorMap.worldToTile(playerX + pack.spawnRadiusMin, playerY);
+  return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
 }
 
 function resolveBossSpawnPosition(
@@ -861,12 +861,12 @@ function resolveBossSpawnPosition(
     for (let attempt = 0; attempt < 24; attempt += 1) {
       const tx = world.rng.nextInt(minX, maxX);
       const ty = world.rng.nextInt(minY, maxY);
-      const candidate = floorMap.tileToPixel(tx, ty);
+      const candidate = floorMap.tileToWorld(tx, ty);
       if (floorMap.isPassableAt(candidate.x, candidate.y)) {
         return candidate;
       }
     }
-    const centerCandidate = floorMap.tileToPixel(center.x, center.y);
+    const centerCandidate = floorMap.tileToWorld(center.x, center.y);
     if (floorMap.isPassableAt(centerCandidate.x, centerCandidate.y)) {
       return centerCandidate;
     }
@@ -884,15 +884,15 @@ function resolveBossSpawnPosition(
     const x = stairX + Math.cos(angle) * radius;
     const y = stairY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
-      const tile = floorMap.pixelToTile(x, y);
-      return floorMap.tileToPixel(tile.x, tile.y);
+      const tile = floorMap.worldToTile(x, y);
+      return floorMap.tileToWorld(tile.x, tile.y);
     }
   }
-  const fallbackTile = floorMap.pixelToTile(
+  const fallbackTile = floorMap.worldToTile(
     stairX + floor1Config.bossVariants!.ratSlime.spawnRadiusMin,
     stairY,
   );
-  return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
+  return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
 }
 
 function isInRoom(
@@ -902,7 +902,7 @@ function isInRoom(
   room: { bounds: { x: number; y: number; width: number; height: number } } | null,
 ): boolean {
   if (!world.floorMap || !room) return false;
-  const tile = world.floorMap.pixelToTile(px, py);
+  const tile = world.floorMap.worldToTile(px, py);
   const { x, y, width, height } = room.bounds;
   return tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height;
 }
@@ -913,7 +913,7 @@ function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolea
   if (!floorMap || !bossRoom || !isInRoom(world, px, py, bossRoom)) {
     return false;
   }
-  const playerTile = floorMap.pixelToTile(px, py);
+  const playerTile = floorMap.worldToTile(px, py);
   for (const door of bossRoom.doors) {
     if (playerTile.x === door.x && playerTile.y === door.y) {
       return false;
@@ -933,7 +933,7 @@ function roomAtPosition(
   if (!floorMap) {
     return null;
   }
-  const tile = floorMap.pixelToTile(pos.x, pos.y);
+  const tile = floorMap.worldToTile(pos.x, pos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) {
     return null;
@@ -952,7 +952,7 @@ function isFullyInsideObjectiveRoom(
   if (!floorMap || !room || !isInRoom(world, px, py, room)) {
     return false;
   }
-  const playerTile = floorMap.pixelToTile(px, py);
+  const playerTile = floorMap.worldToTile(px, py);
   for (const door of room.doors) {
     if (playerTile.x === door.x && playerTile.y === door.y) {
       return false;
@@ -966,7 +966,7 @@ function isInAnyRoom(world: GameWorld, px: number, py: number): boolean {
   if (!floorMap) {
     return false;
   }
-  const tile = floorMap.pixelToTile(px, py);
+  const tile = floorMap.worldToTile(px, py);
   for (const room of floorMap.rooms) {
     const { x, y, width, height } = room.bounds;
     if (tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height) {
@@ -1207,7 +1207,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     for (let i = 0; i < 64; i += 1) {
       const tx = world.rng.nextInt(0, floorMap.width - 1);
       const ty = world.rng.nextInt(0, floorMap.height - 1);
-      const candidate = floorMap.tileToPixel(tx, ty);
+      const candidate = floorMap.tileToWorld(tx, ty);
       if (
         !floorMap.isPassableAt(candidate.x, candidate.y) ||
         isInvalidSpawn(candidate.x, candidate.y)
@@ -1347,7 +1347,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const playerY = world.stores.position.y[player] ?? 0;
   const safeDx = playerX - world.floor1.objective.safeRoomPos.x;
   const safeDy = playerY - world.floor1.objective.safeRoomPos.y;
-  if (Math.hypot(safeDx, safeDy) <= world.floor1.objective.markerRadiusPx) {
+  if (Math.hypot(safeDx, safeDy) <= world.floor1.objective.markerRadiusFt) {
     world.floor1.objective.safeRoomDiscovered = true;
   }
 
@@ -1492,7 +1492,7 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);
 
   const center = centerOfRoom(bossRoom);
-  const bossEntryPoint = floorMap.tileToPixel(center.x, center.y);
+  const bossEntryPoint = floorMap.tileToWorld(center.x, center.y);
   setComponent(world.ecs, playerEid, Position, bossEntryPoint);
   world.stores.velocity.x[playerEid] = 0;
   world.stores.velocity.y[playerEid] = 0;

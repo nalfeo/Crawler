@@ -29,6 +29,7 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { GAME } from '../../shared/constants.js';
+import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
   FLOOR1_BOSS_REWARD_SPELL_IDS,
@@ -353,8 +354,9 @@ export class MainGameScene extends Phaser.Scene {
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
     }
@@ -891,8 +893,8 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    const x = this.world.stores.position.x[bossEid] ?? 0;
-    const y = this.world.stores.position.y[bossEid] ?? 0;
+    const x = ftToPx(this.world.stores.position.x[bossEid] ?? 0);
+    const y = ftToPx(this.world.stores.position.y[bossEid] ?? 0);
 
     this.cameras.main.shake(160, 0.008);
     this.cameras.main.flash(140, 255, 230, 160);
@@ -1186,7 +1188,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.updateDoorOverlay();
-    this.cameras.main.setBounds(0, 0, floorMap.widthPx, floorMap.heightPx);
+    this.cameras.main.setBounds(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt));
     this.cameras.main.setZoom(2.0);
   }
 
@@ -1459,7 +1461,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.doorImages.length = 0;
 
-    const tileSize = floorMap.config.tileSizePx;
+    const tileSize = floorMap.config.tileSizeFt * PIXELS_PER_FOOT;
     const TD_KEY = 'kenney-tiny-dungeon';
     const DOOR_CLOSED_FRAME = 46; // brown arched wooden door
     const DOOR_OPEN_FRAME = 34; // door swung open, clear passage
@@ -1513,9 +1515,12 @@ export class MainGameScene extends Phaser.Scene {
     if (this.playerEid < 0) {
       return;
     }
-    const x = this.world.stores.position.x[this.playerEid] ?? GAME.WIDTH * 0.5;
-    const y = this.world.stores.position.y[this.playerEid] ?? GAME.HEIGHT * 0.5;
-    this.cameras.main.centerOn(x, y);
+    const px = this.world.stores.position.x[this.playerEid];
+    const py = this.world.stores.position.y[this.playerEid];
+    this.cameras.main.centerOn(
+      px !== undefined ? ftToPx(px) : GAME.WIDTH * 0.5,
+      py !== undefined ? ftToPx(py) : GAME.HEIGHT * 0.5,
+    );
   }
 
   private updateObjectiveMarkers(): void {
@@ -1526,39 +1531,33 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     const objective = this.world.floor1.objective;
+    // Marker positions/radii are in feet; scale to pixels for world rendering.
+    const safeRoomX = ftToPx(objective.safeRoomPos.x);
+    const safeRoomY = ftToPx(objective.safeRoomPos.y);
+    const staircaseX = ftToPx(objective.staircasePos.x);
+    const staircaseY = ftToPx(objective.staircasePos.y);
+    const markerRadiusPx = ftToPx(objective.markerRadiusFt);
     if (!this.safeRoomMarker) {
       this.safeRoomMarker = this.add
-        .circle(
-          objective.safeRoomPos.x,
-          objective.safeRoomPos.y,
-          objective.markerRadiusPx,
-          0x2563eb,
-          0.25,
-        )
+        .circle(safeRoomX, safeRoomY, markerRadiusPx, 0x2563eb, 0.25)
         .setStrokeStyle(2, 0x93c5fd, 0.95)
         .setDepth(20);
     } else {
-      this.safeRoomMarker.setPosition(objective.safeRoomPos.x, objective.safeRoomPos.y);
-      this.safeRoomMarker.setRadius(objective.markerRadiusPx);
+      this.safeRoomMarker.setPosition(safeRoomX, safeRoomY);
+      this.safeRoomMarker.setRadius(markerRadiusPx);
       this.safeRoomMarker.setVisible(!objective.safeRoomDiscovered);
     }
 
     if (!this.staircaseMarker) {
       this.staircaseMarker = this.add
-        .circle(
-          objective.staircasePos.x,
-          objective.staircasePos.y,
-          objective.markerRadiusPx,
-          0x10b981,
-          0.25,
-        )
+        .circle(staircaseX, staircaseY, markerRadiusPx, 0x10b981, 0.25)
         .setStrokeStyle(2, 0x86efac, 0.95)
         .setDepth(20);
     }
     const staircaseFill = objective.staircaseLocked ? 0xf59e0b : 0x10b981;
     const staircaseStroke = objective.staircaseLocked ? 0xfcd34d : 0x86efac;
-    this.staircaseMarker.setPosition(objective.staircasePos.x, objective.staircasePos.y);
-    this.staircaseMarker.setRadius(objective.markerRadiusPx);
+    this.staircaseMarker.setPosition(staircaseX, staircaseY);
+    this.staircaseMarker.setRadius(markerRadiusPx);
     this.staircaseMarker.setFillStyle(staircaseFill, 0.25);
     this.staircaseMarker.setStrokeStyle(2, staircaseStroke, 0.95);
     this.staircaseMarker.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
@@ -1566,27 +1565,19 @@ export class MainGameScene extends Phaser.Scene {
     // World-space staircase label above the marker
     if (!this.stairsLabel) {
       this.stairsLabel = this.add
-        .text(
-          objective.staircasePos.x,
-          objective.staircasePos.y - objective.markerRadiusPx - 10,
-          '▼ STAIRS',
-          {
-            fontFamily: 'monospace',
-            fontSize: '13px',
-            color: '#fef9c3',
-            backgroundColor: '#422006cc',
-            padding: { x: 8, y: 4 },
-            align: 'center',
-          },
-        )
+        .text(staircaseX, staircaseY - markerRadiusPx - 10, '▼ STAIRS', {
+          fontFamily: 'monospace',
+          fontSize: '13px',
+          color: '#fef9c3',
+          backgroundColor: '#422006cc',
+          padding: { x: 8, y: 4 },
+          align: 'center',
+        })
         .setOrigin(0.5, 1)
         .setDepth(25)
         .setVisible(false);
     }
-    this.stairsLabel.setPosition(
-      objective.staircasePos.x,
-      objective.staircasePos.y - objective.markerRadiusPx - 10,
-    );
+    this.stairsLabel.setPosition(staircaseX, staircaseY - markerRadiusPx - 10);
     this.stairsLabel.setColor(objective.staircaseLocked ? '#fcd34d' : '#86efac');
     this.stairsLabel.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
   }
@@ -1888,7 +1879,7 @@ export class MainGameScene extends Phaser.Scene {
       objective.staircaseSpawned &&
       !objective.staircaseDiscovered &&
       Math.hypot(playerX - objective.staircasePos.x, playerY - objective.staircasePos.y) <=
-        objective.markerRadiusPx;
+        objective.markerRadiusFt;
 
     if (nearNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);

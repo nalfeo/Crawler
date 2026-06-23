@@ -19,11 +19,11 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
   // footprint can overlap a wall before its center crosses into the blocked tile.
   // Zero/near-zero dimensions also fall back to the center point; knockback in
   // this codebase targets creature-sized sprites, not projectile footprints.
-  const tileSizePx = floorMap.config.tileSizePx;
+  const tileSizeFt = floorMap.config.tileSizeFt;
   if (
     width <= COLLISION_EPSILON * 2 ||
     height <= COLLISION_EPSILON * 2 ||
-    (width <= tileSizePx * 0.5 && height <= tileSizePx * 0.5)
+    (width <= tileSizeFt * 0.5 && height <= tileSizeFt * 0.5)
   ) {
     return floorMap.isPassableAt(x, y);
   }
@@ -79,8 +79,8 @@ export function knockbackSystem(world: GameWorld): void {
       if (isFlying) {
         const newX = oldX + dirX * step;
         const newY = oldY + dirY * step;
-        const inBoundsX = newX >= 0 && newX < floorMap.widthPx;
-        const inBoundsY = newY >= 0 && newY < floorMap.heightPx;
+        const inBoundsX = newX >= 0 && newX < floorMap.widthFt;
+        const inBoundsY = newY >= 0 && newY < floorMap.heightFt;
 
         if (inBoundsX) {
           position.x[eid] = newX;

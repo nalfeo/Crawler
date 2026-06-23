@@ -2,17 +2,16 @@ import { hasComponent, query, removeEntity } from 'bitecs';
 import { Bouncing, Position, Projectile, Returning, Velocity } from '../components.js';
 import { clearEntityStores } from '../helpers.js';
 import type { GameWorld } from '../world.js';
-import { GAME } from '../../shared/constants.js';
-import { ftToPx } from '../../shared/units.js';
+import { ARENA } from '../../shared/constants.js';
 
-/** Margin beyond screen bounds before culling (12.5 feet). */
-const CULL_MARGIN = ftToPx(12.5);
+/** Margin beyond play-area bounds before culling (12.5 feet). */
+const CULL_MARGIN = 12.5;
 
 const PLAY_BOUNDS = {
   minX: 0,
-  maxX: GAME.WIDTH,
+  maxX: ARENA.WIDTH_FT,
   minY: 0,
-  maxY: GAME.HEIGHT,
+  maxY: ARENA.HEIGHT_FT,
 };
 
 function getPlayBounds(world: GameWorld): {
@@ -25,9 +24,9 @@ function getPlayBounds(world: GameWorld): {
   if (floorMap) {
     return {
       minX: 0,
-      maxX: floorMap.widthPx,
+      maxX: floorMap.widthFt,
       minY: 0,
-      maxY: floorMap.heightPx,
+      maxY: floorMap.heightFt,
     };
   }
   return PLAY_BOUNDS;

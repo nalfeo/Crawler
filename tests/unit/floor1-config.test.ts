@@ -22,7 +22,7 @@ describe('floor1Config', () => {
     expect(floor1Config.objectives.requiredTotalKills).toBe(10);
     expect(floor1Config.objectives.requiredGold).toBe(15);
     expect(floor1Config.objectives.requiredJunk).toBe(2);
-    expect(floor1Config.objectives.markerRadiusPx).toBe(64);
+    expect(floor1Config.objectives.markerRadiusFt).toBe(64);
   });
 
   it('should have valid map configuration', () => {

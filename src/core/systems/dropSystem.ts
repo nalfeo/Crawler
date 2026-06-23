@@ -19,16 +19,15 @@ import {
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
 import { createLogger } from '../../shared/logger.js';
-import { ftToPx } from '../../shared/units.js';
 
 const logger = createLogger('core:drop-system');
 
 /** Base knockback distance for death (1 foot). Scales with overkill. */
-const DEATH_KNOCKBACK_BASE = ftToPx(1);
+const DEATH_KNOCKBACK_BASE = 1;
 /** Max knockback distance on death (8 feet). */
-const DEATH_KNOCKBACK_MAX = ftToPx(8);
-/** Knockback speed (pixels per frame-step). */
-const DEATH_KNOCKBACK_SPEED = 6;
+const DEATH_KNOCKBACK_MAX = 8;
+/** Knockback speed (feet per frame-step). */
+const DEATH_KNOCKBACK_SPEED = 0.75;
 /** How long a dead entity persists before removal (ms). */
 const DEATH_LINGER_MS = 300;
 const DEFAULT_CONTACT_DAMAGE = 5;

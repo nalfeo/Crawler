@@ -43,7 +43,7 @@ function buildMap(): FloorMap {
   const cfg = {
     widthTiles: MAP_W,
     heightTiles: MAP_H,
-    tileSizePx: TILE_SIZE,
+    tileSizeFt: TILE_SIZE,
     biome: BiomeType.DUNGEON as BiomeType,
     seed: 42,
     roomWidthRange: [4, 8] as [number, number],

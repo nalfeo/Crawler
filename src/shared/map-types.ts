@@ -72,8 +72,8 @@ export interface MapConfig {
   readonly widthTiles: number;
   /** Height in tiles. Independent of width — maps can be rectangular. */
   readonly heightTiles: number;
-  /** Tile size in pixels. Default: 32. */
-  readonly tileSizePx: number;
+  /** Tile size in feet. Default: 4. */
+  readonly tileSizeFt: number;
   /** Biome determines generator algorithm + visual theme. */
   readonly biome: BiomeType;
   /** Seed for deterministic generation. */
@@ -92,7 +92,7 @@ export interface MapConfig {
 export const DEFAULT_MAP_CONFIG: MapConfig = {
   widthTiles: 675,
   heightTiles: 675,
-  tileSizePx: 32,
+  tileSizeFt: 4,
   biome: BiomeType.DUNGEON,
   seed: 42,
   roomWidthRange: [5, 15],

@@ -54,7 +54,7 @@ export const floorManifestDefSchema = z
         /** Required junk items collected. */
         requiredJunk: z.number().int().nonnegative(),
         /** Marker radius in pixels for objective indicators. */
-        markerRadiusPx: z.number().nonnegative(),
+        markerRadiusFt: z.number().nonnegative(),
       })
       .strict(),
     /** Map generation configuration. */
@@ -64,8 +64,8 @@ export const floorManifestDefSchema = z
         widthTiles: z.number().int().positive(),
         /** Map height in tiles. */
         heightTiles: z.number().int().positive(),
-        /** Tile size in pixels. */
-        tileSizePx: z.number().int().positive(),
+        /** Tile size in feet. */
+        tileSizeFt: z.number().positive(),
         /** Map generation seed. */
         seed: z.number().int().positive(),
         /** Room width range [min, max] in tiles. */
@@ -125,8 +125,8 @@ export const floorManifestDefSchema = z
             fireballCooldownMs: z.number().int().nonnegative(),
             spawnRadiusMin: z.number().nonnegative(),
             spawnRadiusMax: z.number().nonnegative(),
-            spriteWidth: z.number().int().positive(),
-            spriteHeight: z.number().int().positive(),
+            spriteWidth: z.number().positive(),
+            spriteHeight: z.number().positive(),
           })
           .strict(),
       })

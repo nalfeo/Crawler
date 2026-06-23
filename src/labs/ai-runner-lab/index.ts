@@ -292,7 +292,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         Math.hypot(
           (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
           (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-        ) <= objective.markerRadiusPx
+        ) <= objective.markerRadiusFt
       ) {
         sceneOptions.onStairDescend?.(world, playerEid);
         modalPicker.close();
@@ -340,7 +340,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       Math.hypot(
         (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
         (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-      ) <= objective.markerRadiusPx;
+      ) <= objective.markerRadiusFt;
     if (shouldInteractNpc || nearStairs) {
       scene.queuedInteraction = true;
     }
@@ -391,7 +391,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const playerY = world.stores.position.y[playerEid] ?? 0;
 
     const worldPoints = nav.pathWaypoints.map((tile) =>
-      world.floorMap!.tileToPixel(tile.x, tile.y),
+      world.floorMap!.tileToWorld(tile.x, tile.y),
     );
 
     if (worldPoints.length > 1) {

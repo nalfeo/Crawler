@@ -25,7 +25,7 @@ export interface DecorationDef {
   readonly animationFrames: number;
   /** Render layer depth (back to front). */
   readonly depthLayer: DepthLayer;
-  /** Spawn density: average count per 1000 floor pixels. */
+  /** Spawn density: average count per 1000 floor square-feet. */
   readonly density: number;
   /** Whether this decoration can be destroyed (for loot). */
   readonly isDestructible: boolean;

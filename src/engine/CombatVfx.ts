@@ -4,6 +4,7 @@
  */
 import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
+import { ftToPx } from '../shared/units.js';
 import type { GameWorld } from '../core/world.js';
 
 const VFX_DURATION_MS = 600;
@@ -41,7 +42,11 @@ export function createCombatVfx(scene: Phaser.Scene): {
       color = '#ffdd44';
     }
 
-    const text = scene.add.text(event.x, event.y - 8, label, {
+    // event.x/y are world feet; scale to pixels for rendering. The -8 rise is
+    // a pixel offset applied after scaling.
+    const floaterX = ftToPx(event.x);
+    const floaterY = ftToPx(event.y) - 8;
+    const text = scene.add.text(floaterX, floaterY, label, {
       fontFamily: FONT_FAMILY,
       fontSize: FONT_SIZE,
       color,
@@ -51,7 +56,7 @@ export function createCombatVfx(scene: Phaser.Scene): {
     text.setOrigin(0.5, 1);
     text.setDepth(1000);
 
-    floaters.push({ obj: text, startMs: renderElapsedMs, startY: event.y - 8 });
+    floaters.push({ obj: text, startMs: renderElapsedMs, startY: floaterY });
   }
 
   return {

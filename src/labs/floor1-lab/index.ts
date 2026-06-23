@@ -372,7 +372,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       case 'spawn-room': {
         const spawnTile = world.floorMap?.playerSpawn;
         if (spawnTile && world.floorMap) {
-          return world.floorMap.tileToPixel(spawnTile.x, spawnTile.y);
+          return world.floorMap.tileToWorld(spawnTile.x, spawnTile.y);
         }
         return null;
       }

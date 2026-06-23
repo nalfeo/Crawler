@@ -14,8 +14,8 @@ import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 
-/** Half-width of the blade hitbox in pixels. */
-const BLADE_HIT_HALF_WIDTH = 12;
+/** Half-width of the blade hitbox in feet. */
+const BLADE_HIT_HALF_WIDTH = 1.5;
 
 /** Distance from a point to a line segment (squared). */
 function pointToSegmentDistSq(

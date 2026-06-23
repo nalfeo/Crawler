@@ -1,12 +1,12 @@
 import { query } from 'bitecs';
 import { Npc, Player, Position } from '../components.js';
 import type { GameWorld } from '../world.js';
-import { NPC_INTERACT_RANGE_PX } from '../../shared/npc-types.js';
+import { NPC_INTERACT_RANGE_FT } from '../../shared/npc-types.js';
 
 /**
  * NPC proximity system.
  * Scans all NPC entities each frame and updates the `nearbyPlayer` flag on their
- * NpcInstance sidecar based on whether the player is within NPC_INTERACT_RANGE_PX.
+ * NpcInstance sidecar based on whether the player is within NPC_INTERACT_RANGE_FT.
  */
 export function npcSystem(world: GameWorld): void {
   const players = query(world.ecs, [Player, Position]);
@@ -27,7 +27,7 @@ export function npcSystem(world: GameWorld): void {
 
   const px = world.stores.position.x[player] ?? 0;
   const py = world.stores.position.y[player] ?? 0;
-  const rangeSq = NPC_INTERACT_RANGE_PX * NPC_INTERACT_RANGE_PX;
+  const rangeSq = NPC_INTERACT_RANGE_FT * NPC_INTERACT_RANGE_FT;
 
   for (const eid of npcs) {
     const instance = world.npcs.get(eid);

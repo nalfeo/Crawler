@@ -26,7 +26,6 @@ import type { GameWorld } from '../core/world.js';
 import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
-import { ftToPx } from '../shared/units.js';
 
 interface WeaponState {
   lastFireMs: number;
@@ -118,7 +117,7 @@ function getNearestEnemyTarget(
     // Only target enemies the player can currently see (FOV + open doors).
     // Exception: ignore FOV if player is in active combat (being attacked).
     if (!ignoreFov && world.floorMap) {
-      const tile = world.floorMap.pixelToTile(ex, ey);
+      const tile = world.floorMap.worldToTile(ex, ey);
       if (!world.floorMap.isVisible(tile.x, tile.y)) {
         continue;
       }
@@ -198,17 +197,17 @@ function findBossTargetInRange(
 function getWeaponGateRangePx(def: WeaponDef): number {
   switch (def.weaponType) {
     case WeaponType.MELEE:
-      return ftToPx(Math.max(def.aoeRadius, def.range));
+      return Math.max(def.aoeRadius, def.range);
     case WeaponType.BEAM:
-      return ftToPx(Math.max(def.beamLength, def.range));
+      return Math.max(def.beamLength, def.range);
     case WeaponType.TRAP:
-      return ftToPx(Math.max(def.trapTriggerRadius, def.trapExplosionRadius, def.range));
+      return Math.max(def.trapTriggerRadius, def.trapExplosionRadius, def.range);
     case WeaponType.THROWN:
-      return ftToPx(def.maxRange > 0 ? def.maxRange : def.range);
+      return def.maxRange > 0 ? def.maxRange : def.range;
     case WeaponType.RANGED:
     case WeaponType.MAGIC:
     default:
-      return ftToPx(def.range);
+      return def.range;
   }
 }
 
@@ -238,16 +237,16 @@ function fireMeleeAttack(
     py,
     player,
     def.baseDamage,
-    ftToPx(def.aoeRadius),
+    def.aoeRadius,
     def.durationMs,
     dir.x,
     dir.y,
     def.swingArcDeg,
     TeamId.PLAYER,
     def.meleeStyle,
-    ftToPx(def.headRadius),
+    def.headRadius,
     def.shaftDamageMult,
-    ftToPx(def.knockback),
+    def.knockback,
     getMeleeSpriteId(def.id),
   );
 }
@@ -280,7 +279,7 @@ function fireRangedAttack(
     dir.y * def.projectileSpeed,
     def.baseDamage,
     def.pierce,
-    ftToPx(def.range),
+    def.range,
   );
 }
 
@@ -299,11 +298,11 @@ function fireMagicAttack(
     dir.x * def.projectileSpeed,
     dir.y * def.projectileSpeed,
     def.baseDamage,
-    ftToPx(def.aoeRadius),
+    def.aoeRadius,
     def.baseDamage,
     player,
     TeamId.PLAYER,
-    ftToPx(def.range),
+    def.range,
   );
 }
 
@@ -325,7 +324,7 @@ function fireThrownAttack(
       def.baseDamage,
       player,
       def.returnSpeed,
-      ftToPx(def.maxRange),
+      def.maxRange,
       TeamId.PLAYER,
       def.pierce,
     );
@@ -342,7 +341,7 @@ function fireThrownAttack(
       def.baseDamage,
       def.bounceCount,
       def.pierce,
-      ftToPx(def.range),
+      def.range,
     );
     return;
   }
@@ -355,7 +354,7 @@ function fireThrownAttack(
     dir.y * def.projectileSpeed,
     def.baseDamage,
     def.pierce,
-    ftToPx(def.range),
+    def.range,
   );
 }
 
@@ -373,7 +372,7 @@ function fireBeamAttack(
     py,
     dir.x,
     dir.y,
-    ftToPx(def.beamLength),
+    def.beamLength,
     def.baseDamage,
     def.durationMs,
     def.beamTickMs,
@@ -390,8 +389,8 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
     px,
     py,
     def.baseDamage,
-    ftToPx(def.trapTriggerRadius),
-    ftToPx(def.trapExplosionRadius),
+    def.trapTriggerRadius,
+    def.trapExplosionRadius,
     def.trapArmMs,
     player,
     TeamId.PLAYER,

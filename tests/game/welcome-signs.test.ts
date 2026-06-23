@@ -47,7 +47,7 @@ describe('floor 1 welcome signs', () => {
       const spawnTile = floorMap!.playerSpawn;
 
       const signTiles = welcomeSignEids(world).map((eid) =>
-        floorMap!.pixelToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
+        floorMap!.worldToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
       );
 
       // A sign still guides the player out of the spawn room...

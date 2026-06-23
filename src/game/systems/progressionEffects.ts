@@ -14,11 +14,11 @@ interface ApplyCatalogEffectOptions {
   holderEid?: number;
 }
 
-const DEFAULT_TILE_SIZE_PX = 32;
+const DEFAULT_TILE_SIZE_FT = 4;
 
-function tilesToPixels(world: GameWorld, radiusTiles: number): number {
-  const tileSizePx = world.floorMap?.config.tileSizePx ?? DEFAULT_TILE_SIZE_PX;
-  return radiusTiles * tileSizePx;
+function tilesToFeet(world: GameWorld, radiusTiles: number): number {
+  const tileSizeFt = world.floorMap?.config.tileSizeFt ?? DEFAULT_TILE_SIZE_FT;
+  return radiusTiles * tileSizeFt;
 }
 
 function castFireball(
@@ -29,8 +29,8 @@ function castFireball(
 ): void {
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
-  const radiusPx = tilesToPixels(world, radiusTiles);
-  const radiusSq = radiusPx * radiusPx;
+  const radiusFt = tilesToFeet(world, radiusTiles);
+  const radiusSq = radiusFt * radiusFt;
   const baseDamage = world.stores.stats.damage[casterEid] ?? 10;
   const damage = Math.round(baseDamage * damagePercent);
 
@@ -64,8 +64,8 @@ function castPulseShield(
 ): void {
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
-  const radiusPx = tilesToPixels(world, radiusTiles);
-  const radiusSq = radiusPx * radiusPx;
+  const radiusFt = tilesToFeet(world, radiusTiles);
+  const radiusSq = radiusFt * radiusFt;
 
   const enemies = [...query(world.ecs, [Enemy, Position, Health])];
   for (const enemyEid of enemies) {

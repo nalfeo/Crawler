@@ -68,7 +68,7 @@ describe('Door System', () => {
     world.floorMap = makeMapWithDoor();
     const floorMap = world.floorMap;
     const player = spawnPlayer(world, 0, 0);
-    const pixel = floorMap.tileToPixel(4, 5);
+    const pixel = floorMap.tileToWorld(4, 5);
     world.stores.position.x[player] = pixel.x;
     world.stores.position.y[player] = pixel.y;
 
@@ -81,7 +81,7 @@ describe('Door System', () => {
     world.floorMap = makeMapWithDoor();
     const floorMap = world.floorMap;
     const player = spawnPlayer(world, 0, 0);
-    const pixel = floorMap.tileToPixel(4, 5);
+    const pixel = floorMap.tileToWorld(4, 5);
     world.stores.position.x[player] = pixel.x;
     world.stores.position.y[player] = pixel.y;
 

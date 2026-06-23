@@ -50,14 +50,14 @@ const DOOR_CLOSED_ROW = Math.floor(GH / 2);
 /**
  * Builds a synthetic FloorMap mirroring the visible Floor-1 room so the docked
  * round radar shows real terrain (teal safe-room floor + wall ring + doors).
- * `tileSizePx` matches the lab's TILE so ECS entity pixel coords line up with
+ * `tileSizeFt` matches the lab's TILE so ECS entity pixel coords line up with
  * radar tile maths. Fully revealed (no FOV system runs in labs).
  */
 function buildRadarFloorMap(): FloorMap {
   const cfg = {
     widthTiles: GW,
     heightTiles: GH,
-    tileSizePx: TILE,
+    tileSizeFt: TILE,
     biome: BiomeType.DUNGEON as BiomeType,
     seed: 7,
     roomWidthRange: [4, 18] as [number, number],
@@ -349,7 +349,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       world = createGameWorld({ seed: 7 });
       world.floor = 1;
       // Revealed safe-room floorMap so the docked round radar shows real
-      // terrain + room; tileSizePx == TILE keeps ECS coords aligned.
+      // terrain + room; tileSizeFt == TILE keeps ECS coords aligned.
       world.floorMap = buildRadarFloorMap();
       world.state = 'playing';
       playerEid = spawnPlayer(world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
@@ -391,7 +391,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
           spellQuestGiverPos: { x: 900, y: 300 },
           shopRoomPos: { x: 500, y: 300 },
           questItemPos: { x: 700, y: 500 },
-          markerRadiusPx: 32,
+          markerRadiusFt: 4,
           questAccepted: true,
           questCompleted: false,
           ratsKilled: 2,

@@ -140,7 +140,7 @@ function createTileRenderLab(canvasHost: HTMLElement, controls: HTMLElement): ()
     const config: MapConfig = {
       widthTiles: settings.widthTiles,
       heightTiles: settings.heightTiles,
-      tileSizePx: 16,
+      tileSizeFt: 16,
       biome,
       seed: settings.seed,
       roomWidthRange: [5, 12],

@@ -628,7 +628,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       baseAngle = Math.atan2(playerY - threat.y, playerX - threat.x);
     }
 
-    const startTile = floorMap.pixelToTile(playerX, playerY);
+    const startTile = floorMap.worldToTile(playerX, playerY);
     const candidates: Array<{ x: number; y: number; score: number }> = [];
     for (const offset of RETREAT_ARC_OFFSETS_RAD) {
       const angle = baseAngle + offset;
@@ -638,7 +638,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         const dist = this.config.scanRadius * mult;
         const px = playerX + dirX * dist;
         const py = playerY + dirY * dist;
-        const tile = floorMap.pixelToTile(px, py);
+        const tile = floorMap.worldToTile(px, py);
         if (tile.x === startTile.x && tile.y === startTile.y) continue;
         const passable = this.doorAwarePassable
           ? this.doorAwarePassable(tile.x, tile.y)
@@ -659,11 +659,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     let verifications = 0;
     for (const candidate of candidates) {
       if (verifications >= RETREAT_MAX_PATH_VERIFICATIONS) break;
-      const goalTile = floorMap.pixelToTile(candidate.x, candidate.y);
+      const goalTile = floorMap.worldToTile(candidate.x, candidate.y);
       verifications += 1;
       const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
       if (path.length > 1) {
-        const center = floorMap.tileToPixel(goalTile.x, goalTile.y);
+        const center = floorMap.tileToWorld(goalTile.x, goalTile.y);
         return { x: center.x, y: center.y };
       }
     }
@@ -1519,8 +1519,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const floorMap = world.floorMap;
     if (floorMap) {
-      const startTile = floorMap.pixelToTile(playerX, playerY);
-      const goalTile = floorMap.pixelToTile(targetX, targetY);
+      const startTile = floorMap.worldToTile(playerX, playerY);
+      const goalTile = floorMap.worldToTile(targetX, targetY);
       const resolvedGoal = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
       const goalKey = `${resolvedGoal.x},${resolvedGoal.y}`;
 
@@ -1568,7 +1568,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.pathIndex = 0;
         this.pathGoalKey = null;
       } else {
-        const waypointWorld = floorMap ? floorMap.tileToPixel(waypoint.x, waypoint.y) : null;
+        const waypointWorld = floorMap ? floorMap.tileToWorld(waypoint.x, waypoint.y) : null;
         if (!waypointWorld) {
           this.pathWaypoints = [];
           this.pathIndex = 0;
@@ -1718,7 +1718,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (!wp) {
         continue;
       }
-      const wpWorld = floorMap.tileToPixel(wp.x, wp.y);
+      const wpWorld = floorMap.tileToWorld(wp.x, wp.y);
       if (this.hasClearLineOfSight(world, playerX, playerY, wpWorld.x, wpWorld.y)) {
         this.pathIndex = i;
         return;
@@ -1963,8 +1963,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       return cached.reachable;
     }
 
-    const startTile = floorMap.pixelToTile(playerX, playerY);
-    const goalTile = floorMap.pixelToTile(target.x, target.y);
+    const startTile = floorMap.worldToTile(playerX, playerY);
+    const goalTile = floorMap.worldToTile(target.x, target.y);
     let reachable: boolean;
     if (startTile.x === goalTile.x && startTile.y === goalTile.y) {
       reachable = true;
@@ -2398,7 +2398,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const passable =
       this.doorAwarePassable ?? ((tx: number, ty: number): boolean => tileMap.isPassable(tx, ty));
 
-    const start = floorMap.pixelToTile(playerX, playerY);
+    const start = floorMap.worldToTile(playerX, playerY);
     const startIdx = tileMap.index(start.x, start.y);
     if (startIdx === -1) {
       return null;
@@ -2449,7 +2449,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
 
       if (isFrontier) {
-        const px = floorMap.tileToPixel(tx, ty);
+        const px = floorMap.tileToWorld(tx, ty);
         const dist = Math.hypot(px.x - playerX, px.y - playerY);
         if (dist >= EXPLORE_FRONTIER_MIN_PX) {
           // BFS is nearest-first by step count, so the first frontier past the
@@ -2477,7 +2477,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       };
     }
 
-    const startTile = floorMap.pixelToTile(playerX, playerY);
+    const startTile = floorMap.worldToTile(playerX, playerY);
 
     // Prefer the nearest fog-of-war frontier: this sweeps the map outward through
     // known-passable ground and reveals unentered rooms (and their NPCs/doors) far
@@ -2503,7 +2503,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         firstPassable.y = py;
         sawPassable = true;
       }
-      const goalTile = floorMap.pixelToTile(px, py);
+      const goalTile = floorMap.worldToTile(px, py);
       const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
       if (path.length > 1) {
         reachable.push({ x: px, y: py, dist: Math.hypot(px - playerX, py - playerY) });
@@ -2523,7 +2523,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         const maxY = Math.max(minY, room.bounds.y + room.bounds.height - 2);
         const tx = this.rng.nextInt(minX, maxX);
         const ty = this.rng.nextInt(minY, maxY);
-        const candidate = floorMap.tileToPixel(tx, ty);
+        const candidate = floorMap.tileToWorld(tx, ty);
         if (consider(candidate.x, candidate.y)) {
           break;
         }
@@ -2534,7 +2534,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       for (let attempt = 0; attempt < EXPLORE_REACHABLE_SAMPLE_ATTEMPTS; attempt += 1) {
         const tx = this.rng.nextInt(1, Math.max(1, floorMap.width - 2));
         const ty = this.rng.nextInt(1, Math.max(1, floorMap.height - 2));
-        const candidate = floorMap.tileToPixel(tx, ty);
+        const candidate = floorMap.tileToWorld(tx, ty);
         if (consider(candidate.x, candidate.y)) {
           break;
         }

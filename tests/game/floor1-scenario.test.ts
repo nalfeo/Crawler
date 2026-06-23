@@ -54,7 +54,7 @@ describe('floor1Scenario', () => {
     // the spell guy").
     const roomIdAt = (world: ReturnType<typeof createTestWorld>, pos: { x: number; y: number }) => {
       const map = world.floorMap!;
-      const tile = map.pixelToTile(pos.x, pos.y);
+      const tile = map.worldToTile(pos.x, pos.y);
       const room = map.rooms.find(
         (r) =>
           tile.x >= r.bounds.x &&
@@ -98,7 +98,7 @@ describe('floor1Scenario', () => {
         if (world.stores.sprite.textureId[eid] !== WELCOME_SIGN_TEXTURE) continue;
         const sx = world.stores.position.x[eid] ?? 0;
         const sy = world.stores.position.y[eid] ?? 0;
-        const signTile = map.pixelToTile(sx, sy);
+        const signTile = map.worldToTile(sx, sy);
         expect(`${signTile.x},${signTile.y}`).not.toBe(`${spawnTile.x},${spawnTile.y}`);
       }
     }

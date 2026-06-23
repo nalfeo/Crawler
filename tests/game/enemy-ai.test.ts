@@ -639,7 +639,7 @@ describe('enemyAISystem', () => {
     runTicks(world, 120);
 
     expect(
-      world.floorMap.pixelToTile(
+      world.floorMap.worldToTile(
         world.stores.position.x[stupid] ?? 0,
         world.stores.position.y[stupid] ?? 0,
       ).x,

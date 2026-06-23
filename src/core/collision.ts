@@ -10,7 +10,7 @@ export interface SpatialHashGrid {
   queryRadius(x: number, y: number, radius: number): number[];
 }
 
-const DEFAULT_CELL_SIZE = 64;
+const DEFAULT_CELL_SIZE = 8;
 const MAX_TRACKED_ENTITIES = 10_000;
 const PAIR_KEY_STRIDE = 131_072;
 

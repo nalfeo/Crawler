@@ -11,7 +11,7 @@ import { query } from 'bitecs';
 import { Player, Position } from '../components.js';
 import type { GameWorld } from '../world.js';
 
-/** Default FOV radius in tiles (~25 tiles ≈ 800px at 32px/tile). */
+/** Default FOV radius in tiles (~25 tiles ≈ 100ft at 4ft/tile). */
 const DEFAULT_FOV_RADIUS = 25;
 
 export function fovSystem(world: GameWorld): void {
@@ -26,7 +26,7 @@ export function fovSystem(world: GameWorld): void {
   const py = world.stores.position.y[playerEid] ?? 0;
 
   // Convert pixel position to tile coordinates
-  const tile = floorMap.pixelToTile(px, py);
+  const tile = floorMap.worldToTile(px, py);
 
   // Clear previous visibility
   floorMap.clearVisibility();

@@ -9,6 +9,7 @@
  */
 import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
+import { ftToPx } from '../shared/units.js';
 import type { GameWorld } from '../core/world.js';
 
 const PARTICLE_LIFETIME_MS = 500;
@@ -73,7 +74,8 @@ export function createGoreVfx(
       const size = PARTICLE_SIZE_MIN + vfxRandom() * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
       const color = BLOOD_COLORS[Math.floor(vfxRandom() * BLOOD_COLORS.length)]!;
 
-      const rect = scene.add.rectangle(x, y, size, size, color);
+      // x/y are world feet; scale to pixels for the rendering layer.
+      const rect = scene.add.rectangle(ftToPx(x), ftToPx(y), size, size, color);
       rect.setDepth(999);
       rect.setAlpha(0.9);
 

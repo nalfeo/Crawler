@@ -20,8 +20,8 @@ export function movementSystem(world: GameWorld): void {
     const isFlying = hasComponent(world.ecs, eid, Flying);
     if (floorMap) {
       if (isFlying) {
-        const inBoundsX = newX >= 0 && newX < floorMap.widthPx;
-        const inBoundsY = newY >= 0 && newY < floorMap.heightPx;
+        const inBoundsX = newX >= 0 && newX < floorMap.widthFt;
+        const inBoundsY = newY >= 0 && newY < floorMap.heightFt;
 
         if (inBoundsX) {
           position.x[eid] = newX;
