@@ -296,6 +296,84 @@ describe('Map Generators', () => {
         expect(isolated).toBe(0);
       }
     });
+
+    it('should keep SAFE and BOSS_STAIR room perimeter walls intact after room variety', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of [1, 2, 3, 5, 7, 10, 42, 99]) {
+        const floor = gen.generate({ ...config, seed }, new SeededRandom(seed));
+        const { width: w } = floor;
+
+        for (const room of floor.rooms) {
+          if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+          const { x, y, width, height } = room.bounds;
+
+          // Build the set of door positions on this room's perimeter for exclusion
+          const doorSet = new Set(room.doors.map((d) => `${d.x},${d.y}`));
+
+          // Every perimeter tile must be a wall or a door — never an open corridor
+          const perimeterCoords: Array<[number, number]> = [];
+          for (let tx = x; tx < x + width; tx++) {
+            perimeterCoords.push([tx, y]);
+            perimeterCoords.push([tx, y + height - 1]);
+          }
+          for (let ty = y + 1; ty < y + height - 1; ty++) {
+            perimeterCoords.push([x, ty]);
+            perimeterCoords.push([x + width - 1, ty]);
+          }
+
+          for (const [tx, ty] of perimeterCoords) {
+            const tileFlags = floor.tileMap.flags[ty * w + tx]!;
+            const isPassable = (tileFlags & TileFlags.PASSABLE) !== 0;
+            const isDoor = (tileFlags & TileFlags.DOOR) !== 0;
+            const isKnownDoor = doorSet.has(`${tx},${ty}`);
+            // Perimeter tiles must be walls or designated doors, never bare floor/corridor
+            if (isPassable && !isDoor && !isKnownDoor) {
+              throw new Error(
+                `seed=${seed} room ${room.id} (${room.role}) has open corridor at perimeter tile (${tx},${ty})`,
+              );
+            }
+          }
+        }
+      }
+    });
+
+    it('should assign BOSS_STAIR room the same id before and after room variety', () => {
+      // Regression: pre-assigning roles must produce the same boss room as the
+      // old post-variety distance scoring in normal cases.
+      const genVariety = new DungeonGenerator({ roomVariety: true });
+      const genFlat = new DungeonGenerator({ roomVariety: false });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of [1, 2, 3, 5, 7, 10, 42, 99]) {
+        const floorV = genVariety.generate({ ...config, seed }, new SeededRandom(seed));
+        const floorF = genFlat.generate({ ...config, seed }, new SeededRandom(seed));
+
+        expect(floorV.bossStairRoom?.id).toBe(floorF.bossStairRoom?.id);
+        expect(floorV.safeRoom?.id).toBe(floorF.safeRoom?.id);
+      }
+    });
   });
 
   describe('CaveGenerator', () => {

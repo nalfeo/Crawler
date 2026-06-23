@@ -113,11 +113,27 @@ export class DungeonGenerator implements MapGenerator {
       }
     }
 
+    // Pre-assign room roles before room variety so that SAFE and BOSS_STAIR rooms
+    // can be excluded from shape post-processing. Role assignment only needs room
+    // bounds centres, so it is safe to run before any tile mutations.
+    preAssignRoles(roomGraph);
+
+    // Seal perimeter walls of special rooms. rot-js sometimes places a corridor
+    // tile at a position that falls on the boundary of an adjacent room's bounds.
+    // This would leave an unintended opening on the special room's wall before
+    // variety even runs; sealing here guarantees walls+doors from the start.
+    sealSpecialRoomPerimeters(tileMap, terrain, roomGraph, w);
+
+    // Collect perimeter tile indices for SAFE and BOSS_STAIR rooms. These tiles
+    // must never be carved into corridors by widening or diagonal shortcuts —
+    // that would create unintended openings in otherwise fully-walled rooms.
+    const protectedWalls = buildSpecialRoomWalls(roomGraph, w);
+
     // --- Room variety post-processing (BASIC_UNDERGROUND and opt-in biomes) ---
     if (this.roomVariety) {
       applyRoomShapes(tileMap, terrain, roomGraph, w, rng);
-      widenCorridors(tileMap, terrain, w, h, rng);
-      addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng);
+      widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
+      addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng, protectedWalls);
     }
 
     // Rooms are linked by corridors (and occasionally a shared door), so we
@@ -207,8 +223,9 @@ export class DungeonGenerator implements MapGenerator {
       }
     }
 
-    // Room 0 is spawn. Score remaining rooms by distance from spawn center;
-    // furthest → BOSS_STAIR, second-furthest → SAFE, rest → NORMAL.
+    // Room roles were pre-assigned before room variety (see preAssignRoles above).
+    // Now compute the player's exact spawn tile — adjust room 0's bounds centre to
+    // the nearest passable tile in case variety reshaped the interior geometry.
     const spawnRoom = roomGraph.get(0);
     let playerSpawn = { x: Math.floor(w / 2), y: Math.floor(h / 2) };
     if (spawnRoom) {
@@ -240,34 +257,13 @@ export class DungeonGenerator implements MapGenerator {
           }
         }
       }
-      roomGraph.setRole(0, RoomRole.SPAWN);
     }
 
-    if (roomGraph.count >= 2) {
-      const scored = roomGraph
-        .getAll()
-        .filter((r) => r.id !== 0)
-        .map((room) => {
-          const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
-          const cy = Math.floor(room.bounds.y + room.bounds.height / 2);
-          const dx = cx - playerSpawn.x;
-          const dy = cy - playerSpawn.y;
-          return { id: room.id, distanceSq: dx * dx + dy * dy };
-        });
-      scored.sort((a, b) => b.distanceSq - a.distanceSq);
-
-      const bossStairId = scored[0]?.id;
-      const safeId = scored[1]?.id;
-
-      if (bossStairId !== undefined) {
-        roomGraph.setRole(bossStairId, RoomRole.BOSS_STAIR);
-        paintRoomFloor(bossStairId, roomGraph, w, terrain, TerrainType.BOSS_STAIR_FLOOR);
-      }
-      if (safeId !== undefined) {
-        roomGraph.setRole(safeId, RoomRole.SAFE);
-        paintRoomFloor(safeId, roomGraph, w, terrain, TerrainType.SAFE_ROOM_FLOOR);
-      }
-    }
+    // Paint special room floors now that variety has finished.
+    const bossRoom = roomGraph.getFirstRoomByRole(RoomRole.BOSS_STAIR);
+    const safeRoom = roomGraph.getFirstRoomByRole(RoomRole.SAFE);
+    if (bossRoom) paintRoomFloor(bossRoom.id, roomGraph, w, terrain, TerrainType.BOSS_STAIR_FLOOR);
+    if (safeRoom) paintRoomFloor(safeRoom.id, roomGraph, w, terrain, TerrainType.SAFE_ROOM_FLOOR);
 
     // Remove any floor/corridor tiles that cannot be reached from spawn even when
     // all doors are treated as open. These isolated pockets arise from room-shape
@@ -335,6 +331,102 @@ function cullIsolatedFloorTiles(
   }
 }
 
+// ─── Role Pre-Assignment ───────────────────────────────────────────────────
+
+/**
+ * Assign room roles before room-variety post-processing so that SAFE and
+ * BOSS_STAIR rooms can be excluded from shape transforms and wall protection.
+ *
+ * Uses room bounds centres for distance scoring (equivalent to the previous
+ * post-variety assignment; any spawn-tile adjustment is at most a few tiles).
+ */
+function preAssignRoles(roomGraph: RoomGraph): void {
+  roomGraph.setRole(0, RoomRole.SPAWN);
+  if (roomGraph.count < 2) return;
+
+  const spawnRoom = roomGraph.get(0)!;
+  const refX = Math.floor(spawnRoom.bounds.x + spawnRoom.bounds.width / 2);
+  const refY = Math.floor(spawnRoom.bounds.y + spawnRoom.bounds.height / 2);
+
+  const scored = roomGraph
+    .getAll()
+    .filter((r) => r.id !== 0)
+    .map((room) => {
+      const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
+      const cy = Math.floor(room.bounds.y + room.bounds.height / 2);
+      return { id: room.id, distanceSq: (cx - refX) ** 2 + (cy - refY) ** 2 };
+    });
+  scored.sort((a, b) => b.distanceSq - a.distanceSq);
+
+  if (scored[0]) roomGraph.setRole(scored[0].id, RoomRole.BOSS_STAIR);
+  if (roomGraph.count >= 3 && scored[1]) roomGraph.setRole(scored[1].id, RoomRole.SAFE);
+}
+
+/**
+ * Seal the perimeter of SAFE and BOSS_STAIR rooms by converting any passable
+ * non-door tile on their boundary to a wall. rot-js can place corridor tiles at
+ * positions that overlap the 1-tile padding of adjacent room bounds, creating
+ * unintended secondary openings before variety post-processing even runs.
+ * This pass guarantees the perimeter is walls + doors from the outset.
+ */
+function sealSpecialRoomPerimeters(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  roomGraph: RoomGraph,
+  w: number,
+): void {
+  for (const room of roomGraph.getAll()) {
+    if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+    const { x, y, width, height } = room.bounds;
+
+    // Collect door tile indices so we never seal an intentional opening.
+    const doorIdxSet = new Set(room.doors.map((d) => d.y * w + d.x));
+
+    const seal = (idx: number): void => {
+      if (doorIdxSet.has(idx)) return;
+      const flags = tileMap.flags[idx]!;
+      if ((flags & TileFlags.PASSABLE) !== 0 && (flags & TileFlags.DOOR) === 0) {
+        tileMap.flags[idx] = TilePresets.WALL;
+        terrain[idx] = TerrainType.STONE_WALL;
+      }
+    };
+
+    for (let tx = x; tx < x + width; tx++) {
+      seal(y * w + tx);
+      seal((y + height - 1) * w + tx);
+    }
+    for (let ty = y + 1; ty < y + height - 1; ty++) {
+      seal(ty * w + x);
+      seal(ty * w + (x + width - 1));
+    }
+  }
+}
+
+/**
+ * Return the set of tile indices that form the perimeter walls of all SAFE and
+ * BOSS_STAIR rooms. These tiles are off-limits to corridor widening and diagonal
+ * shortcut carving so that special rooms remain fully walled with only their
+ * door tiles as openings.
+ */
+function buildSpecialRoomWalls(roomGraph: RoomGraph, w: number): ReadonlySet<number> {
+  const walls = new Set<number>();
+  for (const room of roomGraph.getAll()) {
+    if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+    const { x, y, width, height } = room.bounds;
+    // Top and bottom rows
+    for (let tx = x; tx < x + width; tx++) {
+      walls.add(y * w + tx);
+      walls.add((y + height - 1) * w + tx);
+    }
+    // Left and right columns (exclude corners already added above)
+    for (let ty = y + 1; ty < y + height - 1; ty++) {
+      walls.add(ty * w + x);
+      walls.add(ty * w + (x + width - 1));
+    }
+  }
+  return walls;
+}
+
 /** Repaint interior floor tiles of a room with a given terrain type. */
 function paintRoomFloor(
   roomId: number,
@@ -372,6 +464,10 @@ function applyRoomShapes(
   rng: SeededRandom,
 ): void {
   for (const room of roomGraph.getAll()) {
+    // Safe and boss rooms must remain rectangular with walls fully intact.
+    // Skipping them here preserves their full interior volume and wall perimeter.
+    if (room.role === RoomRole.SAFE || room.role === RoomRole.BOSS_STAIR) continue;
+
     const { x: rx, y: ry, width: rw, height: rh } = room.bounds;
     // Interior dimensions: (rw-2) × (rh-2); require at least 5×5 interior
     if (rw < 7 || rh < 7) continue;
@@ -556,6 +652,7 @@ function widenCorridors(
   w: number,
   h: number,
   rng: SeededRandom,
+  protectedWalls: ReadonlySet<number>,
 ): void {
   const toWiden = new Set<number>();
 
@@ -582,13 +679,23 @@ function widenCorridors(
 
       if (hasNS && !hasEW) {
         // Vertical corridor — try to expand east
-        if (x + 1 < w - 1 && terrain[y * w + (x + 1)] === TerrainType.STONE_WALL) {
-          toWiden.add(y * w + (x + 1));
+        const targetIdx = y * w + (x + 1);
+        if (
+          x + 1 < w - 1 &&
+          terrain[targetIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(targetIdx)
+        ) {
+          toWiden.add(targetIdx);
         }
       } else if (hasEW && !hasNS) {
         // Horizontal corridor — try to expand south
-        if (y + 1 < h - 1 && terrain[(y + 1) * w + x] === TerrainType.STONE_WALL) {
-          toWiden.add((y + 1) * w + x);
+        const targetIdx = (y + 1) * w + x;
+        if (
+          y + 1 < h - 1 &&
+          terrain[targetIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(targetIdx)
+        ) {
+          toWiden.add(targetIdx);
         }
       }
     }
@@ -613,6 +720,7 @@ function addDiagonalShortcuts(
   w: number,
   h: number,
   rng: SeededRandom,
+  protectedWalls: ReadonlySet<number>,
 ): void {
   const rooms = roomGraph.getAll();
   const connected = new Set<string>();
@@ -656,7 +764,7 @@ function addDiagonalShortcuts(
       const b = rooms[bestJ]!;
       const cxB = Math.floor(b.bounds.x + b.bounds.width / 2);
       const cyB = Math.floor(b.bounds.y + b.bounds.height / 2);
-      carveBresenhamPath(tileMap, terrain, cxA, cyA, cxB, cyB, w, h);
+      carveBresenhamPath(tileMap, terrain, cxA, cyA, cxB, cyB, w, h, protectedWalls);
       connected.add(`${Math.min(i, bestJ)}:${Math.max(i, bestJ)}`);
     }
   }
@@ -677,10 +785,12 @@ function carveBresenhamPath(
   y1: number,
   w: number,
   h: number,
+  protectedWalls: ReadonlySet<number>,
 ): void {
   const carve = (x: number, y: number): void => {
     if (x <= 0 || x >= w - 1 || y <= 0 || y >= h - 1) return;
     const idx = y * w + x;
+    if (protectedWalls.has(idx)) return; // never breach special room perimeters
     if (terrain[idx] === TerrainType.STONE_WALL) {
       terrain[idx] = TerrainType.CORRIDOR;
       tileMap.flags[idx] = TilePresets.FLOOR;
