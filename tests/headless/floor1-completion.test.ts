@@ -21,7 +21,7 @@
  * run every time, so one pass per seed is authoritative — there is nothing to
  * average over. Seed 15 is the currently re-verified canonical clear (~253s
  * game-time at level 8 with 22 kills, completing all 4 quests under the 300s
- * budget, in ~105s wall time). Because the run exercises the *entire* Floor 1
+ * budget, in ~8s wall time). Because the run exercises the *entire* Floor 1
  * pipeline — pathfinding, melee/ranged combat, every NPC interaction, the boss
  * fight, and stat progression — a regression in almost any of those systems
  * breaks this seed too, which makes it a strong gate.
@@ -79,7 +79,7 @@ const REQUIRED_QUEST_IDS = [
  * clear within the budget — see the file header for how to add more.
  *
  * Seed 15 is the canonical seed as of 2026-06-23 (~253s game-time at level 8
- * with 22 kills, completing all 4 quests, ~105s wall time). Seed 32 was the
+ * with 22 kills, completing all 4 quests, ~8s wall time). Seed 32 was the
  * prior canonical seed but no longer clears after merging PR #252 (special
  * room shape/perimeter fixes changed its map layout). Seeds 2, 1, 7, 10, 14
  * and 32 are previous canonical seeds that no longer clear within budget.
