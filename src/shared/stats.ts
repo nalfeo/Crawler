@@ -103,6 +103,12 @@ export const STAT_KEYS = [
   'pickupRange',
   'projectileCount',
   'projectileSpeed',
+  /**
+   * Accuracy bonus stacked on top of a weapon's baseAccuracy.
+   * Derived from dexterity (+0.01/point) and weapon type skills (+0.03/level).
+   * Applied in weaponSystem: effectiveAccuracy = clamp(0,1, def.baseAccuracy + accuracy).
+   */
+  'accuracy',
 ] as const;
 
 export type StatKey = (typeof STAT_KEYS)[number];
@@ -117,6 +123,8 @@ export const STAT_BASE: Record<StatKey, number> = {
   pickupRange: 24,
   projectileCount: 0,
   projectileSpeed: 1.0,
+  /** Accuracy bonus — added to weapon's baseAccuracy. Starts at 0. */
+  accuracy: 0,
 };
 
 /** How much each stat point adds to this stat. */
@@ -129,6 +137,15 @@ export const STAT_POINT_INCREMENT: Record<StatKey, number> = {
   pickupRange: 8,
   projectileCount: 1,
   projectileSpeed: 0.05,
+  /**
+   * Direct stat-point allocation to accuracy is not currently exposed in the
+   * level-up UI (accuracy is trained via weapon type skills + dexterity).
+   * This entry satisfies the Record<StatKey> constraint; the value is reserved
+   * for any future direct-allocation path. Dexterity contributes 0.01/pt
+   * (see CORE_STAT_GAINS) — intentionally lower than a direct allocation would
+   * grant, because dexterity also buys attackSpeed and moveSpeed.
+   */
+  accuracy: 0.02,
 };
 
 /** Minimum clamped value for each stat. */
@@ -141,6 +158,7 @@ export const STAT_MIN: Record<StatKey, number> = {
   pickupRange: 8,
   projectileCount: 0,
   projectileSpeed: 0.1,
+  accuracy: 0,
 };
 
 // --- Core stat (primary stat) to gameplay stat derivation ---
@@ -171,8 +189,8 @@ export const CORE_STAT_BASE: Readonly<Record<PrimaryStatId, number>> = {
 export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<StatKey, number>>>> = {
   /** Strength: raw damage output and physical resilience. */
   strength: { damage: 2, armor: 1 },
-  /** Dexterity: speed of attack and foot movement. */
-  dexterity: { attackSpeed: 0.05, moveSpeed: 0.1 },
+  /** Dexterity: speed of attack, foot movement, and weapon accuracy. */
+  dexterity: { attackSpeed: 0.05, moveSpeed: 0.1, accuracy: 0.01 },
   /** Constitution: health pool depth. */
   constitution: { maxHp: 10 },
   /** Intelligence: projectile control and arcane precision. */

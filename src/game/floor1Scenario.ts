@@ -60,6 +60,8 @@ import {
   setTrackedQuest,
 } from '../core/systems/questSystem.js';
 import { memorizeSpell } from './systems/abilitySystem.js';
+import { getAllSkillDefinitions } from './skills/registry.js';
+import type { SkillState } from '../shared/skills.js';
 import { floor1Config } from '../shared/floor1-config.js';
 import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
@@ -460,6 +462,40 @@ export function meetTutorialGoon(world: GameWorld): void {
   }
 }
 
+/**
+ * Initialize weapon skill states for the player entity, seeding every registered
+ * skill at level 0 so the skill system and HUD can track progress from the start.
+ */
+function initializePlayerWeaponSkills(world: GameWorld, playerEid: number): void {
+  const allSkills = getAllSkillDefinitions();
+  const skillMap = new Map<string, SkillState>();
+  for (const skill of allSkills) {
+    skillMap.set(skill.id, {
+      level: 0,
+      usage: 0,
+      itemBonus: 0,
+      triggeredMilestones: new Set(),
+    });
+  }
+  // Merge into any existing v1 playerSkills map so pre-set entries are preserved.
+  for (const [id, state] of skillMap) {
+    if (!world.playerSkills.has(id)) {
+      world.playerSkills.set(id, state);
+    }
+  }
+  // v2 path: scope skills to the entity.
+  if (!world.skillStatesByEntity.has(playerEid)) {
+    world.skillStatesByEntity.set(playerEid, skillMap);
+  } else {
+    const existing = world.skillStatesByEntity.get(playerEid)!;
+    for (const [id, state] of skillMap) {
+      if (!existing.has(id)) {
+        existing.set(id, state);
+      }
+    }
+  }
+}
+
 export function initializeFloor1Scenario(world: GameWorld, playerEid: number): void {
   const config: MapConfig = {
     widthTiles: floor1Config.map.widthTiles,
@@ -680,6 +716,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
+  // Initialize weapon skill states for the player so HUD and skill system track progress.
+  initializePlayerWeaponSkills(world, playerEid);
 
   // The opening quest is the only one the player starts with: find the Welcome
   // Office and talk to the Tutorial Goon. NPC-given quests (shopkeeper errand,

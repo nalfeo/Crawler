@@ -262,6 +262,8 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       pickupRange: new Float32Array(maxEntities),
       projectileCount: new Float32Array(maxEntities),
       projectileSpeed: new Float32Array(maxEntities),
+      /** Accuracy bonus stacked on top of a weapon's baseAccuracy (0..1 range). */
+      accuracy: new Float32Array(maxEntities),
     },
     /**
      * How many level-up points the player has allocated to each PRIMARY_STAT.
