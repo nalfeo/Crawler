@@ -16,6 +16,9 @@ jobs:
   enforce-pr-state:
     name: Enforce ready + reviewer cleanup
     runs-on: ubuntu-latest
+    concurrency:
+      group: pr-ready-reviewer-guard
+      cancel-in-progress: false
     steps:
       - name: Publish drafts and remove requested reviewer
         uses: actions/github-script@v7
@@ -53,11 +56,20 @@ jobs:
 
               if (pr.draft) {
                 try {
-                  await github.rest.pulls.readyForReview({
-                    owner,
-                    repo,
-                    pull_number: prNumber,
-                  });
+                  await github.graphql(
+                    `
+                    mutation MarkPullRequestReadyForReview($pullRequestId: ID!) {
+                      markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+                        pullRequest {
+                          number
+                        }
+                      }
+                    }
+                    `,
+                    {
+                      pullRequestId: pr.node_id,
+                    },
+                  );
                   draftsPublished += 1;
                   core.info(`Marked PR #${prNumber} as ready for review.`);
                 } catch (error) {
@@ -66,17 +78,12 @@ jobs:
               }
 
               try {
-                const details = await github.rest.pulls.get({
-                  owner,
-                  repo,
-                  pull_number: prNumber,
-                });
+                const requestedReviewers = pr.requested_reviewers ?? [];
+                const reviewerToRemove = requestedReviewers.find(
+                  (reviewer) => reviewer.login?.toLowerCase() === reviewerLogin,
+                );
 
-                const requestedReviewers = (details.data.requested_reviewers ?? [])
-                  .map((reviewer) => reviewer.login?.toLowerCase())
-                  .filter(Boolean);
-
-                if (!requestedReviewers.includes(reviewerLogin)) {
+                if (!reviewerToRemove?.login) {
                   continue;
                 }
 
@@ -84,11 +91,12 @@ jobs:
                   owner,
                   repo,
                   pull_number: prNumber,
-                  reviewers: [reviewerLoginRaw],
-                });
-
+                  reviewers: [reviewerToRemove.login],
+                  });
                 reviewerRemovals += 1;
-                core.info(`Removed @${reviewerLogin} from requested reviewers on PR #${prNumber}.`);
+                core.info(
+                  `Removed @${reviewerToRemove.login} from requested reviewers on PR #${prNumber}.`,
+                );
               } catch (error) {
                 core.warning(`Could not process reviewers for PR #${prNumber}: ${error.message}`);
               }
