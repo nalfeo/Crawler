@@ -269,7 +269,69 @@ export class DungeonGenerator implements MapGenerator {
       }
     }
 
+    // Remove any floor/corridor tiles that cannot be reached from spawn even when
+    // all doors are treated as open. These isolated pockets arise from room-shape
+    // post-processing (ellipse, L-shape, corridor widening) and would trap the
+    // player or enemies in permanently unreachable areas.
+    cullIsolatedFloorTiles(tileMap, terrain, w, h, playerSpawn);
+
     return new FloorMap(config, tileMap, roomGraph, terrain, playerSpawn);
+  }
+}
+
+/**
+ * Flood-fill from the player spawn, treating all PASSABLE tiles and DOOR tiles
+ * as walkable. Any passable non-door tile that is NOT reached is converted to a
+ * wall, eliminating isolated floor pockets created by room-shape post-processing.
+ */
+function cullIsolatedFloorTiles(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  h: number,
+  playerSpawn: { x: number; y: number },
+): void {
+  const visited = new Uint8Array(w * h);
+  const stack: number[] = [];
+
+  const startIdx = playerSpawn.y * w + playerSpawn.x;
+  visited[startIdx] = 1;
+  stack.push(startIdx);
+
+  while (stack.length > 0) {
+    const idx = stack.pop()!;
+    const cx = idx % w;
+    const cy = (idx - cx) / w;
+
+    for (const [nx, ny] of [
+      [cx + 1, cy],
+      [cx - 1, cy],
+      [cx, cy + 1],
+      [cx, cy - 1],
+    ] as [number, number][]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nIdx = ny * w + nx;
+      if (visited[nIdx]) continue;
+      const flags = tileMap.flags[nIdx]!;
+      // Treat doors (open or closed) as walkable for connectivity purposes
+      const isDoor = (flags & TileFlags.DOOR) !== 0;
+      const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+      if (!isPassable && !isDoor) continue;
+      visited[nIdx] = 1;
+      stack.push(nIdx);
+    }
+  }
+
+  // Wall off any passable non-door tile that was not reached
+  for (let idx = 0; idx < w * h; idx++) {
+    if (visited[idx]) continue;
+    const flags = tileMap.flags[idx]!;
+    const isDoor = (flags & TileFlags.DOOR) !== 0;
+    const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+    if (isPassable && !isDoor) {
+      tileMap.flags[idx] = TilePresets.WALL;
+      terrain[idx] = TerrainType.STONE_WALL;
+    }
   }
 }
 
