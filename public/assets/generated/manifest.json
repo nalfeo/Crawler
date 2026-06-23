@@ -57,6 +57,149 @@
       },
       "sensorScore": "6/6",
       "judgeScore": "2"
+    },
+    "iron-ore-placeholder": {
+      "briefId": "iron-ore",
+      "spriteName": "iron-ore",
+      "assetPath": "generated/iron-ore-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.043Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "rusted-scrap-placeholder": {
+      "briefId": "rusted-scrap",
+      "spriteName": "rusted-scrap",
+      "assetPath": "generated/rusted-scrap-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.044Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "old-sock-placeholder": {
+      "briefId": "old-sock",
+      "spriteName": "old-sock",
+      "assetPath": "generated/old-sock-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.045Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "bone-shard-placeholder": {
+      "briefId": "bone-shard",
+      "spriteName": "bone-shard",
+      "assetPath": "generated/bone-shard-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.047Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "pebble-placeholder": {
+      "briefId": "pebble",
+      "spriteName": "pebble",
+      "assetPath": "generated/pebble-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.048Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "glistening-rat-tail-placeholder": {
+      "briefId": "glistening-rat-tail",
+      "spriteName": "glistening-rat-tail",
+      "assetPath": "generated/glistening-rat-tail-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.049Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "merchants-stained-charm-placeholder": {
+      "briefId": "merchants-stained-charm",
+      "spriteName": "merchants-stained-charm",
+      "assetPath": "generated/merchants-stained-charm-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.049Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "floor-key-bronze-placeholder": {
+      "briefId": "floor-key-bronze",
+      "spriteName": "floor-key-bronze",
+      "assetPath": "generated/floor-key-bronze-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.050Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "health-vial-placeholder": {
+      "briefId": "health-vial",
+      "spriteName": "health-vial",
+      "assetPath": "generated/health-vial-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.051Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "lucky-charm-placeholder": {
+      "briefId": "lucky-charm",
+      "spriteName": "lucky-charm",
+      "assetPath": "generated/lucky-charm-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.051Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "floor-key-silver-placeholder": {
+      "briefId": "floor-key-silver",
+      "spriteName": "floor-key-silver",
+      "assetPath": "generated/floor-key-silver-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.052Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "floor-key-gold-placeholder": {
+      "briefId": "floor-key-gold",
+      "spriteName": "floor-key-gold",
+      "assetPath": "generated/floor-key-gold-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.052Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
+    },
+    "floor-key-void-placeholder": {
+      "briefId": "floor-key-void",
+      "spriteName": "floor-key-void",
+      "assetPath": "generated/floor-key-void-placeholder.png",
+      "approvedAt": "2026-06-23T00:55:52.053Z",
+      "sourceRun": "placeholder",
+      "variantIndex": 0,
+      "anchor": null,
+      "sensorScore": "placeholder",
+      "judgeScore": null
     }
   }
 }

@@ -2282,7 +2282,6 @@ export class BehaviorTreeAI implements AIInputProvider {
         const x = world.stores.position.x[eid] ?? 0;
         const y = world.stores.position.y[eid] ?? 0;
         const dist = Math.hypot(x - playerX, y - playerY);
-
         if (dist < minDist) {
           minDist = dist;
           nearest = { eid, x, y, distance: dist, kind: candidate.kind };
@@ -2332,7 +2331,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (distance > this.config.scanRadius * 1.25) {
       return null;
     }
-
     return {
       eid: stickyEid,
       x,
