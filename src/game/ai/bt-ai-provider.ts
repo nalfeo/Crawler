@@ -479,6 +479,14 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private doorAwarePassable: ((x: number, y: number) => boolean) | null = null;
   /**
+   * One-slot cache for the resolved goal tile. `resolveReachableGoalTile` runs
+   * at least one full A* search per call, so calling it every frame even when the
+   * raw goal tile hasn't changed wastes significant CPU. The map topology is
+   * static for the lifetime of a floor, so the resolved tile for a given raw goal
+   * tile is stable and safe to cache across frames.
+   */
+  private resolvedGoalCache: { rawKey: string; resolved: TilePoint } | null = null;
+  /**
    * Locked doors the AI is currently aware of, keyed by door entity. Populated
    * from {@link getNavigationBlockedDoors} each poll and pruned when a door's
    * unlock condition is satisfied, so it reflects "doors I know I cannot yet
@@ -1899,7 +1907,23 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (floorMap) {
       const startTile = floorMap.pixelToTile(playerX, playerY);
       const goalTile = floorMap.pixelToTile(targetX, targetY);
-      const resolvedGoal = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
+      const rawGoalKey = `${goalTile.x},${goalTile.y}`;
+      let resolvedGoal: TilePoint;
+      if (this.resolvedGoalCache?.rawKey === rawGoalKey) {
+        // Cache hit: the goal tile is the same as last frame and we previously
+        // confirmed the direct path was reachable (cache is only populated for
+        // the direct-path case; fallback results are start-position-dependent).
+        resolvedGoal = this.resolvedGoalCache.resolved;
+      } else {
+        resolvedGoal = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
+        // Only cache the direct-path result (resolved == raw goal). Fallback
+        // results depend on start position and must be recomputed each frame.
+        if (resolvedGoal.x === goalTile.x && resolvedGoal.y === goalTile.y) {
+          this.resolvedGoalCache = { rawKey: rawGoalKey, resolved: resolvedGoal };
+        } else {
+          this.resolvedGoalCache = null;
+        }
+      }
       const goalKey = `${resolvedGoal.x},${resolvedGoal.y}`;
 
       if (this.pathGoalKey !== goalKey || this.pathWaypoints.length === 0) {
@@ -3484,6 +3508,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.neededInteractionReasonByNpc.clear();
     this.doorAwarePassable = null;
     this.knownLockedDoors.clear();
+    this.resolvedGoalCache = null;
     this.exploredSeen = null;
     this.frontierBfsVisited = null;
     this.retreating = false;
