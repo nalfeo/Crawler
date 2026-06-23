@@ -157,6 +157,7 @@ async function main(): Promise<void> {
   console.log(`Final Score:  ${stats.finalScore}`);
   console.log(`Final Level:  ${stats.finalLevel}`);
   console.log(`Total XP:     ${stats.totalXp}`);
+  console.log(`Total Gold:   ${stats.totalGold}`);
   console.log('');
   console.log(`Total Frames: ${stats.totalFrames}`);
   console.log(`Game Time:    ${(stats.gameTimeMs / 1000).toFixed(1)}s`);
