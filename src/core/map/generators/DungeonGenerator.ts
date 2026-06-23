@@ -25,6 +25,8 @@ export interface DungeonGeneratorOptions {
   readonly roomVariety?: boolean;
 }
 
+type RoomDoorSide = 'left' | 'right' | 'top' | 'bottom';
+
 export class DungeonGenerator implements MapGenerator {
   readonly name = 'DungeonGenerator';
   private readonly roomVariety: boolean;
@@ -132,8 +134,9 @@ export class DungeonGenerator implements MapGenerator {
     // --- Room variety post-processing (BASIC_UNDERGROUND and opt-in biomes) ---
     if (this.roomVariety) {
       applyRoomShapes(tileMap, terrain, roomGraph, w, rng);
-      widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
+      const widenedCorridorTiles = widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
       addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng, protectedWalls);
+      expandDoorsForWideCorridors(tileMap, terrain, roomGraph, w, widenedCorridorTiles);
     }
 
     // Rooms are linked by corridors (and occasionally a shared door), so we
@@ -459,6 +462,180 @@ function paintRoomFloor(
 
 // ─── Room Variety Helpers ──────────────────────────────────────────────────
 
+function getDoorSide(bounds: RoomBounds, door: DoorLocation): RoomDoorSide | null {
+  if (door.x === bounds.x) return 'left';
+  if (door.x === bounds.x + bounds.width - 1) return 'right';
+  if (door.y === bounds.y) return 'top';
+  if (door.y === bounds.y + bounds.height - 1) return 'bottom';
+  return null;
+}
+
+function expandDoorsForWideCorridors(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  roomGraph: RoomGraph,
+  w: number,
+  widenedCorridorTiles: ReadonlySet<number>,
+): void {
+  const widenedCorridorTouchesDoorway = (x: number, y: number): boolean =>
+    tileMap.inBounds(x, y) && widenedCorridorTiles.has(y * w + x);
+  const corridorContinues = (x: number, y: number): boolean =>
+    tileMap.inBounds(x, y) && terrain[y * w + x] === TerrainType.CORRIDOR;
+
+  const carveInteriorTile = (idx: number): void => {
+    if ((tileMap.flags[idx]! & TileFlags.PASSABLE) !== 0) return;
+    tileMap.flags[idx] = TilePresets.FLOOR;
+    terrain[idx] = TerrainType.STONE_FLOOR;
+  };
+
+  for (const room of roomGraph.getAll()) {
+    if (room.role === RoomRole.NORMAL) {
+      continue;
+    }
+    const { bounds } = room;
+    const doorKeys = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+    const addedDoors: DoorLocation[] = [];
+
+    const maybeAddDoor = (
+      doorX: number,
+      doorY: number,
+      outsideX: number,
+      outsideY: number,
+      forwardX: number,
+      forwardY: number,
+      insideX: number,
+      insideY: number,
+    ): void => {
+      const key = `${doorX},${doorY}`;
+      if (
+        doorKeys.has(key) ||
+        !widenedCorridorTouchesDoorway(outsideX, outsideY) ||
+        !corridorContinues(forwardX, forwardY)
+      ) {
+        return;
+      }
+      if (!tileMap.inBounds(doorX, doorY) || !tileMap.inBounds(insideX, insideY)) {
+        return;
+      }
+      const isCorner =
+        (doorX === bounds.x || doorX === bounds.x + bounds.width - 1) &&
+        (doorY === bounds.y || doorY === bounds.y + bounds.height - 1);
+      if (isCorner) {
+        return;
+      }
+      const idx = doorY * w + doorX;
+      if ((tileMap.flags[idx]! & TileFlags.DOOR) !== 0) {
+        return;
+      }
+      carveInteriorTile(insideY * w + insideX);
+      tileMap.flags[idx] = TilePresets.DOOR_CLOSED;
+      terrain[idx] = TerrainType.DOOR;
+      addedDoors.push({ x: doorX, y: doorY, connectsTo: -1 });
+      doorKeys.add(key);
+    };
+
+    for (const door of room.doors) {
+      const side = getDoorSide(room.bounds, door);
+      if (side === null) continue;
+
+      switch (side) {
+        case 'left':
+          maybeAddDoor(
+            door.x,
+            door.y - 1,
+            door.x - 1,
+            door.y - 1,
+            door.x - 2,
+            door.y - 1,
+            door.x + 1,
+            door.y - 1,
+          );
+          maybeAddDoor(
+            door.x,
+            door.y + 1,
+            door.x - 1,
+            door.y + 1,
+            door.x - 2,
+            door.y + 1,
+            door.x + 1,
+            door.y + 1,
+          );
+          break;
+        case 'right':
+          maybeAddDoor(
+            door.x,
+            door.y - 1,
+            door.x + 1,
+            door.y - 1,
+            door.x + 2,
+            door.y - 1,
+            door.x - 1,
+            door.y - 1,
+          );
+          maybeAddDoor(
+            door.x,
+            door.y + 1,
+            door.x + 1,
+            door.y + 1,
+            door.x + 2,
+            door.y + 1,
+            door.x - 1,
+            door.y + 1,
+          );
+          break;
+        case 'top':
+          maybeAddDoor(
+            door.x - 1,
+            door.y,
+            door.x - 1,
+            door.y - 1,
+            door.x - 1,
+            door.y - 2,
+            door.x - 1,
+            door.y + 1,
+          );
+          maybeAddDoor(
+            door.x + 1,
+            door.y,
+            door.x + 1,
+            door.y - 1,
+            door.x + 1,
+            door.y - 2,
+            door.x + 1,
+            door.y + 1,
+          );
+          break;
+        case 'bottom':
+          maybeAddDoor(
+            door.x - 1,
+            door.y,
+            door.x - 1,
+            door.y + 1,
+            door.x - 1,
+            door.y + 2,
+            door.x - 1,
+            door.y - 1,
+          );
+          maybeAddDoor(
+            door.x + 1,
+            door.y,
+            door.x + 1,
+            door.y + 1,
+            door.x + 1,
+            door.y + 2,
+            door.x + 1,
+            door.y - 1,
+          );
+          break;
+      }
+    }
+
+    if (addedDoors.length > 0) {
+      Object.assign(room, { doors: [...room.doors, ...addedDoors] });
+    }
+  }
+}
+
 /**
  * Apply shape variety to rooms: round (ellipse) or L-shaped.
  * Only rooms with interior size ≥ 5×5 are candidates.
@@ -691,7 +868,7 @@ function widenCorridors(
   h: number,
   rng: SeededRandom,
   protectedWalls: ReadonlySet<number>,
-): void {
+): ReadonlySet<number> {
   const toWiden = new Set<number>();
 
   for (let y = 1; y < h - 1; y++) {
@@ -743,6 +920,7 @@ function widenCorridors(
     terrain[idx] = TerrainType.CORRIDOR;
     tileMap.flags[idx] = TilePresets.FLOOR;
   }
+  return toWiden;
 }
 
 /**
