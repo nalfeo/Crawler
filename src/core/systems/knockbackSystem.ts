@@ -17,10 +17,12 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
   // Small bodies (≤ half a tile) already match the historic center-point rule.
   // Tighten the check only for larger sprites such as the Floor 1 boss, whose
   // footprint can overlap a wall before its center crosses into the blocked tile.
+  // Zero/near-zero dimensions also fall back to the center point; knockback in
+  // this codebase targets creature-sized sprites, not projectile footprints.
   const tileSizePx = floorMap.config.tileSizePx;
   if (
-    width <= COLLISION_EPSILON ||
-    height <= COLLISION_EPSILON ||
+    width <= COLLISION_EPSILON * 2 ||
+    height <= COLLISION_EPSILON * 2 ||
     (width <= tileSizePx * 0.5 && height <= tileSizePx * 0.5)
   ) {
     return floorMap.isPassableAt(x, y);
@@ -32,16 +34,12 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
   const right = x + halfWidth - COLLISION_EPSILON;
   const top = y - halfHeight + COLLISION_EPSILON;
   const bottom = y + halfHeight - COLLISION_EPSILON;
-  const sampleLeft = left <= right ? left : x;
-  const sampleRight = left <= right ? right : x;
-  const sampleTop = top <= bottom ? top : y;
-  const sampleBottom = top <= bottom ? bottom : y;
 
   return (
-    floorMap.isPassableAt(sampleLeft, sampleTop) &&
-    floorMap.isPassableAt(sampleRight, sampleTop) &&
-    floorMap.isPassableAt(sampleLeft, sampleBottom) &&
-    floorMap.isPassableAt(sampleRight, sampleBottom)
+    floorMap.isPassableAt(left, top) &&
+    floorMap.isPassableAt(right, top) &&
+    floorMap.isPassableAt(left, bottom) &&
+    floorMap.isPassableAt(right, bottom)
   );
 }
 
