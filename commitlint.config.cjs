@@ -36,6 +36,11 @@ module.exports = {
       ['feat', 'fix', 'chore', 'docs', 'lab', 'refactor', 'test', 'perf', 'ci', 'build', 'revert'],
     ],
     'subject-case': [0],
+    // Agent-authored commits routinely carry multi-part subjects (scope list,
+    // [session-complete] suffix, etc.) that push past the 100-char default.
+    // Raise to 120 so descriptive messages are still allowed while extremely
+    // long subjects are still caught.
+    'header-max-length': [2, 'always', 120],
     'body-max-line-length': [0],
     'footer-max-line-length': [0],
   },
