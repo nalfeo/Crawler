@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SeededRandom } from '../../src/shared/random';
-import { BiomeType, TileFlags, RoomRole } from '../../src/shared/map-types';
+import { BiomeType, TileFlags, TerrainType, RoomRole } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import { DungeonGenerator } from '../../src/core/map/generators/DungeonGenerator';
 import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
@@ -265,6 +265,67 @@ describe('Map Generators', () => {
           }
         }
       }
+    });
+
+    it('should use double doors where widened corridors hit room walls', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const floor1Config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      let seedsWithDoubleDoors = 0;
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const floor = gen.generate({ ...floor1Config, seed }, new SeededRandom(seed));
+        const { width: w, height: h } = floor;
+        let foundDoubleDoor = false;
+
+        for (const room of floor.rooms) {
+          const { x: rx, y: ry, width: rw, height: rh } = room.bounds;
+
+          for (const door of room.doors) {
+            let tangents: ReadonlyArray<readonly [number, number]>;
+            if (door.x === rx || door.x === rx + rw - 1) {
+              tangents = [
+                [0, -1],
+                [0, 1],
+              ];
+            } else if (door.y === ry || door.y === ry + rh - 1) {
+              tangents = [
+                [-1, 0],
+                [1, 0],
+              ];
+            } else {
+              continue;
+            }
+
+            for (const [tx, ty] of tangents) {
+              const nx = door.x + tx;
+              const ny = door.y + ty;
+              if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+              const terrain = floor.terrain[ny * w + nx]!;
+              if (terrain !== TerrainType.DOOR) continue;
+              foundDoubleDoor = true;
+              break;
+            }
+            if (foundDoubleDoor) break;
+          }
+          if (foundDoubleDoor) break;
+        }
+
+        if (foundDoubleDoor) {
+          seedsWithDoubleDoors++;
+        }
+      }
+
+      expect(seedsWithDoubleDoors).toBeGreaterThan(0);
     });
 
     it('should have no isolated passable floor tiles (all reachable from spawn when doors are open)', () => {
