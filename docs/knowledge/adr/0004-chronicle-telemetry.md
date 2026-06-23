@@ -27,15 +27,30 @@ The Memory Policy defines promotion/retirement thresholds (3+ sessions for promo
 
 ## Decision
 
-Use **Chronicle** (`session_store_sql`) as the telemetry backend for agent-OS self-observation.
+Use a **handoff-backed telemetry pipeline** for durable cross-session observation,
+with Chronicle (`session_store_sql`) retained as optional local enrichment when it
+is queryable.
 
-1. **Active emission:** The `copilot-guards` extension emits structured `[guard-telemetry]` JSON log events via `session.log()` on every guard decision.
+1. **Active emission:** The `copilot-guards` extension emits structured
+   `[guard-telemetry]` JSON log events via `session.log()` on every guard
+   decision **and** appends the same payload to the session-local artifact
+   `files/guard-telemetry.jsonl`.
 
-2. **Passive signals:** Chronicle already captures `session_files` (which docs are opened), `events` (tool executions), and `turns` (conversation context). These provide memory access and instruction effectiveness signals without additional instrumentation.
+2. **Durable transport:** Before ending the session, the agent pastes the output
+   of `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the
+   required session handoff. This makes guard telemetry durable across desktop
+   and cloud sessions because handoffs are committed to the repository.
 
-3. **Daily analysis workflow:** A Copilot CLI scheduled workflow queries chronicle and files a GitHub issue with recommendations (promote/prune/tune). Gated on new sessions existing.
+3. **Passive signals:** Git history plus committed handoffs/ADRs remain the
+   passive cross-session source for memory freshness, promotion candidates, and
+   session activity.
 
-4. **Human-in-the-loop:** All actions (archival, promotion, guard tuning) require human approval. The system recommends; it never auto-executes.
+4. **Automation:** Repo automation analyses committed handoff telemetry and docs
+   state in scheduled workflows. Chronicle, when queryable, can still be used
+   for richer local inspection, but it is no longer a hard dependency.
+
+5. **Human-in-the-loop:** All actions (archival, promotion, guard tuning)
+   require human approval. The system recommends; it never auto-executes.
 
 ## Consequences
 
@@ -44,27 +59,40 @@ Use **Chronicle** (`session_store_sql`) as the telemetry backend for agent-OS se
 - Evidence-based memory governance (no more guessing which docs are stale)
 - Guard effectiveness becomes measurable (fire-rate, false positives, dead guards)
 - Feedback loop enables Hashimoto's Loop (observe → classify → fix → test → audit)
-- Zero new infrastructure — uses existing session store
+- Works across desktop and mobile/cloud because the durable layer is the repo
 - Reports are GitHub issues — visible, trackable, actionable
 
 ### Negative
 
-- `session.log()` output may not be fully queryable in chronicle (needs empirical verification)
-- Adds ~5 async log calls per tool invocation in the guard path (minimal latency impact since they're fire-and-forget)
+- Requires agents to include the generated telemetry block in the handoff for
+  full cross-session coverage
+- Adds one local JSONL append per guard decision in the guard path (fire-and-forget)
 - Daily issues could become noisy if thresholds are too sensitive
 
 ### Risks
 
-- Chronicle data retention policy is controlled by GitHub, not us — old events may age out
-- If `session.log()` doesn't land in queryable columns, we'll need a fallback (local JSON append file)
-- Analysis queries may need tuning as data volume grows
+- Coverage depends on handoff discipline; missing telemetry blocks reduce signal
+- Analysis thresholds may need tuning as telemetry-bearing handoffs accumulate
+- Chronicle data retention/queryability is still controlled by GitHub when used
+  as an auxiliary source
 
 ## Alternatives Considered
 
-1. **Local JSON telemetry file** — Guards write to `.copilot/telemetry.jsonl`. Simpler emission, but requires a separate reader and doesn't benefit from chronicle's cross-session queryability.
+1. **Chronicle-only telemetry** — Rejected after the baseline report because the
+   emitted `session.log()` events were not available in queryable session-store
+   tables, leaving guard fire-rates empty.
 
-2. **GitHub Actions workflow** — Run analysis in CI. Rejected because it can't access chronicle (session data is local to the Copilot CLI app).
+2. **Local JSON telemetry file only** — Better than Chronicle-only for capture,
+   but not durable across sessions unless agents manually move the data into the
+   repository anyway.
 
-3. **Custom MCP server** — Build a telemetry MCP that guards emit to. Over-engineered for the current scale; chronicle already exists.
+3. **GitHub Actions workflow only** — Rejected because CI cannot see the live
+   session-local telemetry unless the session writes it into a committed artifact
+   such as the handoff.
 
-4. **No telemetry** — Continue operating blind. Rejected because the memory policy defines thresholds (3+ sessions, 30 days) that are impossible to measure without observation.
+4. **Custom MCP server** — Build a telemetry MCP that guards emit to.
+   Over-engineered for the current scale.
+
+5. **No telemetry** — Continue operating blind. Rejected because the memory
+   policy defines thresholds (3+ sessions, 30 days) that are impossible to
+   measure without observation.

@@ -8,6 +8,19 @@ function normalizePath(value) {
   return value.toLowerCase().replaceAll('/', '\\');
 }
 
+function normalizeWorkspacePath(value) {
+  if (!value) {
+    return '';
+  }
+  const trimmed = String(value).trim();
+  return normalizePath(resolveWorkspacePath(trimmed));
+}
+
+function resolveWorkspacePath(value) {
+  const trimmed = String(value).trim();
+  return path.win32.isAbsolute(trimmed) ? path.win32.normalize(trimmed) : path.resolve(trimmed);
+}
+
 function segmentTargetsLegacySharedPorts(segment) {
   return LEGACY_SHARED_PORTS.some((port) => new RegExp(`\\b${port}\\b`).test(segment));
 }
@@ -17,12 +30,12 @@ function segmentScopesToCurrentWorkspace(segment, cwd) {
     return false;
   }
   const normalizedSegment = normalizePath(segment);
-  const normalizedCwd = normalizePath(path.resolve(cwd));
+  const normalizedCwd = normalizeWorkspacePath(cwd);
   return normalizedSegment.includes(normalizedCwd);
 }
 
 function denyReason(segment, cwd) {
-  const currentCwd = cwd ? path.resolve(cwd) : '(unknown)';
+  const currentCwd = cwd ? resolveWorkspacePath(cwd) : '(unknown)';
   return (
     'Refusing to kill listeners or Crawler processes by shared port/process scan without ' +
     `scoping the selection to this session workspace. Current workspace: \`${currentCwd}\`. ` +

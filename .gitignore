@@ -36,6 +36,7 @@ _check-merge.sh
 
 # Local automation report drops
 .automation-reports-local/
+files/guard-telemetry.jsonl
 
 # Local environment credentials (populate via scripts/setup-azure-env.ps1)
 # Variable names documented in scripts/azure-env.example.

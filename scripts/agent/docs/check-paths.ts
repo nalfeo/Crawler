@@ -51,6 +51,7 @@ const ALLOWLIST = new Set<string>([
   // Runtime-generated session artifacts (written under the session `files/`
   // dir at launch time, not committed repo files) — referenced by AGENTS.md
   // "Server Launch Diagnostics".
+  'files/guard-telemetry.jsonl',
   'files/worktree-server-status.json',
   'files/worktree-server-launch.log',
 ]);

@@ -48,13 +48,17 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
       await safeLog(ctx, `guard ${guard.id} bypassed (${reason})`, {
         level: 'warning',
       });
-      await emitGuardTelemetry(ctx.log, {
-        guard_id: guard.id,
-        tool_name: toolName,
-        decision: 'bypass',
-        bypass_used: true,
-        bypass_reason: reason,
-      });
+      await emitGuardTelemetry(
+        ctx.log,
+        {
+          guard_id: guard.id,
+          tool_name: toolName,
+          decision: 'bypass',
+          bypass_used: true,
+          bypass_reason: reason,
+        },
+        { cwd: ctx.cwd },
+      );
       continue;
     }
 
@@ -65,12 +69,16 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
       await safeLog(ctx, `guard ${guard.id} crashed: ${err.message}`, {
         level: 'error',
       });
-      await emitGuardTelemetry(ctx.log, {
-        guard_id: guard.id,
-        tool_name: toolName,
-        decision: 'crash',
-        reason: err.message,
-      });
+      await emitGuardTelemetry(
+        ctx.log,
+        {
+          guard_id: guard.id,
+          tool_name: toolName,
+          decision: 'crash',
+          reason: err.message,
+        },
+        { cwd: ctx.cwd },
+      );
       if (guard.failClosed) {
         return {
           permissionDecision: 'deny',
@@ -82,11 +90,15 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
 
     if (!result || result.decision === 'skip' || result.decision === 'allow') {
       if (result?.additionalContext) additionalContexts.push(result.additionalContext);
-      await emitGuardTelemetry(ctx.log, {
-        guard_id: guard.id,
-        tool_name: toolName,
-        decision: result?.decision || 'skip',
-      });
+      await emitGuardTelemetry(
+        ctx.log,
+        {
+          guard_id: guard.id,
+          tool_name: toolName,
+          decision: result?.decision || 'skip',
+        },
+        { cwd: ctx.cwd },
+      );
       continue;
     }
 
@@ -103,12 +115,16 @@ export async function dispatch(guards, toolName, toolArgs, ctx) {
       decision = 'ask';
     }
 
-    await emitGuardTelemetry(ctx.log, {
-      guard_id: guard.id,
-      tool_name: toolName,
-      decision,
-      reason: result.reason,
-    });
+    await emitGuardTelemetry(
+      ctx.log,
+      {
+        guard_id: guard.id,
+        tool_name: toolName,
+        decision,
+        reason: result.reason,
+      },
+      { cwd: ctx.cwd },
+    );
 
     if (decision === 'deny') {
       if (guard.category === 'pr') {

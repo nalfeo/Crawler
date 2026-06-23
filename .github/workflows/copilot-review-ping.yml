@@ -218,9 +218,8 @@ jobs:
                 `For each thread, please either address the feedback directly in PR #${prNumber} or reply to the thread explaining why the change will not be made (won't fix).`,
               ].join('\n');
 
-              // Close old issue and create a fresh one so that the new assignment
-              // re-triggers the Copilot coding agent (re-assigning an existing issue
-              // may not fire the trigger a second time).
+              // Close old issue and create a fresh one so that issue creation
+              // reliably re-triggers the Copilot coding agent.
               const existing = findOpenTrackingIssue(openTrackingIssues, prNumber);
               if (existing) {
                 await github.rest.issues.update({

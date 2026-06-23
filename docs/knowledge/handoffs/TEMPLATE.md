@@ -40,6 +40,11 @@ Hello kitties: N/5 = N.NN 🎀 <!-- actual_apples / 5, two decimal places -->
 - All tests passing: [yes/no]
 - PR created: [yes/no, link]
 
+## Agent-OS Telemetry
+
+<!-- If `files/guard-telemetry.jsonl` exists, paste the output of
+     `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` here. -->
+
 ## Test Results
 
 <!-- Output of verify-fast.sh or verify.sh -->

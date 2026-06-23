@@ -8,7 +8,8 @@
 4. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
 5. Run `bash scripts/agent/verify.sh` before committing
 6. Write a handoff file before ending your session
-7. **Unlock the session lock** — run the `gh workflow run` unlock command from the [Session Lock](#session-lock) section
+7. If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
+8. **Unlock the session lock** — run the `gh workflow run` unlock command from the [Session Lock](#session-lock) section
 
 ## Commands
 
