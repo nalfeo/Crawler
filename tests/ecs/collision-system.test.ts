@@ -49,7 +49,7 @@ describe('collisionSystem', () => {
 
     expect(collisionSystem(world).pairs).toEqual([]);
 
-    setComponent(world.ecs, enemy, Position, { x: 8, y: 0 });
+    setComponent(world.ecs, enemy, Position, { x: 1, y: 0 });
     const updatedResult = collisionSystem(world);
 
     expect(updatedResult.pairs).toContainEqual({

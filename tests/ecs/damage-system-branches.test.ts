@@ -13,7 +13,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 12,
   heightTiles: 12,
-  tileSizeFt: 32,
+  tileSizeFt: 4,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],
@@ -51,8 +51,8 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
     const world = createTestWorld();
     world.floorMap = makeSafeRoomMap();
     // Tile (2,2) centre -> inside the safe room.
-    const player = spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
-    const projectile = spawnEnemyProjectile(world, 2 * 32 + 18, 2 * 32 + 16, 0, 0, 7);
+    const player = spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
+    const projectile = spawnEnemyProjectile(world, 2 * 4 + 2.25, 2 * 4 + 2, 0, 0, 7);
 
     damageSystem(world, collisionSystem(world));
 
@@ -81,8 +81,8 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('does not damage the player from enemy contact while in a safe space', () => {
     const world = createTestWorld();
     world.floorMap = makeSafeRoomMap();
-    const player = spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
-    spawnEnemy(world, 2 * 32 + 18, 2 * 32 + 16, 25);
+    const player = spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
+    spawnEnemy(world, 2 * 4 + 2.25, 2 * 4 + 2, 25);
 
     damageSystem(world, collisionSystem(world));
 
