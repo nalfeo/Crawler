@@ -93,18 +93,62 @@ const RANGED_STANDOFF_FRACTION = 0.75;
 // from a direct A*-navigated approach/retreat to fine-grained orbit steps so it
 // does not constantly re-plan the path to a moving target.
 const RANGED_APPROACH_BUFFER_PX = 24;
+// Below this distance a blocked line of sight is ignored: the player is already on
+// top of the enemy, A* micro-repositioning would just jitter, and the contact-range
+// kite/strike logic handles it. Above it, a wall between player and target means
+// the standoff orbit lands nothing, so the AI closes in to round the obstacle.
+const RANGED_LOS_MIN_CLOSE_PX = 48;
 
 // --- Melee kiting (stutter-step orbit) ---
 // When in melee, the player must NOT park on the enemy and trade blows. Instead
 // it advances/retreats along the enemy axis (keeping the weapon on target) while
-// slightly strafing as a juke. MELEE_HOLD_FRACTION places the preferred orbit
-// well inside weapon reach so every swing lands reliably.
-// 0.5 puts the player at half weapon reach — deep inside the strike band so hits
-// land solidly and the player commits to the fight instead of hovering on the edge.
-const MELEE_HOLD_FRACTION = 0.5;
+// slightly strafing as a juke. MELEE_HOLD_FRACTION places the preferred orbit near
+// the OUTER edge of weapon reach so swings still land but the player stays out of
+// the swarm's contact-damage band. Parking point-blank (the old 0.5) dragged the
+// player into the centre of the pack where relentless contact bleed (~20 HP/s
+// through i-frames) emptied the health bar in seconds. 0.9 keeps the strike on
+// target while holding ~36px from a 40px-reach enemy — outside the ~24px contact
+// band of the ambient swarm.
+const MELEE_HOLD_FRACTION = 0.9;
+// While a swing is on cooldown the player eases out to this fraction of the strike
+// gate (the max distance a swing still connects). Larger = more dodge room between
+// hits; kept just inside the gate so the next swing still lands.
+const MELEE_DODGE_GATE_FRACTION = 0.95;
+// --- Focus dive (commit onto one specific quest enemy) ---
+// When hunting a designated quest mob (e.g. the slow trailing slimes the floor
+// quest requires) the safe edge-of-pack kite never lands a hit on it: auto-fire
+// always locks onto the strictly-nearest body, which is whatever ambient add is
+// orbiting closest. To actually kill the quest mob the player must briefly drive
+// into near-contact so THAT mob becomes the nearest target. This fraction of reach
+// is the focus-dive orbit (well inside the strike gate, point-blank on the mob).
+const MELEE_FOCUS_DIVE_FRACTION = 0.45;
+// Only focus-dive while HP is at/above this fraction: diving into contact trades a
+// little contact damage for the kill, which is only safe when healthy. Below it we
+// fall back to the swarm-safe kite and let HP recover via pickups / thinning.
+const MELEE_FOCUS_DIVE_MIN_HP = 0.55;
+// Never dive when this many or more bodies are already inside the separation
+// radius: a full surround means a dive trades the kill for a swarm bleed-out, so
+// we keep kiting and pick the quest mob off when the local pack thins.
+const MELEE_FOCUS_DIVE_MAX_CROWD = 6;
 // Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
 // to reach*1.5, so this is the outer radius at which kiting can still land hits.
 const ATTACK_GATE_MULTIPLIER = 1.5;
+// --- Swarm separation steering (Reynolds boids "separation" rule) ---
+// During engagement the player must never let the swarm collapse onto it. For
+// every enemy inside SWARM_SEPARATION_RADIUS_PX we accumulate a push-away vector
+// weighted by inverse distance (closest bodies dominate). The summed vector is
+// blended into the kite step so the player continuously slides toward the thinnest
+// side of the pack — the canonical survivors-like "skirt the edge" motion that
+// keeps a fast player (3.2 px/f) ahead of a slow swarm (~1.25 px/f) while its
+// weapon auto-fires on the nearest pursuer.
+const SWARM_SEPARATION_RADIUS_PX = 72;
+// Enemy count at which separation reaches full strength. Below this it scales in
+// linearly so a lone 1-on-1 still favours the orbit/strike motion.
+const SWARM_SEPARATION_SATURATION = 4;
+// Max px the separation push contributes to a single kite step (before the step is
+// renormalised to KITE_STEP_PX). Equal to KITE_STEP_PX so a saturated swarm can
+// fully redirect the step toward open space.
+const SWARM_SEPARATION_MAX_PX = 28;
 // Extra px held beyond a (smaller-than-reach) enemy's own attackRange when we can
 // safely poke from outside its strike range. Ignored for long-range bosses whose
 // attackRange dwarfs our reach (geometrically impossible to outrange).
@@ -324,10 +368,12 @@ const GOLD_FARM_GOLD_SCAN_RADIUS_PX = 800;
 // Only divert to an already-dropped gold pile when it is this close; a pile
 // farther than this is more cheaply earned by hunting the swarm (which drops
 // fresh coins right next to the kill) than by trekking across the room toward a
-// single pile that may have rolled into an unreachable spot. Sized a little
-// larger than the melee engage hold (~160px) so coins dropped at a kill site are
-// still swept up on the next tick.
-const GOLD_FARM_COLLECT_RADIUS_PX = 260;
+// single pile that may have rolled into an unreachable spot. MUST exceed the
+// widest ranged standoff (bow reach 352px × RANGED_STANDOFF_FRACTION 0.75 ≈
+// 264px): a ranged weapon drops gold at the enemy out at its standoff orbit, so
+// a smaller radius leaves those coins perpetually just out of reach and the AI
+// kites forever without ever walking onto its own drops.
+const GOLD_FARM_COLLECT_RADIUS_PX = 360;
 
 // --- Opportunistic behavior constants ---
 // Enemy must be within this radius (px) to count as a dodge threat.
@@ -804,7 +850,18 @@ export class BehaviorTreeAI implements AIInputProvider {
         // non-enemy entities (gold piles, NPCs) keep the direct-approach path.
         const enemyTarget = this.progressTargetAsEnemy(ctx.world, target, ctx.playerX, ctx.playerY);
         if (enemyTarget) {
-          const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, enemyTarget);
+          // Quest-enemy hunts focus-dive onto the specific mob so auto-fire actually
+          // lands on it (see computeMeleeKiteTarget). Charm-gold swarm farming keeps
+          // the safe kite — any kill drops the gold it needs, so there is no slow
+          // trailing target to commit to.
+          const focusTarget = target.reason.startsWith('Hunting quest enemies');
+          const plan = this.planEngagement(
+            ctx.world,
+            ctx.playerX,
+            ctx.playerY,
+            enemyTarget,
+            focusTarget,
+          );
           this.decision.state = AIState.ENGAGE;
           this.decision.targetEid = enemyTarget.eid;
           this.decision.targetX = plan.targetX;
@@ -2973,6 +3030,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     target: WorldTarget,
+    focusTarget = false,
   ): { targetX: number; targetY: number; reason: string } {
     const weapon = getActiveWeapon(world);
     if (!weapon) {
@@ -3001,7 +3059,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // player is moving). Once inside it we KITE instead of parking.
     const strikeGatePx = reachPx * ATTACK_GATE_MULTIPLIER;
     if (target.distance <= strikeGatePx) {
-      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx);
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx, focusTarget);
     }
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
@@ -3015,6 +3073,76 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetY: playerY + deltaY * scale,
       reason: `Closing to melee range (${(reachPx / 8).toFixed(1)}ft) from ${target.distance.toFixed(0)}px`,
     };
+  }
+
+  /**
+   * Player current/max HP as a 0..1 fraction (1 when no player/health is found, so
+   * callers default to the healthy branch). Used to gate aggressive maneuvers like
+   * the melee focus dive that are only safe at high HP.
+   */
+  private playerHealthFraction(world: GameWorld): number {
+    const players = query(world.ecs, [Player, Health]);
+    const playerEid = players[0];
+    if (playerEid === undefined) {
+      return 1;
+    }
+    const cur = world.stores.health.current[playerEid] ?? 1;
+    const max = world.stores.health.max[playerEid] ?? 1;
+    return max > 0 ? cur / max : 1;
+  }
+
+  /**
+   * Reynolds boids "separation" steering against the live enemy swarm.
+   *
+   * Sums an inverse-distance-weighted push-away vector from every enemy within
+   * {@link SWARM_SEPARATION_RADIUS_PX} (closest bodies dominate). The returned
+   * vector points toward the thinnest side of the pack; its magnitude grows with
+   * how surrounded the player is. Blended into the kite step this produces the
+   * canonical survivors-like "skirt the swarm edge" motion: a fast player keeps
+   * sliding out of the cluster while its auto-fire weapon picks off the nearest
+   * pursuer, instead of parking in the centre and bleeding to contact damage.
+   *
+   * Returns a vector already scaled to at most {@link SWARM_SEPARATION_MAX_PX}, and
+   * the count of contributing enemies (0 = nobody close enough to matter).
+   */
+  private computeSwarmSeparation(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+  ): { x: number; y: number; count: number } {
+    let sx = 0;
+    let sy = 0;
+    let count = 0;
+    for (const eid of query(world.ecs, [Enemy, Position, Health])) {
+      if (eid === undefined) continue;
+      if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const dx = playerX - ex;
+      const dy = playerY - ey;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 1 || dist > SWARM_SEPARATION_RADIUS_PX) continue;
+      // Inverse-distance weight: a body at the contact edge pushes far harder than
+      // one loitering at the scan boundary.
+      const weight = (SWARM_SEPARATION_RADIUS_PX - dist) / SWARM_SEPARATION_RADIUS_PX;
+      sx += (dx / dist) * weight;
+      sy += (dy / dist) * weight;
+      count += 1;
+    }
+    if (count === 0) {
+      return { x: 0, y: 0, count: 0 };
+    }
+    const len = Math.hypot(sx, sy);
+    if (len < 1e-3) {
+      // Perfectly surrounded: the push-away vectors cancel. Return zero magnitude
+      // so the caller's tangential orbit (which a fast player rides to the sparse
+      // side of a ring the slow swarm cannot keep closed) takes over.
+      return { x: 0, y: 0, count };
+    }
+    const scale =
+      (Math.min(count, SWARM_SEPARATION_SATURATION) / SWARM_SEPARATION_SATURATION) *
+      SWARM_SEPARATION_MAX_PX;
+    return { x: (sx / len) * scale, y: (sy / len) * scale, count };
   }
 
   /**
@@ -3072,20 +3200,46 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachPx: number,
+    focusTarget = false,
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
 
+    const strikeGatePx = reachPx * ATTACK_GATE_MULTIPLIER;
+    // Stutter-step band: pull into the inner hold radius when a swing is READY so
+    // the hit lands; ease out toward the strike-gate edge while on cooldown for max
+    // dodge room. Both sit well outside the swarm's contact band so the player pokes
+    // without bleeding HP.
     const innerOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
-    const outerOrbit = innerOrbit;
+    const outerOrbit = Math.max(innerOrbit, strikeGatePx * MELEE_DODGE_GATE_FRACTION);
     let desiredOrbit = ready ? innerOrbit : outerOrbit;
+
+    // Focus dive: when committed to a specific slow/low-priority quest enemy (e.g.
+    // a trailing slime) and HP is healthy, drive into near-contact so THIS enemy
+    // becomes the strictly-nearest body. Auto-fire locks onto the nearest enemy, so
+    // without this the player orbits the swarm and forever pokes ambient adds while
+    // the quest mob it is "hunting" never takes a hit. Charging a mob ahead makes it
+    // nearer than the adds trailing behind, so the dive only needs to reach the
+    // inner strike band, not literal contact. Gated by HP *and* local swarm density:
+    // we never dive into a full surround (that is exactly the point-blank swarm
+    // death the separation kite exists to avoid).
+    const focusSeparation = focusTarget
+      ? this.computeSwarmSeparation(world, playerX, playerY)
+      : { x: 0, y: 0, count: 0 };
+    const focusDive =
+      focusTarget &&
+      this.playerHealthFraction(world) >= MELEE_FOCUS_DIVE_MIN_HP &&
+      focusSeparation.count <= MELEE_FOCUS_DIVE_MAX_CROWD;
+    if (focusDive) {
+      desiredOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_FOCUS_DIVE_FRACTION);
+    }
 
     const enemyAttackPx = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
     if (enemyAttackPx > 0) {
       const safeOrbit = enemyAttackPx + KITE_DODGE_BUFFER_PX;
-      if (safeOrbit <= outerOrbit) {
+      if (safeOrbit <= strikeGatePx) {
         // We can stand outside the enemy's strike range and still land hits.
-        desiredOrbit = Math.min(outerOrbit, Math.max(desiredOrbit, safeOrbit));
+        desiredOrbit = Math.min(strikeGatePx, Math.max(desiredOrbit, safeOrbit));
       }
     }
 
@@ -3112,17 +3266,34 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
     );
 
-    // Use full lateral orbit only when an enemy is closing from behind; otherwise
-    // favour forward/backward motion (radial) with a small lateral juke so the
-    // weapon stays on target instead of constantly circling past it.
-    const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
+    // Boids separation against the whole nearby swarm: this is what keeps the
+    // player on the EDGE of the pack instead of letting flankers and trailing
+    // bodies close into contact range from the sides/behind. When many enemies are
+    // near, the separation push dominates and the player slides toward open space;
+    // with a lone target it is near-zero and the orbit/strike motion leads.
+    // During a focus dive we suppress it: the whole point is to close onto one
+    // specific quest mob, and the separation push would cancel that approach. When
+    // hunting a quest mob but NOT diving (too crowded / hurt) we reuse the density
+    // sample already taken above.
+    const separation = focusDive
+      ? { x: 0, y: 0, count: 0 }
+      : focusTarget
+        ? focusSeparation
+        : this.computeSwarmSeparation(world, playerX, playerY);
+
+    // Use full lateral orbit when an enemy is closing from behind OR when the swarm
+    // is dense (so the player keeps circling to the sparse side); otherwise favour
+    // radial advance/retreat with a small lateral juke so the weapon stays on
+    // target instead of constantly circling past it.
+    const backThreat =
+      separation.count >= 2 || this.hasThreatFromBehind(world, playerX, playerY, target);
     const strafePx = backThreat ? KITE_STEP_PX : KITE_STRAFE_PX;
 
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafePx;
-      let sy = uy * radialMag + ty * strafePx;
+      let sx = ux * radialMag + tx * strafePx + separation.x;
+      let sy = uy * radialMag + ty * strafePx + separation.y;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_PX;
       sy = (sy / slen) * KITE_STEP_PX;
@@ -3153,7 +3324,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return {
       targetX: playerX + step.x,
       targetY: playerY + step.y,
-      reason: `Kiting enemy at ${target.distance.toFixed(0)}px (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(0)}px)`,
+      reason: `Kiting enemy at ${target.distance.toFixed(0)}px (${focusDive ? 'focus' : ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(0)}px)`,
     };
   }
 
@@ -3171,6 +3342,23 @@ export class BehaviorTreeAI implements AIInputProvider {
     reachPx: number,
   ): { targetX: number; targetY: number; reason: string } {
     const desiredOrbit = reachPx * RANGED_STANDOFF_FRACTION;
+
+    // Line-of-sight gate: a standoff orbit is worthless if a wall sits between the
+    // player and the target — the projectile never connects, so the AI orbits in
+    // place landing zero hits (and, when farming the swarm for charm gold, makes no
+    // progress for the rest of the run). When sight is blocked, navigate straight
+    // at the enemy so A* routes around the obstacle until a clear shot opens up,
+    // then resume the standoff orbit.
+    if (
+      target.distance > RANGED_LOS_MIN_CLOSE_PX &&
+      !this.hasClearLineOfSight(world, playerX, playerY, target.x, target.y)
+    ) {
+      return {
+        targetX: target.x,
+        targetY: target.y,
+        reason: `Repositioning for a clear shot (blocked at ${target.distance.toFixed(0)}px)`,
+      };
+    }
 
     if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_PX) {
       // Too far to orbit: navigate toward a point at the desired standoff distance
