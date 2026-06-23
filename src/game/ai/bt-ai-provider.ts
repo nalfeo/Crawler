@@ -72,6 +72,18 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
 };
 
 const DIRECT_MOVE_EPSILON_PX = 10;
+// --- Ranged kiting (standoff orbit) ---
+// For ranged weapons the AI wants to stay at ~75 % of weapon range: close enough
+// to land shots but far enough that enemies cannot freely swing at it. It orbits
+// laterally (reusing the same sign/flip infrastructure as melee kite) so it is
+// never a stationary target.
+// Desired orbit as a fraction of the weapon's pixel reach.
+const RANGED_STANDOFF_FRACTION = 0.75;
+// Tolerance band around the desired orbit (px). Inside this band the AI switches
+// from a direct A*-navigated approach/retreat to fine-grained orbit steps so it
+// does not constantly re-plan the path to a moving target.
+const RANGED_APPROACH_BUFFER_PX = 24;
+
 // --- Melee kiting (stutter-step orbit) ---
 // When in melee, the player must NOT park on the enemy and trade blows. Instead
 // it orbits the target at MELEE_HOLD_FRACTION of weapon reach so swings reliably
@@ -2671,7 +2683,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     target: WorldTarget,
   ): { targetX: number; targetY: number; reason: string } {
     const weapon = getActiveWeapon(world);
-    if (!weapon || weapon.weaponType !== WeaponType.MELEE) {
+    if (!weapon) {
       return {
         targetX: target.x,
         targetY: target.y,
@@ -2680,6 +2692,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     const reachPx = ftToPx(Math.max(weapon.range, weapon.aoeRadius));
+
+    if (weapon.weaponType === WeaponType.RANGED) {
+      return this.planRangedEngagement(world, playerX, playerY, target, reachPx);
+    }
+
+    if (weapon.weaponType !== WeaponType.MELEE) {
+      return {
+        targetX: target.x,
+        targetY: target.y,
+        reason: `Engaging enemy at distance ${target.distance.toFixed(0)}px`,
+      };
+    }
     // Actual gate at which a melee swing connects (weaponSystem fires when an enemy
     // is within reach*1.5 and the cooldown has elapsed — independent of whether the
     // player is moving). Once inside it we KITE instead of parking.
@@ -2797,6 +2821,114 @@ export class BehaviorTreeAI implements AIInputProvider {
       targetX: playerX + step.x,
       targetY: playerY + step.y,
       reason: `Kiting enemy at ${target.distance.toFixed(0)}px (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(0)}px)`,
+    };
+  }
+
+  /**
+   * Ranged engagement: approach to 75 % of weapon range, then orbit to stay at
+   * that distance instead of charging the enemy. When the enemy closes in
+   * (distance drops below the tolerance band), the kite step's radial correction
+   * pushes the AI back out to the standoff orbit radius.
+   */
+  private planRangedEngagement(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    target: WorldTarget,
+    reachPx: number,
+  ): { targetX: number; targetY: number; reason: string } {
+    const desiredOrbit = reachPx * RANGED_STANDOFF_FRACTION;
+
+    if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_PX) {
+      // Too far to orbit: navigate toward a point at the desired standoff distance
+      // from the enemy so A* can plan the full route.
+      const dx = target.x - playerX;
+      const dy = target.y - playerY;
+      const scale = (target.distance - desiredOrbit) / target.distance;
+      return {
+        targetX: playerX + dx * scale,
+        targetY: playerY + dy * scale,
+        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(0)}px) from ${target.distance.toFixed(0)}px`,
+      };
+    }
+
+    // At or inside the standoff band: orbit laterally while the radial correction
+    // keeps the distance near desiredOrbit (pushing away if too close, nudging in
+    // if slightly too far).
+    return this.computeRangedKiteTarget(world, playerX, playerY, target, desiredOrbit);
+  }
+
+  /**
+   * Ranged orbit step: strafe tangentially around the enemy at the desired standoff
+   * radius, using the same orbit-sign flip infrastructure as melee kiting. The
+   * radial correction component automatically retreats when the enemy closes in.
+   */
+  private computeRangedKiteTarget(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    target: WorldTarget,
+    desiredOrbit: number,
+  ): { targetX: number; targetY: number; reason: string } {
+    // Reuse the shared orbit-direction flip so the AI juke-dodges periodically.
+    if (world.frameCount - this.kiteSignFrame >= KITE_FLIP_FRAMES) {
+      this.kiteOrbitSign = this.kiteOrbitSign === 1 ? -1 : 1;
+      this.kiteSignFrame = world.frameCount;
+    }
+
+    let rx = playerX - target.x;
+    let ry = playerY - target.y;
+    let dist = Math.hypot(rx, ry);
+    if (dist < 1) {
+      // Enemy is on top of us — pick an arbitrary outward axis to escape along.
+      rx = 1;
+      ry = 0;
+      dist = 1;
+    }
+    const ux = rx / dist;
+    const uy = ry / dist;
+    // Positive radialMag = push away from enemy (when too close).
+    // Negative radialMag = nudge toward enemy (when slightly too far).
+    const radialMag = Math.max(
+      -KITE_RADIAL_STEP_PX,
+      Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
+    );
+
+    const buildStep = (sign: 1 | -1): { x: number; y: number } => {
+      const tx = -uy * sign;
+      const ty = ux * sign;
+      let sx = ux * radialMag + tx * KITE_STEP_PX;
+      let sy = uy * radialMag + ty * KITE_STEP_PX;
+      const slen = Math.hypot(sx, sy) || 1;
+      sx = (sx / slen) * KITE_STEP_PX;
+      sy = (sy / slen) * KITE_STEP_PX;
+      return { x: sx, y: sy };
+    };
+
+    let step = buildStep(this.kiteOrbitSign);
+    // Wall-aware: reverse orbit direction if the strafe path is blocked.
+    if (!this.hasClearLineOfSight(world, playerX, playerY, playerX + step.x, playerY + step.y)) {
+      const flipped: 1 | -1 = this.kiteOrbitSign === 1 ? -1 : 1;
+      const flippedStep = buildStep(flipped);
+      if (
+        this.hasClearLineOfSight(
+          world,
+          playerX,
+          playerY,
+          playerX + flippedStep.x,
+          playerY + flippedStep.y,
+        )
+      ) {
+        this.kiteOrbitSign = flipped;
+        this.kiteSignFrame = world.frameCount;
+        step = flippedStep;
+      }
+    }
+
+    return {
+      targetX: playerX + step.x,
+      targetY: playerY + step.y,
+      reason: `Ranged orbit at ${dist.toFixed(0)}px (standoff ${desiredOrbit.toFixed(0)}px)`,
     };
   }
 
