@@ -296,7 +296,7 @@ export function createPlayerSessionRecorder(
     totalKills = 0;
     lastLoggedState = '';
     lastSampleX = world.stores.position.x[playerEid] ?? 0;
-    lastSampleY = lastSampleX;
+    lastSampleY = world.stores.position.y[playerEid] ?? 0;
     lastFrameX = lastSampleX;
     lastFrameY = lastSampleY;
     pathTravelAccum = 0;

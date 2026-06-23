@@ -177,7 +177,7 @@ declare global {
       };
       forceCompletionModal: () => void;
     };
-    /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorder is provided. */
+    /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
     __playerSessionRecorder?: SessionRecorder;
   }
 }
@@ -214,7 +214,7 @@ export class MainGameScene extends Phaser.Scene {
 
   /**
    * Dev-only: human player session recorder. Non-null only when
-   * `options.sessionRecorder` is provided.
+   * `options.sessionRecorderFactory` is provided.
    */
   private sessionRecorder?: SessionRecorder;
 
