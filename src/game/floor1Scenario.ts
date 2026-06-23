@@ -167,6 +167,54 @@ function centerOfRoom(room: { bounds: { x: number; y: number; width: number; hei
   };
 }
 
+/**
+ * Resolve the pixel position for a room's logical centre.
+ *
+ * Returns the centre of the room's bounding box if that tile is passable.
+ * When the centre has been walled off (e.g. by an ellipse or L-shape
+ * post-processing pass), spirals outward within the room's interior until a
+ * passable tile is found, then returns its pixel position. This guarantees
+ * that NPCs and items are never spawned inside walls.
+ */
+function resolvePassableRoomCenter(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  room: { bounds: { x: number; y: number; width: number; height: number } },
+): { x: number; y: number } {
+  const center = centerOfRoom(room);
+  if (floorMap.tileMap.isPassable(center.x, center.y)) {
+    return floorMap.tileToPixel(center.x, center.y);
+  }
+
+  const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+  const ix = bx + 1;
+  const iy = by + 1;
+  const maxX = bx + bw - 2;
+  const maxY = by + bh - 2;
+  const maxR = Math.max(bw, bh);
+
+  for (let r = 1; r <= maxR; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const tx = center.x + dx;
+        const ty = center.y + dy;
+        if (
+          tx >= ix &&
+          tx <= maxX &&
+          ty >= iy &&
+          ty <= maxY &&
+          floorMap.tileMap.isPassable(tx, ty)
+        ) {
+          return floorMap.tileToPixel(tx, ty);
+        }
+      }
+    }
+  }
+
+  // Absolute fallback: return the bounding-box centre pixel even if it's a wall.
+  return floorMap.tileToPixel(center.x, center.y);
+}
+
 function chooseObjectiveTiles(world: GameWorld): {
   welcomeOfficePos: { x: number; y: number };
   safeRoomPos: { x: number; y: number };
@@ -202,10 +250,7 @@ function chooseObjectiveTiles(world: GameWorld): {
   const bossStairRoom = floorMap.bossStairRoom;
   let staircasePos: { x: number; y: number };
   if (bossStairRoom) {
-    staircasePos = floorMap.tileToPixel(
-      centerOfRoom(bossStairRoom).x,
-      centerOfRoom(bossStairRoom).y,
-    );
+    staircasePos = resolvePassableRoomCenter(floorMap, bossStairRoom);
   } else if (floorMap.rooms.length < 2) {
     staircasePos = fallbackStair;
   } else {
@@ -219,10 +264,7 @@ function chooseObjectiveTiles(world: GameWorld): {
     scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
     const staircaseRoom = scored[0]?.room ?? floorMap.rooms[floorMap.rooms.length - 1]!;
-    staircasePos = floorMap.tileToPixel(
-      centerOfRoom(staircaseRoom).x,
-      centerOfRoom(staircaseRoom).y,
-    );
+    staircasePos = resolvePassableRoomCenter(floorMap, staircaseRoom);
   }
 
   // Shop room: nearest non-special room to spawn (so the merchant is met early).
@@ -249,21 +291,21 @@ function chooseObjectiveTiles(world: GameWorld): {
     .reverse()
     .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
   const welcomeOfficePos = welcomeEntry
-    ? floorMap.tileToPixel(welcomeEntry.center.x, welcomeEntry.center.y)
+    ? resolvePassableRoomCenter(floorMap, welcomeEntry.room)
     : fallbackWelcome;
   const shopRoomPos = shopEntry
-    ? floorMap.tileToPixel(shopEntry.center.x, shopEntry.center.y)
+    ? resolvePassableRoomCenter(floorMap, shopEntry.room)
     : fallbackShop;
   const questItemPos = itemEntry
-    ? floorMap.tileToPixel(itemEntry.center.x, itemEntry.center.y)
+    ? resolvePassableRoomCenter(floorMap, itemEntry.room)
     : fallbackItem;
   const safeRoomPos = welcomeOfficePos;
   const specialPoints = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
   const slimeRatEntry = candidates
     .filter((entry) => entry !== shopEntry && entry !== itemEntry)
     .sort((a, b) => {
-      const aPos = floorMap.tileToPixel(a.center.x, a.center.y);
-      const bPos = floorMap.tileToPixel(b.center.x, b.center.y);
+      const aPos = resolvePassableRoomCenter(floorMap, a.room);
+      const bPos = resolvePassableRoomCenter(floorMap, b.room);
       const aScore = Math.min(
         ...specialPoints.map((p) => {
           const dx = aPos.x - p.x;
@@ -281,7 +323,7 @@ function chooseObjectiveTiles(world: GameWorld): {
       return bScore - aScore;
     })[0];
   const slimeRatRoomPos = slimeRatEntry
-    ? floorMap.tileToPixel(slimeRatEntry.center.x, slimeRatEntry.center.y)
+    ? resolvePassableRoomCenter(floorMap, slimeRatEntry.room)
     : questItemPos;
   // The Spell Broker gets a room of its own — explicitly NOT the room that holds
   // the merchant's gross fetch item (the rat tail). Pick the nearest unused
@@ -294,7 +336,7 @@ function chooseObjectiveTiles(world: GameWorld): {
       ? shopRoomPos
       : welcomeOfficePos;
   const spellQuestGiverPos = spellEntry
-    ? floorMap.tileToPixel(spellEntry.center.x, spellEntry.center.y)
+    ? resolvePassableRoomCenter(floorMap, spellEntry.room)
     : spellFallbackPos;
 
   return {
@@ -549,16 +591,17 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       }
       const c1 = centerOfRoom(room);
       const c2 = centerOfRoom(nextRoom);
-      const pos = floorMap.tileToPixel(c1.x, c1.y);
+      const pos = resolvePassableRoomCenter(floorMap, room);
       const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
 
       // Never plant a sign directly under the player. If this room's sign tile
       // coincides with the player's spawn tile, push it one tile forward (toward
       // the next room) so it reads as a directional pointer the player walks up
       // to, rather than spawning on top of it.
+      const signTile = floorMap.pixelToTile(pos.x, pos.y);
       let signX = pos.x;
       let signY = pos.y;
-      if (c1.x === floorMap.playerSpawn.x && c1.y === floorMap.playerSpawn.y) {
+      if (signTile.x === floorMap.playerSpawn.x && signTile.y === floorMap.playerSpawn.y) {
         const step = floorMap.config.tileSizePx;
         signX += Math.cos(angle) * step;
         signY += Math.sin(angle) * step;

@@ -1,6 +1,6 @@
 import { DungeonGenerator } from '../core/map/generators/DungeonGenerator.js';
 import { SeededRandom } from '../shared/random.js';
-import { BiomeType, TileFlags, RoomRole } from '../shared/map-types.js';
+import { BiomeType, TileFlags, RoomRole, type DoorLocation } from '../shared/map-types.js';
 
 const gen = new DungeonGenerator({ roomVariety: true });
 const seed = 2;
@@ -24,7 +24,7 @@ const w = floor.width;
 for (const room of floor.rooms) {
   if (room.role !== RoomRole.BOSS_STAIR && room.role !== RoomRole.SAFE) continue;
   const { x, y, width, height } = room.bounds;
-  const doorSet = new Set(room.doors.map((d: any) => `${d.x},${d.y}`));
+  const doorSet = new Set(room.doors.map((d: DoorLocation) => `${d.x},${d.y}`));
   const breaches: string[] = [];
   for (let tx = x; tx < x + width; tx++) {
     for (const ty_ of [y, y + height - 1]) {
@@ -51,7 +51,7 @@ for (const room of floor.rooms) {
   console.log(
     `${room.role} room bounds: x=${x},y=${y},w=${width},h=${height} (qualifies for shape: ${width >= 7 && height >= 7})`,
   );
-  console.log(`  Doors: ${room.doors.map((d: any) => `(${d.x},${d.y})`).join(', ')}`);
+  console.log(`  Doors: ${room.doors.map((d: DoorLocation) => `(${d.x},${d.y})`).join(', ')}`);
   console.log(
     `  Breaches (passable non-door): ${breaches.length > 0 ? breaches.join(', ') : 'none'}`,
   );
