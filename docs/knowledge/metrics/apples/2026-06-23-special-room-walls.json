@@ -1,12 +1,9 @@
 {
   "date": "2026-06-23",
-  "slug": "special-room-walls",
-  "estimated": 2,
-  "actual": 2,
+  "session": "special-room-walls",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
   "verdict": "exact",
-  "description": "Seal special room perimeters and protect from room variety carving",
-  "files_changed": [
-    "src/core/map/generators/DungeonGenerator.ts",
-    "tests/ecs/map-generators.test.ts"
-  ]
+  "hello_kitties": 0.4
 }

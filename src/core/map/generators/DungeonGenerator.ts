@@ -489,27 +489,8 @@ function applyRoomShapes(
       applyEllipseShape(tileMap, terrain, w, rx, ry, rw, rh, room.doors);
     } else if (roll < 0.5) {
       if (room.role === RoomRole.SAFE || room.role === RoomRole.BOSS_STAIR) {
-        // L-shapes are skipped for special rooms — consume RNG to keep stream intact.
-        const halfW = Math.floor((rw - 2) / 2);
-        const halfH = Math.floor((rh - 2) / 2);
-        if (halfW >= 1 && halfH >= 1) {
-          const quadrantScore = [0, 0, 0, 0];
-          for (const door of room.doors) {
-            const isLeft = door.x <= rx + halfW;
-            const isTop = door.y <= ry + halfH;
-            if (isTop && isLeft) quadrantScore[0]! += 2;
-            if (isTop && !isLeft) quadrantScore[1]! += 2;
-            if (!isTop && isLeft) quadrantScore[2]! += 2;
-            if (!isTop && !isLeft) quadrantScore[3]! += 2;
-          }
-          const minScore = Math.min(...quadrantScore);
-          const candidates = quadrantScore
-            .map((s, i) => ({ s, i }))
-            .filter((e) => e.s === minScore);
-          if (candidates.length > 1) {
-            rng.nextInt(0, candidates.length - 1);
-          }
-        }
+        // L-shapes are skipped for special rooms — consume RNG identically to keep stream intact.
+        selectLShapeQuadrant(rx, ry, rw, rh, room.doors, rng);
       } else {
         applyLShape(tileMap, terrain, w, rx, ry, rw, rh, room.doors, rng);
       }
@@ -555,32 +536,24 @@ function applyEllipseShape(
 }
 
 /**
- * Remove one interior quadrant of the room to produce an L-shape.
- * The quadrant furthest from any door is selected to keep connectivity safe.
- * After removal, tiles immediately inside each door are guaranteed floor.
+ * Select the interior quadrant to remove for an L-shape.
+ * Penalizes quadrants adjacent to doors; breaks ties with RNG.
+ * Returns null if the room is too small for an L-shape (no RNG consumed).
  */
-function applyLShape(
-  tileMap: TileMap,
-  terrain: Uint8Array,
-  w: number,
+function selectLShapeQuadrant(
   rx: number,
   ry: number,
   rw: number,
   rh: number,
   doors: readonly DoorLocation[],
   rng: SeededRandom,
-): void {
-  // Interior bounds (exclusive)
-  const ix1 = rx + 1;
-  const iy1 = ry + 1;
-  const ix2 = rx + rw - 1; // exclusive right edge of interior
-  const iy2 = ry + rh - 1; // exclusive bottom edge of interior
+): number | null {
   const halfW = Math.floor((rw - 2) / 2);
   const halfH = Math.floor((rh - 2) / 2);
-  if (halfW < 1 || halfH < 1) return;
+  if (halfW < 1 || halfH < 1) return null;
 
   // Quadrant corners: 0=TL 1=TR 2=BL 3=BR
-  // Penalise the quadrant closest to each door to avoid removing floor tiles near connectivity points.
+  // Penalize the quadrant closest to each door to avoid removing floor tiles near connectivity points.
   const quadrantScore = [0, 0, 0, 0];
   for (const door of doors) {
     const isLeft = door.x <= rx + halfW;
@@ -598,8 +571,37 @@ function applyLShape(
     .map((s, i) => ({ s, i }))
     .filter((e) => e.s === minScore)
     .map((e) => e.i);
-  const quadrant =
-    candidates.length === 1 ? candidates[0]! : candidates[rng.nextInt(0, candidates.length - 1)]!;
+  return candidates.length === 1
+    ? candidates[0]!
+    : candidates[rng.nextInt(0, candidates.length - 1)]!;
+}
+
+/**
+ * Remove one interior quadrant of the room to produce an L-shape.
+ * The quadrant furthest from any door is selected to keep connectivity safe.
+ * After removal, tiles immediately inside each door are guaranteed floor.
+ */
+function applyLShape(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  rx: number,
+  ry: number,
+  rw: number,
+  rh: number,
+  doors: readonly DoorLocation[],
+  rng: SeededRandom,
+): void {
+  const quadrant = selectLShapeQuadrant(rx, ry, rw, rh, doors, rng);
+  if (quadrant === null) return;
+
+  // Interior bounds (exclusive)
+  const ix1 = rx + 1;
+  const iy1 = ry + 1;
+  const ix2 = rx + rw - 1; // exclusive right edge of interior
+  const iy2 = ry + rh - 1; // exclusive bottom edge of interior
+  const halfW = Math.floor((rw - 2) / 2);
+  const halfH = Math.floor((rh - 2) / 2);
 
   // Determine the tile range to fill for the chosen quadrant
   let qx1: number, qy1: number, qx2: number, qy2: number;

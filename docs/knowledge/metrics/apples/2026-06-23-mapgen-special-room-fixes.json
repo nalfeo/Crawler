@@ -1,8 +1,9 @@
 {
   "date": "2026-06-23",
-  "slug": "mapgen-special-room-fixes",
-  "estimate": 2,
-  "actual": 2,
-  "verdict": "on-target",
-  "notes": "Four fixes: SAFE ellipse allow, BOSS_STAIR perimeter seal, resolvePassableRoomCenter, sword seed. Two sessions total."
+  "session": "mapgen-special-room-fixes",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4
 }

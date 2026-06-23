@@ -15,7 +15,7 @@ describe('createFloor1MainSceneOptions', () => {
 
   it('accepts the boss-battle quest when the Spell Broker is met through the scene options', () => {
     const options = createFloor1MainSceneOptions();
-    const world = createTestWorld({ seed: 1 });
+    const world = createTestWorld({ seed: 42 });
     const player = spawnPlayer(world, 0, 0);
     initializeFloor1Scenario(world, player);
 
