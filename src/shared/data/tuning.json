@@ -27,7 +27,8 @@
     "speed": 3.0,
     "fireCooldownMs": 1200,
     "damage": 8,
-    "muzzleOffset": 1.5
+    "muzzleOffset": 1.5,
+    "accuracy": 0.9
   },
   "xp": {
     "basePerLevel": 10,

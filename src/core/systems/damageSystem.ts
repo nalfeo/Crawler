@@ -124,9 +124,6 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       world.stores.position.y[projectile] ?? 0,
     );
 
-    // Emit skill usage event for projectile hits (swordsmanship uses hits_landed)
-    world.skillUsageEvents.push({ skillId: 'swordsmanship', metric: 'hits_landed', amount: 1 });
-
     // Permanently aggro this enemy so it chases regardless of detection range
     world.stores.enemyBehavior.aggroedPermanently[enemy] = 1;
   }

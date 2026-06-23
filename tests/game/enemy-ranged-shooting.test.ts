@@ -1,5 +1,5 @@
 import { hasComponent, query } from 'bitecs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Damage, EnemyProjectile, Position, Projectile } from '../../src/core/components.js';
 import {
   collisionSystem,
@@ -16,6 +16,7 @@ describe('enemy ranged shooting', () => {
   it('ranged enemy fires a projectile when within attack range', () => {
     const world = createTestWorld();
     world.elapsedMs = 100; // ensure cooldown passes
+    vi.spyOn(world.rng, 'next').mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
     spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
@@ -33,6 +34,7 @@ describe('enemy ranged shooting', () => {
   it('ranged enemy respects fire cooldown', () => {
     const world = createTestWorld();
     world.elapsedMs = 100;
+    vi.spyOn(world.rng, 'next').mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
     spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
@@ -53,6 +55,19 @@ describe('enemy ranged shooting', () => {
     enemyAISystem(world);
     const count3 = query(world.ecs, [EnemyProjectile]).length;
     expect(count3).toBe(2);
+  });
+
+  it('ranged enemy can miss when the accuracy roll fails', () => {
+    const world = createTestWorld();
+    world.elapsedMs = 100;
+    vi.spyOn(world.rng, 'next').mockReturnValue(1);
+
+    spawnPlayer(world, 0, 0);
+    spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+
+    enemyAISystem(world);
+
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
   });
 
   it('ranged enemy does NOT fire when out of attack range', () => {

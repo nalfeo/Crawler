@@ -876,6 +876,10 @@ function tryFireEnemyProjectile(
   const enemyY = position.y[eid]!;
   const spawnX = enemyX + direction.x * ENEMY_PROJECTILE.MUZZLE_OFFSET;
   const spawnY = enemyY + direction.y * ENEMY_PROJECTILE.MUZZLE_OFFSET;
+  if (world.rng.next() > ENEMY_PROJECTILE.ACCURACY) {
+    enemyBehavior.lastFireMs[eid] = world.elapsedMs;
+    return;
+  }
 
   if (FIREBALL_DEF) {
     const projectile = spawnAoeProjectile(
