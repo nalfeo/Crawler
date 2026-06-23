@@ -72,12 +72,8 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   scanRadius: 400,
   rangedSafeDistance: 120,
   opportunisticGrabRadius: 120,
-  dodgeWeight: 0.25,
-  // Collect/farm pull is disabled (0.0) until additional headless seeds validate
-  // that loot-biased navigation does not over-engage enemy clusters. Set > 0 in
-  // AIConfig to experiment; re-enable the default once validated seeds confirm
-  // the floor-clear budget is safe.
-  collectPullWeight: 0.0,
+  dodgeWeight: 0.4,
+  collectPullWeight: 0.25,
   debug: false,
 };
 
@@ -96,12 +92,13 @@ const RANGED_APPROACH_BUFFER_PX = 24;
 
 // --- Melee kiting (stutter-step orbit) ---
 // When in melee, the player must NOT park on the enemy and trade blows. Instead
-// it advances/retreats along the enemy axis (keeping the weapon on target) while
-// slightly strafing as a juke. MELEE_HOLD_FRACTION places the preferred orbit
-// well inside weapon reach so every swing lands reliably.
-// 0.5 puts the player at half weapon reach — deep inside the strike band so hits
-// land solidly and the player commits to the fight instead of hovering on the edge.
-const MELEE_HOLD_FRACTION = 0.5;
+// it orbits the target at MELEE_HOLD_FRACTION of weapon reach so swings reliably
+// land (the shaft passes through the enemy body every arc) while the player stays
+// a moving, dodging target. 0.75 puts the enemy on the blade mid-shaft — well
+// inside BLADE_HIT_HALF_WIDTH on every swing rather than just grazing the tip.
+// The approach band matches this fraction so the player commits to the distance
+// instead of dancing on the edge.
+const MELEE_HOLD_FRACTION = 0.75;
 // Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
 // to reach*1.5, so this is the outer radius at which kiting can still land hits.
 const ATTACK_GATE_MULTIPLIER = 1.5;
@@ -113,15 +110,10 @@ const KITE_DODGE_BUFFER_PX = 14;
 // move primitive's close-approach branch drives it with obstacle-sliding local
 // navigation instead of tile A*, yielding smooth strafing rather than wiggle.
 const KITE_STEP_PX = 28;
-// Max radial correction blended per step toward the desired orbit radius. Set equal
-// to KITE_STEP_PX so forward/backward corrections fully dominate when off-radius.
-const KITE_RADIAL_STEP_PX = KITE_STEP_PX;
-// Lateral strafe component when no back-threat is detected. Keep small so the
-// primary motion is radial (advance/retreat) with just a juke twitch; full orbit
-// is reserved for enemies approaching from behind. ~25 % of KITE_STEP_PX.
-const KITE_STRAFE_PX = Math.round(KITE_STEP_PX * 0.25);
-// Radius (px) within which a non-primary enemy counts as a back threat.
-const KITE_BACK_THREAT_RADIUS_PX = 160;
+// Max radial correction blended per step toward the desired orbit radius. Keeping
+// this below KITE_STEP_PX makes motion mostly tangential (orbit) with gentle
+// radius keeping, so the player circles instead of lunging in and out.
+const KITE_RADIAL_STEP_PX = 16;
 // Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
 // reversal keeps the player juking and prevents it from grinding into one wall
 // forever; far longer than any oscillation so it reads as intentional kiting.
@@ -330,14 +322,17 @@ const GOLD_FARM_GOLD_SCAN_RADIUS_PX = 800;
 const GOLD_FARM_COLLECT_RADIUS_PX = 260;
 
 // --- Opportunistic behavior constants ---
+// Radius (px) around each A* path waypoint scanned for loot to grab on the way
+// past. Sized just under a tile (32px) so only loot directly on the path is
+// swept, avoiding long detours while still collecting gems dropped by kills the
+// AI walked through. The config.opportunisticGrabRadius is separately used for
+// grab-radius checks around the player position itself.
+const WAYPOINT_SWEEP_RADIUS_PX = 64;
 // Enemy must be within this radius (px) to count as a dodge threat.
-// Kept small (≈12 ft) so dodge only fires when an enemy is genuinely
-// imminent — a large radius caused the AI to route around enemy pockets
-// during EXPLORE/PROGRESS instead of engaging them.
-const DODGE_THREAT_RADIUS_PX = 96;
+const DODGE_THREAT_RADIUS_PX = 200;
 // Minimum closing speed (px/frame): dot product of enemy velocity with the
-// unit toward-player vector. Higher threshold = only fast chargers trigger dodge.
-const DODGE_CLOSING_SPEED_PX_PER_FRAME = 1.5;
+// unit toward-player vector. Lower = more sensitive to slow closers.
+const DODGE_CLOSING_SPEED_PX_PER_FRAME = 0.8;
 
 type LootKind = 'xp' | 'gold' | 'item';
 
@@ -478,14 +473,6 @@ export class BehaviorTreeAI implements AIInputProvider {
    * locked-unsatisfied doors as walls. `null` until the first poll.
    */
   private doorAwarePassable: ((x: number, y: number) => boolean) | null = null;
-  /**
-   * One-slot cache for the resolved goal tile. `resolveReachableGoalTile` runs
-   * at least one full A* search per call, so calling it every frame even when the
-   * raw goal tile hasn't changed wastes significant CPU. The map topology is
-   * static for the lifetime of a floor, so the resolved tile for a given raw goal
-   * tile is stable and safe to cache across frames.
-   */
-  private resolvedGoalCache: { rawKey: string; resolved: TilePoint } | null = null;
   /**
    * Locked doors the AI is currently aware of, keyed by door entity. Populated
    * from {@link getNavigationBlockedDoors} each poll and pruned when a door's
@@ -1018,70 +1005,89 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * OpportunisticCollect: pull the player toward loot within arm's reach
-   * (`config.opportunisticGrabRadius`) regardless of the current Track A
-   * movement goal, so the AI scoops up nearby gems while navigating elsewhere
-   * without switching state.
+   * OpportunisticCollect: pull the player toward nearby loot regardless of
+   * the current Track A movement goal.
    *
-   * Only the player-proximity radius is checked (no A* path waypoint sweep).
-   * The waypoint sweep was removed because it biased every exploration path
-   * toward loot-dense (= recently enemy-killed) areas, causing the AI to fight
-   * significantly more enemies than needed and miss the floor-clear time budget.
+   * Two cases generate a pull vector:
+   * 1. Any loot within `config.opportunisticGrabRadius` of the player —
+   *    closest-loot pull, weighted by distance.
+   * 2. Any loot within `WAYPOINT_SWEEP_RADIUS_PX` of a current A* path
+   *    waypoint — path-integrated collection shortcut so the AI grabs gems
+   *    it walks past without a full state switch.
    *
-   * Skipped when Track A is already in COLLECT (no point doubling up), when
-   * the player is retreating (survival over loot), when actively engaging an
-   * enemy (ENGAGE kiting geometry is precision-tuned — a pull toward XP gems
-   * could redirect the player out of weapon range mid-fight), during NPC
-   * interaction (mustn't deflect approach to the NPC target), and during
-   * Progress-driven navigation (EXPLORE with a non-null targetEid = position or
-   * entity objective) so quest paths are never deflected by loot pulls.
+   * Skipped when Track A is already in COLLECT (no point doubling up),
+   * when the player is retreating (survival over loot), or when actively
+   * engaging an enemy (ENGAGE kiting geometry is precision-tuned — a pull
+   * toward XP gems could redirect the player out of weapon range mid-fight).
    */
   private buildOpportunisticCollect(): BTNode {
     return action('Opportunistic Collect', (ctx) => {
-      // Track A is handling collection, survival takes priority, ENGAGE kiting
-      // geometry must not be disturbed, NPC interaction must not be deflected,
-      // and Progress-driven navigation (EXPLORE with a specific non-null target)
-      // must not be deflected by loot pulls.
+      // Track A is handling collection, survival takes priority, or
+      // ENGAGE kiting geometry must not be disturbed
       if (
         this.decision.state === AIState.COLLECT ||
         this.decision.state === AIState.RETREAT ||
-        this.decision.state === AIState.ENGAGE ||
-        this.decision.state === AIState.INTERACT ||
-        (this.decision.state === AIState.EXPLORE && this.decision.targetEid !== null)
+        this.decision.state === AIState.ENGAGE
       ) {
         return BTStatus.FAILURE;
       }
 
-      // Only pull toward loot that is already within arm's reach of the player
-      // (opportunisticGrabRadius). The previous implementation also scanned all
-      // A* path waypoints (WAYPOINT_SWEEP_RADIUS_PX), but that biased every
-      // exploration path toward loot-dense (= recently enemy-killed) areas,
-      // causing the AI to fight 2-3x more enemies than needed and miss the
-      // 300s floor-clear budget on the headless gate seed.
       let nearestX = 0;
       let nearestY = 0;
       let nearestDist = Number.POSITIVE_INFINITY;
       let found = false;
 
-      const grabRadius = this.config.opportunisticGrabRadius;
-      const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
-        { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
-        { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
-        { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
-      ];
-      for (const candidate of candidates) {
-        for (const eid of candidate.entities) {
-          if (eid === undefined) continue;
-          const ignored = this.ignoredLootUntilFrame.get(eid);
-          if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
-          const lx = ctx.world.stores.position.x[eid] ?? 0;
-          const ly = ctx.world.stores.position.y[eid] ?? 0;
-          const d = Math.hypot(lx - ctx.playerX, ly - ctx.playerY);
-          if (d < grabRadius && d < nearestDist) {
-            nearestDist = d;
-            nearestX = lx;
-            nearestY = ly;
-            found = true;
+      // Check loot near path waypoints (path-integrated collection shortcut)
+      const floorMap = ctx.world.floorMap;
+      if (this.pathWaypoints.length > 0 && floorMap) {
+        const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+          { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
+          { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
+          { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+        ];
+        for (const candidate of candidates) {
+          for (const eid of candidate.entities) {
+            if (eid === undefined) continue;
+            const ignored = this.ignoredLootUntilFrame.get(eid);
+            if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
+            const lx = ctx.world.stores.position.x[eid] ?? 0;
+            const ly = ctx.world.stores.position.y[eid] ?? 0;
+            for (const wp of this.pathWaypoints) {
+              const wpPx = floorMap.tileToPixel(wp.x, wp.y);
+              const d = Math.hypot(lx - wpPx.x, ly - wpPx.y);
+              if (d < WAYPOINT_SWEEP_RADIUS_PX && d < nearestDist) {
+                nearestDist = d;
+                nearestX = lx;
+                nearestY = ly;
+                found = true;
+              }
+            }
+          }
+        }
+      }
+
+      // Also check loot within opportunistic grab radius of the player
+      if (!found) {
+        const grabRadius = this.config.opportunisticGrabRadius;
+        const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+          { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
+          { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
+          { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+        ];
+        for (const candidate of candidates) {
+          for (const eid of candidate.entities) {
+            if (eid === undefined) continue;
+            const ignored = this.ignoredLootUntilFrame.get(eid);
+            if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
+            const lx = ctx.world.stores.position.x[eid] ?? 0;
+            const ly = ctx.world.stores.position.y[eid] ?? 0;
+            const d = Math.hypot(lx - ctx.playerX, ly - ctx.playerY);
+            if (d < grabRadius && d < nearestDist) {
+              nearestDist = d;
+              nearestX = lx;
+              nearestY = ly;
+              found = true;
+            }
           }
         }
       }
@@ -1112,19 +1118,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private buildOpportunisticDodge(): BTNode {
     return action('Opportunistic Dodge', (ctx) => {
-      // Dodge is suspended during retreat (retreat kiting owns the direction),
-      // during active engagement (planEngagement's kite-strike orbit is
+      // Dodge is suspended during retreat (retreat kiting owns the direction)
+      // and during active engagement (planEngagement's kite-strike orbit is
       // precision-tuned; a 0.4-weight perpendicular injection would displace
-      // the player outside weapon range and stall the fight indefinitely),
-      // during NPC interaction (mustn't deflect approach to the NPC target),
-      // and during Progress-driven navigation (EXPLORE with a specific non-null
-      // target) so quest navigation is not deflected by closing enemies.
-      if (
-        this.decision.state === AIState.RETREAT ||
-        this.decision.state === AIState.ENGAGE ||
-        this.decision.state === AIState.INTERACT ||
-        (this.decision.state === AIState.EXPLORE && this.decision.targetEid !== null)
-      ) {
+      // the player outside weapon range and stall the fight indefinitely).
+      if (this.decision.state === AIState.RETREAT || this.decision.state === AIState.ENGAGE) {
         return BTStatus.FAILURE;
       }
 
@@ -1212,7 +1210,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (dist <= 0) return BTStatus.FAILURE;
 
       // Blend additively with any collect pull already set by OpportunisticCollect.
-      // Normalize the combined vector so collect and farm don't double up.
+      // Normalise the combined vector so collect and farm don't double up.
       const cx = this.opportunisticPullX + dx / dist;
       const cy = this.opportunisticPullY + dy / dist;
       const len = Math.hypot(cx, cy);
@@ -1906,23 +1904,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (floorMap) {
       const startTile = floorMap.pixelToTile(playerX, playerY);
       const goalTile = floorMap.pixelToTile(targetX, targetY);
-      const rawGoalKey = `${goalTile.x},${goalTile.y}`;
-      let resolvedGoal: TilePoint;
-      if (this.resolvedGoalCache?.rawKey === rawGoalKey) {
-        // Cache hit: the goal tile is the same as last frame and we previously
-        // confirmed the direct path was reachable (cache is only populated for
-        // the direct-path case; fallback results are start-position-dependent).
-        resolvedGoal = this.resolvedGoalCache.resolved;
-      } else {
-        resolvedGoal = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
-        // Only cache the direct-path result (resolved == raw goal). Fallback
-        // results depend on start position and must be recomputed each frame.
-        if (resolvedGoal.x === goalTile.x && resolvedGoal.y === goalTile.y) {
-          this.resolvedGoalCache = { rawKey: rawGoalKey, resolved: resolvedGoal };
-        } else {
-          this.resolvedGoalCache = null;
-        }
-      }
+      const resolvedGoal = this.resolveReachableGoalTile(floorMap, startTile, goalTile);
       const goalKey = `${resolvedGoal.x},${resolvedGoal.y}`;
 
       if (this.pathGoalKey !== goalKey || this.pathWaypoints.length === 0) {
@@ -3041,43 +3023,8 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Returns true when any enemy other than `primaryTarget` is within
-   * KITE_BACK_THREAT_RADIUS_PX AND is positioned behind or to the side of the
-   * player relative to the primary target direction. Used to decide whether to
-   * use full lateral orbit (back-threat dodge) or a mostly-radial advance/retreat.
-   */
-  private hasThreatFromBehind(
-    world: GameWorld,
-    playerX: number,
-    playerY: number,
-    primaryTarget: WorldTarget,
-  ): boolean {
-    const fwdX = primaryTarget.x - playerX;
-    const fwdY = primaryTarget.y - playerY;
-    const fwdLen = Math.hypot(fwdX, fwdY);
-    if (fwdLen < 1) return false;
-    const fwdNx = fwdX / fwdLen;
-    const fwdNy = fwdY / fwdLen;
-
-    for (const eid of query(world.ecs, [Enemy, Position])) {
-      if (eid === primaryTarget.eid) continue;
-      const ex = world.stores.position.x[eid] ?? 0;
-      const ey = world.stores.position.y[eid] ?? 0;
-      const dx = ex - playerX;
-      const dy = ey - playerY;
-      const dist = Math.hypot(dx, dy);
-      if (dist > KITE_BACK_THREAT_RADIUS_PX || dist < 1) continue;
-      // Dot < 0 means the enemy is behind the player relative to primary target.
-      const dot = (dx / dist) * fwdNx + (dy / dist) * fwdNy;
-      if (dot < 0) return true;
-    }
-    return false;
-  }
-
-  /**
-   * Melee kite: advance/retreat along the enemy axis so the weapon lands reliably,
-   * while adding a small lateral juke to stay a moving target. Full lateral orbit
-   * is used only when another enemy is approaching from behind.
+   * Melee kite: orbit the enemy inside the player's own strike gate while strafing
+   * tangentially so the player stays mobile and dodges instead of standing still.
    *
    * - Desired orbit radius stutter-steps with weapon cooldown: pull into the inner
    *   strike band when a swing is READY (so the hit lands), ease out to the gate
@@ -3135,17 +3082,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
     );
 
-    // Use full lateral orbit only when an enemy is closing from behind; otherwise
-    // favour forward/backward motion (radial) with a small lateral juke so the
-    // weapon stays on target instead of constantly circling past it.
-    const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafePx = backThreat ? KITE_STEP_PX : KITE_STRAFE_PX;
-
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafePx;
-      let sy = uy * radialMag + ty * strafePx;
+      let sx = ux * radialMag + tx * KITE_STEP_PX;
+      let sy = uy * radialMag + ty * KITE_STEP_PX;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_PX;
       sy = (sy / slen) * KITE_STEP_PX;
@@ -3215,11 +3156,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Ranged orbit step: move along the player-enemy axis (advance to close gap,
-   * retreat when enemy pushes in) with a small lateral juke, using the same
-   * orbit-sign flip infrastructure as melee kiting. Full lateral orbit activates
-   * when an enemy is approaching from behind. The radial correction component
-   * automatically retreats when the enemy closes in.
+   * Ranged orbit step: strafe tangentially around the enemy at the desired standoff
+   * radius, using the same orbit-sign flip infrastructure as melee kiting. The
+   * radial correction component automatically retreats when the enemy closes in.
    */
   private computeRangedKiteTarget(
     world: GameWorld,
@@ -3252,15 +3191,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
     );
 
-    // Prefer radial (forward/backward) motion; orbit fully only when flanked.
-    const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafePx = backThreat ? KITE_STEP_PX : KITE_STRAFE_PX;
-
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafePx;
-      let sy = uy * radialMag + ty * strafePx;
+      let sx = ux * radialMag + tx * KITE_STEP_PX;
+      let sy = uy * radialMag + ty * KITE_STEP_PX;
       const slen = Math.hypot(sx, sy) || 1;
       sx = (sx / slen) * KITE_STEP_PX;
       sy = (sy / slen) * KITE_STEP_PX;
@@ -3507,7 +3442,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.neededInteractionReasonByNpc.clear();
     this.doorAwarePassable = null;
     this.knownLockedDoors.clear();
-    this.resolvedGoalCache = null;
     this.exploredSeen = null;
     this.frontierBfsVisited = null;
     this.retreating = false;
