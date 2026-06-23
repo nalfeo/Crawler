@@ -11,6 +11,7 @@ import {
   Position,
   Health,
   Enemy,
+  Velocity,
   XpGem,
   Gold,
   DroppedItem,
@@ -45,11 +46,13 @@ import { AIState, type AIInputProvider, type AIDecision, type AIConfig } from '.
 import {
   BehaviorTree,
   BTStatus,
+  BTParallelPolicy,
   type BTContext,
   selector,
   sequence,
   condition,
   action,
+  parallel,
   type BTNode,
 } from './behavior-tree.js';
 import {
@@ -68,6 +71,9 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   retreatDangerRadius: 160,
   scanRadius: 400,
   rangedSafeDistance: 120,
+  opportunisticGrabRadius: 120,
+  dodgeWeight: 0.4,
+  collectPullWeight: 0.25,
   debug: false,
 };
 
@@ -315,6 +321,19 @@ const GOLD_FARM_GOLD_SCAN_RADIUS_PX = 800;
 // still swept up on the next tick.
 const GOLD_FARM_COLLECT_RADIUS_PX = 260;
 
+// --- Opportunistic behavior constants ---
+// Radius (px) around each A* path waypoint scanned for loot to grab on the way
+// past. Sized just under a tile (32px) so only loot directly on the path is
+// swept, avoiding long detours while still collecting gems dropped by kills the
+// AI walked through. The config.opportunisticGrabRadius is separately used for
+// grab-radius checks around the player position itself.
+const WAYPOINT_SWEEP_RADIUS_PX = 64;
+// Enemy must be within this radius (px) to count as a dodge threat.
+const DODGE_THREAT_RADIUS_PX = 200;
+// Minimum closing speed (px/frame): dot product of enemy velocity with the
+// unit toward-player vector. Lower = more sensitive to slow closers.
+const DODGE_CLOSING_SPEED_PX_PER_FRAME = 0.8;
+
 type LootKind = 'xp' | 'gold' | 'item';
 
 interface WorldTarget {
@@ -461,6 +480,19 @@ export class BehaviorTreeAI implements AIInputProvider {
    * pass, and what each needs".
    */
   private readonly knownLockedDoors = new Map<number, AILockedDoorMemory>();
+  /**
+   * Opportunistic pull vector set by Track B's OpportunisticCollect and
+   * OpportunisticFarm nodes each poll. Reset to (0,0) before tree.tick() and
+   * blended into the final move vector in poll() with {@link AIConfig.collectPullWeight}.
+   */
+  private opportunisticPullX: number = 0;
+  private opportunisticPullY: number = 0;
+  /**
+   * Dodge vector set by Track B's OpportunisticDodge node each poll.
+   * Reset to (0,0) before tree.tick() and blended in with {@link AIConfig.dodgeWeight}.
+   */
+  private dodgeVecX: number = 0;
+  private dodgeVecY: number = 0;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -479,48 +511,49 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Build the behavior tree structure.
-   * Priority: Retreat > Interact > Collect > Engage > Explore
+   *
+   * Root is a BTParallel(OBSERVE) wrapping two independent tracks that tick
+   * every frame:
+   *
+   * - **Track A** (Movement Goal): the exclusive priority Selector that picks
+   *   one movement target per frame. Logic is identical to the original flat
+   *   selector — Retreat > Interact > Progress > LeaveSafeRoom > Engage >
+   *   Collect > Hunt > Explore. Owns `this.decision` and `state.moveX/moveY`.
+   *
+   * - **Track B** (Opportunistic): a side-effectful parallel that runs every
+   *   frame regardless of Track A's outcome and writes into
+   *   `this.opportunisticPullX/Y` and `this.dodgeVecX/Y`. poll() blends these
+   *   vectors into the Track A direction with configurable weights
+   *   (`collectPullWeight`, `dodgeWeight`) so the player curves toward nearby
+   *   loot and away from fast-closing enemies while still pursuing its primary
+   *   objective.
    */
   private buildTree(): BehaviorTree {
-    const root = selector(
+    const root = parallel(
       'AI Root',
-      // Priority 1: Retreat when low health
-      this.buildRetreatBehavior(),
-      // Priority 2: Interact with nearby NPCs
-      this.buildInteractBehavior(),
-      // Priority 3: Seek progression objectives.
-      //
-      // Progress deliberately outranks Engage/Collect/Hunt. This is a
-      // survivors-style game: weapons auto-fire at the nearest enemy in reach
-      // regardless of the AI's movement target (see weaponSystem), so the AI
-      // deals damage *while walking toward an objective* and never needs to
-      // stop and fully commit to a fight. The floor also runs an ambient
-      // spawner that keeps ~14 enemies on the player at all times, so the room
-      // can never be "cleared" — standing still to Engage just maximises chip
-      // damage with no health regen. Beelining objectives (and letting
-      // auto-fire mow a path) minimises swarm dwell time and attrition.
-      //
-      // This does NOT skip required combat: findProgressObjective returns null
-      // during the tutorial kill-phase (level < 2 || !questCompleted) and
-      // during active boss fights (slimeRatBattleStarted && !defeated), so the
-      // tree falls through to Engage/Collect/Hunt exactly when fighting is the
-      // objective.
-      this.buildProgressBehavior(),
-      // Priority 3.5: Leave a safe room when enemies are present. The weapon is
-      // hard-disabled while standing in a safe room (weaponSystem safe-space
-      // gate), so neither side deals damage. Without this, an AI that meets an
-      // NPC inside the starting safe room and then has the tutorial wave spawn
-      // around the boundary deadlocks forever — holding melee range against
-      // enemies it cannot damage while COLLECT keeps pulling it back inside.
-      this.buildLeaveSafeRoomBehavior(),
-      // Priority 4: Engage enemies
-      this.buildEngageBehavior(),
-      // Priority 5: Collect nearby loot
-      this.buildCollectBehavior(),
-      // Priority 6: Close distance to nearby enemies before wandering off
-      this.buildHuntBehavior(),
-      // Priority 7: Explore when nothing else to do
-      this.buildExploreBehavior(),
+      BTParallelPolicy.OBSERVE,
+      // Track A: exclusive priority selector (original logic, unchanged)
+      selector(
+        'Track A: Movement Goal',
+        // Priority 1: Retreat when low health
+        this.buildRetreatBehavior(),
+        // Priority 2: Interact with nearby NPCs
+        this.buildInteractBehavior(),
+        // Priority 3: Seek progression objectives.
+        this.buildProgressBehavior(),
+        // Priority 3.5: Leave a safe room when enemies are present.
+        this.buildLeaveSafeRoomBehavior(),
+        // Priority 4: Engage enemies
+        this.buildEngageBehavior(),
+        // Priority 5: Collect nearby loot
+        this.buildCollectBehavior(),
+        // Priority 6: Close distance to nearby enemies before wandering off
+        this.buildHuntBehavior(),
+        // Priority 7: Explore when nothing else to do
+        this.buildExploreBehavior(),
+      ),
+      // Track B: opportunistic layer — side-effectful, never gates the tree
+      this.buildOpportunisticLayer(),
     );
 
     return new BehaviorTree(root);
@@ -951,6 +984,223 @@ export class BehaviorTreeAI implements AIInputProvider {
         return BTStatus.SUCCESS;
       }),
     );
+  }
+
+  /**
+   * Opportunistic layer (Track B): ticks every frame in parallel with Track A.
+   *
+   * Children write into `this.opportunisticPullX/Y` and `this.dodgeVecX/Y`
+   * which poll() blends additively into the Track A direction vector before
+   * the smoothing step. None of these nodes update `this.decision`, so they
+   * cannot break Track A's state machine.
+   */
+  private buildOpportunisticLayer(): BTNode {
+    return parallel(
+      'Track B: Opportunistic',
+      BTParallelPolicy.OBSERVE,
+      this.buildOpportunisticCollect(),
+      this.buildOpportunisticDodge(),
+      this.buildOpportunisticFarm(),
+    );
+  }
+
+  /**
+   * OpportunisticCollect: pull the player toward nearby loot regardless of
+   * the current Track A movement goal.
+   *
+   * Two cases generate a pull vector:
+   * 1. Any loot within `config.opportunisticGrabRadius` of the player —
+   *    closest-loot pull, weighted by distance.
+   * 2. Any loot within `WAYPOINT_SWEEP_RADIUS_PX` of a current A* path
+   *    waypoint — path-integrated collection shortcut so the AI grabs gems
+   *    it walks past without a full state switch.
+   *
+   * Skipped when Track A is already in COLLECT (no point doubling up) or
+   * when the player is retreating (survival over loot).
+   */
+  private buildOpportunisticCollect(): BTNode {
+    return action('Opportunistic Collect', (ctx) => {
+      // Track A is handling collection, or survival takes priority
+      if (this.decision.state === AIState.COLLECT || this.decision.state === AIState.RETREAT) {
+        return BTStatus.FAILURE;
+      }
+
+      let nearestX = 0;
+      let nearestY = 0;
+      let nearestDist = Number.POSITIVE_INFINITY;
+      let found = false;
+
+      // Check loot near path waypoints (path-integrated collection shortcut)
+      const floorMap = ctx.world.floorMap;
+      if (this.pathWaypoints.length > 0 && floorMap) {
+        const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+          { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
+          { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
+          { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+        ];
+        for (const candidate of candidates) {
+          for (const eid of candidate.entities) {
+            if (eid === undefined) continue;
+            const ignored = this.ignoredLootUntilFrame.get(eid);
+            if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
+            const lx = ctx.world.stores.position.x[eid] ?? 0;
+            const ly = ctx.world.stores.position.y[eid] ?? 0;
+            for (const wp of this.pathWaypoints) {
+              const wpPx = floorMap.tileToPixel(wp.x, wp.y);
+              const d = Math.hypot(lx - wpPx.x, ly - wpPx.y);
+              if (d < WAYPOINT_SWEEP_RADIUS_PX && d < nearestDist) {
+                nearestDist = d;
+                nearestX = lx;
+                nearestY = ly;
+                found = true;
+              }
+            }
+          }
+        }
+      }
+
+      // Also check loot within opportunistic grab radius of the player
+      if (!found) {
+        const grabRadius = this.config.opportunisticGrabRadius;
+        const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+          { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
+          { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
+          { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+        ];
+        for (const candidate of candidates) {
+          for (const eid of candidate.entities) {
+            if (eid === undefined) continue;
+            const ignored = this.ignoredLootUntilFrame.get(eid);
+            if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
+            const lx = ctx.world.stores.position.x[eid] ?? 0;
+            const ly = ctx.world.stores.position.y[eid] ?? 0;
+            const d = Math.hypot(lx - ctx.playerX, ly - ctx.playerY);
+            if (d < grabRadius && d < nearestDist) {
+              nearestDist = d;
+              nearestX = lx;
+              nearestY = ly;
+              found = true;
+            }
+          }
+        }
+      }
+
+      if (!found) return BTStatus.FAILURE;
+
+      const dx = nearestX - ctx.playerX;
+      const dy = nearestY - ctx.playerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0) {
+        this.opportunisticPullX = dx / dist;
+        this.opportunisticPullY = dy / dist;
+      }
+      return BTStatus.SUCCESS;
+    });
+  }
+
+  /**
+   * OpportunisticDodge: inject a perpendicular strafe impulse when an enemy
+   * is closing fast toward the player.
+   *
+   * For each enemy within `DODGE_THREAT_RADIUS_PX`, we compute the dot product
+   * of its velocity with the toward-player unit vector. If the closing speed
+   * exceeds `DODGE_CLOSING_SPEED_PX_PER_FRAME`, we pick the perpendicular that
+   * keeps the kite orbit sign and write it into `this.dodgeVecX/Y`.
+   *
+   * Only the closest closing enemy drives the dodge so the vector is stable.
+   */
+  private buildOpportunisticDodge(): BTNode {
+    return action('Opportunistic Dodge', (ctx) => {
+      // Dodge is suspended during retreat (retreat kiting owns the direction)
+      if (this.decision.state === AIState.RETREAT) return BTStatus.FAILURE;
+
+      const enemies = query(ctx.world.ecs, [Enemy, Position, Velocity, Health]);
+      let closestThreatDist = Number.POSITIVE_INFINITY;
+      let bestDodgeX = 0;
+      let bestDodgeY = 0;
+      let found = false;
+
+      for (const eid of enemies) {
+        if (eid === undefined) continue;
+        const hp = ctx.world.stores.health.current[eid] ?? 0;
+        if (hp <= 0) continue;
+
+        const ex = ctx.world.stores.position.x[eid] ?? 0;
+        const ey = ctx.world.stores.position.y[eid] ?? 0;
+        const dist = Math.hypot(ex - ctx.playerX, ey - ctx.playerY);
+        if (dist > DODGE_THREAT_RADIUS_PX) continue;
+
+        const vx = ctx.world.stores.velocity.x[eid] ?? 0;
+        const vy = ctx.world.stores.velocity.y[eid] ?? 0;
+        // Unit vector from enemy toward player
+        const toPx = (ctx.playerX - ex) / (dist || 1);
+        const toPy = (ctx.playerY - ey) / (dist || 1);
+        // Closing speed = component of enemy velocity in the toward-player direction
+        const closingSpeed = vx * toPx + vy * toPy;
+        if (closingSpeed < DODGE_CLOSING_SPEED_PX_PER_FRAME) continue;
+
+        if (dist < closestThreatDist) {
+          closestThreatDist = dist;
+          // Perpendicular to enemy velocity: rotate 90° in orbit direction
+          const speed = Math.hypot(vx, vy);
+          if (speed > 0) {
+            // (-vy, vx) rotates 90° CCW; (vy, -vx) rotates 90° CW
+            // Use kiteOrbitSign to keep consistent dodge direction
+            bestDodgeX = (-vy / speed) * this.kiteOrbitSign;
+            bestDodgeY = (vx / speed) * this.kiteOrbitSign;
+          }
+          found = true;
+        }
+      }
+
+      if (!found) return BTStatus.FAILURE;
+
+      this.dodgeVecX = bestDodgeX;
+      this.dodgeVecY = bestDodgeY;
+      return BTStatus.SUCCESS;
+    });
+  }
+
+  /**
+   * OpportunisticFarm: when Track A is in EXPLORE state and there are enemies
+   * visible at wider range, add a pull toward the nearest enemy cluster.
+   *
+   * This makes the player naturally drift toward enemies during exploration
+   * so auto-fire starts dealing damage sooner, rather than wandering away
+   * from a nearby swarm toward an empty corner of the map.
+   *
+   * The pull is additive: it biases movement without overriding A*'s path,
+   * so exploration still progresses frontier coverage.
+   */
+  private buildOpportunisticFarm(): BTNode {
+    return action('Opportunistic Farm', (ctx) => {
+      // Only active when Track A is idle-exploring (not pursuing an objective)
+      if (this.decision.state !== AIState.EXPLORE) return BTStatus.FAILURE;
+
+      const nearest = this.findNearestEnemy(
+        ctx.world,
+        ctx.playerX,
+        ctx.playerY,
+        GOLD_FARM_ENEMY_SCAN_RADIUS_PX,
+      );
+      if (!nearest) return BTStatus.FAILURE;
+
+      const dx = nearest.x - ctx.playerX;
+      const dy = nearest.y - ctx.playerY;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= 0) return BTStatus.FAILURE;
+
+      // Blend additively with any collect pull already set by OpportunisticCollect.
+      // Normalise the combined vector so collect and farm don't double up.
+      const cx = this.opportunisticPullX + dx / dist;
+      const cy = this.opportunisticPullY + dy / dist;
+      const len = Math.hypot(cx, cy);
+      if (len > 0) {
+        this.opportunisticPullX = cx / len;
+        this.opportunisticPullY = cy / len;
+      }
+      return BTStatus.SUCCESS;
+    });
   }
 
   /**
@@ -1427,6 +1677,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     // visited array, so the AI only ever "knows" what the player has actually seen.
     this.accumulateSeenTiles(world);
 
+    // Reset opportunistic vectors from Track B so stale data never carries over.
+    this.opportunisticPullX = 0;
+    this.opportunisticPullY = 0;
+    this.dodgeVecX = 0;
+    this.dodgeVecY = 0;
+
     // Build context for behavior tree
     const context: BTContext = {
       world,
@@ -1434,18 +1690,40 @@ export class BehaviorTreeAI implements AIInputProvider {
       playerX,
       playerY,
       healthPercent,
+      frameCount: world.frameCount,
       blackboard: {},
     };
 
-    // Execute behavior tree
+    // Execute behavior tree (Track A sets this.decision; Track B writes
+    // opportunisticPullX/Y and dodgeVecX/Y as side-effects)
     this.tree.tick(context);
 
-    // Execute decision: move toward target
+    // Execute decision: move toward target (Track A direction)
     if (this.decision.targetX !== null && this.decision.targetY !== null) {
       this.moveToward(state, world, playerX, playerY, this.decision.targetX, this.decision.targetY);
     } else {
       state.moveX = 0;
       state.moveY = 0;
+    }
+
+    // Blend Track B opportunistic vectors additively into the Track A direction.
+    // The result is re-normalized to unit length if it exceeds 1 so the player
+    // moves at full speed regardless of blend magnitudes.
+    const blendX =
+      state.moveX +
+      this.dodgeVecX * this.config.dodgeWeight +
+      this.opportunisticPullX * this.config.collectPullWeight;
+    const blendY =
+      state.moveY +
+      this.dodgeVecY * this.config.dodgeWeight +
+      this.opportunisticPullY * this.config.collectPullWeight;
+    const blendLen = Math.hypot(blendX, blendY);
+    if (blendLen > 1) {
+      state.moveX = blendX / blendLen;
+      state.moveY = blendY / blendLen;
+    } else {
+      state.moveX = blendX;
+      state.moveY = blendY;
     }
 
     // Smooth the output direction so waypoint transitions and kite reversals
@@ -3039,6 +3317,25 @@ export class BehaviorTreeAI implements AIInputProvider {
     return { ...this.decision };
   }
 
+  /**
+   * Current Track B opportunistic vector values, exposed for visualization
+   * and debugging. Updated each poll; (0,0) means the corresponding layer
+   * did not fire this frame.
+   */
+  getOpportunisticDebug(): {
+    pullX: number;
+    pullY: number;
+    dodgeX: number;
+    dodgeY: number;
+  } {
+    return {
+      pullX: this.opportunisticPullX,
+      pullY: this.opportunisticPullY,
+      dodgeX: this.dodgeVecX,
+      dodgeY: this.dodgeVecY,
+    };
+  }
+
   getNavigationDebug(): AINavigationDebug {
     return {
       pathWaypoints: this.pathWaypoints.map((waypoint) => ({ ...waypoint })),
@@ -3132,5 +3429,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatTargetX = null;
     this.retreatTargetY = null;
     this.retreatRepickFrame = 0;
+    this.opportunisticPullX = 0;
+    this.opportunisticPullY = 0;
+    this.dodgeVecX = 0;
+    this.dodgeVecY = 0;
   }
 }
