@@ -169,7 +169,7 @@ function misc(
 }
 
 export const ITEM_CATALOG: readonly ItemDef[] = [
-  // ── Materials (21) ──────────────────────────────────────────────────
+  // ── Materials (20) ──────────────────────────────────────────────────
   mat('iron-ore', 'Iron Ore', 'A chunk of crude iron. Smells like ambition.', C),
   mat('copper-ore', 'Copper Ore', 'Greenish and crumbly. Better than nothing.', C),
   mat('gold-nugget', 'Gold Nugget', 'Shiny enough to distract the audience.', U),
@@ -183,13 +183,6 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('bone-dust', 'Bone Dust', "Ground to a fine powder. Don't ask whose.", C, [
     customTag('Smelly Stuff'),
   ]),
-  mat(
-    'bone-shard',
-    'Bone Shard',
-    'A jagged fragment pried from something that did not need all its bones.',
-    C,
-    [customTag('Smelly Stuff')],
-  ),
   mat('ectoplasm-glob', 'Ectoplasm Glob', 'Gooey and faintly luminescent.', U, [
     customTag('Smelly Stuff'),
   ]),
@@ -278,7 +271,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
 
-  // ── Misc (21) ───────────────────────────────────────────────────────
+  // ── Misc (20) ───────────────────────────────────────────────────────
   misc('broken-circuit', 'Broken Circuit', 'Sparks occasionally. Mostly useless.', C),
   misc('alien-tooth', 'Alien Tooth', 'From a species with too many mouths.', U, [
     customTag('Smelly Stuff'),
@@ -299,7 +292,6 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   misc('old-sock', 'Old Sock', 'Origin: unknowable. Smell: remarkable.', C, [
     customTag('Smelly Stuff'),
   ]),
-  misc('pebble', 'Pebble', 'Smooth, ordinary, and somehow still worth carrying.', C),
   misc('shiny-button', 'Shiny Button', 'Do NOT press it. (You want to press it.)', R),
   misc('ghost-photo', 'Ghost Photo', "Shows someone who isn't there anymore.", E, [
     customTag('TMI'),
@@ -314,6 +306,15 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     U,
     [customTag('Gear')],
   ),
+  // ── Catalog additions (index-stable append) ─────────────────────────
+  mat(
+    'bone-shard',
+    'Bone Shard',
+    'A jagged fragment pried from something that did not need all its bones.',
+    C,
+    [customTag('Smelly Stuff')],
+  ),
+  misc('pebble', 'Pebble', 'Smooth, ordinary, and somehow still worth carrying.', C),
 ];
 
 // ---------------------------------------------------------------------------
