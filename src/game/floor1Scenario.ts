@@ -7,7 +7,13 @@ import {
   set,
   setComponent,
 } from 'bitecs';
-import { BiomeType, RoomRole, TerrainType, type MapConfig } from '../shared/map-types.js';
+import {
+  BiomeType,
+  RoomRole,
+  TerrainType,
+  type MapConfig,
+  type RoomBounds,
+} from '../shared/map-types.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import {
   Position,
@@ -171,14 +177,14 @@ function centerOfRoom(room: { bounds: { x: number; y: number; width: number; hei
  * Resolve the pixel position for a room's logical centre.
  *
  * Returns the centre of the room's bounding box if that tile is passable.
- * When the centre has been walled off (e.g. by an ellipse or L-shape
+ * When the center has been walled off (e.g. by an ellipse or L-shape
  * post-processing pass), spirals outward within the room's interior until a
  * passable tile is found, then returns its pixel position. This guarantees
  * that NPCs and items are never spawned inside walls.
  */
 function resolvePassableRoomCenter(
   floorMap: NonNullable<GameWorld['floorMap']>,
-  room: { bounds: { x: number; y: number; width: number; height: number } },
+  room: { bounds: RoomBounds },
 ): { x: number; y: number } {
   const center = centerOfRoom(room);
   if (floorMap.tileMap.isPassable(center.x, center.y)) {
@@ -190,9 +196,9 @@ function resolvePassableRoomCenter(
   const iy = by + 1;
   const maxX = bx + bw - 2;
   const maxY = by + bh - 2;
-  const maxR = Math.max(bw, bh);
+  const maxRadius = Math.max(bw, bh);
 
-  for (let r = 1; r <= maxR; r++) {
+  for (let r = 1; r <= maxRadius; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
@@ -211,7 +217,7 @@ function resolvePassableRoomCenter(
     }
   }
 
-  // Absolute fallback: return the bounding-box centre pixel even if it's a wall.
+  // Absolute fallback: return the bounding-box center pixel even if it's a wall.
   return floorMap.tileToPixel(center.x, center.y);
 }
 

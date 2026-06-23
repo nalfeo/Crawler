@@ -483,13 +483,12 @@ function applyRoomShapes(
     if (rw < 7 || rh < 7) continue;
 
     const roll = rng.next();
-    const isSpecial = room.role === RoomRole.SAFE || room.role === RoomRole.BOSS_STAIR;
 
     if (roll < 0.25) {
       // Ellipses are allowed for all rooms, including special ones.
       applyEllipseShape(tileMap, terrain, w, rx, ry, rw, rh, room.doors);
     } else if (roll < 0.5) {
-      if (isSpecial) {
+      if (room.role === RoomRole.SAFE || room.role === RoomRole.BOSS_STAIR) {
         // L-shapes are skipped for special rooms — consume RNG to keep stream intact.
         const halfW = Math.floor((rw - 2) / 2);
         const halfH = Math.floor((rh - 2) / 2);
