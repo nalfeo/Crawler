@@ -29,7 +29,7 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   const config: MapConfig = {
     widthTiles,
     heightTiles,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.ARENA,
     seed: 1,
     roomWidthRange: [4, 8],

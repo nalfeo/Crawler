@@ -16,7 +16,7 @@ function smallConfig(biome: BiomeType): MapConfig {
   return {
     widthTiles: 60,
     heightTiles: 40,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome,
     seed: 42,
     roomWidthRange: [4, 8],

@@ -28,7 +28,7 @@ describe('floor1Config', () => {
   it('should have valid map configuration', () => {
     expect(floor1Config.map.widthTiles).toBe(120);
     expect(floor1Config.map.heightTiles).toBe(70);
-    expect(floor1Config.map.tileSizePx).toBe(32);
+    expect(floor1Config.map.tileSizeFt).toBe(4);
     expect(floor1Config.map.seed).toBe(42);
     expect(floor1Config.map.roomWidthRange).toEqual([6, 14]);
     expect(floor1Config.map.roomHeightRange).toEqual([5, 13]);
@@ -70,8 +70,8 @@ describe('floor1Config', () => {
     expect(floor1Config.spawning.enemyCap).toBe(14);
     expect(floor1Config.spawning.spawnIntervalMs).toBe(900);
     expect(floor1Config.spawning.spawnRadiusMin).toBe(160);
-    expect(floor1Config.spawning.ambientSpawnMaxDistancePx).toBe(1280);
-    expect(floor1Config.spawning.ambientDespawnDistancePx).toBe(1920);
+    expect(floor1Config.spawning.ambientSpawnMaxDistanceFt).toBe(1280);
+    expect(floor1Config.spawning.ambientDespawnDistanceFt).toBe(1920);
   });
 
   it('should have valid player bonuses', () => {

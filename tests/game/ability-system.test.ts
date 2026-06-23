@@ -23,7 +23,7 @@ function makeWalledMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 10,
     heightTiles: 10,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [4, 8],

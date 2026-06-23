@@ -12,7 +12,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 12,
   heightTiles: 12,
-  tileSizePx: 32,
+  tileSizeFt: 32,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],

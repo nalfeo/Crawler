@@ -28,7 +28,7 @@ function makePathingFloorMap(doorOpen = true): FloorMap {
   const config: MapConfig = {
     widthTiles: width,
     heightTiles: height,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -54,7 +54,7 @@ function createOneRoomMapWithDoor(doorOpen: boolean): FloorMap {
   const config: MapConfig = {
     widthTiles: 8,
     heightTiles: 8,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 6],
@@ -74,7 +74,7 @@ function createObstacleMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 12,
     heightTiles: 12,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 6],
@@ -94,7 +94,7 @@ function createFullyBlockedMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 10,
     heightTiles: 10,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.DUNGEON,
     seed: 7,
     roomWidthRange: [4, 6],

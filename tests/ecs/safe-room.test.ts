@@ -19,7 +19,7 @@ import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 20,
   heightTiles: 20,
-  tileSizePx: 32,
+  tileSizeFt: 32,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],

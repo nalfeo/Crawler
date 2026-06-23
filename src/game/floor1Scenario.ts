@@ -177,14 +177,14 @@ function chooseObjectiveTiles(world: GameWorld): {
   questItemPos: { x: number; y: number };
 } {
   const floorMap = world.floorMap;
-  const fallbackWelcome = { x: 120, y: 120 };
-  const fallbackStair = { x: floorMap?.widthFt ? floorMap.widthFt - 120 : 1120, y: 560 };
+  const fallbackWelcome = { x: 15, y: 15 };
+  const fallbackStair = { x: floorMap?.widthFt ? floorMap.widthFt - 15 : 140, y: 70 };
   const fallbackSlimeRat = {
-    x: floorMap?.widthFt ? Math.floor(floorMap.widthFt * 0.75) : 960,
-    y: 520,
+    x: floorMap?.widthFt ? floorMap.widthFt * 0.75 : 120,
+    y: 65,
   };
-  const fallbackShop = { x: floorMap?.widthFt ? floorMap.widthFt - 240 : 880, y: 340 };
-  const fallbackItem = { x: floorMap?.widthFt ? Math.floor(floorMap.widthFt / 2) : 640, y: 340 };
+  const fallbackShop = { x: floorMap?.widthFt ? floorMap.widthFt - 30 : 110, y: 42.5 };
+  const fallbackItem = { x: floorMap?.widthFt ? floorMap.widthFt / 2 : 80, y: 42.5 };
 
   if (!floorMap) {
     return {
@@ -1042,8 +1042,8 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
   );
   setComponent(world.ecs, eid, Sprite, {
     textureId: floor1Config.enemies.slime.spriteTexture,
-    width: floor1Config.bossVariants!.ratSlime.spriteWidth - 4,
-    height: floor1Config.bossVariants!.ratSlime.spriteHeight - 4,
+    width: floor1Config.bossVariants!.ratSlime.spriteWidth - 0.5,
+    height: floor1Config.bossVariants!.ratSlime.spriteHeight - 0.5,
   });
   setComponent(world.ecs, eid, Damage, { amount: 8 });
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
