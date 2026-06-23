@@ -134,9 +134,9 @@ export class DungeonGenerator implements MapGenerator {
     // --- Room variety post-processing (BASIC_UNDERGROUND and opt-in biomes) ---
     if (this.roomVariety) {
       applyRoomShapes(tileMap, terrain, roomGraph, w, rng);
-      widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
+      const widenedCorridorTiles = widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
       addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng, protectedWalls);
-      expandDoorsForWideCorridors(tileMap, terrain, roomGraph, w, h);
+      expandDoorsForWideCorridors(tileMap, terrain, roomGraph, w, widenedCorridorTiles);
     }
 
     // Rooms are linked by corridors (and occasionally a shared door), so we
@@ -475,10 +475,12 @@ function expandDoorsForWideCorridors(
   terrain: Uint8Array,
   roomGraph: RoomGraph,
   w: number,
-  h: number,
+  widenedCorridorTiles: ReadonlySet<number>,
 ): void {
-  const corridorTouchesDoorway = (x: number, y: number): boolean =>
-    x >= 0 && x < w && y >= 0 && y < h && terrain[y * w + x] === TerrainType.CORRIDOR;
+  const widenedCorridorTouchesDoorway = (x: number, y: number): boolean =>
+    tileMap.inBounds(x, y) && widenedCorridorTiles.has(y * w + x);
+  const corridorContinues = (x: number, y: number): boolean =>
+    tileMap.inBounds(x, y) && terrain[y * w + x] === TerrainType.CORRIDOR;
 
   const carveInteriorTile = (idx: number): void => {
     if ((tileMap.flags[idx]! & TileFlags.PASSABLE) !== 0) return;
@@ -487,6 +489,9 @@ function expandDoorsForWideCorridors(
   };
 
   for (const room of roomGraph.getAll()) {
+    if (room.role === RoomRole.NORMAL) {
+      continue;
+    }
     const { bounds } = room;
     const doorKeys = new Set(room.doors.map((door) => `${door.x},${door.y}`));
     const addedDoors: DoorLocation[] = [];
@@ -496,11 +501,17 @@ function expandDoorsForWideCorridors(
       doorY: number,
       outsideX: number,
       outsideY: number,
+      forwardX: number,
+      forwardY: number,
       insideX: number,
       insideY: number,
     ): void => {
       const key = `${doorX},${doorY}`;
-      if (doorKeys.has(key) || !corridorTouchesDoorway(outsideX, outsideY)) {
+      if (
+        doorKeys.has(key) ||
+        !widenedCorridorTouchesDoorway(outsideX, outsideY) ||
+        !corridorContinues(forwardX, forwardY)
+      ) {
         return;
       }
       if (!tileMap.inBounds(doorX, doorY) || !tileMap.inBounds(insideX, insideY)) {
@@ -529,20 +540,92 @@ function expandDoorsForWideCorridors(
 
       switch (side) {
         case 'left':
-          maybeAddDoor(door.x, door.y - 1, door.x - 1, door.y - 1, door.x + 1, door.y - 1);
-          maybeAddDoor(door.x, door.y + 1, door.x - 1, door.y + 1, door.x + 1, door.y + 1);
+          maybeAddDoor(
+            door.x,
+            door.y - 1,
+            door.x - 1,
+            door.y - 1,
+            door.x - 2,
+            door.y - 1,
+            door.x + 1,
+            door.y - 1,
+          );
+          maybeAddDoor(
+            door.x,
+            door.y + 1,
+            door.x - 1,
+            door.y + 1,
+            door.x - 2,
+            door.y + 1,
+            door.x + 1,
+            door.y + 1,
+          );
           break;
         case 'right':
-          maybeAddDoor(door.x, door.y - 1, door.x + 1, door.y - 1, door.x - 1, door.y - 1);
-          maybeAddDoor(door.x, door.y + 1, door.x + 1, door.y + 1, door.x - 1, door.y + 1);
+          maybeAddDoor(
+            door.x,
+            door.y - 1,
+            door.x + 1,
+            door.y - 1,
+            door.x + 2,
+            door.y - 1,
+            door.x - 1,
+            door.y - 1,
+          );
+          maybeAddDoor(
+            door.x,
+            door.y + 1,
+            door.x + 1,
+            door.y + 1,
+            door.x + 2,
+            door.y + 1,
+            door.x - 1,
+            door.y + 1,
+          );
           break;
         case 'top':
-          maybeAddDoor(door.x - 1, door.y, door.x - 1, door.y - 1, door.x - 1, door.y + 1);
-          maybeAddDoor(door.x + 1, door.y, door.x + 1, door.y - 1, door.x + 1, door.y + 1);
+          maybeAddDoor(
+            door.x - 1,
+            door.y,
+            door.x - 1,
+            door.y - 1,
+            door.x - 1,
+            door.y - 2,
+            door.x - 1,
+            door.y + 1,
+          );
+          maybeAddDoor(
+            door.x + 1,
+            door.y,
+            door.x + 1,
+            door.y - 1,
+            door.x + 1,
+            door.y - 2,
+            door.x + 1,
+            door.y + 1,
+          );
           break;
         case 'bottom':
-          maybeAddDoor(door.x - 1, door.y, door.x - 1, door.y + 1, door.x - 1, door.y - 1);
-          maybeAddDoor(door.x + 1, door.y, door.x + 1, door.y + 1, door.x + 1, door.y - 1);
+          maybeAddDoor(
+            door.x - 1,
+            door.y,
+            door.x - 1,
+            door.y + 1,
+            door.x - 1,
+            door.y + 2,
+            door.x - 1,
+            door.y - 1,
+          );
+          maybeAddDoor(
+            door.x + 1,
+            door.y,
+            door.x + 1,
+            door.y + 1,
+            door.x + 1,
+            door.y + 2,
+            door.x + 1,
+            door.y - 1,
+          );
           break;
       }
     }
@@ -785,7 +868,7 @@ function widenCorridors(
   h: number,
   rng: SeededRandom,
   protectedWalls: ReadonlySet<number>,
-): void {
+): ReadonlySet<number> {
   const toWiden = new Set<number>();
 
   for (let y = 1; y < h - 1; y++) {
@@ -837,6 +920,7 @@ function widenCorridors(
     terrain[idx] = TerrainType.CORRIDOR;
     tileMap.flags[idx] = TilePresets.FLOOR;
   }
+  return toWiden;
 }
 
 /**

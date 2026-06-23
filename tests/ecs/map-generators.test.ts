@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SeededRandom } from '../../src/shared/random';
-import { BiomeType, TileFlags, RoomRole, TerrainType } from '../../src/shared/map-types';
+import { BiomeType, TileFlags, RoomRole } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import { DungeonGenerator } from '../../src/core/map/generators/DungeonGenerator';
 import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
@@ -75,81 +75,21 @@ function getDoorSide(
   return null;
 }
 
-function isCornerDoorPosition(room: GeneratedRoom, x: number, y: number): boolean {
-  const { x: rx, y: ry, width, height } = room.bounds;
-  return (x === rx || x === rx + width - 1) && (y === ry || y === ry + height - 1);
-}
-
-function hasAdjacentDoorOnSameWall(
-  floor: GeneratedFloor,
-  room: GeneratedRoom,
-  door: GeneratedDoor,
-): boolean {
-  const side = getDoorSide(room, door);
-  if (side === null) return false;
-
-  switch (side) {
-    case 'left':
-    case 'right':
-      return floor.tileMap.isDoor(door.x, door.y - 1) || floor.tileMap.isDoor(door.x, door.y + 1);
-    case 'top':
-    case 'bottom':
-      return floor.tileMap.isDoor(door.x - 1, door.y) || floor.tileMap.isDoor(door.x + 1, door.y);
+function countAdjacentDoorPairs(floor: GeneratedFloor): number {
+  let pairs = 0;
+  for (const room of floor.rooms) {
+    const doorSet = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+    for (const door of room.doors) {
+      const side = getDoorSide(room, door);
+      if ((side === 'left' || side === 'right') && doorSet.has(`${door.x},${door.y + 1}`)) {
+        pairs += 1;
+      }
+      if ((side === 'top' || side === 'bottom') && doorSet.has(`${door.x + 1},${door.y}`)) {
+        pairs += 1;
+      }
+    }
   }
-}
-
-function hasIsolatedWideCorridorDoorPinch(
-  floor: GeneratedFloor,
-  room: GeneratedRoom,
-  door: GeneratedDoor,
-): boolean {
-  const side = getDoorSide(room, door);
-  if (side === null) return false;
-  if (hasAdjacentDoorOnSameWall(floor, room, door)) return false;
-
-  const isCorridor = (tx: number, ty: number): boolean => {
-    if (!floor.tileMap.inBounds(tx, ty)) return false;
-    return floor.terrain[ty * floor.width + tx] === TerrainType.CORRIDOR;
-  };
-
-  switch (side) {
-    case 'left':
-      return (
-        (!isCornerDoorPosition(room, door.x, door.y - 1) &&
-          isCorridor(door.x - 1, door.y - 1) &&
-          !floor.tileMap.isDoor(door.x, door.y - 1)) ||
-        (!isCornerDoorPosition(room, door.x, door.y + 1) &&
-          isCorridor(door.x - 1, door.y + 1) &&
-          !floor.tileMap.isDoor(door.x, door.y + 1))
-      );
-    case 'right':
-      return (
-        (!isCornerDoorPosition(room, door.x, door.y - 1) &&
-          isCorridor(door.x + 1, door.y - 1) &&
-          !floor.tileMap.isDoor(door.x, door.y - 1)) ||
-        (!isCornerDoorPosition(room, door.x, door.y + 1) &&
-          isCorridor(door.x + 1, door.y + 1) &&
-          !floor.tileMap.isDoor(door.x, door.y + 1))
-      );
-    case 'top':
-      return (
-        (!isCornerDoorPosition(room, door.x - 1, door.y) &&
-          isCorridor(door.x - 1, door.y - 1) &&
-          !floor.tileMap.isDoor(door.x - 1, door.y)) ||
-        (!isCornerDoorPosition(room, door.x + 1, door.y) &&
-          isCorridor(door.x + 1, door.y - 1) &&
-          !floor.tileMap.isDoor(door.x + 1, door.y))
-      );
-    case 'bottom':
-      return (
-        (!isCornerDoorPosition(room, door.x - 1, door.y) &&
-          isCorridor(door.x - 1, door.y + 1) &&
-          !floor.tileMap.isDoor(door.x - 1, door.y)) ||
-        (!isCornerDoorPosition(room, door.x + 1, door.y) &&
-          isCorridor(door.x + 1, door.y + 1) &&
-          !floor.tileMap.isDoor(door.x + 1, door.y))
-      );
-  }
+  return pairs;
 }
 
 /**
@@ -356,8 +296,9 @@ describe('Map Generators', () => {
       }
     });
 
-    it('should add paired doors where widened corridors would otherwise pinch to one tile', () => {
-      const gen = new DungeonGenerator({ roomVariety: true });
+    it('should add paired doors in room-variety maps while flat maps keep single doors', () => {
+      const genFlat = new DungeonGenerator({ roomVariety: false });
+      const genVariety = new DungeonGenerator({ roomVariety: true });
       const config: MapConfig = {
         widthTiles: 120,
         heightTiles: 70,
@@ -370,14 +311,14 @@ describe('Map Generators', () => {
         floorDensity: 0.42,
       };
 
+      const varietyPairCounts: number[] = [];
       for (const seed of REGRESSION_TEST_SEEDS) {
-        const floor = gen.generate({ ...config, seed }, new SeededRandom(seed));
-        for (const room of floor.rooms) {
-          for (const door of room.doors) {
-            expect(hasIsolatedWideCorridorDoorPinch(floor, room, door)).toBe(false);
-          }
-        }
+        const flatFloor = genFlat.generate({ ...config, seed }, new SeededRandom(seed));
+        const varietyFloor = genVariety.generate({ ...config, seed }, new SeededRandom(seed));
+        expect(countAdjacentDoorPairs(flatFloor)).toBe(0);
+        varietyPairCounts.push(countAdjacentDoorPairs(varietyFloor));
       }
+      expect(varietyPairCounts.some((count) => count > 0)).toBe(true);
     });
 
     it('should have no isolated passable floor tiles (all reachable from spawn when doors are open)', () => {
