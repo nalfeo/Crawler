@@ -255,7 +255,7 @@ describe('abilitySystem', () => {
     // Knockback substeps at 1 ft granularity, so the enemy stops one step short
     // of the wall (right edge 19.875 ft < wall at 20 ft) rather than flush.
     expect(world.stores.position.x[wallEnemy]).toBeCloseTo(18);
-    expect(world.stores.position.x[wallEnemy] + 3.75 / 2).toBeLessThanOrEqual(20);
+    expect(world.stores.position.x[wallEnemy]! + 3.75 / 2).toBeLessThanOrEqual(20);
     expect(world.stores.position.y[wallEnemy]).toBeCloseTo(12);
   });
 
