@@ -23,7 +23,7 @@ function makeWalledMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 10,
     heightTiles: 10,
-    tileSizeFt: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -178,10 +178,10 @@ describe('abilitySystem', () => {
     world.playerMp = 20;
     memorizeSpell(world, player, 'fireball');
 
-    // Place enemies within 48px (6 feet) trigger radius and give them enough health to survive 2 spells
-    spawnEnemy(world, 8, 0, 100);
-    spawnEnemy(world, 12, 4, 100);
-    spawnEnemy(world, 14, -4, 100);
+    // Place enemies within 6 feet trigger radius and give them enough health to survive 2 spells
+    spawnEnemy(world, 1, 0, 100);
+    spawnEnemy(world, 1.5, 0.5, 100);
+    spawnEnemy(world, 1.75, -0.5, 100);
 
     world.frameCount = 100;
     abilitySystem(world);
@@ -208,8 +208,8 @@ describe('abilitySystem', () => {
     world.stores.health.current[player] = 40;
     world.stores.health.max[player] = 100;
 
-    spawnEnemy(world, 12, 0, 10);
-    spawnEnemy(world, -10, 6, 10);
+    spawnEnemy(world, 1.5, 0, 10);
+    spawnEnemy(world, -1.25, 0.75, 10);
 
     world.frameCount = 100;
     abilitySystem(world);
@@ -217,7 +217,7 @@ describe('abilitySystem', () => {
     expect(state.cooldownByAbilityId.has('pulse-shield')).toBe(false);
     expect(world.playerMp).toBe(20);
 
-    spawnEnemy(world, 6, -8, 10);
+    spawnEnemy(world, 0.75, -1, 10);
     world.frameCount = 200;
     abilitySystem(world);
     expect(state.cooldownByAbilityId.get('pulse-shield')).toBe(200);
@@ -233,27 +233,30 @@ describe('abilitySystem', () => {
   it('keeps pulse shield knockback from pushing enemies partially into walls', () => {
     const { world, player } = setupPlayer();
     world.floorMap = makeWalledMap();
-    world.stores.position.x[player] = 120;
-    world.stores.position.y[player] = 96;
+    world.stores.position.x[player] = 15;
+    world.stores.position.y[player] = 12;
     world.featureUnlocks.spells = true;
     world.playerMp = 20;
     memorizeSpell(world, player, 'pulse-shield');
     world.stores.health.current[player] = 40;
     world.stores.health.max[player] = 100;
 
-    spawnEnemy(world, 88, 96, 10);
-    spawnEnemy(world, 100, 96, 10);
-    const wallEnemy = spawnEnemy(world, 144, 96, 10);
-    world.stores.sprite.width[wallEnemy] = 30;
-    world.stores.sprite.height[wallEnemy] = 30;
+    spawnEnemy(world, 11, 12, 10);
+    spawnEnemy(world, 12.5, 12, 10);
+    const wallEnemy = spawnEnemy(world, 18, 12, 10);
+    world.stores.sprite.width[wallEnemy] = 3.75;
+    world.stores.sprite.height[wallEnemy] = 3.75;
 
     world.frameCount = 100;
     abilitySystem(world);
     knockbackSystem(world);
 
     expect(world.playerMp).toBe(10);
-    expect(world.stores.position.x[wallEnemy]).toBeCloseTo(145);
-    expect(world.stores.position.y[wallEnemy]).toBeCloseTo(96);
+    // Knockback substeps at 1 ft granularity, so the enemy stops one step short
+    // of the wall (right edge 19.875 ft < wall at 20 ft) rather than flush.
+    expect(world.stores.position.x[wallEnemy]).toBeCloseTo(18);
+    expect(world.stores.position.x[wallEnemy] + 3.75 / 2).toBeLessThanOrEqual(20);
+    expect(world.stores.position.y[wallEnemy]).toBeCloseTo(12);
   });
 
   it('does not trigger spells when MP is below cost', () => {
@@ -262,8 +265,8 @@ describe('abilitySystem', () => {
     world.playerMp = 4;
     memorizeSpell(world, player, 'fireball');
 
-    spawnEnemy(world, 20, 0, 10);
-    spawnEnemy(world, 24, 4, 10);
+    spawnEnemy(world, 2.5, 0, 10);
+    spawnEnemy(world, 3, 0.5, 10);
 
     world.frameCount = 100;
     abilitySystem(world);
