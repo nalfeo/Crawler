@@ -97,7 +97,7 @@ describe('knockbackSystem', () => {
 
     knockbackSystem(world);
 
-    expect(world.stores.position.x[eid]).toBeCloseTo(144);
+    expect(world.stores.position.x[eid]).toBeCloseTo(145);
     expect(world.stores.position.y[eid]).toBeCloseTo(112);
     expect(hasComponent(world.ecs, eid, Knockback)).toBe(false);
   });

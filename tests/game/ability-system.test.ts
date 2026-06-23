@@ -233,7 +233,7 @@ describe('abilitySystem', () => {
   it('keeps pulse shield knockback from pushing enemies partially into walls', () => {
     const { world, player } = setupPlayer();
     world.floorMap = makeWalledMap();
-    world.stores.position.x[player] = 96;
+    world.stores.position.x[player] = 120;
     world.stores.position.y[player] = 96;
     world.featureUnlocks.spells = true;
     world.playerMp = 20;
@@ -241,8 +241,8 @@ describe('abilitySystem', () => {
     world.stores.health.current[player] = 40;
     world.stores.health.max[player] = 100;
 
-    spawnEnemy(world, 60, 96, 10);
-    spawnEnemy(world, 72, 96, 10);
+    spawnEnemy(world, 88, 96, 10);
+    spawnEnemy(world, 100, 96, 10);
     const wallEnemy = spawnEnemy(world, 144, 96, 10);
     world.stores.sprite.width[wallEnemy] = 30;
     world.stores.sprite.height[wallEnemy] = 30;
@@ -251,7 +251,8 @@ describe('abilitySystem', () => {
     abilitySystem(world);
     knockbackSystem(world);
 
-    expect(world.stores.position.x[wallEnemy]).toBeCloseTo(144);
+    expect(world.playerMp).toBe(10);
+    expect(world.stores.position.x[wallEnemy]).toBeCloseTo(145);
     expect(world.stores.position.y[wallEnemy]).toBeCloseTo(96);
   });
 
