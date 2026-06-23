@@ -84,7 +84,7 @@ interface CLIArgs {
 function parseArgs(): CLIArgs {
   const args: CLIArgs = {
     seeds: [2, 4, 7],
-    maxFrames: 18_000, // ~5 min at 60 fps — fast enough to complete floor 1
+    maxFrames: 18_000, // 300 s at 60 fps — fast enough to complete floor 1
     maxIters: 30,
     out: '/tmp/hill-climb-best.json',
     startConfig: {},
