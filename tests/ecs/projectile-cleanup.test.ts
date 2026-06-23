@@ -33,9 +33,9 @@ function makeOpenMap(): FloorMap {
 describe('projectileCleanupSystem', () => {
   it('removes projectiles that leave game bounds', () => {
     const world = createTestWorld();
-    const offscreenRight = spawnProjectile(world, 1500, 360, 5, 0, 10);
-    const offscreenTop = spawnProjectile(world, 640, -200, 0, -5, 10);
-    const inBounds = spawnProjectile(world, 640, 360, 5, 0, 10);
+    const offscreenRight = spawnProjectile(world, 187.5, 45, 0.625, 0, 10);
+    const offscreenTop = spawnProjectile(world, 80, -25, 0, -0.625, 10);
+    const inBounds = spawnProjectile(world, 80, 45, 0.625, 0, 10);
 
     projectileCleanupSystem(world);
 
@@ -47,7 +47,7 @@ describe('projectileCleanupSystem', () => {
   it('keeps projectiles within the cull margin', () => {
     const world = createTestWorld();
     // Just barely inside margin (GAME.WIDTH + 100 = 1380 is the boundary)
-    const nearEdge = spawnProjectile(world, 1370, 360, 5, 0, 10);
+    const nearEdge = spawnProjectile(world, 171.25, 45, 0.625, 0, 10);
 
     projectileCleanupSystem(world);
 
@@ -77,7 +77,7 @@ describe('projectileCleanupSystem', () => {
 
   it('keeps non-bouncing projectiles using existing cleanup behavior', () => {
     const world = createTestWorld();
-    const projectile = spawnProjectile(world, -1, 360, -4, 0, 10);
+    const projectile = spawnProjectile(world, -0.125, 45, -0.5, 0, 10);
 
     projectileCleanupSystem(world);
 
@@ -86,7 +86,7 @@ describe('projectileCleanupSystem', () => {
 
   it('does not process bounce for entities missing velocity component', () => {
     const world = createTestWorld();
-    const bouncing = spawnProjectile(world, -5, 360, -4, 0, 10);
+    const bouncing = spawnProjectile(world, -0.625, 45, -0.5, 0, 10);
     // Simulate malformed data where bounce metadata exists but velocity tag was removed.
     world.stores.bouncing.remainingBounces[bouncing] = 1;
     addComponent(world.ecs, bouncing, Bouncing);
@@ -123,9 +123,9 @@ describe('projectileCleanupSystem', () => {
     // Place projectile 1 pixel before the wall boundary, velocity = 5 px/frame (enters wall).
     const projX = 10 * tileSize - 1; // pixel just before wall tile
     const projY = 10 * tileSize + 16; // vertically centred in wall tile row
-    const headingIntoWall = spawnProjectile(world, projX, projY, 5, 0, 10);
+    const headingIntoWall = spawnProjectile(world, projX, projY, 0.625, 0, 10);
     // Another projectile moving away from the wall — should survive.
-    const movingAway = spawnProjectile(world, projX, projY, -5, 0, 10);
+    const movingAway = spawnProjectile(world, projX, projY, -0.625, 0, 10);
 
     projectileCleanupSystem(world);
 
@@ -137,10 +137,10 @@ describe('projectileCleanupSystem', () => {
     const world = createTestWorld();
     const maxRange = 100;
     // Projectile spawned at (500, 360) with maxRange=100
-    const eid = spawnProjectile(world, 500, 360, 0, 0, 10, 0, maxRange);
+    const eid = spawnProjectile(world, 62.5, 45, 0, 0, 10, 0, maxRange);
     // Move projectile to exactly at max range (100 pixels away)
     world.stores.position.x[eid] = 500 + 100;
-    world.stores.position.y[eid] = 360;
+    world.stores.position.y[eid] = 45;
 
     projectileCleanupSystem(world);
 
@@ -158,7 +158,7 @@ describe('projectileCleanupSystem', () => {
   it('removes non-returning projectiles that exceed diagonal max range', () => {
     const world = createTestWorld();
     const maxRange = 100;
-    const eid = spawnProjectile(world, 500, 360, 0, 0, 10, 0, maxRange);
+    const eid = spawnProjectile(world, 62.5, 45, 0, 0, 10, 0, maxRange);
     // Move projectile diagonally to distance > 100
     // sqrt(70^2 + 70^2) = ~99, sqrt(71^2 + 71^2) = ~100.4
     world.stores.position.x[eid] = 500 + 71;
@@ -172,10 +172,10 @@ describe('projectileCleanupSystem', () => {
   it('keeps projectiles with zero or no max range', () => {
     const world = createTestWorld();
     // Projectile with no maxRange tracking (legacy behavior)
-    const noRange = spawnProjectile(world, 500, 360, 1, 0, 10, 0, 0);
+    const noRange = spawnProjectile(world, 62.5, 45, 0.125, 0, 10, 0, 0);
     // Simulate movement far from origin, but within bounds (bounds are 0-1280, 0-720, + 100 cull margin)
-    world.stores.position.x[noRange] = 1200;
-    world.stores.position.y[noRange] = 680;
+    world.stores.position.x[noRange] = 150;
+    world.stores.position.y[noRange] = 85;
 
     projectileCleanupSystem(world);
 
@@ -202,7 +202,7 @@ describe('projectileCleanupSystem', () => {
 
     // Move returning projectile beyond maxRange
     world.stores.position.x[returning] = 500 + 150;
-    world.stores.position.y[returning] = 360;
+    world.stores.position.y[returning] = 45;
 
     projectileCleanupSystem(world);
 

@@ -9,7 +9,7 @@ describe('collisionSystem', () => {
   it('detects player-enemy collisions', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    const enemy = spawnEnemy(world, 8, 0, 25);
+    const enemy = spawnEnemy(world, 1, 0, 25);
 
     const result = collisionSystem(world);
 
@@ -19,7 +19,7 @@ describe('collisionSystem', () => {
   it('detects projectile-enemy collisions', () => {
     const world = createTestWorld();
     const projectile = createEntity(world);
-    const enemy = spawnEnemy(world, 8, 0, 25);
+    const enemy = spawnEnemy(world, 1, 0, 25);
 
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
@@ -37,7 +37,7 @@ describe('collisionSystem', () => {
     const world = createTestWorld();
 
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 256, 256, 25);
+    spawnEnemy(world, 32, 32, 25);
 
     expect(collisionSystem(world).pairs).toEqual([]);
   });
@@ -45,7 +45,7 @@ describe('collisionSystem', () => {
   it('rebuilds the grid each frame as entities move', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    const enemy = spawnEnemy(world, 200, 0, 25);
+    const enemy = spawnEnemy(world, 25, 0, 25);
 
     expect(collisionSystem(world).pairs).toEqual([]);
 

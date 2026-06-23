@@ -59,50 +59,49 @@ describe('units', () => {
   });
 
   describe('formatFeet', () => {
-    it('formats zero pixels', () => {
+    it('formats zero feet', () => {
       expect(formatFeet(0)).toBe("0'");
     });
 
-    it('formats pixel values with whole feet', () => {
-      expect(formatFeet(8)).toBe("1'");
-      expect(formatFeet(40)).toBe("5'");
-      expect(formatFeet(80)).toBe("10'");
+    it('formats whole feet', () => {
+      expect(formatFeet(1)).toBe("1'");
+      expect(formatFeet(5)).toBe("5'");
+      expect(formatFeet(10)).toBe("10'");
     });
 
-    it('formats pixel values with fractional feet rounded to one decimal', () => {
-      expect(formatFeet(4)).toBe("0.5'");
-      expect(formatFeet(12)).toBe("1.5'");
-      // 33 pixels = 4.125 feet, should round to "4.1'"
-      expect(formatFeet(33)).toBe("4.1'");
-      // 20 pixels = 2.5 feet, should be "2.5'"
-      expect(formatFeet(20)).toBe("2.5'");
+    it('formats fractional feet rounded to one decimal', () => {
+      expect(formatFeet(0.5)).toBe("0.5'");
+      expect(formatFeet(1.5)).toBe("1.5'");
+      // 4.125 feet should round to "4.1'"
+      expect(formatFeet(4.125)).toBe("4.1'");
+      // 2.5 feet should be "2.5'"
+      expect(formatFeet(2.5)).toBe("2.5'");
     });
 
     it('rounds to one decimal place correctly', () => {
-      // 35 pixels = 4.375 feet, should round to "4.4'"
-      expect(formatFeet(35)).toBe("4.4'");
-      // 37 pixels = 4.625 feet, should round to "4.6'"
-      expect(formatFeet(37)).toBe("4.6'");
-      // 26 pixels = 3.25 feet, should round to "3.3'" (rounded up)
-      expect(formatFeet(26)).toBe("3.3'");
+      // 4.375 feet should round to "4.4'"
+      expect(formatFeet(4.375)).toBe("4.4'");
+      // 4.625 feet should round to "4.6'"
+      expect(formatFeet(4.625)).toBe("4.6'");
+      // 3.25 feet should round to "3.3'" (rounded up)
+      expect(formatFeet(3.25)).toBe("3.3'");
     });
 
     it('includes the feet symbol', () => {
-      const result = formatFeet(16);
+      const result = formatFeet(2);
       expect(result).toMatch(/'$/);
       expect(result).toBe("2'");
     });
 
-    it('handles negative pixels', () => {
-      expect(formatFeet(-8)).toBe("-1'");
-      expect(formatFeet(-4)).toBe("-0.5'");
+    it('handles negative feet', () => {
+      expect(formatFeet(-1)).toBe("-1'");
+      expect(formatFeet(-0.5)).toBe("-0.5'");
     });
 
-    it('handles large pixel values', () => {
-      expect(formatFeet(1000)).toMatch(/'$/);
-      const feet = 1000 / PIXELS_PER_FOOT;
-      const rounded = Math.round(feet * 10) / 10;
-      expect(formatFeet(1000)).toBe(`${rounded}'`);
+    it('handles large feet values', () => {
+      expect(formatFeet(125)).toMatch(/'$/);
+      const rounded = Math.round(125 * 10) / 10;
+      expect(formatFeet(125)).toBe(`${rounded}'`);
     });
   });
 

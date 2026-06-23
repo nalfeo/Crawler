@@ -130,8 +130,8 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(1);
     expect(images[0]).toMatchObject({
-      x: 10,
-      y: 20,
+      x: 80,
+      y: 160,
       destroyed: false,
     });
 
@@ -141,7 +141,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]).toMatchObject({ x: 30, y: 40 });
+    expect(images[0]).toMatchObject({ x: 240, y: 320 });
   });
 
   it('destroys images when entities disappear or the bridge is destroyed', () => {
@@ -227,8 +227,8 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(2);
     expect(images[1]).toMatchObject({
-      x: 12,
-      y: 16,
+      x: 96,
+      y: 254,
       textureKey: '__cw_dead_skull',
       destroyed: false,
     });

@@ -227,8 +227,8 @@ describe('meleeSwingSystem coverage edges', () => {
 
     meleeSwingSystem(world);
 
-    expect(world.stores.position.x[swing]).toBe(100);
-    expect(world.stores.position.y[swing]).toBe(100);
+    expect(world.stores.position.x[swing]).toBe(12.5);
+    expect(world.stores.position.y[swing]).toBe(12.5);
   });
 });
 

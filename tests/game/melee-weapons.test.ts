@@ -14,15 +14,14 @@ import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { GAME } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
-import { ftToPx } from '../../src/shared/units.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('melee weapons', () => {
   it('sword spawns a MeleeSwing entity at player position', () => {
     const world = createTestWorld();
-    const player = spawnPlayer(world, 100, 100);
+    const player = spawnPlayer(world, 12.5, 12.5);
     // Place enemy within sword gate range (5ft * 8px * 1.5 = 60px)
-    spawnEnemy(world, 150, 100, 50);
+    spawnEnemy(world, 18.75, 12.5, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -32,18 +31,18 @@ describe('melee weapons', () => {
     const swings = Array.from(query(world.ecs, [MeleeSwing, Position, Lifetime, Owner]));
     expect(swings).toHaveLength(1);
     const swing = swings[0]!;
-    expect(world.stores.position.x[swing]).toBe(100);
-    expect(world.stores.position.y[swing]).toBe(100);
+    expect(world.stores.position.x[swing]).toBe(12.5);
+    expect(world.stores.position.y[swing]).toBe(12.5);
     expect(world.stores.meleeSwing.damage[swing]).toBe(def.baseDamage);
-    expect(world.stores.meleeSwing.bladeLength[swing]).toBe(ftToPx(def.aoeRadius));
+    expect(world.stores.meleeSwing.bladeLength[swing]).toBe(def.aoeRadius);
     expect(world.stores.owner.eid[swing]).toBe(player);
   });
 
   it('sword blade hits enemy via line-segment collision', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     // Place enemy directly right, within blade length
-    const enemy = spawnEnemy(world, 130, 100, 50);
+    const enemy = spawnEnemy(world, 16.25, 12.5, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -59,11 +58,11 @@ describe('melee weapons', () => {
 
   it('sword blade does NOT hit enemy behind (outside arc)', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     // Nearest enemy to the right — arc faces right
-    spawnEnemy(world, 130, 100, 50);
+    spawnEnemy(world, 16.25, 12.5, 50);
     // Enemy directly behind, farther away, within blade length but outside 90° arc
-    const behindEnemy = spawnEnemy(world, 65, 100, 50);
+    const behindEnemy = spawnEnemy(world, 8.125, 12.5, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -82,9 +81,9 @@ describe('melee weapons', () => {
 
   it('sword blade follows player position', () => {
     const world = createTestWorld();
-    const player = spawnPlayer(world, 100, 100);
+    const player = spawnPlayer(world, 12.5, 12.5);
     // Place enemy within sword gate range (5ft * 8px * 1.5 = 60px)
-    spawnEnemy(world, 150, 100, 50);
+    spawnEnemy(world, 18.75, 12.5, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -92,21 +91,21 @@ describe('melee weapons', () => {
     weaponSystem(world);
 
     // Move player
-    world.stores.position.x[player] = 200;
-    world.stores.position.y[player] = 200;
+    world.stores.position.x[player] = 25;
+    world.stores.position.y[player] = 25;
 
     meleeSwingSystem(world);
 
     const swings = Array.from(query(world.ecs, [MeleeSwing, Position]));
     expect(swings).toHaveLength(1);
-    expect(world.stores.position.x[swings[0]!]).toBe(200);
-    expect(world.stores.position.y[swings[0]!]).toBe(200);
+    expect(world.stores.position.x[swings[0]!]).toBe(25);
+    expect(world.stores.position.y[swings[0]!]).toBe(25);
   });
 
   it('sword only hits each enemy once per swing', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
-    const enemy = spawnEnemy(world, 130, 100, 50);
+    spawnPlayer(world, 12.5, 12.5);
+    const enemy = spawnEnemy(world, 16.25, 12.5, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -125,9 +124,9 @@ describe('melee weapons', () => {
 
   it('sword respects cooldown', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     // Place enemy within sword gate range (5ft * 8px * 1.5 = 60px)
-    spawnEnemy(world, 150, 100, 50);
+    spawnEnemy(world, 18.75, 12.5, 50);
     const def = getWeaponDef('sword')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -147,10 +146,10 @@ describe('melee weapons', () => {
 
   it('hammer head hit deals full damage', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     const hammer = getWeaponDef('hammer')!;
     // Place enemy at tip distance (within headRadius of the tip)
-    const enemy = spawnEnemy(world, 148, 100, 100);
+    const enemy = spawnEnemy(world, 18.5, 12.5, 100);
     setActiveWeapon(world, hammer);
     world.elapsedMs = hammer.cooldownMs;
 
@@ -169,10 +168,10 @@ describe('melee weapons', () => {
 
   it('hammer shaft hit deals partial damage', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     const hammer = getWeaponDef('hammer')!;
     // Place enemy on the shaft (halfway along blade, well inside blade length but outside head)
-    const enemy = spawnEnemy(world, 124, 100, 100);
+    const enemy = spawnEnemy(world, 15.5, 12.5, 100);
     setActiveWeapon(world, hammer);
     world.elapsedMs = hammer.cooldownMs;
 
@@ -192,9 +191,9 @@ describe('melee weapons', () => {
 
   it('hammer knockback smoothly displaces enemy away from player', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     const hammer = getWeaponDef('hammer')!;
-    const enemy = spawnEnemy(world, 148, 100, 100);
+    const enemy = spawnEnemy(world, 18.5, 12.5, 100);
     setActiveWeapon(world, hammer);
     world.elapsedMs = hammer.cooldownMs;
 
@@ -225,16 +224,16 @@ describe('melee weapons', () => {
 
     const afterX = world.stores.position.x[enemy] ?? 0;
     // Total displacement should approximately equal knockback value
-    expect(afterX - beforeX).toBeCloseTo(ftToPx(hammer.knockback), 0);
+    expect(afterX - beforeX).toBeCloseTo(hammer.knockback, 0);
   });
 
   it('sword (no headRadius) deals uniform damage everywhere on blade', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     const sword = getWeaponDef('sword')!;
     expect(sword.headRadius).toBe(0);
     // Place enemy on the shaft (not at tip)
-    const enemy = spawnEnemy(world, 124, 100, 50);
+    const enemy = spawnEnemy(world, 15.5, 12.5, 50);
     setActiveWeapon(world, sword);
     world.elapsedMs = sword.cooldownMs;
 
@@ -251,8 +250,8 @@ describe('melee weapons', () => {
 
   it('melee swing has Team component for friendly fire prevention', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 50, 50);
-    spawnEnemy(world, 100, 50, 50);
+    spawnPlayer(world, 6.25, 6.25);
+    spawnEnemy(world, 12.5, 6.25, 50);
     setActiveWeapon(world, getWeaponDef('sword')!);
     world.elapsedMs = 1000;
 
@@ -264,9 +263,9 @@ describe('melee weapons', () => {
 
   it('full-circle melee (hammer, 360°) hits in all directions', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
-    const right = spawnEnemy(world, 130, 100, 50);
-    const left = spawnEnemy(world, 75, 100, 50);
+    spawnPlayer(world, 12.5, 12.5);
+    const right = spawnEnemy(world, 16.25, 12.5, 50);
+    const left = spawnEnemy(world, 9.375, 12.5, 50);
     const hammer = getWeaponDef('hammer')!;
     expect(hammer.swingArcDeg).toBe(360);
     setActiveWeapon(world, hammer);
@@ -288,7 +287,7 @@ describe('melee weapons', () => {
 
   it('melee weapon does not swing when no enemy is in combat range', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     // No enemies spawned: the player is not in active combat, so the melee
     // weapon must hold fire rather than swing at empty air.
     setActiveWeapon(world, getWeaponDef('sword')!);
@@ -301,10 +300,10 @@ describe('melee weapons', () => {
 
   it('melee weapon does not swing at an in-combat enemy beyond gate range', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
+    spawnPlayer(world, 12.5, 12.5);
     // Enemy is well within the combat radius (1200px) so the player counts as
     // "in combat", but far outside the sword gate range (~60px), so no swing.
-    spawnEnemy(world, 600, 100, 50);
+    spawnEnemy(world, 75, 12.5, 50);
     setActiveWeapon(world, getWeaponDef('sword')!);
     world.elapsedMs = 1000;
 
@@ -317,8 +316,8 @@ describe('melee weapons', () => {
 describe('unarmed weapons', () => {
   it('punch spawns a MeleeSwing with stab style and head', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 200, 200);
-    spawnEnemy(world, 230, 200, 50);
+    spawnPlayer(world, 25, 25);
+    spawnEnemy(world, 28.75, 25, 50);
     const def = getWeaponDef('punch')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -329,16 +328,16 @@ describe('unarmed weapons', () => {
     expect(swings).toHaveLength(1);
     const swing = swings[0]!;
     expect(world.stores.meleeSwing.style[swing]).toBe(1); // STAB
-    expect(world.stores.meleeSwing.headRadius[swing]).toBe(ftToPx(def.headRadius));
+    expect(world.stores.meleeSwing.headRadius[swing]).toBe(def.headRadius);
     expect(world.stores.meleeSwing.shaftDamageMult[swing]).toBe(0);
-    expect(world.stores.meleeSwing.knockback[swing]).toBe(ftToPx(def.knockback));
+    expect(world.stores.meleeSwing.knockback[swing]).toBe(def.knockback);
   });
 
   it('punch head deals damage to enemy within reach', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 200, 200);
+    spawnPlayer(world, 25, 25);
     // Enemy at 30px — within bladeLength(24) + headRadius(10) = 34px
-    const enemy = spawnEnemy(world, 230, 200, 50);
+    const enemy = spawnEnemy(world, 28.75, 25, 50);
     const def = getWeaponDef('punch')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -358,9 +357,9 @@ describe('unarmed weapons', () => {
 
   it('punch path still damages because the head overlaps shaft positions', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 200, 200);
+    spawnPlayer(world, 25, 25);
     // Enemy at 12px — right along the shaft, not near the tip head
-    const enemy = spawnEnemy(world, 212, 200, 50);
+    const enemy = spawnEnemy(world, 26.5, 25, 50);
     const def = getWeaponDef('punch')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -389,8 +388,8 @@ describe('unarmed weapons', () => {
 
   it('kick spawns a 360° MeleeSwing slash', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 200, 200);
-    spawnEnemy(world, 230, 200, 50);
+    spawnPlayer(world, 25, 25);
+    spawnEnemy(world, 28.75, 25, 50);
     const def = getWeaponDef('kick')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;

@@ -20,8 +20,8 @@ describe('FloorMap', () => {
     const floor = createSmallFloorMap();
     expect(floor.width).toBe(20);
     expect(floor.height).toBe(15);
-    expect(floor.widthFt).toBe(20 * 32);
-    expect(floor.heightFt).toBe(15 * 32);
+    expect(floor.widthFt).toBe(20 * 4);
+    expect(floor.heightFt).toBe(15 * 4);
   });
 
   it('should delegate flags to TileMap', () => {
@@ -44,17 +44,17 @@ describe('FloorMap', () => {
     it('should convert pixel coords to tile coords', () => {
       const floor = createSmallFloorMap();
       expect(floor.worldToTile(0, 0)).toEqual({ x: 0, y: 0 });
-      expect(floor.worldToTile(32, 32)).toEqual({ x: 1, y: 1 });
-      expect(floor.worldToTile(48, 48)).toEqual({ x: 1, y: 1 }); // within same tile
-      expect(floor.worldToTile(64, 96)).toEqual({ x: 2, y: 3 });
+      expect(floor.worldToTile(4, 4)).toEqual({ x: 1, y: 1 });
+      expect(floor.worldToTile(6, 6)).toEqual({ x: 1, y: 1 }); // within same tile
+      expect(floor.worldToTile(8, 12)).toEqual({ x: 2, y: 3 });
     });
   });
 
   describe('tileToWorld', () => {
     it('should convert tile coords to pixel center', () => {
       const floor = createSmallFloorMap();
-      expect(floor.tileToWorld(0, 0)).toEqual({ x: 16, y: 16 });
-      expect(floor.tileToWorld(1, 1)).toEqual({ x: 48, y: 48 });
+      expect(floor.tileToWorld(0, 0)).toEqual({ x: 2, y: 2 });
+      expect(floor.tileToWorld(1, 1)).toEqual({ x: 6, y: 6 });
     });
   });
 
@@ -62,11 +62,11 @@ describe('FloorMap', () => {
     it('should check passability at pixel coordinates', () => {
       const floor = createSmallFloorMap();
       // All tiles are floor (passable)
-      expect(floor.isPassableAt(100, 100)).toBe(true);
+      expect(floor.isPassableAt(12.5, 12.5)).toBe(true);
 
       // Set a wall
       floor.tileMap.setFlags(3, 3, TilePresets.WALL);
-      expect(floor.isPassableAt(3 * 32 + 10, 3 * 32 + 10)).toBe(false);
+      expect(floor.isPassableAt(3 * 4 + 1, 3 * 4 + 1)).toBe(false);
     });
   });
 

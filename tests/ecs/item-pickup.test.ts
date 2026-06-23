@@ -10,7 +10,7 @@ describe('itemPickupSystem', () => {
   it('picks up gold and adds to playerGold', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const gold = spawnGold(world, 4, 0, 10);
+    const gold = spawnGold(world, 0.5, 0, 10);
 
     itemPickupSystem(world, collisionSystem(world));
 
@@ -21,7 +21,7 @@ describe('itemPickupSystem', () => {
   it('picks up XP gems and adds to score + playerLevel', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    const gem = spawnXpGem(world, 4, 0, 7);
+    const gem = spawnXpGem(world, 0.5, 0, 7);
 
     addComponent(world.ecs, player, set(BroadcastScore, { current: 0 }));
     itemPickupSystem(world, collisionSystem(world));
@@ -34,8 +34,8 @@ describe('itemPickupSystem', () => {
   it('accumulates gold from multiple pickups', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnGold(world, 4, 0, 5);
-    spawnGold(world, 6, 0, 3);
+    spawnGold(world, 0.5, 0, 5);
+    spawnGold(world, 0.75, 0, 3);
 
     itemPickupSystem(world, collisionSystem(world));
 

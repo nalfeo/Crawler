@@ -39,7 +39,7 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('damages the player and destroys an enemy projectile on hit', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    const projectile = spawnEnemyProjectile(world, 4, 0, 0, 0, 7);
+    const projectile = spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7);
 
     damageSystem(world, collisionSystem(world));
 
@@ -63,14 +63,14 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('blocks an enemy projectile during the invincibility window', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    spawnEnemyProjectile(world, 4, 0, 0, 0, 7);
+    spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7);
 
     damageSystem(world, collisionSystem(world));
     const healthAfterFirst = world.stores.health.current[player]!;
     world.combatEvents.length = 0;
 
     // Second projectile within the invincibility window is blocked.
-    spawnEnemyProjectile(world, 4, 0, 0, 0, 7);
+    spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7);
     world.elapsedMs += 50;
     damageSystem(world, collisionSystem(world));
 
@@ -95,7 +95,7 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
     // Stats component gates armor mitigation; the armor value lives in the stats store.
     addComponent(world.ecs, player, Stats);
     world.stores.stats.armor[player] = 100;
-    spawnEnemy(world, 8, 0, 25);
+    spawnEnemy(world, 1, 0, 25);
 
     damageSystem(world, collisionSystem(world));
 

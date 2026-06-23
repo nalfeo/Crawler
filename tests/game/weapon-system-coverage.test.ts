@@ -27,7 +27,7 @@ describe('weaponSystem coverage paths', () => {
   it('keeps cooldown when updating active weapon; clearing weapon silences auto-fire', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
 
     const fireball = getWeaponDef('fireball')!;
     setActiveWeapon(world, fireball);
@@ -78,7 +78,7 @@ describe('weaponSystem coverage paths', () => {
   it('handles unknown active weapon types without spawning an attack', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const def = { ...getWeaponDef('fireball')!, weaponType: 255 as unknown as WeaponTypeValue };
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -104,8 +104,8 @@ describe('weaponEntitySystem coverage paths', () => {
 
   it('fires ranged weapon entities and respects cooldown gating', () => {
     const world = createTestWorld();
-    const owner = spawnPlayer(world, 10, 20);
-    spawnEnemy(world, 100, 20, 50);
+    const owner = spawnPlayer(world, 1.25, 2.5);
+    spawnEnemy(world, 12.5, 2.5, 50);
     const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 20, 50, 0, 200, TeamId.PLAYER);
 
     world.elapsedMs = 50;
@@ -123,7 +123,7 @@ describe('weaponEntitySystem coverage paths', () => {
     const world = createTestWorld();
     const owner = spawnPlayer(world, 0, 0);
     // Enemy at 50px is still reachable once melee gate includes enemy collision radius.
-    spawnEnemy(world, 50, 0, 50);
+    spawnEnemy(world, 6.25, 0, 50);
     addComponent(world.ecs, owner, set(Team, { id: TeamId.ENEMY }));
     spawnWeapon(world, owner, WeaponType.MELEE, 15, 10, 33, 0, TeamId.PLAYER);
     world.elapsedMs = 10;
@@ -135,8 +135,8 @@ describe('weaponEntitySystem coverage paths', () => {
     expect(world.stores.team.id[firstArea!]).toBe(TeamId.ENEMY);
     expect(world.stores.areaDamage.radius[firstArea!]).toBe(33);
 
-    const owner2 = spawnPlayer(world, 5, 5);
-    spawnEnemy(world, 25, 5, 50);
+    const owner2 = spawnPlayer(world, 0.625, 0.625);
+    spawnEnemy(world, 3.125, 0.625, 50);
     spawnWeapon(world, owner2, WeaponType.MELEE, 10, 10, 20, 0, TeamId.PLAYER);
     world.elapsedMs = 20;
     weaponEntitySystem(world);
@@ -150,7 +150,7 @@ describe('weaponEntitySystem coverage paths', () => {
   it('falls back to projectile spawn for unknown weapon type', () => {
     const world = createTestWorld();
     const owner = spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const weapon = createEntity(world);
     addComponent(
       world.ecs,
@@ -189,7 +189,7 @@ describe('weaponEntitySystem coverage paths', () => {
     const world = createTestWorld();
     const owner = spawnPlayer(world, 0, 0);
     // Enemy is found (no FOV map) but sits far beyond the 10px gate range.
-    spawnEnemy(world, 5000, 0, 50);
+    spawnEnemy(world, 625, 0, 50);
     const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 12, 50, 10, 300, TeamId.PLAYER);
     world.elapsedMs = 50;
 
@@ -205,7 +205,7 @@ describe('weaponSystem range-gating paths', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Enemy is nearby and in combat radius, but no active weapon is set.
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     world.elapsedMs = WEAPON.FIRE_RATE_MS;
 
     weaponSystem(world);
@@ -233,7 +233,7 @@ describe('weaponSystem range-gating paths', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Enemy far beyond any ranged gate range.
-    spawnEnemy(world, 10000, 0, 50);
+    spawnEnemy(world, 1250, 0, 50);
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -247,7 +247,7 @@ describe('weaponSystem range-gating paths', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Enemy far outside combat radius (COMBAT_RADIUS_PX = 1200).
-    spawnEnemy(world, 5000, 0, 50);
+    spawnEnemy(world, 625, 0, 50);
     const sword = getWeaponDef('sword')!;
     setActiveWeapon(world, sword);
     world.elapsedMs = sword.cooldownMs;
@@ -262,7 +262,7 @@ describe('weaponSystem miss events', () => {
   it('emits a miss CombatEvent when the accuracy roll fails', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     // Force a miss: baseAccuracy = 0 so effectiveAccuracy = 0; rng.next() > 0 always misses.
     const pistol = { ...getWeaponDef('pistol')!, baseAccuracy: 0 };
     setActiveWeapon(world, pistol);
@@ -282,7 +282,7 @@ describe('weaponSystem miss events', () => {
   it('does not emit a miss event when the accuracy roll succeeds', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const pistol = { ...getWeaponDef('pistol')!, baseAccuracy: 1 };
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -300,7 +300,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a beam weapon (laser) and creates a LineDamage entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const laser = getWeaponDef('laser')!;
     setActiveWeapon(world, laser);
     world.elapsedMs = laser.cooldownMs;
@@ -341,7 +341,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a THROWN returning projectile (boomerang) and creates a Projectile entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const boomerang = getWeaponDef('boomerang')!;
     setActiveWeapon(world, boomerang);
     world.elapsedMs = boomerang.cooldownMs;
@@ -355,7 +355,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a THROWN bouncing projectile (throwing-knife) and creates a Projectile entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const throwingKnife = getWeaponDef('throwing-knife')!;
     setActiveWeapon(world, throwingKnife);
     world.elapsedMs = throwingKnife.cooldownMs;
@@ -369,7 +369,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a THROWN plain projectile (custom def) and creates a Projectile entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     // A thrown weapon with neither return nor bounce → plain spawnProjectile path
     const plain = {
       ...getWeaponDef('boomerang')!,
@@ -414,9 +414,9 @@ describe('weaponSystem boss priority targeting', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Regular enemy closer to player
-    spawnEnemy(world, 30, 0, 50);
+    spawnEnemy(world, 3.75, 0, 50);
     // Boss enemy slightly farther but still in range
-    const boss = spawnEnemy(world, 60, 0, 50);
+    const boss = spawnEnemy(world, 7.5, 0, 50);
     world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
 
     const sword = getWeaponDef('sword')!;
@@ -434,9 +434,9 @@ describe('weaponSystem boss priority targeting', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Regular enemy in reach
-    spawnEnemy(world, 30, 0, 50);
+    spawnEnemy(world, 3.75, 0, 50);
     // Boss far out of range
-    const boss = spawnEnemy(world, 9000, 0, 50);
+    const boss = spawnEnemy(world, 1125, 0, 50);
     world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
 
     const sword = getWeaponDef('sword')!;
