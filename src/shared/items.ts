@@ -69,7 +69,7 @@ export interface ItemDef {
 }
 
 // ---------------------------------------------------------------------------
-// 100-item catalog
+// 102-item catalog
 // ---------------------------------------------------------------------------
 
 const C = ItemRarity.Common;
@@ -169,7 +169,7 @@ function misc(
 }
 
 export const ITEM_CATALOG: readonly ItemDef[] = [
-  // ── Materials (20) ──────────────────────────────────────────────────
+  // ── Materials (21) ──────────────────────────────────────────────────
   mat('iron-ore', 'Iron Ore', 'A chunk of crude iron. Smells like ambition.', C),
   mat('copper-ore', 'Copper Ore', 'Greenish and crumbly. Better than nothing.', C),
   mat('gold-nugget', 'Gold Nugget', 'Shiny enough to distract the audience.', U),
@@ -272,7 +272,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
 
-  // ── Misc (20) ───────────────────────────────────────────────────────
+  // ── Misc (21) ───────────────────────────────────────────────────────
   misc('broken-circuit', 'Broken Circuit', 'Sparks occasionally. Mostly useless.', C),
   misc('alien-tooth', 'Alien Tooth', 'From a species with too many mouths.', U, [
     customTag('Smelly Stuff'),

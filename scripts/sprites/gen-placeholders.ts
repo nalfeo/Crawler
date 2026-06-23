@@ -17,6 +17,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { PNG } from 'pngjs';
 
 // ---------------------------------------------------------------------------
@@ -299,10 +300,10 @@ const PLACEHOLDERS: Record<string, string[]> = {
 };
 
 // ---------------------------------------------------------------------------
-// PNG writer
+// PNG writer (exported for testing)
 // ---------------------------------------------------------------------------
 
-function renderSprite(rows: string[]): Buffer {
+export function renderSprite(rows: string[]): Buffer {
   const W = 16;
   const H = 16;
   const png = new PNG({ width: W, height: H });
@@ -357,69 +358,95 @@ function loadManifest(manifestPath: string): Manifest {
 // CLI
 // ---------------------------------------------------------------------------
 
-const args = process.argv.slice(2);
-const dryRun = args.includes('--dry-run');
-const force = args.includes('--force');
-
-const repoRoot = path.resolve(import.meta.dirname, '..', '..');
-const generatedDir = path.join(repoRoot, 'public', 'assets', 'generated');
-const manifestPath = path.join(generatedDir, 'manifest.json');
-
-const manifest = loadManifest(manifestPath);
-let added = 0;
-let skipped = 0;
-
-for (const [id, rows] of Object.entries(PLACEHOLDERS)) {
-  const outerKey = `${id}-placeholder`;
-
-  // Check if a real (non-placeholder) entry already exists for this briefId
-  const existingEntry = Object.values(manifest.entries).find((e) => e.briefId === id);
-  if (existingEntry && existingEntry.sourceRun !== 'placeholder' && !force) {
-    console.log(`  skip  ${id} — real sprite already approved`);
-    skipped++;
-    continue;
-  }
-
-  // Also skip if this exact placeholder key already exists and --force not passed
-  if (manifest.entries[outerKey] && !force) {
-    console.log(`  skip  ${id} — placeholder already exists`);
-    skipped++;
-    continue;
-  }
-
-  const pngFilename = `${id}-placeholder.png`;
-  const pngPath = path.join(generatedDir, pngFilename);
-
-  if (!dryRun) {
-    fs.mkdirSync(generatedDir, { recursive: true });
-    fs.writeFileSync(pngPath, renderSprite(rows));
-  }
-
-  const entry: ManifestEntry = {
-    briefId: id,
-    spriteName: id,
-    assetPath: `generated/${pngFilename}`,
-    approvedAt: new Date().toISOString(),
-    sourceRun: 'placeholder',
-    variantIndex: 0,
-    anchor: null,
-    sensorScore: 'placeholder',
-    judgeScore: null,
-  };
-
-  if (!dryRun) {
-    manifest.entries[outerKey] = entry;
-  }
-
-  console.log(`  ${dryRun ? 'dry ' : ''}write ${id} → ${pngFilename}`);
-  added++;
+export interface RunOptions {
+  dryRun: boolean;
+  force: boolean;
+  generatedDir: string;
+  manifestPath: string;
 }
 
-if (!dryRun && added > 0) {
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
-  console.log(`\nWrote ${added} placeholder(s) to manifest. Skipped ${skipped}.`);
-} else {
-  console.log(
-    `\n${dryRun ? '[dry-run] ' : ''}${added} placeholder(s) would be written. Skipped ${skipped}.`,
-  );
+export function run(options: RunOptions): { added: number; skipped: number } {
+  const { dryRun, force, generatedDir, manifestPath: mPath } = options;
+  const manifest = loadManifest(mPath);
+  let added = 0;
+  let skipped = 0;
+
+  for (const [id, rows] of Object.entries(PLACEHOLDERS)) {
+    const outerKey = `${id}-placeholder`;
+
+    // Always skip if a real (non-placeholder) entry already exists for this briefId.
+    // --force must not overwrite real approvals — it only refreshes existing placeholders.
+    const existingEntry = Object.values(manifest.entries).find((e) => e.briefId === id);
+    if (existingEntry && existingEntry.sourceRun !== 'placeholder') {
+      console.log(`  skip  ${id} — real sprite already approved`);
+      skipped++;
+      continue;
+    }
+
+    // Also skip if this exact placeholder key already exists and --force not passed
+    if (manifest.entries[outerKey] && !force) {
+      console.log(`  skip  ${id} — placeholder already exists`);
+      skipped++;
+      continue;
+    }
+
+    const pngFilename = `${id}-placeholder.png`;
+    const pngPath = path.join(generatedDir, pngFilename);
+
+    if (!dryRun) {
+      fs.mkdirSync(generatedDir, { recursive: true });
+      fs.writeFileSync(pngPath, renderSprite(rows));
+    }
+
+    const entry: ManifestEntry = {
+      briefId: id,
+      spriteName: id,
+      assetPath: `generated/${pngFilename}`,
+      approvedAt: new Date().toISOString(),
+      sourceRun: 'placeholder',
+      variantIndex: 0,
+      anchor: null,
+      sensorScore: 'placeholder',
+      judgeScore: null,
+    };
+
+    if (!dryRun) {
+      manifest.entries[outerKey] = entry;
+    }
+
+    console.log(`  ${dryRun ? 'dry ' : ''}write ${id} → ${pngFilename}`);
+    added++;
+  }
+
+  if (!dryRun && added > 0) {
+    // Sort keys for stable, reviewable diffs — mirrors approve.ts upsertManifest behaviour.
+    const sortedKeys = Object.keys(manifest.entries).sort();
+    const sortedEntries: Record<string, ManifestEntry> = {};
+    for (const key of sortedKeys) {
+      sortedEntries[key] = manifest.entries[key]!;
+    }
+    manifest.entries = sortedEntries;
+    fs.writeFileSync(mPath, JSON.stringify(manifest, null, 2) + '\n');
+    console.log(`\nWrote ${added} placeholder(s) to manifest. Skipped ${skipped}.`);
+  } else {
+    console.log(
+      `\n${dryRun ? '[dry-run] ' : ''}${added} placeholder(s) would be written. Skipped ${skipped}.`,
+    );
+  }
+
+  return { added, skipped };
+}
+
+const cliEntry = process.argv[1];
+if (cliEntry && import.meta.url === pathToFileURL(cliEntry).href) {
+  const args = process.argv.slice(2);
+  const repoRoot = path.resolve(import.meta.dirname, '..', '..');
+  const generatedDir = path.join(repoRoot, 'public', 'assets', 'generated');
+  const manifestPath = path.join(generatedDir, 'manifest.json');
+  run({
+    dryRun: args.includes('--dry-run'),
+    force: args.includes('--force'),
+    generatedDir,
+    manifestPath,
+  });
 }
