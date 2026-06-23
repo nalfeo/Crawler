@@ -684,7 +684,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           ctx.playerX,
           ctx.playerY,
         );
-        if (nearest && nearest.distance < 100) {
+        if (nearest && nearest.distance < 12.5) {
           ctx.blackboard['nearestNpc'] = nearest;
           return true;
         }
@@ -697,7 +697,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetX = nearest.x;
         this.decision.targetY = nearest.y;
         this.talkedNpcDefs.add(nearest.defId);
-        this.decision.reason = `Interacting with ${nearest.defId} (${nearest.interactionReason}) at ${nearest.distance.toFixed(0)}px`;
+        this.decision.reason = `Interacting with ${nearest.defId} (${nearest.interactionReason}) at ${nearest.distance.toFixed(0)}ft`;
         return BTStatus.SUCCESS;
       }),
     );

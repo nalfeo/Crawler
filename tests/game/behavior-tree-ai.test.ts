@@ -29,7 +29,7 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   const config: MapConfig = {
     widthTiles,
     heightTiles,
-    tileSizeFt: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 1,
     roomWidthRange: [4, 8],
@@ -81,7 +81,7 @@ describe('BehaviorTreeAI', () => {
   it('approaches enemies into honest melee range instead of targeting their center', () => {
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 20);
+    spawnEnemy(world, 12.5, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -92,16 +92,16 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Closing to melee range');
     expect(decision.targetX).not.toBeNull();
     expect(decision.targetX!).toBeGreaterThan(0);
-    expect(decision.targetX!).toBeLessThan(100);
+    expect(decision.targetX!).toBeLessThan(12.5);
   });
 
   it('kites inside strike range instead of standing still and trading blows', () => {
     const world = createTestWorld({ seed: 7 });
     const player = spawnPlayer(world, 0, 0);
-    // Sword reach = ftToPx(5) = 40px, strike gate = 60px. Place the enemy at 30px
+    // Sword reach = 5ft, strike gate = 7.5ft. Place the enemy at 3.75ft
     // so the player is already inside the gate: the old behavior parked on the
     // enemy (returned the player's own position); the kite must keep it moving.
-    spawnEnemy(world, 30, 0, 20);
+    spawnEnemy(world, 3.75, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -113,10 +113,10 @@ describe('BehaviorTreeAI', () => {
     const px = world.stores.position.x[player]!;
     const py = world.stores.position.y[player]!;
     const movedPx = Math.hypot(decision.targetX! - px, decision.targetY! - py);
-    expect(movedPx).toBeGreaterThan(10);
+    expect(movedPx).toBeGreaterThan(1.25);
     // Strafe target stays within the strike gate (still able to land hits).
-    const gatePx = (40 * 3) / 2;
-    const distToEnemy = Math.hypot(decision.targetX! - 30, decision.targetY! - 0);
+    const gatePx = (5 * 3) / 2;
+    const distToEnemy = Math.hypot(decision.targetX! - 3.75, decision.targetY! - 0);
     expect(distToEnemy).toBeLessThanOrEqual(gatePx + 0.001);
   });
 
@@ -125,20 +125,20 @@ describe('BehaviorTreeAI', () => {
     spawnPlayer(world, 0, 0);
     // Enemy purely along +X: a stand-still or pure-radial plan keeps targetY ~0.
     // A tangential orbit step moves the player substantially along Y.
-    spawnEnemy(world, 30, 0, 20);
+    spawnEnemy(world, 3.75, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
-    expect(Math.abs(decision.targetY!)).toBeGreaterThan(10);
+    expect(Math.abs(decision.targetY!)).toBeGreaterThan(1.25);
   });
 
   it('collects gold as loot when no higher-priority progression target is active', () => {
     const world = createTestWorld({ seed: 99 });
     spawnPlayer(world, 0, 0);
-    spawnGold(world, 48, 0, 3);
+    spawnGold(world, 6, 0, 3);
 
     const ai = new BehaviorTreeAI({ seed: 99 });
     const input = createInputState();
@@ -147,7 +147,7 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(3);
     expect(decision.reason).toContain('gold');
-    expect(decision.targetX).toBe(48);
+    expect(decision.targetX).toBe(6);
     expect(decision.targetY).toBe(0);
   });
 
@@ -164,7 +164,7 @@ describe('BehaviorTreeAI', () => {
     // findNearestQuestEnemy returns it without running A*.
     const px = world.stores.position.x[player]!;
     const py = world.stores.position.y[player]!;
-    const rat = spawnEnemy(world, px + 6, py, 20);
+    const rat = spawnEnemy(world, px + 0.75, py, 20);
     world.floor1!.enemyArchetypes.set(rat, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 2 });
@@ -202,7 +202,7 @@ describe('BehaviorTreeAI', () => {
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
     // Place an enemy 200px to the right so the AI targets it and outputs (1, 0).
-    spawnEnemy(world, 200, 0, 20);
+    spawnEnemy(world, 25, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -232,8 +232,8 @@ describe('BehaviorTreeAI', () => {
     // and inside scanRadius (400) so Collect fires. The 4-connected path's first
     // waypoint is a cardinal neighbour (~zero on one axis); string-pulling must
     // advance to the line-of-sight-visible goal so BOTH axes drive.
-    spawnPlayer(world, 112, 112);
-    spawnGold(world, 272, 272, 3);
+    spawnPlayer(world, 14, 14);
+    spawnGold(world, 34, 34, 3);
 
     const ai = new BehaviorTreeAI({ seed: 99 });
     const input = createInputState();
@@ -256,15 +256,15 @@ describe('BehaviorTreeAI', () => {
     enterKillGrindStage(world);
     setActiveWeapon(world, getWeaponDef('sword')!);
     world.floorMap = makeOpenRoom(16, 16);
-    world.stores.position.x[player] = 112;
-    world.stores.position.y[player] = 112;
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
 
-    // Quest enemy inside the sword strike gate (reach 40px, gate 60px). Use an
+    // Quest enemy inside the sword strike gate (reach 5ft, gate 7.5ft). Use an
     // open-room floor map so the fixture isolates the progress-to-engage handoff
     // from dungeon reachability noise. The old Progress branch walked straight
     // onto the enemy center; it must now route through planEngagement and kite
     // (same as Engage/Hunt).
-    const rat = spawnEnemy(world, 142, 112, 20);
+    const rat = spawnEnemy(world, 17.75, 14, 20);
     world.floor1!.enemyArchetypes.set(rat, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 2 });
@@ -278,6 +278,6 @@ describe('BehaviorTreeAI', () => {
     const ex = world.stores.position.x[rat]!;
     const ey = world.stores.position.y[rat]!;
     const distToEnemy = Math.hypot(decision.targetX! - ex, decision.targetY! - ey);
-    expect(distToEnemy).toBeGreaterThan(10);
+    expect(distToEnemy).toBeGreaterThan(1.25);
   });
 });

@@ -15,7 +15,7 @@ import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-typ
 import { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-const ENEMY_RADIUS = 8;
+const ENEMY_RADIUS = 1;
 const MAX_OVERLAP_FRACTION = 0.25;
 const MIN_ENEMY_PLAYER_DISTANCE = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION);
 
@@ -28,7 +28,7 @@ function makePathingFloorMap(doorOpen = true): FloorMap {
   const config: MapConfig = {
     widthTiles: width,
     heightTiles: height,
-    tileSizeFt: 32,
+    tileSizeFt: 4,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -54,7 +54,7 @@ function createOneRoomMapWithDoor(doorOpen: boolean): FloorMap {
   const config: MapConfig = {
     widthTiles: 8,
     heightTiles: 8,
-    tileSizeFt: 32,
+    tileSizeFt: 4,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 6],
@@ -74,7 +74,7 @@ function createObstacleMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 12,
     heightTiles: 12,
-    tileSizeFt: 32,
+    tileSizeFt: 4,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 6],
@@ -94,7 +94,7 @@ function createFullyBlockedMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 10,
     heightTiles: 10,
-    tileSizeFt: 32,
+    tileSizeFt: 4,
     biome: BiomeType.DUNGEON,
     seed: 7,
     roomWidthRange: [4, 6],
@@ -144,31 +144,31 @@ describe('enemyAISystem', () => {
   it('moves a chase enemy toward the player', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 10, 0, 20, AI_TYPE.CHASE, 2, 100, 0);
+    const enemy = spawnBehaviorEnemy(world, 1.25, 0, 20, AI_TYPE.CHASE, 0.25, 12.5, 0);
 
     enemyAISystem(world);
     movementSystem(world);
 
-    expect(world.stores.position.x[enemy]).toBeLessThan(10);
+    expect(world.stores.position.x[enemy]).toBeLessThan(1.25);
     expect(world.stores.position.y[enemy]).toBeCloseTo(0);
   });
 
   it('sets chase enemy velocity toward the player', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 3, 4, 20, AI_TYPE.CHASE, 2.5, 100, 0);
+    const enemy = spawnBehaviorEnemy(world, 0.375, 0.5, 20, AI_TYPE.CHASE, 0.3125, 12.5, 0);
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(-1.5);
-    expect(world.stores.velocity.y[enemy]).toBeCloseTo(-2);
+    expect(world.stores.velocity.x[enemy]).toBeCloseTo(-0.1875);
+    expect(world.stores.velocity.y[enemy]).toBeCloseTo(-0.25);
   });
 
   it('moves a swarm enemy toward the player while separating from nearby swarmers', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 0);
-    const swarmer = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.SWARM, 2, 200, 0);
-    spawnBehaviorEnemy(world, 0, 10, 20, AI_TYPE.SWARM, 2, 200, 0);
+    spawnPlayer(world, 12.5, 0);
+    const swarmer = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.SWARM, 0.25, 25, 0);
+    spawnBehaviorEnemy(world, 0, 1.25, 20, AI_TYPE.SWARM, 0.25, 25, 0);
 
     enemyAISystem(world);
 
@@ -178,20 +178,20 @@ describe('enemyAISystem', () => {
 
   it('ignores distant swarm neighbors outside the neighbor radius', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 0);
-    const swarmer = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.SWARM, 2, 300, 0);
-    spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.SWARM, 2, 300, 0);
+    spawnPlayer(world, 12.5, 0);
+    const swarmer = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.SWARM, 0.25, 37.5, 0);
+    spawnBehaviorEnemy(world, 12.5, 0, 20, AI_TYPE.SWARM, 0.25, 37.5, 0);
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[swarmer]).toBeCloseTo(2);
+    expect(world.stores.velocity.x[swarmer]).toBeCloseTo(0.25);
     expect(world.stores.velocity.y[swarmer]).toBeCloseTo(0);
   });
 
   it('makes ranged enemies back away when they are too close', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    const enemy = spawnBehaviorEnemy(world, 6.25, 0, 20, AI_TYPE.RANGED, 0.1875, 25, 18.75);
 
     enemyAISystem(world);
 
@@ -202,59 +202,59 @@ describe('enemyAISystem', () => {
   it('stops ranged enemies from approaching once they are within attack range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 140, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    const enemy = spawnBehaviorEnemy(world, 17.5, 0, 20, AI_TYPE.RANGED, 0.1875, 25, 18.75);
 
     enemyAISystem(world);
 
     expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
-    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeCloseTo(1.5);
+    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeCloseTo(0.1875);
   });
 
   it('moves ranged enemies toward the player while outside attack range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 170, 0, 20, AI_TYPE.RANGED, 2, 300, 150);
+    const enemy = spawnBehaviorEnemy(world, 21.25, 0, 20, AI_TYPE.RANGED, 0.25, 37.5, 18.75);
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(-2);
+    expect(world.stores.velocity.x[enemy]).toBeCloseTo(-0.25);
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
 
   it('pathing ranged enemies strafe while inside attack range band', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(true);
-    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    spawnPlayer(world, 11 * 4 + 2, 5 * 4 + 2);
     const enemy = spawnBehaviorEnemy(
       world,
-      9 * 32 + 16,
-      5 * 32 + 16,
+      9 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.RANGED,
-      2,
-      500,
-      120,
+      0.25,
+      62.5,
+      15,
       { persona: PATH_PERSONA.NAVIGATOR },
     );
 
     enemyAISystem(world);
 
-    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.1);
+    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.0125);
   });
 
   it('pathing ranged enemies retreat when too close to the player', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(true);
-    spawnPlayer(world, 7 * 32 + 16, 5 * 32 + 16);
+    spawnPlayer(world, 7 * 4 + 2, 5 * 4 + 2);
     const enemy = spawnBehaviorEnemy(
       world,
-      7 * 32 + 16,
-      5 * 32 + 16,
+      7 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.RANGED,
-      2,
-      500,
-      160,
+      0.25,
+      62.5,
+      20,
       { persona: PATH_PERSONA.NAVIGATOR },
     );
 
@@ -268,8 +268,8 @@ describe('enemyAISystem', () => {
   it('keeps pathing flanker enemies idle when no traversable target tile exists', () => {
     const world = createTestWorld();
     world.floorMap = createFullyBlockedMap();
-    spawnPlayer(world, 5 * 32, 5 * 32);
-    const enemy = spawnBehaviorEnemy(world, 4 * 32, 4 * 32, 20, AI_TYPE.CHASE, 2, 500, 0, {
+    spawnPlayer(world, 5 * 4, 5 * 4);
+    const enemy = spawnBehaviorEnemy(world, 4 * 4, 4 * 4, 20, AI_TYPE.CHASE, 0.25, 62.5, 0, {
       persona: PATH_PERSONA.FLANKER,
     });
 
@@ -282,7 +282,7 @@ describe('enemyAISystem', () => {
   it('affects only enemies with the EnemyBehavior component', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const plainEnemy = spawnEnemy(world, 50, 0, 20);
+    const plainEnemy = spawnEnemy(world, 6.25, 0, 20);
 
     setComponent(world.ecs, plainEnemy, Velocity, { x: 0.75, y: -0.25 });
     enemyAISystem(world);
@@ -295,8 +295,8 @@ describe('enemyAISystem', () => {
 
   it('stops all behavior enemies when no player exists', () => {
     const world = createTestWorld();
-    const chaseEnemy = spawnBehaviorEnemy(world, 10, 0, 20, AI_TYPE.CHASE, 2, 100, 0);
-    const swarmEnemy = spawnBehaviorEnemy(world, 20, 10, 20, AI_TYPE.SWARM, 2, 100, 0);
+    const chaseEnemy = spawnBehaviorEnemy(world, 1.25, 0, 20, AI_TYPE.CHASE, 0.25, 12.5, 0);
+    const swarmEnemy = spawnBehaviorEnemy(world, 2.5, 1.25, 20, AI_TYPE.SWARM, 0.25, 12.5, 0);
 
     setComponent(world.ecs, chaseEnemy, Velocity, { x: 1.25, y: -0.5 });
     setComponent(world.ecs, swarmEnemy, Velocity, { x: -0.75, y: 0.25 });
@@ -312,45 +312,45 @@ describe('enemyAISystem', () => {
   it('makes chase enemies wander when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 150, 0, 20, AI_TYPE.CHASE, 2, 100, 0);
+    const enemy = spawnBehaviorEnemy(world, 18.75, 0, 20, AI_TYPE.CHASE, 0.25, 12.5, 0);
 
     enemyAISystem(world);
 
     expect(
       Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
-    ).toBeGreaterThan(0.1);
+    ).toBeGreaterThan(0.0125);
   });
 
   it('makes swarm enemies wander when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 180, 0, 20, AI_TYPE.SWARM, 2, 100, 0);
-    spawnBehaviorEnemy(world, 180, 10, 20, AI_TYPE.SWARM, 2, 100, 0);
+    const enemy = spawnBehaviorEnemy(world, 22.5, 0, 20, AI_TYPE.SWARM, 0.25, 12.5, 0);
+    spawnBehaviorEnemy(world, 22.5, 1.25, 20, AI_TYPE.SWARM, 0.25, 12.5, 0);
 
     enemyAISystem(world);
 
     expect(
       Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
-    ).toBeGreaterThan(0.1);
+    ).toBeGreaterThan(0.0125);
   });
 
   it('makes ranged enemies wander when the player is outside aggro range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 400, 0, 20, AI_TYPE.RANGED, 2, 100, 150);
+    const enemy = spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.RANGED, 0.25, 12.5, 18.75);
 
     enemyAISystem(world);
 
     expect(
       Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
-    ).toBeGreaterThan(0.1);
+    ).toBeGreaterThan(0.0125);
   });
 
   it('moves a leaper toward the player at normal speed while out of pounce range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Spawn well outside the leap range but inside aggro range.
-    const enemy = spawnBehaviorEnemy(world, 300, 0, 20, AI_TYPE.LEAPER, 1, 400, 0);
+    const enemy = spawnBehaviorEnemy(world, 37.5, 0, 20, AI_TYPE.LEAPER, 0.125, 50, 0);
 
     enemyAISystem(world);
 
@@ -358,8 +358,8 @@ describe('enemyAISystem', () => {
     const vy = world.stores.velocity.y[enemy] ?? 0;
     // It should commit a normal-speed approach straight at the player (−x), not
     // a slow sideways prep wiggle.
-    expect(vx).toBeLessThan(-0.5);
-    expect(Math.abs(vy)).toBeLessThan(0.2);
+    expect(vx).toBeLessThan(-0.0625);
+    expect(Math.abs(vy)).toBeLessThan(0.025);
   });
 
   it('makes leaper enemies pause-wiggle before fast leaps', () => {
@@ -367,15 +367,15 @@ describe('enemyAISystem', () => {
     spawnPlayer(world, 0, 0);
     // Spawn inside the pounce band: beyond the inner range (where the slime
     // reverts to a hittable normal approach) but within SLIME_LEAP_RANGE.
-    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
+    const enemy = spawnBehaviorEnemy(world, 10, 0, 20, AI_TYPE.LEAPER, 0.125, 25, 0);
 
     enemyAISystem(world);
     const firstSpeed = Math.hypot(
       world.stores.velocity.x[enemy] ?? 0,
       world.stores.velocity.y[enemy] ?? 0,
     );
-    expect(firstSpeed).toBeLessThan(1);
-    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.05);
+    expect(firstSpeed).toBeLessThan(0.125);
+    expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.00625);
 
     let observedLeapSpeed = 0;
     for (let i = 0; i < 80; i += 1) {
@@ -391,7 +391,7 @@ describe('enemyAISystem', () => {
     // The leap is a deliberate, gentler hop (≈1.5× base speed, with a bonus-speed
     // floor) so it stays hittable, but is still clearly faster than the slow prep
     // crouch.
-    expect(observedLeapSpeed).toBeGreaterThan(1.5);
+    expect(observedLeapSpeed).toBeGreaterThan(0.1875);
   });
 
   it('freezes leaper enemies in a recovery window after each leap', () => {
@@ -401,7 +401,7 @@ describe('enemyAISystem', () => {
     // to attack after dodging the pounce.
     spawnPlayer(world, 0, 0);
     // Spawn inside the pounce band (beyond the inner range, within leap range).
-    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1.5, 200, 0);
+    const enemy = spawnBehaviorEnemy(world, 10, 0, 20, AI_TYPE.LEAPER, 0.1875, 25, 0);
 
     let maxSpeed = 0;
     let longestFrozenStreak = 0;
@@ -416,7 +416,7 @@ describe('enemyAISystem', () => {
         world.stores.velocity.y[enemy] ?? 0,
       );
       maxSpeed = Math.max(maxSpeed, speed);
-      if (speed > 1.5) {
+      if (speed > 0.1875) {
         sawLeap = true;
       }
       if (speed < 1e-6) {
@@ -435,7 +435,7 @@ describe('enemyAISystem', () => {
     }
 
     // The pounce reaches a clearly fast leap speed before the freeze.
-    expect(maxSpeed).toBeGreaterThan(1.5);
+    expect(maxSpeed).toBeGreaterThan(0.1875);
     // After leaping the slime holds completely still for a meaningful window.
     expect(frozenAfterLeap).toBe(true);
     expect(longestFrozenStreak).toBeGreaterThanOrEqual(15);
@@ -444,8 +444,8 @@ describe('enemyAISystem', () => {
   it('keeps room enemies idle until their room door opens', () => {
     const world = createTestWorld();
     world.floorMap = createOneRoomMapWithDoor(false);
-    spawnPlayer(world, 32, 32);
-    const enemy = spawnBehaviorEnemy(world, 64, 64, 20, AI_TYPE.CHASE, 2, 200, 0);
+    spawnPlayer(world, 4, 4);
+    const enemy = spawnBehaviorEnemy(world, 8, 8, 20, AI_TYPE.CHASE, 0.25, 25, 0);
 
     enemyAISystem(world);
     expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
@@ -459,8 +459,17 @@ describe('enemyAISystem', () => {
   it('steers around nearby wall obstacles instead of pushing straight into them', () => {
     const world = createTestWorld();
     world.floorMap = createObstacleMap();
-    spawnPlayer(world, 8 * 32 + 16, 6 * 32 + 16);
-    const enemy = spawnBehaviorEnemy(world, 4 * 32 + 28, 6 * 32 + 16, 20, AI_TYPE.CHASE, 2, 300, 0);
+    spawnPlayer(world, 8 * 4 + 2, 6 * 4 + 2);
+    const enemy = spawnBehaviorEnemy(
+      world,
+      4 * 4 + 3.5,
+      6 * 4 + 2,
+      20,
+      AI_TYPE.CHASE,
+      0.25,
+      37.5,
+      0,
+    );
 
     enemyAISystem(world);
 
@@ -471,18 +480,18 @@ describe('enemyAISystem', () => {
   it('falls back to chase behavior when ranged attack range is zero', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 120, 0, 20, AI_TYPE.RANGED, 2, 200, 0);
+    const enemy = spawnBehaviorEnemy(world, 15, 0, 20, AI_TYPE.RANGED, 0.25, 25, 0);
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(-2);
+    expect(world.stores.velocity.x[enemy]).toBeCloseTo(-0.25);
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
   });
 
   it('does not fire projectiles at zero distance and remains stationary', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 2, 200, 150);
+    const enemy = spawnBehaviorEnemy(world, 0, 0, 20, AI_TYPE.RANGED, 0.25, 25, 18.75);
 
     enemyAISystem(world);
 
@@ -494,7 +503,7 @@ describe('enemyAISystem', () => {
   it('respects ranged fire cooldown before firing again', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    const enemy = spawnBehaviorEnemy(world, 12.5, 0, 20, AI_TYPE.RANGED, 0.1875, 25, 18.75);
 
     world.elapsedMs = 1_000;
     world.stores.enemyBehavior.lastFireMs[enemy] = 900;
@@ -508,10 +517,10 @@ describe('enemyAISystem', () => {
 
   it('pushes overlapping enemies apart via separation', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 0);
+    spawnPlayer(world, 12.5, 0);
     // Two chase enemies at the exact same position, within aggro range
-    const enemyA = spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.CHASE, 2, 200, 0);
-    const enemyB = spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.CHASE, 2, 200, 0);
+    const enemyA = spawnBehaviorEnemy(world, 6.25, 0, 20, AI_TYPE.CHASE, 0.25, 25, 0);
+    const enemyB = spawnBehaviorEnemy(world, 6.25, 0, 20, AI_TYPE.CHASE, 0.25, 25, 0);
 
     enemyAISystem(world);
 
@@ -526,16 +535,16 @@ describe('enemyAISystem', () => {
     expect(divergesX || divergesY).toBe(true);
 
     // Velocities should be clamped to max speed (2)
-    expect(Math.hypot(vxA, vyA)).toBeLessThanOrEqual(2 + 0.001);
-    expect(Math.hypot(vxB, vyB)).toBeLessThanOrEqual(2 + 0.001);
+    expect(Math.hypot(vxA, vyA)).toBeLessThanOrEqual(0.25 + 0.001);
+    expect(Math.hypot(vxB, vyB)).toBeLessThanOrEqual(0.25 + 0.001);
   });
 
   it('keeps de-aggroed enemies wandering independently', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Two chase enemies at same position but outside aggro range
-    const enemyA = spawnBehaviorEnemy(world, 200, 0, 20, AI_TYPE.CHASE, 2, 50, 0);
-    const enemyB = spawnBehaviorEnemy(world, 200, 0, 20, AI_TYPE.CHASE, 2, 50, 0);
+    const enemyA = spawnBehaviorEnemy(world, 25, 0, 20, AI_TYPE.CHASE, 0.25, 6.25, 0);
+    const enemyB = spawnBehaviorEnemy(world, 25, 0, 20, AI_TYPE.CHASE, 0.25, 6.25, 0);
 
     enemyAISystem(world);
 
@@ -547,22 +556,22 @@ describe('enemyAISystem', () => {
       world.stores.velocity.x[enemyB] ?? 0,
       world.stores.velocity.y[enemyB] ?? 0,
     );
-    expect(speedA).toBeGreaterThan(0.1);
-    expect(speedB).toBeGreaterThan(0.1);
+    expect(speedA).toBeGreaterThan(0.0125);
+    expect(speedB).toBeGreaterThan(0.0125);
   });
 
   it('navigator personas route through doorways instead of getting stuck on pillars', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(true);
-    const player = spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    const player = spawnPlayer(world, 11 * 4 + 2, 5 * 4 + 2);
     const navigator = spawnBehaviorEnemy(
       world,
-      3 * 32 + 16,
-      5 * 32 + 16,
+      3 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2,
-      500,
+      0.25,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -572,22 +581,22 @@ describe('enemyAISystem', () => {
     runTicks(world, 120);
 
     expect(world.stores.position.x[navigator]).toBeGreaterThan(
-      (world.stores.position.x[player] ?? 0) - 64,
+      (world.stores.position.x[player] ?? 0) - 8,
     );
   });
 
   it('navigator chase still closes distance while player strafes left-right', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(true);
-    const player = spawnPlayer(world, 10 * 32 + 16, 5 * 32 + 16);
+    const player = spawnPlayer(world, 10 * 4 + 2, 5 * 4 + 2);
     const navigator = spawnBehaviorEnemy(
       world,
-      2 * 32 + 16,
-      5 * 32 + 16,
+      2 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2,
-      500,
+      0.25,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -602,7 +611,7 @@ describe('enemyAISystem', () => {
 
     for (let i = 0; i < 120; i += 1) {
       const strafeDir = i % 20 < 10 ? -1 : 1;
-      world.stores.position.x[player] = (world.stores.position.x[player] ?? 0) + strafeDir * 1.5;
+      world.stores.position.x[player] = (world.stores.position.x[player] ?? 0) + strafeDir * 0.1875;
       world.frameCount += 1;
       world.elapsedMs += 16;
       doorSystem(world);
@@ -615,21 +624,21 @@ describe('enemyAISystem', () => {
     const endDy =
       (world.stores.position.y[player] ?? 0) - (world.stores.position.y[navigator] ?? 0);
     const endDistance = Math.hypot(endDx, endDy);
-    expect(endDistance).toBeLessThan(startDistance - 40);
+    expect(endDistance).toBeLessThan(startDistance - 5);
   });
 
   it('stupid personas keep direct steering and stay blocked by closed doors', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(false);
-    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    spawnPlayer(world, 11 * 4 + 2, 5 * 4 + 2);
     const stupid = spawnBehaviorEnemy(
       world,
-      3 * 32 + 16,
-      5 * 32 + 16,
+      3 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2,
-      500,
+      0.25,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.STUPID,
@@ -649,19 +658,19 @@ describe('enemyAISystem', () => {
   it('flanker personas prefer passing beyond the player instead of stopping in front', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(true);
-    const player = spawnPlayer(world, 9 * 32 + 16, 5 * 32 + 16);
+    const player = spawnPlayer(world, 9 * 4 + 2, 5 * 4 + 2);
     const flanker = spawnBehaviorEnemy(
       world,
-      2 * 32 + 16,
-      5 * 32 + 16,
+      2 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2.4,
-      500,
+      0.3,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.FLANKER,
-        flankDistance: 96,
+        flankDistance: 12,
       },
     );
 
@@ -673,19 +682,19 @@ describe('enemyAISystem', () => {
   it('flanker personas respect the player overlap cap while pathing past the player', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(true);
-    const player = spawnPlayer(world, 9 * 32 + 16, 5 * 32 + 16);
+    const player = spawnPlayer(world, 9 * 4 + 2, 5 * 4 + 2);
     const flanker = spawnBehaviorEnemy(
       world,
-      2 * 32 + 16,
-      5 * 32 + 16,
+      2 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2.4,
-      500,
+      0.3,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.FLANKER,
-        flankDistance: 96,
+        flankDistance: 12,
       },
     );
 
@@ -696,15 +705,15 @@ describe('enemyAISystem', () => {
   it('flying traversal can cross blocked structures where ground traversal cannot', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(false);
-    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    spawnPlayer(world, 11 * 4 + 2, 5 * 4 + 2);
     const grounded = spawnBehaviorEnemy(
       world,
-      3 * 32 + 16,
-      5 * 32 + 16,
+      3 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2,
-      500,
+      0.25,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -713,12 +722,12 @@ describe('enemyAISystem', () => {
     );
     const flying = spawnBehaviorEnemy(
       world,
-      3 * 32 + 16,
-      6 * 32 + 16,
+      3 * 4 + 2,
+      6 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2,
-      500,
+      0.25,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -729,22 +738,22 @@ describe('enemyAISystem', () => {
 
     runTicks(world, 120);
 
-    expect(world.stores.position.x[grounded]).toBeLessThan(6 * 32);
-    expect(world.stores.position.x[flying]).toBeGreaterThan(9 * 32);
+    expect(world.stores.position.x[grounded]).toBeLessThan(6 * 4);
+    expect(world.stores.position.x[flying]).toBeGreaterThan(9 * 4);
   });
 
   it('flying traversal respects the player overlap cap while crossing blocked structures', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(false);
-    const player = spawnPlayer(world, 8 * 32 + 16, 5 * 32 + 16);
+    const player = spawnPlayer(world, 8 * 4 + 2, 5 * 4 + 2);
     const flying = spawnBehaviorEnemy(
       world,
-      3 * 32 + 16,
-      5 * 32 + 16,
+      3 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2,
-      500,
+      0.25,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -760,15 +769,15 @@ describe('enemyAISystem', () => {
   it('door state changes trigger re-pathing without trapping navigators in rooms', () => {
     const world = createTestWorld();
     world.floorMap = makePathingFloorMap(false);
-    spawnPlayer(world, 11 * 32 + 16, 5 * 32 + 16);
+    spawnPlayer(world, 11 * 4 + 2, 5 * 4 + 2);
     const navigator = spawnBehaviorEnemy(
       world,
-      3 * 32 + 16,
-      5 * 32 + 16,
+      3 * 4 + 2,
+      5 * 4 + 2,
       20,
       AI_TYPE.CHASE,
-      2,
-      500,
+      0.25,
+      62.5,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -783,7 +792,7 @@ describe('enemyAISystem', () => {
     setComponent(world.ecs, door, DoorState, { tileX: 6, tileY: 5, isOpen: 1 });
     runTicks(world, 100);
 
-    expect(beforeOpenX).toBeLessThan(6 * 32);
-    expect(world.stores.position.x[navigator]).toBeGreaterThan(8 * 32);
+    expect(beforeOpenX).toBeLessThan(6 * 4);
+    expect(world.stores.position.x[navigator]).toBeGreaterThan(8 * 4);
   });
 });
