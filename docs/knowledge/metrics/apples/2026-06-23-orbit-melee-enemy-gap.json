@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-23",
+  "slug": "orbit-melee-enemy-gap",
+  "pr": 253,
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "on-target",
+  "notes": "Two files changed: bt-ai-provider.ts (new constant, new method, two function edits) and enemyAISystem.ts (two surgical edits). No test changes needed."
+}
