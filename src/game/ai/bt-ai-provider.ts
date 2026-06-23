@@ -136,6 +136,14 @@ const ENEMY_IGNORE_FRAMES = 240;
 const ENGAGE_PROGRESS_EPSILON_PX = 6;
 // Frames of no distance/HP progress against the same enemy before we abandon it.
 const ENGAGE_GIVEUP_FRAMES = 120;
+// Minimum px from the enemy the player stops actively pursuing. Mirrors
+// MIN_MOB_PLAYER_DISTANCE in enemyAISystem so the player closes to the same
+// near-contact range as melee mobs before the kite/orbit loop takes over.
+const MIN_PLAYER_ENEMY_CONTACT_PX = 12;
+// Smoothed-velocity magnitude below which the player is considered stalled
+// during ENGAGE. When stalled but enemy is still far, direct pursuit replaces
+// the stall — mirrors enemyAISystem's pathDirection.length ≤ EPSILON check.
+const ENGAGE_STALL_VELOCITY_THRESHOLD = 0.15;
 // Frames of no distance progress toward a COLLECT loot target before we abandon
 // it. Retained for the engage watchdog's epsilon reuse; the COLLECT deadlock is
 // handled by the dwell watchdog below.
@@ -1415,6 +1423,34 @@ export class BehaviorTreeAI implements AIInputProvider {
     state.moveX = this.smoothMoveX;
     state.moveY = this.smoothMoveY;
 
+    // Anti-stall for ENGAGE: when the blended direction drops below the stall
+    // threshold (kite reversal or state-transition blend passing through zero)
+    // while the enemy is still outside minimum contact range, bypass the
+    // smooth stall and drive directly toward the enemy's pixel position.
+    // Mirrors the enemyAISystem pathDirection.length ≤ EPSILON → direct
+    // pursuit correction that fixed enemy "dancing" at tile-center distance.
+    const smoothLen = Math.hypot(this.smoothMoveX, this.smoothMoveY);
+    if (
+      smoothLen < ENGAGE_STALL_VELOCITY_THRESHOLD &&
+      this.decision.state === AIState.ENGAGE &&
+      this.decision.targetEid !== null
+    ) {
+      const ex = world.stores.position.x[this.decision.targetEid];
+      const ey = world.stores.position.y[this.decision.targetEid];
+      if (typeof ex === 'number' && typeof ey === 'number') {
+        const toDx = ex - playerX;
+        const toDy = ey - playerY;
+        const toDist = Math.hypot(toDx, toDy);
+        if (toDist > MIN_PLAYER_ENEMY_CONTACT_PX) {
+          const norm = normalizeInputDirection(toDx / toDist, toDy / toDist);
+          state.moveX = norm.moveX;
+          state.moveY = norm.moveY;
+          this.smoothMoveX = norm.moveX;
+          this.smoothMoveY = norm.moveY;
+        }
+      }
+    }
+
     state.action = false;
 
     if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
@@ -1634,7 +1670,31 @@ export class BehaviorTreeAI implements AIInputProvider {
       }
     }
 
-    // Fallback: direct movement toward target
+    // Fallback: direct movement toward target. In ENGAGE mode, prefer the
+    // enemy's current pixel position over the plan target so the player closes
+    // the sub-tile gap precisely — mirrors the enemy AI's direct pursuit when
+    // its path waypoints are exhausted but the player has drifted within the
+    // tile (see enemyAISystem "Tile center already reached" fix).
+    if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
+      const ex = world.stores.position.x[this.decision.targetEid];
+      const ey = world.stores.position.y[this.decision.targetEid];
+      if (typeof ex === 'number' && typeof ey === 'number') {
+        const toDx = ex - playerX;
+        const toDy = ey - playerY;
+        const toDist = Math.hypot(toDx, toDy);
+        if (toDist > MIN_PLAYER_ENEMY_CONTACT_PX) {
+          this.moveWithLocalNavigation(
+            state,
+            world,
+            playerX,
+            playerY,
+            toDx / toDist,
+            toDy / toDist,
+          );
+          return;
+        }
+      }
+    }
     this.moveWithLocalNavigation(
       state,
       world,
