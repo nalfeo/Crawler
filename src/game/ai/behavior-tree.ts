@@ -37,6 +37,8 @@ export interface BTContext {
   playerY: number;
   /** Player health percentage (0-1) */
   healthPercent: number;
+  /** Current simulation frame count (used by BTCooldown and time-sensitive nodes) */
+  frameCount: number;
   /** Shared data between nodes (blackboard pattern) */
   blackboard: Record<string, unknown>;
 }
@@ -395,4 +397,115 @@ export function succeeder(name: string, child: BTNode): BTSucceeder {
 
 export function repeat(name: string, child: BTNode, count: number = Infinity): BTRepeat {
   return new BTRepeat(name, child, count);
+}
+
+/**
+ * Policy controlling when a Parallel node resolves.
+ */
+export enum BTParallelPolicy {
+  /** Succeed only when ALL children succeed; fail as soon as any child fails. */
+  REQUIRE_ALL = 'REQUIRE_ALL',
+  /** Succeed as soon as ANY child succeeds; keep running all other children. */
+  REQUIRE_ONE = 'REQUIRE_ONE',
+  /**
+   * Always return RUNNING regardless of child outcomes.
+   * Use when children are side-effectful and should never gate the parent tree.
+   */
+  OBSERVE = 'OBSERVE',
+}
+
+/**
+ * Parallel node: ticks ALL children every frame regardless of individual results.
+ * Resolves according to the given policy (default: REQUIRE_ALL).
+ *
+ * Implements the standard parallel composite from Millington & Funge "AI for Games".
+ * Use BTParallelPolicy.OBSERVE to run fully side-effectful tracks that should
+ * never affect the parent's status (e.g. the opportunistic behavior layer).
+ */
+export class BTParallel extends BTNodeBase {
+  constructor(
+    name: string,
+    private readonly children: BTNode[],
+    private readonly policy: BTParallelPolicy = BTParallelPolicy.REQUIRE_ALL,
+  ) {
+    super(name);
+  }
+
+  tick(context: BTContext): BTStatus {
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (const child of this.children) {
+      const status = child.tick(context);
+      if (status === BTStatus.SUCCESS) successCount++;
+      else if (status === BTStatus.FAILURE) failureCount++;
+    }
+
+    if (this.policy === BTParallelPolicy.OBSERVE) {
+      return BTStatus.RUNNING;
+    }
+
+    if (this.policy === BTParallelPolicy.REQUIRE_ALL) {
+      if (failureCount > 0) return BTStatus.FAILURE;
+      if (successCount === this.children.length) return BTStatus.SUCCESS;
+      return BTStatus.RUNNING;
+    }
+
+    // REQUIRE_ONE
+    if (successCount > 0) return BTStatus.SUCCESS;
+    if (failureCount === this.children.length) return BTStatus.FAILURE;
+    return BTStatus.RUNNING;
+  }
+
+  getType(): string {
+    return `Parallel(${this.policy})`;
+  }
+
+  getChildren(): BTNode[] {
+    return this.children;
+  }
+}
+
+/**
+ * Cooldown decorator: suppresses the child for a fixed number of frames after
+ * it succeeds. Returns FAILURE while on cooldown so parent selectors can try
+ * other branches. Useful for opportunistic actions that must not fire every tick.
+ */
+export class BTCooldown extends BTDecorator {
+  private cooldownUntilFrame: number = 0;
+
+  constructor(
+    name: string,
+    child: BTNode,
+    private readonly cooldownFrames: number,
+  ) {
+    super(name, child);
+  }
+
+  tick(context: BTContext): BTStatus {
+    if (context.frameCount < this.cooldownUntilFrame) {
+      return BTStatus.FAILURE;
+    }
+    const status = this.child.tick(context);
+    if (status === BTStatus.SUCCESS) {
+      this.cooldownUntilFrame = context.frameCount + this.cooldownFrames;
+    }
+    return status;
+  }
+
+  getType(): string {
+    return 'Cooldown';
+  }
+}
+
+export function parallel(
+  name: string,
+  policy: BTParallelPolicy,
+  ...children: BTNode[]
+): BTParallel {
+  return new BTParallel(name, children, policy);
+}
+
+export function cooldown(name: string, frames: number, child: BTNode): BTCooldown {
+  return new BTCooldown(name, child, frames);
 }

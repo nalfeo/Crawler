@@ -1,0 +1,8 @@
+{
+  "slug": "scoring-hill-climb",
+  "date": "2026-06-23",
+  "estimated": 3,
+  "actual": 3,
+  "verdict": "exact",
+  "description": "Scoring function, totalGold in RunStats, hill-climb optimiser, preview deploy attempt, antagonistic review"
+}
