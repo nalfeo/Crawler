@@ -1,5 +1,5 @@
 /**
- * Item definitions — types, rarity, tag system, and the item catalog.
+ * Item definitions — types, rarity, tag system, and the 102-item catalog.
  *
  * Tags drive inventory tabs dynamically. KnownTag covers the canonical five;
  * CustomTag (branded string) lets AI-generated content invent new categories
