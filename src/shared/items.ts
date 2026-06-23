@@ -1,5 +1,5 @@
 /**
- * Item definitions — types, rarity, tag system, and the 102-item catalog.
+ * Item definitions — types, rarity, tag system, and the 100-item catalog.
  *
  * Tags drive inventory tabs dynamically. KnownTag covers the canonical five;
  * CustomTag (branded string) lets AI-generated content invent new categories
@@ -69,7 +69,7 @@ export interface ItemDef {
 }
 
 // ---------------------------------------------------------------------------
-// 102-item catalog
+// 100-item catalog
 // ---------------------------------------------------------------------------
 
 const C = ItemRarity.Common;
@@ -169,7 +169,7 @@ function misc(
 }
 
 export const ITEM_CATALOG: readonly ItemDef[] = [
-  // ── Materials (21) ──────────────────────────────────────────────────
+  // ── Materials (20) ──────────────────────────────────────────────────
   mat('iron-ore', 'Iron Ore', 'A chunk of crude iron. Smells like ambition.', C),
   mat('copper-ore', 'Copper Ore', 'Greenish and crumbly. Better than nothing.', C),
   mat('gold-nugget', 'Gold Nugget', 'Shiny enough to distract the audience.', U),
@@ -194,7 +194,6 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('aether-dust', 'Aether Dust', "Sparkles in dimensions you can't see.", E),
   mat('rusted-scrap', 'Rusted Scrap', 'Junk to most. Treasure to crafters.', C),
   mat('celestial-ingot', 'Celestial Ingot', "Forged in a star that hasn't been born yet.", L),
-  mat('bone-shard', 'Bone Shard', 'A splinter of something that used to move.', C),
 
   // ── Weapons (20) ────────────────────────────────────────────────────
   wpn('rusty-shiv', 'Rusty Shiv', 'Tetanus included at no extra charge.', C),
@@ -272,7 +271,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
 
-  // ── Misc (21) ───────────────────────────────────────────────────────
+  // ── Misc (20) ───────────────────────────────────────────────────────
   misc('broken-circuit', 'Broken Circuit', 'Sparks occasionally. Mostly useless.', C),
   misc('alien-tooth', 'Alien Tooth', 'From a species with too many mouths.', U, [
     customTag('Smelly Stuff'),
@@ -300,7 +299,6 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   misc('laugh-track-tape', 'Laugh Track Tape', 'Plays canned laughter. Inappropriately.', U),
   misc('lucky-dice', 'Lucky Dice', 'Loaded. In your favor. Maybe.', R),
   misc('expired-coupon', 'Expired Coupon', '10% off at a store that no longer exists.', C),
-  misc('pebble', 'Pebble', 'A smooth stone. Unremarkable but real.', C),
   misc(
     'merchants-stained-charm',
     "Merchant's Stained Charm",

@@ -15,7 +15,7 @@ describe('Item Catalog', () => {
   });
 
   it('snapshot: current catalog size (update when intentionally adding items)', () => {
-    expect(ITEM_CATALOG).toHaveLength(102);
+    expect(ITEM_CATALOG).toHaveLength(100);
   });
 
   it('has unique IDs', () => {
@@ -52,11 +52,11 @@ describe('Item Catalog', () => {
 
   it('snapshot: current item count per canonical tag (update when intentionally adding items)', () => {
     const expected: Record<string, number> = {
-      Materials: 21,
+      Materials: 20,
       Weapons: 20,
       Consumables: 20,
       'Key Items': 20,
-      Misc: 21,
+      Misc: 20,
     };
     for (const tag of KNOWN_TAGS) {
       const count = ITEM_CATALOG.filter((item) => item.tags.includes(tag)).length;
