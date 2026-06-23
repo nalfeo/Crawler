@@ -195,4 +195,19 @@ describe('dropSystem', () => {
     }
     expect(query(world.ecs, [EnemyBehavior])).toContain(slainSlime);
   });
+
+  it('allows baby slime drops even before floor1 tutorial drop unlock', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const miniSlime = spawnBehaviorEnemy(world, 100, 120, 10, AI_TYPE.LEAPER, 0.9, 200, 0);
+    world.floor1?.enemyArchetypes.set(miniSlime, 'slime-mini');
+    setComponent(world.ecs, miniSlime, Health, { current: 0, max: 10 });
+
+    dropSystem(world);
+
+    expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(1);
+  });
 });

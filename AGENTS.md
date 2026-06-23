@@ -131,6 +131,11 @@ If the session ended with unresolved issues, use `state=failure` instead.
 The status stays locked until you explicitly unlock it — mid-session pushes
 will re-lock automatically, so you only need to unlock once at the very end.
 
+**Fallback (when `gh workflow run` returns 403):** include `[session-complete]`
+anywhere in the final commit message. The lock-on-push job will post `success`
+instead of `pending` for that commit, clearing the lock without needing a working
+`gh` token.
+
 ## Merge Policy
 
 - When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass — do not poll or wait manually.

@@ -201,7 +201,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   // Floor 1 onboarding pacing: gold, XP, and junk only start dropping after the
   // player finds the Welcome Office and the Tutorial Goon explains the rules.
   // Off-floor (e.g. labs) drops are always enabled.
-  const allowDrops = !world.floor1 || world.goalFlags.get('floor1-drops-unlocked') === true;
+  const allowFloorDrops = !world.floor1 || world.goalFlags.get('floor1-drops-unlocked') === true;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -285,7 +285,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      spawnDrops(world, x, y, drops, allowDrops);
+      const isMiniSlime = world.floor1?.enemyArchetypes.get(eid) === 'slime-mini';
+      spawnDrops(world, x, y, drops, allowFloorDrops || isMiniSlime);
       logger.info('Processed enemy death drops', {
         eid,
         x,
