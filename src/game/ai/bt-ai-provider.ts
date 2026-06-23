@@ -73,7 +73,11 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   rangedSafeDistance: 120,
   opportunisticGrabRadius: 120,
   dodgeWeight: 0.25,
-  collectPullWeight: 0.15,
+  // Collect/farm pull is disabled (0.0) until additional headless seeds validate
+  // that loot-biased navigation does not over-engage enemy clusters. Set > 0 in
+  // AIConfig to experiment; re-enable the default once validated seeds confirm
+  // the floor-clear budget is safe.
+  collectPullWeight: 0.0,
   debug: false,
 };
 
@@ -322,12 +326,6 @@ const GOLD_FARM_GOLD_SCAN_RADIUS_PX = 800;
 const GOLD_FARM_COLLECT_RADIUS_PX = 260;
 
 // --- Opportunistic behavior constants ---
-// Radius (px) around each A* path waypoint scanned for loot to grab on the way
-// past. Sized just under a tile (32px) so only loot directly on the path is
-// swept, avoiding long detours while still collecting gems dropped by kills the
-// AI walked through. The config.opportunisticGrabRadius is separately used for
-// grab-radius checks around the player position itself.
-const WAYPOINT_SWEEP_RADIUS_PX = 64;
 // Enemy must be within this radius (px) to count as a dodge threat.
 // Kept small (≈12 ft) so dodge only fires when an enemy is genuinely
 // imminent — a large radius caused the AI to route around enemy pockets
@@ -1009,88 +1007,70 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * OpportunisticCollect: pull the player toward nearby loot regardless of
-   * the current Track A movement goal.
+   * OpportunisticCollect: pull the player toward loot within arm's reach
+   * (`config.opportunisticGrabRadius`) regardless of the current Track A
+   * movement goal, so the AI scoops up nearby gems while navigating elsewhere
+   * without switching state.
    *
-   * Two cases generate a pull vector:
-   * 1. Any loot within `config.opportunisticGrabRadius` of the player —
-   *    closest-loot pull, weighted by distance.
-   * 2. Any loot within `WAYPOINT_SWEEP_RADIUS_PX` of a current A* path
-   *    waypoint — path-integrated collection shortcut so the AI grabs gems
-   *    it walks past without a full state switch.
+   * Only the player-proximity radius is checked (no A* path waypoint sweep).
+   * The waypoint sweep was removed because it biased every exploration path
+   * toward loot-dense (= recently enemy-killed) areas, causing the AI to fight
+   * significantly more enemies than needed and miss the floor-clear time budget.
    *
-   * Skipped when Track A is already in COLLECT (no point doubling up),
-   * when the player is retreating (survival over loot), or when actively
-   * engaging an enemy (ENGAGE kiting geometry is precision-tuned — a pull
-   * toward XP gems could redirect the player out of weapon range mid-fight).
+   * Skipped when Track A is already in COLLECT (no point doubling up), when
+   * the player is retreating (survival over loot), when actively engaging an
+   * enemy (ENGAGE kiting geometry is precision-tuned — a pull toward XP gems
+   * could redirect the player out of weapon range mid-fight), during NPC
+   * interaction (mustn't deflect approach to the NPC target), and during
+   * Progress-driven navigation (EXPLORE with a non-null targetEid = position or
+   * entity objective) so quest paths are never deflected by loot pulls.
    */
   private buildOpportunisticCollect(): BTNode {
     return action('Opportunistic Collect', (ctx) => {
-      // Track A is handling collection, survival takes priority, or
-      // ENGAGE kiting geometry must not be disturbed
+      // Track A is handling collection, survival takes priority, ENGAGE kiting
+      // geometry must not be disturbed, NPC interaction must not be deflected,
+      // and Progress-driven navigation (EXPLORE with a specific non-null target)
+      // must not be deflected by loot pulls.
       if (
         this.decision.state === AIState.COLLECT ||
         this.decision.state === AIState.RETREAT ||
-        this.decision.state === AIState.ENGAGE
+        this.decision.state === AIState.ENGAGE ||
+        this.decision.state === AIState.INTERACT ||
+        (this.decision.state === AIState.EXPLORE && this.decision.targetEid !== null)
       ) {
         return BTStatus.FAILURE;
       }
 
+      // Only pull toward loot that is already within arm's reach of the player
+      // (opportunisticGrabRadius). The previous implementation also scanned all
+      // A* path waypoints (WAYPOINT_SWEEP_RADIUS_PX), but that biased every
+      // exploration path toward loot-dense (= recently enemy-killed) areas,
+      // causing the AI to fight 2-3x more enemies than needed and miss the
+      // 300s floor-clear budget on the headless gate seed.
       let nearestX = 0;
       let nearestY = 0;
       let nearestDist = Number.POSITIVE_INFINITY;
       let found = false;
 
-      // Check loot near path waypoints (path-integrated collection shortcut)
-      const floorMap = ctx.world.floorMap;
-      if (this.pathWaypoints.length > 0 && floorMap) {
-        const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
-          { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
-          { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
-          { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
-        ];
-        for (const candidate of candidates) {
-          for (const eid of candidate.entities) {
-            if (eid === undefined) continue;
-            const ignored = this.ignoredLootUntilFrame.get(eid);
-            if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
-            const lx = ctx.world.stores.position.x[eid] ?? 0;
-            const ly = ctx.world.stores.position.y[eid] ?? 0;
-            for (const wp of this.pathWaypoints) {
-              const wpPx = floorMap.tileToPixel(wp.x, wp.y);
-              const d = Math.hypot(lx - wpPx.x, ly - wpPx.y);
-              if (d < WAYPOINT_SWEEP_RADIUS_PX && d < nearestDist) {
-                nearestDist = d;
-                nearestX = lx;
-                nearestY = ly;
-                found = true;
-              }
-            }
-          }
-        }
-      }
-
-      // Also check loot within opportunistic grab radius of the player
-      if (!found) {
-        const grabRadius = this.config.opportunisticGrabRadius;
-        const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
-          { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
-          { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
-          { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
-        ];
-        for (const candidate of candidates) {
-          for (const eid of candidate.entities) {
-            if (eid === undefined) continue;
-            const ignored = this.ignoredLootUntilFrame.get(eid);
-            if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
-            const lx = ctx.world.stores.position.x[eid] ?? 0;
-            const ly = ctx.world.stores.position.y[eid] ?? 0;
-            const d = Math.hypot(lx - ctx.playerX, ly - ctx.playerY);
-            if (d < grabRadius && d < nearestDist) {
-              nearestDist = d;
-              nearestX = lx;
-              nearestY = ly;
-              found = true;
-            }
+      const grabRadius = this.config.opportunisticGrabRadius;
+      const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+        { kind: 'xp', entities: query(ctx.world.ecs, [XpGem, Position]) },
+        { kind: 'gold', entities: query(ctx.world.ecs, [Gold, Position]) },
+        { kind: 'item', entities: query(ctx.world.ecs, [DroppedItem, Position]) },
+      ];
+      for (const candidate of candidates) {
+        for (const eid of candidate.entities) {
+          if (eid === undefined) continue;
+          const ignored = this.ignoredLootUntilFrame.get(eid);
+          if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
+          const lx = ctx.world.stores.position.x[eid] ?? 0;
+          const ly = ctx.world.stores.position.y[eid] ?? 0;
+          const d = Math.hypot(lx - ctx.playerX, ly - ctx.playerY);
+          if (d < grabRadius && d < nearestDist) {
+            nearestDist = d;
+            nearestX = lx;
+            nearestY = ly;
+            found = true;
           }
         }
       }
@@ -1121,11 +1101,19 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private buildOpportunisticDodge(): BTNode {
     return action('Opportunistic Dodge', (ctx) => {
-      // Dodge is suspended during retreat (retreat kiting owns the direction)
-      // and during active engagement (planEngagement's kite-strike orbit is
+      // Dodge is suspended during retreat (retreat kiting owns the direction),
+      // during active engagement (planEngagement's kite-strike orbit is
       // precision-tuned; a 0.4-weight perpendicular injection would displace
-      // the player outside weapon range and stall the fight indefinitely).
-      if (this.decision.state === AIState.RETREAT || this.decision.state === AIState.ENGAGE) {
+      // the player outside weapon range and stall the fight indefinitely),
+      // during NPC interaction (mustn't deflect approach to the NPC target),
+      // and during Progress-driven navigation (EXPLORE with a specific non-null
+      // target) so quest navigation is not deflected by closing enemies.
+      if (
+        this.decision.state === AIState.RETREAT ||
+        this.decision.state === AIState.ENGAGE ||
+        this.decision.state === AIState.INTERACT ||
+        (this.decision.state === AIState.EXPLORE && this.decision.targetEid !== null)
+      ) {
         return BTStatus.FAILURE;
       }
 
@@ -1213,7 +1201,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (dist <= 0) return BTStatus.FAILURE;
 
       // Blend additively with any collect pull already set by OpportunisticCollect.
-      // Normalise the combined vector so collect and farm don't double up.
+      // Normalize the combined vector so collect and farm don't double up.
       const cx = this.opportunisticPullX + dx / dist;
       const cy = this.opportunisticPullY + dy / dist;
       const len = Math.hypot(cx, cy);
