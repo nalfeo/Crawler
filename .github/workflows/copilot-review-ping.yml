@@ -243,10 +243,10 @@ jobs:
                   owner,
                   repo,
                   issue_number: created.data.number,
-                  assignees: ['copilot'],
+                  assignees: ['copilot-swe-agent'],
                 });
               } catch (err) {
-                core.warning(`Could not assign @copilot: ${err.message}`);
+                core.warning(`Could not assign @copilot-swe-agent: ${err.message}`);
               }
 
               core.info(`Created review issue #${created.data.number} for PR #${prNumber}.`);
