@@ -287,6 +287,7 @@ const GOLD_FARM_GOLD_SCAN_RADIUS_PX = 800;
 // larger than the melee engage hold (~160px) so coins dropped at a kill site are
 // still swept up on the next tick.
 const GOLD_FARM_COLLECT_RADIUS_PX = 260;
+const ITEM_COLLECT_RADIUS_PX = 120;
 
 type LootKind = 'xp' | 'gold' | 'item';
 
@@ -2282,6 +2283,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         const x = world.stores.position.x[eid] ?? 0;
         const y = world.stores.position.y[eid] ?? 0;
         const dist = Math.hypot(x - playerX, y - playerY);
+        if (candidate.kind === 'item' && dist > ITEM_COLLECT_RADIUS_PX) {
+          continue;
+        }
 
         if (dist < minDist) {
           minDist = dist;
@@ -2330,6 +2334,9 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const distance = Math.hypot(x - playerX, y - playerY);
     if (distance > this.config.scanRadius * 1.25) {
+      return null;
+    }
+    if (isItem && distance > ITEM_COLLECT_RADIUS_PX) {
       return null;
     }
 
