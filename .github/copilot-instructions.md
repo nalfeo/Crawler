@@ -25,6 +25,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 - Every new ECS system MUST have a lab in `src/labs/`
 - Write conventional commits. Allowed types (enforced by commitlint): `feat`, `fix`, `chore`, `docs`, `lab`, `refactor`, `test`, `perf`, `ci`, `build`, `revert`
 - Write a handoff file before ending your session
+- If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
 - **Apple complexity**: declare your 🍎–🍎🍎🍎🍎🍎 estimate before writing any code; score actuals + verdict at handoff; create an individual file in `docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json` — see `docs/agent-os/policies/complexity-policy.md`
 
 ## Merge Policy

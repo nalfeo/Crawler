@@ -90,6 +90,14 @@ export default {
 
 `ctx` provides `cwd` and `log(msg, opts)`. Decisions are `"allow"`, `"deny"`, `"ask"`, or `"skip"`.
 
+### Telemetry artifact
+
+Every guard decision is also appended to `files/guard-telemetry.jsonl` in the
+current worktree. Use
+`npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` near session
+end to generate the handoff-ready summary block that preserves telemetry across
+sessions.
+
 ### Dispatcher semantics
 
 - Shell/edit guards: first `deny` wins (fail fast on danger).

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emitGuardTelemetry } from '../lib/telemetry.mjs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { emitGuardTelemetry, getGuardTelemetryLogPath } from '../lib/telemetry.mjs';
 
 test('emitGuardTelemetry calls log with structured JSON', async () => {
   const logged = [];
@@ -39,6 +42,34 @@ test('emitGuardTelemetry includes bypass fields when present', async () => {
   const payload = JSON.parse(logged[0].replace('[guard-telemetry] ', ''));
   assert.equal(payload.bypass_used, true);
   assert.equal(payload.bypass_reason, 'COPILOT_GUARDS_DISABLE=* set');
+});
+
+test('emitGuardTelemetry appends JSONL artifact inside worktree files directory', async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'guard-telemetry-'));
+  try {
+    await emitGuardTelemetry(
+      async () => {},
+      {
+        guard_id: 'pr-preflight',
+        tool_name: 'create_pull_request',
+        decision: 'deny',
+        reason: 'missing handoff',
+      },
+      { cwd },
+    );
+
+    const filePath = getGuardTelemetryLogPath(cwd);
+    const lines = readFileSync(filePath, 'utf8').trim().split('\n');
+    assert.equal(lines.length, 1);
+    const payload = JSON.parse(lines[0]);
+    assert.equal(payload.schema, 'agent-os-guard-telemetry-event/v1');
+    assert.equal(payload.guard_id, 'pr-preflight');
+    assert.equal(payload.tool_name, 'create_pull_request');
+    assert.equal(payload.decision, 'deny');
+    assert.equal(payload.reason, 'missing handoff');
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });
 
 test('emitGuardTelemetry swallows log failures silently', async () => {

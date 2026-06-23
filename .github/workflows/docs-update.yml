@@ -60,6 +60,10 @@ jobs:
         run: npx tsx scripts/agent/docs/apple-calibration.ts
         continue-on-error: true
 
+      - name: Guard telemetry
+        run: npx tsx scripts/agent/docs/guard-telemetry.ts
+        continue-on-error: true
+
       - name: Archive handoffs older than 30 days
         run: npx tsx scripts/agent/docs/archive-handoffs.ts --apply
 

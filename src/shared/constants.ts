@@ -68,6 +68,7 @@ export const ENEMY_PROJECTILE = {
   FIRE_COOLDOWN_MS: tuning.enemyProjectile.fireCooldownMs,
   DAMAGE: tuning.enemyProjectile.damage,
   MUZZLE_OFFSET: ftToPx(tuning.enemyProjectile.muzzleOffset),
+  ACCURACY: tuning.enemyProjectile.accuracy,
 } as const;
 
 export const FLOOR = {

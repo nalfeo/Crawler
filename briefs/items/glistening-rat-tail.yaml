@@ -1,0 +1,20 @@
+type: item
+name: glistening-rat-tail
+description: |
+  A severed rat tail dangling vertically, thick end at the top. The tail is
+  long and slender, tapering to a fine tip at the bottom. Surface is moist and
+  faintly glistening — wet highlights on the scaly skin suggesting it was
+  recently separated and kept damp as instructed. Scales are rendered in subtle
+  pale pinkish-grey with slightly darker segmentation lines running along the
+  length. A bead of moisture clings near the tip. The thick base end shows a
+  ragged cut with a small dark red wound mark. The overall impression is deeply
+  unpleasant but unmistakably a rat tail. Silhouette must read as a tapered
+  hanging tail with no ambiguity.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - tail with vivid wet sheen, glistening highlight running along the full length
+  - tail with greenish-grey scaly texture, moisture droplets visible at the tip
+  - tail with dark-tipped scales grading to pale pink near the base, slime-slicked surface
+minVariations: 5

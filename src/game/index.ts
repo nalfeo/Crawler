@@ -2,14 +2,12 @@ export { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from './enemyAIS
 export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.js';
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
 export {
-  configureWeaponSystem,
   weaponSystem,
   weaponEntitySystem,
   setActiveWeapon,
   clearActiveWeapon,
   getActiveWeapon,
 } from './weaponSystem.js';
-export type { WeaponConfig } from './weaponSystem.js';
 export {
   initializeFloor1Scenario,
   selectFloor1StarterWeapon,

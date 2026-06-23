@@ -581,6 +581,18 @@ export class MainGameScene extends Phaser.Scene {
     this.cameraMasksDirty = true;
   }
 
+  public requestInventoryToggle(): void {
+    this.queuedInventoryToggle = true;
+  }
+
+  public requestEquipAction(): void {
+    this.queuedEquip = true;
+  }
+
+  public isInventoryOpen(): boolean {
+    return this.inventoryUI?.isOpen() ?? false;
+  }
+
   update(_time: number, delta: number): void {
     if (!this.bridge || !this.inputCapture) {
       if (!this.warnedMissingDependencies) {
@@ -624,6 +636,7 @@ export class MainGameScene extends Phaser.Scene {
       this.updateCamera();
       this.updateObjectiveMarkers();
       this.updateOverlayText();
+      this.updateFeatureUnlocks();
       return;
     }
 
@@ -651,6 +664,7 @@ export class MainGameScene extends Phaser.Scene {
       this.updateObjectiveMarkers();
       this.updateOverlayText();
       this.updateInteractions();
+      this.updateFeatureUnlocks();
       return;
     }
 
@@ -662,6 +676,7 @@ export class MainGameScene extends Phaser.Scene {
       this.updateObjectiveMarkers();
       this.updateOverlayText();
       this.updateInteractions();
+      this.updateFeatureUnlocks();
       return;
     }
 
@@ -680,6 +695,7 @@ export class MainGameScene extends Phaser.Scene {
       this.updateCamera();
       this.updateObjectiveMarkers();
       this.updateOverlayText();
+      this.updateFeatureUnlocks();
       return;
     }
 
@@ -690,6 +706,7 @@ export class MainGameScene extends Phaser.Scene {
       this.updateCamera();
       this.updateObjectiveMarkers();
       this.updateOverlayText();
+      this.updateFeatureUnlocks();
       return;
     }
 
