@@ -1,5 +1,5 @@
 /**
- * Item definitions — types, rarity, tag system, and the 100-item catalog.
+ * Item definitions — types, rarity, tag system, and the 102-item catalog.
  *
  * Tags drive inventory tabs dynamically. KnownTag covers the canonical five;
  * CustomTag (branded string) lets AI-generated content invent new categories
@@ -69,7 +69,7 @@ export interface ItemDef {
 }
 
 // ---------------------------------------------------------------------------
-// 100-item catalog
+// 102-item catalog
 // ---------------------------------------------------------------------------
 
 const C = ItemRarity.Common;
@@ -169,7 +169,7 @@ function misc(
 }
 
 export const ITEM_CATALOG: readonly ItemDef[] = [
-  // ── Materials (20) ──────────────────────────────────────────────────
+  // ── Materials (21) ──────────────────────────────────────────────────
   mat('iron-ore', 'Iron Ore', 'A chunk of crude iron. Smells like ambition.', C),
   mat('copper-ore', 'Copper Ore', 'Greenish and crumbly. Better than nothing.', C),
   mat('gold-nugget', 'Gold Nugget', 'Shiny enough to distract the audience.', U),
@@ -183,6 +183,13 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   mat('bone-dust', 'Bone Dust', "Ground to a fine powder. Don't ask whose.", C, [
     customTag('Smelly Stuff'),
   ]),
+  mat(
+    'bone-shard',
+    'Bone Shard',
+    'A jagged fragment pried from something that did not need all its bones.',
+    C,
+    [customTag('Smelly Stuff')],
+  ),
   mat('ectoplasm-glob', 'Ectoplasm Glob', 'Gooey and faintly luminescent.', U, [
     customTag('Smelly Stuff'),
   ]),
@@ -271,7 +278,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
 
-  // ── Misc (20) ───────────────────────────────────────────────────────
+  // ── Misc (21) ───────────────────────────────────────────────────────
   misc('broken-circuit', 'Broken Circuit', 'Sparks occasionally. Mostly useless.', C),
   misc('alien-tooth', 'Alien Tooth', 'From a species with too many mouths.', U, [
     customTag('Smelly Stuff'),
@@ -292,6 +299,7 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   misc('old-sock', 'Old Sock', 'Origin: unknowable. Smell: remarkable.', C, [
     customTag('Smelly Stuff'),
   ]),
+  misc('pebble', 'Pebble', 'Smooth, ordinary, and somehow still worth carrying.', C),
   misc('shiny-button', 'Shiny Button', 'Do NOT press it. (You want to press it.)', R),
   misc('ghost-photo', 'Ghost Photo', "Shows someone who isn't there anymore.", E, [
     customTag('TMI'),
