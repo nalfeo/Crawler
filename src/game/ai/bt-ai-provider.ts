@@ -72,15 +72,15 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
 };
 
 const DIRECT_MOVE_EPSILON_PX = 10;
-const MELEE_APPROACH_BUFFER_PX = 8;
 // --- Melee kiting (stutter-step orbit) ---
 // When in melee, the player must NOT park on the enemy and trade blows. Instead
-// it orbits the target inside its own weapon strike gate (so swings still land —
-// melee auto-fires on proximity+cooldown regardless of player velocity) while
-// continuously strafing tangentially so it stays a moving, dodging target.
-// Outer edge of the reliable strike band as a fraction of the raw weapon reach.
-// The fire gate is reach*1.5; orbiting at reach (1.0x) keeps swings landing with
-// margin while maximizing standoff distance for dodging.
+// it orbits the target at MELEE_HOLD_FRACTION of weapon reach so swings reliably
+// land (the shaft passes through the enemy body every arc) while the player stays
+// a moving, dodging target. 0.75 puts the enemy on the blade mid-shaft — well
+// inside BLADE_HIT_HALF_WIDTH on every swing rather than just grazing the tip.
+// The approach band matches this fraction so the player commits to the distance
+// instead of dancing on the edge.
+const MELEE_HOLD_FRACTION = 0.75;
 // Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
 // to reach*1.5, so this is the outer radius at which kiting can still land hits.
 const ATTACK_GATE_MULTIPLIER = 1.5;
@@ -2692,7 +2692,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
     // the next poll can start kiting and landing hits.
-    const engageBandPx = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx - MELEE_APPROACH_BUFFER_PX);
+    const engageBandPx = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
     const deltaX = target.x - playerX;
     const deltaY = target.y - playerY;
     const scale = (target.distance - engageBandPx) / target.distance;
@@ -2723,13 +2723,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachPx: number,
-    strikeGatePx: number,
+    _strikeGatePx: number,
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
 
-    const innerOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx - MELEE_APPROACH_BUFFER_PX);
-    const outerOrbit = Math.max(innerOrbit, strikeGatePx - MELEE_APPROACH_BUFFER_PX);
+    const innerOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
+    const outerOrbit = innerOrbit;
     let desiredOrbit = ready ? innerOrbit : outerOrbit;
 
     const enemyAttackPx = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;

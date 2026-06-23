@@ -634,29 +634,24 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             ag.strokePath();
           }
 
-          // --- Weapon sprite pinned to player's right hand ---
+          // --- Weapon sprite pivoting from the player center ---
           // The hold anchor (DEFAULT_HANDHELD_SPRITE_ANCHOR) marks the grip on a
           // 16×16 frame (x=8, y=14 — near the handle end). We pin that anchor to
-          // the player's hand position and scale the sprite so the blade-tip end
-          // of the sprite (local y=0) lands exactly at tipX/tipY.
+          // the player center so the weapon always appears to be held at the body.
           //
           // Derivation: with rotation = tipAngle + π/2 the local-up direction
           // (0,−1) maps to screen direction (cos tipAngle, sin tipAngle), so the
-          // tip of the sprite is at holdPos + holdAnchor.y × scale × (cos, sin).
-          // Setting holdAnchor.y × scale = bladeLen − HAND_REACH_PX makes the
-          // sprite tip exactly reach tipX/tipY.
+          // tip of the sprite is at origin + holdAnchor.y × scale × (cos, sin).
+          // Setting holdAnchor.y × scale = bladeLen makes the sprite tip land
+          // exactly at tipX/tipY while the grip stays at the player center.
           const WEAPON_SPRITE_FRAME_HEIGHT = 16;
           const holdY = DEFAULT_HANDHELD_SPRITE_ANCHOR.y; // 14 px from top
-          const HAND_REACH_PX = 4; // distance from player center to grip pivot
           // Minimum scale ensuring the sprite remains visually readable for
           // very short weapons where the computed scale would be near-zero.
           const MIN_WEAPON_SPRITE_SCALE = 1.8;
-          const weaponScale =
-            bladeLen > holdY + HAND_REACH_PX
-              ? (bladeLen - HAND_REACH_PX) / holdY
-              : MIN_WEAPON_SPRITE_SCALE;
-          const handX = x + Math.cos(tipAngle) * HAND_REACH_PX;
-          const handY = y + Math.sin(tipAngle) * HAND_REACH_PX;
+          const weaponScale = bladeLen > holdY ? bladeLen / holdY : MIN_WEAPON_SPRITE_SCALE;
+          const handX = x;
+          const handY = y;
 
           const swingSprite = meleeSwing.spriteId[eid] ?? 0;
           const weaponSpriteKey = swingSprite === MeleeSpriteId.BAT ? 'weapon.bat' : 'weapon.sword';
