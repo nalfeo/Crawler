@@ -2,6 +2,8 @@ import { hasComponent, query, removeComponent } from 'bitecs';
 import { Flying, Knockback, Position } from '../components.js';
 import type { GameWorld } from '../world.js';
 
+// Sample just inside an entity's footprint so exact tile-edge contact does not
+// read as a wall hit because of floating-point rounding.
 const COLLISION_EPSILON = 0.001;
 
 function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number): boolean {
@@ -12,6 +14,9 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
 
   const width = world.stores.sprite.width[eid] ?? 0;
   const height = world.stores.sprite.height[eid] ?? 0;
+  // Small bodies (≤ half a tile) already match the historic center-point rule.
+  // Tighten the check only for larger sprites such as the Floor 1 boss, whose
+  // footprint can overlap a wall before its center crosses into the blocked tile.
   const tileSizePx = floorMap.config.tileSizePx;
   if (
     width <= COLLISION_EPSILON ||
