@@ -203,10 +203,10 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.data.number,
-                assignees: ['copilot']
+                assignees: ['copilot-swe-agent']
               });
             } catch (error) {
-              core.warning(`Could not assign @copilot automatically: ${error.message}`);
+              core.warning(`Could not assign @copilot-swe-agent automatically: ${error.message}`);
             }
 
             core.info(`Created issue #${issue.data.number}`);
