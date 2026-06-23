@@ -6,6 +6,7 @@ import { DungeonGenerator } from '../../src/core/map/generators/DungeonGenerator
 import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
 import { ArenaGenerator } from '../../src/core/map/generators/ArenaGenerator';
 import { getGenerator, getRegisteredBiomes } from '../../src/core/map/generators/registry';
+import type { FloorMap } from '../../src/core/map/FloorMap';
 
 type GeneratedFloor = ReturnType<DungeonGenerator['generate']>;
 type GeneratedRoom = GeneratedFloor['rooms'][number];
@@ -16,7 +17,7 @@ function smallConfig(biome: BiomeType): MapConfig {
   return {
     widthTiles: 60,
     heightTiles: 40,
-    tileSizeFt: 32,
+    tileSizeFt: 4,
     biome,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -57,6 +58,40 @@ function connectedRoomIds(startId: number, rooms: readonly GeneratedRoom[]): Set
       if (visited.has(neighbor)) continue;
       visited.add(neighbor);
       queue.push(neighbor);
+    }
+  }
+  return visited;
+}
+
+/**
+ * Flood-fill from the player spawn treating PASSABLE tiles and DOOR tiles as
+ * walkable. Returns the set of tile indices that are reachable.
+ */
+function reachableTileIndices(floor: FloorMap): Set<number> {
+  const { width: w, height: h, playerSpawn, tileMap } = floor;
+  const visited = new Set<number>();
+  const stack: number[] = [playerSpawn.y * w + playerSpawn.x];
+  visited.add(stack[0]!);
+
+  while (stack.length > 0) {
+    const idx = stack.pop()!;
+    const cx = idx % w;
+    const cy = (idx - cx) / w;
+    for (const [nx, ny] of [
+      [cx + 1, cy],
+      [cx - 1, cy],
+      [cx, cy + 1],
+      [cx, cy - 1],
+    ] as [number, number][]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nIdx = ny * w + nx;
+      if (visited.has(nIdx)) continue;
+      const flags = tileMap.flags[nIdx]!;
+      const isDoor = (flags & TileFlags.DOOR) !== 0;
+      const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+      if (!isPassable && !isDoor) continue;
+      visited.add(nIdx);
+      stack.push(nIdx);
     }
   }
   return visited;
@@ -227,6 +262,38 @@ describe('Map Generators', () => {
             expect(hasReachableInteriorTile(floor, room, door)).toBe(true);
           }
         }
+      }
+    });
+
+    it('should have no isolated passable floor tiles (all reachable from spawn when doors are open)', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      // Use the floor1 map size and seed to catch real-world regressions
+      const floor1Config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizeFt: 4,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of [1, 2, 3, 5, 7, 10, 42, 99]) {
+        const floor = gen.generate({ ...floor1Config, seed }, new SeededRandom(seed));
+        const reachable = reachableTileIndices(floor);
+
+        let isolated = 0;
+        for (let idx = 0; idx < floor.width * floor.height; idx++) {
+          const flags = floor.tileMap.flags[idx]!;
+          const isDoor = (flags & TileFlags.DOOR) !== 0;
+          const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+          if (isPassable && !isDoor && !reachable.has(idx)) {
+            isolated++;
+          }
+        }
+        expect(isolated).toBe(0);
       }
     });
   });

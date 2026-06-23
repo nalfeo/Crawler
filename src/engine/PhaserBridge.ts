@@ -26,6 +26,7 @@ import { createGoreVfx } from './GoreVfx.js';
 import { createLogger } from '../shared/logger.js';
 import { TeamId, MeleeSpriteId } from '../shared/constants.js';
 import { ftToPx } from '../shared/units.js';
+import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -637,7 +638,25 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             ag.strokePath();
           }
 
-          // --- Weapon sprite at tip ---
+          // --- Weapon sprite pivoting from the player center ---
+          // The hold anchor (DEFAULT_HANDHELD_SPRITE_ANCHOR) marks the grip on a
+          // 16×16 frame (x=8, y=14 — near the handle end). We pin that anchor to
+          // the player center so the weapon always appears to be held at the body.
+          //
+          // Derivation: with rotation = tipAngle + π/2 the local-up direction
+          // (0,−1) maps to screen direction (cos tipAngle, sin tipAngle), so the
+          // tip of the sprite is at origin + holdAnchor.y × scale × (cos, sin).
+          // Setting holdAnchor.y × scale = bladeLen makes the sprite tip land
+          // exactly at tipX/tipY while the grip stays at the player center.
+          const WEAPON_SPRITE_FRAME_HEIGHT = 16;
+          const holdY = DEFAULT_HANDHELD_SPRITE_ANCHOR.y; // 14 px from top
+          // Minimum scale ensuring the sprite remains visually readable for
+          // very short weapons where the computed scale would be near-zero.
+          const MIN_WEAPON_SPRITE_SCALE = 1.8;
+          const weaponScale = bladeLen > holdY ? bladeLen / holdY : MIN_WEAPON_SPRITE_SCALE;
+          const handX = x;
+          const handY = y;
+
           const swingSprite = meleeSwing.spriteId[eid] ?? 0;
           const weaponSpriteKey = swingSprite === MeleeSpriteId.BAT ? 'weapon.bat' : 'weapon.sword';
           const weaponSpriteDef = getSprite(weaponSpriteKey);
@@ -645,21 +664,26 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           let visual = visuals.get(eid);
           if (!visual && weaponSpriteDef) {
             const img = scene.add.image(
-              tipX,
-              tipY,
+              handX,
+              handY,
               weaponSpriteDef.sheetKey,
               weaponSpriteDef.frame,
             );
-            img.setScale(1.8);
-            visuals.set(eid, { obj: img, type: entityType, baseScale: 1.8 });
+            // Origin at hold anchor so the sprite pivots from the player's hand
+            img.setOrigin(0.5, holdY / WEAPON_SPRITE_FRAME_HEIGHT);
+            img.setScale(weaponScale);
+            visuals.set(eid, { obj: img, type: entityType, baseScale: weaponScale });
             visual = visuals.get(eid);
           }
 
           if (visual) {
             visual.obj.setVisible(alpha > 0.05);
             visual.obj.setAlpha(alpha);
-            visual.obj.setPosition(tipX, tipY);
-            // +PI/2 rotates so the blade tip points away from player along the swing arc
+            // Recompute origin/scale each frame in case the sprite was reused
+            visual.obj.setOrigin(0.5, holdY / WEAPON_SPRITE_FRAME_HEIGHT);
+            visual.obj.setScale(weaponScale);
+            visual.obj.setPosition(handX, handY);
+            // +π/2 aligns local-up (blade tip) with tipAngle (away from player)
             visual.obj.setRotation(tipAngle + Math.PI / 2);
           }
           continue;

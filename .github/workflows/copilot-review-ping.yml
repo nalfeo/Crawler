@@ -32,14 +32,25 @@ jobs:
       group: copilot-review-ping-${{ github.event.pull_request.number || github.run_id }}
       cancel-in-progress: true
     steps:
+      - name: Generate app token
+        id: app-token
+        # Guard on secret presence so that pull_request_review runs from forks
+        # (which have no repository secrets) don't fail the entire workflow.
+        if: ${{ secrets.APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
       - name: Collect unresolved threads and file issue
+        if: steps.app-token.outputs.token != ''
         uses: actions/github-script@v7
         with:
-          # Default GITHUB_TOKEN is sufficient: we create an issue and then try to
-          # assign it to copilot. Assignment is best-effort because some repositories
-          # do not allow that assignee identity, and the tracking issue itself is still
-          # useful even when auto-assignment is unavailable.
-          github-token: ${{ github.token }}
+          # Use a GH App token so that issue assignment to @copilot is recognised
+          # by GitHub and triggers the Copilot coding agent.  The default
+          # GITHUB_TOKEN is a bot identity that GitHub silently ignores for this
+          # trigger — a user-acting App token is required.
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
@@ -101,19 +112,6 @@ jobs:
                 state: 'closed',
               });
               core.info(`${reason} Closed tracking issue #${existing.number} for PR #${prNumber}.`);
-            }
-
-            async function assignCopilotBestEffort(issueNumber) {
-              try {
-                await github.rest.issues.addAssignees({
-                  owner,
-                  repo,
-                  issue_number: issueNumber,
-                  assignees: ['copilot'],
-                });
-              } catch (error) {
-                core.warning(`Could not assign @copilot automatically: ${error.message}`);
-              }
             }
 
             async function fetchReviewThreads(prNumber) {
@@ -218,8 +216,9 @@ jobs:
                 `For each thread, please either address the feedback directly in PR #${prNumber} or reply to the thread explaining why the change will not be made (won't fix).`,
               ].join('\n');
 
-              // Close old issue and create a fresh one so that issue creation
-              // reliably re-triggers the Copilot coding agent.
+              // Close old issue and create a fresh one so that the new assignment
+              // re-triggers the Copilot coding agent (re-assigning an existing issue
+              // may not fire the trigger a second time).
               const existing = findOpenTrackingIssue(openTrackingIssues, prNumber);
               if (existing) {
                 await github.rest.issues.update({
@@ -239,7 +238,17 @@ jobs:
                 labels: [issueLabel],
               });
 
-              await assignCopilotBestEffort(created.data.number);
+              try {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number: created.data.number,
+                  assignees: ['copilot-swe-agent'],
+                });
+              } catch (err) {
+                core.warning(`Could not assign @copilot-swe-agent: ${err.message}`);
+              }
+
               core.info(`Created review issue #${created.data.number} for PR #${prNumber}.`);
             }
 

@@ -151,14 +151,14 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
     ? Math.max(1, world.stores.damage.amount[eid] ?? DEFAULT_CONTACT_DAMAGE)
     : DEFAULT_CONTACT_DAMAGE;
   const miniDamage = Math.max(1, Math.round(parentDamage * 0.5));
-  const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.9;
-  const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 320;
+  const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.1125;
+  const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 40;
   const hasSprite = hasComponent(world.ecs, eid, Sprite);
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
-  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 16) : 16;
-  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 16) : 16;
-  const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
-  const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
+  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
+  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
+  const miniWidth = Math.max(1, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
+  const miniHeight = Math.max(1, parentSpriteHeight * MINI_SLIME_SIZE_SCALE);
 
   for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
     const angle = world.rng.next() * Math.PI * 2;
@@ -169,13 +169,13 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
       y + Math.sin(angle) * distance,
       miniHp,
       SLIME_LEAPER_AI_TYPE,
-      Math.max(0.4, parentSpeed),
-      Math.max(48, parentAggroRange),
+      Math.max(0.05, parentSpeed),
+      Math.max(6, parentAggroRange),
       0,
       {
         persona: world.stores.enemyBehavior.persona[eid] ?? 0,
         traversalMode: world.stores.enemyBehavior.traversalMode[eid] ?? 0,
-        flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 96,
+        flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 12,
         pathRefreshFrames: world.stores.enemyBehavior.pathRefreshFrames[eid] ?? 10,
         isFlying: (world.stores.enemyBehavior.traversalMode[eid] ?? 0) === 1,
         weight: Math.max(1, (world.stores.weight.value[eid] ?? 120) * 0.5),
@@ -200,7 +200,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
   // Floor 1 onboarding pacing: gold, XP, and junk only start dropping after the
   // player finds the Welcome Office and the Tutorial Goon explains the rules.
   // Off-floor (e.g. labs) drops are always enabled.
-  const allowDrops = !world.floor1 || world.goalFlags.get('floor1-drops-unlocked') === true;
+  const allowFloorDrops = !world.floor1 || world.goalFlags.get('floor1-drops-unlocked') === true;
 
   for (const eid of Array.from(entities)) {
     if (eid === undefined) continue;
@@ -284,7 +284,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      spawnDrops(world, x, y, drops, allowDrops);
+      const isMiniSlime = world.floor1?.enemyArchetypes.get(eid) === 'slime-mini';
+      spawnDrops(world, x, y, drops, allowFloorDrops || isMiniSlime);
       logger.info('Processed enemy death drops', {
         eid,
         x,

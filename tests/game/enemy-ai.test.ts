@@ -107,6 +107,33 @@ function createFullyBlockedMap(): FloorMap {
   return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(100), { x: 1, y: 1 });
 }
 
+function createSparseIslandMap(): FloorMap {
+  const width = 40;
+  const height = 12;
+  const config: MapConfig = {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizeFt: 4,
+    biome: BiomeType.DUNGEON,
+    seed: 11,
+    roomWidthRange: [4, 6],
+    roomHeightRange: [4, 6],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.WALL);
+  for (let y = 3; y <= 8; y += 1) {
+    for (let x = 3; x <= 8; x += 1) {
+      tileMap.setFlags(x, y, TilePresets.FLOOR);
+    }
+  }
+  return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(width * height), {
+    x: 4,
+    y: 4,
+  });
+}
+
 function runTicks(world: ReturnType<typeof createTestWorld>, ticks: number): void {
   for (let i = 0; i < ticks; i += 1) {
     world.frameCount += 1;
@@ -279,6 +306,23 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.y[enemy]).toBe(0);
   });
 
+  it('falls back to direct chase steering when path target resolution fails', () => {
+    const world = createTestWorld();
+    world.floorMap = createSparseIslandMap();
+    // Intentionally place the player in an all-wall region far from the only walkable island
+    // so path target resolution returns null.
+    spawnPlayer(world, 35 * 4, 5 * 4);
+    const enemy = spawnBehaviorEnemy(world, 5 * 4, 5 * 4, 20, AI_TYPE.CHASE, 0.25, 625, 0, {
+      persona: PATH_PERSONA.NAVIGATOR,
+    });
+
+    enemyAISystem(world);
+
+    expect(
+      Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+    ).toBeGreaterThan(0.1);
+  });
+
   it('affects only enemies with the EnemyBehavior component', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
@@ -378,20 +422,30 @@ describe('enemyAISystem', () => {
     expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.00625);
 
     let observedLeapSpeed = 0;
+    let longestLeapStreak = 0;
+    let currentLeapStreak = 0;
     for (let i = 0; i < 80; i += 1) {
       world.frameCount += 1;
       world.elapsedMs += 16;
       enemyAISystem(world);
-      observedLeapSpeed = Math.max(
-        observedLeapSpeed,
-        Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+      const speed = Math.hypot(
+        world.stores.velocity.x[enemy] ?? 0,
+        world.stores.velocity.y[enemy] ?? 0,
       );
+      observedLeapSpeed = Math.max(observedLeapSpeed, speed);
+      if (speed > 0.1875) {
+        currentLeapStreak += 1;
+        longestLeapStreak = Math.max(longestLeapStreak, currentLeapStreak);
+      } else {
+        currentLeapStreak = 0;
+      }
     }
 
     // The leap is a deliberate, gentler hop (≈1.5× base speed, with a bonus-speed
     // floor) so it stays hittable, but is still clearly faster than the slow prep
     // crouch.
     expect(observedLeapSpeed).toBeGreaterThan(0.1875);
+    expect(longestLeapStreak).toBeGreaterThanOrEqual(10);
   });
 
   it('freezes leaper enemies in a recovery window after each leap', () => {

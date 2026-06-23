@@ -136,7 +136,7 @@ jobs:
                   --title "$conflict_title" \
                   --body "$conflict_body" \
                   --label "merge-conflict" \
-                  --assignee "copilot"
+                  --assignee "copilot-swe-agent"
                 echo "  🤖 Filed conflict issue for PR #$number and assigned to Copilot."
               else
                 echo "  ℹ️ Conflict issue #$existing_conflict_issue already open for PR #$number."

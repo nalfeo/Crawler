@@ -44,8 +44,8 @@ interface EnemyTarget {
 }
 
 const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
-// Enemies spawn around 1000px away, so keep combat targeting slightly beyond that.
-const COMBAT_RADIUS_PX = 1200;
+// Enemies spawn around 160ft away, so keep combat targeting slightly beyond that.
+const COMBAT_RADIUS_FT = 150;
 
 const weaponStates = new WeakMap<GameWorld, WeaponState>();
 const logger = createLogger('game:weapon-system');
@@ -556,7 +556,7 @@ export function weaponSystem(world: GameWorld): void {
     const dx = ex - playerX;
     const dy = ey - playerY;
     const distSq = dx * dx + dy * dy;
-    if (distSq < COMBAT_RADIUS_PX * COMBAT_RADIUS_PX) {
+    if (distSq < COMBAT_RADIUS_FT * COMBAT_RADIUS_FT) {
       inCombat = true;
       break;
     }

@@ -34,6 +34,7 @@ import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
+import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, removeItem } from '../shared/inventory.js';
 import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
@@ -67,11 +68,13 @@ import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 
-// Derived constants computed from config at module initialization
+// Derived constants computed from config at module initialization.
+// The camera/viewport is a render-pixel concept, so convert it to feet at this
+// boundary (ADR 0017) before comparing against feet-space world positions.
 const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
-const FLOOR_1_VIEWPORT_WIDTH_PX = GAME.WIDTH / FLOOR_1_CAMERA_ZOOM;
-const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 2;
-const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
+const FLOOR_1_VIEWPORT_WIDTH_FT = pxToFt(GAME.WIDTH / FLOOR_1_CAMERA_ZOOM);
+const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT = FLOOR_1_VIEWPORT_WIDTH_FT * 2;
+const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 
 interface Floor1SpawnerState {
@@ -1183,7 +1186,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     return;
   }
   const spawnMaxDistanceSq =
-    FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
+    FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
   let spawnPoint = resolveSpawnPosition(world, playerX, playerY);
   const isInvalidSpawn = (x: number, y: number): boolean => {
     const dx = x - playerX;

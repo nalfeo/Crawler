@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-23",
+  "slug": "ranged-ai-standoff",
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "on-target",
+  "label": "Small",
+  "notes": "1 source file + 1 test file. New method extraction, no new ECS systems."
+}

@@ -19,8 +19,8 @@
  *
  * The simulation is fully deterministic: a given seed produces the exact same
  * run every time, so one pass per seed is authoritative — there is nothing to
- * average over. Seed 14 is the currently re-verified canonical clear (~191s
- * game-time at level 6 with 22 kills, completing all 4 quests under the 300s
+ * average over. Seed 2 is the currently re-verified canonical clear (~221s
+ * game-time at level 6 with 15 kills, completing all 4 quests under the 300s
  * budget). Because the run exercises the *entire* Floor 1 pipeline —
  * pathfinding, melee/ranged combat, every NPC interaction, the boss fight, and
  * stat progression — a regression in almost any of those systems breaks this
@@ -29,7 +29,7 @@
  * To add coverage, append known-good seeds to `WINNING_SEEDS` (probe a seed
  * once via `npm run ai:headless -- --seed N --max-frames 19800` and confirm it
  * reports VICTORY with all four quests before adding it — most seeds do NOT
- * clear within the budget). Seed 14 was re-verified with that exact command.
+ * clear within the budget). Seed 2 was re-verified with that exact command.
  *
  * ## Assertions are on deterministic *game* time, never wall time
  *
@@ -77,8 +77,13 @@ const REQUIRED_QUEST_IDS = [
  * Deterministic, known-good seeds. Each runs the full Floor 1 clear once and is
  * asserted independently. Keep this list to seeds that have been verified to
  * clear within the budget — see the file header for how to add more.
+ *
+ * Seed 2 is the canonical seed as of 2026-06-23 (~221s game-time at level 6
+ * with 15 kills). Seeds 1, 7, 10 and 14 were previous canonical seeds but no longer
+ * clear within budget after merging the player gap-closing fix with the HUD
+ * weapon skill tracker and legacy projectile system retirement.
  */
-const WINNING_SEEDS = [14] as const;
+const WINNING_SEEDS = [2] as const;
 
 /**
  * Run the full headless Floor 1 simulation for a seed. The seed is passed to

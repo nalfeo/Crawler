@@ -65,11 +65,11 @@ const SLIME_LEAP_INNER_RANGE = 6.5;
 // window — the frozen recovery is — but it stays long enough to read clearly.
 const SLIME_PREP_MIN_FRAMES = 14;
 const SLIME_PREP_MAX_FRAMES = 24;
-// A brief, low hop rather than a long juking rocket. Short enough and slow
-// enough that the pounce stays inside an orbiting attacker's strike range
-// instead of blinking through it.
-const SLIME_LEAP_MIN_FRAMES = 6;
-const SLIME_LEAP_MAX_FRAMES = 9;
+// A longer but still committed hop: enough travel to carry past the player's
+// current position and force a dodge, while staying readable and leaving the
+// punish window in the frozen recovery after landing.
+const SLIME_LEAP_MIN_FRAMES = 10;
+const SLIME_LEAP_MAX_FRAMES = 14;
 // Frozen recovery after the slime lands. Velocity is zeroed for this window so
 // the slime sits still and exposed — the deliberate opening for the player to
 // land hits after dodging the leap. Sized generously (~0.33–0.57s at 60fps) so a
@@ -982,6 +982,32 @@ function buildRangedPathTarget(
   };
 }
 
+/**
+ * Fallback when pathing cannot produce a usable target/path.
+ *
+ * Returns `true` after applying direct chase steering for chase/swarm/leaper
+ * personas, or `false` when fallback is intentionally disabled (flanker/ranged).
+ */
+function tryFallbackChaseNavigation(
+  world: GameWorld,
+  eid: number,
+  behaviorType: number,
+  persona: number,
+  playerX: number,
+  playerY: number,
+  enemyX: number,
+  enemyY: number,
+  speed: number,
+): boolean {
+  // Flankers rely on path targets to stage positional plays around the player,
+  // and ranged enemies should maintain spacing instead of hard-chasing.
+  if (persona === PATH_PERSONA.FLANKER || behaviorType === AI_TYPE.RANGED) {
+    return false;
+  }
+  setNavigatingVelocity(world, eid, playerX - enemyX, playerY - enemyY, speed);
+  return true;
+}
+
 function applyPathDrivenBehavior(
   world: GameWorld,
   eid: number,
@@ -1006,6 +1032,22 @@ function applyPathDrivenBehavior(
     traversalMode,
   );
   if (!personaTarget) {
+    const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+    if (
+      tryFallbackChaseNavigation(
+        world,
+        eid,
+        behaviorType,
+        persona,
+        playerX,
+        playerY,
+        enemyX,
+        enemyY,
+        speed,
+      )
+    ) {
+      return;
+    }
     setVelocity(world, eid, 0, 0);
     return;
   }
@@ -1040,11 +1082,44 @@ function applyPathDrivenBehavior(
   if (!usedPath) {
     const waypoint = world.floorMap?.tileToWorld(targetTile.x, targetTile.y);
     if (!waypoint) {
+      const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+      if (
+        tryFallbackChaseNavigation(
+          world,
+          eid,
+          behaviorType,
+          persona,
+          playerX,
+          playerY,
+          enemyX,
+          enemyY,
+          speed,
+        )
+      ) {
+        return;
+      }
       setVelocity(world, eid, 0, 0);
       return;
     }
     const fallback = normalize(waypoint.x - enemyX, waypoint.y - enemyY);
-    setVelocity(world, eid, fallback.x * speed, fallback.y * speed);
+    if (fallback.length > EPSILON) {
+      setVelocity(world, eid, fallback.x * speed, fallback.y * speed);
+      return;
+    }
+    // Tile center already reached but the player may have drifted within the
+    // tile. Close the remaining pixel-level gap directly so the enemy does not
+    // stall at the tile centre while the player is still a few pixels away.
+    if (
+      distanceToPlayer > MIN_MOB_PLAYER_DISTANCE &&
+      (behaviorType === AI_TYPE.CHASE ||
+        behaviorType === AI_TYPE.SWARM ||
+        behaviorType === AI_TYPE.LEAPER)
+    ) {
+      const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
+      setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
+      return;
+    }
+    setVelocity(world, eid, 0, 0);
     return;
   }
 
@@ -1068,6 +1143,11 @@ function applyPathDrivenBehavior(
       if (blended.length > EPSILON) {
         setNavigatingVelocity(world, eid, blended.x, blended.y, speed);
       }
+    } else if (pathDirection.length <= EPSILON && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {
+      // Path waypoints exhausted (enemy on or very near the player's tile) but
+      // the player has drifted within the tile. Drive toward the player's exact
+      // pixel position so the enemy commits to contact range instead of stopping.
+      setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     }
   }
 }

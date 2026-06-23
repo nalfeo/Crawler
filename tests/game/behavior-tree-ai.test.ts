@@ -280,4 +280,47 @@ describe('BehaviorTreeAI', () => {
     const distToEnemy = Math.hypot(decision.targetX! - ex, decision.targetY! - ey);
     expect(distToEnemy).toBeGreaterThan(1.25);
   });
+
+  it('approaches a distant enemy to 75% weapon range with a ranged weapon', () => {
+    // Bow range = 44ft; desired standoff = 44 × 0.75 = 33ft. Enemy at 43.75ft is
+    // within the bow's engage radius (min(scanRadius, max(reachFt, rangedSafeDistance×2)) =
+    // min(50, 44) = 44) and beyond the standoff band (33+3 = 36), so the AI
+    // must plan a target at ~33ft from the enemy, not at the enemy's position.
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 43.75, 0, 20);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).toContain('Closing to ranged standoff');
+    // Target must be between the player and the enemy (approaching), but not at
+    // the enemy position (not walking onto it).
+    expect(decision.targetX).not.toBeNull();
+    expect(decision.targetX!).toBeGreaterThan(0);
+    expect(decision.targetX!).toBeLessThan(43.75);
+    // Target should land close to the 75% standoff distance from the enemy.
+    const standoffFt = 44 * 0.75;
+    expect(decision.targetX!).toBeCloseTo(43.75 - standoffFt, 0);
+  });
+
+  it('orbits away from enemies that are closer than ranged standoff distance', () => {
+    // Enemy at 6.25ft is well inside the bow standoff band (33ft). The orbit step
+    // must push the AI away (targetX < 0 when enemy is on the +X side).
+    const world = createTestWorld({ seed: 7 });
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 6.25, 0, 20);
+    setActiveWeapon(world, getWeaponDef('bow')!);
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.reason).toContain('Ranged orbit');
+    // Radial correction pushes the AI away from the enemy (negative X when enemy
+    // is at +X), so the target must be to the left of the player's start.
+    expect(decision.targetX!).toBeLessThan(0);
+  });
 });
