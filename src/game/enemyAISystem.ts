@@ -978,6 +978,12 @@ function buildRangedPathTarget(
   };
 }
 
+/**
+ * Fallback when pathing cannot produce a usable target/path.
+ *
+ * Returns `true` after applying direct chase steering for chase/swarm/leaper
+ * personas, or `false` when fallback is intentionally disabled (flanker/ranged).
+ */
 function tryFallbackChaseNavigation(
   world: GameWorld,
   eid: number,

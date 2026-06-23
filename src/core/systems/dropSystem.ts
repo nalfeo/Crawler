@@ -285,8 +285,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      const isBabySlime = world.floor1?.enemyArchetypes.get(eid) === 'slime-mini';
-      spawnDrops(world, x, y, drops, allowFloorDrops || isBabySlime);
+      const isMiniSlime = world.floor1?.enemyArchetypes.get(eid) === 'slime-mini';
+      spawnDrops(world, x, y, drops, allowFloorDrops || isMiniSlime);
       logger.info('Processed enemy death drops', {
         eid,
         x,
