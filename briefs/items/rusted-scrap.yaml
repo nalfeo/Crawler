@@ -1,0 +1,19 @@
+type: item
+name: rusted-scrap
+description: |
+  A bent and corroded scrap of metal sitting flat, viewed slightly from above.
+  The piece is roughly rectangular but warped and torn at the edges, suggesting
+  a fragment ripped from a larger object. Surface is heavily rusted with layered
+  orange, brown, and deep red oxidation blooms. Pitting and surface damage visible
+  across the whole face. A few spots where the original grey metal still shows
+  through, hinting at past utility. Bolts or rivets holes along one edge. Sharp,
+  irregular torn edges. The silhouette must immediately read as a scrap of
+  corroded junk metal — flat, ragged, and worthless to anyone but a crafter.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - scrap with a bent corner curling upward, casting a shadow on the flat face below
+  - scrap fragment with a faded painted marking — a smear of yellow industrial paint still visible
+  - heavily pitted and holed scrap, surface eaten through in spots, with wire strands dangling from one edge
+minVariations: 5

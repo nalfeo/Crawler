@@ -1,0 +1,18 @@
+type: item
+name: iron-ore
+description: |
+  A rough, irregular lump of raw iron ore, held upright. The ore is chunky
+  and angular with a dark charcoal-grey surface broken by reddish-brown rust
+  streaks and oxidation. Surface texture is craggy and uneven with flat
+  facets suggesting a freshly cleaved mineral. A dull metallic sheen on the
+  flat break faces. Small traces of earthy orange and ochre mineral staining
+  around the edges. No smooth faces, no gemstone sparkle — this is crude
+  industrial rock. The silhouette reads as a lumpy ore chunk at a glance.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - ore chunk with a prominent vein of bright rust-orange running diagonally across the face
+  - ore lump with a single flat cleaved face showing raw silvery-grey iron beneath the oxidized crust
+  - ore piece with deep charcoal interior visible through a crack, surrounded by reddish earthy crust
+minVariations: 5

@@ -1,0 +1,96 @@
+id: item-icons-floor1
+title: Item Icons — Floor 1 Currently Available Items
+summary: >
+  Sprite briefs and generation tracking for all items that can appear in
+  the player's inventory or equipment pane during Floor 1. These icons are
+  used by InventoryUI and the equipment panel. The registry lookup key for
+  each sprite must match the item's id slug exactly (e.g. brief name
+  'iron-ore' → registry entry briefId 'iron-ore').
+assets:
+  - id: iron-ore
+    type: item
+    label: Iron Ore
+    brief: >
+      A rough lump of raw iron ore with reddish-brown rust streaks and a
+      craggy, oxidized surface. Drops from elite and boss enemies.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: iron-ore
+
+  - id: rusted-scrap
+    type: item
+    label: Rusted Scrap
+    brief: >
+      A bent, corroded scrap of metal with heavy rust blooms and ragged
+      torn edges. Drops from the Floor 1 loot table.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: rusted-scrap
+
+  - id: old-sock
+    type: item
+    label: Old Sock
+    brief: >
+      A limp, tattered sock with stains, holes, and a sagging cuff.
+      Drops from the Floor 1 loot table.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: old-sock
+
+  - id: bone-shard
+    type: item
+    label: Bone Shard
+    brief: >
+      A jagged splinter of dry bone, splintered end at the top.
+      Drops from basic melee and ranged enemies.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: bone-shard
+
+  - id: pebble
+    type: item
+    label: Pebble
+    brief: >
+      A small, smooth oval river stone — neutral grey with faint striations.
+      Drops from the Floor 1 loot table.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: pebble
+
+  - id: glistening-rat-tail
+    type: item
+    label: Glistening Rat Tail
+    brief: >
+      A severed rat tail, moist and glistening, dangling vertically from
+      its thick base. Required fetch item for the shopkeeper quest.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: glistening-rat-tail
+
+  - id: merchants-stained-charm
+    type: item
+    label: Merchant's Stained Charm
+    brief: >
+      A tarnished bronze amulet pendant on a short chain, covered in
+      mysterious stains, with a faint engraved sigil. Equippable neck slot.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: merchants-stained-charm
+
+  - id: floor-key-bronze
+    type: item
+    label: Bronze Floor Key
+    brief: >
+      A large, old-fashioned skeleton key in dull patinated bronze, with
+      chunky teeth. Opens the door to the next floor.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: floor-key-bronze

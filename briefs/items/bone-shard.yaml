@@ -1,0 +1,20 @@
+type: item
+name: bone-shard
+description: |
+  A single jagged bone fragment held upright, tapered end pointing up. The
+  shard is roughly the size of a finger joint — clearly snapped from a larger
+  bone, not cleanly cut. The surface is off-white to pale yellowed ivory with
+  subtle longitudinal grain lines running along the length. The broken end at
+  the top is rough and splintered, showing the hollow interior of the bone as
+  a dark recess. The lower end is smoother, being the original bone surface.
+  Slight grey tinting at the very tips where the marrow has dried. No blood,
+  no flesh — just a dry, old bone chip. The silhouette must read unmistakably
+  as a small piece of bone at a glance.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - shard with dark marrow cavity visible at the broken top end, hollow and shadowed
+  - bone fragment with a faint yellowed-brown stain from age, surface slightly chalky
+  - curved rib-like shard with smooth outer cortex surface and rough splintered ends
+minVariations: 5
