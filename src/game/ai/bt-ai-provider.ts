@@ -1015,13 +1015,20 @@ export class BehaviorTreeAI implements AIInputProvider {
    *    waypoint — path-integrated collection shortcut so the AI grabs gems
    *    it walks past without a full state switch.
    *
-   * Skipped when Track A is already in COLLECT (no point doubling up) or
-   * when the player is retreating (survival over loot).
+   * Skipped when Track A is already in COLLECT (no point doubling up),
+   * when the player is retreating (survival over loot), or when actively
+   * engaging an enemy (ENGAGE kiting geometry is precision-tuned — a pull
+   * toward XP gems could redirect the player out of weapon range mid-fight).
    */
   private buildOpportunisticCollect(): BTNode {
     return action('Opportunistic Collect', (ctx) => {
-      // Track A is handling collection, or survival takes priority
-      if (this.decision.state === AIState.COLLECT || this.decision.state === AIState.RETREAT) {
+      // Track A is handling collection, survival takes priority, or
+      // ENGAGE kiting geometry must not be disturbed
+      if (
+        this.decision.state === AIState.COLLECT ||
+        this.decision.state === AIState.RETREAT ||
+        this.decision.state === AIState.ENGAGE
+      ) {
         return BTStatus.FAILURE;
       }
 
@@ -1112,7 +1119,12 @@ export class BehaviorTreeAI implements AIInputProvider {
   private buildOpportunisticDodge(): BTNode {
     return action('Opportunistic Dodge', (ctx) => {
       // Dodge is suspended during retreat (retreat kiting owns the direction)
-      if (this.decision.state === AIState.RETREAT) return BTStatus.FAILURE;
+      // and during active engagement (planEngagement's kite-strike orbit is
+      // precision-tuned; a 0.4-weight perpendicular injection would displace
+      // the player outside weapon range and stall the fight indefinitely).
+      if (this.decision.state === AIState.RETREAT || this.decision.state === AIState.ENGAGE) {
+        return BTStatus.FAILURE;
+      }
 
       const enemies = query(ctx.world.ecs, [Enemy, Position, Velocity, Health]);
       let closestThreatDist = Number.POSITIVE_INFINITY;
@@ -1162,20 +1174,27 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * OpportunisticFarm: when Track A is in EXPLORE state and there are enemies
-   * visible at wider range, add a pull toward the nearest enemy cluster.
+   * OpportunisticFarm: when Track A is genuinely wandering (EXPLORE with no
+   * specific entity goal) and enemies are visible at wider range, add a pull
+   * toward the nearest enemy cluster so auto-fire starts sooner.
    *
-   * This makes the player naturally drift toward enemies during exploration
-   * so auto-fire starts dealing damage sooner, rather than wandering away
-   * from a nearby swarm toward an empty corner of the map.
+   * Critically: this must NOT fire when the EXPLORE state is being used to
+   * navigate toward a specific entity objective (e.g. shopkeeper, gold pile,
+   * boss room) — those are set by the Progress behavior which also sets
+   * `this.decision.state = AIState.EXPLORE` but with `targetEid !== null`.
+   * A farm pull away from the NPC toward the ambient swarm would delay
+   * quest completion indefinitely.
    *
-   * The pull is additive: it biases movement without overriding A*'s path,
-   * so exploration still progresses frontier coverage.
+   * The pull is additive and addends are normalised so it biases without
+   * overriding A*'s path.
    */
   private buildOpportunisticFarm(): BTNode {
     return action('Opportunistic Farm', (ctx) => {
-      // Only active when Track A is idle-exploring (not pursuing an objective)
-      if (this.decision.state !== AIState.EXPLORE) return BTStatus.FAILURE;
+      // Only fire when genuinely idle-wandering: EXPLORE state AND no specific
+      // entity target (null targetEid = random frontier tile, not an NPC/item/gold goal)
+      if (this.decision.state !== AIState.EXPLORE || this.decision.targetEid !== null) {
+        return BTStatus.FAILURE;
+      }
 
       const nearest = this.findNearestEnemy(
         ctx.world,
