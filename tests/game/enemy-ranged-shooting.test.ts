@@ -64,15 +64,25 @@ describe('enemy ranged shooting', () => {
   it('ranged enemy can miss when the accuracy roll fails', () => {
     const world = createTestWorld();
     world.elapsedMs = 100;
-    // 0.95 exceeds default enemy projectile accuracy (0.9), so this shot misses.
-    vi.spyOn(world.rng, 'next').mockReturnValue(0.95);
+    // First roll misses (0.95 > 0.9), later rolls can hit.
+    vi.spyOn(world.rng, 'next').mockReturnValueOnce(0.95).mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
-    spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
 
     enemyAISystem(world);
-
     expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+    expect(world.stores.enemyBehavior.lastFireMs[enemy]).toBe(100);
+
+    // Cooldown should be consumed even on miss, so this immediate follow-up still cannot fire.
+    world.elapsedMs = 200;
+    enemyAISystem(world);
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+
+    // After cooldown, a successful roll can fire again.
+    world.elapsedMs = 1500;
+    enemyAISystem(world);
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(1);
   });
 
   it('ranged enemy does NOT fire when out of attack range', () => {
