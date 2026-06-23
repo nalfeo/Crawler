@@ -2687,7 +2687,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // player is moving). Once inside it we KITE instead of parking.
     const strikeGatePx = reachPx * ATTACK_GATE_MULTIPLIER;
     if (target.distance <= strikeGatePx) {
-      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx, strikeGatePx);
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx);
     }
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
@@ -2723,7 +2723,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     target: WorldTarget,
     reachPx: number,
-    _strikeGatePx: number,
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
