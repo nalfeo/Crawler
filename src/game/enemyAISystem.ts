@@ -69,8 +69,8 @@ const SLIME_PREP_MAX_FRAMES = 24;
 // A brief, low hop rather than a long juking rocket. Short enough and slow
 // enough that the pounce stays inside an orbiting attacker's strike range
 // instead of blinking through it.
-const SLIME_LEAP_MIN_FRAMES = 6;
-const SLIME_LEAP_MAX_FRAMES = 9;
+const SLIME_LEAP_MIN_FRAMES = 10;
+const SLIME_LEAP_MAX_FRAMES = 14;
 // Frozen recovery after the slime lands. Velocity is zeroed for this window so
 // the slime sits still and exposed — the deliberate opening for the player to
 // land hits after dodging the leap. Sized generously (~0.33–0.57s at 60fps) so a
@@ -992,6 +992,7 @@ function applyPathDrivenBehavior(
   const enemyX = world.stores.position.x[eid] ?? 0;
   const enemyY = world.stores.position.y[eid] ?? 0;
   const traversalMode = world.stores.enemyBehavior.traversalMode[eid] ?? TRAVERSAL_MODE.GROUND;
+  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
   const personaTarget = choosePersonaTarget(
     world,
     eid,
@@ -1002,6 +1003,10 @@ function applyPathDrivenBehavior(
     traversalMode,
   );
   if (!personaTarget) {
+    if (persona !== PATH_PERSONA.FLANKER && behaviorType !== AI_TYPE.RANGED) {
+      setNavigatingVelocity(world, eid, playerX - enemyX, playerY - enemyY, speed);
+      return;
+    }
     setVelocity(world, eid, 0, 0);
     return;
   }
@@ -1036,6 +1041,10 @@ function applyPathDrivenBehavior(
   if (!usedPath) {
     const waypoint = world.floorMap?.tileToPixel(targetTile.x, targetTile.y);
     if (!waypoint) {
+      if (persona !== PATH_PERSONA.FLANKER && behaviorType !== AI_TYPE.RANGED) {
+        setNavigatingVelocity(world, eid, playerX - enemyX, playerY - enemyY, speed);
+        return;
+      }
       setVelocity(world, eid, 0, 0);
       return;
     }
@@ -1046,7 +1055,6 @@ function applyPathDrivenBehavior(
 
   // Keep chase/swarm mobs converging on the player instead of mirroring lateral
   // player strafes tile-for-tile when pathing updates are frequent.
-  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
   if (
     (behaviorType === AI_TYPE.CHASE || behaviorType === AI_TYPE.SWARM) &&
     persona === PATH_PERSONA.NAVIGATOR &&

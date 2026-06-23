@@ -378,20 +378,30 @@ describe('enemyAISystem', () => {
     expect(Math.abs(world.stores.velocity.y[enemy] ?? 0)).toBeGreaterThan(0.05);
 
     let observedLeapSpeed = 0;
+    let longestLeapStreak = 0;
+    let currentLeapStreak = 0;
     for (let i = 0; i < 80; i += 1) {
       world.frameCount += 1;
       world.elapsedMs += 16;
       enemyAISystem(world);
-      observedLeapSpeed = Math.max(
-        observedLeapSpeed,
-        Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+      const speed = Math.hypot(
+        world.stores.velocity.x[enemy] ?? 0,
+        world.stores.velocity.y[enemy] ?? 0,
       );
+      observedLeapSpeed = Math.max(observedLeapSpeed, speed);
+      if (speed > 1.5) {
+        currentLeapStreak += 1;
+        longestLeapStreak = Math.max(longestLeapStreak, currentLeapStreak);
+      } else {
+        currentLeapStreak = 0;
+      }
     }
 
     // The leap is a deliberate, gentler hop (≈1.5× base speed, with a bonus-speed
     // floor) so it stays hittable, but is still clearly faster than the slow prep
     // crouch.
     expect(observedLeapSpeed).toBeGreaterThan(1.5);
+    expect(longestLeapStreak).toBeGreaterThanOrEqual(10);
   });
 
   it('freezes leaper enemies in a recovery window after each leap', () => {
