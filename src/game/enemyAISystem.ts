@@ -978,6 +978,24 @@ function buildRangedPathTarget(
   };
 }
 
+function tryFallbackChaseNavigation(
+  world: GameWorld,
+  eid: number,
+  behaviorType: number,
+  persona: number,
+  playerX: number,
+  playerY: number,
+  enemyX: number,
+  enemyY: number,
+  speed: number,
+): boolean {
+  if (persona === PATH_PERSONA.FLANKER || behaviorType === AI_TYPE.RANGED) {
+    return false;
+  }
+  setNavigatingVelocity(world, eid, playerX - enemyX, playerY - enemyY, speed);
+  return true;
+}
+
 function applyPathDrivenBehavior(
   world: GameWorld,
   eid: number,
@@ -992,7 +1010,6 @@ function applyPathDrivenBehavior(
   const enemyX = world.stores.position.x[eid] ?? 0;
   const enemyY = world.stores.position.y[eid] ?? 0;
   const traversalMode = world.stores.enemyBehavior.traversalMode[eid] ?? TRAVERSAL_MODE.GROUND;
-  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
   const personaTarget = choosePersonaTarget(
     world,
     eid,
@@ -1003,8 +1020,20 @@ function applyPathDrivenBehavior(
     traversalMode,
   );
   if (!personaTarget) {
-    if (persona !== PATH_PERSONA.FLANKER && behaviorType !== AI_TYPE.RANGED) {
-      setNavigatingVelocity(world, eid, playerX - enemyX, playerY - enemyY, speed);
+    const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+    if (
+      tryFallbackChaseNavigation(
+        world,
+        eid,
+        behaviorType,
+        persona,
+        playerX,
+        playerY,
+        enemyX,
+        enemyY,
+        speed,
+      )
+    ) {
       return;
     }
     setVelocity(world, eid, 0, 0);
@@ -1041,8 +1070,20 @@ function applyPathDrivenBehavior(
   if (!usedPath) {
     const waypoint = world.floorMap?.tileToPixel(targetTile.x, targetTile.y);
     if (!waypoint) {
-      if (persona !== PATH_PERSONA.FLANKER && behaviorType !== AI_TYPE.RANGED) {
-        setNavigatingVelocity(world, eid, playerX - enemyX, playerY - enemyY, speed);
+      const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
+      if (
+        tryFallbackChaseNavigation(
+          world,
+          eid,
+          behaviorType,
+          persona,
+          playerX,
+          playerY,
+          enemyX,
+          enemyY,
+          speed,
+        )
+      ) {
         return;
       }
       setVelocity(world, eid, 0, 0);
@@ -1055,6 +1096,7 @@ function applyPathDrivenBehavior(
 
   // Keep chase/swarm mobs converging on the player instead of mirroring lateral
   // player strafes tile-for-tile when pathing updates are frequent.
+  const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
   if (
     (behaviorType === AI_TYPE.CHASE || behaviorType === AI_TYPE.SWARM) &&
     persona === PATH_PERSONA.NAVIGATOR &&
