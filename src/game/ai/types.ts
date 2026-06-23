@@ -208,4 +208,6 @@ export interface RunStats {
   totalXp: number;
   /** Gold held by the player at run end */
   totalGold: number;
+  /** ID of the starting weapon selected for this run */
+  startingWeapon: string;
 }

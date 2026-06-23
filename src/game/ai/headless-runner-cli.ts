@@ -24,6 +24,7 @@ interface CLIArgs {
   eventLog: string | null;
   eventSummary: string | null;
   sampleInterval: number;
+  weapon: string | null;
 }
 
 function parseArgs(): CLIArgs {
@@ -38,6 +39,7 @@ function parseArgs(): CLIArgs {
     eventLog: null,
     eventSummary: null,
     sampleInterval: 15,
+    weapon: null,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -70,6 +72,9 @@ function parseArgs(): CLIArgs {
     } else if (arg === '--sample-interval' && next) {
       args.sampleInterval = Math.max(1, parseInt(next, 10));
       i++;
+    } else if (arg === '--weapon' && next) {
+      args.weapon = next;
+      i++;
     } else if (arg === '--debug') {
       args.debug = true;
     }
@@ -91,6 +96,7 @@ Options:
   --max-time-ms <number>  Maximum wall-clock time in ms (default: 300000)
   --progress <number>     Report progress every N frames (default: 3600)
   --aggression <number>   AI aggression level 0-2 (default: 1)
+  --weapon <id>           Force a specific starting weapon (e.g. sword, bow, baseball-bat)
   --event-log <path>      Write per-frame telemetry as JSONL to <path>
   --event-summary <path>  Write wasted-time summary JSON to <path>
   --sample-interval <n>   Frames between telemetry samples (default: 15)
@@ -122,6 +128,9 @@ async function main(): Promise<void> {
   console.log(`Seed: ${args.seed}`);
   console.log(`Max frames: ${args.maxFrames}`);
   console.log(`Max time: ${args.maxTimeMs}ms`);
+  if (args.weapon !== null) {
+    console.log(`Weapon: ${args.weapon} (forced)`);
+  }
   console.log('');
 
   const ai = new BehaviorTreeAI({
@@ -140,6 +149,7 @@ async function main(): Promise<void> {
     progressInterval: args.progress,
     debug: args.debug,
     eventSampleInterval: args.sampleInterval,
+    ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
     ...(recording
       ? {
           recordEvent: (event: SimEvent): void => {
@@ -153,6 +163,7 @@ async function main(): Promise<void> {
   console.log('📊 Run Complete');
   console.log('━'.repeat(50));
   console.log(`Outcome:      ${stats.outcome.toUpperCase()}`);
+  console.log(`Starting Wep: ${stats.startingWeapon}`);
   console.log(`Final Floor:  ${stats.finalFloor}`);
   console.log(`Final Score:  ${stats.finalScore}`);
   console.log(`Final Level:  ${stats.finalLevel}`);
