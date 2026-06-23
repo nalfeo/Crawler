@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SeededRandom } from '../../src/shared/random';
-import { BiomeType, TileFlags, RoomRole } from '../../src/shared/map-types';
+import { BiomeType, TileFlags, TerrainType, RoomRole } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import { DungeonGenerator } from '../../src/core/map/generators/DungeonGenerator';
 import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';

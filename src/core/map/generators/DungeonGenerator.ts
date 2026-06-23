@@ -855,6 +855,108 @@ function ensureDoorAccess(
 }
 
 /**
+ * Adds a second adjacent door tile where widened 2-tile corridors meet room
+ * walls, preventing corridor width from collapsing to a single-tile doorway.
+ */
+function addDoubleDoors(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  roomGraph: RoomGraph,
+  w: number,
+  h: number,
+): void {
+  const inBounds = (x: number, y: number): boolean => x >= 0 && x < w && y >= 0 && y < h;
+  const rooms = roomGraph.getAll();
+
+  for (let roomId = 0; roomId < rooms.length; roomId++) {
+    const room = roomGraph.get(roomId);
+    if (!room) continue;
+    if (room.role === RoomRole.SAFE || room.role === RoomRole.BOSS_STAIR) continue;
+    if (room.doors.length < 2) continue;
+
+    const { x: rx, y: ry, width: rw, height: rh } = room.bounds;
+    const existingDoors = new Set(room.doors.map((d) => `${d.x},${d.y}`));
+    const originalDoors = [...room.doors];
+
+    for (const door of originalDoors) {
+      let outwardDx = 0;
+      let outwardDy = 0;
+      let tangentOffsets: ReadonlyArray<readonly [number, number]>;
+
+      if (door.x === rx) {
+        outwardDx = -1;
+        tangentOffsets = [
+          [0, -1],
+          [0, 1],
+        ];
+      } else if (door.x === rx + rw - 1) {
+        outwardDx = 1;
+        tangentOffsets = [
+          [0, -1],
+          [0, 1],
+        ];
+      } else if (door.y === ry) {
+        outwardDy = -1;
+        tangentOffsets = [
+          [-1, 0],
+          [1, 0],
+        ];
+      } else if (door.y === ry + rh - 1) {
+        outwardDy = 1;
+        tangentOffsets = [
+          [-1, 0],
+          [1, 0],
+        ];
+      } else {
+        continue;
+      }
+
+      let selected: { x: number; y: number; idx: number } | null = null;
+      for (const [tx, ty] of tangentOffsets) {
+        const candidateX = door.x + tx;
+        const candidateY = door.y + ty;
+        if (!inBounds(candidateX, candidateY)) continue;
+
+        const candidateKey = `${candidateX},${candidateY}`;
+        if (existingDoors.has(candidateKey)) continue;
+        const candidateIdx = candidateY * w + candidateX;
+
+        const candidateFlags = tileMap.flags[candidateIdx]!;
+        if (
+          (candidateFlags & TileFlags.DOOR) !== 0 ||
+          (candidateFlags & TileFlags.PASSABLE) !== 0
+        ) {
+          continue;
+        }
+
+        const outsideX = candidateX + outwardDx;
+        const outsideY = candidateY + outwardDy;
+        const insideX = candidateX - outwardDx;
+        const insideY = candidateY - outwardDy;
+        if (!inBounds(outsideX, outsideY) || !inBounds(insideX, insideY)) continue;
+
+        const outsideTerrain = terrain[outsideY * w + outsideX]!;
+        if (outsideTerrain !== TerrainType.CORRIDOR) continue;
+
+        const insideFlags = tileMap.flags[insideY * w + insideX]!;
+        if ((insideFlags & TileFlags.PASSABLE) === 0) continue;
+
+        if (!selected || candidateIdx < selected.idx) {
+          selected = { x: candidateX, y: candidateY, idx: candidateIdx };
+        }
+      }
+
+      if (!selected) continue;
+      if ((selected.idx + roomId) % 3 !== 0) continue;
+
+      tileMap.flags[selected.idx] = TilePresets.FLOOR;
+      terrain[selected.idx] = TerrainType.DOOR;
+      existingDoors.add(`${selected.x},${selected.y}`);
+    }
+  }
+}
+
+/**
  * Widen corridors by one tile perpendicular to their primary direction.
  * Horizontal corridors (neighboured E/W by floor) get a north or south tile added;
  * vertical corridors get an east or west tile added. Uses a two-pass approach
