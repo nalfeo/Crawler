@@ -186,6 +186,8 @@ describe('Map Generators', () => {
   });
 
   describe('DungeonGenerator (BASIC_UNDERGROUND — room variety)', () => {
+    /** Seeds used across multiple regression tests in this suite. */
+    const REGRESSION_TEST_SEEDS = [1, 2, 3, 5, 7, 10, 42, 99] as const;
     it('should produce a map with correct dimensions', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
       const rng = new SeededRandom(42);
@@ -238,7 +240,7 @@ describe('Map Generators', () => {
     it('should keep every room reachable from the spawn room across representative seeds', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
 
-      for (const seed of [1, 2, 3, 5, 8, 13, 21]) {
+      for (const seed of REGRESSION_TEST_SEEDS) {
         const floor = gen.generate(
           smallConfig(BiomeType.BASIC_UNDERGROUND),
           new SeededRandom(seed),
@@ -252,7 +254,7 @@ describe('Map Generators', () => {
     it('should preserve a passable interior tile next to every room door after reshaping', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
 
-      for (const seed of [1, 2, 3, 5, 8, 13, 21]) {
+      for (const seed of REGRESSION_TEST_SEEDS) {
         const floor = gen.generate(
           smallConfig(BiomeType.BASIC_UNDERGROUND),
           new SeededRandom(seed),
@@ -280,7 +282,7 @@ describe('Map Generators', () => {
         floorDensity: 0.42,
       };
 
-      for (const seed of [1, 2, 3, 5, 7, 10, 42, 99]) {
+      for (const seed of REGRESSION_TEST_SEEDS) {
         const floor = gen.generate({ ...floor1Config, seed }, new SeededRandom(seed));
         const reachable = reachableTileIndices(floor);
 
@@ -311,7 +313,7 @@ describe('Map Generators', () => {
         floorDensity: 0.42,
       };
 
-      for (const seed of [1, 2, 3, 5, 7, 10, 42, 99]) {
+      for (const seed of REGRESSION_TEST_SEEDS) {
         const floor = gen.generate({ ...config, seed }, new SeededRandom(seed));
         const { width: w } = floor;
 
@@ -366,7 +368,7 @@ describe('Map Generators', () => {
         floorDensity: 0.42,
       };
 
-      for (const seed of [1, 2, 3, 5, 7, 10, 42, 99]) {
+      for (const seed of REGRESSION_TEST_SEEDS) {
         const floorV = genVariety.generate({ ...config, seed }, new SeededRandom(seed));
         const floorF = genFlat.generate({ ...config, seed }, new SeededRandom(seed));
 

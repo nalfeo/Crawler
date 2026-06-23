@@ -354,11 +354,13 @@ function preAssignRoles(roomGraph: RoomGraph): void {
     .map((room) => {
       const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
       const cy = Math.floor(room.bounds.y + room.bounds.height / 2);
-      return { id: room.id, distanceSq: (cx - refX) ** 2 + (cy - refY) ** 2 };
+      return { id: room.id, distanceSq: (cx - refX) * (cx - refX) + (cy - refY) * (cy - refY) };
     });
   scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
   if (scored[0]) roomGraph.setRole(scored[0].id, RoomRole.BOSS_STAIR);
+  // SAFE requires a third room: room 0 = SPAWN, scored[0] = BOSS_STAIR, scored[1] = SAFE.
+  // With only 2 rooms there is no candidate left for the safe role.
   if (roomGraph.count >= 3 && scored[1]) roomGraph.setRole(scored[1].id, RoomRole.SAFE);
 }
 
