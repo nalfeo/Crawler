@@ -4,7 +4,7 @@
  */
 
 export interface CombatEvent {
-  type: 'hit' | 'blocked' | 'death';
+  type: 'hit' | 'blocked' | 'death' | 'miss';
   /** Position where the VFX should appear (target position). */
   x: number;
   y: number;
