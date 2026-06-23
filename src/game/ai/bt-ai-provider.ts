@@ -1429,25 +1429,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     // smooth stall and drive directly toward the enemy's pixel position.
     // Mirrors the enemyAISystem pathDirection.length ≤ EPSILON → direct
     // pursuit correction that fixed enemy "dancing" at tile-center distance.
-    const smoothLen = Math.hypot(this.smoothMoveX, this.smoothMoveY);
     if (
-      smoothLen < ENGAGE_STALL_VELOCITY_THRESHOLD &&
       this.decision.state === AIState.ENGAGE &&
-      this.decision.targetEid !== null
+      this.decision.targetEid !== null &&
+      Math.hypot(this.smoothMoveX, this.smoothMoveY) < ENGAGE_STALL_VELOCITY_THRESHOLD
     ) {
-      const ex = world.stores.position.x[this.decision.targetEid];
-      const ey = world.stores.position.y[this.decision.targetEid];
-      if (typeof ex === 'number' && typeof ey === 'number') {
-        const toDx = ex - playerX;
-        const toDy = ey - playerY;
-        const toDist = Math.hypot(toDx, toDy);
-        if (toDist > MIN_PLAYER_ENEMY_CONTACT_PX) {
-          const norm = normalizeInputDirection(toDx / toDist, toDy / toDist);
-          state.moveX = norm.moveX;
-          state.moveY = norm.moveY;
-          this.smoothMoveX = norm.moveX;
-          this.smoothMoveY = norm.moveY;
-        }
+      const pursuit = this.enemyPursuitDirection(world, playerX, playerY, this.decision.targetEid);
+      if (pursuit !== null) {
+        const norm = normalizeInputDirection(pursuit.dx / pursuit.dist, pursuit.dy / pursuit.dist);
+        state.moveX = norm.moveX;
+        state.moveY = norm.moveY;
+        this.smoothMoveX = norm.moveX;
+        this.smoothMoveY = norm.moveY;
       }
     }
 
@@ -1467,6 +1460,28 @@ export class BehaviorTreeAI implements AIInputProvider {
       state.pointerX = playerX;
       state.pointerY = playerY;
     }
+  }
+
+  /**
+   * Returns the normalised direction vector from the player to the given enemy
+   * EID, or null if the enemy position is unavailable or already within
+   * MIN_PLAYER_ENEMY_CONTACT_PX. Used by both the anti-stall override and the
+   * ENGAGE fallback to avoid duplicating the position-validity + range check.
+   */
+  private enemyPursuitDirection(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    targetEid: number,
+  ): { dx: number; dy: number; dist: number } | null {
+    const ex = world.stores.position.x[targetEid];
+    const ey = world.stores.position.y[targetEid];
+    if (typeof ex !== 'number' || typeof ey !== 'number') return null;
+    const dx = ex - playerX;
+    const dy = ey - playerY;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= MIN_PLAYER_ENEMY_CONTACT_PX) return null;
+    return { dx, dy, dist };
   }
 
   /**
@@ -1676,23 +1691,17 @@ export class BehaviorTreeAI implements AIInputProvider {
     // its path waypoints are exhausted but the player has drifted within the
     // tile (see enemyAISystem "Tile center already reached" fix).
     if (this.decision.state === AIState.ENGAGE && this.decision.targetEid !== null) {
-      const ex = world.stores.position.x[this.decision.targetEid];
-      const ey = world.stores.position.y[this.decision.targetEid];
-      if (typeof ex === 'number' && typeof ey === 'number') {
-        const toDx = ex - playerX;
-        const toDy = ey - playerY;
-        const toDist = Math.hypot(toDx, toDy);
-        if (toDist > MIN_PLAYER_ENEMY_CONTACT_PX) {
-          this.moveWithLocalNavigation(
-            state,
-            world,
-            playerX,
-            playerY,
-            toDx / toDist,
-            toDy / toDist,
-          );
-          return;
-        }
+      const pursuit = this.enemyPursuitDirection(world, playerX, playerY, this.decision.targetEid);
+      if (pursuit !== null) {
+        this.moveWithLocalNavigation(
+          state,
+          world,
+          playerX,
+          playerY,
+          pursuit.dx / pursuit.dist,
+          pursuit.dy / pursuit.dist,
+        );
+        return;
       }
     }
     this.moveWithLocalNavigation(
