@@ -14,6 +14,10 @@ describe('Item Catalog', () => {
     expect(ITEM_CATALOG.length).toBeGreaterThanOrEqual(100);
   });
 
+  it('snapshot: current catalog size (update when intentionally adding items)', () => {
+    expect(ITEM_CATALOG).toHaveLength(102);
+  });
+
   it('has unique IDs', () => {
     const ids = ITEM_CATALOG.map((item) => item.id);
     const uniqueIds = new Set(ids);
@@ -43,6 +47,20 @@ describe('Item Catalog', () => {
     for (const tag of KNOWN_TAGS) {
       const count = ITEM_CATALOG.filter((item) => item.tags.includes(tag)).length;
       expect(count).toBeGreaterThanOrEqual(20);
+    }
+  });
+
+  it('snapshot: current item count per canonical tag (update when intentionally adding items)', () => {
+    const expected: Record<string, number> = {
+      Materials: 21,
+      Weapons: 20,
+      Consumables: 20,
+      'Key Items': 20,
+      Misc: 21,
+    };
+    for (const tag of KNOWN_TAGS) {
+      const count = ITEM_CATALOG.filter((item) => item.tags.includes(tag)).length;
+      expect(count).toBe(expected[tag]);
     }
   });
 
