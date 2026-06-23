@@ -62,6 +62,12 @@ export const STAT_DISPLAY: Readonly<Record<StatKey, StatDisplayInfo>> = {
     description: 'How fast your projectiles travel.',
     decimals: 2,
   },
+  accuracy: {
+    label: 'Accuracy',
+    description:
+      "Bonus hit chance added to your weapon's base accuracy. Trained via weapon type skills and dexterity.",
+    decimals: 2,
+  },
 };
 
 /** Format a stat's current gameplay value using its configured precision. */
@@ -83,7 +89,8 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
   },
   dexterity: {
     label: 'Dexterity',
-    description: '+0.05 Attack Speed · +0.1 Move Speed per point. Agility and reflexes.',
+    description:
+      '+0.05 Attack Speed · +0.1 Move Speed · +0.01 Accuracy per point. Agility and precision.',
     decimals: 0,
   },
   constitution: {

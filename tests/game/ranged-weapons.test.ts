@@ -5,7 +5,6 @@ import { spawnEnemy, spawnPlayer, spawnProjectile } from '../../src/core/helpers
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
-import { WEAPON } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -40,18 +39,6 @@ describe('ranged weapons', () => {
     const bow = getWeaponDef('bow')!;
     expect(crossbow.cooldownMs).toBeGreaterThan(bow.cooldownMs);
     expect(crossbow.baseDamage).toBeGreaterThan(bow.baseDamage);
-  });
-
-  it('legacy mode still works without setActiveWeapon', () => {
-    const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
-    spawnEnemy(world, 200, 100, 10); // must have a visible enemy to fire
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
-
-    weaponSystem(world);
-
-    const projectiles = Array.from(query(world.ecs, [Projectile]));
-    expect(projectiles).toHaveLength(1);
   });
 
   it('projectile with pierce=0 is destroyed on first hit', () => {

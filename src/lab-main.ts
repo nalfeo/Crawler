@@ -27,6 +27,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'level-up-lab': '/src/labs/level-up-lab/index.ts',
   'xp-curve-lab': '/src/labs/xp-curve-lab/index.ts',
   'skill-lab': '/src/labs/skill-lab/index.ts',
+  'weapon-skill-lab': '/src/labs/weapon-skill-lab/index.ts',
   'tile-explorer': '/src/labs/tile-explorer-lab/index.ts',
   'mobile-controls-lab': '/src/labs/mobile-controls-lab/index.ts',
   'sprite-catalog': '/src/labs/sprite-catalog-lab/index.ts',
