@@ -212,10 +212,34 @@ export class DungeonGenerator implements MapGenerator {
     const spawnRoom = roomGraph.get(0);
     let playerSpawn = { x: Math.floor(w / 2), y: Math.floor(h / 2) };
     if (spawnRoom) {
-      playerSpawn = {
-        x: Math.floor(spawnRoom.bounds.x + spawnRoom.bounds.width / 2),
-        y: Math.floor(spawnRoom.bounds.y + spawnRoom.bounds.height / 2),
-      };
+      const centerX = Math.floor(spawnRoom.bounds.x + spawnRoom.bounds.width / 2);
+      const centerY = Math.floor(spawnRoom.bounds.y + spawnRoom.bounds.height / 2);
+      playerSpawn = { x: centerX, y: centerY };
+      // When a corridor or adjacent room has partially filled the room's interior,
+      // the computed bounds-center can land on a wall tile. Spiral outward from
+      // the center (staying within the interior region, one tile inside the walls)
+      // to find the nearest passable tile so the player never spawns inside a wall.
+      if (!tileMap.isPassable(centerX, centerY)) {
+        const ix = spawnRoom.bounds.x + 1;
+        const iy = spawnRoom.bounds.y + 1;
+        const maxX = spawnRoom.bounds.x + spawnRoom.bounds.width - 2;
+        const maxY = spawnRoom.bounds.y + spawnRoom.bounds.height - 2;
+        const maxR = Math.max(spawnRoom.bounds.width, spawnRoom.bounds.height);
+        found: for (let r = 1; r <= maxR; r++) {
+          for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+              // Only test ring perimeter so we spiral outward without redundancy.
+              if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+              const tx = centerX + dx;
+              const ty = centerY + dy;
+              if (tx >= ix && tx <= maxX && ty >= iy && ty <= maxY && tileMap.isPassable(tx, ty)) {
+                playerSpawn = { x: tx, y: ty };
+                break found;
+              }
+            }
+          }
+        }
+      }
       roomGraph.setRole(0, RoomRole.SPAWN);
     }
 

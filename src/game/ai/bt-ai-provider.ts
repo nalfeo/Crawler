@@ -173,6 +173,13 @@ const COLLECT_DWELL_CLUSTER_RADIUS_PX = 96;
 const EXPLORE_DWELL_ESCAPE_PX = 64;
 // Frames parked inside the dwell circle before we force a new explore target.
 const EXPLORE_DWELL_FRAMES = 180;
+// After a dwell-watchdog fires on a position-based progress target (Tutorial Goon,
+// Shopkeeper, boss room, etc.) the BT immediately re-assigns the same unreachable
+// position on the next frame, creating a permanent freeze. Suppress ALL position-
+// progress goals for this many frames so the tree falls through to Hunt/Engage
+// and the AI keeps fighting while the path is blocked. The goal re-evaluates once
+// the window expires, so it catches up when a door opens or the player moves closer.
+const PROGRESS_SUPPRESS_FRAMES = 360;
 // EXPLORE reachability sampling: the dwell watchdog stops the AI wiggling against
 // a single unreachable frontier forever, but if pickExploreTarget keeps re-rolling
 // random passable tiles that happen to be unreachable from the player's current
@@ -400,6 +407,14 @@ export class BehaviorTreeAI implements AIInputProvider {
   private exploreDwellAnchorX: number = 0;
   private exploreDwellAnchorY: number = 0;
   private exploreDwellFrames: number = 0;
+  /**
+   * Frame after which a suppressed position-based progress goal (Tutorial Goon,
+   * Shopkeeper, boss room, staircase…) becomes eligible again. Set by
+   * {@link updateExploreWatchdog} when a dwell-watchdog fires on a non-enemy EXPLORE
+   * target so the BT falls through to Hunt/Engage instead of freezing on the same
+   * unreachable position forever.
+   */
+  private progressGoalSuppressedUntilFrame: number = 0;
   /**
    * Cumulative fog-of-war "seen" bitmap (one byte per tile, 1 = ever seen),
    * OR-accumulated from {@link FloorMap.visible} every poll. This is exactly the
@@ -1124,7 +1139,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * the current frontier is unreachable — clear it so the Explore node selects a
    * fresh target next tick.
    */
-  private updateExploreWatchdog(playerX: number, playerY: number): void {
+  private updateExploreWatchdog(playerX: number, playerY: number, currentFrame: number): void {
     if (this.decision.state !== AIState.EXPLORE) {
       this.exploreDwellActive = false;
       this.exploreDwellFrames = 0;
@@ -1160,6 +1175,14 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.pathGoalKey = null;
       this.exploreDwellActive = false;
       this.exploreDwellFrames = 0;
+      // If the frozen target was a position-based progress goal (non-enemy,
+      // targetEid < 0 — e.g. Tutorial Goon, Shopkeeper, boss room), suppress ALL
+      // position progress goals temporarily. Without this the BT immediately
+      // re-assigns the same unreachable position on the next frame, the dwell
+      // counter resets to 0, and the AI freezes forever without ever fighting.
+      if (this.decision.targetEid === null || this.decision.targetEid < 0) {
+        this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
+      }
       if (this.config.debug) {
         logger.debug(
           `AI abandoning unreachable explore frontier (dwell ${String(EXPLORE_DWELL_FRAMES)}f)`,
@@ -1374,7 +1397,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Abandon EXPLORE frontiers we cannot reach (behind a locked door or across an
     // unpathable gap). Without this the AI wiggles against the obstacle forever,
     // never re-picking because it never closes within 50px of the target.
-    this.updateExploreWatchdog(playerX, playerY);
+    this.updateExploreWatchdog(playerX, playerY, world.frameCount);
 
     // State-agnostic backstop: break cross-state thrash (ENGAGE<->COLLECT every
     // frame at a navigation choke) that none of the per-state watchdogs above can
@@ -2071,8 +2094,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     const hasFetchItem = bag ? hasItem(bag, SHOPKEEPER_FETCH_ITEM_ID) : false;
     const tutorialAccepted = world.questLog.has(FLOOR1_TUTORIAL_QUEST_ID);
     const bossBattleAccepted = world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID);
+    // True while the dwell-watchdog has flagged all position-based progress goals
+    // as temporarily unreachable. Entity-based goals (quest enemies, gold piles) are
+    // NOT affected — only fixed-position NPC/room targets get suppressed.
+    const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
 
     if (!tutorialAccepted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.welcomeOfficePos.x,
         objective.welcomeOfficePos.y,
@@ -2117,6 +2145,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (shopStage === 'not-met') {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.shopRoomPos.x,
         objective.shopRoomPos.y,
@@ -2127,6 +2156,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (shopStage === 'awaiting-prize') {
+      if (progressSuppressed) return null;
       const target = hasFetchItem ? objective.shopRoomPos : objective.questItemPos;
       return this.createProgressTarget(
         target.x,
@@ -2139,6 +2169,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (shopStage === 'ready-to-buy') {
       if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
+        if (progressSuppressed) return null;
         return this.createProgressTarget(
           objective.shopRoomPos.x,
           objective.shopRoomPos.y,
@@ -2207,6 +2238,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!bossBattleAccepted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.spellQuestGiverPos.x,
         objective.spellQuestGiverPos.y,
@@ -2217,6 +2249,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (!objective.slimeRatBattleStarted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.slimeRatRoomPos.x,
         objective.slimeRatRoomPos.y,
@@ -2227,6 +2260,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.slimeRatBossDefeated && !world.featureUnlocks.spells) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.spellQuestGiverPos.x,
         objective.spellQuestGiverPos.y,
@@ -2237,6 +2271,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.slimeRatBossDefeated && !objective.bossBattleStarted) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.staircasePos.x,
         objective.staircasePos.y,
@@ -2247,6 +2282,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
+      if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.staircasePos.x,
         objective.staircasePos.y,
