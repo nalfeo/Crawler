@@ -64,7 +64,8 @@ describe('enemy ranged shooting', () => {
   it('ranged enemy can miss when the accuracy roll fails', () => {
     const world = createTestWorld();
     world.elapsedMs = 100;
-    vi.spyOn(world.rng, 'next').mockReturnValue(1);
+    // 0.95 exceeds default enemy projectile accuracy (0.9), so this shot misses.
+    vi.spyOn(world.rng, 'next').mockReturnValue(0.95);
 
     spawnPlayer(world, 0, 0);
     spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);

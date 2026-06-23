@@ -876,7 +876,7 @@ function tryFireEnemyProjectile(
   const enemyY = position.y[eid]!;
   const spawnX = enemyX + direction.x * ENEMY_PROJECTILE.MUZZLE_OFFSET;
   const spawnY = enemyY + direction.y * ENEMY_PROJECTILE.MUZZLE_OFFSET;
-  // rng.next() is [0,1); values above the accuracy threshold are misses.
+  // rng.next() returns [0,1); if the roll exceeds ACCURACY, the shot misses.
   if (world.rng.next() > ENEMY_PROJECTILE.ACCURACY) {
     enemyBehavior.lastFireMs[eid] = world.elapsedMs;
     return;
