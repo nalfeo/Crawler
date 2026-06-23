@@ -1,0 +1,19 @@
+type: item
+name: floor-key-bronze
+description: |
+  A large, old-fashioned skeleton key made of dull bronze, held vertically with
+  the bow (ring loop) at the top and the blade at the bottom. The key is chunky
+  and oversized — clearly for a dungeon door, not a lockbox. Bronze surface is
+  worn and patinated with greenish-brown oxidation in the crevices and a duller
+  yellowish-brown on the raised faces. The bow is a simple circular ring shape.
+  The blade has two or three chunky rectangular teeth cut into it. Slightly
+  tarnished, clearly old, but still solid and functional. The silhouette must
+  read instantly as a classic key shape at small scale.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - key with deep verdigris patina pooling in the teeth and bow groove, surface heavily aged
+  - key with a faint engraved symbol on the bow face, suggesting it opens something specific
+  - key with one chipped tooth and surface scratches, looking like it has opened many doors
+minVariations: 5

@@ -1,0 +1,19 @@
+type: item
+name: old-sock
+description: |
+  A single worn, tattered sock held upright by its cuff. The sock sags limply,
+  flopping over in the middle from age and neglect. Fabric texture is visible
+  through pixel dithering — woven knit pattern hinted at but not photorealistic.
+  Color is a faded dirty grey-beige with darker stains at the toe and heel.
+  Small holes in the toe region. Elastic at the cuff is stretched and partially
+  unravelled, with a few loose threads hanging. The overall read is unmistakably
+  a crusty, forgotten sock — both pathetic and somehow present. The silhouette
+  of the drooping sock shape must be instantly recognizable even at small scale.
+sensors:
+  edge:
+    allowMainTouch: true
+variations:
+  - sock with a visible dirt-brown stain band across the ankle and heel area
+  - sock with a small ragged hole torn through the toe, fraying threads visible
+  - striped sock with faded alternating grey and cream bands, heavily yellowed with age
+minVariations: 5

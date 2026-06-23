@@ -19,6 +19,7 @@ import {
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
+import { GAME } from '../../shared/constants.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const INITIAL_SEED = 42;
@@ -170,12 +171,13 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
 
   const config: Phaser.Types.Core.GameConfig = {
-    type: Phaser.WEBGL,
+    type: Phaser.AUTO,
     parent: canvas,
-    width: 1280,
-    height: 720,
-    backgroundColor: '#1a1a2e',
+    width: GAME.WIDTH,
+    height: GAME.HEIGHT,
+    backgroundColor: '#111111',
     pixelArt: true,
+    roundPixels: true,
     scene: [BootScene, new MainGameScene(sceneOptions)],
     scale: {
       mode: Phaser.Scale.FIT,

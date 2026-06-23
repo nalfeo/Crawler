@@ -3,8 +3,8 @@ import type { StatModifier } from '../../shared/skills.js';
 import type { GameWorld } from '../../core/world.js';
 import { applyDamage } from '../../core/apply-damage.js';
 import { addStatModifier } from './statsSystem.js';
-import { query } from 'bitecs';
-import { Enemy, Position, Health } from '../../core/components.js';
+import { addComponent, hasComponent, query } from 'bitecs';
+import { Enemy, Health, Knockback, Position } from '../../core/components.js';
 
 interface ApplyCatalogEffectOptions {
   sourceType: StatModifier['sourceType'];
@@ -77,10 +77,13 @@ function castPulseShield(
     const distSq = dx * dx + dy * dy;
     if (distSq <= radiusSq && distSq > 0) {
       const dist = Math.sqrt(distSq);
-      const pushX = (dx / dist) * knockbackForce;
-      const pushY = (dy / dist) * knockbackForce;
-      world.stores.position.x[enemyEid] = (world.stores.position.x[enemyEid] ?? 0) + pushX;
-      world.stores.position.y[enemyEid] = (world.stores.position.y[enemyEid] ?? 0) + pushY;
+      if (!hasComponent(world.ecs, enemyEid, Knockback)) {
+        addComponent(world.ecs, enemyEid, Knockback);
+      }
+      world.stores.knockback.dirX[enemyEid] = dx / dist;
+      world.stores.knockback.dirY[enemyEid] = dy / dist;
+      world.stores.knockback.remaining[enemyEid] = knockbackForce;
+      world.stores.knockback.speed[enemyEid] = knockbackForce;
     }
   }
 }

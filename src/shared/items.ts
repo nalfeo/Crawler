@@ -1,5 +1,5 @@
 /**
- * Item definitions — types, rarity, tag system, and the 100-item catalog.
+ * Item definitions — types, rarity, tag system, and the 102-item catalog.
  *
  * Tags drive inventory tabs dynamically. KnownTag covers the canonical five;
  * CustomTag (branded string) lets AI-generated content invent new categories
@@ -69,7 +69,7 @@ export interface ItemDef {
 }
 
 // ---------------------------------------------------------------------------
-// 100-item catalog
+// 102-item catalog
 // ---------------------------------------------------------------------------
 
 const C = ItemRarity.Common;
@@ -306,6 +306,15 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     U,
     [customTag('Gear')],
   ),
+  // ── Catalog additions (index-stable append) ─────────────────────────
+  mat(
+    'bone-shard',
+    'Bone Shard',
+    'A jagged fragment pried from something that did not need all its bones.',
+    C,
+    [customTag('Smelly Stuff')],
+  ),
+  misc('pebble', 'Pebble', 'Smooth, ordinary, and somehow still worth carrying.', C),
 ];
 
 // ---------------------------------------------------------------------------
