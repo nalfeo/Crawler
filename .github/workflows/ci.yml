@@ -131,12 +131,19 @@ jobs:
       - name: Check required jobs
         run: |
           check() {
-            local name="$1" result="$2"
-            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+            local name="$1" result="$2" allow_skipped="${3:-false}"
+            if [ "$result" = "success" ]; then
+              echo "✅ $name: $result"
+              return
+            fi
+            if [ "$allow_skipped" = "true" ] && [ "$result" = "skipped" ]; then
+              echo "✅ $name: $result"
+              return
+            fi
+            if [ "$result" != "success" ]; then
               echo "❌ $name failed (result: $result)"
               exit 1
             fi
-            echo "✅ $name: $result"
           }
           check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"
           check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
