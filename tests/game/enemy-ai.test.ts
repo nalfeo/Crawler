@@ -107,6 +107,33 @@ function createFullyBlockedMap(): FloorMap {
   return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(100), { x: 1, y: 1 });
 }
 
+function createSparseIslandMap(): FloorMap {
+  const width = 40;
+  const height = 12;
+  const config: MapConfig = {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizePx: 32,
+    biome: BiomeType.DUNGEON,
+    seed: 11,
+    roomWidthRange: [4, 6],
+    roomHeightRange: [4, 6],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.WALL);
+  for (let y = 3; y <= 8; y += 1) {
+    for (let x = 3; x <= 8; x += 1) {
+      tileMap.setFlags(x, y, TilePresets.FLOOR);
+    }
+  }
+  return new FloorMap(config, tileMap, new RoomGraph(), new Uint8Array(width * height), {
+    x: 4,
+    y: 4,
+  });
+}
+
 function runTicks(world: ReturnType<typeof createTestWorld>, ticks: number): void {
   for (let i = 0; i < ticks; i += 1) {
     world.frameCount += 1;
@@ -277,6 +304,23 @@ describe('enemyAISystem', () => {
 
     expect(world.stores.velocity.x[enemy]).toBe(0);
     expect(world.stores.velocity.y[enemy]).toBe(0);
+  });
+
+  it('falls back to direct chase steering when path target resolution fails', () => {
+    const world = createTestWorld();
+    world.floorMap = createSparseIslandMap();
+    // Intentionally place the player in an all-wall region far from the only walkable island
+    // so path target resolution returns null.
+    spawnPlayer(world, 35 * 32, 5 * 32);
+    const enemy = spawnBehaviorEnemy(world, 5 * 32, 5 * 32, 20, AI_TYPE.CHASE, 2, 5000, 0, {
+      persona: PATH_PERSONA.NAVIGATOR,
+    });
+
+    enemyAISystem(world);
+
+    expect(
+      Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+    ).toBeGreaterThan(0.1);
   });
 
   it('affects only enemies with the EnemyBehavior component', () => {

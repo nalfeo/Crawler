@@ -995,6 +995,8 @@ function tryFallbackChaseNavigation(
   enemyY: number,
   speed: number,
 ): boolean {
+  // Flankers rely on path targets to stage positional plays around the player,
+  // and ranged enemies should maintain spacing instead of hard-chasing.
   if (persona === PATH_PERSONA.FLANKER || behaviorType === AI_TYPE.RANGED) {
     return false;
   }
