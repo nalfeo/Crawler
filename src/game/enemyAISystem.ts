@@ -66,9 +66,9 @@ const SLIME_LEAP_INNER_RANGE = 52;
 // window — the frozen recovery is — but it stays long enough to read clearly.
 const SLIME_PREP_MIN_FRAMES = 14;
 const SLIME_PREP_MAX_FRAMES = 24;
-// A brief, low hop rather than a long juking rocket. Short enough and slow
-// enough that the pounce stays inside an orbiting attacker's strike range
-// instead of blinking through it.
+// A brief but committed hop: long enough to travel past the player's current
+// position and set up the frozen-recovery opening, while still short and slow
+// enough to read and sidestep.
 const SLIME_LEAP_MIN_FRAMES = 6;
 const SLIME_LEAP_MAX_FRAMES = 9;
 // Frozen recovery after the slime lands. Velocity is zeroed for this window so
