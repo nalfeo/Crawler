@@ -1,9 +1,10 @@
-import { addComponent, query } from 'bitecs';
+import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Damage, Position, Projectile, Stats, Velocity } from '../../src/core/components.js';
+import { Damage, Position, Projectile, Velocity } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
-import { weaponSystem } from '../../src/game/weaponSystem.js';
+import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { WEAPON } from '../../src/shared/constants.js';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('weaponSystem', () => {
@@ -11,7 +12,9 @@ describe('weaponSystem', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 120);
     spawnEnemy(world, 200, 120, 10); // target enemy (no floorMap = always visible)
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
 
     weaponSystem(world);
 
@@ -28,7 +31,9 @@ describe('weaponSystem', () => {
   it('does not fire when there are no enemies', () => {
     const world = createTestWorld();
     spawnPlayer(world, 100, 120);
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
 
     weaponSystem(world);
 
@@ -40,7 +45,9 @@ describe('weaponSystem', () => {
     spawnPlayer(world, 0, 0);
     spawnEnemy(world, 30, 0, 20);
     spawnEnemy(world, 0, 40, 20);
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
 
     weaponSystem(world);
 
@@ -58,28 +65,14 @@ describe('weaponSystem', () => {
     const world = createTestWorld();
     spawnPlayer(world, 64, 64);
     spawnEnemy(world, 200, 64, 10); // target enemy
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
 
     weaponSystem(world);
-    world.elapsedMs += WEAPON.FIRE_RATE_MS / 2;
+    world.elapsedMs += pistol.cooldownMs / 2;
     weaponSystem(world);
 
     expect(query(world.ecs, [Projectile]).length).toBe(1);
-  });
-
-  it('uses stats damage directly even when it is zero', () => {
-    const world = createTestWorld();
-    const player = spawnPlayer(world, 10, 20);
-    addComponent(world.ecs, player, Stats);
-    world.stores.stats.damage[player] = 0;
-    world.stores.stats.attackSpeed[player] = 1;
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
-    spawnEnemy(world, 100, 20, 10);
-
-    weaponSystem(world);
-
-    const projectile = query(world.ecs, [Projectile, Damage])[0];
-    expect(projectile).toBeDefined();
-    expect(world.stores.damage.amount[projectile!]).toBe(0);
   });
 });

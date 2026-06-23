@@ -17,11 +17,12 @@ import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import {
   configureEnemySpawner,
-  configureWeaponSystem,
   enemySpawnerSystem,
+  setActiveWeapon,
   weaponSystem,
 } from '../../game/index.js';
-import { GAME, PLAYER_SPEED, WEAPON } from '../../shared/constants.js';
+import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
@@ -30,9 +31,6 @@ type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 interface CombatLabSettings {
   playerSpeed: number;
-  fireRateMs: number;
-  projectileSpeed: number;
-  projectileDamage: number;
   maxEnemies: number;
   spawnIntervalMs: number;
   enemyHp: number;
@@ -86,9 +84,6 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
   const settings: CombatLabSettings = {
     playerSpeed: PLAYER_SPEED,
-    fireRateMs: WEAPON.FIRE_RATE_MS,
-    projectileSpeed: WEAPON.PROJECTILE_SPEED,
-    projectileDamage: WEAPON.BASE_DAMAGE,
     maxEnemies: 30,
     spawnIntervalMs: 750,
     enemyHp: 20,
@@ -169,11 +164,6 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
           this.world.frameCount += 1;
           this.world.elapsedMs += GAME.DELTA_MS;
 
-          configureWeaponSystem(this.world, {
-            fireRateMs: settings.fireRateMs,
-            projectileSpeed: settings.projectileSpeed,
-            baseDamage: settings.projectileDamage,
-          });
           this.applySpawnerBounds();
 
           playerInputSystem(this.world, this.inputState);
@@ -243,11 +233,8 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       );
       addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
 
-      configureWeaponSystem(this.world, {
-        fireRateMs: settings.fireRateMs,
-        projectileSpeed: settings.projectileSpeed,
-        baseDamage: settings.projectileDamage,
-      });
+      const pistol = getWeaponDef('pistol');
+      if (pistol) setActiveWeapon(this.world, pistol);
       this.applySpawnerBounds();
       this.bridge?.sync(this.world);
       this.updateHud();
@@ -276,9 +263,6 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   };
 
   gui.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
-  gui.add(settings, 'fireRateMs', 100, 2000, 1).name('Fire Rate');
-  gui.add(settings, 'projectileSpeed', 1, 20, 0.1).name('Projectile Speed');
-  gui.add(settings, 'projectileDamage', 1, 50, 1).name('Projectile Damage');
   gui.add(settings, 'maxEnemies', 5, 200, 1).name('Max Enemies');
   gui.add(settings, 'spawnIntervalMs', 100, 5000, 1).name('Spawn Interval');
   gui.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');

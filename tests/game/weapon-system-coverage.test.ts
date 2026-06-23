@@ -2,48 +2,29 @@ import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   AreaDamage,
-  Damage,
+  LineDamage,
   MeleeSwing,
   Owner,
-  Position,
   Projectile,
-  Stats,
   Team,
+  Trap,
   Weapon,
 } from '../../src/core/components.js';
 import { createEntity, spawnEnemy, spawnPlayer, spawnWeapon } from '../../src/core/helpers.js';
 import {
   clearActiveWeapon,
-  configureWeaponSystem,
+  computeEffectiveAccuracy,
   getActiveWeapon,
   setActiveWeapon,
   weaponEntitySystem,
   weaponSystem,
 } from '../../src/game/weaponSystem.js';
-import { TeamId, WEAPON, WeaponType, type WeaponTypeValue } from '../../src/shared/constants.js';
+import { WEAPON, WeaponType, TeamId, type WeaponTypeValue } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('weaponSystem coverage paths', () => {
-  it('fires spread projectiles when projectileCount grants extras', () => {
-    const world = createTestWorld();
-    const player = spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
-    addComponent(world.ecs, player, Stats);
-    world.stores.stats.attackSpeed[player] = 1;
-    world.stores.stats.damage[player] = WEAPON.BASE_DAMAGE;
-    world.stores.stats.projectileCount[player] = 2;
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
-
-    weaponSystem(world);
-
-    const projectiles = Array.from(query(world.ecs, [Projectile, Position]));
-    expect(projectiles).toHaveLength(3);
-    const velocityYs = projectiles.map((eid) => world.stores.velocity.y[eid] ?? 0);
-    expect(velocityYs.some((vy) => Math.abs(vy) > 0.0001)).toBe(true);
-  });
-
-  it('keeps cooldown when updating active weapon and can return to legacy mode', () => {
+  it('keeps cooldown when updating active weapon; clearing weapon silences auto-fire', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     spawnEnemy(world, 100, 0, 50);
@@ -60,11 +41,13 @@ describe('weaponSystem coverage paths', () => {
     weaponSystem(world);
     expect(query(world.ecs, [Projectile]).length).toBe(1);
 
+    // Clearing the weapon means no weapon fires, even after cooldown elapses.
     clearActiveWeapon(world);
     expect(getActiveWeapon(world)).toBeUndefined();
     world.elapsedMs += WEAPON.FIRE_RATE_MS;
     weaponSystem(world);
-    expect(query(world.ecs, [Projectile]).length).toBe(2);
+    // No new projectile spawned after clearing.
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
   });
 
   it('returns early when no player exists', () => {
@@ -83,45 +66,13 @@ describe('weaponSystem coverage paths', () => {
     // New behavior: weapon is silent when no visible enemy exists.
     world.stores.velocity.x[player] = 0;
     world.stores.velocity.y[player] = 4;
-    world.elapsedMs = WEAPON.FIRE_RATE_MS;
+    const fireball = getWeaponDef('fireball')!;
+    setActiveWeapon(world, fireball);
+    world.elapsedMs = fireball.cooldownMs;
 
     weaponSystem(world);
 
     expect(query(world.ecs, [Projectile]).length).toBe(0);
-  });
-
-  it('applies Damage component overrides in legacy mode', () => {
-    const world = createTestWorld();
-    const player = spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
-    addComponent(world.ecs, player, set(Damage, { amount: 11, cooldownMs: 25, lastFireMs: 0 }));
-    configureWeaponSystem(world, { baseDamage: 99, fireRateMs: 1000, projectileSpeed: 300 });
-    world.elapsedMs = 25;
-
-    weaponSystem(world);
-
-    const projectile = query(world.ecs, [Projectile, Damage])[0];
-    expect(projectile).toBeDefined();
-    expect(world.stores.damage.amount[projectile!]).toBe(11);
-    expect(world.stores.damage.lastFireMs[player]).toBe(25);
-    expect(world.stores.damage.cooldownMs[player]).toBe(25);
-  });
-
-  it('falls back to configured values when Damage overrides are non-positive', () => {
-    const world = createTestWorld();
-    const player = spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
-    addComponent(world.ecs, player, set(Damage, { amount: 0, cooldownMs: 0, lastFireMs: 0 }));
-    configureWeaponSystem(world, { baseDamage: 21, fireRateMs: 40, projectileSpeed: 180 });
-    world.elapsedMs = 40;
-
-    weaponSystem(world);
-
-    const projectile = query(world.ecs, [Projectile, Damage])[0];
-    expect(projectile).toBeDefined();
-    expect(world.stores.damage.amount[projectile!]).toBe(21);
-    expect(world.stores.damage.cooldownMs[player]).toBe(40);
-    expect(world.stores.damage.lastFireMs[player]).toBe(40);
   });
 
   it('handles unknown active weapon types without spawning an attack', () => {
@@ -250,12 +201,11 @@ describe('weaponEntitySystem coverage paths', () => {
 });
 
 describe('weaponSystem range-gating paths', () => {
-  it('does not fire in legacy mode when the only enemy is beyond combat and gate range', () => {
+  it('does not fire when no weapon is equipped (weapon cleared)', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    // Enemy beyond the 1200px combat radius (inCombat stays false) and far past
-    // the legacy thrown gate range, so the legacy gate-range guard returns.
-    spawnEnemy(world, 5000, 0, 50);
+    // Enemy is nearby and in combat radius, but no active weapon is set.
+    spawnEnemy(world, 100, 0, 50);
     world.elapsedMs = WEAPON.FIRE_RATE_MS;
 
     weaponSystem(world);
@@ -277,5 +227,226 @@ describe('weaponSystem range-gating paths', () => {
     weaponSystem(world);
 
     expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
+  });
+
+  it('does not fire a ranged weapon when the only enemy is beyond the gate range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Enemy far beyond any ranged gate range.
+    spawnEnemy(world, 10000, 0, 50);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+  });
+
+  it('does not fire a melee weapon when not in combat', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Enemy far outside combat radius (COMBAT_RADIUS_PX = 1200).
+    spawnEnemy(world, 5000, 0, 50);
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
+  });
+});
+
+describe('weaponSystem miss events', () => {
+  it('emits a miss CombatEvent when the accuracy roll fails', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 50);
+    // Force a miss: baseAccuracy = 0 so effectiveAccuracy = 0; rng.next() > 0 always misses.
+    const pistol = { ...getWeaponDef('pistol')!, baseAccuracy: 0 };
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+    // Override RNG to always return 0.5 (> 0 = miss)
+    world.rng.next = () => 0.5;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+    const missEvent = world.combatEvents.find((e) => e.type === 'miss');
+    expect(missEvent).toBeDefined();
+    expect(missEvent?.amount).toBe(0);
+    expect(missEvent?.targetType).toBe('enemy');
+  });
+
+  it('does not emit a miss event when the accuracy roll succeeds', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 50);
+    const pistol = { ...getWeaponDef('pistol')!, baseAccuracy: 1 };
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+    // Override RNG to always return 0 (≤ 1.0 = hit, no miss)
+    world.rng.next = () => 0;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+    expect(world.combatEvents.find((e) => e.type === 'miss')).toBeUndefined();
+  });
+});
+
+describe('weaponSystem weapon type paths', () => {
+  it('fires a beam weapon (laser) and creates a LineDamage entity', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 50);
+    const laser = getWeaponDef('laser')!;
+    setActiveWeapon(world, laser);
+    world.elapsedMs = laser.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [LineDamage]).length).toBeGreaterThan(0);
+  });
+
+  it('fires a trap weapon (landmine) and creates a Trap entity without needing an enemy', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const landmine = getWeaponDef('landmine')!;
+    setActiveWeapon(world, landmine);
+    world.elapsedMs = landmine.cooldownMs;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Trap]).length).toBeGreaterThan(0);
+  });
+
+  it('does not re-fire a trap weapon before cooldown elapses', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const landmine = getWeaponDef('landmine')!;
+    setActiveWeapon(world, landmine);
+    world.elapsedMs = landmine.cooldownMs;
+    weaponSystem(world);
+    expect(query(world.ecs, [Trap]).length).toBe(1);
+
+    // Advance only half the cooldown — should not fire again.
+    world.elapsedMs += landmine.cooldownMs / 2;
+    weaponSystem(world);
+    expect(query(world.ecs, [Trap]).length).toBe(1);
+  });
+
+  it('fires a THROWN returning projectile (boomerang) and creates a Projectile entity', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 50);
+    const boomerang = getWeaponDef('boomerang')!;
+    setActiveWeapon(world, boomerang);
+    world.elapsedMs = boomerang.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+  });
+
+  it('fires a THROWN bouncing projectile (throwing-knife) and creates a Projectile entity', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 50);
+    const throwingKnife = getWeaponDef('throwing-knife')!;
+    setActiveWeapon(world, throwingKnife);
+    world.elapsedMs = throwingKnife.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+  });
+
+  it('fires a THROWN plain projectile (custom def) and creates a Projectile entity', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 100, 0, 50);
+    // A thrown weapon with neither return nor bounce → plain spawnProjectile path
+    const plain = {
+      ...getWeaponDef('boomerang')!,
+      id: 'plain-thrown-test',
+      returnSpeed: 0,
+      maxRange: 0,
+      bounceCount: 0,
+    };
+    setActiveWeapon(world, plain);
+    world.elapsedMs = plain.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+  });
+});
+
+describe('computeEffectiveAccuracy', () => {
+  it('returns 1.0 for TRAP weapons regardless of base accuracy', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const landmine = getWeaponDef('landmine')!;
+
+    expect(computeEffectiveAccuracy(world, player, landmine)).toBe(1.0);
+  });
+
+  it('uses 0 accuracy bonus when player has no Stats component', () => {
+    const world = createTestWorld();
+    const player = createEntity(world);
+    // Player entity without Stats component — bonus should be 0.
+    const pistol = getWeaponDef('pistol')!;
+
+    const result = computeEffectiveAccuracy(world, player, pistol);
+
+    expect(result).toBe(Math.min(1.0, Math.max(0, pistol.baseAccuracy)));
+  });
+});
+
+describe('weaponSystem boss priority targeting', () => {
+  it('targets a boss over the nearest non-boss enemy for melee', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Regular enemy closer to player
+    spawnEnemy(world, 30, 0, 50);
+    // Boss enemy slightly farther but still in range
+    const boss = spawnEnemy(world, 60, 0, 50);
+    world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
+
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    // A melee swing should have been spawned (boss is within gate range).
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(1);
+  });
+
+  it('falls back to nearest enemy when boss is beyond gate range', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Regular enemy in reach
+    spawnEnemy(world, 30, 0, 50);
+    // Boss far out of range
+    const boss = spawnEnemy(world, 9000, 0, 50);
+    world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
+
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+    world.rng.next = () => 0; // force hit
+
+    weaponSystem(world);
+
+    // Swing should still fire, targeting the close enemy.
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(1);
   });
 });

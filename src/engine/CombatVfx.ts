@@ -27,7 +27,10 @@ export function createCombatVfx(scene: Phaser.Scene): {
     let label: string;
     let color: string;
 
-    if (event.type === 'blocked') {
+    if (event.type === 'miss') {
+      label = 'MISS';
+      color = '#a0a0a0';
+    } else if (event.type === 'blocked') {
       label = 'BLOCKED';
       color = '#888888';
     } else if (event.targetType === 'player') {

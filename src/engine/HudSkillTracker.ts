@@ -1,0 +1,237 @@
+/**
+ * HudSkillTracker — compact weapon-skills readout in the bottom-left HUD column.
+ *
+ * Shows the active weapon's class skill (broad style, slow-levelling, damage bonus)
+ * and type skill (specific family, fast-levelling, accuracy bonus) with their
+ * current level and a small progress bar toward the next level threshold.
+ *
+ * Reads the active weapon from `world.floor1.selectedWeaponId`, looks up its
+ * WeaponDef for the skill IDs, then reads SkillState from
+ * `world.skillStatesByEntity` (v2 path) falling back to `world.playerSkills`.
+ *
+ * Hidden when no weapon is selected or no skill state exists.
+ * Engine layer only (Phaser allowed). No imports from game/labs.
+ */
+import Phaser from 'phaser';
+import type { GameWorld } from '../core/world.js';
+import { GAME } from '../shared/constants.js';
+import { getWeaponDef } from '../shared/weaponDefs.js';
+import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
+import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../shared/skills.js';
+
+// ---------------------------------------------------------------------------
+// Layout constants
+// ---------------------------------------------------------------------------
+
+const PAD = 6;
+const ROW_H = 14;
+const ROW_GAP = 4;
+const TITLE_H = 16;
+/** Width for skill name label (truncated). */
+const NAME_W = 88;
+/** Width for "Lv XX" text. */
+const LV_W = 34;
+/** Width for progress bar. */
+const BAR_W = 72;
+const BAR_H = 6;
+
+const PANEL_W = PAD + NAME_W + 4 + LV_W + 4 + BAR_W + PAD;
+const PANEL_H = PAD + TITLE_H + ROW_GAP + ROW_H + ROW_GAP + ROW_H + PAD;
+
+const PANEL_X = 16;
+/** Sits 8px above the loot counter panel (which starts at GAME.HEIGHT - 124). */
+const PANEL_Y = GAME.HEIGHT - 124 - 8 - PANEL_H;
+
+const COLORS = {
+  title: '#fcd34d',
+  classSkill: '#86efac',
+  typeSkill: '#93c5fd',
+  barBg: PIXEL_UI.trackFill,
+  barClass: 0x46d369,
+  barType: 0x60a5fa,
+  inactive: '#64748b',
+} as const;
+
+function truncate(name: string, maxLen: number): string {
+  if (name.length <= maxLen) return name;
+  return `${name.slice(0, maxLen - 1)}…`;
+}
+
+export function createHudSkillTracker(
+  scene: Phaser.Scene,
+  options: { parent?: Phaser.GameObjects.Container } = {},
+): {
+  sync(world: GameWorld, playerEid: number): void;
+  destroy(): void;
+} {
+  const parent = options.parent;
+  const panel = createBeveledPanel(scene, PANEL_X, PANEL_Y, PANEL_W, PANEL_H, { parent });
+
+  // Title strip
+  const titleStrip = scene.add
+    .rectangle(PANEL_X + 2, PANEL_Y + 2, PANEL_W - 4, TITLE_H, 0x1a2a1a, 1)
+    .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.panel + 1);
+
+  const titleText = scene.add
+    .text(PANEL_X + PAD, PANEL_Y + 2 + TITLE_H / 2, 'WEAPON SKILLS', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: COLORS.title,
+    })
+    .setOrigin(0, 0.5)
+    .setScrollFactor(0)
+    .setDepth(PIXEL_UI_DEPTH.content);
+  parent?.add([titleStrip, titleText]);
+
+  // Row factory: returns text nodes + bar fill for one skill row
+  function makeSkillRow(
+    rowIndex: number,
+    barColor: number,
+    labelColor: string,
+  ): {
+    nameText: Phaser.GameObjects.Text;
+    levelText: Phaser.GameObjects.Text;
+    barFill: Phaser.GameObjects.Rectangle;
+    barBg: Phaser.GameObjects.Rectangle;
+  } {
+    const rowY = PANEL_Y + PAD + TITLE_H + ROW_GAP + rowIndex * (ROW_H + ROW_GAP);
+    const cy = rowY + ROW_H / 2;
+
+    const nameText = scene.add
+      .text(PANEL_X + PAD, cy, '', {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: labelColor,
+      })
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(PIXEL_UI_DEPTH.content);
+
+    const levelText = scene.add
+      .text(PANEL_X + PAD + NAME_W + 4, cy, '', {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        fontStyle: 'bold',
+        color: labelColor,
+      })
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(PIXEL_UI_DEPTH.content);
+
+    const barX = PANEL_X + PAD + NAME_W + 4 + LV_W + 4;
+    const barBgRect = scene.add
+      .rectangle(barX, cy, BAR_W, BAR_H, COLORS.barBg, 1)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(PIXEL_UI_DEPTH.content);
+
+    const barFillRect = scene.add
+      .rectangle(barX, cy, 1, BAR_H, barColor, 1)
+      .setOrigin(0, 0.5)
+      .setScrollFactor(0)
+      .setDepth(PIXEL_UI_DEPTH.content + 1);
+
+    parent?.add([nameText, levelText, barBgRect, barFillRect]);
+
+    return { nameText, levelText, barFill: barFillRect, barBg: barBgRect };
+  }
+
+  const classRow = makeSkillRow(0, COLORS.barClass, COLORS.classSkill);
+  const typeRow = makeSkillRow(1, COLORS.barType, COLORS.typeSkill);
+
+  function setAllVisible(visible: boolean): void {
+    panel.setVisible(visible);
+    titleStrip.setVisible(visible);
+    titleText.setVisible(visible);
+    for (const row of [classRow, typeRow]) {
+      row.nameText.setVisible(visible);
+      row.levelText.setVisible(visible);
+      row.barBg.setVisible(visible);
+      row.barFill.setVisible(visible);
+    }
+  }
+
+  function updateRow(
+    row: ReturnType<typeof makeSkillRow>,
+    skillId: string,
+    skillName: string,
+    world: GameWorld,
+    playerEid: number,
+  ): void {
+    const holderSkills = world.skillStatesByEntity.get(playerEid);
+    const state = holderSkills?.get(skillId) ?? world.playerSkills.get(skillId);
+    if (state === undefined) {
+      row.nameText.setText(truncate(skillName, 10));
+      row.levelText.setText('Lv 0');
+      row.barFill.setSize(1, BAR_H);
+      return;
+    }
+
+    const cap = Math.min(SKILL_NATURAL_CAP + state.itemBonus, SKILL_HARD_CAP);
+    const level = state.level;
+
+    row.nameText.setText(truncate(skillName, 10));
+    row.levelText.setText(`Lv ${level}`);
+
+    // Progress toward next level — 0 when at cap.
+    if (level >= cap) {
+      row.barFill.setSize(BAR_W, BAR_H);
+    } else {
+      // usageThresholds for next level (level index = level, since thresholds[0] = usage for level 1)
+      // We don't have threshold data here; use fractional progress from usage/nextThreshold.
+      // Since we can't import skill defs from game layer, use a simple visual placeholder.
+      // Show a pulsing "full" bar at max or a usage-proportional bar using raw usage.
+      const progress = Math.min(1, state.usage > 0 ? (state.usage % 100) / 100 : 0);
+      row.barFill.setSize(Math.max(2, Math.round(BAR_W * progress)), BAR_H);
+    }
+  }
+
+  let lastWeaponId: string | null = null;
+
+  function sync(world: GameWorld, playerEid: number): void {
+    const weaponId = world.floor1?.selectedWeaponId ?? null;
+    if (!weaponId) {
+      setAllVisible(false);
+      lastWeaponId = null;
+      return;
+    }
+
+    const def = getWeaponDef(weaponId);
+    if (!def) {
+      setAllVisible(false);
+      lastWeaponId = null;
+      return;
+    }
+
+    if (weaponId !== lastWeaponId) {
+      lastWeaponId = weaponId;
+    }
+
+    setAllVisible(true);
+
+    // Class skill (damage focus)
+    updateRow(classRow, def.weaponClassSkillId, def.weaponClassSkillId, world, playerEid);
+    // Type skill (accuracy focus)
+    updateRow(typeRow, def.weaponTypeSkillId, def.weaponTypeSkillId, world, playerEid);
+  }
+
+  function destroy(): void {
+    panel.destroy();
+    titleStrip.destroy();
+    titleText.destroy();
+    for (const row of [classRow, typeRow]) {
+      row.nameText.destroy();
+      row.levelText.destroy();
+      row.barBg.destroy();
+      row.barFill.destroy();
+    }
+  }
+
+  // Initially hidden until sync is called.
+  setAllVisible(false);
+
+  return { sync, destroy };
+}
