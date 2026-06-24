@@ -1,19 +1,15 @@
 {
   "script": "docs-archive-handoffs",
-  "startedAt": "2026-06-15T15:16:49.332Z",
-  "finishedAt": "2026-06-15T15:16:49.334Z",
+  "startedAt": "2026-06-22T14:41:48.842Z",
+  "finishedAt": "2026-06-22T14:41:48.845Z",
   "findings": [
     {
       "severity": "info",
-      "message": "Archived 2025-01-08-generation-pipelines.md (age 523d)."
+      "message": "Archived 2024-03-05-vlm-eval-fixed.md (age 839d)."
     },
     {
       "severity": "info",
-      "message": "Archived 2025-06-09-azure-env-bootstrap.md (age 371d)."
-    },
-    {
-      "severity": "info",
-      "message": "Archived 2025-07-22-stats-skills-levels.md (age 328d)."
+      "message": "Archived 2025-05-09-live-postprocess-cascade.md (age 409d)."
     }
   ],
   "blocking": 0
