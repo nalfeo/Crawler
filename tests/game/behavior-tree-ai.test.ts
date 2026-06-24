@@ -185,7 +185,7 @@ describe('BehaviorTreeAI', () => {
     //   - Full health: safeOrbitCap = outerOrbit = 50  → 54 > 50 → no expansion.
     //   - Low health:  safeOrbitCap = strikeGate = 60  → 54 ≤ 60 → bumps orbit to 54+.
     const fullHpWorld = createTestWorld({ seed: 7 });
-    const fullPlayer = spawnPlayer(fullHpWorld, 0, 0);
+    spawnPlayer(fullHpWorld, 0, 0);
     // attackRange in pixels: the stores store raw px. ftToPx(5)=40, safeOrbit=40+14=54.
     const ATTACK_RANGE_PX = 40;
     spawnBehaviorEnemy(fullHpWorld, 30, 0, 20, AI_TYPE.CHASE, 2, 200, ATTACK_RANGE_PX);
@@ -204,9 +204,6 @@ describe('BehaviorTreeAI', () => {
     const lowAi = new BehaviorTreeAI({ seed: 7 });
     lowAi.poll(createInputState(), lowHpWorld);
     const lowDist = Math.hypot(lowAi.getDecision().targetX! - 30, lowAi.getDecision().targetY!);
-
-    // Suppress unused-var lint: fullPlayer is referenced to confirm the spawn call.
-    void fullPlayer;
 
     expect(lowAi.getDecision().reason).toContain('Kiting');
     // Defensive orbit (low HP) must sit farther from the enemy than full-health orbit.
