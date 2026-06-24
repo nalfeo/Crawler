@@ -10,12 +10,15 @@
 import type { EquipmentItemDef } from './equipment-types.js';
 import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from './quest-types.js';
 
-/** The charm the Floor 1 merchant sells. Modest, slightly cursed, fully wearable. */
+/**
+ * The magic charm the Floor 1 merchant gives as a quest reward — a necklace
+ * (neck slot) granting +1 charisma. Modest, slightly cursed, fully wearable.
+ */
 export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
   id: SHOPKEEPER_EQUIPMENT_ITEM_ID,
-  name: "Merchant's Stained Charm",
+  name: "Merchant's Magic Charm",
   slots: ['neck'],
-  statBonuses: { constitution: 2, luck: 1 },
+  statBonuses: { charisma: 1 },
   rarity: 'uncommon',
 };
 
