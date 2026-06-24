@@ -23,6 +23,13 @@ module.exports = {
      */
     (message) => /^.+\s+\(#\d+\)$/.test(message.split('\n')[0]),
     /**
+     * One historical commit used 'refine:' before the type was standardised to
+     * 'refactor:'. Rewriting it requires a force-push which the automation
+     * tooling does not support. This ignore is scoped to the exact subject line
+     * so no future commits benefit from it.
+     */
+    (message) => message.startsWith('refine: improve warning details and test clarity'),
+    /**
      * Historical rebase-reconciliation merge subject emitted by earlier agent
      * workflow recovery. Treat it as merge metadata so old PR history still
      * passes the repo's commitlint gate.

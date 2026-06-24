@@ -169,6 +169,7 @@ describe('serialize / deserialize', () => {
       ],
       chosenCandidatePath: 'a.yaml',
       briefPath: 'briefs/draft/items/purple-potion-bottle.yaml',
+      generationRequestedAt: '2026-06-20T00:00:00.000Z',
       run: {
         briefId: 'purple-potion-bottle',
         runId: 'run-1',
@@ -215,6 +216,7 @@ describe('serialize / deserialize', () => {
     });
     const restored = deserializeQueue(raw);
     expect(restored.items[0]?.run?.candidates[0]?.judge).toBeNull();
+    expect(restored.items[0]?.generationRequestedAt).toBeNull();
   });
 
   it('returns an empty queue for garbage input', () => {
