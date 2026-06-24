@@ -28,6 +28,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 - Write a handoff file before ending your session
 - If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
 - **Apple complexity**: declare your 🍎–🍎🍎🍎🍎🍎 estimate before writing any code; score actuals + verdict at handoff; create an individual file in `docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json` — see `docs/agent-os/policies/complexity-policy.md`
+- **Resolve review comments with a reason**: never silently resolve or ignore a thread. Reply `Addressed in <sha>` when fixed or `Resolving: <reason>` when declining, then let `resolve-addressed-threads.yml` close it — see `docs/agent-os/policies/comment-resolution-policy.md`
 
 ## Merge Policy
 

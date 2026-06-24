@@ -1,0 +1,148 @@
+name: Resolve Addressed Threads
+
+on:
+  schedule:
+    # Every hour, as a fallback for threads addressed between push events.
+    - cron: '0 * * * *'
+  pull_request_target:
+    types: [synchronize, opened, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  resolve-threads:
+    name: Resolve threads with a disposition token
+    runs-on: ubuntu-latest
+    concurrency:
+      group: resolve-addressed-threads-${{ github.event.pull_request.number || 'all' }}
+      cancel-in-progress: false
+    steps:
+      - name: Resolve review threads carrying a disposition token
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            // A thread is resolved ONLY when its most recent comment declares a
+            // disposition. See docs/agent-os/policies/comment-resolution-policy.md.
+            //   - "Addressed in <sha>"   → the comment was fixed
+            //   - "Resolving: <reason>"  → the comment is declined, with a reason
+            const ADDRESSED = /(^|\s)Addressed in\s+[0-9a-f]{7,40}\b/i;
+            const RESOLVING = /(^|\s)Resolving:\s*\S+/i;
+
+            function hasDispositionToken(body) {
+              if (!body) {
+                return false;
+              }
+              return ADDRESSED.test(body) || RESOLVING.test(body);
+            }
+
+            // Build the list of PR numbers to process. On a PR event, only that
+            // PR; otherwise (schedule / manual) sweep every open PR.
+            let prNumbers = [];
+            if (context.payload.pull_request) {
+              prNumbers = [context.payload.pull_request.number];
+            } else {
+              const openPrs = await github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100,
+              });
+              prNumbers = openPrs.map((pr) => pr.number);
+            }
+
+            if (prNumbers.length === 0) {
+              core.info('No open PRs to process.');
+              return;
+            }
+
+            const threadsQuery = `
+              query ($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    reviewThreads(first: 100, after: $cursor) {
+                      pageInfo {
+                        hasNextPage
+                        endCursor
+                      }
+                      nodes {
+                        id
+                        isResolved
+                        comments(last: 1) {
+                          nodes {
+                            body
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const resolveMutation = `
+              mutation ($threadId: ID!) {
+                resolveReviewThread(input: { threadId: $threadId }) {
+                  thread {
+                    id
+                    isResolved
+                  }
+                }
+              }
+            `;
+
+            let resolvedCount = 0;
+
+            for (const number of prNumbers) {
+              let cursor = null;
+              let hasNextPage = true;
+
+              while (hasNextPage) {
+                let data;
+                try {
+                  data = await github.graphql(threadsQuery, {
+                    owner,
+                    repo,
+                    number,
+                    cursor,
+                  });
+                } catch (error) {
+                  core.warning(`Could not load threads for PR #${number}: ${error.message}`);
+                  break;
+                }
+
+                const threadPage = data.repository.pullRequest.reviewThreads;
+
+                for (const thread of threadPage.nodes) {
+                  if (thread.isResolved) {
+                    continue;
+                  }
+
+                  const latest = thread.comments.nodes[0];
+                  if (!latest || !hasDispositionToken(latest.body)) {
+                    continue;
+                  }
+
+                  try {
+                    await github.graphql(resolveMutation, { threadId: thread.id });
+                    resolvedCount += 1;
+                    core.info(`Resolved thread ${thread.id} on PR #${number}.`);
+                  } catch (error) {
+                    core.warning(
+                      `Could not resolve thread ${thread.id} on PR #${number}: ${error.message}`,
+                    );
+                  }
+                }
+
+                hasNextPage = threadPage.pageInfo.hasNextPage;
+                cursor = threadPage.pageInfo.endCursor;
+              }
+            }
+
+            core.info(`Done. Threads resolved: ${resolvedCount}.`);

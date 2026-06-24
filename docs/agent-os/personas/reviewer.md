@@ -45,6 +45,10 @@
     allowlist, dynamic-execution patterns, AI prompt-injection scan.
   - **`nightly-mutation.yml`** — mutation score guards test effectiveness.
   - **`coverage-gap-copilot.yml`** — pings for below-goal coverage on PRs.
+  - **`resolve-addressed-threads.yml`** — closes review threads once the author
+    replies with a disposition token (`Addressed in <sha>` or `Resolving:
+<reason>`); follow `docs/agent-os/policies/comment-resolution-policy.md` when
+    disposing of the threads you raise.
 - Read the diff against the author's declared apple estimate and the touched
   persona's quality criteria.
 - Prefer concrete, actionable findings with a file/line and the rule violated.

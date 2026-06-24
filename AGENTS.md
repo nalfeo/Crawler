@@ -103,6 +103,7 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 7. **ADR required**: Any decision affecting 2+ systems needs an ADR
 8. **Always fix test and infra failures**: Never skip, ignore, or document broken tests/lint/build issues as "preexisting" or "unrelated" and move on. Fix every failure you encounter, regardless of whether you caused it. There is no such thing as a pre-existing issue that is out of scope — cruft compounds and wastes future agent time.
 9. **Best-effort UT coverage progress**: As part of every fix/implementation, make a best effort to improve or preserve unit-test coverage in touched areas so work moves toward UT coverage goals.
+10. **Comment resolution requires a reason**: Never silently resolve or ignore a review thread. Reply first — `Addressed in <sha>` when fixed, or `Resolving: <reason>` when declining as incorrect/irrelevant — then let `resolve-addressed-threads.yml` close it. No token reply ⇒ leave the thread open. See `docs/agent-os/policies/comment-resolution-policy.md`.
 
 > Several of these rules are now **hard-enforced** at the tool-call boundary by
 > the `copilot-guards` extension. See
