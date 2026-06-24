@@ -2,4 +2,12 @@
 set -eu
 
 echo "Running Prettier check before push..."
-npx prettier --check "src/**/*.ts" "tests/**/*.ts" "scripts/**/*.ts"
+# Delegate to the npm script instead of expanding the globs in this shell.
+# Git for Windows runs hooks under its bundled MinGW sh, which expands the
+# "src/**/*.ts" globs into the full (hundreds-of-files) argument list before
+# invoking prettier, blowing past cmd.exe's command-line length limit
+# ("The command line is too long."). `npm run` executes the script via the
+# platform script-shell (cmd.exe on Windows) where the globs are passed through
+# literally and prettier does its own globbing.
+npm run format:check
+
