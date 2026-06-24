@@ -623,9 +623,16 @@ export function createInventoryUI(
 
   function computeRenderSignature(): string {
     const slots = currentBag?.slots ?? [];
+    const registry = getGeneratedRegistry();
     let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}`;
     for (const slot of slots) {
-      signature += `;${slot.itemId}:${slot.quantity}`;
+      // Fold in whether this slot's generated icon texture is loaded yet, so
+      // the grid re-renders once async sprite warm-loading finishes (the slot
+      // contents alone are unchanged, so without this the cells would stay on
+      // their text fallback until the next inventory mutation).
+      const entry = registry.lookup(slot.itemId);
+      const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
+      signature += `;${slot.itemId}:${slot.quantity}:${iconReady ? 1 : 0}`;
     }
     return signature;
   }
