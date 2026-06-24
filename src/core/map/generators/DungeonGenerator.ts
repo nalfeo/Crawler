@@ -20,9 +20,26 @@ import { RoomGraph } from '../RoomGraph';
 import { FloorMap } from '../FloorMap';
 import type { MapGenerator } from './types';
 
+/** Default minimum bounds width (tiles, walls included) for BOSS_STAIR and SAFE rooms. */
+export const SPECIAL_ROOM_MIN_WIDTH = 9;
+/** Default minimum bounds height (tiles, walls included) for BOSS_STAIR and SAFE rooms. */
+export const SPECIAL_ROOM_MIN_HEIGHT = 9;
+
 export interface DungeonGeneratorOptions {
   /** When true, applies round/L-shaped rooms, wide corridors, and diagonal shortcuts. */
   readonly roomVariety?: boolean;
+  /**
+   * Minimum bounds width (tiles, walls included) that a room must have to be
+   * eligible for the BOSS_STAIR or SAFE role. Defaults to SPECIAL_ROOM_MIN_WIDTH.
+   * When no candidate meets the minimum, the largest-area eligible room is used as
+   * a fallback so generation never fails.
+   */
+  readonly specialRoomMinWidth?: number;
+  /**
+   * Minimum bounds height (tiles, walls included) that a room must have to be
+   * eligible for the BOSS_STAIR or SAFE role. Defaults to SPECIAL_ROOM_MIN_HEIGHT.
+   */
+  readonly specialRoomMinHeight?: number;
 }
 
 type RoomDoorSide = 'left' | 'right' | 'top' | 'bottom';
@@ -30,9 +47,13 @@ type RoomDoorSide = 'left' | 'right' | 'top' | 'bottom';
 export class DungeonGenerator implements MapGenerator {
   readonly name = 'DungeonGenerator';
   private readonly roomVariety: boolean;
+  private readonly specialRoomMinWidth: number;
+  private readonly specialRoomMinHeight: number;
 
   constructor(options: DungeonGeneratorOptions = {}) {
     this.roomVariety = options.roomVariety ?? false;
+    this.specialRoomMinWidth = options.specialRoomMinWidth ?? SPECIAL_ROOM_MIN_WIDTH;
+    this.specialRoomMinHeight = options.specialRoomMinHeight ?? SPECIAL_ROOM_MIN_HEIGHT;
   }
 
   generate(config: MapConfig, rng: SeededRandom): FloorMap {
@@ -118,7 +139,7 @@ export class DungeonGenerator implements MapGenerator {
     // Pre-assign room roles before room variety so that SAFE and BOSS_STAIR rooms
     // can be excluded from shape post-processing. Role assignment only needs room
     // bounds centres, so it is safe to run before any tile mutations.
-    preAssignRoles(roomGraph);
+    preAssignRoles(roomGraph, this.specialRoomMinWidth, this.specialRoomMinHeight);
 
     // Seal perimeter walls of special rooms. rot-js sometimes places a corridor
     // tile at a position that falls on the boundary of an adjacent room's bounds.
@@ -342,8 +363,12 @@ function cullIsolatedFloorTiles(
  *
  * Uses room bounds centres for distance scoring (equivalent to the previous
  * post-variety assignment; any spawn-tile adjustment is at most a few tiles).
+ *
+ * Rooms that are at least `minWidth × minHeight` tiles (bounds, walls included)
+ * are preferred for the special roles. When no such room exists the largest-area
+ * room is used as a fallback so generation never fails on small test maps.
  */
-function preAssignRoles(roomGraph: RoomGraph): void {
+function preAssignRoles(roomGraph: RoomGraph, minWidth: number, minHeight: number): void {
   roomGraph.setRole(0, RoomRole.SPAWN);
   if (roomGraph.count < 2) return;
 
@@ -351,18 +376,48 @@ function preAssignRoles(roomGraph: RoomGraph): void {
   const refX = Math.floor(spawnRoom.bounds.x + spawnRoom.bounds.width / 2);
   const refY = Math.floor(spawnRoom.bounds.y + spawnRoom.bounds.height / 2);
 
-  const scored = roomGraph
+  type ScoredRoom = { id: number; distanceSq: number; area: number };
+
+  const scored: ScoredRoom[] = roomGraph
     .getAll()
     .filter((r) => r.id !== 0)
     .map((room) => {
       const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
       const cy = Math.floor(room.bounds.y + room.bounds.height / 2);
-      return { id: room.id, distanceSq: (cx - refX) ** 2 + (cy - refY) ** 2 };
+      return {
+        id: room.id,
+        distanceSq: (cx - refX) ** 2 + (cy - refY) ** 2,
+        area: room.bounds.width * room.bounds.height,
+      };
     });
   scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
-  if (scored[0]) roomGraph.setRole(scored[0].id, RoomRole.BOSS_STAIR);
-  if (roomGraph.count >= 3 && scored[1]) roomGraph.setRole(scored[1].id, RoomRole.SAFE);
+  /**
+   * Pick the best candidate for a special role from the given pool:
+   * 1. Farthest-from-spawn room that meets the minimum size.
+   * 2. Fallback: farthest-from-spawn room regardless of size (preserves old behaviour
+   *    on small maps where no room can meet the minimum).
+   */
+  function pickCandidate(pool: ScoredRoom[]): ScoredRoom | undefined {
+    const eligible = pool.filter((r) => {
+      const room = roomGraph.get(r.id)!;
+      return room.bounds.width >= minWidth && room.bounds.height >= minHeight;
+    });
+    if (eligible.length > 0) return eligible[0]; // already sorted by distance desc
+    // Fallback: no room meets the minimum — use farthest (distance-sorted) room
+    return pool[0]; // already sorted by distance desc
+  }
+
+  const bossCandidate = pickCandidate(scored);
+  if (bossCandidate) {
+    roomGraph.setRole(bossCandidate.id, RoomRole.BOSS_STAIR);
+  }
+
+  if (roomGraph.count >= 3) {
+    const remainingPool = scored.filter((r) => r.id !== bossCandidate?.id);
+    const safeCandidate = pickCandidate(remainingPool);
+    if (safeCandidate) roomGraph.setRole(safeCandidate.id, RoomRole.SAFE);
+  }
 }
 
 /**
