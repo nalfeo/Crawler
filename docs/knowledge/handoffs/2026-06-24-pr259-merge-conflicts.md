@@ -60,7 +60,7 @@ Hello kitties: 3/5 = 0.60 🎀
 - `npx vitest run --project headless tests/headless/floor1-completion.test.ts --reporter=dot` ✅
 - `bash scripts/agent/lab-gate-check.sh` ✅
 - `npm run verify` ✅
-- `npm run ai:headless -- --seed 25 --max-frames 19800` ✅ (`VICTORY`, 207.5s game time)
+- `npm run ai:headless -- --seed 25 --max-frames 19800` ✅ (`VICTORY`, 207.5s game time, 17.0s wall time)
 
 ## Key Decisions Made
 

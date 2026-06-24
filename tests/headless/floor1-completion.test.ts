@@ -21,7 +21,8 @@
  * run every time, so one pass per seed is authoritative — there is nothing to
  * average over. Seed 25 is the currently re-verified canonical clear (~207.5s
  * game-time at level 7 with 33 kills, completing all 4 quests under the 300s
- * budget, in ~17s wall time). Because the run exercises the *entire* Floor 1
+ * budget, and was re-verified locally in ~17s wall time; the hook timeout stays
+ * at 60s to allow for slower CI runners). Because the run exercises the *entire* Floor 1
  * pipeline — pathfinding, melee/ranged combat, every NPC interaction, the boss
  * fight, and stat progression — a regression in almost any of those systems
  * breaks this seed too, which makes it a strong gate.
@@ -79,10 +80,11 @@ const REQUIRED_QUEST_IDS = [
  * clear within the budget — see the file header for how to add more.
  *
  * Seed 25 is the canonical seed as of 2026-06-24 (~207.5s game-time at level 7
- * with 33 kills, completing all 4 quests, ~17s wall time). Seed 15 was the
- * prior canonical seed for the Track B opportunistic AI before PR #259 merged
- * broader room-entry door widening. Seeds 2, 1, 7, 10, 14, 15, 26 and 32 are
- * previous canonical seeds that no longer clear within budget.
+ * with 33 kills, completing all 4 quests, ~17s wall time on this runner; the
+ * 60s hook timeout remains intentional CI slack). Seed 15 was the prior
+ * canonical seed for the Track B opportunistic AI before PR #259 merged broader
+ * room-entry door widening. Seeds 2, 1, 7, 10, 14, 15, 26 and 32 are previous
+ * canonical seeds that no longer clear within budget.
  */
 const WINNING_SEEDS = [25] as const;
 const HEADLESS_HOOK_TIMEOUT_MS = 60_000;
