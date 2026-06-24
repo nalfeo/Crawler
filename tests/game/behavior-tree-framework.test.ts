@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BTParallelPolicy,
   BTStatus,
   BehaviorTree,
   action,
+  cooldown,
   condition,
   inverter,
+  parallel,
   repeat,
   selector,
   sequence,
@@ -92,6 +95,87 @@ describe('behavior-tree framework', () => {
 
     it('repeat with a zero count short-circuits to SUCCESS', () => {
       expect(repeat('r', ok(), 0).tick(ctx)).toBe(BTStatus.SUCCESS);
+    });
+
+    it('cooldown suppresses retries until its frame window expires', () => {
+      const local = makeContext();
+      let calls = 0;
+      const node = cooldown(
+        'cd',
+        3,
+        action('trigger', () => {
+          calls++;
+          return BTStatus.SUCCESS;
+        }),
+      );
+
+      local.frameCount = 10;
+      expect(node.tick(local)).toBe(BTStatus.SUCCESS);
+      expect(calls).toBe(1);
+
+      local.frameCount = 11;
+      expect(node.tick(local)).toBe(BTStatus.FAILURE);
+      local.frameCount = 12;
+      expect(node.tick(local)).toBe(BTStatus.FAILURE);
+      expect(calls).toBe(1);
+
+      local.frameCount = 13;
+      expect(node.tick(local)).toBe(BTStatus.SUCCESS);
+      expect(calls).toBe(2);
+    });
+
+    it('cooldown only starts after child SUCCESS', () => {
+      const local = makeContext();
+      const statuses = [BTStatus.FAILURE, BTStatus.SUCCESS, BTStatus.SUCCESS];
+      let index = 0;
+      const node = cooldown(
+        'cd',
+        2,
+        action('flaky', () => statuses[Math.min(index++, statuses.length - 1)] ?? BTStatus.FAILURE),
+      );
+
+      local.frameCount = 1;
+      expect(node.tick(local)).toBe(BTStatus.FAILURE);
+      local.frameCount = 2;
+      expect(node.tick(local)).toBe(BTStatus.SUCCESS);
+      local.frameCount = 3;
+      expect(node.tick(local)).toBe(BTStatus.FAILURE);
+      local.frameCount = 4;
+      expect(node.tick(local)).toBe(BTStatus.SUCCESS);
+    });
+  });
+
+  describe('parallel node policies', () => {
+    it('REQUIRE_ALL fails fast on any failure', () => {
+      const node = parallel('p', BTParallelPolicy.REQUIRE_ALL, ok(), fail(), running());
+      expect(node.tick(makeContext())).toBe(BTStatus.FAILURE);
+    });
+
+    it('REQUIRE_ALL succeeds only when all children succeed', () => {
+      const node = parallel('p', BTParallelPolicy.REQUIRE_ALL, ok(), ok(), ok());
+      expect(node.tick(makeContext())).toBe(BTStatus.SUCCESS);
+    });
+
+    it('REQUIRE_ONE succeeds when any child succeeds', () => {
+      const node = parallel('p', BTParallelPolicy.REQUIRE_ONE, fail(), running(), ok());
+      expect(node.tick(makeContext())).toBe(BTStatus.SUCCESS);
+    });
+
+    it('REQUIRE_ONE fails when every child fails', () => {
+      const node = parallel('p', BTParallelPolicy.REQUIRE_ONE, fail(), fail());
+      expect(node.tick(makeContext())).toBe(BTStatus.FAILURE);
+    });
+
+    it('REQUIRE_ONE stays running when there is no success and at least one child runs', () => {
+      const node = parallel('p', BTParallelPolicy.REQUIRE_ONE, fail(), running());
+      expect(node.tick(makeContext())).toBe(BTStatus.RUNNING);
+    });
+
+    it('OBSERVE always returns RUNNING regardless of child outcomes', () => {
+      const allSuccess = parallel('p', BTParallelPolicy.OBSERVE, ok(), ok());
+      const mixed = parallel('p', BTParallelPolicy.OBSERVE, fail(), ok(), running());
+      expect(allSuccess.tick(makeContext())).toBe(BTStatus.RUNNING);
+      expect(mixed.tick(makeContext())).toBe(BTStatus.RUNNING);
     });
   });
 

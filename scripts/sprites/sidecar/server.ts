@@ -31,14 +31,17 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { parse as parseYaml } from 'yaml';
 import { approveVariant, ApproveError, type ManifestEntry } from '../approve.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
 import { generateOne } from '../generate-one.js';
@@ -54,6 +57,8 @@ import {
   createTextProvider,
   createVisionProvider,
 } from '../provider/factory.js';
+import { NoopAssetQueue } from '../queue/noop-queue.js';
+import type { AssetQueue } from '../queue/types.js';
 import { computeSliceMapV2 } from '../slice-sheet.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { loadBrief } from '../load-brief.js';
@@ -98,6 +103,11 @@ export interface SidecarDeps {
    * unaffected. Pass an `AzureBlobRunStore` to read from Azure Blob Storage.
    */
   readonly store?: RunStore;
+  /**
+   * AssetQueue used to submit generation requests. Defaults to a no-op queue
+   * so local sidecar usage keeps the prior synchronous generate behavior.
+   */
+  readonly queue?: AssetQueue;
 }
 
 export interface RunListEntry {
@@ -166,6 +176,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   const app = Fastify({ logger: deps.logger ?? false });
   // Default to a LocalRunStore rooted at runsDir — same layout as before.
   const store: RunStore = deps.store ?? new LocalRunStore(deps.runsDir);
+  const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
 
   // Vite serves the lab from a different loopback port, so allow CORS only
   // for loopback origins (localhost/127.0.0.1/::1).
@@ -191,6 +202,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     runsDir: deps.runsDir,
     version: deps.version,
     storeBackend: store.backend,
+    queueBackend: queue.backend,
   }));
 
   app.get('/api/runs', async () => ({ runs: await listRunsFromStore(store) }));
@@ -490,12 +502,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
 
     const { briefId, runId } = req.params;
-    const runDir = safeJoin(deps.runsDir, [briefId, runId]);
-    if (runDir === null) {
+    if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
       reply.code(403);
       return { error: 'forbidden-path' };
     }
-    if (!existsSync(path.join(runDir, 'summary.json'))) {
+    const summaryKey = `${briefId}/${runId}/summary.json`;
+    if (!(await store.has(summaryKey))) {
       reply.code(404);
       return { error: 'run-not-found', briefId, runId };
     }
@@ -516,8 +528,16 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const catalogPath =
       deps.catalogPath ?? path.join(deps.repoRoot, 'src', 'shared', 'data', 'sprite-catalog.json');
 
+    let hydrated: HydratedRunDir | null = null;
     let entry: ManifestEntry;
     try {
+      hydrated =
+        store.backend === 'local' ? null : await hydrateRunDirFromStore(store, briefId, runId);
+      const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
+      if (runDir === null) {
+        reply.code(403);
+        return { error: 'forbidden-path' };
+      }
       entry = approveVariant({
         runDir,
         variantIndex,
@@ -545,6 +565,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         error: 'approve-failed',
         message: err instanceof Error ? err.message : String(err),
       };
+    } finally {
+      hydrated?.cleanup();
     }
 
     return entry;
@@ -672,6 +694,25 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     try {
       const env = deps.env ?? process.env;
+      if (queue.backend !== 'noop') {
+        const briefId = resolveQueuedBriefId(briefPath);
+        const requestedAt = new Date().toISOString();
+        await queue.enqueue({
+          briefId,
+          briefPath: toRepoRelativePath(deps.repoRoot, briefPath),
+          requestedBy: workflowRequestedBy(env),
+          requestedAt,
+          priority: 'normal',
+        });
+        reply.code(202);
+        return {
+          status: 'queued' as const,
+          briefId,
+          briefPath: toRepoRelativePath(deps.repoRoot, briefPath),
+          requestedAt,
+          queueBackend: queue.backend,
+        };
+      }
       const result = await generateOne({
         briefPath,
         provider: createImageProvider({ env }),
@@ -679,8 +720,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         visionProvider: createVisionProvider({ env }),
         repoRoot: deps.repoRoot,
         env,
+        store,
       });
       return {
+        status: 'completed' as const,
         briefPath: toRepoRelativePath(deps.repoRoot, briefPath),
         runId: result.summary.runId,
         briefId: result.summary.brief,
@@ -801,25 +844,23 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     '/api/runs/:briefId/:runId',
     async (req, reply) => {
       const { briefId, runId } = req.params;
-      const runDir = safeJoin(deps.runsDir, [briefId, runId]);
-      if (runDir === null) {
+      if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
         reply.code(403);
         return { error: 'forbidden-path' };
       }
-      if (!existsSync(runDir)) {
+      const runPrefix = `${briefId}/${runId}/`;
+      const runKeys = await store.list(runPrefix);
+      if (runKeys.length === 0) {
         reply.code(404);
         return { error: 'run-not-found', briefId, runId };
       }
-      // Recursively remove the run directory.
-      rmSync(runDir, { recursive: true, force: true });
-
-      // If the briefId directory is now empty, remove it too.
-      const briefDir = path.join(deps.runsDir, briefId);
-      if (existsSync(briefDir)) {
-        const remaining = readdirSync(briefDir);
-        if (remaining.length === 0) {
-          rmSync(briefDir, { recursive: true, force: true });
-        }
+      if (store.backend === 'local') {
+        await store.remove(`${briefId}/${runId}`);
+      } else {
+        await Promise.all(runKeys.map((key) => store.remove(key)));
+      }
+      if ((await store.list(`${briefId}/`)).length === 0) {
+        await store.remove(briefId);
       }
 
       return { ok: true, deleted: `${briefId}/${runId}` };
@@ -879,6 +920,96 @@ function resolveRepoPath(repoRoot: string, relativePath: string): string | null 
 
 function toRepoRelativePath(repoRoot: string, absolutePath: string): string {
   return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
+}
+
+function safeStoreJoin(base: string, relativePath: string): string | null {
+  if (
+    path.isAbsolute(relativePath) ||
+    path.win32.isAbsolute(relativePath) ||
+    path.posix.isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+  const normalized = path.normalize(relativePath);
+  const segments = normalized.split(path.sep).filter((segment) => segment.length > 0);
+  if (segments.length === 0) {
+    return null;
+  }
+  return safeJoin(base, segments);
+}
+
+function resolveQueuedBriefId(briefPath: string): string {
+  const fallback = path.basename(briefPath, path.extname(briefPath));
+  try {
+    const parsed = parseYaml(readFileSync(briefPath, 'utf8'));
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'name' in parsed &&
+      typeof parsed['name'] === 'string' &&
+      parsed['name'].trim() !== ''
+    ) {
+      return parsed['name'];
+    }
+  } catch {
+    // fall through to filename-based fallback
+  }
+  return fallback;
+}
+
+interface HydratedRunDir {
+  readonly runDir: string;
+  cleanup(): void;
+}
+
+async function hydrateRunDirFromStore(
+  store: RunStore,
+  briefId: string,
+  runId: string,
+): Promise<HydratedRunDir | null> {
+  const prefix = `${briefId}/${runId}/`;
+  const keys = await store.list(prefix);
+  if (keys.length === 0) {
+    return null;
+  }
+  const tempRoot = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-run-'));
+  const runDir = safeJoin(tempRoot, [briefId, runId]);
+  if (runDir === null) {
+    rmSync(tempRoot, { recursive: true, force: true });
+    return null;
+  }
+  try {
+    mkdirSync(runDir, { recursive: true });
+    for (const key of keys) {
+      const rel = key.slice(prefix.length);
+      if (rel === '') continue;
+      const target = safeStoreJoin(runDir, rel);
+      if (target === null) {
+        continue;
+      }
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, await store.get(key));
+    }
+  } catch (err) {
+    rmSync(tempRoot, { recursive: true, force: true });
+    throw err;
+  }
+  return {
+    runDir,
+    cleanup: () => {
+      rmSync(tempRoot, { recursive: true, force: true });
+    },
+  };
+}
+
+function workflowRequestedBy(env: NodeJS.ProcessEnv): string {
+  return (
+    env['SPRITES_REQUESTED_BY'] ??
+    env['GITHUB_USER'] ??
+    env['USER'] ??
+    env['USERNAME'] ??
+    'sprite-gallery-sidecar'
+  );
 }
 
 /**

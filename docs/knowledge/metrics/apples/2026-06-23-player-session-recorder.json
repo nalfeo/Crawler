@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-23",
+  "slug": "player-session-recorder",
+  "task": "Add ability to record logs from player session for AI behavior tuning",
+  "estimated": 3,
+  "actual": 3,
+  "verdict": "calibrated",
+  "notes": "New module + shared interface + engine wiring + lab + 18 tests. ~6 files. No ADR needed."
+}
