@@ -1,0 +1,338 @@
+/**
+ * Player session recorder — captures real human-player telemetry at the same
+ * fidelity as the headless AI runner's {@link SimEvent} stream.
+ *
+ * The recordings are stored as {@link PlayerSessionEvent} arrays (a superset of
+ * {@link SimEvent} that adds raw input fields). Because the format is compatible
+ * with {@link SimEvent}, all existing analysis utilities — {@link summarizeEvents},
+ * {@link eventsToJsonl} — work without modification.
+ *
+ * **Dev/debug only.** Never import this module from production game logic; the
+ * recorder is only wired when the lab injects a `sessionRecorderFactory` into
+ * `MainGameScene` options.
+ *
+ * Pure module: no Phaser imports. Safe to import from labs and tests.
+ */
+import { query } from 'bitecs';
+import { Enemy } from '../../core/components.js';
+import type { GameWorld } from '../../core/world.js';
+import type { InputState } from '../../shared/input.js';
+import type { SessionRecorder, SessionRecorderStats } from '../../shared/session-recorder-types.js';
+import { AI_STATE_NAME, type SimEvent, type SimEventType } from './event-log.js';
+
+// ---------------------------------------------------------------------------
+// PlayerSessionEvent
+// ---------------------------------------------------------------------------
+
+/**
+ * A single per-frame telemetry record from a real human player session.
+ *
+ * Extends {@link SimEvent} with raw input fields so that AI tuning can directly
+ * compare human input signals with the AI's computed inputs.
+ *
+ * The `state` field carries the inferred behavioral label (EXPLORE/ENGAGE/COLLECT/IDLE)
+ * for `sample` and `state` records, and for quest-log-derived `quest` records.
+ * Event records (`kill`, `levelup`, `npc`) keep the base `'HUMAN'` value from
+ * `buildEvent` since those events are not tied to a specific movement state.
+ */
+export interface PlayerSessionEvent extends SimEvent {
+  /** Normalized move X (-1…1) from player input this frame. */
+  inputMoveX: number;
+  /** Normalized move Y (-1…1) from player input this frame. */
+  inputMoveY: number;
+  /** Whether the attack/action button was held this frame. */
+  inputAction: boolean;
+  /** Pointer world X (px) — where the player aimed. */
+  inputPointerX: number;
+  /** Pointer world Y (px) — where the player aimed. */
+  inputPointerY: number;
+}
+
+// ---------------------------------------------------------------------------
+// Recorder
+// ---------------------------------------------------------------------------
+
+/** Options for {@link createPlayerSessionRecorder}. */
+export interface SessionRecorderOptions {
+  /** Frames between periodic `sample` events (default 15, ~4 Hz at 60 fps). */
+  sampleInterval?: number;
+}
+
+/**
+ * A running recorder attached to a single player entity in a {@link GameWorld}.
+ *
+ * Extends the shared {@link SessionRecorder} interface (engine-visible) with
+ * typed event access and JSONL serialization.
+ *
+ * Typical usage:
+ * ```ts
+ * const rec = createPlayerSessionRecorder(world, playerEid);
+ * // each simulation step:
+ * rec.tick(inputState);
+ * // on game events:
+ * rec.onKill(1);
+ * rec.onLevelUp(newLevel);
+ * rec.onQuestEvent('main quest accepted');
+ * // at session end:
+ * rec.download();
+ * ```
+ */
+export interface PlayerSessionRecorder extends SessionRecorder {
+  /** Return a read-only snapshot of all recorded events. */
+  getEvents(): readonly PlayerSessionEvent[];
+  /** Serialize events as JSONL (one JSON object per line). */
+  toJsonl(): string;
+}
+
+/**
+ * Create a {@link PlayerSessionRecorder} bound to the given world and player
+ * entity. The recorder reads world state and enemy positions each frame to
+ * build telemetry events that mirror the headless runner's output.
+ */
+export function createPlayerSessionRecorder(
+  world: GameWorld,
+  playerEid: number,
+  options: SessionRecorderOptions = {},
+): PlayerSessionRecorder {
+  const sampleInterval = Math.max(1, options.sampleInterval ?? 15);
+  const events: PlayerSessionEvent[] = [];
+
+  let frameCount = 0;
+  let totalKills = 0;
+  let lastLoggedState = '';
+
+  // Movement-window tracking (mirrors headless runner).
+  let lastSampleX = world.stores.position.x[playerEid] ?? 0;
+  let lastSampleY = world.stores.position.y[playerEid] ?? 0;
+  let lastFrameX = lastSampleX;
+  let lastFrameY = lastSampleY;
+  let pathTravelAccum = 0;
+
+  // Quest log mirror (tracks first-seen and first-completion per quest).
+  const questLogSeen = new Set<string>();
+  const questLogCompleted = new Set<string>();
+
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
+
+  function buildEvent(
+    type: SimEventType,
+    inputState: InputState,
+    enemyEids: ArrayLike<number> & Iterable<number>,
+    note?: string,
+  ): PlayerSessionEvent {
+    const px = world.stores.position.x[playerEid] ?? 0;
+    const py = world.stores.position.y[playerEid] ?? 0;
+
+    let nearestEnemyDist: number | null = null;
+    for (const eid of enemyEids) {
+      const ex = world.stores.position.x[eid] ?? 0;
+      const ey = world.stores.position.y[eid] ?? 0;
+      const dist = Math.hypot(ex - px, ey - py);
+      if (nearestEnemyDist === null || dist < nearestEnemyDist) {
+        nearestEnemyDist = dist;
+      }
+    }
+
+    const netDisp = Math.hypot(px - lastSampleX, py - lastSampleY);
+
+    const base: SimEvent = {
+      type,
+      frame: frameCount,
+      gameMs: world.elapsedMs,
+      px: Math.round(px),
+      py: Math.round(py),
+      state: 'HUMAN',
+      reason: 'player-input',
+      targetEid: null,
+      targetDist: null,
+      enemyCount: enemyEids.length,
+      nearestEnemyDist: nearestEnemyDist === null ? null : Math.round(nearestEnemyDist),
+      level: world.playerLevel?.level ?? 0,
+      xp: world.playerLevel?.xp ?? 0,
+      kills: totalKills,
+      health: Math.round(world.stores.health.current[playerEid] ?? 0),
+      stuckFrames: 0,
+      pathLen: 0,
+      netDisp: Math.round(netDisp),
+      pathTravel: Math.round(pathTravelAccum),
+      ...(note ? { note } : {}),
+    };
+
+    return {
+      ...base,
+      inputMoveX: inputState.moveX,
+      inputMoveY: inputState.moveY,
+      inputAction: inputState.action,
+      inputPointerX: Math.round(inputState.pointerX),
+      inputPointerY: Math.round(inputState.pointerY),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public interface
+  // ---------------------------------------------------------------------------
+
+  function tick(inputState: InputState): void {
+    frameCount += 1;
+
+    const px = world.stores.position.x[playerEid] ?? lastFrameX;
+    const py = world.stores.position.y[playerEid] ?? lastFrameY;
+    pathTravelAccum += Math.hypot(px - lastFrameX, py - lastFrameY);
+    lastFrameX = px;
+    lastFrameY = py;
+
+    const enemyEids = query(world.ecs, [Enemy]);
+
+    // Behavioral state label — human sessions use directional hints inferred
+    // from input so that state-time summaries still carry meaning.
+    const inputMagnitude = Math.hypot(inputState.moveX, inputState.moveY);
+    const inferredState = inferHumanState(inputMagnitude, inputState.action, enemyEids.length > 0);
+
+    if (inferredState !== lastLoggedState) {
+      const event = buildEvent('state', inputState, enemyEids, `state -> ${inferredState}`);
+      event.state = inferredState;
+      events.push(event);
+      lastLoggedState = inferredState;
+    }
+
+    if (frameCount % sampleInterval === 0) {
+      const event = buildEvent('sample', inputState, enemyEids);
+      event.state = inferredState;
+      events.push(event);
+      // Reset per-sample window.
+      pathTravelAccum = 0;
+      lastSampleX = world.stores.position.x[playerEid] ?? lastSampleX;
+      lastSampleY = world.stores.position.y[playerEid] ?? lastSampleY;
+    }
+
+    // Quest log tracking (mirrors headless runner).
+    for (const [questId, questState] of world.questLog) {
+      if (!questLogSeen.has(questId)) {
+        questLogSeen.add(questId);
+        const event = buildEvent('quest', inputState, enemyEids, `questlog accepted: ${questId}`);
+        event.state = inferredState;
+        events.push(event);
+      }
+      if (questState.status === 'complete' && !questLogCompleted.has(questId)) {
+        questLogCompleted.add(questId);
+        const event = buildEvent('quest', inputState, enemyEids, `questlog completed: ${questId}`);
+        event.state = inferredState;
+        events.push(event);
+      }
+    }
+  }
+
+  function onKill(killIndex: number): void {
+    totalKills += 1;
+    const enemyEids = query(world.ecs, [Enemy]);
+    const noInput: InputState = { moveX: 0, moveY: 0, action: false, pointerX: 0, pointerY: 0 };
+    const event = buildEvent('kill', noInput, enemyEids, `kill ${killIndex}`);
+    events.push(event);
+  }
+
+  function onLevelUp(level: number): void {
+    const enemyEids = query(world.ecs, [Enemy]);
+    const noInput: InputState = { moveX: 0, moveY: 0, action: false, pointerX: 0, pointerY: 0 };
+    const event = buildEvent('levelup', noInput, enemyEids, `reached level ${level}`);
+    events.push(event);
+  }
+
+  function onQuestEvent(note: string): void {
+    const enemyEids = query(world.ecs, [Enemy]);
+    const noInput: InputState = { moveX: 0, moveY: 0, action: false, pointerX: 0, pointerY: 0 };
+    const event = buildEvent('quest', noInput, enemyEids, note);
+    events.push(event);
+  }
+
+  function onNpcEvent(note: string): void {
+    const enemyEids = query(world.ecs, [Enemy]);
+    const noInput: InputState = { moveX: 0, moveY: 0, action: false, pointerX: 0, pointerY: 0 };
+    const event = buildEvent('npc', noInput, enemyEids, note);
+    events.push(event);
+  }
+
+  function getEvents(): readonly PlayerSessionEvent[] {
+    return events;
+  }
+
+  function getStats(): SessionRecorderStats {
+    const samples = events.filter((e) => e.type === 'sample');
+    const kills = events.filter((e) => e.type === 'kill');
+    const firstMs = samples[0]?.gameMs ?? 0;
+    const lastMs = samples[samples.length - 1]?.gameMs ?? firstMs;
+    return {
+      totalEvents: events.length,
+      totalSamples: samples.length,
+      totalKills: kills.length,
+      durationMs: Math.max(0, lastMs - firstMs),
+    };
+  }
+
+  function toJsonl(): string {
+    return events.map((e) => JSON.stringify(e)).join('\n') + (events.length > 0 ? '\n' : '');
+  }
+
+  function download(filename?: string): void {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return;
+    }
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const name = filename ?? `session-${ts}.jsonl`;
+    const blob = new Blob([toJsonl()], { type: 'application/x-ndjson' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function reset(): void {
+    events.length = 0;
+    frameCount = 0;
+    totalKills = 0;
+    lastLoggedState = '';
+    lastSampleX = world.stores.position.x[playerEid] ?? 0;
+    lastSampleY = world.stores.position.y[playerEid] ?? 0;
+    lastFrameX = lastSampleX;
+    lastFrameY = lastSampleY;
+    pathTravelAccum = 0;
+    questLogSeen.clear();
+    questLogCompleted.clear();
+  }
+
+  return {
+    tick,
+    onKill,
+    onLevelUp,
+    onQuestEvent,
+    onNpcEvent,
+    getEvents,
+    getStats,
+    toJsonl,
+    download,
+    reset,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Infer a human-readable behavioral state from raw input signals.
+ *
+ * This mirrors the AI's {@link AI_STATE_NAME} vocabulary so that human and AI
+ * event streams can be compared side-by-side with the same summarizeEvents()
+ * metrics.
+ */
+function inferHumanState(inputMagnitude: number, action: boolean, enemiesPresent: boolean): string {
+  if (action && enemiesPresent) return AI_STATE_NAME[1]; // ENGAGE
+  if (action) return AI_STATE_NAME[3]; // COLLECT (using action with no enemies → picking up)
+  if (inputMagnitude > 0.1) return AI_STATE_NAME[0]; // EXPLORE (moving)
+  return 'IDLE';
+}

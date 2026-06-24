@@ -1018,7 +1018,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * OpportunisticCollect: pull the player toward nearby loot regardless of
    * OpportunisticCollect: pull the player toward loot within arm's reach
    * (`config.opportunisticGrabRadius`) regardless of the current Track A
    * movement goal, so the AI scoops up nearby gems while navigating elsewhere
