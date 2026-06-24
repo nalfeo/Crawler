@@ -74,6 +74,27 @@
       ]
     },
     {
+      "id": "floor1-leave-floor",
+      "title": "Leave the Floor",
+      "summary": "The Director has made the call — the Floor Boss stands between you and Floor 2. Take it out and hit the stairs before the show moves on without you.",
+      "giverNpcId": "tutorial-goon",
+      "onCompleteGoalFlag": "floor1-leave-floor-complete",
+      "objectives": [
+        {
+          "id": "defeat-rat-slime",
+          "label": "Defeat the Floor Boss",
+          "kind": "goal",
+          "goalId": "floor1-defeat-boss"
+        },
+        {
+          "id": "take-stairs",
+          "label": "Take the stairs to Floor 2",
+          "kind": "goal",
+          "goalId": "floor1.objective.staircaseDiscovered"
+        }
+      ]
+    },
+    {
       "id": "floor1-shopkeeper-errand",
       "title": "The Merchant's Disgusting Little Errand",
       "summary": "A clammy shopkeeper will only trade with contestants who fetch him a very particular souvenir. Try not to think about what he does with it.",
