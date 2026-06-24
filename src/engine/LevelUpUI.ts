@@ -65,6 +65,7 @@ const PANEL_WIDTH = 560;
 const PANEL_PADDING = 18;
 const ROW_HEIGHT = 38;
 const ROW_GAP = 4;
+const STAT_BUTTON_SIZE = 34;
 const HEADER_HEIGHT = 70;
 const FOOTER_HEIGHT = 64;
 const PANEL_HEIGHT =
@@ -205,7 +206,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     enabled: boolean,
     onClick: () => void,
   ): void => {
-    const size = ROW_HEIGHT - 12;
+    const size = STAT_BUTTON_SIZE;
     const box = scene.add
       .rectangle(x, y, size, size, enabled ? 0x1d4ed8 : PIXEL_UI.panelFill, enabled ? 0.9 : 0.5)
       .setOrigin(0, 0)
@@ -303,10 +304,10 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       }
 
       const rowRight = left + (PANEL_WIDTH - PANEL_PADDING * 2);
-      const plusX = rowRight - (ROW_HEIGHT - 12) - 8;
+      const plusX = rowRight - STAT_BUTTON_SIZE - 6;
       const countX = plusX - 34;
-      const minusX = countX - (ROW_HEIGHT - 12) - 6;
-      const btnY = rowY + 6;
+      const minusX = countX - STAT_BUTTON_SIZE - 6;
+      const btnY = rowY + Math.round((ROW_HEIGHT - STAT_BUTTON_SIZE) / 2);
 
       addButton(minusX, btnY, '−', draftPoints > 0, () => dispatch(decrementStat(state!, stat)));
       const count = crispText(
