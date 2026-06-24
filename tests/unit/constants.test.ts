@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FLOOR, GAME, XP } from '../../src/shared/constants.js';
+import { CAMERA, FLOOR, GAME, XP, safeRoomCameraZoom } from '../../src/shared/constants.js';
 
 describe('game constants', () => {
   it('uses a target framerate of 60 FPS', () => {
@@ -18,5 +18,20 @@ describe('game constants', () => {
 
   it('uses an XP scaling factor above 1', () => {
     expect(XP.SCALING_FACTOR).toBeGreaterThan(1);
+  });
+});
+
+describe('safeRoomCameraZoom', () => {
+  it('returns the base zoom when outside a safe room', () => {
+    expect(safeRoomCameraZoom(false)).toBe(CAMERA.BASE_ZOOM);
+  });
+
+  it('zooms 25% closer when inside a safe room', () => {
+    expect(safeRoomCameraZoom(true)).toBeCloseTo(CAMERA.BASE_ZOOM * 1.25, 10);
+    expect(CAMERA.SAFE_ROOM_ZOOM_MULTIPLIER).toBe(1.25);
+  });
+
+  it('always zooms in (never out) inside a safe room', () => {
+    expect(safeRoomCameraZoom(true)).toBeGreaterThan(safeRoomCameraZoom(false));
   });
 });

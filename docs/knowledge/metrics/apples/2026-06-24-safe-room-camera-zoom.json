@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-24",
+  "session": "safe-room-camera-zoom",
+  "estimated_apples": 1,
+  "actual_apples": 1,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.2,
+  "notes": "Localized delight feature: smooth 25% camera zoom-in on safe-room entry, zoom-out on leaving. Added CAMERA constants + pure safeRoomCameraZoom() helper with unit tests; transition-gated zoomTo in MainGameScene.updateCamera. No new ECS system, so no new lab needed."
+}
