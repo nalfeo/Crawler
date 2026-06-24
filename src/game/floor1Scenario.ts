@@ -808,7 +808,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       const doorEid = createEntity(world);
       // Room starts locked; it unlocks when the player takes the quest from the Spell Broker.
       // When the battle begins, beginFloor1SlimeRatBattle replaces this config with the
-      // battle-active lock (re-locks until boss is defeated).
+      // battle-active lock (re-locks until boss is defeated via floor1-boss-battle-complete).
       addComponent(
         world.ecs,
         doorEid,
@@ -818,6 +818,12 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
         unlock: {
           operator: 'all',
           conditions: [{ type: 'goal', goalId: 'floor1-slime-rat-quest-accepted' }],
+        },
+        // Re-lock if the battle activates before the doorSystem can process the quest-accepted
+        // unlock (defensive — beginFloor1SlimeRatBattle also sets isLocked directly).
+        relock: {
+          operator: 'all',
+          conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-active' }],
         },
       });
       world.floor1.slimeRatDoorEids.push(doorEid);
@@ -1534,6 +1540,8 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   objective.slimeRatBattleStarted = true;
   objective.slimeRatBossDefeated = true;
   objective.slimeRatBossEid = null;
+  // Mark the quest as accepted so the slime rat room doors open (the initial door lock
+  // condition uses this flag). The battle is already complete so the door should be open.
   setGoalFlag(world, 'floor1-slime-rat-quest-accepted', true);
   setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
   setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);
