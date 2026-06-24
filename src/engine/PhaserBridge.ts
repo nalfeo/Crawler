@@ -513,9 +513,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         activeEntities.add(eid);
 
         const entityType = getEntityType(world, eid);
+        const isBoss =
+          entityType === 'enemy' &&
+          world.floor1 != null &&
+          [...world.floor1.objective.bossBattles.values()].some((b) => b.bossEid === eid);
         const visualType =
           entityType === 'enemy'
-            ? world.floor1?.objective.staircaseBossEid === eid
+            ? isBoss
               ? 'enemy_boss'
               : world.stores.sprite.textureId[eid] === 1
                 ? 'enemy_rat'

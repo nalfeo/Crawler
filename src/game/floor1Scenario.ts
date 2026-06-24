@@ -657,8 +657,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     spellQuestGiverNpcEid: null,
     shopkeeperNpcEid: null,
     questItemEid: null,
-    bossDoorEids: [],
-    slimeRatDoorEids: [],
+    bossRoomDoorEids: new Map([
+      ['slime-rat', []],
+      ['staircase', []],
+    ]),
     objective: {
       requiredRats: floor1Config.objectives.requiredRats,
       requiredSlimes: floor1Config.objectives.requiredSlimes,
@@ -687,12 +689,12 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircaseLocked: true,
       staircaseUnlocked: false,
       staircaseDiscovered: false,
-      slimeRatBattleStarted: false,
-      slimeRatBossEid: null,
-      slimeRatBossDefeated: false,
-      bossBattleStarted: false,
-      staircaseBossEid: null,
-      staircaseBossDefeated: false,
+      // 'slime-rat' = spell-quest room boss (weaker); 'staircase' = end-of-floor boss (stronger).
+      // Insertion order determines health-bar priority when both are active simultaneously.
+      bossBattles: new Map([
+        ['slime-rat', { started: false, bossEid: null, defeated: false, displayName: 'Slime Rat' }],
+        ['staircase', { started: false, bossEid: null, defeated: false, displayName: 'Rat Slime' }],
+      ]),
     },
     failReason: null,
     runSummary: null,
@@ -799,7 +801,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
           ],
         },
       });
-      world.floor1.bossDoorEids.push(doorEid);
+      world.floor1.bossRoomDoorEids.get('staircase')!.push(doorEid);
     }
   }
   const slimeRatRoom = roomAtPosition(world, slimeRatRoomPos);
@@ -826,7 +828,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
           conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-active' }],
         },
       });
-      world.floor1.slimeRatDoorEids.push(doorEid);
+      world.floor1.bossRoomDoorEids.get('slime-rat')!.push(doorEid);
     }
   }
 
@@ -1111,14 +1113,16 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
 function beginFloor1SlimeRatBattle(world: GameWorld): void {
   const floor1 = world.floor1;
   const objective = floor1?.objective;
+  const slimeRatBattle = objective?.bossBattles.get('slime-rat');
   if (
     !objective ||
-    objective.slimeRatBattleStarted ||
+    !slimeRatBattle ||
+    slimeRatBattle.started ||
     !world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)
   ) {
     return;
   }
-  objective.slimeRatBattleStarted = true;
+  slimeRatBattle.started = true;
   setGoalFlag(world, 'floor1-boss-battle-active', true);
   const slimeRatRoom = roomAtPosition(world, objective.slimeRatRoomPos);
   if (slimeRatRoom) {
@@ -1127,7 +1131,7 @@ function beginFloor1SlimeRatBattle(world: GameWorld): void {
     }
   }
   if (floor1) {
-    for (const doorEid of floor1.slimeRatDoorEids) {
+    for (const doorEid of floor1.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 1;
       world.stores.doorState.isOpen[doorEid] = 0;
       setDoorLockConfig(world, doorEid, {
@@ -1142,23 +1146,23 @@ function beginFloor1SlimeRatBattle(world: GameWorld): void {
       });
     }
   }
-  objective.slimeRatBossEid = spawnFloor1SlimeRatBoss(world);
+  slimeRatBattle.bossEid = spawnFloor1SlimeRatBoss(world);
 }
 
 function beginFloor1BossBattle(world: GameWorld): void {
   const floor1 = world.floor1;
   const objective = floor1?.objective;
-  if (!floor1 || !objective || objective.bossBattleStarted) {
+  const staircaseBattle = objective?.bossBattles.get('staircase');
+  if (!floor1 || !objective || !staircaseBattle || staircaseBattle.started) {
     return;
   }
 
-  objective.bossBattleStarted = true;
+  staircaseBattle.started = true;
   objective.staircaseLocked = true;
   objective.staircaseUnlocked = false;
   setGoalFlag(world, 'floor1-boss-active', true);
 
-  // Staircase boss is Rat Slime (stronger), separate from the Slime Rat spell-quest boss.
-  objective.staircaseBossEid = spawnFloor1StairBoss(world);
+  staircaseBattle.bossEid = spawnFloor1StairBoss(world);
   const floorMap = world.floorMap;
   const bossRoom = floorMap?.bossStairRoom;
   if (bossRoom) {
@@ -1167,7 +1171,7 @@ function beginFloor1BossBattle(world: GameWorld): void {
     }
   }
   // Replace lock config: doors stay locked while boss is active, open once boss defeated.
-  for (const doorEid of floor1.bossDoorEids) {
+  for (const doorEid of floor1.bossRoomDoorEids.get('staircase') ?? []) {
     world.stores.doorState.isLocked[doorEid] = 1;
     world.stores.doorState.isOpen[doorEid] = 0;
     setDoorLockConfig(world, doorEid, {
@@ -1428,20 +1432,23 @@ function floor1ObjectiveTick(world: GameWorld): void {
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, objective.questCompleted);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, meetsLoot);
 
+  const slimeRatBattle = objective.bossBattles.get('slime-rat')!;
+  const staircaseBattle = objective.bossBattles.get('staircase')!;
+
   // Slime Rat (weaker) battle starts in its dedicated boss room.
   if (
     world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID) &&
     isFullyInsideObjectiveRoom(world, playerX, playerY, objective.slimeRatRoomPos) &&
-    !objective.slimeRatBattleStarted
+    !slimeRatBattle.started
   ) {
     beginFloor1SlimeRatBattle(world);
   }
 
-  const slimeRatEid = objective.slimeRatBossEid;
+  const slimeRatEid = slimeRatBattle.bossEid;
   const slimeRatAlive = slimeRatEid !== null && entityExists(world.ecs, slimeRatEid);
-  if (objective.slimeRatBattleStarted && !slimeRatAlive && !objective.slimeRatBossDefeated) {
-    objective.slimeRatBossDefeated = true;
-    objective.slimeRatBossEid = null;
+  if (slimeRatBattle.started && !slimeRatAlive && !slimeRatBattle.defeated) {
+    slimeRatBattle.defeated = true;
+    slimeRatBattle.bossEid = null;
     setGoalFlag(world, 'floor1-boss-battle-active', false);
     const slimeRatRoom = roomAtPosition(world, objective.slimeRatRoomPos);
     if (slimeRatRoom) {
@@ -1449,7 +1456,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
         world.floorMap?.tileMap.openDoor(door.x, door.y);
       }
     }
-    for (const doorEid of world.floor1.slimeRatDoorEids) {
+    for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
       world.stores.doorState.isOpen[doorEid] = 1;
     }
@@ -1459,21 +1466,21 @@ function floor1ObjectiveTick(world: GameWorld): void {
 
   // Staircase Rat Slime (stronger) starts only after the Slime Rat is defeated.
   if (
-    objective.slimeRatBossDefeated &&
+    slimeRatBattle.defeated &&
     isFullyInsideBossRoom(world, playerX, playerY) &&
-    !objective.bossBattleStarted
+    !staircaseBattle.started
   ) {
     beginFloor1BossBattle(world);
   }
 
-  const bossEid = objective.staircaseBossEid;
-  const bossAlive = bossEid !== null && entityExists(world.ecs, bossEid);
-  if (objective.bossBattleStarted && !bossAlive && !objective.staircaseSpawned) {
+  const staircaseEid = staircaseBattle.bossEid;
+  const staircaseAlive = staircaseEid !== null && entityExists(world.ecs, staircaseEid);
+  if (staircaseBattle.started && !staircaseAlive && !objective.staircaseSpawned) {
     objective.staircaseSpawned = true;
     objective.staircaseLocked = false;
     objective.staircaseUnlocked = true;
-    objective.staircaseBossDefeated = true;
-    objective.staircaseBossEid = null;
+    staircaseBattle.defeated = true;
+    staircaseBattle.bossEid = null;
     setGoalFlag(world, 'floor1-boss-active', false);
 
     const floorMap = world.floorMap;
@@ -1482,7 +1489,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
         floorMap.tileMap.openDoor(door.x, door.y);
       }
     }
-    for (const doorEid of world.floor1.bossDoorEids) {
+    for (const doorEid of world.floor1.bossRoomDoorEids.get('staircase') ?? []) {
       world.stores.doorState.isLocked[doorEid] = 0;
       world.stores.doorState.isOpen[doorEid] = 1;
     }
@@ -1537,9 +1544,10 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   setGoalFlag(world, 'floor1-reach-level-2', true);
   setGoalFlag(world, 'floor1-leveling-quest-complete', true);
   setGoalFlag(world, 'floor1-goon-quest-complete', true);
-  objective.slimeRatBattleStarted = true;
-  objective.slimeRatBossDefeated = true;
-  objective.slimeRatBossEid = null;
+  const slimeRatSkip = objective.bossBattles.get('slime-rat')!;
+  slimeRatSkip.started = true;
+  slimeRatSkip.defeated = true;
+  slimeRatSkip.bossEid = null;
   // Mark the quest as accepted so the slime rat room doors open (the initial door lock
   // condition uses this flag). The battle is already complete so the door should be open.
   setGoalFlag(world, 'floor1-slime-rat-quest-accepted', true);
@@ -1657,7 +1665,7 @@ export function meetSpellQuestGiver(world: GameWorld): void {
     // Unlock the Slime Rat boss room so the player can enter.
     setGoalFlag(world, 'floor1-slime-rat-quest-accepted', true);
   }
-  if (world.floor1?.objective.slimeRatBossDefeated === true) {
+  if (world.floor1?.objective.bossBattles.get('slime-rat')?.defeated === true) {
     setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);
   }
   notifyQuestTalk(world, 'spell-quest-giver');

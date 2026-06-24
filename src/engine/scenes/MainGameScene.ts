@@ -322,9 +322,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private readonly worldMaskIgnoreList: Phaser.GameObjects.GameObject[] = [];
 
-  private previousBossEid: number | null = null;
-
-  private previousSlimeRatBossEid: number | null = null;
+  private previousBossEids: Map<string, number | null> = new Map();
 
   /** Active NPC conversation lock; when set, fixed-step simulation pauses. */
   private conversationNpcEid: number | null = null;
@@ -952,28 +950,20 @@ export class MainGameScene extends Phaser.Scene {
 
   private playBossSpawnIntro(): void {
     const objective = this.world.floor1?.objective;
-
-    // Staircase boss (Rat Slime — stronger)
-    const staircaseBossEid = objective?.staircaseBossEid ?? null;
-    if (staircaseBossEid !== this.previousBossEid) {
-      this.previousBossEid = staircaseBossEid;
-      if (staircaseBossEid !== null && entityExists(this.world.ecs, staircaseBossEid)) {
-        this.triggerBossSpawnFx(
-          this.world.stores.position.x[staircaseBossEid] ?? 0,
-          this.world.stores.position.y[staircaseBossEid] ?? 0,
-        );
-      }
+    if (!objective) {
+      return;
     }
 
-    // Slime Rat boss (spell-quest room — appears when player accepts the quest and enters)
-    const slimeRatBossEid = objective?.slimeRatBossEid ?? null;
-    if (slimeRatBossEid !== this.previousSlimeRatBossEid) {
-      this.previousSlimeRatBossEid = slimeRatBossEid;
-      if (slimeRatBossEid !== null && entityExists(this.world.ecs, slimeRatBossEid)) {
-        this.triggerBossSpawnFx(
-          this.world.stores.position.x[slimeRatBossEid] ?? 0,
-          this.world.stores.position.y[slimeRatBossEid] ?? 0,
-        );
+    for (const [bossId, battle] of objective.bossBattles) {
+      const bossEid = battle.bossEid;
+      if (bossEid !== this.previousBossEids.get(bossId)) {
+        this.previousBossEids.set(bossId, bossEid);
+        if (bossEid !== null && entityExists(this.world.ecs, bossEid)) {
+          this.triggerBossSpawnFx(
+            this.world.stores.position.x[bossEid] ?? 0,
+            this.world.stores.position.y[bossEid] ?? 0,
+          );
+        }
       }
     }
   }
@@ -1217,7 +1207,7 @@ export class MainGameScene extends Phaser.Scene {
       .setDepth(1001)
       .setVisible(false);
     this.bossHealthName = this.add
-      .text(GAME.WIDTH / 2, bossBarY + 28, 'Rat-Slime Hybrid', {
+      .text(GAME.WIDTH / 2, bossBarY + 28, '', {
         fontFamily: 'monospace',
         fontSize: '13px',
         color: '#f8fafc',
@@ -1743,12 +1733,13 @@ export class MainGameScene extends Phaser.Scene {
       this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
       return;
     }
-    if (objective.bossBattleStarted && !this.commentaryMilestones.bossBattleStarted) {
+    const staircaseBattle = objective.bossBattles.get('staircase');
+    if (staircaseBattle?.started && !this.commentaryMilestones.bossBattleStarted) {
       this.commentaryMilestones.bossBattleStarted = true;
       this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
       return;
     }
-    if (objective.staircaseBossDefeated && !this.commentaryMilestones.staircaseBossDefeated) {
+    if (staircaseBattle?.defeated && !this.commentaryMilestones.staircaseBossDefeated) {
       this.commentaryMilestones.staircaseBossDefeated = true;
       this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
       return;
@@ -1880,21 +1871,21 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    // Determine which boss bar to show: slime rat (spell-quest) takes priority if active,
-    // else fall back to the staircase boss.
-    const slimeRatEid = objective?.slimeRatBossEid ?? null;
-    const slimeRatAlive = slimeRatEid !== null && entityExists(this.world.ecs, slimeRatEid);
-    const staircaseEid = objective?.staircaseBossEid ?? null;
-    const staircaseAlive = staircaseEid !== null && entityExists(this.world.ecs, staircaseEid);
-
+    // Find the first active boss in insertion order (priority = bossBattles map order).
     let activeBossEid: number | null = null;
     let bossDisplayName = '';
-    if (objective?.slimeRatBattleStarted && slimeRatAlive) {
-      activeBossEid = slimeRatEid;
-      bossDisplayName = 'Slime Rat';
-    } else if (objective?.bossBattleStarted && staircaseAlive) {
-      activeBossEid = staircaseEid;
-      bossDisplayName = 'Rat Slime';
+    if (objective) {
+      for (const battle of objective.bossBattles.values()) {
+        if (
+          battle.started &&
+          battle.bossEid !== null &&
+          entityExists(this.world.ecs, battle.bossEid)
+        ) {
+          activeBossEid = battle.bossEid;
+          bossDisplayName = battle.displayName;
+          break;
+        }
+      }
     }
 
     const barVisible = activeBossEid !== null;
@@ -2065,7 +2056,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private resolveDialogueLines(defId: string): string[] {
     const objective = this.world.floor1?.objective;
-    if (defId === 'tutorial-goon' && objective?.staircaseBossDefeated) {
+    if (defId === 'tutorial-goon' && objective?.bossBattles.get('staircase')?.defeated) {
       return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
     }
     if (defId === 'shopkeeper' && this.options.shopkeeper) {
