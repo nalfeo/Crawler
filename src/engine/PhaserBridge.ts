@@ -513,10 +513,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         activeEntities.add(eid);
 
         const entityType = getEntityType(world, eid);
-        const isBoss =
-          entityType === 'enemy' &&
-          world.floor1 != null &&
-          [...world.floor1.objective.bossBattles.values()].some((b) => b.bossEid === eid);
+        let isBoss = false;
+        if (entityType === 'enemy' && world.floor1 != null) {
+          for (const battle of world.floor1.objective.bossBattles.values()) {
+            if (battle.bossEid === eid) {
+              isBoss = true;
+              break;
+            }
+          }
+        }
         const visualType =
           entityType === 'enemy'
             ? isBoss
