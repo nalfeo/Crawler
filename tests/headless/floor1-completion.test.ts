@@ -21,8 +21,8 @@
  * run every time, so one pass per seed is authoritative — there is nothing to
  * average over. Seed 25 is the currently re-verified canonical clear (~207.5s
  * game-time at level 7 with 33 kills, completing all 4 quests under the 300s
- * budget, and was re-verified locally in ~17s wall time; the hook timeout stays
- * at 60s to allow for slower CI runners). Because the run exercises the *entire* Floor 1
+ * budget, and was re-verified locally in ~17s wall time; the hook timeout is
+ * kept at 60s to allow for slower CI runners). Because the run exercises the *entire* Floor 1
  * pipeline — pathfinding, melee/ranged combat, every NPC interaction, the boss
  * fight, and stat progression — a regression in almost any of those systems
  * breaks this seed too, which makes it a strong gate.

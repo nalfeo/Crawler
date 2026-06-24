@@ -136,6 +136,10 @@ export class DungeonGenerator implements MapGenerator {
       applyRoomShapes(tileMap, terrain, roomGraph, w, rng);
       const widenedCorridorTiles = widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
       addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng, protectedWalls);
+      // Run the special-room paired-door pass first, then the broader normal-room
+      // companion-door pass; their room-role scopes do not overlap, so the order
+      // keeps main's explicit special-room behavior intact before PR #259 widens
+      // eligible non-special entries.
       expandDoorsForWideCorridors(tileMap, terrain, roomGraph, w, widenedCorridorTiles);
       addDoubleDoors(tileMap, terrain, roomGraph, w, h);
     }
