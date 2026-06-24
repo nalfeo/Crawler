@@ -45,6 +45,7 @@ import { getUiScale, onUiScaleChange } from '../ui-scale.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
+import { createEquipmentUI } from '../EquipmentUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
@@ -257,6 +258,7 @@ export class MainGameScene extends Phaser.Scene {
   private keyAbilities?: Phaser.Input.Keyboard.Key;
 
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
+  private equipmentUI?: ReturnType<typeof createEquipmentUI>;
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
@@ -439,6 +441,7 @@ export class MainGameScene extends Phaser.Scene {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
     }
     this.inventoryUI = createInventoryUI(this);
+    this.equipmentUI = createEquipmentUI(this);
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
       // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
@@ -530,6 +533,8 @@ export class MainGameScene extends Phaser.Scene {
       this.hudUi?.destroy();
       this.inventoryUI?.destroy();
       this.inventoryUI = undefined;
+      this.equipmentUI?.destroy();
+      this.equipmentUI = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
       this.levelUpUI?.destroy();
@@ -912,10 +917,12 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedEquip || Boolean(this.keyEquip && Phaser.Input.Keyboard.JustDown(this.keyEquip));
     this.queuedEquip = false;
     if (unlocks.equipment && safeCtx && equipRequested) {
-      const equipped = this.options.shopkeeper?.equip(this.world, this.playerEid) ?? false;
-      if (equipped) {
-        this.flashHint('Equipped! The merchant beams with unsettling pride.');
-        this.inventoryUI?.refresh(this.world);
+      this.equipmentUI?.toggle(this.world);
+    } else if (this.equipmentUI?.isOpen()) {
+      if (safeCtx) {
+        this.equipmentUI.refresh(this.world);
+      } else {
+        this.equipmentUI.toggle(this.world);
       }
     }
 
