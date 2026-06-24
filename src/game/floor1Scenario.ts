@@ -584,9 +584,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   tagRoomAsSafe(world, spellQuestGiverPos);
 
   const welcomeSignTextureId = floor1Config.sprites?.welcomeSign;
-  if (welcomeSignTextureId !== undefined && floorMap.spawnRoom && floorMap.safeRoom) {
+  const welcomeOfficeTile = floorMap.pixelToTile(welcomeOfficePos.x, welcomeOfficePos.y);
+  const welcomeGoonRoomId = floorMap.roomGraph.getRoomAt(welcomeOfficeTile.x, welcomeOfficeTile.y);
+  if (welcomeSignTextureId !== undefined && floorMap.spawnRoom && welcomeGoonRoomId >= 0) {
     const startId = floorMap.spawnRoom.id;
-    const targetId = floorMap.safeRoom.id;
+    const targetId = welcomeGoonRoomId;
     const path = findRoomPath(floorMap.roomGraph, startId, targetId);
 
     const placeWelcomeSign = (fromRoomId: number, toRoomId: number): void => {
@@ -635,8 +637,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
         placeWelcomeSign(path[i]!, path[i + 1]!);
       }
     } else {
-      // Spawn and safe aren't path-connected (rare). Still guarantee the
-      // spawn-room welcome sign, oriented straight toward the safe room.
+      // Spawn and welcome goon aren't path-connected (rare). Still guarantee the
+      // spawn-room welcome sign, oriented straight toward the welcome goon's room.
       placeWelcomeSign(startId, targetId);
     }
   }
