@@ -24,6 +24,9 @@ describe('AI playthrough level-up UX wiring', () => {
     expect(source).toContain('const STAT_BUTTON_SIZE = 34;');
     expect(source).toContain('const size = STAT_BUTTON_SIZE;');
     expect(source).toContain('const plusX = rowRight - STAT_BUTTON_SIZE - 6;');
+    expect(source).toContain(
+      'const btnY = rowY + Math.round((ROW_HEIGHT - STAT_BUTTON_SIZE) / 2);',
+    );
   });
 
   it('MainGameScene drives the modal via an optional autoLevelUpAllocator', () => {
