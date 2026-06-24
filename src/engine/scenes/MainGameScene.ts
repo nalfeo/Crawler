@@ -324,6 +324,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private previousBossEid: number | null = null;
 
+  private previousSlimeRatBossEid: number | null = null;
+
   /** Active NPC conversation lock; when set, fixed-step simulation pauses. */
   private conversationNpcEid: number | null = null;
 
@@ -950,19 +952,33 @@ export class MainGameScene extends Phaser.Scene {
 
   private playBossSpawnIntro(): void {
     const objective = this.world.floor1?.objective;
-    const bossEid = objective?.staircaseBossEid ?? null;
-    if (bossEid === this.previousBossEid) {
-      return;
+
+    // Staircase boss (Rat Slime — stronger)
+    const staircaseBossEid = objective?.staircaseBossEid ?? null;
+    if (staircaseBossEid !== this.previousBossEid) {
+      this.previousBossEid = staircaseBossEid;
+      if (staircaseBossEid !== null && entityExists(this.world.ecs, staircaseBossEid)) {
+        this.triggerBossSpawnFx(
+          this.world.stores.position.x[staircaseBossEid] ?? 0,
+          this.world.stores.position.y[staircaseBossEid] ?? 0,
+        );
+      }
     }
 
-    this.previousBossEid = bossEid;
-    if (bossEid === null || !entityExists(this.world.ecs, bossEid)) {
-      return;
+    // Slime Rat boss (spell-quest room — appears when player accepts the quest and enters)
+    const slimeRatBossEid = objective?.slimeRatBossEid ?? null;
+    if (slimeRatBossEid !== this.previousSlimeRatBossEid) {
+      this.previousSlimeRatBossEid = slimeRatBossEid;
+      if (slimeRatBossEid !== null && entityExists(this.world.ecs, slimeRatBossEid)) {
+        this.triggerBossSpawnFx(
+          this.world.stores.position.x[slimeRatBossEid] ?? 0,
+          this.world.stores.position.y[slimeRatBossEid] ?? 0,
+        );
+      }
     }
+  }
 
-    const x = this.world.stores.position.x[bossEid] ?? 0;
-    const y = this.world.stores.position.y[bossEid] ?? 0;
-
+  private triggerBossSpawnFx(x: number, y: number): void {
     this.cameras.main.shake(160, 0.008);
     this.cameras.main.flash(140, 255, 230, 160);
 
@@ -1856,9 +1872,6 @@ export class MainGameScene extends Phaser.Scene {
 
   private updateBossHealthBar(): void {
     const objective = this.world.floor1?.objective;
-    const bossEid = objective?.staircaseBossEid ?? null;
-    const bossAlive = bossEid !== null && entityExists(this.world.ecs, bossEid);
-    const barVisible = !!objective?.bossBattleStarted && bossAlive;
     const shell = this.bossHealthShell;
     const fill = this.bossHealthFill;
     const label = this.bossHealthLabel;
@@ -1867,21 +1880,39 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    // Determine which boss bar to show: slime rat (spell-quest) takes priority if active,
+    // else fall back to the staircase boss.
+    const slimeRatEid = objective?.slimeRatBossEid ?? null;
+    const slimeRatAlive = slimeRatEid !== null && entityExists(this.world.ecs, slimeRatEid);
+    const staircaseEid = objective?.staircaseBossEid ?? null;
+    const staircaseAlive = staircaseEid !== null && entityExists(this.world.ecs, staircaseEid);
+
+    let activeBossEid: number | null = null;
+    let bossDisplayName = '';
+    if (objective?.slimeRatBattleStarted && slimeRatAlive) {
+      activeBossEid = slimeRatEid;
+      bossDisplayName = 'Slime Rat';
+    } else if (objective?.bossBattleStarted && staircaseAlive) {
+      activeBossEid = staircaseEid;
+      bossDisplayName = 'Rat Slime';
+    }
+
+    const barVisible = activeBossEid !== null;
     shell.setVisible(barVisible);
     fill.setVisible(barVisible);
     label.setVisible(barVisible);
     name.setVisible(barVisible);
-    if (!barVisible || bossEid === null) {
+    if (!barVisible || activeBossEid === null) {
       return;
     }
 
-    const current = this.world.stores.health.current[bossEid] ?? 0;
-    const max = Math.max(1, this.world.stores.health.max[bossEid] ?? 1);
+    const current = this.world.stores.health.current[activeBossEid] ?? 0;
+    const max = Math.max(1, this.world.stores.health.max[activeBossEid] ?? 1);
     const pct = Math.max(0, Math.min(1, current / max));
     const width = 360;
     fill.setSize(Math.max(1, Math.round(width * pct)), 20);
     fill.setFillStyle(pct > 0.5 ? 0x22c55e : pct >= 0.25 ? 0xf59e0b : 0xef4444);
-    name.setText(`Rat Slime  ${Math.ceil(current)} / ${Math.ceil(max)}`);
+    name.setText(`${bossDisplayName}  ${Math.ceil(current)} / ${Math.ceil(max)}`);
   }
 
   private updateInteractions(): void {

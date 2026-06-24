@@ -713,6 +713,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, 'floor1-boss-active', false);
   setGoalFlag(world, 'floor1-shop-prize-returned', false);
   setGoalFlag(world, 'floor1-shop-quest-complete', false);
+  // Slime Rat boss room stays locked until the player accepts the quest from the Spell Broker.
+  setGoalFlag(world, 'floor1-slime-rat-quest-accepted', false);
 
   // Spawn NPCs from placement definitions (if available in manifest)
   const npcPlacements = floor1Manifest.npcPlacements;
@@ -804,19 +806,18 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   if (slimeRatRoom) {
     for (const door of slimeRatRoom.doors) {
       const doorEid = createEntity(world);
+      // Room starts locked; it unlocks when the player takes the quest from the Spell Broker.
+      // When the battle begins, beginFloor1SlimeRatBattle replaces this config with the
+      // battle-active lock (re-locks until boss is defeated).
       addComponent(
         world.ecs,
         doorEid,
-        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 1, isLocked: 0, wasUnlocked: 1 }),
+        set(DoorState, { tileX: door.x, tileY: door.y, isOpen: 0, isLocked: 1, wasUnlocked: 0 }),
       );
       setDoorLockConfig(world, doorEid, {
         unlock: {
           operator: 'all',
-          conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-complete' }],
-        },
-        relock: {
-          operator: 'all',
-          conditions: [{ type: 'goal', goalId: 'floor1-boss-battle-active' }],
+          conditions: [{ type: 'goal', goalId: 'floor1-slime-rat-quest-accepted' }],
         },
       });
       world.floor1.slimeRatDoorEids.push(doorEid);
@@ -1533,6 +1534,7 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   objective.slimeRatBattleStarted = true;
   objective.slimeRatBossDefeated = true;
   objective.slimeRatBossEid = null;
+  setGoalFlag(world, 'floor1-slime-rat-quest-accepted', true);
   setQuestCounter(world, FLOOR1_BOSS_BATTLE_QUEST_ID, 'kill-slime-rat', 1);
   setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);
   setGoalFlag(world, 'floor1-boss-battle-complete', true);
@@ -1644,6 +1646,8 @@ export function meetSpellQuestGiver(world: GameWorld): void {
   if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {
     acceptQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
     setTrackedQuest(world, FLOOR1_BOSS_BATTLE_QUEST_ID);
+    // Unlock the Slime Rat boss room so the player can enter.
+    setGoalFlag(world, 'floor1-slime-rat-quest-accepted', true);
   }
   if (world.floor1?.objective.slimeRatBossDefeated === true) {
     setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);

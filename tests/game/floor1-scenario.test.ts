@@ -281,6 +281,40 @@ describe('floor1Scenario', () => {
     }
   });
 
+  it('locks Slime Rat room until spell broker quest is accepted, then unlocks on doorSystem tick', () => {
+    const world = createTestWorld({ seed: 321 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const floor1 = world.floor1;
+    if (!floor1 || floor1.slimeRatDoorEids.length === 0) {
+      // No doors generated for this seed — nothing to assert.
+      return;
+    }
+
+    // Initially all slime rat room doors must be locked.
+    for (const doorEid of floor1.slimeRatDoorEids) {
+      expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
+      expect(world.stores.doorState.isOpen[doorEid]).toBe(0);
+    }
+
+    // Accepting the quest via the Spell Broker sets the goal flag that unlocks the door.
+    world.playerLevel.level = 2;
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
+    meetTutorialGoon(world);
+    meetSpellQuestGiver(world);
+
+    expect(world.goalFlags.get('floor1-slime-rat-quest-accepted')).toBe(true);
+
+    // Run doorSystem so it processes the newly satisfied unlock condition.
+    doorSystem(world);
+
+    for (const doorEid of floor1.slimeRatDoorEids) {
+      expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
+    }
+  });
+
   it('only allows the three boss-reward spells and unlocks abilities after a valid pick', () => {
     const makeWorld = () => {
       const world = createTestWorld({ seed: 123 });
