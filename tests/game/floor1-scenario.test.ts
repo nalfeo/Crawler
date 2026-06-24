@@ -17,6 +17,7 @@ import {
   selectFloor1StarterWeapon,
   selectSpellFromBossBattle,
   shouldShowSpellSelector,
+  startFloor1BossEncounter,
   SHOPKEEPER_EQUIPMENT_COST,
 } from '../../src/game/floor1Scenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
@@ -597,6 +598,34 @@ describe('floor1Scenario', () => {
       world.goalFlags.set('floor1-boss-battle-complete', true);
       doorSystem(world);
       expect(allUnlocked()).toBe(true);
+    });
+
+    it('regression: seed 665790 spawns final boss at a passable tile (not in a wall)', () => {
+      // Seed 665790 produces a boss room where variety post-processing leaves only a
+      // single passable interior tile outside the center±2 random search window.
+      // Previously the fallback path placed the boss in a wall.
+      const world = createTestWorld({ seed: 665790 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const floorMap = world.floorMap;
+      if (!floorMap?.bossStairRoom) {
+        // No boss room generated for this seed — nothing to assert.
+        return;
+      }
+
+      const result = startFloor1BossEncounter(world, player);
+      expect(result).toBe(true);
+
+      const bossEid = world.floor1?.objective?.bossBattles.get('staircase')?.bossEid;
+      expect(bossEid).not.toBeNull();
+      expect(bossEid).toBeDefined();
+
+      const bx = world.stores.position.x[bossEid!] ?? 0;
+      const by = world.stores.position.y[bossEid!] ?? 0;
+      const tile = floorMap.pixelToTile(bx, by);
+      expect(floorMap.tileMap.isPassable(tile.x, tile.y)).toBe(true);
     });
   });
 });
