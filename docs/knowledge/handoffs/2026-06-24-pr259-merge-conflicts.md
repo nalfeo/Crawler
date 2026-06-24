@@ -53,6 +53,7 @@ Hello kitties: 3/5 = 0.60 🎀
 ## Agent-OS Telemetry
 
 - `files/guard-telemetry.jsonl` not present in this session.
+- `gh workflow run .github/workflows/copilot-session-guard.yml ...` returned `403`, so the session uses the documented `[session-complete]` commit-message fallback to clear the lock on push.
 
 ## Test Results
 
