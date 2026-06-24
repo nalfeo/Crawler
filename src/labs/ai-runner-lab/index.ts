@@ -21,6 +21,7 @@ import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { GAME } from '../../shared/constants.js';
 import { registerLab, type LabCategory } from '../registry.js';
+import { createSessionRecorderControls } from '../session-recorder-controls.js';
 
 const INITIAL_SEED = 42;
 const SPEED_OPTIONS = [1, 4, 16] as const;
@@ -162,12 +163,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     autoFloor1ProgressionSystem(world, playerEid);
   };
   const baseSceneOptions = createFloor1MainSceneOptions();
+  const recorderControls = createSessionRecorderControls({ title: 'AI Session Recorder' });
   const sceneOptions = {
     ...baseSceneOptions,
     inputCaptureOverride: aiInputProvider,
     worldSeed: currentSeed,
     postSystems: [...baseSceneOptions.postSystems, aiAutoDriverSystem],
     autoLevelUpAllocator: computeAutoStatAllocation,
+    sessionRecorderFactory: recorderControls.factory,
   };
 
   const config: Phaser.Types.Core.GameConfig = {
@@ -495,6 +498,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div><strong>Path:</strong> <span id="ai-path">-</span></div>
           </div>
           <div id="ai-tree"></div>
+          <div id="ai-recorder-host"></div>
           <div style="margin-top: 12px; padding: 8px; background: #1a1a3e; border-radius: 4px; font-size: 11px;">
             <div><strong>Tips:</strong></div>
             <div>• Starts paused so you can inspect the opening state</div>
@@ -574,6 +578,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         }
         applySeed(nextSeed);
       };
+    }
+
+    const recorderHost = document.getElementById('ai-recorder-host');
+    if (recorderHost) {
+      recorderControls.mount(recorderHost);
     }
   };
 
@@ -720,6 +729,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (typeof window !== 'undefined') {
       delete window.__aiRunnerDebug;
     }
+    recorderControls.destroy();
     pathGraphics?.destroy();
     pathGraphics = null;
     game.destroy(true);

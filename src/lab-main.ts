@@ -52,7 +52,6 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'ux-snapshot-lab': '/src/labs/ux-snapshot-lab/index.ts',
   'death-lab': '/src/labs/death-lab/index.ts',
   'spell-system-lab': '/src/labs/spell-system-lab/index.ts',
-  'session-recorder-lab': '/src/labs/session-recorder-lab/index.ts',
   'parallel-bt': '/src/labs/parallel-bt-lab/index.ts',
 };
 
