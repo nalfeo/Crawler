@@ -19,6 +19,13 @@ describe('AI playthrough level-up UX wiring', () => {
     expect(source).toMatch(/autoResolve[\s\S]*dispatch\(confirm\(state\)\)/);
   });
 
+  it('LevelUpUI uses larger stat +/- button touch targets', () => {
+    const source = readFileSync('src/engine/LevelUpUI.ts', 'utf-8');
+    expect(source).toContain('const STAT_BUTTON_SIZE = 34;');
+    expect(source).toContain('const size = STAT_BUTTON_SIZE;');
+    expect(source).toContain('const plusX = rowRight - STAT_BUTTON_SIZE - 6;');
+  });
+
   it('MainGameScene drives the modal via an optional autoLevelUpAllocator', () => {
     const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
     expect(source).toContain('autoLevelUpAllocator?:');

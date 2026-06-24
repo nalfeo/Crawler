@@ -105,7 +105,9 @@ describe('HudMinimap architectural guard', () => {
     expect(source).toContain('RoomRole.BOSS_STAIR');
     expect(source).toContain('objective?.staircaseSpawned && objective.staircaseDiscovered');
     expect(source).toContain('const closeButtonBg = scene.add');
-    expect(source).toContain("fontSize: '18px'");
+    expect(source).toContain('const OVERLAY_CLOSE_BUTTON_SIZE = 52;');
+    expect(source).toContain('const OVERLAY_CLOSE_BUTTON_MAX_SIZE = 72;');
+    expect(source).toContain('closeButtonBg.setSize(closeButtonSize, closeButtonSize);');
     expect(source.indexOf('const color =')).toBeLessThan(
       source.indexOf('roomHasDiscoveredTile(room, floorMap, visited)'),
     );
