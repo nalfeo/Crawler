@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-23",
+  "slug": "merge-recorder-into-labs",
+  "task": "Merge the session recorder into the Floor 1 lab and AI runner labs instead of its own lab",
+  "estimated": 2,
+  "actual": 2,
+  "verdict": "calibrated",
+  "notes": "Extracted shared createSessionRecorderControls() helper, wired sessionRecorderFactory + mount into floor1-lab and ai-runner-lab, deleted session-recorder-lab and its lab-main registration. No new logic; pure relocation. Also fixed a pre-existing prettier nit in ai-scoring.test.ts."
+}
