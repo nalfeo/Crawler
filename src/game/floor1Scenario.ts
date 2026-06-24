@@ -935,9 +935,9 @@ function resolveBossSpawnPosition(
     if (floorMap.isPassableAt(centerCandidate.x, centerCandidate.y)) {
       return centerCandidate;
     }
-    // Full interior scan: find any passable tile in the boss room when the random
-    // search near the center fails. Handles seeds where variety post-processing
-    // leaves only isolated passable tiles outside the center search area (e.g. seed 665790).
+    // Full interior scan: iterate every interior tile and return the first passable
+    // one found (early-exit). Handles seeds where variety post-processing leaves
+    // only isolated passable tiles outside the center search area (e.g. seed 665790).
     const { x: bx, y: by, width: bw, height: bh } = bossRoom.bounds;
     for (let scanY = by + 1; scanY < by + bh - 1; scanY++) {
       for (let scanX = bx + 1; scanX < bx + bw - 1; scanX++) {

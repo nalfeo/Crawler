@@ -610,10 +610,8 @@ describe('floor1Scenario', () => {
       selectFloor1StarterWeapon(world, 0);
 
       const floorMap = world.floorMap;
-      if (!floorMap?.bossStairRoom) {
-        // No boss room generated for this seed — nothing to assert.
-        return;
-      }
+      expect(floorMap?.bossStairRoom).toBeDefined();
+      if (!floorMap?.bossStairRoom) return;
 
       const result = startFloor1BossEncounter(world, player);
       expect(result).toBe(true);
