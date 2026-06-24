@@ -10,7 +10,8 @@
  *   5. Verify gallery via Playwright on this session's derived lab URL
  *
  * Prerequisites:
- *   1. Azure credentials in .env.local — run `pwsh scripts/setup-azure-env.ps1`
+ *   1. Azure resources + credentials — run
+ *      `pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage`
  *   2. Sprite sidecar running (defaults to this session's derived sidecar port):
  *        $env:AZURE_OPENAI_ENDPOINT = ...
  *        $env:AZURE_OPENAI_API_KEY  = ...
