@@ -39,7 +39,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAssetQueue } from './queue/index.js';
 import { createRunStore } from './store/index.js';
-import { createImageProvider, createTextProvider } from './provider/factory.js';
+import { createImageProvider, createTextProvider, createVisionProvider } from './provider/factory.js';
 import { runWorker } from './worker.js';
 import type { WorkerStatus } from './worker.js';
 import { createLogger } from '../../src/shared/logger.js';
@@ -85,8 +85,16 @@ async function main(): Promise<void> {
   const store = createRunStore({ repoRoot });
   const provider = createImageProvider();
   const textProvider = createTextProvider();
+  // Briefs may opt into VLM judging (judge.enabled: true). Wire the vision
+  // provider through so queue-processed briefs match the sidecar's inline
+  // generate path; without it generateOne throws for any judged brief.
+  const visionProvider = createVisionProvider();
 
-  logger.info(`worker started (queue=${queue.backend}, store=${store.backend}, pollMs=${pollMs})`);
+  logger.info(
+    `worker started (queue=${queue.backend}, store=${store.backend}, vision=${
+      visionProvider ? 'on' : 'off'
+    }, pollMs=${pollMs})`,
+  );
 
   await runWorker({
     queue,
@@ -94,6 +102,7 @@ async function main(): Promise<void> {
     repoRoot,
     provider,
     textProvider,
+    visionProvider,
     pollIntervalMs: pollMs,
     signal: abortController.signal,
     onStatus,
