@@ -26,6 +26,8 @@ export const UI_DEPTH_CUTOFF = 900;
  * controls which VFX draws on top (gore < combat text < debug path).
  */
 export const WORLD_VFX_DEPTH = {
+  /** Persistent blood/ichor pools left on the ground after an enemy dies. */
+  bloodPool: 5,
   /** Blood/gore splatter particles. */
   gore: 10,
   /** Floating damage numbers / MISS / BLOCKED text. */

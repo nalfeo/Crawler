@@ -25,6 +25,8 @@ export interface MobDef {
   readonly abilitySlots: number;
   /** XP reward multiplier (1.0 = standard). */
   readonly xpMultiplier: number;
+  /** Blood/ichor colour shown on hit and death (0xRRGGBB). Default: 0xcc0000 (red). */
+  readonly bloodColor: number;
 }
 
 function def(
@@ -42,6 +44,7 @@ function def(
     goreFactor: 0.5,
     abilitySlots: 0,
     xpMultiplier: 1.0,
+    bloodColor: 0xcc0000,
     ...partial,
   };
 }
@@ -201,6 +204,7 @@ export const MOB_DEFS: ReadonlyMap<string, MobDef> = new Map([
       goreFactor: 0.4,
       abilitySlots: 0,
       xpMultiplier: 2.5,
+      bloodColor: 0x22aa44,
     }),
   ],
 

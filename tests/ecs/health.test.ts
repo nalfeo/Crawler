@@ -29,8 +29,8 @@ describe('healthSystem', () => {
     // Entity has DeathTimer now — healthSystem skips it
     expect(entityExists(world.ecs, eid)).toBe(true);
 
-    // Run deathTimerSystem enough frames to expire the 300ms timer (~18 frames at 16.67ms)
-    for (let i = 0; i < 20; i++) {
+    // Run deathTimerSystem enough frames to expire the 3000ms timer (~180 frames at 16.67ms)
+    for (let i = 0; i < 185; i++) {
       deathTimerSystem(world);
     }
 
