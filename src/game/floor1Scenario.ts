@@ -690,7 +690,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       staircaseUnlocked: false,
       staircaseDiscovered: false,
       // 'slime-rat' = spell-quest room boss (weaker); 'staircase' = end-of-floor boss (stronger).
-      // Insertion order determines health-bar priority when both are active simultaneously.
+      // JS Map iterates in insertion order, so 'slime-rat' is checked first in
+      // updateBossHealthBar(), giving it priority when both battles are active simultaneously.
       bossBattles: new Map([
         ['slime-rat', { started: false, bossEid: null, defeated: false, displayName: 'Slime Rat' }],
         ['staircase', { started: false, bossEid: null, defeated: false, displayName: 'Rat Slime' }],

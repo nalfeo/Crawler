@@ -1882,7 +1882,7 @@ export class MainGameScene extends Phaser.Scene {
           entityExists(this.world.ecs, battle.bossEid)
         ) {
           activeBossEid = battle.bossEid;
-          bossDisplayName = battle.displayName;
+          bossDisplayName = battle.displayName || 'Boss';
           break;
         }
       }
