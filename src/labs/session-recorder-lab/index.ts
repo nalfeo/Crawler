@@ -9,6 +9,7 @@
  * ```
  * http://localhost:5173/?lab=session-recorder-lab
  * ```
+ * (The default Vite port is 5173; adjust if your dev server uses a different port.)
  * The game starts immediately. Recording begins automatically once the scene
  * loads — no extra setup needed.
  *
