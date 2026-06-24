@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spawnEnemy, spawnGold, spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBehaviorEnemy, spawnEnemy, spawnGold, spawnPlayer } from '../../src/core/helpers.js';
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -14,6 +14,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
+import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { AIState } from '../../src/game/ai/types.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
@@ -133,6 +134,44 @@ describe('BehaviorTreeAI', () => {
 
     const decision = ai.getDecision();
     expect(Math.abs(decision.targetY!)).toBeGreaterThan(10);
+  });
+
+  it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
+    // Baseball-bat reach = ftToPx(5.5) = 44px, strike gate = 66px. Enemy at 30px
+    // is inside the gate so the player kites. When the swing is READY it pokes in
+    // toward the strike band; right after firing (on cooldown) it eases out toward
+    // the recover band — the human "hold ground + micro forward/back" tactic. This
+    // in/out delta was dead before the fix (inner === outer orbit radius).
+    const bat = getWeaponDef('baseball-bat')!;
+
+    // READY: the last swing was a full cooldown ago.
+    const readyWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(readyWorld, 0, 0);
+    spawnEnemy(readyWorld, 30, 0, 40);
+    readyWorld.elapsedMs = 5000;
+    setActiveWeapon(readyWorld, bat); // lastFireMs = 5000 - cooldown → ready now
+    const readyAi = new BehaviorTreeAI({ seed: 7 });
+    readyAi.poll(createInputState(), readyWorld);
+    const readyDecision = readyAi.getDecision();
+    const readyDist = Math.hypot(readyDecision.targetX! - 30, readyDecision.targetY!);
+
+    // ON COOLDOWN: rewind the clock to the instant of the last shot.
+    const cooldownWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(cooldownWorld, 0, 0);
+    spawnEnemy(cooldownWorld, 30, 0, 40);
+    cooldownWorld.elapsedMs = 5000;
+    setActiveWeapon(cooldownWorld, bat); // lastFireMs = 5000 - cooldown
+    cooldownWorld.elapsedMs = 5000 - bat.cooldownMs; // elapsed == lastFire → just fired
+    const cooldownAi = new BehaviorTreeAI({ seed: 7 });
+    cooldownAi.poll(createInputState(), cooldownWorld);
+    const cooldownDecision = cooldownAi.getDecision();
+    const cooldownDist = Math.hypot(cooldownDecision.targetX! - 30, cooldownDecision.targetY!);
+
+    expect(readyDecision.reason).toContain('Kiting');
+    expect(cooldownDecision.reason).toContain('Kiting');
+    // The cooldown step holds the enemy farther away (dodge between hits); the
+    // ready step pokes in closer to land the swing.
+    expect(cooldownDist).toBeGreaterThan(readyDist + 4);
   });
 
   it('collects gold as loot when no higher-priority progression target is active', () => {
@@ -281,11 +320,14 @@ describe('BehaviorTreeAI', () => {
     expect(distToEnemy).toBeGreaterThan(10);
   });
 
-  it('approaches a distant enemy to 75% weapon range with a ranged weapon', () => {
-    // Bow range = 44ft × 8px/ft = 352px; desired standoff = 352 × 0.75 = 264px.
-    // Enemy at 350px is within the bow's engage radius (min(scanRadius, reachPx) =
-    // min(400, 352) = 352) and beyond the standoff band (264+24 = 288), so the AI
-    // must plan a target at ~264px from the enemy, not at the enemy's position.
+  it('approaches a distant enemy to the close ranged standoff with a ranged weapon', () => {
+    // Bow range = 44ft × 8px/ft = 352px. The AI now uses a deliberately close
+    // standoff: max(CONTACT_SAFE_ORBIT_PX=36, min(352 × 0.5, RANGED_STANDOFF_ABS_PX=48))
+    // = 48px. Projectiles fire at the enemy's CURRENT position with no leading, so
+    // a tight standoff is what makes shots actually connect with wandering swarm
+    // enemies (the bow was nearly useless at the old 264px standoff). Enemy at
+    // 350px is within the engage radius and far beyond 48px, so the AI must plan a
+    // target at ~48px from the enemy, not at the enemy's position.
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
     spawnEnemy(world, 350, 0, 20);
@@ -301,17 +343,58 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetX).not.toBeNull();
     expect(decision.targetX!).toBeGreaterThan(0);
     expect(decision.targetX!).toBeLessThan(350);
-    // Target should land close to the 75% standoff distance from the enemy.
-    const standoffPx = 352 * 0.75;
+    // Target should land close to the absolute standoff distance from the enemy.
+    const standoffPx = 48;
     expect(decision.targetX!).toBeCloseTo(350 - standoffPx, 0);
   });
 
+  it('expands to defensive orbit when player HP drops below 40%', () => {
+    // bat reach = ftToPx(5.5) = 44px. innerOrbit=36, outerOrbit=50 (36+14),
+    // strikeGate=66 (44*1.5). Enemy attackRange=40 → safeOrbit=54 (40+14).
+    // safeOrbit(54) > outerOrbit(50), so the healthy branch leaves desiredOrbit
+    // unchanged (can't reach safety at full HP cap). In the wounded branch,
+    // safeOrbitCap expands to strikeGate(66), so safeOrbit(54) fits and the orbit
+    // is pushed out to 54px — the defensive expansion.
+    const bat = getWeaponDef('baseball-bat')!;
+
+    // HEALTHY player — full HP, orbit stays in the normal strike band.
+    const healthyWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(healthyWorld, 0, 0);
+    spawnBehaviorEnemy(healthyWorld, 60, 0, 40, AI_TYPE.CHASE, 40, 200, 40);
+    healthyWorld.elapsedMs = 5000;
+    setActiveWeapon(healthyWorld, bat);
+    const healthyAi = new BehaviorTreeAI({ seed: 7 });
+    healthyAi.poll(createInputState(), healthyWorld);
+    const healthyDecision = healthyAi.getDecision();
+    const healthyDist = Math.hypot(healthyDecision.targetX! - 60, healthyDecision.targetY!);
+
+    // WOUNDED player — 29% HP crosses MELEE_DEFENSIVE_HP_FRACTION (0.4), expanding
+    // safeOrbitCap to the full strikeGate so the orbit is pushed out to safeOrbit.
+    const woundedWorld = createTestWorld({ seed: 7 });
+    const woundedPlayer = spawnPlayer(woundedWorld, 0, 0);
+    // Set HP to 29% of max (100) to cross the 40% MELEE_DEFENSIVE_HP_FRACTION.
+    woundedWorld.stores.health.current[woundedPlayer] = 29;
+    spawnBehaviorEnemy(woundedWorld, 60, 0, 40, AI_TYPE.CHASE, 40, 200, 40);
+    woundedWorld.elapsedMs = 5000;
+    setActiveWeapon(woundedWorld, bat);
+    const woundedAi = new BehaviorTreeAI({ seed: 7 });
+    woundedAi.poll(createInputState(), woundedWorld);
+    const woundedDecision = woundedAi.getDecision();
+    const woundedDist = Math.hypot(woundedDecision.targetX! - 60, woundedDecision.targetY!);
+
+    expect(healthyDecision.reason).toContain('Kiting');
+    expect(woundedDecision.reason).toContain('Kiting');
+    // Wounded AI targets farther from the enemy: defensive orbit expansion holds it
+    // outside the enemy's own attackRange rather than trading blows in the strike band.
+    expect(woundedDist).toBeGreaterThan(healthyDist + 4);
+  });
+
   it('orbits away from enemies that are closer than ranged standoff distance', () => {
-    // Enemy at 50px is well inside the bow standoff band (264px). The orbit step
+    // Enemy at 30px is inside the close bow standoff band (48px). The orbit step
     // must push the AI away (targetX < 0 when enemy is on the +X side).
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 50, 0, 20);
+    spawnEnemy(world, 30, 0, 20);
     setActiveWeapon(world, getWeaponDef('bow')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });

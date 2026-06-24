@@ -87,8 +87,25 @@ const DIRECT_MOVE_EPSILON_PX = 10;
 // to land shots but far enough that enemies cannot freely swing at it. It orbits
 // laterally (reusing the same sign/flip infrastructure as melee kite) so it is
 // never a stationary target.
-// Desired orbit as a fraction of the weapon's pixel reach.
-const RANGED_STANDOFF_FRACTION = 0.75;
+// Desired orbit as a fraction of the weapon's pixel reach. Kept moderate (not the
+// full weapon range): at long standoff the projectile's travel time lets wandering
+// ambient enemies sidestep shots, so the AI orbited for minutes without finishing
+// the last quest kills. Fighting nearer trades a little incoming-hit exposure for
+// reliable hits (and line-of-sight) on weak swarm enemies — a net win for clear speed.
+const RANGED_STANDOFF_FRACTION = 0.5;
+// Absolute cap (px) on the ranged standoff orbit, independent of the weapon's
+// (often huge) max range. The bow's reach is 352px, but at that distance a 6px/
+// frame projectile takes ~0.5s to arrive and a wandering rat (1.25px/frame)
+// sidesteps it — so long-standoff bows whiff most shots and never finish the
+// swarm. The player moves 3px/frame (2.4x a rat), so it can hold a much tighter
+// ring and still never be caught: fighting at ~12ft makes projectile travel time
+// short enough that shots reliably connect, roughly tripling effective bow DPS.
+// Floored at CONTACT_SAFE_ORBIT_PX so it never parks inside body-contact range.
+const RANGED_STANDOFF_ABS_PX = 48;
+// Ranged micro-spacing: fraction of the standoff radius the AI eases farther out
+// while a shot is on cooldown (then settles back to the standoff as the shot
+// readies), so all weapons stutter-step rather than holding a static distance.
+const RANGED_RECOVER_EXTRA_FRACTION = 0.2;
 // Tolerance band around the desired orbit (px). Inside this band the AI switches
 // from a direct A*-navigated approach/retreat to fine-grained orbit steps so it
 // does not constantly re-plan the path to a moving target.
@@ -102,9 +119,38 @@ const RANGED_APPROACH_BUFFER_PX = 24;
 // 0.5 puts the player at half weapon reach — deep inside the strike band so hits
 // land solidly and the player commits to the fight instead of hovering on the edge.
 const MELEE_HOLD_FRACTION = 0.5;
+// Micro-spacing recover radius (fraction of weapon reach) the player eases out to
+// right after a swing, then pulls back to MELEE_HOLD_FRACTION as the next swing
+// readies. Kept a modest poke beyond the strike hold (≈human's ~25% amplitude
+// dip near contact, NOT a full back-off): far enough to dodge between hits, close
+// enough that the enemy stays deep inside the strike gate so DPS — and AoE cleave
+// on swarms — is preserved. Larger values (e.g. 0.95) measurably slowed clears
+// and regressed previously-winning seeds.
+const MELEE_RECOVER_HOLD_FRACTION = 0.7;
+// Below this health fraction the melee kite switches to DEFENSIVE spacing: it
+// expands the orbit out to the strike gate so it sits just beyond the enemy's own
+// attack range (poking from safety) instead of trading blows in the strike band.
+// With no passive regen, a wounded AI must still kill to level up and heal, so the
+// goal is "keep landing auto-fire hits without getting hit" rather than fleeing.
+const MELEE_DEFENSIVE_HP_FRACTION = 0.4;
 // Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
 // to reach*1.5, so this is the outer radius at which kiting can still land hits.
 const ATTACK_GATE_MULTIPLIER = 1.5;
+// Minimum center-to-center distance (px) the melee kite holds so the player body
+// never overlaps a swarm enemy's body. Swarm enemies (rats/slimes) carry NO ranged
+// attackRange — they deal CONTACT damage on AABB body overlap (damageSystem). The
+// player half-extent is 12px and the largest swarm (slime) is 12px, so head-on
+// contact fires at ≤24px center distance; this sits a ~12px buffer outside that.
+// Crucially it is still inside every melee swing radius (sword 40 / bat 44 /
+// hammer 48 px) so auto-fire swings keep landing while the body stays untouched —
+// the single biggest fix for the melee "retreat death-spiral" (orbiting at the old
+// 22-31px band meant standing INSIDE contact range, bleeding ~20 dmg/s for free).
+const CONTACT_SAFE_ORBIT_PX = 36;
+// Micro-spacing dodge amplitude (px) added beyond the contact-safe strike hold when
+// a swing is on cooldown. Modest by design: a gentle in/out poke that breaks body
+// contact between swings without backing so far the clear slows (prior large-
+// amplitude experiments measurably regressed winning seeds).
+const MELEE_DODGE_AMPLITUDE_PX = 14;
 // Extra px held beyond a (smaller-than-reach) enemy's own attackRange when we can
 // safely poke from outside its strike range. Ignored for long-range bosses whose
 // attackRange dwarfs our reach (geometrically impossible to outrange).
@@ -3077,6 +3123,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     return false;
   }
 
+  /** Player health as a 0..1 fraction, or 1 when no player is found. */
+  private getPlayerHealthFraction(world: GameWorld): number {
+    const players = query(world.ecs, [Player, Health]);
+    const eid = players[0];
+    if (eid === undefined) return 1;
+    const cur = world.stores.health.current[eid] ?? 1;
+    const max = world.stores.health.max[eid] ?? 1;
+    return max > 0 ? cur / max : 1;
+  }
+
   /**
    * Melee kite: advance/retreat along the enemy axis so the weapon lands reliably,
    * while adding a small lateral juke to stay a moving target. Full lateral orbit
@@ -3101,17 +3157,52 @@ export class BehaviorTreeAI implements AIInputProvider {
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
+    // Micro-spacing: poke into the strike band as a swing comes ready and ease
+    // back out toward the recover band immediately after it fires, so the player
+    // dodges between hits instead of standing in the enemy's face. cooldownFrac is
+    // ~1 right after a swing and decays to 0 as the next swing readies, producing a
+    // smooth in/out oscillation locked to the weapon's own cadence.
+    const cooldownFrac =
+      readiness && readiness.cooldownMs > 0
+        ? Math.max(0, Math.min(1, readiness.remainingMs / readiness.cooldownMs))
+        : 0;
 
-    const innerOrbit = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
-    const outerOrbit = innerOrbit;
-    let desiredOrbit = ready ? innerOrbit : outerOrbit;
+    const innerOrbitFallback = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
+    const swingRadius = reachPx;
+    const strikeGate = reachPx * ATTACK_GATE_MULTIPLIER;
+    let innerOrbit: number;
+    let outerOrbit: number;
+    if (CONTACT_SAFE_ORBIT_PX <= swingRadius) {
+      // Weapon out-reaches swarm body contact: anchor the micro-spacing band JUST
+      // outside contact (strike, hits still land within the swing radius) and poke a
+      // modest amount further out on cooldown (dodge), capped at the strike gate.
+      innerOrbit = Math.min(swingRadius, CONTACT_SAFE_ORBIT_PX);
+      outerOrbit = Math.min(strikeGate, innerOrbit + MELEE_DODGE_AMPLITUDE_PX);
+    } else {
+      // Very short weapon (e.g. knife, reach < contact): cannot poke from outside
+      // contact while still landing hits, so keep the tight reach-fraction strike
+      // band and accept the trade.
+      innerOrbit = innerOrbitFallback;
+      outerOrbit = Math.max(innerOrbit, reachPx * MELEE_RECOVER_HOLD_FRACTION);
+    }
+    let desiredOrbit = innerOrbit + (outerOrbit - innerOrbit) * cooldownFrac;
 
     const enemyAttackPx = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
+    // When wounded, prioritise not being hit: allow the orbit to expand all the way
+    // out to the strike gate (a swing still connects out to reach*1.5) so the player
+    // can sit just beyond the enemy's own attackRange and poke from safety. At healthy
+    // HP we keep the tighter recover band for maximum DPS / AoE cleave.
+    const defensive = this.getPlayerHealthFraction(world) < MELEE_DEFENSIVE_HP_FRACTION;
+    const safeOrbitCap = defensive ? reachPx * ATTACK_GATE_MULTIPLIER : outerOrbit;
     if (enemyAttackPx > 0) {
       const safeOrbit = enemyAttackPx + KITE_DODGE_BUFFER_PX;
-      if (safeOrbit <= outerOrbit) {
+      if (safeOrbit <= safeOrbitCap) {
         // We can stand outside the enemy's strike range and still land hits.
-        desiredOrbit = Math.min(outerOrbit, Math.max(desiredOrbit, safeOrbit));
+        desiredOrbit = Math.min(safeOrbitCap, Math.max(desiredOrbit, safeOrbit));
+      } else if (defensive) {
+        // Enemy outranges our gate (e.g. a ranged boss): get as far out as the gate
+        // allows rather than parking in the strike band.
+        desiredOrbit = Math.max(desiredOrbit, safeOrbitCap);
       }
     }
 
@@ -3196,7 +3287,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     target: WorldTarget,
     reachPx: number,
   ): { targetX: number; targetY: number; reason: string } {
-    const desiredOrbit = reachPx * RANGED_STANDOFF_FRACTION;
+    const desiredOrbit = Math.max(
+      CONTACT_SAFE_ORBIT_PX,
+      Math.min(reachPx * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_PX),
+    );
 
     if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_PX) {
       // Too far to orbit: navigate toward a point at the desired standoff distance
@@ -3248,11 +3342,21 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     const ux = rx / dist;
     const uy = ry / dist;
+    // Micro-spacing: ease farther out while the shot is on cooldown, then settle
+    // back to the standoff radius as it readies — the same in/out stutter the
+    // melee kite uses, so every weapon keeps moving instead of holding a static
+    // ring. cooldownFrac is ~1 right after firing and decays to 0 when ready.
+    const readiness = getActiveWeaponReadiness(world);
+    const cooldownFrac =
+      readiness && readiness.cooldownMs > 0
+        ? Math.max(0, Math.min(1, readiness.remainingMs / readiness.cooldownMs))
+        : 0;
+    const spacedOrbit = desiredOrbit * (1 + RANGED_RECOVER_EXTRA_FRACTION * cooldownFrac);
     // Positive radialMag = push away from enemy (when too close).
     // Negative radialMag = nudge toward enemy (when slightly too far).
     const radialMag = Math.max(
       -KITE_RADIAL_STEP_PX,
-      Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
+      Math.min(KITE_RADIAL_STEP_PX, spacedOrbit - dist),
     );
 
     // Prefer radial (forward/backward) motion; orbit fully only when flanked.
@@ -3293,7 +3397,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return {
       targetX: playerX + step.x,
       targetY: playerY + step.y,
-      reason: `Ranged orbit at ${dist.toFixed(0)}px (standoff ${desiredOrbit.toFixed(0)}px)`,
+      reason: `Ranged orbit at ${dist.toFixed(0)}px (standoff ${spacedOrbit.toFixed(0)}px)`,
     };
   }
 
