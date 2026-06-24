@@ -207,6 +207,7 @@ export function spawnProjectile(
   pierce: number = 0,
   maxRange: number = 0,
   weight: number = 1,
+  ownerEid?: number,
 ): number {
   const eid = createEntity(world);
 
@@ -220,6 +221,9 @@ export function spawnProjectile(
     set(Projectile, { pierce, hitCount: 0, maxRange, originX: x, originY: y }),
   );
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
+  if (ownerEid !== undefined) {
+    addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
+  }
 
   return eid;
 }
@@ -389,8 +393,9 @@ export function spawnBouncingProjectile(
   remainingBounces: number,
   pierce: number = 0,
   maxRange: number = 0,
+  ownerEid?: number,
 ): number {
-  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce, maxRange);
+  const eid = spawnProjectile(world, x, y, vx, vy, damage, pierce, maxRange, 1, ownerEid);
   addComponent(world.ecs, eid, set(Bouncing, { remainingBounces }));
   return eid;
 }

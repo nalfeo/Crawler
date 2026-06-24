@@ -281,6 +281,8 @@ function fireRangedAttack(
     def.baseDamage,
     def.pierce,
     ftToPx(def.range),
+    1,
+    player,
   );
 }
 
@@ -343,6 +345,7 @@ function fireThrownAttack(
       def.bounceCount,
       def.pierce,
       ftToPx(def.range),
+      player,
     );
     return;
   }
@@ -356,6 +359,8 @@ function fireThrownAttack(
     def.baseDamage,
     def.pierce,
     ftToPx(def.range),
+    1,
+    player,
   );
 }
 
@@ -400,7 +405,9 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
 
 /**
  * Emit weapon_fired skill usage events for the active weapon's class and type skills.
- * Called on every attack attempt (hit or miss) so skills always progress with use.
+ * Used directly in labs/tests to simulate a weapon hit without running the full
+ * attack pipeline. In live gameplay, damage systems call emitWeaponHitSkillEvents
+ * instead (see src/core/weapon-skill-bridge.ts).
  */
 export function emitWeaponSkillEvents(world: GameWorld, player: number, def: WeaponDef): void {
   world.skillUsageEvents.push({
@@ -436,9 +443,6 @@ function dispatchAttack(
   def: WeaponDef,
   dir: { x: number; y: number },
 ): void {
-  // Emit skill progression events on every weapon fire (hit or miss).
-  emitWeaponSkillEvents(world, player, def);
-
   // Accuracy roll: miss if roll > effectiveAccuracy.
   // rng.next() returns [0,1); roll exactly at the threshold counts as a hit.
   const effectiveAccuracy = computeEffectiveAccuracy(world, player, def);
@@ -459,6 +463,12 @@ function dispatchAttack(
     });
     return;
   }
+
+  // Register the active weapon's skill IDs so damage systems can emit XP on hit.
+  world.attackerWeaponSkills.set(player, {
+    classSkillId: def.weaponClassSkillId,
+    typeSkillId: def.weaponTypeSkillId,
+  });
 
   switch (def.weaponType) {
     case WeaponType.MELEE:

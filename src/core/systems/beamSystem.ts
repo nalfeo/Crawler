@@ -3,6 +3,7 @@ import { Enemy, Health, LineDamage, Owner, Player, Position, Team } from '../com
 import { applyDamage } from '../apply-damage.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
+import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
 
 /** Distance from a point to a line segment. */
 function pointToSegmentDistSq(
@@ -100,7 +101,7 @@ export function beamSystem(world: GameWorld): void {
       const distSq = pointToSegmentDistSq(tx, ty, ax, ay, bx, by);
 
       if (distSq <= hitDistSq) {
-        applyDamage(
+        const dealt = applyDamage(
           world,
           target,
           damage,
@@ -110,6 +111,9 @@ export function beamSystem(world: GameWorld): void {
           ax,
           ay,
         );
+        if (dealt > 0 && ownerEid >= 0 && hasComponent(world.ecs, target, Enemy)) {
+          emitWeaponHitSkillEvents(world, ownerEid);
+        }
       }
     }
   }

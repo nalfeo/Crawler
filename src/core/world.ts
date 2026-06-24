@@ -84,6 +84,12 @@ export interface GameWorld {
   skillStatesByEntity: Map<number, Map<string, SkillState>>;
   /** Usage events emitted this frame — cleared at end of skillSystem after processing. */
   skillUsageEvents: SkillUsageEvent[];
+  /**
+   * Active weapon skill IDs keyed by attacker EID (player).
+   * Set by weaponSystem after a successful accuracy check; read by damage
+   * systems (melee/projectile/beam/area) to emit skill XP when damage lands.
+   */
+  attackerWeaponSkills: Map<number, { classSkillId: string; typeSkillId: string }>;
   /** Per-entity ability state keyed by holder eid. */
   abilityStatesByEntity: Map<number, AbilityState>;
   /** Trigger events emitted this frame — cleared at end of abilitySystem. */
@@ -235,6 +241,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     playerSkills: new Map(),
     skillStatesByEntity: new Map(),
     skillUsageEvents: [],
+    attackerWeaponSkills: new Map(),
     abilityStatesByEntity: new Map(),
     abilityTriggerEvents: [],
     statsDirty: true,

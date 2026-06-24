@@ -13,6 +13,7 @@ import { applyDamage } from '../apply-damage.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
+import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
 
 /** Half-width of the blade hitbox in pixels. */
 const BLADE_HIT_HALF_WIDTH = 12;
@@ -178,7 +179,10 @@ export function meleeSwingSystem(world: GameWorld): void {
       }
 
       if (hitDamage > 0) {
-        applyDamage(world, target, hitDamage, tx, ty, undefined, px, py);
+        const dealt = applyDamage(world, target, hitDamage, tx, ty, undefined, px, py);
+        if (dealt > 0 && ownerEid >= 0 && hasComponent(world.ecs, target, Enemy)) {
+          emitWeaponHitSkillEvents(world, ownerEid);
+        }
         hitSet.add(target);
 
         // Apply knockback as smooth impulse via Knockback component
