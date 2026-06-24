@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-24",
+  "session": "restore-auto-rebase-ci",
+  "estimated_apples": 1,
+  "actual_apples": 1,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.2,
+  "notes": "Restored .github/workflows/auto-rebase-prs.yml verbatim from commit 4467640^ (removed in PR #260). Push-to-main trigger rebases all active PRs when another PR completes. YAML validated, LF endings preserved, verify:fast green."
+}
