@@ -26,6 +26,7 @@ import { addItem, hasItem } from '../../src/shared/inventory.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
@@ -351,6 +352,40 @@ describe('floor1Scenario', () => {
     expect(selectSpellFromBossBattle(world, player, 'heal')).toBe(true);
     expect(world.featureUnlocks.spells).toBe(true);
     expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain('heal');
+  });
+
+  it('auto-accepts then completes the "Leave the Floor" finale via the three-gate flow', () => {
+    const world = createTestWorld({ seed: 123 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    // The finale is not offered until the three prerequisite quests are done.
+    expect(world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(false);
+
+    // Satisfy the goon kill-grind, merchant errand, and Spell Broker battle gates.
+    world.goalFlags.set('floor1-goon-quest-complete', true);
+    world.goalFlags.set('floor1-shop-quest-complete', true);
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+
+    // The objective tick auto-accepts "Leave the Floor" once all three gates pass.
+    floorObjectiveSystem(world);
+    expect(world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(true);
+    expect(isQuestComplete(world, FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(false);
+    expect(world.goalFlags.get('floor1-leave-floor-complete')).not.toBe(true);
+
+    // Defeating the Floor Boss satisfies only the first goal objective.
+    world.goalFlags.set('floor1-defeat-boss', true);
+    questSystem(world);
+    expect(isQuestComplete(world, FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(false);
+    expect(world.goalFlags.get('floor1-leave-floor-complete')).not.toBe(true);
+
+    // Taking the stairs satisfies the final objective, completing the finale.
+    world.goalFlags.set('floor1.objective.staircaseDiscovered', true);
+    questSystem(world);
+    expect(isQuestComplete(world, FLOOR1_LEAVE_FLOOR_QUEST_ID)).toBe(true);
+    expect(world.questLog.get(FLOOR1_LEAVE_FLOOR_QUEST_ID)?.status).toBe('complete');
+    expect(world.goalFlags.get('floor1-leave-floor-complete')).toBe(true);
   });
 
   describe('shopkeeper errand questline', () => {
