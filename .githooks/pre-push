@@ -10,4 +10,3 @@ echo "Running Prettier check before push..."
 # platform script-shell (cmd.exe on Windows) where the globs are passed through
 # literally and prettier does its own globbing.
 npm run format:check
-

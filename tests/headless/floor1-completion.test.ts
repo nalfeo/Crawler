@@ -50,6 +50,7 @@ import {
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
 } from '../../src/shared/quest-types.js';
 
 /** Floor 1 design budget: the AI must clear the floor in under five minutes. */
@@ -72,6 +73,7 @@ const REQUIRED_QUEST_IDS = [
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
 ] as const;
 
 /**
