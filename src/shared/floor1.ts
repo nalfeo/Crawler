@@ -4,6 +4,21 @@
  */
 export type Floor1EnemyArchetype = string;
 
+/**
+ * State for a single boss encounter inside a boss room.
+ * Keyed by a stable string ID in `Floor1ObjectiveState.bossBattles`.
+ */
+export interface Floor1BossEncounterState {
+  /** True once the player enters the boss room and the battle begins. */
+  started: boolean;
+  /** EID of the spawned boss entity, or null if not yet spawned or already dead. */
+  bossEid: number | null;
+  /** True once the boss has been defeated. */
+  defeated: boolean;
+  /** Display name shown in the HUD boss health bar. */
+  displayName: string;
+}
+
 export interface Floor1ObjectiveState {
   readonly requiredRats: number;
   readonly requiredSlimes: number;
@@ -44,14 +59,11 @@ export interface Floor1ObjectiveState {
   staircaseLocked: boolean;
   staircaseUnlocked: boolean;
   staircaseDiscovered: boolean;
-  /** True once the player enters the Slime Rat room and the battle begins. */
-  slimeRatBattleStarted: boolean;
-  slimeRatBossEid: number | null;
-  slimeRatBossDefeated: boolean;
-  /** True once the player enters the staircase boss room and the battle begins. */
-  bossBattleStarted: boolean;
-  staircaseBossEid: number | null;
-  staircaseBossDefeated: boolean;
+  /**
+   * Generic boss encounter registry, keyed by a stable boss ID string.
+   * Floor 1 uses 'slime-rat' (spell-quest room) and 'staircase' (end-of-floor room).
+   */
+  bossBattles: Map<string, Floor1BossEncounterState>;
 }
 
 export interface Floor1RunSummary {
@@ -80,10 +92,11 @@ export interface Floor1ScenarioState {
   shopkeeperNpcEid: number | null;
   /** EID of the dropped fetch item, or null once collected/not spawned. */
   questItemEid: number | null;
-  /** Door entity IDs guarding the staircase Rat Slime boss room. */
-  bossDoorEids: number[];
-  /** Door entity IDs guarding the Slime Rat spell-quest boss room. */
-  slimeRatDoorEids: number[];
+  /**
+   * Door entity IDs guarding each boss room, keyed by the same boss ID used in
+   * `Floor1ObjectiveState.bossBattles` ('slime-rat', 'staircase', …).
+   */
+  bossRoomDoorEids: Map<string, number[]>;
   objective: Floor1ObjectiveState;
   failReason: 'stair_timeout' | null;
   runSummary: Floor1RunSummary | null;
