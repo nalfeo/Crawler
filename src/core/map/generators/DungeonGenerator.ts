@@ -31,8 +31,8 @@ export interface DungeonGeneratorOptions {
   /**
    * Minimum bounds width (tiles, walls included) that a room must have to be
    * eligible for the BOSS_STAIR or SAFE role. Defaults to SPECIAL_ROOM_MIN_WIDTH.
-   * When no candidate meets the minimum, the largest-area eligible room is used as
-   * a fallback so generation never fails.
+   * When no candidate meets the minimum, the farthest room is used as a fallback
+   * so generation never fails on small test maps.
    */
   readonly specialRoomMinWidth?: number;
   /**
@@ -137,9 +137,17 @@ export class DungeonGenerator implements MapGenerator {
     }
 
     // Pre-assign room roles before room variety so that SAFE and BOSS_STAIR rooms
-    // can be excluded from shape post-processing. Role assignment only needs room
-    // bounds centres, so it is safe to run before any tile mutations.
-    preAssignRoles(roomGraph, this.specialRoomMinWidth, this.specialRoomMinHeight);
+    // can be excluded from shape post-processing. The assignment also runs a
+    // connectivity check to ensure that sealing the chosen rooms' perimeters
+    // cannot disconnect other rooms from the spawn point.
+    preAssignRoles(
+      roomGraph,
+      tileMap,
+      terrain,
+      w,
+      this.specialRoomMinWidth,
+      this.specialRoomMinHeight,
+    );
 
     // Seal perimeter walls of special rooms. rot-js sometimes places a corridor
     // tile at a position that falls on the boundary of an adjacent room's bounds.
@@ -361,22 +369,36 @@ function cullIsolatedFloorTiles(
  * Assign room roles before room-variety post-processing so that SAFE and
  * BOSS_STAIR rooms can be excluded from shape transforms and wall protection.
  *
- * Uses room bounds centres for distance scoring (equivalent to the previous
- * post-variety assignment; any spawn-tile adjustment is at most a few tiles).
+ * Candidates are selected by:
+ * 1. Meeting the minimum size (minWidth × minHeight bounds, walls included).
+ * 2. Being farthest from the spawn room centre.
+ * 3. Preserving dungeon connectivity when their perimeter is sealed — sealing a
+ *    perimeter that disconnects other rooms would cause cullIsolatedFloorTiles to
+ *    wall off those rooms' interiors. Any candidate that would break connectivity
+ *    is skipped in favour of the next best candidate.
  *
- * Rooms that are at least `minWidth × minHeight` tiles (bounds, walls included)
- * are preferred for the special roles. When no such room exists the largest-area
- * room is used as a fallback so generation never fails on small test maps.
+ * Fallback order when the ideal candidate is unavailable:
+ *   1. Min-size + connectivity-safe (farthest first)
+ *   2. Any-size + connectivity-safe (farthest first)
+ *   3. Farthest regardless (original behaviour, for tiny test maps with no safe option)
  */
-function preAssignRoles(roomGraph: RoomGraph, minWidth: number, minHeight: number): void {
+function preAssignRoles(
+  roomGraph: RoomGraph,
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+  minWidth: number,
+  minHeight: number,
+): void {
   roomGraph.setRole(0, RoomRole.SPAWN);
   if (roomGraph.count < 2) return;
 
+  const h = terrain.length / w;
   const spawnRoom = roomGraph.get(0)!;
   const refX = Math.floor(spawnRoom.bounds.x + spawnRoom.bounds.width / 2);
   const refY = Math.floor(spawnRoom.bounds.y + spawnRoom.bounds.height / 2);
 
-  type ScoredRoom = { id: number; distanceSq: number; area: number };
+  type ScoredRoom = { id: number; distanceSq: number };
 
   const scored: ScoredRoom[] = roomGraph
     .getAll()
@@ -384,38 +406,125 @@ function preAssignRoles(roomGraph: RoomGraph, minWidth: number, minHeight: numbe
     .map((room) => {
       const cx = Math.floor(room.bounds.x + room.bounds.width / 2);
       const cy = Math.floor(room.bounds.y + room.bounds.height / 2);
-      return {
-        id: room.id,
-        distanceSq: (cx - refX) ** 2 + (cy - refY) ** 2,
-        area: room.bounds.width * room.bounds.height,
-      };
+      return { id: room.id, distanceSq: (cx - refX) ** 2 + (cy - refY) ** 2 };
     });
   scored.sort((a, b) => b.distanceSq - a.distanceSq);
 
   /**
-   * Pick the best candidate for a special role from the given pool:
-   * 1. Farthest-from-spawn room that meets the minimum size.
-   * 2. Fallback: farthest-from-spawn room regardless of size (preserves old behaviour
-   *    on small maps where no room can meet the minimum).
+   * Compute the set of tile indices that sealSpecialRoomPerimeters would wall for
+   * this room (passable, non-door perimeter tiles).
    */
-  function pickCandidate(pool: ScoredRoom[]): ScoredRoom | undefined {
-    const eligible = pool.filter((r) => {
-      const room = roomGraph.get(r.id)!;
-      return room.bounds.width >= minWidth && room.bounds.height >= minHeight;
-    });
-    if (eligible.length > 0) return eligible[0]; // already sorted by distance desc
-    // Fallback: no room meets the minimum — use farthest (distance-sorted) room
-    return pool[0]; // already sorted by distance desc
+  function buildSealSet(roomId: number): ReadonlySet<number> {
+    const room = roomGraph.get(roomId)!;
+    const { x, y, width, height } = room.bounds;
+    const doorIdxSet = new Set(room.doors.map((d) => d.y * w + d.x));
+    const sealed = new Set<number>();
+    const addIfSealable = (tx: number, ty: number): void => {
+      const idx = ty * w + tx;
+      if (doorIdxSet.has(idx)) return;
+      const flags = tileMap.flags[idx]!;
+      if ((flags & TileFlags.PASSABLE) !== 0 && (flags & TileFlags.DOOR) === 0) {
+        sealed.add(idx);
+      }
+    };
+    for (let tx = x; tx < x + width; tx++) {
+      addIfSealable(tx, y);
+      addIfSealable(tx, y + height - 1);
+    }
+    for (let ty = y + 1; ty < y + height - 1; ty++) {
+      addIfSealable(x, ty);
+      addIfSealable(x + width - 1, ty);
+    }
+    return sealed;
   }
 
-  const bossCandidate = pickCandidate(scored);
+  /**
+   * Return true when treating `sealedTiles` as walls still leaves every room
+   * (other than spawn) reachable from the spawn centre via passable/door tiles.
+   * Rooms with no doors are skipped (they cannot be door-reachable by definition).
+   */
+  function sealingPreservesConnectivity(
+    sealedTiles: ReadonlySet<number>,
+    extraSealedTiles?: ReadonlySet<number>,
+  ): boolean {
+    if (sealedTiles.size === 0 && (!extraSealedTiles || extraSealedTiles.size === 0)) return true;
+
+    const startIdx = refY * w + refX;
+    const visited = new Uint8Array(w * h);
+    visited[startIdx] = 1;
+    const stack = [startIdx];
+
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const cx = idx % w;
+      const cy = (idx - cx) / w;
+      for (const [nx, ny] of [
+        [cx + 1, cy],
+        [cx - 1, cy],
+        [cx, cy + 1],
+        [cx, cy - 1],
+      ] as [number, number][]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const nIdx = ny * w + nx;
+        if (visited[nIdx]) continue;
+        if (sealedTiles.has(nIdx) || extraSealedTiles?.has(nIdx)) continue;
+        const flags = tileMap.flags[nIdx]!;
+        if ((flags & TileFlags.PASSABLE) === 0 && (flags & TileFlags.DOOR) === 0) continue;
+        visited[nIdx] = 1;
+        stack.push(nIdx);
+      }
+    }
+
+    for (const room of roomGraph.getAll()) {
+      if (room.id === 0 || room.doors.length === 0) continue;
+      if (!room.doors.some((d) => visited[d.y * w + d.x] === 1)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Pick the best candidate for a special role from the given pool.
+   * `alreadySealedTiles` holds tiles that will be sealed by previously-assigned
+   * special rooms; the new candidate's seal set is combined with it before the
+   * connectivity check.
+   *
+   * Priority:
+   *   1. Meets min size AND connectivity-safe (farthest first)
+   *   2. Any size AND connectivity-safe (farthest first)
+   *   3. Farthest regardless (fallback for tiny maps)
+   */
+  function pickCandidate(
+    pool: ScoredRoom[],
+    alreadySealedTiles: ReadonlySet<number>,
+  ): ScoredRoom | undefined {
+    const meetsSize = (r: ScoredRoom): boolean => {
+      const room = roomGraph.get(r.id)!;
+      return room.bounds.width >= minWidth && room.bounds.height >= minHeight;
+    };
+    const isSafe = (r: ScoredRoom): boolean => {
+      const sealSet = buildSealSet(r.id);
+      if (sealSet.size === 0 && alreadySealedTiles.size === 0) return true;
+      return sealingPreservesConnectivity(sealSet, alreadySealedTiles);
+    };
+
+    for (const r of pool) {
+      if (meetsSize(r) && isSafe(r)) return r;
+    }
+    for (const r of pool) {
+      if (isSafe(r)) return r;
+    }
+    return pool[0]; // fallback: farthest (preserves old behaviour on tiny maps)
+  }
+
+  const bossCandidate = pickCandidate(scored, new Set<number>());
   if (bossCandidate) {
     roomGraph.setRole(bossCandidate.id, RoomRole.BOSS_STAIR);
   }
 
   if (roomGraph.count >= 3) {
     const remainingPool = scored.filter((r) => r.id !== bossCandidate?.id);
-    const safeCandidate = pickCandidate(remainingPool);
+    const bossSealTiles = bossCandidate ? buildSealSet(bossCandidate.id) : new Set<number>();
+    const safeCandidate = pickCandidate(remainingPool, bossSealTiles);
     if (safeCandidate) roomGraph.setRole(safeCandidate.id, RoomRole.SAFE);
   }
 }
