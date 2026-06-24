@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spawnEnemy, spawnGold, spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBehaviorEnemy, spawnEnemy, spawnGold, spawnPlayer } from '../../src/core/helpers.js';
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -14,6 +14,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
+import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { AIState } from '../../src/game/ai/types.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 
@@ -345,6 +346,47 @@ describe('BehaviorTreeAI', () => {
     // Target should land close to the absolute standoff distance from the enemy.
     const standoffPx = 48;
     expect(decision.targetX!).toBeCloseTo(350 - standoffPx, 0);
+  });
+
+  it('expands to defensive orbit when player HP drops below 40%', () => {
+    // bat reach = ftToPx(5.5) = 44px. innerOrbit=36, outerOrbit=50 (36+14),
+    // strikeGate=66 (44*1.5). Enemy attackRange=40 → safeOrbit=54 (40+14).
+    // safeOrbit(54) > outerOrbit(50), so the healthy branch leaves desiredOrbit
+    // unchanged (can't reach safety at full HP cap). In the wounded branch,
+    // safeOrbitCap expands to strikeGate(66), so safeOrbit(54) fits and the orbit
+    // is pushed out to 54px — the defensive expansion.
+    const bat = getWeaponDef('baseball-bat')!;
+
+    // HEALTHY player — full HP, orbit stays in the normal strike band.
+    const healthyWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(healthyWorld, 0, 0);
+    spawnBehaviorEnemy(healthyWorld, 60, 0, 40, AI_TYPE.CHASE, 40, 200, 40);
+    healthyWorld.elapsedMs = 5000;
+    setActiveWeapon(healthyWorld, bat);
+    const healthyAi = new BehaviorTreeAI({ seed: 7 });
+    healthyAi.poll(createInputState(), healthyWorld);
+    const healthyDecision = healthyAi.getDecision();
+    const healthyDist = Math.hypot(healthyDecision.targetX! - 60, healthyDecision.targetY!);
+
+    // WOUNDED player — 29% HP crosses MELEE_DEFENSIVE_HP_FRACTION (0.4), expanding
+    // safeOrbitCap to the full strikeGate so the orbit is pushed out to safeOrbit.
+    const woundedWorld = createTestWorld({ seed: 7 });
+    const woundedPlayer = spawnPlayer(woundedWorld, 0, 0);
+    // Set HP to 29% of max (100) to cross the 40% MELEE_DEFENSIVE_HP_FRACTION.
+    woundedWorld.stores.health.current[woundedPlayer] = 29;
+    spawnBehaviorEnemy(woundedWorld, 60, 0, 40, AI_TYPE.CHASE, 40, 200, 40);
+    woundedWorld.elapsedMs = 5000;
+    setActiveWeapon(woundedWorld, bat);
+    const woundedAi = new BehaviorTreeAI({ seed: 7 });
+    woundedAi.poll(createInputState(), woundedWorld);
+    const woundedDecision = woundedAi.getDecision();
+    const woundedDist = Math.hypot(woundedDecision.targetX! - 60, woundedDecision.targetY!);
+
+    expect(healthyDecision.reason).toContain('Kiting');
+    expect(woundedDecision.reason).toContain('Kiting');
+    // Wounded AI targets farther from the enemy: defensive orbit expansion holds it
+    // outside the enemy's own attackRange rather than trading blows in the strike band.
+    expect(woundedDist).toBeGreaterThan(healthyDist + 4);
   });
 
   it('orbits away from enemies that are closer than ranged standoff distance', () => {

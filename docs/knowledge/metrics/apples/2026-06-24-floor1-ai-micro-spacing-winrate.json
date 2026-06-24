@@ -1,8 +1,9 @@
 {
   "date": "2026-06-24",
-  "slug": "floor1-ai-micro-spacing-winrate",
-  "estimated": 3,
-  "actual": 3,
+  "session": "floor1-ai-micro-spacing-winrate",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
   "verdict": "exact",
-  "summary": "Weapon-agnostic micro-spacing for the player AI: contact-safe melee orbit (36px, just outside swarm body-contact range yet inside the swing radius) plus a close absolute bow standoff (48px) so projectiles actually connect. Measurement-driven via a parallel 50-seed eval harness; Floor-1 win rate rose from ~10% to 52%."
+  "hello_kitties": 0.6
 }
