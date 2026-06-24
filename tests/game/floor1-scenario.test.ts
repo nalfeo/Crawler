@@ -495,7 +495,7 @@ describe('floor1Scenario', () => {
       expect(getShopkeeperStage(world)).toBe('not-met');
     });
 
-    it('keeps the final boss door locked until the merchant and spell quests are both complete', () => {
+    it('keeps the final boss door locked until all three quests (goon, merchant, spell) are complete', () => {
       const world = createTestWorld({ seed: 123 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
@@ -513,18 +513,17 @@ describe('floor1Scenario', () => {
       doorSystem(world);
       expect(allLocked()).toBe(true);
 
-      // The goon kill-grind alone never gates the boss door now.
+      // Goon kill-grind alone → still locked.
       world.goalFlags.set('floor1-goon-quest-complete', true);
       doorSystem(world);
       expect(allLocked()).toBe(true);
 
-      // Only the merchant errand done -> still locked (spell quest outstanding).
+      // Goon + merchant errand → still locked (spell quest outstanding).
       world.goalFlags.set('floor1-shop-quest-complete', true);
       doorSystem(world);
       expect(allLocked()).toBe(true);
 
-      // Merchant + spell battle complete -> door finally unlocks, even though the
-      // goon kill-grind flag is irrelevant to the gate.
+      // Goon + merchant + spell battle → all three gates satisfied, door opens.
       world.goalFlags.set('floor1-boss-battle-complete', true);
       doorSystem(world);
       expect(allUnlocked()).toBe(true);

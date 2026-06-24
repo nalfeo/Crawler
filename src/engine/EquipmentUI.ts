@@ -152,7 +152,14 @@ export function createEquipmentUI(
   const dollY = panelY + PANEL_PADDING + 34;
   const dollW = Math.round(panelWidth * 0.56);
   const dollH = panelHeight - (PANEL_PADDING + 34) - PANEL_PADDING - 96;
-  const dollBg = scene.add.rectangle(dollX + dollW / 2, dollY + dollH / 2, dollW, dollH, COLORS.dollBg, 0.6);
+  const dollBg = scene.add.rectangle(
+    dollX + dollW / 2,
+    dollY + dollH / 2,
+    dollW,
+    dollH,
+    COLORS.dollBg,
+    0.6,
+  );
   dollBg.setStrokeStyle(1, COLORS.panelBorder);
   container.add(dollBg);
 

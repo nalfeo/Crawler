@@ -342,13 +342,13 @@ function hashStringToSeed(value: string): number {
     h ^= value.charCodeAt(i);
     h = Math.imul(h, 16777619) >>> 0;
   }
-  return (h | 0) || 0x9e3779b9;
+  return h | 0 || 0x9e3779b9;
 }
 
 /** Convert HSL (h in [0,360), s/l in [0,1]) to an [r,g,b] byte triple. */
 function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const c = (1 - Math.abs(2 * l - 1)) * s;
-  const hp = ((h % 360) + 360) % 360 / 60;
+  const hp = (((h % 360) + 360) % 360) / 60;
   const x = c * (1 - Math.abs((hp % 2) - 1));
   let r: number;
   let g: number;
@@ -360,11 +360,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   else if (hp < 5) [r, g, b] = [x, 0, c];
   else [r, g, b] = [c, 0, x];
   const m = l - c / 2;
-  return [
-    Math.round((r + m) * 255),
-    Math.round((g + m) * 255),
-    Math.round((b + m) * 255),
-  ];
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
 }
 
 /**
