@@ -375,6 +375,14 @@ const GOLD_FARM_GOLD_SCAN_RADIUS_PX = 800;
 // still swept up on the next tick.
 const GOLD_FARM_COLLECT_RADIUS_PX = 260;
 
+// --- Time-phased priority constants ---
+// When the floor timer has consumed this fraction of the deadline (0–1), clock
+// urgency kicks in: the AI skips optional merchant sub-quests (fetch item, charm
+// purchase) and drives straight to the boss-quest path so the run doesn't time
+// out on gold-farming or item-retrieval. At 0.75 the player has 75 s left of the
+// 300 s budget — enough to fight the boss but NOT enough to idle on subquests.
+const LATE_FLOOR_CLOCK_FRACTION = 0.75;
+
 // --- Opportunistic behavior constants ---
 // Enemy must be within this radius (px) to count as a dodge threat.
 // Kept small (≈12 ft) so dodge only fires when an enemy is genuinely
@@ -2471,6 +2479,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     // as temporarily unreachable. Entity-based goals (quest enemies, gold piles) are
     // NOT affected — only fixed-position NPC/room targets get suppressed.
     const progressSuppressed = world.frameCount < this.progressGoalSuppressedUntilFrame;
+    // When the floor clock has consumed LATE_FLOOR_CLOCK_FRACTION of the deadline,
+    // optional sub-quests (merchant fetch item, charm purchase) are skipped so the
+    // AI drives straight to the boss-battle path. This prevents over-farming timeouts
+    // where the AI grinds to a high level but never advances to the staircase.
+    const timeFraction = objective.deadlineMs > 0 ? world.elapsedMs / objective.deadlineMs : 0;
+    const clockUrgent = timeFraction >= LATE_FLOOR_CLOCK_FRACTION;
 
     if (!tutorialAccepted) {
       if (progressSuppressed) return null;
@@ -2518,92 +2532,139 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     if (shopStage === 'not-met') {
-      if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.shopRoomPos.x,
-        objective.shopRoomPos.y,
-        playerX,
-        playerY,
-        'Seeking Shopkeeper to start the merchant errand',
-      );
-    }
-
-    if (shopStage === 'awaiting-prize') {
-      if (progressSuppressed) return null;
-      const target = hasFetchItem ? objective.shopRoomPos : objective.questItemPos;
-      return this.createProgressTarget(
-        target.x,
-        target.y,
-        playerX,
-        playerY,
-        hasFetchItem ? 'Returning the merchant prize' : 'Seeking the merchant fetch item',
-      );
-    }
-
-    if (shopStage === 'ready-to-buy') {
-      if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
+      // Skip merchant intro when the floor clock is in its final quarter: fall
+      // through to the boss-battle / staircase path. The charm is optional and
+      // the remaining time is better spent on floor completion.
+      if (!clockUrgent) {
         if (progressSuppressed) return null;
         return this.createProgressTarget(
           objective.shopRoomPos.x,
           objective.shopRoomPos.y,
           playerX,
           playerY,
-          'Returning to the Shopkeeper to buy the charm',
+          'Seeking Shopkeeper to start the merchant errand',
         );
       }
+    }
 
-      // Still short on gold: actively farm the ambient swarm rather than wander.
-      // The merchant errand cannot complete until the charm is bought, and the
-      // charm needs gold that only drops from kills. Prefer sweeping up coins
-      // that have already dropped (walking onto a pile collects it), otherwise
-      // close on the nearest enemy so auto-fire generates more drops. Routing
-      // this through Progress (which outranks Engage/Collect) is what makes the
-      // AI commit to gold instead of treating distant enemies as "nothing to do"
-      // and exploring away from them.
-      const goldOwed = SHOPKEEPER_EQUIPMENT_COST - world.playerGold;
-      const goldPile = this.findNearestGold(world, playerX, playerY, GOLD_FARM_GOLD_SCAN_RADIUS_PX);
-
-      // Prefer a *nearby* pile we can realistically walk onto. The stuck handler
-      // blacklists piles we get wedged against, so a deadlocked coin eventually
-      // drops out of this scan and we fall through to hunting.
-      if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_PX) {
+    if (shopStage === 'awaiting-prize') {
+      // Skip the fetch-item / return-prize sub-quests when time is nearly up:
+      // fall through to the boss-battle path.
+      if (!clockUrgent) {
+        if (progressSuppressed) return null;
+        if (hasFetchItem) {
+          return this.createProgressTarget(
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            playerX,
+            playerY,
+            'Returning the merchant prize',
+          );
+        }
+        // Seek the fetch-item entity directly (not just the fixed spawn position) so
+        // the close-approach direct-slide logic (CLOSE_APPROACH_DIRECT_PX) can physically
+        // overlap the DroppedItem and trigger collection, avoiding the tile-A* wiggle that
+        // keeps the AI circling the item's tile without ever collecting it.
+        const questItemEid = floor1?.questItemEid;
+        if (
+          questItemEid !== null &&
+          questItemEid !== undefined &&
+          entityExists(world.ecs, questItemEid)
+        ) {
+          const ix = world.stores.position.x[questItemEid] ?? objective.questItemPos.x;
+          const iy = world.stores.position.y[questItemEid] ?? objective.questItemPos.y;
+          return this.createProgressTarget(
+            ix,
+            iy,
+            playerX,
+            playerY,
+            'Seeking the merchant fetch item',
+            questItemEid,
+          );
+        }
         return this.createProgressTarget(
-          goldPile.x,
-          goldPile.y,
+          objective.questItemPos.x,
+          objective.questItemPos.y,
           playerX,
           playerY,
-          `Collecting gold for the merchant charm (${goldOwed}g to go)`,
-          goldPile.eid,
+          'Seeking the merchant fetch item',
         );
       }
+    }
 
-      // No close coin: close on the swarm so auto-fire drops fresh gold right at
-      // the kill, which the branch above then sweeps up on a later tick.
-      const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_PX);
-      if (prey) {
-        return this.createProgressTarget(
-          prey.x,
-          prey.y,
+    if (shopStage === 'ready-to-buy') {
+      // Skip the charm-purchase sub-quest when the floor clock is urgent: fall
+      // through to the boss-battle path.
+      if (!clockUrgent) {
+        if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
+          if (progressSuppressed) return null;
+          return this.createProgressTarget(
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            playerX,
+            playerY,
+            'Returning to the Shopkeeper to buy the charm',
+          );
+        }
+
+        // Still short on gold: actively farm the ambient swarm rather than wander.
+        // The merchant errand cannot complete until the charm is bought, and the
+        // charm needs gold that only drops from kills. Prefer sweeping up coins
+        // that have already dropped (walking onto a pile collects it), otherwise
+        // close on the nearest enemy so auto-fire generates more drops. Routing
+        // this through Progress (which outranks Engage/Collect) is what makes the
+        // AI commit to gold instead of treating distant enemies as "nothing to do"
+        // and exploring away from them.
+        const goldOwed = SHOPKEEPER_EQUIPMENT_COST - world.playerGold;
+        const goldPile = this.findNearestGold(
+          world,
           playerX,
           playerY,
-          `Hunting the swarm for charm gold (${goldOwed}g to go)`,
-          prey.eid,
+          GOLD_FARM_GOLD_SCAN_RADIUS_PX,
         );
-      }
 
-      // Nothing nearby to fight: a distant pile is still better than wandering.
-      if (goldPile) {
-        return this.createProgressTarget(
-          goldPile.x,
-          goldPile.y,
-          playerX,
-          playerY,
-          `Collecting gold for the merchant charm (${goldOwed}g to go)`,
-          goldPile.eid,
-        );
-      }
+        // Prefer a *nearby* pile we can realistically walk onto. The stuck handler
+        // blacklists piles we get wedged against, so a deadlocked coin eventually
+        // drops out of this scan and we fall through to hunting.
+        if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_PX) {
+          return this.createProgressTarget(
+            goldPile.x,
+            goldPile.y,
+            playerX,
+            playerY,
+            `Collecting gold for the merchant charm (${goldOwed}g to go)`,
+            goldPile.eid,
+          );
+        }
 
-      return null;
+        // No close coin: close on the swarm so auto-fire drops fresh gold right at
+        // the kill, which the branch above then sweeps up on a later tick.
+        const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_PX);
+        if (prey) {
+          return this.createProgressTarget(
+            prey.x,
+            prey.y,
+            playerX,
+            playerY,
+            `Hunting the swarm for charm gold (${goldOwed}g to go)`,
+            prey.eid,
+          );
+        }
+
+        // Nothing nearby to fight: a distant pile is still better than wandering.
+        if (goldPile) {
+          return this.createProgressTarget(
+            goldPile.x,
+            goldPile.y,
+            playerX,
+            playerY,
+            `Collecting gold for the merchant charm (${goldOwed}g to go)`,
+            goldPile.eid,
+          );
+        }
+
+        return null;
+      }
     }
 
     if (!objective.questCompleted) {

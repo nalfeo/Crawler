@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { spawnEnemy, spawnGold, spawnPlayer } from '../../src/core/helpers.js';
+import { spawnBehaviorEnemy, spawnEnemy, spawnGold, spawnPlayer } from '../../src/core/helpers.js';
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import {
   initializeFloor1Scenario,
+  meetShopkeeper,
   meetTutorialGoon,
   selectFloor1StarterWeapon,
 } from '../../src/game/floor1Scenario.js';
+import { questSystem } from '../../src/core/systems/questSystem.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -171,6 +174,47 @@ describe('BehaviorTreeAI', () => {
     // The cooldown step holds the enemy farther away (dodge between hits); the
     // ready step pokes in closer to land the swing.
     expect(cooldownDist).toBeGreaterThan(readyDist + 4);
+  });
+
+  it('expands orbit to defensive wide-band when player HP drops below 40%', () => {
+    // Sword reach = 40px; strike gate = 60px (reach × 1.5). Normal outerOrbit
+    // caps at 50px (innerOrbit 36 + dodge amplitude 14). When wounded below the
+    // defensive threshold (40% HP), safeOrbitCap expands to the full strike gate
+    // (60px) so the AI can stand just outside an enemy's attackRange and poke
+    // from safety. Use a CHASE enemy with attackRange = 40px so safeOrbit = 54px:
+    //   - Full health: safeOrbitCap = outerOrbit = 50  → 54 > 50 → no expansion.
+    //   - Low health:  safeOrbitCap = strikeGate = 60  → 54 ≤ 60 → bumps orbit to 54+.
+    const fullHpWorld = createTestWorld({ seed: 7 });
+    const fullPlayer = spawnPlayer(fullHpWorld, 0, 0);
+    // attackRange in pixels: the stores store raw px. ftToPx(5)=40, safeOrbit=40+14=54.
+    const ATTACK_RANGE_PX = 40;
+    spawnBehaviorEnemy(fullHpWorld, 30, 0, 20, AI_TYPE.CHASE, 2, 200, ATTACK_RANGE_PX);
+    setActiveWeapon(fullHpWorld, getWeaponDef('sword')!);
+    // Full health: no expansion.
+    const fullAi = new BehaviorTreeAI({ seed: 7 });
+    fullAi.poll(createInputState(), fullHpWorld);
+    const fullDist = Math.hypot(fullAi.getDecision().targetX! - 30, fullAi.getDecision().targetY!);
+
+    const lowHpWorld = createTestWorld({ seed: 7 });
+    const lowPlayer = spawnPlayer(lowHpWorld, 0, 0);
+    spawnBehaviorEnemy(lowHpWorld, 30, 0, 20, AI_TYPE.CHASE, 2, 200, ATTACK_RANGE_PX);
+    setActiveWeapon(lowHpWorld, getWeaponDef('sword')!);
+    // Wound to 30% (below the 40% defensive threshold).
+    lowHpWorld.stores.health.current[lowPlayer] = 30;
+    const lowAi = new BehaviorTreeAI({ seed: 7 });
+    lowAi.poll(createInputState(), lowHpWorld);
+    const lowDist = Math.hypot(lowAi.getDecision().targetX! - 30, lowAi.getDecision().targetY!);
+
+    // Suppress unused-var lint: fullPlayer is referenced to confirm the spawn call.
+    void fullPlayer;
+
+    expect(lowAi.getDecision().reason).toContain('Kiting');
+    // Defensive orbit (low HP) must sit farther from the enemy than full-health orbit.
+    // At full HP: safeOrbitCap = outerOrbit = 50px, so safeOrbit (54px) is unreachable
+    // and the step lands at ~52-53px from the enemy.
+    // At low HP:  safeOrbitCap = strikeGate = 60px, so safeOrbit (54px) IS reachable
+    // and the step targets ~57px — measurably farther.
+    expect(lowDist).toBeGreaterThan(fullDist + 3);
   });
 
   it('collects gold as loot when no higher-priority progression target is active', () => {
@@ -363,5 +407,71 @@ describe('BehaviorTreeAI', () => {
     // Radial correction pushes the AI away from the enemy (negative X when enemy
     // is at +X), so the target must be to the left of the player's start.
     expect(decision.targetX!).toBeLessThan(0);
+  });
+
+  it('skips the merchant sub-quest and heads to the Spell Broker when floor clock is urgent', () => {
+    // When > 75% of the floor timer has elapsed the AI must stop spending time on
+    // the optional merchant errand and drive straight to the boss-battle path so
+    // the run doesn't time out on gold-farming or prize-retrieval.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    // Advance to the post-kill-quest state with shopkeeper not yet met.
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floor1!.objective.questCompleted = true;
+    // No FLOOR1_SHOP_QUEST_ID in questLog → shopStage === 'not-met'.
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+
+    // Before clock urgency: Progress should target the shopkeeper.
+    ai.poll(createInputState(), world);
+    const earlyDecision = ai.getDecision();
+    expect(earlyDecision.reason).toContain('Shopkeeper');
+
+    // At 80% of deadline: shopkeeper sub-quest is skipped in favour of the Spell Broker.
+    world.elapsedMs = world.floor1!.objective.deadlineMs * 0.8;
+    const lateAi = new BehaviorTreeAI({ seed: 42 });
+    lateAi.poll(createInputState(), world);
+    const lateDecision = lateAi.getDecision();
+    expect(lateDecision.reason).not.toContain('Shopkeeper');
+    expect(lateDecision.reason).toContain('Spell Broker');
+  });
+
+  it('routes fetch-item navigation through the DroppedItem entity to avoid tile-A* wiggle', () => {
+    // When in the awaiting-prize stage the AI should track the questItemEid entity
+    // directly (not just the fixed spawn-position) so the close-approach direct-slide
+    // activates and the body physically overlaps the item for collection.
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    // Advance to the awaiting-prize shopkeeper stage.
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floor1!.objective.questCompleted = true;
+    // meetShopkeeper requires the leveling quest to be complete.
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
+    meetShopkeeper(world); // now sets shopStage → 'awaiting-prize'
+    questSystem(world); // flush the quest.npc.talked event so quest.done['meet-merchant'] is set
+
+    const questItemEid = world.floor1!.questItemEid!;
+    expect(questItemEid).toBeDefined();
+    // The quest item should be spawned at questItemPos.
+    const qx = world.stores.position.x[questItemEid]!;
+    const qy = world.stores.position.y[questItemEid]!;
+
+    const ai = new BehaviorTreeAI({ seed: 42 });
+    ai.poll(createInputState(), world);
+    const decision = ai.getDecision();
+
+    expect(decision.reason).toContain('fetch item');
+    // Decision must target the entity's pixel position (not a different fixed point).
+    expect(decision.targetX).toBeCloseTo(qx, 0);
+    expect(decision.targetY).toBeCloseTo(qy, 0);
+    // The entity EID must be carried through so watchdogs and close-approach logic
+    // can reference the live entity instead of an anonymous position.
+    expect(decision.targetEid).toBe(questItemEid);
   });
 });
