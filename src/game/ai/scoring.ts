@@ -11,9 +11,9 @@
  *
  *   score = victoryBonus + xpEfficiency * XP_WEIGHT + totalGold * GOLD_WEIGHT
  *
- * Weight scales are chosen so the ordering invariants hold even in extreme
- * cases:
- *   - A run with any non-zero victory bonus beats any run without one.
+ * Weight scales are chosen so the ordering invariants hold across expected
+ * headless run ranges:
+ *   - A comparable run with a victory bonus beats one without it.
  *   - XP efficiency dominates gold unless the gold difference is enormous
  *     (GOLD_WEIGHT is 100× smaller than XP_WEIGHT).
  *
@@ -83,7 +83,8 @@ export function scoreRun(stats: RunStats, maxGameTimeMs?: number): ScoreBreakdow
 
 /**
  * Aggregate scores across multiple seeds by computing the mean composite
- * score. Runs that error out are treated as zero-score failures.
+ * score. Callers should convert errored runs into zero-score failure
+ * breakdowns before passing them here.
  */
 export function aggregateScores(breakdowns: ScoreBreakdown[]): {
   meanScore: number;
