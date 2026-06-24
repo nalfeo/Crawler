@@ -111,6 +111,18 @@ export function createInventoryUI(
   const tabPrefs: TabPreferences = createTabPreferences();
   let playerEid = -1;
 
+  // Signature of the last rendered grid state. The scene calls refresh() every
+  // frame while the panel is open; re-running renderItems() each frame would
+  // destroy and recreate every cell (and any open tooltip), which breaks hover
+  // because Phaser only fires `pointerover` on pointer movement — not when a
+  // fresh object appears under a stationary cursor. Gating re-render behind this
+  // signature keeps cells (and the tooltip) alive between content changes.
+  let lastRenderSignature: string | null = null;
+
+  // Currently "pinned" tooltip (via click/tap). Stays visible after the pointer
+  // leaves the cell until the item is clicked again or another item is clicked.
+  let pinned: { def: ItemDef; slot: InventorySlot; x: number; y: number } | null = null;
+
   /**
    * Resolve the generated sprite registry on demand. The boot scene sets
    * it before MainGameScene starts; reading it lazily makes the UI robust
@@ -389,13 +401,36 @@ export function createInventoryUI(
       cellBg.setStrokeStyle(BORDER_WIDTH, rarityColor);
       cellBg.setInteractive({ useHandCursor: true });
 
+      // Keep the pinned cell highlighted and its coordinates fresh across
+      // re-renders (item order/position can shift when the bag changes).
+      if (pinned !== null && pinned.slot.itemId === slot.itemId) {
+        pinned = { def, slot, x: cellX, y: cellY };
+        cellBg.setFillStyle(COLORS.cellHover);
+      }
+
       cellBg.on('pointerover', () => {
         cellBg.setFillStyle(COLORS.cellHover);
         showTooltip(def, slot, cellX, cellY);
       });
       cellBg.on('pointerout', () => {
-        cellBg.setFillStyle(COLORS.cellBg);
+        const stillPinned = pinned !== null && pinned.slot.itemId === slot.itemId;
+        cellBg.setFillStyle(stillPinned ? COLORS.cellHover : COLORS.cellBg);
         clearTooltip();
+        // Restore the pinned tooltip when leaving a non-pinned cell.
+        if (pinned !== null) {
+          showTooltip(pinned.def, pinned.slot, pinned.x, pinned.y);
+        }
+      });
+      // Click/tap toggles a pinned tooltip so touch users (no hover) can read it.
+      cellBg.on('pointerdown', () => {
+        if (pinned !== null && pinned.slot.itemId === slot.itemId) {
+          pinned = null;
+        } else {
+          pinned = { def, slot, x: cellX, y: cellY };
+        }
+        clearTooltip();
+        showTooltip(def, slot, cellX, cellY);
+        cellBg.setFillStyle(COLORS.cellHover);
       });
 
       // Item icon: prefer the approved generated sprite when the item's
@@ -461,6 +496,16 @@ export function createInventoryUI(
     countFooter.setOrigin(0, 1);
     container.add(countFooter);
     cellObjects.push(countFooter);
+
+    // Re-show (or drop) the pinned tooltip after rebuilding the grid.
+    if (pinned !== null) {
+      const stillPresent = slots.some((s) => s.itemId === pinned!.slot.itemId);
+      if (stillPresent) {
+        showTooltip(pinned.def, pinned.slot, pinned.x, pinned.y);
+      } else {
+        pinned = null;
+      }
+    }
   }
 
   function showTooltip(def: ItemDef, slot: InventorySlot, cellX: number, cellY: number): void {
@@ -562,10 +607,27 @@ export function createInventoryUI(
   function refresh(world: GameWorld): void {
     playerEid = findPlayerEid(world);
     currentBag = playerEid >= 0 ? (world.inventories.get(playerEid) ?? null) : null;
-    if (visible) {
+    if (!visible) {
+      return;
+    }
+    // Only rebuild the grid when the rendered state actually changes. Without
+    // this guard the per-frame refresh would destroy/recreate every cell and
+    // tooltip, breaking hover (see lastRenderSignature comment above).
+    const signature = computeRenderSignature();
+    if (signature !== lastRenderSignature) {
       renderTabs();
       renderItems();
+      lastRenderSignature = signature;
     }
+  }
+
+  function computeRenderSignature(): string {
+    const slots = currentBag?.slots ?? [];
+    let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}`;
+    for (const slot of slots) {
+      signature += `;${slot.itemId}:${slot.quantity}`;
+    }
+    return signature;
   }
 
   function toggle(world: GameWorld): void {
@@ -579,6 +641,8 @@ export function createInventoryUI(
       refresh(world);
     } else {
       clearTooltip();
+      pinned = null;
+      lastRenderSignature = null;
     }
   }
 

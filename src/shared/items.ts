@@ -301,8 +301,8 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
   misc('expired-coupon', 'Expired Coupon', '10% off at a store that no longer exists.', C),
   misc(
     'merchants-stained-charm',
-    "Merchant's Stained Charm",
-    'A pendant the merchant fished out from somewhere unspeakable. Faintly damp, weirdly lucky. Equippable.',
+    "Merchant's Magic Charm",
+    'A faintly glowing pendant the merchant pressed into your hand. Worn around the neck, it grants +1 Charisma. Equippable.',
     U,
     [customTag('Gear')],
   ),
