@@ -5,6 +5,7 @@
 import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from '../core/world.js';
+import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 
 const VFX_DURATION_MS = 600;
 const VFX_RISE_PX = 24;
@@ -49,7 +50,9 @@ export function createCombatVfx(scene: Phaser.Scene): {
       strokeThickness: 2,
     });
     text.setOrigin(0.5, 1);
-    text.setDepth(1000);
+    // World-space VFX: depth must stay below UI_DEPTH_CUTOFF (see render-depths.ts).
+    text.setDepth(WORLD_VFX_DEPTH.combatText);
+    (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(text);
 
     floaters.push({ obj: text, startMs: renderElapsedMs, startY: event.y - 8 });
   }

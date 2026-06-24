@@ -21,6 +21,7 @@ import {
 } from '../../src/game/weaponSystem.js';
 import { WEAPON, WeaponType, TeamId, type WeaponTypeValue } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
+import { ftToPx } from '../../src/shared/units.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('weaponSystem coverage paths', () => {
@@ -277,6 +278,13 @@ describe('weaponSystem miss events', () => {
     expect(missEvent).toBeDefined();
     expect(missEvent?.amount).toBe(0);
     expect(missEvent?.targetType).toBe('enemy');
+    // The miss VFX is projected forward along the aim direction (toward the enemy
+    // on the +x axis) and capped at MAX_MISS_VFX_REACH_FT = 8ft, so it lands at
+    // ftToPx(min(aoeRadius || range, 8)) on x and stays on the y axis.
+    const expectedReachPx = ftToPx(Math.min(pistol.aoeRadius || pistol.range, 8));
+    expect(expectedReachPx).toBe(ftToPx(8));
+    expect(missEvent?.x).toBeCloseTo(expectedReachPx);
+    expect(missEvent?.y).toBeCloseTo(0);
   });
 
   it('does not emit a miss event when the accuracy roll succeeds', () => {

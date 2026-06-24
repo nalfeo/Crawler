@@ -20,6 +20,7 @@ import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { GAME } from '../../shared/constants.js';
+import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
 
@@ -368,7 +369,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     if (!pathGraphics || !pathGraphics.scene) {
       pathGraphics = scene.add.graphics();
-      pathGraphics.setDepth(10_000);
+      // World-space debug overlay: depth must stay below UI_DEPTH_CUTOFF (see render-depths.ts).
+      pathGraphics.setDepth(WORLD_VFX_DEPTH.debugPath);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(pathGraphics);
     }
     return pathGraphics;
   };

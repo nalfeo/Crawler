@@ -30,6 +30,7 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { GAME } from '../../shared/constants.js';
+import { UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
   FLOOR1_BOSS_REWARD_SPELL_IDS,
@@ -65,7 +66,6 @@ import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
-const UI_DEPTH_CUTOFF = 900;
 /**
  * Render frames the level-up modal is held open before an `autoLevelUpAllocator`
  * (AI driver) auto-confirms it. ~0.4s at 60fps — long enough for a viewer to see
