@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-23",
+  "slug": "remove-session-guard-ci",
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "on-target",
+  "summary": "Removed three CI workflows (session guard, auto-rebase, review-ping) and cleaned up AGENTS.md references."
+}
