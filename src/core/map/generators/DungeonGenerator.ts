@@ -501,10 +501,16 @@ function preAssignRoles(
       const room = roomGraph.get(r.id)!;
       return room.bounds.width >= minWidth && room.bounds.height >= minHeight;
     };
+    const safeCache = new Map<number, boolean>();
     const isSafe = (r: ScoredRoom): boolean => {
+      if (safeCache.has(r.id)) return safeCache.get(r.id)!;
       const sealSet = buildSealSet(r.id);
-      if (sealSet.size === 0 && alreadySealedTiles.size === 0) return true;
-      return sealingPreservesConnectivity(sealSet, alreadySealedTiles);
+      const result =
+        sealSet.size === 0 && alreadySealedTiles.size === 0
+          ? true
+          : sealingPreservesConnectivity(sealSet, alreadySealedTiles);
+      safeCache.set(r.id, result);
+      return result;
     };
 
     for (const r of pool) {
