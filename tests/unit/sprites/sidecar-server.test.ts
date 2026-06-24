@@ -12,6 +12,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -475,7 +476,10 @@ describe('buildServer routes (inject)', () => {
 
   it('POST /api/workflow/generate enqueues work when a real queue backend is injected', async () => {
     mkdirSync(path.join(root, 'briefs', 'weapons'), { recursive: true });
-    writeFileSync(path.join(root, 'briefs', 'weapons', 'iron-sword.yaml'), 'name: iron-sword\n');
+    writeFileSync(
+      path.join(root, 'briefs', 'weapons', 'iron-sword.yaml'),
+      'name: internal-iron-sword\n',
+    );
     const enqueued: Array<{ briefId: string; briefPath: string }> = [];
     await app.close();
     app = buildServer({
@@ -502,7 +506,8 @@ describe('buildServer routes (inject)', () => {
     expect(res.json().status).toBe('queued');
     expect(res.json().queueBackend).toBe('azure-queue');
     expect(enqueued).toHaveLength(1);
-    expect(enqueued[0]?.briefId).toBe('iron-sword');
+    expect(res.json().briefId).toBe('internal-iron-sword');
+    expect(enqueued[0]?.briefId).toBe('internal-iron-sword');
     expect(enqueued[0]?.briefPath).toBe('briefs/weapons/iron-sword.yaml');
   });
 
@@ -751,6 +756,7 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     await app.close();
     // Use a LocalRunStore as a test double for the remote Azure store
     const injectedStore = new LocalRunStore(runsDir);
+    const removeCalls: string[] = [];
     // Write the run to the injected store
     writeFullRun();
     app = buildServer({
@@ -768,7 +774,10 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
         get: async (key) => injectedStore.get(key),
         has: async (key) => injectedStore.has(key),
         list: async (prefix) => injectedStore.list(prefix),
-        remove: async (key) => injectedStore.remove(key),
+        remove: async (key) => {
+          removeCalls.push(key);
+          await injectedStore.remove(key);
+        },
         resolve: (key) => injectedStore.resolve(key),
       },
     });
@@ -788,6 +797,113 @@ describe('POST /api/runs/:briefId/:runId/approve', () => {
     // Confirm the run was removed from the injected store
     const afterKeys = await injectedStore.list(`${briefId}/${runId}/`);
     expect(afterKeys.length).toBe(0);
+    expect(removeCalls).toEqual(expect.arrayContaining([...beforeKeys]));
+    expect(removeCalls).not.toContain(`${briefId}/${runId}`);
+  });
+
+  it('cleans hydrated temp dir when remote get fails mid-hydration', async () => {
+    await app.close();
+    const throwingStore = new LocalRunStore(runsDir);
+    const failingKey = `${briefId}/${runId}/processed/01.png`;
+    const beforeTemp = new Set(
+      readdirSync(tmpdir()).filter((entry) => entry.startsWith('crawler-sidecar-run-')),
+    );
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'missing-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: {
+        backend: 'azure-blob',
+        put: async (key, data) => throwingStore.put(key, data),
+        get: async (key) => {
+          if (key === failingKey) {
+            throw new Error('simulated-store-read-failure');
+          }
+          return throwingStore.get(key);
+        },
+        has: async (key) => throwingStore.has(key),
+        list: async (prefix) => throwingStore.list(prefix),
+        remove: async (key) => throwingStore.remove(key),
+        resolve: (key) => throwingStore.resolve(key),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(res.json().error).toBe('approve-failed');
+
+    const afterTemp = new Set(
+      readdirSync(tmpdir()).filter((entry) => entry.startsWith('crawler-sidecar-run-')),
+    );
+    const leaked = [...afterTemp].filter((entry) => !beforeTemp.has(entry));
+    expect(leaked).toEqual([]);
+  });
+
+  it('rejects drive-rooted remote key fragments while hydrating', async () => {
+    await app.close();
+    const summaryJson = JSON.stringify({
+      brief: briefId,
+      runId,
+      promptHash: 'deadbeef',
+      chosen: { index: 1 },
+      candidates: [{ index: 1, score: 7, outOf: 7 }],
+    });
+    const keys = [
+      `${briefId}/${runId}/summary.json`,
+      `${briefId}/${runId}/C:/sneaky/processed/01.png`,
+      `${briefId}/${runId}/processed/01.scorecard.json`,
+    ] as const;
+    const requestedKeys: string[] = [];
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'missing-runs'),
+      version: 'test',
+      publicAssetsDir,
+      manifestPath,
+      env: {},
+      store: {
+        backend: 'azure-blob',
+        put: async () => undefined,
+        get: async (key) => {
+          requestedKeys.push(key);
+          if (key === `${briefId}/${runId}/summary.json`) return Buffer.from(summaryJson);
+          if (key === `${briefId}/${runId}/processed/01.scorecard.json`) {
+            return Buffer.from(
+              JSON.stringify({
+                score: 7,
+                outOf: 7,
+                passed: true,
+                breakdown: [],
+                derivedAnchor: null,
+              }),
+            );
+          }
+          throw new Error(`unexpected-get:${key}`);
+        },
+        has: async (key) => key === `${briefId}/${runId}/summary.json`,
+        list: async (prefix) => (prefix === `${briefId}/${runId}/` ? keys : []),
+        remove: async () => undefined,
+        resolve: (key) => path.join(root, 'virtual-store', key),
+      },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/runs/${briefId}/${runId}/approve`,
+      headers: { 'content-type': 'application/json' },
+      payload: { variantIndex: 1 },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('processed-missing');
+    expect(requestedKeys).not.toContain(`${briefId}/${runId}/C:/sneaky/processed/01.png`);
   });
 });
 

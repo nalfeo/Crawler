@@ -41,6 +41,7 @@ import {
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { parse as parseYaml } from 'yaml';
 import { approveVariant, ApproveError, type ManifestEntry } from '../approve.js';
 import { SPRITE_TYPES, type Brief } from '../brief-schema.js';
 import { generateOne } from '../generate-one.js';
@@ -693,8 +694,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     try {
       const env = deps.env ?? process.env;
-      const briefId = path.basename(briefPath, path.extname(briefPath));
       if (queue.backend !== 'noop') {
+        const briefId = resolveQueuedBriefId(briefPath);
         const requestedAt = new Date().toISOString();
         await queue.enqueue({
           briefId,
@@ -922,12 +923,38 @@ function toRepoRelativePath(repoRoot: string, absolutePath: string): string {
 }
 
 function safeStoreJoin(base: string, relativePath: string): string | null {
+  if (
+    path.isAbsolute(relativePath) ||
+    path.win32.isAbsolute(relativePath) ||
+    path.posix.isAbsolute(relativePath)
+  ) {
+    return null;
+  }
   const normalized = path.normalize(relativePath);
   const segments = normalized.split(path.sep).filter((segment) => segment.length > 0);
   if (segments.length === 0) {
     return null;
   }
   return safeJoin(base, segments);
+}
+
+function resolveQueuedBriefId(briefPath: string): string {
+  const fallback = path.basename(briefPath, path.extname(briefPath));
+  try {
+    const parsed = parseYaml(readFileSync(briefPath, 'utf8'));
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'name' in parsed &&
+      typeof parsed['name'] === 'string' &&
+      parsed['name'].trim() !== ''
+    ) {
+      return parsed['name'];
+    }
+  } catch {
+    // fall through to filename-based fallback
+  }
+  return fallback;
 }
 
 interface HydratedRunDir {
@@ -951,16 +978,21 @@ async function hydrateRunDirFromStore(
     rmSync(tempRoot, { recursive: true, force: true });
     return null;
   }
-  mkdirSync(runDir, { recursive: true });
-  for (const key of keys) {
-    const rel = key.slice(prefix.length);
-    if (rel === '') continue;
-    const target = safeStoreJoin(runDir, rel);
-    if (target === null) {
-      continue;
+  try {
+    mkdirSync(runDir, { recursive: true });
+    for (const key of keys) {
+      const rel = key.slice(prefix.length);
+      if (rel === '') continue;
+      const target = safeStoreJoin(runDir, rel);
+      if (target === null) {
+        continue;
+      }
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, await store.get(key));
     }
-    mkdirSync(path.dirname(target), { recursive: true });
-    writeFileSync(target, await store.get(key));
+  } catch (err) {
+    rmSync(tempRoot, { recursive: true, force: true });
+    throw err;
   }
   return {
     runDir,

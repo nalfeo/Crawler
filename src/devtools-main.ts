@@ -3126,9 +3126,14 @@ function render(): void {
       queueBtn.disabled = alreadyQueued;
       queueBtn.addEventListener('click', (event) => {
         event.stopPropagation();
-        if (alreadyQueued) {
+        const alreadyQueuedNow = queueState.items.some(
+          (queueItem) =>
+            queueItem.source === 'asset-plan' && queueItem.kebabName === slugify(asset.label),
+        );
+        if (alreadyQueuedNow) {
           return; // Prevent duplicate queue items
         }
+        queueBtn.disabled = true;
         selectedAssetId = asset.id;
         queueState = queueAddItem(queueState, asset.label, requestedType, 'asset-plan');
         writeQueueState();
@@ -3638,38 +3643,45 @@ function render(): void {
     }
     pendingGenerationPolls.add(itemId);
     void (async () => {
-      let retryCount = 0;
-      const MAX_RETRIES = 3;
       try {
         while (true) {
           const item = queueState.items.find((candidate) => candidate.id === itemId) ?? null;
           if (!item || item.stage !== 'generating' || !item.generationRequestedAt) {
             return;
           }
+          // Floor to the second to match parseRunIdTimestamp precision.
+          // parseRunIdTimestamp extracts YYYY-MM-DDTHH:MM:SS (no milliseconds),
+          // so same-second runs produced 100-999ms after request would otherwise
+          // fail the >= comparison and never be adopted.
+          const requestedAt = Math.floor(Date.parse(item.generationRequestedAt) / 1000) * 1000;
+          if (!Number.isFinite(requestedAt)) {
+            throw new Error(
+              `Queued run polling stopped: invalid generationRequestedAt "${item.generationRequestedAt}".`,
+            );
+          }
           try {
             const runs = await listSidecarRuns();
-            // Floor to the second to match parseRunIdTimestamp precision.
-            // parseRunIdTimestamp extracts YYYY-MM-DDTHH:MM:SS (no milliseconds),
-            // so same-second runs produced 100-999ms after request would otherwise
-            // fail the >= comparison and never be adopted.
-            const requestedAt = Math.floor(Date.parse(item.generationRequestedAt) / 1000) * 1000;
             // Match against the chosen candidate's id (the brief name), not kebabName.
             // The promote step copies the candidate YAML without rewriting its internal
             // `name:` field, so generateOne keys the run as `${brief.name}/${runId}`.
             const chosenCandidate = item.candidates.find(
               (c) => c.yamlPath === item.chosenCandidatePath,
             );
-            const expectedBriefId = chosenCandidate?.id ?? item.kebabName;
+            const expectedBriefIds = new Set<string>(
+              chosenCandidate
+                ? [chosenCandidate.id, item.kebabName]
+                : [item.kebabName, ...item.candidates.map((candidate) => candidate.id)],
+            );
             if (!chosenCandidate) {
               console.warn(
                 `Queue item ${itemId}: chosen candidate path does not match any candidate. ` +
                   `Chosen path: ${item.chosenCandidatePath ?? 'null'}, ` +
                   `available: [${item.candidates.map((c) => c.yamlPath).join(', ')}]. ` +
-                  `Falling back to kebabName (${item.kebabName}) for run matching.`,
+                  `Falling back to known brief ids (${Array.from(expectedBriefIds).join(', ')}) for run matching.`,
               );
             }
             const match = runs.find((run) => {
-              if (run.briefId !== expectedBriefId || !run.timestamp) {
+              if (!expectedBriefIds.has(run.briefId) || !run.timestamp) {
                 return false;
               }
               const runTime = Date.parse(run.timestamp);
@@ -3687,18 +3699,9 @@ function render(): void {
               );
               return;
             }
-            // Reset retry count on successful poll
-            retryCount = 0;
           } catch (pollError) {
-            // Retry transient errors instead of aborting immediately
-            retryCount++;
-            if (retryCount > MAX_RETRIES) {
-              throw pollError;
-            }
             const pollMessage = pollError instanceof Error ? pollError.message : String(pollError);
-            console.warn(
-              `Queued-run poll attempt ${retryCount}/${MAX_RETRIES} failed: ${pollMessage}`,
-            );
+            console.warn(`Queued-run poll failed (will retry): ${pollMessage}`);
           }
           await new Promise((resolve) => window.setTimeout(resolve, QUEUED_RUN_POLL_MS));
         }
@@ -3772,7 +3775,12 @@ function render(): void {
       renderWorkflowSelection();
       setWorkflowStatus(`Generate failed: ${message}`, '#fca5a5');
     } finally {
-      setButtonBusy(generateBtn, false, 'Generate run', 'Generating...');
+      const selectedAfterGenerate = getSelectedItem(queueState);
+      if (selectedAfterGenerate?.stage === 'generating') {
+        setButtonBusy(generateBtn, true, 'Generate run', 'Generating...');
+      } else {
+        setButtonBusy(generateBtn, false, 'Generate run', 'Generating...');
+      }
     }
   });
 
