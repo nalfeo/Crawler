@@ -60,6 +60,23 @@ export interface AIConfig {
   scanRadius?: number;
   /** How far to maintain from ranged enemies (in pixels) */
   rangedSafeDistance?: number;
+  /**
+   * Radius (px) within which the opportunistic collect layer pulls the player
+   * toward nearby loot regardless of the current Track A movement goal.
+   * Also used for path-waypoint sweep (loot within this radius of any waypoint).
+   */
+  opportunisticGrabRadius?: number;
+  /**
+   * Weight of the dodge vector injected by the opportunistic dodge layer.
+   * Blended additively with the Track A movement vector before smoothing.
+   * 0 = no dodge, 1 = full dodge override.
+   */
+  dodgeWeight?: number;
+  /**
+   * Weight of the collect/farm pull vector from the opportunistic layer.
+   * Blended additively with the Track A movement vector before smoothing.
+   */
+  collectPullWeight?: number;
   /** Enable debug logging */
   debug?: boolean;
 }
@@ -189,4 +206,8 @@ export interface RunStats {
   finalLevel: number;
   /** Total XP earned */
   totalXp: number;
+  /** Gold held by the player at run end */
+  totalGold: number;
+  /** ID of the starting weapon selected for this run */
+  startingWeapon: string;
 }

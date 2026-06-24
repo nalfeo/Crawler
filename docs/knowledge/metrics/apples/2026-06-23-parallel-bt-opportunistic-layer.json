@@ -1,0 +1,7 @@
+{
+  "session": "2026-06-23-parallel-bt-opportunistic-layer",
+  "estimate": 1,
+  "actual": 2,
+  "verdict": "under",
+  "notes": "Root-cause investigation of the waypoint-sweep headless regression was non-trivial: required binary search over Track B weights and waypoint-sweep removal before identifying collectPullWeight as culprit."
+}
