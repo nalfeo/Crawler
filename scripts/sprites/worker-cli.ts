@@ -39,7 +39,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAssetQueue } from './queue/index.js';
 import { createRunStore } from './store/index.js';
-import { createImageProvider, createTextProvider, createVisionProvider } from './provider/factory.js';
+import {
+  createImageProvider,
+  createTextProvider,
+  createVisionProvider,
+} from './provider/factory.js';
 import { runWorker } from './worker.js';
 import type { WorkerStatus } from './worker.js';
 import { createLogger } from '../../src/shared/logger.js';
