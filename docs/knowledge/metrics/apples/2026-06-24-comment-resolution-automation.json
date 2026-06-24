@@ -1,9 +1,8 @@
 {
   "date": "2026-06-24",
-  "session": "comment-resolution-automation",
-  "estimated_apples": 2,
-  "actual_apples": 2,
-  "delta": 0,
+  "slug": "comment-resolution-automation",
+  "estimated": 2,
+  "actual": 2,
   "verdict": "exact",
-  "hello_kitties": 0.4
+  "summary": "Made agents reliably close PR review threads: added a token-gated resolve-addressed-threads.yml workflow that resolves a thread via GraphQL only when its latest comment carries a disposition token (Addressed in <sha> when fixed, Resolving: <reason> when declined as incorrect/irrelevant), plus a comment-resolution-policy.md contract and AGENTS.md/copilot-instructions/reviewer-persona updates that force agents to emit the reason."
 }
