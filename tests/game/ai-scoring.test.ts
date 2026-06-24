@@ -45,8 +45,12 @@ function makeRunStats(overrides: Partial<RunStats>): RunStats {
 
 describe('ai scoring', () => {
   it('gives victories a dominant score advantage for comparable runs', () => {
-    const loss = scoreRun(makeRunStats({ outcome: 'timeout', totalXp: 500, finalLevel: 5, totalGold: 80 }));
-    const win = scoreRun(makeRunStats({ outcome: 'victory', totalXp: 500, finalLevel: 5, totalGold: 80 }));
+    const loss = scoreRun(
+      makeRunStats({ outcome: 'timeout', totalXp: 500, finalLevel: 5, totalGold: 80 }),
+    );
+    const win = scoreRun(
+      makeRunStats({ outcome: 'victory', totalXp: 500, finalLevel: 5, totalGold: 80 }),
+    );
     expect(win.score).toBeGreaterThan(loss.score);
   });
 
