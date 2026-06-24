@@ -55,6 +55,8 @@ export function verdictFromDelta(delta: number): Verdict {
 }
 
 export function helloKittiesFromActual(actualApples: number): number {
+  // Complexity policy defines 5 apples as 1 "hello kitty" planning unit.
+  // Keep this derived metric centralized so every entry uses the same scale.
   return Math.round((actualApples / 5) * 100) / 100;
 }
 

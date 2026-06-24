@@ -39,6 +39,9 @@ function programName(segment) {
 export function isManualAppleWriteSegment(segment) {
   if (!segment.includes(APPLES_DIR_TOKEN)) return false;
   if (WRITER_ALLOW_RE.test(segment)) return false;
+  // Match `>` / `>>` shell redirection as write intent, but ignore `>>>`-style
+  // token runs by requiring the redirect to be at segment start or preceded by
+  // a non-`>` character.
   if (/(^|[^>])>>?/.test(segment)) return true;
   return WRITE_PROGRAMS.has(programName(segment));
 }
