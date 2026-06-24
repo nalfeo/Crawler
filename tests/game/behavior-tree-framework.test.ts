@@ -21,6 +21,7 @@ function makeContext(): BTContext {
     playerX: 0,
     playerY: 0,
     healthPercent: 1,
+    frameCount: 0,
     blackboard: {},
   };
 }

@@ -63,6 +63,35 @@ function connectedRoomIds(startId: number, rooms: readonly GeneratedRoom[]): Set
   return visited;
 }
 
+function getDoorSide(
+  room: GeneratedRoom,
+  door: GeneratedDoor,
+): 'left' | 'right' | 'top' | 'bottom' | null {
+  const { x, y, width, height } = room.bounds;
+  if (door.x === x) return 'left';
+  if (door.x === x + width - 1) return 'right';
+  if (door.y === y) return 'top';
+  if (door.y === y + height - 1) return 'bottom';
+  return null;
+}
+
+function countAdjacentDoorPairs(floor: GeneratedFloor): number {
+  let pairs = 0;
+  for (const room of floor.rooms) {
+    const doorSet = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+    for (const door of room.doors) {
+      const side = getDoorSide(room, door);
+      if ((side === 'left' || side === 'right') && doorSet.has(`${door.x},${door.y + 1}`)) {
+        pairs += 1;
+      }
+      if ((side === 'top' || side === 'bottom') && doorSet.has(`${door.x + 1},${door.y}`)) {
+        pairs += 1;
+      }
+    }
+  }
+  return pairs;
+}
+
 /**
  * Flood-fill from the player spawn treating PASSABLE tiles and DOOR tiles as
  * walkable. Returns the set of tile indices that are reachable.
@@ -269,7 +298,8 @@ describe('Map Generators', () => {
 
     it('should use double doors where widened corridors hit room walls', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
-      const floor1Config: MapConfig = {
+
+      const config: MapConfig = {
         widthTiles: 120,
         heightTiles: 70,
         tileSizePx: 32,
@@ -283,7 +313,7 @@ describe('Map Generators', () => {
 
       let seedsWithDoubleDoors = 0;
       for (const seed of REGRESSION_TEST_SEEDS) {
-        const floor = gen.generate({ ...floor1Config, seed }, new SeededRandom(seed));
+        const floor = gen.generate({ ...config, seed }, new SeededRandom(seed));
         const { width: w, height: h } = floor;
         let foundDoubleDoor = false;
 
@@ -326,6 +356,30 @@ describe('Map Generators', () => {
       }
 
       expect(seedsWithDoubleDoors).toBeGreaterThan(0);
+    });
+
+    it('should add paired doors in room-variety maps while flat maps keep single doors', () => {
+      const genFlat = new DungeonGenerator({ roomVariety: false });
+      const genVariety = new DungeonGenerator({ roomVariety: true });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+      const varietyPairCounts: number[] = [];
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const flatFloor = genFlat.generate({ ...config, seed }, new SeededRandom(seed));
+        const varietyFloor = genVariety.generate({ ...config, seed }, new SeededRandom(seed));
+        expect(countAdjacentDoorPairs(flatFloor)).toBe(0);
+        varietyPairCounts.push(countAdjacentDoorPairs(varietyFloor));
+      }
+      expect(varietyPairCounts.some((count) => count > 0)).toBe(true);
     });
 
     it('should have no isolated passable floor tiles (all reachable from spawn when doors are open)', () => {

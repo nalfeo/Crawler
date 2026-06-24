@@ -1,4 +1,4 @@
-import { entityExists } from 'bitecs';
+import { entityExists, query } from 'bitecs';
 import Phaser from 'phaser';
 import {
   aoeOnImpactPostDamage,
@@ -11,6 +11,7 @@ import {
   deathTimerSystem,
   doorSystem,
   dropSystem,
+  Enemy,
   fovSystem,
   healthSystem,
   isInSafeContext,
@@ -59,6 +60,7 @@ import {
   SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../shared/npc-types.js';
 import type { ShopkeeperStage } from '../../shared/quest-types.js';
+import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -148,6 +150,19 @@ export interface MainGameSceneOptions {
     playerEid: number,
     available: number,
   ) => Partial<Record<PrimaryStatId, number>>;
+  /**
+   * Optional factory for a human player session recorder (dev/debug only).
+   *
+   * Called once after the world and player entity are created. The factory
+   * receives the live world and playerEid and should return a {@link SessionRecorder}.
+   * The scene calls `recorder.tick()` every simulation step and emits kill/levelup
+   * events. The recorder is also exposed as `window.__playerSessionRecorder`.
+   *
+   * Implement with `createPlayerSessionRecorder` from
+   * `src/game/ai/player-session-recorder.ts`. The engine only depends on the
+   * shared {@link SessionRecorder} interface, keeping layer boundaries intact.
+   */
+  sessionRecorderFactory?: (world: GameWorld, playerEid: number) => SessionRecorder;
 }
 
 declare global {
@@ -162,6 +177,8 @@ declare global {
       };
       forceCompletionModal: () => void;
     };
+    /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
+    __playerSessionRecorder?: SessionRecorder;
   }
 }
 
@@ -194,6 +211,18 @@ export class MainGameScene extends Phaser.Scene {
   private warnedMissingDependencies = false;
 
   private modalPicker?: ReturnType<typeof createModalPickerUI>;
+
+  /**
+   * Dev-only: human player session recorder. Non-null only when
+   * `options.sessionRecorderFactory` is provided.
+   */
+  private sessionRecorder?: SessionRecorder;
+
+  /** Enemy count from the previous simulation step — used to detect kills. */
+  private prevEnemyCount = 0;
+
+  /** Player level from the previous simulation step — used to detect level-ups. */
+  private prevPlayerLevel = 0;
 
   /** Terrain tile layer — baked once per floor as a RenderTexture. */
   private mapRt?: Phaser.GameObjects.RenderTexture;
@@ -384,6 +413,17 @@ export class MainGameScene extends Phaser.Scene {
       postSystems: this.options.postSystems?.length ?? 0,
     });
 
+    // Wire session recorder if factory provided (dev/debug injection from caller).
+    if (this.options.sessionRecorderFactory) {
+      this.sessionRecorder = this.options.sessionRecorderFactory(this.world, this.playerEid);
+      this.prevEnemyCount = query(this.world.ecs, [Enemy]).length;
+      this.prevPlayerLevel = this.world.playerLevel?.level ?? 0;
+      if (typeof window !== 'undefined') {
+        window.__playerSessionRecorder = this.sessionRecorder;
+      }
+      logger.info('[session-recorder] Player session recording started');
+    }
+
     this.bridge = createPhaserBridge(this);
     this.modalPicker = createModalPickerUI(this);
     this.keyOne = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ONE);
@@ -532,6 +572,10 @@ export class MainGameScene extends Phaser.Scene {
       if (typeof window !== 'undefined' && window.__floor1Debug) {
         delete window.__floor1Debug;
       }
+      if (typeof window !== 'undefined' && window.__playerSessionRecorder) {
+        delete window.__playerSessionRecorder;
+      }
+      this.sessionRecorder = undefined;
     });
   }
 
@@ -784,6 +828,24 @@ export class MainGameScene extends Phaser.Scene {
 
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;
+
+      // Dev-only: record telemetry from the human player each sim step.
+      if (this.sessionRecorder) {
+        const currentEnemyCount = query(this.world.ecs, [Enemy]).length;
+        const currentLevel = this.world.playerLevel?.level ?? 0;
+        if (currentEnemyCount < this.prevEnemyCount) {
+          const killed = this.prevEnemyCount - currentEnemyCount;
+          for (let k = 0; k < killed; k += 1) {
+            this.sessionRecorder.onKill(this.sessionRecorder.getStats().totalKills + 1);
+          }
+        }
+        if (currentLevel > this.prevPlayerLevel) {
+          this.sessionRecorder.onLevelUp(currentLevel);
+        }
+        this.prevEnemyCount = currentEnemyCount;
+        this.prevPlayerLevel = currentLevel;
+        this.sessionRecorder.tick(this.inputState);
+      }
 
       if (this.world.state !== 'playing') {
         break;

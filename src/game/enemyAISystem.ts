@@ -986,23 +986,22 @@ function buildRangedPathTarget(
 /**
  * Fallback when pathing cannot produce a usable target/path.
  *
- * Returns `true` after applying direct chase steering for chase/swarm/leaper
- * personas, or `false` when fallback is intentionally disabled (flanker/ranged).
+ * Returns `true` after applying direct chase steering for all non-ranged enemies,
+ * or `false` for ranged enemies that should maintain spacing instead of hard-chasing.
  */
 function tryFallbackChaseNavigation(
   world: GameWorld,
   eid: number,
   behaviorType: number,
-  persona: number,
   playerX: number,
   playerY: number,
   enemyX: number,
   enemyY: number,
   speed: number,
 ): boolean {
-  // Flankers rely on path targets to stage positional plays around the player,
-  // and ranged enemies should maintain spacing instead of hard-chasing.
-  if (persona === PATH_PERSONA.FLANKER || behaviorType === AI_TYPE.RANGED) {
+  // Ranged enemies maintain spacing; all other personas (including flankers whose
+  // path target could not be found) fall back to direct chase so they never freeze.
+  if (behaviorType === AI_TYPE.RANGED) {
     return false;
   }
   setNavigatingVelocity(world, eid, playerX - enemyX, playerY - enemyY, speed);
@@ -1033,19 +1032,8 @@ function applyPathDrivenBehavior(
     traversalMode,
   );
   if (!personaTarget) {
-    const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
     if (
-      tryFallbackChaseNavigation(
-        world,
-        eid,
-        behaviorType,
-        persona,
-        playerX,
-        playerY,
-        enemyX,
-        enemyY,
-        speed,
-      )
+      tryFallbackChaseNavigation(world, eid, behaviorType, playerX, playerY, enemyX, enemyY, speed)
     ) {
       return;
     }
@@ -1083,13 +1071,11 @@ function applyPathDrivenBehavior(
   if (!usedPath) {
     const waypoint = world.floorMap?.tileToPixel(targetTile.x, targetTile.y);
     if (!waypoint) {
-      const persona = world.stores.enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
       if (
         tryFallbackChaseNavigation(
           world,
           eid,
           behaviorType,
-          persona,
           playerX,
           playerY,
           enemyX,
@@ -1149,6 +1135,18 @@ function applyPathDrivenBehavior(
       // the player has drifted within the tile. Drive toward the player's exact
       // pixel position so the enemy commits to contact range instead of stopping.
       setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
+    }
+  } else if (behaviorType !== AI_TYPE.RANGED && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {
+    // Non-NAVIGATOR, non-RANGED enemies (e.g. FLANKER persona) should never stall
+    // mid-pursuit when their path exhausts but the player is still out of contact
+    // range. Drive directly toward the player as a gap-closing fallback.
+    const currentVx = world.stores.velocity.x[eid] ?? 0;
+    const currentVy = world.stores.velocity.y[eid] ?? 0;
+    if (Math.hypot(currentVx, currentVy) <= EPSILON) {
+      const toPlayer = normalize(playerX - enemyX, playerY - enemyY);
+      if (toPlayer.length > EPSILON) {
+        setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
+      }
     }
   }
 }
