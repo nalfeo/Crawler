@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-24",
+  "slug": "inventory-lab-sprite-warmup",
+  "estimated": 1,
+  "actual": 1,
+  "verdict": "exact",
+  "summary": "Warm generated sprites in the inventory lab (it never ran BootScene) and fold icon-texture-loaded state into the InventoryUI render signature so cells render icons instead of text placeholders"
+}
