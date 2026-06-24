@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-23",
+  "session": "revert-swarm-kite-regression",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "Debugged the failing Floor 1 headless completion gate (seed 15 timed out at 330s, level 5, 13 kills, shopkeeper errand never completed). Root cause: commit 28bfac4 (swarm separation kite, melee focus-dive, ranged LoS reposition) regressed the canonical clear on three axes — correctness (player stuck 'Hunting the swarm for charm gold' at orbit 36px, too passive to farm the gold the merchant errand needs), performance (per-frame cost ~6x worse: 6.8s -> 42s wall, blowing the test's 30s hook budget), and stability (chaotic non-monotonic kills: hold 0.7 yielded only 3 kills). Reverted bt-ai-provider.ts to the pre-commit canonical state (252.9s clear, 22 kills, 6.8s wall, all 4 quests). Did NOT touch drop pickup ranges (game invariant). New features remain in git history for deliberate, gate-green reintroduction."
+}
