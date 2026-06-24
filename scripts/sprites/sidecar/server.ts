@@ -65,6 +65,13 @@ import { loadBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { LocalRunStore } from '../store/local-store.js';
 import type { RunStore } from '../store/types.js';
+import {
+  WORKFLOW_STATE_KEY,
+  computeStateEtag,
+  etagPreconditionFails,
+  parseWorkflowState,
+  serializeWorkflowState,
+} from './workflow-state.js';
 
 export interface SidecarDeps {
   /** Repository root — used in /api/health for operator visibility. */
@@ -155,6 +162,10 @@ interface WorkflowMetadataBody {
   readonly minScore?: unknown;
 }
 
+interface WorkflowStateBody {
+  readonly state?: unknown;
+}
+
 /**
  * Mime-type table for the only artifact types the gallery serves. Kept
  * tight on purpose — anything else returns 415 so an attacker can't trick
@@ -187,8 +198,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.header('Vary', 'Origin');
     }
     if (req.method === 'OPTIONS') {
-      reply.header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
-      reply.header('Access-Control-Allow-Headers', 'Content-Type');
+      reply.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      reply.header('Access-Control-Allow-Headers', 'Content-Type, If-Match');
+      reply.header('Access-Control-Expose-Headers', 'ETag');
       // `return reply` short-circuits Fastify routing after the preflight
       // is sent so the request can't fall through to a route handler and
       // trigger a "Reply already sent" warning.
@@ -789,6 +801,53 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         message: err instanceof Error ? err.message : String(err),
       };
     }
+  });
+
+  app.get('/api/workflow/state', async (_req, reply) => {
+    if (!(await store.has(WORKFLOW_STATE_KEY))) {
+      return { state: null, etag: null };
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await store.get(WORKFLOW_STATE_KEY);
+    } catch {
+      // Treat a vanished/half-written blob as "no state yet" rather than 500
+      // so the client can fall back to its localStorage cache and recover.
+      return { state: null, etag: null };
+    }
+    const etag = computeStateEtag(bytes);
+    reply.header('ETag', etag);
+    return { state: parseWorkflowState(bytes).state, etag };
+  });
+
+  app.put<{ Body: WorkflowStateBody }>('/api/workflow/state', async (req, reply) => {
+    const body = (req.body ?? {}) as WorkflowStateBody;
+    if (typeof body.state !== 'object' || body.state === null) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.state must be a non-null object' };
+    }
+    // Optimistic concurrency: compute the current ETag and compare against the
+    // caller's If-Match precondition before writing, so a stale tab can't
+    // silently clobber a newer queue.
+    let currentEtag: string | null = null;
+    if (await store.has(WORKFLOW_STATE_KEY)) {
+      try {
+        currentEtag = computeStateEtag(await store.get(WORKFLOW_STATE_KEY));
+      } catch {
+        currentEtag = null;
+      }
+    }
+    const rawIfMatch = req.headers['if-match'];
+    const ifMatch = Array.isArray(rawIfMatch) ? rawIfMatch[0] : rawIfMatch;
+    if (etagPreconditionFails(ifMatch, currentEtag)) {
+      reply.code(409);
+      return { error: 'etag-conflict', etag: currentEtag };
+    }
+    const bytes = serializeWorkflowState(body.state);
+    await store.put(WORKFLOW_STATE_KEY, bytes);
+    const etag = computeStateEtag(bytes);
+    reply.header('ETag', etag);
+    return { ok: true, etag };
   });
 
   app.post<{

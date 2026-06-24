@@ -535,6 +535,189 @@ describe('buildServer routes (inject)', () => {
   });
 });
 
+describe('workflow-state endpoints (GET/PUT /api/workflow/state)', () => {
+  let root: string;
+  let runsDir: string;
+  let app: FastifyInstance;
+
+  const sampleState = {
+    items: [
+      {
+        id: 'item-1',
+        seq: 1,
+        brief: 'Purple Potion Bottle',
+        stage: 'candidates',
+        chosenCandidatePath: 'briefs/draft/items/purple-potion/purple-potion-v1.yaml',
+      },
+    ],
+    selectedId: 'item-1',
+    nextSeq: 2,
+  };
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-wfstate-'));
+    runsDir = path.join(root, 'runs');
+    mkdirSync(runsDir, { recursive: true });
+    app = buildServer({ repoRoot: root, runsDir, version: 'test' });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('GET returns {state:null, etag:null} when nothing is stored yet', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ state: null, etag: null });
+  });
+
+  it('PUT then GET round-trips the state and is stable across reads', async () => {
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    expect(put.statusCode).toBe(200);
+    const putBody = put.json();
+    expect(putBody.ok).toBe(true);
+    expect(putBody.etag).toMatch(/^[0-9a-f]{64}$/);
+
+    const get = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(get.statusCode).toBe(200);
+    expect(get.json().state).toEqual(sampleState);
+    // Same bytes -> same content-hash ETag on every read.
+    expect(get.json().etag).toBe(putBody.etag);
+  });
+
+  it('persisted blob lives under workflow-state/ and never pollutes /api/runs', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    // The blob exists on disk under the workflow-state/ prefix...
+    expect(existsSync(path.join(runsDir, 'workflow-state', 'queue.json'))).toBe(true);
+    // ...but the run listing (which only matches <brief>/<run>/summary.json) ignores it.
+    const runs = await app.inject({ method: 'GET', url: '/api/runs' });
+    expect(runs.json().runs).toEqual([]);
+  });
+
+  it('accepts a write whose If-Match equals the current ETag and rotates the ETag', async () => {
+    const first = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const firstEtag = first.json().etag as string;
+
+    const second = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': firstEtag },
+      payload: { state: { ...sampleState, nextSeq: 3 } },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().etag).not.toBe(firstEtag);
+  });
+
+  it('rejects a stale If-Match with 409 and reports the current ETag', async () => {
+    const first = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const currentEtag = first.json().etag as string;
+
+    const conflict = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': 'stale-etag' },
+      payload: { state: { ...sampleState, nextSeq: 99 } },
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json().error).toBe('etag-conflict');
+    expect(conflict.json().etag).toBe(currentEtag);
+
+    // The conflicting write must NOT have mutated the stored state.
+    const get = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(get.json().state).toEqual(sampleState);
+  });
+
+  it('treats If-Match:* as "must already exist"', async () => {
+    const onEmpty = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': '*' },
+      payload: { state: sampleState },
+    });
+    expect(onEmpty.statusCode).toBe(409);
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const onExisting = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': '*' },
+      payload: { state: { ...sampleState, nextSeq: 4 } },
+    });
+    expect(onExisting.statusCode).toBe(200);
+  });
+
+  it('does an unconditional last-writer-wins overwrite when If-Match is omitted', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const overwrite = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: { items: [], selectedId: null, nextSeq: 9 } },
+    });
+    expect(overwrite.statusCode).toBe(200);
+    const get = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(get.json().state).toEqual({ items: [], selectedId: null, nextSeq: 9 });
+  });
+
+  it('rejects a missing or non-object body.state with 400', async () => {
+    const missing = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    expect(missing.statusCode).toBe(400);
+    expect(missing.json().error).toBe('bad-request');
+
+    const nullState = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: null },
+    });
+    expect(nullState.statusCode).toBe(400);
+
+    const primitive = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: 'not-an-object' },
+    });
+    expect(primitive.statusCode).toBe(400);
+  });
+});
+
 describe('POST /api/runs/:briefId/:runId/approve', () => {
   let root: string;
   let runsDir: string;

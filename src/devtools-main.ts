@@ -1162,12 +1162,81 @@ function render(): void {
   };
   let queueState: QueueState = createEmptyQueue();
   const pendingGenerationPolls = new Set<string>();
+
+  // --- Durable workflow-state sync ------------------------------------------
+  // The sidecar (Azure Blob in production) is the source of truth for the
+  // workflow queue; localStorage is only a cache for instant first paint and
+  // offline use. `writeQueueState` keeps writing the cache AND debounces a
+  // write-through PUT to the sidecar, guarded by a content-hash ETag so a
+  // stale tab can't silently clobber a newer queue.
+  const WORKFLOW_STATE_URL = `${SIDECAR_BASE}/api/workflow/state`;
+  const WORKFLOW_STATE_SYNC_DEBOUNCE_MS = 500;
+  let workflowStateEtag: string | null = null;
+  let workflowStateSyncTimer: ReturnType<typeof setTimeout> | null = null;
+  let workflowStatePutInFlight = false;
+  let workflowStatePending = false;
+
+  const putWorkflowState = async (): Promise<void> => {
+    // Coalesce: if a PUT is already running, mark that another is needed and
+    // let the in-flight one re-fire on completion with the latest queueState.
+    if (workflowStatePutInFlight) {
+      workflowStatePending = true;
+      return;
+    }
+    workflowStatePutInFlight = true;
+    let retryAfterConflict = false;
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (workflowStateEtag) {
+        headers['If-Match'] = workflowStateEtag;
+      }
+      const res = await fetch(WORKFLOW_STATE_URL, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ state: queueState }),
+      });
+      const body = (await res.json().catch(() => null)) as { etag?: unknown } | null;
+      const serverEtag = body && typeof body.etag === 'string' ? body.etag : null;
+      if (res.ok) {
+        workflowStateEtag = serverEtag;
+      } else if (res.status === 409) {
+        // Another writer won. Adopt the server's current ETag and retry once
+        // (debounced) so our latest local edits win for the global queue.
+        workflowStateEtag = serverEtag;
+        retryAfterConflict = true;
+      }
+    } catch {
+      // Sidecar unreachable; the localStorage cache still holds the latest
+      // state and a later mutation will retry the write-through.
+    } finally {
+      workflowStatePutInFlight = false;
+      if (workflowStatePending) {
+        workflowStatePending = false;
+        void putWorkflowState();
+      } else if (retryAfterConflict) {
+        scheduleWorkflowStateSync();
+      }
+    }
+  };
+
+  function scheduleWorkflowStateSync(): void {
+    if (workflowStateSyncTimer !== null) {
+      clearTimeout(workflowStateSyncTimer);
+    }
+    workflowStateSyncTimer = setTimeout(() => {
+      workflowStateSyncTimer = null;
+      void putWorkflowState();
+    }, WORKFLOW_STATE_SYNC_DEBOUNCE_MS);
+  }
+
   const writeQueueState = (): void => {
     try {
       window.localStorage.setItem(QUEUE_STORAGE_KEY, serializeQueue(queueState));
     } catch {
       // Ignore storage failures; the UI still works without persistence.
     }
+    // Write-through to the durable sidecar store (debounced to coalesce bursts).
+    scheduleWorkflowStateSync();
   };
   try {
     queueState = deserializeQueue(window.localStorage.getItem(QUEUE_STORAGE_KEY));
@@ -3849,16 +3918,52 @@ function render(): void {
     void recompute();
   });
 
-  for (const item of queueState.items) {
-    if (item.stage === 'generating' && item.generationRequestedAt) {
-      beginQueuedRunPolling(item.id);
+  const resumeGeneratingPolls = (): void => {
+    for (const item of queueState.items) {
+      if (item.stage === 'generating' && item.generationRequestedAt) {
+        beginQueuedRunPolling(item.id);
+      }
     }
-  }
+  };
+
+  // The sidecar store is the source of truth: on load, adopt its state (so a
+  // checkpoint-wiped localStorage cache is repaired from Azure) and only fall
+  // back to the cache when the sidecar is unreachable. Auto-resume polling
+  // runs against the final, hydrated state.
+  const hydrateQueueFromSidecar = async (): Promise<void> => {
+    try {
+      const res = await fetch(WORKFLOW_STATE_URL, { method: 'GET' });
+      if (res.ok) {
+        const body = (await res.json()) as { state?: unknown; etag?: unknown };
+        workflowStateEtag = typeof body.etag === 'string' ? body.etag : null;
+        if (body.state && typeof body.state === 'object') {
+          queueState = deserializeQueue(JSON.stringify(body.state));
+          try {
+            window.localStorage.setItem(QUEUE_STORAGE_KEY, serializeQueue(queueState));
+          } catch {
+            // Ignore cache write failures; in-memory state is authoritative.
+          }
+          renderQueue();
+          renderWorkflowSelection();
+        } else if (queueState.items.length > 0) {
+          // Sidecar reachable but has no state yet (first run): seed it from
+          // the local cache so this backlog becomes durable immediately.
+          scheduleWorkflowStateSync();
+        }
+      }
+    } catch {
+      // Sidecar unreachable; keep the localStorage-cached queue as-is.
+    } finally {
+      resumeGeneratingPolls();
+    }
+  };
+
   renderPostprocessDebugger();
   renderQueue();
   renderWorkflowSelection();
   void refreshDebuggerRuns();
   void checkWorkflowHealth();
+  void hydrateQueueFromSidecar();
   void recompute();
 }
 

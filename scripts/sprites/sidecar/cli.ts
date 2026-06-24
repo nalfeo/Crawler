@@ -92,6 +92,7 @@ async function main(): Promise<number> {
       `            POST /api/runs/:brief/:run/approve, POST /api/workflow/synthesize, POST /api/workflow/promote-brief,\n`,
     );
     process.stdout.write(`            POST /api/workflow/generate, POST /api/workflow/metadata\n`);
+    process.stdout.write(`            GET/PUT /api/workflow/state (durable, ETag-guarded)\n`);
     return 0;
   } catch (err) {
     process.stderr.write(`sprites:gallery sidecar: failed to bind ${HOST}:${port}\n`);
