@@ -6,6 +6,7 @@ import { DungeonGenerator } from '../../src/core/map/generators/DungeonGenerator
 import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
 import { ArenaGenerator } from '../../src/core/map/generators/ArenaGenerator';
 import { getGenerator, getRegisteredBiomes } from '../../src/core/map/generators/registry';
+import type { FloorMap } from '../../src/core/map/FloorMap';
 
 type GeneratedFloor = ReturnType<DungeonGenerator['generate']>;
 type GeneratedRoom = GeneratedFloor['rooms'][number];
@@ -57,6 +58,69 @@ function connectedRoomIds(startId: number, rooms: readonly GeneratedRoom[]): Set
       if (visited.has(neighbor)) continue;
       visited.add(neighbor);
       queue.push(neighbor);
+    }
+  }
+  return visited;
+}
+
+function getDoorSide(
+  room: GeneratedRoom,
+  door: GeneratedDoor,
+): 'left' | 'right' | 'top' | 'bottom' | null {
+  const { x, y, width, height } = room.bounds;
+  if (door.x === x) return 'left';
+  if (door.x === x + width - 1) return 'right';
+  if (door.y === y) return 'top';
+  if (door.y === y + height - 1) return 'bottom';
+  return null;
+}
+
+function countAdjacentDoorPairs(floor: GeneratedFloor): number {
+  let pairs = 0;
+  for (const room of floor.rooms) {
+    const doorSet = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+    for (const door of room.doors) {
+      const side = getDoorSide(room, door);
+      if ((side === 'left' || side === 'right') && doorSet.has(`${door.x},${door.y + 1}`)) {
+        pairs += 1;
+      }
+      if ((side === 'top' || side === 'bottom') && doorSet.has(`${door.x + 1},${door.y}`)) {
+        pairs += 1;
+      }
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Flood-fill from the player spawn treating PASSABLE tiles and DOOR tiles as
+ * walkable. Returns the set of tile indices that are reachable.
+ */
+function reachableTileIndices(floor: FloorMap): Set<number> {
+  const { width: w, height: h, playerSpawn, tileMap } = floor;
+  const visited = new Set<number>();
+  const stack: number[] = [playerSpawn.y * w + playerSpawn.x];
+  visited.add(stack[0]!);
+
+  while (stack.length > 0) {
+    const idx = stack.pop()!;
+    const cx = idx % w;
+    const cy = (idx - cx) / w;
+    for (const [nx, ny] of [
+      [cx + 1, cy],
+      [cx - 1, cy],
+      [cx, cy + 1],
+      [cx, cy - 1],
+    ] as [number, number][]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nIdx = ny * w + nx;
+      if (visited.has(nIdx)) continue;
+      const flags = tileMap.flags[nIdx]!;
+      const isDoor = (flags & TileFlags.DOOR) !== 0;
+      const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+      if (!isPassable && !isDoor) continue;
+      visited.add(nIdx);
+      stack.push(nIdx);
     }
   }
   return visited;
@@ -151,6 +215,8 @@ describe('Map Generators', () => {
   });
 
   describe('DungeonGenerator (BASIC_UNDERGROUND — room variety)', () => {
+    /** Seeds used across multiple regression tests in this suite. */
+    const REGRESSION_TEST_SEEDS = [1, 2, 3, 5, 7, 10, 42, 99] as const;
     it('should produce a map with correct dimensions', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
       const rng = new SeededRandom(42);
@@ -203,7 +269,7 @@ describe('Map Generators', () => {
     it('should keep every room reachable from the spawn room across representative seeds', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
 
-      for (const seed of [1, 2, 3, 5, 8, 13, 21]) {
+      for (const seed of REGRESSION_TEST_SEEDS) {
         const floor = gen.generate(
           smallConfig(BiomeType.BASIC_UNDERGROUND),
           new SeededRandom(seed),
@@ -217,7 +283,7 @@ describe('Map Generators', () => {
     it('should preserve a passable interior tile next to every room door after reshaping', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
 
-      for (const seed of [1, 2, 3, 5, 8, 13, 21]) {
+      for (const seed of REGRESSION_TEST_SEEDS) {
         const floor = gen.generate(
           smallConfig(BiomeType.BASIC_UNDERGROUND),
           new SeededRandom(seed),
@@ -227,6 +293,144 @@ describe('Map Generators', () => {
             expect(hasReachableInteriorTile(floor, room, door)).toBe(true);
           }
         }
+      }
+    });
+
+    it('should add paired doors in room-variety maps while flat maps keep single doors', () => {
+      const genFlat = new DungeonGenerator({ roomVariety: false });
+      const genVariety = new DungeonGenerator({ roomVariety: true });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      const varietyPairCounts: number[] = [];
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const flatFloor = genFlat.generate({ ...config, seed }, new SeededRandom(seed));
+        const varietyFloor = genVariety.generate({ ...config, seed }, new SeededRandom(seed));
+        expect(countAdjacentDoorPairs(flatFloor)).toBe(0);
+        varietyPairCounts.push(countAdjacentDoorPairs(varietyFloor));
+      }
+      expect(varietyPairCounts.some((count) => count > 0)).toBe(true);
+    });
+
+    it('should have no isolated passable floor tiles (all reachable from spawn when doors are open)', () => {
+      const gen = new DungeonGenerator({ roomVariety: true });
+      // Use the floor1 map size and seed to catch real-world regressions
+      const floor1Config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const floor = gen.generate({ ...floor1Config, seed }, new SeededRandom(seed));
+        const reachable = reachableTileIndices(floor);
+
+        let isolated = 0;
+        for (let idx = 0; idx < floor.width * floor.height; idx++) {
+          const flags = floor.tileMap.flags[idx]!;
+          const isDoor = (flags & TileFlags.DOOR) !== 0;
+          const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+          if (isPassable && !isDoor && !reachable.has(idx)) {
+            isolated++;
+          }
+        }
+        expect(isolated).toBe(0);
+      }
+    });
+
+    it('should keep SAFE and BOSS_STAIR room perimeter walls intact after room variety', () => {
+      // Locked boss-room doors are treated as pathable for connectivity checks, so
+      // sealing the boss room perimeter never creates unreachable areas — the room
+      // is always reachable via its designated door tile(s).
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const floor = gen.generate({ ...config, seed }, new SeededRandom(seed));
+        const { width: w } = floor;
+
+        for (const room of floor.rooms) {
+          if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+          const { x, y, width, height } = room.bounds;
+
+          // Build the set of door positions on this room's perimeter for exclusion
+          const doorSet = new Set(room.doors.map((d) => `${d.x},${d.y}`));
+
+          // Every perimeter tile must be a wall or a door — never an open corridor
+          const perimeterCoords: Array<[number, number]> = [];
+          for (let tx = x; tx < x + width; tx++) {
+            perimeterCoords.push([tx, y]);
+            perimeterCoords.push([tx, y + height - 1]);
+          }
+          for (let ty = y + 1; ty < y + height - 1; ty++) {
+            perimeterCoords.push([x, ty]);
+            perimeterCoords.push([x + width - 1, ty]);
+          }
+
+          for (const [tx, ty] of perimeterCoords) {
+            const tileFlags = floor.tileMap.flags[ty * w + tx]!;
+            const isPassable = (tileFlags & TileFlags.PASSABLE) !== 0;
+            const isDoor = (tileFlags & TileFlags.DOOR) !== 0;
+            const isKnownDoor = doorSet.has(`${tx},${ty}`);
+            // Perimeter tiles must be walls or designated doors, never bare floor/corridor
+            if (isPassable && !isDoor && !isKnownDoor) {
+              throw new Error(
+                `seed=${seed} room ${room.id} (${room.role}) has open corridor at perimeter tile (${tx},${ty})`,
+              );
+            }
+          }
+        }
+      }
+    });
+
+    it('should assign BOSS_STAIR room the same id before and after room variety', () => {
+      // Regression: pre-assigning roles must produce the same boss room as the
+      // old post-variety distance scoring in normal cases.
+      const genVariety = new DungeonGenerator({ roomVariety: true });
+      const genFlat = new DungeonGenerator({ roomVariety: false });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const floorV = genVariety.generate({ ...config, seed }, new SeededRandom(seed));
+        const floorF = genFlat.generate({ ...config, seed }, new SeededRandom(seed));
+
+        expect(floorV.bossStairRoom?.id).toBe(floorF.bossStairRoom?.id);
+        expect(floorV.safeRoom?.id).toBe(floorF.safeRoom?.id);
       }
     });
   });

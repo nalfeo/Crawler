@@ -1,5 +1,5 @@
 import { hasComponent, query } from 'bitecs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Damage, EnemyProjectile, Position, Projectile } from '../../src/core/components.js';
 import {
   collisionSystem,
@@ -13,9 +13,14 @@ import { AI_TYPE, enemyAISystem } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 describe('enemy ranged shooting', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('ranged enemy fires a projectile when within attack range', () => {
     const world = createTestWorld();
     world.elapsedMs = 100; // ensure cooldown passes
+    vi.spyOn(world.rng, 'next').mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
     spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
@@ -33,6 +38,7 @@ describe('enemy ranged shooting', () => {
   it('ranged enemy respects fire cooldown', () => {
     const world = createTestWorld();
     world.elapsedMs = 100;
+    vi.spyOn(world.rng, 'next').mockReturnValue(0);
 
     spawnPlayer(world, 0, 0);
     spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
@@ -53,6 +59,30 @@ describe('enemy ranged shooting', () => {
     enemyAISystem(world);
     const count3 = query(world.ecs, [EnemyProjectile]).length;
     expect(count3).toBe(2);
+  });
+
+  it('ranged enemy can miss when the accuracy roll fails', () => {
+    const world = createTestWorld();
+    world.elapsedMs = 100;
+    // First roll misses (0.95 > 0.9), later rolls can hit.
+    vi.spyOn(world.rng, 'next').mockReturnValueOnce(0.95).mockReturnValue(0);
+
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 100, 0, 20, AI_TYPE.RANGED, 1.5, 200, 150);
+
+    enemyAISystem(world);
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+    expect(world.stores.enemyBehavior.lastFireMs[enemy]).toBe(100);
+
+    // Cooldown should be consumed even on miss, so this immediate follow-up still cannot fire.
+    world.elapsedMs = 200;
+    enemyAISystem(world);
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(0);
+
+    // After cooldown, a successful roll can fire again.
+    world.elapsedMs = 1500;
+    enemyAISystem(world);
+    expect(query(world.ecs, [EnemyProjectile]).length).toBe(1);
   });
 
   it('ranged enemy does NOT fire when out of attack range', () => {

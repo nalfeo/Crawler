@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-23",
+  "slug": "world-gen-connectivity",
+  "estimated": 1,
+  "actual": 1,
+  "verdict": "exact",
+  "summary": "Flood-fill cull pass in DungeonGenerator to eliminate isolated floor tile pockets"
+}

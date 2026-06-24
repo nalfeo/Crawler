@@ -10,8 +10,12 @@ import {
 } from '../../src/shared/items.js';
 
 describe('Item Catalog', () => {
-  it('contains exactly 100 items', () => {
-    expect(ITEM_CATALOG).toHaveLength(100);
+  it('contains at least 100 items', () => {
+    expect(ITEM_CATALOG.length).toBeGreaterThanOrEqual(100);
+  });
+
+  it('snapshot: current catalog size (update when intentionally adding items)', () => {
+    expect(ITEM_CATALOG).toHaveLength(102);
   });
 
   it('has unique IDs', () => {
@@ -39,10 +43,24 @@ describe('Item Catalog', () => {
     }
   });
 
-  it('has 20 items per canonical tag', () => {
+  it('has at least 20 items per canonical tag', () => {
     for (const tag of KNOWN_TAGS) {
       const count = ITEM_CATALOG.filter((item) => item.tags.includes(tag)).length;
-      expect(count).toBe(20);
+      expect(count).toBeGreaterThanOrEqual(20);
+    }
+  });
+
+  it('snapshot: current item count per canonical tag (update when intentionally adding items)', () => {
+    const expected: Record<string, number> = {
+      Materials: 21,
+      Weapons: 20,
+      Consumables: 20,
+      'Key Items': 20,
+      Misc: 21,
+    };
+    for (const tag of KNOWN_TAGS) {
+      const count = ITEM_CATALOG.filter((item) => item.tags.includes(tag)).length;
+      expect(count).toBe(expected[tag]);
     }
   });
 

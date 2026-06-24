@@ -67,9 +67,18 @@ export interface HeadlessRunnerConfig {
   recordEvent?: (event: SimEvent) => void;
   /** Frames between periodic sample events when recording (default 15). */
   eventSampleInterval?: number;
+  /**
+   * Force a specific starting weapon by ID (e.g. "sword", "bow", "baseball-bat").
+   * When set, the runner finds the matching entry in the seed's starter choices
+   * and selects it regardless of its shuffle position.  If the weapon is not
+   * present in the pool the run throws immediately.
+   */
+  forceWeaponId?: string;
 }
 
-const DEFAULT_CONFIG: Required<Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent'>> = {
+const DEFAULT_CONFIG: Required<
+  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId'>
+> = {
   seed: 12345,
   maxFrames: 100_000, // ~27 min at 60 FPS
   maxWallTimeMs: 5 * 60 * 1000, // 5 minutes wall time
@@ -104,8 +113,21 @@ export async function runHeadless(
   // This sets world.state = 'loadout'
   initializeFloor1Scenario(world, playerEid);
 
-  // Auto-select first starter weapon for headless mode (applies stat bonuses + equips weapon)
-  selectFloor1StarterWeapon(world, 0);
+  // Select starter weapon: either the forced weapon ID or option index 0.
+  let starterWeaponIndex = 0;
+  const forceWeaponId = config.forceWeaponId;
+  if (forceWeaponId !== undefined && world.floor1) {
+    const idx = world.floor1.starterChoices.indexOf(forceWeaponId);
+    if (idx === -1) {
+      throw new Error(
+        `forceWeaponId "${forceWeaponId}" not in starter choices for seed ${mergedConfig.seed}: [${world.floor1.starterChoices.join(', ')}]`,
+      );
+    }
+    starterWeaponIndex = idx;
+  }
+  selectFloor1StarterWeapon(world, starterWeaponIndex);
+  const startingWeapon: string =
+    world.floor1?.selectedWeaponId ?? world.floor1?.starterChoices[starterWeaponIndex] ?? 'unknown';
 
   // Verify we transitioned to 'playing' state
   if (world.state !== 'playing') {
@@ -491,6 +513,8 @@ export async function runHeadless(
       },
       finalLevel: world.playerLevel?.level ?? 0,
       totalXp: world.playerLevel?.xp ?? 0,
+      totalGold: world.playerGold,
+      startingWeapon,
     };
   }
 
@@ -541,6 +565,8 @@ export async function runHeadless(
     },
     finalLevel: world.playerLevel?.level ?? 0,
     totalXp: world.playerLevel?.xp ?? 0,
+    totalGold: world.playerGold,
+    startingWeapon,
   };
 
   if (mergedConfig.debug || mergedConfig.progressInterval > 0) {
