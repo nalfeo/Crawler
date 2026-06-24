@@ -375,8 +375,10 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         spellQuestGiverNpcEid: null,
         shopkeeperNpcEid: null,
         questItemEid: null,
-        bossDoorEids: [],
-        slimeRatDoorEids: [],
+        bossRoomDoorEids: new Map([
+          ['slime-rat', []],
+          ['staircase', []],
+        ]),
         objective: {
           requiredRats: 5,
           requiredSlimes: 3,
@@ -405,12 +407,16 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
           staircaseLocked: false,
           staircaseUnlocked: false,
           staircaseDiscovered: false,
-          slimeRatBattleStarted: false,
-          slimeRatBossEid: null,
-          slimeRatBossDefeated: false,
-          bossBattleStarted: false,
-          staircaseBossEid: null,
-          staircaseBossDefeated: false,
+          bossBattles: new Map([
+            [
+              'slime-rat',
+              { started: false, bossEid: null, defeated: false, displayName: 'Slime Rat' },
+            ],
+            [
+              'staircase',
+              { started: false, bossEid: null, defeated: false, displayName: 'Rat Slime' },
+            ],
+          ]),
         },
         failReason: null,
         runSummary: null,

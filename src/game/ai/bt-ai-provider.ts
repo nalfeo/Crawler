@@ -2621,7 +2621,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
-    if (!objective.slimeRatBattleStarted) {
+    if (!objective.bossBattles.get('slime-rat')!.started) {
       if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.slimeRatRoomPos.x,
@@ -2632,7 +2632,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
-    if (objective.slimeRatBossDefeated && !world.featureUnlocks.spells) {
+    if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
       if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.spellQuestGiverPos.x,
@@ -2643,7 +2643,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       );
     }
 
-    if (objective.slimeRatBossDefeated && !objective.bossBattleStarted) {
+    if (
+      objective.bossBattles.get('slime-rat')!.defeated &&
+      !objective.bossBattles.get('staircase')!.started
+    ) {
       if (progressSuppressed) return null;
       return this.createProgressTarget(
         objective.staircasePos.x,
@@ -3492,7 +3495,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         if (!world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID)) {
           return 'accept-spell-quest';
         }
-        if (objective.slimeRatBossDefeated && !world.featureUnlocks.spells) {
+        if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
           return 'claim-spell-reward';
         }
         return null;

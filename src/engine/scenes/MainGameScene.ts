@@ -322,7 +322,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private readonly worldMaskIgnoreList: Phaser.GameObjects.GameObject[] = [];
 
-  private previousBossEid: number | null = null;
+  private previousBossEids: Map<string, number | null> = new Map();
 
   /** Active NPC conversation lock; when set, fixed-step simulation pauses. */
   private conversationNpcEid: number | null = null;
@@ -950,19 +950,25 @@ export class MainGameScene extends Phaser.Scene {
 
   private playBossSpawnIntro(): void {
     const objective = this.world.floor1?.objective;
-    const bossEid = objective?.staircaseBossEid ?? null;
-    if (bossEid === this.previousBossEid) {
+    if (!objective) {
       return;
     }
 
-    this.previousBossEid = bossEid;
-    if (bossEid === null || !entityExists(this.world.ecs, bossEid)) {
-      return;
+    for (const [bossId, battle] of objective.bossBattles) {
+      const bossEid = battle.bossEid;
+      if (bossEid !== this.previousBossEids.get(bossId)) {
+        this.previousBossEids.set(bossId, bossEid);
+        if (bossEid !== null && entityExists(this.world.ecs, bossEid)) {
+          this.triggerBossSpawnFx(
+            this.world.stores.position.x[bossEid] ?? 0,
+            this.world.stores.position.y[bossEid] ?? 0,
+          );
+        }
+      }
     }
+  }
 
-    const x = this.world.stores.position.x[bossEid] ?? 0;
-    const y = this.world.stores.position.y[bossEid] ?? 0;
-
+  private triggerBossSpawnFx(x: number, y: number): void {
     this.cameras.main.shake(160, 0.008);
     this.cameras.main.flash(140, 255, 230, 160);
 
@@ -1201,7 +1207,7 @@ export class MainGameScene extends Phaser.Scene {
       .setDepth(1001)
       .setVisible(false);
     this.bossHealthName = this.add
-      .text(GAME.WIDTH / 2, bossBarY + 28, 'Rat-Slime Hybrid', {
+      .text(GAME.WIDTH / 2, bossBarY + 28, '', {
         fontFamily: 'monospace',
         fontSize: '13px',
         color: '#f8fafc',
@@ -1727,12 +1733,13 @@ export class MainGameScene extends Phaser.Scene {
       this.queueDirectorCommentary(FLOOR_1_COMMENTARY.questCompleted);
       return;
     }
-    if (objective.bossBattleStarted && !this.commentaryMilestones.bossBattleStarted) {
+    const staircaseBattle = objective.bossBattles.get('staircase');
+    if (staircaseBattle?.started && !this.commentaryMilestones.bossBattleStarted) {
       this.commentaryMilestones.bossBattleStarted = true;
       this.queueDirectorCommentary(FLOOR_1_COMMENTARY.bossBattleStarted);
       return;
     }
-    if (objective.staircaseBossDefeated && !this.commentaryMilestones.staircaseBossDefeated) {
+    if (staircaseBattle?.defeated && !this.commentaryMilestones.staircaseBossDefeated) {
       this.commentaryMilestones.staircaseBossDefeated = true;
       this.queueDirectorCommentary(FLOOR_1_COMMENTARY.staircaseBossDefeated);
       return;
@@ -1856,9 +1863,6 @@ export class MainGameScene extends Phaser.Scene {
 
   private updateBossHealthBar(): void {
     const objective = this.world.floor1?.objective;
-    const bossEid = objective?.staircaseBossEid ?? null;
-    const bossAlive = bossEid !== null && entityExists(this.world.ecs, bossEid);
-    const barVisible = !!objective?.bossBattleStarted && bossAlive;
     const shell = this.bossHealthShell;
     const fill = this.bossHealthFill;
     const label = this.bossHealthLabel;
@@ -1867,21 +1871,39 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
+    // Find the first active boss in insertion order (priority = bossBattles map order).
+    let activeBossEid: number | null = null;
+    let bossDisplayName = '';
+    if (objective) {
+      for (const battle of objective.bossBattles.values()) {
+        if (
+          battle.started &&
+          battle.bossEid !== null &&
+          entityExists(this.world.ecs, battle.bossEid)
+        ) {
+          activeBossEid = battle.bossEid;
+          bossDisplayName = battle.displayName || 'Boss';
+          break;
+        }
+      }
+    }
+
+    const barVisible = activeBossEid !== null;
     shell.setVisible(barVisible);
     fill.setVisible(barVisible);
     label.setVisible(barVisible);
     name.setVisible(barVisible);
-    if (!barVisible || bossEid === null) {
+    if (!barVisible || activeBossEid === null) {
       return;
     }
 
-    const current = this.world.stores.health.current[bossEid] ?? 0;
-    const max = Math.max(1, this.world.stores.health.max[bossEid] ?? 1);
+    const current = this.world.stores.health.current[activeBossEid] ?? 0;
+    const max = Math.max(1, this.world.stores.health.max[activeBossEid] ?? 1);
     const pct = Math.max(0, Math.min(1, current / max));
     const width = 360;
     fill.setSize(Math.max(1, Math.round(width * pct)), 20);
     fill.setFillStyle(pct > 0.5 ? 0x22c55e : pct >= 0.25 ? 0xf59e0b : 0xef4444);
-    name.setText(`Rat Slime  ${Math.ceil(current)} / ${Math.ceil(max)}`);
+    name.setText(`${bossDisplayName}  ${Math.ceil(current)} / ${Math.ceil(max)}`);
   }
 
   private updateInteractions(): void {
@@ -2034,7 +2056,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private resolveDialogueLines(defId: string): string[] {
     const objective = this.world.floor1?.objective;
-    if (defId === 'tutorial-goon' && objective?.staircaseBossDefeated) {
+    if (defId === 'tutorial-goon' && objective?.bossBattles.get('staircase')?.defeated) {
       return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
     }
     if (defId === 'shopkeeper' && this.options.shopkeeper) {

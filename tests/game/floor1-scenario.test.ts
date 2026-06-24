@@ -178,8 +178,8 @@ describe('floor1Scenario', () => {
 
     objective.ratsKilled = objective.requiredRats;
     objective.slimesKilled = objective.requiredSlimes;
-    expect(objective.bossBattleStarted).toBe(false);
-    expect(objective.staircaseBossEid).toBeNull();
+    expect(objective.bossBattles.get('staircase')!.started).toBe(false);
+    expect(objective.bossBattles.get('staircase')!.bossEid).toBeNull();
     expect(objective.staircaseSpawned).toBe(false);
     expect(objective.staircaseLocked).toBe(true);
     expect(objective.staircaseUnlocked).toBe(false);
@@ -200,27 +200,27 @@ describe('floor1Scenario', () => {
     expect(world.questLog.has(FLOOR1_BOSS_UNLOCK_QUEST_ID)).toBe(true);
     floorObjectiveSystem(world);
     expect(objective.questCompleted).toBe(true);
-    expect(objective.staircaseBossEid).toBeNull();
+    expect(objective.bossBattles.get('staircase')!.bossEid).toBeNull();
     meetSpellQuestGiver(world);
 
     world.stores.position.x[player] = objective.slimeRatRoomPos.x;
     world.stores.position.y[player] = objective.slimeRatRoomPos.y;
     floorObjectiveSystem(world);
-    expect(objective.slimeRatBattleStarted).toBe(true);
-    if (world.floor1 && world.floor1.slimeRatDoorEids.length > 0) {
-      for (const doorEid of world.floor1.slimeRatDoorEids) {
+    expect(objective.bossBattles.get('slime-rat')!.started).toBe(true);
+    if (world.floor1 && (world.floor1.bossRoomDoorEids.get('slime-rat') ?? []).length > 0) {
+      for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat')!) {
         expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
       }
     }
-    const slimeRatBossEid = objective.slimeRatBossEid;
+    const slimeRatBossEid = objective.bossBattles.get('slime-rat')!.bossEid;
     if (slimeRatBossEid === null) {
       throw new Error('Expected Slime Rat boss to exist');
     }
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
-    expect(objective.slimeRatBossDefeated).toBe(true);
-    if (world.floor1 && world.floor1.slimeRatDoorEids.length > 0) {
-      for (const doorEid of world.floor1.slimeRatDoorEids) {
+    expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
+    if (world.floor1 && (world.floor1.bossRoomDoorEids.get('slime-rat') ?? []).length > 0) {
+      for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat')!) {
         expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
       }
     }
@@ -232,10 +232,10 @@ describe('floor1Scenario', () => {
     world.stores.position.x[player] = objective.staircasePos.x;
     world.stores.position.y[player] = objective.staircasePos.y;
     floorObjectiveSystem(world);
-    expect(objective.bossBattleStarted).toBe(true);
+    expect(objective.bossBattles.get('staircase')!.started).toBe(true);
     expect(objective.staircaseDiscovered).toBe(false);
 
-    const bossEid = objective.staircaseBossEid;
+    const bossEid = objective.bossBattles.get('staircase')!.bossEid;
     if (bossEid === null) {
       throw new Error('Expected staircase boss to exist');
     }
@@ -245,7 +245,7 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseSpawned).toBe(true);
     expect(objective.staircaseLocked).toBe(false);
     expect(objective.staircaseUnlocked).toBe(true);
-    expect(objective.staircaseBossDefeated).toBe(true);
+    expect(objective.bossBattles.get('staircase')!.defeated).toBe(true);
 
     const descended = confirmFloor1StairDescend(world, player);
     expect(descended).toBe(true);
@@ -273,12 +273,47 @@ describe('floor1Scenario', () => {
     world.stores.position.y[player] = objective.slimeRatRoomPos.y;
     floorObjectiveSystem(world);
 
-    expect(objective.slimeRatBattleStarted).toBe(true);
-    expect(objective.slimeRatBossEid).not.toBeNull();
-    if (world.floor1 && world.floor1.slimeRatDoorEids.length > 0) {
-      for (const doorEid of world.floor1.slimeRatDoorEids) {
+    expect(objective.bossBattles.get('slime-rat')!.started).toBe(true);
+    expect(objective.bossBattles.get('slime-rat')!.bossEid).not.toBeNull();
+    if (world.floor1 && (world.floor1.bossRoomDoorEids.get('slime-rat') ?? []).length > 0) {
+      for (const doorEid of world.floor1.bossRoomDoorEids.get('slime-rat')!) {
         expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
       }
+    }
+  });
+
+  it('locks Slime Rat room until spell broker quest is accepted, then unlocks on doorSystem tick', () => {
+    const world = createTestWorld({ seed: 321 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const floor1 = world.floor1;
+    const slimeRatDoorEids = floor1?.bossRoomDoorEids.get('slime-rat') ?? [];
+    if (!floor1 || slimeRatDoorEids.length === 0) {
+      // No doors generated for this seed — nothing to assert.
+      return;
+    }
+
+    // Initially all slime rat room doors must be locked.
+    for (const doorEid of slimeRatDoorEids) {
+      expect(world.stores.doorState.isLocked[doorEid]).toBe(1);
+      expect(world.stores.doorState.isOpen[doorEid]).toBe(0);
+    }
+
+    // Accepting the quest via the Spell Broker sets the goal flag that unlocks the door.
+    world.playerLevel.level = 2;
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
+    meetTutorialGoon(world);
+    meetSpellQuestGiver(world);
+
+    expect(world.goalFlags.get('floor1-slime-rat-quest-accepted')).toBe(true);
+
+    // Run doorSystem so it processes the newly satisfied unlock condition.
+    doorSystem(world);
+
+    for (const doorEid of slimeRatDoorEids) {
+      expect(world.stores.doorState.isLocked[doorEid]).toBe(0);
     }
   });
 
@@ -326,16 +361,16 @@ describe('floor1Scenario', () => {
     world.stores.position.x[player] = objective.slimeRatRoomPos.x;
     world.stores.position.y[player] = objective.slimeRatRoomPos.y;
     floorObjectiveSystem(world);
-    expect(objective.slimeRatBattleStarted).toBe(true);
+    expect(objective.bossBattles.get('slime-rat')!.started).toBe(true);
 
     // Win the fight: remove the Slime Rat boss.
-    const slimeRatBossEid = objective.slimeRatBossEid;
+    const slimeRatBossEid = objective.bossBattles.get('slime-rat')!.bossEid;
     if (slimeRatBossEid === null) {
       throw new Error('Expected Slime Rat boss to exist');
     }
     removeEntity(world.ecs, slimeRatBossEid);
     floorObjectiveSystem(world);
-    expect(objective.slimeRatBossDefeated).toBe(true);
+    expect(objective.bossBattles.get('slime-rat')!.defeated).toBe(true);
 
     // The ability system stays locked until the spellbook is claimed at the Broker.
     expect(world.featureUnlocks.spells).toBe(false);
@@ -536,7 +571,7 @@ describe('floor1Scenario', () => {
       initializeFloor1Scenario(world, player);
       selectFloor1StarterWeapon(world, 0);
 
-      const bossDoorEids = world.floor1?.bossDoorEids ?? [];
+      const bossDoorEids = world.floor1?.bossRoomDoorEids.get('staircase') ?? [];
       expect(bossDoorEids.length).toBeGreaterThan(0);
 
       const allLocked = (): boolean =>
