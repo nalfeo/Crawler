@@ -3,5 +3,6 @@
   "entry": ["src/main.ts", "src/lab-main.ts", "src/devtools-main.ts"],
   "project": ["src/**/*.ts", "scripts/sprites/**/*.ts"],
   "ignore": ["tests/**", "node_modules/**", "dist/**"],
-  "ignoreDependencies": ["playwright"]
+  "ignoreDependencies": ["playwright"],
+  "ignoreBinaries": ["pwsh"]
 }
