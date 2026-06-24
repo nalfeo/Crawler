@@ -27,6 +27,22 @@ import { createHash } from 'node:crypto';
 /** Single global blob key for the workflow queue. Reuses `generated-runs`. */
 export const WORKFLOW_STATE_KEY = 'workflow-state/queue.json';
 
+/**
+ * Key prefix under which draft/candidate brief YAML is mirrored into the store
+ * so promote + generate can re-materialise a brief that a worktree checkpoint
+ * wiped from the local `briefs/draft/…` tree (which is fully gitignored).
+ */
+export const WORKFLOW_BRIEFS_PREFIX = 'workflow-state/briefs/';
+
+/**
+ * Map a repo-relative POSIX path (e.g. `briefs/draft/items/foo/foo-v1.yaml`)
+ * to its mirror key in the store. The full repo-relative path is preserved so
+ * the mapping is unambiguous and reversible.
+ */
+export function workflowBriefKey(repoRelativePath: string): string {
+  return `${WORKFLOW_BRIEFS_PREFIX}${repoRelativePath}`;
+}
+
 /** Result of reading the persisted state back out of the store. */
 export interface WorkflowStateEnvelope {
   /** Parsed workflow state, or `null` when absent/unparseable. */

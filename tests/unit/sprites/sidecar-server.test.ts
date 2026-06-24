@@ -24,6 +24,8 @@ import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
 import { buildServer, listRuns, safeJoin } from '../../../scripts/sprites/sidecar/server.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
+import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
+import type { AssetQueue, AssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type { FastifyInstance } from 'fastify';
 
 function writeMinimalRun(
@@ -715,6 +717,141 @@ describe('workflow-state endpoints (GET/PUT /api/workflow/state)', () => {
       payload: { state: 'not-an-object' },
     });
     expect(primitive.statusCode).toBe(400);
+  });
+});
+
+describe('workflow brief durability (Phase 2 re-materialise / mirror)', () => {
+  let root: string;
+  let runsDir: string;
+  let store: LocalRunStore;
+  let app: FastifyInstance;
+
+  // A queue stub that records enqueues and reports the azure backend so the
+  // generate handler enqueues (202) instead of running a real generation.
+  let enqueued: AssetRequest[];
+  function makeQueueStub(): AssetQueue {
+    return {
+      backend: 'azure-queue',
+      enqueue: async (request) => {
+        enqueued.push(request);
+      },
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-briefdur-'));
+    runsDir = path.join(root, 'runs');
+    mkdirSync(runsDir, { recursive: true });
+    store = new LocalRunStore(runsDir);
+    enqueued = [];
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      env: {},
+      store,
+      queue: makeQueueStub(),
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('promote-brief re-materialises a wiped source candidate from the store', async () => {
+    // Seed the store with a candidate whose local draft copy was "wiped"
+    // (never written to disk), mimicking a worktree checkpoint.
+    const sourceRel = 'briefs/draft/items/purple-potion/purple-potion-v1.yaml';
+    const yaml = 'name: purple-potion\ntype: item\n';
+    await store.put(workflowBriefKey(sourceRel), Buffer.from(yaml, 'utf8'));
+    expect(existsSync(path.join(root, sourceRel))).toBe(false);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/promote-brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { sourceYamlPath: sourceRel, type: 'item', name: 'purple-potion' },
+    });
+    expect(res.statusCode).toBe(200);
+    const destRel = res.json().briefPath as string;
+    expect(destRel).toBe('briefs/draft/items/purple-potion.yaml');
+    // The dest brief now exists on disk with the recovered content...
+    expect(readFileSync(path.join(root, destRel), 'utf8')).toBe(yaml);
+    // ...and the promoted brief was itself mirrored into the store so a later
+    // generate survives a subsequent wipe.
+    expect(await store.has(workflowBriefKey(destRel))).toBe(true);
+  });
+
+  it('promote-brief 404s when neither the disk nor the store has the source', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/promote-brief',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        sourceYamlPath: 'briefs/draft/items/ghost/ghost-v1.yaml',
+        type: 'item',
+        name: 'ghost',
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('source-not-found');
+  });
+
+  it('promote-brief mirrors the promoted brief even when the source is on disk', async () => {
+    const sourceRel = 'briefs/draft/items/blue-gem/blue-gem-v1.yaml';
+    const sourceAbs = path.join(root, sourceRel);
+    mkdirSync(path.dirname(sourceAbs), { recursive: true });
+    const yaml = 'name: blue-gem\ntype: item\n';
+    writeFileSync(sourceAbs, yaml);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/promote-brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { sourceYamlPath: sourceRel, type: 'item', name: 'blue-gem' },
+    });
+    expect(res.statusCode).toBe(200);
+    const destRel = res.json().briefPath as string;
+    expect(await store.has(workflowBriefKey(destRel))).toBe(true);
+    expect((await store.get(workflowBriefKey(destRel))).toString('utf8')).toBe(yaml);
+  });
+
+  it('generate re-materialises a wiped brief from the store before enqueuing', async () => {
+    const briefRel = 'briefs/draft/items/red-sword/red-sword.yaml';
+    const yaml = 'name: red-sword\ntype: item\n';
+    await store.put(workflowBriefKey(briefRel), Buffer.from(yaml, 'utf8'));
+    expect(existsSync(path.join(root, briefRel))).toBe(false);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/generate',
+      headers: { 'content-type': 'application/json' },
+      payload: { briefPath: briefRel },
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json();
+    expect(body.status).toBe('queued');
+    expect(body.briefId).toBe('red-sword');
+    // The brief was restored to disk so the worker can read it...
+    expect(existsSync(path.join(root, briefRel))).toBe(true);
+    // ...and exactly one enqueue happened, pointing at the restored brief.
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.briefPath).toBe(briefRel);
+  });
+
+  it('generate 404s when the brief is missing from both disk and store', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/generate',
+      headers: { 'content-type': 'application/json' },
+      payload: { briefPath: 'briefs/draft/items/nope/nope.yaml' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('brief-not-found');
+    expect(enqueued).toHaveLength(0);
   });
 });
 

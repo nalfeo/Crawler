@@ -7,11 +7,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  WORKFLOW_BRIEFS_PREFIX,
   WORKFLOW_STATE_KEY,
   computeStateEtag,
   etagPreconditionFails,
   parseWorkflowState,
   serializeWorkflowState,
+  workflowBriefKey,
 } from '../../../scripts/sprites/sidecar/workflow-state.js';
 
 describe('WORKFLOW_STATE_KEY', () => {
@@ -20,6 +22,21 @@ describe('WORKFLOW_STATE_KEY', () => {
     // <briefId>/<runId>/summary.json keys).
     expect(WORKFLOW_STATE_KEY).toBe('workflow-state/queue.json');
     expect(WORKFLOW_STATE_KEY.startsWith('workflow-state/')).toBe(true);
+  });
+});
+
+describe('workflowBriefKey', () => {
+  it('namespaces a repo-relative brief path under the briefs prefix', () => {
+    const key = workflowBriefKey('briefs/draft/items/foo/foo-v1.yaml');
+    expect(key).toBe('workflow-state/briefs/briefs/draft/items/foo/foo-v1.yaml');
+    expect(key.startsWith(WORKFLOW_BRIEFS_PREFIX)).toBe(true);
+  });
+
+  it('shares the workflow-state prefix so it stays out of /api/runs', () => {
+    // /api/runs only matches 3-part <briefId>/<runId>/summary.json keys; the
+    // workflow-state/ prefix guarantees brief mirrors never collide with runs.
+    expect(WORKFLOW_BRIEFS_PREFIX.startsWith('workflow-state/')).toBe(true);
+    expect(workflowBriefKey('a/b.yaml').startsWith('workflow-state/')).toBe(true);
   });
 });
 

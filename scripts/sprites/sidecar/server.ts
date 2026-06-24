@@ -71,6 +71,7 @@ import {
   etagPreconditionFails,
   parseWorkflowState,
   serializeWorkflowState,
+  workflowBriefKey,
 } from './workflow-state.js';
 
 export interface SidecarDeps {
@@ -630,6 +631,12 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         repoRoot: deps.repoRoot,
         env,
       });
+      // Mirror each candidate YAML into the store so a worktree checkpoint
+      // that wipes the gitignored briefs/draft tree can be recovered at
+      // promote time (Phase 2 durability).
+      for (const candidate of result.written) {
+        await mirrorBriefToStore(store, deps.repoRoot, candidate.yamlPath);
+      }
       return {
         name: result.name,
         type: result.type,
@@ -676,7 +683,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     }
     const target = body.target === 'committed' ? 'committed' : 'draft';
     const sourceAbs = resolveRepoPath(deps.repoRoot, body.sourceYamlPath);
-    if (!sourceAbs || !existsSync(sourceAbs)) {
+    if (!sourceAbs) {
+      reply.code(404);
+      return { error: 'source-not-found', message: 'sourceYamlPath does not exist in repo' };
+    }
+    // The source candidate lives under the gitignored briefs/draft tree, so a
+    // worktree checkpoint may have wiped it. Re-materialise it from the store
+    // before failing (Phase 2 durability).
+    if (
+      !existsSync(sourceAbs) &&
+      !(await materializeBriefFromStore(store, deps.repoRoot, sourceAbs))
+    ) {
       reply.code(404);
       return { error: 'source-not-found', message: 'sourceYamlPath does not exist in repo' };
     }
@@ -687,6 +704,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     const destAbs = path.resolve(deps.repoRoot, destRel);
     mkdirSync(path.dirname(destAbs), { recursive: true });
     copyFileSync(sourceAbs, destAbs);
+    // Mirror the promoted brief too, so a later generate survives a wipe.
+    await mirrorBriefToStore(store, deps.repoRoot, destAbs);
     return {
       briefPath: toRepoRelativePath(deps.repoRoot, destAbs),
       target,
@@ -700,7 +719,16 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return { error: 'bad-request', message: 'body.briefPath must be a non-empty string' };
     }
     const briefPath = resolveRepoPath(deps.repoRoot, body.briefPath);
-    if (!briefPath || !existsSync(briefPath)) {
+    if (!briefPath) {
+      reply.code(404);
+      return { error: 'brief-not-found', message: 'briefPath does not exist in repo' };
+    }
+    // A mid-flight generate must survive a checkpoint that wiped the gitignored
+    // draft brief: re-materialise it from the store before failing.
+    if (
+      !existsSync(briefPath) &&
+      !(await materializeBriefFromStore(store, deps.repoRoot, briefPath))
+    ) {
       reply.code(404);
       return { error: 'brief-not-found', message: 'briefPath does not exist in repo' };
     }
@@ -979,6 +1007,53 @@ function resolveRepoPath(repoRoot: string, relativePath: string): string | null 
 
 function toRepoRelativePath(repoRoot: string, absolutePath: string): string {
   return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
+}
+
+/**
+ * Mirror a brief YAML file into the store under the `workflow-state/briefs/`
+ * prefix, keyed by its repo-relative path. Best-effort: a mirror failure must
+ * never fail the originating request — durability lagging is recoverable, a
+ * 500 on synthesize/promote is not.
+ */
+async function mirrorBriefToStore(
+  store: RunStore,
+  repoRoot: string,
+  absPath: string,
+): Promise<void> {
+  try {
+    const rel = toRepoRelativePath(repoRoot, absPath);
+    if (rel.startsWith('..')) return;
+    await store.put(workflowBriefKey(rel), readFileSync(absPath));
+  } catch {
+    // Swallow: the brief is still on disk for the current request; the next
+    // synthesize/promote will re-attempt the mirror.
+  }
+}
+
+/**
+ * Re-materialise a brief YAML file from the store back onto disk when the
+ * local (gitignored) copy was wiped by a worktree checkpoint. Returns true iff
+ * the file exists on disk afterwards. Callers pass an already repo-confined
+ * absolute path (validated via `resolveRepoPath`).
+ */
+async function materializeBriefFromStore(
+  store: RunStore,
+  repoRoot: string,
+  absPath: string,
+): Promise<boolean> {
+  if (existsSync(absPath)) return true;
+  const rel = toRepoRelativePath(repoRoot, absPath);
+  if (rel.startsWith('..')) return false;
+  const key = workflowBriefKey(rel);
+  try {
+    if (!(await store.has(key))) return false;
+    const bytes = await store.get(key);
+    mkdirSync(path.dirname(absPath), { recursive: true });
+    writeFileSync(absPath, bytes);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function safeStoreJoin(base: string, relativePath: string): string | null {
