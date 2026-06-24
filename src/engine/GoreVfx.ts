@@ -74,8 +74,9 @@ export function createGoreVfx(
       const color = BLOOD_COLORS[Math.floor(vfxRandom() * BLOOD_COLORS.length)]!;
 
       const rect = scene.add.rectangle(x, y, size, size, color);
-      rect.setDepth(999);
+      rect.setDepth(10);
       rect.setAlpha(0.9);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(rect);
 
       particles.push({
         obj: rect,

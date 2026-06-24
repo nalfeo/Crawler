@@ -445,10 +445,14 @@ function dispatchAttack(
   if (world.rng.next() > effectiveAccuracy) {
     const px = world.stores.position.x[player] ?? 0;
     const py = world.stores.position.y[player] ?? 0;
+    // Project forward in attack direction to ~weapon reach.
+    // Cap at MAX_MISS_VFX_REACH_FT so ranged-weapon misses don't vanish off-screen.
+    const MAX_MISS_VFX_REACH_FT = 8;
+    const attackReach = Math.min(def.aoeRadius || def.range, MAX_MISS_VFX_REACH_FT);
     world.combatEvents.push({
       type: 'miss',
-      x: px,
-      y: py,
+      x: px + dir.x * ftToPx(attackReach),
+      y: py + dir.y * ftToPx(attackReach),
       amount: 0,
       targetType: 'enemy',
       timestamp: world.elapsedMs,

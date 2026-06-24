@@ -365,7 +365,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     if (!pathGraphics || !pathGraphics.scene) {
       pathGraphics = scene.add.graphics();
-      pathGraphics.setDepth(10_000);
+      pathGraphics.setDepth(50);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(pathGraphics);
     }
     return pathGraphics;
   };

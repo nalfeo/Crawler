@@ -49,7 +49,8 @@ export function createCombatVfx(scene: Phaser.Scene): {
       strokeThickness: 2,
     });
     text.setOrigin(0.5, 1);
-    text.setDepth(1000);
+    text.setDepth(20);
+    (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(text);
 
     floaters.push({ obj: text, startMs: renderElapsedMs, startY: event.y - 8 });
   }
