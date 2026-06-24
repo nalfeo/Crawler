@@ -53,6 +53,7 @@ import {
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
+  FLOOR1_LEAVE_FLOOR_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type ShopkeeperStage,
@@ -720,6 +721,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   setGoalFlag(world, 'floor1-shop-quest-complete', false);
   // Slime Rat boss room stays locked until the player accepts the quest from the Spell Broker.
   setGoalFlag(world, 'floor1-slime-rat-quest-accepted', false);
+  setGoalFlag(world, 'floor1-leave-floor-complete', false);
 
   // Spawn NPCs from placement definitions (if available in manifest)
   const npcPlacements = floor1Manifest.npcPlacements;
@@ -782,9 +784,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   acceptQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
   setTrackedQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID);
 
-  // Keep the final boss-room doors locked until the gating Floor 1 quests are
-  // complete: the Merchant's errand (floor1-shop-quest-complete) and the Spell
-  // Broker's Slime Rat spell-unlock quest (floor1-boss-battle-complete).
+  // Keep the final boss-room doors locked until all three gating Floor 1 quests are
+  // complete: the Goon's kill-grind (floor1-goon-quest-complete), the Merchant's
+  // errand (floor1-shop-quest-complete), and the Spell Broker's Slime Rat
+  // spell-unlock quest (floor1-boss-battle-complete).
   setGoalFlag(world, 'floor1-goon-quest-complete', false);
   const bossStairRoom = floorMap.bossStairRoom;
   if (bossStairRoom) {
@@ -799,6 +802,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
         unlock: {
           operator: 'all',
           conditions: [
+            { type: 'goal', goalId: 'floor1-goon-quest-complete' },
             { type: 'goal', goalId: 'floor1-shop-quest-complete' },
             { type: 'goal', goalId: 'floor1-boss-battle-complete' },
           ],
@@ -1438,6 +1442,18 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const slimeRatBattle = objective.bossBattles.get('slime-rat')!;
   const staircaseBattle = objective.bossBattles.get('staircase')!;
 
+  // Accept the final "Leave the Floor" quest once all three prerequisite quests
+  // are done: the Goon's kill-grind, the Merchant's errand, and the Spell
+  // Broker's Slime Rat quest. This is when the boss-room door opens.
+  const allGatesComplete =
+    world.goalFlags.get('floor1-goon-quest-complete') === true &&
+    world.goalFlags.get('floor1-shop-quest-complete') === true &&
+    world.goalFlags.get('floor1-boss-battle-complete') === true;
+  if (allGatesComplete && !world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)) {
+    acceptQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+  }
+
   // Slime Rat (weaker) battle starts in its dedicated boss room.
   if (
     world.questLog.has(FLOOR1_BOSS_BATTLE_QUEST_ID) &&
@@ -1558,6 +1574,12 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   setGoalFlag(world, 'floor1-boss-spellbook-claimed', true);
   setGoalFlag(world, 'floor1-boss-battle-complete', true);
   questSystem(world);
+  // Accept the final quest directly — the shortcut bypasses the three-gate door
+  // check, so we accept it explicitly rather than relying on the auto-accept path.
+  if (!world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID)) {
+    acceptQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID);
+  }
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, true);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);
 
@@ -1585,6 +1607,10 @@ export function confirmFloor1StairDescend(world: GameWorld, _playerEid: number):
   }
   objective.staircaseDiscovered = true;
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, true);
+  // Evaluate quests immediately so that the "Leave the Floor" objective for taking
+  // the stairs is marked complete before the run summary is finalised and the
+  // game loop breaks on victory.
+  questSystem(world);
   world.state = 'safe_room';
   finalizeRunSummary(world, 'cleared_floor');
   return true;
