@@ -1,5 +1,8 @@
-# Azure OpenAI - required for vision/AI features (sprite metadata, Cloud Code Review)
-# Run scripts/setup-azure-env.ps1 to populate this file automatically.
+# Azure OpenAI + Azure Storage env vars used by sprite generation tools.
+# Local setup (provision if needed + write .env.local):
+#   pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage
+# Local setup + GitHub Actions secret sync:
+#   pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -SyncGitHubSecrets
 # DO NOT commit real values — .env.local is git-ignored.
 # Expected local Azure context for this project:
 #   user         : nalfeo@hotmail.com
@@ -9,3 +12,13 @@ AZURE_OPENAI_ENDPOINT=
 AZURE_OPENAI_API_KEY=
 AZURE_OPENAI_VISION_DEPLOYMENT=
 AZURE_OPENAI_CHAT_DEPLOYMENT=
+AZURE_OPENAI_IMAGE_DEPLOYMENT=
+AZURE_OPENAI_API_VERSION=
+
+AZURE_STORAGE_ACCOUNT=
+AZURE_STORAGE_KEY=
+AZURE_STORAGE_CONNECTION_STRING=
+AZURE_STORAGE_QUEUE_NAME=asset-requests
+AZURE_STORAGE_RUNS_CONTAINER=generated-runs
+SPRITES_ASSET_QUEUE=azure-queue
+SPRITES_RUN_STORE=azure-blob

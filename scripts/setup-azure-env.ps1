@@ -1,137 +1,228 @@
 <#
 .SYNOPSIS
-    Bootstrap .env.local with Azure OpenAI credentials for local development.
+    Bootstrap local Azure env vars and optionally sync them to GitHub secrets.
 
 .DESCRIPTION
-    Fetches credentials from the project's Azure OpenAI resource using the
-    Azure CLI and writes them to .env.local (git-ignored).
-
-    Cloud/CI environments are skipped automatically -- use KeyVault or GitHub
-    Secrets for those instead.
+    Fetches Azure OpenAI credentials (required for image generation tools),
+    optionally fetches Azure Storage credentials (required for queue/run-store
+    backends), writes .env.local, and can push the same values to GitHub
+    Actions secrets with `gh secret set`.
 
     Variable names are documented in scripts/azure-env.example.
 
-.NOTES
-    Prerequisites:
-        - Azure CLI installed  (https://aka.ms/install-azure-cli)
-        - Logged in with the expected account and tenant:
-          az login --tenant nalfeohotmail.onmicrosoft.com --use-device-code
-        - Owner/Contributor role on the rg-crawler-sprites resource group
+.EXAMPLE
+    # Local OpenAI only
+    pwsh scripts/setup-azure-env.ps1
+
+.EXAMPLE
+    # Local OpenAI + Storage for worker/queue modes
+    pwsh scripts/setup-azure-env.ps1 -IncludeStorage
+
+.EXAMPLE
+    # Provision missing Azure resources, then configure local env
+    pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage
+
+.EXAMPLE
+    # Local setup + sync required values to GitHub secrets
+    pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -SyncGitHubSecrets
 #>
 
 param(
-    [switch]$Force   # Overwrite .env.local if it already exists
+    [switch]$Force,
+    [switch]$IncludeStorage,
+    [switch]$ProvisionResources,
+    [switch]$SyncGitHubSecrets,
+    [string]$GitHubRepo = 'nalfeo/Crawler',
+    [string]$ExpectedUser = 'nalfeo@hotmail.com',
+    [string]$TenantDomain = 'nalfeohotmail.onmicrosoft.com',
+    [string]$TenantId = '81f46c6b-e3ce-4db7-bc18-a3375faeb507',
+    [string]$Subscription = '308f5463-c4b1-4cfb-94e9-c3e0fd0dc67c',
+    [string]$OpenAIResourceGroup = 'rg-crawler-sprites',
+    [string]$OpenAIAccountName = 'aoai-crawler-nalfeo',
+    [string]$OpenAIChatDeployment = 'gpt-4o',
+    [string]$OpenAIVisionDeployment = 'gpt-4o',
+    [string]$OpenAIImageDeployment = 'gpt-image-1',
+    [string]$OpenAIApiVersion = '2025-04-01-preview',
+    [string]$StorageResourceGroup = 'crawler-sprites-rg',
+    [string]$StorageAccountName = 'crawlersprites',
+    [string]$StorageQueueName = 'asset-requests',
+    [string]$StorageRunsContainer = 'generated-runs'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# --- Cloud guard -----------------------------------------------------------
-# CI runners and Copilot cloud agents provide credentials via GH Secrets or
-# KeyVault. Do nothing and let those mechanisms work.
-if ($env:CI -or $env:GITHUB_ACTIONS -or $env:CODESPACES) {
-    Write-Host "Cloud/CI environment detected - skipping local env setup." `
-        -ForegroundColor Cyan
+function Require-Command([string]$Name) {
+    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
+        throw "Required command '$Name' was not found in PATH."
+    }
+}
+
+function Set-GitHubSecretValue([string]$Repo, [string]$Name, [string]$Value) {
+    $Value | gh secret set $Name --repo $Repo 1>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to set GitHub secret '$Name' in '$Repo'."
+    }
+    Write-Host "  - $Name" -ForegroundColor DarkGray
+}
+
+$isCloud = [bool]($env:CI -or $env:GITHUB_ACTIONS -or $env:CODESPACES)
+if ($isCloud -and -not $SyncGitHubSecrets) {
+    Write-Host "Cloud/CI environment detected - skipping local .env.local setup." -ForegroundColor Cyan
     exit 0
 }
 
-# --- Already set up? -------------------------------------------------------
-$envFile = Join-Path (Join-Path $PSScriptRoot '..') '.env.local' | Resolve-Path -ErrorAction SilentlyContinue
-if (-not $envFile) {
-    $envFile = Join-Path (Split-Path $PSScriptRoot) '.env.local'
+Require-Command 'az'
+
+if ($ProvisionResources) {
+    $provisionScript = Join-Path $PSScriptRoot 'setup-azure-resources.ps1'
+    if (-not (Test-Path $provisionScript)) {
+        throw "Missing provisioning script: $provisionScript"
+    }
+    Write-Host "Provisioning Azure resources needed for sprite e2e..." -ForegroundColor Cyan
+    & $provisionScript `
+        -ExpectedUser $ExpectedUser `
+        -TenantDomain $TenantDomain `
+        -TenantId $TenantId `
+        -Subscription $Subscription `
+        -OpenAIResourceGroup $OpenAIResourceGroup `
+        -OpenAIAccountName $OpenAIAccountName `
+        -OpenAIChatDeployment $OpenAIChatDeployment `
+        -OpenAIVisionDeployment $OpenAIVisionDeployment `
+        -OpenAIImageDeployment $OpenAIImageDeployment `
+        -StorageResourceGroup $StorageResourceGroup `
+        -StorageAccountName $StorageAccountName
+    if ($LASTEXITCODE -ne 0) {
+        throw "Azure resource provisioning failed."
+    }
 }
 
-if ((Test-Path $envFile) -and -not $Force) {
-    Write-Host ".env.local already exists. Pass -Force to overwrite." `
-        -ForegroundColor Yellow
-    exit 0
-}
-
-# --- Azure config ----------------------------------------------------------
-$expectedUser  = 'nalfeo@hotmail.com'
-$tenantDomain  = 'nalfeohotmail.onmicrosoft.com'
-$tenantId      = '81f46c6b-e3ce-4db7-bc18-a3375faeb507'
-$subscription = '308f5463-c4b1-4cfb-94e9-c3e0fd0dc67c'
-$resourceGroup = 'rg-crawler-sprites'
-$accountName   = 'aoai-crawler-nalfeo'
-$endpoint      = 'https://aoai-crawler-nalfeo.openai.azure.com/'
-$deployment    = 'gpt-4o'
-
-# --- Check az login + enforce target account context -----------------------
 Write-Host "Checking Azure CLI login..." -ForegroundColor Cyan
 $accountRaw = az account show --output json 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Not logged in to Azure." -ForegroundColor Red
-    Write-Host "Run: az login --tenant $tenantDomain --use-device-code" -ForegroundColor Yellow
+    Write-Host "Run: az login --tenant $TenantDomain --use-device-code" -ForegroundColor Yellow
     exit 1
 }
 $account = $accountRaw | ConvertFrom-Json
 
-if ($account.id -ne $subscription) {
-    Write-Host "Switching Azure subscription to $subscription..." -ForegroundColor Cyan
-    az account set --subscription $subscription 2>$null
+if ($account.id -ne $Subscription) {
+    Write-Host "Switching Azure subscription to $Subscription..." -ForegroundColor Cyan
+    az account set --subscription $Subscription 2>$null
 }
 
 $activeRaw = az account show --output json 2>&1
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to read active Azure account context." -ForegroundColor Red
-    exit 1
+    throw "Failed to read active Azure account context."
 }
 $active = $activeRaw | ConvertFrom-Json
-if (
-    $active.id -ne $subscription -or
-    $active.tenantId -ne $tenantId -or
-    $active.user.name -ne $expectedUser
-) {
+
+if ($active.id -ne $Subscription -or $active.tenantId -ne $TenantId -or $active.user.name -ne $ExpectedUser) {
     Write-Host "Azure context mismatch." -ForegroundColor Red
-    Write-Host "Expected user      : $expectedUser" -ForegroundColor Yellow
-    Write-Host "Expected tenant    : $tenantId ($tenantDomain)" -ForegroundColor Yellow
-    Write-Host "Expected subscription: $subscription" -ForegroundColor Yellow
-    Write-Host "Active user        : $($active.user.name)" -ForegroundColor Yellow
-    Write-Host "Active tenant      : $($active.tenantId)" -ForegroundColor Yellow
-    Write-Host "Active subscription: $($active.id)" -ForegroundColor Yellow
-    Write-Host "Run: az login --tenant $tenantDomain --use-device-code" -ForegroundColor Yellow
+    Write-Host "Expected user        : $ExpectedUser" -ForegroundColor Yellow
+    Write-Host "Expected tenant      : $TenantId ($TenantDomain)" -ForegroundColor Yellow
+    Write-Host "Expected subscription: $Subscription" -ForegroundColor Yellow
+    Write-Host "Active user          : $($active.user.name)" -ForegroundColor Yellow
+    Write-Host "Active tenant        : $($active.tenantId)" -ForegroundColor Yellow
+    Write-Host "Active subscription  : $($active.id)" -ForegroundColor Yellow
+    Write-Host "Run: az login --tenant $TenantDomain --use-device-code" -ForegroundColor Yellow
     exit 1
 }
 
-# --- Fetch key -------------------------------------------------------------
-Write-Host "Fetching API key from Azure..." -ForegroundColor Cyan
-$apiKey = az cognitiveservices account keys list `
-    --name $accountName `
-    --resource-group $resourceGroup `
-    --subscription $subscription `
+Write-Host "Fetching Azure OpenAI endpoint and key..." -ForegroundColor Cyan
+$openAIEndpoint = az cognitiveservices account show `
+    --name $OpenAIAccountName `
+    --resource-group $OpenAIResourceGroup `
+    --subscription $Subscription `
+    --query properties.endpoint -o tsv
+if ($LASTEXITCODE -ne 0 -or -not $openAIEndpoint) {
+    throw "Failed to retrieve Azure OpenAI endpoint."
+}
+
+$openAIKey = az cognitiveservices account keys list `
+    --name $OpenAIAccountName `
+    --resource-group $OpenAIResourceGroup `
+    --subscription $Subscription `
     --query key1 -o tsv
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Failed to retrieve API key from Azure CLI output." `
-        -ForegroundColor Red
-    exit 1
+if ($LASTEXITCODE -ne 0 -or -not $openAIKey) {
+    throw "Failed to retrieve Azure OpenAI API key."
 }
 
-if (-not $apiKey) {
-    Write-Host "Failed to retrieve API key. Check your permissions." `
-        -ForegroundColor Red
-    exit 1
+$storageKey = $null
+if ($IncludeStorage -or $SyncGitHubSecrets) {
+    Write-Host "Fetching Azure Storage key..." -ForegroundColor Cyan
+    $storageKey = az storage account keys list `
+        --account-name $StorageAccountName `
+        --resource-group $StorageResourceGroup `
+        --subscription $Subscription `
+        --query "[0].value" -o tsv
+    if ($LASTEXITCODE -ne 0 -or -not $storageKey) {
+        throw "Failed to retrieve Azure Storage account key."
+    }
 }
 
-# --- Write .env.local ------------------------------------------------------
-$repoRoot = Split-Path $PSScriptRoot
-$outPath  = Join-Path $repoRoot '.env.local'
+if (-not $isCloud) {
+    $repoRoot = Split-Path $PSScriptRoot
+    $outPath = Join-Path $repoRoot '.env.local'
+    if ((Test-Path $outPath) -and -not $Force) {
+        Write-Host ".env.local already exists. Pass -Force to overwrite." -ForegroundColor Yellow
+    } else {
+        $storageBlock = ''
+        if ($IncludeStorage -and $storageKey) {
+            $storageBlock = @"
 
-@"
-# Local-only Azure OpenAI credentials - DO NOT COMMIT
+# Azure Storage (queue + run-store)
+AZURE_STORAGE_ACCOUNT=$StorageAccountName
+AZURE_STORAGE_KEY=$storageKey
+AZURE_STORAGE_QUEUE_NAME=$StorageQueueName
+AZURE_STORAGE_RUNS_CONTAINER=$StorageRunsContainer
+SPRITES_ASSET_QUEUE=azure-queue
+SPRITES_RUN_STORE=azure-blob
+"@
+        }
+
+        @"
+# Local-only Azure credentials - DO NOT COMMIT
 # Generated by scripts/setup-azure-env.ps1
-# Re-run this script on any new machine (requires: az login)
+# Re-run this script on any new machine (requires az login)
 # Expected Azure context:
-#   user=$expectedUser
-#   tenant=$tenantId
-#   subscription=$subscription
-AZURE_OPENAI_ENDPOINT=$endpoint
-AZURE_OPENAI_API_KEY=$apiKey
-AZURE_OPENAI_VISION_DEPLOYMENT=$deployment
-AZURE_OPENAI_CHAT_DEPLOYMENT=$deployment
+#   user=$ExpectedUser
+#   tenant=$TenantId
+#   subscription=$Subscription
+AZURE_OPENAI_ENDPOINT=$openAIEndpoint
+AZURE_OPENAI_API_KEY=$openAIKey
+AZURE_OPENAI_CHAT_DEPLOYMENT=$OpenAIChatDeployment
+AZURE_OPENAI_VISION_DEPLOYMENT=$OpenAIVisionDeployment
+AZURE_OPENAI_IMAGE_DEPLOYMENT=$OpenAIImageDeployment
+AZURE_OPENAI_API_VERSION=$OpenAIApiVersion$storageBlock
 "@ | Set-Content $outPath -Encoding UTF8
 
-Write-Host ".env.local written to: $outPath" -ForegroundColor Green
-Write-Host "Run this script again with -Force to rotate the key." `
-    -ForegroundColor DarkGray
+        Write-Host ".env.local written to: $outPath" -ForegroundColor Green
+    }
+}
+
+if ($SyncGitHubSecrets) {
+    Require-Command 'gh'
+    gh auth status 1>$null
+    if ($LASTEXITCODE -ne 0) {
+        throw "GitHub CLI is not authenticated. Run: gh auth login"
+    }
+
+    $connectionString = "DefaultEndpointsProtocol=https;AccountName=$StorageAccountName;AccountKey=$storageKey;EndpointSuffix=core.windows.net"
+
+    Write-Host "Syncing GitHub Actions secrets to $GitHubRepo..." -ForegroundColor Cyan
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_ENDPOINT' -Value $openAIEndpoint
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_API_KEY' -Value $openAIKey
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_CHAT_DEPLOYMENT' -Value $OpenAIChatDeployment
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_VISION_DEPLOYMENT' -Value $OpenAIVisionDeployment
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_IMAGE_DEPLOYMENT' -Value $OpenAIImageDeployment
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_OPENAI_API_VERSION' -Value $OpenAIApiVersion
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_ACCOUNT' -Value $StorageAccountName
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_KEY' -Value $storageKey
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_CONNECTION_STRING' -Value $connectionString
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_QUEUE_NAME' -Value $StorageQueueName
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'AZURE_STORAGE_RUNS_CONTAINER' -Value $StorageRunsContainer
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'SPRITES_ASSET_QUEUE' -Value 'azure-queue'
+    Set-GitHubSecretValue -Repo $GitHubRepo -Name 'SPRITES_RUN_STORE' -Value 'azure-blob'
+    Write-Host "GitHub secrets sync complete." -ForegroundColor Green
+}

@@ -1,8 +1,11 @@
 /**
  * Placeholder pixel-art generator.
  *
- * Generates simple 16×16 PNG placeholder sprites for every item that does
- * not yet have an approved generated sprite in the manifest. Runs entirely
+ * Generates simple 16×16 PNG placeholder sprites for EVERY item in the
+ * catalog that does not yet have an approved generated sprite in the
+ * manifest. Items with a hand-authored design (see `PLACEHOLDERS`) use that
+ * art; every other catalog item gets a deterministic procedural icon so the
+ * inventory never falls back to a text-square placeholder. Runs entirely
  * offline — no AI API required.
  *
  * Usage:
@@ -19,6 +22,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { PNG } from 'pngjs';
+import { ITEM_CATALOG } from '../../src/shared/items.js';
+import { SeededRandom } from '../../src/shared/random.js';
 
 // ---------------------------------------------------------------------------
 // Pixel art definitions — 16×16 character maps
@@ -327,8 +332,105 @@ export function renderSprite(rows: string[]): Buffer {
 }
 
 // ---------------------------------------------------------------------------
-// Manifest helpers
+// Procedural sprite generator (deterministic per item id)
 // ---------------------------------------------------------------------------
+
+/** FNV-1a hash of a string → 32-bit signed seed for SeededRandom. */
+function hashStringToSeed(value: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h | 0 || 0x9e3779b9;
+}
+
+/** Convert HSL (h in [0,360), s/l in [0,1]) to an [r,g,b] byte triple. */
+function hslToRgb(h: number, s: number, l: number): [number, number, number] {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  let r: number;
+  let g: number;
+  let b: number;
+  if (hp < 1) [r, g, b] = [c, x, 0];
+  else if (hp < 2) [r, g, b] = [x, c, 0];
+  else if (hp < 3) [r, g, b] = [0, c, x];
+  else if (hp < 4) [r, g, b] = [0, x, c];
+  else if (hp < 5) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  const m = l - c / 2;
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+/**
+ * Render a deterministic procedural 16×16 icon for an item id. Produces a
+ * horizontally-symmetric coloured blob with a dark outline and a small
+ * highlight — distinct per item, and visually clearly an icon rather than a
+ * text square. Pure: identical bytes for the same id on every run.
+ */
+export function renderProceduralSprite(id: string): Buffer {
+  const W = 16;
+  const H = 16;
+  const rng = new SeededRandom(hashStringToSeed(id));
+
+  const hue = rng.next() * 360;
+  const body = hslToRgb(hue, 0.55, 0.55);
+  const outline = hslToRgb(hue, 0.6, 0.22);
+  const highlight = hslToRgb(hue, 0.45, 0.82);
+
+  // Superellipse exponent selects the silhouette: 1 = diamond, 2 = ellipse,
+  // 3.5 = rounded square.
+  const exps = [1, 2, 3.5];
+  const exp = exps[rng.nextInt(0, exps.length - 1)]!;
+  const rx = 4.3 + rng.next() * 1.6;
+  const ry = 4.3 + rng.next() * 2.0;
+  const cx = 7.5;
+  const cy = 8;
+
+  const filled: boolean[][] = Array.from({ length: H }, () => new Array<boolean>(W).fill(false));
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x <= 7; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const v = Math.pow(Math.abs(dx) / rx, exp) + Math.pow(Math.abs(dy) / ry, exp);
+      let on = v <= 1;
+      // Ragged edge: thin out the outermost ring so silhouettes vary.
+      if (on && v > 0.78) {
+        on = rng.next() < 0.72;
+      }
+      if (on) {
+        filled[y]![x] = true;
+        filled[y]![W - 1 - x] = true;
+      }
+    }
+  }
+
+  const isFilled = (x: number, y: number): boolean =>
+    x >= 0 && x < W && y >= 0 && y < H && filled[y]![x] === true;
+
+  const png = new PNG({ width: W, height: H });
+  for (let i = 0; i < W * H * 4; i++) png.data[i] = 0;
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (!filled[y]![x]) continue;
+      const edge =
+        !isFilled(x - 1, y) || !isFilled(x + 1, y) || !isFilled(x, y - 1) || !isFilled(x, y + 1);
+      let color = edge ? outline : body;
+      if (!edge && x >= 4 && x <= 6 && y >= 4 && y <= 6 && rng.next() < 0.6) {
+        color = highlight;
+      }
+      const idx = (W * y + x) * 4;
+      png.data[idx] = color[0];
+      png.data[idx + 1] = color[1];
+      png.data[idx + 2] = color[2];
+      png.data[idx + 3] = 255;
+    }
+  }
+
+  return PNG.sync.write(png);
+}
 
 interface ManifestEntry {
   briefId: string;
@@ -371,8 +473,10 @@ export function run(options: RunOptions): { added: number; skipped: number } {
   let added = 0;
   let skipped = 0;
 
-  for (const [id, rows] of Object.entries(PLACEHOLDERS)) {
+  for (const item of ITEM_CATALOG) {
+    const id = item.id;
     const outerKey = `${id}-placeholder`;
+    const handAuthored = PLACEHOLDERS[id];
 
     // Always skip if a real (non-placeholder) entry already exists for this briefId.
     // --force must not overwrite real approvals — it only refreshes existing placeholders.
@@ -392,10 +496,11 @@ export function run(options: RunOptions): { added: number; skipped: number } {
 
     const pngFilename = `${id}-placeholder.png`;
     const pngPath = path.join(generatedDir, pngFilename);
+    const buffer = handAuthored ? renderSprite(handAuthored) : renderProceduralSprite(id);
 
     if (!dryRun) {
       fs.mkdirSync(generatedDir, { recursive: true });
-      fs.writeFileSync(pngPath, renderSprite(rows));
+      fs.writeFileSync(pngPath, buffer);
     }
 
     const entry: ManifestEntry = {
@@ -414,7 +519,8 @@ export function run(options: RunOptions): { added: number; skipped: number } {
       manifest.entries[outerKey] = entry;
     }
 
-    console.log(`  ${dryRun ? 'dry ' : ''}write ${id} → ${pngFilename}`);
+    const kind = handAuthored ? 'art' : 'proc';
+    console.log(`  ${dryRun ? 'dry ' : ''}write ${id} (${kind}) → ${pngFilename}`);
     added++;
   }
 

@@ -33,6 +33,9 @@ const RADAR_CLIP_RADIUS = HUD_RADAR_RADIUS - 4;
 const RADAR_PX_PER_TILE = 6;
 const ZOOM_STEP_IN = 1.15;
 const ZOOM_STEP_OUT = 0.87;
+const OVERLAY_CLOSE_BUTTON_SIZE = 52;
+const OVERLAY_CLOSE_BUTTON_MAX_SIZE = 72;
+const OVERLAY_CLOSE_BUTTON_MARGIN = 14;
 const DOT_PLAYER = 0xffffff;
 const DOT_PLAYER_RING = 0xffd23f;
 const DOT_OUTLINE = 0x0b0b14;
@@ -248,7 +251,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   const closeLabel = scene.add
     .text(0, 0, '✕', {
       fontFamily: 'monospace',
-      fontSize: '18px',
+      fontSize: '26px',
       color: '#fcd34d',
     })
     .setOrigin(0.5, 0.5)
@@ -258,7 +261,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .setInteractive({ useHandCursor: true });
 
   const closeButtonBg = scene.add
-    .rectangle(0, 0, 44, 44, PIXEL_UI.panelFill, 0.97)
+    .rectangle(0, 0, OVERLAY_CLOSE_BUTTON_SIZE, OVERLAY_CLOSE_BUTTON_SIZE, PIXEL_UI.panelFill, 0.97)
     .setStrokeStyle(1, PIXEL_UI.border)
     .setScrollFactor(0)
     .setDepth(HUD_DEPTH + 2)
@@ -350,8 +353,16 @@ export function createHudMinimap(scene: Phaser.Scene): {
     panelBg.setPosition(panelX + panelW / 2, panelY + panelH / 2).setSize(panelW, panelH);
     panelTitle.setPosition(panelX + 14, panelY + 10);
     panelHint.setPosition(panelX + 14, panelY + panelH - 26);
-    closeButtonBg.setPosition(panelX + panelW - 14 - 22, panelY + 10 + 22);
-    closeLabel.setPosition(panelX + panelW - 14 - 22, panelY + 10 + 22);
+    const closeButtonSize = Math.min(
+      OVERLAY_CLOSE_BUTTON_MAX_SIZE,
+      Math.round(OVERLAY_CLOSE_BUTTON_SIZE * getUiScale(scene)),
+    );
+    const closeButtonCenterX = panelX + panelW - OVERLAY_CLOSE_BUTTON_MARGIN - closeButtonSize / 2;
+    const closeButtonCenterY = panelY + OVERLAY_CLOSE_BUTTON_MARGIN + closeButtonSize / 2;
+    closeButtonBg.setPosition(closeButtonCenterX, closeButtonCenterY);
+    closeButtonBg.setSize(closeButtonSize, closeButtonSize);
+    closeLabel.setPosition(closeButtonCenterX, closeButtonCenterY);
+    closeLabel.setFontSize(`${Math.round(closeButtonSize * 0.5)}px`);
 
     viewport = new Phaser.Geom.Rectangle(viewportX, viewportY, viewportW, viewportH);
     viewportFrame
