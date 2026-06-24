@@ -10,6 +10,7 @@
 import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from '../core/world.js';
+import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 
 const PARTICLE_LIFETIME_MS = 500;
 const HIT_BASE_PARTICLES = 4;
@@ -74,7 +75,8 @@ export function createGoreVfx(
       const color = BLOOD_COLORS[Math.floor(vfxRandom() * BLOOD_COLORS.length)]!;
 
       const rect = scene.add.rectangle(x, y, size, size, color);
-      rect.setDepth(10);
+      // World-space VFX: depth must stay below UI_DEPTH_CUTOFF (see render-depths.ts).
+      rect.setDepth(WORLD_VFX_DEPTH.gore);
       rect.setAlpha(0.9);
       (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(rect);
 
