@@ -49,6 +49,7 @@ import {
 import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
+import { createSessionRecorderControls } from '../session-recorder-controls.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -192,6 +193,8 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   if (!(gui instanceof GUI)) {
     throw new Error('Lab runner did not initialize lil-gui.');
   }
+
+  const recorderControls = createSessionRecorderControls({ title: 'Session Recorder' });
 
   // URL params:
   // - ?autopick=1 skips loadout modal
@@ -538,6 +541,7 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
           },
           tutorialGoon: { meet: meetTutorialGoon },
           spellQuestGiver: { meet: meetSpellQuestGiver },
+          sessionRecorderFactory: recorderControls.factory,
           preSystems: [
             statsSystem,
             floor1PlayerStatSystem,
@@ -606,8 +610,10 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   debugFolder.add(questDebug, 'apply').name('Apply quest debug');
 
   createGame();
+  recorderControls.mount(controls);
 
   return () => {
+    recorderControls.destroy();
     game?.destroy(true);
     currentWorld = undefined;
     currentPlayerEid = undefined;
