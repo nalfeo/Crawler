@@ -54,6 +54,7 @@ import {
 
 /** Floor 1 design budget: the AI must clear the floor in under five minutes. */
 const FLOOR1_TIME_BUDGET_MS = 5 * 60 * 1000;
+const HEADLESS_WALL_TIME_CAP_MS = 30 * 60 * 1000;
 
 /**
  * Frame cap for the gate. One frame is `GAME.DELTA_MS` (1000/60 ms) of game
@@ -95,7 +96,11 @@ const HEADLESS_HOOK_TIMEOUT_MS = 60_000;
  */
 async function clearFloor1(seed: number): Promise<RunStats> {
   const ai = new BehaviorTreeAI({ seed });
-  return runHeadless(ai, { seed, maxFrames: MAX_FRAMES });
+  return runHeadless(ai, {
+    seed,
+    maxFrames: MAX_FRAMES,
+    maxWallTimeMs: HEADLESS_WALL_TIME_CAP_MS,
+  });
 }
 
 describe('Floor 1 headless completion gate', () => {

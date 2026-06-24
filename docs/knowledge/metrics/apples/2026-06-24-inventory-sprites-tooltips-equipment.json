@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-24",
+  "slug": "inventory-sprites-tooltips-equipment",
+  "estimated": 4,
+  "actual": 4,
+  "verdict": "exact",
+  "summary": "Four-part inventory/equipment pass: procedural sprites for the full item catalog, fixed inventory hover/click tooltips (per-frame re-render was nuking them), built a 16-slot paper-doll EquipmentUI behind the Gear button, and made the merchant charm a +1 Charisma necklace"
+}
