@@ -8,7 +8,8 @@
  * {@link eventsToJsonl} — work without modification.
  *
  * **Dev/debug only.** Never import this module from production game logic; the
- * engine wires it only when `import.meta.env.DEV` is true.
+ * recorder is only wired when the lab injects a `sessionRecorderFactory` into
+ * `MainGameScene` options.
  *
  * Pure module: no Phaser imports. Safe to import from labs and tests.
  */
@@ -29,8 +30,10 @@ import { AI_STATE_NAME, type SimEvent, type SimEventType } from './event-log.js'
  * Extends {@link SimEvent} with raw input fields so that AI tuning can directly
  * compare human input signals with the AI's computed inputs.
  *
- * The `state` field is always `'HUMAN'` for sample/state records; event records
- * (kill, levelup, quest, npc) set it to a descriptive string for context.
+ * The `state` field carries the inferred behavioral label (EXPLORE/ENGAGE/COLLECT/IDLE)
+ * for `sample` and `state` records, and for quest-log-derived `quest` records.
+ * Event records (`kill`, `levelup`, `npc`) keep the base `'HUMAN'` value from
+ * `buildEvent` since those events are not tied to a specific movement state.
  */
 export interface PlayerSessionEvent extends SimEvent {
   /** Normalized move X (-1…1) from player input this frame. */
@@ -144,9 +147,7 @@ export function createPlayerSessionRecorder(
       reason: 'player-input',
       targetEid: null,
       targetDist: null,
-      enemyCount: Array.isArray(enemyEids)
-        ? (enemyEids as unknown[]).length
-        : [...enemyEids].length,
+      enemyCount: enemyEids.length,
       nearestEnemyDist: nearestEnemyDist === null ? null : Math.round(nearestEnemyDist),
       level: world.playerLevel?.level ?? 0,
       xp: world.playerLevel?.xp ?? 0,

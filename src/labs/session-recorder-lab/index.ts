@@ -1,23 +1,34 @@
 /**
  * Session Recorder Lab
  *
- * Play the game yourself and record a human session as structured JSONL
- * telemetry. The recording uses the same {@link PlayerSessionEvent} format as
- * the AI headless runner so human and AI sessions can be compared directly
- * via {@link summarizeEvents} for behavior-tuning purposes.
+ * Record a full human play session as structured JSONL telemetry at the same
+ * fidelity as the AI headless runner, then compare behavior side-by-side.
  *
- * Controls
- * --------
- * - **Download JSONL** — save the full event stream to disk.
- * - **Show Summary** — print a wasted-time / behavior summary to the log panel.
- * - **Copy JSONL** — copy event stream to clipboard.
- * - **Reset** — discard the current recording and start fresh.
+ * ## How to enable
+ * Open the dev server and append `?lab=session-recorder-lab` to the URL:
+ * ```
+ * http://localhost:5173/?lab=session-recorder-lab
+ * ```
+ * The game starts immediately. Recording begins automatically once the scene
+ * loads — no extra setup needed.
  *
- * Usage
- * -----
- * Open: `?lab=session-recorder-lab`
- * After playing, click "Download JSONL" to export the session.
- * Feed the file to summarizeEvents() or compare against AI runs.
+ * ## How to download logs
+ * After playing, click **⬇ Download JSONL** in the controls panel on the right.
+ * The file is saved as `session-<timestamp>.jsonl` and contains one JSON object
+ * per line. Each line is a {@link PlayerSessionEvent} compatible with
+ * {@link summarizeEvents} and {@link eventsToJsonl}.
+ *
+ * ## Other controls
+ * - **📊 Show Summary** — print a wasted-time / behavior summary to the log panel.
+ * - **📋 Copy JSONL** — copy the event stream to the clipboard.
+ * - **🗑 Reset** — discard the current recording and start fresh.
+ *
+ * ## Comparing human vs AI
+ * ```ts
+ * const humanSummary = summarizeEvents(humanEvents);
+ * const aiSummary    = summarizeEvents(aiEvents);
+ * // diff wigglePct, statePct, travelEfficiency, kill cadence
+ * ```
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
@@ -102,6 +113,20 @@ function createSessionRecorderLab(canvas: HTMLElement, controls: HTMLElement): (
       );
     }
   }, 2000);
+
+  // ── Instruction banner ───────────────────────────────────────────────────
+  const banner = document.createElement('div');
+  banner.style.cssText =
+    'margin-bottom:8px;padding:8px 10px;background:rgba(30,58,138,0.5);' +
+    'border:1px solid rgba(96,165,250,0.4);border-radius:6px;' +
+    'color:#bfdbfe;font-size:11px;line-height:1.5;font-family:monospace;';
+  banner.innerHTML =
+    '<strong style="color:#93c5fd">How to enable:</strong> ' +
+    'append <code style="background:rgba(0,0,0,0.4);padding:0 3px;border-radius:3px">' +
+    '?lab=session-recorder-lab</code> to the dev-server URL.<br>' +
+    '<strong style="color:#93c5fd">How to download:</strong> ' +
+    'play normally, then click <strong>⬇ Download JSONL</strong> below.';
+  controls.insertBefore(banner, controls.firstChild);
 
   // ── lil-gui controls ─────────────────────────────────────────────────────
   type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -212,7 +237,10 @@ function createSessionRecorderLab(canvas: HTMLElement, controls: HTMLElement): (
   controls.appendChild(logEl);
 
   log('Tip: Play the game normally. Events are recorded automatically.');
-  log('Use "Download JSONL" to export, then compare with AI sessions via summarizeEvents().');
+  log(
+    'Use "⬇ Download JSONL" to save the session, then compare with AI runs via summarizeEvents().',
+  );
+  log('──────────────────────────────────────────────────');
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
   return () => {

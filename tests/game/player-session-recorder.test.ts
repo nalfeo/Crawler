@@ -110,7 +110,7 @@ describe('createPlayerSessionRecorder', () => {
 
   it('records enemyCount from live query', () => {
     const rec = createPlayerSessionRecorder(world, playerEid, { sampleInterval: 1 });
-    const enemyEid = spawnEnemy(world, 200, 200);
+    const enemyEid = spawnEnemy(world, 200, 200, 10);
     void enemyEid; // spawnEnemy already adds Enemy component via helpers
     rec.tick(makeInput());
     const sample = rec.getEvents().find((e) => e.type === 'sample')!;
@@ -176,7 +176,13 @@ describe('createPlayerSessionRecorder', () => {
   it('emits quest events when world questLog is updated during tick', () => {
     const rec = createPlayerSessionRecorder(world, playerEid, { sampleInterval: 100 });
     // Simulate quest appearing in world questLog
-    world.questLog.set('test-quest', { status: 'active', objectives: [] });
+    world.questLog.set('test-quest', {
+      questId: 'test-quest',
+      status: 'active',
+      tracked: false,
+      progress: {},
+      done: {},
+    });
     rec.tick(makeInput());
     const quests = rec.getEvents().filter((e) => e.type === 'quest');
     expect(quests.length).toBeGreaterThanOrEqual(1);
@@ -185,9 +191,21 @@ describe('createPlayerSessionRecorder', () => {
 
   it('emits quest completion event when questLog status becomes complete', () => {
     const rec = createPlayerSessionRecorder(world, playerEid, { sampleInterval: 100 });
-    world.questLog.set('test-quest', { status: 'active', objectives: [] });
+    world.questLog.set('test-quest', {
+      questId: 'test-quest',
+      status: 'active',
+      tracked: false,
+      progress: {},
+      done: {},
+    });
     rec.tick(makeInput()); // see accept
-    world.questLog.set('test-quest', { status: 'complete', objectives: [] });
+    world.questLog.set('test-quest', {
+      questId: 'test-quest',
+      status: 'complete',
+      tracked: false,
+      progress: {},
+      done: {},
+    });
     rec.tick(makeInput()); // see complete
     const quests = rec.getEvents().filter((e) => e.type === 'quest');
     expect(quests.some((q) => q.note?.includes('completed: test-quest'))).toBe(true);
