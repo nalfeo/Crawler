@@ -117,13 +117,7 @@ To also push the same values into GitHub Actions secrets:
 pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -SyncGitHubSecrets
 ```
 
-If you only want resource provisioning (no `.env.local` writes), run:
-
-```powershell
-pwsh scripts/setup-azure-resources.ps1
-```
-
-This sets these repo secrets (for `nalfeo/Crawler` by default):
+With `-SyncGitHubSecrets` the following repo secrets are written (for `nalfeo/Crawler` by default):
 
 - `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`
 - `AZURE_OPENAI_CHAT_DEPLOYMENT`, `AZURE_OPENAI_VISION_DEPLOYMENT`
@@ -133,6 +127,12 @@ This sets these repo secrets (for `nalfeo/Crawler` by default):
 - `SPRITES_ASSET_QUEUE`, `SPRITES_RUN_STORE`
 
 Use `-GitHubRepo owner/repo` to target a different repository.
+
+If you only want resource provisioning (no `.env.local` writes or secrets sync), run:
+
+```powershell
+pwsh scripts/setup-azure-resources.ps1
+```
 
 ---
 
