@@ -15,9 +15,15 @@ import {
   spawnPlayer,
   type GameWorld,
 } from '../../core/index.js';
+import {
+  fetchGeneratedSpriteRegistry,
+  GENERATED_SPRITE_REGISTRY_KEY,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createInventoryUI } from '../../engine/InventoryUI.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
+import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { addItem } from '../../shared/inventory.js';
@@ -137,6 +143,12 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       this.bridge = createPhaserBridge(this);
       this.inventoryUI = createInventoryUI(this);
 
+      // Seed an empty registry so InventoryUI always reads a non-null value,
+      // then warm the generated sprites so inventory cells render icons
+      // instead of falling back to text labels (mirrors BootScene).
+      this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, emptyGeneratedSpriteRegistry());
+      void this.warmGeneratedSprites();
+
       // Toggle inventory on Tab or I
       const onKeyDown = (event: KeyboardEvent) => {
         if (event.key === 'Tab' || event.key === 'i' || event.key === 'I') {
@@ -215,6 +227,29 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       this.bridge.sync(this.world);
       this.inventoryUI?.refresh(this.world);
       this.updateHud();
+    }
+
+    private async warmGeneratedSprites(): Promise<void> {
+      try {
+        const registry = await fetchGeneratedSpriteRegistry();
+        this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
+
+        if (registry.size === 0 || !this.load) {
+          return;
+        }
+
+        const queued = preloadGeneratedSprites(this.load, registry);
+        if (queued.length === 0) {
+          return;
+        }
+
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+          this.inventoryUI?.refresh(this.world);
+        });
+        this.load.start();
+      } catch {
+        // Non-fatal: cells fall back to text labels if warming fails.
+      }
     }
 
     private applyPlayerSpeedSetting(): void {
