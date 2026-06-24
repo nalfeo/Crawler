@@ -88,7 +88,15 @@ If a task feels like 6+ apples, split it. A single session should not attempt mo
 
 ## Recording Apple Entries
 
-At the end of every session create a **single new file** at:
+At the end of every session write a **single new file** using the canonical
+writer tool:
+
+```sh
+npm run docs:apple:write -- --date YYYY-MM-DD --session <slug> --estimated <1-5> --actual <0-10>
+```
+
+This command computes `delta`, `verdict`, and `hello_kitties` consistently and
+writes:
 
 ```
 docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json

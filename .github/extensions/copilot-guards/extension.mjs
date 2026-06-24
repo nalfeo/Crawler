@@ -9,11 +9,13 @@ import shellForcePushMain from './guards/shell-force-push-main.mjs';
 import shellMainBranchDelete from './guards/shell-main-branch-delete.mjs';
 import shellGhPrCreate from './guards/shell-gh-pr-create.mjs';
 import shellRmRfRepo from './guards/shell-rm-rf-repo.mjs';
+import shellAppleMetricsWriteOnly from './guards/shell-apple-metrics-write-only.mjs';
 import shellUnsafePortKill from './guards/shell-unsafe-port-kill.mjs';
 import editDeterminism from './guards/edit-determinism.mjs';
 import editPhaserInCore from './guards/edit-phaser-in-core.mjs';
 import editRepoMdJunk from './guards/edit-repo-md-junk.mjs';
 import editGuardSelfProtection from './guards/edit-guard-self-protection.mjs';
+import editAppleMetricsWriteOnly from './guards/edit-apple-metrics-write-only.mjs';
 import prPreflight from './guards/pr-preflight.mjs';
 
 // Order matters: shell/edit guards first (cheap), PR aggregator last
@@ -23,11 +25,13 @@ const guards = [
   shellMainBranchDelete,
   shellGhPrCreate,
   shellRmRfRepo,
+  shellAppleMetricsWriteOnly,
   shellUnsafePortKill,
   editDeterminism,
   editPhaserInCore,
   editRepoMdJunk,
   editGuardSelfProtection,
+  editAppleMetricsWriteOnly,
   prPreflight,
 ];
 

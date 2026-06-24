@@ -6,11 +6,13 @@
     "shell-main-branch-delete": { "disabled": false, "severity": "deny" },
     "shell-gh-pr-create": { "disabled": false, "severity": "deny" },
     "shell-rm-rf-repo": { "disabled": false, "severity": "deny" },
+    "shell-apple-metrics-write-only": { "disabled": false, "severity": "deny" },
     "shell-unsafe-port-kill": { "disabled": false, "severity": "deny" },
     "edit-determinism": { "disabled": false, "severity": "deny" },
     "edit-phaser-in-core": { "disabled": false, "severity": "deny" },
     "edit-repo-md-junk": { "disabled": false, "severity": "deny" },
     "edit-guard-self-protection": { "disabled": false, "severity": "ask" },
+    "edit-apple-metrics-write-only": { "disabled": false, "severity": "deny" },
     "pr-preflight": { "disabled": false, "severity": "deny" }
   }
 }

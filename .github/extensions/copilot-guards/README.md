@@ -10,18 +10,20 @@ Loaded automatically because it lives under `.github/extensions/`.
 
 ## What's enforced
 
-| Guard ID                     | Tool(s)                                 | Decision | What it blocks                                                                                                                                                                    |
-| ---------------------------- | --------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `shell-force-push-main`      | `powershell`, `bash`                    | **deny** | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.                                                                               |
-| `shell-main-branch-delete`   | `powershell`, `bash`                    | **deny** | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).                                                                                    |
-| `shell-gh-pr-create`         | `powershell`, `bash`                    | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                            |
-| `shell-rm-rf-repo`           | `powershell`, `bash`                    | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`. |
-| `shell-unsafe-port-kill`     | `powershell`                            | **deny** | `Get-NetTCPConnection` / `Win32_Process` + `Stop-Process` server-kill commands on legacy shared ports unless they are scoped to the current worktree path.                        |
-| `edit-determinism`           | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                           |
-| `edit-phaser-in-core`        | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                  |
-| `edit-repo-md-junk`          | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                           |
-| `edit-guard-self-protection` | `edit`, `create` (this extension)       | **ask**  | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                                                                                           |
-| `pr-preflight`               | `create_pull_request`                   | **deny** | Aggregated PR checks (semantic title, handoff, lab-gate, forbidden paths, cross-system ADR warning).                                                                              |
+| Guard ID                         | Tool(s)                                 | Decision | What it blocks                                                                                                                                                                    |
+| -------------------------------- | --------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shell-force-push-main`          | `powershell`, `bash`                    | **deny** | `git push --force` (or `-f`, `--force-with-lease`, `+main:main` refspec) targeting `main`/`master`.                                                                               |
+| `shell-main-branch-delete`       | `powershell`, `bash`                    | **deny** | `git push origin --delete main`, `git push origin :main`, `git branch -D main` (and `master`).                                                                                    |
+| `shell-gh-pr-create`             | `powershell`, `bash`                    | **deny** | `gh pr create` from the shell. Tells the agent to use the `create_pull_request` tool so PR guards run.                                                                            |
+| `shell-rm-rf-repo`               | `powershell`, `bash`                    | **deny** | `rm -rf .` / `./` / `*` / `./*` / `/` / `~` / `..` / absolute paths, plus the PowerShell equivalent `Remove-Item . -Recurse -Force`. Recognizes both `-r`/`-R` and `--recursive`. |
+| `shell-apple-metrics-write-only` | `powershell`, `bash`                    | **deny** | Shell writes targeting `docs/knowledge/metrics/apples/*.json` unless done through `npm run docs:apple:write` / `write-apple-metrics.ts`.                                          |
+| `shell-unsafe-port-kill`         | `powershell`                            | **deny** | `Get-NetTCPConnection` / `Win32_Process` + `Stop-Process` server-kill commands on legacy shared ports unless they are scoped to the current worktree path.                        |
+| `edit-determinism`               | `edit`, `create` (src/core,game,shared) | **deny** | New `Math.random()`, `Date.now()`, `performance.now()` calls. Tests and `src/labs/**` exempt. Comments/strings ignored.                                                           |
+| `edit-phaser-in-core`            | `edit`, `create` (src/core)             | **deny** | `import 'phaser'`, `require('phaser')`, `import('phaser')` inside `src/core/**`.                                                                                                  |
+| `edit-repo-md-junk`              | `create` (`*.md`)                       | **deny** | New `.md` files outside the allowlist (see below). Use the session artifacts folder for planning notes.                                                                           |
+| `edit-guard-self-protection`     | `edit`, `create` (this extension)       | **ask**  | Modifications to `.github/extensions/copilot-guards/**` unless `COPILOT_GUARDS_EDIT=1`.                                                                                           |
+| `edit-apple-metrics-write-only`  | `edit`, `create`                        | **deny** | Manual `edit`/`create` writes to `docs/knowledge/metrics/apples/*.json`; requires the apple metrics writer tool.                                                                  |
+| `pr-preflight`                   | `create_pull_request`                   | **deny** | Aggregated PR checks (semantic title, handoff, lab-gate, forbidden paths, cross-system ADR warning).                                                                              |
 
 ### `pr-preflight` checks in detail
 
@@ -146,12 +148,14 @@ Pure-function guards, no harness needed. 88 tests cover normalization, individua
 │   ├── shell-main-branch-delete.mjs
 │   ├── shell-gh-pr-create.mjs
 │   ├── shell-rm-rf-repo.mjs
+│   ├── shell-apple-metrics-write-only.mjs
 │   ├── shell-unsafe-port-kill.mjs
 │   ├── edit-determinism.mjs
 │   ├── edit-phaser-in-core.mjs
 │   ├── edit-repo-md-junk.mjs
 │   ├── edit-guard-self-protection.mjs
+│   ├── edit-apple-metrics-write-only.mjs
 │   └── pr-preflight.mjs
 └── tests/
-    └── *.test.mjs             # 88 tests, node --test
+    └── *.test.mjs             # node --test
 ```
