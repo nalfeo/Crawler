@@ -144,6 +144,38 @@ No rendering is included — PR2c consumes `candidate.sensors` and the `force`
 flag purely in the UI. Keeping the data structured from the first PR means the
 UI PR adds no new sidecar/state surface area.
 
+### 5. Generate stores only the raw sheet (Option B); PostProcess is the single explicit path
+
+The product decision for the new flow (confirmed for the PR2b Generate refactor)
+is **Option B**: the **Generate** stage produces and stores the raw sheet(s)
+**only** — it does **not** post-process, score, or judge. The user-visible
+**PostProcess** stage (slice → background-fix → resize → store final variants) is
+an explicit, operator-driven step, and **Judge** follows it.
+
+This sharpens the seam built in this ADR:
+
+- Because nothing post-processes during Generate, `POST /api/runs/:b/:r/postprocess`
+  is **THE** post-process path, not a "re-run of something Generate already did".
+  The first PostProcess and every subsequent one are the **same idempotent,
+  options-driven operation** over the stored sheet, returning structured
+  per-sensor results. The endpoint shipped in this PR (PR2a) is already built
+  this way, so it is correct under Option B with no change — it is option-agnostic
+  by construction.
+- **Bad-grid retry quality gate is preserved, but scoped.** Today `generateOne`
+  slices the freshly generated sheet to assert `cells.length === variantCount(brief)`
+  and **retries generation** on a bad grid. PR2b keeps a **lightweight,
+  content-aware sliceability check inside Generate purely for that retry
+  decision** (slicing is cheap and single-path since ADR 0018) — but Generate
+  still stores only the raw sheet. That internal check is explicitly **not** the
+  user-visible PostProcess: the fix/resize/store-final-variants work stays an
+  explicit PostProcess click. Losing this gate would let malformed sheets through,
+  so PR2b must retain it while moving the heavy per-variant work out of Generate.
+
+Implementation of the Generate/PostProcess split lands in **PR2b** (the
+`generateOne` split + the `/api/generate` endpoint and its integration fixtures,
+which today assume the coupled pipeline). PR2a only provides the option-agnostic
+re-run endpoints this split relies on.
+
 ## Consequences
 
 ### Positive
