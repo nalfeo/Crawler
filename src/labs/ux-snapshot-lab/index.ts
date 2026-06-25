@@ -57,6 +57,8 @@ const GW = Math.ceil(GAME.WIDTH / TILE); // 20
 const GH = Math.ceil(GAME.HEIGHT / TILE); // 12
 const DOOR_OPEN_COL = 9;
 const DOOR_CLOSED_ROW = Math.floor(GH / 2);
+const BUTTON_TOP_MARGIN = 16;
+const BUTTON_SPACING = 8;
 const DEFAULT_BUTTON_HEIGHT = 44;
 
 /**
@@ -224,8 +226,9 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   let modalPicker: ReturnType<typeof createModalPickerUI> | undefined;
 
   const applyPreset = (w: GameWorld): void => {
-    const objective = w.floor1?.objective;
-    if (!objective) {
+    const floor1 = w.floor1;
+    const objective = floor1?.objective;
+    if (!floor1 || !objective) {
       return;
     }
 
@@ -259,7 +262,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         objective.staircaseSpawned = false;
         if (slimeBattle) slimeBattle.defeated = false;
         if (staircaseBattle) staircaseBattle.defeated = false;
-        w.floor1!.runSummary = null;
+        floor1.runSummary = null;
         if (slashing) {
           slashing.level = 0;
           slashing.usage = 6;
@@ -292,7 +295,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         objective.staircaseSpawned = true;
         if (slimeBattle) slimeBattle.defeated = true;
         if (staircaseBattle) staircaseBattle.defeated = true;
-        w.floor1!.runSummary = {
+        floor1.runSummary = {
           outcome: 'cleared_floor',
           viewsEarned: 480,
           fansEarned: 92,
@@ -330,7 +333,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         objective.staircaseSpawned = false;
         if (slimeBattle) slimeBattle.defeated = false;
         if (staircaseBattle) staircaseBattle.defeated = false;
-        w.floor1!.runSummary = null;
+        floor1.runSummary = null;
         if (slashing) {
           slashing.level = 1;
           slashing.usage = 18;
@@ -638,17 +641,23 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
           .setInteractive({ useHandCursor: true })
           .setVisible(false)
           .on('pointerdown', onTap);
-      this.inventoryButton = makeCornerButton(16, '🎒 Bag', () => {
+      this.inventoryButton = makeCornerButton(BUTTON_TOP_MARGIN, '🎒 Bag', () => {
         toggleInventory();
       });
-      this.equipButton = makeCornerButton(72, '⚔ Gear', () => {
-        toggleEquipment();
-      });
+      this.equipButton = makeCornerButton(
+        BUTTON_TOP_MARGIN + DEFAULT_BUTTON_HEIGHT + BUTTON_SPACING,
+        '⚔ Gear',
+        () => {
+          toggleEquipment();
+        },
+      );
       const applyButtonScale = (scale: number): void => {
         this.inventoryButton?.setScale(scale);
         this.equipButton?.setScale(scale);
         this.equipButton?.setY(
-          16 + (this.inventoryButton?.height ?? DEFAULT_BUTTON_HEIGHT) * scale + 8,
+          BUTTON_TOP_MARGIN +
+            (this.inventoryButton?.height ?? DEFAULT_BUTTON_HEIGHT) * scale +
+            BUTTON_SPACING,
         );
       };
       applyButtonScale(getUiScale(this));
