@@ -317,7 +317,7 @@ describe('buildServer routes (inject)', () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.algorithm).toBe('v2');
+    expect(body.algorithm).toBe('content-aware');
     expect(body.sheetFile).toBe('sheet-01.png');
     expect(body.sheetW).toBe(14);
     expect(body.sheetH).toBe(10);
@@ -366,7 +366,7 @@ describe('buildServer routes (inject)', () => {
     });
     expect(selected.statusCode).toBe(200);
     const selectedBody = selected.json();
-    expect(selectedBody.algorithm).toBe('v2');
+    expect(selectedBody.algorithm).toBe('content-aware');
     expect(selectedBody.sheetFile).toBe('sheet-00.png');
     expect(selectedBody.sheetW).toBe(9);
     expect(selectedBody.sheetH).toBe(11);

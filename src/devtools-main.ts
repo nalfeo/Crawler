@@ -284,6 +284,13 @@ interface LivePostprocessOptions {
   };
 }
 
+// NOTE: These defaults MUST stay identical to the generation-side post-process
+// constants BACKGROUND_B_COLOR_TOLERANCE_SQ / BACKGROUND_B_FRINGE_TOLERANCE_SQ
+// in scripts/sprites/postprocess.ts. If they drift, the workflow grid
+// thumbnails (generation) and this debugger preview will diverge. A guard test
+// in tests/unit/bg-remove.test.ts locks the generation-side values to 4000 /
+// 12000. (We can't import them here — devtools is a browser bundle and must not
+// pull in Node/pngjs.)
 const DEFAULT_BACKGROUND_TWEAKS = {
   colorToleranceSq: 4000,
   fringeToleranceSq: 12000,

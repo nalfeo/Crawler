@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   removeBackground,
   removeBackgroundB,
+  BACKGROUND_B_COLOR_TOLERANCE_SQ,
+  BACKGROUND_B_FRINGE_TOLERANCE_SQ,
   type RgbaImage,
 } from '../../scripts/sprites/postprocess.js';
 
@@ -480,5 +482,23 @@ describe('removeBackground', () => {
     expect(alphaAt(out, 4, 0)).toBe(0);
     expect(alphaAt(out, 4, 1)).toBe(0);
     expect(alphaAt(out, 4, 2)).toBe(0);
+  });
+});
+
+// Guard: the post-process background defaults used during sprite *generation*
+// (scripts/sprites/postprocess.ts) MUST stay identical to the devtools
+// post-process *debugger* defaults (DEFAULT_BACKGROUND_TWEAKS in
+// src/devtools-main.ts). If these drift, the workflow grid thumbnails and the
+// debugger preview will diverge again — the exact bug this guard exists to
+// prevent. devtools-main.ts cannot import from scripts/sprites (browser bundle
+// must not pull in Node/pngjs), so the values are mirrored by hand and locked
+// here instead of via a shared module.
+describe('postprocess background defaults are locked to devtools DEFAULT_BACKGROUND_TWEAKS', () => {
+  it('colorToleranceSq default equals devtools DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq (4000)', () => {
+    expect(BACKGROUND_B_COLOR_TOLERANCE_SQ).toBe(4000);
+  });
+
+  it('fringeToleranceSq default equals devtools DEFAULT_BACKGROUND_TWEAKS.fringeToleranceSq (12000)', () => {
+    expect(BACKGROUND_B_FRINGE_TOLERANCE_SQ).toBe(12000);
   });
 });
