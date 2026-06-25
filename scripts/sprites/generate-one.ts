@@ -415,7 +415,15 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
         styleGuide,
         provider: visionProvider,
         variantIndex: e.index,
-        processedDir: store.resolve(storeKey('processed')),
+        // The judge sidecar (`NN.judge.json`) is written with `writeFileSync`, so
+        // `processedDir` must be a real local path. For non-local stores
+        // `store.resolve()` returns a blob URL, which `path.join` would mangle into
+        // a bogus relative path under the CWD (ENOENT). Omit it off-local: the judge
+        // scorecard is still returned and embedded in the run summary, so no judge
+        // data is lost — only the standalone local sidecar file is skipped.
+        ...(store.backend === 'local'
+          ? { processedDir: store.resolve(storeKey('processed')) }
+          : {}),
         variantPath: e.processedPath,
         ...(options.judgeCache ? { cache: options.judgeCache } : {}),
         ...(options.now ? { now: options.now } : {}),
