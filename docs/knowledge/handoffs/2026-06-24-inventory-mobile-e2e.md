@@ -165,3 +165,30 @@ this handoff existed; the subsequent allow followed once it was written.
 - **Split commits.** The production mobile fix is a separate `fix(minimap):`
   commit ahead of the `test:` commit so it stays visible to reviewers and in
   the squashed changelog body.
+
+## Update — e2e teardown hardening + rebase (blocking-gate readiness)
+
+After Group E (#278) made the e2e job a **blocking** merge-gate check, this
+branch was rebased onto the advancing `main` and hardened so it cannot fail its
+own gate:
+
+- **Teardown timeout fix.** The vitest e2e project set `testTimeout: 120_000`
+  but inherited the global `hookTimeout: 30_000`, so an `afterAll`
+  `browser/context.close()` could exceed 30s on a heavily loaded machine and
+  fail an otherwise-green suite (non-zero exit → red blocking check). Fix:
+  - `vitest.config.ts` e2e project now sets `hookTimeout: 120_000`.
+  - New `closeQuietly()` helper in `tests/e2e/helpers/ui-probe.ts` races
+    `close()` against a bounded 15s timer and swallows teardown errors —
+    best-effort cleanup must never fail a suite.
+  - Applied to the `afterAll` hooks in `inventory-flow`, `mobile-hit-targets`,
+    and the pre-existing `minimap-overlay` suite (rule #8: harden the whole
+    blocking gate, not just the new files). Committed as `test(e2e):`.
+- **Rebased onto `origin/main`** past #290/#279. One conflict in
+  `src/lab-main.ts` (both #279's `tile-blend-lab`/`sprite-tint-lab` and this
+  branch's `ui-probe-lab` registration) — resolved by keeping all three.
+- **Re-verified on the rebased tree:** `npm run verify:fast` green; full e2e
+  suite **14/14, 3 files, 0 failed suites, exit 0** (run twice). `main` is a
+  fast-moving target (#290→#279→#281 within ~15min); the `auto-rebase-prs`
+  workflow keeps the branch up-to-date for strict-mode merge.
+- **Auto-merge:** `gh pr merge --auto --squash` enabled on #284, #285, #291.
+  All three MERGEABLE; they land automatically once their blocking checks pass.
