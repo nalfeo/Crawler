@@ -23,6 +23,7 @@ import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
+import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { TeamId, MeleeSpriteId } from '../shared/constants.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
@@ -288,6 +289,11 @@ interface EntityVisual {
   type: string;
   /** Base scale to restore in the default per-frame branch. */
   baseScale: number;
+  /**
+   * Death-timer duration captured the first frame this corpse is seen dead.
+   * Used to normalise the corpse fade/desaturation curve. Undefined while alive.
+   */
+  deathTotalMs?: number;
 }
 
 function getEntityType(world: GameWorld, eid: number): string {
@@ -734,16 +740,29 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         img.setPosition(x, y);
 
         const isDeadEnemy = entityType === 'enemy' && hasComponent(world.ecs, eid, DeathTimer);
+        // Decay state for a dead enemy's corpse, applied AFTER the per-type
+        // switch below (whose default branch resets alpha/scale for the living).
+        let corpseDecay: CorpseDecay | undefined;
         let deathMarker = deathMarkers.get(eid);
         if (isDeadEnemy) {
+          const remainingMs = world.stores.deathTimer.remainingMs[eid] ?? 0;
+          // Capture the linger duration on the first dead frame so the fade is
+          // normalised regardless of the configured deathLingerMs.
+          if (visual.deathTotalMs === undefined) {
+            visual.deathTotalMs = Math.max(remainingMs, 1);
+          }
+          corpseDecay = computeCorpseDecay(remainingMs, visual.deathTotalMs);
+
           if (!deathMarker) {
             const tex = resolveTexture(scene, 'dead_skull');
             deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, tex.key, tex.frame);
             deathMarkers.set(eid, deathMarker);
           }
-          deathMarker.setVisible(isVisible);
-          deathMarker.setPosition(x, y - DEAD_SKULL_Y_OFFSET);
-          deathMarker.setAlpha(0.95);
+          // Skull is a brief "soul leaving" beat: it floats up and fades out
+          // within ~1s, well before the corpse finishes decaying.
+          deathMarker.setVisible(isVisible && corpseDecay.skullAlpha > 0.01);
+          deathMarker.setPosition(x, y - DEAD_SKULL_Y_OFFSET - corpseDecay.skullRisePx);
+          deathMarker.setAlpha(corpseDecay.skullAlpha);
         } else if (deathMarker) {
           deathMarker.setVisible(false);
         }
@@ -899,6 +918,24 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setScale(visual.baseScale);
             img.setRotation(0);
             break;
+        }
+
+        // Corpse styling wins over the per-type switch: a dead enemy drains
+        // toward grey (multiply tint) and fades out across its linger window.
+        if (corpseDecay) {
+          if (typeof img.setTint === 'function') {
+            img.setTint(corpseDecay.tint);
+          }
+          img.setAlpha(corpseDecay.corpseAlpha);
+        } else if (visual.deathTotalMs !== undefined) {
+          // This visual previously backed a corpse but its EID has been
+          // recycled for a living entity (bitecs reuses freed EIDs). Clear the
+          // leftover grey multiply-tint and stale linger duration so the reused
+          // sprite renders normally and recalibrates cleanly on its next death.
+          if (typeof img.clearTint === 'function') {
+            img.clearTint();
+          }
+          visual.deathTotalMs = undefined;
         }
       }
 

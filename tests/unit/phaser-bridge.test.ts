@@ -17,6 +17,8 @@ class MockImage {
   scaleX = 1;
   scaleY = 1;
   rotation = 0;
+  tint = 0xffffff;
+  tinted = false;
   frame: number | undefined;
 
   constructor(
@@ -43,6 +45,18 @@ class MockImage {
 
   setAlpha(alpha: number): this {
     this.alpha = alpha;
+    return this;
+  }
+
+  setTint(tint: number): this {
+    this.tint = tint;
+    this.tinted = true;
+    return this;
+  }
+
+  clearTint(): this {
+    this.tint = 0xffffff;
+    this.tinted = false;
     return this;
   }
 
@@ -209,7 +223,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
   });
 
-  it('adds a skull marker above enemies during their death linger window', () => {
+  it('fades the skull marker out quickly while the corpse desaturates and fades', () => {
     const { scene, images } = createSceneStub();
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -222,22 +236,100 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     expect(images).toHaveLength(1);
 
-    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 300 }));
+    // First dead frame: skull spawned at full alpha, corpse untouched.
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 3000 }));
     bridge.sync(world);
 
     expect(images).toHaveLength(2);
-    expect(images[1]).toMatchObject({
+    const corpse = images[0]!;
+    const skull = images[1]!;
+    expect(skull).toMatchObject({
       x: 12,
-      y: 16,
+      y: 16, // 34 - DEAD_SKULL_Y_OFFSET, no rise yet
       textureKey: '__cw_dead_skull',
       destroyed: false,
     });
+    expect(skull.alpha).toBeCloseTo(0.95);
+    expect(corpse.alpha).toBe(1);
+    expect(corpse.tint).toBe(0xffffff); // no desaturation yet
+
+    // Partway through the short skull window: skull dimmer and floating up.
+    world.stores.deathTimer.remainingMs[eid] = 3000 - 450;
+    bridge.sync(world);
+    expect(skull.alpha).toBeLessThan(0.95);
+    expect(skull.alpha).toBeGreaterThan(0);
+    expect(skull.y).toBeLessThan(16); // risen upward
+    expect(corpse.tinted).toBe(true);
+    expect(corpse.tint).not.toBe(0xffffff); // draining toward grey
+
+    // Past the skull window but well before corpse removal: skull gone, corpse
+    // still fully present and now fully desaturated.
+    world.stores.deathTimer.remainingMs[eid] = 3000 - 900;
+    bridge.sync(world);
+    expect(skull.alpha).toBe(0);
+    expect(skull.visible).toBe(false);
+    expect(corpse.alpha).toBe(1);
+
+    // Late linger: corpse fading out.
+    world.stores.deathTimer.remainingMs[eid] = 600;
+    bridge.sync(world);
+    expect(corpse.alpha).toBeLessThan(1);
+    expect(corpse.alpha).toBeGreaterThan(0);
 
     removeEntity(world.ecs, eid);
     bridge.sync(world);
 
-    expect(images[0]?.destroyed).toBe(true);
-    expect(images[1]?.destroyed).toBe(true);
+    expect(corpse.destroyed).toBe(true);
+    expect(skull.destroyed).toBe(true);
+  });
+
+  it('clears leftover corpse tint and linger state when a dead enemy EID is recycled', () => {
+    const { scene, images } = createSceneStub();
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 12, y: 34 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    bridge.sync(world);
+
+    // Kill it and advance so the corpse takes on a grey multiply-tint and the
+    // visual captures its 3000ms linger duration.
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 3000 }));
+    bridge.sync(world);
+    world.stores.deathTimer.remainingMs[eid] = 1500;
+    bridge.sync(world);
+
+    const corpse = images[0]!;
+    expect(corpse.tinted).toBe(true);
+    expect(corpse.tint).not.toBe(0xffffff);
+
+    // Free the EID and immediately reuse it for a fresh living enemy with NO
+    // intervening sync, so the bridge reuses the same sprite (it never sees the
+    // EID go idle, so the cleanup pass never recreates the visual).
+    removeEntity(world.ecs, eid);
+    const recycled = addEntity(world.ecs);
+    expect(recycled).toBe(eid); // bitecs reuses the freed EID
+    addComponent(world.ecs, recycled, set(Position, { x: 50, y: 60 }));
+    addComponent(world.ecs, recycled, Enemy);
+    addComponent(world.ecs, recycled, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    bridge.sync(world);
+
+    // The same sprite object was reused (not destroyed/recreated) and its
+    // leftover corpse styling is gone: full colour at full opacity.
+    expect(corpse.destroyed).toBe(false);
+    expect(corpse.tinted).toBe(false);
+    expect(corpse.tint).toBe(0xffffff);
+    expect(corpse.alpha).toBe(1);
+
+    // The stale linger was cleared too, so a shorter second death recalibrates
+    // from full. With a stale 3000ms total, 1000ms remaining would read as a
+    // two-thirds-elapsed corpse and tint grey + drop alpha on the first frame.
+    addComponent(world.ecs, recycled, set(DeathTimer, { remainingMs: 1000 }));
+    bridge.sync(world);
+    expect(corpse.tint).toBe(0xffffff);
+    expect(corpse.alpha).toBe(1);
   });
 
   it('renders rats and slimes with distinct enemy textures', () => {
