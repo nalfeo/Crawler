@@ -1,0 +1,488 @@
+import { describe, expect, it } from 'vitest';
+import { EnemyProjectile } from '../../src/core/components.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
+import { query } from 'bitecs';
+import { movementSystem, spawnBehaviorEnemy, spawnPlayer } from '../../src/core/index.js';
+import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { AI_TYPE, PATH_PERSONA, enemyAISystem } from '../../src/game/index.js';
+import { createTestWorld } from '../helpers/world-factory.js';
+
+const TILE = 32;
+
+function mkConfig(width: number, height: number): MapConfig {
+  return {
+    widthTiles: width,
+    heightTiles: height,
+    tileSizePx: TILE,
+    biome: BiomeType.DUNGEON,
+    seed: 42,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+}
+
+/** Open arena: solid floor interior ringed by a one-tile wall border. */
+function openArena(width = 24, height = 18): FloorMap {
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.FLOOR);
+  for (let x = 0; x < width; x += 1) {
+    tileMap.setFlags(x, 0, TilePresets.WALL);
+    tileMap.setFlags(x, height - 1, TilePresets.WALL);
+  }
+  for (let y = 0; y < height; y += 1) {
+    tileMap.setFlags(0, y, TilePresets.WALL);
+    tileMap.setFlags(width - 1, y, TilePresets.WALL);
+  }
+  return new FloorMap(
+    mkConfig(width, height),
+    tileMap,
+    new RoomGraph(),
+    new Uint8Array(width * height),
+    {
+      x: 2,
+      y: 2,
+    },
+  );
+}
+
+/** Open arena whose right half is tagged a SAFE room (tiles x>=12). */
+function safeRoomArena(): FloorMap {
+  const width = 24;
+  const height = 18;
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.FLOOR);
+  for (let x = 0; x < width; x += 1) {
+    tileMap.setFlags(x, 0, TilePresets.WALL);
+    tileMap.setFlags(x, height - 1, TilePresets.WALL);
+  }
+  for (let y = 0; y < height; y += 1) {
+    tileMap.setFlags(0, y, TilePresets.WALL);
+    tileMap.setFlags(width - 1, y, TilePresets.WALL);
+  }
+  const roomGraph = new RoomGraph();
+  roomGraph.add({ x: 12, y: 1, width: 11, height: 16 }, [], [], RoomRole.SAFE);
+  return new FloorMap(mkConfig(width, height), tileMap, roomGraph, new Uint8Array(width * height), {
+    x: 2,
+    y: 2,
+  });
+}
+
+/** Every tile is a wall — no navigation step is ever passable. */
+function fullyWalledArena(width = 10, height = 10): FloorMap {
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.WALL);
+  return new FloorMap(
+    mkConfig(width, height),
+    tileMap,
+    new RoomGraph(),
+    new Uint8Array(width * height),
+    {
+      x: 1,
+      y: 1,
+    },
+  );
+}
+
+/** A single small walkable island surrounded by walls. */
+function islandArena(): FloorMap {
+  const width = 40;
+  const height = 12;
+  const tileMap = new TileMap(width, height);
+  tileMap.fill(TilePresets.WALL);
+  for (let y = 3; y <= 8; y += 1) {
+    for (let x = 3; x <= 8; x += 1) {
+      tileMap.setFlags(x, y, TilePresets.FLOOR);
+    }
+  }
+  return new FloorMap(
+    mkConfig(width, height),
+    tileMap,
+    new RoomGraph(),
+    new Uint8Array(width * height),
+    {
+      x: 4,
+      y: 4,
+    },
+  );
+}
+
+function tileCenter(tx: number, ty: number): { x: number; y: number } {
+  return { x: tx * TILE + TILE / 2, y: ty * TILE + TILE / 2 };
+}
+
+function speedOf(world: ReturnType<typeof createTestWorld>, eid: number): number {
+  return Math.hypot(world.stores.velocity.x[eid] ?? 0, world.stores.velocity.y[eid] ?? 0);
+}
+
+describe('enemyAISystem — branch coverage hardening', () => {
+  it('uses the default enemy speed when a behavior enemy has speed 0', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // speed 0 forces getEnemySpeed()'s fallback to DEFAULT_ENEMY_SPEED (1.5).
+    const enemy = spawnBehaviorEnemy(world, 40, 0, 20, AI_TYPE.CHASE, 0, 200, 0);
+
+    enemyAISystem(world);
+
+    expect(speedOf(world, enemy)).toBeCloseTo(1.5, 5);
+  });
+
+  it('reuses a wander direction across consecutive idle frames', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    const player = spawnPlayer(world, ...spread(tileCenter(2, 2)));
+    // Out of aggro range so the enemy idles and wanders, with a floor map so the
+    // passability + safe-space wander guards are evaluated (not short-circuited).
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(8, 8)),
+      20,
+      AI_TYPE.CHASE,
+      2,
+      16,
+      0,
+    );
+
+    world.frameCount = 1;
+    enemyAISystem(world);
+    const firstVx = world.stores.velocity.x[enemy] ?? 0;
+    const firstVy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Math.hypot(firstVx, firstVy)).toBeGreaterThan(0.05);
+
+    // Next frame, still inside the chosen wander window and heading into open
+    // floor: the enemy keeps its existing direction instead of re-rolling.
+    world.frameCount = 2;
+    enemyAISystem(world);
+    const secondVx = world.stores.velocity.x[enemy] ?? 0;
+    const secondVy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Math.sign(secondVx)).toBe(Math.sign(firstVx));
+    expect(Math.sign(secondVy)).toBe(Math.sign(firstVy));
+    void player;
+  });
+
+  it('keeps an idle wanderer out of an adjacent safe room', () => {
+    const world = createTestWorld();
+    world.floorMap = safeRoomArena();
+    // Player parked far away in the safe half so the enemy stays de-aggroed.
+    spawnPlayer(world, ...spread(tileCenter(20, 8)));
+    const safeBoundaryPx = 12 * TILE;
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(9, 8)),
+      20,
+      AI_TYPE.CHASE,
+      2,
+      24,
+      0,
+    );
+
+    for (let i = 0; i < 90; i += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      enemyAISystem(world);
+      movementSystem(world);
+      // The wander steering actively avoids the safe room; the enemy must never
+      // cross into it.
+      expect(world.stores.position.x[enemy] ?? 0).toBeLessThan(safeBoundaryPx);
+    }
+  });
+
+  it('falls back to a random jiggle when every unstuck angle is blocked', () => {
+    const world = createTestWorld();
+    world.floorMap = fullyWalledArena();
+    spawnPlayer(world, ...spread(tileCenter(4, 4)));
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(5, 4)),
+      20,
+      AI_TYPE.CHASE,
+      2,
+      400,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    // The enemy can detect the player but cannot path anywhere, so it stays still
+    // and accrues stuck frames. Past STUCK_FRAMES_THRESHOLD the unstuck routine
+    // exhausts its wide arc (all walls) and emits a last-resort random jiggle —
+    // the only possible source of motion in a fully walled arena.
+    let sawJiggle = false;
+    for (let i = 0; i < 40; i += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      enemyAISystem(world);
+      if (speedOf(world, enemy) > 0.1) {
+        sawJiggle = true;
+      }
+    }
+    expect(sawJiggle).toBe(true);
+  });
+
+  it('pathing ranged enemies path toward the player while outside attack range', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    const player = spawnPlayer(world, ...spread(tileCenter(4, 8)));
+    // Distance (~9 tiles) far exceeds the 64px attack range, so the ranged path
+    // target resolves to the player's tile.
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(13, 8)),
+      20,
+      AI_TYPE.RANGED,
+      2,
+      800,
+      64,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    enemyAISystem(world);
+
+    // Heads left, toward the player.
+    expect(world.stores.velocity.x[enemy] ?? 0).toBeLessThan(-0.1);
+    void player;
+  });
+
+  it('pathing ranged enemies retreat to a standoff tile when too close', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    spawnPlayer(world, ...spread(tileCenter(12, 8)));
+    const start = tileCenter(12, 8);
+    // ~40px from the player with a 120px attack range → inside the 60px retreat
+    // band, so the ranged path target is pushed away from the player.
+    const enemy = spawnBehaviorEnemy(
+      world,
+      start.x + 40,
+      start.y,
+      20,
+      AI_TYPE.RANGED,
+      2,
+      800,
+      120,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    enemyAISystem(world);
+
+    // Retreats to the right, away from the player.
+    expect(world.stores.velocity.x[enemy] ?? 0).toBeGreaterThan(0.1);
+  });
+
+  it('pathing ranged enemies strafe inside the band for both tangent signs', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    spawnPlayer(world, ...spread(tileCenter(12, 9)));
+    const player = tileCenter(12, 9);
+    // ~90px away with a 120px attack range and 60px retreat band → strafe regime.
+    // Two enemies guarantee both even/odd eids (the tangent sign branch).
+    const enemyA = spawnBehaviorEnemy(
+      world,
+      player.x - 90,
+      player.y,
+      20,
+      AI_TYPE.RANGED,
+      2,
+      800,
+      120,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+    const enemyB = spawnBehaviorEnemy(
+      world,
+      player.x + 90,
+      player.y,
+      20,
+      AI_TYPE.RANGED,
+      2,
+      800,
+      120,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    enemyAISystem(world);
+
+    // Strafing means meaningful vertical (tangential) motion for both.
+    expect(Math.abs(world.stores.velocity.y[enemyA] ?? 0)).toBeGreaterThan(0.1);
+    expect(Math.abs(world.stores.velocity.y[enemyB] ?? 0)).toBeGreaterThan(0.1);
+  });
+
+  it('holds ranged enemies still when no path target is reachable', () => {
+    const world = createTestWorld();
+    world.floorMap = islandArena();
+    // Player marooned in the wall field, unreachable from the island.
+    spawnPlayer(world, ...spread(tileCenter(35, 6)));
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(5, 5)),
+      20,
+      AI_TYPE.RANGED,
+      2,
+      5000,
+      150,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    enemyAISystem(world);
+
+    // Ranged enemies maintain spacing rather than hard-chasing, so with no
+    // reachable target they stay put.
+    expect(speedOf(world, enemy)).toBe(0);
+  });
+
+  it('approaches with pathing when a leaper is outside the pounce band', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    const player = spawnPlayer(world, ...spread(tileCenter(4, 8)));
+    // Well beyond SLIME_LEAP_RANGE (96px) but inside aggro: the leaper hands off
+    // to the normal pathing chase branch.
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(14, 8)),
+      20,
+      AI_TYPE.LEAPER,
+      1.5,
+      800,
+      0,
+      {
+        persona: PATH_PERSONA.NAVIGATOR,
+      },
+    );
+
+    const startX = world.stores.position.x[enemy] ?? 0;
+    for (let i = 0; i < 30; i += 1) {
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+      enemyAISystem(world);
+      movementSystem(world);
+    }
+    expect(world.stores.position.x[enemy] ?? 0).toBeLessThan(startX - 8);
+    void player;
+  });
+
+  it('reverts a leaper to a normal chase after the player leaves the pounce band', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    // Start inside the pounce band so a full prep→leap→recover cycle runs.
+    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1.2, 400, 0);
+
+    // Let the slime complete at least one leap+recovery cycle.
+    for (let i = 0; i < 70; i += 1) {
+      enemyAISystem(world);
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+    }
+
+    // Player escapes far outside the pounce band; the slime must abandon the
+    // pounce loop and resume a normal approach.
+    world.stores.position.x[player] = 900;
+    let movedTowardPlayer = false;
+    for (let i = 0; i < 60; i += 1) {
+      enemyAISystem(world);
+      if ((world.stores.velocity.x[enemy] ?? 0) > 0.4) {
+        movedTowardPlayer = true;
+      }
+      world.frameCount += 1;
+      world.elapsedMs += 16;
+    }
+    expect(movedTowardPlayer).toBe(true);
+  });
+
+  it('separates a large overlapping pack via the spatial-priority path (>48 mobs)', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 200, 0);
+    const stacked: number[] = [];
+    // 60 > MAX_PAIRWISE_SEPARATION_ENEMIES (48) forces the sort-by-distance,
+    // slice-to-cap path; identical positions force the zero-distance push.
+    for (let i = 0; i < 60; i += 1) {
+      stacked.push(spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.CHASE, 2, 400, 0));
+    }
+
+    expect(() => enemyAISystem(world)).not.toThrow();
+
+    // Every velocity is clamped to the speed cap, and at least some mobs were
+    // pushed apart (diverging velocities).
+    const velocities = stacked.map((eid) => ({
+      vx: world.stores.velocity.x[eid] ?? 0,
+      vy: world.stores.velocity.y[eid] ?? 0,
+    }));
+    for (const v of velocities) {
+      expect(Math.hypot(v.vx, v.vy)).toBeLessThanOrEqual(2 + 0.01);
+    }
+    const distinct = new Set(velocities.map((v) => `${v.vx.toFixed(3)},${v.vy.toFixed(3)}`));
+    expect(distinct.size).toBeGreaterThan(1);
+  });
+
+  it('handles an enemy sharing the exact player position under the overlap clamp', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    const center = tileCenter(12, 9);
+    spawnPlayer(world, center.x, center.y);
+    // Same pixel as the player exercises the zero-toward-vector fallback inside
+    // the floor-map overlap clamp.
+    const enemy = spawnBehaviorEnemy(world, center.x, center.y, 20, AI_TYPE.CHASE, 2, 400, 0, {
+      persona: PATH_PERSONA.NAVIGATOR,
+    });
+
+    expect(() => enemyAISystem(world)).not.toThrow();
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Number.isFinite(vx)).toBe(true);
+    expect(Number.isFinite(vy)).toBe(true);
+  });
+
+  it('resolves flank targets for a flanker sitting on the player tile', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    const center = tileCenter(12, 9);
+    spawnPlayer(world, center.x, center.y);
+    // Zero player-offset takes makeFlankTargets()'s degenerate-direction branch.
+    const enemy = spawnBehaviorEnemy(world, center.x, center.y, 20, AI_TYPE.CHASE, 2, 400, 0, {
+      persona: PATH_PERSONA.FLANKER,
+    });
+
+    expect(() => enemyAISystem(world)).not.toThrow();
+    // The degenerate zero-offset flank branch must still yield a finite velocity;
+    // a regression producing NaN here would otherwise slip through silently.
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Number.isFinite(vx)).toBe(true);
+    expect(Number.isFinite(vy)).toBe(true);
+  });
+
+  it('fires an enemy projectile from a stationary ranged attacker in range (no floor map)', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // In attack range, off the cooldown clock, so the accuracy roll and spawn run.
+    spawnBehaviorEnemy(world, 120, 0, 20, AI_TYPE.RANGED, 1.5, 400, 200);
+    world.elapsedMs = 10_000;
+
+    let fired = false;
+    for (let i = 0; i < 12 && !fired; i += 1) {
+      enemyAISystem(world);
+      if (query(world.ecs, [EnemyProjectile]).length > 0) {
+        fired = true;
+      }
+      world.frameCount += 1;
+      world.elapsedMs += 500;
+    }
+    expect(fired).toBe(true);
+  });
+});
+
+/** Spread a {x, y} point into a positional argument pair. */
+function spread(point: { x: number; y: number }): [number, number] {
+  return [point.x, point.y];
+}
