@@ -638,7 +638,8 @@ function asTilePoint(world: GameWorld, px: number, py: number): TilePoint {
   return floorMap.pixelToTile(px, py);
 }
 
-function makeFlankTargets(
+// Exported for unit testing of the flank-target geometry (degenerate vs lateral).
+export function makeFlankTargets(
   world: GameWorld,
   eid: number,
   enemyX: number,
