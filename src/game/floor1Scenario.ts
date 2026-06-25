@@ -61,6 +61,7 @@ import {
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type ShopkeeperStage,
+  type NpcQuestIndicatorState,
 } from '../shared/quest-types.js';
 import {
   FLOOR1_BOSS_REWARD_SPELL_IDS,
@@ -1774,6 +1775,80 @@ export const FLOOR1_QUEST_UNLOCK_LEVEL = 2;
  */
 export function hasCompletedWelcomeGoonQuest(world: GameWorld): boolean {
   return world.goalFlags.get('floor1-leveling-quest-complete') === true;
+}
+
+function hasActiveQuest(world: GameWorld, questId: string): boolean {
+  return world.questLog.get(questId)?.status === 'active';
+}
+
+/**
+ * Resolve the current quest-indicator state for a Floor 1 NPC.
+ *
+ * - `actionable`: talking now can accept or advance a quest
+ * - `accepted`: the NPC owns an active accepted quest but has nothing new right now
+ * - `none`: no quest affordance should be shown
+ */
+export function getNpcQuestIndicatorState(world: GameWorld, npcId: string): NpcQuestIndicatorState {
+  switch (npcId) {
+    case 'tutorial-goon':
+      if (hasActiveQuest(world, FLOOR1_FIND_WELCOME_QUEST_ID)) {
+        return 'actionable';
+      }
+      if (
+        hasActiveQuest(world, FLOOR1_TUTORIAL_QUEST_ID) ||
+        hasActiveQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID) ||
+        hasActiveQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID)
+      ) {
+        return 'accepted';
+      }
+      return 'none';
+    case 'shopkeeper': {
+      if (!hasCompletedWelcomeGoonQuest(world)) {
+        return 'none';
+      }
+      const quest = world.questLog.get(FLOOR1_SHOP_QUEST_ID);
+      if (!quest) {
+        return 'actionable';
+      }
+      if (quest.status !== 'active') {
+        return 'none';
+      }
+      const stage = getShopkeeperStage(world);
+      if (stage === 'ready-to-buy') {
+        return 'actionable';
+      }
+      if (
+        stage === 'awaiting-prize' &&
+        playerBag(world) &&
+        hasItem(playerBag(world)!, SHOPKEEPER_FETCH_ITEM_ID)
+      ) {
+        return 'actionable';
+      }
+      if (stage === 'awaiting-prize' || stage === 'awaiting-equip') {
+        return 'accepted';
+      }
+      return 'none';
+    }
+    case 'spell-quest-giver': {
+      if (!hasCompletedWelcomeGoonQuest(world)) {
+        return 'none';
+      }
+      const quest = world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID);
+      if (!quest) {
+        return 'actionable';
+      }
+      if (quest.status !== 'active') {
+        return 'none';
+      }
+      const bossDefeated = world.floor1?.objective.bossBattles.get('slime-rat')?.defeated === true;
+      if (bossDefeated && world.goalFlags.get('floor1-boss-spellbook-claimed') !== true) {
+        return 'actionable';
+      }
+      return 'accepted';
+    }
+    default:
+      return 'none';
+  }
 }
 
 /**

@@ -9,8 +9,11 @@ describe('createFloor1MainSceneOptions', () => {
   it('wires every quest-giver meet callback the browser scene relies on', () => {
     const options = createFloor1MainSceneOptions();
     expect(typeof options.tutorialGoon.meet).toBe('function');
+    expect(typeof options.tutorialGoon.getIndicatorState).toBe('function');
     expect(typeof options.spellQuestGiver.meet).toBe('function');
+    expect(typeof options.spellQuestGiver.getIndicatorState).toBe('function');
     expect(typeof options.shopkeeper.meet).toBe('function');
+    expect(typeof options.shopkeeper.getIndicatorState).toBe('function');
   });
 
   it('accepts the boss-battle quest when the Spell Broker is met through the scene options', () => {

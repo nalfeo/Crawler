@@ -379,3 +379,11 @@ export type ShopkeeperStage =
   | 'ready-to-buy'
   | 'awaiting-equip'
   | 'complete';
+
+/**
+ * Quest-indicator affordance state for a Floor 1 NPC.
+ * - `actionable` — talking now can accept or advance a quest (yellow `!`).
+ * - `accepted`   — NPC owns an active quest but has nothing new right now (grey `!`).
+ * - `none`       — no quest affordance should be shown.
+ */
+export type NpcQuestIndicatorState = 'none' | 'actionable' | 'accepted';
