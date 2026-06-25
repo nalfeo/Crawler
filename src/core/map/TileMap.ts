@@ -112,4 +112,43 @@ export class TileMap {
   createLightPassesCallback(): (x: number, y: number) => boolean {
     return (x: number, y: number) => this.isTransparent(x, y);
   }
+
+  /**
+   * Deterministic tile line-of-sight check between two tile coordinates.
+   *
+   * Walks a Bresenham line from (x0,y0) to (x1,y1) and returns `false` if any
+   * tile strictly between the endpoints is opaque (not transparent). The two
+   * endpoint tiles never block — the shooter and target stand on them — so an
+   * adjacent target always has line of sight. Out-of-bounds tiles count as
+   * opaque, mirroring `isTransparent`.
+   *
+   * Pure integer math: no allocation, no randomness, no floating point.
+   */
+  lineOfSight(x0: number, y0: number, x1: number, y1: number): boolean {
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+    let x = x0;
+    let y = y0;
+
+    while (x !== x1 || y !== y1) {
+      const e2 = 2 * err;
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+      if (e2 < dx) {
+        err += dx;
+        y += sy;
+      }
+      // Reaching the target tile means the path was clear; the target tile
+      // itself is never treated as a blocker.
+      if (x === x1 && y === y1) break;
+      if (!this.isTransparent(x, y)) return false;
+    }
+
+    return true;
+  }
 }

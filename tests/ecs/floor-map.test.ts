@@ -96,4 +96,26 @@ describe('FloorMap', () => {
       floor.setVisible(-1, 0); // should not throw
     });
   });
+
+  describe('hasLineOfSight', () => {
+    it('is clear between two pixel positions over open floor', () => {
+      const floor = createSmallFloorMap();
+      // tile (2,5) -> tile (9,5), centered within tiles (×32 + 16).
+      expect(floor.hasLineOfSight(2 * 32 + 16, 5 * 32 + 16, 9 * 32 + 16, 5 * 32 + 16)).toBe(true);
+    });
+
+    it('is blocked when a wall sits between the pixel endpoints', () => {
+      const floor = createSmallFloorMap();
+      floor.tileMap.setFlags(5, 5, TilePresets.WALL);
+      expect(floor.hasLineOfSight(2 * 32 + 16, 5 * 32 + 16, 9 * 32 + 16, 5 * 32 + 16)).toBe(false);
+    });
+
+    it('opens up again once the blocking door is opened', () => {
+      const floor = createSmallFloorMap();
+      floor.tileMap.setFlags(5, 5, TilePresets.DOOR_CLOSED);
+      expect(floor.hasLineOfSight(2 * 32 + 16, 5 * 32 + 16, 9 * 32 + 16, 5 * 32 + 16)).toBe(false);
+      floor.tileMap.openDoor(5, 5);
+      expect(floor.hasLineOfSight(2 * 32 + 16, 5 * 32 + 16, 9 * 32 + 16, 5 * 32 + 16)).toBe(true);
+    });
+  });
 });
