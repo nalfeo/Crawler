@@ -10,7 +10,7 @@
  */
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
-import { fitUiScale } from './ui-scale.js';
+import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
 import {
   createTabPreferences,
@@ -76,6 +76,16 @@ export function createInventoryUI(
   toggle(world: GameWorld): void;
   refresh(world: GameWorld): void;
   isOpen(): boolean;
+  /**
+   * Test/automation affordance: world-space bounds of the index-th inventory
+   * cell background (in render order), or null when no such cell is rendered.
+   * Lets e2e harnesses hover/click a specific canvas cell.
+   */
+  getCellScreenBounds(index: number): ScreenBounds | null;
+  /** Test/automation affordance: true while a hover/pin tooltip is rendered. */
+  isTooltipVisible(): boolean;
+  /** Test/automation affordance: true while a tooltip is pinned (click/tap). */
+  isTooltipPinned(): boolean;
   destroy(): void;
 } {
   scene.cameras.main.roundPixels = true;
@@ -192,6 +202,8 @@ export function createInventoryUI(
   const tabObjects: Phaser.GameObjects.GameObject[] = [];
   // Cell objects pool
   const cellObjects: Phaser.GameObjects.GameObject[] = [];
+  // Cell background rectangles, in render order (test/automation hit-targets).
+  const cellBackgrounds: Phaser.GameObjects.Rectangle[] = [];
   // Tooltip objects
   const tooltipObjects: Phaser.GameObjects.GameObject[] = [];
 
@@ -262,6 +274,7 @@ export function createInventoryUI(
       obj.destroy();
     }
     cellObjects.length = 0;
+    cellBackgrounds.length = 0;
   }
 
   function clearTooltip(): void {
@@ -480,6 +493,7 @@ export function createInventoryUI(
       container.add(cellBg);
       container.add(iconObject);
       cellObjects.push(cellBg, iconObject);
+      cellBackgrounds.push(cellBg);
     }
 
     // Item count footer
@@ -657,6 +671,14 @@ export function createInventoryUI(
     toggle,
     refresh,
     isOpen: () => visible,
+    getCellScreenBounds: (index: number): ScreenBounds | null => {
+      const cell = cellBackgrounds[index];
+      if (!cell) return null;
+      const b = cell.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
+    isTooltipVisible: () => tooltipObjects.length > 0,
+    isTooltipPinned: () => pinned !== null,
     destroy() {
       scene.input.keyboard?.off('keydown', handleKeyDown);
       scene.scale.off('resize', applyLayout);

@@ -41,12 +41,20 @@ function waitForPort(port: number, timeoutMs = 60_000): Promise<void> {
 }
 
 export async function setup(): Promise<void> {
-  const vite = resolve(process.cwd(), 'node_modules/.bin/vite');
-  serverProcess = spawn(vite, ['--mode', 'lab', '--port', String(E2E_LAB_PORT), '--strictPort'], {
-    cwd: process.cwd(),
-    env: { ...process.env, CRAWLER_LAB_PORT: String(E2E_LAB_PORT) },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
+  // Invoke Vite's JS entry through the current Node executable so the spawn is
+  // cross-platform. Spawning the bare `node_modules/.bin/vite` shell wrapper
+  // fails with ENOENT on Windows (it has no executable extension), which broke
+  // local e2e runs there.
+  const viteBin = resolve(process.cwd(), 'node_modules/vite/bin/vite.js');
+  serverProcess = spawn(
+    process.execPath,
+    [viteBin, '--mode', 'lab', '--port', String(E2E_LAB_PORT), '--strictPort'],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, CRAWLER_LAB_PORT: String(E2E_LAB_PORT) },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
   serverProcess.on('error', (err) => {
     console.error('[e2e] Lab server process error:', err.message);
   });
