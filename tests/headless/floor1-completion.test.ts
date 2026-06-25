@@ -28,7 +28,7 @@
  *
  * To add coverage, append known-good seeds to `WINNING_SEEDS` (probe a seed
  * once via `npm run ai:headless -- --seed N --max-frames 19800` and confirm it
- * reports VICTORY with all four quests before adding it — most seeds do NOT
+ * reports VICTORY with all five quests before adding it — most seeds do NOT
  * clear within the budget). Seed 6 was re-verified with that exact command.
  *
  * ## Assertions are on deterministic *game* time, never wall time
