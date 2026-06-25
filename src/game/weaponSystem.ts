@@ -465,6 +465,15 @@ function dispatchAttack(
   }
 
   // Register the active weapon's skill IDs so damage systems can emit XP on hit.
+  //
+  // Known limitation: this map is keyed by attacker (player) EID rather than by
+  // the in-flight attack, and is overwritten on every successful dispatch, so it
+  // holds at most one entry per living player (not an unbounded leak). The only
+  // misattribution window is firing a slow projectile, switching weapons, firing
+  // the new weapon, then landing the original projectile — it would then credit
+  // the new weapon's skills. Melee/beam/area attacks resolve within their own
+  // short lifetime so are unaffected in practice. Per-attack attribution is
+  // tracked as a follow-up (see issue #292).
   world.attackerWeaponSkills.set(player, {
     classSkillId: def.weaponClassSkillId,
     typeSkillId: def.weaponTypeSkillId,

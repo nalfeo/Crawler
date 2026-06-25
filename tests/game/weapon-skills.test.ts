@@ -380,16 +380,25 @@ describe('weapon skill hit gate', () => {
     const { world } = setupPlayerWithWeaponSkills();
     const def = WEAPON_DEFS.get('sword')!;
 
-    // Force a deterministic miss: rng.next() returns 1.0 (> any baseAccuracy < 1.0)
+    // Spawn an enemy in melee range so weaponSystem actually attempts the attack.
+    // The MELEE branch returns early when no enemy is in combat range, which would
+    // skip dispatchAttack entirely and make the accuracy roll (and these
+    // assertions) pass vacuously.
+    spawnEnemy(world, 15, 0, 50);
+
+    // Force a deterministic miss: rng.next() returns 1.0 (> sword baseAccuracy 0.9)
     world.rng.next = () => 1.0;
 
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
     weaponSystem(world);
 
+    // The miss path must have actually run — a 'miss' combat event proves
+    // dispatchAttack reached and failed the accuracy roll.
+    expect(world.combatEvents.some((e) => e.type === 'miss')).toBe(true);
     // skillUsageEvents must be empty — miss should produce no events
     expect(world.skillUsageEvents).toHaveLength(0);
-    // attackerWeaponSkills should not be populated
+    // attackerWeaponSkills is only populated after a successful accuracy check
     expect(world.attackerWeaponSkills.size).toBe(0);
   });
 

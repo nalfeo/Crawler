@@ -148,3 +148,38 @@ describe('areaDamageSystem branch coverage', () => {
     expect(() => clearAreaDamageHits(world, 123)).not.toThrow();
   });
 });
+
+describe('areaDamageSystem hit-gated weapon-skill XP', () => {
+  it('emits weapon_fired events for both skills when a player-owned explosion hits an enemy', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 100, 100);
+    const enemy = spawnEnemy(world, 110, 100, 50);
+    world.elapsedMs = 100;
+    world.attackerWeaponSkills.set(player, { classSkillId: 'arcane', typeSkillId: 'fireball' });
+    spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
+
+    const collision = collisionSystem(world);
+    areaDamageSystem(world, collision);
+
+    expect(world.stores.health.current[enemy]).toBe(35);
+    const fired = world.skillUsageEvents.filter((e) => e.metric === 'weapon_fired');
+    expect(fired).toHaveLength(2);
+    expect(fired.map((e) => e.skillId).sort()).toEqual(['arcane', 'fireball']);
+    expect(fired.every((e) => e.holderEid === player)).toBe(true);
+  });
+
+  it('emits no skill events when the explosion owner has no registered weapon skills', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 100, 100);
+    const enemy = spawnEnemy(world, 110, 100, 50);
+    world.elapsedMs = 100;
+    // Owner present but no prior dispatch registered skills for the player.
+    spawnAreaAttack(world, 100, 100, player, 15, 40, 200, TeamId.PLAYER);
+
+    const collision = collisionSystem(world);
+    areaDamageSystem(world, collision);
+
+    expect(world.stores.health.current[enemy]).toBe(35);
+    expect(world.skillUsageEvents).toHaveLength(0);
+  });
+});
