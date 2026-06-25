@@ -25,7 +25,7 @@ import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
-import { TileFlags } from '../../src/shared/map-types.js';
+import { TileFlags, RoomRole } from '../../src/shared/map-types.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -780,7 +780,7 @@ describe('floor1Scenario', () => {
       expect(allUnlocked()).toBe(true);
     });
 
-    it('regression: seed 42 keeps slime-rat and primary safe room enterable only via doors', () => {
+    it('regression: seed 42 seals every special room (all SAFE + boss rooms door-only)', () => {
       const world = createTestWorld({ seed: 42 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
@@ -789,20 +789,27 @@ describe('floor1Scenario', () => {
       const floorMap = world.floorMap!;
       const objective = world.floor1!.objective;
 
+      // Every special room must be enterable only through doors: all SAFE rooms
+      // (welcome office, shop, spell broker, and any generator-tagged safe room),
+      // every BOSS_STAIR room (the rat-slime boss-stair arena), and the slime-rat
+      // quest room. A non-door passable perimeter tile is a tunnel breach.
+      const targetRoomIds = new Set<number>();
+      for (const room of floorMap.roomGraph.getRoomsByRole(RoomRole.SAFE)) {
+        targetRoomIds.add(room.id);
+      }
+      for (const room of floorMap.roomGraph.getRoomsByRole(RoomRole.BOSS_STAIR)) {
+        targetRoomIds.add(room.id);
+      }
       const slimeTile = floorMap.pixelToTile(
         objective.slimeRatRoomPos.x,
         objective.slimeRatRoomPos.y,
       );
       const slimeRoomId = floorMap.roomGraph.getRoomAt(slimeTile.x, slimeTile.y);
       expect(slimeRoomId).toBeGreaterThanOrEqual(0);
-
-      const safeTile = floorMap.pixelToTile(objective.safeRoomPos.x, objective.safeRoomPos.y);
-      const safeRoomId = floorMap.roomGraph.getRoomAt(safeTile.x, safeTile.y);
-      expect(safeRoomId).toBeGreaterThanOrEqual(0);
-
-      const targetRoomIds = new Set<number>();
       targetRoomIds.add(slimeRoomId);
-      targetRoomIds.add(safeRoomId);
+
+      // At least the four SAFE rooms + one boss-stair + slime-rat must be present.
+      expect(targetRoomIds.size).toBeGreaterThanOrEqual(5);
 
       for (const roomId of targetRoomIds) {
         const room = floorMap.roomGraph.get(roomId);
