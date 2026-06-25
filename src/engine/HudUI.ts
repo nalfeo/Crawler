@@ -1,5 +1,6 @@
 /**
- * HudUI — facade that owns HudHealthBar, HudManaBar, HudFloorTimer, and HudMinimap.
+ * HudUI — facade that owns HudHealthBar, HudManaBar, HudFloorTimer, HudBossBar,
+ * and HudMinimap.
  *
  * Call sync() every frame to update all HUD elements from the current world state.
  * Call destroy() on scene shutdown to clean up all resources.
@@ -10,6 +11,7 @@ import { createHudHealthBar } from './HudHealthBar.js';
 import { createHudManaBar } from './HudManaBar.js';
 import { createHudExperienceBar } from './HudExperienceBar.js';
 import { createHudFloorTimer } from './HudFloorTimer.js';
+import { createHudBossBar } from './HudBossBar.js';
 import { createHudLootCounter } from './HudLootCounter.js';
 import { createHudMinimap } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
@@ -38,7 +40,7 @@ export function createHudUI(scene: Phaser.Scene): {
   // keep their relative layout while growing on small screens.
   const bottomLeft = makeGroup(); // health, mana, xp, loot
   const bottomCenter = makeGroup(); // ability bar
-  const topCenter = makeGroup(); // floor timer
+  const topCenter = makeGroup(); // floor timer + boss bar
   const topRight = makeGroup(); // quest tracker
 
   const healthBar = createHudHealthBar(scene, { parent: bottomLeft });
@@ -48,6 +50,7 @@ export function createHudUI(scene: Phaser.Scene): {
   const skillTracker = createHudSkillTracker(scene, { parent: bottomLeft });
   const abilityBar = createHudAbilityBar(scene, { parent: bottomCenter });
   const floorTimer = createHudFloorTimer(scene, { parent: topCenter });
+  const bossBar = createHudBossBar(scene, { parent: topCenter });
   const questTracker = createHudQuestTracker(scene, { parent: topRight });
 
   // Minimap manages its own dynamic children/overlay and screen-space layout,
@@ -81,6 +84,7 @@ export function createHudUI(scene: Phaser.Scene): {
     manaBar.sync(world);
     xpBar.sync(world);
     floorTimer.sync(world);
+    bossBar.sync(world);
     lootCounter.sync(world);
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
@@ -94,6 +98,7 @@ export function createHudUI(scene: Phaser.Scene): {
     manaBar.destroy();
     xpBar.destroy();
     floorTimer.destroy();
+    bossBar.destroy();
     lootCounter.destroy();
     skillTracker.destroy();
     minimap.destroy();
