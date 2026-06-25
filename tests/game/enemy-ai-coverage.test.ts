@@ -7,6 +7,7 @@ import { query } from 'bitecs';
 import { movementSystem, spawnBehaviorEnemy, spawnPlayer } from '../../src/core/index.js';
 import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { AI_TYPE, PATH_PERSONA, enemyAISystem } from '../../src/game/index.js';
+import { makeFlankTargets } from '../../src/game/enemyAISystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 const TILE = 32;
@@ -453,13 +454,97 @@ describe('enemyAISystem — branch coverage hardening', () => {
       persona: PATH_PERSONA.FLANKER,
     });
 
+    // The degenerate branch must collapse to a single candidate — the player's
+    // own tile — rather than fabricating a flank from a zero direction vector.
+    const degenerateTargets = makeFlankTargets(
+      world,
+      enemy,
+      center.x,
+      center.y,
+      center.x,
+      center.y,
+    );
+    expect(degenerateTargets).toHaveLength(1);
+    expect(degenerateTargets[0]).toEqual(world.floorMap.pixelToTile(center.x, center.y));
+
     expect(() => enemyAISystem(world)).not.toThrow();
-    // The degenerate zero-offset flank branch must still yield a finite velocity;
-    // a regression producing NaN here would otherwise slip through silently.
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    // Resolving to its own tile means the flanker stays put — a finite velocity
+    // alone would also pass for a regression that drifted the enemy off-tile.
+    expect(Number.isFinite(vx)).toBe(true);
+    expect(Number.isFinite(vy)).toBe(true);
+    expect(speedOf(world, enemy)).toBe(0);
+  });
+
+  it('aims a non-degenerate flanker past and to the side of the player', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    const playerCenter = tileCenter(12, 9);
+    spawnPlayer(world, playerCenter.x, playerCenter.y);
+    // Flanker several tiles to the player's left on the same row: a straight
+    // chase would target the player's own tile (same row, no lateral offset).
+    const enemyCenter = tileCenter(4, 9);
+    const enemy = spawnBehaviorEnemy(world, ...spread(enemyCenter), 20, AI_TYPE.CHASE, 2, 800, 0, {
+      persona: PATH_PERSONA.FLANKER,
+    });
+
+    const targets = makeFlankTargets(
+      world,
+      enemy,
+      enemyCenter.x,
+      enemyCenter.y,
+      playerCenter.x,
+      playerCenter.y,
+    );
+    const playerTile = world.floorMap.pixelToTile(playerCenter.x, playerCenter.y);
+
+    expect(targets).toHaveLength(4);
+    // Only the final fallback is the player's own tile; the earlier candidates
+    // must be genuine flanks, otherwise this collapses to a straight chase.
+    expect(targets[3]).toEqual(playerTile);
+    // Candidate 2 drives straight through the player's row but beyond them.
+    expect(targets[2]?.y).toBe(playerTile.y);
+    expect(targets[2]?.x).toBeGreaterThan(playerTile.x);
+    // Candidates 0 and 1 are the lateral flanks: beyond the player in x AND
+    // offset to opposite sides of the player's row (a real lateral approach).
+    for (const flank of [targets[0], targets[1]]) {
+      expect(flank?.x).toBeGreaterThan(playerTile.x);
+      expect(Math.abs((flank?.y ?? playerTile.y) - playerTile.y)).toBeGreaterThanOrEqual(1);
+    }
+    expect(Math.sign((targets[0]?.y ?? 0) - playerTile.y)).toBe(
+      -Math.sign((targets[1]?.y ?? 0) - playerTile.y),
+    );
+  });
+
+  it('commits a non-degenerate flanker to pursuit instead of stalling', () => {
+    const world = createTestWorld();
+    world.floorMap = openArena();
+    const playerCenter = tileCenter(12, 9);
+    spawnPlayer(world, playerCenter.x, playerCenter.y);
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(tileCenter(4, 9)),
+      20,
+      AI_TYPE.CHASE,
+      2,
+      800,
+      0,
+      {
+        persona: PATH_PERSONA.FLANKER,
+      },
+    );
+
+    enemyAISystem(world);
+
+    // The flank target sits past the player, so the flanker must actually move
+    // toward the player's side with a finite, non-zero velocity (no stall).
+    expect(speedOf(world, enemy)).toBeGreaterThan(0);
     const vx = world.stores.velocity.x[enemy] ?? 0;
     const vy = world.stores.velocity.y[enemy] ?? 0;
     expect(Number.isFinite(vx)).toBe(true);
     expect(Number.isFinite(vy)).toBe(true);
+    expect(vx).toBeGreaterThan(0);
   });
 
   it('fires an enemy projectile from a stationary ranged attacker in range (no floor map)', () => {
