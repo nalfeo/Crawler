@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { SeededRandom } from '../../src/shared/random';
-import { BiomeType, TileFlags, RoomRole } from '../../src/shared/map-types';
+import { BiomeType, TileFlags, RoomRole, TerrainType } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
 import {
   DungeonGenerator,
@@ -268,6 +268,40 @@ describe('Map Generators', () => {
       }
       expect(floors).toBeGreaterThan(0);
       expect(walls).toBeGreaterThan(0);
+    });
+
+    it('should support cave regions with curved tunnels and non-uniform cave rooms', () => {
+      const gen = new DungeonGenerator({ roomVariety: true, caveRegions: true });
+      const floor = gen.generate(smallConfig(BiomeType.BASIC_UNDERGROUND), new SeededRandom(42));
+
+      let caveFloorCount = 0;
+      let caveWallCount = 0;
+      let caveJunctionLikeCount = 0;
+      for (let y = 1; y < floor.height - 1; y++) {
+        for (let x = 1; x < floor.width - 1; x++) {
+          const idx = y * floor.width + x;
+          if (floor.terrain[idx] === TerrainType.CAVE_FLOOR) {
+            caveFloorCount++;
+            let caveNeighbors = 0;
+            for (const [nx, ny] of [
+              [x + 1, y],
+              [x - 1, y],
+              [x, y + 1],
+              [x, y - 1],
+            ] as const) {
+              const nIdx = ny * floor.width + nx;
+              if (floor.terrain[nIdx] === TerrainType.CAVE_FLOOR) caveNeighbors++;
+            }
+            if (caveNeighbors >= 3) caveJunctionLikeCount++;
+          } else if (floor.terrain[idx] === TerrainType.CAVE_WALL) {
+            caveWallCount++;
+          }
+        }
+      }
+
+      expect(caveFloorCount).toBeGreaterThan(0);
+      expect(caveWallCount).toBeGreaterThan(0);
+      expect(caveJunctionLikeCount).toBeGreaterThan(0);
     });
 
     it('should keep every room reachable from the spawn room across representative seeds', () => {
@@ -615,6 +649,30 @@ describe('Map Generators', () => {
       expect(getGenerator(BiomeType.CAVE).name).toBe('CaveGenerator');
       expect(getGenerator(BiomeType.ARENA).name).toBe('ArenaGenerator');
       expect(getGenerator(BiomeType.BASIC_UNDERGROUND).name).toBe('DungeonGenerator');
+    });
+
+    it('should apply cave regions to floor1 basic underground generation', () => {
+      const config: MapConfig = {
+        widthTiles: 240,
+        heightTiles: 140,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
+        maxRooms: 70,
+        floorDensity: 0.36,
+      };
+
+      const floor = getGenerator(BiomeType.BASIC_UNDERGROUND).generate(
+        config,
+        new SeededRandom(42),
+      );
+      const caveFloors = floor.terrain.reduce(
+        (count, t) => (t === TerrainType.CAVE_FLOOR ? count + 1 : count),
+        0,
+      );
+      expect(caveFloors).toBeGreaterThan(0);
     });
 
     it('should throw for unknown biome', () => {
