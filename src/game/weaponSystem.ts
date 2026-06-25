@@ -259,6 +259,22 @@ function findBossTargetInRange(
     }
     const ex = world.stores.position.x[enemy]!;
     const ey = world.stores.position.y[enemy]!;
+
+    // Never aim through walls. A boss the player cannot see and has no clear
+    // straight line to — e.g. on the far side of the still-locked boss door —
+    // must not be targeted, or boss-priority auto-fire would shoot or swing
+    // straight through the wall. Mirrors getNearestEnemyTarget's sight gate so
+    // both the melee and ranged call sites respect line of sight to the boss.
+    if (world.floorMap) {
+      const tile = world.floorMap.pixelToTile(ex, ey);
+      if (
+        !world.floorMap.isVisible(tile.x, tile.y) &&
+        !world.floorMap.hasLineOfSight(playerX, playerY, ex, ey)
+      ) {
+        continue;
+      }
+    }
+
     const deltaX = ex - playerX;
     const deltaY = ey - playerY;
     const distanceSq = deltaX * deltaX + deltaY * deltaY;
@@ -741,12 +757,15 @@ export function weaponSystem(world: GameWorld): void {
       return;
     }
 
-    // Melee weapons: Fire only when an enemy is in legitimate reach.
+    // Melee weapons: Fire only when an enemy is in legitimate reach with a clear
+    // line to it. Passing ignoreFov=false gates on FOV + line of sight, so the
+    // swing never auto-aims at (and the arc never lands on) an enemy through a
+    // wall — the melee analogue of the ranged sight gate below.
     if (def.weaponType === WeaponType.MELEE) {
       if (!inCombat) {
         return;
       }
-      const target = getNearestEnemyTarget(world, playerX, playerY, true);
+      const target = getNearestEnemyTarget(world, playerX, playerY, false);
       if (!target) {
         return;
       }

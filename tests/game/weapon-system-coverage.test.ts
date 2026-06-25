@@ -538,4 +538,68 @@ describe('weaponSystem line-of-sight gating', () => {
 
     expect(query(world.ecs, [Projectile]).length).toBe(1);
   });
+
+  it('does not swing a melee weapon at an enemy through a wall', () => {
+    const world = createTestWorld();
+    // Wall column at tile x=3 (pixels 96–128) sits between the player and enemy.
+    world.floorMap = makeOpenFloorMap(3);
+    spawnPlayer(world, cx(2), cy(5)); // (80, 176)
+    // Enemy 50px to the right — within the sword's 60px melee gate, but the wall
+    // strictly blocks the straight line, so the swing must not auto-aim at it.
+    spawnEnemy(world, cx(2) + 50, cy(5), 50); // (130, 176), tile (4,5)
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+    world.rng.next = () => 0;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
+  });
+
+  it('swings a melee weapon at an enemy with a clear line of sight', () => {
+    const world = createTestWorld();
+    world.floorMap = makeOpenFloorMap(); // no walls
+    spawnPlayer(world, cx(2), cy(5));
+    spawnEnemy(world, cx(2) + 50, cy(5), 50);
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+    world.rng.next = () => 0;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(1);
+  });
+
+  it('does not fire at a boss through a wall, hitting the visible enemy instead', () => {
+    const world = createTestWorld();
+    // Wall column at tile x=5 hides the boss to the right; the path upward is clear.
+    world.floorMap = makeOpenFloorMap(5);
+    spawnPlayer(world, cx(2), cy(5)); // (80, 176)
+    // A regular enemy directly above with a clear line of sight — the only
+    // legitimate target, which makes getNearestEnemyTarget return non-null.
+    spawnEnemy(world, cx(2), cy(2), 50); // (80, 80)
+    // A boss to the right behind the wall: within bow gate range but not visible.
+    // Without the findBossTargetInRange sight gate, boss-priority aim would fire
+    // straight through the wall at it.
+    const boss = spawnEnemy(world, cx(8), cy(5), 50); // (272, 176)
+    world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
+
+    const bow = getWeaponDef('bow')!;
+    setActiveWeapon(world, bow);
+    world.elapsedMs = bow.cooldownMs;
+    world.rng.next = () => 0;
+
+    weaponSystem(world);
+
+    const projectiles = query(world.ecs, [Projectile]);
+    expect(projectiles.length).toBe(1);
+    const proj = projectiles[0]!;
+    const vx = world.stores.velocity.x[proj]!;
+    const vy = world.stores.velocity.y[proj]!;
+    // Fired UP at the visible enemy, not RIGHT through the wall at the boss.
+    expect(vy).toBeLessThan(0);
+    expect(Math.abs(vy)).toBeGreaterThan(Math.abs(vx));
+  });
 });
