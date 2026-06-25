@@ -180,7 +180,7 @@ export function meleeSwingSystem(world: GameWorld): void {
 
       if (hitDamage > 0) {
         const dealt = applyDamage(world, target, hitDamage, tx, ty, undefined, px, py);
-        if (dealt > 0 && ownerEid >= 0 && hasComponent(world.ecs, target, Enemy)) {
+        if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEvents(world, ownerEid);
         }
         hitSet.add(target);

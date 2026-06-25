@@ -131,7 +131,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       const ownerEid = hasComponent(world.ecs, projectile, Owner)
         ? (world.stores.owner.eid[projectile] ?? -1)
         : -1;
-      if (ownerEid >= 0) {
+      if (ownerEid !== -1) {
         emitWeaponHitSkillEvents(world, ownerEid);
       }
     }

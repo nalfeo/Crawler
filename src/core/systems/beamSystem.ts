@@ -111,7 +111,7 @@ export function beamSystem(world: GameWorld): void {
           ax,
           ay,
         );
-        if (dealt > 0 && ownerEid >= 0 && hasComponent(world.ecs, target, Enemy)) {
+        if (dealt > 0 && ownerEid !== -1 && hasComponent(world.ecs, target, Enemy)) {
           emitWeaponHitSkillEvents(world, ownerEid);
         }
       }
