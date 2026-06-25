@@ -209,6 +209,11 @@ const MOVE_WEDGE_FRAMES = 24;
 const PATH_GOAL_SEARCH_RADIUS_TILES = 6;
 const STUCK_PROGRESS_EPSILON_PX = 4;
 const NAVIGATION_MAX_PATH_LENGTH = 1_024;
+// Upper bound on distinct (start, goal, radius) entries kept in the
+// resolve-reachable-goal memo before it is flushed. The memo is also cleared
+// whenever the navigation epoch changes (door/floor change), so this only
+// guards against unbounded growth from a long single-epoch wander.
+const RESOLVE_GOAL_MEMO_MAX = 512;
 // How long (frames) to ignore an enemy after abandoning it as unreachable.
 const ENEMY_IGNORE_FRAMES = 240;
 // Minimum px the gap to a target enemy must close to count as engagement progress.
@@ -584,6 +589,24 @@ export class BehaviorTreeAI implements AIInputProvider {
    * tile is stable and safe to cache across frames.
    */
   private resolvedGoalCache: { rawKey: string; resolved: TilePoint } | null = null;
+  /**
+   * Cross-poll memo for {@link resolveReachableGoalTile}. That helper runs up to
+   * O(radius^2) full A* searches in its fallback branch and the AI calls it every
+   * poll while navigating, so re-deriving the same answer each frame dominated
+   * headless wall time. The resolved tile is a pure function of (start tile, goal
+   * tile, radius) and the door-aware passable graph, so it is safe to cache while
+   * {@link navEpoch} (floor + blocked-door signature) is unchanged.
+   */
+  private readonly resolveGoalMemo = new Map<string, TilePoint>();
+  private resolveGoalMemoEpoch = -1;
+  /**
+   * Monotonic navigation epoch. Bumped by {@link refreshDoorNavigation} only when
+   * the passable graph could have changed (floor swap or a door flipping between
+   * navigation-blocked and passable), which is exactly when cached reachability
+   * results must be discarded.
+   */
+  private navEpoch = 0;
+  private navSignature: string | null = null;
   /**
    * Locked doors the AI is currently aware of, keyed by door entity. Populated
    * from {@link getNavigationBlockedDoors} each poll and pruned when a door's
@@ -1993,7 +2016,23 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.doorAwarePassable = world.floorMap ? buildDoorAwarePassable(world) : null;
     // Record currently-blocked doors and forget any whose unlock condition is
     // now satisfied (C3 locked-door memory).
-    updateLockedDoorMemory(this.knownLockedDoors, getNavigationBlockedDoors(world));
+    const blockedDoors = getNavigationBlockedDoors(world);
+    updateLockedDoorMemory(this.knownLockedDoors, blockedDoors);
+    // Advance the navigation epoch whenever the passable graph could have changed
+    // — a different floor, or a door flipping blocked<->passable. The static tile
+    // topology is fixed for a floor's lifetime, so (floor, blocked-door tiles) is
+    // a complete signature of what reachability depends on. This is what
+    // invalidates the resolveReachableGoalTile memo.
+    const signature =
+      `${world.floor}:` +
+      blockedDoors
+        .map((door) => `${door.tileX},${door.tileY}`)
+        .sort()
+        .join('|');
+    if (signature !== this.navSignature) {
+      this.navSignature = signature;
+      this.navEpoch += 1;
+    }
   }
 
   /**
@@ -2222,8 +2261,109 @@ export class BehaviorTreeAI implements AIInputProvider {
     goalTile: TilePoint,
     maxRadius: number = PATH_GOAL_SEARCH_RADIUS_TILES,
   ): TilePoint {
-    const directPath = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
-    if (directPath.length > 1) {
+    // Drop the memo whenever the passable graph could have changed; within a
+    // single epoch every (start, goal, radius) result is stable.
+    if (this.resolveGoalMemoEpoch !== this.navEpoch) {
+      this.resolveGoalMemo.clear();
+      this.resolveGoalMemoEpoch = this.navEpoch;
+    }
+    const memoKey = `${startTile.x},${startTile.y},${goalTile.x},${goalTile.y},${maxRadius}`;
+    const cached = this.resolveGoalMemo.get(memoKey);
+    if (cached) {
+      return cached;
+    }
+
+    const resolved = this.computeReachableGoalTile(floorMap, startTile, goalTile, maxRadius);
+    if (this.resolveGoalMemo.size >= RESOLVE_GOAL_MEMO_MAX) {
+      this.resolveGoalMemo.clear();
+    }
+    this.resolveGoalMemo.set(memoKey, resolved);
+    return resolved;
+  }
+
+  private computeReachableGoalTile(
+    floorMap: FloorMap,
+    startTile: TilePoint,
+    goalTile: TilePoint,
+    maxRadius: number = PATH_GOAL_SEARCH_RADIUS_TILES,
+  ): TilePoint {
+    // Reachability and shortest-path length over the door-aware passable graph,
+    // computed with a single breadth-first flood from the start tile. The prior
+    // implementation called {@link findTilePath} (rot-js A*) once for the direct
+    // goal and again for every tile on each expanding ring (up to ~169 A*
+    // searches per resolve, each O(n^2) on the open list and flooding the whole
+    // floor on a miss). Because the A* uses topology 4 with uniform step cost,
+    // its returned path length is always the optimal distance, which equals this
+    // BFS depth + 1 -- so ranking candidates by BFS depth reproduces the exact
+    // same selection while doing O(tiles) work once instead of an A* per
+    // candidate. NAVIGATION_MAX_PATH_LENGTH bounds the flood depth identically to
+    // findTilePath's maxPathLength rejection of longer paths.
+    const tileMap = floorMap.tileMap;
+    const width = tileMap.width;
+    const height = tileMap.height;
+    const passable =
+      this.doorAwarePassable ?? ((tx: number, ty: number): boolean => tileMap.isPassable(tx, ty));
+
+    // findTilePath returns [] when the start tile itself is not traversable, so
+    // every direct and ring search would fail -> resolve to the raw goal.
+    if (!tileMap.inBounds(startTile.x, startTile.y) || !passable(startTile.x, startTile.y)) {
+      return goalTile;
+    }
+
+    const dist = new Int32Array(width * height).fill(-1);
+    const queue = new Int32Array(width * height);
+    const maxDepth = NAVIGATION_MAX_PATH_LENGTH - 1;
+    let head = 0;
+    let tail = 0;
+    const startIndex = startTile.y * width + startTile.x;
+    dist[startIndex] = 0;
+    queue[tail++] = startIndex;
+    while (head < tail) {
+      const index = queue[head++]!;
+      const depth = dist[index]!;
+      if (depth >= maxDepth) {
+        continue;
+      }
+      const cx = index % width;
+      const cy = (index - cx) / width;
+      // 4-connected expansion mirrors findTilePath's topology-4 A*.
+      if (cx + 1 < width && dist[index + 1] === -1 && passable(cx + 1, cy)) {
+        dist[index + 1] = depth + 1;
+        queue[tail++] = index + 1;
+      }
+      if (cx - 1 >= 0 && dist[index - 1] === -1 && passable(cx - 1, cy)) {
+        dist[index - 1] = depth + 1;
+        queue[tail++] = index - 1;
+      }
+      if (cy + 1 < height && dist[index + width] === -1 && passable(cx, cy + 1)) {
+        dist[index + width] = depth + 1;
+        queue[tail++] = index + width;
+      }
+      if (cy - 1 >= 0 && dist[index - width] === -1 && passable(cx, cy - 1)) {
+        dist[index - width] = depth + 1;
+        queue[tail++] = index - width;
+      }
+    }
+
+    // path length to a tile == findTilePath(start, tile).length, or 0 if the tile
+    // is unreachable within NAVIGATION_MAX_PATH_LENGTH.
+    const pathLengthTo = (x: number, y: number): number => {
+      // Bounds-check before indexing `dist`: goal tiles are not clamped to the
+      // map (FloorMap.pixelToTile can return out-of-bounds coords), and an
+      // out-of-bounds (x, y) can still yield an in-bounds linear index
+      // `y * width + x` that aliases an unrelated reachable tile. findTilePath
+      // rejects out-of-bounds goals, so mirror that here -- treat them as
+      // unreachable so the ring fallback runs instead of returning a phantom
+      // "direct" hit the caller cannot actually path to.
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        return 0;
+      }
+      const d = dist[y * width + x]!;
+      return d < 0 ? 0 : d + 1;
+    };
+
+    // Direct path available (findTilePath would return length > 1).
+    if (pathLengthTo(goalTile.x, goalTile.y) > 1) {
       return goalTile;
     }
 
@@ -2239,25 +2379,25 @@ export class BehaviorTreeAI implements AIInputProvider {
           }
 
           const candidate = { x: goalTile.x + dx, y: goalTile.y + dy };
-          if (!floorMap.tileMap.inBounds(candidate.x, candidate.y)) {
+          if (!tileMap.inBounds(candidate.x, candidate.y)) {
             continue;
           }
-          if (!floorMap.tileMap.isPassable(candidate.x, candidate.y)) {
+          if (!tileMap.isPassable(candidate.x, candidate.y)) {
             continue;
           }
 
-          const path = findTilePath(floorMap, startTile, candidate, this.groundPathOptions());
-          if (path.length <= 1) {
+          const pathLength = pathLengthTo(candidate.x, candidate.y);
+          if (pathLength <= 1) {
             continue;
           }
 
           const distanceScore = Math.abs(dx) + Math.abs(dy);
           if (
-            path.length < bestPathLength ||
-            (path.length === bestPathLength && distanceScore < bestDistanceScore)
+            pathLength < bestPathLength ||
+            (pathLength === bestPathLength && distanceScore < bestDistanceScore)
           ) {
             bestGoal = candidate;
-            bestPathLength = path.length;
+            bestPathLength = pathLength;
             bestDistanceScore = distanceScore;
           }
         }
@@ -3743,6 +3883,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.doorAwarePassable = null;
     this.knownLockedDoors.clear();
     this.resolvedGoalCache = null;
+    // Restore the reachable-goal memo + navigation epoch to their fresh-construction
+    // state, mirroring resolvedGoalCache/targetReachableCache above. Leaving
+    // navSignature set would let a reused provider skip the navEpoch bump when a new
+    // world's (floor + blocked-door) signature collides with the previous one, and
+    // serve stale reachability from a different floor topology.
+    this.resolveGoalMemo.clear();
+    this.resolveGoalMemoEpoch = -1;
+    this.navEpoch = 0;
+    this.navSignature = null;
     this.exploredSeen = null;
     this.frontierBfsVisited = null;
     this.retreating = false;
