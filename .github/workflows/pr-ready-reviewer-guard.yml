@@ -17,7 +17,7 @@ jobs:
     name: Enforce ready + reviewer cleanup
     runs-on: ubuntu-latest
     concurrency:
-      group: pr-ready-reviewer-guard
+      group: pr-ready-reviewer-guard-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: false
     steps:
       - name: Publish drafts and remove requested reviewer
