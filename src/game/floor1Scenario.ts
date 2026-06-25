@@ -125,8 +125,9 @@ function pruneAmbientOverflow(
 }
 
 /**
- * Seal passable non-door perimeter tiles for a specific objective room when doing
- * so still keeps that room reachable from spawn through at least one door.
+ * Seal passable non-door perimeter tiles for a specific objective room, but only
+ * when doing so keeps that room reachable from spawn through at least one door.
+ * If sealing would break that connectivity, this is a no-op.
  */
 function sealRoomPerimeterOpenings(world: GameWorld, roomPos: { x: number; y: number }): void {
   const floorMap = world.floorMap;

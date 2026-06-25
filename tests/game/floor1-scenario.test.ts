@@ -622,8 +622,8 @@ describe('floor1Scenario', () => {
       expect(safeRoomId).toBeGreaterThanOrEqual(0);
 
       const targetRoomIds = new Set<number>();
-      if (slimeRoomId >= 0) targetRoomIds.add(slimeRoomId);
-      if (safeRoomId >= 0) targetRoomIds.add(safeRoomId);
+      targetRoomIds.add(slimeRoomId);
+      targetRoomIds.add(safeRoomId);
 
       for (const roomId of targetRoomIds) {
         const room = floorMap.roomGraph.get(roomId);
