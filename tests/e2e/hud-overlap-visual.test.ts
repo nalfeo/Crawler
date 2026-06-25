@@ -3,6 +3,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { parsePng, readPixel, colorDist } from './helpers/pixels.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL, GAME_H, GAME_W } from './e2e-constants.js';
+import type { HudProbeApi } from '../../src/labs/hud-lab/index.js';
 const HUD_BG = { r: 0x05, g: 0x07, b: 0x0f };
 const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=hud-lab`;
 
@@ -55,7 +56,7 @@ async function loadHudLab(page: Page): Promise<void> {
   await page.goto(LAB_URL, { waitUntil: 'networkidle', timeout: 30_000 });
   await page.waitForSelector('#lab-canvas canvas', { timeout: 30_000 });
   await page.waitForFunction(
-    () => Boolean((window as { __hudProbe?: { ready(): boolean } }).__hudProbe?.ready()),
+    () => Boolean((window as { __hudProbe?: HudProbeApi }).__hudProbe?.ready()),
     undefined,
     {
       timeout: 30_000,
@@ -66,8 +67,7 @@ async function loadHudLab(page: Page): Promise<void> {
 
 async function setBossFightActive(page: Page, active: boolean): Promise<void> {
   await page.evaluate((next) => {
-    const probe = (window as { __hudProbe?: { setBossFightActive(active: boolean): void } })
-      .__hudProbe;
+    const probe = (window as { __hudProbe?: HudProbeApi }).__hudProbe;
     if (!probe) throw new Error('__hudProbe not available');
     probe.setBossFightActive(next);
   }, active);

@@ -26,7 +26,7 @@ interface HudLabSettings {
   bossHpPercent: number;
 }
 
-interface HudProbeApi {
+export interface HudProbeApi {
   ready(): boolean;
   setBossFightActive(active: boolean): void;
   getGameSize(): { width: number; height: number };
