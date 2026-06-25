@@ -61,6 +61,7 @@ import {
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
   type ShopkeeperStage,
+  type NpcQuestIndicatorState,
 } from '../shared/quest-types.js';
 import {
   FLOOR1_BOSS_REWARD_SPELL_IDS,
@@ -1764,8 +1765,6 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
 
 /** Character level required before the merchant / spell-broker quests unlock. */
 export const FLOOR1_QUEST_UNLOCK_LEVEL = 2;
-
-export type NpcQuestIndicatorState = 'none' | 'actionable' | 'accepted';
 
 /**
  * Whether the contestant has completed the Tutorial Goon's opening quest

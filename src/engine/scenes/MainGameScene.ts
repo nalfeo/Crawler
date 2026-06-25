@@ -63,7 +63,7 @@ import {
   SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../shared/npc-types.js';
 import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
-import type { ShopkeeperStage } from '../../shared/quest-types.js';
+import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
@@ -105,7 +105,7 @@ export interface MainGameSceneOptions {
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
   shopkeeper?: {
-    getIndicatorState?: (world: GameWorld) => 'none' | 'actionable' | 'accepted';
+    getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
     getStage: (world: GameWorld) => ShopkeeperStage;
     meet: (world: GameWorld) => void;
     returnPrize: (world: GameWorld, playerEid: number) => boolean;
@@ -118,11 +118,11 @@ export interface MainGameSceneOptions {
   };
   /** Tutorial Goon callbacks — fired on first player-NPC interaction. */
   tutorialGoon?: {
-    getIndicatorState?: (world: GameWorld) => 'none' | 'actionable' | 'accepted';
+    getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
     meet: (world: GameWorld) => void;
   };
   spellQuestGiver?: {
-    getIndicatorState?: (world: GameWorld) => 'none' | 'actionable' | 'accepted';
+    getIndicatorState?: (world: GameWorld) => NpcQuestIndicatorState;
     meet: (world: GameWorld) => void;
     /** True while the Spell Broker is gated behind the welcome-goon quest. */
     isLocked?: (world: GameWorld) => boolean;
@@ -1629,7 +1629,7 @@ export class MainGameScene extends Phaser.Scene {
     this.updateNpcQuestIndicators();
   }
 
-  private resolveNpcQuestIndicatorState(defId: string): 'none' | 'actionable' | 'accepted' {
+  private resolveNpcQuestIndicatorState(defId: string): NpcQuestIndicatorState {
     if (defId === 'tutorial-goon') {
       return this.options.tutorialGoon?.getIndicatorState?.(this.world) ?? 'none';
     }
