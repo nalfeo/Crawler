@@ -304,15 +304,15 @@ describe('Map Generators', () => {
       const genFlat = new DungeonGenerator({ roomVariety: false });
       const genVariety = new DungeonGenerator({ roomVariety: true });
       const config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
-        roomWidthRange: [6, 14],
-        roomHeightRange: [5, 13],
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
         maxRooms: 45,
-        floorDensity: 0.42,
+        floorDensity: 0.36,
       };
 
       const varietyPairCounts: number[] = [];
@@ -329,15 +329,15 @@ describe('Map Generators', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
       // Use the floor1 map size and seed to catch real-world regressions
       const floor1Config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
-        roomWidthRange: [6, 14],
-        roomHeightRange: [5, 13],
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
         maxRooms: 45,
-        floorDensity: 0.42,
+        floorDensity: 0.36,
       };
 
       for (const seed of REGRESSION_TEST_SEEDS) {
@@ -363,15 +363,15 @@ describe('Map Generators', () => {
       // is always reachable via its designated door tile(s).
       const gen = new DungeonGenerator({ roomVariety: true });
       const config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
-        roomWidthRange: [6, 14],
-        roomHeightRange: [5, 13],
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
         maxRooms: 45,
-        floorDensity: 0.42,
+        floorDensity: 0.36,
       };
 
       for (const seed of REGRESSION_TEST_SEEDS) {
@@ -418,15 +418,15 @@ describe('Map Generators', () => {
       const genVariety = new DungeonGenerator({ roomVariety: true });
       const genFlat = new DungeonGenerator({ roomVariety: false });
       const config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
-        roomWidthRange: [6, 14],
-        roomHeightRange: [5, 13],
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
         maxRooms: 45,
-        floorDensity: 0.42,
+        floorDensity: 0.36,
       };
 
       for (const seed of REGRESSION_TEST_SEEDS) {
@@ -443,15 +443,15 @@ describe('Map Generators', () => {
       // so the minimum-size preference is always exercised.
       const gen = new DungeonGenerator({ roomVariety: true });
       const config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
         roomWidthRange: [SPECIAL_ROOM_MIN_WIDTH, 14],
         roomHeightRange: [SPECIAL_ROOM_MIN_HEIGHT, 13],
         maxRooms: 30,
-        floorDensity: 0.42,
+        floorDensity: 0.36,
       };
 
       for (const seed of REGRESSION_TEST_SEEDS) {
@@ -477,8 +477,8 @@ describe('Map Generators', () => {
         specialRoomMinHeight: 999,
       });
       const config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.DUNGEON,
         seed: 42,
