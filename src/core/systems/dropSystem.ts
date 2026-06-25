@@ -8,7 +8,13 @@
  */
 import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
 import { BloodColor, Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
-import { spawnBehaviorEnemy, spawnDroppedItem, spawnGold, spawnXpGem } from '../helpers.js';
+import {
+  DEFAULT_BLOOD_COLOR,
+  spawnBehaviorEnemy,
+  spawnDroppedItem,
+  spawnGold,
+  spawnXpGem,
+} from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
   rollLootTable,
@@ -308,7 +314,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       ? (world.stores.bloodColor.r[eid]! << 16) |
         (world.stores.bloodColor.g[eid]! << 8) |
         world.stores.bloodColor.b[eid]!
-      : 0xcc0000;
+      : DEFAULT_BLOOD_COLOR;
     world.combatEvents.push({
       type: 'death',
       x,

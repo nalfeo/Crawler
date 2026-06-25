@@ -25,8 +25,14 @@ const PARTICLE_SIZE_MAX = 6;
 const DEFAULT_BLOOD_COLORS = [0xcc0000, 0xaa0000, 0x880000, 0x660000, 0x990000];
 
 const BLOOD_POOL_LIFETIME_MS = 30_000;
-const BLOOD_POOL_BASE_RADIUS = 10;
-const BLOOD_POOL_MAX_EXTRA_RADIUS = 14;
+const BLOOD_POOL_BASE_RADIUS = 8;
+const BLOOD_POOL_MAX_EXTRA_RADIUS = 18;
+/** Pool starts at this fraction of its final size and expands to 1.0. */
+const BLOOD_POOL_INITIAL_SCALE = 0.25;
+/** Fraction of pool lifetime spent expanding to full size. */
+const BLOOD_POOL_EXPAND_PHASE = 0.12;
+/** Maximum simultaneous blood pools before oldest is evicted. */
+const MAX_BLOOD_POOLS = 150;
 
 interface GoreParticle {
   obj: Phaser.GameObjects.Rectangle;
@@ -38,6 +44,10 @@ interface GoreParticle {
 interface BloodPool {
   obj: Phaser.GameObjects.Ellipse;
   startMs: number;
+  /** Final (fully-expanded) width. */
+  targetW: number;
+  /** Final (fully-expanded) height. */
+  targetH: number;
 }
 
 export interface GoreVfxConfig {
@@ -52,7 +62,7 @@ const DEFAULT_CONFIG: GoreVfxConfig = {
   hitGoreEnabled: true,
 };
 
-/** Derive a palette of 5 darker/lighter variants from a base hex colour.
+/** Derive a palette of 5 darker variants from a base hex colour.
  * Scales: base (1.0), slightly darker (0.83), darker (0.67), darkest (0.50), medium (0.75).
  */
 const COLOR_VARIANT_SCALES = [1.0, 0.83, 0.67, 0.5, 0.75] as const;
@@ -135,23 +145,36 @@ export function createGoreVfx(
     const radius =
       BLOOD_POOL_BASE_RADIUS +
       Math.min(BLOOD_POOL_MAX_EXTRA_RADIUS, overkill * 0.5) * cfg.intensity;
+    // Randomise size further so each pool looks distinct
+    const sizeVariance = 0.6 + vfxRandom() * 0.9;
     // Slightly squash/stretch pool for organic variation
-    const scaleX = 0.8 + vfxRandom() * 0.5;
-    const scaleY = 0.6 + vfxRandom() * 0.4;
+    const scaleX = (0.8 + vfxRandom() * 0.5) * sizeVariance;
+    const scaleY = (0.6 + vfxRandom() * 0.4) * sizeVariance;
     const poolColor = makeColorVariants(baseColor)[POOL_COLOR_VARIANT_INDEX]!; // dark variant for pooled blood
+
+    const targetW = radius * 2 * scaleX;
+    const targetH = radius * 2 * scaleY;
+    const initialW = targetW * BLOOD_POOL_INITIAL_SCALE;
+    const initialH = targetH * BLOOD_POOL_INITIAL_SCALE;
 
     const ellipse = scene.add.ellipse(
       x + (vfxRandom() - 0.5) * 6,
       y + (vfxRandom() - 0.5) * 4,
-      radius * 2 * scaleX,
-      radius * 2 * scaleY,
+      initialW,
+      initialH,
       poolColor,
     );
     ellipse.setDepth(WORLD_VFX_DEPTH.bloodPool);
     ellipse.setAlpha(0.55);
     (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(ellipse);
 
-    pools.push({ obj: ellipse, startMs: renderElapsedMs });
+    // Evict oldest pool if cap is exceeded
+    if (pools.length >= MAX_BLOOD_POOLS) {
+      const evicted = pools.shift()!;
+      evicted.obj.destroy();
+    }
+
+    pools.push({ obj: ellipse, startMs: renderElapsedMs, targetW, targetH });
   }
 
   /**
@@ -213,7 +236,8 @@ export function createGoreVfx(
     }
 
     const { x: spawnX, y: spawnY } = resolvePosition(world, event, interpAlpha);
-    const palette = event.bloodColor ? makeColorVariants(event.bloodColor) : DEFAULT_BLOOD_COLORS;
+    const palette =
+      event.bloodColor !== undefined ? makeColorVariants(event.bloodColor) : DEFAULT_BLOOD_COLORS;
     spawnParticles(
       spawnX,
       spawnY,
@@ -256,7 +280,8 @@ export function createGoreVfx(
     }
 
     const { x: spawnX, y: spawnY } = resolvePosition(world, event, interpAlpha);
-    const palette = event.bloodColor ? makeColorVariants(event.bloodColor) : DEFAULT_BLOOD_COLORS;
+    const palette =
+      event.bloodColor !== undefined ? makeColorVariants(event.bloodColor) : DEFAULT_BLOOD_COLORS;
     spawnParticles(
       spawnX,
       spawnY,
@@ -269,7 +294,13 @@ export function createGoreVfx(
     );
 
     // Leave a persistent blood pool on the ground
-    spawnBloodPool(spawnX, spawnY, overkill, event.bloodColor ?? 0xcc0000, renderElapsedMs);
+    spawnBloodPool(
+      spawnX,
+      spawnY,
+      overkill,
+      event.bloodColor !== undefined ? event.bloodColor : 0xcc0000,
+      renderElapsedMs,
+    );
   }
 
   return {
@@ -311,7 +342,7 @@ export function createGoreVfx(
         p.obj.setScale(1 - progress * 0.5);
       }
 
-      // Fade out blood pools over their lifetime
+      // Animate blood pools: expand quickly then fade slowly
       for (let i = pools.length - 1; i >= 0; i--) {
         const pool = pools[i]!;
         const age = renderElapsedMs - pool.startMs;
@@ -322,6 +353,12 @@ export function createGoreVfx(
           pools.splice(i, 1);
           continue;
         }
+
+        // Ease-out expansion: grow from BLOOD_POOL_INITIAL_SCALE → 1.0 over the expand phase
+        const expandT = Math.min(1, progress / BLOOD_POOL_EXPAND_PHASE);
+        const sizeScale =
+          BLOOD_POOL_INITIAL_SCALE + (1 - BLOOD_POOL_INITIAL_SCALE) * (1 - (1 - expandT) ** 2);
+        pool.obj.setSize(pool.targetW * sizeScale, pool.targetH * sizeScale);
 
         // Gentle fade: start at 0.55 alpha, finish at 0
         pool.obj.setAlpha(0.55 * (1 - progress));
