@@ -19,6 +19,10 @@ export interface OverlayPoint {
 
 /** Pixel spacing between line-of-sight samples; mirrors the AI provider. */
 export const OVERLAY_LINE_OF_SIGHT_SAMPLE_PX = 8;
+const DEFAULT_PIXEL_TO_TILE = (x: number, y: number): OverlayPoint => ({
+  x: Math.floor(x / 32),
+  y: Math.floor(y / 32),
+});
 
 /**
  * Sample the straight corridor between two points and report whether every
@@ -32,12 +36,16 @@ export function hasClearLineOfSight(
   endY: number,
   isPassable: (x: number, y: number) => boolean,
   sampleSpacingPx: number = OVERLAY_LINE_OF_SIGHT_SAMPLE_PX,
+  pixelToTile: (x: number, y: number) => OverlayPoint = DEFAULT_PIXEL_TO_TILE,
 ): boolean {
   const distance = Math.hypot(endX - startX, endY - startY);
   if (distance <= 0) {
     return isPassable(endX, endY);
   }
   const steps = Math.max(1, Math.ceil(distance / sampleSpacingPx));
+  let prevX = startX;
+  let prevY = startY;
+  let prevTile = pixelToTile(startX, startY);
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     const sampleX = startX + (endX - startX) * t;
@@ -45,6 +53,18 @@ export function hasClearLineOfSight(
     if (!isPassable(sampleX, sampleY)) {
       return false;
     }
+    const sampleTile = pixelToTile(sampleX, sampleY);
+    const crossesBlockedCorner =
+      sampleTile.x !== prevTile.x &&
+      sampleTile.y !== prevTile.y &&
+      !isPassable(sampleX, prevY) &&
+      !isPassable(prevX, sampleY);
+    if (crossesBlockedCorner) {
+      return false;
+    }
+    prevX = sampleX;
+    prevY = sampleY;
+    prevTile = sampleTile;
   }
   return true;
 }
@@ -71,6 +91,7 @@ export function buildSmoothedOverlayPath(
   waypoints: readonly OverlayPoint[],
   isPassable: (x: number, y: number) => boolean,
   sampleSpacingPx: number = OVERLAY_LINE_OF_SIGHT_SAMPLE_PX,
+  pixelToTile: (x: number, y: number) => OverlayPoint = DEFAULT_PIXEL_TO_TILE,
 ): OverlayPoint[] {
   const smoothed: OverlayPoint[] = [{ x: start.x, y: start.y }];
 
@@ -93,6 +114,7 @@ export function buildSmoothedOverlayPath(
           candidate.y,
           isPassable,
           sampleSpacingPx,
+          pixelToTile,
         )
       ) {
         next = i;

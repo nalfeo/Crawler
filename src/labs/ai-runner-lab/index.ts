@@ -493,6 +493,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       { x: playerX, y: playerY },
       upcomingPoints,
       (x, y) => world.floorMap!.isPassableAt(x, y),
+      undefined,
+      (x, y) => world.floorMap!.pixelToTile(x, y),
     );
 
     if (smoothedPath.length > 1) {

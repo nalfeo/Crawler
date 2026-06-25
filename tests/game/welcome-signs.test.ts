@@ -1,6 +1,7 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Sprite } from '../../src/core/components.js';
+import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import { initializeFloor1Scenario } from '../../src/game/floor1Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -24,6 +25,25 @@ function initFloor1(seed: number): ReturnType<typeof createTestWorld> {
   const player = spawnPlayer(world, 0, 0);
   initializeFloor1Scenario(world, player);
   return world;
+}
+
+function navigableRoomPath(world: ReturnType<typeof createTestWorld>): number[] {
+  const floorMap = world.floorMap!;
+  const welcomeTile = floorMap.pixelToTile(
+    world.floor1!.objective.welcomeOfficePos.x,
+    world.floor1!.objective.welcomeOfficePos.y,
+  );
+  const tilePath = findTilePath(floorMap, floorMap.playerSpawn, welcomeTile, {
+    isTilePassable: (x, y) => floorMap.tileMap.isPassable(x, y) || floorMap.tileMap.isDoor(x, y),
+  });
+  const roomPath: number[] = [];
+  for (const point of tilePath) {
+    const roomId = floorMap.roomGraph.getRoomAt(point.x, point.y);
+    if (roomId >= 0 && roomPath[roomPath.length - 1] !== roomId) {
+      roomPath.push(roomId);
+    }
+  }
+  return roomPath;
 }
 
 describe('floor 1 welcome signs', () => {
@@ -59,6 +79,53 @@ describe('floor 1 welcome signs', () => {
       // ...but no sign is ever planted directly under the player's spawn tile.
       const onSpawnTile = signTiles.some((t) => t.x === spawnTile.x && t.y === spawnTile.y);
       expect(onSpawnTile, `seed ${seed} must not place a sign on the spawn tile`).toBe(false);
+    }
+  });
+
+  it('regression: seed 731683 follows the navigable room path instead of pointing straight at the goal', () => {
+    const world = initFloor1(731683);
+    const floorMap = world.floorMap!;
+    const roomPath = navigableRoomPath(world);
+    expect(roomPath.length).toBeGreaterThan(6);
+
+    const signSummaries = welcomeSignEids(world)
+      .map((eid) => {
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const tile = floorMap.pixelToTile(x, y);
+        return {
+          roomId: floorMap.roomGraph.getRoomAt(tile.x, tile.y),
+          angle: world.stores.rotation.angle[eid] ?? 0,
+        };
+      })
+      .sort((a, b) => roomPath.indexOf(a.roomId) - roomPath.indexOf(b.roomId));
+
+    expect(signSummaries.length).toBeGreaterThan(1);
+    expect(signSummaries[0]?.roomId).toBe(roomPath[0]);
+
+    let previousRoomIndex = -1;
+    for (const sign of signSummaries) {
+      const roomIndex = roomPath.indexOf(sign.roomId);
+      expect(roomIndex).toBeGreaterThanOrEqual(0);
+      expect(roomIndex).toBeGreaterThan(previousRoomIndex);
+      if (previousRoomIndex >= 0) {
+        expect(roomIndex - previousRoomIndex).toBeGreaterThanOrEqual(2);
+        expect(roomIndex - previousRoomIndex).toBeLessThanOrEqual(3);
+      }
+
+      const room = floorMap.roomGraph.get(sign.roomId)!;
+      const nextRoom = floorMap.roomGraph.get(roomPath[roomIndex + 1]!)!;
+      const roomCenter = {
+        x: room.bounds.x + room.bounds.width / 2,
+        y: room.bounds.y + room.bounds.height / 2,
+      };
+      const nextCenter = {
+        x: nextRoom.bounds.x + nextRoom.bounds.width / 2,
+        y: nextRoom.bounds.y + nextRoom.bounds.height / 2,
+      };
+      const expectedAngle = Math.atan2(nextCenter.y - roomCenter.y, nextCenter.x - roomCenter.x);
+      expect(sign.angle).toBeCloseTo(expectedAngle, 5);
+      previousRoomIndex = roomIndex;
     }
   });
 });

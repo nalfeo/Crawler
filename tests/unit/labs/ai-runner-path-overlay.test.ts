@@ -30,6 +30,15 @@ describe('hasClearLineOfSight', () => {
     expect(hasClearLineOfSight(10, 10, 10, 10, () => false)).toBe(false);
     expect(hasClearLineOfSight(10, 10, 10, 10, allPassable)).toBe(true);
   });
+
+  it('rejects a diagonal that would cut through a blocked corner', () => {
+    const isPassable = (x: number, y: number): boolean => {
+      const tx = Math.floor(x / 32);
+      const ty = Math.floor(y / 32);
+      return !((tx === 2 && ty === 1) || (tx === 1 && ty === 2));
+    };
+    expect(hasClearLineOfSight(48, 48, 80, 80, isPassable)).toBe(false);
+  });
 });
 
 describe('buildSmoothedOverlayPath', () => {

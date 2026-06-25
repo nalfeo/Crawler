@@ -15,6 +15,7 @@ import {
   type RoomBounds,
   type RoomData,
 } from '../shared/map-types.js';
+import { findTilePath, type TilePoint } from '../core/map/pathfinding.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { sealRoomPerimeter, sealSpecialRooms } from '../core/map/special-rooms.js';
 import {
@@ -453,54 +454,28 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-function findRoomPath(
-  roomGraph: { get(id: number): { neighbors: Iterable<number> } | undefined },
-  startId: number,
-  targetId: number,
+function findNavigableRoomPath(
+  floorMap: {
+    roomGraph: { getRoomAt(x: number, y: number): number };
+    tileMap: { isPassable(x: number, y: number): boolean; isDoor(x: number, y: number): boolean };
+  },
+  start: TilePoint,
+  target: TilePoint,
 ): number[] | null {
-  const queue: number[] = [startId];
-  const visited = new Set<number>([startId]);
-  const parent = new Map<number, number>();
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    if (current === targetId) {
-      break;
-    }
-    const room = roomGraph.get(current);
-    if (!room) {
-      continue;
-    }
-    for (const neighborId of room.neighbors) {
-      if (visited.has(neighborId)) {
-        continue;
-      }
-      visited.add(neighborId);
-      parent.set(neighborId, current);
-      queue.push(neighborId);
-    }
-  }
-
-  if (!visited.has(targetId)) {
+  const tilePath = findTilePath(floorMap as never, start, target, {
+    isTilePassable: (x, y) => floorMap.tileMap.isPassable(x, y) || floorMap.tileMap.isDoor(x, y),
+  });
+  if (tilePath.length === 0) {
     return null;
   }
-
-  const path: number[] = [];
-  let current: number | undefined = targetId;
-  while (current !== undefined) {
-    path.push(current);
-    if (current === startId) {
-      break;
+  const roomPath: number[] = [];
+  for (const point of tilePath) {
+    const roomId = floorMap.roomGraph.getRoomAt(point.x, point.y);
+    if (roomId >= 0 && roomPath[roomPath.length - 1] !== roomId) {
+      roomPath.push(roomId);
     }
-    current = parent.get(current);
   }
-
-  if (path[path.length - 1] !== startId) {
-    return null;
-  }
-
-  path.reverse();
-  return path;
+  return roomPath.length > 0 ? roomPath : null;
 }
 
 /**
@@ -676,9 +651,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const welcomeOfficeTile = floorMap.pixelToTile(welcomeOfficePos.x, welcomeOfficePos.y);
   const welcomeGoonRoomId = floorMap.roomGraph.getRoomAt(welcomeOfficeTile.x, welcomeOfficeTile.y);
   if (welcomeSignTextureId !== undefined && floorMap.spawnRoom && welcomeGoonRoomId >= 0) {
-    const startId = floorMap.spawnRoom.id;
-    const targetId = welcomeGoonRoomId;
-    const path = findRoomPath(floorMap.roomGraph, startId, targetId);
+    const path = findNavigableRoomPath(floorMap, floorMap.playerSpawn, welcomeOfficeTile);
 
     const placeWelcomeSign = (fromRoomId: number, toRoomId: number): void => {
       const room = floorMap.roomGraph.get(fromRoomId);
@@ -720,15 +693,18 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
     if (path && path.length >= 2) {
       // Directional breadcrumb trail from the spawn room toward the safe room.
-      // Starting at i = 0 guarantees a sign in the spawn room itself; every
-      // other room along the path also gets one pointing to the next.
-      for (let i = 0; i < path.length - 1; i += 2) {
+      // Starting at the spawn guarantees the initial hint; after that, drop signs
+      // every 2-3 rooms while still pointing to the immediate next room on the
+      // real navigable path so the breadcrumb follows corridor turns instead of
+      // drawing a straight line to the destination.
+      for (let i = 0; i < path.length - 1; ) {
         placeWelcomeSign(path[i]!, path[i + 1]!);
+        const remainingRooms = path.length - 1 - i;
+        if (remainingRooms <= 2) {
+          break;
+        }
+        i += remainingRooms <= 4 ? 2 : 3;
       }
-    } else {
-      // Spawn and welcome goon aren't path-connected (rare). Still guarantee the
-      // spawn-room welcome sign, oriented straight toward the welcome goon's room.
-      placeWelcomeSign(startId, targetId);
     }
   }
 
