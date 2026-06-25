@@ -625,5 +625,48 @@ describe('floor1Scenario', () => {
       const tile = floorMap.pixelToTile(bx, by);
       expect(floorMap.tileMap.isPassable(tile.x, tile.y)).toBe(true);
     });
+
+    it('regression: seed 665790 rat-tail fetch item is accessible without entering the boss room', () => {
+      // Seed 665790 placed the rat-tail in a room (room 11) whose only connection
+      // was the locked boss staircase room.  The player needed the rat tail to
+      // complete the shopkeeper quest — a prerequisite for unlocking the boss room
+      // — so the floor was unwinnable and timed out.
+      const world = createTestWorld({ seed: 665790 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const floorMap = world.floorMap!;
+      const bossRoom = floorMap.bossStairRoom;
+      expect(bossRoom).toBeDefined();
+      if (!bossRoom) return;
+
+      const questItemPos = world.floor1!.objective.questItemPos;
+      const questTile = floorMap.pixelToTile(questItemPos.x, questItemPos.y);
+      const questRoomId = floorMap.roomGraph.getRoomAt(questTile.x, questTile.y);
+
+      // The quest item room must be reachable from spawn without traversing the
+      // boss staircase room. This BFS mirrors the production guard in
+      // chooseObjectiveTiles but returns a boolean instead of a Set, so it is
+      // kept here as a self-contained test helper rather than a shared utility.
+      function canReachWithoutRoom(from: number, to: number, excluding: number): boolean {
+        const queue = [from];
+        const visited = new Set([from, excluding]);
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          if (curr === to) return true;
+          for (const n of floorMap.roomGraph.get(curr)?.neighbors ?? []) {
+            if (!visited.has(n)) {
+              visited.add(n);
+              queue.push(n);
+            }
+          }
+        }
+        return false;
+      }
+
+      const spawnRoomId = floorMap.spawnRoom?.id ?? 0;
+      expect(canReachWithoutRoom(spawnRoomId, questRoomId, bossRoom.id)).toBe(true);
+    });
   });
 });
