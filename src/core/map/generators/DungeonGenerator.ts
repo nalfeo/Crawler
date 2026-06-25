@@ -14,7 +14,7 @@
 import { Map as ROTMap, RNG } from 'rot-js';
 import type { MapConfig, DoorLocation, RoomBounds } from '../../../shared/map-types';
 import { TilePresets, TileFlags, TerrainType, RoomRole } from '../../../shared/map-types';
-import type { SeededRandom } from '../../../shared/random';
+import { SeededRandom } from '../../../shared/random';
 import { TileMap } from '../TileMap';
 import { RoomGraph } from '../RoomGraph';
 import { FloorMap } from '../FloorMap';
@@ -24,6 +24,8 @@ import type { MapGenerator } from './types';
 export const SPECIAL_ROOM_MIN_WIDTH = 9;
 /** Default minimum bounds height (tiles, walls included) for BOSS_STAIR and SAFE rooms. */
 export const SPECIAL_ROOM_MIN_HEIGHT = 9;
+const CAVE_REGION_DENSITY_DIVISOR = 5000;
+const CAVE_PATCH_JITTER_FACTOR = 0.35;
 
 export interface DungeonGeneratorOptions {
   /** When true, applies round/L-shaped rooms, wide corridors, and diagonal shortcuts. */
@@ -1588,13 +1590,12 @@ function carveCaveRegions(
   blocked: Uint8Array,
   seed: number,
 ): void {
-  let caveState = (seed ^ 0x9e3779b9 ^ (w << 8) ^ h) >>> 0;
-  const caveRand = (): number => {
-    caveState = (Math.imul(caveState, 1664525) + 1013904223) >>> 0;
-    return caveState / 0x100000000;
-  };
-  const caveRandInt = (min: number, max: number): number =>
-    min + Math.floor(caveRand() * (max - min + 1));
+  // Use a deterministic cave-only RNG stream derived from map seed + dimensions.
+  // This keeps cave shaping stable across runs while isolating it from the main
+  // dungeon RNG progression used by room/corridor generation.
+  const caveRng = new SeededRandom(seed ^ 0x9e3779b9 ^ (w << 8) ^ h);
+  const caveRand = (): number => caveRng.next();
+  const caveRandInt = (min: number, max: number): number => caveRng.nextInt(min, max);
 
   const candidates: number[] = [];
   const inBounds = (x: number, y: number): boolean => x > 1 && x < w - 2 && y > 1 && y < h - 2;
@@ -1616,7 +1617,7 @@ function carveCaveRegions(
 
   if (candidates.length === 0) return;
 
-  const regionCount = Math.max(2, Math.min(8, Math.floor((w * h) / 5000)));
+  const regionCount = Math.max(2, Math.min(8, Math.floor((w * h) / CAVE_REGION_DENSITY_DIVISOR)));
 
   const carveTile = (x: number, y: number): void => {
     if (!inBounds(x, y)) return;
@@ -1634,7 +1635,7 @@ function carveCaveRegions(
         if (!inBounds(x, y)) continue;
         const nx = rx <= 0 ? 0 : (x - cx) / rx;
         const ny = ry <= 0 ? 0 : (y - cy) / ry;
-        const jitter = (caveRand() - 0.5) * 0.35;
+        const jitter = (caveRand() - 0.5) * CAVE_PATCH_JITTER_FACTOR;
         if (nx * nx + ny * ny <= 1 + jitter) {
           carveTile(x, y);
         }
