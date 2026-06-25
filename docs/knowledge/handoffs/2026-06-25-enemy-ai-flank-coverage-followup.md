@@ -17,10 +17,11 @@ PR #284 flagged as not verifying the behavior it claimed to cover.
 
 Estimated: 🍎 x 1
 Actual: 🍎 x 2
-Verdict: 📈 Over — the assertion change itself was small, but a pruned session
+Verdict: 📉 Under — the assertion change itself was small, but a pruned session
 worktree (recovered + deps reinstalled), discovering that single-enemy flank vs.
 navigator trajectories converge (forcing a geometry-direct test instead of
-trajectory drift), and the auto-rebase/CI-regate merge race each added real work.
+trajectory drift), and the auto-rebase/CI-regate merge race each added real work,
+so it ran harder than the one-apple estimate (delta +1 = harder than expected).
 
 Hello kitties: 2/5 = 0.40 🎀
 
