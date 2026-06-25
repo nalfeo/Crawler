@@ -13,6 +13,7 @@ import {
   TerrainType,
   type MapConfig,
   type RoomBounds,
+  type RoomData,
 } from '../shared/map-types.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import {
@@ -282,8 +283,42 @@ function chooseObjectiveTiles(world: GameWorld): {
       (r): r is NonNullable<typeof r> => r != null,
     ),
   );
+
+  // Rooms that are exclusively reachable through the boss staircase room must
+  // never host quest items or NPCs that are required before the boss doors can
+  // open — placing them there creates an unresolvable deadlock (e.g. seed 665790,
+  // where the rat-tail fetch item ended up in a room whose only connection was
+  // the locked boss-stair room). BFS from spawn treating boss-stair as a wall.
+  const bossStairRoomId = floorMap.bossStairRoom?.id;
+  const reachableWithoutBoss = new Set<RoomData>();
+  {
+    const bfsQueue: number[] = [];
+    const bfsVisited = new Set<number>();
+    const startRoomId = floorMap.spawnRoom?.id;
+    if (startRoomId !== undefined) {
+      bfsQueue.push(startRoomId);
+      bfsVisited.add(startRoomId);
+      while (bfsQueue.length > 0) {
+        const currId = bfsQueue.shift()!;
+        const currRoom = floorMap.roomGraph.get(currId);
+        if (currRoom) {
+          reachableWithoutBoss.add(currRoom);
+          for (const neighborId of currRoom.neighbors) {
+            if (!bfsVisited.has(neighborId) && neighborId !== bossStairRoomId) {
+              bfsVisited.add(neighborId);
+              bfsQueue.push(neighborId);
+            }
+          }
+        }
+      }
+    }
+  }
+
   const candidates = floorMap.rooms
-    .filter((room) => !reserved.has(room))
+    .filter(
+      (room) =>
+        !reserved.has(room) && (reachableWithoutBoss.size === 0 || reachableWithoutBoss.has(room)),
+    )
     .map((room) => {
       const center = centerOfRoom(room);
       const dx = center.x - spawnTile.x;
