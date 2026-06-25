@@ -75,6 +75,31 @@ pinned by the pre-existing integration suites (`generate-one.test.ts`,
   checkpoint-wiped draft brief. `rerunErrorStatus` maps `RerunErrorKind` →
   status (404 / 415 / 500).
 
+**4. Structured per-sensor results + force flag folded in (scope expansion from
+the spawning session)**
+
+The spawning session asked to fold the `wf-sensor-failure-visibility` and
+`wf-force-judge` **backends** into PR2a (PR2c becomes pure UI + E2E). Findings:
+
+- **Force-judge backend was already done** in the core — `runJudgePass({ force,
+variantIndexes })` + the judge endpoint's `force` flag — and already covered by
+  the `rerun.test.ts` "force judges a sensor-failed variant" integration test.
+- **Structured per-sensor detail already existed on the backend** end-to-end:
+  `SensorResult` (`{ ok, sensor, reason?, pixels? }`) → `Scorecard.breakdown` →
+  `RunSummaryEntry.breakdown` → returned by the generate AND both re-run
+  responses. The only gap was the **devtools frontend dropping `breakdown`**
+  before it reached the persisted `QueueRunCandidate`.
+
+So the only new work was frontend data plumbing (no rendering):
+
+- `src/devtools/sprite-workflow-queue.ts`: added `QueueSensorResult`
+  (`{ sensor, ok, reason, pixelCount }`) + `sensors[]` on `QueueRunCandidate`,
+  and a `sanitizeSensorResults` parse in `sanitizeRunCandidate` so the detail
+  survives the durable workflow-state serialize/refresh.
+- `src/devtools-main.ts`: added `breakdown` to `RawGenerateCandidate`, `sensors`
+  to `WorkflowRunCandidate`, a `toSensorResults()` normaliser, and wired it
+  through both candidate-mapping sites (summary→run and persisted-run→memory).
+
 ## Files Changed
 
 - `scripts/sprites/run-pipeline.ts` (NEW — shared per-variant pipeline)
@@ -82,9 +107,16 @@ pinned by the pre-existing integration suites (`generate-one.test.ts`,
 - `scripts/sprites/generate-one.ts` (refactored to consume run-pipeline; 542→332)
 - `scripts/sprites/sidecar/server.ts` (2 endpoints + `resolveRunForRerun` +
   `rerunErrorStatus` + imports/body interfaces + header doc)
+- `src/devtools/sprite-workflow-queue.ts` (`QueueSensorResult` + `sensors` on
+  `QueueRunCandidate` + `sanitizeSensorResults`)
+- `src/devtools-main.ts` (`breakdown` on `RawGenerateCandidate`, `sensors` on
+  `WorkflowRunCandidate`, `toSensorResults()`, both mapping sites)
 - `tests/fixtures/sprites/seed-run.ts` (NEW — seeds a real run via `generateOne`)
 - `tests/unit/sprites/run-pipeline.test.ts` (NEW — pure gating + combinedPassed, 8 tests)
-- `tests/integration/sprites/rerun.test.ts` (NEW — re-run over seeded runs, 14 tests)
+- `tests/unit/devtools-sprite-workflow-queue.test.ts` (+2 tests: sensors
+  round-trip + malformed-drop; fixture updated)
+- `tests/integration/sprites/rerun.test.ts` (NEW — re-run over seeded runs, 14
+  tests; force test extended to assert structured per-sensor detail)
 - `tests/integration/sprites/sidecar-rerun.test.ts` (NEW — endpoint gates, 8 tests)
 - `docs/knowledge/adr/0023-rerunnable-postprocess-judge.md` (NEW)
 
@@ -122,10 +154,13 @@ pinned by the pre-existing integration suites (`generate-one.test.ts`,
 - Actual: 🍎🍎🍎🍎 (Large)
 - Verdict: 🎯 exact (delta 0)
 - Reason: scope landed where expected — one shared module, one orchestrator, two
-  endpoints, three test files + a seed helper, one ADR. Two small wiring bugs
-  (endpoint `old_str` ate the approve route header; vision-provider null
-  narrowing) and a test-placement adjustment (moved generation-heavy tests to
-  integration), but no scope creep.
+  endpoints, the structured per-sensor queue plumbing, test files + a seed helper,
+  one ADR. The spawning session's mid-flight scope expansion (fold sensor-viz +
+  force-judge backend in) was mostly already satisfied by the core (force flag +
+  structured `breakdown` already existed), so the added work was a small frontend
+  data-plumbing delta — the estimate still held. Minor wiring bugs (endpoint
+  `old_str` ate the approve route header; vision-provider null narrowing) and a
+  test-placement adjustment, but no real scope creep.
 - Hello kitties: 0.8
 
 ## Follow-ups (rest of the PR2 stack)
@@ -135,14 +170,19 @@ Tracked in the session todo DB:
 - **PR2b** (`pr2b-state-machine`, `pr2b-ui-drop-promote`): rewrite the pure
   state machine `src/devtools/sprite-workflow-queue.ts` to the 7 stages and the
   devtools UI in `src/devtools-main.ts`; **drop the standalone Promote stage**
-  (fold brief promotion into Choose→Generate).
-- **PR2c** (`pr2c-sensor-visibility`, `pr2c-force-judge-ui`, `pr2c-e2e`):
-  surface per-sensor failure detail (already in `summary.breakdown`) per variant;
-  add a force-judge UI control wired to the judge endpoint's `force` flag;
-  Playwright E2E against a live Azure sidecar (`npm install` +
-  `npm run setup:azure`) — generate a sheet, re-run PostProcess + Judge on the
-  STORED sheet without regenerating, verify sensor-failure detail, force-judge
-  past a failing sensor, confirm resume-after-refresh.
+  (fold brief promotion into Choose→Generate). **HOLD:** the spawning session is
+  confirming the Generate-model decision (full-pipeline vs sheet-only) with the
+  user; do NOT start PR2b until that answer is relayed. Working assumption is
+  Option A (full-pipeline); PR2a endpoints are model-agnostic either way.
+- **PR2c** — now **pure UI + E2E** (the backend/data landed in PR2a):
+  - `pr2c-sensor-visibility`: render `candidate.sensors` (which sensors failed +
+    why) per variant in the devtools UI — no new sidecar/state work.
+  - `pr2c-force-judge-ui`: add the per-candidate/per-run force-judge button wired
+    to the judge endpoint's `force` flag.
+  - `pr2c-e2e`: Playwright E2E against a live Azure sidecar (`npm install` +
+    `npm run setup:azure`) — generate a sheet, re-run PostProcess + Judge on the
+    STORED sheet without regenerating, verify sensor-failure detail, force-judge
+    past a failing sensor, confirm resume-after-refresh.
 
 ## Notes / Gotchas for the next agent
 

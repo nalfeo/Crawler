@@ -100,6 +100,13 @@ interface WorkflowJudgeSummary {
   rejectedBy: string[];
 }
 
+interface WorkflowSensorResult {
+  sensor: string;
+  ok: boolean;
+  reason: string | null;
+  pixelCount: number | null;
+}
+
 interface WorkflowRunCandidate {
   index: number;
   score: number;
@@ -107,6 +114,7 @@ interface WorkflowRunCandidate {
   passed: boolean;
   combinedPassed: boolean;
   judge: WorkflowJudgeSummary | null;
+  sensors: WorkflowSensorResult[];
 }
 
 /** Raw per-candidate shape returned by the sidecar generate summary. */
@@ -124,6 +132,17 @@ interface RawGenerateCandidate {
     readability?: { score: number };
     rejectedBy?: string[];
   } | null;
+  /**
+   * Per-sensor breakdown mirrored from the candidate scorecard
+   * (`SensorResult[]` from the sprite pipeline). Optional for forward-compat
+   * with older sidecar summaries that omitted it.
+   */
+  breakdown?: Array<{
+    ok?: boolean;
+    sensor?: string;
+    reason?: string;
+    pixels?: ReadonlyArray<unknown>;
+  }>;
 }
 
 function toJudgeSummary(raw: RawGenerateCandidate['judgeScorecard']): WorkflowJudgeSummary | null {
@@ -136,6 +155,21 @@ function toJudgeSummary(raw: RawGenerateCandidate['judgeScorecard']): WorkflowJu
     readability: raw.readability?.score ?? 0,
     rejectedBy: Array.isArray(raw.rejectedBy) ? raw.rejectedBy : [],
   };
+}
+
+function toSensorResults(raw: RawGenerateCandidate['breakdown']): WorkflowSensorResult[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WorkflowSensorResult[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry.sensor !== 'string') continue;
+    out.push({
+      sensor: entry.sensor,
+      ok: entry.ok === true,
+      reason: typeof entry.reason === 'string' ? entry.reason : null,
+      pixelCount: Array.isArray(entry.pixels) ? entry.pixels.length : null,
+    });
+  }
+  return out;
 }
 
 interface WorkflowRunState {
@@ -1596,6 +1630,12 @@ function render(): void {
                   rejectedBy: [...candidate.judge.rejectedBy],
                 }
               : null,
+            sensors: candidate.sensors.map((sensor) => ({
+              sensor: sensor.sensor,
+              ok: sensor.ok,
+              reason: sensor.reason,
+              pixelCount: sensor.pixelCount,
+            })),
           })),
         }
       : null;
@@ -3830,6 +3870,7 @@ function render(): void {
       passed: candidate.passed,
       combinedPassed: candidate.combinedPassed,
       judge: toJudgeSummary(candidate.judgeScorecard),
+      sensors: toSensorResults(candidate.breakdown),
     })),
   });
 

@@ -192,6 +192,15 @@ describe('serialize / deserialize', () => {
               readability: 4,
               rejectedBy: [],
             },
+            sensors: [
+              { sensor: 'dimensions-exact', ok: true, reason: null, pixelCount: null },
+              {
+                sensor: 'alpha-binary',
+                ok: false,
+                reason: '12 semi-transparent pixels',
+                pixelCount: 12,
+              },
+            ],
           },
         ],
       },
@@ -220,8 +229,51 @@ describe('serialize / deserialize', () => {
     });
     const restored = deserializeQueue(raw);
     expect(restored.items[0]?.run?.candidates[0]?.judge).toBeNull();
+    expect(restored.items[0]?.run?.candidates[0]?.sensors).toEqual([]);
     expect(restored.items[0]?.generationRequestedAt).toBeNull();
     expect(restored.items[0]?.generationStartedAt).toBeNull();
+  });
+
+  it('preserves structured per-sensor breakdown and drops malformed sensor entries', () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          id: 'item-1',
+          seq: 1,
+          brief: 'Purple Potion Bottle',
+          stage: 'variants',
+          run: {
+            briefId: 'purple-potion-bottle',
+            runId: 'run-1',
+            candidates: [
+              {
+                index: 0,
+                score: 1,
+                outOf: 2,
+                passed: false,
+                combinedPassed: false,
+                sensors: [
+                  { sensor: 'dimensions-exact', ok: true },
+                  { sensor: 'alpha-binary', ok: false, reason: '12 stray pixels', pixelCount: 12 },
+                  { ok: false, reason: 'missing sensor name' },
+                  'garbage',
+                  null,
+                  { sensor: 'palette-membership', ok: false, reason: 7, pixelCount: 'x' },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    const sensors = deserializeQueue(raw).items[0]?.run?.candidates[0]?.sensors;
+    expect(sensors).toEqual([
+      { sensor: 'dimensions-exact', ok: true, reason: null, pixelCount: null },
+      { sensor: 'alpha-binary', ok: false, reason: '12 stray pixels', pixelCount: 12 },
+      { sensor: 'palette-membership', ok: false, reason: null, pixelCount: null },
+    ]);
   });
 
   it('returns an empty queue for garbage input', () => {

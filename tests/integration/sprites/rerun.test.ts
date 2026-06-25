@@ -271,6 +271,15 @@ describe('rejudgeRun', () => {
     expect(calls).toHaveLength(1); // the forced, sensor-failed variant got judged
     const judged = result.summary.candidates.find((c) => c.index === failed.index)!;
     expect(judged.judgeScorecard).not.toBeNull();
+
+    // The structured per-sensor breakdown (which sensors failed and why) is
+    // preserved on the candidate so the PostProcess/Judge UI can surface it.
+    const failingSensors = judged.breakdown.filter((s) => s.ok === false);
+    expect(failingSensors.length).toBeGreaterThan(0);
+    for (const sensor of failingSensors) {
+      expect(typeof sensor.sensor).toBe('string');
+      expect(typeof (sensor as { reason?: unknown }).reason).toBe('string');
+    }
   });
 
   it('throws processed-missing when a processed PNG is absent', async () => {

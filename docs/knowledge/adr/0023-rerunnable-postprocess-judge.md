@@ -11,7 +11,8 @@ Accepted
 ## Estimated Complexity
 
 🍎 x 4 — multi-subsystem (new shared pipeline module + re-run orchestrator +
-two sidecar endpoints + tests), ADR required, but no new ECS system and no new
+two sidecar endpoints + structured per-sensor results plumbed into the durable
+devtools queue state + tests), ADR required, but no new ECS system and no new
 lab (sidecar/devtools infra).
 
 ## Context
@@ -113,6 +114,36 @@ Both share a `resolveRunForRerun` helper that mirrors the slice-map handler
 (load `summary.json` → resolve the brief path) plus the generate handler's
 re-materialisation of a checkpoint-wiped draft brief from the store.
 
+Both endpoints return the full re-run `summary` (incl. each candidate's
+`breakdown`), so the structured per-sensor results below ride the same response
+the generate endpoint already returns.
+
+### 4. Structured per-sensor results surfaced to the queue state
+
+`wf-sensor-failure-visibility` ("show **which** sensors failed and why, per
+variant, not just a pass/fail tally") and the `force`-judge gate are needed by
+the same operator the re-run endpoints serve, so their **backend/data plumbing**
+landed here rather than in the later UI PR.
+
+The structured detail already existed end-to-end on the backend: each sensor
+returns a `SensorResult` (`{ ok, sensor, reason?, pixels? }`), the scorer keeps
+the full ordered list in `Scorecard.breakdown`, and `RunSummaryEntry.breakdown`
+mirrors it into `summary.json`. The only gap was the **devtools frontend**,
+which dropped `breakdown` when mapping the sidecar summary into its persisted
+`QueueRunCandidate`. So:
+
+- `QueueRunCandidate` gains a `sensors: QueueSensorResult[]` field
+  (`{ sensor, ok, reason, pixelCount }`), and `sanitizeRunCandidate` parses it
+  defensively (same posture as the judge summary) so it survives a
+  serialize/refresh round-trip through the durable workflow-state.
+- `devtools-main.ts` reads `breakdown` off the sidecar summary and normalises it
+  into that shape at the single summary→candidate mapping site, so a fresh
+  generate **and** every re-run populate `sensors` from day one.
+
+No rendering is included — PR2c consumes `candidate.sensors` and the `force`
+flag purely in the UI. Keeping the data structured from the first PR means the
+UI PR adds no new sidecar/state surface area.
+
 ## Consequences
 
 ### Positive
@@ -126,8 +157,12 @@ re-materialisation of a checkpoint-wiped draft brief from the store.
   parity test asserts this byte-for-byte.
 - `generateOne` is materially smaller and its per-variant logic is now
   independently unit-tested.
-- `force` and per-subset `variantIndexes` give the upcoming Judge UI (PR2c) the
+- `force` and per-subset `variantIndexes` give the Judge UI (PR2c) the
   primitives for "force judge past a failing sensor" and partial re-judge.
+- Per-sensor failure detail is carried structured all the way into the durable
+  queue state (`QueueRunCandidate.sensors`), so the PostProcess/Judge UI can show
+  which sensors failed and why with **no** additional sidecar or state work in
+  PR2c — that PR becomes pure rendering + E2E.
 
 ### Negative
 

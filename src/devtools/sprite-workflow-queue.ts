@@ -84,6 +84,21 @@ export interface QueueJudgeSummary {
   readonly rejectedBy: readonly string[];
 }
 
+/**
+ * One sensor's result for a run candidate, persisted so the PostProcess/Judge
+ * stages can surface WHICH sensors failed and why after a refresh — not just a
+ * pass/fail tally. Mirrors `SensorResult` from the sprite pipeline
+ * (`scripts/sprites/sensors/common.ts`): `ok` is the pass flag, `reason` is the
+ * stable short failure string (null when the sensor passed), and `pixelCount`
+ * is the optional count of offending pixels as a lightweight magnitude hint.
+ */
+export interface QueueSensorResult {
+  readonly sensor: string;
+  readonly ok: boolean;
+  readonly reason: string | null;
+  readonly pixelCount: number | null;
+}
+
 export interface QueueRunCandidate {
   readonly index: number;
   readonly score: number;
@@ -92,6 +107,12 @@ export interface QueueRunCandidate {
   readonly combinedPassed: boolean;
   /** Advisory judge axis scores. Null when the judge was disabled/skipped. */
   readonly judge: QueueJudgeSummary | null;
+  /**
+   * Per-sensor pass/fail breakdown mirrored from the candidate scorecard, so the
+   * PostProcess/Judge UI can show which sensors failed and why. Empty when the
+   * sidecar summary carried no breakdown (e.g. older runs).
+   */
+  readonly sensors: readonly QueueSensorResult[];
 }
 
 export interface QueueRun {
@@ -313,6 +334,24 @@ function sanitizeJudgeSummary(value: unknown): QueueJudgeSummary | null {
   };
 }
 
+function sanitizeSensorResults(value: unknown): QueueSensorResult[] {
+  if (!Array.isArray(value)) return [];
+  const out: QueueSensorResult[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== 'object') continue;
+    const s = entry as Record<string, unknown>;
+    if (typeof s.sensor !== 'string') continue;
+    out.push({
+      sensor: s.sensor,
+      ok: s.ok === true,
+      reason: typeof s.reason === 'string' ? s.reason : null,
+      pixelCount:
+        typeof s.pixelCount === 'number' && Number.isFinite(s.pixelCount) ? s.pixelCount : null,
+    });
+  }
+  return out;
+}
+
 function sanitizeRunCandidate(value: unknown): QueueRunCandidate | null {
   if (!value || typeof value !== 'object') return null;
   const c = value as Record<string, unknown>;
@@ -324,6 +363,7 @@ function sanitizeRunCandidate(value: unknown): QueueRunCandidate | null {
     passed: c.passed === true,
     combinedPassed: c.combinedPassed === true,
     judge: sanitizeJudgeSummary(c.judge),
+    sensors: sanitizeSensorResults(c.sensors),
   };
 }
 
