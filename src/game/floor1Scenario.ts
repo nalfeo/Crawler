@@ -10,6 +10,8 @@ import {
 import {
   BiomeType,
   RoomRole,
+  TileFlags,
+  TilePresets,
   TerrainType,
   type MapConfig,
   type RoomBounds,
@@ -119,6 +121,101 @@ function pruneAmbientOverflow(
     clearEntityStores(world, victim);
     removeEntity(world.ecs, victim);
     world.floor1.enemyArchetypes.delete(victim);
+  }
+}
+
+/**
+ * Seal passable non-door perimeter tiles for a specific objective room, but only
+ * when doing so does not disconnect any spawn-reachable tile (other than the
+ * sealed tiles themselves) from the player spawn. This keeps the room door-gated
+ * without ever creating a newly unreachable region — for example a side area that
+ * was only reachable *through* one of the breached perimeter tiles. If sealing
+ * would isolate the room's own door or any other reachable region, this is a
+ * no-op.
+ *
+ * Exported for unit testing; called during Floor 1 scenario init.
+ */
+export function sealRoomPerimeterOpenings(
+  world: GameWorld,
+  roomPos: { x: number; y: number },
+): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+  const tile = floorMap.pixelToTile(roomPos.x, roomPos.y);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) return;
+  const room = floorMap.roomGraph.get(roomId);
+  if (!room) return;
+
+  const doorIdxSet = new Set(room.doors.map((door) => door.y * floorMap.width + door.x));
+  const sealIdxSet = new Set<number>();
+  const { x, y, width, height } = room.bounds;
+  const collectSealable = (tx: number, ty: number): void => {
+    const idx = ty * floorMap.width + tx;
+    if (doorIdxSet.has(idx)) return;
+    const flags = floorMap.tileMap.flags[idx]!;
+    const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+    const isDoor = (flags & TileFlags.DOOR) !== 0;
+    if (isPassable && !isDoor) sealIdxSet.add(idx);
+  };
+
+  for (let tx = x; tx < x + width; tx += 1) {
+    collectSealable(tx, y);
+    collectSealable(tx, y + height - 1);
+  }
+  for (let ty = y + 1; ty < y + height - 1; ty += 1) {
+    collectSealable(x, ty);
+    collectSealable(x + width - 1, ty);
+  }
+  if (sealIdxSet.size === 0) return;
+
+  // Flood fill the tiles reachable from the player spawn over passable/door
+  // tiles. When `blocked` is supplied those tiles are treated as walls, which
+  // models the map *after* the candidate perimeter tiles are sealed.
+  const spawnReachable = (blocked: Set<number> | null): Uint8Array => {
+    const startIdx = floorMap.playerSpawn.y * floorMap.width + floorMap.playerSpawn.x;
+    const visited = new Uint8Array(floorMap.width * floorMap.height);
+    const stack: number[] = [startIdx];
+    visited[startIdx] = 1;
+    while (stack.length > 0) {
+      const idx = stack.pop()!;
+      const cx = idx % floorMap.width;
+      const cy = (idx - cx) / floorMap.width;
+      for (const [nx, ny] of [
+        [cx + 1, cy],
+        [cx - 1, cy],
+        [cx, cy + 1],
+        [cx, cy - 1],
+      ] as [number, number][]) {
+        if (nx < 0 || ny < 0 || nx >= floorMap.width || ny >= floorMap.height) continue;
+        const nIdx = ny * floorMap.width + nx;
+        if (visited[nIdx] || blocked?.has(nIdx)) continue;
+        const flags = floorMap.tileMap.flags[nIdx]!;
+        const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+        const isDoor = (flags & TileFlags.DOOR) !== 0;
+        if (!isPassable && !isDoor) continue;
+        visited[nIdx] = 1;
+        stack.push(nIdx);
+      }
+    }
+    return visited;
+  };
+
+  // Connectivity guard: only seal when every tile that was reachable from spawn
+  // *before* sealing — apart from the sealed tiles themselves — stays reachable
+  // afterwards. This is stricter than checking the target room's door alone and
+  // prevents sealing a breach that is the sole route to some other region.
+  const reachableBefore = spawnReachable(null);
+  const reachableAfter = spawnReachable(sealIdxSet);
+  for (let idx = 0; idx < reachableBefore.length; idx += 1) {
+    if (reachableBefore[idx] === 1 && reachableAfter[idx] === 0 && !sealIdxSet.has(idx)) {
+      return;
+    }
+  }
+
+  for (const idx of sealIdxSet) {
+    floorMap.tileMap.flags[idx] = TilePresets.WALL;
+    floorMap.terrain[idx] = TerrainType.STONE_WALL;
   }
 }
 
@@ -627,6 +724,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     shopRoomPos,
     questItemPos,
   } = chooseObjectiveTiles(world);
+  sealRoomPerimeterOpenings(world, safeRoomPos);
+  sealRoomPerimeterOpenings(world, slimeRatRoomPos);
   tagRoomAsSafe(world, welcomeOfficePos);
   tagRoomAsSafe(world, shopRoomPos);
   tagRoomAsSafe(world, spellQuestGiverPos);
