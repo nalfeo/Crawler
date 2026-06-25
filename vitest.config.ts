@@ -52,12 +52,14 @@ export default defineConfig({
           branches: 80,
           statements: 90,
         },
-        // Calibrated to actual CI-measured coverage (2026-06-09); aspirational
-        // 90/80 targets can be restored once dedicated tests are added.
+        // Dedicated branch-coverage tests added 2026-06-24
+        // (tests/game/enemy-ai-coverage.test.ts) lifted measured coverage to
+        // ~93.7% lines / 77.2% branches / 100% funcs; thresholds raised to lock
+        // in the gains with a small margin.
         'src/game/enemyAISystem.ts': {
-          lines: 88,
-          branches: 68,
-          statements: 87,
+          lines: 92,
+          branches: 75,
+          statements: 92,
         },
         'src/game/enemySpawnerSystem.ts': {
           lines: 84,
