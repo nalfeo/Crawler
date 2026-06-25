@@ -455,7 +455,7 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-function findNavigableRoomPath(
+export function findNavigableRoomPath(
   floorMap: FloorMap,
   start: TilePoint,
   target: TilePoint,
@@ -474,6 +474,14 @@ function findNavigableRoomPath(
     }
   }
   return roomPath.length > 0 ? roomPath : null;
+}
+
+function getNextWelcomeSignRoomIndex(currentIndex: number, pathLength: number): number {
+  const remainingRooms = pathLength - 1 - currentIndex;
+  // Keep signs sparse while there is plenty of path ahead, then tighten to 2-room
+  // gaps for the last stretch so the final breadcrumb is never more than 3 rooms
+  // from the welcome office.
+  return currentIndex + (remainingRooms <= 4 ? 2 : 3);
 }
 
 /**
@@ -691,17 +699,15 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
     if (path && path.length >= 2) {
       // Directional breadcrumb trail from the spawn room toward the safe room.
-      // Starting at the spawn guarantees the initial hint; after that, drop signs
-      // every 2-3 rooms while still pointing to the immediate next room on the
-      // real navigable path so the breadcrumb follows corridor turns instead of
-      // drawing a straight line to the destination.
+      // Signs appear every 2-3 rooms on the real door-aware room path, while each
+      // sign still points to the immediate next room so arrows follow corridor
+      // turns instead of drawing a straight line to the destination.
       for (let i = 0; i < path.length - 1; ) {
         placeWelcomeSign(path[i]!, path[i + 1]!);
-        const remainingRooms = path.length - 1 - i;
-        if (remainingRooms <= 2) {
+        if (path.length - 1 - i <= 2) {
           break;
         }
-        i += remainingRooms <= 4 ? 2 : 3;
+        i = getNextWelcomeSignRoomIndex(i, path.length);
       }
     }
   }

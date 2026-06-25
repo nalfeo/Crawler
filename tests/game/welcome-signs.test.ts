@@ -1,9 +1,8 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import { Sprite } from '../../src/core/components.js';
-import { findTilePath } from '../../src/core/map/pathfinding.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { initializeFloor1Scenario } from '../../src/game/floor1Scenario.js';
+import { findNavigableRoomPath, initializeFloor1Scenario } from '../../src/game/floor1Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // Mirror of the module-local SPRITE_TEX_WELCOME_SIGN in floor1Scenario.ts and
@@ -33,17 +32,7 @@ function navigableRoomPath(world: ReturnType<typeof createTestWorld>): number[] 
     world.floor1!.objective.welcomeOfficePos.x,
     world.floor1!.objective.welcomeOfficePos.y,
   );
-  const tilePath = findTilePath(floorMap, floorMap.playerSpawn, welcomeTile, {
-    isTilePassable: (x, y) => floorMap.tileMap.isPassable(x, y) || floorMap.tileMap.isDoor(x, y),
-  });
-  const roomPath: number[] = [];
-  for (const point of tilePath) {
-    const roomId = floorMap.roomGraph.getRoomAt(point.x, point.y);
-    if (roomId >= 0 && roomPath[roomPath.length - 1] !== roomId) {
-      roomPath.push(roomId);
-    }
-  }
-  return roomPath;
+  return findNavigableRoomPath(floorMap, floorMap.playerSpawn, welcomeTile) ?? [];
 }
 
 describe('floor 1 welcome signs', () => {
