@@ -18,6 +18,10 @@ import { clearMeleeSwingHits, meleeSwingSystem } from '../../src/core/systems/me
 import { returningProjectileSystem } from '../../src/core/systems/returningProjectileSystem.js';
 import { MeleeStyle } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TilePresets, DEFAULT_MAP_CONFIG, TerrainType } from '../../src/shared/map-types.js';
 
 function createSlashSwing(world: ReturnType<typeof createTestWorld>, x: number, y: number): number {
   const swing = createEntity(world);
@@ -229,6 +233,113 @@ describe('meleeSwingSystem coverage edges', () => {
 
     expect(world.stores.position.x[swing]).toBe(100);
     expect(world.stores.position.y[swing]).toBe(100);
+  });
+});
+
+describe('meleeSwingSystem line-of-sight gating', () => {
+  const TILE = 32;
+  const cx = (tx: number): number => tx * TILE + TILE / 2;
+  const cy = (ty: number): number => ty * TILE + TILE / 2;
+
+  function makeFloorMap(wallColumnX?: number): FloorMap {
+    const widthTiles = 24;
+    const heightTiles = 16;
+    const config = { ...DEFAULT_MAP_CONFIG, widthTiles, heightTiles };
+    const tileMap = new TileMap(widthTiles, heightTiles);
+    tileMap.fill(TilePresets.FLOOR);
+    if (wallColumnX !== undefined) {
+      for (let y = 0; y < heightTiles; y++) {
+        tileMap.setFlags(wallColumnX, y, TilePresets.WALL);
+      }
+    }
+    const terrain = new Uint8Array(widthTiles * heightTiles);
+    terrain.fill(TerrainType.STONE_FLOOR);
+    return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 2, y: 5 });
+  }
+
+  // A zero-arc SLASH that points straight along +x, so its blade segment sweeps
+  // a horizontal line from the owner across several tiles regardless of progress.
+  function spawnStraightSwing(
+    world: ReturnType<typeof createTestWorld>,
+    owner: number,
+    ox: number,
+    oy: number,
+  ): number {
+    const swing = createEntity(world);
+    addComponent(world.ecs, swing, set(Position, { x: ox, y: oy }));
+    addComponent(world.ecs, swing, set(Owner, { eid: owner }));
+    addComponent(
+      world.ecs,
+      swing,
+      set(MeleeSwing, {
+        bladeLength: 320,
+        arcCenterRad: 0,
+        arcHalfRad: 0,
+        damage: 10,
+        spawnAtMs: 0,
+        durationMs: 1000,
+        style: MeleeStyle.SLASH,
+        headRadius: 0,
+        shaftDamageMult: 1,
+        knockback: 0,
+      }),
+    );
+    return swing;
+  }
+
+  it('does not damage an enemy on the far side of a wall', () => {
+    const world = createTestWorld();
+    world.floorMap = makeFloorMap(4); // wall column at tile x=4
+    const owner = createEntity(world);
+    addComponent(world.ecs, owner, set(Position, { x: cx(2), y: cy(5) }));
+    addComponent(world.ecs, owner, Player);
+    spawnStraightSwing(world, owner, cx(2), cy(5));
+
+    const enemy = createEntity(world);
+    addComponent(world.ecs, enemy, set(Position, { x: cx(6), y: cy(5) }));
+    addComponent(world.ecs, enemy, set(Health, { current: 50, max: 50 }));
+    addComponent(world.ecs, enemy, Enemy);
+
+    meleeSwingSystem(world);
+
+    // The blade geometrically sweeps over the enemy, but the wall blocks the hit.
+    expect(world.stores.health.current[enemy]).toBe(50);
+  });
+
+  it('damages an enemy with a clear line of sight', () => {
+    const world = createTestWorld();
+    world.floorMap = makeFloorMap(); // no wall
+    const owner = createEntity(world);
+    addComponent(world.ecs, owner, set(Position, { x: cx(2), y: cy(5) }));
+    addComponent(world.ecs, owner, Player);
+    spawnStraightSwing(world, owner, cx(2), cy(5));
+
+    const enemy = createEntity(world);
+    addComponent(world.ecs, enemy, set(Position, { x: cx(6), y: cy(5) }));
+    addComponent(world.ecs, enemy, set(Health, { current: 50, max: 50 }));
+    addComponent(world.ecs, enemy, Enemy);
+
+    meleeSwingSystem(world);
+
+    expect(world.stores.health.current[enemy]).toBe(40);
+  });
+
+  it('blocks an enemy swing from striking the player through a wall', () => {
+    const world = createTestWorld();
+    world.floorMap = makeFloorMap(4);
+    const enemyOwner = createEntity(world);
+    addComponent(world.ecs, enemyOwner, set(Position, { x: cx(2), y: cy(5) }));
+    addComponent(world.ecs, enemyOwner, Enemy);
+    spawnStraightSwing(world, enemyOwner, cx(2), cy(5));
+
+    const player = createEntity(world);
+    addComponent(world.ecs, player, set(Position, { x: cx(6), y: cy(5) }));
+    addComponent(world.ecs, player, set(Health, { current: 80, max: 80 }));
+    addComponent(world.ecs, player, Player);
+
+    meleeSwingSystem(world);
+
+    expect(world.stores.health.current[player]).toBe(80);
   });
 });
 

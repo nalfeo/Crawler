@@ -48,6 +48,36 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
 
+/**
+ * Build a room split into two disconnected halves by a full-height interior wall
+ * column at `wallColumnX`. A* can never cross it, so anything on the far side of
+ * the player is genuinely unreachable — models loot stranded behind the still
+ * locked boss door.
+ */
+function makeSealedRoom(widthTiles: number, heightTiles: number, wallColumnX: number): FloorMap {
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  const terrain = new Uint8Array(widthTiles * heightTiles);
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizePx: 32,
+    biome: BiomeType.ARENA,
+    seed: 1,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+  for (let y = 0; y < heightTiles; y += 1) {
+    for (let x = 0; x < widthTiles; x += 1) {
+      const idx = y * widthTiles + x;
+      const isBorder = x === 0 || y === 0 || x === widthTiles - 1 || y === heightTiles - 1;
+      tileMap.flags[idx] = isBorder || x === wallColumnX ? TilePresets.WALL : TilePresets.FLOOR;
+    }
+  }
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
+}
+
 const MIN_DIAGONAL_COMPONENT = 0.15;
 
 /**
@@ -188,6 +218,62 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('gold');
     expect(decision.targetX).toBe(48);
     expect(decision.targetY).toBe(0);
+  });
+
+  it('collects gold reachable across open ground', () => {
+    const world = createTestWorld({ seed: 99 });
+    world.floorMap = makeOpenRoom(16, 16);
+    spawnPlayer(world, 112, 112); // tile (3,3)
+    // Gold ~288px away at tile (12,3): inside the collect scan radius and, with no
+    // interior wall, reachable by A* — so it remains a valid COLLECT goal.
+    spawnGold(world, 400, 112, 3);
+
+    const ai = new BehaviorTreeAI({ seed: 99 });
+    const input = createInputState();
+    ai.poll(input, world);
+
+    expect(ai.getDecision().state).toBe(AIState.COLLECT);
+  });
+
+  it('does not target gold sealed behind a wall it cannot path to', () => {
+    const world = createTestWorld({ seed: 99 });
+    // Full-height wall column at tile x=8 splits the room into two disconnected
+    // halves; the gold is stranded on the far side, exactly like loot behind the
+    // still-locked boss door.
+    world.floorMap = makeSealedRoom(16, 16, 8);
+    spawnPlayer(world, 112, 112); // tile (3,3) — left half
+    spawnGold(world, 400, 112, 3); // tile (12,3) — right half, unreachable
+
+    const ai = new BehaviorTreeAI({ seed: 99 });
+    const input = createInputState();
+    ai.poll(input, world);
+
+    const decision = ai.getDecision();
+    // The unreachable gold must not become a collect goal (pre-fix the AI parked
+    // on it and wiggled until the dwell watchdog abandoned it ~180 frames later).
+    expect(decision.state).not.toBe(AIState.COLLECT);
+    expect(decision.reason).not.toContain('gold');
+  });
+
+  it('drops a previously collectable gold target once it becomes unreachable', () => {
+    const world = createTestWorld({ seed: 99 });
+    world.floorMap = makeOpenRoom(16, 16);
+    spawnPlayer(world, 112, 112);
+    spawnGold(world, 400, 112, 3);
+
+    const ai = new BehaviorTreeAI({ seed: 99 });
+    const input = createInputState();
+    ai.poll(input, world);
+    expect(ai.getDecision().state).toBe(AIState.COLLECT);
+
+    // The boss door slams shut: a wall now seals the gold off. Advance past the
+    // reachability cache TTL (20 frames) so the gate recomputes on the next poll
+    // and the sticky loot target is dropped instead of pursued through the wall.
+    world.floorMap = makeSealedRoom(16, 16, 8);
+    world.frameCount += 30;
+    ai.poll(input, world);
+
+    expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
   });
 
   it('hunts the ambient swarm during the boss-unlock kill-grind', () => {

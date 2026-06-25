@@ -566,7 +566,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private questProgressActive: boolean = false;
   private questProgressBestScore: number = 0;
   private questProgressStallFrames: number = 0;
-  private readonly enemyReachableCache = new Map<number, { frame: number; reachable: boolean }>();
+  private readonly targetReachableCache = new Map<number, { frame: number; reachable: boolean }>();
   private readonly discoveredNpcDefs = new Set<string>();
   private readonly talkedNpcDefs = new Set<string>();
   private readonly neededInteractionReasonByNpc = new Map<string, string | null>();
@@ -2410,7 +2410,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (candidate.distance <= DIRECT_MOVE_EPSILON_PX) {
         return candidate;
       }
-      if (this.isEnemyReachable(world, playerX, playerY, candidate)) {
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
         return candidate;
       }
     }
@@ -2467,7 +2467,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (candidate.distance <= DIRECT_MOVE_EPSILON_PX) {
         return candidate;
       }
-      if (this.isEnemyReachable(world, playerX, playerY, candidate)) {
+      if (this.isTargetReachable(world, playerX, playerY, candidate)) {
         return candidate;
       }
     }
@@ -2489,8 +2489,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     maxRadius: number = this.config.scanRadius * 2,
   ): LootTarget | null {
     const golds = query(world.ecs, [Gold, Position]);
-    let nearest: LootTarget | null = null;
-    let minDist = maxRadius;
+    const candidates: LootTarget[] = [];
 
     for (const eid of golds) {
       if (eid === undefined) continue;
@@ -2504,21 +2503,34 @@ export class BehaviorTreeAI implements AIInputProvider {
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
       const dist = Math.hypot(x - playerX, y - playerY);
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = { eid, x, y, distance: dist, kind: 'gold' };
+      if (dist < maxRadius) {
+        candidates.push({ eid, x, y, distance: dist, kind: 'gold' });
       }
     }
 
-    return nearest;
+    candidates.sort((a, b) => a.distance - b.distance);
+
+    // Nearest gold the player can actually reach. A coin pile sealed behind a
+    // locked door must not anchor the "farm gold for the merchant charm" goal, or
+    // the AI parks against the wall instead of sweeping reachable coins.
+    for (const candidate of candidates) {
+      if (this.isLootCollectable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   /**
-   * Whether the player can A*-path to the given enemy from its current position.
-   * Results are cached per enemy for a short window to bound pathfinding cost,
-   * since this is consulted from multiple behavior-tree conditions each frame.
+   * Whether the player can A*-path to the given target (enemy or loot pile) from
+   * its current position. Results are cached per target eid for a short window to
+   * bound pathfinding cost, since this is consulted from multiple behavior-tree
+   * conditions each frame. Door-aware passability treats a locked-unsatisfied
+   * door (e.g. the boss door) as a wall, so a target sealed behind one reads as
+   * unreachable until the lock is satisfied.
    */
-  private isEnemyReachable(
+  private isTargetReachable(
     world: GameWorld,
     playerX: number,
     playerY: number,
@@ -2529,7 +2541,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       return true;
     }
 
-    const cached = this.enemyReachableCache.get(target.eid);
+    const cached = this.targetReachableCache.get(target.eid);
     if (cached && world.frameCount - cached.frame < REACHABILITY_CACHE_TTL_FRAMES) {
       return cached.reachable;
     }
@@ -2540,7 +2552,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (startTile.x === goalTile.x && startTile.y === goalTile.y) {
       reachable = true;
     } else {
-      // Match movement's goal resolution: an enemy whose exact tile is blocked
+      // Match movement's goal resolution: a target whose exact tile is blocked
       // (standing against a wall) is still reachable via a nearby approach tile.
       const resolvedGoal = this.resolveReachableGoalTile(
         floorMap,
@@ -2552,7 +2564,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       reachable = path.length > 1;
     }
 
-    this.enemyReachableCache.set(target.eid, { frame: world.frameCount, reachable });
+    this.targetReachableCache.set(target.eid, { frame: world.frameCount, reachable });
     return reachable;
   }
 
@@ -2842,21 +2854,21 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   private findNearestLoot(world: GameWorld, playerX: number, playerY: number): LootTarget | null {
     const stickyLoot = this.resolveStickyLootTarget(world, playerX, playerY);
-    if (stickyLoot) {
+    if (stickyLoot && this.isLootCollectable(world, playerX, playerY, stickyLoot)) {
       return stickyLoot;
     }
 
-    let nearest: LootTarget | null = null;
-    let minDist = this.config.scanRadius;
+    const candidates: LootTarget[] = [];
+    const maxDist = this.config.scanRadius;
 
-    const candidates: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
+    const sources: Array<{ kind: LootKind; entities: ReturnType<typeof query> }> = [
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
       { kind: 'item', entities: query(world.ecs, [DroppedItem, Position]) },
     ];
 
-    for (const candidate of candidates) {
-      for (const eid of candidate.entities) {
+    for (const source of sources) {
+      for (const eid of source.entities) {
         if (eid === undefined) continue;
         const ignoredUntil = this.ignoredLootUntilFrame.get(eid);
         if (ignoredUntil !== undefined && ignoredUntil > world.frameCount) {
@@ -2869,14 +2881,47 @@ export class BehaviorTreeAI implements AIInputProvider {
         const x = world.stores.position.x[eid] ?? 0;
         const y = world.stores.position.y[eid] ?? 0;
         const dist = Math.hypot(x - playerX, y - playerY);
-        if (dist < minDist) {
-          minDist = dist;
-          nearest = { eid, x, y, distance: dist, kind: candidate.kind };
+        if (dist < maxDist) {
+          candidates.push({ eid, x, y, distance: dist, kind: source.kind });
         }
       }
     }
 
-    return nearest;
+    candidates.sort((a, b) => a.distance - b.distance);
+
+    // Return the nearest loot we can actually path to. Skipping unreachable loot
+    // — e.g. a pile that fell outside the room, behind the still-locked boss door
+    // — lets the tree fall through to Engage/Explore instead of committing COLLECT
+    // to a goal the player can only reach once the door unlocks. Without this the
+    // AI wedges against the wall until the dwell watchdog abandons it ~180f later;
+    // a totally unreachable item never becomes a goal in the first place. Mirrors
+    // findNearestEnemy's reachability filtering (door-aware A*, cached per eid).
+    for (const candidate of candidates) {
+      if (this.isLootCollectable(world, playerX, playerY, candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * A loot pile is collectable when it sits essentially under the player (within
+   * {@link DIRECT_MOVE_EPSILON_PX}, so a direct step closes it and no A* is
+   * needed) or the player can A*-path to it. The reachability test is door-aware,
+   * so loot sealed behind a locked-unsatisfied door reads as uncollectable until
+   * the lock opens — the moment it does, the same pile becomes a valid goal again.
+   */
+  private isLootCollectable(
+    world: GameWorld,
+    playerX: number,
+    playerY: number,
+    loot: LootTarget,
+  ): boolean {
+    if (loot.distance <= DIRECT_MOVE_EPSILON_PX) {
+      return true;
+    }
+    return this.isTargetReachable(world, playerX, playerY, loot);
   }
 
   private resolveStickyLootTarget(
@@ -3673,7 +3718,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.stuckFrames = 0;
     this.ignoredLootUntilFrame.clear();
     this.ignoredEnemyUntilFrame.clear();
-    this.enemyReachableCache.clear();
+    this.targetReachableCache.clear();
     this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
     this.engageBestDistance = Number.POSITIVE_INFINITY;

@@ -159,6 +159,18 @@ export function meleeSwingSystem(world: GameWorld): void {
       const tx = position.x[target]!;
       const ty = position.y[target]!;
 
+      // Walls block melee. A swing cannot damage a target on the far side of an
+      // opaque tile — whether that's the player swinging a sword through a wall
+      // into the next room or an enemy striking the player through one. The tile
+      // line-of-sight walk treats the attacker/target endpoint tiles as clear, so
+      // legitimate adjacent and same-room hits still land; only a wall strictly
+      // between the swing origin and the target suppresses the hit. Skipped when
+      // there is no floor map (unit fixtures), preserving existing behavior.
+      const floorMap = world.floorMap;
+      if (floorMap && !floorMap.hasLineOfSight(px, py, tx, ty)) {
+        continue;
+      }
+
       // Check head hit first (circle around tip)
       let hitDamage = 0;
       if (headRadius > 0) {
