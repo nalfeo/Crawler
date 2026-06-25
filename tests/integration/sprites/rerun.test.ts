@@ -1,5 +1,5 @@
 /**
- * Unit tests for the re-run orchestration (`rerun.ts`): re-running PostProcess
+ * Integration tests for the re-run orchestration (`rerun.ts`): re-running PostProcess
  * and Judge over an ALREADY-GENERATED run without regenerating the sheet.
  *
  * Each test seeds a real run through `generateOne` (`seedRun`) into a
