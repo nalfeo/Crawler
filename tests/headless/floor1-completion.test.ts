@@ -96,17 +96,20 @@ const REQUIRED_QUEST_IDS = [
  * — see the file header for how to verify and add more.
  *
  * Verified 2026-06-25 against the current damage path (crit/dodge rolls wired in,
- * retuned slime pounce band). Worst-case weapon game-time per seed in parens —
- * all comfortably under the 300s budget:
+ * retuned slime pounce band). The previous canonical gate seed (15) still clears,
+ * so it remains in the matrix rather than being rotated out. Worst-case weapon
+ * game-time per seed in parens — all comfortably under the 300s budget:
  *
- * - 6: new main's canonical sword clear; also clears bow (~227s) and bat (~139s).
+ * - 15: previous canonical all-weapon clear; still clears bow (~194s) and bat
+ *       (~132s), so a regression here would be a real signal, not seed churn.
+ * - 6: new main's canonical sword clear; also clears bow (~186s) and bat (~163s).
  * - 7: reserve all-weapon clear promoted after the same-room aggro fix (worst case
  *      bow ~209s).
- * - 5: all-weapon clear, widest margin (worst case bow ~179s).
+ * - 5: all-weapon clear, widest margin (worst case bow ~206s).
  *
  * Seed 10 is an additional verified all-weapon clear held in reserve.
  */
-const WINNING_SEEDS = [6, 7, 5] as const;
+const WINNING_SEEDS = [15, 6, 7, 5] as const;
 
 /**
  * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
