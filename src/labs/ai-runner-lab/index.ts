@@ -19,6 +19,7 @@ import {
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
+import { createInputCapture } from '../../engine/InputCapture.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
@@ -37,6 +38,8 @@ const INVENTORY_PREVIEW_TICKS = 4;
 export interface AiRunnerDebugSnapshot {
   polls: number;
   paused: boolean;
+  /** True when a human has taken over input from the AI runner. */
+  manualControl: boolean;
   speed: number;
   scenePaused: boolean | null;
   worldState: string | null;
@@ -110,6 +113,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   });
   let selectedSpeed = 1;
   let isPaused = true;
+  let manualControl = false;
+  let hardwareInput: ReturnType<typeof createInputCapture> | null = null;
   let pollCount = 0;
   let pendingGearPreviewTicks = 0;
   let pendingGearEquipPreview = false;
@@ -129,7 +134,21 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       const scene = game.scene.getScene('MainGameScene') as unknown as RunnerSceneInternals | null;
       if (scene?.world) {
         const world = scene.world as GameWorld;
-        ai.poll(state, world);
+        if (manualControl) {
+          // Human has taken over: read real keyboard/mouse/touch instead of the
+          // AI brain. The AI is intentionally NOT polled so its navigation state
+          // freezes where the human took over rather than fighting the player.
+          const hw = ensureHardwareInput();
+          if (hw) {
+            hw.poll(state);
+          } else {
+            state.moveX = 0;
+            state.moveY = 0;
+            state.action = false;
+          }
+        } else {
+          ai.poll(state, world);
+        }
         lastMove.x = state.moveX;
         lastMove.y = state.moveY;
         lastMove.action = state.action;
@@ -157,6 +176,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   // `autoLevelUpAllocator` below (using the same allocation heuristic). Spending
   // points here would zero `unspentPoints` before the modal could open.
   const aiAutoDriverSystem = (world: GameWorld): void => {
+    if (manualControl) {
+      // Human is driving — don't let the AI auto-progression claim rewards,
+      // confirm shops, or descend stairs on the player's behalf.
+      return;
+    }
     const playerEid = query(world.ecs, [Player])[0];
     if (playerEid === undefined) {
       return;
@@ -164,7 +188,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     autoFloor1ProgressionSystem(world, playerEid);
   };
   const baseSceneOptions = createFloor1MainSceneOptions();
-  const recorderControls = createSessionRecorderControls({ title: 'AI Session Recorder' });
+  const recorderControls = createSessionRecorderControls({
+    title: 'AI Session Recorder',
+    initialController: 'AI',
+  });
   const sceneOptions = {
     ...baseSceneOptions,
     inputCaptureOverride: aiInputProvider,
@@ -183,6 +210,68 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   const getPhaserScene = (): Phaser.Scene | null =>
     game.scene.getScene('MainGameScene') as Phaser.Scene | null;
+
+  /**
+   * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
+   * the live scene. Used only while {@link manualControl} is active so the human
+   * drives the player through the same `inputCaptureOverride` channel the AI uses.
+   */
+  const ensureHardwareInput = (): ReturnType<typeof createInputCapture> | null => {
+    if (hardwareInput) {
+      return hardwareInput;
+    }
+    const phaserScene = getPhaserScene();
+    if (!phaserScene) {
+      return null;
+    }
+    hardwareInput = createInputCapture(phaserScene, {
+      getFollowOrigin: () => {
+        const scene = getScene();
+        const eid = scene?.playerEid;
+        if (!scene?.world || typeof eid !== 'number' || eid < 0) {
+          return undefined;
+        }
+        return {
+          x: scene.world.stores.position.x[eid] ?? 0,
+          y: scene.world.stores.position.y[eid] ?? 0,
+        };
+      },
+    });
+    return hardwareInput;
+  };
+
+  const disposeHardwareInput = (): void => {
+    hardwareInput?.destroy();
+    hardwareInput = null;
+  };
+
+  /**
+   * Toggle between AI-driven and human-driven play. Taking manual control hands
+   * the player to the keyboard/mouse, resumes the sim at 1x so it's playable, and
+   * records a clearly-labeled handover in the session recorder. Returning control
+   * re-arms the AI brain from wherever the human left the player.
+   */
+  const setManualControl = (next: boolean): void => {
+    if (next === manualControl) {
+      return;
+    }
+    manualControl = next;
+    if (manualControl) {
+      isPaused = false;
+      selectedSpeed = 1;
+      lastStepReason = '';
+      syncSceneSimulationState();
+      const frame = getScene()?.world?.frameCount ?? 0;
+      recorderControls.onControlChange('MANUAL', `frame ${frame}`);
+    } else {
+      disposeHardwareInput();
+      const frame = getScene()?.world?.frameCount ?? 0;
+      recorderControls.onControlChange('AI', `frame ${frame}`);
+    }
+    // Drop any stale AI path overlay so it doesn't trail behind the human.
+    pathGraphics?.clear();
+    renderControls();
+  };
 
   const syncSceneSimulationState = (): void => {
     const scene = getScene();
@@ -211,6 +300,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pollCount = 0;
     lastStepReason = '';
     isPaused = true;
+    // A fresh floor always starts under AI control. Tear down the human input
+    // capture bound to the old scene instance before it restarts.
+    manualControl = false;
+    disposeHardwareInput();
     pendingGearPreviewTicks = 0;
     pendingGearEquipPreview = false;
     pathGraphics?.destroy();
@@ -227,6 +320,11 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
 
   const autoAdvanceSceneUi = (): void => {
+    if (manualControl) {
+      // Human is driving — let them operate modals, NPCs, shops and stairs
+      // themselves instead of the AI auto-confirming everything.
+      return;
+    }
     const scene = getScene();
     const world = scene?.world;
     const playerEid = scene?.playerEid;
@@ -364,6 +462,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       return;
     }
 
+    if (manualControl) {
+      // The AI's path is frozen/stale while the human drives — hide it.
+      graphics.clear();
+      return;
+    }
+
     const decision = ai.getDecision();
     const nav = ai.getNavigationDebug();
     const playerEid = scene.playerEid;
@@ -486,6 +590,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <button id="ai-speed-4" type="button" style="padding:6px 10px; cursor:pointer;">4x</button>
             <button id="ai-speed-16" type="button" style="padding:6px 10px; cursor:pointer;">16x</button>
           </div>
+          <div style="display:flex; gap:8px; margin:0 0 12px 0; flex-wrap:wrap; align-items:center;">
+            <button id="ai-manual-toggle" type="button" style="padding:6px 10px; cursor:pointer; font-weight:bold;">🎮 Take manual control</button>
+            <span id="ai-control-mode" style="font-size:12px;"></span>
+          </div>
           <div id="ai-decision" style="margin-top: 8px; padding: 8px; background: #2a2a4e; border-radius: 4px;">
             <div><strong>State:</strong> <span id="ai-state">-</span></div>
             <div><strong>Reason:</strong> <span id="ai-reason">-</span></div>
@@ -499,6 +607,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• Starts paused so you can inspect the opening state</div>
             <div>• Lab auto-clears starter/shop/spell/stair UI for the AI</div>
             <div>• Use speed controls to accelerate the simulation</div>
+            <div>• Take manual control to play it yourself (WASD/arrows move, Space attacks, E interacts)</div>
+            <div>• The recorder tags every event AI vs MANUAL so handovers are clear in the log</div>
             <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
           </div>
         </div>
@@ -509,9 +619,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (statusElem) {
       const scene = getScene();
       const scenePaused = scene?.isSimulationPaused?.();
+      const controlSuffix = manualControl ? ' — 🎮 MANUAL' : ' — 🤖 AI';
       statusElem.textContent = isPaused
-        ? `Paused @ ${selectedSpeed}x`
-        : `Running @ ${selectedSpeed}x${scenePaused ? ' (scene paused)' : ''}`;
+        ? `Paused @ ${selectedSpeed}x${controlSuffix}`
+        : `Running @ ${selectedSpeed}x${scenePaused ? ' (scene paused)' : ''}${controlSuffix}`;
+    }
+    const controlModeElem = document.getElementById('ai-control-mode');
+    if (controlModeElem) {
+      controlModeElem.textContent = manualControl ? 'You are driving — AI paused' : 'AI is driving';
+      controlModeElem.style.color = manualControl ? '#fbbf24' : '#93c5fd';
     }
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
@@ -534,8 +650,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
     const stepButton = document.getElementById('ai-step-frame') as HTMLButtonElement | null;
     if (stepButton) {
+      // Single-stepping is an AI-debugging affordance; while a human is driving,
+      // Space is the attack button so frame-stepping is disabled.
+      stepButton.disabled = manualControl;
       stepButton.onclick = () => {
         stepOneFrame('button');
+      };
+    }
+
+    const manualButton = document.getElementById('ai-manual-toggle') as HTMLButtonElement | null;
+    if (manualButton) {
+      manualButton.textContent = manualControl ? '🤖 Return to AI' : '🎮 Take manual control';
+      manualButton.onclick = () => {
+        setManualControl(!manualControl);
       };
     }
 
@@ -589,6 +716,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (event.code !== 'Space' || event.repeat) {
       return;
     }
+    if (manualControl) {
+      // Human is driving — Space is the attack button, not frame-step.
+      return;
+    }
     const target = event.target as HTMLElement | null;
     const tagName = target?.tagName.toLowerCase();
     if (tagName === 'input' || tagName === 'textarea') {
@@ -632,6 +763,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     return {
       polls: pollCount,
       paused: isPaused,
+      manualControl,
       speed: selectedSpeed,
       scenePaused: scene?.isSimulationPaused?.() ?? null,
       worldState: world?.state ?? null,
@@ -725,6 +857,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       delete window.__aiRunnerDebug;
     }
     recorderControls.destroy();
+    disposeHardwareInput();
     pathGraphics?.destroy();
     pathGraphics = null;
     game.destroy(true);

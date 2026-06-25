@@ -210,4 +210,74 @@ describe('createPlayerSessionRecorder', () => {
     const quests = rec.getEvents().filter((e) => e.type === 'quest');
     expect(quests.some((q) => q.note?.includes('completed: test-quest'))).toBe(true);
   });
+
+  describe('controller tracking', () => {
+    it('defaults the controller to MANUAL and tags sample events', () => {
+      const rec = createPlayerSessionRecorder(world, playerEid, { sampleInterval: 1 });
+      rec.tick(makeInput());
+      const sample = rec.getEvents().find((e) => e.type === 'sample') as PlayerSessionEvent;
+      expect(sample.controller).toBe('MANUAL');
+      expect(rec.getStats().controller).toBe('MANUAL');
+    });
+
+    it('honors the initialController option', () => {
+      const rec = createPlayerSessionRecorder(world, playerEid, {
+        sampleInterval: 1,
+        initialController: 'AI',
+      });
+      rec.tick(makeInput());
+      const sample = rec.getEvents().find((e) => e.type === 'sample') as PlayerSessionEvent;
+      expect(sample.controller).toBe('AI');
+      expect(rec.getStats().controller).toBe('AI');
+    });
+
+    it('onControlChange emits a control event labeled with the new controller', () => {
+      const rec = createPlayerSessionRecorder(world, playerEid, { initialController: 'AI' });
+      rec.onControlChange('MANUAL');
+      const control = rec.getEvents().filter((e) => e.type === 'control');
+      expect(control).toHaveLength(1);
+      expect(control[0]!.controller).toBe('MANUAL');
+      expect(control[0]!.state).toBe('MANUAL');
+      expect(control[0]!.reason).toBe('control-change');
+      expect(control[0]!.note).toContain('MANUAL');
+    });
+
+    it('onControlChange accepts a custom note', () => {
+      const rec = createPlayerSessionRecorder(world, playerEid, { initialController: 'AI' });
+      rec.onControlChange('MANUAL', 'frame 123');
+      const control = rec.getEvents().find((e) => e.type === 'control')!;
+      expect(control.note).toBe('frame 123');
+    });
+
+    it('onControlChange is a no-op when the controller is unchanged', () => {
+      const rec = createPlayerSessionRecorder(world, playerEid, { initialController: 'AI' });
+      rec.onControlChange('AI');
+      expect(rec.getEvents().filter((e) => e.type === 'control')).toHaveLength(0);
+    });
+
+    it('tags subsequent sample events with the new controller after a handover', () => {
+      const rec = createPlayerSessionRecorder(world, playerEid, {
+        sampleInterval: 1,
+        initialController: 'AI',
+      });
+      rec.tick(makeInput());
+      rec.onControlChange('MANUAL');
+      rec.tick(makeInput());
+      const samples = rec.getEvents().filter((e) => e.type === 'sample') as PlayerSessionEvent[];
+      expect(samples[0]!.controller).toBe('AI');
+      expect(samples[1]!.controller).toBe('MANUAL');
+      expect(rec.getStats().controller).toBe('MANUAL');
+    });
+
+    it('reset preserves the live controller while clearing events', () => {
+      const rec = createPlayerSessionRecorder(world, playerEid, { initialController: 'AI' });
+      rec.onControlChange('MANUAL');
+      expect(rec.getStats().controller).toBe('MANUAL');
+      rec.reset();
+      // Clearing the log must not change who is driving — otherwise a reset
+      // mid-manual-play would silently re-tag human input as 'AI'.
+      expect(rec.getStats().controller).toBe('MANUAL');
+      expect(rec.getEvents().filter((e) => e.type === 'control')).toHaveLength(0);
+    });
+  });
 });

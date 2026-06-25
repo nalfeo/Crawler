@@ -21,7 +21,7 @@ export const AI_STATE_NAME: Record<AIStateValue, string> = {
 };
 
 /** Discriminator for the kind of telemetry record. */
-export type SimEventType = 'sample' | 'state' | 'kill' | 'levelup' | 'quest' | 'npc';
+export type SimEventType = 'sample' | 'state' | 'kill' | 'levelup' | 'quest' | 'npc' | 'control';
 
 /**
  * A single telemetry record. Every record carries the full frame context so
