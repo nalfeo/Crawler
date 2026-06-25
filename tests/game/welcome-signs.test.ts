@@ -116,12 +116,12 @@ describe('floor 1 welcome signs', () => {
       const room = floorMap.roomGraph.get(sign.roomId)!;
       const nextRoom = floorMap.roomGraph.get(roomPath[roomIndex + 1]!)!;
       const roomCenter = {
-        x: room.bounds.x + room.bounds.width / 2,
-        y: room.bounds.y + room.bounds.height / 2,
+        x: Math.floor(room.bounds.x + room.bounds.width / 2),
+        y: Math.floor(room.bounds.y + room.bounds.height / 2),
       };
       const nextCenter = {
-        x: nextRoom.bounds.x + nextRoom.bounds.width / 2,
-        y: nextRoom.bounds.y + nextRoom.bounds.height / 2,
+        x: Math.floor(nextRoom.bounds.x + nextRoom.bounds.width / 2),
+        y: Math.floor(nextRoom.bounds.y + nextRoom.bounds.height / 2),
       };
       const expectedAngle = Math.atan2(nextCenter.y - roomCenter.y, nextCenter.x - roomCenter.x);
       expect(sign.angle).toBeCloseTo(expectedAngle, 5);
