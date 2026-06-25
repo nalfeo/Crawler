@@ -1,4 +1,4 @@
-# ADR 0017: Line-of-Sight Gate for Weapon Auto-Targeting
+# ADR 0018: Line-of-Sight Gate for Weapon Auto-Targeting
 
 **Date:** 2026-06-25
 **Status:** Accepted

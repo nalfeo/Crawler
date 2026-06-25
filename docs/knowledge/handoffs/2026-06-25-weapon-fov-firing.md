@@ -81,11 +81,13 @@ straight-line targeting beyond the FOV radius.
 - No new lab was added because no new ECS system was created — only helper
   methods on existing `TileMap`/`FloorMap` plus a targeting-gate fix.
 - An ADR was required (diff touches `src/core` + `src/game`): see
-  `docs/knowledge/adr/0017-weapon-line-of-sight-targeting.md`.
+  `docs/knowledge/adr/0018-weapon-line-of-sight-targeting.md`.
 
 ## Apples
 
 Estimated 🍎🍎🍎, actual 🍎🍎. Over by one: the bug had a clean, well-isolated
 fix point and the existing FOV/LOS scaffolding (transparent-tile flags,
-`isVisible`) meant no new pipeline or ADR — it landed as a focused 2-file
-source change plus tests rather than a new sub-system.
+`isVisible`) meant no new ECS system, lab, or pipeline was needed — it landed
+as a focused 3-file source change (`TileMap`, `FloorMap`, `weaponSystem`) plus
+tests rather than a new sub-system. A cross-layer ADR was still required (see
+above).
