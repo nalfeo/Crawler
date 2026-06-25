@@ -26,6 +26,7 @@ import {
   addItem as queueAddItem,
   clearQueue as queueClear,
   createEmptyQueue,
+  describeGenerationProgress,
   deserializeQueue,
   getSelectedItem,
   isBusyStage,
@@ -836,6 +837,18 @@ function render(): void {
       cursor: 'pointer',
     },
   });
+  const cancelGenerateBtn = el('button', {
+    text: 'Cancel',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(248,113,113,0.5)',
+      background: '#3f1d1d',
+      color: '#fecaca',
+      cursor: 'pointer',
+      display: 'none',
+    },
+  });
   const metadataBtn = el('button', {
     text: 'Tag (metadata)',
     style: {
@@ -859,7 +872,28 @@ function render(): void {
       marginLeft: 'auto',
     },
   });
-  workflowButtons.append(synthBtn, promoteBtn, generateBtn, metadataBtn, removeItemBtn);
+  workflowButtons.append(
+    synthBtn,
+    promoteBtn,
+    generateBtn,
+    cancelGenerateBtn,
+    metadataBtn,
+    removeItemBtn,
+  );
+
+  const generationProgress = el('div', {
+    style: {
+      display: 'none',
+      margin: '0 0 10px 0',
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(250,204,21,0.45)',
+      background: 'rgba(66,32,6,0.55)',
+      color: '#fde68a',
+      fontSize: '12px',
+      whiteSpace: 'pre-wrap',
+    },
+  });
 
   const workflowStatus = el('pre', {
     style: {
@@ -889,6 +923,7 @@ function render(): void {
     activeItemLabel,
     stepperHost,
     workflowButtons,
+    generationProgress,
     workflowStatus,
     synthResultsHost,
     runResultsHost,
@@ -1169,6 +1204,18 @@ function render(): void {
   };
   let queueState: QueueState = createEmptyQueue();
   const pendingGenerationPolls = new Set<string>();
+  // In-flight AbortControllers for the synchronous generate POST, keyed by
+  // item id, so the Cancel button can abort a blocking request. Queued-path
+  // polling is stopped instead by resetting the item's stage (see Cancel).
+  const pendingGenerateAborts = new Map<string, AbortController>();
+  // Poll-attempt counters for the queued path, surfaced in the live progress
+  // line. Ephemeral: cleared when generation ends or is cancelled, and reset
+  // (not persisted) on reload when polling auto-resumes.
+  const generationPollAttempts = new Map<string, number>();
+  // Sidecar queue backend (`noop` | `azure-queue`), captured from /api/health
+  // so the progress line can name it and tune the "is the worker running?"
+  // hint. Null until the first health check resolves.
+  let sidecarQueueBackend: string | null = null;
 
   // --- Durable workflow-state sync ------------------------------------------
   // The sidecar (Azure Blob in production) is the source of truth for the
@@ -1609,6 +1656,32 @@ function render(): void {
     });
   };
 
+  const renderGenerationProgress = (): void => {
+    const item = getSelectedItem(queueState);
+    if (!item || item.stage !== 'generating') {
+      generationProgress.style.display = 'none';
+      generationProgress.textContent = '';
+      cancelGenerateBtn.style.display = 'none';
+      cancelGenerateBtn.disabled = true;
+      return;
+    }
+    cancelGenerateBtn.style.display = '';
+    cancelGenerateBtn.disabled = false;
+    const startedAtMs = item.generationStartedAt ? Date.parse(item.generationStartedAt) : NaN;
+    const elapsedMs = Number.isFinite(startedAtMs) ? Math.max(0, Date.now() - startedAtMs) : 0;
+    // The queued path records a server `generationRequestedAt` and polls; the
+    // synchronous path has neither, so a null requestedAt means "no poll count".
+    const isQueued = item.generationRequestedAt !== null;
+    const pollAttempts = isQueued ? (generationPollAttempts.get(item.id) ?? 0) : null;
+    generationProgress.style.display = 'block';
+    generationProgress.textContent = describeGenerationProgress({
+      brief: item.brief,
+      elapsedMs,
+      pollAttempts,
+      queueBackend: sidecarQueueBackend,
+    });
+  };
+
   const renderWorkflowSelection = () => {
     projectActiveItem();
     const item = getSelectedItem(queueState);
@@ -1622,6 +1695,7 @@ function render(): void {
       removeItemBtn.disabled = true;
       renderSynthCandidates([]);
       renderRunCandidates();
+      renderGenerationProgress();
       return;
     }
     const badge = STAGE_BADGES[item.stage];
@@ -1647,6 +1721,7 @@ function render(): void {
     }
     renderSynthCandidates(item.candidates);
     renderRunCandidates();
+    renderGenerationProgress();
   };
 
   const renderSynthCandidates = (candidates: WorkflowSynthCandidate[]) => {
@@ -3277,10 +3352,15 @@ function render(): void {
 
   const checkWorkflowHealth = async (): Promise<void> => {
     try {
-      const health = await fetchJson<{ status: string; runsDir: string }>(
+      const health = await fetchJson<{ status: string; runsDir: string; queueBackend?: string }>(
         `${SIDECAR_BASE}/api/health`,
       );
-      setWorkflowStatus(`Sidecar: ${health.status}\nRuns: ${health.runsDir}`, '#93c5fd');
+      sidecarQueueBackend = typeof health.queueBackend === 'string' ? health.queueBackend : null;
+      const queueLine = sidecarQueueBackend ? `\nQueue: ${sidecarQueueBackend}` : '';
+      setWorkflowStatus(
+        `Sidecar: ${health.status}\nRuns: ${health.runsDir}${queueLine}`,
+        '#93c5fd',
+      );
     } catch (error) {
       setWorkflowStatus(
         `Sidecar unreachable. Start it with: npm run sprites:gallery\n${error instanceof Error ? error.message : String(error)}`,
@@ -3687,10 +3767,13 @@ function render(): void {
     runId: string,
     candidates: RawGenerateCandidate[],
   ): void => {
+    generationPollAttempts.delete(itemId);
+    pendingGenerateAborts.delete(itemId);
     queueState = queueUpdateItem(queueState, itemId, {
       stage: 'variants',
       run: toWorkflowRunState(briefId, runId, candidates),
       generationRequestedAt: null,
+      generationStartedAt: null,
       approvedAssetPath: null,
       lastError: null,
     });
@@ -3735,6 +3818,8 @@ function render(): void {
               `Queued run polling stopped: invalid generationRequestedAt "${item.generationRequestedAt}".`,
             );
           }
+          generationPollAttempts.set(itemId, (generationPollAttempts.get(itemId) ?? 0) + 1);
+          renderGenerationProgress();
           try {
             const runs = await listSidecarRuns();
             // Match against the chosen candidate's id (the brief name), not kebabName.
@@ -3786,6 +3871,7 @@ function render(): void {
         queueState = queueUpdateItem(queueState, itemId, {
           stage: 'promoted',
           generationRequestedAt: null,
+          generationStartedAt: null,
           lastError: message,
         });
         writeQueueState();
@@ -3794,6 +3880,8 @@ function render(): void {
         setWorkflowStatus(`Queued generate failed: ${message}`, '#fca5a5');
       } finally {
         pendingGenerationPolls.delete(itemId);
+        generationPollAttempts.delete(itemId);
+        renderGenerationProgress();
       }
     })();
   };
@@ -3804,14 +3892,19 @@ function render(): void {
       setWorkflowStatus('Promote a brief first.', '#fca5a5');
       return;
     }
+    generationPollAttempts.delete(item.id);
+    const abortController = new AbortController();
+    pendingGenerateAborts.set(item.id, abortController);
     queueState = queueUpdateItem(queueState, item.id, {
       stage: 'generating',
       generationRequestedAt: null,
+      generationStartedAt: new Date().toISOString(),
       lastError: null,
     });
     writeQueueState();
     renderQueue();
     setButtonBusy(generateBtn, true, 'Generate run', 'Generating...');
+    renderGenerationProgress();
     try {
       const result = await fetchJson<
         WorkflowGenerateCompletedResponse | WorkflowGenerateQueuedResponse
@@ -3819,6 +3912,7 @@ function render(): void {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ briefPath: item.briefPath }),
+        signal: abortController.signal,
       });
       if (result.status === 'queued') {
         queueState = queueUpdateItem(queueState, item.id, {
@@ -3840,10 +3934,16 @@ function render(): void {
         applyGeneratedRunToQueue(item.id, result.briefId, result.runId, result.summary.candidates);
       }
     } catch (error) {
+      // A user-initiated Cancel aborts the fetch; the Cancel handler has
+      // already reset this item's state, so don't clobber it with an error.
+      if ((error as { name?: string }).name === 'AbortError') {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       queueState = queueUpdateItem(queueState, item.id, {
         stage: 'promoted',
         generationRequestedAt: null,
+        generationStartedAt: null,
         lastError: message,
       });
       writeQueueState();
@@ -3851,13 +3951,48 @@ function render(): void {
       renderWorkflowSelection();
       setWorkflowStatus(`Generate failed: ${message}`, '#fca5a5');
     } finally {
+      pendingGenerateAborts.delete(item.id);
       const selectedAfterGenerate = getSelectedItem(queueState);
       if (selectedAfterGenerate?.stage === 'generating') {
         setButtonBusy(generateBtn, true, 'Generate run', 'Generating...');
       } else {
         setButtonBusy(generateBtn, false, 'Generate run', 'Generating...');
       }
+      renderGenerationProgress();
     }
+  });
+
+  cancelGenerateBtn.addEventListener('click', () => {
+    const item = getSelectedItem(queueState);
+    if (!item || item.stage !== 'generating') {
+      return;
+    }
+    // Abort the in-flight synchronous request if one is pending. For the
+    // queued path there is no live request to abort; resetting the stage below
+    // makes the poll loop exit on its next iteration.
+    const abortController = pendingGenerateAborts.get(item.id);
+    if (abortController) {
+      abortController.abort();
+      pendingGenerateAborts.delete(item.id);
+    }
+    generationPollAttempts.delete(item.id);
+    // Return to the stage the Generate button is reachable from: `variants`
+    // when a prior run already exists (a re-generate), otherwise `promoted`.
+    const resetStage: WorkflowStage = item.run ? 'variants' : 'promoted';
+    queueState = queueUpdateItem(queueState, item.id, {
+      stage: resetStage,
+      generationRequestedAt: null,
+      generationStartedAt: null,
+      lastError: null,
+    });
+    writeQueueState();
+    renderQueue();
+    renderWorkflowSelection();
+    setButtonBusy(generateBtn, false, 'Generate run', 'Generating...');
+    setWorkflowStatus(
+      `Canceled generation for "${item.brief}". The brief is unchanged — click Generate run to retry.`,
+      '#fcd34d',
+    );
   });
 
   metadataBtn.addEventListener('click', async () => {
@@ -3964,6 +4099,11 @@ function render(): void {
       resumeGeneratingPolls();
     }
   };
+
+  // Keep the generating item's elapsed clock live even when nothing else
+  // triggers a re-render. The renderer is a no-op (hides the panel) whenever the
+  // selected item isn't generating, so this is cheap.
+  window.setInterval(renderGenerationProgress, 1000);
 
   renderPostprocessDebugger();
   renderQueue();

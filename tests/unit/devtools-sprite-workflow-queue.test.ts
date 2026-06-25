@@ -4,6 +4,8 @@ import {
   clearQueue,
   createEmptyQueue,
   deserializeQueue,
+  describeGenerationProgress,
+  formatGenerationElapsed,
   getItem,
   getSelectedItem,
   primaryActionLabel,
@@ -14,6 +16,8 @@ import {
   stageActiveStep,
   stepperFor,
   updateItem,
+  GENERATION_QUEUED_STALL_HINT_MS,
+  GENERATION_SYNC_STALL_HINT_MS,
   type QueueState,
 } from '../../src/devtools/sprite-workflow-queue.js';
 
@@ -217,6 +221,7 @@ describe('serialize / deserialize', () => {
     const restored = deserializeQueue(raw);
     expect(restored.items[0]?.run?.candidates[0]?.judge).toBeNull();
     expect(restored.items[0]?.generationRequestedAt).toBeNull();
+    expect(restored.items[0]?.generationStartedAt).toBeNull();
   });
 
   it('returns an empty queue for garbage input', () => {
@@ -266,5 +271,104 @@ describe('createEmptyQueue', () => {
   it('starts empty with seq 1', () => {
     const state: QueueState = createEmptyQueue();
     expect(state).toEqual({ items: [], selectedId: null, nextSeq: 1 });
+  });
+});
+
+describe('generationStartedAt field', () => {
+  it('defaults to null for a newly added item', () => {
+    const state = addItem(createEmptyQueue(), 'Slime Rat');
+    expect(state.items[0]?.generationStartedAt).toBeNull();
+  });
+
+  it('round-trips through serialize/deserialize', () => {
+    const added = addItem(createEmptyQueue(), 'Slime Rat');
+    const id = added.items[0]!.id;
+    const state = updateItem(added, id, { generationStartedAt: '2026-06-25T12:00:00.000Z' });
+    const restored = deserializeQueue(serializeQueue(state));
+    expect(restored.items[0]?.generationStartedAt).toBe('2026-06-25T12:00:00.000Z');
+  });
+});
+
+describe('formatGenerationElapsed', () => {
+  it('clamps non-finite and non-positive input to 0s', () => {
+    expect(formatGenerationElapsed(0)).toBe('0s');
+    expect(formatGenerationElapsed(-5_000)).toBe('0s');
+    expect(formatGenerationElapsed(Number.NaN)).toBe('0s');
+    expect(formatGenerationElapsed(Number.POSITIVE_INFINITY)).toBe('0s');
+  });
+
+  it('renders seconds under a minute', () => {
+    expect(formatGenerationElapsed(999)).toBe('0s');
+    expect(formatGenerationElapsed(45_000)).toBe('45s');
+    expect(formatGenerationElapsed(59_999)).toBe('59s');
+  });
+
+  it('renders minutes and zero-padded seconds under an hour', () => {
+    expect(formatGenerationElapsed(60_000)).toBe('1m 00s');
+    expect(formatGenerationElapsed(133_000)).toBe('2m 13s');
+  });
+
+  it('renders hours and zero-padded minutes past an hour', () => {
+    expect(formatGenerationElapsed(3_600_000)).toBe('1h 00m');
+    expect(formatGenerationElapsed(3_780_000)).toBe('1h 03m');
+  });
+});
+
+describe('describeGenerationProgress', () => {
+  it('omits the poll counter on the synchronous path', () => {
+    const line = describeGenerationProgress({
+      brief: 'Slime Rat',
+      elapsedMs: 10_000,
+      pollAttempts: null,
+      queueBackend: 'noop',
+    });
+    expect(line).toContain('Generating "Slime Rat"');
+    expect(line).toContain('10s elapsed');
+    expect(line).not.toContain('polled');
+  });
+
+  it('shows the poll counter and backend on the queued path', () => {
+    const line = describeGenerationProgress({
+      brief: 'Slime Rat',
+      elapsedMs: 5_000,
+      pollAttempts: 3,
+      queueBackend: 'azure-queue',
+    });
+    expect(line).toContain('polled 3×');
+    expect(line).toContain('queue: azure-queue');
+  });
+
+  it('appends the worker hint once the queued path passes the stall threshold', () => {
+    const before = describeGenerationProgress({
+      brief: 'Slime Rat',
+      elapsedMs: GENERATION_QUEUED_STALL_HINT_MS - 1,
+      pollAttempts: 12,
+      queueBackend: 'azure-queue',
+    });
+    const after = describeGenerationProgress({
+      brief: 'Slime Rat',
+      elapsedMs: GENERATION_QUEUED_STALL_HINT_MS,
+      pollAttempts: 12,
+      queueBackend: 'azure-queue',
+    });
+    expect(before).not.toContain('sprites:worker');
+    expect(after).toContain('npm run sprites:worker');
+  });
+
+  it('appends the provider hint once the sync path passes the stall threshold', () => {
+    const before = describeGenerationProgress({
+      brief: 'Slime Rat',
+      elapsedMs: GENERATION_SYNC_STALL_HINT_MS - 1,
+      pollAttempts: null,
+      queueBackend: 'noop',
+    });
+    const after = describeGenerationProgress({
+      brief: 'Slime Rat',
+      elapsedMs: GENERATION_SYNC_STALL_HINT_MS,
+      pollAttempts: null,
+      queueBackend: 'noop',
+    });
+    expect(before).not.toContain('Cancel and retry');
+    expect(after).toContain('Cancel and retry');
   });
 });
