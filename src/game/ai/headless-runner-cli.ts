@@ -163,6 +163,9 @@ async function main(): Promise<void> {
   console.log('📊 Run Complete');
   console.log('━'.repeat(50));
   console.log(`Outcome:      ${stats.outcome.toUpperCase()}`);
+  if (stats.stallReason) {
+    console.log(`Stall:        ${stats.stallReason}`);
+  }
   console.log(`Starting Wep: ${stats.startingWeapon}`);
   console.log(`Final Floor:  ${stats.finalFloor}`);
   console.log(`Final Score:  ${stats.finalScore}`);

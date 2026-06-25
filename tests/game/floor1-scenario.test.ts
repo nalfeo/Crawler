@@ -88,6 +88,75 @@ describe('floor1Scenario', () => {
     }
   });
 
+  it('keeps every room interior reachable from spawn across seeds (no sealed rooms)', () => {
+    // Regression: rot-js's Uniform generator occasionally emits a disconnected
+    // room that cullIsolatedFloorTiles would wall off. On Floor 1 the affected
+    // room is usually the farthest one — tagged BOSS_STAIR — so sealing it strands
+    // the staircase (the floor exit) in solid rock and makes the floor unwinnable
+    // by any weapon or AI. ensureRoomsReachable carves a deterministic connector
+    // before the cull. Seeds 1, 3, 19, 32 reproduced the sealed boss room before
+    // the fix; 2/5/6/7/15/25/42 were already well-formed (guards the no-op path).
+    for (const seed of [1, 2, 3, 5, 6, 7, 15, 19, 25, 32, 42]) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      const map = world.floorMap!;
+      const tm = map.tileMap;
+      const w = tm.width;
+      const h = tm.height;
+      const spawn = map.playerSpawn;
+
+      // Flood from spawn over passable + door tiles (reachability semantics used by
+      // cullIsolatedFloorTiles and the AI navigator alike).
+      const seen = new Uint8Array(w * h);
+      const startIdx = spawn.y * w + spawn.x;
+      seen[startIdx] = 1;
+      const stack = [startIdx];
+      while (stack.length > 0) {
+        const idx = stack.pop()!;
+        const cx = idx % w;
+        const cy = (idx - cx) / w;
+        for (const [nx, ny] of [
+          [cx + 1, cy],
+          [cx - 1, cy],
+          [cx, cy + 1],
+          [cx, cy - 1],
+        ] as [number, number][]) {
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const nIdx = ny * w + nx;
+          if (seen[nIdx]) continue;
+          const flags = tm.flags[nIdx]!;
+          if ((flags & TileFlags.PASSABLE) === 0 && (flags & TileFlags.DOOR) === 0) continue;
+          seen[nIdx] = 1;
+          stack.push(nIdx);
+        }
+      }
+
+      const sealed: string[] = [];
+      for (const room of map.rooms) {
+        const b = room.bounds;
+        let hasInterior = false;
+        let connected = false;
+        for (let ty = b.y + 1; ty < b.y + b.height - 1 && !connected; ty++) {
+          for (let tx = b.x + 1; tx < b.x + b.width - 1; tx++) {
+            const idx = ty * w + tx;
+            if ((tm.flags[idx]! & TileFlags.PASSABLE) === 0) continue;
+            hasInterior = true;
+            if (seen[idx]) {
+              connected = true;
+              break;
+            }
+          }
+        }
+        if (hasInterior && !connected) {
+          sealed.push(`seed ${seed} room ${room.id} (role ${room.role})`);
+        }
+      }
+      expect(sealed).toEqual([]);
+    }
+  });
+
   it('never plants a welcome sign on the player spawn tile', () => {
     const WELCOME_SIGN_TEXTURE = 3;
     for (const seed of [42, 7, 99, 123]) {
