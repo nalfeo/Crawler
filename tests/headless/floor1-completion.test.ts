@@ -100,12 +100,13 @@ const REQUIRED_QUEST_IDS = [
  * all comfortably under the 300s budget:
  *
  * - 6: new main's canonical sword clear; also clears bow (~227s) and bat (~139s).
- * - 2: all-weapon clear, widest margin (worst case bow ~179s).
+ * - 7: reserve all-weapon clear promoted after the same-room aggro fix (worst case
+ *      bow ~209s).
  * - 5: all-weapon clear, widest margin (worst case bow ~179s).
  *
- * Seeds 7 and 10 are additional verified all-weapon clears held in reserve.
+ * Seed 10 is an additional verified all-weapon clear held in reserve.
  */
-const WINNING_SEEDS = [6, 2, 5] as const;
+const WINNING_SEEDS = [6, 7, 5] as const;
 
 /**
  * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
