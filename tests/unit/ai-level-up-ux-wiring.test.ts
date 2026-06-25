@@ -46,6 +46,7 @@ describe('AI playthrough level-up UX wiring', () => {
   it('AI Runner Lab wires the allocator and no longer auto-spends stat points', () => {
     const source = readFileSync('src/labs/ai-runner-lab/index.ts', 'utf-8');
     expect(source).toContain('autoLevelUpAllocator: computeAutoStatAllocation');
+    expect(source).toContain('const config = createFloor1GameConfig(canvas, sceneOptions);');
     // The pre-modal bypass must be gone so the modal can actually open.
     expect(source).not.toContain('autoAllocateStatPoints');
   });
