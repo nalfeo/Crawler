@@ -16,11 +16,24 @@ jobs:
 
       - uses: ./.github/actions/setup-node
 
+      # Persist ESLint's incremental cache across runs. The unique run_id suffix
+      # forces a fresh (immutable) cache entry each run; restore-keys warm-start
+      # from the most recent prior cache. ESLint re-lints any file whose content
+      # changed, so a stale restore is always safe.
+      - name: Restore ESLint cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/eslint
+          key: eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}-${{ github.run_id }}
+          restore-keys: |
+            eslint-${{ runner.os }}-${{ hashFiles('eslint.config.js', 'package-lock.json') }}-
+            eslint-${{ runner.os }}-
+
       - name: Typecheck
         run: npm run typecheck &
 
       - name: Lint
-        run: npm run lint
+        run: npm run lint:cache
 
       - name: Wait for typecheck
         run: wait
@@ -125,7 +138,7 @@ jobs:
   merge-gate:
     name: Merge gate
     runs-on: ubuntu-latest
-    needs: [check-types-and-lint, check-format-and-labs, test-unit, test-headless]
+    needs: [check-types-and-lint, check-format-and-labs, test-unit, test-headless, test-e2e]
     if: always()
     steps:
       - name: Check required jobs
@@ -149,6 +162,7 @@ jobs:
           check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
           check "Unit tests"                    "${{ needs.test-unit.result }}"
           check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"
+          check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"
           echo "✅ All required checks passed"
 
   ci:
@@ -163,11 +177,12 @@ jobs:
             exit 1
           fi
 
-  # Job: E2E visual regression (advisory — non-blocking merge gate)
+  # Job: E2E visual regression (blocking — wired into merge-gate below).
+  # continue-on-error was removed after 40+ consecutive green runs across all
+  # branches proved the Playwright/Vite startup path is stable in CI.
   test-e2e:
     name: E2E Visual Regression
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
     steps:

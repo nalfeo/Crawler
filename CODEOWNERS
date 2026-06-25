@@ -8,3 +8,46 @@
 /docs/agent-os/policies/ @nalfeo
 /scripts/agent/ @nalfeo
 /docs/knowledge/metrics/ @nalfeo
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Persona routing matrix — mirrors docs/agent-os/personas/README.md
+#
+# This repo is agent-driven with a single human owner (@nalfeo), so every glob
+# below resolves to @nalfeo. The value is the explicit path→persona mapping:
+# it documents which persona owns each area and keeps @nalfeo as the required
+# reviewer/owner for it. CODEOWNERS is last-match-wins, so these globs are
+# ordered general → specific (e.g. src/engine before src/engine/sprites).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Systems Engineer — core ECS: components, systems, queries, determinism
+/src/core/** @nalfeo
+
+# UX Designer — HUD, menus, onboarding, controls, interaction polish (engine layer)
+/src/engine/** @nalfeo
+
+# Graphics Designer — sprites, tilesets, VFX, palettes, sprite briefs
+/src/engine/sprites/** @nalfeo
+/briefs/** @nalfeo
+/data/palettes/** @nalfeo
+
+# Game Designer — mechanics, economy, progression pacing, tuning, balance labs
+/src/game/** @nalfeo
+/src/labs/** @nalfeo
+/src/shared/data/tuning.json @nalfeo
+
+# Content Designer — authored floor/quest/encounter packs (validated data)
+/src/shared/data/quests.*.json @nalfeo
+
+# AI Content Engineer — Ollama integration, prompt + schema flows (floor-load only)
+/src/game/ai/** @nalfeo
+
+# QA Engineer — tests, coverage, property/invariant tests, regression, mutation
+/tests/** @nalfeo
+
+# Story Designer — lore, flavor text, season framing, The Director's voice
+/docs/knowledge/game-design/lore-bible.md @nalfeo
+
+# DevOps Engineer — CI, verify scripts, harness, tooling, gates.
+# (CI workflows and scripts/agent are also covered by the critical block above.)
+/.github/actions/** @nalfeo
+
