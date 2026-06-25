@@ -8,9 +8,9 @@
  * - Comparing AI vs human performance
  */
 import Phaser from 'phaser';
+import { createFloor1GameConfig } from '../../bootstrap/floor1-game-config.js';
 import { query } from 'bitecs';
 import { createFloor1MainSceneOptions } from '../../bootstrap/floor1-main-scene-options.js';
-import { BootScene, MainGameScene } from '../../engine/index.js';
 import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
 import {
   autoFloor1ProgressionSystem,
@@ -19,7 +19,6 @@ import {
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
-import { GAME } from '../../shared/constants.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
@@ -174,27 +173,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     sessionRecorderFactory: recorderControls.factory,
   };
 
-  const config: Phaser.Types.Core.GameConfig = {
-    type: Phaser.AUTO,
-    parent: canvas,
-    width: GAME.WIDTH,
-    height: GAME.HEIGHT,
-    backgroundColor: '#111111',
-    pixelArt: true,
-    roundPixels: true,
-    scene: [BootScene, new MainGameScene(sceneOptions)],
-    scale: {
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-    },
-    physics: {
-      default: 'arcade',
-      arcade: {
-        gravity: { x: 0, y: 0 },
-        debug: false,
-      },
-    },
-  };
+  const config = createFloor1GameConfig(canvas, sceneOptions);
 
   const game = new Phaser.Game(config);
 
