@@ -36,6 +36,7 @@ interface MapGenLabSettings {
   showRooms: boolean;
   showDoors: boolean;
   showSpawn: boolean;
+  showReachability: boolean;
 }
 
 const TERRAIN_COLORS: Record<number, string> = {
@@ -70,6 +71,69 @@ const ROOM_COLORS = [
   'rgba(245, 101, 101, 0.25)',
 ];
 
+/**
+ * Flood from the player spawn over passable + door tiles. Mirrors the
+ * reachability semantics of cullIsolatedFloorTiles and the AI navigator, so the
+ * mask answers "could the player/AI ever stand here?".
+ */
+function floodFromSpawn(map: FloorMap): Uint8Array {
+  const w = map.width;
+  const h = map.height;
+  const visited = new Uint8Array(w * h);
+  const start = map.playerSpawn.y * w + map.playerSpawn.x;
+  visited[start] = 1;
+  const stack = [start];
+  while (stack.length > 0) {
+    const idx = stack.pop()!;
+    const cx = idx % w;
+    const cy = (idx - cx) / w;
+    for (const [nx, ny] of [
+      [cx + 1, cy],
+      [cx - 1, cy],
+      [cx, cy + 1],
+      [cx, cy - 1],
+    ] as [number, number][]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const nIdx = ny * w + nx;
+      if (visited[nIdx]) continue;
+      const flags = map.flags[nIdx]!;
+      if ((flags & TileFlags.PASSABLE) === 0 && (flags & TileFlags.DOOR) === 0) continue;
+      visited[nIdx] = 1;
+      stack.push(nIdx);
+    }
+  }
+  return visited;
+}
+
+/**
+ * Room indices whose passable interior cannot be reached from spawn. After
+ * ensureRoomsReachable this is always empty; a non-empty result means a room
+ * (often the boss-stair room, and thus the staircase) is sealed in solid rock.
+ */
+function findSealedRooms(map: FloorMap, reachable: Uint8Array): number[] {
+  const w = map.width;
+  const sealed: number[] = [];
+  const rooms = map.rooms;
+  for (let i = 0; i < rooms.length; i++) {
+    const b = rooms[i]!.bounds;
+    let hasInterior = false;
+    let connected = false;
+    for (let ty = b.y + 1; ty < b.y + b.height - 1 && !connected; ty++) {
+      for (let tx = b.x + 1; tx < b.x + b.width - 1; tx++) {
+        const idx = ty * w + tx;
+        if ((map.flags[idx]! & TileFlags.PASSABLE) === 0) continue;
+        hasInterior = true;
+        if (reachable[idx]) {
+          connected = true;
+          break;
+        }
+      }
+    }
+    if (hasInterior && !connected) sealed.push(i);
+  }
+  return sealed;
+}
+
 function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as HTMLElement & { __labGui?: GUI }).__labGui;
   if (!(gui instanceof GUI)) throw new Error('Lab runner did not initialize lil-gui.');
@@ -89,6 +153,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     showRooms: true,
     showDoors: true,
     showSpawn: true,
+    showReachability: true,
     ...savedState,
   };
 
@@ -112,8 +177,24 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   statsEl.style.lineHeight = '1.6';
   canvasHost.appendChild(statsEl);
 
+  // Seed-sweep result display (reachability invariant across many seeds).
+  const sweepEl = document.createElement('pre');
+  sweepEl.style.marginTop = '8px';
+  sweepEl.style.padding = '12px';
+  sweepEl.style.background = 'rgba(8, 12, 24, 0.6)';
+  sweepEl.style.borderRadius = '8px';
+  sweepEl.style.color = '#c9d4ff';
+  sweepEl.style.fontSize = '12px';
+  sweepEl.style.fontFamily = 'monospace';
+  sweepEl.style.lineHeight = '1.6';
+  sweepEl.style.whiteSpace = 'pre-wrap';
+  sweepEl.textContent = 'Seed sweep: not run yet.';
+  canvasHost.appendChild(sweepEl);
+
   let currentMap: FloorMap | null = null;
   let genTimeMs = 0;
+  let currentReachable: Uint8Array | null = null;
+  let currentSealed: number[] = [];
 
   function buildConfig(): MapConfig {
     return {
@@ -137,6 +218,9 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     const t0 = performance.now();
     currentMap = generator.generate(config, rng);
     genTimeMs = performance.now() - t0;
+
+    currentReachable = floodFromSpawn(currentMap);
+    currentSealed = findSealedRooms(currentMap, currentReachable);
 
     render();
     updateStats();
@@ -206,6 +290,33 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       }
     }
 
+    // Highlight unreachable passable tiles + outline sealed rooms in red. After
+    // ensureRoomsReachable nothing should ever light up — a red room means the
+    // floor exit (or a quest room) is stranded in solid rock.
+    if (settings.showReachability && currentReachable) {
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = y * w + x;
+          if ((currentMap.flags[idx]! & TileFlags.PASSABLE) === 0) continue;
+          if (currentReachable[idx]) continue;
+          ctx.fillStyle = 'rgba(245, 101, 101, 0.55)';
+          ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+        }
+      }
+      const rooms = currentMap.rooms;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#f56565';
+      for (const i of currentSealed) {
+        const b = rooms[i]!.bounds;
+        ctx.strokeRect(
+          b.x * CELL_SIZE + 1,
+          b.y * CELL_SIZE + 1,
+          b.width * CELL_SIZE - 2,
+          b.height * CELL_SIZE - 2,
+        );
+      }
+    }
+
     // Draw player spawn
     if (settings.showSpawn) {
       const sp = currentMap.playerSpawn;
@@ -237,6 +348,10 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
     const rooms = currentMap.rooms;
     const floorPct = ((passable / totalTiles) * 100).toFixed(1);
+    const sealedLabel =
+      currentSealed.length === 0
+        ? 'none ✅'
+        : `${currentSealed.length} ❌ [${currentSealed.join(', ')}]`;
 
     statsEl.textContent = [
       `Generator:    ${settings.biome}`,
@@ -244,6 +359,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       `Size:         ${w}×${h} (${totalTiles.toLocaleString()} tiles)`,
       `Passable:     ${passable.toLocaleString()} (${floorPct}%)`,
       `Rooms:        ${rooms.length}`,
+      `Sealed rooms: ${sealedLabel}`,
       `Gen time:     ${genTimeMs.toFixed(1)} ms`,
       `Spawn:        (${currentMap.playerSpawn.x}, ${currentMap.playerSpawn.y})`,
     ].join('\n');
@@ -310,6 +426,10 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     .add(settings, 'showSpawn')
     .name('Show Spawn')
     .onChange(() => render());
+  displayFolder
+    .add(settings, 'showReachability')
+    .name('Show Reachability')
+    .onChange(() => render());
 
   gui
     .add(
@@ -335,10 +455,35 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     )
     .name('🔄 Regenerate');
 
+  gui
+    .add(
+      {
+        sweep: () => {
+          const COUNT = 60;
+          const offenders: string[] = [];
+          const config = buildConfig();
+          const generator = getGenerator(config.biome as BiomeType);
+          for (let seed = 1; seed <= COUNT; seed++) {
+            const map = generator.generate({ ...config, seed }, new SeededRandom(seed));
+            const sealed = findSealedRooms(map, floodFromSpawn(map));
+            if (sealed.length > 0) offenders.push(`${seed}:[${sealed.join(',')}]`);
+          }
+          sweepEl.textContent =
+            offenders.length === 0
+              ? `Seed sweep (${settings.biome}, seeds 1–${COUNT}): every room reachable ✅`
+              : `Seed sweep (${settings.biome}, seeds 1–${COUNT}): ${offenders.length} sealed ❌\n${offenders.join('\n')}`;
+        },
+      },
+      'sweep',
+    )
+    .name('🧭 Seed Sweep (reachability)');
+
   const hint = document.createElement('p');
   hint.textContent =
     'Adjust biome, seed, and room params to explore procedural generation. ' +
-    'Room overlays show bounds with indices. Green dot = player spawn.';
+    'Room overlays show bounds with indices. Green dot = player spawn. ' +
+    'Red tiles/outlines mark interiors unreachable from spawn — the map-gen ' +
+    'reachability guarantee keeps this empty. Run Seed Sweep to verify across seeds.';
   hint.style.marginTop = '16px';
   hint.style.color = '#c9d4ff';
   hint.style.lineHeight = '1.6';
@@ -350,6 +495,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
   return () => {
     canvas.remove();
     statsEl.remove();
+    sweepEl.remove();
     hint.remove();
   };
 }

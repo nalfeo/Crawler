@@ -189,9 +189,14 @@ export interface RunStats {
   /** Final score */
   finalScore: number;
   /** Run outcome */
-  outcome: 'victory' | 'death' | 'timeout' | 'error';
+  outcome: 'victory' | 'death' | 'timeout' | 'stalled' | 'error';
   /** Error message if outcome is 'error' */
   error?: string;
+  /**
+   * Human-readable explanation when `outcome` is `'stalled'`: which quests had
+   * completed and which the run was waiting on when floor progress froze.
+   */
+  stallReason?: string;
 
   // Detailed metrics for balance analysis
   /** Level-up events with timestamps */

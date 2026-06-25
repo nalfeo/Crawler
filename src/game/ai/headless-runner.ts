@@ -28,6 +28,8 @@ import {
   autoFloor1ProgressionSystem,
   autoNpcInteractionSystem,
 } from './auto-progression.js';
+import { computeFloorProgressScore } from './bt-ai-provider.js';
+import { QuestProgressStallTracker, formatQuestStallReason } from './quest-stall.js';
 
 const logger = createLogger('game:headless-runner');
 
@@ -74,6 +76,17 @@ export interface HeadlessRunnerConfig {
    * present in the pool the run throws immediately.
    */
   forceWeaponId?: string;
+  /**
+   * Frames of zero floor-progress (no quest objective tick, completion, or gold
+   * gain) before the run is declared `'stalled'` and terminated early with a
+   * quest-level diagnostic. Keys on quest progress, not on the AI reaching its
+   * movement goals, so a knockback/kite deadlock or a "can't find the next NPC"
+   * wander fast-fails with a clear reason instead of burning the whole budget.
+   * Sized above the slowest legitimate inter-progress gap on winning seeds (~50s)
+   * and above the in-AI relocate cycle (~100s) so it never false-fails a healthy
+   * run. Set to 0 to disable. Default 9000 (~150s at 60 FPS).
+   */
+  questStallFrames?: number;
 }
 
 const DEFAULT_CONFIG: Required<
@@ -85,6 +98,7 @@ const DEFAULT_CONFIG: Required<
   progressInterval: 0,
   debug: false,
   eventSampleInterval: 15,
+  questStallFrames: 9000, // ~150s of frozen quest progress
 };
 
 /**
@@ -138,6 +152,8 @@ export async function runHeadless(
   let frameCount = 0;
   let lastProgressFrame = 0;
   let outcome: RunStats['outcome'] = 'timeout';
+  let stallReason: string | undefined;
+  const stallTracker = new QuestProgressStallTracker(mergedConfig.questStallFrames);
 
   // Metric trackers
   const levelUps: LevelUpEvent[] = [];
@@ -445,6 +461,27 @@ export async function runHeadless(
         break;
       }
 
+      // Quest-progress stall watchdog. Fast-fail a run whose quest log has frozen
+      // (no objective tick / completion / gold gain) for longer than the budget,
+      // emitting a quest-level diagnostic instead of silently burning the full
+      // wall/frame budget. Keyed on quest progress rather than goal-reaching so a
+      // deadlock or unreachable-NPC wander surfaces clearly. The in-AI watchdog
+      // relocates first (~100s); this only fires if that fails to recover.
+      if (
+        stallTracker.update(
+          computeFloorProgressScore(world.questLog.values(), world.playerGold),
+          frameCount,
+        )
+      ) {
+        outcome = 'stalled';
+        stallReason = formatQuestStallReason(
+          world.questLog.values(),
+          stallTracker.framesSinceProgress(frameCount),
+          GAME.DELTA_MS,
+        );
+        break;
+      }
+
       // Progress reporting
       if (
         mergedConfig.progressInterval > 0 &&
@@ -537,6 +574,7 @@ export async function runHeadless(
     finalFloor: world.floor,
     finalScore,
     outcome,
+    ...(stallReason ? { stallReason } : {}),
     levelUps,
     combat: {
       totalKills,
