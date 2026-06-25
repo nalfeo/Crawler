@@ -1,0 +1,165 @@
+id: item-icons-materials
+title: 'Item Icons — Materials'
+summary: 'Backlog of crafting-material inventory icons that currently render procedural placeholder PNGs (manifest sourceRun "placeholder"). Each entry needs real authored pixel art generated via the sprite pipeline when provider access is available.'
+assets:
+  - id: copper-ore
+    type: item
+    label: 'Copper Ore'
+    brief: 'Copper Ore — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Greenish and crumbly. Better than nothing.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: copper-ore
+
+  - id: gold-nugget
+    type: item
+    label: 'Gold Nugget'
+    brief: 'Gold Nugget — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Shiny enough to distract the audience.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: gold-nugget
+
+  - id: shadow-shard
+    type: item
+    label: 'Shadow Shard'
+    brief: 'Shadow Shard — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. A splinter of solidified darkness.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: shadow-shard
+
+  - id: void-crystal
+    type: item
+    label: 'Void Crystal'
+    brief: 'Void Crystal — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Hums with frequencies that hurt your teeth.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: void-crystal
+
+  - id: star-fragment
+    type: item
+    label: 'Star Fragment'
+    brief: 'Star Fragment — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Fell from somewhere impossibly far away.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: star-fragment
+
+  - id: raw-wood
+    type: item
+    label: 'Raw Wood'
+    brief: 'Raw Wood — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Splintery but sturdy.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: raw-wood
+
+  - id: hardite-plank
+    type: item
+    label: 'Hardite Plank'
+    brief: 'Hardite Plank — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Wood that refuses to burn.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: hardite-plank
+
+  - id: silk-thread
+    type: item
+    label: 'Silk Thread'
+    brief: 'Silk Thread — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Harvested from something with too many legs.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: silk-thread
+
+  - id: dragon-scale
+    type: item
+    label: 'Dragon Scale'
+    brief: 'Dragon Scale — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Iridescent and warm to the touch.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: dragon-scale
+
+  - id: bone-dust
+    type: item
+    label: 'Bone Dust'
+    brief: "Bone Dust — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Ground to a fine powder. Don't ask whose."
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: bone-dust
+
+  - id: ectoplasm-glob
+    type: item
+    label: 'Ectoplasm Glob'
+    brief: 'Ectoplasm Glob — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Gooey and faintly luminescent.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: ectoplasm-glob
+
+  - id: mushroom-cap
+    type: item
+    label: 'Mushroom Cap'
+    brief: 'Mushroom Cap — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Spotted and suspicious.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: mushroom-cap
+
+  - id: lava-glass
+    type: item
+    label: 'Lava Glass'
+    brief: 'Lava Glass — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Formed in volcanic vents. Fragile beauty.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: lava-glass
+
+  - id: feathersteel
+    type: item
+    label: 'Feathersteel'
+    brief: 'Feathersteel — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Light as a feather, tough as nails.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: feathersteel
+
+  - id: crystal-fiber
+    type: item
+    label: 'Crystal Fiber'
+    brief: 'Crystal Fiber — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Threads of pure resonance.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: crystal-fiber
+
+  - id: living-stone
+    type: item
+    label: 'Living Stone'
+    brief: 'Living Stone — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Pulses gently. Possibly breathing.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: living-stone
+
+  - id: aether-dust
+    type: item
+    label: 'Aether Dust'
+    brief: "Aether Dust — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Sparkles in dimensions you can't see."
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: aether-dust
+
+  - id: celestial-ingot
+    type: item
+    label: 'Celestial Ingot'
+    brief: "Celestial Ingot — a single centered raw crafting material icon with a clear, readable silhouette on a transparent background. Emphasize the material itself (ore, wood, crystal, scale, dust, etc.) with a chunky, readable silhouette. Forged in a star that hasn't been born yet."
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: celestial-ingot

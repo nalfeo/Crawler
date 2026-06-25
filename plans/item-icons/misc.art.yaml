@@ -1,0 +1,165 @@
+id: item-icons-misc
+title: 'Item Icons — Misc'
+summary: 'Backlog of miscellaneous inventory icons that currently render procedural placeholder PNGs (manifest sourceRun "placeholder"). Each entry needs real authored pixel art generated via the sprite pipeline when provider access is available.'
+assets:
+  - id: broken-circuit
+    type: item
+    label: 'Broken Circuit'
+    brief: 'Broken Circuit — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Sparks occasionally. Mostly useless.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: broken-circuit
+
+  - id: alien-tooth
+    type: item
+    label: 'Alien Tooth'
+    brief: 'Alien Tooth — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. From a species with too many mouths.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: alien-tooth
+
+  - id: camera-lens
+    type: item
+    label: 'Camera Lens'
+    brief: 'Camera Lens — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Cracked. Still records.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: camera-lens
+
+  - id: audience-rating-card
+    type: item
+    label: 'Audience Rating Card'
+    brief: 'Audience Rating Card — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. "7/10 — would watch die again."'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: audience-rating-card
+
+  - id: directors-cue-card
+    type: item
+    label: "Director's Cue Card"
+    brief: 'Director''s Cue Card — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. "Look scared NOW."'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: directors-cue-card
+
+  - id: glitch-marble
+    type: item
+    label: 'Glitch Marble'
+    brief: 'Glitch Marble — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Flickers between existing and not.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: glitch-marble
+
+  - id: contestant-badge
+    type: item
+    label: 'Contestant Badge'
+    brief: 'Contestant Badge — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Your name is misspelled. Classic.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: contestant-badge
+
+  - id: foam-finger
+    type: item
+    label: 'Foam Finger'
+    brief: 'Foam Finger — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. #1 Fan (of watching you suffer).'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: foam-finger
+
+  - id: confetti-popper
+    type: item
+    label: 'Confetti Popper'
+    brief: 'Confetti Popper — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. For celebrating micro-victories.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: confetti-popper
+
+  - id: bootleg-dvd
+    type: item
+    label: 'Bootleg DVD'
+    brief: 'Bootleg DVD — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Previous season. Terrible quality.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: bootleg-dvd
+
+  - id: stress-ball
+    type: item
+    label: 'Stress Ball'
+    brief: 'Stress Ball — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Shaped like The Director. Very squeezable.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: stress-ball
+
+  - id: autograph-book
+    type: item
+    label: 'Autograph Book'
+    brief: 'Autograph Book — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Collect signatures from the dead.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: autograph-book
+
+  - id: participation-trophy
+    type: item
+    label: 'Participation Trophy'
+    brief: 'Participation Trophy — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. "You tried!" — The Director'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: participation-trophy
+
+  - id: shiny-button
+    type: item
+    label: 'Shiny Button'
+    brief: 'Shiny Button — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Do NOT press it. (You want to press it.)'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: shiny-button
+
+  - id: ghost-photo
+    type: item
+    label: 'Ghost Photo'
+    brief: "Ghost Photo — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Shows someone who isn't there anymore."
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: ghost-photo
+
+  - id: laugh-track-tape
+    type: item
+    label: 'Laugh Track Tape'
+    brief: 'Laugh Track Tape — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Plays canned laughter. Inappropriately.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: laugh-track-tape
+
+  - id: lucky-dice
+    type: item
+    label: 'Lucky Dice'
+    brief: 'Lucky Dice — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. Loaded. In your favor. Maybe.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: lucky-dice
+
+  - id: expired-coupon
+    type: item
+    label: 'Expired Coupon'
+    brief: 'Expired Coupon — a single centered small object icon with a clear, readable silhouette on a transparent background. Keep it a single recognizable prop with a clean silhouette. 10% off at a store that no longer exists.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: expired-coupon

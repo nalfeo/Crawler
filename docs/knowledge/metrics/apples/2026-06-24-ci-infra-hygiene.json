@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-24",
+  "session": "ci-infra-hygiene",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6,
+  "notes": "PR Group E CI/infra hygiene. Item 16: added .eslintcache caching (node_modules already cached) and switched CI lint to lint:cache; removed continue-on-error from the e2e job after confirming 40/40 stable runs and wired test-e2e into merge-gate so it actually gates the required ci check; added CODEOWNERS persona routing globs mirroring personas/README.md. Item 14: relaxed manual-preview.yml admin check to write-or-higher and documented that workflow_dispatch requires >= write repo access (a platform rule, not a permissions: block issue). Validated with actionlint, check-codeowners, and verify:fast."
+}
