@@ -17,7 +17,11 @@ import { query } from 'bitecs';
 import { Enemy } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import type { InputState } from '../../shared/input.js';
-import type { SessionRecorder, SessionRecorderStats } from '../../shared/session-recorder-types.js';
+import type {
+  SessionController,
+  SessionRecorder,
+  SessionRecorderStats,
+} from '../../shared/session-recorder-types.js';
 import { AI_STATE_NAME, type SimEvent, type SimEventType } from './event-log.js';
 
 // ---------------------------------------------------------------------------
@@ -46,6 +50,8 @@ export interface PlayerSessionEvent extends SimEvent {
   inputPointerX: number;
   /** Pointer world Y (px) — where the player aimed. */
   inputPointerY: number;
+  /** Which controller produced this record — `'AI'` or `'MANUAL'`. */
+  controller: SessionController;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +62,12 @@ export interface PlayerSessionEvent extends SimEvent {
 export interface SessionRecorderOptions {
   /** Frames between periodic `sample` events (default 15, ~4 Hz at 60 fps). */
   sampleInterval?: number;
+  /**
+   * Which controller is driving the player when recording starts (default
+   * `'MANUAL'`). The AI Runner lab passes `'AI'` since the behavior-tree runner
+   * drives by default there; a human-only lab leaves the default.
+   */
+  initialController?: SessionController;
 }
 
 /**
@@ -95,11 +107,13 @@ export function createPlayerSessionRecorder(
   options: SessionRecorderOptions = {},
 ): PlayerSessionRecorder {
   const sampleInterval = Math.max(1, options.sampleInterval ?? 15);
+  const initialController: SessionController = options.initialController ?? 'MANUAL';
   const events: PlayerSessionEvent[] = [];
 
   let frameCount = 0;
   let totalKills = 0;
   let lastLoggedState = '';
+  let currentController: SessionController = initialController;
 
   // Movement-window tracking (mirrors headless runner).
   let lastSampleX = world.stores.position.x[playerEid] ?? 0;
@@ -167,6 +181,7 @@ export function createPlayerSessionRecorder(
       inputAction: inputState.action,
       inputPointerX: Math.round(inputState.pointerX),
       inputPointerY: Math.round(inputState.pointerY),
+      controller: currentController,
     };
   }
 
@@ -253,6 +268,21 @@ export function createPlayerSessionRecorder(
     events.push(event);
   }
 
+  function onControlChange(controller: SessionController, note?: string): void {
+    if (controller === currentController) {
+      return;
+    }
+    currentController = controller;
+    const enemyEids = query(world.ecs, [Enemy]);
+    const noInput: InputState = { moveX: 0, moveY: 0, action: false, pointerX: 0, pointerY: 0 };
+    // buildEvent stamps the freshly-updated controller, so the handover record
+    // itself is tagged with the controller now taking over.
+    const event = buildEvent('control', noInput, enemyEids, note ?? `control -> ${controller}`);
+    event.state = controller;
+    event.reason = 'control-change';
+    events.push(event);
+  }
+
   function getEvents(): readonly PlayerSessionEvent[] {
     return events;
   }
@@ -267,6 +297,7 @@ export function createPlayerSessionRecorder(
       totalSamples: samples.length,
       totalKills: kills.length,
       durationMs: Math.max(0, lastMs - firstMs),
+      controller: currentController,
     };
   }
 
@@ -296,6 +327,10 @@ export function createPlayerSessionRecorder(
     frameCount = 0;
     totalKills = 0;
     lastLoggedState = '';
+    // Deliberately preserve currentController: clearing the recorded log does
+    // not change who is actually driving the player. The owning lab is the sole
+    // authority on the controller (via onControlChange), so reverting to
+    // initialController here would silently mis-tag live play after a reset.
     lastSampleX = world.stores.position.x[playerEid] ?? 0;
     lastSampleY = world.stores.position.y[playerEid] ?? 0;
     lastFrameX = lastSampleX;
@@ -311,6 +346,7 @@ export function createPlayerSessionRecorder(
     onLevelUp,
     onQuestEvent,
     onNpcEvent,
+    onControlChange,
     getEvents,
     getStats,
     toJsonl,

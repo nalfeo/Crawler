@@ -31,7 +31,7 @@ import {
   type PlayerSessionRecorder,
 } from '../game/ai/player-session-recorder.js';
 import type { GameWorld } from '../core/world.js';
-import type { SessionRecorder } from '../shared/session-recorder-types.js';
+import type { SessionController, SessionRecorder } from '../shared/session-recorder-types.js';
 
 export interface SessionRecorderControls {
   /**
@@ -43,6 +43,11 @@ export interface SessionRecorderControls {
   readonly element: HTMLElement;
   /** Append the panel into a container (no-op if already mounted there). */
   mount(container: HTMLElement): void;
+  /**
+   * Record a control handover (AI ⇄ human) and surface it in the panel so the
+   * recording clearly shows when manual play started/stopped.
+   */
+  onControlChange(controller: SessionController, note?: string): void;
   /** Stop the status ticker and detach the panel. */
   destroy(): void;
 }
@@ -52,9 +57,10 @@ export interface SessionRecorderControls {
  * to wire the recorder into a `MainGameScene`.
  */
 export function createSessionRecorderControls(
-  options: { title?: string } = {},
+  options: { title?: string; initialController?: SessionController } = {},
 ): SessionRecorderControls {
   const title = options.title ?? 'Session Recorder';
+  const initialController: SessionController = options.initialController ?? 'MANUAL';
 
   let recorder: PlayerSessionRecorder | null = null;
 
@@ -175,18 +181,32 @@ export function createSessionRecorderControls(
       log(
         `[${new Date().toLocaleTimeString()}] ` +
           `events=${stats.totalEvents}  samples=${stats.totalSamples}  ` +
-          `kills=${stats.totalKills}  duration=${(stats.durationMs / 1000).toFixed(1)}s`,
+          `kills=${stats.totalKills}  duration=${(stats.durationMs / 1000).toFixed(1)}s  ` +
+          `control=${stats.controller}`,
       );
     }
   }, 2000);
 
   // ── Public API ──────────────────────────────────────────────────────────────
   const factory = (world: GameWorld, playerEid: number): SessionRecorder => {
-    recorder = createPlayerSessionRecorder(world, playerEid);
+    recorder = createPlayerSessionRecorder(world, playerEid, { initialController });
     lastEventCount = 0;
-    log('[session-recorder] Recording started.');
+    log(`[session-recorder] Recording started (control=${initialController}).`);
     return recorder;
   };
+
+  function onControlChange(controller: SessionController, note?: string): void {
+    if (!recorder) {
+      log('[control] Recorder not ready — control change not recorded.');
+      return;
+    }
+    recorder.onControlChange(controller, note);
+    const banner =
+      controller === 'MANUAL'
+        ? '🎮 MANUAL CONTROL — you are now driving the player'
+        : '🤖 AI CONTROL — the runner resumed driving';
+    log(`[control] ${banner}${note ? ` (${note})` : ''}.`);
+  }
 
   function mount(container: HTMLElement): void {
     if (root.parentElement !== container) {
@@ -204,6 +224,7 @@ export function createSessionRecorderControls(
     factory,
     element: root,
     mount,
+    onControlChange,
     destroy,
   };
 }
