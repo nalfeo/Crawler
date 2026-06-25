@@ -63,7 +63,11 @@ import {
   SHOPKEEPER_FETCH_ITEM_ID,
   type ShopkeeperStage,
 } from '../shared/quest-types.js';
-import { FLOOR1_BOSS_REWARD_SPELL_IDS, type Floor1BossRewardSpellId } from '../shared/abilities.js';
+import {
+  FLOOR1_BOSS_REWARD_SPELL_IDS,
+  DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
+  type Floor1BossRewardSpellId,
+} from '../shared/abilities.js';
 import {
   acceptQuest,
   notifyQuestTalk,
@@ -1760,7 +1764,7 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   return true;
 }
 
-export function confirmFloor1StairDescend(world: GameWorld, _playerEid: number): boolean {
+export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): boolean {
   if (!world.floor1 || world.state !== 'playing') {
     return false;
   }
@@ -1772,6 +1776,11 @@ export function confirmFloor1StairDescend(world: GameWorld, _playerEid: number):
   ) {
     return false;
   }
+  // Safety net: nobody should leave Floor 1 with the spell unlock flipped (or the
+  // boss quest done) but no spell to cast. Idempotent + a no-op once a spell is
+  // already learned (modal/AI pick), so it never overrides the player's choice
+  // nor shifts the headless RNG trajectory.
+  ensureBossBattleSpellReward(world, playerEid);
   objective.staircaseDiscovered = true;
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, true);
   // Evaluate quests immediately so that the "Leave the Floor" objective for taking
@@ -1987,5 +1996,52 @@ export function selectSpellFromBossBattle(
   // Unlock the spells feature (MP bar + ability system)
   world.featureUnlocks.spells = true;
 
+  return true;
+}
+
+/**
+ * Hardening invariant for the boss-battle spell reward.
+ *
+ * Completing the Slime Rat quest (goal flag `floor1-boss-battle-complete`) must
+ * always leave the player with a concrete learned spell AND
+ * `featureUnlocks.spells === true` — even when no engine modal or AI
+ * auto-progression ran to pick one. Without this, a path that flips the unlock
+ * flag (or completes the quest) without granting a spell would show the MP bar
+ * over an empty spellbook, with nothing to cast.
+ *
+ * Behaviour (idempotent, deterministic — no RNG, no modal):
+ *   - Nothing to do until the quest is complete OR the flag is already set.
+ *   - If a spell is already learned (modal/AI picked one), just latch the flag
+ *     true and exit — preserving the player's / AI's choice.
+ *   - Otherwise grant the deterministic {@link DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID}
+ *     and flip the flag. This is the "safe default-grant fallback".
+ *
+ * Returns true when this call granted the default spell, false otherwise.
+ *
+ * Note: this is a *safety net*, not the primary path. The visual game still
+ * offers the choice modal, and the headless AI still claims the spell via
+ * auto-progression — both run before the player can leave the floor, so this
+ * only fires in degenerate cases (e.g. a direct flag set), which keeps it from
+ * robbing the player's pick or shifting the headless RNG trajectory.
+ */
+export function ensureBossBattleSpellReward(world: GameWorld, playerEid: number): boolean {
+  const questComplete = world.goalFlags.get('floor1-boss-battle-complete') === true;
+  if (!questComplete && world.featureUnlocks.spells !== true) {
+    return false;
+  }
+
+  const state = world.abilityStatesByEntity.get(playerEid);
+  const hasLearnedSpell = state !== undefined && state.learnedSpellIds.length > 0;
+  if (hasLearnedSpell) {
+    // A spell was already chosen — just make sure the unlock flag is latched.
+    if (world.featureUnlocks.spells !== true) {
+      world.featureUnlocks.spells = true;
+    }
+    return false;
+  }
+
+  // No spell learned yet: grant the deterministic default reward + unlock.
+  memorizeSpell(world, playerEid, DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID);
+  world.featureUnlocks.spells = true;
   return true;
 }

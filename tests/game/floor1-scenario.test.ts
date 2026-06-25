@@ -4,6 +4,7 @@ import { Position, Rotation, Sprite } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
+  ensureBossBattleSpellReward,
   equipPurchasedGear,
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
@@ -35,6 +36,7 @@ import {
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.js';
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -389,6 +391,114 @@ describe('floor1Scenario', () => {
     expect(selectSpellFromBossBattle(world, player, 'heal')).toBe(true);
     expect(world.featureUnlocks.spells).toBe(true);
     expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain('heal');
+  });
+
+  describe('boss-battle spell reward hardening (ensureBossBattleSpellReward)', () => {
+    const makeReadyWorld = (seed = 99) => {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      return { world, player };
+    };
+
+    it('is a no-op until the quest completes (or the flag is set)', () => {
+      const { world, player } = makeReadyWorld();
+      const granted = ensureBossBattleSpellReward(world, player);
+      expect(granted).toBe(false);
+      expect(world.featureUnlocks.spells).toBe(false);
+      expect(world.abilityStatesByEntity.get(player)).toBeUndefined();
+    });
+
+    it('guarantees a concrete spell + the unlock flag on quest completion without any modal', () => {
+      const { world, player } = makeReadyWorld();
+      // Quest completion signal (questSystem sets this via onCompleteGoalFlag).
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+      expect(world.featureUnlocks.spells).toBe(false);
+
+      const granted = ensureBossBattleSpellReward(world, player);
+
+      expect(granted).toBe(true);
+      expect(world.featureUnlocks.spells).toBe(true);
+      const state = world.abilityStatesByEntity.get(player);
+      expect(state?.learnedSpellIds).toContain(DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID);
+      expect(state?.equippedActiveAbilityIds).toContain(DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID);
+    });
+
+    it('repairs a desync where the unlock flag is set but no spell was learned', () => {
+      const { world, player } = makeReadyWorld();
+      // Degenerate state: flag flipped true with an empty spellbook.
+      world.featureUnlocks.spells = true;
+      expect(world.abilityStatesByEntity.get(player)).toBeUndefined();
+
+      const granted = ensureBossBattleSpellReward(world, player);
+
+      expect(granted).toBe(true);
+      expect(world.featureUnlocks.spells).toBe(true);
+      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toContain(
+        DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
+      );
+    });
+
+    it('preserves an explicit modal/AI pick and never double-grants (idempotent)', () => {
+      const { world, player } = makeReadyWorld();
+      world.goalFlags.set('floor1-boss-battle-complete', true);
+
+      // Player explicitly picks fireball via the modal selection path.
+      expect(selectSpellFromBossBattle(world, player, 'fireball')).toBe(true);
+
+      // The safety net must not override the choice nor learn a second spell.
+      const granted = ensureBossBattleSpellReward(world, player);
+      expect(granted).toBe(false);
+      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual(['fireball']);
+      expect(world.featureUnlocks.spells).toBe(true);
+
+      // Calling again stays a no-op.
+      expect(ensureBossBattleSpellReward(world, player)).toBe(false);
+      expect(world.abilityStatesByEntity.get(player)?.learnedSpellIds).toEqual(['fireball']);
+    });
+
+    it('completing the Slime Rat quest then the safety net yields a learned spell + unlock', () => {
+      const world = createTestWorld({ seed: 7 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+
+      const objective = world.floor1?.objective;
+      if (!objective) {
+        throw new Error('Expected floor1 objective to exist');
+      }
+
+      // Accept the Spell Broker quest and start the Slime Rat battle.
+      meetSpellQuestGiver(world);
+      world.stores.position.x[player] = objective.slimeRatRoomPos.x;
+      world.stores.position.y[player] = objective.slimeRatRoomPos.y;
+      floorObjectiveSystem(world);
+
+      // Win the fight: remove the Slime Rat boss.
+      const slimeRatBossEid = objective.bossBattles.get('slime-rat')!.bossEid;
+      if (slimeRatBossEid === null) {
+        throw new Error('Expected Slime Rat boss to exist');
+      }
+      removeEntity(world.ecs, slimeRatBossEid);
+      floorObjectiveSystem(world);
+
+      // Claim the spellbook -> the boss-battle quest completes.
+      meetSpellQuestGiver(world);
+      questSystem(world);
+      expect(world.goalFlags.get('floor1-boss-battle-complete')).toBe(true);
+
+      // No modal, no AI: the hardening fallback alone guarantees the invariant.
+      expect(world.featureUnlocks.spells).toBe(false);
+      const granted = ensureBossBattleSpellReward(world, player);
+      expect(granted).toBe(true);
+      expect(world.featureUnlocks.spells).toBe(true);
+      expect(world.abilityStatesByEntity.get(player)?.equippedActiveAbilityIds).toContain(
+        DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
+      );
+    });
   });
 
   it('auto-accepts then completes the "Leave the Floor" finale via the three-gate flow', () => {

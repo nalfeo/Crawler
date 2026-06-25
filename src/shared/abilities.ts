@@ -4,6 +4,15 @@ export const ACTIVE_ABILITY_SLOT_LIMIT = 10;
 export const FLOOR1_BOSS_REWARD_SPELL_IDS = ['fireball', 'heal', 'pulse-shield'] as const;
 export type Floor1BossRewardSpellId = (typeof FLOOR1_BOSS_REWARD_SPELL_IDS)[number];
 
+/**
+ * Deterministic default reward spell, granted by the safe fallback
+ * (`ensureBossBattleSpellReward`) when the boss-battle quest is complete but no
+ * spell was chosen via the modal or AI auto-progression. `heal` is chosen
+ * deliberately: it matches the AI auto-progression pick and has no offensive
+ * auto-cast, so a fallback grant never shifts the combat RNG trajectory.
+ */
+export const DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID: Floor1BossRewardSpellId = 'heal';
+
 export type AbilityTriggerKind =
   | 'skill_usage'
   | 'enemy_cluster'
