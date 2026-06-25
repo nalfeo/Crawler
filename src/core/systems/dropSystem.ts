@@ -7,7 +7,7 @@
  * and applies death knockback.
  */
 import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
-import { Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
+import { BloodColor, Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
 import { spawnBehaviorEnemy, spawnDroppedItem, spawnGold, spawnXpGem } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
@@ -161,13 +161,11 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
   const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
   // Inherit blood colour from the parent slime
-  const parentBloodColorR = world.stores.bloodColor.r[eid] ?? 0;
-  const parentBloodColorG = world.stores.bloodColor.g[eid] ?? 0;
-  const parentBloodColorB = world.stores.bloodColor.b[eid] ?? 0;
-  const parentBloodColor =
-    parentBloodColorR !== 0 || parentBloodColorG !== 0 || parentBloodColorB !== 0
-      ? (parentBloodColorR << 16) | (parentBloodColorG << 8) | parentBloodColorB
-      : undefined;
+  const parentBloodColor = hasComponent(world.ecs, eid, BloodColor)
+    ? (world.stores.bloodColor.r[eid]! << 16) |
+      (world.stores.bloodColor.g[eid]! << 8) |
+      world.stores.bloodColor.b[eid]!
+    : undefined;
 
   for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
     const angle = world.rng.next() * Math.PI * 2;
@@ -306,11 +304,11 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     }
 
     // Emit death combat event for gore VFX (with direction info)
-    const bcR = world.stores.bloodColor.r[eid] ?? 0;
-    const bcG = world.stores.bloodColor.g[eid] ?? 0;
-    const bcB = world.stores.bloodColor.b[eid] ?? 0;
-    const bloodColor =
-      bcR !== 0 || bcG !== 0 || bcB !== 0 ? (bcR << 16) | (bcG << 8) | bcB : 0xcc0000;
+    const bloodColor = hasComponent(world.ecs, eid, BloodColor)
+      ? (world.stores.bloodColor.r[eid]! << 16) |
+        (world.stores.bloodColor.g[eid]! << 8) |
+        world.stores.bloodColor.b[eid]!
+      : 0xcc0000;
     world.combatEvents.push({
       type: 'death',
       x,

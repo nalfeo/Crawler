@@ -63,7 +63,7 @@ describe('BloodColor component', () => {
     expect(world.stores.bloodColor.b[eid]).toBe(0x44);
   });
 
-  it('setBloodColor packs 0xRRGGBB into r/g/b channels', () => {
+  it('setBloodColor converts 0xRRGGBB hex into separate r/g/b channels', () => {
     const world = createTestWorld();
     const eid = spawnEnemy(world, 0, 0, 10);
     setBloodColor(world, eid, 0x1a2b3c);
@@ -100,6 +100,10 @@ describe('dropSystem blood color in death event', () => {
   });
 
   it('mini slimes inherit parent blood color on split', () => {
+    // Use the same seed range as the sibling drop-system test which already
+    // confirms at least one seed in 1..64 triggers a split.
+    let assertionRan = false;
+
     for (let seed = 1; seed <= 64; seed++) {
       const world = createTestWorld({ seed });
       const player = spawnPlayer(world, 0, 0);
@@ -124,10 +128,13 @@ describe('dropSystem blood color in death event', () => {
           const packed = (r << 16) | (g << 8) | b;
           expect(packed).toBe(GREEN_SLIME);
         }
-        return;
+        assertionRan = true;
+        break;
       }
     }
-    // No seed triggered a split within 64 tries — treat as inconclusive.
+
+    // Ensure the assertion branch was actually exercised.
+    expect(assertionRan).toBe(true);
   });
 });
 

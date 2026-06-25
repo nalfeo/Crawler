@@ -52,12 +52,18 @@ const DEFAULT_CONFIG: GoreVfxConfig = {
   hitGoreEnabled: true,
 };
 
-/** Derive a palette of 5 darker/lighter variants from a base hex colour. */
+/** Derive a palette of 5 darker/lighter variants from a base hex colour.
+ * Scales: base (1.0), slightly darker (0.83), darker (0.67), darkest (0.50), medium (0.75).
+ */
+const COLOR_VARIANT_SCALES = [1.0, 0.83, 0.67, 0.5, 0.75] as const;
+/** Index into COLOR_VARIANT_SCALES used for blood pool fill — the slightly-darker variant. */
+const POOL_COLOR_VARIANT_INDEX = 1; // 0.83× — dark, dried-blood look
+
 function makeColorVariants(base: number): number[] {
   const r = (base >> 16) & 0xff;
   const g = (base >> 8) & 0xff;
   const b = base & 0xff;
-  return [1.0, 0.83, 0.67, 0.5, 0.75].map((s) => {
+  return COLOR_VARIANT_SCALES.map((s) => {
     return (Math.round(r * s) << 16) | (Math.round(g * s) << 8) | Math.round(b * s);
   });
 }
@@ -132,7 +138,7 @@ export function createGoreVfx(
     // Slightly squash/stretch pool for organic variation
     const scaleX = 0.8 + vfxRandom() * 0.5;
     const scaleY = 0.6 + vfxRandom() * 0.4;
-    const poolColor = makeColorVariants(baseColor)[1]!; // dark variant for pooled blood
+    const poolColor = makeColorVariants(baseColor)[POOL_COLOR_VARIANT_INDEX]!; // dark variant for pooled blood
 
     const ellipse = scene.add.ellipse(
       x + (vfxRandom() - 0.5) * 6,
