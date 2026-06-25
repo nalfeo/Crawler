@@ -73,8 +73,9 @@ function getDamageAmount(world: GameWorld, eid: number, fallbackAmount: number):
     return fallbackAmount;
   }
 
-  const amount = world.stores.damage.amount[eid] ?? 0;
-  return amount > 0 ? amount : fallbackAmount;
+  // When the Damage component is present, trust its value — 0 is valid (e.g. miss
+  // projectiles that exist purely for cosmetic animation).
+  return world.stores.damage.amount[eid] ?? 0;
 }
 
 /** Apply armor mitigation for player: damageTaken = max(1, incoming - armor) */
