@@ -355,6 +355,21 @@ describe('describeGenerationProgress', () => {
     expect(after).toContain('npm run sprites:worker');
   });
 
+  it('suppresses the generic CLI worker hint when the launch-button hint is shown', () => {
+    const line = describeGenerationProgress({
+      brief: 'Slime Rat',
+      elapsedMs: GENERATION_QUEUED_STALL_HINT_MS,
+      pollAttempts: 12,
+      queueBackend: 'azure-queue',
+      suppressQueuedStallHint: true,
+    });
+    // The in-app "Launch worker" hint is the single remediation in this case,
+    // so the generic `npm run sprites:worker` CLI hint must not also appear.
+    expect(line).not.toContain('sprites:worker');
+    // The live elapsed/poll status line is still rendered.
+    expect(line).toContain('polled 12×');
+  });
+
   it('appends the provider hint once the sync path passes the stall threshold', () => {
     const before = describeGenerationProgress({
       brief: 'Slime Rat',

@@ -459,6 +459,12 @@ export interface GenerationProgressInput {
   readonly pollAttempts: number | null;
   /** Sidecar queue backend (`noop`, `azure-queue`) if known, else null. */
   readonly queueBackend: string | null;
+  /**
+   * When true, the caller renders a richer, context-specific recovery hint (the
+   * in-app "Launch worker" button), so the generic `npm run sprites:worker`
+   * stall hint is suppressed to avoid showing two conflicting remediations.
+   */
+  readonly suppressQueuedStallHint?: boolean;
 }
 
 /**
@@ -474,7 +480,11 @@ export function describeGenerationProgress(input: GenerationProgressInput): stri
     const backend = input.queueBackend ? `, queue: ${input.queueBackend}` : '';
     line += ` · polled ${input.pollAttempts}×${backend}`;
   }
-  if (isQueued && input.elapsedMs >= GENERATION_QUEUED_STALL_HINT_MS) {
+  if (
+    isQueued &&
+    input.elapsedMs >= GENERATION_QUEUED_STALL_HINT_MS &&
+    !input.suppressQueuedStallHint
+  ) {
     line +=
       '\n⚠ No result yet. If this keeps climbing, make sure a worker is running: ' +
       'npm run sprites:worker';

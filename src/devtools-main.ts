@@ -1696,15 +1696,20 @@ function render(): void {
     const isQueued = item.generationRequestedAt !== null;
     const pollAttempts = isQueued ? (generationPollAttempts.get(item.id) ?? 0) : null;
     generationProgress.style.display = 'block';
+    // On the queued path a stall is most often "no worker is consuming the
+    // queue". When the in-app "Launch worker" button is the right recovery,
+    // surface that and suppress the generic CLI stall hint so the two
+    // remediations don't overlap.
+    const showWorkerLaunchHint =
+      isQueued && sidecarQueueBackend === 'azure-queue' && !sidecarWorker?.running;
     generationProgress.textContent = describeGenerationProgress({
       brief: item.brief,
       elapsedMs,
       pollAttempts,
       queueBackend: sidecarQueueBackend,
+      suppressQueuedStallHint: showWorkerLaunchHint,
     });
-    // On the queued path a stall is most often "no worker is consuming the
-    // queue". Surface that explicitly and point at the now-visible button.
-    if (isQueued && sidecarQueueBackend === 'azure-queue' && !sidecarWorker?.running) {
+    if (showWorkerLaunchHint) {
       generationProgress.textContent +=
         '\n⚠ No queue worker is running — click "Launch worker" to start processing this job.';
     }
