@@ -17,13 +17,14 @@ coordination, not single-layer implementation.
 ## Apples
 
 Estimated: 🍎 <!-- declared before work began -->
-Actual: 🍎 <!-- honest assessment at handoff time -->
-Verdict: 🎯 Exact
+Actual: 🍎🍎 <!-- honest assessment at handoff time -->
+Verdict: 📉 Under (one actionable Copilot review thread required a real code fix)
 
-Hello kitties: 1/5 = 0.20 🎀
+Hello kitties: 2/5 = 0.40 🎀
 
-No production code was changed; the work was verification + merge coordination, so a
-single apple was the right call.
+The shepherd path turned out to include a real, blocking review fix (a Copilot
+inline comment surfaced by `review_on_push` after the auto-rebase force-pushes), so
+the work was one apple larger than a pure verification pass.
 
 ## What Was Done
 
@@ -38,25 +39,38 @@ recoverable") to an auto-merge-enabled state.
   Integration Tests, E2E Visual Regression, Headless Floor 1 Gate, Merge gate,
   commit-lint, etc.). `Build` is conditionally `skipping`, not failing.
 
-### 2. Review threads
+### 2. Review threads + the blocking fix
 
-- `gh api repos/nalfeo/Crawler/pulls/318/comments` → empty (no inline review
-  threads to resolve).
-- Only review on record: `copilot-pull-request-reviewer[bot]` with state
-  **COMMENTED** (non-blocking) and **zero generated comments**. Its overview
-  describes only the Phase-1 UI scope because it predates the Phase-2 backend
-  commit; non-actionable. No human reviews, no `CHANGES_REQUESTED`.
+- The `copilot_code_review` ruleset on `main` has `review_on_push: true`, so each
+  auto-rebase force-push triggered a fresh Copilot review. One run added an
+  **unresolved inline comment** on `src/devtools-main.ts` (queued-stall hint),
+  and branch protection enables `required_conversation_resolution`, so that single
+  thread was the real merge blocker (not a CI failure and not a required human
+  review — `reviewDecision` stayed empty throughout).
+- **Fix (`fix(devtools): dedupe queued-stall worker hints`):** after 60s on the
+  queued/`azure-queue` path with no worker, the UI showed two conflicting
+  remediations — the generic `npm run sprites:worker` CLI hint from
+  `describeGenerationProgress()` and the in-app "Launch worker" button hint. Added
+  an optional `suppressQueuedStallHint` flag to `GenerationProgressInput`
+  (`src/devtools/sprite-workflow-queue.ts`); `src/devtools-main.ts` computes the
+  button-hint condition once and passes it so the generic CLI hint is suppressed
+  exactly when the button hint is shown. Other paths (sync, worker-running,
+  non-azure backends) are unchanged. Added a unit test; replied to and resolved
+  the thread.
 
 ### 3. Branch freshness
 
-- Branch is 1 behind / 2 ahead of `origin/main`, but `mergeStateStatus` is `CLEAN`
-  (not `BEHIND`), so "require up-to-date branch" is not enforced — no rebase needed.
+- The branch is kept current by an auto-rebase bot that force-pushes a rebase onto
+  `main` whenever `main` advances (the repo is very active). `strict: true`
+  ("require up-to-date branch") is enabled, so this keeps happening; each rebase
+  re-triggers `ci` + `commit-lint`. The handoff/fix commits were re-based onto each
+  new head as needed.
 
 ### 4. Verification
 
 - `bash scripts/agent/preflight.sh` ✅ (deps, Playwright Chromium, typecheck).
-- CI already ran the full suite green on the head commit; no code changed in this
-  session, so local re-verification beyond preflight was redundant.
+- After the review fix: `npm run verify:fast` ✅ (typecheck + lint + unit tests,
+  including the new `suppressQueuedStallHint` case).
 
 ### 5. Merge
 
@@ -65,21 +79,23 @@ recoverable") to an auto-merge-enabled state.
 
 ## What's Next
 
-- Auto-merge will squash-merge #318 once the post-handoff CI run goes green.
+- Auto-merge will squash-merge #318 once `ci` + `commit-lint` pass on a head that is
+  up to date with `main` and all conversations stay resolved.
 - Deferred follow-ups already captured in
   `docs/knowledge/handoffs/2026-06-25-sprite-worker-autostart-timeout.md` (optional
   `queue-status` endpoint; persisting worker/sidecar logs to a session artifact).
 
 ## Blockers
 
-None. No human review is required (no branch-protection review rule); `gh pr merge`
-did not report a required review.
+None. No human review is required (`reviewDecision` empty; no branch-protection
+review rule). The only merge gate beyond `ci`/`commit-lint` was
+`required_conversation_resolution`, satisfied by resolving the one Copilot thread.
 
 ## Branch State
 
 - Branch: `nalfeo-fix-sprite-gen-stuck-visibility`.
-- PR #318: open, MERGEABLE/CLEAN, all required checks green, auto-merge (squash)
-  enabled.
+- PR #318: open, all required checks green, auto-merge (squash) enabled, the single
+  Copilot review thread resolved.
 
 ## Agent-OS Telemetry
 
@@ -87,5 +103,5 @@ did not report a required review.
 
 ## Test Results
 
-`bash scripts/agent/preflight.sh` — ✅ (typecheck clean). Full suite verified green
-via PR CI checks (see `gh pr checks 318`).
+`npm run verify:fast` — ✅ (typecheck + lint + unit). Full suite verified green via
+PR CI checks (see `gh pr checks 318`).
