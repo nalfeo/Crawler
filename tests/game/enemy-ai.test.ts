@@ -11,7 +11,7 @@ import {
   spawnEnemy,
   spawnPlayer,
 } from '../../src/core/index.js';
-import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
 import { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
@@ -67,6 +67,31 @@ function createOneRoomMapWithDoor(doorOpen: boolean): FloorMap {
   tileMap.setFlags(3, 1, doorOpen ? TilePresets.DOOR_OPEN : TilePresets.DOOR_CLOSED);
   const roomGraph = new RoomGraph();
   roomGraph.add({ x: 1, y: 1, width: 5, height: 5 }, [{ x: 3, y: 1, connectsTo: -1 }], []);
+  return new FloorMap(config, tileMap, roomGraph, new Uint8Array(64), { x: 2, y: 2 });
+}
+
+function createSafeRoomDoorMap(): FloorMap {
+  const config: MapConfig = {
+    widthTiles: 8,
+    heightTiles: 8,
+    tileSizePx: 32,
+    biome: BiomeType.DUNGEON,
+    seed: 84,
+    roomWidthRange: [4, 6],
+    roomHeightRange: [4, 6],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(8, 8);
+  tileMap.fill(TilePresets.FLOOR);
+  tileMap.setFlags(3, 2, TilePresets.DOOR_OPEN);
+  const roomGraph = new RoomGraph();
+  roomGraph.add(
+    { x: 1, y: 1, width: 3, height: 3 },
+    [{ x: 3, y: 2, connectsTo: -1 }],
+    [],
+    RoomRole.SAFE,
+  );
   return new FloorMap(config, tileMap, roomGraph, new Uint8Array(64), { x: 2, y: 2 });
 }
 
@@ -388,6 +413,52 @@ describe('enemyAISystem', () => {
     expect(
       Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
     ).toBeGreaterThan(0.1);
+  });
+
+  it('makes enemies forget the player and wander when the player is in a safe room', () => {
+    const world = createTestWorld();
+    world.floorMap = createSafeRoomDoorMap();
+    spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
+    world.playerInSafeRoom = true;
+    const enemy = spawnBehaviorEnemy(world, 4 * 32 + 16, 2 * 32 + 16, 20, AI_TYPE.CHASE, 2, 400, 0);
+
+    enemyAISystem(world);
+
+    expect(
+      Math.hypot(world.stores.velocity.x[enemy] ?? 0, world.stores.velocity.y[enemy] ?? 0),
+    ).toBeGreaterThan(0.1);
+  });
+
+  it('avoids selecting idle wander directions that stay near safe-room doors', () => {
+    const world = createTestWorld();
+    world.floorMap = createSafeRoomDoorMap();
+    spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
+    world.playerInSafeRoom = true;
+    const enemy = spawnBehaviorEnemy(world, 4 * 32 + 16, 2 * 32 + 16, 20, AI_TYPE.SWARM, 2, 400, 0);
+
+    enemyAISystem(world);
+
+    const enemyX = world.stores.position.x[enemy] ?? 0;
+    const enemyY = world.stores.position.y[enemy] ?? 0;
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    const speed = Math.hypot(vx, vy);
+    expect(speed).toBeGreaterThan(0.1);
+    const dirX = vx / speed;
+    const dirY = vy / speed;
+    const lookaheadX = enemyX + dirX * 20;
+    const lookaheadY = enemyY + dirY * 20;
+    const lookaheadTile = world.floorMap.pixelToTile(lookaheadX, lookaheadY);
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const tx = lookaheadTile.x + dx;
+        const ty = lookaheadTile.y + dy;
+        if (!world.floorMap.tileMap.inBounds(tx, ty)) {
+          continue;
+        }
+        expect(world.floorMap.tileMap.isDoor(tx, ty)).toBe(false);
+      }
+    }
   });
 
   it('moves a leaper toward the player at normal speed while out of pounce range', () => {
