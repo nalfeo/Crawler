@@ -123,3 +123,31 @@ path already prevents silent clobbering if two clients share the global blob.
   bug — the wipe destroys localStorage, so the source of truth must live server-side (Azure).
 - **Per-session queue partitioning.** Deferred: adds key/routing complexity with no current driver;
   the global queue matches how the team uses one shared backlog today.
+
+## Validation
+
+Validated end-to-end against **fully real Azure** (the `generated-runs` blob store + the
+`asset-requests-e2e` queue + live `gpt-image-1` generation), driven headless with Playwright over
+10 sprites. Final state: **10/10 items durable at `variants`** in the blob.
+
+- **Page-refresh resume** — 12 refreshes re-hydrated every item and stage from
+  `workflow-state/queue.json`, byte-identical each time.
+- **Sidecar process-restart resume** — a fresh sidecar process returned the identical state with the
+  **identical content-hash etag**, proving the state reloads entirely from the blob (no in-memory
+  source of truth).
+- **Auto-resume from `generating`** — items left mid-flight were re-hydrated by a fresh page whose
+  run-polling found the matching Azure runs and rebuilt each `item.run` to `variants`.
+- **Half-done switching** — with items deliberately regressed to mixed stages (`candidates` /
+  `promoted` / `variants`), switching the selection across them resumed each at its own stage with
+  the selection persisted to Azure.
+- **Phase 2** — promoted-draft and synth-candidate YAML were confirmed mirrored under
+  `workflow-state/briefs/**` and re-materialised when the local fs copy was absent.
+
+The persistence guarantee is independent of vision scoring; the final resume cycles ran the worker
+vision-off (`E2E_VISION=off`) as zero-cost state manipulations. While validating, a latent
+azure-blob judge-path crash was discovered and fixed (the judge sidecar wrote to a blob-URL path →
+`ENOENT`); the fix guards `processedDir` to local stores only and is covered by a deterministic
+regression test in `tests/integration/judge-pipeline.test.ts`.
+
+(Phase 3 — the UI-prefs blob write-through — remains the designed-optional follow-up and was not
+required for the durability guarantee above.)
