@@ -57,6 +57,7 @@ const GW = Math.ceil(GAME.WIDTH / TILE); // 20
 const GH = Math.ceil(GAME.HEIGHT / TILE); // 12
 const DOOR_OPEN_COL = 9;
 const DOOR_CLOSED_ROW = Math.floor(GH / 2);
+const DEFAULT_BUTTON_HEIGHT = 44;
 
 /**
  * Builds a synthetic FloorMap mirroring the visible Floor-1 room so the docked
@@ -167,7 +168,7 @@ function ensurePotionTexture(scene: Phaser.Scene, key: string): void {
   g.destroy();
 }
 
-function initializePlayerWeaponSkills(world: GameWorld, playerEid: number): void {
+function initializePlayerSkills(world: GameWorld, playerEid: number): void {
   const skillMap = new Map<string, SkillState>();
   for (const skill of getAllSkillDefinitions()) {
     skillMap.set(skill.id, {
@@ -513,7 +514,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       world.floorMap = buildRadarFloorMap();
       world.state = 'playing';
       playerEid = spawnPlayer(world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
-      initializePlayerWeaponSkills(world, playerEid);
+      initializePlayerSkills(world, playerEid);
 
       const bag = world.inventories.get(playerEid);
       if (bag) {
@@ -646,7 +647,9 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       const applyButtonScale = (scale: number): void => {
         this.inventoryButton?.setScale(scale);
         this.equipButton?.setScale(scale);
-        this.equipButton?.setY(16 + (this.inventoryButton?.height ?? 44) * scale + 8);
+        this.equipButton?.setY(
+          16 + (this.inventoryButton?.height ?? DEFAULT_BUTTON_HEIGHT) * scale + 8,
+        );
       };
       applyButtonScale(getUiScale(this));
       this.offButtonScale = onUiScaleChange(this, applyButtonScale);
