@@ -24,6 +24,8 @@ import { PNG } from 'pngjs';
 import { buildAnchorOverlay } from '../../../scripts/sprites/anchor-overlay.js';
 import { buildServer, listRuns, safeJoin } from '../../../scripts/sprites/sidecar/server.js';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
+import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
+import type { AssetQueue, AssetRequest } from '../../../scripts/sprites/queue/types.js';
 import type { FastifyInstance } from 'fastify';
 
 function writeMinimalRun(
@@ -532,6 +534,324 @@ describe('buildServer routes (inject)', () => {
     expect(existsSync(path.join(root, 'runs', 'iron-sword', '2026-06-04T12-00-00-deadbeef'))).toBe(
       false,
     );
+  });
+});
+
+describe('workflow-state endpoints (GET/PUT /api/workflow/state)', () => {
+  let root: string;
+  let runsDir: string;
+  let app: FastifyInstance;
+
+  const sampleState = {
+    items: [
+      {
+        id: 'item-1',
+        seq: 1,
+        brief: 'Purple Potion Bottle',
+        stage: 'candidates',
+        chosenCandidatePath: 'briefs/draft/items/purple-potion/purple-potion-v1.yaml',
+      },
+    ],
+    selectedId: 'item-1',
+    nextSeq: 2,
+  };
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-wfstate-'));
+    runsDir = path.join(root, 'runs');
+    mkdirSync(runsDir, { recursive: true });
+    app = buildServer({ repoRoot: root, runsDir, version: 'test' });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('GET returns {state:null, etag:null} when nothing is stored yet', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ state: null, etag: null });
+  });
+
+  it('PUT then GET round-trips the state and is stable across reads', async () => {
+    const put = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    expect(put.statusCode).toBe(200);
+    const putBody = put.json();
+    expect(putBody.ok).toBe(true);
+    expect(putBody.etag).toMatch(/^[0-9a-f]{64}$/);
+
+    const get = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(get.statusCode).toBe(200);
+    expect(get.json().state).toEqual(sampleState);
+    // Same bytes -> same content-hash ETag on every read.
+    expect(get.json().etag).toBe(putBody.etag);
+  });
+
+  it('persisted blob lives under workflow-state/ and never pollutes /api/runs', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    // The blob exists on disk under the workflow-state/ prefix...
+    expect(existsSync(path.join(runsDir, 'workflow-state', 'queue.json'))).toBe(true);
+    // ...but the run listing (which only matches <brief>/<run>/summary.json) ignores it.
+    const runs = await app.inject({ method: 'GET', url: '/api/runs' });
+    expect(runs.json().runs).toEqual([]);
+  });
+
+  it('accepts a write whose If-Match equals the current ETag and rotates the ETag', async () => {
+    const first = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const firstEtag = first.json().etag as string;
+
+    const second = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': firstEtag },
+      payload: { state: { ...sampleState, nextSeq: 3 } },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().etag).not.toBe(firstEtag);
+  });
+
+  it('rejects a stale If-Match with 409 and reports the current ETag', async () => {
+    const first = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const currentEtag = first.json().etag as string;
+
+    const conflict = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': 'stale-etag' },
+      payload: { state: { ...sampleState, nextSeq: 99 } },
+    });
+    expect(conflict.statusCode).toBe(409);
+    expect(conflict.json().error).toBe('etag-conflict');
+    expect(conflict.json().etag).toBe(currentEtag);
+
+    // The conflicting write must NOT have mutated the stored state.
+    const get = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(get.json().state).toEqual(sampleState);
+  });
+
+  it('treats If-Match:* as "must already exist"', async () => {
+    const onEmpty = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': '*' },
+      payload: { state: sampleState },
+    });
+    expect(onEmpty.statusCode).toBe(409);
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const onExisting = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json', 'if-match': '*' },
+      payload: { state: { ...sampleState, nextSeq: 4 } },
+    });
+    expect(onExisting.statusCode).toBe(200);
+  });
+
+  it('does an unconditional last-writer-wins overwrite when If-Match is omitted', async () => {
+    await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: sampleState },
+    });
+    const overwrite = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: { items: [], selectedId: null, nextSeq: 9 } },
+    });
+    expect(overwrite.statusCode).toBe(200);
+    const get = await app.inject({ method: 'GET', url: '/api/workflow/state' });
+    expect(get.json().state).toEqual({ items: [], selectedId: null, nextSeq: 9 });
+  });
+
+  it('rejects a missing or non-object body.state with 400', async () => {
+    const missing = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: {},
+    });
+    expect(missing.statusCode).toBe(400);
+    expect(missing.json().error).toBe('bad-request');
+
+    const nullState = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: null },
+    });
+    expect(nullState.statusCode).toBe(400);
+
+    const primitive = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/state',
+      headers: { 'content-type': 'application/json' },
+      payload: { state: 'not-an-object' },
+    });
+    expect(primitive.statusCode).toBe(400);
+  });
+});
+
+describe('workflow brief durability (Phase 2 re-materialise / mirror)', () => {
+  let root: string;
+  let runsDir: string;
+  let store: LocalRunStore;
+  let app: FastifyInstance;
+
+  // A queue stub that records enqueues and reports the azure backend so the
+  // generate handler enqueues (202) instead of running a real generation.
+  let enqueued: AssetRequest[];
+  function makeQueueStub(): AssetQueue {
+    return {
+      backend: 'azure-queue',
+      enqueue: async (request) => {
+        enqueued.push(request);
+      },
+      dequeue: async () => null,
+      peek: async () => [],
+    };
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-briefdur-'));
+    runsDir = path.join(root, 'runs');
+    mkdirSync(runsDir, { recursive: true });
+    store = new LocalRunStore(runsDir);
+    enqueued = [];
+    app = buildServer({
+      repoRoot: root,
+      runsDir,
+      version: 'test',
+      env: {},
+      store,
+      queue: makeQueueStub(),
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('promote-brief re-materialises a wiped source candidate from the store', async () => {
+    // Seed the store with a candidate whose local draft copy was "wiped"
+    // (never written to disk), mimicking a worktree checkpoint.
+    const sourceRel = 'briefs/draft/items/purple-potion/purple-potion-v1.yaml';
+    const yaml = 'name: purple-potion\ntype: item\n';
+    await store.put(workflowBriefKey(sourceRel), Buffer.from(yaml, 'utf8'));
+    expect(existsSync(path.join(root, sourceRel))).toBe(false);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/promote-brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { sourceYamlPath: sourceRel, type: 'item', name: 'purple-potion' },
+    });
+    expect(res.statusCode).toBe(200);
+    const destRel = res.json().briefPath as string;
+    expect(destRel).toBe('briefs/draft/items/purple-potion.yaml');
+    // The dest brief now exists on disk with the recovered content...
+    expect(readFileSync(path.join(root, destRel), 'utf8')).toBe(yaml);
+    // ...and the promoted brief was itself mirrored into the store so a later
+    // generate survives a subsequent wipe.
+    expect(await store.has(workflowBriefKey(destRel))).toBe(true);
+  });
+
+  it('promote-brief 404s when neither the disk nor the store has the source', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/promote-brief',
+      headers: { 'content-type': 'application/json' },
+      payload: {
+        sourceYamlPath: 'briefs/draft/items/ghost/ghost-v1.yaml',
+        type: 'item',
+        name: 'ghost',
+      },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('source-not-found');
+  });
+
+  it('promote-brief mirrors the promoted brief even when the source is on disk', async () => {
+    const sourceRel = 'briefs/draft/items/blue-gem/blue-gem-v1.yaml';
+    const sourceAbs = path.join(root, sourceRel);
+    mkdirSync(path.dirname(sourceAbs), { recursive: true });
+    const yaml = 'name: blue-gem\ntype: item\n';
+    writeFileSync(sourceAbs, yaml);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/promote-brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { sourceYamlPath: sourceRel, type: 'item', name: 'blue-gem' },
+    });
+    expect(res.statusCode).toBe(200);
+    const destRel = res.json().briefPath as string;
+    expect(await store.has(workflowBriefKey(destRel))).toBe(true);
+    expect((await store.get(workflowBriefKey(destRel))).toString('utf8')).toBe(yaml);
+  });
+
+  it('generate re-materialises a wiped brief from the store before enqueuing', async () => {
+    const briefRel = 'briefs/draft/items/red-sword/red-sword.yaml';
+    const yaml = 'name: red-sword\ntype: item\n';
+    await store.put(workflowBriefKey(briefRel), Buffer.from(yaml, 'utf8'));
+    expect(existsSync(path.join(root, briefRel))).toBe(false);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/generate',
+      headers: { 'content-type': 'application/json' },
+      payload: { briefPath: briefRel },
+    });
+    expect(res.statusCode).toBe(202);
+    const body = res.json();
+    expect(body.status).toBe('queued');
+    expect(body.briefId).toBe('red-sword');
+    // The brief was restored to disk so the worker can read it...
+    expect(existsSync(path.join(root, briefRel))).toBe(true);
+    // ...and exactly one enqueue happened, pointing at the restored brief.
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0]?.briefPath).toBe(briefRel);
+  });
+
+  it('generate 404s when the brief is missing from both disk and store', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/generate',
+      headers: { 'content-type': 'application/json' },
+      payload: { briefPath: 'briefs/draft/items/nope/nope.yaml' },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error).toBe('brief-not-found');
+    expect(enqueued).toHaveLength(0);
   });
 });
 

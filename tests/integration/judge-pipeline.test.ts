@@ -25,6 +25,8 @@ import type {
   EvaluateResponse,
 } from '../../scripts/sprites/provider/vision-types.js';
 import { buildGoodSwordFixture, buildEmptyFixture } from '../fixtures/sprites/builders.js';
+import { LocalRunStore } from '../../scripts/sprites/store/local-store.js';
+import type { RunStore } from '../../scripts/sprites/store/types.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -151,6 +153,26 @@ function scorecard(scores: {
     },
     modelDeployment: 'mock-vision-deployment',
     usage: { promptTokens: 1500, completionTokens: 80, totalTokens: 1580 },
+  };
+}
+
+/**
+ * A store that behaves like the Azure blob backend for the bits that matter to
+ * the judge path: `backend` reports `'azure-blob'` and `resolve()` returns a
+ * blob URL (no SAS), while reads/writes still hit a real tmp dir so the rest of
+ * the pipeline runs unchanged. Used to reproduce the regression where the judge
+ * sidecar was `writeFileSync`'d to a path built from a blob URL.
+ */
+function makeAzureLikeStore(runsDir: string): RunStore {
+  const local = new LocalRunStore(runsDir);
+  return {
+    backend: 'azure-blob',
+    put: (key, data) => local.put(key, data),
+    get: (key) => local.get(key),
+    has: (key) => local.has(key),
+    list: (prefix) => local.list(prefix),
+    remove: (key) => local.remove(key),
+    resolve: (key) => `https://fake.blob.core.windows.net/generated-runs/${key}`,
   };
 }
 
@@ -349,5 +371,51 @@ describe('generateOne + VLM judge (integration)', () => {
     for (const c of result.summary.candidates) {
       expect(c.combinedPassed).toBe(c.passed);
     }
+  });
+
+  it('judges against a non-local (azure-blob) store without crashing on the sidecar write', async () => {
+    // Regression: the VLM judge wrote `NN.judge.json` with writeFileSync to
+    // `store.resolve(storeKey('processed'))`. For the Azure backend that resolves
+    // to a blob URL, so `path.join(url, 'NN.judge.json')` produced a bogus relative
+    // path under the CWD and threw ENOENT. The fix omits `processedDir` off-local;
+    // the scorecard still flows into the summary, so no judge data is lost.
+    setupBrief('  enabled: true\n  maxVariants: 16');
+    const variants = [
+      buildGoodSwordFixture(),
+      buildEmptyFixture(),
+      buildEmptyFixture(),
+      buildGoodSwordFixture(),
+    ];
+    const sheet = tileVariantsIntoSheet(variants, 2, 2);
+    const { provider: visionProvider, calls } = mockVisionProvider([
+      scorecard({ style: 4, brief: 4, readability: 4 }),
+      scorecard({ style: 5, brief: 5, readability: 5 }),
+    ]);
+    const store = makeAzureLikeStore(path.join(root, 'azure-runs'));
+
+    // Must not throw (pre-fix this rejected with ENOENT from the sidecar write).
+    const result = await generateOne({
+      briefPath,
+      preloaded,
+      provider: makeMockProvider(sheet),
+      visionProvider,
+      repoRoot: root,
+      outputRoot,
+      store,
+      now: fixedClock,
+      env: {},
+    });
+
+    // Judging still ran on both sensor-passing variants...
+    expect(calls).toHaveLength(2);
+    // ...and the scorecards are embedded in the summary (no data lost despite
+    // skipping the standalone local sidecar file).
+    const judged = result.summary.candidates.filter((c) => c.judgeScorecard !== null);
+    expect(judged).toHaveLength(2);
+    expect(judged.every((c) => typeof c.judgeScorecard!.passed === 'boolean')).toBe(true);
+    // Recorded paths are blob URLs, and the buggy CWD-relative sidecar dir was
+    // never created.
+    expect(result.summary.candidates[0]!.processedPath).toMatch(/^https:\/\//);
+    expect(existsSync(path.join(process.cwd(), 'https:'))).toBe(false);
   });
 });

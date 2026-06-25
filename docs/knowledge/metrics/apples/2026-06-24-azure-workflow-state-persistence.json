@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-24",
+  "session": "azure-workflow-state-persistence",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "notes": "Sidecar-owned, Azure-backed sprite workflow-state persistence. Phase 1 (durable queue state: pure workflow-state.ts module + content-hash ETag, GET/PUT /api/workflow/state on the injected RunStore at workflow-state/queue.json, client hydrate + debounced write-through with 409 retry) and Phase 2 (durable draft briefs: mirror synth-candidate + promoted-brief YAML to workflow-state/briefs/, re-materialize on promote/generate when the local fs copy is missing). Phase 3 (UI-prefs blob) deferred as the designed-optional follow-up. ADR 0017 added. 22 new unit tests; npm run verify + lab-gate green. Full real-Azure E2E with Playwright/10 sprites (real generated-runs blob + asset-requests-e2e queue + live gpt-image-1 generation; final state 10/10 durable at variants) proved: 12x page-refresh resume, sidecar process-restart resume (identical etag, fresh-from-blob), auto-resume from generating (run-polling rebuilds item.run from Azure runs), and half-done switching across candidates/promoted/variants. Resume is independent of vision scoring; the final resume cycles ran vision-off (E2E_VISION=off) as zero-cost state edits. Drive-by fix (per AGENTS.md rule #8): discovered + fixed a latent azure-blob judge-path crash (judge sidecar wrote to a blob-URL path -> ENOENT); guarded processedDir to local stores only, with a deterministic regression test in judge-pipeline.test.ts. Scope landed as planned; the extra E2E effort (isolating a dedicated Azure queue to avoid another session's worker draining shared jobs; force-clicking past the postprocess-debugger overlay; the small drive-by judge-path fix) was absorbed within the 4-apple estimate."
+}
