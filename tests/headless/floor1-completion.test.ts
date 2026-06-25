@@ -15,21 +15,34 @@
  *   - the floor is cleared (`outcome === 'victory'`) within the 5-minute design
  *     budget, in deterministic *game* time.
  *
- * ## Why a single fixed seed
+ * ## Why a weapon × seed matrix
  *
- * The simulation is fully deterministic: a given seed produces the exact same
- * run every time, so one pass per seed is authoritative — there is nothing to
- * average over. Seed 6 is the currently re-verified canonical clear (~139s
- * game-time at level 5 with 14 kills, completing all 5 quests under the 300s
- * budget, in ~6s wall time). Because the run exercises the *entire* Floor 1
- * pipeline — pathfinding, melee/ranged combat, every NPC interaction, the boss
- * fight, and stat progression — a regression in almost any of those systems
- * breaks this seed too, which makes it a strong gate.
+ * The simulation is fully deterministic: a given (seed, weapon) pair produces
+ * the exact same run every time, so one pass per combo is authoritative — there
+ * is nothing to average over. The gate runs every {@link WINNING_SEEDS} seed
+ * with every {@link GATE_WEAPONS} starter weapon (sword, bow, baseball-bat) and
+ * asserts each clears independently. This proves Floor 1 is winnable across
+ * fundamentally different combat styles — a tight-range full-damage blade, a
+ * leading ranged projectile, and a knockback tip-sweet-spot bludgeon — not just
+ * the one weapon the AI happened to pick. Because each run exercises the
+ * *entire* Floor 1 pipeline — pathfinding, melee/ranged combat, every NPC
+ * interaction, the boss fight, and stat progression — a regression in almost
+ * any of those systems breaks the matrix.
  *
- * To add coverage, append known-good seeds to `WINNING_SEEDS` (probe a seed
- * once via `npm run ai:headless -- --seed N --max-frames 19800` and confirm it
- * reports VICTORY with all five quests before adding it — most seeds do NOT
- * clear within the budget). Seed 6 was re-verified with that exact command.
+ * The deterministic floor-progress stall watchdog (which relocates the AI when
+ * quest score, then gold, stops advancing) is exercised here implicitly — it is
+ * active for every combo and must never false-fire and derail an otherwise
+ * winning run. Its pure scoring function is unit-tested directly in
+ * tests/game/floor-progress-score.test.ts.
+ *
+ * To add coverage, append known-good seeds to `WINNING_SEEDS` — but only after
+ * verifying the seed clears on *all three* weapons within budget. Probe each
+ * combo via the per-weapon CLI `npm run ai:headless -- --seed N --weapon bow`
+ * (repeat for sword and baseball-bat) and confirm every weapon reports VICTORY
+ * with all required quests. Seeds 7 and 10 are additional verified all-weapon
+ * clears held in reserve; most seeds do NOT clear on every weapon within the
+ * budget. Note bow runs simulate the full frame budget and are markedly slower
+ * in wall time than sword/bat.
  *
  * ## Assertions are on deterministic *game* time, never wall time
  *
@@ -77,84 +90,111 @@ const REQUIRED_QUEST_IDS = [
 ] as const;
 
 /**
- * Deterministic, known-good seeds. Each runs the full Floor 1 clear once and is
- * asserted independently. Keep this list to seeds that have been verified to
- * clear within the budget — see the file header for how to add more.
+ * Deterministic, known-good seeds. Each is run with every {@link GATE_WEAPONS}
+ * weapon (see the matrix below) and every combo is asserted independently. Keep
+ * this list to seeds verified to clear on *all three* weapons within the budget
+ * — see the file header for how to verify and add more.
  *
- * Seed 6 is the canonical seed as of 2026-06-25 (~139s game-time at level 5
- * with 14 kills, completing all 5 quests, ~6s wall time). It was first verified
- * after the slime pounce band was retuned to ~5 ft (slimes only enter their
- * leap telegraph within leap distance), and re-verified after crit/dodge rolls
- * were wired into the damage path (which shifts the RNG trajectory). Seeds 1,
- * 2, 7, 10, 14, 15, 26 and 32 are previous canonical seeds that no longer clear
- * within budget under the current tuning.
+ * Verified 2026-06-25 against the current damage path (crit/dodge rolls wired in,
+ * retuned slime pounce band). Worst-case weapon game-time per seed in parens —
+ * all comfortably under the 300s budget:
+ *
+ * - 6: new main's canonical sword clear; also clears bow (~227s) and bat (~139s).
+ * - 2: all-weapon clear, widest margin (worst case bow ~179s).
+ * - 5: all-weapon clear, widest margin (worst case bow ~179s).
+ *
+ * Seeds 7 and 10 are additional verified all-weapon clears held in reserve.
  */
-const WINNING_SEEDS = [6] as const;
-const HEADLESS_HOOK_TIMEOUT_MS = 60_000;
+const WINNING_SEEDS = [6, 2, 5] as const;
 
 /**
- * Run the full headless Floor 1 simulation for a seed. The seed is passed to
- * BOTH the AI (its decision RNG) and `runHeadless` (world generation) so the
- * run is fully reproducible. The default runner seed (12345) does NOT clear
- * Floor 1, so it must never be relied on here.
+ * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
+ * the AI's equipped weapon (world generation is unchanged — only the combat
+ * style differs), exercising three distinct damage models: the sword (full
+ * damage anywhere in its arc), the bow (leading ranged projectiles), and the
+ * baseball-bat (knockback with a tip sweet-spot / 40% shaft falloff).
  */
-async function clearFloor1(seed: number): Promise<RunStats> {
+const GATE_WEAPONS = ['sword', 'bow', 'baseball-bat'] as const;
+
+/**
+ * Per-combo wall-clock budget for the `beforeAll` that runs one full clear.
+ * Generous because a bow run simulates the entire ~19.8k-frame budget and is
+ * several times slower in wall time than a sword/bat clear (and CI runners are
+ * 2–3x slower than a dev box). Correctness is asserted on deterministic *game*
+ * time, not this wall-clock guard, so a comfortable margin cannot cause flakes.
+ */
+const HEADLESS_HOOK_TIMEOUT_MS = 180_000;
+
+/**
+ * Run the full headless Floor 1 simulation for a (seed, weapon) pair. The seed
+ * is passed to BOTH the AI (its decision RNG) and `runHeadless` (world
+ * generation) so the run is fully reproducible; `forceWeaponId` swaps only the
+ * equipped starter weapon, leaving world generation identical. The default
+ * runner seed (12345) does NOT clear Floor 1, so it must never be relied on here.
+ */
+async function clearFloor1(seed: number, weapon: string): Promise<RunStats> {
   const ai = new BehaviorTreeAI({ seed });
   return runHeadless(ai, {
     seed,
     maxFrames: MAX_FRAMES,
     maxWallTimeMs: HEADLESS_WALL_TIME_CAP_MS,
+    forceWeaponId: weapon,
   });
 }
 
 describe('Floor 1 headless completion gate', () => {
-  for (const seed of WINNING_SEEDS) {
-    describe(`seed ${seed}`, () => {
-      let stats: RunStats;
+  for (const weapon of GATE_WEAPONS) {
+    for (const seed of WINNING_SEEDS) {
+      describe(`seed ${seed} · ${weapon}`, () => {
+        let stats: RunStats;
 
-      beforeAll(async () => {
-        stats = await clearFloor1(seed);
-      }, HEADLESS_HOOK_TIMEOUT_MS);
+        beforeAll(async () => {
+          stats = await clearFloor1(seed, weapon);
+        }, HEADLESS_HOOK_TIMEOUT_MS);
 
-      it('clears the floor (outcome = victory)', () => {
-        // Surface the real failure mode (death / timeout / error) in the
-        // message so a regression is actionable at a glance.
-        expect(
-          stats.outcome,
-          `expected victory but run ended as "${stats.outcome}"` +
-            (stats.error ? ` (${stats.error})` : '') +
-            ` at ${(stats.gameTimeMs / 1000).toFixed(1)}s game-time, ` +
-            `level ${stats.finalLevel}, ${stats.combat.totalKills} kills`,
-        ).toBe('victory');
-      });
-
-      it('clears within the 5-minute game-time budget', () => {
-        expect(
-          stats.gameTimeMs,
-          `cleared in ${(stats.gameTimeMs / 1000).toFixed(1)}s — over the ` +
-            `${FLOOR1_TIME_BUDGET_MS / 1000}s budget`,
-        ).toBeLessThan(FLOOR1_TIME_BUDGET_MS);
-      });
-
-      it('completes every Floor 1 quest', () => {
-        const completed = stats.quests.questLogCompletions;
-        for (const questId of REQUIRED_QUEST_IDS) {
+        it('clears the floor (outcome = victory)', () => {
+          // Surface the real failure mode (death / timeout / error) in the
+          // message so a regression is actionable at a glance.
           expect(
-            completed[questId],
-            `quest "${questId}" was not completed; completed quests: ` +
-              `[${Object.keys(completed).join(', ') || 'none'}]`,
-          ).toBeTypeOf('number');
-        }
-      });
+            stats.outcome,
+            `[seed ${seed} · ${weapon}] expected victory but run ended as ` +
+              `"${stats.outcome}"` +
+              (stats.error ? ` (${stats.error})` : '') +
+              ` at ${(stats.gameTimeMs / 1000).toFixed(1)}s game-time, ` +
+              `level ${stats.finalLevel}, ${stats.combat.totalKills} kills`,
+          ).toBe('victory');
+        });
 
-      it('makes real combat + progression (sanity)', () => {
-        // Guards against a degenerate "victory" reached without actually
-        // playing — e.g. a future scenario bug that flags the floor cleared
-        // on frame 0. An honest clear levels up and kills enemies.
-        expect(stats.finalFloor).toBeGreaterThanOrEqual(1);
-        expect(stats.finalLevel).toBeGreaterThanOrEqual(1);
-        expect(stats.combat.totalKills).toBeGreaterThan(0);
+        it('clears within the 5-minute game-time budget', () => {
+          expect(
+            stats.gameTimeMs,
+            `[seed ${seed} · ${weapon}] cleared in ` +
+              `${(stats.gameTimeMs / 1000).toFixed(1)}s — over the ` +
+              `${FLOOR1_TIME_BUDGET_MS / 1000}s budget`,
+          ).toBeLessThan(FLOOR1_TIME_BUDGET_MS);
+        });
+
+        it('completes every Floor 1 quest', () => {
+          const completed = stats.quests.questLogCompletions;
+          for (const questId of REQUIRED_QUEST_IDS) {
+            expect(
+              completed[questId],
+              `[seed ${seed} · ${weapon}] quest "${questId}" was not ` +
+                `completed; completed quests: ` +
+                `[${Object.keys(completed).join(', ') || 'none'}]`,
+            ).toBeTypeOf('number');
+          }
+        });
+
+        it('makes real combat + progression (sanity)', () => {
+          // Guards against a degenerate "victory" reached without actually
+          // playing — e.g. a future scenario bug that flags the floor cleared
+          // on frame 0. An honest clear levels up and kills enemies.
+          expect(stats.finalFloor).toBeGreaterThanOrEqual(1);
+          expect(stats.finalLevel).toBeGreaterThanOrEqual(1);
+          expect(stats.combat.totalKills).toBeGreaterThan(0);
+        });
       });
-    });
+    }
   }
 });

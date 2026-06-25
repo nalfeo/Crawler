@@ -41,6 +41,7 @@ import {
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../shared/quest-types.js';
+import type { QuestState } from '../../shared/quest-types.js';
 import { ftToPx } from '../../shared/units.js';
 import { AIState, type AIInputProvider, type AIDecision, type AIConfig } from './types.js';
 import {
@@ -305,6 +306,56 @@ const GLOBAL_DWELL_FRAMES = 300;
 // Px the gap to the nearest reachable enemy must close to count as approach
 // progress (mirrors the engage watchdog's epsilon, slightly looser).
 const GLOBAL_DWELL_ENEMY_PROGRESS_PX = 8;
+// --- Quest-progress stall watchdog ---------------------------------------
+// The global-dwell watchdog re-anchors on spatial drift + nearby-enemy chip
+// damage, so a knockback/kite loop (the bat punts a quest enemy just out of
+// reach; the wedged player chases in a tight orbit landing chip hits but never
+// the kill) keeps it alive indefinitely. This backstop instead keys on a coarse
+// floor-progress fingerprint (quest objective ticks + completions + gold) that
+// such a deadlock freezes, while legitimately slow combat keeps advancing it.
+// Quest score is weighted far above gold so a shop purchase's one-frame gold dip
+// still reads as forward progress.
+const QUEST_PROGRESS_SCORE_WEIGHT = 1000;
+// Frames of zero floor-progress before forcing a relocation. 6000 ≈ 100s at
+// 60fps: safely longer than the slowest legitimate single-fingerprint span
+// (cross-map travel ~60s; the bat boss whittle ~76s is additionally guarded)
+// yet far under the budget the observed ~188s deadlock wastes, so it converts
+// those timeouts/deaths into wins with margin to spare.
+const QUEST_PROGRESS_STALL_FRAMES = 6000;
+
+/**
+ * Pure, near-monotonic "floor progress" score over a set of quests + gold.
+ *
+ * It advances on ANY real quest objective tick (rats killed, items fetched,
+ * talk latches), quest completion, or gold payout, but stays frozen during a
+ * knockback/kite deadlock where the player jitters in place landing no killing
+ * blows — exactly the signal the quest-progress watchdog needs to catch a
+ * deadlock the spatial/HP watchdogs miss.
+ *
+ * Quest score is weighted ({@link QUEST_PROGRESS_SCORE_WEIGHT}) far above gold
+ * so a shop purchase (an objective latches +; gold dips by the price) still
+ * reads as net forward progress, while gold re-anchors the ready-to-buy farming
+ * stage that quest counters alone leave static. Extracted as a free function so
+ * the scoring is unit-testable without constructing a full world.
+ */
+export function computeFloorProgressScore(quests: Iterable<QuestState>, gold: number): number {
+  let questScore = 0;
+  for (const quest of quests) {
+    questScore += 1; // each accepted quest
+    if (quest.status === 'complete') {
+      questScore += 100;
+    }
+    for (const value of Object.values(quest.progress)) {
+      questScore += value; // counter objectives (kills, fetch pickups…)
+    }
+    for (const flag of Object.values(quest.done)) {
+      if (flag) {
+        questScore += 10; // latched multistep objectives
+      }
+    }
+  }
+  return questScore * QUEST_PROGRESS_SCORE_WEIGHT + gold;
+}
 // How far (px) beyond the nearest enemy the leave-safe-room move target is placed.
 // The weapon is disabled inside safe rooms, so the AI must decisively exit rather
 // than nudge a few px against the boundary. Sized larger than a tile (32px) so the
@@ -514,6 +565,9 @@ export class BehaviorTreeAI implements AIInputProvider {
   private globalDwellFrames: number = 0;
   private globalDwellBestEnemyDist: number = Number.POSITIVE_INFINITY;
   private globalDwellBestEnemyHp: number = Number.POSITIVE_INFINITY;
+  private questProgressActive: boolean = false;
+  private questProgressBestScore: number = 0;
+  private questProgressStallFrames: number = 0;
   private readonly enemyReachableCache = new Map<number, { frame: number; reachable: boolean }>();
   private readonly discoveredNpcDefs = new Set<string>();
   private readonly talkedNpcDefs = new Set<string>();
@@ -1585,6 +1639,25 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Wedged with zero net progress for the full window: blast the local wave +
     // loot cluster so the tree falls through to Explore and the player relocates.
+    const blacklisted = this.relocateFromStall(world, playerX, playerY);
+
+    this.globalDwellActive = false;
+    this.globalDwellFrames = 0;
+    if (this.config.debug) {
+      logger.debug(
+        `AI global dwell watchdog fired: relocating (loot ${String(blacklisted)} piles, dwell ${String(GLOBAL_DWELL_FRAMES)}f)`,
+      );
+    }
+  }
+
+  /**
+   * Shared deadlock remediation used by the global-dwell and quest-progress
+   * watchdogs: ignore the local enemy wave (within engage radius) + the loot
+   * cluster underfoot and drop the current decision target/path so the BT falls
+   * through to Explore and the player physically relocates. Returns the number
+   * of loot piles blacklisted (for debug logging).
+   */
+  private relocateFromStall(world: GameWorld, playerX: number, playerY: number): number {
     const expireEnemy = world.frameCount + ENEMY_IGNORE_FRAMES;
     const engageRadius = this.getEngageRadius(world);
     const radiusSq = engageRadius * engageRadius;
@@ -1617,11 +1690,79 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.engageTargetEid = null;
     this.engageNoProgressFrames = 0;
 
-    this.globalDwellActive = false;
-    this.globalDwellFrames = 0;
+    return blacklisted;
+  }
+
+  /**
+   * Coarse, near-monotonic "floor progress" score for this world — see
+   * {@link computeFloorProgressScore}, which holds the (pure, unit-tested)
+   * scoring. It advances on ANY real quest objective tick, completion, or gold
+   * payout but stays frozen during a knockback/kite deadlock, which is exactly
+   * why the quest-progress watchdog keys on it.
+   */
+  private computeFloorProgressFingerprint(world: GameWorld): number {
+    return computeFloorProgressScore(world.questLog.values(), world.playerGold);
+  }
+
+  /**
+   * Floor-progress stall backstop. The global-dwell watchdog re-anchors on
+   * spatial drift and nearby-enemy chip damage, so a knockback/kite loop — the
+   * bat punts a quest enemy just out of reach and the wedged player chases it in
+   * a tight orbit, landing chip hits but never the kill — keeps it alive forever
+   * (observed: ~188s pinned, kills frozen, a "4g to go" gold-farm goal that never
+   * resolves). This watchdog instead keys on
+   * {@link computeFloorProgressFingerprint}, which only advances on a real
+   * objective tick / completion / gold payout, so a deadlock trips it while
+   * legitimately slow combat (which still drips gold + kills) does not.
+   */
+  private updateQuestProgressWatchdog(world: GameWorld, playerX: number, playerY: number): void {
+    if (world.state !== 'playing') {
+      this.questProgressActive = false;
+      this.questProgressStallFrames = 0;
+      return;
+    }
+
+    const score = this.computeFloorProgressFingerprint(world);
+
+    if (!this.questProgressActive) {
+      this.questProgressActive = true;
+      this.questProgressBestScore = score;
+      this.questProgressStallFrames = 0;
+      return;
+    }
+
+    if (score > this.questProgressBestScore) {
+      this.questProgressBestScore = score;
+      this.questProgressStallFrames = 0;
+      return;
+    }
+
+    this.questProgressStallFrames++;
+    if (this.questProgressStallFrames <= QUEST_PROGRESS_STALL_FRAMES) {
+      return;
+    }
+
+    // An active boss battle legitimately freezes the fingerprint (a single
+    // binary "defeat the boss" objective, no add payouts) for the length of the
+    // whittle. Relocating mid-fight would abandon the boss, so hold the timer
+    // while the boss quest is live and an enemy is actually in range.
+    const bossQuest = world.questLog.get(FLOOR1_BOSS_BATTLE_QUEST_ID);
+    const nearestEnemy = this.findNearestEnemy(world, playerX, playerY);
+    if (bossQuest?.status === 'active' && nearestEnemy) {
+      this.questProgressStallFrames = 0;
+      return;
+    }
+
+    const blacklisted = this.relocateFromStall(world, playerX, playerY);
+    // The wedge is usually a swarm pinned against an unreachable fixed goal (NPC
+    // / coin pile), so suppress position-based progress goals too and let
+    // Hunt/Explore take the wheel until the player has relocated.
+    this.progressGoalSuppressedUntilFrame = world.frameCount + ENEMY_IGNORE_FRAMES;
+    this.questProgressActive = false;
+    this.questProgressStallFrames = 0;
     if (this.config.debug) {
       logger.debug(
-        `AI global dwell watchdog fired: relocating (loot ${String(blacklisted)} piles, dwell ${String(GLOBAL_DWELL_FRAMES)}f)`,
+        `AI quest-progress watchdog fired: relocating (loot ${String(blacklisted)} piles, stall ${String(QUEST_PROGRESS_STALL_FRAMES)}f)`,
       );
     }
   }
@@ -1732,6 +1873,12 @@ export class BehaviorTreeAI implements AIInputProvider {
     // frame at a navigation choke) that none of the per-state watchdogs above can
     // catch, since each resets the instant its state stops running.
     this.updateGlobalDwellWatchdog(world, playerX, playerY);
+
+    // Floor-progress backstop: catch knockback/kite deadlocks where the player
+    // jitters in place landing chip hits but no kills, so neither the per-state
+    // nets nor the global-dwell drift/HP watchdog ever fire. Keyed on quest
+    // objective + gold progress, which a real deadlock leaves frozen.
+    this.updateQuestProgressWatchdog(world, playerX, playerY);
 
     // Refresh door-aware navigation each poll: closed-but-openable doors become
     // passable for A*, while locked-unsatisfied doors stay walls. Rebuilding
@@ -3609,6 +3756,9 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.globalDwellFrames = 0;
     this.globalDwellBestEnemyDist = Number.POSITIVE_INFINITY;
     this.globalDwellBestEnemyHp = Number.POSITIVE_INFINITY;
+    this.questProgressActive = false;
+    this.questProgressBestScore = 0;
+    this.questProgressStallFrames = 0;
     this.discoveredNpcDefs.clear();
     this.talkedNpcDefs.clear();
     this.neededInteractionReasonByNpc.clear();

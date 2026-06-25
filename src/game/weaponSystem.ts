@@ -42,6 +42,12 @@ interface EnemyTarget {
   direction: { x: number; y: number };
   distanceSq: number;
   radiusPx: number;
+  /** Vector from the shooter to the target's current position (px). */
+  deltaX: number;
+  deltaY: number;
+  /** Target velocity (px/frame), used to lead projectiles. */
+  velocityX: number;
+  velocityY: number;
 }
 
 const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
@@ -81,6 +87,76 @@ function normalizeVector(x: number, y: number): { x: number; y: number } {
     x: x / length,
     y: y / length,
   };
+}
+
+/**
+ * Compute a normalized aim direction that leads a moving target so a projectile
+ * fired at `projectileSpeed` (px/frame) intercepts it, rather than aiming at
+ * where the target currently is. Solves the standard intercept quadratic
+ * |delta + targetVelocity * t| = projectileSpeed * t for the smallest positive
+ * time `t`, then aims at the predicted position `delta + targetVelocity * t`.
+ *
+ * Falls back to aiming at the target's current position when no positive
+ * interception time exists (target outrunning the projectile) or the projectile
+ * is effectively stationary. Pure and deterministic — no RNG, no time source.
+ */
+export function computeLeadDirection(
+  deltaX: number,
+  deltaY: number,
+  targetVelocityX: number,
+  targetVelocityY: number,
+  projectileSpeed: number,
+): { x: number; y: number } {
+  const fallback = normalizeVector(deltaX, deltaY);
+  if (!(projectileSpeed > 0.0001)) {
+    return fallback;
+  }
+
+  const a =
+    targetVelocityX * targetVelocityX +
+    targetVelocityY * targetVelocityY -
+    projectileSpeed * projectileSpeed;
+  const b = 2 * (deltaX * targetVelocityX + deltaY * targetVelocityY);
+  const c = deltaX * deltaX + deltaY * deltaY;
+
+  let t = Number.POSITIVE_INFINITY;
+  if (Math.abs(a) < 1e-6) {
+    // Target speed ~= projectile speed: quadratic degenerates to linear b*t + c = 0.
+    if (Math.abs(b) > 1e-6) {
+      const linear = -c / b;
+      if (linear > 1e-6) {
+        t = linear;
+      }
+    }
+  } else {
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant >= 0) {
+      const sqrtDisc = Math.sqrt(discriminant);
+      const root1 = (-b - sqrtDisc) / (2 * a);
+      const root2 = (-b + sqrtDisc) / (2 * a);
+      if (root1 > 1e-6) {
+        t = root1;
+      }
+      if (root2 > 1e-6 && root2 < t) {
+        t = root2;
+      }
+    }
+  }
+
+  if (!Number.isFinite(t)) {
+    return fallback;
+  }
+
+  return normalizeVector(deltaX + targetVelocityX * t, deltaY + targetVelocityY * t);
+}
+
+/** Forward-fired projectile weapons whose shots benefit from target leading. */
+function isLeadingProjectileWeapon(def: WeaponDef): boolean {
+  return (
+    def.weaponType === WeaponType.RANGED ||
+    def.weaponType === WeaponType.MAGIC ||
+    def.weaponType === WeaponType.THROWN
+  );
 }
 
 function getPlayerEntity(world: GameWorld): number | undefined {
@@ -142,6 +218,10 @@ function getNearestEnemyTarget(
       direction: normalizeVector(deltaX, deltaY),
       distanceSq,
       radiusPx: enemyRadiusPx,
+      deltaX,
+      deltaY,
+      velocityX: world.stores.velocity.x[enemy] ?? 0,
+      velocityY: world.stores.velocity.y[enemy] ?? 0,
     };
   }
 
@@ -192,6 +272,10 @@ function findBossTargetInRange(
       direction: normalizeVector(deltaX, deltaY),
       distanceSq,
       radiusPx: enemyRadiusPx,
+      deltaX,
+      deltaY,
+      velocityX: world.stores.velocity.x[enemy] ?? 0,
+      velocityY: world.stores.velocity.y[enemy] ?? 0,
     };
   }
 
@@ -696,7 +780,6 @@ export function weaponSystem(world: GameWorld): void {
     if (!target) {
       return;
     }
-    const fireDir = target.direction;
     const gateRangePx = getWeaponGateRangePx(def) * ATTACK_TARGET_GATE_MULTIPLIER;
     if (target.distanceSq > gateRangePx * gateRangePx) {
       return;
@@ -706,6 +789,24 @@ export function weaponSystem(world: GameWorld): void {
     if (world.elapsedMs - lastFire < def.cooldownMs) {
       return;
     }
+
+    // Boss-priority aim: focus an in-reach boss/elite so projectiles reliably
+    // land on it instead of a transient add (mirrors the melee path). A slow
+    // arrow chasing the nearest respawning add never closes the boss fight.
+    const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangePx);
+    const fireTarget = bossTarget ?? target;
+
+    // Lead moving targets for forward-fired projectiles so slow arrows/bolts
+    // intercept a strafing enemy instead of trailing its current position.
+    const fireDir = isLeadingProjectileWeapon(def)
+      ? computeLeadDirection(
+          fireTarget.deltaX,
+          fireTarget.deltaY,
+          fireTarget.velocityX,
+          fireTarget.velocityY,
+          def.projectileSpeed,
+        )
+      : fireTarget.direction;
 
     dispatchAttack(world, player, def, fireDir);
     state.aimX = fireDir.x;
@@ -757,13 +858,20 @@ export function weaponEntitySystem(world: GameWorld): void {
         continue;
       }
     }
-    const dir = target.direction;
     const baseDamage = weapon.baseDamage[weid]!;
     const projSpeed = weapon.projectileSpeed[weid]!;
+    // Lead moving targets for forward-fired projectiles (RANGED / default).
+    const projDir = computeLeadDirection(
+      target.deltaX,
+      target.deltaY,
+      target.velocityX,
+      target.velocityY,
+      projSpeed,
+    );
 
     switch (weaponType) {
       case WeaponType.RANGED:
-        spawnProjectile(world, px, py, dir.x * projSpeed, dir.y * projSpeed, baseDamage);
+        spawnProjectile(world, px, py, projDir.x * projSpeed, projDir.y * projSpeed, baseDamage);
         break;
       case WeaponType.MELEE: {
         const range = weapon.range[weid]!;
@@ -783,7 +891,7 @@ export function weaponEntitySystem(world: GameWorld): void {
         break;
       }
       default:
-        spawnProjectile(world, px, py, dir.x * projSpeed, dir.y * projSpeed, baseDamage);
+        spawnProjectile(world, px, py, projDir.x * projSpeed, projDir.y * projSpeed, baseDamage);
         break;
     }
 
