@@ -100,11 +100,12 @@ const REQUIRED_QUEST_IDS = [
  * so it remains in the matrix rather than being rotated out. Worst-case weapon
  * game-time per seed in parens — all comfortably under the 300s budget:
  *
- * - 15: previous canonical all-weapon clear; still clears bow (~194s) and bat
- *       (~132s), so a regression here would be a real signal, not seed churn.
+ * - 15: previous canonical all-weapon clear; still clears sword (~148s), bow
+ *       (~194s), and bat (~132s), so a regression here would be a real signal,
+ *       not seed churn.
  * - 6: new main's canonical sword clear; also clears bow (~186s) and bat (~163s).
- * - 7: reserve all-weapon clear promoted after the same-room aggro fix (worst case
- *      bow ~209s).
+ * - 7: reserve all-weapon clear promoted after the same-room aggro fix (worst
+ *      case bat ~213s, with bow ~209s still comfortably under budget).
  * - 5: all-weapon clear, widest margin (worst case bow ~206s).
  *
  * Seed 10 is an additional verified all-weapon clear held in reserve.
