@@ -314,6 +314,7 @@ export class DungeonGenerator implements MapGenerator {
     // post-processing (ellipse, L-shape, corridor widening) and would trap the
     // player or enemies in permanently unreachable areas.
     cullIsolatedFloorTiles(tileMap, terrain, w, h, playerSpawn);
+    pruneInaccessibleDoors(roomGraph, tileMap, terrain, w);
 
     return new FloorMap(config, tileMap, roomGraph, terrain, playerSpawn);
   }
@@ -551,6 +552,20 @@ function carveRoomConnector(
   blocked: Uint8Array | null,
 ): boolean {
   const { x, y, width, height } = room.bounds;
+  const isRoomPerimeterNonDoor = (idx: number): boolean => {
+    if (room.doors.length === 0) return false;
+    const tx = idx % w;
+    const ty = (idx - tx) / w;
+    const onPerimeter =
+      tx >= x &&
+      tx < x + width &&
+      ty >= y &&
+      ty < y + height &&
+      (tx === x || tx === x + width - 1 || ty === y || ty === y + height - 1);
+    if (!onPerimeter) return false;
+    const flags = tileMap.flags[idx]!;
+    return (flags & TileFlags.DOOR) === 0;
+  };
 
   // Seed BFS from door tiles when present (preserves door-gated entry); fall back
   // to the interior perimeter for the rare door-less room.
@@ -620,6 +635,7 @@ function carveRoomConnector(
       const nIdx = ny * w + nx;
       if (parent[nIdx] !== -2) continue;
       if (blocked && blocked[nIdx]) continue;
+      if (isRoomPerimeterNonDoor(nIdx)) continue;
       parent[nIdx] = idx;
       queue.push(nIdx);
     }
@@ -1307,11 +1323,52 @@ function ensureDoorAccess(
 }
 
 /**
- * Widen corridors perpendicular to their primary direction.
- * Horizontal corridors (neighboured E/W by floor) can get north and south tiles added;
- * vertical corridors can get east and west tiles added. Uses a two-pass approach
+ * Remove door markers that no longer have any passable interior-adjacent tile.
+ * This can happen after reachability culling seals isolated room interiors.
+ */
+function pruneInaccessibleDoors(
+  roomGraph: RoomGraph,
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+): void {
+  for (const room of roomGraph.getAll()) {
+    const keptDoors: DoorLocation[] = [];
+    for (const door of room.doors) {
+      const side = getDoorSide(room.bounds, door);
+      const inward: [number, number] =
+        side === 'left'
+          ? [door.x + 1, door.y]
+          : side === 'right'
+            ? [door.x - 1, door.y]
+            : side === 'top'
+              ? [door.x, door.y + 1]
+              : [door.x, door.y - 1];
+      const [ix, iy] = inward;
+      const hasInteriorAccess =
+        ix > room.bounds.x &&
+        ix < room.bounds.x + room.bounds.width - 1 &&
+        iy > room.bounds.y &&
+        iy < room.bounds.y + room.bounds.height - 1 &&
+        tileMap.isPassable(ix, iy);
+      if (hasInteriorAccess) {
+        keptDoors.push(door);
+        continue;
+      }
+      const idx = door.y * w + door.x;
+      tileMap.flags[idx] = TilePresets.WALL;
+      terrain[idx] = TerrainType.STONE_WALL;
+    }
+    Object.assign(room, { doors: keptDoors });
+  }
+}
+
+/**
+ * Widen corridors by one tile perpendicular to their primary direction.
+ * Horizontal corridors (neighboured E/W by floor) get a north or south tile added;
+ * vertical corridors get an east or west tile added. Uses a two-pass approach
  * to avoid cascading widening from a single pass.
- * ~85 % of corridor tiles are widened to keep hallways broadly wide.
+ * ~85% of corridor tiles are widened to keep hallways broadly wide.
  */
 function widenCorridors(
   tileMap: TileMap,
@@ -1327,7 +1384,7 @@ function widenCorridors(
     for (let x = 1; x < w - 1; x++) {
       const idx = y * w + x;
       if (terrain[idx] !== TerrainType.CORRIDOR) continue;
-      if (rng.next() > 0.85) continue; // only widen ~85 % of corridor tiles
+      if (rng.next() > 0.85) continue; // only widen ~85% of corridor tiles
 
       const tN = terrain[(y - 1) * w + x]!;
       const tS = terrain[(y + 1) * w + x]!;
@@ -1345,40 +1402,24 @@ function widenCorridors(
       const hasEW = floorOrCorridor(tE) || floorOrCorridor(tW);
 
       if (hasNS && !hasEW) {
-        // Vertical corridor — expand east/west when possible.
-        const eastIdx = y * w + (x + 1);
+        // Vertical corridor — try to expand east
+        const targetIdx = y * w + (x + 1);
         if (
           x + 1 < w - 1 &&
-          terrain[eastIdx] === TerrainType.STONE_WALL &&
-          !protectedWalls.has(eastIdx)
+          terrain[targetIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(targetIdx)
         ) {
-          toWiden.add(eastIdx);
-        }
-        const westIdx = y * w + (x - 1);
-        if (
-          x - 1 > 0 &&
-          terrain[westIdx] === TerrainType.STONE_WALL &&
-          !protectedWalls.has(westIdx)
-        ) {
-          toWiden.add(westIdx);
+          toWiden.add(targetIdx);
         }
       } else if (hasEW && !hasNS) {
-        // Horizontal corridor — expand north/south when possible.
-        const southIdx = (y + 1) * w + x;
+        // Horizontal corridor — try to expand south
+        const targetIdx = (y + 1) * w + x;
         if (
           y + 1 < h - 1 &&
-          terrain[southIdx] === TerrainType.STONE_WALL &&
-          !protectedWalls.has(southIdx)
+          terrain[targetIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(targetIdx)
         ) {
-          toWiden.add(southIdx);
-        }
-        const northIdx = (y - 1) * w + x;
-        if (
-          y - 1 > 0 &&
-          terrain[northIdx] === TerrainType.STONE_WALL &&
-          !protectedWalls.has(northIdx)
-        ) {
-          toWiden.add(northIdx);
+          toWiden.add(targetIdx);
         }
       }
     }
@@ -1410,7 +1451,7 @@ function addDiagonalShortcuts(
   const connected = new Set<string>();
 
   for (let i = 0; i < rooms.length; i++) {
-    if (rng.next() >= 0.88) continue; // attempt a diagonal shortcut for ~12 % of rooms
+    if (rng.next() >= 0.2) continue; // attempt a diagonal shortcut for ~20% of rooms
 
     const a = rooms[i]!;
     const cxA = Math.floor(a.bounds.x + a.bounds.width / 2);

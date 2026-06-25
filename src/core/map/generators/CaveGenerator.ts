@@ -56,7 +56,7 @@ export class CaveGenerator implements MapGenerator {
     const cellular = new ROTMap.Cellular(w, h, {
       born: this.options.born,
       survive: this.options.survive,
-      topology: 4,
+      topology: 8,
     });
 
     // Initial random fill

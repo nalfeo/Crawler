@@ -311,7 +311,7 @@ describe('Map Generators', () => {
         seed: 42,
         roomWidthRange: [10, 22],
         roomHeightRange: [9, 20],
-        maxRooms: 45,
+        maxRooms: 70,
         floorDensity: 0.36,
       };
 
@@ -336,7 +336,7 @@ describe('Map Generators', () => {
         seed: 42,
         roomWidthRange: [10, 22],
         roomHeightRange: [9, 20],
-        maxRooms: 45,
+        maxRooms: 70,
         floorDensity: 0.36,
       };
 
@@ -370,7 +370,7 @@ describe('Map Generators', () => {
         seed: 42,
         roomWidthRange: [10, 22],
         roomHeightRange: [9, 20],
-        maxRooms: 45,
+        maxRooms: 70,
         floorDensity: 0.36,
       };
 
@@ -425,7 +425,7 @@ describe('Map Generators', () => {
         seed: 42,
         roomWidthRange: [10, 22],
         roomHeightRange: [9, 20],
-        maxRooms: 45,
+        maxRooms: 70,
         floorDensity: 0.36,
       };
 
