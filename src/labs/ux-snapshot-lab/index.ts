@@ -3,19 +3,22 @@
  * representative Floor 1 room, plus in-world drops (XP crystals, coins, a
  * potion) so every UX surface can be eyeballed and iterated at once.
  *
- * Drives the REAL `HudUI` (health bar, XP bar, floor timer, quest tracker,
- * minimap) against a synthetic GameWorld, exactly like `hud-lab`, so the
- * actual Phaser render paths run. lil-gui sliders push the HUD through its
- * states (low HP, XP fill, amber/red timer, multiple active quests).
+ * Drives the REAL `HudUI` (health bar, XP bar, floor timer, skill tracker,
+ * quest tracker, minimap) plus the safe-room Bag/Gear affordances against a
+ * synthetic GameWorld, exactly like `hud-lab`, so the actual Phaser render
+ * paths run. lil-gui sliders and presets push the HUD through floor-start,
+ * mid-floor, and floor-end states.
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME, FLOOR } from '../../shared/constants.js';
 import { createHudUI } from '../../engine/HudUI.js';
+import { createInventoryUI } from '../../engine/InventoryUI.js';
+import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import { createDialogueBox, type DialogueBox } from '../../engine/DialogueBox.js';
 import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
-import { spawnPlayer, spawnEnemy, spawnNpc } from '../../core/index.js';
+import { spawnPlayer, spawnEnemy, spawnNpc, isInSafeContext } from '../../core/index.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
@@ -24,9 +27,15 @@ import { acceptQuest } from '../../core/systems/questSystem.js';
 import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR1_BOSS_UNLOCK_QUEST_ID } from '../../shared/quest-types.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { SeededRandom } from '../../shared/random.js';
+import { addItem } from '../../shared/inventory.js';
+import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
+import { getAllSkillDefinitions } from '../../game/skills/registry.js';
+import type { SkillState } from '../../shared/skills.js';
+import { getUiScale, onUiScaleChange } from '../../engine/ui-scale.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+type SnapshotPreset = 'floor-start' | 'mid-floor' | 'floor-end';
 
 interface UxLabSettings {
   hpPercent: number;
@@ -36,6 +45,8 @@ interface UxLabSettings {
   timeRemainingS: number;
   activeQuests: number;
   showDialog: boolean;
+  preset: SnapshotPreset;
+  showFloorCompletion: boolean;
 }
 
 const LAB_ID = 'ux-snapshot-lab';
@@ -156,6 +167,20 @@ function ensurePotionTexture(scene: Phaser.Scene, key: string): void {
   g.destroy();
 }
 
+function initializePlayerWeaponSkills(world: GameWorld, playerEid: number): void {
+  const skillMap = new Map<string, SkillState>();
+  for (const skill of getAllSkillDefinitions()) {
+    skillMap.set(skill.id, {
+      level: 0,
+      usage: 0,
+      itemBonus: 0,
+      triggeredMilestones: new Set(),
+    });
+  }
+  world.playerSkills = skillMap;
+  world.skillStatesByEntity.set(playerEid, skillMap);
+}
+
 function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
   if (!(gui instanceof GUI)) {
@@ -170,6 +195,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     timeRemainingS: 50,
     activeQuests: 2,
     showDialog: true,
+    preset: 'mid-floor',
+    showFloorCompletion: false,
   };
 
   const root = document.createElement('div');
@@ -182,7 +209,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
   const hint = document.createElement('p');
   hint.textContent =
-    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, gold/junk loot counter, quest tracker, minimap) plus the NPC dialogue box and choice modal, over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states; toggle the dialogue and open the choice modal from the controls.';
+    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, gold/junk loot counter, skill tracker, quest tracker, minimap), Bag/Gear safe-room buttons, NPC dialogue box, and a floor-end panel over a Floor 1 room with in-world drops. Use the preset control to compare floor-start, mid-floor, and floor-end staging.';
   hint.style.cssText = 'margin-top:16px;color:#c9d4ff;line-height:1.6;';
   controls.append(hint);
 
@@ -190,8 +217,133 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   let world: GameWorld | undefined;
   let playerEid = -1;
   let hudUi: ReturnType<typeof createHudUI> | undefined;
+  let inventoryUi: ReturnType<typeof createInventoryUI> | undefined;
+  let equipmentUi: ReturnType<typeof createEquipmentUI> | undefined;
   let dialogueBox: DialogueBox | undefined;
   let modalPicker: ReturnType<typeof createModalPickerUI> | undefined;
+
+  const applyPreset = (w: GameWorld): void => {
+    const objective = w.floor1?.objective;
+    if (!objective) {
+      return;
+    }
+
+    const skillMap = w.skillStatesByEntity.get(playerEid) ?? w.playerSkills;
+    const slashing = skillMap.get('slashing');
+    const sword = skillMap.get('sword');
+    const staircaseBattle = objective.bossBattles.get('staircase');
+    const slimeBattle = objective.bossBattles.get('slime-rat');
+
+    switch (settings.preset) {
+      case 'floor-start':
+        settings.hpPercent = 100;
+        settings.xpPercent = 5;
+        settings.playerLevel = 1;
+        settings.timeRemainingS = FLOOR.MAX_DURATION_S;
+        settings.activeQuests = 1;
+        settings.showDialog = true;
+        settings.showFloorCompletion = false;
+        w.state = 'safe_room';
+        w.playerGold = 12;
+        w.featureUnlocks.inventory = true;
+        w.featureUnlocks.equipment = true;
+        w.featureUnlocks.spells = false;
+        objective.ratsKilled = 0;
+        objective.slimesKilled = 0;
+        objective.goldCollected = 0;
+        objective.junkCollected = 0;
+        objective.questAccepted = true;
+        objective.questCompleted = false;
+        objective.staircaseUnlocked = false;
+        objective.staircaseSpawned = false;
+        if (slimeBattle) slimeBattle.defeated = false;
+        if (staircaseBattle) staircaseBattle.defeated = false;
+        w.floor1!.runSummary = null;
+        if (slashing) {
+          slashing.level = 0;
+          slashing.usage = 6;
+        }
+        if (sword) {
+          sword.level = 0;
+          sword.usage = 12;
+        }
+        break;
+      case 'floor-end':
+        settings.hpPercent = 68;
+        settings.xpPercent = 92;
+        settings.playerLevel = 5;
+        settings.timeRemainingS = 28;
+        settings.activeQuests = 0;
+        settings.showDialog = false;
+        settings.showFloorCompletion = true;
+        w.state = 'safe_room';
+        w.playerGold = 342;
+        w.featureUnlocks.inventory = true;
+        w.featureUnlocks.equipment = true;
+        w.featureUnlocks.spells = false;
+        objective.ratsKilled = objective.requiredRats;
+        objective.slimesKilled = objective.requiredSlimes;
+        objective.goldCollected = objective.requiredGold;
+        objective.junkCollected = objective.requiredJunk;
+        objective.questAccepted = true;
+        objective.questCompleted = true;
+        objective.staircaseUnlocked = true;
+        objective.staircaseSpawned = true;
+        if (slimeBattle) slimeBattle.defeated = true;
+        if (staircaseBattle) staircaseBattle.defeated = true;
+        w.floor1!.runSummary = {
+          outcome: 'cleared_floor',
+          viewsEarned: 480,
+          fansEarned: 92,
+        };
+        if (slashing) {
+          slashing.level = 2;
+          slashing.usage = 46;
+        }
+        if (sword) {
+          sword.level = 3;
+          sword.usage = 74;
+        }
+        break;
+      case 'mid-floor':
+      default:
+        settings.hpPercent = 45;
+        settings.xpPercent = 60;
+        settings.playerLevel = 3;
+        settings.timeRemainingS = 50;
+        settings.activeQuests = 2;
+        settings.showDialog = true;
+        settings.showFloorCompletion = false;
+        w.state = 'playing';
+        w.playerGold = 137;
+        w.featureUnlocks.inventory = true;
+        w.featureUnlocks.equipment = true;
+        w.featureUnlocks.spells = false;
+        objective.ratsKilled = 2;
+        objective.slimesKilled = 1;
+        objective.goldCollected = 20;
+        objective.junkCollected = 1;
+        objective.questAccepted = true;
+        objective.questCompleted = false;
+        objective.staircaseUnlocked = false;
+        objective.staircaseSpawned = false;
+        if (slimeBattle) slimeBattle.defeated = false;
+        if (staircaseBattle) staircaseBattle.defeated = false;
+        w.floor1!.runSummary = null;
+        if (slashing) {
+          slashing.level = 1;
+          slashing.usage = 18;
+        }
+        if (sword) {
+          sword.level = 1;
+          sword.usage = 24;
+        }
+        break;
+    }
+
+    syncQuests(w);
+    dialogueBox?.setVisible(settings.showDialog);
+  };
 
   const openSampleModal = (): void => {
     modalPicker?.open(
@@ -233,6 +385,14 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   }
 
   class UxSnapshotScene extends Phaser.Scene {
+    private inventoryButton?: Phaser.GameObjects.Text;
+
+    private equipButton?: Phaser.GameObjects.Text;
+
+    private completionScreen?: Phaser.GameObjects.Container;
+
+    private offButtonScale?: () => void;
+
     constructor() {
       super({ key: SCENE_KEY });
     }
@@ -353,6 +513,14 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       world.floorMap = buildRadarFloorMap();
       world.state = 'playing';
       playerEid = spawnPlayer(world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+      initializePlayerWeaponSkills(world, playerEid);
+
+      const bag = world.inventories.get(playerEid);
+      if (bag) {
+        addItem(bag, MERCHANTS_CHARM_DEF.id, 1);
+        addItem(bag, 'health-vial', 2);
+        addItem(bag, 'iron-sword', 1);
+      }
 
       // ECS mobs + NPC co-located with the visible actors so radar blips match
       // the on-screen sprites (red = enemy, green = NPC, white = player).
@@ -421,6 +589,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         failReason: null,
         runSummary: null,
       };
+      world.floor1.selectedWeaponId = 'sword';
 
       syncQuests(world);
 
@@ -428,6 +597,59 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       world.playerGold = 137;
 
       hudUi = createHudUI(this);
+      inventoryUi = createInventoryUI(this);
+      equipmentUi = createEquipmentUI(this);
+      const toggleInventory = (): void => {
+        if (!world) return;
+        if (!inventoryUi?.isOpen() && equipmentUi?.isOpen()) {
+          equipmentUi.toggle(world);
+        }
+        inventoryUi?.toggle(world);
+        inventoryUi?.refresh(world);
+      };
+      const toggleEquipment = (): void => {
+        if (!world) return;
+        if (!equipmentUi?.isOpen() && inventoryUi?.isOpen()) {
+          inventoryUi.toggle(world);
+        }
+        equipmentUi?.toggle(world);
+        equipmentUi?.refresh(world);
+      };
+
+      const makeCornerButton = (
+        y: number,
+        label: string,
+        onTap: () => void,
+      ): Phaser.GameObjects.Text =>
+        this.add
+          .text(16, y, label, {
+            fontFamily: 'monospace',
+            fontSize: '20px',
+            fontStyle: 'bold',
+            color: '#e5e7eb',
+            backgroundColor: '#1f2937ee',
+            padding: { x: 16, y: 12 },
+            align: 'left',
+          })
+          .setOrigin(0, 0)
+          .setDepth(1100)
+          .setScrollFactor(0)
+          .setInteractive({ useHandCursor: true })
+          .setVisible(false)
+          .on('pointerdown', onTap);
+      this.inventoryButton = makeCornerButton(16, '🎒 Bag', () => {
+        toggleInventory();
+      });
+      this.equipButton = makeCornerButton(72, '⚔ Gear', () => {
+        toggleEquipment();
+      });
+      const applyButtonScale = (scale: number): void => {
+        this.inventoryButton?.setScale(scale);
+        this.equipButton?.setScale(scale);
+        this.equipButton?.setY(16 + (this.inventoryButton?.height ?? 44) * scale + 8);
+      };
+      applyButtonScale(getUiScale(this));
+      this.offButtonScale = onUiScaleChange(this, applyButtonScale);
 
       modalPicker = createModalPickerUI(this);
       dialogueBox = createDialogueBox(this, {
@@ -443,13 +665,76 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       dialogueBox.setCloseVisible(true);
       dialogueBox.setVisible(settings.showDialog);
 
+      const completionBackdrop = this.add
+        .rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x020617, 0.84)
+        .setOrigin(0, 0);
+      const completionPanel = this.add
+        .rectangle(GAME.WIDTH / 2, GAME.HEIGHT / 2, 620, 260, 0x0f172a, 0.98)
+        .setStrokeStyle(2, 0x334155, 1);
+      const completionTitle = this.add
+        .text(GAME.WIDTH / 2, GAME.HEIGHT / 2 - 72, 'Floor Cleared', {
+          fontFamily: 'Segoe UI, Arial, sans-serif',
+          fontSize: '38px',
+          color: '#f8fafc',
+        })
+        .setOrigin(0.5, 0.5);
+      const completionSubtitle = this.add
+        .text(
+          GAME.WIDTH / 2,
+          GAME.HEIGHT / 2 - 24,
+          'Safe room reached. Camera ready for the next floor.',
+          {
+            fontFamily: 'Segoe UI, Arial, sans-serif',
+            fontSize: '24px',
+            color: '#cbd5e1',
+            align: 'center',
+          },
+        )
+        .setOrigin(0.5, 0.5);
+      const completionBody = this.add
+        .text(
+          GAME.WIDTH / 2,
+          GAME.HEIGHT / 2 + 34,
+          'Use the snapshot presets to compare floor-start staging against the floor-end handoff.',
+          {
+            fontFamily: 'Segoe UI, Arial, sans-serif',
+            fontSize: '20px',
+            color: '#94a3b8',
+            align: 'center',
+            wordWrap: { width: 520 },
+          },
+        )
+        .setOrigin(0.5, 0.5);
+      this.completionScreen = this.add
+        .container(0, 0, [
+          completionBackdrop,
+          completionPanel,
+          completionTitle,
+          completionSubtitle,
+          completionBody,
+        ])
+        .setDepth(5500)
+        .setScrollFactor(0)
+        .setVisible(false);
+
+      applyPreset(world);
+
       this.events.once('shutdown', () => {
         hudUi?.destroy();
         hudUi = undefined;
+        inventoryUi?.destroy();
+        inventoryUi = undefined;
+        equipmentUi?.destroy();
+        equipmentUi = undefined;
         dialogueBox?.destroy();
         dialogueBox = undefined;
         modalPicker?.destroy();
         modalPicker = undefined;
+        this.inventoryButton?.destroy();
+        this.equipButton?.destroy();
+        this.completionScreen?.destroy();
+        this.offButtonScale?.();
+        this.offButtonScale = undefined;
       });
     }
 
@@ -476,6 +761,16 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       }
 
       hudUi.sync(world, playerEid);
+      if (inventoryUi?.isOpen()) {
+        inventoryUi.refresh(world);
+      }
+      if (equipmentUi?.isOpen()) {
+        equipmentUi.refresh(world);
+      }
+      const safeCtx = isInSafeContext(world);
+      this.inventoryButton?.setVisible(world.featureUnlocks.inventory && safeCtx);
+      this.equipButton?.setVisible(world.featureUnlocks.equipment && safeCtx);
+      this.completionScreen?.setVisible(settings.showFloorCompletion);
     }
   }
 
@@ -497,12 +792,32 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     game = new Phaser.Game(config);
   };
 
-  gui.add(settings, 'hpPercent', 0, 100, 1).name('HP %');
-  gui.add(settings, 'maxHp', 10, 500, 10).name('Max HP');
-  gui.add(settings, 'xpPercent', 0, 100, 1).name('XP %');
-  gui.add(settings, 'playerLevel', 0, 20, 1).name('Level');
-  gui.add(settings, 'timeRemainingS', 0, FLOOR.MAX_DURATION_S, 5).name('Time left (s)');
+  const controllers = [
+    gui.add(settings, 'hpPercent', 0, 100, 1).name('HP %'),
+    gui.add(settings, 'maxHp', 10, 500, 10).name('Max HP'),
+    gui.add(settings, 'xpPercent', 0, 100, 1).name('XP %'),
+    gui.add(settings, 'playerLevel', 0, 20, 1).name('Level'),
+    gui.add(settings, 'timeRemainingS', 0, FLOOR.MAX_DURATION_S, 5).name('Time left (s)'),
+  ];
   gui
+    .add(settings, 'preset', {
+      'Floor start': 'floor-start',
+      'Mid floor': 'mid-floor',
+      'Floor end': 'floor-end',
+    })
+    .name('Snapshot preset')
+    .onChange(() => {
+      if (world) {
+        applyPreset(world);
+        for (const controller of controllers) {
+          controller.updateDisplay();
+        }
+        questController.updateDisplay();
+        dialogController.updateDisplay();
+        floorCompletionController.updateDisplay();
+      }
+    });
+  const questController = gui
     .add(settings, 'activeQuests', 0, 2, 1)
     .name('Active quests')
     .onChange(() => {
@@ -510,12 +825,48 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         syncQuests(world);
       }
     });
-  gui
+  const dialogController = gui
     .add(settings, 'showDialog')
     .name('Show dialogue')
     .onChange((v: boolean) => {
       dialogueBox?.setVisible(v);
     });
+  const floorCompletionController = gui
+    .add(settings, 'showFloorCompletion')
+    .name('Show floor-end panel')
+    .onChange((v: boolean) => {
+      settings.showFloorCompletion = v;
+    });
+  gui
+    .add(
+      {
+        openInventory: () => {
+          if (!world) return;
+          if (!inventoryUi?.isOpen() && equipmentUi?.isOpen()) {
+            equipmentUi.toggle(world);
+          }
+          inventoryUi?.toggle(world);
+          inventoryUi?.refresh(world);
+        },
+      },
+      'openInventory',
+    )
+    .name('Toggle inventory');
+  gui
+    .add(
+      {
+        openEquipment: () => {
+          if (!world) return;
+          if (!equipmentUi?.isOpen() && inventoryUi?.isOpen()) {
+            inventoryUi.toggle(world);
+          }
+          equipmentUi?.toggle(world);
+          equipmentUi?.refresh(world);
+        },
+      },
+      'openEquipment',
+    )
+    .name('Toggle gear');
   gui.add({ openModal: () => openSampleModal() }, 'openModal').name('Open choice modal');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
@@ -535,6 +886,6 @@ registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'UX Snapshot',
   description:
-    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, gold/junk loot counter, quest tracker, minimap, NPC dialogue box, and choice modal — over a Floor 1 room with in-world drops.',
+    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, gold/junk loot counter, skill tracker, quest tracker, minimap, bag/gear safe-room buttons, NPC dialogue box, and floor-state presets — over a Floor 1 room with in-world drops.',
   create: createUxLab,
 });
