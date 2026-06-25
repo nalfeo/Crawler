@@ -12,6 +12,7 @@ import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
+import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
@@ -491,5 +492,62 @@ describe('BehaviorTreeAI', () => {
     // Radial correction pushes the AI away from the enemy (negative X when enemy
     // is at +X), so the target must be to the left of the player's start.
     expect(decision.targetX!).toBeLessThan(0);
+  });
+
+  // Regression guard for the BFS path-resolver refactor (PR #324). The goal-tile
+  // resolver flood-fills `dist` once and reads it via `dist[y * width + x]`. A goal
+  // from FloorMap.pixelToTile is NOT clamped to the map, so an out-of-bounds goal
+  // whose linear index aliases an in-bounds *reachable* tile (e.g. x = width + 1
+  // wraps to column 1 of the next row) read a real distance and was returned as a
+  // bogus "direct" hit. The caller then ran A* against that OOB tile, got [], and
+  // abandoned the path instead of taking the ring fallback — a divergence from the
+  // pre-refactor logic, where findTilePath rejected the OOB goal so the ring search
+  // ran. The fix bounds-checks the read so OOB goals fall through to the ring.
+  describe('reachable-goal resolution rejects out-of-bounds goals', () => {
+    type GoalResolver = {
+      computeReachableGoalTile(
+        floorMap: FloorMap,
+        startTile: TilePoint,
+        goalTile: TilePoint,
+        maxRadius?: number,
+      ): TilePoint;
+    };
+
+    const resolveGoal = (floorMap: FloorMap, start: TilePoint, goal: TilePoint): TilePoint =>
+      (new BehaviorTreeAI({ seed: 1 }) as unknown as GoalResolver).computeReachableGoalTile(
+        floorMap,
+        start,
+        goal,
+      );
+
+    it('returns an in-bounds reachable goal unchanged (control)', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      // (1,3) is interior floor and reachable from (3,3), so it resolves directly.
+      // This also proves the tile the OOB case aliases is genuinely reachable.
+      expect(resolveGoal(floorMap, { x: 3, y: 3 }, { x: 1, y: 3 })).toEqual({ x: 1, y: 3 });
+    });
+
+    it('does not return an out-of-bounds goal that aliases a reachable tile', () => {
+      const floorMap = makeOpenRoom(16, 16);
+      const { tileMap } = floorMap;
+      const start: TilePoint = { x: 3, y: 3 };
+
+      // (17,2) is out of bounds (x >= width = 16). Its linear index 2*16 + 17 = 49
+      // aliases in-bounds interior tile (1,3) — reachable per the control above —
+      // which made the unchecked dist[] read report a phantom "direct" hit.
+      const oobGoal: TilePoint = { x: 17, y: 2 };
+      expect(tileMap.inBounds(oobGoal.x, oobGoal.y)).toBe(false);
+      expect((oobGoal.y * tileMap.width + oobGoal.x) % (tileMap.width * tileMap.height)).toBe(
+        3 * tileMap.width + 1,
+      );
+
+      const resolved = resolveGoal(floorMap, start, oobGoal);
+
+      // The fix takes the ring fallback: the resolved tile must be a real in-bounds
+      // passable tile, never the out-of-bounds goal the caller cannot path to.
+      expect(resolved).not.toEqual(oobGoal);
+      expect(tileMap.inBounds(resolved.x, resolved.y)).toBe(true);
+      expect(tileMap.isPassable(resolved.x, resolved.y)).toBe(true);
+    });
   });
 });

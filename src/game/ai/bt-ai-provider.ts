@@ -2348,6 +2348,16 @@ export class BehaviorTreeAI implements AIInputProvider {
     // path length to a tile == findTilePath(start, tile).length, or 0 if the tile
     // is unreachable within NAVIGATION_MAX_PATH_LENGTH.
     const pathLengthTo = (x: number, y: number): number => {
+      // Bounds-check before indexing `dist`: goal tiles are not clamped to the
+      // map (FloorMap.pixelToTile can return out-of-bounds coords), and an
+      // out-of-bounds (x, y) can still yield an in-bounds linear index
+      // `y * width + x` that aliases an unrelated reachable tile. findTilePath
+      // rejects out-of-bounds goals, so mirror that here -- treat them as
+      // unreachable so the ring fallback runs instead of returning a phantom
+      // "direct" hit the caller cannot actually path to.
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        return 0;
+      }
       const d = dist[y * width + x]!;
       return d < 0 ? 0 : d + 1;
     };
