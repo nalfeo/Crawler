@@ -94,7 +94,7 @@ describe('sealRoomPerimeterOpenings connectivity guard', () => {
     expect(floorMap.terrain[breachIdx]).toBe(TerrainType.STONE_WALL);
   });
 
-  it('leaves a breach open when sealing it would isolate a side region', () => {
+  it('converts a load-bearing breach into a door instead of stranding a side region', () => {
     const { world, floorMap, breachIdx } = buildWorld(true);
 
     sealRoomPerimeterOpenings(world, {
@@ -102,12 +102,23 @@ describe('sealRoomPerimeterOpenings connectivity guard', () => {
       y: 3 * DEFAULT_MAP_CONFIG.tileSizePx,
     });
 
-    // The room's own door stays reachable either way, so the old target-room-only
-    // guard would have sealed here and stranded tiles 9..12. The global guard
-    // must instead leave the breach passable.
+    // Tiles 9..12 are reachable ONLY through the breach, so walling it would
+    // strand them. Instead of leaving an open hole (which enemies could tunnel
+    // through), the breach is converted to a closed door: the room is fully
+    // enclosed by walls + doors, yet the side region stays reachable because a
+    // closed door auto-opens for the player and counts as pathable.
     const flags = floorMap.tileMap.flags[breachIdx]!;
-    expect(flags & TileFlags.PASSABLE).not.toBe(0);
+    expect(flags & TileFlags.DOOR).not.toBe(0);
+    expect(flags & TileFlags.PASSABLE).toBe(0);
+    expect(flags).toBe(TilePresets.DOOR_CLOSED);
+    expect(floorMap.terrain[breachIdx]).toBe(TerrainType.DOOR);
 
+    // The converted breach is registered as a real door on the room.
+    const roomId = floorMap.roomGraph.getRoomAt(6, 3);
+    const room = floorMap.roomGraph.get(roomId);
+    expect(room?.doors.some((door) => door.x === 8 && door.y === 3)).toBe(true);
+
+    // The side area past the door is untouched and still passable.
     const sideAreaIdx = 3 * WIDTH + 12;
     expect(floorMap.tileMap.flags[sideAreaIdx]! & TileFlags.PASSABLE).not.toBe(0);
   });
