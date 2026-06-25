@@ -4,11 +4,11 @@
  */
 
 export interface CombatEvent {
-  type: 'hit' | 'blocked' | 'death' | 'miss';
+  type: 'hit' | 'blocked' | 'death' | 'miss' | 'dodge';
   /** Position where the VFX should appear (target position). */
   x: number;
   y: number;
-  /** Damage dealt (0 for blocked). */
+  /** Damage dealt (0 for blocked/dodge). */
   amount: number;
   /** What was hit. */
   targetType: 'enemy' | 'player';
@@ -28,4 +28,6 @@ export interface CombatEvent {
   sourceY?: number;
   /** Blood/ichor colour of the dying entity (0xRRGGBB). Defaults to red when absent. */
   bloodColor?: number;
+  /** True when this hit critically struck (player-sourced damage only). */
+  isCrit?: boolean;
 }

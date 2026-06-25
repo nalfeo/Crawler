@@ -19,8 +19,8 @@
  *
  * The simulation is fully deterministic: a given seed produces the exact same
  * run every time, so one pass per seed is authoritative — there is nothing to
- * average over. Seed 6 is the currently re-verified canonical clear (~145s
- * game-time at level 7 with 20 kills, completing all 5 quests under the 300s
+ * average over. Seed 6 is the currently re-verified canonical clear (~139s
+ * game-time at level 5 with 14 kills, completing all 5 quests under the 300s
  * budget, in ~6s wall time). Because the run exercises the *entire* Floor 1
  * pipeline — pathfinding, melee/ranged combat, every NPC interaction, the boss
  * fight, and stat progression — a regression in almost any of those systems
@@ -81,11 +81,11 @@ const REQUIRED_QUEST_IDS = [
  * asserted independently. Keep this list to seeds that have been verified to
  * clear within the budget — see the file header for how to add more.
  *
- * Seed 6 is the canonical seed as of 2026-06-24 (~145s game-time at level 7
- * with 20 kills, completing all 5 quests, ~6s wall time). It was re-verified
- * after the slime pounce band was retuned to ~5 ft (slimes now only enter their
- * leap telegraph within leap distance), which shifted the deterministic sim so
- * that the previous canonical seed 15 no longer clears within budget. Seeds 1,
+ * Seed 6 is the canonical seed as of 2026-06-25 (~139s game-time at level 5
+ * with 14 kills, completing all 5 quests, ~6s wall time). It was first verified
+ * after the slime pounce band was retuned to ~5 ft (slimes only enter their
+ * leap telegraph within leap distance), and re-verified after crit/dodge rolls
+ * were wired into the damage path (which shifts the RNG trajectory). Seeds 1,
  * 2, 7, 10, 14, 15, 26 and 32 are previous canonical seeds that no longer clear
  * within budget under the current tuning.
  */

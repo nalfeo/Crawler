@@ -1,18 +1,20 @@
 /**
  * Stat System — per-frame stat aggregation.
  *
- * In v1, stat recomputation is done eagerly on every equip/unequip inside
- * equipmentSystem. This system exists as a safety net that can be run each
- * frame to ensure EffectiveStats stores are always consistent.
+ * Recomputes `EffectiveStats` for every entity with Equipment + BaseStats using
+ * the shared `applyEffectiveStats` formula (base stats + level-up core-stat
+ * points + equipment + derived secondaries, clamped). Equipment changes also
+ * recompute eagerly inside `equipmentSystem`; running this each frame in the sim
+ * loop guarantees level-up core-stat allocation flows into combat-read stats
+ * (crit/dodge) even when no equip event fired.
  *
- * Pure function: (world: GameWorld) => void
+ * Pure function: (world: GameWorld) => void — idempotent and deterministic.
  */
 
 import { query } from 'bitecs';
 import { Equipment, BaseStats, EffectiveStats } from '../components.js';
 import type { GameWorld } from '../world.js';
-import { ALL_STAT_IDS, clampStat, isValidStatId } from '../../shared/stats.js';
-import type { EquipmentInstanceId } from '../../shared/equipment-types.js';
+import { applyEffectiveStats } from '../effective-stats.js';
 import { getEquipmentState } from './equipmentSystem.js';
 
 /**
@@ -21,39 +23,7 @@ import { getEquipmentState } from './equipmentSystem.js';
  */
 export function statSystem(world: GameWorld): void {
   const entities = query(world.ecs, [Equipment, BaseStats, EffectiveStats]);
-  const stores = world.stores;
-
   for (const entity of entities) {
-    // Start from base
-    for (const statId of ALL_STAT_IDS) {
-      stores.effectiveStats[statId][entity] = stores.baseStats[statId][entity] ?? 0;
-    }
-
-    // Add equipment bonuses (unique instances only)
-    const eqState = getEquipmentState(world, entity);
-    if (eqState) {
-      const seenInstances = new Set<EquipmentInstanceId>();
-      for (const slotId of Object.keys(eqState.equipped)) {
-        const instId = eqState.equipped[slotId] ?? null;
-        if (instId === null || seenInstances.has(instId)) continue;
-        seenInstances.add(instId);
-        const inst = eqState.instances.get(instId);
-        if (!inst) continue;
-        for (const [stat, bonus] of Object.entries(inst.def.statBonuses)) {
-          if (typeof bonus === 'number' && isValidStatId(stat)) {
-            stores.effectiveStats[stat][entity] =
-              (stores.effectiveStats[stat][entity] ?? 0) + bonus;
-          }
-        }
-      }
-    }
-
-    // Clamp
-    for (const statId of ALL_STAT_IDS) {
-      stores.effectiveStats[statId][entity] = clampStat(
-        statId,
-        stores.effectiveStats[statId][entity] ?? 0,
-      );
-    }
+    applyEffectiveStats(world, entity, getEquipmentState(world, entity));
   }
 }

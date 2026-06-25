@@ -1,6 +1,6 @@
 import { addComponent, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Health, Player } from '../../src/core/components.js';
+import { Enemy, EffectiveStats, Health, Player } from '../../src/core/components.js';
 import { applyDamage } from '../../src/core/apply-damage.js';
 import { createEntity } from '../../src/core/helpers.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -136,5 +136,68 @@ describe('applyDamage', () => {
     expect(world.combatEvents).toHaveLength(1);
     expect(world.combatEvents[0]!.sourceX).toBeUndefined();
     expect(world.combatEvents[0]!.sourceY).toBeUndefined();
+  });
+
+  // --- Secondary-stat wiring (crit/dodge) gated on EffectiveStats ---
+
+  it('lets a player with dodgeChance 1 fully avoid an incoming hit and emits a "dodge" event', () => {
+    const world = createTestWorld();
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Health, { current: 50, max: 50 }));
+    addComponent(world.ecs, eid, Player);
+    addComponent(world.ecs, eid, EffectiveStats);
+    world.stores.effectiveStats.dodgeChance[eid] = 1;
+
+    const dealt = applyDamage(world, eid, 20, 3, 4);
+
+    expect(dealt).toBe(0);
+    expect(world.stores.health.current[eid]).toBe(50); // unharmed
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
+      type: 'dodge',
+      targetType: 'player',
+      amount: 0,
+      targetEid: eid,
+    });
+  });
+
+  it('scales player-sourced damage to an enemy by critMultiplier and flags isCrit when critChance is 1', () => {
+    const world = createTestWorld();
+    // The player singleton supplies the crit stats read by the choke point.
+    const player = createEntity(world);
+    addComponent(world.ecs, player, Player);
+    addComponent(world.ecs, player, EffectiveStats);
+    world.stores.effectiveStats.critChance[player] = 1;
+    world.stores.effectiveStats.critMultiplier[player] = 2;
+    // Enemy target takes the (crit-scaled) hit.
+    const enemy = createEntity(world);
+    addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
+    addComponent(world.ecs, enemy, Enemy);
+
+    const dealt = applyDamage(world, enemy, 10, 1, 2);
+
+    expect(dealt).toBe(20); // 10 * critMultiplier (2)
+    expect(world.stores.health.current[enemy]).toBe(80);
+    expect(world.combatEvents).toHaveLength(1);
+    expect(world.combatEvents[0]).toMatchObject({
+      type: 'hit',
+      targetType: 'enemy',
+      amount: 20,
+      isCrit: true,
+    });
+  });
+
+  it('consumes no RNG when neither crit nor dodge applies (bare world without EffectiveStats)', () => {
+    const control = createTestWorld();
+    const world = createTestWorld(); // same default seed (42) as the control
+    // Enemy target with no player/EffectiveStats in the world → crit branch skipped.
+    const enemy = createEntity(world);
+    addComponent(world.ecs, enemy, set(Health, { current: 50, max: 50 }));
+    addComponent(world.ecs, enemy, Enemy);
+
+    applyDamage(world, enemy, 10, 0, 0);
+
+    // RNG stream untouched: the next roll matches a pristine world's first roll.
+    expect(world.rng.next()).toBe(control.rng.next());
   });
 });

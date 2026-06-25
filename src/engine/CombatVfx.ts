@@ -10,6 +10,7 @@ import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 const VFX_DURATION_MS = 600;
 const VFX_RISE_PX = 24;
 const FONT_SIZE = '12px';
+const CRIT_FONT_SIZE = '16px';
 const FONT_FAMILY = 'monospace';
 
 interface FloatingText {
@@ -27,16 +28,25 @@ export function createCombatVfx(scene: Phaser.Scene): {
   function spawnFloater(event: CombatEvent, renderElapsedMs: number): void {
     let label: string;
     let color: string;
+    let fontSize = FONT_SIZE;
 
     if (event.type === 'miss') {
       label = 'MISS';
       color = '#a0a0a0';
+    } else if (event.type === 'dodge') {
+      label = 'DODGE';
+      color = '#44ddff';
     } else if (event.type === 'blocked') {
       label = 'BLOCKED';
       color = '#888888';
     } else if (event.targetType === 'player') {
       label = `-${event.amount}`;
       color = '#ff4444';
+    } else if (event.isCrit) {
+      // Critical hit on an enemy — emphasized: brighter, larger, trailing "!".
+      label = `-${event.amount}!`;
+      color = '#ff8800';
+      fontSize = CRIT_FONT_SIZE;
     } else {
       label = `-${event.amount}`;
       color = '#ffdd44';
@@ -44,7 +54,7 @@ export function createCombatVfx(scene: Phaser.Scene): {
 
     const text = scene.add.text(event.x, event.y - 8, label, {
       fontFamily: FONT_FAMILY,
-      fontSize: FONT_SIZE,
+      fontSize,
       color,
       stroke: '#000000',
       strokeThickness: 2,

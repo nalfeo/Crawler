@@ -9,7 +9,9 @@ import {
   STAT_POINT_INCREMENT,
   type StatKey,
   type PrimaryStatId,
+  type SecondaryStatId,
   CORE_STAT_GAINS,
+  CORE_STAT_TO_SECONDARY,
 } from './stats.js';
 
 export interface StatDisplayInfo {
@@ -90,7 +92,7 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
   dexterity: {
     label: 'Dexterity',
     description:
-      '+0.05 Attack Speed · +0.1 Move Speed · +0.01 Accuracy per point. Agility and precision.',
+      '+0.05 Attack Speed · +0.1 Move Speed · +0.01 Accuracy · +0.3% Dodge Chance per point. Agility and precision.',
     decimals: 0,
   },
   constitution: {
@@ -115,21 +117,50 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
   },
   luck: {
     label: 'Luck',
-    description: '+4 Pickup Range per point. Fortune and item magnetism.',
+    description: '+4 Pickup Range · +0.5% Crit Chance per point. Fortune and item magnetism.',
     decimals: 0,
   },
 };
 
 /**
+ * Display labels for the SECONDARY stats that core stats derive. These values
+ * are fractional rates rendered as percentages (e.g. critChance 0.005 →
+ * "+0.5% Crit Chance").
+ */
+const SECONDARY_PERCENT_LABEL: Partial<Record<SecondaryStatId, string>> = {
+  critChance: 'Crit Chance',
+  dodgeChance: 'Dodge Chance',
+};
+
+/** Format a single derived secondary-stat gain for the level-up summary. */
+function formatSecondaryGain(stat: SecondaryStatId, value: number): string {
+  const label = SECONDARY_PERCENT_LABEL[stat];
+  if (label !== undefined) {
+    return `+${(value * 100).toFixed(1)}% ${label}`;
+  }
+  return `+${value} ${stat}`;
+}
+
+/**
  * Format the derived gains for a primary stat as a compact summary, e.g.
- * `"+2 dmg, +1 armor"`. Returns `"(no effect yet)"` for stats with empty gains.
+ * `"+2 Damage, +1 Armor"` or `"+4 Pickup Range, +0.5% Crit Chance"`. Combines
+ * gameplay-stat gains (`CORE_STAT_GAINS`) and derived secondary stats
+ * (`CORE_STAT_TO_SECONDARY`). Returns `"(no effect yet)"` for stats with no
+ * gains in either map.
  */
 export function formatCoreStatGains(stat: PrimaryStatId): string {
-  const gains = CORE_STAT_GAINS[stat];
   const parts: string[] = [];
+
+  const gains = CORE_STAT_GAINS[stat];
   for (const [key, value] of Object.entries(gains) as [StatKey, number][]) {
     const decimals = STAT_DISPLAY[key].decimals;
     parts.push(`+${value.toFixed(decimals)} ${STAT_DISPLAY[key].label}`);
   }
+
+  const secondary = CORE_STAT_TO_SECONDARY[stat];
+  for (const [key, value] of Object.entries(secondary) as [SecondaryStatId, number][]) {
+    parts.push(formatSecondaryGain(key, value));
+  }
+
   return parts.length > 0 ? parts.join(', ') : '(no effect yet)';
 }

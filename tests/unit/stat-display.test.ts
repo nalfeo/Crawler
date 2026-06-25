@@ -50,6 +50,17 @@ describe('primary stat display metadata', () => {
     expect(formatCoreStatGains('constitution')).toContain('Max HP');
   });
 
+  it('formatCoreStatGains appends derived secondary stats as percentages', () => {
+    // Luck → critChance (0.005 → "+0.5% Crit Chance")
+    const luckGains = formatCoreStatGains('luck');
+    expect(luckGains).toContain('Crit Chance');
+    expect(luckGains).toContain('0.5%');
+    // Dexterity → dodgeChance (0.003 → "+0.3% Dodge Chance")
+    const dexGains = formatCoreStatGains('dexterity');
+    expect(dexGains).toContain('Dodge Chance');
+    expect(dexGains).toContain('0.3%');
+  });
+
   it('formatCoreStatGains returns placeholder for stats with no current gains', () => {
     expect(formatCoreStatGains('wisdom')).toBe('(no effect yet)');
     expect(formatCoreStatGains('charisma')).toBe('(no effect yet)');
