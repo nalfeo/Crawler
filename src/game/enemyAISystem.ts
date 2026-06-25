@@ -37,6 +37,8 @@ const DEFAULT_FLANK_DISTANCE = 96;
 const TARGET_SEARCH_RADIUS = 8;
 const WAYPOINT_EPSILON = 4;
 const NAVIGATION_LOOKAHEAD_PX = 24;
+const WANDER_LOOKAHEAD_PX = 20;
+const DOOR_AVOID_RADIUS_TILES = 1;
 const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
 const STUCK_FRAMES_THRESHOLD = 15;
 const UNSTUCK_ANGLE_COUNT = 12;
@@ -209,16 +211,61 @@ function getEnemySpeedCap(world: GameWorld, eid: number): number {
   return Math.max(baseSpeed + SLIME_LEAP_BONUS_SPEED, baseSpeed * SLIME_LEAP_SPEED_MULT);
 }
 
-function applyIdleWander(world: GameWorld, eid: number, speed: number): void {
+function isNearDoor(
+  world: GameWorld,
+  x: number,
+  y: number,
+  radiusTiles = DOOR_AVOID_RADIUS_TILES,
+): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+  const tile = floorMap.pixelToTile(x, y);
+  for (let dy = -radiusTiles; dy <= radiusTiles; dy += 1) {
+    for (let dx = -radiusTiles; dx <= radiusTiles; dx += 1) {
+      const tx = tile.x + dx;
+      const ty = tile.y + dy;
+      if (!floorMap.tileMap.inBounds(tx, ty)) {
+        continue;
+      }
+      if (floorMap.tileMap.isDoor(tx, ty)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function applyIdleWander(
+  world: GameWorld,
+  eid: number,
+  speed: number,
+  options?: { avoidDoors?: boolean; playerX?: number; playerY?: number },
+): void {
   const wanderMap = getWanderStateMap(world);
   const px = world.stores.position.x[eid] ?? 0;
   const py = world.stores.position.y[eid] ?? 0;
+  const avoidDoors = options?.avoidDoors ?? false;
+  const playerX = options?.playerX;
+  const playerY = options?.playerY;
+  const isBlockedDirection = (dirX: number, dirY: number): boolean => {
+    const floorMap = world.floorMap;
+    if (!floorMap) {
+      return false;
+    }
+    const sampleX = px + dirX * WANDER_LOOKAHEAD_PX;
+    const sampleY = py + dirY * WANDER_LOOKAHEAD_PX;
+    return (
+      !floorMap.isPassableAt(sampleX, sampleY) ||
+      isPointInSafeSpace(world, sampleX, sampleY) ||
+      (avoidDoors && isNearDoor(world, sampleX, sampleY))
+    );
+  };
+
   let state = wanderMap.get(eid);
   const shouldPickNewDirection =
-    !state ||
-    world.frameCount >= state.untilFrame ||
-    !world.floorMap?.isPassableAt(px + state.dirX * 20, py + state.dirY * 20) ||
-    isPointInSafeSpace(world, px + (state?.dirX ?? 0) * 20, py + (state?.dirY ?? 0) * 20);
+    !state || world.frameCount >= state.untilFrame || isBlockedDirection(state.dirX, state.dirY);
 
   if (shouldPickNewDirection) {
     const angle = world.rng.next() * Math.PI * 2;
@@ -227,10 +274,24 @@ function applyIdleWander(world: GameWorld, eid: number, speed: number): void {
       dirY: Math.sin(angle),
       untilFrame: world.frameCount + world.rng.nextInt(24, 96),
     };
+    if (avoidDoors && playerX !== undefined && playerY !== undefined) {
+      const awayFromPlayer = normalize(px - playerX, py - playerY);
+      if (
+        awayFromPlayer.length > EPSILON &&
+        !isBlockedDirection(awayFromPlayer.x, awayFromPlayer.y)
+      ) {
+        state.dirX = awayFromPlayer.x;
+        state.dirY = awayFromPlayer.y;
+      }
+    }
     wanderMap.set(eid, state);
   }
 
   if (!state) {
+    setVelocity(world, eid, 0, 0);
+    return;
+  }
+  if (isBlockedDirection(state.dirX, state.dirY)) {
     setVelocity(world, eid, 0, 0);
     return;
   }
@@ -1328,6 +1389,7 @@ export function enemyAISystem(world: GameWorld): void {
   const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
   const activeEnemies: number[] = [];
   const doorRevision = floorMap ? getDoorRevision(world) : 0;
+  const playerHiddenInSafeRoom = world.playerInSafeRoom;
 
   for (const eid of enemies) {
     const enemyX = position.x[eid]!;
@@ -1343,7 +1405,8 @@ export function enemyAISystem(world: GameWorld): void {
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
     const inAggroRange = permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
-    const canDetectPlayer = (hasOpenRoomDoor || permanentAggro) && inAggroRange;
+    const canDetectPlayer =
+      !playerHiddenInSafeRoom && (hasOpenRoomDoor || permanentAggro) && inAggroRange;
 
     const currentVx = velocity.x[eid] ?? 0;
     const currentVy = velocity.y[eid] ?? 0;
@@ -1356,7 +1419,13 @@ export function enemyAISystem(world: GameWorld): void {
 
     if (!canDetectPlayer) {
       getSlimeLeapStateMap(world).delete(eid);
-      if (!inAggroRange) {
+      if (playerHiddenInSafeRoom) {
+        applyIdleWander(world, eid, speed, {
+          avoidDoors: true,
+          playerX,
+          playerY,
+        });
+      } else if (!inAggroRange) {
         applyIdleWander(world, eid, speed);
       } else {
         setVelocity(world, eid, 0, 0);
