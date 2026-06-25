@@ -1609,7 +1609,12 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
     this.cameraInSafeRoom = inSafeRoom;
-    this.cameras.main.zoomTo(safeRoomCameraZoom(inSafeRoom), CAMERA.SAFE_ROOM_ZOOM_DURATION_MS);
+    this.cameras.main.zoomTo(
+      safeRoomCameraZoom(inSafeRoom),
+      CAMERA.SAFE_ROOM_ZOOM_DURATION_MS,
+      undefined,
+      true,
+    );
   }
 
   private updateObjectiveMarkers(): void {
