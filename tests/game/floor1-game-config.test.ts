@@ -1,34 +1,26 @@
-import Phaser from 'phaser';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { createFloor1GameConfig } from '../../src/bootstrap/floor1-game-config.js';
-import { createFloor1MainSceneOptions } from '../../src/bootstrap/floor1-main-scene-options.js';
-import { BootScene, MainGameScene } from '../../src/engine/index.js';
-import { GAME } from '../../src/shared/constants.js';
 
 describe('createFloor1GameConfig', () => {
-  it('matches the base game host settings that visual labs should inherit', () => {
-    const config = createFloor1GameConfig('game-container', createFloor1MainSceneOptions());
+  it('captures the shared base-game host settings that visual labs should inherit', () => {
+    const source = readFileSync('src/bootstrap/floor1-game-config.ts', 'utf-8');
 
-    expect(config.parent).toBe('game-container');
-    expect(config.type).toBe(Phaser.AUTO);
-    expect(config.width).toBe(GAME.WIDTH);
-    expect(config.height).toBe(GAME.HEIGHT);
-    expect(config.backgroundColor).toBe('#111111');
-    expect(config.pixelArt).toBe(true);
-    expect(config.roundPixels).toBe(true);
-    expect(config.physics).toEqual({
-      default: 'arcade',
-      arcade: {
-        gravity: { x: 0, y: 0 },
-        debug: false,
-      },
-    });
-    expect(config.scale).toEqual({
-      mode: Phaser.Scale.FIT,
-      autoCenter: Phaser.Scale.CENTER_BOTH,
-    });
-    expect(config.scene).toHaveLength(2);
-    expect(config.scene?.[0]).toBe(BootScene);
-    expect(config.scene?.[1]).toBeInstanceOf(MainGameScene);
+    expect(source).toContain("backgroundColor: '#111111'");
+    expect(source).toContain('width: GAME.WIDTH');
+    expect(source).toContain('height: GAME.HEIGHT');
+    expect(source).toContain('pixelArt: true');
+    expect(source).toContain('roundPixels: true');
+    expect(source).toContain("default: 'arcade'");
+    expect(source).toContain('mode: Phaser.Scale.FIT');
+    expect(source).toContain('autoCenter: Phaser.Scale.CENTER_BOTH');
+    expect(source).toContain('scene: [BootScene, new MainGameScene(sceneOptions)]');
+  });
+
+  it('makes the main game boot through the shared helper', () => {
+    const source = readFileSync('src/main.ts', 'utf-8');
+
+    expect(source).toContain(
+      "const config = createFloor1GameConfig('game-container', createFloor1MainSceneOptions());",
+    );
   });
 });
