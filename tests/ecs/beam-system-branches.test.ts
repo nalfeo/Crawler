@@ -121,3 +121,36 @@ describe('beamSystem branch coverage', () => {
     expect(() => beamSystem(world)).not.toThrow();
   });
 });
+
+describe('beamSystem hit-gated weapon-skill XP', () => {
+  it('emits weapon_fired events for both skills when a player-owned beam hits an enemy', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 30, 0, 50);
+    world.elapsedMs = 1000;
+    world.attackerWeaponSkills.set(player, { classSkillId: 'energy', typeSkillId: 'laser' });
+    spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
+
+    beamSystem(world);
+
+    expect(world.stores.health.current[enemy]).toBe(35);
+    const fired = world.skillUsageEvents.filter((e) => e.metric === 'weapon_fired');
+    expect(fired).toHaveLength(2);
+    expect(fired.map((e) => e.skillId).sort()).toEqual(['energy', 'laser']);
+    expect(fired.every((e) => e.holderEid === player)).toBe(true);
+  });
+
+  it('emits no skill events when the beam owner has no registered weapon skills', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 30, 0, 50);
+    world.elapsedMs = 1000;
+    // Owner present but no prior dispatch registered skills for the player.
+    spawnBeam(world, 0, 0, 1, 0, 100, 15, 500, 0, player, TeamId.PLAYER);
+
+    beamSystem(world);
+
+    expect(world.stores.health.current[enemy]).toBe(35);
+    expect(world.skillUsageEvents).toHaveLength(0);
+  });
+});

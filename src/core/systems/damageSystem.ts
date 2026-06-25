@@ -5,6 +5,7 @@ import {
   Enemy,
   EnemyProjectile,
   Health,
+  Owner,
   Player,
   Projectile,
   Returning,
@@ -14,6 +15,7 @@ import { applyDamage } from '../apply-damage.js';
 import { clearEntityStores } from '../helpers.js';
 import { isEntityInSafeSpace } from '../safe-space.js';
 import type { GameWorld } from '../world.js';
+import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
 
 const DEFAULT_PROJECTILE_DAMAGE = 10;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -113,7 +115,7 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
 
   if (hasComponent(world.ecs, enemy, Health)) {
     const amount = getDamageAmount(world, projectile, DEFAULT_PROJECTILE_DAMAGE);
-    applyDamage(
+    const dealt = applyDamage(
       world,
       enemy,
       amount,
@@ -123,6 +125,16 @@ function applyProjectileHit(world: GameWorld, projectile: number, enemy: number)
       world.stores.position.x[projectile] ?? 0,
       world.stores.position.y[projectile] ?? 0,
     );
+
+    // Emit weapon skill XP for the projectile's owner when damage lands on an enemy.
+    if (dealt > 0 && hasComponent(world.ecs, enemy, Enemy)) {
+      const ownerEid = hasComponent(world.ecs, projectile, Owner)
+        ? (world.stores.owner.eid[projectile] ?? -1)
+        : -1;
+      if (ownerEid !== -1) {
+        emitWeaponHitSkillEvents(world, ownerEid);
+      }
+    }
 
     // Permanently aggro this enemy so it chases regardless of detection range
     world.stores.enemyBehavior.aggroedPermanently[enemy] = 1;

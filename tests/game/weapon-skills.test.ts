@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { addComponent } from 'bitecs';
 import { SkillHolder, Stats } from '../../src/core/components.js';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnEnemy, spawnMeleeSwing, spawnPlayer } from '../../src/core/helpers.js';
+import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { skillSystem } from '../../src/game/systems/skillSystem.js';
 import { statsSystem } from '../../src/game/systems/statsSystem.js';
@@ -13,9 +14,16 @@ import {
   TYPE_SKILL_THRESHOLDS,
 } from '../../src/shared/weapon-skills.js';
 import { WEAPON_DEFS } from '../../src/shared/weaponDefs.js';
-import { computeEffectiveAccuracy, emitWeaponSkillEvents } from '../../src/game/weaponSystem.js';
+import {
+  computeEffectiveAccuracy,
+  emitWeaponSkillEvents,
+  setActiveWeapon,
+  weaponSystem,
+} from '../../src/game/weaponSystem.js';
 import { SKILL_HARD_CAP } from '../../src/shared/skills.js';
 import type { SkillState } from '../../src/game/skills/types.js';
+import { TeamId } from '../../src/shared/constants.js';
+import { ftToPx } from '../../src/shared/units.js';
 
 // Helper: create a world with a player and all weapon skills registered.
 function setupPlayerWithWeaponSkills() {
@@ -362,5 +370,130 @@ describe('floor 1 balance targets', () => {
       rangedState?.level,
       'ranged class skill should reach level 2 within 200 fires',
     ).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ─── Hit-based skill gate tests ────────────────────────────────────────────────
+
+describe('weapon skill hit gate', () => {
+  it('no skill XP on missed attack (accuracy check fails)', () => {
+    const { world } = setupPlayerWithWeaponSkills();
+    const def = WEAPON_DEFS.get('sword')!;
+
+    // Spawn an enemy in melee range so weaponSystem actually attempts the attack.
+    // The MELEE branch returns early when no enemy is in combat range, which would
+    // skip dispatchAttack entirely and make the accuracy roll (and these
+    // assertions) pass vacuously.
+    spawnEnemy(world, 15, 0, 50);
+
+    // Force a deterministic miss: rng.next() returns 1.0 (> sword baseAccuracy 0.9)
+    world.rng.next = () => 1.0;
+
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+    weaponSystem(world);
+
+    // The miss path must have actually run — a 'miss' combat event proves
+    // dispatchAttack reached and failed the accuracy roll.
+    expect(world.combatEvents.some((e) => e.type === 'miss')).toBe(true);
+    // skillUsageEvents must be empty — miss should produce no events
+    expect(world.skillUsageEvents).toHaveLength(0);
+    // attackerWeaponSkills is only populated after a successful accuracy check
+    expect(world.attackerWeaponSkills.size).toBe(0);
+  });
+
+  it('attackerWeaponSkills is populated after a successful accuracy check', () => {
+    const { world, player } = setupPlayerWithWeaponSkills();
+    const def = WEAPON_DEFS.get('sword')!;
+
+    // Spawn an enemy in melee range so weaponSystem triggers an attack
+    spawnEnemy(world, 15, 0, 50);
+
+    // Force a hit: rng.next() returns 0.0 (always <= any accuracy)
+    world.rng.next = () => 0.0;
+
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+    weaponSystem(world);
+
+    const skills = world.attackerWeaponSkills.get(player);
+    expect(skills).toBeDefined();
+    expect(skills?.classSkillId).toBe(def.weaponClassSkillId);
+    expect(skills?.typeSkillId).toBe(def.weaponTypeSkillId);
+  });
+
+  it('skill XP emitted when melee swing hits an enemy', () => {
+    const { world, player } = setupPlayerWithWeaponSkills();
+    const def = WEAPON_DEFS.get('sword')!;
+
+    // Register weapon skills as if a successful attack was dispatched
+    world.attackerWeaponSkills.set(player, {
+      classSkillId: def.weaponClassSkillId,
+      typeSkillId: def.weaponTypeSkillId,
+    });
+
+    // Spawn enemy close enough for the swing to hit
+    const enemy = spawnEnemy(world, 10, 0, 50);
+    spawnMeleeSwing(
+      world,
+      0,
+      0,
+      player,
+      def.baseDamage,
+      ftToPx(def.aoeRadius),
+      def.durationMs,
+      1,
+      0,
+      def.swingArcDeg,
+      TeamId.PLAYER,
+    );
+
+    meleeSwingSystem(world);
+
+    // Two events should have been queued: one for class skill, one for type skill
+    const events = world.skillUsageEvents;
+    const classEvent = events.find(
+      (e) => e.skillId === def.weaponClassSkillId && e.metric === 'weapon_fired',
+    );
+    const typeEvent = events.find(
+      (e) => e.skillId === def.weaponTypeSkillId && e.metric === 'weapon_fired',
+    );
+    expect(classEvent).toBeDefined();
+    expect(typeEvent).toBeDefined();
+    expect(classEvent?.holderEid).toBe(player);
+    expect(typeEvent?.holderEid).toBe(player);
+
+    // Verify the enemy actually took damage
+    expect(world.stores.health.current[enemy]).toBeLessThan(50);
+  });
+
+  it('no skill XP when melee swing misses (no enemies nearby)', () => {
+    const { world, player } = setupPlayerWithWeaponSkills();
+    const def = WEAPON_DEFS.get('sword')!;
+
+    world.attackerWeaponSkills.set(player, {
+      classSkillId: def.weaponClassSkillId,
+      typeSkillId: def.weaponTypeSkillId,
+    });
+
+    // Spawn swing with NO enemies in the world
+    spawnMeleeSwing(
+      world,
+      0,
+      0,
+      player,
+      def.baseDamage,
+      ftToPx(def.aoeRadius),
+      def.durationMs,
+      1,
+      0,
+      def.swingArcDeg,
+      TeamId.PLAYER,
+    );
+
+    meleeSwingSystem(world);
+
+    // No skill events since no enemy was hit
+    expect(world.skillUsageEvents).toHaveLength(0);
   });
 });
