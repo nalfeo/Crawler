@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { SeededRandom } from '../../src/shared/random';
 import { BiomeType, TileFlags, RoomRole } from '../../src/shared/map-types';
 import type { MapConfig } from '../../src/shared/map-types';
-import { DungeonGenerator } from '../../src/core/map/generators/DungeonGenerator';
+import {
+  DungeonGenerator,
+  SPECIAL_ROOM_MIN_WIDTH,
+  SPECIAL_ROOM_MIN_HEIGHT,
+} from '../../src/core/map/generators/DungeonGenerator';
 import { CaveGenerator } from '../../src/core/map/generators/CaveGenerator';
 import { ArenaGenerator } from '../../src/core/map/generators/ArenaGenerator';
 import { getGenerator, getRegisteredBiomes } from '../../src/core/map/generators/registry';
@@ -431,6 +435,68 @@ describe('Map Generators', () => {
 
         expect(floorV.bossStairRoom?.id).toBe(floorF.bossStairRoom?.id);
         expect(floorV.safeRoom?.id).toBe(floorF.safeRoom?.id);
+      }
+    });
+
+    it('should assign BOSS_STAIR and SAFE rooms that meet the minimum size when candidates exist', () => {
+      // Use a config where all rooms are at least SPECIAL_ROOM_MIN_WIDTH × SPECIAL_ROOM_MIN_HEIGHT
+      // so the minimum-size preference is always exercised.
+      const gen = new DungeonGenerator({ roomVariety: true });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [SPECIAL_ROOM_MIN_WIDTH, 14],
+        roomHeightRange: [SPECIAL_ROOM_MIN_HEIGHT, 13],
+        maxRooms: 30,
+        floorDensity: 0.42,
+      };
+
+      for (const seed of REGRESSION_TEST_SEEDS) {
+        const floor = gen.generate({ ...config, seed }, new SeededRandom(seed));
+
+        if (floor.bossStairRoom) {
+          expect(floor.bossStairRoom.bounds.width).toBeGreaterThanOrEqual(SPECIAL_ROOM_MIN_WIDTH);
+          expect(floor.bossStairRoom.bounds.height).toBeGreaterThanOrEqual(SPECIAL_ROOM_MIN_HEIGHT);
+        }
+        if (floor.safeRoom) {
+          expect(floor.safeRoom.bounds.width).toBeGreaterThanOrEqual(SPECIAL_ROOM_MIN_WIDTH);
+          expect(floor.safeRoom.bounds.height).toBeGreaterThanOrEqual(SPECIAL_ROOM_MIN_HEIGHT);
+        }
+      }
+    });
+
+    it('should still assign BOSS_STAIR and SAFE roles when all rooms are smaller than the minimum', () => {
+      // When no room meets the minimum size the generator must fall back gracefully
+      // and still assign the roles rather than silently skipping them.
+      const gen = new DungeonGenerator({
+        roomVariety: false,
+        specialRoomMinWidth: 999,
+        specialRoomMinHeight: 999,
+      });
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizePx: 32,
+        biome: BiomeType.DUNGEON,
+        seed: 42,
+        roomWidthRange: [4, 8],
+        roomHeightRange: [4, 8],
+        maxRooms: 20,
+        floorDensity: 0.3,
+      };
+
+      const floor = gen.generate(config, new SeededRandom(42));
+
+      if (floor.rooms.length >= 2) {
+        expect(floor.bossStairRoom).toBeDefined();
+        expect(floor.rooms.filter((r) => r.role === RoomRole.BOSS_STAIR)).toHaveLength(1);
+      }
+      if (floor.rooms.length >= 3) {
+        expect(floor.safeRoom).toBeDefined();
+        expect(floor.rooms.filter((r) => r.role === RoomRole.SAFE)).toHaveLength(1);
       }
     });
   });
