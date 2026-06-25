@@ -27,6 +27,7 @@ import {
   fovSystem,
   safeRoomSystem,
   npcSystem,
+  statSystem,
   type GameWorld,
 } from '../../core/index.js';
 import {
@@ -84,9 +85,12 @@ export function runSimulationStep(
 
   // Faithful pre-movement game systems (mirrors MainGameScene preSystems order).
   // Without these the headless pipeline silently drifts from the visual game:
-  // statsSystem recomputes player combat stats, floor1PlayerStatSystem applies
-  // Floor 1 stat scaling, and enemyAISystem drives enemy movement intent.
+  // statsSystem recomputes player combat stats, statSystem recomputes the
+  // EffectiveStats store (folding level-up core-stat points into crit/dodge so
+  // the damage path sees them), floor1PlayerStatSystem applies Floor 1 stat
+  // scaling, and enemyAISystem drives enemy movement intent.
   statsSystem(world);
+  statSystem(world);
   if (options.enableFloor1 && world.floor1) {
     floor1PlayerStatSystem(world);
   }

@@ -14,11 +14,11 @@ import type { EquipmentSlotId } from '../../shared/equipment-slots.js';
 import {
   ALL_STAT_IDS,
   isValidStatId,
-  clampStat,
   DEFAULT_BASE_STATS,
   PRIMARY_STATS,
 } from '../../shared/stats.js';
 import type { StatId } from '../../shared/stats.js';
+import { applyEffectiveStats } from '../effective-stats.js';
 import type {
   EquipmentItemDef,
   EquipmentInstanceId,
@@ -106,39 +106,7 @@ function getOrCreateState(world: GameWorld, entity: number): EquipmentState {
 // --- Stat recomputation ---
 
 function recomputeEffectiveStats(world: GameWorld, entity: number): void {
-  const state = getEquipmentMap(world).get(entity);
-  const stores = world.stores;
-
-  // Start from base stats
-  for (const statId of ALL_STAT_IDS) {
-    const base = stores.baseStats[statId][entity] ?? 0;
-    stores.effectiveStats[statId][entity] = base;
-  }
-
-  if (state) {
-    // Iterate unique instance IDs (not slots) to avoid double-counting multi-slot items
-    const seenInstances = new Set<EquipmentInstanceId>();
-    for (const slotId of Object.keys(state.equipped)) {
-      const instId = state.equipped[slotId] ?? null;
-      if (instId === null || seenInstances.has(instId)) continue;
-      seenInstances.add(instId);
-      const inst = state.instances.get(instId);
-      if (!inst) continue;
-      for (const [stat, bonus] of Object.entries(inst.def.statBonuses)) {
-        if (typeof bonus === 'number' && isValidStatId(stat)) {
-          stores.effectiveStats[stat][entity] = (stores.effectiveStats[stat][entity] ?? 0) + bonus;
-        }
-      }
-    }
-  }
-
-  // Apply clamps
-  for (const statId of ALL_STAT_IDS) {
-    stores.effectiveStats[statId][entity] = clampStat(
-      statId,
-      stores.effectiveStats[statId][entity] ?? 0,
-    );
-  }
+  applyEffectiveStats(world, entity, getEquipmentMap(world).get(entity));
 }
 
 // --- Validation ---

@@ -202,3 +202,30 @@ export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<Stat
   /** Luck: item magnetism and fortune. */
   luck: { pickupRange: 4 },
 };
+
+/**
+ * Per-point contribution of each PRIMARY_STAT to SECONDARY (effectiveStats)
+ * stats. Applied during effective-stat computation
+ * (see `core/effective-stats.ts`): each effective primary stat
+ * contributes `value × rate` to the listed secondary.
+ *
+ * This is the bridge that lets level-up core-stat allocation reach combat —
+ * e.g. Luck raises crit chance and Dexterity raises dodge chance, both of which
+ * the damage path reads from the player's EffectiveStats.
+ *
+ * Rates are per *point* of the effective primary (which already folds in the
+ * base value of 1, allocated level-up points, and equipment bonuses).
+ */
+export const CORE_STAT_TO_SECONDARY: Readonly<
+  Record<PrimaryStatId, Partial<Record<SecondaryStatId, number>>>
+> = {
+  strength: {},
+  /** Dexterity: nimbleness — chance to fully avoid an incoming hit. */
+  dexterity: { dodgeChance: 0.003 },
+  constitution: {},
+  intelligence: {},
+  wisdom: {},
+  charisma: {},
+  /** Luck: fortune — chance for an outgoing hit to critically strike. */
+  luck: { critChance: 0.005 },
+};

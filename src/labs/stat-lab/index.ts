@@ -69,6 +69,17 @@ function createStatLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
         `  ${s.padEnd(18)} ${eff.toFixed(3)}${delta !== 0 ? ` (${delta > 0 ? '+' : ''}${delta.toFixed(3)})` : ''}`,
       );
     }
+    const allocated = PRIMARY_STATS.filter(
+      (s) => (world.stores.coreStatPoints[s][entity] ?? 0) > 0,
+    );
+    lines.push('', 'ALLOCATED CORE POINTS (level-up):');
+    if (allocated.length === 0) {
+      lines.push('  (none)');
+    } else {
+      for (const s of allocated) {
+        lines.push(`  ${s.padEnd(14)} +${world.stores.coreStatPoints[s][entity]}`);
+      }
+    }
     output.textContent = lines.join('\n');
   }
 
@@ -83,6 +94,35 @@ function createStatLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       'equipTestItem',
     )
     .name('Equip Test Item');
+
+  // ITEM 5 bridge: allocating level-up core-stat points raises the derived
+  // secondaries (Luck → critChance, Dexterity → dodgeChance) through statSystem,
+  // which is exactly what the combat damage path reads.
+  gui
+    .add(
+      {
+        allocLuck: () => {
+          const c = world.stores.coreStatPoints.luck;
+          c[entity] = (c[entity] ?? 0) + 1;
+          render();
+        },
+      },
+      'allocLuck',
+    )
+    .name('Allocate +1 Luck → Crit');
+
+  gui
+    .add(
+      {
+        allocDex: () => {
+          const c = world.stores.coreStatPoints.dexterity;
+          c[entity] = (c[entity] ?? 0) + 1;
+          render();
+        },
+      },
+      'allocDex',
+    )
+    .name('Allocate +1 Dex → Dodge');
 
   gui
     .add(
@@ -113,7 +153,7 @@ function createStatLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Equip items and run statSystem ticks to verify stat aggregation. The statSystem recomputes effective = base + equipment each frame.';
+    'Equip items and run statSystem ticks to verify stat aggregation. Allocate Luck/Dexterity points to watch critChance/dodgeChance rise — the same EffectiveStats the combat damage path reads. The statSystem recomputes effective = base + core points + equipment + derived secondaries each frame.';
   hint.style.cssText = 'margin-top:16px; color:#fbcfe8; line-height:1.6;';
   controls.append(hint);
 

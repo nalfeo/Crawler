@@ -10,8 +10,14 @@ import {
   getEquipmentState,
 } from '../../src/core/systems/equipmentSystem.js';
 import { SLOT_REGISTRY } from '../../src/shared/equipment-slots.js';
-import { ALL_STAT_IDS, STAT_CLAMPS, DEFAULT_BASE_STATS } from '../../src/shared/stats.js';
-import type { StatId } from '../../src/shared/stats.js';
+import {
+  ALL_STAT_IDS,
+  STAT_CLAMPS,
+  DEFAULT_BASE_STATS,
+  PRIMARY_STATS,
+  CORE_STAT_TO_SECONDARY,
+} from '../../src/shared/stats.js';
+import type { StatId, SecondaryStatId } from '../../src/shared/stats.js';
 import type { EquipmentItemDef, ItemRarity } from '../../src/shared/equipment-types.js';
 
 const SLOT_IDS = SLOT_REGISTRY.map((s) => s.id);
@@ -67,7 +73,9 @@ describe('Equipment System — Property Tests', () => {
         const state = getEquipmentState(world, eid)!;
         const effective = getEffectiveStats(world, eid);
 
-        // Manually compute expected
+        // Manually compute expected: base + equipment, then derive secondaries
+        // from the (post-equipment) effective primaries, then clamp — mirroring
+        // applyEffectiveStats. (coreStatPoints is 0 for a fresh entity.)
         const expected = { ...DEFAULT_BASE_STATS } as Record<StatId, number>;
         const seenInstances = new Set<number>();
         for (const slotId of Object.keys(state.equipped)) {
@@ -80,6 +88,14 @@ describe('Equipment System — Property Tests', () => {
             if (typeof bonus === 'number' && ALL_STAT_IDS.includes(stat as StatId)) {
               expected[stat as StatId] = (expected[stat as StatId] || 0) + bonus;
             }
+          }
+        }
+
+        // Derive secondaries from the effective primaries.
+        for (const p of PRIMARY_STATS) {
+          const derived = CORE_STAT_TO_SECONDARY[p];
+          for (const [secondary, rate] of Object.entries(derived) as [SecondaryStatId, number][]) {
+            expected[secondary] = (expected[secondary] ?? 0) + expected[p] * rate;
           }
         }
 
