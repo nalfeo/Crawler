@@ -4,6 +4,7 @@ import {
   AoeOnImpact,
   Bouncing,
   AreaDamage,
+  BloodColor,
   Damage,
   Enemy,
   EnemyBehavior,
@@ -60,6 +61,21 @@ export function createEntity(world: GameWorld): number {
   return eid;
 }
 
+/** Default blood colour for any enemy that does not specify one (red). */
+export const DEFAULT_BLOOD_COLOR = 0xcc0000;
+
+/**
+ * Set the BloodColor component from a packed 0xRRGGBB integer.
+ * Exported so floor scenarios and other spawners can reuse it.
+ */
+export function setBloodColor(world: GameWorld, eid: number, hex: number): void {
+  addComponent(
+    world.ecs,
+    eid,
+    set(BloodColor, { r: (hex >> 16) & 0xff, g: (hex >> 8) & 0xff, b: hex & 0xff }),
+  );
+}
+
 export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180): number {
   const eid = createEntity(world);
 
@@ -81,6 +97,7 @@ export function spawnEnemy(
   y: number,
   hp: number,
   weight = 120,
+  bloodColorHex = DEFAULT_BLOOD_COLOR,
 ): number {
   const eid = createEntity(world);
 
@@ -90,6 +107,7 @@ export function spawnEnemy(
   addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Enemy);
+  setBloodColor(world, eid, bloodColorHex);
 
   return eid;
 }
@@ -110,6 +128,7 @@ export function spawnBehaviorEnemy(
     pathRefreshFrames?: number;
     isFlying?: boolean;
     weight?: number;
+    bloodColor?: number;
   },
 ): number {
   const eid = createEntity(world);
@@ -139,6 +158,7 @@ export function spawnBehaviorEnemy(
   if (isFlying) {
     addComponent(world.ecs, eid, Flying);
   }
+  setBloodColor(world, eid, options?.bloodColor ?? DEFAULT_BLOOD_COLOR);
 
   return eid;
 }

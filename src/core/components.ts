@@ -75,6 +75,11 @@ export const Npc = {};
 export const Invincible = {};
 /** Physical weight of an entity (lbs). Used for knockback, strength interactions, etc. */
 export const Weight = {};
+/**
+ * Blood/ichor colour for this entity (0xRRGGBB stored as r, g, b channels).
+ * Used by GoreVfx to tint hit splatter and death pools. Defaults to red (0xcc0000).
+ */
+export const BloodColor = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -214,6 +219,14 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     weight: {
       value: new Float32Array(maxEntities),
+    },
+    bloodColor: {
+      /** Red channel 0–255. */
+      r: new Uint8Array(maxEntities),
+      /** Green channel 0–255. */
+      g: new Uint8Array(maxEntities),
+      /** Blue channel 0–255. */
+      b: new Uint8Array(maxEntities),
     },
     baseStats: {
       strength: new Float32Array(maxEntities),

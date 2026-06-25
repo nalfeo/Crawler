@@ -26,4 +26,6 @@ export interface CombatEvent {
   /** Source position of the damage (attacker/projectile). Used for directional gore on hits. */
   sourceX?: number;
   sourceY?: number;
+  /** Blood/ichor colour of the dying entity (0xRRGGBB). Defaults to red when absent. */
+  bloodColor?: number;
 }

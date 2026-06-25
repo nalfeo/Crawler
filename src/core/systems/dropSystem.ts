@@ -7,8 +7,14 @@
  * and applies death knockback.
  */
 import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
-import { Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
-import { spawnBehaviorEnemy, spawnDroppedItem, spawnGold, spawnXpGem } from '../helpers.js';
+import { BloodColor, Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
+import {
+  DEFAULT_BLOOD_COLOR,
+  spawnBehaviorEnemy,
+  spawnDroppedItem,
+  spawnGold,
+  spawnXpGem,
+} from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
   rollLootTable,
@@ -30,7 +36,7 @@ const DEATH_KNOCKBACK_MAX = ftToPx(8);
 /** Knockback speed (pixels per frame-step). */
 const DEATH_KNOCKBACK_SPEED = 6;
 /** How long a dead entity persists before removal (ms). */
-const DEATH_LINGER_MS = 300;
+const DEATH_LINGER_MS = 3000;
 const DEFAULT_CONTACT_DAMAGE = 5;
 // Keep in sync with AI_TYPE.LEAPER in src/game/enemyAISystem.ts.
 const SLIME_LEAPER_AI_TYPE = 3;
@@ -160,6 +166,12 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 16) : 16;
   const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
   const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
+  // Inherit blood colour from the parent slime
+  const parentBloodColor = hasComponent(world.ecs, eid, BloodColor)
+    ? (world.stores.bloodColor.r[eid]! << 16) |
+      (world.stores.bloodColor.g[eid]! << 8) |
+      world.stores.bloodColor.b[eid]!
+    : undefined;
 
   for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
     const angle = world.rng.next() * Math.PI * 2;
@@ -180,6 +192,7 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
         pathRefreshFrames: world.stores.enemyBehavior.pathRefreshFrames[eid] ?? 10,
         isFlying: (world.stores.enemyBehavior.traversalMode[eid] ?? 0) === 1,
         weight: Math.max(1, (world.stores.weight.value[eid] ?? 120) * 0.5),
+        bloodColor: parentBloodColor,
       },
     );
     setComponent(world.ecs, miniEid, Sprite, {
@@ -297,6 +310,11 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
     }
 
     // Emit death combat event for gore VFX (with direction info)
+    const bloodColor = hasComponent(world.ecs, eid, BloodColor)
+      ? (world.stores.bloodColor.r[eid]! << 16) |
+        (world.stores.bloodColor.g[eid]! << 8) |
+        world.stores.bloodColor.b[eid]!
+      : DEFAULT_BLOOD_COLOR;
     world.combatEvents.push({
       type: 'death',
       x,
@@ -310,6 +328,7 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       knockbackDirY: killDirY,
       sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 20 : undefined,
       sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 20 : undefined,
+      bloodColor,
     });
 
     // Add death linger timer so entity persists for knockback/death animation

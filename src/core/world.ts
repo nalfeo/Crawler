@@ -44,6 +44,7 @@ import {
   Gold,
   Npc,
   Weight,
+  BloodColor,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -214,6 +215,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Gold, stores.gold);
   wireStore(ecs, Npc, stores.npc);
   wireStore(ecs, Weight, stores.weight);
+  wireStore(ecs, BloodColor, stores.bloodColor);
 
   const world: GameWorld = {
     ecs,

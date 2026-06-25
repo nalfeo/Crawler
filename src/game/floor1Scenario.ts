@@ -36,6 +36,8 @@ import {
   spawnNpc,
   createEntity,
   spawnDroppedItem,
+  setBloodColor,
+  DEFAULT_BLOOD_COLOR,
 } from '../core/helpers.js';
 import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
@@ -81,6 +83,10 @@ const FLOOR_1_VIEWPORT_WIDTH_PX = GAME.WIDTH / FLOOR_1_CAMERA_ZOOM;
 const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 2;
 const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
+
+/** Blood colours for Floor 1 enemy archetypes. */
+const BLOOD_COLOR_RAT = DEFAULT_BLOOD_COLOR; // red — 0xcc0000
+const BLOOD_COLOR_SLIME = 0x22aa44; // green ichor
 
 interface Floor1SpawnerState {
   lastSpawnMs: number;
@@ -1123,6 +1129,9 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     height: floor1Config.bossVariants!.ratSlime.spriteHeight,
   });
 
+  // ratSlime stair boss is primarily a slime creature.
+  setBloodColor(world, eid, BLOOD_COLOR_SLIME);
+
   // Boss has melee contact damage for swipe attacks.
   setComponent(world.ecs, eid, Damage, { amount: 12 });
 
@@ -1163,6 +1172,8 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
     width: floor1Config.bossVariants!.ratSlime.spriteWidth - 4,
     height: floor1Config.bossVariants!.ratSlime.spriteHeight - 4,
   });
+  // slimeRat quest boss is primarily a slime creature.
+  setBloodColor(world, eid, BLOOD_COLOR_SLIME);
   setComponent(world.ecs, eid, Damage, { amount: 8 });
   world.stores.enemyBehavior.aggroedPermanently[eid] = 1;
   world.stores.enemyBehavior.fireCooldownMs[eid] =
@@ -1364,6 +1375,9 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
   });
+
+  // Set blood colour based on archetype: slimes bleed green, rats bleed red.
+  setBloodColor(world, eid, archetype.id === 'slime' ? BLOOD_COLOR_SLIME : BLOOD_COLOR_RAT);
 
   world.floor1.enemyArchetypes.set(eid, archetype.id);
   state.lastSpawnMs = world.elapsedMs;
