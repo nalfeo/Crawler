@@ -58,6 +58,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'tile-blend-lab': '/src/labs/tile-blend-lab/index.ts',
   'sprite-tint-lab': '/src/labs/sprite-tint-lab/index.ts',
   'ui-probe-lab': '/src/labs/ui-probe-lab/index.ts',
+  'set-piece-lab': '/src/labs/set-piece-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {
