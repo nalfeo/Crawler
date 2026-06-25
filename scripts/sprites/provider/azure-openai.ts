@@ -26,6 +26,11 @@
 import { PNG } from 'pngjs';
 import type { GenerateSheetRequest, ImageProvider, ProviderErrorKind } from './types.js';
 import { ProviderError } from './types.js';
+import {
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  isTimeoutAbortError,
+  providerTimeoutMessage,
+} from './fetch-timeout.js';
 
 export interface AzureOpenAIImageProviderOptions {
   readonly endpoint: string;
@@ -37,6 +42,12 @@ export interface AzureOpenAIImageProviderOptions {
    * Tests pass a stub to avoid network IO.
    */
   readonly fetch?: typeof fetch;
+  /**
+   * Per-request timeout in ms. Defaults to {@link DEFAULT_PROVIDER_TIMEOUT_MS}.
+   * A request that exceeds it is aborted and surfaced as a `network` error so a
+   * hung Azure call can't block the generate pipeline indefinitely.
+   */
+  readonly timeoutMs?: number;
 }
 
 interface AzureImagesResponse {
@@ -50,6 +61,7 @@ export class AzureOpenAIImageProvider implements ImageProvider {
   private readonly apiKey: string;
   private readonly apiVersion: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(opts: AzureOpenAIImageProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
@@ -57,6 +69,7 @@ export class AzureOpenAIImageProvider implements ImageProvider {
     this.apiKey = opts.apiKey;
     this.apiVersion = opts.apiVersion;
     this.fetchImpl = opts.fetch ?? fetch;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
   }
 
   async generateSheet(request: GenerateSheetRequest): Promise<Buffer> {
@@ -87,8 +100,16 @@ export class AzureOpenAIImageProvider implements ImageProvider {
         method: 'POST',
         headers: { 'api-key': this.apiKey },
         body: form,
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
+      if (isTimeoutAbortError(err)) {
+        throw new ProviderError(
+          'network',
+          providerTimeoutMessage('Azure images/edits', this.timeoutMs),
+          { cause: err },
+        );
+      }
       throw new ProviderError('network', `network error calling Azure: ${(err as Error).message}`, {
         cause: err,
       });

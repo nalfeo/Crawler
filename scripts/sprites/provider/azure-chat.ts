@@ -27,6 +27,11 @@
 
 import type { ExpandVariationsRequest, TextProvider, TextProviderErrorKind } from './text-types.js';
 import { TextProviderError } from './text-types.js';
+import {
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  isTimeoutAbortError,
+  providerTimeoutMessage,
+} from './fetch-timeout.js';
 
 export interface AzureOpenAIChatProviderOptions {
   readonly endpoint: string;
@@ -40,6 +45,11 @@ export interface AzureOpenAIChatProviderOptions {
   readonly maxTokens?: number;
   /** Injectable fetch implementation; defaults to global fetch. */
   readonly fetch?: typeof fetch;
+  /**
+   * Per-request timeout in ms. Defaults to {@link DEFAULT_PROVIDER_TIMEOUT_MS}.
+   * Aborts a hung variation-expansion call instead of stalling the run.
+   */
+  readonly timeoutMs?: number;
 }
 
 interface ChatChoice {
@@ -59,6 +69,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
   private readonly temperature: number;
   private readonly maxTokens: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(opts: AzureOpenAIChatProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
@@ -68,6 +79,7 @@ export class AzureOpenAIChatProvider implements TextProvider {
     this.temperature = opts.temperature ?? 0.9;
     this.maxTokens = opts.maxTokens ?? 600;
     this.fetchImpl = opts.fetch ?? fetch;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
   }
 
   async expandVariations(request: ExpandVariationsRequest): Promise<ReadonlyArray<string>> {
@@ -94,8 +106,16 @@ export class AzureOpenAIChatProvider implements TextProvider {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
+      if (isTimeoutAbortError(err)) {
+        throw new TextProviderError(
+          'network',
+          providerTimeoutMessage('Azure chat', this.timeoutMs),
+          { cause: err },
+        );
+      }
       throw new TextProviderError(
         'network',
         `network error calling Azure chat: ${err instanceof Error ? err.message : String(err)}`,

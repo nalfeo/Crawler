@@ -21,6 +21,7 @@ import { createAssetQueue } from '../queue/index.js';
 import { createRunStore } from '../store/index.js';
 import { getSessionServerPorts } from '../../shared/session-server-ports.js';
 import { buildServer } from './server.js';
+import { createWorkerController } from './worker-controller.js';
 
 const HOST = '127.0.0.1';
 const VERSION = '0.2.0-workflow';
@@ -48,7 +49,16 @@ async function main(): Promise<number> {
   const runsDir = path.join(repoRoot, 'generated', 'runs');
   const store = createRunStore({ repoRoot });
   const queue = createAssetQueue();
-  const app = buildServer({ repoRoot, runsDir, version: VERSION, logger: true, store, queue });
+  const worker = createWorkerController({ queue, store, repoRoot });
+  const app = buildServer({
+    repoRoot,
+    runsDir,
+    version: VERSION,
+    logger: true,
+    store,
+    queue,
+    worker,
+  });
   const port = resolvePort();
 
   // SIGINT / SIGTERM both trigger a clean Fastify close so the port is
@@ -93,6 +103,30 @@ async function main(): Promise<number> {
     );
     process.stdout.write(`            POST /api/workflow/generate, POST /api/workflow/metadata\n`);
     process.stdout.write(`            GET/PUT /api/workflow/state (durable, ETag-guarded)\n`);
+    process.stdout.write(
+      `            POST /api/workflow/worker/start|stop, GET /api/workflow/worker/status\n`,
+    );
+
+    // Auto-start the in-process worker on the azure-queue backend so a queued
+    // generate always has a consumer. On the noop backend the generate route
+    // runs inline, so no worker is needed (and starting one would require Azure
+    // credentials the local dev box doesn't have).
+    if (queue.backend === 'azure-queue') {
+      const result = worker.start();
+      if (result.started) {
+        process.stdout.write(`  worker  : auto-started (backend=${queue.backend})\n`);
+      } else {
+        process.stdout.write(
+          `  worker  : NOT started (${result.reason})` +
+            (result.status.lastError ? ` — ${result.status.lastError}` : '') +
+            `\n`,
+        );
+      }
+    } else {
+      process.stdout.write(
+        `  worker  : idle (backend=${queue.backend}; generate runs inline, no worker needed)\n`,
+      );
+    }
     return 0;
   } catch (err) {
     process.stderr.write(`sprites:gallery sidecar: failed to bind ${HOST}:${port}\n`);

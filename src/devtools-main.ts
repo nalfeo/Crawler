@@ -849,6 +849,18 @@ function render(): void {
       display: 'none',
     },
   });
+  const launchWorkerBtn = el('button', {
+    text: 'Launch worker',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#0c4a6e',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      display: 'none',
+    },
+  });
   const metadataBtn = el('button', {
     text: 'Tag (metadata)',
     style: {
@@ -877,6 +889,7 @@ function render(): void {
     promoteBtn,
     generateBtn,
     cancelGenerateBtn,
+    launchWorkerBtn,
     metadataBtn,
     removeItemBtn,
   );
@@ -1216,6 +1229,15 @@ function render(): void {
   // so the progress line can name it and tune the "is the worker running?"
   // hint. Null until the first health check resolves.
   let sidecarQueueBackend: string | null = null;
+  // Latest in-process worker snapshot from /api/health (`worker` field). Null
+  // until the first health check resolves, or when an older sidecar omits it.
+  // Drives the "Launch worker" button visibility and the queued-stall hint.
+  let sidecarWorker: {
+    running: boolean;
+    processed: number;
+    failed: number;
+    lastError: string | null;
+  } | null = null;
 
   // --- Durable workflow-state sync ------------------------------------------
   // The sidecar (Azure Blob in production) is the source of truth for the
@@ -1680,6 +1702,12 @@ function render(): void {
       pollAttempts,
       queueBackend: sidecarQueueBackend,
     });
+    // On the queued path a stall is most often "no worker is consuming the
+    // queue". Surface that explicitly and point at the now-visible button.
+    if (isQueued && sidecarQueueBackend === 'azure-queue' && !sidecarWorker?.running) {
+      generationProgress.textContent +=
+        '\n⚠ No queue worker is running — click "Launch worker" to start processing this job.';
+    }
   };
 
   const renderWorkflowSelection = () => {
@@ -3350,18 +3378,57 @@ function render(): void {
     renderWorkflowSelection();
   };
 
+  // Show the "Launch worker" button only when the sidecar uses the azure-queue
+  // backend (the noop path runs generate inline, so it needs no worker) and no
+  // worker is currently running. This is the click target the queued-stall hint
+  // points at. Hidden when the worker is running or the backend is inline/unknown.
+  const updateWorkerControls = (): void => {
+    const needsWorker = sidecarQueueBackend === 'azure-queue' && !sidecarWorker?.running;
+    launchWorkerBtn.style.display = needsWorker ? '' : 'none';
+  };
+
   const checkWorkflowHealth = async (): Promise<void> => {
     try {
-      const health = await fetchJson<{ status: string; runsDir: string; queueBackend?: string }>(
-        `${SIDECAR_BASE}/api/health`,
-      );
+      const health = await fetchJson<{
+        status: string;
+        runsDir: string;
+        queueBackend?: string;
+        worker?: {
+          running?: boolean;
+          processed?: number;
+          failed?: number;
+          lastError?: string | null;
+        };
+      }>(`${SIDECAR_BASE}/api/health`);
       sidecarQueueBackend = typeof health.queueBackend === 'string' ? health.queueBackend : null;
+      sidecarWorker =
+        health.worker && typeof health.worker.running === 'boolean'
+          ? {
+              running: health.worker.running,
+              processed: health.worker.processed ?? 0,
+              failed: health.worker.failed ?? 0,
+              lastError: health.worker.lastError ?? null,
+            }
+          : null;
+      updateWorkerControls();
       const queueLine = sidecarQueueBackend ? `\nQueue: ${sidecarQueueBackend}` : '';
+      let workerLine = '';
+      if (sidecarQueueBackend === 'azure-queue') {
+        if (!sidecarWorker) {
+          workerLine = '\nWorker: unknown';
+        } else if (sidecarWorker.running) {
+          workerLine = `\nWorker: running (processed ${sidecarWorker.processed}, failed ${sidecarWorker.failed})`;
+        } else {
+          workerLine = '\nWorker: stopped — click "Launch worker" to process queued runs';
+        }
+      }
       setWorkflowStatus(
-        `Sidecar: ${health.status}\nRuns: ${health.runsDir}${queueLine}`,
+        `Sidecar: ${health.status}\nRuns: ${health.runsDir}${queueLine}${workerLine}`,
         '#93c5fd',
       );
     } catch (error) {
+      sidecarWorker = null;
+      updateWorkerControls();
       setWorkflowStatus(
         `Sidecar unreachable. Start it with: npm run sprites:gallery\n${error instanceof Error ? error.message : String(error)}`,
         '#fca5a5',
@@ -3818,8 +3885,15 @@ function render(): void {
               `Queued run polling stopped: invalid generationRequestedAt "${item.generationRequestedAt}".`,
             );
           }
-          generationPollAttempts.set(itemId, (generationPollAttempts.get(itemId) ?? 0) + 1);
+          const attempt = (generationPollAttempts.get(itemId) ?? 0) + 1;
+          generationPollAttempts.set(itemId, attempt);
           renderGenerationProgress();
+          // Refresh worker health on the first poll and periodically after, so
+          // a queued stall reflects the *current* worker state (and reveals the
+          // "Launch worker" button) instead of the init-time snapshot.
+          if (attempt === 1 || attempt % 5 === 0) {
+            void checkWorkflowHealth();
+          }
           try {
             const runs = await listSidecarRuns();
             // Match against the chosen candidate's id (the brief name), not kebabName.
@@ -3993,6 +4067,34 @@ function render(): void {
       `Canceled generation for "${item.brief}". The brief is unchanged — click Generate run to retry.`,
       '#fcd34d',
     );
+  });
+
+  launchWorkerBtn.addEventListener('click', async () => {
+    setButtonBusy(launchWorkerBtn, true, 'Launch worker', 'Launching...');
+    try {
+      const result = await fetchJson<{
+        started: boolean;
+        reason: string;
+        status: { running: boolean; lastError?: string | null };
+      }>(`${SIDECAR_BASE}/api/workflow/worker/start`, { method: 'POST' });
+      if (result.started || result.status.running) {
+        setWorkflowStatus(
+          'Worker launched. Queued generations will now be picked up and processed.',
+          '#bef264',
+        );
+      } else {
+        const detail = result.status.lastError ? ` — ${result.status.lastError}` : '';
+        setWorkflowStatus(`Could not launch worker (${result.reason})${detail}`, '#fca5a5');
+      }
+    } catch (error) {
+      setWorkflowStatus(
+        `Launch worker failed: ${error instanceof Error ? error.message : String(error)}`,
+        '#fca5a5',
+      );
+    } finally {
+      setButtonBusy(launchWorkerBtn, false, 'Launch worker', 'Launching...');
+      void checkWorkflowHealth();
+    }
   });
 
   metadataBtn.addEventListener('click', async () => {

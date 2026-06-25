@@ -12,8 +12,8 @@
  *   await runWorker({ queue, store, repoRoot, provider, signal });
  *
  * The worker exits cleanly when `signal` is aborted (SIGINT / SIGTERM from
- * the CLI) or when the queue returns null on every poll for the configured
- * `idleTimeoutMs` (useful for one-shot batch processing).
+ * the CLI). Otherwise it idle-polls indefinitely, sleeping `pollIntervalMs`
+ * between empty polls — it does NOT exit on an empty queue.
  */
 
 import path from 'node:path';
