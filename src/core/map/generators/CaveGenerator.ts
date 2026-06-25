@@ -29,10 +29,10 @@ export interface CaveOptions {
 }
 
 const DEFAULT_CAVE_OPTIONS: Required<CaveOptions> = {
-  initialFill: 0.5,
-  smoothingPasses: 4,
+  initialFill: 0.57,
+  smoothingPasses: 6,
   born: [5, 6, 7, 8],
-  survive: [4, 5, 6, 7, 8],
+  survive: [5, 6, 7, 8],
 };
 
 export class CaveGenerator implements MapGenerator {
@@ -56,7 +56,7 @@ export class CaveGenerator implements MapGenerator {
     const cellular = new ROTMap.Cellular(w, h, {
       born: this.options.born,
       survive: this.options.survive,
-      topology: 8,
+      topology: 4,
     });
 
     // Initial random fill

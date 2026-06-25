@@ -1307,11 +1307,11 @@ function ensureDoorAccess(
 }
 
 /**
- * Widen corridors by one tile perpendicular to their primary direction.
- * Horizontal corridors (neighboured E/W by floor) get a north or south tile added;
- * vertical corridors get an east or west tile added. Uses a two-pass approach
+ * Widen corridors perpendicular to their primary direction.
+ * Horizontal corridors (neighboured E/W by floor) can get north and south tiles added;
+ * vertical corridors can get east and west tiles added. Uses a two-pass approach
  * to avoid cascading widening from a single pass.
- * ~60 % of corridor tiles are widened to preserve some narrow sections.
+ * ~85 % of corridor tiles are widened to keep hallways broadly wide.
  */
 function widenCorridors(
   tileMap: TileMap,
@@ -1327,7 +1327,7 @@ function widenCorridors(
     for (let x = 1; x < w - 1; x++) {
       const idx = y * w + x;
       if (terrain[idx] !== TerrainType.CORRIDOR) continue;
-      if (rng.next() > 0.6) continue; // only widen ~60 % of corridor tiles
+      if (rng.next() > 0.85) continue; // only widen ~85 % of corridor tiles
 
       const tN = terrain[(y - 1) * w + x]!;
       const tS = terrain[(y + 1) * w + x]!;
@@ -1345,24 +1345,40 @@ function widenCorridors(
       const hasEW = floorOrCorridor(tE) || floorOrCorridor(tW);
 
       if (hasNS && !hasEW) {
-        // Vertical corridor — try to expand east
-        const targetIdx = y * w + (x + 1);
+        // Vertical corridor — expand east/west when possible.
+        const eastIdx = y * w + (x + 1);
         if (
           x + 1 < w - 1 &&
-          terrain[targetIdx] === TerrainType.STONE_WALL &&
-          !protectedWalls.has(targetIdx)
+          terrain[eastIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(eastIdx)
         ) {
-          toWiden.add(targetIdx);
+          toWiden.add(eastIdx);
+        }
+        const westIdx = y * w + (x - 1);
+        if (
+          x - 1 > 0 &&
+          terrain[westIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(westIdx)
+        ) {
+          toWiden.add(westIdx);
         }
       } else if (hasEW && !hasNS) {
-        // Horizontal corridor — try to expand south
-        const targetIdx = (y + 1) * w + x;
+        // Horizontal corridor — expand north/south when possible.
+        const southIdx = (y + 1) * w + x;
         if (
           y + 1 < h - 1 &&
-          terrain[targetIdx] === TerrainType.STONE_WALL &&
-          !protectedWalls.has(targetIdx)
+          terrain[southIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(southIdx)
         ) {
-          toWiden.add(targetIdx);
+          toWiden.add(southIdx);
+        }
+        const northIdx = (y - 1) * w + x;
+        if (
+          y - 1 > 0 &&
+          terrain[northIdx] === TerrainType.STONE_WALL &&
+          !protectedWalls.has(northIdx)
+        ) {
+          toWiden.add(northIdx);
         }
       }
     }
@@ -1394,7 +1410,7 @@ function addDiagonalShortcuts(
   const connected = new Set<string>();
 
   for (let i = 0; i < rooms.length; i++) {
-    if (rng.next() >= 0.7) continue; // attempt a diagonal shortcut for ~30 % of rooms
+    if (rng.next() >= 0.88) continue; // attempt a diagonal shortcut for ~12 % of rooms
 
     const a = rooms[i]!;
     const cxA = Math.floor(a.bounds.x + a.bounds.width / 2);
@@ -1415,10 +1431,10 @@ function addDiagonalShortcuts(
       const dy = Math.abs(cyB - cyA);
 
       // Both components must be significant (truly diagonal)
-      if (dx < 8 || dy < 8) continue;
+      if (dx < 10 || dy < 10) continue;
       // Not too far to be a useful shortcut
       const dist = dx + dy; // Manhattan, fast
-      if (dist > 60) continue;
+      if (dist > 45) continue;
       // Diagonal ratio: neither axis should dominate more than ~3:1
       if (dx > dy * 3 || dy > dx * 3) continue;
 
