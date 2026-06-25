@@ -200,6 +200,53 @@ describe('abilitySystem', () => {
     expect(world.playerMp).toBe(10);
   });
 
+  it('auto-casts fireball at a single nearby enemy without waiting for a cluster', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    world.stores.stats.damage[player] = 20; // fireball deals round(20 * 1.5) = 30
+    memorizeSpell(world, player, 'fireball');
+
+    // A lone enemy within the 48px (6ft) trigger radius must still draw fire.
+    const enemy = spawnEnemy(world, 30, 0, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+    expect(world.playerMp).toBe(15);
+    expect(world.stores.health.current[enemy]).toBe(70);
+  });
+
+  it('prioritizes the densest enemy cluster over a lone nearer enemy', () => {
+    const { world, player } = setupPlayer();
+    world.featureUnlocks.spells = true;
+    world.playerMp = 20;
+    world.stores.stats.damage[player] = 20; // fireball deals round(20 * 1.5) = 30
+    memorizeSpell(world, player, 'fireball');
+
+    // Lone enemy hugs the caster and is what trips the auto-trigger (within 48px),
+    // but a tight cluster sits farther out within blast reach. The blast should
+    // land on the cluster (3 hits) rather than the single nearby enemy (1 hit).
+    const lone = spawnEnemy(world, -40, 0, 100);
+    const clusterA = spawnEnemy(world, 85, 0, 100);
+    const clusterB = spawnEnemy(world, 90, 10, 100);
+    const clusterC = spawnEnemy(world, 80, -10, 100);
+
+    world.frameCount = 100;
+    abilitySystem(world);
+
+    const state = world.abilityStatesByEntity.get(player)!;
+    expect(state.cooldownByAbilityId.get('fireball')).toBe(100);
+    expect(world.stores.health.current[clusterA]).toBe(70);
+    expect(world.stores.health.current[clusterB]).toBe(70);
+    expect(world.stores.health.current[clusterC]).toBe(70);
+    // The lone enemy triggered the cast but lies outside the cluster blast, so it
+    // is spared — group priority, without ever being exclusive to clusters.
+    expect(world.stores.health.current[lone]).toBe(100);
+  });
+
   it('casts pulse shield only when low health and crowded, then spends 10 MP', () => {
     const { world, player } = setupPlayer();
     world.featureUnlocks.spells = true;

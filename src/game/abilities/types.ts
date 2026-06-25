@@ -47,7 +47,7 @@ const triggerConditionSchema = z.discriminatedUnion('kind', [
   z
     .object({
       kind: z.literal('enemy_cluster'),
-      minEnemies: z.number().int().min(2),
+      minEnemies: z.number().int().min(1),
       withinFeet: z.number().positive(),
     })
     .strict(),
