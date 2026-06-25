@@ -59,7 +59,7 @@ import {
 } from '../provider/factory.js';
 import { NoopAssetQueue } from '../queue/noop-queue.js';
 import type { AssetQueue } from '../queue/types.js';
-import { computeSliceMapV2 } from '../slice-sheet.js';
+import { computeSliceMap } from '../slice-sheet.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
 import { loadBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
@@ -421,10 +421,10 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         return { error: 'sheet-not-found' };
       }
       try {
-        const sliceMap = computeSliceMapV2(sheetPng, {
+        const sliceMap = computeSliceMap(sheetPng, {
           emptyCells: brief.generation.sheet.emptyCells,
         });
-        return { ...sliceMap, sheetFile, algorithm: 'v2' };
+        return { ...sliceMap, sheetFile, algorithm: 'content-aware' };
       } catch (err) {
         reply.code(500);
         return { error: 'slice-failed', message: String(err) };
