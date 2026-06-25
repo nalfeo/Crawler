@@ -28,8 +28,10 @@ Hello kitties: 2/5 = 0.40 🎀
   - slime-rat objective room (`slimeRatRoomPos`)
 - Sealing only converts passable non-door perimeter tiles to walls.
 - Added a connectivity safeguard: sealing is skipped if it would make the target room unreachable from spawn through any room door.
-- Added regression coverage in `tests/game/floor1-scenario.test.ts`:
-  - seed 42 now asserts the slime-rat room and primary safe room have no non-door perimeter openings.
+- Hardened the safeguard to a **global** spawn-reachability check (review follow-up): a seal is now applied only when every tile reachable from spawn _before_ sealing — other than the sealed tiles themselves — stays reachable _after_. This prevents sealing a breach that is the sole route to some unrelated side region, so the function is safe to run on all seeds (not just seed 42). `sealRoomPerimeterOpenings` is now exported for unit testing.
+- Added regression coverage:
+  - `tests/game/floor1-scenario.test.ts` — seed 42 asserts the slime-rat room and primary safe room have no non-door perimeter openings.
+  - `tests/game/seal-room-perimeter-openings.test.ts` — synthetic-map unit tests proving the guard seals a harmless breach but leaves a breach open when sealing it would isolate a side region.
 
 ## Validation
 
