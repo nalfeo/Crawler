@@ -121,4 +121,23 @@ None. Branch verified green and ready to PR.
 
 - Branch: `nalfeo-debug-headless-runner-slowness`
 - All tests passing: yes (`npm run verify` fully green)
-- Files changed: `src/game/ai/bt-ai-provider.ts` (only)
+- Files changed: `src/game/ai/bt-ai-provider.ts` (fix),
+  `tests/headless/floor1-completion.test.ts` (regression guard)
+
+## Follow-up — regression guard (commit `c7f01d9`)
+
+Added a per-combo wall-time guard to the Floor 1 headless completion gate so this
+blowup class cannot silently return. The gate deliberately asserts correctness on
+deterministic `gameTimeMs` and otherwise avoids wall-time SLAs (CI runners vary
+2–3x), so the new check is a single coarse catastrophe budget, not a tight SLA:
+
+- `HEADLESS_WALL_TIME_BUDGET_MS = 30_000` — ~4.5x the slowest dev-box combo
+  (bow/seed 6 ≈ 6.7s), far below the ~58s blowup it guards against. One new
+  `it('stays within the wall-time budget …')` per combo asserts
+  `stats.wallTimeMs < budget`.
+- Rationale for 30s over a literal "<10s": dev-box worst is 6.7s and CI is 2–3x
+  slower, so a 10s cap would flake (~13–20s on CI). 30s never flakes yet still
+  catches the 30x regression decisively (gate combos are longer than seed 12345,
+  so a recurrence balloons them to 60s+).
+- Verified: `npx vitest run --project headless` → 45 passed (9 combos × 5 its);
+  `npm run verify:fast` green.
