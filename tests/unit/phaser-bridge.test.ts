@@ -17,6 +17,8 @@ class MockImage {
   scaleX = 1;
   scaleY = 1;
   rotation = 0;
+  tint = 0xffffff;
+  tinted = false;
   frame: number | undefined;
 
   constructor(
@@ -43,6 +45,18 @@ class MockImage {
 
   setAlpha(alpha: number): this {
     this.alpha = alpha;
+    return this;
+  }
+
+  setTint(tint: number): this {
+    this.tint = tint;
+    this.tinted = true;
+    return this;
+  }
+
+  clearTint(): this {
+    this.tint = 0xffffff;
+    this.tinted = false;
     return this;
   }
 
@@ -209,7 +223,7 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.scaleX).toBeGreaterThan(1); // upscaled from 16x16
   });
 
-  it('adds a skull marker above enemies during their death linger window', () => {
+  it('fades the skull marker out quickly while the corpse desaturates and fades', () => {
     const { scene, images } = createSceneStub();
     const bridge = createPhaserBridge(scene);
     const world = createTestWorld();
@@ -222,22 +236,51 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     expect(images).toHaveLength(1);
 
-    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 300 }));
+    // First dead frame: skull spawned at full alpha, corpse untouched.
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 3000 }));
     bridge.sync(world);
 
     expect(images).toHaveLength(2);
-    expect(images[1]).toMatchObject({
+    const corpse = images[0]!;
+    const skull = images[1]!;
+    expect(skull).toMatchObject({
       x: 12,
-      y: 16,
+      y: 16, // 34 - DEAD_SKULL_Y_OFFSET, no rise yet
       textureKey: '__cw_dead_skull',
       destroyed: false,
     });
+    expect(skull.alpha).toBeCloseTo(0.95);
+    expect(corpse.alpha).toBe(1);
+    expect(corpse.tint).toBe(0xffffff); // no desaturation yet
+
+    // Partway through the short skull window: skull dimmer and floating up.
+    world.stores.deathTimer.remainingMs[eid] = 3000 - 450;
+    bridge.sync(world);
+    expect(skull.alpha).toBeLessThan(0.95);
+    expect(skull.alpha).toBeGreaterThan(0);
+    expect(skull.y).toBeLessThan(16); // risen upward
+    expect(corpse.tinted).toBe(true);
+    expect(corpse.tint).not.toBe(0xffffff); // draining toward grey
+
+    // Past the skull window but well before corpse removal: skull gone, corpse
+    // still fully present and now fully desaturated.
+    world.stores.deathTimer.remainingMs[eid] = 3000 - 900;
+    bridge.sync(world);
+    expect(skull.alpha).toBe(0);
+    expect(skull.visible).toBe(false);
+    expect(corpse.alpha).toBe(1);
+
+    // Late linger: corpse fading out.
+    world.stores.deathTimer.remainingMs[eid] = 600;
+    bridge.sync(world);
+    expect(corpse.alpha).toBeLessThan(1);
+    expect(corpse.alpha).toBeGreaterThan(0);
 
     removeEntity(world.ecs, eid);
     bridge.sync(world);
 
-    expect(images[0]?.destroyed).toBe(true);
-    expect(images[1]?.destroyed).toBe(true);
+    expect(corpse.destroyed).toBe(true);
+    expect(skull.destroyed).toBe(true);
   });
 
   it('renders rats and slimes with distinct enemy textures', () => {
