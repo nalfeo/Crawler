@@ -303,15 +303,6 @@ export class MainGameScene extends Phaser.Scene {
 
   private floorCompletionBodyText?: Phaser.GameObjects.Text;
 
-  /** Screen-space boss health bar shown during the Floor 1 boss fight. */
-  private bossHealthShell?: Phaser.GameObjects.Rectangle;
-
-  private bossHealthFill?: Phaser.GameObjects.Rectangle;
-
-  private bossHealthLabel?: Phaser.GameObjects.Text;
-
-  private bossHealthName?: Phaser.GameObjects.Text;
-
   /** Dedicated UI camera so HUD is not affected by world camera zoom. */
   private uiCamera?: Phaser.Cameras.Scene2D.Camera;
 
@@ -528,10 +519,6 @@ export class MainGameScene extends Phaser.Scene {
       this.dialogueBox?.destroy();
       this.directorCommentaryText?.destroy();
       this.floorCompletionScreen?.destroy();
-      this.bossHealthShell?.destroy();
-      this.bossHealthFill?.destroy();
-      this.bossHealthLabel?.destroy();
-      this.bossHealthName?.destroy();
       this.loadoutText?.destroy();
       this.hudUi?.destroy();
       this.inventoryUI?.destroy();
@@ -558,10 +545,6 @@ export class MainGameScene extends Phaser.Scene {
       this.floorCompletionTitleText = undefined;
       this.floorCompletionSubtitleText = undefined;
       this.floorCompletionBodyText = undefined;
-      this.bossHealthShell = undefined;
-      this.bossHealthFill = undefined;
-      this.bossHealthLabel = undefined;
-      this.bossHealthName = undefined;
       this.loadoutText = undefined;
       this.hudUi = undefined;
       this.keyAbilities = undefined;
@@ -1183,44 +1166,6 @@ export class MainGameScene extends Phaser.Scene {
       .setDepth(5500)
       .setScrollFactor(0)
       .setVisible(false);
-
-    const bossBarWidth = 360;
-    const bossBarX = GAME.WIDTH / 2 - bossBarWidth / 2;
-    const bossBarY = 16;
-    this.bossHealthShell = this.add
-      .rectangle(bossBarX + bossBarWidth / 2, bossBarY + 10, bossBarWidth + 4, 24, 0x111827, 0.92)
-      .setStrokeStyle(2, 0x4b5563)
-      .setScrollFactor(0)
-      .setDepth(1000)
-      .setVisible(false);
-    this.bossHealthFill = this.add
-      .rectangle(bossBarX, bossBarY + 10, bossBarWidth, 20, 0xf97316)
-      .setOrigin(0, 0.5)
-      .setScrollFactor(0)
-      .setDepth(1001)
-      .setVisible(false);
-    this.bossHealthLabel = this.add
-      .text(GAME.WIDTH / 2, bossBarY, 'BOSS', {
-        fontFamily: 'monospace',
-        fontSize: '12px',
-        color: '#fde68a',
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(1001)
-      .setVisible(false);
-    this.bossHealthName = this.add
-      .text(GAME.WIDTH / 2, bossBarY + 28, '', {
-        fontFamily: 'monospace',
-        fontSize: '13px',
-        color: '#f8fafc',
-        backgroundColor: '#0f172acc',
-        padding: { x: 6, y: 3 },
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(1001)
-      .setVisible(false);
   }
 
   private processLoadoutInput(): void {
@@ -1691,9 +1636,8 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private updateOverlayText(): void {
-    // HUD (health bar, floor timer, minimap) updates every frame
+    // HUD (health bar, floor timer, boss bar, minimap) updates every frame
     this.hudUi?.sync(this.world, this.playerEid);
-    this.updateBossHealthBar();
     this.updateDirectorCommentary();
 
     if (!this.world.floor1) {
@@ -1883,51 +1827,6 @@ export class MainGameScene extends Phaser.Scene {
       available,
       currentStats,
     });
-  }
-
-  private updateBossHealthBar(): void {
-    const objective = this.world.floor1?.objective;
-    const shell = this.bossHealthShell;
-    const fill = this.bossHealthFill;
-    const label = this.bossHealthLabel;
-    const name = this.bossHealthName;
-    if (!shell || !fill || !label || !name) {
-      return;
-    }
-
-    // Find the first active boss in insertion order (priority = bossBattles map order).
-    let activeBossEid: number | null = null;
-    let bossDisplayName = '';
-    if (objective) {
-      for (const battle of objective.bossBattles.values()) {
-        if (
-          battle.started &&
-          battle.bossEid !== null &&
-          entityExists(this.world.ecs, battle.bossEid)
-        ) {
-          activeBossEid = battle.bossEid;
-          bossDisplayName = battle.displayName || 'Boss';
-          break;
-        }
-      }
-    }
-
-    const barVisible = activeBossEid !== null;
-    shell.setVisible(barVisible);
-    fill.setVisible(barVisible);
-    label.setVisible(barVisible);
-    name.setVisible(barVisible);
-    if (!barVisible || activeBossEid === null) {
-      return;
-    }
-
-    const current = this.world.stores.health.current[activeBossEid] ?? 0;
-    const max = Math.max(1, this.world.stores.health.max[activeBossEid] ?? 1);
-    const pct = Math.max(0, Math.min(1, current / max));
-    const width = 360;
-    fill.setSize(Math.max(1, Math.round(width * pct)), 20);
-    fill.setFillStyle(pct > 0.5 ? 0x22c55e : pct >= 0.25 ? 0xf59e0b : 0xef4444);
-    name.setText(`${bossDisplayName}  ${Math.ceil(current)} / ${Math.ceil(max)}`);
   }
 
   private updateInteractions(): void {

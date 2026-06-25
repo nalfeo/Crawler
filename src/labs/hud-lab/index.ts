@@ -1,5 +1,6 @@
 /**
- * HUD Lab — Phaser-based sandbox for HudHealthBar, HudFloorTimer, and HudMinimap.
+ * HUD Lab — Phaser-based sandbox for HudHealthBar, HudFloorTimer, HudBossBar,
+ * and HudMinimap.
  *
  * Spins up a real Phaser.Game instance with a synthetic GameWorld so the actual
  * Phaser code paths (RenderTexture bake, Rectangle fill, tween lifecycle) run.
@@ -10,7 +11,7 @@ import Phaser from 'phaser';
 import { GAME, FLOOR } from '../../shared/constants.js';
 import { createHudUI } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
-import { spawnPlayer } from '../../core/index.js';
+import { spawnEnemy, spawnPlayer } from '../../core/index.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -21,11 +22,16 @@ interface HudLabSettings {
   timeRemainingS: number;
   floor: number;
   minimapExpanded: boolean;
+  bossFightActive: boolean;
+  bossHpPercent: number;
 }
 
 const LAB_ID = 'hud-lab';
 
 const SCENE_KEY = 'HudLabScene';
+
+/** Boss max HP used by the lab so the boss bar can be exercised. */
+const LAB_BOSS_MAX_HP = 500;
 
 function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
@@ -39,6 +45,8 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     timeRemainingS: 180,
     floor: 1,
     minimapExpanded: false,
+    bossFightActive: false,
+    bossHpPercent: 100,
   };
 
   const root = document.createElement('div');
@@ -58,6 +66,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
   let game: Phaser.Game | undefined;
   let world: GameWorld | undefined;
   let playerEid = -1;
+  let bossEid = -1;
   let hudUi: ReturnType<typeof createHudUI> | undefined;
   let elapsedTracker = 0;
 
@@ -139,6 +148,14 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
 
       elapsedTracker = 0;
 
+      // Spawn a boss entity and wire it into the first boss battle so the boss
+      // bar can be toggled on/off and driven via lil-gui.
+      bossEid = spawnEnemy(world, GAME.WIDTH / 2, GAME.HEIGHT / 2 - 90, LAB_BOSS_MAX_HP);
+      const slimeRatBattle = world.floor1.objective.bossBattles.get('slime-rat');
+      if (slimeRatBattle) {
+        slimeRatBattle.bossEid = bossEid;
+      }
+
       // Dark background
       this.add.rectangle(0, 0, GAME.WIDTH, GAME.HEIGHT, 0x05070f).setOrigin(0, 0);
 
@@ -183,6 +200,14 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       world.stores.health.current[playerEid] = current;
       world.stores.health.max[playerEid] = settings.maxHp;
 
+      // Drive the boss encounter so the boss bar shows beneath the floor timer.
+      const bossBattle = world.floor1?.objective.bossBattles.get('slime-rat');
+      if (bossBattle && bossEid >= 0) {
+        bossBattle.started = settings.bossFightActive;
+        world.stores.health.max[bossEid] = LAB_BOSS_MAX_HP;
+        world.stores.health.current[bossEid] = (settings.bossHpPercent / 100) * LAB_BOSS_MAX_HP;
+      }
+
       hudUi.sync(world, playerEid);
     }
   }
@@ -220,6 +245,8 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     .add(settings, 'floor', 1, 10, 1)
     .name('Floor')
     .onChange(() => {});
+  gui.add(settings, 'bossFightActive').name('Boss fight active');
+  gui.add(settings, 'bossHpPercent', 0, 100, 1).name('Boss HP %');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
   createGame();
@@ -235,6 +262,6 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
 registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'HUD Lab',
-  description: 'Interactive Phaser sandbox for health bar, floor timer, and minimap.',
+  description: 'Interactive Phaser sandbox for health bar, floor timer, boss bar, and minimap.',
   create: createHudLab,
 });
