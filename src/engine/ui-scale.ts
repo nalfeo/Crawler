@@ -30,6 +30,21 @@ import { GAME } from '../shared/constants.js';
  */
 const SCALE_RESIZE_EVENT = 'resize';
 
+/**
+ * Axis-aligned screen rectangle in CSS/scene pixels (the same space a Phaser
+ * `getBounds()` returns for a scroll-factor-0 UI object at camera zoom 1).
+ *
+ * Exposed by the canvas UI components purely as a test/automation affordance so
+ * e2e harnesses can locate and tap canvas-rendered controls (which have no DOM
+ * node) without re-deriving brittle layout math.
+ */
+export interface ScreenBounds {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 /** Never shrink the UI below its authored design size. */
 export const MIN_UI_SCALE = 1;
 /** Cap how large the UI can grow so it never swallows the whole screen. */

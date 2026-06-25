@@ -14,7 +14,7 @@
  */
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
-import { fitUiScale } from './ui-scale.js';
+import { fitUiScale, type ScreenBounds } from './ui-scale.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../shared/stats.js';
 import { PRIMARY_STAT_DISPLAY, formatCoreStatGains } from '../shared/stat-display.js';
 import {
@@ -58,6 +58,23 @@ export interface LevelUpUI {
   autoResolve(allocations: Partial<Record<PrimaryStatId, number>>): void;
   close(): void;
   isOpen(): boolean;
+  /**
+   * Test/automation affordance: world-space bounds of each stat row's −/+
+   * buttons, in PRIMARY_STATS order. Empty while the screen is closed. Lets e2e
+   * harnesses tap the real (responsive) increment/decrement controls.
+   */
+  getStatControlBounds(): Array<{
+    readonly stat: PrimaryStatId;
+    readonly minus: ScreenBounds;
+    readonly plus: ScreenBounds;
+  }>;
+  /**
+   * Test/automation affordance: current draft point allocation per stat, or
+   * null while the screen is closed.
+   */
+  getDraftAllocations(): Readonly<Record<PrimaryStatId, number>> | null;
+  /** Test/automation affordance: unspent points remaining in the draft. */
+  getRemainingPoints(): number;
   destroy(): void;
 }
 
@@ -161,12 +178,20 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
   let params: LevelUpUIParams | null = null;
   let dynamicNodes: Phaser.GameObjects.GameObject[] = [];
   let keyListener: ((event: KeyboardEvent) => void) | undefined;
+  // Live −/+ button rectangles per stat row (test/automation hit-targets),
+  // rebuilt on every rerender and cleared whenever the screen closes.
+  let statControls: Array<{
+    stat: PrimaryStatId;
+    minus: Phaser.GameObjects.Rectangle;
+    plus: Phaser.GameObjects.Rectangle;
+  }> = [];
 
   const clearDynamic = (): void => {
     for (const node of dynamicNodes) {
       node.destroy();
     }
     dynamicNodes = [];
+    statControls = [];
   };
 
   const previewValue = (stat: PrimaryStatId, draftPoints: number): number =>
@@ -205,7 +230,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     label: string,
     enabled: boolean,
     onClick: () => void,
-  ): void => {
+  ): Phaser.GameObjects.Rectangle => {
     const size = STAT_BUTTON_SIZE;
     const box = scene.add
       .rectangle(x, y, size, size, enabled ? 0x1d4ed8 : PIXEL_UI.panelFill, enabled ? 0.9 : 0.5)
@@ -223,6 +248,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     ).setOrigin(0.5, 0.5);
     dynamicNodes.push(box, text);
     overlay.add([box, text]);
+    return box;
   };
 
   const rerender = (): void => {
@@ -309,7 +335,9 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       const minusX = countX - STAT_BUTTON_SIZE - 6;
       const btnY = rowY + Math.round((ROW_HEIGHT - STAT_BUTTON_SIZE) / 2);
 
-      addButton(minusX, btnY, '−', draftPoints > 0, () => dispatch(decrementStat(state!, stat)));
+      const minusBox = addButton(minusX, btnY, '−', draftPoints > 0, () =>
+        dispatch(decrementStat(state!, stat)),
+      );
       const count = crispText(
         countX,
         rowY + ROW_HEIGHT / 2,
@@ -318,7 +346,10 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
       ).setOrigin(0.5, 0.5);
       dynamicNodes.push(count);
       overlay.add(count);
-      addButton(plusX, btnY, '+', remaining > 0, () => dispatch(incrementStat(state!, stat)));
+      const plusBox = addButton(plusX, btnY, '+', remaining > 0, () =>
+        dispatch(incrementStat(state!, stat)),
+      );
+      statControls.push({ stat, minus: minusBox, plus: plusBox });
     }
 
     const footerTop = rowsTop + PRIMARY_STATS.length * (ROW_HEIGHT + ROW_GAP) + 4;
@@ -465,6 +496,23 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     close,
     isOpen(): boolean {
       return state !== null && state.status === 'open';
+    },
+    getStatControlBounds() {
+      return statControls.map((control) => {
+        const minus = control.minus.getBounds();
+        const plus = control.plus.getBounds();
+        return {
+          stat: control.stat,
+          minus: { x: minus.x, y: minus.y, width: minus.width, height: minus.height },
+          plus: { x: plus.x, y: plus.y, width: plus.width, height: plus.height },
+        };
+      });
+    },
+    getDraftAllocations(): Readonly<Record<PrimaryStatId, number>> | null {
+      return state ? { ...state.draft } : null;
+    },
+    getRemainingPoints(): number {
+      return state ? remainingPoints(state) : 0;
     },
     destroy(): void {
       if (keyListener) {

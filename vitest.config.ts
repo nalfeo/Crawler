@@ -107,6 +107,11 @@ export default defineConfig({
           testTimeout: 120_000,
           passWithNoTests: true,
           globalSetup: ['tests/e2e/global-setup.ts'],
+          // e2e specs share ONE Vite lab server and each drives its own
+          // headless Chromium. Running files in parallel overloads the dev
+          // server (network never goes idle, renders stall under CPU
+          // contention), so force sequential file execution.
+          fileParallelism: false,
         },
       },
     ],
