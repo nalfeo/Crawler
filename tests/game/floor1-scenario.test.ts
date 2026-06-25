@@ -24,6 +24,7 @@ import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
+import { TileFlags } from '../../src/shared/map-types.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -598,6 +599,59 @@ describe('floor1Scenario', () => {
       world.goalFlags.set('floor1-boss-battle-complete', true);
       doorSystem(world);
       expect(allUnlocked()).toBe(true);
+    });
+
+    it('regression: seed 42 keeps slime-rat and primary safe room enterable only via doors', () => {
+      const world = createTestWorld({ seed: 42 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const floorMap = world.floorMap!;
+      const objective = world.floor1!.objective;
+
+      const slimeTile = floorMap.pixelToTile(
+        objective.slimeRatRoomPos.x,
+        objective.slimeRatRoomPos.y,
+      );
+      const slimeRoomId = floorMap.roomGraph.getRoomAt(slimeTile.x, slimeTile.y);
+      expect(slimeRoomId).toBeGreaterThanOrEqual(0);
+
+      const safeTile = floorMap.pixelToTile(objective.safeRoomPos.x, objective.safeRoomPos.y);
+      const safeRoomId = floorMap.roomGraph.getRoomAt(safeTile.x, safeTile.y);
+      expect(safeRoomId).toBeGreaterThanOrEqual(0);
+
+      const targetRoomIds = new Set<number>();
+      if (slimeRoomId >= 0) targetRoomIds.add(slimeRoomId);
+      if (safeRoomId >= 0) targetRoomIds.add(safeRoomId);
+
+      for (const roomId of targetRoomIds) {
+        const room = floorMap.roomGraph.get(roomId);
+        expect(room).toBeDefined();
+        if (!room) continue;
+
+        const knownDoorTiles = new Set(room.doors.map((door) => `${door.x},${door.y}`));
+        const perimeter: Array<[number, number]> = [];
+        const { x, y, width, height } = room.bounds;
+        for (let tx = x; tx < x + width; tx += 1) {
+          perimeter.push([tx, y], [tx, y + height - 1]);
+        }
+        for (let ty = y + 1; ty < y + height - 1; ty += 1) {
+          perimeter.push([x, ty], [x + width - 1, ty]);
+        }
+
+        for (const [tx, ty] of perimeter) {
+          const flags = floorMap.tileMap.flags[ty * floorMap.width + tx]!;
+          const isPassable = (flags & TileFlags.PASSABLE) !== 0;
+          const isDoor = (flags & TileFlags.DOOR) !== 0;
+          const isKnownDoor = knownDoorTiles.has(`${tx},${ty}`);
+          if (isPassable && !isDoor && !isKnownDoor) {
+            throw new Error(
+              `room ${roomId} has non-door perimeter opening at (${tx},${ty}) for seed 42`,
+            );
+          }
+        }
+      }
     });
 
     it('regression: seed 665790 spawns final boss at a passable tile (not in a wall)', () => {
