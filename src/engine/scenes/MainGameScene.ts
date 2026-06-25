@@ -29,7 +29,7 @@ import {
   trapSystem,
   type GameWorld,
 } from '../../core/index.js';
-import { GAME } from '../../shared/constants.js';
+import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import { UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
@@ -314,6 +314,12 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Dedicated UI camera so HUD is not affected by world camera zoom. */
   private uiCamera?: Phaser.Cameras.Scene2D.Camera;
+
+  /**
+   * Tracks whether the world camera is currently zoomed in for a safe room, so
+   * the smooth zoom tween only fires on the enter/leave transition.
+   */
+  private cameraInSafeRoom = false;
 
   private readonly uiMaskIgnoreList: Phaser.GameObjects.GameObject[] = [];
 
@@ -1259,7 +1265,8 @@ export class MainGameScene extends Phaser.Scene {
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.updateDoorOverlay();
     this.cameras.main.setBounds(0, 0, floorMap.widthPx, floorMap.heightPx);
-    this.cameras.main.setZoom(2.0);
+    this.cameras.main.setZoom(CAMERA.BASE_ZOOM);
+    this.cameraInSafeRoom = false;
   }
 
   private ensureUiCamera(): void {
@@ -1588,6 +1595,26 @@ export class MainGameScene extends Phaser.Scene {
     const x = this.world.stores.position.x[this.playerEid] ?? GAME.WIDTH * 0.5;
     const y = this.world.stores.position.y[this.playerEid] ?? GAME.HEIGHT * 0.5;
     this.cameras.main.centerOn(x, y);
+    this.updateSafeRoomZoom();
+  }
+
+  /**
+   * Delight: smoothly zoom the world camera 25% closer when the player enters a
+   * safe room, and ease back out when they leave. Only fires on transition so
+   * the zoom tween is not restarted every frame.
+   */
+  private updateSafeRoomZoom(): void {
+    const inSafeRoom = this.world.playerInSafeRoom;
+    if (inSafeRoom === this.cameraInSafeRoom) {
+      return;
+    }
+    this.cameraInSafeRoom = inSafeRoom;
+    this.cameras.main.zoomTo(
+      safeRoomCameraZoom(inSafeRoom),
+      CAMERA.SAFE_ROOM_ZOOM_DURATION_MS,
+      undefined,
+      true,
+    );
   }
 
   private updateObjectiveMarkers(): void {

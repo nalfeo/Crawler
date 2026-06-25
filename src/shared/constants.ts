@@ -15,6 +15,24 @@ export const GAME = {
   DELTA_MS: 1000 / 60,
 } as const;
 
+/**
+ * Camera tuning. The world camera renders at {@link CAMERA.BASE_ZOOM} during
+ * normal play. Entering a safe room is a "delight" moment: the camera eases in
+ * to {@link CAMERA.SAFE_ROOM_ZOOM_MULTIPLIER}× closer and eases back out on
+ * leaving.
+ */
+export const CAMERA = {
+  BASE_ZOOM: 2.0,
+  SAFE_ROOM_ZOOM_MULTIPLIER: 1.25,
+  /** Duration (ms) of the smooth zoom tween when entering/leaving a safe room. */
+  SAFE_ROOM_ZOOM_DURATION_MS: 400,
+} as const;
+
+/** Target world-camera zoom given whether the player is inside a safe room. */
+export function safeRoomCameraZoom(inSafeRoom: boolean): number {
+  return inSafeRoom ? CAMERA.BASE_ZOOM * CAMERA.SAFE_ROOM_ZOOM_MULTIPLIER : CAMERA.BASE_ZOOM;
+}
+
 export const PLAYER_SPEED: number = tuning.player.speed;
 
 export const WeaponType = {
