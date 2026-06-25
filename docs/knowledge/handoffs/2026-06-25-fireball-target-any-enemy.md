@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-25
 **Persona:** Producer (game systems — single-layer ability/effect change)
-**Apples:** estimated 🍎🍎🍎 / actual 🍎🍎 (over — turned out to be a contained 5-file change with no schema migration, lab, or ADR)
+**Apples:** estimated 🍎🍎🍎 / actual 🍎🍎 (over — contained change with no schema migration or lab; one ADR added for the cross-layer design decision)
 
 ## Task
 
