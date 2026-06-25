@@ -1671,7 +1671,7 @@ export class MainGameScene extends Phaser.Scene {
           .setDepth(45);
       const heightPx = def?.heightPx ?? 28;
       target.setColor(indicatorState === 'actionable' ? '#facc15' : '#9ca3af');
-      target.setPosition(x, y - heightPx * 0.75 - 12 + bobOffset);
+      target.setPosition(x, y - heightPx * 0.5 - 4 + bobOffset);
       this.npcQuestIndicators.set(eid, target);
     }
     for (const [eid, indicator] of this.npcQuestIndicators.entries()) {
