@@ -1,6 +1,6 @@
-import { query, removeEntity } from 'bitecs';
+import { addComponent, entityExists, query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Position, Rotation, Sprite } from '../../src/core/components.js';
+import { DeathTimer, Position, Rotation, Sprite } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
@@ -326,6 +326,75 @@ describe('floor1Scenario', () => {
     expect(objective.staircaseDiscovered).toBe(true);
     expect(world.state).toBe('safe_room');
     expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
+  });
+
+  it('unlocks staircase at killing blow (DeathTimer attached) before entity despawns', () => {
+    // Regression: the staircase used to stay locked through the full death animation
+    // because the "alive" check used entityExists(), which stays true until
+    // DEATH_LINGER_MS expires. The fix adds !hasComponent(DeathTimer) so the unlock
+    // fires the instant HP hits 0 (when dropSystem attaches DeathTimer).
+    const world = createTestWorld({ seed: 123 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    const objective = world.floor1?.objective;
+    if (!objective) {
+      throw new Error('Expected floor1 objective to exist');
+    }
+
+    // Fast-forward through prerequisites.
+    objective.ratsKilled = objective.requiredRats;
+    objective.slimesKilled = objective.requiredSlimes;
+    world.elapsedMs = 1_000;
+    floorObjectiveSystem(world);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    floorObjectiveSystem(world);
+    questSystem(world);
+    floorObjectiveSystem(world);
+    floorObjectiveSystem(world);
+    meetSpellQuestGiver(world);
+
+    // Trigger Slime Rat battle and defeat it.
+    world.stores.position.x[player] = objective.slimeRatRoomPos.x;
+    world.stores.position.y[player] = objective.slimeRatRoomPos.y;
+    floorObjectiveSystem(world);
+    const slimeRatBossEid = objective.bossBattles.get('slime-rat')!.bossEid;
+    if (slimeRatBossEid === null) {
+      throw new Error('Expected Slime Rat boss to exist');
+    }
+    removeEntity(world.ecs, slimeRatBossEid);
+    floorObjectiveSystem(world);
+    meetSpellQuestGiver(world);
+    questSystem(world);
+
+    // Move player to staircase zone to trigger the boss encounter.
+    world.stores.position.x[player] = objective.staircasePos.x;
+    world.stores.position.y[player] = objective.staircasePos.y;
+    floorObjectiveSystem(world);
+    expect(objective.bossBattles.get('staircase')!.started).toBe(true);
+
+    const bossEid = objective.bossBattles.get('staircase')!.bossEid;
+    if (bossEid === null) {
+      throw new Error('Expected staircase boss to exist');
+    }
+
+    // Simulate the killing blow: attach DeathTimer (what dropSystem does at HP 0)
+    // WITHOUT removing the entity — the body is still alive in ECS.
+    addComponent(world.ecs, bossEid, DeathTimer);
+
+    // Entity must still exist (death animation linger period).
+    expect(entityExists(world.ecs, bossEid)).toBe(true);
+
+    // The staircase should unlock immediately — not after entity despawn.
+    floorObjectiveSystem(world);
+    expect(objective.staircaseUnlocked).toBe(true);
+    expect(objective.staircaseLocked).toBe(false);
+    expect(objective.bossBattles.get('staircase')!.defeated).toBe(true);
+
+    // Entity is still present in ECS (body not yet purged).
+    expect(entityExists(world.ecs, bossEid)).toBe(true);
   });
 
   it('starts Slime Rat battle from spell quest acceptance without goon combat completion', () => {
