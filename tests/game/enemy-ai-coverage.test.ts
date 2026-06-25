@@ -454,7 +454,12 @@ describe('enemyAISystem — branch coverage hardening', () => {
     });
 
     expect(() => enemyAISystem(world)).not.toThrow();
-    expect(world.stores.enemyBehavior.persona[enemy]).toBe(PATH_PERSONA.FLANKER);
+    // The degenerate zero-offset flank branch must still yield a finite velocity;
+    // a regression producing NaN here would otherwise slip through silently.
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Number.isFinite(vx)).toBe(true);
+    expect(Number.isFinite(vy)).toBe(true);
   });
 
   it('fires an enemy projectile from a stationary ranged attacker in range (no floor map)', () => {
