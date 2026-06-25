@@ -9,6 +9,8 @@
  *   - GET  /api/runs/:briefId/:runId/sheet/:filename                         — source sheet PNG bytes
  *   - GET  /api/runs/:briefId/:runId/processed/:filename                     — static-file from run dir
  *   - GET  /api/runs/:briefId/:runId/raw/:filename                           — raw (pre-pipeline) cell PNG
+ *   - POST /api/runs/:briefId/:runId/postprocess                             — re-run PostProcess on the stored sheet
+ *   - POST /api/runs/:briefId/:runId/judge                                   — re-run the VLM judge on stored variants
  *   - POST /api/runs/:briefId/:runId/approve                                 — approve a variant (mutating)
  *
  * Security contract (spec §F8):
@@ -60,8 +62,18 @@ import {
 import { NoopAssetQueue } from '../queue/noop-queue.js';
 import type { AssetQueue } from '../queue/types.js';
 import { computeSliceMap } from '../slice-sheet.js';
+import { loadStyleGuide } from '../build-prompt.js';
+import type { PostprocessOptions } from '../postprocess.js';
+import type { RunSummary } from '../run-artifacts.js';
+import {
+  loadRunSummary,
+  rejudgeRun,
+  repostprocessRun,
+  RerunError,
+  type RerunErrorKind,
+} from '../rerun.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
-import { loadBrief } from '../load-brief.js';
+import { loadBrief, type LoadedBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { LocalRunStore } from '../store/local-store.js';
 import type { RunStore } from '../store/types.js';
@@ -173,6 +185,16 @@ interface WorkflowMetadataBody {
 
 interface WorkflowStateBody {
   readonly state?: unknown;
+}
+
+interface RunPostprocessBody {
+  readonly options?: unknown;
+  readonly sheet?: unknown;
+}
+
+interface RunJudgeBody {
+  readonly variantIndexes?: unknown;
+  readonly force?: unknown;
 }
 
 /**
@@ -517,6 +539,197 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return reply.send(fileData);
     },
   );
+
+  // Shared brief + summary resolution for the re-run endpoints. Mirrors the
+  // slice-map handler (load summary.json → resolve the brief path), plus the
+  // generate handler's re-materialisation of a checkpoint-wiped draft brief.
+  type RunBriefResolution =
+    | { readonly ok: true; readonly summary: RunSummary; readonly loaded: LoadedBrief }
+    | { readonly ok: false; readonly status: number; readonly body: Record<string, unknown> };
+  const resolveRunForRerun = async (
+    briefId: string,
+    runId: string,
+  ): Promise<RunBriefResolution> => {
+    if (safeJoin(deps.runsDir, [briefId, runId, 'summary.json']) === null) {
+      return { ok: false, status: 403, body: { error: 'forbidden-path' } };
+    }
+    let summary: RunSummary;
+    try {
+      summary = await loadRunSummary(store, briefId, runId);
+    } catch (err) {
+      if (err instanceof RerunError) {
+        return {
+          ok: false,
+          status: rerunErrorStatus(err.kind),
+          body: { error: err.kind, message: err.message },
+        };
+      }
+      throw err;
+    }
+    if (typeof summary.briefPath !== 'string') {
+      return { ok: false, status: 404, body: { error: 'brief-path-missing' } };
+    }
+    const resolved = path.isAbsolute(summary.briefPath)
+      ? summary.briefPath
+      : path.resolve(deps.repoRoot, summary.briefPath);
+    const rel = path.relative(deps.repoRoot, resolved);
+    if (rel.startsWith('..') || path.isAbsolute(rel)) {
+      return { ok: false, status: 403, body: { error: 'forbidden-brief-path' } };
+    }
+    // A re-run can happen after a checkpoint wiped the gitignored draft brief:
+    // re-materialise it from the store before failing (same as /api/workflow/generate).
+    if (
+      !existsSync(resolved) &&
+      !(await materializeBriefFromStore(store, deps.repoRoot, resolved))
+    ) {
+      return { ok: false, status: 404, body: { error: 'brief-not-found' } };
+    }
+    let loaded: LoadedBrief;
+    try {
+      loaded = loadBrief(resolved, { projectRoot: deps.repoRoot });
+    } catch {
+      return { ok: false, status: 500, body: { error: 'brief-load-failed' } };
+    }
+    return { ok: true, summary, loaded };
+  };
+
+  // POST /api/runs/:briefId/:runId/postprocess — re-run PostProcess (content-aware
+  // re-slice + re-post-process + re-score) over the STORED sheet with tweakable
+  // options, WITHOUT regenerating. Deterministic (no LLM), so it is CI-safe.
+  app.post<{
+    Params: { briefId: string; runId: string };
+    Body: RunPostprocessBody;
+  }>('/api/runs/:briefId/:runId/postprocess', async (req, reply) => {
+    const { briefId, runId } = req.params;
+    const body = (req.body ?? {}) as RunPostprocessBody;
+    const options =
+      typeof body.options === 'object' && body.options !== null
+        ? (body.options as PostprocessOptions)
+        : undefined;
+    if (body.sheet !== undefined && typeof body.sheet !== 'string') {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.sheet must be a sheet-NN.png filename' };
+    }
+    const sheet = typeof body.sheet === 'string' && body.sheet.length > 0 ? body.sheet : undefined;
+
+    const resolution = await resolveRunForRerun(briefId, runId);
+    if (!resolution.ok) {
+      reply.code(resolution.status);
+      return resolution.body;
+    }
+    try {
+      const result = await repostprocessRun({
+        store,
+        briefId,
+        runId,
+        summary: resolution.summary,
+        brief: resolution.loaded.brief,
+        palette: resolution.loaded.palette,
+        ...(options ? { options } : {}),
+        ...(sheet ? { sheetFile: sheet } : {}),
+      });
+      return {
+        status: 'completed' as const,
+        briefId,
+        runId,
+        sheetFile: result.sheetFile,
+        summary: result.summary,
+      };
+    } catch (err) {
+      if (err instanceof RerunError) {
+        reply.code(rerunErrorStatus(err.kind));
+        return { error: err.kind, message: err.message };
+      }
+      reply.code(500);
+      return {
+        error: 'postprocess-failed',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
+
+  // POST /api/runs/:briefId/:runId/judge — re-run the VLM judge over the STORED
+  // processed PNGs (optionally a subset via `variantIndexes`, optionally past a
+  // failing sensor via `force`). LLM-as-judge ⇒ refused in CI (Constitutional §3).
+  app.post<{
+    Params: { briefId: string; runId: string };
+    Body: RunJudgeBody;
+  }>('/api/runs/:briefId/:runId/judge', async (req, reply) => {
+    const env = deps.env ?? process.env;
+    if (env.CI !== undefined) {
+      reply.code(403);
+      return {
+        error: 'ci-refused',
+        message:
+          'Per Constitutional §3, the sprite-pipeline judge endpoint is local-only ' +
+          '(LLM-as-judge must not run in CI). Run the gallery sidecar locally to re-judge.',
+      };
+    }
+
+    const { briefId, runId } = req.params;
+    const body = (req.body ?? {}) as RunJudgeBody;
+    const force = body.force === true;
+    let variantIndexes: number[] | undefined;
+    if (body.variantIndexes !== undefined) {
+      if (
+        !Array.isArray(body.variantIndexes) ||
+        body.variantIndexes.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 0)
+      ) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: 'body.variantIndexes must be an array of non-negative integers',
+        };
+      }
+      variantIndexes = body.variantIndexes as number[];
+    }
+
+    const resolution = await resolveRunForRerun(briefId, runId);
+    if (!resolution.ok) {
+      reply.code(resolution.status);
+      return resolution.body;
+    }
+    const visionProvider = createVisionProvider({ env });
+    if (!visionProvider) {
+      reply.code(400);
+      return {
+        error: 'vision-not-configured',
+        message:
+          'No vision provider configured. Set AZURE_OPENAI_VISION_DEPLOYMENT and ' +
+          'SPRITES_VISION_PROVIDER=azure-openai to re-judge.',
+      };
+    }
+    try {
+      const brief = resolution.loaded.brief;
+      const referencePngs = brief.references.map((ref) =>
+        readFileSync(path.resolve(deps.repoRoot, ref.path)),
+      );
+      const result = await rejudgeRun({
+        store,
+        briefId,
+        runId,
+        summary: resolution.summary,
+        brief,
+        referencePngs,
+        styleGuide: loadStyleGuide(deps.repoRoot),
+        visionProvider,
+        force,
+        ...(variantIndexes ? { variantIndexes } : {}),
+        env,
+      });
+      return { status: 'completed' as const, briefId, runId, summary: result.summary };
+    } catch (err) {
+      if (err instanceof RerunError) {
+        reply.code(rerunErrorStatus(err.kind));
+        return { error: err.kind, message: err.message };
+      }
+      reply.code(500);
+      return {
+        error: 'judge-failed',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+  });
 
   app.post<{
     Params: { briefId: string; runId: string };
@@ -1043,6 +1256,21 @@ function resolveRepoPath(repoRoot: string, relativePath: string): string | null 
 
 function toRepoRelativePath(repoRoot: string, absolutePath: string): string {
   return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
+}
+
+/** Map a {@link RerunError} kind to the HTTP status the re-run routes return. */
+function rerunErrorStatus(kind: RerunErrorKind): number {
+  switch (kind) {
+    case 'run-not-found':
+    case 'sheet-not-found':
+    case 'processed-missing':
+      return 404;
+    case 'unsupported-sheet-filename':
+      return 415;
+    case 'summary-invalid':
+    case 'slice-failed':
+      return 500;
+  }
 }
 
 /**

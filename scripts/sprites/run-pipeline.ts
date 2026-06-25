@@ -1,0 +1,361 @@
+/**
+ * Shared per-variant pipeline used by BOTH the fresh-generation orchestrator
+ * (`generateOne`) and the re-run endpoints (`repostprocessRun` / `rejudgeRun`).
+ *
+ * Centralising the post-process → score → store-artifacts block and the gated
+ * VLM judge pass here guarantees a fresh run and a re-run over the SAME stored
+ * sheet produce byte-identical artifacts — the same "one code path" discipline
+ * ADR 0018 applied to slicing, now applied to post-processing and judging.
+ *
+ * Everything here is impure (it writes through the injected `RunStore` and the
+ * judge calls a provider), but the pure pieces it composes (`postprocessWithTrace`,
+ * `scoreCandidate`, `judgeVariant`) keep their own unit tests.
+ */
+
+import { PNG } from 'pngjs';
+import { buildAnchorOverlay } from './anchor-overlay.js';
+import type { Brief, PaletteColors } from './brief-schema.js';
+import type { JudgeBudget } from './cost-tracker.js';
+import type { JudgeCache } from './judge-cache.js';
+import { judgeVariant, type JudgeScorecard } from './judge.js';
+import { type PostprocessOptions, postprocessWithTrace } from './postprocess.js';
+import { scoreCandidate } from './score-candidate.js';
+import type { JudgeSkipReason, RunSummaryEntry } from './run-artifacts.js';
+import type { RunStore } from './store/types.js';
+import type { VisionProvider } from './provider/vision-types.js';
+import { createLogger } from '../../src/shared/logger.js';
+
+const logger = createLogger('infra:run-pipeline');
+
+const pad2 = (n: number): string => String(n).padStart(2, '0');
+
+/**
+ * One post-processed, sensor-scored variant plus the resolved store paths to
+ * its written artifacts. Mirrors the per-variant `RunSummaryEntry` fields that
+ * are decided by sensors alone (the judge fields are layered on later by
+ * {@link assembleSummaryEntries}). The decoded `processed` buffer is kept so
+ * the diversity pass and the judge pass don't re-read it from the store.
+ */
+export interface ProcessedVariant {
+  readonly index: number;
+  readonly score: number;
+  readonly outOf: number;
+  readonly breakdown: RunSummaryEntry['breakdown'];
+  readonly passed: boolean;
+  readonly rawPath: string;
+  readonly processedPath: string;
+  readonly scorecardPath: string;
+  readonly derivedAnchor: RunSummaryEntry['derivedAnchor'];
+  readonly derivedAnchors: RunSummaryEntry['derivedAnchors'];
+  readonly anchorSidecarPath: string | null;
+  readonly centerOfGravitySidecarPath: string | null;
+  readonly anchorOverlayPath: string;
+  readonly processed: Buffer;
+}
+
+export interface ProcessVariantArgs {
+  readonly store: RunStore;
+  /** Maps a run-relative path (e.g. `raw/00.png`) to a full store key. */
+  readonly storeKey: (rel: string) => string;
+  readonly index: number;
+  readonly raw: Buffer;
+  readonly brief: Brief;
+  readonly palette: PaletteColors;
+  /** Post-processing tweaks. Omit for generation defaults. */
+  readonly options?: PostprocessOptions;
+}
+
+/**
+ * Post-process one raw cell, score it, and write every per-variant artifact
+ * (raw PNG, processed PNG, sensor scorecard, pipeline-step PNGs + index, anchor
+ * sidecars, and the anchor-overlay PNG) through the store. Returns the
+ * {@link ProcessedVariant} the summary is assembled from.
+ *
+ * Extracted verbatim from `generateOne` so re-running post-processing over a
+ * stored sheet writes byte-identical artifacts.
+ */
+export async function postprocessScoreAndStoreVariant(
+  args: ProcessVariantArgs,
+): Promise<ProcessedVariant> {
+  const { store, storeKey, index, raw, brief, palette } = args;
+  const traced = postprocessWithTrace(raw, brief, palette, args.options ?? {});
+  const processed = traced.finalPng;
+  const scorecard = scoreCandidate(processed, brief, palette);
+  const id = pad2(index);
+
+  await store.put(storeKey(`raw/${id}.png`), raw);
+  await store.put(storeKey(`processed/${id}.png`), processed);
+  await store.put(
+    storeKey(`processed/${id}.scorecard.json`),
+    Buffer.from(`${JSON.stringify(scorecard, null, 2)}\n`),
+  );
+  const pipelineSteps = traced.steps.map((step, idx) => {
+    const file = `${id}.step-${String(idx + 1).padStart(2, '0')}-${step.id}.png`;
+    return { id: step.id, label: step.label, file, png: step.png };
+  });
+  for (const step of pipelineSteps) {
+    await store.put(storeKey(`processed/${step.file}`), step.png);
+  }
+  await store.put(
+    storeKey(`processed/${id}.pipeline.json`),
+    Buffer.from(
+      `${JSON.stringify(
+        {
+          profile: 'default',
+          steps: pipelineSteps.map((step) => ({
+            id: step.id,
+            label: step.label,
+            file: step.file,
+          })),
+        },
+        null,
+        2,
+      )}\n`,
+    ),
+  );
+
+  let anchorSidecarPath: string | null = null;
+  if (scorecard.derivedAnchor) {
+    const anchorKey = storeKey(`processed/${id}.anchor.json`);
+    await store.put(
+      anchorKey,
+      Buffer.from(
+        `${JSON.stringify({ x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y, source: 'derived' as const }, null, 2)}\n`,
+      ),
+    );
+    anchorSidecarPath = store.resolve(anchorKey);
+  }
+  let centerOfGravitySidecarPath: string | null = null;
+  if (scorecard.derivedAnchors.centerOfGravity) {
+    const cogKey = storeKey(`processed/${id}.anchor.cog.json`);
+    await store.put(
+      cogKey,
+      Buffer.from(
+        `${JSON.stringify(
+          {
+            x: scorecard.derivedAnchors.centerOfGravity.x,
+            y: scorecard.derivedAnchors.centerOfGravity.y,
+            source: 'derived' as const,
+          },
+          null,
+          2,
+        )}\n`,
+      ),
+    );
+    centerOfGravitySidecarPath = store.resolve(cogKey);
+  }
+
+  const { width: overlayW, height: overlayH } = (() => {
+    const img = PNG.sync.read(processed);
+    return { width: img.width, height: img.height };
+  })();
+  const overlayKey = storeKey(`processed/${id}.anchor-overlay.png`);
+  await store.put(
+    overlayKey,
+    buildAnchorOverlay({
+      width: overlayW,
+      height: overlayH,
+      anchor: scorecard.derivedAnchor
+        ? { x: scorecard.derivedAnchor.x, y: scorecard.derivedAnchor.y }
+        : null,
+    }),
+  );
+
+  return {
+    index,
+    score: scorecard.score,
+    outOf: scorecard.outOf,
+    breakdown: scorecard.breakdown,
+    passed: scorecard.passed,
+    rawPath: store.resolve(storeKey(`raw/${id}.png`)),
+    processedPath: store.resolve(storeKey(`processed/${id}.png`)),
+    scorecardPath: store.resolve(storeKey(`processed/${id}.scorecard.json`)),
+    derivedAnchor: scorecard.derivedAnchor,
+    derivedAnchors: scorecard.derivedAnchors,
+    anchorSidecarPath,
+    centerOfGravitySidecarPath,
+    anchorOverlayPath: store.resolve(overlayKey),
+    processed,
+  };
+}
+
+export interface JudgePassArgs {
+  /** Variants to consider. `generateOne` passes all; a re-run may pass a subset. */
+  readonly variants: ReadonlyArray<ProcessedVariant>;
+  /**
+   * Whether judging happens at all. `generateOne` passes
+   * `brief.judge.enabled`; the manual Judge stage always passes `true`.
+   */
+  readonly judgeEnabled: boolean;
+  readonly brief: Brief;
+  readonly referencePngs: ReadonlyArray<Buffer>;
+  readonly styleGuide: string;
+  readonly visionProvider: VisionProvider | null;
+  readonly store: RunStore;
+  readonly storeKey: (rel: string) => string;
+  readonly judgeBudget?: JudgeBudget | null;
+  readonly judgeCache?: JudgeCache | null;
+  readonly now?: () => Date;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly warn?: (message: string) => void;
+  /**
+   * Force the judge to run on variants that FAILED their sensors. Powers the
+   * "force judge" operator action: a sensor-failed variant is normally skipped
+   * with `judgeSkipReason: 'sensor-failed'`; with `force` it is judged anyway.
+   */
+  readonly force?: boolean;
+  /**
+   * Restrict judging to these variant indexes. When provided, ONLY these
+   * variants get a plan/skip entry (others are left untouched so a caller can
+   * preserve their prior verdicts). Omit to consider every variant.
+   */
+  readonly variantIndexes?: ReadonlySet<number>;
+}
+
+export interface JudgePassResult {
+  readonly judgePlan: Map<number, JudgeScorecard | null>;
+  readonly judgeSkipReason: Map<number, JudgeSkipReason | null>;
+}
+
+/**
+ * Run the gated VLM judge over the considered variants.
+ *
+ * Eligibility (unchanged from `generateOne`): only sensor-passing variants are
+ * judged — capped at `brief.judge.maxVariants` after ranking by sensor score —
+ * unless `force` is set, which makes sensor-failed variants eligible too. The
+ * per-call budget gate and judge cache behave exactly as in a fresh run.
+ *
+ * The returned maps only contain entries for the CONSIDERED variants (all of
+ * them when `variantIndexes` is omitted), so a partial re-judge can merge them
+ * over prior verdicts.
+ */
+export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult> {
+  const judgePlan = new Map<number, JudgeScorecard | null>();
+  const judgeSkipReason = new Map<number, JudgeSkipReason | null>();
+  const { variants, brief, force } = args;
+
+  const considered = (e: ProcessedVariant): boolean =>
+    args.variantIndexes === undefined || args.variantIndexes.has(e.index);
+  const consideredVariants = variants.filter(considered);
+
+  if (!args.judgeEnabled) {
+    for (const e of consideredVariants) {
+      judgePlan.set(e.index, null);
+      judgeSkipReason.set(e.index, 'judge-disabled');
+    }
+    return { judgePlan, judgeSkipReason };
+  }
+
+  // Decide which considered variants are judge-eligible. Cap by maxVariants to
+  // bound cost; ranking by sensor score spends budget on the best candidates.
+  // `force` lifts the sensor-pass requirement so failing variants get judged.
+  const judgeable = consideredVariants.filter((e) => force || e.passed);
+  const ordered = [...judgeable].sort((a, b) => b.score - a.score || a.index - b.index);
+  const eligible = new Set(ordered.slice(0, brief.judge.maxVariants).map((e) => e.index));
+
+  for (const e of consideredVariants) {
+    if (!force && !e.passed) {
+      judgePlan.set(e.index, null);
+      judgeSkipReason.set(e.index, 'sensor-failed');
+    } else if (!eligible.has(e.index)) {
+      judgePlan.set(e.index, null);
+      judgeSkipReason.set(e.index, 'over-cap');
+    }
+  }
+
+  // Sequential judging keeps Azure rate-limit headroom predictable and makes
+  // per-variant errors easy to attribute, same as the generation pipeline.
+  for (const e of consideredVariants) {
+    if (!eligible.has(e.index)) continue;
+    if (!args.visionProvider) {
+      throw new Error(
+        'runJudgePass: judging requested but no vision provider supplied. Configure ' +
+          'AZURE_OPENAI_VISION_DEPLOYMENT (and SPRITES_VISION_PROVIDER=azure-openai) or ' +
+          'disable judging.',
+      );
+    }
+    // Budget gate runs BEFORE the call so a blown budget skips cheaply. Cache
+    // hits cost $0 of Azure spend, so they bypass the gate.
+    if (args.judgeBudget && args.judgeBudget.wouldExceed() && !args.judgeCache) {
+      args.judgeBudget.recordSkip();
+      const warn = args.warn ?? logger.warn.bind(logger);
+      warn(`judge-budget exhausted: skipping variant ${e.index} (${args.judgeBudget.format()})`);
+      judgePlan.set(e.index, null);
+      judgeSkipReason.set(e.index, 'over-budget');
+      continue;
+    }
+    const cacheMissesBefore = args.judgeCache?.stats.misses ?? 0;
+    const scorecard = await judgeVariant({
+      processed: e.processed,
+      referencePngs: args.referencePngs,
+      brief,
+      styleGuide: args.styleGuide,
+      provider: args.visionProvider,
+      variantIndex: e.index,
+      // The judge sidecar (`NN.judge.json`) is written with `writeFileSync`, so
+      // `processedDir` must be a real local path. For non-local stores
+      // `store.resolve()` returns a blob URL that `path.join` would mangle into
+      // an ENOENT path. Omit it off-local: the scorecard is still embedded in
+      // the run summary, so no judge data is lost.
+      ...(args.store.backend === 'local'
+        ? { processedDir: args.store.resolve(args.storeKey('processed')) }
+        : {}),
+      variantPath: e.processedPath,
+      ...(args.judgeCache ? { cache: args.judgeCache } : {}),
+      ...(args.now ? { now: args.now } : {}),
+      ...(args.env ? { env: args.env } : {}),
+    });
+    const newAzureCall = args.judgeCache ? args.judgeCache.stats.misses > cacheMissesBefore : true;
+    if (newAzureCall && args.judgeBudget && scorecard.usage) {
+      args.judgeBudget.recordCall(scorecard.usage);
+    }
+    judgePlan.set(e.index, scorecard);
+    judgeSkipReason.set(e.index, null);
+  }
+
+  return { judgePlan, judgeSkipReason };
+}
+
+export interface AssembleEntriesArgs {
+  readonly variants: ReadonlyArray<ProcessedVariant>;
+  readonly judgePlan: ReadonlyMap<number, JudgeScorecard | null>;
+  readonly judgeSkipReason: ReadonlyMap<number, JudgeSkipReason | null>;
+  readonly judgeEnabled: boolean;
+}
+
+/**
+ * Fold each variant's sensor result together with its judge verdict into the
+ * final `RunSummaryEntry`, computing the combined sensor+judge pipeline gate.
+ *
+ * `combinedPassed` requires sensors to pass AND (judging disabled OR a judge
+ * verdict that passed) — identical to `generateOne`'s formula, kept in one
+ * place so fresh runs and re-runs can't diverge on the gate.
+ */
+export function assembleSummaryEntries(args: AssembleEntriesArgs): RunSummaryEntry[] {
+  const entries: RunSummaryEntry[] = [];
+  for (const e of args.variants) {
+    const judgeScorecard = args.judgePlan.get(e.index) ?? null;
+    const reason = args.judgeSkipReason.get(e.index) ?? null;
+    const combinedPassed =
+      e.passed && (!args.judgeEnabled || (judgeScorecard !== null && judgeScorecard.passed));
+    entries.push({
+      index: e.index,
+      score: e.score,
+      outOf: e.outOf,
+      breakdown: e.breakdown,
+      passed: e.passed,
+      rawPath: e.rawPath,
+      processedPath: e.processedPath,
+      scorecardPath: e.scorecardPath,
+      derivedAnchor: e.derivedAnchor,
+      derivedAnchors: e.derivedAnchors,
+      anchorSidecarPath: e.anchorSidecarPath,
+      centerOfGravitySidecarPath: e.centerOfGravitySidecarPath,
+      anchorOverlayPath: e.anchorOverlayPath,
+      judgeScorecard,
+      judgeSkipReason: reason,
+      combinedPassed,
+    });
+  }
+  return entries;
+}
