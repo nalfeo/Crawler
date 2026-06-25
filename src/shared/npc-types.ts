@@ -161,6 +161,76 @@ export const SPELL_QUEST_GIVER_LOCKED_DIALOGUE: readonly string[] = [
   "Once the Goon clears you, come back and we'll talk spellbooks.",
 ];
 
+// ---- Tutorial Goon contextual dialogue ----
+
+/**
+ * Lines shown by the Tutorial Goon once the staircase boss is dead and the
+ * stairs to Floor 2 are live.
+ */
+export const TUTORIAL_GOON_POST_BOSS_DIALOGUE: readonly string[] = [
+  'You did it! Boss dropped, room cleared.',
+  'Stairs are live. Descend when you are ready.',
+  'Floor 2 will hit harder. Keep moving and kite smart.',
+];
+
+/**
+ * Lines shown by the Tutorial Goon the moment the boss-room door unlocks and the
+ * final "Leave the Floor" quest is auto-accepted (all three gate quests done).
+ * Previously this was a silent auto-accept with no goon line.
+ */
+export const TUTORIAL_GOON_LEAVE_FLOOR_DIALOGUE: readonly string[] = [
+  "There it is — that's the boss door unsealing. The Director's cleared you for the main event.",
+  'Last gig on this floor: drop the Floor Boss, then sprint for the stairs down to Floor 2.',
+  "Don't dawdle. The cameras love a clean exit, and the show waits for nobody.",
+];
+
+/**
+ * Lines shown by the Tutorial Goon after his kill-grind is done but the boss
+ * door is still sealed — nudging the player toward the other two gate-givers so
+ * they aren't left wondering why the door won't open.
+ */
+export const TUTORIAL_GOON_NUDGE_DIALOGUE: readonly string[] = [
+  "Pest quota? Filled. But that boss door's still bolted shut, hotshot.",
+  'House rules: no boss until the Sweaty Merchant and the Spell Broker both sign off on you.',
+  'Go find them, run their errands, then come back and we talk stairs.',
+];
+
+/** Inputs for {@link selectTutorialGoonDialogue}, derived from world state. */
+export interface TutorialGoonDialogueState {
+  /** The staircase boss has been defeated (stairs are live). */
+  readonly bossDefeated: boolean;
+  /** The final "Leave the Floor" quest has been accepted. */
+  readonly leaveFloorAccepted: boolean;
+  /** The Goon's kill-grind quest is complete (boss-door gate #1). */
+  readonly goonGrindComplete: boolean;
+  /** The Merchant's errand is complete (boss-door gate #2). */
+  readonly merchantErrandComplete: boolean;
+  /** The Spell Broker's Slime Rat quest is complete (boss-door gate #3). */
+  readonly spellBrokerComplete: boolean;
+}
+
+/**
+ * Pick the Tutorial Goon's contextual dialogue for the current quest progress.
+ *
+ * Priority (highest first): post-boss > leave-the-floor accepted > nudge toward
+ * the other gate-givers. Returns `null` when none apply, signalling the caller
+ * to fall back to the Goon's default authored dialogue.
+ */
+export function selectTutorialGoonDialogue(
+  state: TutorialGoonDialogueState,
+): readonly string[] | null {
+  if (state.bossDefeated) {
+    return TUTORIAL_GOON_POST_BOSS_DIALOGUE;
+  }
+  if (state.leaveFloorAccepted) {
+    return TUTORIAL_GOON_LEAVE_FLOOR_DIALOGUE;
+  }
+  if (state.goonGrindComplete && !(state.merchantErrandComplete && state.spellBrokerComplete)) {
+    return TUTORIAL_GOON_NUDGE_DIALOGUE;
+  }
+  return null;
+}
+
 const NPC_REGISTRY: ReadonlyMap<string, NpcDef> = new Map([
   [TUTORIAL_GOON_DEF.id, TUTORIAL_GOON_DEF],
   [SPELL_QUEST_GIVER_DEF.id, SPELL_QUEST_GIVER_DEF],

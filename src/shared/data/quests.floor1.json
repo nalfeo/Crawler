@@ -33,7 +33,7 @@
     {
       "id": "floor1-boss-unlock",
       "title": "Pest Control for Beginners",
-      "summary": "Thin out rats and slimes to unlock the boss room door.",
+      "summary": "Thin out rats and slimes to start unlocking the boss room door — but it stays sealed until you've also squared things away with the Sweaty Merchant and the Spell Broker.",
       "giverNpcId": "tutorial-goon",
       "onCompleteGoalFlag": "floor1-goon-quest-complete",
       "template": {

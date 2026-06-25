@@ -54,6 +54,7 @@ import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import {
   getNpcDef,
+  selectTutorialGoonDialogue,
   SHOPKEEPER_DONE_DIALOGUE,
   SHOPKEEPER_EQUIP_HINT_DIALOGUE,
   SHOPKEEPER_LOCKED_DIALOGUE,
@@ -61,6 +62,7 @@ import {
   SHOPKEEPER_SHOP_DIALOGUE,
   SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
 } from '../../shared/npc-types.js';
+import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import type { ShopkeeperStage } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 
@@ -73,11 +75,6 @@ const MAX_STEPS_PER_FRAME = 4;
  * (the modal freeze skips the fixed-step), so it is independent of sim speed.
  */
 const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
-const TUTORIAL_GOON_POST_BOSS_DIALOGUE = [
-  'You did it! Boss dropped, room cleared.',
-  'Stairs are live. Descend when you are ready.',
-  'Floor 2 will hit harder. Keep moving and kite smart.',
-] as const;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
@@ -2056,8 +2053,17 @@ export class MainGameScene extends Phaser.Scene {
 
   private resolveDialogueLines(defId: string): string[] {
     const objective = this.world.floor1?.objective;
-    if (defId === 'tutorial-goon' && objective?.bossBattles.get('staircase')?.defeated) {
-      return [...TUTORIAL_GOON_POST_BOSS_DIALOGUE];
+    if (defId === 'tutorial-goon') {
+      const goonLines = selectTutorialGoonDialogue({
+        bossDefeated: objective?.bossBattles.get('staircase')?.defeated === true,
+        leaveFloorAccepted: this.world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID),
+        goonGrindComplete: this.world.goalFlags.get('floor1-goon-quest-complete') === true,
+        merchantErrandComplete: this.world.goalFlags.get('floor1-shop-quest-complete') === true,
+        spellBrokerComplete: this.world.goalFlags.get('floor1-boss-battle-complete') === true,
+      });
+      if (goonLines) {
+        return [...goonLines];
+      }
     }
     if (defId === 'shopkeeper' && this.options.shopkeeper) {
       if (this.options.shopkeeper.isLocked?.(this.world)) {
