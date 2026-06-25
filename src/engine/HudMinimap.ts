@@ -12,7 +12,7 @@ import {
   type MinimapZoomLimits,
 } from './minimap-view-state.js';
 import { PIXEL_UI } from './pixel-ui.js';
-import { getUiScale } from './ui-scale.js';
+import { getUiScale, type ScreenBounds } from './ui-scale.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
@@ -142,6 +142,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
   toggle(): void;
   isOverlayOpen(): boolean;
+  /**
+   * Test/automation affordance: world-space bounds of the fullscreen-overlay
+   * close button while the overlay is open, or null when it is closed. Lets e2e
+   * harnesses tap the close button at its real (responsive) position.
+   */
+  getOverlayCloseBounds(): ScreenBounds | null;
   destroy(): void;
 } {
   // --- Round radar minimap chrome (top-right corner) ------------------------
@@ -256,7 +262,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
     })
     .setOrigin(0.5, 0.5)
     .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 3)
+    // Above viewportHitArea (+3) and dotGraphics (+4): on small screens uiScale
+    // enlarges the close button so its centre dips into the pan/drag zone. With
+    // Phaser's default topOnly input that zone would otherwise swallow the tap,
+    // so the overlay could not be closed by tapping the button (mobile bug).
+    .setDepth(HUD_DEPTH + 8)
     .setVisible(false)
     .setInteractive({ useHandCursor: true });
 
@@ -264,7 +274,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
     .rectangle(0, 0, OVERLAY_CLOSE_BUTTON_SIZE, OVERLAY_CLOSE_BUTTON_SIZE, PIXEL_UI.panelFill, 0.97)
     .setStrokeStyle(1, PIXEL_UI.border)
     .setScrollFactor(0)
-    .setDepth(HUD_DEPTH + 2)
+    .setDepth(HUD_DEPTH + 7)
     .setVisible(false)
     .setInteractive({ useHandCursor: true });
 
@@ -980,6 +990,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
     sync,
     toggle,
     isOverlayOpen: () => overlayOpen,
+    getOverlayCloseBounds: (): ScreenBounds | null => {
+      if (!overlayOpen) return null;
+      const b = closeButtonBg.getBounds();
+      return { x: b.x, y: b.y, width: b.width, height: b.height };
+    },
     destroy,
   };
 }

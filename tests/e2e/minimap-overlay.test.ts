@@ -29,6 +29,7 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parsePng, regionContainsColor, readPixel, countNonVoidPoints } from './helpers/pixels.js';
+import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL, GAME_W, GAME_H } from './e2e-constants.js';
 
 // ── Colour constants (MINI_COLORS from HudMinimap.ts) ────────────────────────
@@ -120,7 +121,7 @@ describe('minimap visual regression', () => {
   });
 
   afterAll(async () => {
-    await browser?.close();
+    await closeQuietly(browser);
   });
 
   // ── Full-screen map overlay ──────────────────────────────────────────────
