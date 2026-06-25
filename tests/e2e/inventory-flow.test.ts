@@ -29,6 +29,7 @@ import {
   designToScreen,
   boundsCenterScreen,
   probe,
+  closeQuietly,
 } from './helpers/ui-probe.js';
 
 // The probe lab bakes a 16×16 icon texture filled with this magenta (0xff2fd0)
@@ -60,7 +61,7 @@ describe('inventory flow (e2e)', () => {
   });
 
   afterAll(async () => {
-    await browser?.close();
+    await closeQuietly(browser);
   });
 
   it('renders the charm item sprite (generated icon, not text fallback)', async () => {

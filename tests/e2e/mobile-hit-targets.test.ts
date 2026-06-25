@@ -29,6 +29,7 @@ import {
   getGameSize,
   boundsCenterScreen,
   probe,
+  closeQuietly,
 } from './helpers/ui-probe.js';
 
 interface Viewport {
@@ -60,7 +61,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-  await browser?.close();
+  await closeQuietly(browser);
 });
 
 describe.each(VIEWPORTS)('mobile hit targets ($name)', ({ name, width, height }) => {
@@ -75,7 +76,7 @@ describe.each(VIEWPORTS)('mobile hit targets ($name)', ({ name, width, height })
   }, 120_000);
 
   afterAll(async () => {
-    await context?.close();
+    await closeQuietly(context);
   });
 
   it(`minimap close button is tappable and closes the overlay (${name})`, async () => {

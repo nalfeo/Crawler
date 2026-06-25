@@ -105,6 +105,7 @@ export default defineConfig({
           name: 'e2e',
           include: ['tests/e2e/**/*.{test,spec}.ts'],
           testTimeout: 120_000,
+          hookTimeout: 120_000,
           passWithNoTests: true,
           globalSetup: ['tests/e2e/global-setup.ts'],
           // e2e specs share ONE Vite lab server and each drives its own

@@ -151,3 +151,27 @@ export const probe = {
     page.evaluate((s) => window.__uiProbe!.getDraftAllocation(s), stat),
   getRemainingPoints: (page: Page) => page.evaluate(() => window.__uiProbe!.getRemainingPoints()),
 };
+
+/**
+ * Best-effort teardown for a Playwright Browser/BrowserContext. e2e teardown
+ * must never fail a suite or hang: under heavy CI/dev-box load `close()` can be
+ * slow (or, rarely, wedge) even though the work under test already completed by
+ * the time `afterAll` runs. Race the close against a bounded timer and swallow
+ * errors so the hook always settles well within its budget.
+ */
+export async function closeQuietly(closer?: { close(): Promise<unknown> }): Promise<void> {
+  if (!closer) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      closer.close(),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, 15_000);
+      }),
+    ]);
+  } catch {
+    // Teardown is best-effort — never fail a passing suite on cleanup.
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
