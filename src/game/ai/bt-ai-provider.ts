@@ -26,11 +26,17 @@ import {
   type PathfindingOptions,
   type TilePoint,
 } from '../../core/map/pathfinding.js';
+import { buildDoorAwarePassable, getNavigationBlockedDoors } from '../../core/door-navigation.js';
 import {
-  buildDoorAwarePassable,
-  getNavigationBlockedDoors,
-  type DoorUnlockRequirement,
-} from '../../core/door-navigation.js';
+  type AILockedDoorMemory,
+  type FrontierGrid,
+  type PoiCandidate,
+  DwellTracker,
+  findNearestFrontierTile,
+  nextStuckFrames,
+  pickNearestPoi,
+  updateLockedDoorMemory,
+} from './exploration.js';
 import { normalizeInputDirection } from '../../shared/input.js';
 import { hasItem } from '../../shared/inventory.js';
 import { SeededRandom } from '../../shared/random.js';
@@ -471,12 +477,7 @@ export interface AINpcMemoryDebug {
   neededInteractionReasons: Record<string, string | null>;
 }
 
-export interface AILockedDoorMemory {
-  eid: number;
-  tileX: number;
-  tileY: number;
-  unlockRequirement: DoorUnlockRequirement;
-}
+export type { AILockedDoorMemory };
 
 /**
  * Behavior Tree AI that simulates human input.
@@ -536,10 +537,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private collectDwellAnchorX: number = 0;
   private collectDwellAnchorY: number = 0;
   private collectDwellFrames: number = 0;
-  private exploreDwellActive: boolean = false;
-  private exploreDwellAnchorX: number = 0;
-  private exploreDwellAnchorY: number = 0;
-  private exploreDwellFrames: number = 0;
+  private readonly exploreDwell = new DwellTracker(EXPLORE_DWELL_ESCAPE_PX, EXPLORE_DWELL_FRAMES);
   /**
    * Frame after which a suppressed position-based progress goal (Tutorial Goon,
    * Shopkeeper, boss room, staircase…) becomes eligible again. Set by
@@ -1524,53 +1522,33 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private updateExploreWatchdog(playerX: number, playerY: number, currentFrame: number): void {
     if (this.decision.state !== AIState.EXPLORE) {
-      this.exploreDwellActive = false;
-      this.exploreDwellFrames = 0;
+      this.exploreDwell.reset();
       return;
     }
 
-    if (!this.exploreDwellActive) {
-      this.exploreDwellActive = true;
-      this.exploreDwellAnchorX = playerX;
-      this.exploreDwellAnchorY = playerY;
-      this.exploreDwellFrames = 0;
+    if (this.exploreDwell.update(playerX, playerY) !== 'fired') {
       return;
     }
 
-    const drift = Math.hypot(
-      playerX - this.exploreDwellAnchorX,
-      playerY - this.exploreDwellAnchorY,
-    );
-    if (drift > EXPLORE_DWELL_ESCAPE_PX) {
-      this.exploreDwellAnchorX = playerX;
-      this.exploreDwellAnchorY = playerY;
-      this.exploreDwellFrames = 0;
-      return;
+    // Parked against an unreachable frontier for the full window: drop it so the
+    // Explore node re-rolls a new target next tick.
+    this.decision.targetX = null;
+    this.decision.targetY = null;
+    this.pathWaypoints = [];
+    this.pathIndex = 0;
+    this.pathGoalKey = null;
+    // If the frozen target was a position-based progress goal (non-enemy,
+    // targetEid < 0 — e.g. Tutorial Goon, Shopkeeper, boss room), suppress ALL
+    // position progress goals temporarily. Without this the BT immediately
+    // re-assigns the same unreachable position on the next frame, the dwell
+    // counter resets to 0, and the AI freezes forever without ever fighting.
+    if (this.decision.targetEid === null || this.decision.targetEid < 0) {
+      this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
     }
-
-    this.exploreDwellFrames++;
-    if (this.exploreDwellFrames > EXPLORE_DWELL_FRAMES) {
-      // Drop the unreachable frontier so the Explore node re-rolls a new target.
-      this.decision.targetX = null;
-      this.decision.targetY = null;
-      this.pathWaypoints = [];
-      this.pathIndex = 0;
-      this.pathGoalKey = null;
-      this.exploreDwellActive = false;
-      this.exploreDwellFrames = 0;
-      // If the frozen target was a position-based progress goal (non-enemy,
-      // targetEid < 0 — e.g. Tutorial Goon, Shopkeeper, boss room), suppress ALL
-      // position progress goals temporarily. Without this the BT immediately
-      // re-assigns the same unreachable position on the next frame, the dwell
-      // counter resets to 0, and the AI freezes forever without ever fighting.
-      if (this.decision.targetEid === null || this.decision.targetEid < 0) {
-        this.progressGoalSuppressedUntilFrame = currentFrame + PROGRESS_SUPPRESS_FRAMES;
-      }
-      if (this.config.debug) {
-        logger.debug(
-          `AI abandoning unreachable explore frontier (dwell ${String(EXPLORE_DWELL_FRAMES)}f)`,
-        );
-      }
+    if (this.config.debug) {
+      logger.debug(
+        `AI abandoning unreachable explore frontier (dwell ${String(EXPLORE_DWELL_FRAMES)}f)`,
+      );
     }
   }
 
@@ -1821,11 +1799,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Update stuck detection
     const dist = Math.hypot(playerX - this.lastPlayerX, playerY - this.lastPlayerY);
-    if (dist < STUCK_PROGRESS_EPSILON_PX) {
-      this.stuckFrames++;
-    } else {
-      this.stuckFrames = 0;
-    }
+    this.stuckFrames = nextStuckFrames(this.stuckFrames, dist, STUCK_PROGRESS_EPSILON_PX);
     this.lastPlayerX = playerX;
     this.lastPlayerY = playerY;
 
@@ -2017,24 +1991,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private refreshDoorNavigation(world: GameWorld): void {
     this.doorAwarePassable = world.floorMap ? buildDoorAwarePassable(world) : null;
-
-    const blocked = getNavigationBlockedDoors(world);
-    const blockedEids = new Set<number>();
-    for (const info of blocked) {
-      blockedEids.add(info.eid);
-      this.knownLockedDoors.set(info.eid, {
-        eid: info.eid,
-        tileX: info.tileX,
-        tileY: info.tileY,
-        unlockRequirement: info.unlockRequirement,
-      });
-    }
-    // Forget doors whose unlock condition is now satisfied; they are passable.
-    for (const eid of [...this.knownLockedDoors.keys()]) {
-      if (!blockedEids.has(eid)) {
-        this.knownLockedDoors.delete(eid);
-      }
-    }
+    // Record currently-blocked doors and forget any whose unlock condition is
+    // now satisfied (C3 locked-door memory).
+    updateLockedDoorMemory(this.knownLockedDoors, getNavigationBlockedDoors(world));
   }
 
   /**
@@ -3027,67 +2986,39 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.doorAwarePassable ?? ((tx: number, ty: number): boolean => tileMap.isPassable(tx, ty));
 
     const start = floorMap.pixelToTile(playerX, playerY);
-    const startIdx = tileMap.index(start.x, start.y);
-    if (startIdx === -1) {
+    if (tileMap.index(start.x, start.y) === -1) {
       return null;
     }
 
     if (!this.frontierBfsVisited || this.frontierBfsVisited.length !== width * height) {
       this.frontierBfsVisited = new Uint8Array(width * height);
     }
-    const visited = this.frontierBfsVisited;
-    visited.fill(0);
 
-    // Flat BFS queue of tile indices with a head pointer (avoids O(n) shift()).
-    const queueX: number[] = [start.x];
-    const queueY: number[] = [start.y];
-    visited[startIdx] = 1;
-    let head = 0;
-    let expanded = 0;
-
-    const neighborDx = [1, -1, 0, 0];
-    const neighborDy = [0, 0, 1, -1];
-
-    while (head < queueX.length && expanded < EXPLORE_FRONTIER_BFS_MAX_TILES) {
-      const tx = queueX[head] as number;
-      const ty = queueY[head] as number;
-      head += 1;
-      expanded += 1;
-
-      let isFrontier = false;
-      for (let d = 0; d < 4; d += 1) {
-        const nx = tx + (neighborDx[d] as number);
-        const ny = ty + (neighborDy[d] as number);
-        const nIdx = tileMap.index(nx, ny);
-        if (nIdx === -1) {
-          continue;
-        }
-        if (seen[nIdx] === 0) {
-          // An unseen in-bounds neighbour makes this tile a frontier.
-          isFrontier = true;
-          continue;
-        }
-        // Expand BFS only through seen + reachable ground so any frontier we
-        // return is guaranteed reachable through known territory.
-        if (visited[nIdx] === 0 && passable(nx, ny)) {
-          visited[nIdx] = 1;
-          queueX.push(nx);
-          queueY.push(ny);
-        }
-      }
-
-      if (isFrontier) {
+    const grid: FrontierGrid = {
+      width,
+      height,
+      index: (tx, ty) => tileMap.index(tx, ty),
+      isSeen: (idx) => seen[idx] !== 0,
+      isPassable: (tx, ty) => passable(tx, ty),
+      tileDistancePx: (tx, ty) => {
         const px = floorMap.tileToPixel(tx, ty);
-        const dist = Math.hypot(px.x - playerX, px.y - playerY);
-        if (dist >= EXPLORE_FRONTIER_MIN_PX) {
-          // BFS is nearest-first by step count, so the first frontier past the
-          // minimum travel distance is effectively the nearest useful one.
-          return { x: px.x, y: px.y };
-        }
-      }
-    }
+        return Math.hypot(px.x - playerX, px.y - playerY);
+      },
+    };
 
-    return null;
+    const frontier = findNearestFrontierTile(
+      grid,
+      start.x,
+      start.y,
+      EXPLORE_FRONTIER_MIN_PX,
+      EXPLORE_FRONTIER_BFS_MAX_TILES,
+      this.frontierBfsVisited,
+    );
+    if (!frontier) {
+      return null;
+    }
+    const px = floorMap.tileToPixel(frontier.tileX, frontier.tileY);
+    return { x: px.x, y: px.y };
   }
 
   private pickExploreTarget(
@@ -3555,8 +3486,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
   ): NpcTarget | null {
     const npcs = query(world.ecs, [Npc, Position]);
-    let nearest: NpcTarget | null = null;
-    let minDist = this.config.scanRadius;
+    const candidates: (NpcTarget & PoiCandidate)[] = [];
 
     for (const eid of npcs) {
       if (eid === undefined) {
@@ -3569,28 +3499,34 @@ export class BehaviorTreeAI implements AIInputProvider {
       this.discoveredNpcDefs.add(instance.defId);
       const interactionReason = this.getNpcInteractionReason(world, playerEid, eid);
       this.neededInteractionReasonByNpc.set(instance.defId, interactionReason);
-      if (!interactionReason) {
-        continue;
-      }
 
       const x = world.stores.position.x[eid] ?? 0;
       const y = world.stores.position.y[eid] ?? 0;
-      const dist = Math.hypot(x - playerX, y - playerY);
-
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = {
-          eid,
-          x,
-          y,
-          distance: dist,
-          defId: instance.defId,
-          interactionReason,
-        };
-      }
+      // A POI is only worth seeking while it still needs interaction; handled
+      // NPCs (interactionReason === null) stay discovered but become irrelevant.
+      candidates.push({
+        eid,
+        x,
+        y,
+        distance: Math.hypot(x - playerX, y - playerY),
+        defId: instance.defId,
+        interactionReason: interactionReason ?? '',
+        relevant: Boolean(interactionReason),
+      });
     }
 
-    return nearest;
+    const pick = pickNearestPoi(candidates, playerX, playerY, this.config.scanRadius);
+    if (!pick) {
+      return null;
+    }
+    return {
+      eid: pick.eid,
+      x: pick.x,
+      y: pick.y,
+      distance: pick.distance,
+      defId: pick.defId,
+      interactionReason: pick.interactionReason,
+    };
   }
 
   private getNpcInteractionReason(
@@ -3746,10 +3682,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.collectDwellAnchorX = 0;
     this.collectDwellAnchorY = 0;
     this.collectDwellFrames = 0;
-    this.exploreDwellActive = false;
-    this.exploreDwellAnchorX = 0;
-    this.exploreDwellAnchorY = 0;
-    this.exploreDwellFrames = 0;
+    this.exploreDwell.reset();
     this.globalDwellActive = false;
     this.globalDwellAnchorX = 0;
     this.globalDwellAnchorY = 0;
