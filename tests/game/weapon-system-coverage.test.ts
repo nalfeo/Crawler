@@ -273,7 +273,10 @@ describe('weaponSystem miss events', () => {
 
     weaponSystem(world);
 
-    expect(query(world.ecs, [Projectile]).length).toBe(0);
+    // Miss now fires a cosmetic wide-shot projectile (0 damage)
+    const projectiles = Array.from(query(world.ecs, [Projectile]));
+    expect(projectiles).toHaveLength(1);
+    expect(world.stores.damage.amount[projectiles[0]!]).toBe(0);
     const missEvent = world.combatEvents.find((e) => e.type === 'miss');
     expect(missEvent).toBeDefined();
     expect(missEvent?.amount).toBe(0);

@@ -100,4 +100,57 @@ describe('ranged weapons', () => {
     expect(world.stores.health.current[enemy]).toBe(40);
     expect(entityExists(world.ecs, proj)).toBe(true);
   });
+
+  it('ranged miss still fires a projectile that travels wide', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Enemy to the right; projectile should aim right but deflect off-axis
+    spawnEnemy(world, 100, 0, 20);
+    const def = getWeaponDef('pistol')!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+    // Force a deterministic miss
+    world.rng.next = () => 1.0;
+
+    weaponSystem(world);
+
+    // Miss event emitted
+    expect(world.combatEvents.some((e) => e.type === 'miss')).toBe(true);
+    // A wide-shot projectile must be spawned
+    const projectiles = Array.from(query(world.ecs, [Projectile, Position, Velocity, Damage]));
+    expect(projectiles).toHaveLength(1);
+    const p = projectiles[0]!;
+    // Damage must be 0 — purely cosmetic
+    expect(world.stores.damage.amount[p]).toBe(0);
+    // Velocity must be non-zero and deflected off the direct aim axis (vy ≠ 0)
+    const vx = world.stores.velocity.x[p]!;
+    const vy = world.stores.velocity.y[p]!;
+    expect(Math.hypot(vx, vy)).toBeGreaterThan(0);
+    expect(Math.abs(vy)).toBeGreaterThan(0); // non-zero y component = deflected wide
+  });
+
+  it('ranged miss projectile deals no damage on contact', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 100, 0, 20);
+    const def = getWeaponDef('pistol')!;
+    const initialHp = world.stores.health.current[enemy]!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+    world.rng.next = () => 1.0; // force miss
+
+    weaponSystem(world);
+
+    // Place the miss projectile directly on the enemy to force collision
+    const projectiles = Array.from(query(world.ecs, [Projectile]));
+    expect(projectiles).toHaveLength(1);
+    world.stores.position.x[projectiles[0]!] = 100;
+    world.stores.position.y[projectiles[0]!] = 0;
+
+    const collision = collisionSystem(world);
+    damageSystem(world, collision);
+
+    // Enemy must remain at full HP — miss projectile is harmless
+    expect(world.stores.health.current[enemy]).toBe(initialHp);
+  });
 });

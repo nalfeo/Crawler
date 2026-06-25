@@ -312,6 +312,51 @@ describe('melee weapons', () => {
 
     expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
   });
+
+  it('melee miss still spawns a 0-damage swing animation', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    // Enemy in gate range so dispatchAttack is actually called
+    spawnEnemy(world, 150, 100, 50);
+    const def = getWeaponDef('sword')!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+    // Force a deterministic miss: return a value above any accuracy
+    world.rng.next = () => 1.0;
+
+    weaponSystem(world);
+
+    // Miss event must be present
+    expect(world.combatEvents.some((e) => e.type === 'miss')).toBe(true);
+    // Swing entity must still be spawned for the animation
+    const swings = Array.from(query(world.ecs, [MeleeSwing]));
+    expect(swings).toHaveLength(1);
+    // Damage must be 0 — the miss swing is purely cosmetic
+    expect(world.stores.meleeSwing.damage[swings[0]!]).toBe(0);
+    // No skill XP on a miss
+    expect(world.skillUsageEvents).toHaveLength(0);
+  });
+
+  it('0-damage miss swing does not deal damage when it contacts an enemy', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 100, 100);
+    const enemy = spawnEnemy(world, 130, 100, 50); // within blade length
+    const def = getWeaponDef('sword')!;
+    const initialHp = world.stores.health.current[enemy]!;
+    setActiveWeapon(world, def);
+    world.elapsedMs = def.cooldownMs;
+    world.rng.next = () => 1.0; // force miss
+
+    weaponSystem(world);
+
+    // Advance the swing so it sweeps over the enemy
+    for (let t = 0; t < def.durationMs; t += GAME.DELTA_MS) {
+      world.elapsedMs += GAME.DELTA_MS;
+      meleeSwingSystem(world);
+    }
+
+    expect(world.stores.health.current[enemy]).toBe(initialHp);
+  });
 });
 
 describe('unarmed weapons', () => {

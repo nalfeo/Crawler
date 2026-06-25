@@ -437,6 +437,38 @@ export function computeEffectiveAccuracy(world: GameWorld, player: number, def: 
   return Math.min(1.0, Math.max(0, def.baseAccuracy + bonus));
 }
 
+/**
+ * Rotate a normalized direction vector by `angleRad` radians (2-D rotation).
+ */
+function rotateDir(dir: { x: number; y: number }, angleRad: number): { x: number; y: number } {
+  const cos = Math.cos(angleRad);
+  const sin = Math.sin(angleRad);
+  return {
+    x: dir.x * cos - dir.y * sin,
+    y: dir.x * sin + dir.y * cos,
+  };
+}
+
+/** Minimum deflection angle for a ranged/magic/thrown miss (radians). */
+const MISS_DEFLECT_MIN_RAD = Math.PI / 6; // 30°
+/** Maximum deflection angle for a ranged/magic/thrown miss (radians). */
+const MISS_DEFLECT_MAX_RAD = Math.PI / 3; // 60°
+
+/**
+ * Return a direction that deliberately misses: rotate `dir` by a random angle
+ * between ±MISS_DEFLECT_MIN_RAD and ±MISS_DEFLECT_MAX_RAD.
+ * Uses world.rng so the result is deterministic and reproducible.
+ */
+function deflectDirectionForMiss(
+  world: GameWorld,
+  dir: { x: number; y: number },
+): { x: number; y: number } {
+  const range = MISS_DEFLECT_MAX_RAD - MISS_DEFLECT_MIN_RAD;
+  const magnitude = MISS_DEFLECT_MIN_RAD + world.rng.next() * range;
+  const sign = world.rng.next() < 0.5 ? 1 : -1;
+  return rotateDir(dir, magnitude * sign);
+}
+
 function dispatchAttack(
   world: GameWorld,
   player: number,
@@ -461,6 +493,28 @@ function dispatchAttack(
       targetType: 'enemy',
       timestamp: world.elapsedMs,
     });
+
+    // Fire cosmetic animations even on a miss — no damage, no skill XP.
+    const zeroDamageDef = { ...def, baseDamage: 0 };
+    switch (def.weaponType) {
+      case WeaponType.MELEE:
+        // Swing still plays; 0-damage swing deals no harm on contact.
+        fireMeleeAttack(world, player, zeroDamageDef, dir);
+        break;
+      case WeaponType.RANGED:
+        // Shoot wide: deflect direction so the projectile clearly misses.
+        fireRangedAttack(world, player, zeroDamageDef, deflectDirectionForMiss(world, dir));
+        break;
+      case WeaponType.MAGIC:
+        fireRangedAttack(world, player, zeroDamageDef, deflectDirectionForMiss(world, dir));
+        break;
+      case WeaponType.THROWN:
+        fireThrownAttack(world, player, zeroDamageDef, deflectDirectionForMiss(world, dir));
+        break;
+      // BEAM and TRAP have no meaningful cosmetic-only miss animation; skip.
+      default:
+        break;
+    }
     return;
   }
 
