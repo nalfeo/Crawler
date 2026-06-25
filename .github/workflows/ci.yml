@@ -85,7 +85,24 @@ jobs:
         with:
           json-summary-path: coverage/coverage-summary.json
 
-  # Job 4: Headless Floor 1 completion gate (critical path, must pass)
+  # Job 4: Integration tests (critical path, must pass)
+  # Promoted from advisory to a blocking gate: the sprite/judge integration
+  # tests (generate-one, judge-pipeline, judge-budget-cache) are fully
+  # deterministic — they use mock image/vision providers and temp fixtures, with
+  # no external VLM/image services — so they must stay green for `npm run verify`
+  # to be honestly green (AGENTS.md rule #8).
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-node
+
+      - name: Integration tests
+        run: npx vitest run --project integration --reporter=verbose
+
+  # Job 5: Headless Floor 1 completion gate (critical path, must pass)
   # Deterministically proves the behavior-tree AI can still clear Floor 1
   # (victory + all quests, under the 5-minute game-time budget). Runs the same
   # pure-ECS pipeline as the CLI/lab, so no browser is needed.
@@ -100,7 +117,7 @@ jobs:
       - name: Headless Floor 1 completion
         run: npx vitest run --project headless --reporter=verbose
 
-  # Job 5: Build (moved to advisory, not blocking)
+  # Job 6: Build (moved to advisory, not blocking)
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -127,10 +144,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run lint:dead-code
 
-      - name: Integration tests
-        if: ${{ !cancelled() }}
-        run: npx vitest run --project integration --reporter=verbose
-
       - name: Security audit
         if: ${{ !cancelled() }}
         run: npm audit --audit-level=high
@@ -138,7 +151,7 @@ jobs:
   merge-gate:
     name: Merge gate
     runs-on: ubuntu-latest
-    needs: [check-types-and-lint, check-format-and-labs, test-unit, test-headless, test-e2e]
+    needs: [check-types-and-lint, check-format-and-labs, test-unit, test-integration, test-headless, test-e2e]
     if: always()
     steps:
       - name: Check required jobs
@@ -161,6 +174,7 @@ jobs:
           check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"
           check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
           check "Unit tests"                    "${{ needs.test-unit.result }}"
+          check "Integration tests"             "${{ needs.test-integration.result }}"
           check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"
           check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"
           echo "✅ All required checks passed"
