@@ -61,8 +61,13 @@ describe('primary stat display metadata', () => {
     expect(dexGains).toContain('0.3%');
   });
 
-  it('formatCoreStatGains returns placeholder for stats with no current gains', () => {
-    expect(formatCoreStatGains('wisdom')).toBe('(no effect yet)');
+  it('formatCoreStatGains surfaces the Wisdom→mana payoff and the Charisma placeholder', () => {
+    // Wisdom now feeds the MP pool (see shared/mana.ts), so it must no longer
+    // read "(no effect yet)" — it reports its Max Mana per-point gain.
+    const wisdomGains = formatCoreStatGains('wisdom');
+    expect(wisdomGains).toContain('Max Mana');
+    expect(wisdomGains).not.toBe('(no effect yet)');
+    // Charisma stays reserved until its payoff lands.
     expect(formatCoreStatGains('charisma')).toBe('(no effect yet)');
   });
 });

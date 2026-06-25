@@ -13,6 +13,7 @@ import {
   CORE_STAT_GAINS,
   CORE_STAT_TO_SECONDARY,
 } from './stats.js';
+import { MANA_PER_WISDOM } from './mana.js';
 
 export interface StatDisplayInfo {
   /** Short title shown in the allocation row. */
@@ -107,7 +108,7 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
   },
   wisdom: {
     label: 'Wisdom',
-    description: 'Reserved — will expand mana pool and cooldown reduction.',
+    description: `+${MANA_PER_WISDOM} Max Mana per point. Arcane reserves that fuel your spells.`,
     decimals: 0,
   },
   charisma: {
@@ -144,9 +145,10 @@ function formatSecondaryGain(stat: SecondaryStatId, value: number): string {
 /**
  * Format the derived gains for a primary stat as a compact summary, e.g.
  * `"+2 Damage, +1 Armor"` or `"+4 Pickup Range, +0.5% Crit Chance"`. Combines
- * gameplay-stat gains (`CORE_STAT_GAINS`) and derived secondary stats
- * (`CORE_STAT_TO_SECONDARY`). Returns `"(no effect yet)"` for stats with no
- * gains in either map.
+ * gameplay-stat gains (`CORE_STAT_GAINS`), derived secondary stats
+ * (`CORE_STAT_TO_SECONDARY`), and the Wisdom→mana resource payoff (which lives
+ * outside both maps, see `shared/mana.ts`). Returns `"(no effect yet)"` for
+ * stats with no gains in any of those (currently only Charisma).
  */
 export function formatCoreStatGains(stat: PrimaryStatId): string {
   const parts: string[] = [];
@@ -160,6 +162,13 @@ export function formatCoreStatGains(stat: PrimaryStatId): string {
   const secondary = CORE_STAT_TO_SECONDARY[stat];
   for (const [key, value] of Object.entries(secondary) as [SecondaryStatId, number][]) {
     parts.push(formatSecondaryGain(key, value));
+  }
+
+  // Wisdom feeds the MP pool, a resource tracked outside STAT_KEYS / secondary
+  // stats (derived by `manaSystem` from effective Wisdom). Surface it here so the
+  // level-up summary reflects the payoff rather than "(no effect yet)".
+  if (stat === 'wisdom') {
+    parts.push(`+${MANA_PER_WISDOM} Max Mana`);
   }
 
   return parts.length > 0 ? parts.join(', ') : '(no effect yet)';

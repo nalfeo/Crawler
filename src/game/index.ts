@@ -27,6 +27,7 @@ export {
   equipPurchasedGear,
   SHOPKEEPER_EQUIPMENT_COST,
   selectSpellFromBossBattle,
+  ensureBossBattleSpellReward,
 } from './floor1Scenario.js';
 export type { ShopkeeperStage } from '../shared/quest-types.js';
 export {
