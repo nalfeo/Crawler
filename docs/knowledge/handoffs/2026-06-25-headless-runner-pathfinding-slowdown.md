@@ -141,3 +141,36 @@ deterministic `gameTimeMs` and otherwise avoids wall-time SLAs (CI runners vary
   so a recurrence balloons them to 60s+).
 - Verified: `npx vitest run --project headless` → 45 passed (9 combos × 5 its);
   `npm run verify:fast` green.
+
+## Follow-up — Copilot review fixes (commits `86a96fe`, `5fdf3ab`)
+
+Addressed three Copilot review comments on PR #324 (two were the same bounds-check
+issue):
+
+1. **`pathLengthTo` out-of-bounds aliasing** (`bt-ai-provider.ts`): the BFS resolver
+   read `dist[y * width + x]` without bounds-checking the goal. Goal tiles from
+   `FloorMap.pixelToTile` are not clamped, so an off-map goal whose linear index
+   aliased an in-bounds reachable tile (e.g. `x = width + 1` → next-row column 1)
+   was returned as a phantom "direct" hit; the caller then ran A\* on the off-map
+   tile, got `[]`, and abandoned the path instead of taking the ring fallback —
+   diverging from the pre-refactor `findTilePath`-gated behaviour. **Fix:** explicit
+   `x/y` bounds guard inside `pathLengthTo` (ring candidates are already in-bounds,
+   so it is a no-op there).
+
+2. **`reset()` left the new nav cache populated** (`bt-ai-provider.ts`): `reset()`
+   clears `resolvedGoalCache`/`targetReachableCache` but the BFS refactor's
+   `resolveGoalMemo` + `navEpoch`/`navSignature` were untouched. A reused provider
+   whose new world's `(floor + blocked-door)` signature collided with the previous
+   one would skip the `navEpoch` bump and serve stale reachability. **Fix:** restore
+   all four fields (`resolveGoalMemo.clear()`, `resolveGoalMemoEpoch = -1`,
+   `navEpoch = 0`, `navSignature = null`) to construction state.
+
+Both fixes are behaviour-preserving for in-bounds/single-world use (the headless
+gate stats are unchanged). Added two focused regression tests to
+`tests/game/behavior-tree-ai.test.ts` (OOB-aliasing resolver + `reset()` nav-cache
+clear); the OOB test was confirmed RED against the pre-fix code before the guard.
+
+- Verified: `behavior-tree-ai.test.ts` 20 passed; `npm run verify:fast` green; lab
+  gate green.
+- All three review threads replied to and resolved. Auto-merge (squash) enabled on
+  PR #324; merges automatically once required checks pass.
