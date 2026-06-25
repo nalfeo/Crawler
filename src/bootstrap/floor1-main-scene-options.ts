@@ -19,6 +19,7 @@ import {
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
+  getNpcQuestIndicatorState,
   getShopkeeperStage,
   hasCompletedWelcomeGoonQuest,
   meetShopkeeper,
@@ -48,6 +49,7 @@ export function createFloor1MainSceneOptions() {
       spendPoints(world, allocations);
     },
     shopkeeper: {
+      getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'shopkeeper'),
       getStage: getShopkeeperStage,
       meet: meetShopkeeper,
       returnPrize: returnShopkeeperPrize,
@@ -57,8 +59,13 @@ export function createFloor1MainSceneOptions() {
       equipmentName: MERCHANTS_CHARM_DEF.name,
       isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
     },
-    tutorialGoon: { meet: meetTutorialGoon },
+    tutorialGoon: {
+      meet: meetTutorialGoon,
+      getIndicatorState: (world: GameWorld) => getNpcQuestIndicatorState(world, 'tutorial-goon'),
+    },
     spellQuestGiver: {
+      getIndicatorState: (world: GameWorld) =>
+        getNpcQuestIndicatorState(world, 'spell-quest-giver'),
       meet: meetSpellQuestGiver,
       isLocked: (world: GameWorld) => !hasCompletedWelcomeGoonQuest(world),
     },

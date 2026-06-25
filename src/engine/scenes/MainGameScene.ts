@@ -105,6 +105,7 @@ export interface MainGameSceneOptions {
   onStairDescend?: (world: GameWorld, playerEid: number) => boolean | void;
   /** Shopkeeper errand callbacks (game-layer logic injected from main.ts). */
   shopkeeper?: {
+    getIndicatorState?: (world: GameWorld) => 'none' | 'actionable' | 'accepted';
     getStage: (world: GameWorld) => ShopkeeperStage;
     meet: (world: GameWorld) => void;
     returnPrize: (world: GameWorld, playerEid: number) => boolean;
@@ -117,9 +118,11 @@ export interface MainGameSceneOptions {
   };
   /** Tutorial Goon callbacks — fired on first player-NPC interaction. */
   tutorialGoon?: {
+    getIndicatorState?: (world: GameWorld) => 'none' | 'actionable' | 'accepted';
     meet: (world: GameWorld) => void;
   };
   spellQuestGiver?: {
+    getIndicatorState?: (world: GameWorld) => 'none' | 'actionable' | 'accepted';
     meet: (world: GameWorld) => void;
     /** True while the Spell Broker is gated behind the welcome-goon quest. */
     isLocked?: (world: GameWorld) => boolean;
@@ -230,9 +233,9 @@ export class MainGameScene extends Phaser.Scene {
   /** Per-door sprite Images (Tiny Dungeon door art), rebuilt on door updates. */
   private doorImages: Phaser.GameObjects.Image[] = [];
 
-  private safeRoomMarker?: Phaser.GameObjects.Arc;
-
   private staircaseMarker?: Phaser.GameObjects.Arc;
+
+  private readonly npcQuestIndicators = new Map<number, Phaser.GameObjects.Text>();
 
   private loadoutText?: Phaser.GameObjects.Text;
 
@@ -504,9 +507,12 @@ export class MainGameScene extends Phaser.Scene {
         img.destroy();
       }
       this.doorImages.length = 0;
-      this.safeRoomMarker?.destroy();
       this.staircaseMarker?.destroy();
       this.stairsLabel?.destroy();
+      for (const indicator of this.npcQuestIndicators.values()) {
+        indicator.destroy();
+      }
+      this.npcQuestIndicators.clear();
       this.interactionHint?.destroy();
       this.offInteractionHintScale?.();
       this.offInteractionHintScale = undefined;
@@ -535,7 +541,6 @@ export class MainGameScene extends Phaser.Scene {
       }
       this.mapRt = undefined;
       this.doorGraphics = undefined;
-      this.safeRoomMarker = undefined;
       this.staircaseMarker = undefined;
       this.stairsLabel = undefined;
       this.interactionHint = undefined;
@@ -1570,29 +1575,12 @@ export class MainGameScene extends Phaser.Scene {
 
   private updateObjectiveMarkers(): void {
     if (!this.world.floor1) {
-      this.safeRoomMarker?.setVisible(false);
       this.staircaseMarker?.setVisible(false);
+      this.updateNpcQuestIndicators();
       return;
     }
 
     const objective = this.world.floor1.objective;
-    if (!this.safeRoomMarker) {
-      this.safeRoomMarker = this.add
-        .circle(
-          objective.safeRoomPos.x,
-          objective.safeRoomPos.y,
-          objective.markerRadiusPx,
-          0x2563eb,
-          0.25,
-        )
-        .setStrokeStyle(2, 0x93c5fd, 0.95)
-        .setDepth(20);
-    } else {
-      this.safeRoomMarker.setPosition(objective.safeRoomPos.x, objective.safeRoomPos.y);
-      this.safeRoomMarker.setRadius(objective.markerRadiusPx);
-      this.safeRoomMarker.setVisible(!objective.safeRoomDiscovered);
-    }
-
     if (!this.staircaseMarker) {
       this.staircaseMarker = this.add
         .circle(
@@ -1612,7 +1600,6 @@ export class MainGameScene extends Phaser.Scene {
     this.staircaseMarker.setFillStyle(staircaseFill, 0.25);
     this.staircaseMarker.setStrokeStyle(2, staircaseStroke, 0.95);
     this.staircaseMarker.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
-
     // World-space staircase label above the marker
     if (!this.stairsLabel) {
       this.stairsLabel = this.add
@@ -1639,6 +1626,60 @@ export class MainGameScene extends Phaser.Scene {
     );
     this.stairsLabel.setColor(objective.staircaseLocked ? '#fcd34d' : '#86efac');
     this.stairsLabel.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
+    this.updateNpcQuestIndicators();
+  }
+
+  private resolveNpcQuestIndicatorState(defId: string): 'none' | 'actionable' | 'accepted' {
+    if (defId === 'tutorial-goon') {
+      return this.options.tutorialGoon?.getIndicatorState?.(this.world) ?? 'none';
+    }
+    if (defId === 'shopkeeper') {
+      return this.options.shopkeeper?.getIndicatorState?.(this.world) ?? 'none';
+    }
+    if (defId === 'spell-quest-giver') {
+      return this.options.spellQuestGiver?.getIndicatorState?.(this.world) ?? 'none';
+    }
+    return 'none';
+  }
+
+  private updateNpcQuestIndicators(): void {
+    const liveNpcEids = new Set<number>();
+    const bobOffset = Math.sin(this.world.elapsedMs / 240) * 3;
+    for (const [eid, instance] of this.world.npcs.entries()) {
+      const indicatorState = this.resolveNpcQuestIndicatorState(instance.defId);
+      const indicator = this.npcQuestIndicators.get(eid);
+      if (indicatorState === 'none') {
+        indicator?.destroy();
+        this.npcQuestIndicators.delete(eid);
+        continue;
+      }
+      liveNpcEids.add(eid);
+      const def = getNpcDef(instance.defId);
+      const x = this.world.stores.position.x[eid] ?? 0;
+      const y = this.world.stores.position.y[eid] ?? 0;
+      const target =
+        indicator ??
+        this.add
+          .text(x, y, '!', {
+            fontFamily: 'monospace',
+            fontSize: '28px',
+            fontStyle: 'bold',
+            stroke: '#0f172a',
+            strokeThickness: 4,
+          })
+          .setOrigin(0.5, 1)
+          .setDepth(45);
+      const heightPx = def?.heightPx ?? 28;
+      target.setColor(indicatorState === 'actionable' ? '#facc15' : '#9ca3af');
+      target.setPosition(x, y - heightPx * 0.75 - 12 + bobOffset);
+      this.npcQuestIndicators.set(eid, target);
+    }
+    for (const [eid, indicator] of this.npcQuestIndicators.entries()) {
+      if (!liveNpcEids.has(eid)) {
+        indicator.destroy();
+        this.npcQuestIndicators.delete(eid);
+      }
+    }
   }
 
   private updateOverlayText(): void {

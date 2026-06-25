@@ -8,6 +8,7 @@ import {
   equipPurchasedGear,
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
+  getNpcQuestIndicatorState,
   getShopkeeperStage,
   initializeFloor1Scenario,
   meetSpellQuestGiver,
@@ -907,6 +908,80 @@ describe('floor1Scenario', () => {
 
       const spawnRoomId = floorMap.spawnRoom?.id ?? 0;
       expect(canReachWithoutRoom(spawnRoomId, questRoomId, bossRoom.id)).toBe(true);
+    });
+  });
+
+  describe('npc quest indicators', () => {
+    it('shows the tutorial goon as actionable before check-in, then accepted while his quests are active', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      expect(getNpcQuestIndicatorState(world, 'tutorial-goon')).toBe('actionable');
+
+      meetTutorialGoon(world);
+      questSystem(world);
+      expect(getNpcQuestIndicatorState(world, 'tutorial-goon')).toBe('accepted');
+    });
+
+    it('hides locked merchant and spell-broker markers until the welcome quest is complete', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      expect(getNpcQuestIndicatorState(world, 'shopkeeper')).toBe('none');
+      expect(getNpcQuestIndicatorState(world, 'spell-quest-giver')).toBe('none');
+    });
+
+    it('shows the shopkeeper as actionable when he can offer or advance the quest, and accepted while waiting', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+      world.playerGold = SHOPKEEPER_EQUIPMENT_COST + 10;
+      const bag = world.inventories.get(player)!;
+
+      expect(getNpcQuestIndicatorState(world, 'shopkeeper')).toBe('actionable');
+
+      meetShopkeeper(world);
+      questSystem(world);
+      expect(getNpcQuestIndicatorState(world, 'shopkeeper')).toBe('accepted');
+
+      addItem(bag, SHOPKEEPER_FETCH_ITEM_ID, 1);
+      questSystem(world);
+      expect(getNpcQuestIndicatorState(world, 'shopkeeper')).toBe('actionable');
+      expect(returnShopkeeperPrize(world, player)).toBe(true);
+      questSystem(world);
+      expect(getNpcQuestIndicatorState(world, 'shopkeeper')).toBe('actionable');
+
+      expect(purchaseShopkeeperEquipment(world, player)).toBe(true);
+      questSystem(world);
+      expect(getNpcQuestIndicatorState(world, 'shopkeeper')).toBe('accepted');
+    });
+
+    it('shows the spell broker as actionable when he can offer or claim the quest, and accepted while the kill is pending', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      world.playerLevel.level = 2;
+      world.goalFlags.set('floor1-leveling-quest-complete', true);
+
+      expect(getNpcQuestIndicatorState(world, 'spell-quest-giver')).toBe('actionable');
+
+      meetSpellQuestGiver(world);
+      questSystem(world);
+      expect(getNpcQuestIndicatorState(world, 'spell-quest-giver')).toBe('accepted');
+
+      const battle = world.floor1?.objective.bossBattles.get('slime-rat');
+      if (!battle) {
+        throw new Error('Expected slime-rat boss battle state');
+      }
+      battle.defeated = true;
+
+      expect(getNpcQuestIndicatorState(world, 'spell-quest-giver')).toBe('actionable');
     });
   });
 });
