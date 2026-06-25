@@ -1,6 +1,12 @@
 import { addComponent, entityExists, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { BroadcastScore, Position, Projectile, Sprite } from '../../src/core/components.js';
+import {
+  BroadcastScore,
+  DeathTimer,
+  Position,
+  Projectile,
+  Sprite,
+} from '../../src/core/components.js';
 import { createEntity, spawnEnemy, spawnPlayer, spawnXpGem } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
@@ -29,6 +35,21 @@ describe('damageSystem', () => {
     damageSystem(world, collisionSystem(world));
 
     expect(world.stores.health.current[player]).toBe(95);
+  });
+
+  it('does not deal contact damage when the enemy is a corpse (DeathTimer)', () => {
+    const world = createTestWorld();
+    const player = spawnPlayer(world, 0, 0);
+    const enemy = spawnEnemy(world, 8, 0, 25);
+
+    // The enemy died and is in its death-linger window: it keeps the Enemy
+    // component but must not damage the player on contact.
+    addComponent(world.ecs, enemy, set(DeathTimer, { remainingMs: 300 }));
+
+    damageSystem(world, collisionSystem(world));
+
+    expect(world.stores.health.current[player]).toBe(100);
+    expect(world.combatEvents).toHaveLength(0);
   });
 
   it('xp gem collection is handled by itemPickupSystem (not damageSystem)', () => {

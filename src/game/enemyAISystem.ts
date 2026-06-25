@@ -1,5 +1,6 @@
-import { addComponent, query, setComponent } from 'bitecs';
+import { addComponent, hasComponent, query, setComponent } from 'bitecs';
 import {
+  DeathTimer,
   DoorState,
   Enemy,
   EnemyBehavior,
@@ -1397,6 +1398,17 @@ export function enemyAISystem(world: GameWorld): void {
   const playerHiddenInSafeRoom = world.playerInSafeRoom;
 
   for (const eid of enemies) {
+    // Corpses in their death-linger window keep Enemy/Velocity components until
+    // deathTimerSystem removes them. They must not chase, fire, or steer — zero
+    // their velocity and skip AI. The death knockback slide is applied
+    // independently by knockbackSystem.
+    if (hasComponent(world.ecs, eid, DeathTimer)) {
+      setVelocity(world, eid, 0, 0);
+      pathStates.delete(eid);
+      getSlimeLeapStateMap(world).delete(eid);
+      continue;
+    }
+
     const enemyX = position.x[eid]!;
     const enemyY = position.y[eid]!;
     const playerDx = playerX - enemyX;

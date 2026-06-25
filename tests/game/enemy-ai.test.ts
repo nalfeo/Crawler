@@ -1,6 +1,12 @@
 import { addComponent, addEntity, query, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { DoorState, EnemyBehavior, EnemyProjectile, Velocity } from '../../src/core/components.js';
+import {
+  DeathTimer,
+  DoorState,
+  EnemyBehavior,
+  EnemyProjectile,
+  Velocity,
+} from '../../src/core/components.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
@@ -214,6 +220,22 @@ describe('enemyAISystem', () => {
 
     expect(world.stores.velocity.x[enemy]).toBeCloseTo(-1.5);
     expect(world.stores.velocity.y[enemy]).toBeCloseTo(-2);
+  });
+
+  it('stops chasing the player once the enemy becomes a corpse (DeathTimer)', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const enemy = spawnBehaviorEnemy(world, 3, 4, 20, AI_TYPE.CHASE, 2.5, 100, 0);
+
+    // Leftover chase velocity from the frame the enemy died — the AI system must
+    // zero it and not produce a fresh chase vector while the corpse lingers.
+    setComponent(world.ecs, enemy, Velocity, { x: -1.5, y: -2 });
+    addComponent(world.ecs, enemy, set(DeathTimer, { remainingMs: 300 }));
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBe(0);
+    expect(world.stores.velocity.y[enemy]).toBe(0);
   });
 
   it('moves a swarm enemy toward the player while separating from nearby swarmers', () => {

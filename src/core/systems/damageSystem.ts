@@ -2,6 +2,7 @@ import { entityExists, hasComponent, query, removeEntity } from 'bitecs';
 import type { CollisionResult } from './collisionSystem.js';
 import {
   Damage,
+  DeathTimer,
   Enemy,
   EnemyProjectile,
   Health,
@@ -165,6 +166,12 @@ function applyPlayerEnemyHit(
   enemy: number,
   hitTimestamps: Float64Array,
 ): void {
+  // Dead enemies keep their Enemy component during the death-linger window
+  // (deathTimerSystem removes them once the corpse animation finishes). A
+  // corpse must not deal contact damage just because the player walks over it.
+  if (hasComponent(world.ecs, enemy, DeathTimer)) {
+    return;
+  }
   if (isEntityInSafeSpace(world, player)) {
     return;
   }
