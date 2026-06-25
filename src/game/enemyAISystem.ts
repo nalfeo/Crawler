@@ -274,7 +274,12 @@ function applyIdleWander(
       dirY: Math.sin(angle),
       untilFrame: world.frameCount + world.rng.nextInt(24, 96),
     };
-    if (avoidDoors && playerX !== undefined && playerY !== undefined) {
+    if (
+      avoidDoors &&
+      playerX !== undefined &&
+      playerY !== undefined &&
+      isBlockedDirection(state.dirX, state.dirY)
+    ) {
       const awayFromPlayer = normalize(px - playerX, py - playerY);
       if (
         awayFromPlayer.length > EPSILON &&

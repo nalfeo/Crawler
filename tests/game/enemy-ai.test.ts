@@ -429,7 +429,7 @@ describe('enemyAISystem', () => {
     ).toBeGreaterThan(0.1);
   });
 
-  it('prefers moving away from safe-room doors while player is safe', () => {
+  it('avoids selecting idle wander directions that stay near safe-room doors', () => {
     const world = createTestWorld();
     world.floorMap = createSafeRoomDoorMap();
     spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
@@ -438,7 +438,27 @@ describe('enemyAISystem', () => {
 
     enemyAISystem(world);
 
-    expect(world.stores.velocity.x[enemy]).toBeGreaterThan(0);
+    const enemyX = world.stores.position.x[enemy] ?? 0;
+    const enemyY = world.stores.position.y[enemy] ?? 0;
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    const speed = Math.hypot(vx, vy);
+    expect(speed).toBeGreaterThan(0.1);
+    const dirX = vx / speed;
+    const dirY = vy / speed;
+    const lookaheadX = enemyX + dirX * 20;
+    const lookaheadY = enemyY + dirY * 20;
+    const lookaheadTile = world.floorMap.pixelToTile(lookaheadX, lookaheadY);
+    for (let dy = -1; dy <= 1; dy += 1) {
+      for (let dx = -1; dx <= 1; dx += 1) {
+        const tx = lookaheadTile.x + dx;
+        const ty = lookaheadTile.y + dy;
+        if (!world.floorMap.tileMap.inBounds(tx, ty)) {
+          continue;
+        }
+        expect(world.floorMap.tileMap.isDoor(tx, ty)).toBe(false);
+      }
+    }
   });
 
   it('moves a leaper toward the player at normal speed while out of pounce range', () => {
