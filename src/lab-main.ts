@@ -53,6 +53,8 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'death-lab': '/src/labs/death-lab/index.ts',
   'spell-system-lab': '/src/labs/spell-system-lab/index.ts',
   'parallel-bt': '/src/labs/parallel-bt-lab/index.ts',
+  'tile-blend-lab': '/src/labs/tile-blend-lab/index.ts',
+  'sprite-tint-lab': '/src/labs/sprite-tint-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {
