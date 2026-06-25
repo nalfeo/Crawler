@@ -17,6 +17,33 @@ npm run sprites:asset-plan -- --plan plans/floor-art/rat-themed-dungeon-floor.ar
 The tracker reports per-asset lifecycle status (planned, brief-ready,
 approved, integrated) and unresolved placeholders.
 
+### Item-icon backlog
+
+Inventory/equipment item icons are tracked with art-plan files under
+`plans/item-icons/*.art.yaml`. Every item in `ITEM_CATALOG` currently renders
+a procedural placeholder PNG (manifest `sourceRun: "placeholder"`) and needs
+real authored art generated later when provider access is available. The
+backlog is split for batch-friendly review:
+
+| Plan file                    | Covers                                      |
+| ---------------------------- | ------------------------------------------- |
+| `floor1-item-icons.art.yaml` | Curated Floor-1 items (hand-written briefs) |
+| `weapons.art.yaml`           | Weapon-tagged items (`type: weapon`)        |
+| `materials.art.yaml`         | Crafting materials                          |
+| `consumables.art.yaml`       | Consumables                                 |
+| `key-items.art.yaml`         | Key items                                   |
+| `misc.art.yaml`              | Misc objects                                |
+
+Each catalog item appears in exactly one of these plans; the
+`tests/unit/sprites/art-plan-catalog.test.ts` guard fails if a catalog item is
+missing, duplicated across plans, or mistyped. To check status or emit draft
+briefs for a batch:
+
+```bash
+npm run sprites:asset-plan -- --plan plans/item-icons/weapons.art.yaml
+npm run sprites:plan-drafts -- --plan plans/item-icons/weapons.art.yaml
+```
+
 To turn missing art-plan entries into runnable draft briefs, run:
 
 ```bash
