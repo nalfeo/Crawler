@@ -49,7 +49,7 @@ function makeFloorMap(
   const config: MapConfig = {
     widthTiles: mapW,
     heightTiles: mapH,
-    tileSizePx: CELL_SIZE,
+    tileSizeFt: CELL_SIZE,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -415,14 +415,14 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
 
     const playerX = world.stores.position.x[playerEid] ?? 0;
     const playerY = world.stores.position.y[playerEid] ?? 0;
-    const playerTile = floorMap.pixelToTile(playerX, playerY);
+    const playerTile = floorMap.worldToTile(playerX, playerY);
 
     // Path overlays
     if (labSettings.showPaths) {
       for (const mob of mobs) {
         const mx = world.stores.position.x[mob.eid] ?? 0;
         const my = world.stores.position.y[mob.eid] ?? 0;
-        const mobTile = floorMap.pixelToTile(mx, my);
+        const mobTile = floorMap.worldToTile(mx, my);
 
         const path = findTilePath(floorMap, mobTile, playerTile, {
           traversalMode: mob.isFlying ? PATH_TRAVERSAL.FLYING : PATH_TRAVERSAL.GROUND,

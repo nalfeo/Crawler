@@ -16,29 +16,28 @@ import type { GameWorld } from '../core/world.js';
 import { ENEMY_PROJECTILE, TeamId } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
-import { ftToPx } from '../shared/units.js';
 import { SeededRandom } from '../shared/random.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
 
-const DEFAULT_ENEMY_SPEED = 1.5;
+const DEFAULT_ENEMY_SPEED = 0.1875;
 const EPSILON = 0.0001;
-const SWARM_NEIGHBOR_RADIUS = ftToPx(4);
+const SWARM_NEIGHBOR_RADIUS = 4;
 const SWARM_PLAYER_WEIGHT = 1;
 const SWARM_SEPARATION_WEIGHT = 1.4;
 const SWARM_COHESION_WEIGHT = 0.2;
 const MAX_OVERLAP_FRACTION = 0.25;
 const SEPARATION_FORCE = 2.0;
-const ENEMY_RADIUS = 8;
+const ENEMY_RADIUS = 1;
 const MIN_MOB_PLAYER_DISTANCE = ENEMY_RADIUS * 2 * (1 - MAX_OVERLAP_FRACTION);
 const STALE_PATH_FRAMES = 180;
 const DEFAULT_PATH_REFRESH_FRAMES = 10;
-const DEFAULT_FLANK_DISTANCE = 96;
+const DEFAULT_FLANK_DISTANCE = 12;
 const TARGET_SEARCH_RADIUS = 8;
-const WAYPOINT_EPSILON = 4;
-const NAVIGATION_LOOKAHEAD_PX = 24;
-const WANDER_LOOKAHEAD_PX = 20;
+const WAYPOINT_EPSILON = 0.5;
+const NAVIGATION_LOOKAHEAD_FT = 3;
+const WANDER_LOOKAHEAD_FT = 2.5;
 const DOOR_AVOID_RADIUS_TILES = 1;
 const NAVIGATION_ANGLE_OFFSETS = [0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2] as const;
 const STUCK_FRAMES_THRESHOLD = 15;
@@ -57,16 +56,16 @@ const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
 // loop once it has closed to within ~5 ft. A slime's leap travels only a couple
 // of feet at its low base speed, so winding up from across the room read as a
 // leap at nothing — the pounce has to begin within leap distance to land as a
-// real lunge at the player. ftToPx(5) ≈ 40px.
-const SLIME_LEAP_RANGE = ftToPx(5);
+// real lunge at the player.
+const SLIME_LEAP_RANGE = 5;
 // Inner range below which a slime will not *start* a new pounce, closing like a
 // normal enemy instead: point-blank it has nowhere to leap. Melee-range
 // hittability — which the Floor 1 clear gate depends on — is guaranteed by the
 // frozen-recovery window after every leap, not by this range: an in-flight
 // pounce always finishes its full prep → leap → frozen-recovery cycle even when
 // it lands inside the inner range, so the player always gets a stationary window
-// to attack. ftToPx(2) ≈ 16px.
-const SLIME_LEAP_INNER_RANGE = ftToPx(2);
+// to attack.
+const SLIME_LEAP_INNER_RANGE = 2;
 // Anticipation crouch before the pounce: a short, readable wind-up telegraph
 // that tells the player a leap is coming. It no longer has to be the hittable
 // window — the frozen recovery is — but it stays long enough to read clearly.
@@ -88,7 +87,7 @@ const SLIME_PREP_SPEED_MULT = 0.25;
 // hop visibly fast for very slow slimes whose 1.5x is still sluggish. A slower
 // leap also keeps the pounce hittable (it cannot blink through a strike).
 const SLIME_LEAP_SPEED_MULT = 1.5;
-const SLIME_LEAP_BONUS_SPEED = 0.6;
+const SLIME_LEAP_BONUS_SPEED = 0.075;
 // Lateral arc applied across the leap so the pounce curves instead of tracking
 // in a dead-straight line. Peaks at mid-leap (parabolic) and returns to zero.
 // Kept small so the pounce stays readable and hittable rather than juking the
@@ -225,7 +224,7 @@ function isNearDoor(
   if (!floorMap) {
     return false;
   }
-  const tile = floorMap.pixelToTile(x, y);
+  const tile = floorMap.worldToTile(x, y);
   for (let dy = -radiusTiles; dy <= radiusTiles; dy += 1) {
     for (let dx = -radiusTiles; dx <= radiusTiles; dx += 1) {
       const tx = tile.x + dx;
@@ -258,8 +257,8 @@ function applyIdleWander(
     if (!floorMap) {
       return false;
     }
-    const sampleX = px + dirX * WANDER_LOOKAHEAD_PX;
-    const sampleY = py + dirY * WANDER_LOOKAHEAD_PX;
+    const sampleX = px + dirX * WANDER_LOOKAHEAD_FT;
+    const sampleY = py + dirY * WANDER_LOOKAHEAD_FT;
     return (
       !floorMap.isPassableAt(sampleX, sampleY) ||
       isPointInSafeSpace(world, sampleX, sampleY) ||
@@ -304,7 +303,7 @@ function applyIdleWander(
     setVelocity(world, eid, 0, 0);
     return;
   }
-  setNavigatingVelocity(world, eid, state.dirX, state.dirY, Math.max(0.2, speed * 0.45));
+  setNavigatingVelocity(world, eid, state.dirX, state.dirY, Math.max(0.025, speed * 0.45));
 }
 
 function createSlimePrepState(world: GameWorld, eid: number, previousSign = 1): SlimeLeapState {
@@ -436,7 +435,7 @@ function applySlimeLeapBehavior(
       wiggleX * SLIME_WIGGLE_BLEND + toPlayer.x * (1 - SLIME_WIGGLE_BLEND),
       wiggleY * SLIME_WIGGLE_BLEND + toPlayer.y * (1 - SLIME_WIGGLE_BLEND),
     );
-    const prepSpeed = Math.max(0.2, speed * SLIME_PREP_SPEED_MULT * (0.7 + wigglePulse * 0.3));
+    const prepSpeed = Math.max(0.025, speed * SLIME_PREP_SPEED_MULT * (0.7 + wigglePulse * 0.3));
     setNavigatingVelocity(world, eid, desired.x, desired.y, prepSpeed);
     return true;
   }
@@ -487,8 +486,8 @@ function setNavigatingVelocity(
 
   for (const offset of NAVIGATION_ANGLE_OFFSETS) {
     const candidate = rotate(desired.x, desired.y, offset);
-    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
-    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
+    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
+    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
     if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
@@ -523,8 +522,8 @@ function tryUnstuckVelocity(
   for (let i = 0; i < UNSTUCK_ANGLE_COUNT; i++) {
     const angle = (i / UNSTUCK_ANGLE_COUNT) * Math.PI * 2;
     const candidate = rotate(desired.x, desired.y, angle);
-    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_PX;
-    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_PX;
+    const sampleX = enemyX + candidate.x * NAVIGATION_LOOKAHEAD_FT;
+    const sampleY = enemyY + candidate.y * NAVIGATION_LOOKAHEAD_FT;
     if (floorMap.isPassableAt(sampleX, sampleY) && !isPointInSafeSpace(world, sampleX, sampleY)) {
       setVelocity(world, eid, candidate.x * speed, candidate.y * speed);
       return;
@@ -638,7 +637,7 @@ function asTilePoint(world: GameWorld, px: number, py: number): TilePoint {
   if (!floorMap) {
     return { x: 0, y: 0 };
   }
-  return floorMap.pixelToTile(px, py);
+  return floorMap.worldToTile(px, py);
 }
 
 // Exported for unit testing of the flank-target geometry (degenerate vs lateral).
@@ -661,10 +660,10 @@ export function makeFlankTargets(
   }
 
   const flankDistance = Math.max(
-    floorMap.config.tileSizePx * 2,
+    floorMap.config.tileSizeFt * 2,
     world.stores.enemyBehavior.flankDistance[eid] || DEFAULT_FLANK_DISTANCE,
   );
-  const sideDistance = Math.max(floorMap.config.tileSizePx * 1.5, flankDistance * 0.5);
+  const sideDistance = Math.max(floorMap.config.tileSizeFt * 1.5, flankDistance * 0.5);
   const sideSign = eid % 2 === 0 ? 1 : -1;
   const leftX = -toPlayer.y;
   const leftY = toPlayer.x;
@@ -729,7 +728,7 @@ function nextWaypointDirection(
 
   while (pathState.waypointIndex < pathState.waypoints.length) {
     const waypoint = pathState.waypoints[pathState.waypointIndex]!;
-    const waypointCenter = floorMap.tileToPixel(waypoint.x, waypoint.y);
+    const waypointCenter = floorMap.tileToWorld(waypoint.x, waypoint.y);
     const delta = normalize(waypointCenter.x - enemyX, waypointCenter.y - enemyY);
 
     if (delta.length <= maxReach) {
@@ -821,7 +820,7 @@ function isEnemyRoomDoorOpen(world: GameWorld, eid: number): boolean {
 
   const enemyX = world.stores.position.x[eid] ?? 0;
   const enemyY = world.stores.position.y[eid] ?? 0;
-  const tile = floorMap.pixelToTile(enemyX, enemyY);
+  const tile = floorMap.worldToTile(enemyX, enemyY);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) {
     return true;
@@ -854,13 +853,13 @@ function isPlayerInEnemyRoom(
 
   const enemyX = world.stores.position.x[eid] ?? 0;
   const enemyY = world.stores.position.y[eid] ?? 0;
-  const enemyTile = floorMap.pixelToTile(enemyX, enemyY);
+  const enemyTile = floorMap.worldToTile(enemyX, enemyY);
   const enemyRoomId = floorMap.roomGraph.getRoomAt(enemyTile.x, enemyTile.y);
   if (enemyRoomId < 0) {
     return false;
   }
 
-  const playerTile = floorMap.pixelToTile(playerX, playerY);
+  const playerTile = floorMap.worldToTile(playerX, playerY);
   return floorMap.roomGraph.getRoomAt(playerTile.x, playerTile.y) === enemyRoomId;
 }
 
@@ -984,11 +983,11 @@ function tryFireEnemyProjectile(
       direction.x * FIREBALL_DEF.projectileSpeed,
       direction.y * FIREBALL_DEF.projectileSpeed,
       FIREBALL_DEF.baseDamage,
-      ftToPx(FIREBALL_DEF.aoeRadius),
+      FIREBALL_DEF.aoeRadius,
       FIREBALL_DEF.baseDamage,
       eid,
       TeamId.ENEMY,
-      ftToPx(FIREBALL_DEF.range),
+      FIREBALL_DEF.range,
     );
     addComponent(world.ecs, projectile, EnemyProjectile);
   } else {
@@ -1137,7 +1136,7 @@ function applyPathDrivenBehavior(
 
   let targetTile = personaTarget;
   if (behaviorType === AI_TYPE.RANGED) {
-    const rangedTargetPx = buildRangedPathTarget(
+    const rangedTargetFt = buildRangedPathTarget(
       eid,
       enemyX,
       enemyY,
@@ -1146,7 +1145,7 @@ function applyPathDrivenBehavior(
       distanceToPlayer,
       attackRange,
     );
-    const preferred = asTilePoint(world, rangedTargetPx.x, rangedTargetPx.y);
+    const preferred = asTilePoint(world, rangedTargetFt.x, rangedTargetFt.y);
     const fallback = findNearestTraversableTile(world, preferred, traversalMode);
     if (fallback) {
       targetTile = fallback;
@@ -1163,7 +1162,7 @@ function applyPathDrivenBehavior(
   );
 
   if (!usedPath) {
-    const waypoint = world.floorMap?.tileToPixel(targetTile.x, targetTile.y);
+    const waypoint = world.floorMap?.tileToWorld(targetTile.x, targetTile.y);
     if (!waypoint) {
       if (
         tryFallbackChaseNavigation(
@@ -1188,8 +1187,8 @@ function applyPathDrivenBehavior(
       return;
     }
     // Tile center already reached but the player may have drifted within the
-    // tile. Close the remaining pixel-level gap directly so the enemy does not
-    // stall at the tile centre while the player is still a few pixels away.
+    // tile. Close the remaining sub-tile gap directly so the enemy does not
+    // stall at the tile centre while the player is still a short distance away.
     if (
       distanceToPlayer > MIN_MOB_PLAYER_DISTANCE &&
       (behaviorType === AI_TYPE.CHASE ||
@@ -1227,7 +1226,7 @@ function applyPathDrivenBehavior(
     } else if (pathDirection.length <= EPSILON && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {
       // Path waypoints exhausted (enemy on or very near the player's tile) but
       // the player has drifted within the tile. Drive toward the player's exact
-      // pixel position so the enemy commits to contact range instead of stopping.
+      // world position so the enemy commits to contact range instead of stopping.
       setNavigatingVelocity(world, eid, toPlayer.x, toPlayer.y, speed);
     }
   } else if (behaviorType !== AI_TYPE.RANGED && distanceToPlayer > MIN_MOB_PLAYER_DISTANCE) {

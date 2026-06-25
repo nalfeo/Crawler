@@ -374,7 +374,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         Math.hypot(
           (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
           (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-        ) <= objective.markerRadiusPx
+        ) <= objective.markerRadiusFt
       ) {
         sceneOptions.onStairDescend?.(world, playerEid);
         modalPicker.close();
@@ -422,7 +422,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       Math.hypot(
         (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
         (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-      ) <= objective.markerRadiusPx;
+      ) <= objective.markerRadiusFt;
     if (shouldInteractNpc || nearStairs) {
       scene.queuedInteraction = true;
     }
@@ -481,7 +481,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const playerY = world.stores.position.y[playerEid] ?? 0;
 
     const worldPoints = nav.pathWaypoints.map((tile) =>
-      world.floorMap!.tileToPixel(tile.x, tile.y),
+      world.floorMap!.tileToWorld(tile.x, tile.y),
     );
 
     // The AI plans on a 4-connected grid (cardinal hops) but string-pulls at
@@ -494,7 +494,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       upcomingPoints,
       (x, y) => world.floorMap!.isPassableAt(x, y),
       OVERLAY_LINE_OF_SIGHT_SAMPLE_PX,
-      (x, y) => world.floorMap!.pixelToTile(x, y),
+      (x, y) => world.floorMap!.worldToTile(x, y),
     );
 
     if (smoothedPath.length > 1) {

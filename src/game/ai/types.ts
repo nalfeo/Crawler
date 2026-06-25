@@ -50,15 +50,15 @@ export interface AIConfig {
   /** Retreat threshold: health percentage to trigger retreat (0-1) */
   retreatThreshold?: number;
   /**
-   * How close (in pixels) a living enemy must be for low health to trigger a
+   * How close (in feet) a living enemy must be for low health to trigger a
    * retreat. Low health while no enemy is within this radius must NOT cause a
    * retreat — there is no passive health regen, so a safe low-health AI would
    * otherwise deadlock forever instead of finishing non-combat objectives.
    */
   retreatDangerRadius?: number;
-  /** How far to scan for targets (in pixels) */
+  /** How far to scan for targets (in feet) */
   scanRadius?: number;
-  /** How far to maintain from ranged enemies (in pixels) */
+  /** How far to maintain from ranged enemies (in feet) */
   rangedSafeDistance?: number;
   /**
    * Radius (px) within which the opportunistic collect layer pulls the player

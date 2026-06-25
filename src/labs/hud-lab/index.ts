@@ -117,7 +117,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           spellQuestGiverPos: { x: 700, y: 500 },
           shopRoomPos: { x: 500, y: 300 },
           questItemPos: { x: 700, y: 500 },
-          markerRadiusPx: 32,
+          markerRadiusFt: 4,
           questAccepted: false,
           questCompleted: false,
           ratsKilled: 0,

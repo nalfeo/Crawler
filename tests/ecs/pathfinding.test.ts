@@ -14,7 +14,7 @@ function makePathMap(doorOpen: boolean): FloorMap {
   const config: MapConfig = {
     widthTiles: width,
     heightTiles: height,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [4, 8],

@@ -28,7 +28,7 @@ function initFloor1(seed: number): ReturnType<typeof createTestWorld> {
 
 function navigableRoomPath(world: ReturnType<typeof createTestWorld>): number[] {
   const floorMap = world.floorMap!;
-  const welcomeTile = floorMap.pixelToTile(
+  const welcomeTile = floorMap.worldToTile(
     world.floor1!.objective.welcomeOfficePos.x,
     world.floor1!.objective.welcomeOfficePos.y,
   );
@@ -56,7 +56,7 @@ describe('floor 1 welcome signs', () => {
       const spawnTile = floorMap!.playerSpawn;
 
       const signTiles = welcomeSignEids(world).map((eid) =>
-        floorMap!.pixelToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
+        floorMap!.worldToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
       );
 
       // A sign still guides the player out of the spawn room...
@@ -81,7 +81,7 @@ describe('floor 1 welcome signs', () => {
       .map((eid) => {
         const x = world.stores.position.x[eid] ?? 0;
         const y = world.stores.position.y[eid] ?? 0;
-        const tile = floorMap.pixelToTile(x, y);
+        const tile = floorMap.worldToTile(x, y);
         return {
           roomId: floorMap.roomGraph.getRoomAt(tile.x, tile.y),
           angle: world.stores.rotation.angle[eid] ?? 0,

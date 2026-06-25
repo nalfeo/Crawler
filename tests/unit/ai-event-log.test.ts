@@ -42,16 +42,16 @@ function mk(type: SimEventType, gameMs: number, overrides: Partial<SimEvent> = {
 function fixtureEvents(): SimEvent[] {
   return [
     // s0: moving efficiently — not wiggle, not idle, not stuck.
-    mk('sample', 0, { state: 'EXPLORE', pathTravel: 20, netDisp: 18 }),
+    mk('sample', 0, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 2.25 }),
     // s1+s2: moving a lot but going nowhere — wiggle (eff 0.1 < 0.35).
-    mk('sample', 250, { state: 'EXPLORE', pathTravel: 20, netDisp: 2, px: 100, py: 200 }),
-    mk('sample', 500, { state: 'EXPLORE', pathTravel: 20, netDisp: 2 }),
-    // s3: barely moving — idle (pathTravel 1 < 1.5).
-    mk('sample', 750, { state: 'ENGAGE', pathTravel: 1, netDisp: 1 }),
+    mk('sample', 250, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 0.25, px: 100, py: 200 }),
+    mk('sample', 500, { state: 'EXPLORE', pathTravel: 2.5, netDisp: 0.25 }),
+    // s3: barely moving — idle (pathTravel 0.125 < 0.1875).
+    mk('sample', 750, { state: 'ENGAGE', pathTravel: 0.125, netDisp: 0.125 }),
     // s4: not moving + stuckFrames high — idle AND stuck.
     mk('sample', 1000, { state: 'ENGAGE', pathTravel: 0, netDisp: 0, stuckFrames: 50 }),
     // s5: final sample (dt = 0, contributes no time).
-    mk('sample', 1250, { state: 'ENGAGE', pathTravel: 30, netDisp: 30 }),
+    mk('sample', 1250, { state: 'ENGAGE', pathTravel: 3.75, netDisp: 3.75 }),
     // Kills used for cadence metrics (not time attribution).
     mk('kill', 500, { note: 'kill 1' }),
     mk('kill', 1000, { note: 'kill 2' }),
@@ -94,9 +94,9 @@ describe('summarizeEvents', () => {
 
   it('computes travel efficiency from net displacement over path travel', () => {
     const summary = summarizeEvents(fixtureEvents());
-    expect(summary.totalPathTravel).toBe(91); // 20+20+20+1+0+30
-    expect(summary.totalNetDisp).toBe(53); // 18+2+2+1+0+30
-    expect(summary.travelEfficiency).toBeCloseTo(53 / 91, 3);
+    expect(summary.totalPathTravel).toBe(11); // 2.5+2.5+2.5+0.125+0+3.75 = 11.375
+    expect(summary.totalNetDisp).toBe(7); // 2.25+0.25+0.25+0.125+0+3.75 = 6.625
+    expect(summary.travelEfficiency).toBeCloseTo(6.625 / 11.375, 3);
   });
 
   it('reports wiggle episodes that exceed the minimum duration', () => {

@@ -18,16 +18,16 @@ export const enemyArchetypeDefSchema = z
     name: z.string().min(1),
     /** Base hit points. */
     hp: z.number().int().positive(),
-    /** Movement speed in ECS world units (pixels per frame). */
+    /** Movement speed in feet per frame. */
     speed: z.number().positive(),
-    /** Detection range in pixels. */
+    /** Detection range in feet. */
     detectRange: z.number().nonnegative(),
     /** Sprite texture ID from the sprite catalog. */
     spriteTexture: z.number().int().positive(),
-    /** Sprite width in pixels. */
-    spriteWidth: z.number().int().positive().default(16),
-    /** Sprite height in pixels. */
-    spriteHeight: z.number().int().positive().default(16),
+    /** Sprite width in feet. */
+    spriteWidth: z.number().positive().default(2),
+    /** Sprite height in feet. */
+    spriteHeight: z.number().positive().default(2),
     /** AI behavior type. */
     aiType: z.enum(['chase', 'patrol', 'ranged', 'flee']).default('chase'),
     /** Spawn weight for weighted random selection (0-1). */
@@ -52,10 +52,10 @@ export const enemyPackDefSchema = z
     enemyCap: z.number().int().positive(),
     /** Minimum milliseconds between spawn attempts. */
     spawnIntervalMs: z.number().int().nonnegative(),
-    /** Minimum spawn radius from player in pixels. */
+    /** Minimum spawn radius from player in feet. */
     spawnRadiusMin: z.number().nonnegative(),
-    /** Maximum spawn distance from player before despawning (in pixels). */
-    despawnDistancePx: z.number().nonnegative(),
+    /** Maximum spawn distance from player before despawning (in feet). */
+    despawnDistanceFt: z.number().nonnegative(),
   })
   .strict();
 

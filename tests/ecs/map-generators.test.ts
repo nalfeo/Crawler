@@ -21,7 +21,7 @@ function smallConfig(biome: BiomeType): MapConfig {
   return {
     widthTiles: 60,
     heightTiles: 40,
-    tileSizePx: 32,
+    tileSizeFt: 4,
     biome,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -340,7 +340,7 @@ describe('Map Generators', () => {
       const config: MapConfig = {
         widthTiles: 120,
         heightTiles: 70,
-        tileSizePx: 32,
+        tileSizeFt: 4,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
         roomWidthRange: [6, 14],
@@ -365,7 +365,7 @@ describe('Map Generators', () => {
       const floor1Config: MapConfig = {
         widthTiles: 240,
         heightTiles: 140,
-        tileSizePx: 32,
+        tileSizeFt: 4,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
         roomWidthRange: [10, 22],
@@ -399,7 +399,7 @@ describe('Map Generators', () => {
       const config: MapConfig = {
         widthTiles: 120,
         heightTiles: 70,
-        tileSizePx: 32,
+        tileSizeFt: 4,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
         roomWidthRange: [6, 14],
@@ -454,7 +454,7 @@ describe('Map Generators', () => {
       const config: MapConfig = {
         widthTiles: 240,
         heightTiles: 140,
-        tileSizePx: 32,
+        tileSizeFt: 4,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
         roomWidthRange: [10, 22],
@@ -479,7 +479,7 @@ describe('Map Generators', () => {
       const config: MapConfig = {
         widthTiles: 120,
         heightTiles: 70,
-        tileSizePx: 32,
+        tileSizeFt: 4,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
         roomWidthRange: [SPECIAL_ROOM_MIN_WIDTH, 14],
@@ -513,7 +513,7 @@ describe('Map Generators', () => {
       const config: MapConfig = {
         widthTiles: 120,
         heightTiles: 70,
-        tileSizePx: 32,
+        tileSizeFt: 4,
         biome: BiomeType.DUNGEON,
         seed: 42,
         roomWidthRange: [4, 8],
@@ -655,7 +655,7 @@ describe('Map Generators', () => {
       const config: MapConfig = {
         widthTiles: 240,
         heightTiles: 140,
-        tileSizePx: 32,
+        tileSizeFt: 4,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
         roomWidthRange: [10, 22],

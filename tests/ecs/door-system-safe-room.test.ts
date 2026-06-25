@@ -12,7 +12,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 12,
   heightTiles: 12,
-  tileSizePx: 32,
+  tileSizeFt: 32,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],
@@ -50,7 +50,7 @@ describe('doorSystem safe-room forced-close behaviour', () => {
   it('forces safe-room doors closed when the player is inside but not in the doorway', () => {
     const world = createTestWorld();
     world.floorMap = makeMapWithSafeRoomDoor();
-    // Player at tile (2,2) → pixel centre (80, 80), inside the safe room.
+    // Player at tile (2,2) → world centre (80, 80) ft, inside the safe room.
     spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
 
     const door = addEntity(world.ecs);

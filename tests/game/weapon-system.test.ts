@@ -10,8 +10,8 @@ import { createTestWorld } from '../helpers/world-factory.js';
 describe('weaponSystem', () => {
   it('spawns a projectile when the cooldown has elapsed', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 120);
-    spawnEnemy(world, 200, 120, 10); // target enemy (no floorMap = always visible)
+    spawnPlayer(world, 12.5, 15);
+    spawnEnemy(world, 25, 15, 10); // target enemy (no floorMap = always visible)
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -23,14 +23,14 @@ describe('weaponSystem', () => {
 
     const projectile = projectiles[0];
     expect(projectile).toBeDefined();
-    expect(world.stores.position.x[projectile!]).toBe(100);
-    expect(world.stores.position.y[projectile!]).toBe(120);
+    expect(world.stores.position.x[projectile!]).toBe(12.5);
+    expect(world.stores.position.y[projectile!]).toBe(15);
     expect(world.stores.damage.amount[projectile!]).toBe(WEAPON.BASE_DAMAGE);
   });
 
   it('does not fire when there are no enemies', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 120);
+    spawnPlayer(world, 12.5, 15);
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -43,8 +43,8 @@ describe('weaponSystem', () => {
   it('aims projectiles at the nearest enemy', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 30, 0, 20);
-    spawnEnemy(world, 0, 40, 20);
+    spawnEnemy(world, 3.75, 0, 20);
+    spawnEnemy(world, 0, 5, 20);
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -63,8 +63,8 @@ describe('weaponSystem', () => {
 
   it('does not spawn a projectile while the weapon is on cooldown', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 64, 64);
-    spawnEnemy(world, 200, 64, 10); // target enemy
+    spawnPlayer(world, 8, 8);
+    spawnEnemy(world, 25, 8, 10); // target enemy
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;

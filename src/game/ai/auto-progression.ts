@@ -120,7 +120,7 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
-  if (Math.hypot(dx, dy) <= objective.markerRadiusPx) {
+  if (Math.hypot(dx, dy) <= objective.markerRadiusFt) {
     confirmFloor1StairDescend(world, playerEid);
   }
 }

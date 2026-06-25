@@ -32,7 +32,7 @@ function pointToSegmentDistSq(
   return dx * dx + dy * dy;
 }
 
-const BEAM_HIT_HALF_WIDTH = 8;
+const BEAM_HIT_HALF_WIDTH = 1;
 
 /** Applies line/beam damage using segment-vs-point checks. */
 export function beamSystem(world: GameWorld): void {

@@ -13,23 +13,23 @@
     "requiredTotalKills": 20,
     "requiredGold": 30,
     "requiredJunk": 4,
-    "markerRadiusPx": 64
+    "markerRadiusFt": 8.0
   },
   "map": {
     "widthTiles": 140,
     "heightTiles": 80,
-    "tileSizePx": 32,
     "seed": 84,
     "roomWidthRange": [7, 16],
     "roomHeightRange": [6, 14],
     "maxRooms": 55,
-    "floorDensity": 0.45
+    "floorDensity": 0.45,
+    "tileSizeFt": 4.0
   },
   "enemyPackId": "floor2-ambient",
   "player": {
     "hpBonus": 30,
-    "moveSpeedBonus": 0.3,
-    "pickupRangeBonus": 12
+    "moveSpeedBonus": 0.0375,
+    "pickupRangeBonus": 1.5
   },
   "camera": {
     "zoom": 2.0

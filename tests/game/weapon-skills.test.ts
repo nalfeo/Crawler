@@ -23,7 +23,6 @@ import {
 import { SKILL_HARD_CAP } from '../../src/shared/skills.js';
 import type { SkillState } from '../../src/game/skills/types.js';
 import { TeamId } from '../../src/shared/constants.js';
-import { ftToPx } from '../../src/shared/units.js';
 
 // Helper: create a world with a player and all weapon skills registered.
 function setupPlayerWithWeaponSkills() {
@@ -384,7 +383,7 @@ describe('weapon skill hit gate', () => {
     // The MELEE branch returns early when no enemy is in combat range, which would
     // skip dispatchAttack entirely and make the accuracy roll (and these
     // assertions) pass vacuously.
-    spawnEnemy(world, 15, 0, 50);
+    spawnEnemy(world, 1.875, 0, 50);
 
     // Force a deterministic miss: rng.next() returns 1.0 (> sword baseAccuracy 0.9)
     world.rng.next = () => 1.0;
@@ -407,7 +406,7 @@ describe('weapon skill hit gate', () => {
     const def = WEAPON_DEFS.get('sword')!;
 
     // Spawn an enemy in melee range so weaponSystem triggers an attack
-    spawnEnemy(world, 15, 0, 50);
+    spawnEnemy(world, 1.875, 0, 50);
 
     // Force a hit: rng.next() returns 0.0 (always <= any accuracy)
     world.rng.next = () => 0.0;
@@ -433,14 +432,14 @@ describe('weapon skill hit gate', () => {
     });
 
     // Spawn enemy close enough for the swing to hit
-    const enemy = spawnEnemy(world, 10, 0, 50);
+    const enemy = spawnEnemy(world, 1.25, 0, 50);
     spawnMeleeSwing(
       world,
       0,
       0,
       player,
       def.baseDamage,
-      ftToPx(def.aoeRadius),
+      def.aoeRadius,
       def.durationMs,
       1,
       0,
@@ -483,7 +482,7 @@ describe('weapon skill hit gate', () => {
       0,
       player,
       def.baseDamage,
-      ftToPx(def.aoeRadius),
+      def.aoeRadius,
       def.durationMs,
       1,
       0,

@@ -456,9 +456,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
     if (!terrainRt || !lastFloorMap) {
       return;
     }
-    const tilePx = lastFloorMap.config.tileSizePx;
-    const playerTileX = lastPlayerWorldX / tilePx;
-    const playerTileY = lastPlayerWorldY / tilePx;
+    const tileFt = lastFloorMap.config.tileSizeFt;
+    const playerTileX = lastPlayerWorldX / tileFt;
+    const playerTileY = lastPlayerWorldY / tileFt;
     // Centre the player in the dial; terrain + dots scroll underneath the mask.
     const originX = hudRadarCenterX - playerTileX * RADAR_PX_PER_TILE;
     const originY = hudRadarCenterY - playerTileY * RADAR_PX_PER_TILE;
@@ -495,7 +495,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     const objective = world.floor1?.objective;
     if (objective?.staircaseSpawned && objective.staircaseDiscovered) {
-      const stairTile = floorMap.pixelToTile(objective.staircasePos.x, objective.staircasePos.y);
+      const stairTile = floorMap.worldToTile(objective.staircasePos.x, objective.staircasePos.y);
       if (
         stairTile.x >= 0 &&
         stairTile.y >= 0 &&
@@ -507,13 +507,13 @@ export function createHudMinimap(scene: Phaser.Scene): {
       }
     }
 
-    const tilePx = floorMap.config.tileSizePx;
+    const tileFt = floorMap.config.tileSizeFt;
     const enemies = query(world.ecs, [Enemy, Position]);
     for (const eid of enemies) {
       const wx = world.stores.position.x[eid] ?? 0;
       const wy = world.stores.position.y[eid] ?? 0;
-      const tx = Math.floor(wx / tilePx);
-      const ty = Math.floor(wy / tilePx);
+      const tx = Math.floor(wx / tileFt);
+      const ty = Math.floor(wy / tileFt);
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       const idx = ty * floorMap.width + tx;
       if (!visited[idx]) continue;
@@ -527,8 +527,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
     for (const eid of npcs) {
       const wx = world.stores.position.x[eid] ?? 0;
       const wy = world.stores.position.y[eid] ?? 0;
-      const tx = Math.floor(wx / tilePx);
-      const ty = Math.floor(wy / tilePx);
+      const tx = Math.floor(wx / tileFt);
+      const ty = Math.floor(wy / tileFt);
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       const idx = ty * floorMap.width + tx;
       if (!visited[idx]) continue;
@@ -543,8 +543,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const py = world.stores.position.y[playerEid] ?? 0;
       lastPlayerWorldX = px;
       lastPlayerWorldY = py;
-      const ptx = px / tilePx;
-      const pty = py / tilePx;
+      const ptx = px / tileFt;
+      const pty = py / tileFt;
       dotGraphics.fillStyle(DOT_OUTLINE, 1);
       dotGraphics.fillCircle(ptx, pty, DOT_PLAYER_RADIUS + DOT_OUTLINE_WIDTH);
       dotGraphics.fillStyle(DOT_PLAYER_RING, 1);
@@ -565,16 +565,16 @@ export function createHudMinimap(scene: Phaser.Scene): {
     floorMap: FloorMap,
     visited: Uint8Array,
   ): void {
-    const tilePx = floorMap.config.tileSizePx;
-    let ptx = lastPlayerWorldX / tilePx;
-    let pty = lastPlayerWorldY / tilePx;
+    const tileFt = floorMap.config.tileSizeFt;
+    let ptx = lastPlayerWorldX / tileFt;
+    let pty = lastPlayerWorldY / tileFt;
     if (playerEid >= 0) {
       const px = world.stores.position.x[playerEid] ?? 0;
       const py = world.stores.position.y[playerEid] ?? 0;
       lastPlayerWorldX = px;
       lastPlayerWorldY = py;
-      ptx = px / tilePx;
-      pty = py / tilePx;
+      ptx = px / tileFt;
+      pty = py / tileFt;
     }
     const scale = RADAR_PX_PER_TILE;
     const cx = HUD_RADAR_RADIUS;
@@ -658,7 +658,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
     const objective = world.floor1?.objective;
     if (objective?.staircaseSpawned && objective.staircaseDiscovered) {
-      const stairTile = floorMap.pixelToTile(objective.staircasePos.x, objective.staircasePos.y);
+      const stairTile = floorMap.worldToTile(objective.staircasePos.x, objective.staircasePos.y);
       if (
         stairTile.x >= 0 &&
         stairTile.y >= 0 &&
@@ -681,12 +681,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
     for (const eid of enemyEids) {
       const wx = world.stores.position.x[eid] ?? 0;
       const wy = world.stores.position.y[eid] ?? 0;
-      const tx = Math.floor(wx / tilePx);
-      const ty = Math.floor(wy / tilePx);
+      const tx = Math.floor(wx / tileFt);
+      const ty = Math.floor(wy / tileFt);
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       if (!visited[ty * floorMap.width + tx]) continue;
-      const ex = localX(wx / tilePx);
-      const ey = localY(wy / tilePx);
+      const ex = localX(wx / tileFt);
+      const ey = localY(wy / tileFt);
       if (!inDial(ex, ey)) continue;
       radarScratch.fillStyle(DOT_OUTLINE, 1);
       radarScratch.fillCircle(ex, ey, DOT_ENEMY_RADIUS * scale + outline);
@@ -698,12 +698,12 @@ export function createHudMinimap(scene: Phaser.Scene): {
     for (const eid of npcEids) {
       const wx = world.stores.position.x[eid] ?? 0;
       const wy = world.stores.position.y[eid] ?? 0;
-      const tx = Math.floor(wx / tilePx);
-      const ty = Math.floor(wy / tilePx);
+      const tx = Math.floor(wx / tileFt);
+      const ty = Math.floor(wy / tileFt);
       if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
       if (!visited[ty * floorMap.width + tx]) continue;
-      const nx = localX(wx / tilePx);
-      const ny = localY(wy / tilePx);
+      const nx = localX(wx / tileFt);
+      const ny = localY(wy / tileFt);
       if (!inDial(nx, ny)) continue;
       radarScratch.fillStyle(DOT_OUTLINE, 1);
       radarScratch.fillCircle(nx, ny, DOT_NPC_RADIUS * scale + outline);

@@ -60,7 +60,7 @@ describe('floor1Scenario', () => {
     // the spell guy").
     const roomIdAt = (world: ReturnType<typeof createTestWorld>, pos: { x: number; y: number }) => {
       const map = world.floorMap!;
-      const tile = map.pixelToTile(pos.x, pos.y);
+      const tile = map.worldToTile(pos.x, pos.y);
       const room = map.rooms.find(
         (r) =>
           tile.x >= r.bounds.x &&
@@ -173,7 +173,7 @@ describe('floor1Scenario', () => {
         if (world.stores.sprite.textureId[eid] !== WELCOME_SIGN_TEXTURE) continue;
         const sx = world.stores.position.x[eid] ?? 0;
         const sy = world.stores.position.y[eid] ?? 0;
-        const signTile = map.pixelToTile(sx, sy);
+        const signTile = map.worldToTile(sx, sy);
         expect(`${signTile.x},${signTile.y}`).not.toBe(`${spawnTile.x},${spawnTile.y}`);
       }
     }
@@ -870,7 +870,7 @@ describe('floor1Scenario', () => {
       for (const room of floorMap.roomGraph.getRoomsByRole(RoomRole.BOSS_STAIR)) {
         targetRoomIds.add(room.id);
       }
-      const slimeTile = floorMap.pixelToTile(
+      const slimeTile = floorMap.worldToTile(
         objective.slimeRatRoomPos.x,
         objective.slimeRatRoomPos.y,
       );
@@ -932,7 +932,7 @@ describe('floor1Scenario', () => {
 
       const bx = world.stores.position.x[bossEid!] ?? 0;
       const by = world.stores.position.y[bossEid!] ?? 0;
-      const tile = floorMap.pixelToTile(bx, by);
+      const tile = floorMap.worldToTile(bx, by);
       expect(floorMap.tileMap.isPassable(tile.x, tile.y)).toBe(true);
     });
 
@@ -952,7 +952,7 @@ describe('floor1Scenario', () => {
       if (!bossRoom) return;
 
       const questItemPos = world.floor1!.objective.questItemPos;
-      const questTile = floorMap.pixelToTile(questItemPos.x, questItemPos.y);
+      const questTile = floorMap.worldToTile(questItemPos.x, questItemPos.y);
       const questRoomId = floorMap.roomGraph.getRoomAt(questTile.x, questTile.y);
 
       // The quest item room must be reachable from spawn without traversing the

@@ -124,12 +124,12 @@ export interface EventSummary {
 
 /** Tunables for what counts as wasted motion. Exposed for tests/tuning. */
 export interface SummaryThresholds {
-  /** Min path travel (px) in a sample window to consider "actively moving". */
-  movingTravelPx: number;
+  /** Min path travel (ft) in a sample window to consider "actively moving". */
+  movingTravelFt: number;
   /** netDisp/pathTravel below this while moving ⇒ wiggle. */
   wiggleEfficiency: number;
-  /** Path travel (px) below this ⇒ idle (not moving). */
-  idleTravelPx: number;
+  /** Path travel (ft) below this ⇒ idle (not moving). */
+  idleTravelFt: number;
   /** stuckFrames at/above this ⇒ stuck. */
   stuckFrames: number;
   /** Minimum episode duration (ms) to report. */
@@ -139,9 +139,9 @@ export interface SummaryThresholds {
 }
 
 export const DEFAULT_SUMMARY_THRESHOLDS: SummaryThresholds = {
-  movingTravelPx: 12,
+  movingTravelFt: 1.5,
   wiggleEfficiency: 0.35,
-  idleTravelPx: 1.5,
+  idleTravelFt: 0.1875,
   stuckFrames: 45,
   minEpisodeMs: 800,
   maxEpisodes: 12,
@@ -202,10 +202,10 @@ export function summarizeEvents(
     stateMs[sample.state] = (stateMs[sample.state] ?? 0) + dt;
     reasonMs[sample.reason] = (reasonMs[sample.reason] ?? 0) + dt;
 
-    const moving = sample.pathTravel >= thresholds.movingTravelPx;
+    const moving = sample.pathTravel >= thresholds.movingTravelFt;
     const efficiency = sample.pathTravel > 0 ? sample.netDisp / sample.pathTravel : 1;
     const isWiggle = moving && efficiency < thresholds.wiggleEfficiency;
-    const isIdle = sample.pathTravel < thresholds.idleTravelPx;
+    const isIdle = sample.pathTravel < thresholds.idleTravelFt;
     const isStuck = sample.stuckFrames >= thresholds.stuckFrames;
 
     if (isWiggle) wiggleMs += dt;

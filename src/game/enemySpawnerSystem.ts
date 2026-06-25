@@ -2,13 +2,12 @@ import { hasComponent, query, setComponent } from 'bitecs';
 import { Enemy, EnemyBehavior, Player, Position, Velocity } from '../core/components.js';
 import { spawnEnemy } from '../core/helpers.js';
 import type { GameWorld } from '../core/world.js';
-import { GAME } from '../shared/constants.js';
+import { ARENA } from '../shared/constants.js';
 import { createLogger } from '../shared/logger.js';
-import { ftToPx } from '../shared/units.js';
 
 const logger = createLogger('game:enemy-spawner');
 
-const ENEMY_RADIUS = ftToPx(1); // half of the default 16×16 enemy sprite
+const ENEMY_RADIUS = 1; // half of the default 2×2 ft enemy sprite
 const MAX_OVERLAP_FRACTION = 0.25;
 const SEPARATION_FORCE = 2.0;
 const EPSILON = 0.0001;
@@ -44,7 +43,7 @@ function getSpawnerState(world: GameWorld): SpawnerState {
 }
 
 function getSpawnerBounds(world: GameWorld): SpawnerBounds {
-  return spawnerBounds.get(world) ?? { width: GAME.WIDTH, height: GAME.HEIGHT };
+  return spawnerBounds.get(world) ?? { width: ARENA.WIDTH_FT, height: ARENA.HEIGHT_FT };
 }
 
 function getPlayerEntity(world: GameWorld): number | undefined {

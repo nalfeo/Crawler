@@ -11,6 +11,7 @@
  */
 import type Phaser from 'phaser';
 import type { CombatEvent } from '../shared/combat-events.js';
+import { ftToPx } from '../shared/units.js';
 import type { GameWorld } from '../core/world.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
 
@@ -121,7 +122,8 @@ export function createGoreVfx(
       const size = PARTICLE_SIZE_MIN + vfxRandom() * (PARTICLE_SIZE_MAX - PARTICLE_SIZE_MIN);
       const color = pickColor(colorPalette);
 
-      const rect = scene.add.rectangle(x, y, size, size, color);
+      // x/y are world feet; scale to pixels for the rendering layer.
+      const rect = scene.add.rectangle(ftToPx(x), ftToPx(y), size, size, color);
       // World-space VFX: depth must stay below UI_DEPTH_CUTOFF (see render-depths.ts).
       rect.setDepth(WORLD_VFX_DEPTH.gore);
       rect.setAlpha(0.9);

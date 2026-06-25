@@ -16,7 +16,7 @@ describe('damageSystem', () => {
   it('reduces enemy health when a projectile hits', () => {
     const world = createTestWorld();
     const projectile = createEntity(world);
-    const enemy = spawnEnemy(world, 8, 0, 25);
+    const enemy = spawnEnemy(world, 1, 0, 25);
 
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
@@ -31,7 +31,7 @@ describe('damageSystem', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
 
-    spawnEnemy(world, 8, 0, 25);
+    spawnEnemy(world, 1, 0, 25);
     damageSystem(world, collisionSystem(world));
 
     expect(world.stores.health.current[player]).toBe(95);
@@ -55,7 +55,7 @@ describe('damageSystem', () => {
   it('xp gem collection is handled by itemPickupSystem (not damageSystem)', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    const gem = spawnXpGem(world, 4, 0, 7);
+    const gem = spawnXpGem(world, 0.5, 0, 7);
 
     addComponent(world.ecs, player, set(BroadcastScore, { current: 0 }));
 
@@ -70,7 +70,7 @@ describe('damageSystem', () => {
     const world = createTestWorld();
     const projectile = createEntity(world);
 
-    spawnEnemy(world, 8, 0, 25);
+    spawnEnemy(world, 1, 0, 25);
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
     addComponent(world.ecs, projectile, Projectile);
@@ -83,7 +83,7 @@ describe('damageSystem', () => {
   it('emits a hit combat event when a projectile damages an enemy', () => {
     const world = createTestWorld();
     const projectile = createEntity(world);
-    spawnEnemy(world, 8, 0, 25);
+    spawnEnemy(world, 1, 0, 25);
 
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
     addComponent(world.ecs, projectile, set(Sprite, { textureId: 0, width: 8, height: 8 }));
@@ -102,7 +102,7 @@ describe('damageSystem', () => {
   it('emits a hit combat event when an enemy damages the player', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 8, 0, 25);
+    spawnEnemy(world, 1, 0, 25);
 
     damageSystem(world, collisionSystem(world));
 
@@ -117,7 +117,7 @@ describe('damageSystem', () => {
   it('emits a blocked combat event when player is invincible', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 8, 0, 25);
+    spawnEnemy(world, 1, 0, 25);
 
     // First hit applies damage
     damageSystem(world, collisionSystem(world));

@@ -5,7 +5,7 @@ import { applyDamage } from '../../src/core/apply-damage.js';
 import { spawnNpc, spawnPlayer, spawnEnemy } from '../../src/core/helpers.js';
 import { npcSystem } from '../../src/core/systems/npcSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { NPC_INTERACT_RANGE_PX } from '../../src/shared/npc-types.js';
+import { NPC_INTERACT_RANGE_FT } from '../../src/shared/npc-types.js';
 
 describe('spawnNpc', () => {
   it('creates an entity with Npc, Invincible, Position, and Sprite components', () => {
@@ -86,7 +86,7 @@ describe('npcSystem', () => {
   it('marks nearbyPlayer true when player is within interact range', () => {
     const world = createTestWorld();
     const npcEid = spawnNpc(world, 200, 200, 'tutorial-goon');
-    spawnPlayer(world, 200, 200 + NPC_INTERACT_RANGE_PX - 1);
+    spawnPlayer(world, 200, 200 + NPC_INTERACT_RANGE_FT - 1);
 
     npcSystem(world);
 
@@ -96,7 +96,7 @@ describe('npcSystem', () => {
   it('marks nearbyPlayer false when player is beyond interact range', () => {
     const world = createTestWorld();
     const npcEid = spawnNpc(world, 200, 200, 'tutorial-goon');
-    spawnPlayer(world, 200, 200 + NPC_INTERACT_RANGE_PX + 10);
+    spawnPlayer(world, 200, 200 + NPC_INTERACT_RANGE_FT + 10);
 
     npcSystem(world);
 

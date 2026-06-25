@@ -41,6 +41,7 @@ import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/inde
 import { buildGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
 import { GAME } from '../../shared/constants.js';
+import { PIXELS_PER_FOOT } from '../../shared/units.js';
 import { addItem } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -51,6 +52,7 @@ const LAB_ID = 'ui-probe-lab';
 const SCENE_KEY = 'UiProbeScene';
 const LAB_SEED = 4242;
 
+/** On-screen grid pitch in canvas pixels (this lab reasons in CSS/canvas px). */
 const TILE = 64;
 const GW = Math.ceil(GAME.WIDTH / TILE);
 const GH = Math.ceil(GAME.HEIGHT / TILE);
@@ -110,7 +112,7 @@ function buildProbeFloorMap(): FloorMap {
   const cfg = {
     widthTiles: GW,
     heightTiles: GH,
-    tileSizePx: TILE,
+    tileSizeFt: TILE / PIXELS_PER_FOOT,
     biome: BiomeType.DUNGEON as BiomeType,
     seed: LAB_SEED,
     roomWidthRange: [4, 18] as [number, number],

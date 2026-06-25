@@ -14,7 +14,7 @@ function makeWalledMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 10,
     heightTiles: 10,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -42,7 +42,7 @@ function makeDiagonalCornerMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 5,
     heightTiles: 5,
-    tileSizePx: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [3, 5],
@@ -187,13 +187,13 @@ describe('movementSystem', () => {
       world.floorMap = makeDiagonalCornerMap();
 
       const eid = addEntity(world.ecs);
-      addComponent(world.ecs, eid, set(Position, { x: 48, y: 48 })); // tile (1,1)
-      addComponent(world.ecs, eid, set(Velocity, { x: 32, y: 32 })); // target tile (2,2)
+      addComponent(world.ecs, eid, set(Position, { x: 6, y: 6 })); // tile (1,1)
+      addComponent(world.ecs, eid, set(Velocity, { x: 4, y: 4 })); // target tile (2,2)
 
       movementSystem(world);
 
-      expect(world.stores.position.x[eid]).toBe(48);
-      expect(world.stores.position.y[eid]).toBe(48);
+      expect(world.stores.position.x[eid]).toBe(6);
+      expect(world.stores.position.y[eid]).toBe(6);
     });
   });
 });

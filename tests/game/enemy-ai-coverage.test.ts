@@ -10,13 +10,13 @@ import { AI_TYPE, PATH_PERSONA, enemyAISystem } from '../../src/game/index.js';
 import { makeFlankTargets } from '../../src/game/enemyAISystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
-const TILE = 32;
+const TILE = 4;
 
 function mkConfig(width: number, height: number): MapConfig {
   return {
     widthTiles: width,
     heightTiles: height,
-    tileSizePx: TILE,
+    tileSizeFt: TILE,
     biome: BiomeType.DUNGEON,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -123,12 +123,12 @@ describe('enemyAISystem — branch coverage hardening', () => {
   it('uses the default enemy speed when a behavior enemy has speed 0', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    // speed 0 forces getEnemySpeed()'s fallback to DEFAULT_ENEMY_SPEED (1.5).
-    const enemy = spawnBehaviorEnemy(world, 40, 0, 20, AI_TYPE.CHASE, 0, 200, 0);
+    // speed 0 forces getEnemySpeed()'s fallback to DEFAULT_ENEMY_SPEED (0.1875).
+    const enemy = spawnBehaviorEnemy(world, 5, 0, 20, AI_TYPE.CHASE, 0, 25, 0);
 
     enemyAISystem(world);
 
-    expect(speedOf(world, enemy)).toBeCloseTo(1.5, 5);
+    expect(speedOf(world, enemy)).toBeCloseTo(0.1875, 5);
   });
 
   it('reuses a wander direction across consecutive idle frames', () => {
@@ -142,8 +142,8 @@ describe('enemyAISystem — branch coverage hardening', () => {
       ...spread(tileCenter(8, 8)),
       20,
       AI_TYPE.CHASE,
+      0.25,
       2,
-      16,
       0,
     );
 
@@ -169,14 +169,14 @@ describe('enemyAISystem — branch coverage hardening', () => {
     world.floorMap = safeRoomArena();
     // Player parked far away in the safe half so the enemy stays de-aggroed.
     spawnPlayer(world, ...spread(tileCenter(20, 8)));
-    const safeBoundaryPx = 12 * TILE;
+    const safeBoundaryFt = 12 * TILE;
     const enemy = spawnBehaviorEnemy(
       world,
       ...spread(tileCenter(9, 8)),
       20,
       AI_TYPE.CHASE,
-      2,
-      24,
+      0.25,
+      3,
       0,
     );
 
@@ -187,7 +187,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
       movementSystem(world);
       // The wander steering actively avoids the safe room; the enemy must never
       // cross into it.
-      expect(world.stores.position.x[enemy] ?? 0).toBeLessThan(safeBoundaryPx);
+      expect(world.stores.position.x[enemy] ?? 0).toBeLessThan(safeBoundaryFt);
     }
   });
 
@@ -200,8 +200,8 @@ describe('enemyAISystem — branch coverage hardening', () => {
       ...spread(tileCenter(5, 4)),
       20,
       AI_TYPE.CHASE,
-      2,
-      400,
+      0.25,
+      50,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -228,16 +228,16 @@ describe('enemyAISystem — branch coverage hardening', () => {
     const world = createTestWorld();
     world.floorMap = openArena();
     const player = spawnPlayer(world, ...spread(tileCenter(4, 8)));
-    // Distance (~9 tiles) far exceeds the 64px attack range, so the ranged path
+    // Distance (~9 tiles) far exceeds the 8 ft attack range, so the ranged path
     // target resolves to the player's tile.
     const enemy = spawnBehaviorEnemy(
       world,
       ...spread(tileCenter(13, 8)),
       20,
       AI_TYPE.RANGED,
-      2,
-      800,
-      64,
+      0.25,
+      100,
+      8,
       {
         persona: PATH_PERSONA.NAVIGATOR,
       },
@@ -255,17 +255,17 @@ describe('enemyAISystem — branch coverage hardening', () => {
     world.floorMap = openArena();
     spawnPlayer(world, ...spread(tileCenter(12, 8)));
     const start = tileCenter(12, 8);
-    // ~40px from the player with a 120px attack range → inside the 60px retreat
+    // ~5 ft from the player with a 15 ft attack range → inside the 7.5 ft retreat
     // band, so the ranged path target is pushed away from the player.
     const enemy = spawnBehaviorEnemy(
       world,
-      start.x + 40,
+      start.x + 5,
       start.y,
       20,
       AI_TYPE.RANGED,
-      2,
-      800,
-      120,
+      0.25,
+      100,
+      15,
       {
         persona: PATH_PERSONA.NAVIGATOR,
       },
@@ -282,30 +282,30 @@ describe('enemyAISystem — branch coverage hardening', () => {
     world.floorMap = openArena();
     spawnPlayer(world, ...spread(tileCenter(12, 9)));
     const player = tileCenter(12, 9);
-    // ~90px away with a 120px attack range and 60px retreat band → strafe regime.
+    // ~11.25 ft away with a 15 ft attack range and 7.5 ft retreat band → strafe regime.
     // Two enemies guarantee both even/odd eids (the tangent sign branch).
     const enemyA = spawnBehaviorEnemy(
       world,
-      player.x - 90,
+      player.x - 11.25,
       player.y,
       20,
       AI_TYPE.RANGED,
-      2,
-      800,
-      120,
+      0.25,
+      100,
+      15,
       {
         persona: PATH_PERSONA.NAVIGATOR,
       },
     );
     const enemyB = spawnBehaviorEnemy(
       world,
-      player.x + 90,
+      player.x + 11.25,
       player.y,
       20,
       AI_TYPE.RANGED,
-      2,
-      800,
-      120,
+      0.25,
+      100,
+      15,
       {
         persona: PATH_PERSONA.NAVIGATOR,
       },
@@ -328,9 +328,9 @@ describe('enemyAISystem — branch coverage hardening', () => {
       ...spread(tileCenter(5, 5)),
       20,
       AI_TYPE.RANGED,
-      2,
-      5000,
-      150,
+      0.25,
+      625,
+      18.75,
       {
         persona: PATH_PERSONA.NAVIGATOR,
       },
@@ -347,15 +347,15 @@ describe('enemyAISystem — branch coverage hardening', () => {
     const world = createTestWorld();
     world.floorMap = openArena();
     const player = spawnPlayer(world, ...spread(tileCenter(4, 8)));
-    // Well beyond SLIME_LEAP_RANGE (96px) but inside aggro: the leaper hands off
+    // Well beyond SLIME_LEAP_RANGE (5 ft) but inside aggro: the leaper hands off
     // to the normal pathing chase branch.
     const enemy = spawnBehaviorEnemy(
       world,
       ...spread(tileCenter(14, 8)),
       20,
       AI_TYPE.LEAPER,
-      1.5,
-      800,
+      0.1875,
+      100,
       0,
       {
         persona: PATH_PERSONA.NAVIGATOR,
@@ -369,7 +369,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
       enemyAISystem(world);
       movementSystem(world);
     }
-    expect(world.stores.position.x[enemy] ?? 0).toBeLessThan(startX - 8);
+    expect(world.stores.position.x[enemy] ?? 0).toBeLessThan(startX - 1);
     void player;
   });
 
@@ -377,7 +377,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
     // Start inside the pounce band so a full prep→leap→recover cycle runs.
-    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1.2, 400, 0);
+    const enemy = spawnBehaviorEnemy(world, 10, 0, 20, AI_TYPE.LEAPER, 0.15, 50, 0);
 
     // Let the slime complete at least one leap+recovery cycle.
     for (let i = 0; i < 70; i += 1) {
@@ -388,11 +388,11 @@ describe('enemyAISystem — branch coverage hardening', () => {
 
     // Player escapes far outside the pounce band; the slime must abandon the
     // pounce loop and resume a normal approach.
-    world.stores.position.x[player] = 900;
+    world.stores.position.x[player] = 112.5;
     let movedTowardPlayer = false;
     for (let i = 0; i < 60; i += 1) {
       enemyAISystem(world);
-      if ((world.stores.velocity.x[enemy] ?? 0) > 0.4) {
+      if ((world.stores.velocity.x[enemy] ?? 0) > 0.05) {
         movedTowardPlayer = true;
       }
       world.frameCount += 1;
@@ -403,12 +403,12 @@ describe('enemyAISystem — branch coverage hardening', () => {
 
   it('separates a large overlapping pack via the spatial-priority path (>48 mobs)', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 200, 0);
+    spawnPlayer(world, 25, 0);
     const stacked: number[] = [];
     // 60 > MAX_PAIRWISE_SEPARATION_ENEMIES (48) forces the sort-by-distance,
     // slice-to-cap path; identical positions force the zero-distance push.
     for (let i = 0; i < 60; i += 1) {
-      stacked.push(spawnBehaviorEnemy(world, 50, 0, 20, AI_TYPE.CHASE, 2, 400, 0));
+      stacked.push(spawnBehaviorEnemy(world, 6.25, 0, 20, AI_TYPE.CHASE, 0.25, 50, 0));
     }
 
     expect(() => enemyAISystem(world)).not.toThrow();
@@ -420,7 +420,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
       vy: world.stores.velocity.y[eid] ?? 0,
     }));
     for (const v of velocities) {
-      expect(Math.hypot(v.vx, v.vy)).toBeLessThanOrEqual(2 + 0.01);
+      expect(Math.hypot(v.vx, v.vy)).toBeLessThanOrEqual(0.25 + 0.01);
     }
     const distinct = new Set(velocities.map((v) => `${v.vx.toFixed(3)},${v.vy.toFixed(3)}`));
     expect(distinct.size).toBeGreaterThan(1);
@@ -431,9 +431,9 @@ describe('enemyAISystem — branch coverage hardening', () => {
     world.floorMap = openArena();
     const center = tileCenter(12, 9);
     spawnPlayer(world, center.x, center.y);
-    // Same pixel as the player exercises the zero-toward-vector fallback inside
+    // Same point as the player exercises the zero-toward-vector fallback inside
     // the floor-map overlap clamp.
-    const enemy = spawnBehaviorEnemy(world, center.x, center.y, 20, AI_TYPE.CHASE, 2, 400, 0, {
+    const enemy = spawnBehaviorEnemy(world, center.x, center.y, 20, AI_TYPE.CHASE, 0.25, 50, 0, {
       persona: PATH_PERSONA.NAVIGATOR,
     });
 
@@ -450,7 +450,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
     const center = tileCenter(12, 9);
     spawnPlayer(world, center.x, center.y);
     // Zero player-offset takes makeFlankTargets()'s degenerate-direction branch.
-    const enemy = spawnBehaviorEnemy(world, center.x, center.y, 20, AI_TYPE.CHASE, 2, 400, 0, {
+    const enemy = spawnBehaviorEnemy(world, center.x, center.y, 20, AI_TYPE.CHASE, 0.25, 50, 0, {
       persona: PATH_PERSONA.FLANKER,
     });
 
@@ -465,7 +465,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
       center.y,
     );
     expect(degenerateTargets).toHaveLength(1);
-    expect(degenerateTargets[0]).toEqual(world.floorMap.pixelToTile(center.x, center.y));
+    expect(degenerateTargets[0]).toEqual(world.floorMap.worldToTile(center.x, center.y));
 
     expect(() => enemyAISystem(world)).not.toThrow();
     const vx = world.stores.velocity.x[enemy] ?? 0;
@@ -485,9 +485,18 @@ describe('enemyAISystem — branch coverage hardening', () => {
     // Flanker several tiles to the player's left on the same row: a straight
     // chase would target the player's own tile (same row, no lateral offset).
     const enemyCenter = tileCenter(4, 9);
-    const enemy = spawnBehaviorEnemy(world, ...spread(enemyCenter), 20, AI_TYPE.CHASE, 2, 800, 0, {
-      persona: PATH_PERSONA.FLANKER,
-    });
+    const enemy = spawnBehaviorEnemy(
+      world,
+      ...spread(enemyCenter),
+      20,
+      AI_TYPE.CHASE,
+      0.25,
+      100,
+      0,
+      {
+        persona: PATH_PERSONA.FLANKER,
+      },
+    );
 
     const targets = makeFlankTargets(
       world,
@@ -497,7 +506,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
       playerCenter.x,
       playerCenter.y,
     );
-    const playerTile = world.floorMap.pixelToTile(playerCenter.x, playerCenter.y);
+    const playerTile = world.floorMap.worldToTile(playerCenter.x, playerCenter.y);
 
     expect(targets).toHaveLength(4);
     // Only the final fallback is the player's own tile; the earlier candidates
@@ -527,8 +536,8 @@ describe('enemyAISystem — branch coverage hardening', () => {
       ...spread(tileCenter(4, 9)),
       20,
       AI_TYPE.CHASE,
-      2,
-      800,
+      0.25,
+      100,
       0,
       {
         persona: PATH_PERSONA.FLANKER,
@@ -551,7 +560,7 @@ describe('enemyAISystem — branch coverage hardening', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // In attack range, off the cooldown clock, so the accuracy roll and spawn run.
-    spawnBehaviorEnemy(world, 120, 0, 20, AI_TYPE.RANGED, 1.5, 400, 200);
+    spawnBehaviorEnemy(world, 15, 0, 20, AI_TYPE.RANGED, 0.1875, 50, 25);
     world.elapsedMs = 10_000;
 
     let fired = false;

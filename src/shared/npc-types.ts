@@ -18,8 +18,8 @@ export interface NpcDef {
   /** Quests offered by this NPC. */
   quests: NpcQuestDef[];
   textureId: number;
-  widthPx: number;
-  heightPx: number;
+  widthFt: number;
+  heightFt: number;
 }
 
 export type QuestStatus = 'available' | 'active' | 'complete';
@@ -35,12 +35,12 @@ export interface NpcInstance {
   /** Index of the next dialogue line to show. */
   dialogueIndex: number;
   quests: NpcQuestState[];
-  /** True when the player is within NPC_INTERACT_RANGE_PX. */
+  /** True when the player is within NPC_INTERACT_RANGE_FT. */
   nearbyPlayer: boolean;
 }
 
-/** Pixel radius within which the player can interact with an NPC. */
-export const NPC_INTERACT_RANGE_PX = 80;
+/** Interaction radius in feet within which the player can interact with an NPC. */
+export const NPC_INTERACT_RANGE_FT = 10;
 
 // ---- NPC Definitions ----
 
@@ -66,8 +66,8 @@ const TUTORIAL_GOON_DEF: NpcDef = {
     },
   ],
   textureId: 10,
-  widthPx: 20,
-  heightPx: 28,
+  widthFt: 2.5,
+  heightFt: 3.5,
 };
 
 const SHOPKEEPER_DEF: NpcDef = {
@@ -92,8 +92,8 @@ const SHOPKEEPER_DEF: NpcDef = {
     },
   ],
   textureId: 10,
-  widthPx: 20,
-  heightPx: 28,
+  widthFt: 2.5,
+  heightFt: 3.5,
 };
 
 const SPELL_QUEST_GIVER_DEF: NpcDef = {
@@ -118,8 +118,8 @@ const SPELL_QUEST_GIVER_DEF: NpcDef = {
     },
   ],
   textureId: 10,
-  widthPx: 20,
-  heightPx: 28,
+  widthFt: 2.5,
+  heightFt: 3.5,
 };
 
 /** Lines shown when the player has the rat tail and is ready to hand it over. */

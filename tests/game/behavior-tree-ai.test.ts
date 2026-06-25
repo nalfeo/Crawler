@@ -31,7 +31,7 @@ function makeOpenRoom(widthTiles: number, heightTiles: number): FloorMap {
   const config: MapConfig = {
     widthTiles,
     heightTiles,
-    tileSizePx: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 1,
     roomWidthRange: [4, 8],
@@ -61,7 +61,7 @@ function makeSealedRoom(widthTiles: number, heightTiles: number, wallColumnX: nu
   const config: MapConfig = {
     widthTiles,
     heightTiles,
-    tileSizePx: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 1,
     roomWidthRange: [4, 8],
@@ -85,7 +85,7 @@ function makeDiagonalCornerMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 5,
     heightTiles: 5,
-    tileSizePx: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 1,
     roomWidthRange: [3, 5],
@@ -133,7 +133,7 @@ describe('BehaviorTreeAI', () => {
   it('approaches enemies into honest melee range instead of targeting their center', () => {
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 20);
+    spawnEnemy(world, 12.5, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -144,16 +144,16 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Closing to melee range');
     expect(decision.targetX).not.toBeNull();
     expect(decision.targetX!).toBeGreaterThan(0);
-    expect(decision.targetX!).toBeLessThan(100);
+    expect(decision.targetX!).toBeLessThan(12.5);
   });
 
   it('kites inside strike range instead of standing still and trading blows', () => {
     const world = createTestWorld({ seed: 7 });
     const player = spawnPlayer(world, 0, 0);
-    // Sword reach = ftToPx(5) = 40px, strike gate = 60px. Place the enemy at 30px
+    // Sword reach = 5ft, strike gate = 7.5ft. Place the enemy at 3.75ft
     // so the player is already inside the gate: the old behavior parked on the
     // enemy (returned the player's own position); the kite must keep it moving.
-    spawnEnemy(world, 30, 0, 20);
+    spawnEnemy(world, 3.75, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -162,14 +162,14 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.reason).toContain('Kiting');
     // Must not park on the player's current position (the regression).
-    const px = world.stores.position.x[player]!;
-    const py = world.stores.position.y[player]!;
-    const movedPx = Math.hypot(decision.targetX! - px, decision.targetY! - py);
-    expect(movedPx).toBeGreaterThan(10);
+    const playerX = world.stores.position.x[player]!;
+    const playerY = world.stores.position.y[player]!;
+    const movedFt = Math.hypot(decision.targetX! - playerX, decision.targetY! - playerY);
+    expect(movedFt).toBeGreaterThan(1.25);
     // Strafe target stays within the strike gate (still able to land hits).
-    const gatePx = (40 * 3) / 2;
-    const distToEnemy = Math.hypot(decision.targetX! - 30, decision.targetY! - 0);
-    expect(distToEnemy).toBeLessThanOrEqual(gatePx + 0.001);
+    const gateFt = (5 * 3) / 2;
+    const distToEnemy = Math.hypot(decision.targetX! - 3.75, decision.targetY! - 0);
+    expect(distToEnemy).toBeLessThanOrEqual(gateFt + 0.001);
   });
 
   it('strafes tangentially when kiting rather than only closing the gap', () => {
@@ -177,18 +177,18 @@ describe('BehaviorTreeAI', () => {
     spawnPlayer(world, 0, 0);
     // Enemy purely along +X: a stand-still or pure-radial plan keeps targetY ~0.
     // A tangential orbit step moves the player substantially along Y.
-    spawnEnemy(world, 30, 0, 20);
+    spawnEnemy(world, 3.75, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
     ai.poll(createInputState(), world);
 
     const decision = ai.getDecision();
-    expect(Math.abs(decision.targetY!)).toBeGreaterThan(10);
+    expect(Math.abs(decision.targetY!)).toBeGreaterThan(1.25);
   });
 
   it('micro-spaces with weapon cadence: pokes in when ready, eases out on cooldown', () => {
-    // Baseball-bat reach = ftToPx(5.5) = 44px, strike gate = 66px. Enemy at 30px
+    // Baseball-bat reach = 5.5ft, strike gate = 8.25ft. Enemy at 3.75ft
     // is inside the gate so the player kites. When the swing is READY it pokes in
     // toward the strike band; right after firing (on cooldown) it eases out toward
     // the recover band — the human "hold ground + micro forward/back" tactic. This
@@ -198,37 +198,37 @@ describe('BehaviorTreeAI', () => {
     // READY: the last swing was a full cooldown ago.
     const readyWorld = createTestWorld({ seed: 7 });
     spawnPlayer(readyWorld, 0, 0);
-    spawnEnemy(readyWorld, 30, 0, 40);
+    spawnEnemy(readyWorld, 3.75, 0, 40);
     readyWorld.elapsedMs = 5000;
     setActiveWeapon(readyWorld, bat); // lastFireMs = 5000 - cooldown → ready now
     const readyAi = new BehaviorTreeAI({ seed: 7 });
     readyAi.poll(createInputState(), readyWorld);
     const readyDecision = readyAi.getDecision();
-    const readyDist = Math.hypot(readyDecision.targetX! - 30, readyDecision.targetY!);
+    const readyDist = Math.hypot(readyDecision.targetX! - 3.75, readyDecision.targetY!);
 
     // ON COOLDOWN: rewind the clock to the instant of the last shot.
     const cooldownWorld = createTestWorld({ seed: 7 });
     spawnPlayer(cooldownWorld, 0, 0);
-    spawnEnemy(cooldownWorld, 30, 0, 40);
+    spawnEnemy(cooldownWorld, 3.75, 0, 40);
     cooldownWorld.elapsedMs = 5000;
     setActiveWeapon(cooldownWorld, bat); // lastFireMs = 5000 - cooldown
     cooldownWorld.elapsedMs = 5000 - bat.cooldownMs; // elapsed == lastFire → just fired
     const cooldownAi = new BehaviorTreeAI({ seed: 7 });
     cooldownAi.poll(createInputState(), cooldownWorld);
     const cooldownDecision = cooldownAi.getDecision();
-    const cooldownDist = Math.hypot(cooldownDecision.targetX! - 30, cooldownDecision.targetY!);
+    const cooldownDist = Math.hypot(cooldownDecision.targetX! - 3.75, cooldownDecision.targetY!);
 
     expect(readyDecision.reason).toContain('Kiting');
     expect(cooldownDecision.reason).toContain('Kiting');
     // The cooldown step holds the enemy farther away (dodge between hits); the
     // ready step pokes in closer to land the swing.
-    expect(cooldownDist).toBeGreaterThan(readyDist + 4);
+    expect(cooldownDist).toBeGreaterThan(readyDist + 0.5);
   });
 
   it('collects gold as loot when no higher-priority progression target is active', () => {
     const world = createTestWorld({ seed: 99 });
     spawnPlayer(world, 0, 0);
-    spawnGold(world, 48, 0, 3);
+    spawnGold(world, 6, 0, 3);
 
     const ai = new BehaviorTreeAI({ seed: 99 });
     const input = createInputState();
@@ -237,17 +237,17 @@ describe('BehaviorTreeAI', () => {
     const decision = ai.getDecision();
     expect(decision.state).toBe(3);
     expect(decision.reason).toContain('gold');
-    expect(decision.targetX).toBe(48);
+    expect(decision.targetX).toBe(6);
     expect(decision.targetY).toBe(0);
   });
 
   it('collects gold reachable across open ground', () => {
     const world = createTestWorld({ seed: 99 });
     world.floorMap = makeOpenRoom(16, 16);
-    spawnPlayer(world, 112, 112); // tile (3,3)
-    // Gold ~288px away at tile (12,3): inside the collect scan radius and, with no
+    spawnPlayer(world, 14, 14); // tile (3,3)
+    // Gold ~36ft away at tile (12,3): inside the collect scan radius and, with no
     // interior wall, reachable by A* — so it remains a valid COLLECT goal.
-    spawnGold(world, 400, 112, 3);
+    spawnGold(world, 50, 14, 3);
 
     const ai = new BehaviorTreeAI({ seed: 99 });
     const input = createInputState();
@@ -262,8 +262,8 @@ describe('BehaviorTreeAI', () => {
     // halves; the gold is stranded on the far side, exactly like loot behind the
     // still-locked boss door.
     world.floorMap = makeSealedRoom(16, 16, 8);
-    spawnPlayer(world, 112, 112); // tile (3,3) — left half
-    spawnGold(world, 400, 112, 3); // tile (12,3) — right half, unreachable
+    spawnPlayer(world, 14, 14); // tile (3,3) — left half
+    spawnGold(world, 50, 14, 3); // tile (12,3) — right half, unreachable
 
     const ai = new BehaviorTreeAI({ seed: 99 });
     const input = createInputState();
@@ -289,14 +289,14 @@ describe('BehaviorTreeAI', () => {
       ) => boolean;
     };
 
-    expect(ai.hasClearLineOfSight(world, 48, 48, 80, 80)).toBe(false);
+    expect(ai.hasClearLineOfSight(world, 6, 6, 10, 10)).toBe(false);
   });
 
   it('drops a previously collectable gold target once it becomes unreachable', () => {
     const world = createTestWorld({ seed: 99 });
     world.floorMap = makeOpenRoom(16, 16);
-    spawnPlayer(world, 112, 112);
-    spawnGold(world, 400, 112, 3);
+    spawnPlayer(world, 14, 14);
+    spawnGold(world, 50, 14, 3);
 
     const ai = new BehaviorTreeAI({ seed: 99 });
     const input = createInputState();
@@ -324,9 +324,9 @@ describe('BehaviorTreeAI', () => {
     // spawn the rat relative to the player's actual position. Placing it within
     // the direct-move epsilon makes reachability trivially satisfied and
     // findNearestQuestEnemy returns it without running A*.
-    const px = world.stores.position.x[player]!;
-    const py = world.stores.position.y[player]!;
-    const rat = spawnEnemy(world, px + 6, py, 20);
+    const playerX = world.stores.position.x[player]!;
+    const playerY = world.stores.position.y[player]!;
+    const rat = spawnEnemy(world, playerX + 0.75, playerY, 20);
     world.floor1!.enemyArchetypes.set(rat, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 2 });
@@ -363,8 +363,8 @@ describe('BehaviorTreeAI', () => {
     // of the desired direction.
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
-    // Place an enemy 200px to the right so the AI targets it and outputs (1, 0).
-    spawnEnemy(world, 200, 0, 20);
+    // Place an enemy 25ft to the right so the AI targets it and outputs (1, 0).
+    spawnEnemy(world, 25, 0, 20);
     setActiveWeapon(world, getWeaponDef('sword')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -390,12 +390,12 @@ describe('BehaviorTreeAI', () => {
     const world = createTestWorld({ seed: 99 });
     world.floorMap = makeOpenRoom(16, 16);
     // Player at interior tile (3,3) center; gold diagonally at tile (8,8) center.
-    // Distance ~226px: beyond CLOSE_APPROACH_DIRECT_PX (48) so A* builds a path,
-    // and inside scanRadius (400) so Collect fires. The 4-connected path's first
+    // Distance ~28ft: beyond CLOSE_APPROACH_DIRECT_FT (6) so A* builds a path,
+    // and inside scanRadius (50) so Collect fires. The 4-connected path's first
     // waypoint is a cardinal neighbour (~zero on one axis); string-pulling must
     // advance to the line-of-sight-visible goal so BOTH axes drive.
-    spawnPlayer(world, 112, 112);
-    spawnGold(world, 272, 272, 3);
+    spawnPlayer(world, 14, 14);
+    spawnGold(world, 34, 34, 3);
 
     const ai = new BehaviorTreeAI({ seed: 99 });
     const input = createInputState();
@@ -418,15 +418,15 @@ describe('BehaviorTreeAI', () => {
     enterKillGrindStage(world);
     setActiveWeapon(world, getWeaponDef('sword')!);
     world.floorMap = makeOpenRoom(16, 16);
-    world.stores.position.x[player] = 112;
-    world.stores.position.y[player] = 112;
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
 
-    // Quest enemy inside the sword strike gate (reach 40px, gate 60px). Use an
+    // Quest enemy inside the sword strike gate (reach 5ft, gate 7.5ft). Use an
     // open-room floor map so the fixture isolates the progress-to-engage handoff
     // from dungeon reachability noise. The old Progress branch walked straight
     // onto the enemy center; it must now route through planEngagement and kite
     // (same as Engage/Hunt).
-    const rat = spawnEnemy(world, 142, 112, 20);
+    const rat = spawnEnemy(world, 17.75, 14, 20);
     world.floor1!.enemyArchetypes.set(rat, 'rat');
 
     const ai = new BehaviorTreeAI({ seed: 2 });
@@ -440,20 +440,20 @@ describe('BehaviorTreeAI', () => {
     const ex = world.stores.position.x[rat]!;
     const ey = world.stores.position.y[rat]!;
     const distToEnemy = Math.hypot(decision.targetX! - ex, decision.targetY! - ey);
-    expect(distToEnemy).toBeGreaterThan(10);
+    expect(distToEnemy).toBeGreaterThan(1.25);
   });
 
   it('approaches a distant enemy to the close ranged standoff with a ranged weapon', () => {
-    // Bow range = 44ft × 8px/ft = 352px. The AI now uses a deliberately close
-    // standoff: max(CONTACT_SAFE_ORBIT_PX=36, min(352 × 0.5, RANGED_STANDOFF_ABS_PX=48))
-    // = 48px. Projectiles fire at the enemy's CURRENT position with no leading, so
-    // a tight standoff is what makes shots actually connect with wandering swarm
-    // enemies (the bow was nearly useless at the old 264px standoff). Enemy at
-    // 350px is within the engage radius and far beyond 48px, so the AI must plan a
-    // target at ~48px from the enemy, not at the enemy's position.
+    // Bow range = 44ft. The AI now uses a deliberately close standoff:
+    // max(CONTACT_SAFE_ORBIT_FT=4.5, min(44 × 0.5, RANGED_STANDOFF_ABS_FT=6)) = 6ft.
+    // Projectiles fire at the enemy's CURRENT position with no leading, so a tight
+    // standoff is what makes shots actually connect with wandering swarm enemies
+    // (the bow was nearly useless at the old 33ft standoff). Enemy at 43.75ft is
+    // within the engage radius and far beyond 6ft, so the AI must plan a target at
+    // ~6ft from the enemy, not at the enemy's position.
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 350, 0, 20);
+    spawnEnemy(world, 43.75, 0, 20);
     setActiveWeapon(world, getWeaponDef('bow')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -465,31 +465,31 @@ describe('BehaviorTreeAI', () => {
     // the enemy position (not walking onto it).
     expect(decision.targetX).not.toBeNull();
     expect(decision.targetX!).toBeGreaterThan(0);
-    expect(decision.targetX!).toBeLessThan(350);
+    expect(decision.targetX!).toBeLessThan(43.75);
     // Target should land close to the absolute standoff distance from the enemy.
-    const standoffPx = 48;
-    expect(decision.targetX!).toBeCloseTo(350 - standoffPx, 0);
+    const standoffFt = 6;
+    expect(decision.targetX!).toBeCloseTo(43.75 - standoffFt, 0);
   });
 
   it('expands to defensive orbit when player HP drops below 40%', () => {
-    // bat reach = ftToPx(5.5) = 44px. innerOrbit=36, outerOrbit=50 (36+14),
-    // strikeGate=66 (44*1.5). Enemy attackRange=40 → safeOrbit=54 (40+14).
-    // safeOrbit(54) > outerOrbit(50), so the healthy branch leaves desiredOrbit
+    // bat reach = 5.5ft. innerOrbit=4.5, outerOrbit=6.25 (4.5+1.75),
+    // strikeGate=8.25 (5.5*1.5). Enemy attackRange=5 → safeOrbit=6.75 (5+1.75).
+    // safeOrbit(6.75) > outerOrbit(6.25), so the healthy branch leaves desiredOrbit
     // unchanged (can't reach safety at full HP cap). In the wounded branch,
-    // safeOrbitCap expands to strikeGate(66), so safeOrbit(54) fits and the orbit
-    // is pushed out to 54px — the defensive expansion.
+    // safeOrbitCap expands to strikeGate(8.25), so safeOrbit(6.75) fits and the orbit
+    // is pushed out to 6.75ft — the defensive expansion.
     const bat = getWeaponDef('baseball-bat')!;
 
     // HEALTHY player — full HP, orbit stays in the normal strike band.
     const healthyWorld = createTestWorld({ seed: 7 });
     spawnPlayer(healthyWorld, 0, 0);
-    spawnBehaviorEnemy(healthyWorld, 60, 0, 40, AI_TYPE.CHASE, 40, 200, 40);
+    spawnBehaviorEnemy(healthyWorld, 7.5, 0, 40, AI_TYPE.CHASE, 5, 25, 5);
     healthyWorld.elapsedMs = 5000;
     setActiveWeapon(healthyWorld, bat);
     const healthyAi = new BehaviorTreeAI({ seed: 7 });
     healthyAi.poll(createInputState(), healthyWorld);
     const healthyDecision = healthyAi.getDecision();
-    const healthyDist = Math.hypot(healthyDecision.targetX! - 60, healthyDecision.targetY!);
+    const healthyDist = Math.hypot(healthyDecision.targetX! - 7.5, healthyDecision.targetY!);
 
     // WOUNDED player — 29% HP crosses MELEE_DEFENSIVE_HP_FRACTION (0.4), expanding
     // safeOrbitCap to the full strikeGate so the orbit is pushed out to safeOrbit.
@@ -497,27 +497,27 @@ describe('BehaviorTreeAI', () => {
     const woundedPlayer = spawnPlayer(woundedWorld, 0, 0);
     // Set HP to 29% of max (100) to cross the 40% MELEE_DEFENSIVE_HP_FRACTION.
     woundedWorld.stores.health.current[woundedPlayer] = 29;
-    spawnBehaviorEnemy(woundedWorld, 60, 0, 40, AI_TYPE.CHASE, 40, 200, 40);
+    spawnBehaviorEnemy(woundedWorld, 7.5, 0, 40, AI_TYPE.CHASE, 5, 25, 5);
     woundedWorld.elapsedMs = 5000;
     setActiveWeapon(woundedWorld, bat);
     const woundedAi = new BehaviorTreeAI({ seed: 7 });
     woundedAi.poll(createInputState(), woundedWorld);
     const woundedDecision = woundedAi.getDecision();
-    const woundedDist = Math.hypot(woundedDecision.targetX! - 60, woundedDecision.targetY!);
+    const woundedDist = Math.hypot(woundedDecision.targetX! - 7.5, woundedDecision.targetY!);
 
     expect(healthyDecision.reason).toContain('Kiting');
     expect(woundedDecision.reason).toContain('Kiting');
     // Wounded AI targets farther from the enemy: defensive orbit expansion holds it
     // outside the enemy's own attackRange rather than trading blows in the strike band.
-    expect(woundedDist).toBeGreaterThan(healthyDist + 4);
+    expect(woundedDist).toBeGreaterThan(healthyDist + 0.5);
   });
 
   it('orbits away from enemies that are closer than ranged standoff distance', () => {
-    // Enemy at 30px is inside the close bow standoff band (48px). The orbit step
+    // Enemy at 3.75ft is inside the close bow standoff band (6ft). The orbit step
     // must push the AI away (targetX < 0 when enemy is on the +X side).
     const world = createTestWorld({ seed: 7 });
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 30, 0, 20);
+    spawnEnemy(world, 3.75, 0, 20);
     setActiveWeapon(world, getWeaponDef('bow')!);
 
     const ai = new BehaviorTreeAI({ seed: 7 });
@@ -532,7 +532,7 @@ describe('BehaviorTreeAI', () => {
 
   // Regression guard for the BFS path-resolver refactor (PR #324). The goal-tile
   // resolver flood-fills `dist` once and reads it via `dist[y * width + x]`. A goal
-  // from FloorMap.pixelToTile is NOT clamped to the map, so an out-of-bounds goal
+  // from FloorMap.worldToTile is NOT clamped to the map, so an out-of-bounds goal
   // whose linear index aliases an in-bounds *reachable* tile (e.g. x = width + 1
   // wraps to column 1 of the next row) read a real distance and was returned as a
   // bogus "direct" hit. The caller then ran A* against that OOB tile, got [], and

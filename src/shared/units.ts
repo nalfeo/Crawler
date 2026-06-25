@@ -1,27 +1,41 @@
 /**
- * Unit conversion utilities for spatial measurements.
+ * Unit conventions for spatial measurements.
  *
- * All authored design values (WeaponDef fields, tuning.json distances, system
- * constants) are expressed in feet. ECS stores and physics math use pixels.
- * Call ftToPx() at every design→ECS boundary.
+ * Feet are the single internal spatial unit. All non-rendering layers
+ * (src/core, src/game, src/shared) express positions, velocities, distances,
+ * radii, and sizes in feet (decimals allowed — never rounded to integers).
+ *
+ * Pixels exist ONLY in the rendering layer (src/engine). The renderer scales
+ * feet → pixels at draw time using PIXELS_PER_FOOT (folded into the world
+ * camera zoom), so internal game logic never deals in pixels.
  */
 
-/** Number of pixels that represent one foot in game space. */
+/**
+ * Render-only scale: number of screen pixels that represent one foot at the
+ * base (un-zoomed) render scale. Used exclusively by src/engine to convert
+ * feet → pixels when drawing. Never use this in core/game/shared logic.
+ */
 export const PIXELS_PER_FOOT = 8;
 
-/** Convert feet to pixels. Use at design→ECS boundaries. */
+/**
+ * Convert feet to pixels. RENDERING LAYER ONLY — use at the feet→screen
+ * boundary in src/engine. Do not call from core/game/shared.
+ */
 export function ftToPx(feet: number): number {
   return feet * PIXELS_PER_FOOT;
 }
 
-/** Convert pixels to feet. Use for UI display. */
+/**
+ * Convert pixels to feet. RENDERING LAYER ONLY — use when mapping screen/input
+ * pixel coordinates back into feet world-space. Do not call from
+ * core/game/shared.
+ */
 export function pxToFt(pixels: number): number {
   return pixels / PIXELS_PER_FOOT;
 }
 
-/** Format a pixel distance as a feet string, e.g. "5'" or "4.5'". */
-export function formatFeet(pixels: number): string {
-  const feet = pxToFt(pixels);
+/** Format a feet distance as a string, e.g. "5'" or "4.5'". */
+export function formatFeet(feet: number): string {
   const rounded = Math.round(feet * 10) / 10;
   return `${rounded}'`;
 }
