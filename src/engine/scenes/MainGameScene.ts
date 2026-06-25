@@ -789,7 +789,13 @@ export class MainGameScene extends Phaser.Scene {
       }
 
       if (this.simulationPaused && this.pendingSimulationSteps > 0) {
-        this.pendingSimulationSteps = Math.max(0, this.pendingSimulationSteps - steps);
+        // Each loop iteration runs exactly one sim step, so consume one pending
+        // step here. `steps` is still 0 at this point (it increments at the end
+        // of the loop), so decrementing by `steps` would never drain the queue:
+        // pendingSimulationSteps would stay > 0 forever, the paused early-return
+        // guard above would never re-arm, and the scene would step every frame —
+        // making the AI runner lab's Pause/Advance-frame controls do nothing.
+        this.pendingSimulationSteps = Math.max(0, this.pendingSimulationSteps - 1);
         this.accumulator = 0;
       }
       movementSystem(this.world);
