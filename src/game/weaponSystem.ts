@@ -438,7 +438,7 @@ export function computeEffectiveAccuracy(world: GameWorld, player: number, def: 
 }
 
 /**
- * Rotate a normalised direction vector by `angleRad` radians (2-D rotation).
+ * Rotate a normalized direction vector by `angleRad` radians (2-D rotation).
  */
 function rotateDir(dir: { x: number; y: number }, angleRad: number): { x: number; y: number } {
   const cos = Math.cos(angleRad);
