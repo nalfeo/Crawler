@@ -23,6 +23,10 @@ import { WEAPON, WeaponType, TeamId, type WeaponTypeValue } from '../../src/shar
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { ftToPx } from '../../src/shared/units.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { FloorMap } from '../../src/core/map/FloorMap.js';
+import { TileMap } from '../../src/core/map/TileMap.js';
+import { RoomGraph } from '../../src/core/map/RoomGraph.js';
+import { TilePresets, DEFAULT_MAP_CONFIG, TerrainType } from '../../src/shared/map-types.js';
 
 describe('weaponSystem coverage paths', () => {
   it('keeps cooldown when updating active weapon; clearing weapon silences auto-fire', () => {
@@ -459,5 +463,79 @@ describe('weaponSystem boss priority targeting', () => {
 
     // Swing should still fire, targeting the close enemy.
     expect(query(world.ecs, [MeleeSwing]).length).toBe(1);
+  });
+});
+
+describe('weaponSystem line-of-sight gating', () => {
+  const TILE = 32;
+  // Center pixel of a tile, matching FloorMap.tileToPixel.
+  const cx = (tx: number): number => tx * TILE + TILE / 2;
+  const cy = (ty: number): number => ty * TILE + TILE / 2;
+
+  function makeOpenFloorMap(wallColumnX?: number): FloorMap {
+    const widthTiles = 24;
+    const heightTiles = 16;
+    const config = { ...DEFAULT_MAP_CONFIG, widthTiles, heightTiles };
+    const tileMap = new TileMap(widthTiles, heightTiles);
+    tileMap.fill(TilePresets.FLOOR);
+    if (wallColumnX !== undefined) {
+      for (let y = 0; y < heightTiles; y++) {
+        tileMap.setFlags(wallColumnX, y, TilePresets.WALL);
+      }
+    }
+    const terrain = new Uint8Array(widthTiles * heightTiles);
+    terrain.fill(TerrainType.STONE_FLOOR);
+    return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 2, y: 5 });
+  }
+
+  it('does not fire a bow at an enemy in the next room behind a wall', () => {
+    const world = createTestWorld();
+    // Vertical wall column at tile x=5 separates the player from the enemy.
+    world.floorMap = makeOpenFloorMap(5);
+    spawnPlayer(world, cx(2), cy(5));
+    // Enemy is 192px away (well inside the bow's ~528px gate range) and inside
+    // the combat radius, but the wall blocks line of sight — so it must not fire.
+    spawnEnemy(world, cx(8), cy(5), 50);
+    const bow = getWeaponDef('bow')!;
+    setActiveWeapon(world, bow);
+    world.elapsedMs = bow.cooldownMs;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(0);
+  });
+
+  it('fires a bow at an enemy in the same room with a clear line of sight', () => {
+    const world = createTestWorld();
+    world.floorMap = makeOpenFloorMap(); // no walls
+    spawnPlayer(world, cx(2), cy(5));
+    spawnEnemy(world, cx(8), cy(5), 50);
+    const bow = getWeaponDef('bow')!;
+    setActiveWeapon(world, bow);
+    world.elapsedMs = bow.cooldownMs;
+    world.rng.next = () => 0; // force a hit (a miss would still spawn a shot)
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
+  });
+
+  it('fires when the enemy tile is FOV-visible even if the strict line clips a wall', () => {
+    const world = createTestWorld();
+    const floor = makeOpenFloorMap(5); // wall column blocks the strict center line
+    world.floorMap = floor;
+    spawnPlayer(world, cx(2), cy(5));
+    spawnEnemy(world, cx(8), cy(5), 50);
+    // Mark the enemy tile visible, as the FOV shadowcaster would when the player
+    // can actually see it — the isVisible fast-path should allow the shot.
+    floor.setVisible(8, 5);
+    const bow = getWeaponDef('bow')!;
+    setActiveWeapon(world, bow);
+    world.elapsedMs = bow.cooldownMs;
+    world.rng.next = () => 0;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [Projectile]).length).toBe(1);
   });
 });

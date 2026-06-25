@@ -101,6 +101,18 @@ export class FloorMap implements FloorMapData {
     return this.tileMap.isPassable(t.x, t.y);
   }
 
+  /**
+   * Check whether a straight line between two pixel positions is unobstructed
+   * by opaque tiles. Converts both endpoints to tile coordinates and delegates
+   * to `TileMap.lineOfSight`. Used by combat targeting so weapons never fire
+   * through walls at enemies in the next room.
+   */
+  hasLineOfSight(px0: number, py0: number, px1: number, py1: number): boolean {
+    const from = this.pixelToTile(px0, py0);
+    const to = this.pixelToTile(px1, py1);
+    return this.tileMap.lineOfSight(from.x, from.y, to.x, to.y);
+  }
+
   /** Check if a tile is visible to the player (from last FOV compute). */
   isVisible(tx: number, ty: number): boolean {
     const idx = this.tileMap.index(tx, ty);

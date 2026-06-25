@@ -155,6 +155,67 @@ describe('TileMap', () => {
     });
   });
 
+  describe('lineOfSight', () => {
+    function openMap(w = 10, h = 10): TileMap {
+      const map = new TileMap(w, h);
+      map.fill(TilePresets.FLOOR);
+      return map;
+    }
+
+    it('is clear across open floor', () => {
+      const map = openMap();
+      expect(map.lineOfSight(1, 1, 8, 1)).toBe(true);
+      expect(map.lineOfSight(1, 1, 8, 8)).toBe(true);
+    });
+
+    it('is blocked by an opaque wall between the endpoints', () => {
+      const map = openMap();
+      map.setFlags(4, 1, TilePresets.WALL);
+      expect(map.lineOfSight(1, 1, 8, 1)).toBe(false);
+    });
+
+    it('treats the endpoint tiles as non-blocking', () => {
+      const map = openMap();
+      // Even if the shooter and target tiles are opaque, they never block.
+      map.setFlags(1, 1, TilePresets.WALL);
+      map.setFlags(8, 1, TilePresets.WALL);
+      expect(map.lineOfSight(1, 1, 8, 1)).toBe(true);
+    });
+
+    it('always has sight to an adjacent tile', () => {
+      const map = openMap();
+      map.setFlags(2, 1, TilePresets.WALL);
+      // Target is the wall tile itself (adjacent) — no tile lies between.
+      expect(map.lineOfSight(1, 1, 2, 1)).toBe(true);
+    });
+
+    it('passes through an open door but not a closed one', () => {
+      const map = openMap();
+      map.setFlags(4, 1, TilePresets.DOOR_OPEN);
+      expect(map.lineOfSight(1, 1, 8, 1)).toBe(true);
+      map.setFlags(4, 1, TilePresets.DOOR_CLOSED);
+      expect(map.lineOfSight(1, 1, 8, 1)).toBe(false);
+    });
+
+    it('passes through a transparent window', () => {
+      const map = openMap();
+      map.setFlags(4, 1, TilePresets.WINDOW); // transparent, not passable
+      expect(map.lineOfSight(1, 1, 8, 1)).toBe(true);
+    });
+
+    it('is symmetric for a straight blocked line', () => {
+      const map = openMap();
+      map.setFlags(4, 4, TilePresets.WALL);
+      expect(map.lineOfSight(1, 4, 8, 4)).toBe(false);
+      expect(map.lineOfSight(8, 4, 1, 4)).toBe(false);
+    });
+
+    it('returns true for a zero-length line', () => {
+      const map = openMap();
+      expect(map.lineOfSight(3, 3, 3, 3)).toBe(true);
+    });
+  });
+
   describe('tile flag bitfield correctness', () => {
     it('should have non-overlapping flags', () => {
       expect(TileFlags.PASSABLE & TileFlags.TRANSPARENT).toBe(0);

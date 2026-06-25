@@ -115,11 +115,14 @@ function getNearestEnemyTarget(
     const ex = world.stores.position.x[enemy]!;
     const ey = world.stores.position.y[enemy]!;
 
-    // Only target enemies the player can currently see (FOV + open doors).
-    // Exception: ignore FOV if player is in active combat (being attacked).
+    // Only target enemies the player has a clear line to: inside the computed
+    // FOV, or at least reachable by an unobstructed straight line (covers
+    // enemies just past the FOV radius in the same room). This stops ranged
+    // weapons from firing through walls at enemies in the next room.
     if (!ignoreFov && world.floorMap) {
       const tile = world.floorMap.pixelToTile(ex, ey);
-      if (!world.floorMap.isVisible(tile.x, tile.y)) {
+      const visible = world.floorMap.isVisible(tile.x, tile.y);
+      if (!visible && !world.floorMap.hasLineOfSight(playerX, playerY, ex, ey)) {
         continue;
       }
     }
@@ -686,8 +689,10 @@ export function weaponSystem(world: GameWorld): void {
       return;
     }
 
-    // Ignore FOV checks if in active combat (enemies nearby)
-    const target = getNearestEnemyTarget(world, playerX, playerY, inCombat);
+    // Require a clear line of sight to the target. Ranged/magic/thrown/beam
+    // weapons must never fire through walls at an enemy in the next room, even
+    // while in active combat — getNearestEnemyTarget gates on FOV + line of sight.
+    const target = getNearestEnemyTarget(world, playerX, playerY, false);
     if (!target) {
       return;
     }
