@@ -80,6 +80,8 @@ straight-line targeting beyond the FOV radius.
   gate for its ranged shooters — a candidate follow-up for symmetry).
 - No new lab was added because no new ECS system was created — only helper
   methods on existing `TileMap`/`FloorMap` plus a targeting-gate fix.
+- An ADR was required (diff touches `src/core` + `src/game`): see
+  `docs/knowledge/adr/0017-weapon-line-of-sight-targeting.md`.
 
 ## Apples
 
