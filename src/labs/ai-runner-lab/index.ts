@@ -22,6 +22,7 @@ import type { GameWorld } from '../../core/world.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
+import { buildSmoothedOverlayPath } from './path-overlay.js';
 
 const INITIAL_SEED = 42;
 const SPEED_OPTIONS = [1, 4, 16] as const;
@@ -379,11 +380,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       world.floorMap!.tileToPixel(tile.x, tile.y),
     );
 
-    if (worldPoints.length > 1) {
+    // The AI plans on a 4-connected grid (cardinal hops) but string-pulls at
+    // runtime, steering straight at the farthest waypoint it can see. Draw that
+    // smoothed/diagonal path so the overlay matches on-screen movement instead of
+    // the raw zigzag. Waypoints before pathIndex are already behind the player.
+    const upcomingPoints = worldPoints.slice(nav.pathIndex);
+    const smoothedPath = buildSmoothedOverlayPath(
+      { x: playerX, y: playerY },
+      upcomingPoints,
+      (x, y) => world.floorMap!.isPassableAt(x, y),
+    );
+
+    if (smoothedPath.length > 1) {
       graphics.lineStyle(2, 0x4fc3f7, 0.95);
       graphics.beginPath();
-      graphics.moveTo(playerX, playerY);
-      for (const point of worldPoints) {
+      const [firstPoint, ...restPoints] = smoothedPath;
+      graphics.moveTo(firstPoint!.x, firstPoint!.y);
+      for (const point of restPoints) {
         graphics.lineTo(point.x, point.y);
       }
       graphics.strokePath();
@@ -486,7 +499,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• Starts paused so you can inspect the opening state</div>
             <div>• Lab auto-clears starter/shop/spell/stair UI for the AI</div>
             <div>• Use speed controls to accelerate the simulation</div>
-            <div>• Cyan lines show AI path, orange circle shows current target</div>
+            <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
           </div>
         </div>
       </div>
