@@ -32,13 +32,20 @@ export function movementSystem(world: GameWorld): void {
         continue;
       }
 
-      // Slide-based collision: try full move, then each axis independently
-      if (floorMap.isPassableAt(newX, newY)) {
+      const oldTile = floorMap.pixelToTile(oldX, oldY);
+      const newTile = floorMap.pixelToTile(newX, newY);
+      const triesToCrossCorner = oldTile.x !== newTile.x && oldTile.y !== newTile.y;
+      const xOnlyPassable = floorMap.isPassableAt(newX, oldY);
+      const yOnlyPassable = floorMap.isPassableAt(oldX, newY);
+      const blockedDiagonalCorner = triesToCrossCorner && !xOnlyPassable && !yOnlyPassable;
+
+      // Slide-based collision: try full move, then each axis independently.
+      if (floorMap.isPassableAt(newX, newY) && !blockedDiagonalCorner) {
         position.x[eid] = newX;
         position.y[eid] = newY;
-      } else if (floorMap.isPassableAt(newX, oldY)) {
+      } else if (xOnlyPassable) {
         position.x[eid] = newX;
-      } else if (floorMap.isPassableAt(oldX, newY)) {
+      } else if (yOnlyPassable) {
         position.y[eid] = newY;
       }
       // else: stuck — don't move

@@ -38,6 +38,26 @@ function makeWalledMap(): FloorMap {
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 3, y: 3 });
 }
 
+function makeDiagonalCornerMap(): FloorMap {
+  const config: MapConfig = {
+    widthTiles: 5,
+    heightTiles: 5,
+    tileSizePx: 32,
+    biome: BiomeType.ARENA,
+    seed: 42,
+    roomWidthRange: [3, 5],
+    roomHeightRange: [3, 5],
+    maxRooms: 1,
+    floorDensity: 0.5,
+  };
+  const tileMap = new TileMap(5, 5);
+  const terrain = new Uint8Array(25);
+  tileMap.fill(TilePresets.FLOOR);
+  tileMap.setFlags(2, 1, TilePresets.WALL);
+  tileMap.setFlags(1, 2, TilePresets.WALL);
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
+}
+
 describe('movementSystem', () => {
   it('moves an entity by its velocity each frame', () => {
     const world = createTestWorld();
@@ -160,6 +180,20 @@ describe('movementSystem', () => {
 
       expect(world.stores.position.x[eid]).toBeCloseTo(96);
       expect(world.stores.position.y[eid]).toBeCloseTo(96);
+    });
+
+    it('blocks diagonal movement through a blocked corner', () => {
+      const world = createTestWorld();
+      world.floorMap = makeDiagonalCornerMap();
+
+      const eid = addEntity(world.ecs);
+      addComponent(world.ecs, eid, set(Position, { x: 48, y: 48 })); // tile (1,1)
+      addComponent(world.ecs, eid, set(Velocity, { x: 32, y: 32 })); // target tile (2,2)
+
+      movementSystem(world);
+
+      expect(world.stores.position.x[eid]).toBe(48);
+      expect(world.stores.position.y[eid]).toBe(48);
     });
   });
 });
