@@ -841,6 +841,29 @@ function isEnemyRoomDoorOpen(world: GameWorld, eid: number): boolean {
   return false;
 }
 
+function isPlayerInEnemyRoom(
+  world: GameWorld,
+  eid: number,
+  playerX: number,
+  playerY: number,
+): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const enemyTile = floorMap.pixelToTile(enemyX, enemyY);
+  const enemyRoomId = floorMap.roomGraph.getRoomAt(enemyTile.x, enemyTile.y);
+  if (enemyRoomId < 0) {
+    return false;
+  }
+
+  const playerTile = floorMap.pixelToTile(playerX, playerY);
+  return floorMap.roomGraph.getRoomAt(playerTile.x, playerTile.y) === enemyRoomId;
+}
+
 function applyLegacyChase(
   world: GameWorld,
   eid: number,
@@ -1424,10 +1447,13 @@ export function enemyAISystem(world: GameWorld): void {
     const speed = getEnemySpeed(world, eid);
     const persona = enemyBehavior.persona[eid] ?? PATH_PERSONA.NAVIGATOR;
     const hasOpenRoomDoor = isEnemyRoomDoorOpen(world, eid);
+    const playerSharesRoom = isPlayerInEnemyRoom(world, eid, playerX, playerY);
     const permanentAggro = (enemyBehavior.aggroedPermanently?.[eid] ?? 0) === 1;
     const inAggroRange = permanentAggro || isAggroActive(aggroRange, distanceToPlayer);
     const canDetectPlayer =
-      !playerHiddenInSafeRoom && (hasOpenRoomDoor || permanentAggro) && inAggroRange;
+      !playerHiddenInSafeRoom &&
+      (hasOpenRoomDoor || playerSharesRoom || permanentAggro) &&
+      inAggroRange;
 
     const currentVx = velocity.x[eid] ?? 0;
     const currentVy = velocity.y[eid] ?? 0;

@@ -621,6 +621,18 @@ describe('enemyAISystem', () => {
     expect(world.stores.velocity.x[enemy]).not.toBeCloseTo(0);
   });
 
+  it('engages immediately when the player is already inside the enemy room', () => {
+    const world = createTestWorld();
+    world.floorMap = createOneRoomMapWithDoor(false);
+    spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
+    const enemy = spawnBehaviorEnemy(world, 4 * 32 + 16, 2 * 32 + 16, 20, AI_TYPE.CHASE, 2, 200, 0);
+
+    enemyAISystem(world);
+
+    expect(world.stores.velocity.x[enemy]).toBeLessThan(0);
+    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+  });
+
   it('steers around nearby wall obstacles instead of pushing straight into them', () => {
     const world = createTestWorld();
     world.floorMap = createObstacleMap();
