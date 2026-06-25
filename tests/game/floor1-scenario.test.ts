@@ -646,7 +646,9 @@ describe('floor1Scenario', () => {
       const questRoomId = floorMap.roomGraph.getRoomAt(questTile.x, questTile.y);
 
       // The quest item room must be reachable from spawn without traversing the
-      // boss staircase room.
+      // boss staircase room. This BFS mirrors the production guard in
+      // chooseObjectiveTiles but returns a boolean instead of a Set, so it is
+      // kept here as a self-contained test helper rather than a shared utility.
       function canReachWithoutRoom(from: number, to: number, excluding: number): boolean {
         const queue = [from];
         const visited = new Set([from, excluding]);

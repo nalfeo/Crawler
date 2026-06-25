@@ -290,7 +290,12 @@ function chooseObjectiveTiles(world: GameWorld): {
   // where the rat-tail fetch item ended up in a room whose only connection was
   // the locked boss-stair room). BFS from spawn treating boss-stair as a wall.
   const bossStairRoomId = floorMap.bossStairRoom?.id;
-  const reachableWithoutBoss = new Set<RoomData>();
+  // roomsReachableWithoutBossRoom: the set of rooms the player can visit without
+  // ever entering the boss staircase room (which is locked until all quests finish).
+  // Stays empty when the spawn room is not set — the fallback path below then uses
+  // only the `!reserved.has(room)` guard, which preserves legacy behaviour on
+  // degenerate maps that lack a tagged spawn room.
+  const roomsReachableWithoutBossRoom = new Set<RoomData>();
   {
     const bfsQueue: number[] = [];
     const bfsVisited = new Set<number>();
@@ -302,7 +307,7 @@ function chooseObjectiveTiles(world: GameWorld): {
         const currId = bfsQueue.shift()!;
         const currRoom = floorMap.roomGraph.get(currId);
         if (currRoom) {
-          reachableWithoutBoss.add(currRoom);
+          roomsReachableWithoutBossRoom.add(currRoom);
           for (const neighborId of currRoom.neighbors) {
             if (!bfsVisited.has(neighborId) && neighborId !== bossStairRoomId) {
               bfsVisited.add(neighborId);
@@ -317,7 +322,8 @@ function chooseObjectiveTiles(world: GameWorld): {
   const candidates = floorMap.rooms
     .filter(
       (room) =>
-        !reserved.has(room) && (reachableWithoutBoss.size === 0 || reachableWithoutBoss.has(room)),
+        !reserved.has(room) &&
+        (roomsReachableWithoutBossRoom.size === 0 || roomsReachableWithoutBossRoom.has(room)),
     )
     .map((room) => {
       const center = centerOfRoom(room);
