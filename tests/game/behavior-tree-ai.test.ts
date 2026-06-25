@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { spawnBehaviorEnemy, spawnEnemy, spawnGold, spawnPlayer } from '../../src/core/helpers.js';
+import {
+  spawnBehaviorEnemy,
+  spawnEnemy,
+  spawnGold,
+  spawnPlayer,
+  spawnXpGem,
+} from '../../src/core/helpers.js';
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
@@ -111,6 +117,53 @@ function enterKillGrindStage(world: GameWorld): void {
   meetTutorialGoon(world);
   world.playerLevel.level = 2;
   world.floor1!.objective.questCompleted = false;
+}
+
+/**
+ * Put the AI into Progress-driven quest navigation (heading for the Welcome
+ * Office) and poll once so a travel heading is established. Returns the player's
+ * static position plus the unit heading vector, so a test can place loot relative
+ * to the *forward path* the on-path detour layer reasons about. No movement system
+ * runs in these unit tests, so the player stays put between polls and the heading
+ * captured here is exactly the reference the next poll's detour uses.
+ */
+function pollQuestNavHeading(seed: number): {
+  world: GameWorld;
+  ai: BehaviorTreeAI;
+  input: ReturnType<typeof createInputState>;
+  player: number;
+  px: number;
+  py: number;
+  ux: number;
+  uy: number;
+} {
+  const world = createTestWorld({ seed });
+  const player = spawnPlayer(world, 0, 0);
+  initializeFloor1Scenario(world, player);
+  selectFloor1StarterWeapon(world, 0);
+
+  const ai = new BehaviorTreeAI({ seed });
+  const input = createInputState();
+  ai.poll(input, world);
+
+  // Precondition: Track A is navigating the quest (EXPLORE), not collecting, and
+  // actually moving — otherwise the detour scenario is meaningless.
+  expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+  const headingMag = Math.hypot(input.moveX, input.moveY);
+  expect(headingMag).toBeGreaterThan(0.05);
+
+  const px = world.stores.position.x[player]!;
+  const py = world.stores.position.y[player]!;
+  return {
+    world,
+    ai,
+    input,
+    player,
+    px,
+    py,
+    ux: input.moveX / headingMag,
+    uy: input.moveY / headingMag,
+  };
 }
 
 describe('BehaviorTreeAI', () => {
@@ -311,6 +364,109 @@ describe('BehaviorTreeAI', () => {
     ai.poll(input, world);
 
     expect(ai.getDecision().state).not.toBe(AIState.COLLECT);
+  });
+
+  describe('on-path loot detour (Track B opportunistic collect)', () => {
+    it('detours toward loot within 5 ft of its forward path during quest navigation', () => {
+      const s = pollQuestNavHeading(42);
+      // Gem 80px dead ahead along the travel heading: inside the 120px grab radius
+      // and squarely within the 5 ft (40px) forward corridor.
+      spawnXpGem(s.world, s.px + s.ux * 80, s.py + s.uy * 80, 5);
+
+      s.ai.poll(s.input, s.world);
+
+      // Track A stays on the quest objective (Progress outranks Collect), so the
+      // gem is ignored by Track A — the detour layer is what grabs it.
+      expect(s.ai.getDecision().state).toBe(AIState.EXPLORE);
+      const dbg = s.ai.getOpportunisticDebug();
+      expect(Math.hypot(dbg.pullX, dbg.pullY)).toBeGreaterThan(0.5);
+      // Pull is aligned with the heading (points at the on-path gem).
+      expect(dbg.pullX * s.ux + dbg.pullY * s.uy).toBeGreaterThan(0.9);
+    });
+
+    it('ignores loot behind the player (not on the forward path)', () => {
+      const s = pollQuestNavHeading(42);
+      // 80px directly behind the heading: within the grab radius but off-path.
+      spawnXpGem(s.world, s.px - s.ux * 80, s.py - s.uy * 80, 5);
+
+      s.ai.poll(s.input, s.world);
+
+      const dbg = s.ai.getOpportunisticDebug();
+      expect(dbg.pullX).toBe(0);
+      expect(dbg.pullY).toBe(0);
+    });
+
+    it('ignores loot farther than 5 ft to the side of its path', () => {
+      const s = pollQuestNavHeading(42);
+      // 60px forward + 80px lateral (perp to heading): total 100px is inside the
+      // grab radius, so only the 5 ft corridor gate excludes it.
+      const perpX = -s.uy;
+      const perpY = s.ux;
+      spawnXpGem(s.world, s.px + s.ux * 60 + perpX * 80, s.py + s.uy * 60 + perpY * 80, 5);
+
+      s.ai.poll(s.input, s.world);
+
+      const dbg = s.ai.getOpportunisticDebug();
+      expect(dbg.pullX).toBe(0);
+      expect(dbg.pullY).toBe(0);
+    });
+
+    it('does not detour for loot while fighting an enemy', () => {
+      const world = createTestWorld({ seed: 7 });
+      const player = spawnPlayer(world, 0, 0);
+      spawnEnemy(world, 100, 0, 20);
+      setActiveWeapon(world, getWeaponDef('sword')!);
+
+      const ai = new BehaviorTreeAI({ seed: 7 });
+      const input = createInputState();
+      ai.poll(input, world);
+      expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+
+      // Gem sitting right on the approach line to the enemy.
+      const px = world.stores.position.x[player]!;
+      const py = world.stores.position.y[player]!;
+      spawnXpGem(world, px + 40, py, 5);
+
+      ai.poll(input, world);
+
+      // Still fighting → the detour stays suppressed ("not while fighting").
+      expect(ai.getDecision().state).toBe(AIState.ENGAGE);
+      const dbg = ai.getOpportunisticDebug();
+      expect(dbg.pullX).toBe(0);
+      expect(dbg.pullY).toBe(0);
+    });
+
+    it('keeps the enemy-farm pull dormant unless explicitly weighted', () => {
+      const buildWanderWorld = (): { world: GameWorld; cx: number; cy: number } => {
+        const world = createTestWorld({ seed: 5 });
+        world.floorMap = makeOpenRoom(60, 60);
+        const cx = 960;
+        const cy = 960;
+        spawnPlayer(world, cx, cy);
+        // Lone enemy 600px away: beyond the 400px Track A scan (so the AI just
+        // idle-wanders, EXPLORE + null target) but within the 1200px farm scan.
+        spawnEnemy(world, cx + 600, cy, 20);
+        return { world, cx, cy };
+      };
+
+      const idle = buildWanderWorld();
+      const idleAi = new BehaviorTreeAI({ seed: 5 });
+      idleAi.poll(createInputState(), idle.world);
+      expect(idleAi.getDecision().state).toBe(AIState.EXPLORE);
+      // Default farmPullWeight = 0 → the enemy-farm layer never fires.
+      const dormant = idleAi.getOpportunisticDebug();
+      expect(dormant.farmX).toBe(0);
+      expect(dormant.farmY).toBe(0);
+
+      // Same scenario with a non-zero farm weight DOES drift toward the enemy.
+      const active = buildWanderWorld();
+      const farmAi = new BehaviorTreeAI({ seed: 5, farmPullWeight: 1 });
+      farmAi.poll(createInputState(), active.world);
+      expect(farmAi.getDecision().state).toBe(AIState.EXPLORE);
+      const farmDbg = farmAi.getOpportunisticDebug();
+      expect(Math.hypot(farmDbg.farmX, farmDbg.farmY)).toBeGreaterThan(0);
+      expect(farmDbg.farmX).toBeGreaterThan(0);
+    });
   });
 
   it('hunts the ambient swarm during the boss-unlock kill-grind', () => {

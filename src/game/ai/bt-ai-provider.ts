@@ -80,11 +80,19 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   rangedSafeDistance: 120,
   opportunisticGrabRadius: 120,
   dodgeWeight: 0.25,
-  // Collect/farm pull is disabled (0.0) until additional headless seeds validate
-  // that loot-biased navigation does not over-engage enemy clusters. Set > 0 in
-  // AIConfig to experiment; re-enable the default once validated seeds confirm
-  // the floor-clear budget is safe.
-  collectPullWeight: 0.0,
+  // Loot-detour pull weight. The opportunistic collect layer only pulls toward
+  // loot within 5 ft of the player's forward path (an "on-path detour"), so
+  // unlike the old omnidirectional pull it cannot systematically drift the net
+  // trajectory toward off-path loot-dense (= enemy-dense) zones — the failure
+  // mode that previously forced this to 0.0 and blew the headless floor-clear
+  // budget. A modest weight keeps Track A's path dominant so the player just
+  // curves toward pickups it passes near.
+  collectPullWeight: 0.5,
+  // Enemy-farm pull (drift toward the nearest enemy during idle wander) is kept
+  // OFF by default and on its own weight so re-enabling loot detours never
+  // silently re-enables enemy seeking. Re-enable only after validating the
+  // floor-clear budget across additional headless seeds.
+  farmPullWeight: 0.0,
   debug: false,
 };
 
@@ -449,6 +457,29 @@ const DODGE_THREAT_RADIUS_PX = 96;
 // Minimum closing speed (px/frame): dot product of enemy velocity with the
 // unit toward-player vector. Higher threshold = only fast chargers trigger dodge.
 const DODGE_CLOSING_SPEED_PX_PER_FRAME = 1.5;
+// --- On-path loot detour (OpportunisticCollect) ---
+// Rule (player's words): "if there is loot within 5' of my path and I am not
+// actively fighting or dodging enemies, make the slight detour to grab it."
+//
+// "My path" is the ray from the player along the CURRENT heading (previous-frame
+// smoothed output). A loot qualifies for a detour pull only if it lies AHEAD of
+// the player (positive projection onto the heading) AND its perpendicular
+// distance to that path ray is within PATH_CORRIDOR_HALF_WIDTH_PX. This narrow
+// forward corridor is the key difference from the reverted omnidirectional pull:
+// by ignoring loot behind or far to the side of the travel direction, the detour
+// stays genuinely "slight" and cannot systematically bias the net exploration
+// trajectory toward off-path loot-dense (= enemy-dense) zones — the regression
+// that previously forced collectPullWeight to 0.0 and blew the headless
+// floor-clear budget.
+//
+// 5 feet of lateral slack from the path ray. Loot farther to the side than this
+// is not "on my path" and earns no detour.
+const PATH_CORRIDOR_HALF_WIDTH_PX = ftToPx(5);
+// Below this heading magnitude the player has no meaningful travel direction
+// (effectively stationary), so the path ray is undefined and the detour is
+// skipped — pickups while standing still are handled by Track A's Collect
+// behavior, not the opportunistic detour.
+const DETOUR_MIN_HEADING_MAGNITUDE = 0.05;
 
 type LootKind = 'xp' | 'gold' | 'item';
 
@@ -618,12 +649,20 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private readonly knownLockedDoors = new Map<number, AILockedDoorMemory>();
   /**
-   * Opportunistic pull vector set by Track B's OpportunisticCollect and
-   * OpportunisticFarm nodes each poll. Reset to (0,0) before tree.tick() and
-   * blended into the final move vector in poll() with {@link AIConfig.collectPullWeight}.
+   * Opportunistic loot-detour pull vector set by Track B's OpportunisticCollect
+   * node each poll. Reset to (0,0) before tree.tick() and blended into the final
+   * move vector in poll() with {@link AIConfig.collectPullWeight}.
    */
   private opportunisticPullX: number = 0;
   private opportunisticPullY: number = 0;
+  /**
+   * Enemy-farm pull vector set by Track B's OpportunisticFarm node each poll.
+   * Decoupled from the loot pull so it rides its own {@link AIConfig.farmPullWeight}
+   * (default 0) — re-enabling loot detours must never silently re-enable enemy
+   * seeking. Reset to (0,0) before tree.tick().
+   */
+  private farmPullX: number = 0;
+  private farmPullY: number = 0;
   /**
    * Dodge vector set by Track B's OpportunisticDodge node each poll.
    * Reset to (0,0) before tree.tick() and blended in with {@link AIConfig.dodgeWeight}.
@@ -1135,53 +1174,70 @@ export class BehaviorTreeAI implements AIInputProvider {
     return parallel(
       'Track B: Opportunistic',
       BTParallelPolicy.OBSERVE,
-      this.buildOpportunisticCollect(),
+      // Dodge runs before Collect so the loot detour can see an in-progress dodge
+      // this frame (the player's rule: don't detour for loot while dodging).
       this.buildOpportunisticDodge(),
+      this.buildOpportunisticCollect(),
       this.buildOpportunisticFarm(),
     );
   }
 
   /**
-   * OpportunisticCollect: pull the player toward loot within arm's reach
-   * (`config.opportunisticGrabRadius`) regardless of the current Track A
-   * movement goal, so the AI scoops up nearby gems while navigating elsewhere
-   * without switching state.
+   * OpportunisticCollect: nudge the player into a *slight detour* toward loot it
+   * is travelling past, so it scoops up on-path gems/gold/items while navigating
+   * elsewhere (including toward quest objectives) without switching Track A state.
    *
-   * Only the player-proximity radius is checked (no A* path waypoint sweep).
-   * The waypoint sweep was removed because it biased every exploration path
-   * toward loot-dense (= recently enemy-killed) areas, causing the AI to fight
-   * significantly more enemies than needed and miss the floor-clear time budget.
+   * Implements the player's rule directly: "if there is loot within 5' of my path
+   * and I am not actively fighting or dodging enemies, make the slight detour to
+   * grab it." A loot qualifies only when it lies AHEAD of the player along the
+   * current heading and its perpendicular distance to that path ray is within
+   * `PATH_CORRIDOR_HALF_WIDTH_PX` (5 ft). The earlier implementation pulled toward
+   * ANY nearby loot in any direction, which systematically biased the net
+   * trajectory toward loot-dense (= recently enemy-killed) zones and blew the
+   * floor-clear budget. Restricting to a narrow forward corridor keeps the detour
+   * genuinely slight: the player can curve toward stuff on its way but is never
+   * dragged backward or sideways into off-path fights.
    *
-   * Skipped when Track A is already in COLLECT (no point doubling up), when
-   * the player is retreating (survival over loot), when actively engaging an
-   * enemy (ENGAGE kiting geometry is precision-tuned — a pull toward XP gems
-   * could redirect the player out of weapon range mid-fight), during NPC
-   * interaction (mustn't deflect approach to the NPC target), and during
-   * Progress-driven navigation (EXPLORE with a non-null targetEid = position or
-   * entity objective) so quest paths are never deflected by loot pulls.
+   * Skipped when Track A is already in COLLECT (no point doubling up), when the
+   * player is retreating or actively engaging an enemy ("fighting or dodging"),
+   * when a dodge impulse is active this frame ("dodging"), and during NPC
+   * interaction (the brief final-approach micro-phase mustn't be deflected; the
+   * long travel toward an NPC objective happens in EXPLORE and IS eligible).
+   * Unlike before it is NOT skipped during Progress-driven navigation (EXPLORE
+   * with a non-null targetEid): the forward corridor makes a quest-path detour
+   * safe because only loot already on the way to the objective is pulled.
    */
   private buildOpportunisticCollect(): BTNode {
     return action('Opportunistic Collect', (ctx) => {
-      // Track A is handling collection, survival takes priority, ENGAGE kiting
-      // geometry must not be disturbed, NPC interaction must not be deflected,
-      // and Progress-driven navigation (EXPLORE with a specific non-null target)
-      // must not be deflected by loot pulls.
+      // Track A is handling collection, survival/fighting takes priority, and NPC
+      // interaction must not be deflected.
       if (
         this.decision.state === AIState.COLLECT ||
         this.decision.state === AIState.RETREAT ||
         this.decision.state === AIState.ENGAGE ||
-        this.decision.state === AIState.INTERACT ||
-        (this.decision.state === AIState.EXPLORE && this.decision.targetEid !== null)
+        this.decision.state === AIState.INTERACT
       ) {
         return BTStatus.FAILURE;
       }
 
-      // Only pull toward loot that is already within arm's reach of the player
-      // (opportunisticGrabRadius). The previous implementation also scanned all
-      // A* path waypoints (WAYPOINT_SWEEP_RADIUS_PX), but that biased every
-      // exploration path toward loot-dense (= recently enemy-killed) areas,
-      // causing the AI to fight 2-3x more enemies than needed and miss the
-      // 300s floor-clear budget on the headless gate seed.
+      // "...and I am not actively dodging enemies." Dodge ticks before Collect in
+      // the Track B parallel, so a non-zero dodge vector means a dodge is in
+      // progress this frame — defer the loot detour until it clears.
+      if (this.dodgeVecX !== 0 || this.dodgeVecY !== 0) return BTStatus.FAILURE;
+
+      // Path ray = the direction the player is currently travelling (previous-frame
+      // smoothed output). With no meaningful heading the player is effectively
+      // stationary, so there is no "path" to detour from — let Track A's Collect
+      // behavior handle stationary pickups instead.
+      const headingMag = Math.hypot(this.smoothMoveX, this.smoothMoveY);
+      if (headingMag < DETOUR_MIN_HEADING_MAGNITUDE) return BTStatus.FAILURE;
+      const headingX = this.smoothMoveX / headingMag;
+      const headingY = this.smoothMoveY / headingMag;
+
+      // Pick the nearest loot within the grab radius that is AHEAD of the player
+      // and within PATH_CORRIDOR_HALF_WIDTH_PX of the path ray. Loot behind, or
+      // farther to the side than the corridor, is ignored so the detour stays
+      // slight and cannot bias the net trajectory.
       let nearestX = 0;
       let nearestY = 0;
       let nearestDist = Number.POSITIVE_INFINITY;
@@ -1200,13 +1256,22 @@ export class BehaviorTreeAI implements AIInputProvider {
           if (ignored !== undefined && ignored > ctx.world.frameCount) continue;
           const lx = ctx.world.stores.position.x[eid] ?? 0;
           const ly = ctx.world.stores.position.y[eid] ?? 0;
-          const d = Math.hypot(lx - ctx.playerX, ly - ctx.playerY);
-          if (d < grabRadius && d < nearestDist) {
-            nearestDist = d;
-            nearestX = lx;
-            nearestY = ly;
-            found = true;
-          }
+          const dxl = lx - ctx.playerX;
+          const dyl = ly - ctx.playerY;
+          const d = Math.hypot(dxl, dyl);
+          if (d >= grabRadius || d >= nearestDist) continue;
+          // Forward projection onto the heading: loot must be ahead (on the path),
+          // not behind the player.
+          const forward = dxl * headingX + dyl * headingY;
+          if (forward < 0) continue;
+          // Perpendicular distance from the path ray must be within the corridor.
+          const lateralSq = d * d - forward * forward;
+          const lateral = lateralSq > 0 ? Math.sqrt(lateralSq) : 0;
+          if (lateral > PATH_CORRIDOR_HALF_WIDTH_PX) continue;
+          nearestDist = d;
+          nearestX = lx;
+          nearestY = ly;
+          found = true;
         }
       }
 
@@ -1304,18 +1369,24 @@ export class BehaviorTreeAI implements AIInputProvider {
    * specific entity goal) and enemies are visible at wider range, add a pull
    * toward the nearest enemy cluster so auto-fire starts sooner.
    *
+   * Decoupled from the loot detour: it writes its own `this.farmPullX/Y` blended
+   * with {@link AIConfig.farmPullWeight} (default 0 = dormant). This keeps enemy
+   * seeking OFF unless explicitly enabled, so turning loot detours back on never
+   * silently re-introduces the over-engagement that blew the floor-clear budget.
+   *
    * Critically: this must NOT fire when the EXPLORE state is being used to
    * navigate toward a specific entity objective (e.g. shopkeeper, gold pile,
    * boss room) — those are set by the Progress behavior which also sets
    * `this.decision.state = AIState.EXPLORE` but with `targetEid !== null`.
    * A farm pull away from the NPC toward the ambient swarm would delay
    * quest completion indefinitely.
-   *
-   * The pull is additive and addends are normalised so it biases without
-   * overriding A*'s path.
    */
   private buildOpportunisticFarm(): BTNode {
     return action('Opportunistic Farm', (ctx) => {
+      // Dormant unless a non-zero farm weight is configured; skip the enemy scan
+      // entirely when the pull would be multiplied to nothing.
+      if (this.config.farmPullWeight <= 0) return BTStatus.FAILURE;
+
       // Only fire when genuinely idle-wandering: EXPLORE state AND no specific
       // entity target (null targetEid = random frontier tile, not an NPC/item/gold goal)
       if (this.decision.state !== AIState.EXPLORE || this.decision.targetEid !== null) {
@@ -1335,15 +1406,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       const dist = Math.hypot(dx, dy);
       if (dist <= 0) return BTStatus.FAILURE;
 
-      // Blend additively with any collect pull already set by OpportunisticCollect.
-      // Normalize the combined vector so collect and farm don't double up.
-      const cx = this.opportunisticPullX + dx / dist;
-      const cy = this.opportunisticPullY + dy / dist;
-      const len = Math.hypot(cx, cy);
-      if (len > 0) {
-        this.opportunisticPullX = cx / len;
-        this.opportunisticPullY = cy / len;
-      }
+      this.farmPullX = dx / dist;
+      this.farmPullY = dy / dist;
       return BTStatus.SUCCESS;
     });
   }
@@ -1894,6 +1958,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Reset opportunistic vectors from Track B so stale data never carries over.
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
+    this.farmPullX = 0;
+    this.farmPullY = 0;
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
 
@@ -1922,15 +1988,18 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Blend Track B opportunistic vectors additively into the Track A direction.
     // The result is re-normalized to unit length if it exceeds 1 so the player
-    // moves at full speed regardless of blend magnitudes.
+    // moves at full speed regardless of blend magnitudes. The loot-detour pull
+    // and the (default-dormant) enemy-farm pull ride independent weights.
     const blendX =
       state.moveX +
       this.dodgeVecX * this.config.dodgeWeight +
-      this.opportunisticPullX * this.config.collectPullWeight;
+      this.opportunisticPullX * this.config.collectPullWeight +
+      this.farmPullX * this.config.farmPullWeight;
     const blendY =
       state.moveY +
       this.dodgeVecY * this.config.dodgeWeight +
-      this.opportunisticPullY * this.config.collectPullWeight;
+      this.opportunisticPullY * this.config.collectPullWeight +
+      this.farmPullY * this.config.farmPullWeight;
     const blendLen = Math.hypot(blendX, blendY);
     if (blendLen > 1) {
       state.moveX = blendX / blendLen;
@@ -3802,12 +3871,16 @@ export class BehaviorTreeAI implements AIInputProvider {
   getOpportunisticDebug(): {
     pullX: number;
     pullY: number;
+    farmX: number;
+    farmY: number;
     dodgeX: number;
     dodgeY: number;
   } {
     return {
       pullX: this.opportunisticPullX,
       pullY: this.opportunisticPullY,
+      farmX: this.farmPullX,
+      farmY: this.farmPullY,
       dodgeX: this.dodgeVecX,
       dodgeY: this.dodgeVecY,
     };
@@ -3918,6 +3991,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.retreatRepickFrame = 0;
     this.opportunisticPullX = 0;
     this.opportunisticPullY = 0;
+    this.farmPullX = 0;
+    this.farmPullY = 0;
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
   }
