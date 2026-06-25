@@ -16,4 +16,18 @@ describe('MainGameScene mobile interaction guard', () => {
     expect(source).toContain('const tapped = this.tappedInteraction || this.queuedInteraction;');
     expect(source).toContain('const closeRequested = this.queuedConversationClose;');
   });
+
+  it('caps mobile button/hint scaling to avoid HUD overlap', async () => {
+    const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
+
+    expect(source).toContain('const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;');
+    expect(source).toContain('const INTERACTION_HINT_MAX_SCALE = 1.25;');
+    expect(source).toContain('const INTERACTION_HINT_BOTTOM_MARGIN = 12;');
+    expect(source).toContain('const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);');
+    expect(source).toContain('.setY(GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN);');
+    expect(source).toContain(
+      'const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);',
+    );
+    expect(source).toContain('(this.inventoryButton?.height ?? 44) * buttonScale + 8');
+  });
 });

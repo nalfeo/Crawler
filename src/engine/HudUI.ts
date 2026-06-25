@@ -26,6 +26,12 @@ import { getUiScale, onUiScaleChange } from './ui-scale.js';
  * avoiding overlap. At scale 1 (desktop) the layout is pixel-identical.
  */
 const HUD_MAX_SCALE = 1.6;
+/**
+ * Keep the ability bar smaller than the rest of the HUD on narrow screens so
+ * bottom-center UX affordances (Talk/Descend prompt, dialogue hint area) keep
+ * clear space and never collide with the slots row.
+ */
+const ABILITY_BAR_MAX_SCALE = 1.2;
 
 export function createHudUI(scene: Phaser.Scene): {
   sync(world: GameWorld, playerEid: number): void;
@@ -66,12 +72,15 @@ export function createHudUI(scene: Phaser.Scene): {
 
   function applyScale(): void {
     const s = Math.min(getUiScale(scene), HUD_MAX_SCALE);
+    const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
     const w = scene.scale.width;
     const h = scene.scale.height;
     const cx = w / 2;
 
     bottomLeft.setScale(s).setPosition(0, h * (1 - s));
-    bottomCenter.setScale(s).setPosition(cx * (1 - s), h * (1 - s));
+    bottomCenter
+      .setScale(bottomCenterScale)
+      .setPosition(cx * (1 - bottomCenterScale), h * (1 - bottomCenterScale));
     topCenter.setScale(s).setPosition(cx * (1 - s), 0);
     topRight.setScale(s).setPosition(w * (1 - s), 0);
   }
