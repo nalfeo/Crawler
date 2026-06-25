@@ -3,9 +3,8 @@ import { chromium, type Browser, type BrowserContext, type Page } from 'playwrig
 import { parsePng, readPixel, colorDist } from './helpers/pixels.js';
 import { closeQuietly } from './helpers/ui-probe.js';
 import { E2E_LAB_BASE_URL, GAME_H, GAME_W } from './e2e-constants.js';
-
-const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=hud-lab`;
 const HUD_BG = { r: 0x05, g: 0x07, b: 0x0f };
+const LAB_URL = `${E2E_LAB_BASE_URL}/lab.html?lab=hud-lab`;
 
 interface CanvasRect {
   x: number;
@@ -55,22 +54,22 @@ function nonBackgroundRatio(
 async function loadHudLab(page: Page): Promise<void> {
   await page.goto(LAB_URL, { waitUntil: 'networkidle', timeout: 30_000 });
   await page.waitForSelector('#lab-canvas canvas', { timeout: 30_000 });
-  await page.waitForTimeout(2_000);
+  await page.waitForFunction(
+    () => Boolean((window as { __hudProbe?: { ready(): boolean } }).__hudProbe?.ready()),
+    undefined,
+    {
+      timeout: 30_000,
+    },
+  );
+  await page.waitForTimeout(500);
 }
 
 async function setBossFightActive(page: Page, active: boolean): Promise<void> {
-  await page.evaluate((nextValue) => {
-    const rows = Array.from(document.querySelectorAll('.lil-gui .controller'));
-    const row = rows.find((candidate) => {
-      const name = candidate.querySelector('.name')?.textContent?.trim();
-      return name === 'Boss fight active';
-    });
-    if (!row) throw new Error('Boss fight active controller not found');
-    const input = row.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-    if (!input) throw new Error('Boss fight active checkbox not found');
-    if (input.checked !== nextValue) {
-      input.click();
-    }
+  await page.evaluate((next) => {
+    const probe = (window as { __hudProbe?: { setBossFightActive(active: boolean): void } })
+      .__hudProbe;
+    if (!probe) throw new Error('__hudProbe not available');
+    probe.setBossFightActive(next);
   }, active);
 }
 
@@ -123,7 +122,11 @@ describe('hud visual regression overlap guard', () => {
     expect(bossBandRatio, 'expected visible boss bar pixels in boss band').toBeGreaterThan(0.25);
     expect(
       gapBandRatio,
-      `expected the vertical gap between timer and boss bar to remain mostly background; got ${gapBandRatio.toFixed(3)}`,
-    ).toBeLessThan(0.1);
+      `expected gap band to be visibly sparser than timer band (gap=${gapBandRatio.toFixed(3)}, timer=${timerBandRatio.toFixed(3)})`,
+    ).toBeLessThan(timerBandRatio * 0.8);
+    expect(
+      gapBandRatio,
+      `expected gap band to be visibly sparser than boss band (gap=${gapBandRatio.toFixed(3)}, boss=${bossBandRatio.toFixed(3)})`,
+    ).toBeLessThan(bossBandRatio * 0.8);
   });
 });

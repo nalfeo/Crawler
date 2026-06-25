@@ -26,6 +26,12 @@ interface HudLabSettings {
   bossHpPercent: number;
 }
 
+interface HudProbeApi {
+  ready(): boolean;
+  setBossFightActive(active: boolean): void;
+  getGameSize(): { width: number; height: number };
+}
+
 const LAB_ID = 'hud-lab';
 
 const SCENE_KEY = 'HudLabScene';
@@ -69,6 +75,8 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
   let bossEid = -1;
   let hudUi: ReturnType<typeof createHudUI> | undefined;
   let elapsedTracker = 0;
+  let sceneBuilt = false;
+  const probeWindow = window as unknown as { __hudProbe?: HudProbeApi };
 
   class HudLabScene extends Phaser.Scene {
     constructor() {
@@ -76,6 +84,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     }
 
     create(): void {
+      sceneBuilt = false;
       world = createGameWorld({ seed: 1 });
       world.floor = settings.floor;
 
@@ -173,8 +182,21 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       if (settings.minimapExpanded) {
         hudUi.sync(world!, playerEid);
       }
+      const probeApi: HudProbeApi = {
+        ready: () => sceneBuilt,
+        setBossFightActive: (active: boolean) => {
+          settings.bossFightActive = active;
+        },
+        getGameSize: () => ({ width: this.scale.width, height: this.scale.height }),
+      };
+      probeWindow.__hudProbe = probeApi;
+      sceneBuilt = true;
 
       this.events.once('shutdown', () => {
+        sceneBuilt = false;
+        if (probeWindow.__hudProbe) {
+          delete probeWindow.__hudProbe;
+        }
         hudUi?.destroy();
         hudUi = undefined;
       });
