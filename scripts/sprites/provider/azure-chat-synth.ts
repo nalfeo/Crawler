@@ -29,6 +29,11 @@ import type {
 import { SynthProviderError } from './synth-types.js';
 import { formatCatalogForPrompt } from '../reference-allow-list.js';
 import { SPRITE_TYPES } from '../brief-schema.js';
+import {
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  isTimeoutAbortError,
+  providerTimeoutMessage,
+} from './fetch-timeout.js';
 
 export interface AzureOpenAISynthProviderOptions {
   readonly endpoint: string;
@@ -46,6 +51,11 @@ export interface AzureOpenAISynthProviderOptions {
   readonly maxTokens?: number;
   /** Injectable fetch implementation; defaults to global fetch. */
   readonly fetch?: typeof fetch;
+  /**
+   * Per-request timeout in ms. Defaults to {@link DEFAULT_PROVIDER_TIMEOUT_MS}.
+   * Aborts a hung synthesis call instead of leaving `sprites:synth` to hang.
+   */
+  readonly timeoutMs?: number;
 }
 
 interface ChatChoice {
@@ -65,6 +75,7 @@ export class AzureOpenAISynthProvider implements SynthProvider {
   private readonly temperature: number;
   private readonly maxTokens: number;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
   readonly providerLabel: string;
 
   constructor(opts: AzureOpenAISynthProviderOptions) {
@@ -75,6 +86,7 @@ export class AzureOpenAISynthProvider implements SynthProvider {
     this.temperature = opts.temperature ?? 0.85;
     this.maxTokens = opts.maxTokens ?? 1500;
     this.fetchImpl = opts.fetch ?? fetch;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
     this.providerLabel = `azure-openai:${opts.deployment}`;
   }
 
@@ -102,8 +114,16 @@ export class AzureOpenAISynthProvider implements SynthProvider {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
+      if (isTimeoutAbortError(err)) {
+        throw new SynthProviderError(
+          'network',
+          providerTimeoutMessage('Azure chat (synthesis)', this.timeoutMs),
+          { cause: err },
+        );
+      }
       throw new SynthProviderError(
         'network',
         `network error calling Azure chat (synthesis): ${err instanceof Error ? err.message : String(err)}`,

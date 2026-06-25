@@ -24,7 +24,7 @@
  * See `infra/README.md` for full Azure setup instructions.
  *
  * Examples:
- *   # Local dev (noop queue — exits immediately after the first empty poll):
+ *   # Local dev (noop queue — idle-loops waiting for work; Ctrl-C to stop):
  *   npm run sprites:worker
  *
  *   # Azure:

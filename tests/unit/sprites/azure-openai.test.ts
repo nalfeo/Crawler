@@ -130,6 +130,31 @@ describe('AzureOpenAIImageProvider.generateSheet', () => {
     ).rejects.toMatchObject({ kind: 'network' });
   });
 
+  it('classifies an AbortSignal.timeout abort as ProviderError(network) with a "timed out" message', async () => {
+    // Simulate what `fetch` throws when its AbortSignal.timeout fires.
+    const stubFetch: typeof fetch = async () => {
+      throw Object.assign(new Error('The operation was aborted due to timeout'), {
+        name: 'TimeoutError',
+      });
+    };
+    const timed = new AzureOpenAIImageProvider({
+      endpoint: 'https://example.openai.azure.com/',
+      deployment: 'gpt-image-1',
+      apiKey: 'test-key',
+      apiVersion: '2025-04-01-preview',
+      timeoutMs: 1234,
+      fetch: stubFetch,
+    });
+    await expect(
+      timed.generateSheet({
+        brief: makeBrief(),
+        prompt: 'p',
+        referencePngs: [encodeSolidPng(2, 2)],
+        variants: 9,
+      }),
+    ).rejects.toMatchObject({ kind: 'network', message: expect.stringContaining('timed out') });
+  });
+
   it('classifies an undecodable PNG body as ProviderError(non-png)', async () => {
     const stubFetch: typeof fetch = async () =>
       jsonResponse(200, { data: [{ b64_json: Buffer.from('not a png').toString('base64') }] });

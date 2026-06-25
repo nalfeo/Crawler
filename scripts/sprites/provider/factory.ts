@@ -14,6 +14,7 @@ import { AzureOpenAIImageProvider } from './azure-openai.js';
 import { AzureOpenAIChatProvider } from './azure-chat.js';
 import { AzureOpenAISynthProvider } from './azure-chat-synth.js';
 import { AzureOpenAIVisionProvider } from './azure-vision.js';
+import { resolveProviderTimeoutMs } from './fetch-timeout.js';
 import type { ImageProvider } from './types.js';
 import type { TextProvider } from './text-types.js';
 import type { SynthProvider } from './synth-types.js';
@@ -167,6 +168,7 @@ function createAzureProvider(
     deployment,
     apiKey,
     apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
 }
@@ -190,6 +192,7 @@ function createAzureChatProvider(
     deployment: resolved.deployment,
     apiKey,
     apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
 }
@@ -229,6 +232,7 @@ export function createSynthProvider(options: CreateProviderOptions = {}): SynthP
     deployment: resolved.deployment,
     apiKey,
     apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
     ...(options.fetch ? { fetch: options.fetch } : {}),
   });
 }
@@ -252,6 +256,7 @@ function createAzureVisionProvider(
     deployment,
     apiKey,
     apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
 }

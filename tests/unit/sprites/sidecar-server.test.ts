@@ -7,7 +7,7 @@
  * needs a real `listen()` to verify the bound address.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   existsSync,
   mkdirSync,
@@ -26,6 +26,11 @@ import { buildServer, listRuns, safeJoin } from '../../../scripts/sprites/sideca
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
 import { workflowBriefKey } from '../../../scripts/sprites/sidecar/workflow-state.js';
 import type { AssetQueue, AssetRequest } from '../../../scripts/sprites/queue/types.js';
+import type {
+  WorkerController,
+  WorkerControllerStatus,
+  WorkerStartResult,
+} from '../../../scripts/sprites/sidecar/worker-controller.js';
 import type { FastifyInstance } from 'fastify';
 
 function writeMinimalRun(
@@ -1257,5 +1262,98 @@ describe('buildServer listen (binding)', () => {
     expect(
       (addr.family as string | number) === 'IPv4' || (addr.family as string | number) === 4,
     ).toBe(true);
+  });
+});
+
+describe('worker control endpoints (/api/workflow/worker/*)', () => {
+  let root: string;
+  let app: FastifyInstance;
+  let worker: WorkerController;
+
+  function makeFakeWorker(backend: 'noop' | 'azure-queue' = 'azure-queue'): WorkerController {
+    let running = false;
+    const snapshot = (): WorkerControllerStatus => ({
+      running,
+      backend,
+      startedAt: running ? '2026-06-25T00:00:00.000Z' : null,
+      stoppedAt: null,
+      processed: 0,
+      failed: 0,
+      lastBriefId: null,
+      lastEvent: null,
+      lastEventAt: null,
+      lastError: null,
+    });
+    return {
+      start: vi.fn((): WorkerStartResult => {
+        if (running) return { started: false, reason: 'already-running', status: snapshot() };
+        running = true;
+        return { started: true, reason: 'started', status: snapshot() };
+      }),
+      stop: vi.fn(async () => {
+        running = false;
+        return snapshot();
+      }),
+      status: () => snapshot(),
+    };
+  }
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-worker-'));
+    worker = makeFakeWorker('azure-queue');
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      queue: {
+        backend: 'azure-queue',
+        enqueue: async () => {},
+        dequeue: async () => null,
+        peek: async () => [],
+      },
+      worker,
+    });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('GET /api/health includes the worker snapshot', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.worker).toMatchObject({ running: false, backend: 'azure-queue' });
+  });
+
+  it('POST /api/workflow/worker/start starts the worker', async () => {
+    const res = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ started: true, reason: 'started' });
+    expect(worker.start).toHaveBeenCalledTimes(1);
+
+    const health = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(health.json().worker.running).toBe(true);
+  });
+
+  it('POST /api/workflow/worker/start is idempotent (already-running)', async () => {
+    await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    const again = await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    expect(again.json()).toMatchObject({ started: false, reason: 'already-running' });
+  });
+
+  it('POST /api/workflow/worker/stop stops the worker', async () => {
+    await app.inject({ method: 'POST', url: '/api/workflow/worker/start' });
+    const res = await app.inject({ method: 'POST', url: '/api/workflow/worker/stop' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ stopped: true, status: { running: false } });
+    expect(worker.stop).toHaveBeenCalled();
+  });
+
+  it('GET /api/workflow/worker/status returns the current snapshot', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/workflow/worker/status' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ running: false, backend: 'azure-queue' });
   });
 });

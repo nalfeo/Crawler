@@ -116,6 +116,14 @@ export interface QueueItem {
   briefPath: string | null;
   run: QueueRun | null;
   generationRequestedAt: string | null;
+  /**
+   * ISO timestamp marking when the *client* kicked off generation. Unlike
+   * `generationRequestedAt` (the server-assigned enqueue time used for run
+   * matching), this is set the instant the Generate button is pressed for both
+   * the synchronous and queued paths, so the UI can show a live elapsed timer
+   * that survives a page reload. Null whenever the item is not generating.
+   */
+  generationStartedAt: string | null;
   approvedAssetPath: string | null;
   approvalSummary: string | null;
   metadataSummary: string | null;
@@ -174,6 +182,7 @@ function makeItem(
     briefPath: null,
     run: null,
     generationRequestedAt: null,
+    generationStartedAt: null,
     approvedAssetPath: null,
     approvalSummary: null,
     metadataSummary: null,
@@ -368,6 +377,8 @@ function sanitizeItem(value: unknown): QueueItem | null {
     run: sanitizeRun(raw.run),
     generationRequestedAt:
       typeof raw.generationRequestedAt === 'string' ? raw.generationRequestedAt : null,
+    generationStartedAt:
+      typeof raw.generationStartedAt === 'string' ? raw.generationStartedAt : null,
     approvedAssetPath: typeof raw.approvedAssetPath === 'string' ? raw.approvedAssetPath : null,
     approvalSummary: typeof raw.approvalSummary === 'string' ? raw.approvalSummary : null,
     metadataSummary: typeof raw.metadataSummary === 'string' ? raw.metadataSummary : null,
@@ -397,4 +408,90 @@ export function deserializeQueue(raw: string | null | undefined): QueueState {
       ? obj.selectedId
       : (items[items.length - 1]?.id ?? null);
   return { items, selectedId, nextSeq };
+}
+
+/**
+ * After this much wall-clock time on the *queued* (worker) path with no run
+ * adopted yet, the progress line appends a hint that a worker may not be
+ * running. Worded as a possibility — a busy worker can legitimately take this
+ * long — but it surfaces the single most common cause of an apparent hang
+ * (`npm run sprites:worker` was never started).
+ */
+export const GENERATION_QUEUED_STALL_HINT_MS = 60_000;
+
+/**
+ * After this much wall-clock time on the *synchronous* (noop/local) path the
+ * progress line warns that the image/vision provider may be slow or
+ * unreachable, since that request blocks the whole generate call.
+ */
+export const GENERATION_SYNC_STALL_HINT_MS = 120_000;
+
+/**
+ * Render a coarse elapsed duration like `0s`, `45s`, `2m 13s`, or `1h 03m`.
+ * Non-finite or negative inputs clamp to `0s` so a clock skew can never print
+ * a nonsense value.
+ */
+export function formatGenerationElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s';
+  const totalSeconds = Math.floor(ms / 1000);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const hours = Math.floor(totalMinutes / 60);
+  if (hours > 0) {
+    return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+  }
+  if (totalMinutes > 0) {
+    return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+  }
+  return `${seconds}s`;
+}
+
+export interface GenerationProgressInput {
+  /** Free-text brief, used only for display. */
+  readonly brief: string;
+  /** Wall-clock ms since generation began (from `generationStartedAt`). */
+  readonly elapsedMs: number;
+  /**
+   * Number of poll attempts so far on the queued path, or `null` for the
+   * synchronous path (which makes a single blocking request, no polling).
+   */
+  readonly pollAttempts: number | null;
+  /** Sidecar queue backend (`noop`, `azure-queue`) if known, else null. */
+  readonly queueBackend: string | null;
+  /**
+   * When true, the caller renders a richer, context-specific recovery hint (the
+   * in-app "Launch worker" button), so the generic `npm run sprites:worker`
+   * stall hint is suppressed to avoid showing two conflicting remediations.
+   */
+  readonly suppressQueuedStallHint?: boolean;
+}
+
+/**
+ * Build the human-readable progress message shown while an item is generating.
+ * Pure so the messaging (including the stall hints) is unit-testable without a
+ * DOM. The UI re-invokes this on a 1s interval to keep the elapsed clock live.
+ */
+export function describeGenerationProgress(input: GenerationProgressInput): string {
+  const elapsed = formatGenerationElapsed(input.elapsedMs);
+  const isQueued = input.pollAttempts !== null;
+  let line = `⏳ Generating "${input.brief}" — ${elapsed} elapsed`;
+  if (isQueued) {
+    const backend = input.queueBackend ? `, queue: ${input.queueBackend}` : '';
+    line += ` · polled ${input.pollAttempts}×${backend}`;
+  }
+  if (
+    isQueued &&
+    input.elapsedMs >= GENERATION_QUEUED_STALL_HINT_MS &&
+    !input.suppressQueuedStallHint
+  ) {
+    line +=
+      '\n⚠ No result yet. If this keeps climbing, make sure a worker is running: ' +
+      'npm run sprites:worker';
+  } else if (!isQueued && input.elapsedMs >= GENERATION_SYNC_STALL_HINT_MS) {
+    line +=
+      '\n⚠ Still working. The image/vision provider may be slow or unreachable — ' +
+      'you can Cancel and retry.';
+  }
+  return line;
 }

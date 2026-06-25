@@ -65,6 +65,7 @@ import { loadBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { LocalRunStore } from '../store/local-store.js';
 import type { RunStore } from '../store/types.js';
+import { createWorkerController, type WorkerController } from './worker-controller.js';
 import {
   WORKFLOW_STATE_KEY,
   computeStateEtag,
@@ -116,6 +117,13 @@ export interface SidecarDeps {
    * so local sidecar usage keeps the prior synchronous generate behavior.
    */
   readonly queue?: AssetQueue;
+  /**
+   * In-process queue worker. Defaults to a controller wired to `queue`/`store`.
+   * `buildServer` never starts it — the CLI auto-starts it for the
+   * `azure-queue` backend and the devtools "Launch worker" button starts it on
+   * demand. Inject a fake in tests to assert the worker routes without a loop.
+   */
+  readonly worker?: WorkerController;
 }
 
 export interface RunListEntry {
@@ -189,6 +197,21 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   // Default to a LocalRunStore rooted at runsDir — same layout as before.
   const store: RunStore = deps.store ?? new LocalRunStore(deps.runsDir);
   const queue: AssetQueue = deps.queue ?? new NoopAssetQueue();
+  // The sidecar owns an in-process worker so a queue consumer always exists
+  // wherever the sidecar runs. It is NOT started here — see worker-controller.ts.
+  const worker: WorkerController =
+    deps.worker ??
+    createWorkerController({
+      queue,
+      store,
+      repoRoot: deps.repoRoot,
+      ...(deps.env ? { env: deps.env } : {}),
+    });
+  // Stop the worker loop when Fastify closes (CLI shutdown / test afterEach).
+  // Idempotent: a no-op when the worker was never started.
+  app.addHook('onClose', async () => {
+    await worker.stop();
+  });
 
   // Vite serves the lab from a different loopback port, so allow CORS only
   // for loopback origins (localhost/127.0.0.1/::1).
@@ -216,6 +239,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     version: deps.version,
     storeBackend: store.backend,
     queueBackend: queue.backend,
+    worker: worker.status(),
   }));
 
   app.get('/api/runs', async () => ({ runs: await listRunsFromStore(store) }));
@@ -778,6 +802,18 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       };
     }
   });
+
+  app.post('/api/workflow/worker/start', async () => {
+    const result = worker.start();
+    return result;
+  });
+
+  app.post('/api/workflow/worker/stop', async () => {
+    const status = await worker.stop();
+    return { stopped: true, status };
+  });
+
+  app.get('/api/workflow/worker/status', async () => worker.status());
 
   app.post<{ Body: WorkflowMetadataBody }>('/api/workflow/metadata', async (req, reply) => {
     const body = (req.body ?? {}) as WorkflowMetadataBody;

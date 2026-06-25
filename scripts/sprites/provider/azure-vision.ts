@@ -32,6 +32,11 @@ import type {
   VisionUsage,
 } from './vision-types.js';
 import { VisionProviderError } from './vision-types.js';
+import {
+  DEFAULT_PROVIDER_TIMEOUT_MS,
+  isTimeoutAbortError,
+  providerTimeoutMessage,
+} from './fetch-timeout.js';
 
 export interface AzureOpenAIVisionProviderOptions {
   readonly endpoint: string;
@@ -40,6 +45,11 @@ export interface AzureOpenAIVisionProviderOptions {
   readonly apiVersion: string;
   /** Injectable fetch implementation; defaults to global fetch. */
   readonly fetch?: typeof fetch;
+  /**
+   * Per-request timeout in ms. Defaults to {@link DEFAULT_PROVIDER_TIMEOUT_MS}.
+   * Aborts a hung judge call instead of blocking the run forever.
+   */
+  readonly timeoutMs?: number;
 }
 
 interface ChatChoice {
@@ -62,6 +72,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
   private readonly apiKey: string;
   private readonly apiVersion: string;
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(opts: AzureOpenAIVisionProviderOptions) {
     this.endpoint = stripTrailingSlash(opts.endpoint);
@@ -69,6 +80,7 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
     this.apiKey = opts.apiKey;
     this.apiVersion = opts.apiVersion;
     this.fetchImpl = opts.fetch ?? fetch;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
   }
 
   async evaluate(request: EvaluateRequest): Promise<EvaluateResponse> {
@@ -102,8 +114,16 @@ export class AzureOpenAIVisionProvider implements VisionProvider {
           'content-type': 'application/json',
         },
         body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (err) {
+      if (isTimeoutAbortError(err)) {
+        throw new VisionProviderError(
+          'network',
+          providerTimeoutMessage('Azure vision', this.timeoutMs),
+          { cause: err },
+        );
+      }
       throw new VisionProviderError(
         'network',
         `network error calling Azure vision: ${err instanceof Error ? err.message : String(err)}`,
