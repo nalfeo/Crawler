@@ -29,15 +29,32 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Admin check
+      # Permission gate. NOTE: triggering this workflow at all via
+      # workflow_dispatch already requires the actor to have >= write access to
+      # the repo — that is a GitHub platform rule the workflow file cannot relax
+      # (the top-level `permissions:` block only scopes GITHUB_TOKEN, it does not
+      # govern who may dispatch). This step previously hard-required `admin`,
+      # which blocked PR authors / maintainers who legitimately have write. We
+      # relax it to write-or-higher so anyone allowed to dispatch can proceed.
+      - name: Permission check
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           PERM=$(gh api "repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission" --jq '.permission')
-          if [ "$PERM" != "admin" ]; then
-            echo "::error::Only admins may trigger manual preview deploys (you have: $PERM)"
-            exit 1
-          fi
+          # The legacy `.permission` field collapses roles to admin/write/read/none
+          # (maintain→write, triage→read), so admin|write covers admin, maintain
+          # and write collaborators.
+          case "$PERM" in
+            admin | write)
+              echo "✅ '$PERM' permission is sufficient to trigger a manual preview deploy."
+              ;;
+            *)
+              echo "::error::Manual preview deploys require write access (you have: '$PERM')."
+              echo "::error::workflow_dispatch already requires >= write to dispatch, so ask a"
+              echo "::error::repo admin to grant you write (or higher) on ${{ github.repository }}."
+              exit 1
+              ;;
+          esac
 
       - uses: actions/checkout@v4
         with:
