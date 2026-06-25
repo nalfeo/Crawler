@@ -23,7 +23,7 @@ import { createInputCapture } from '../../engine/InputCapture.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
-import { buildSmoothedOverlayPath } from './path-overlay.js';
+import { buildSmoothedOverlayPath, OVERLAY_LINE_OF_SIGHT_SAMPLE_PX } from './path-overlay.js';
 
 const INITIAL_SEED = 42;
 const SPEED_OPTIONS = [1, 4, 16] as const;
@@ -493,7 +493,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       { x: playerX, y: playerY },
       upcomingPoints,
       (x, y) => world.floorMap!.isPassableAt(x, y),
-      undefined,
+      OVERLAY_LINE_OF_SIGHT_SAMPLE_PX,
       (x, y) => world.floorMap!.pixelToTile(x, y),
     );
 

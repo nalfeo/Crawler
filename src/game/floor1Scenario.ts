@@ -15,6 +15,7 @@ import {
   type RoomBounds,
   type RoomData,
 } from '../shared/map-types.js';
+import type { FloorMap } from '../core/map/FloorMap.js';
 import { findTilePath, type TilePoint } from '../core/map/pathfinding.js';
 import { getGenerator } from '../core/map/generators/registry.js';
 import { sealRoomPerimeter, sealSpecialRooms } from '../core/map/special-rooms.js';
@@ -455,14 +456,11 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
 }
 
 function findNavigableRoomPath(
-  floorMap: {
-    roomGraph: { getRoomAt(x: number, y: number): number };
-    tileMap: { isPassable(x: number, y: number): boolean; isDoor(x: number, y: number): boolean };
-  },
+  floorMap: FloorMap,
   start: TilePoint,
   target: TilePoint,
 ): number[] | null {
-  const tilePath = findTilePath(floorMap as never, start, target, {
+  const tilePath = findTilePath(floorMap, start, target, {
     isTilePassable: (x, y) => floorMap.tileMap.isPassable(x, y) || floorMap.tileMap.isDoor(x, y),
   });
   if (tilePath.length === 0) {
