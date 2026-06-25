@@ -927,6 +927,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.setTint(corpseDecay.tint);
           }
           img.setAlpha(corpseDecay.corpseAlpha);
+        } else if (visual.deathTotalMs !== undefined) {
+          // This visual previously backed a corpse but its EID has been
+          // recycled for a living entity (bitecs reuses freed EIDs). Clear the
+          // leftover grey multiply-tint and stale linger duration so the reused
+          // sprite renders normally and recalibrates cleanly on its next death.
+          if (typeof img.clearTint === 'function') {
+            img.clearTint();
+          }
+          visual.deathTotalMs = undefined;
         }
       }
 

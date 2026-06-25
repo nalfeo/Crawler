@@ -283,6 +283,55 @@ describe('createPhaserBridge', () => {
     expect(skull.destroyed).toBe(true);
   });
 
+  it('clears leftover corpse tint and linger state when a dead enemy EID is recycled', () => {
+    const { scene, images } = createSceneStub();
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 12, y: 34 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    bridge.sync(world);
+
+    // Kill it and advance so the corpse takes on a grey multiply-tint and the
+    // visual captures its 3000ms linger duration.
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 3000 }));
+    bridge.sync(world);
+    world.stores.deathTimer.remainingMs[eid] = 1500;
+    bridge.sync(world);
+
+    const corpse = images[0]!;
+    expect(corpse.tinted).toBe(true);
+    expect(corpse.tint).not.toBe(0xffffff);
+
+    // Free the EID and immediately reuse it for a fresh living enemy with NO
+    // intervening sync, so the bridge reuses the same sprite (it never sees the
+    // EID go idle, so the cleanup pass never recreates the visual).
+    removeEntity(world.ecs, eid);
+    const recycled = addEntity(world.ecs);
+    expect(recycled).toBe(eid); // bitecs reuses the freed EID
+    addComponent(world.ecs, recycled, set(Position, { x: 50, y: 60 }));
+    addComponent(world.ecs, recycled, Enemy);
+    addComponent(world.ecs, recycled, set(Sprite, { textureId: 0, width: 0, height: 0 }));
+    bridge.sync(world);
+
+    // The same sprite object was reused (not destroyed/recreated) and its
+    // leftover corpse styling is gone: full colour at full opacity.
+    expect(corpse.destroyed).toBe(false);
+    expect(corpse.tinted).toBe(false);
+    expect(corpse.tint).toBe(0xffffff);
+    expect(corpse.alpha).toBe(1);
+
+    // The stale linger was cleared too, so a shorter second death recalibrates
+    // from full. With a stale 3000ms total, 1000ms remaining would read as a
+    // two-thirds-elapsed corpse and tint grey + drop alpha on the first frame.
+    addComponent(world.ecs, recycled, set(DeathTimer, { remainingMs: 1000 }));
+    bridge.sync(world);
+    expect(corpse.tint).toBe(0xffffff);
+    expect(corpse.alpha).toBe(1);
+  });
+
   it('renders rats and slimes with distinct enemy textures', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);

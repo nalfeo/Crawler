@@ -37,7 +37,7 @@ a separate scene image and is driven inside the dead block.
 - `life = clamp01(remainingMs / totalMs)` (1 at death → 0 at removal)
 - Skull driven by absolute elapsed time: `skullProgress = elapsed / min(900ms, totalMs)`;
   `skullAlpha = 0.95 * (1 - progress)`, `skullRisePx = 16 * progress`
-- Corpse desaturates over the front half (`GRAY_RAMP_FRACTION = 0.5`) and fades
+- Corpse desaturates over the front half (`GREY_RAMP_FRACTION = 0.5`) and fades
   over the back half (`FADE_OUT_FRACTION = 0.5`); tint lerps `0xffffff → 0x9a9aa0`
 - `totalMs <= 0` is treated as a fully-elapsed corpse
 

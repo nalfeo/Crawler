@@ -41,7 +41,7 @@ export const SKULL_RISE_PX = 16;
  * `0.5` the corpse reaches full grey once half of the linger has elapsed,
  * leaving the back half to simply fade out.
  */
-export const GRAY_RAMP_FRACTION = 0.5;
+export const GREY_RAMP_FRACTION = 0.5;
 
 /**
  * Remaining-life fraction at/above which the corpse is fully opaque. Below it
@@ -113,7 +113,7 @@ export function computeCorpseDecay(remainingMs: number, totalMs: number): Corpse
 
   // Corpse: desaturate over the front portion, fade over the back portion.
   const corpseElapsed = 1 - life;
-  const desaturation = clamp01(corpseElapsed / GRAY_RAMP_FRACTION);
+  const desaturation = clamp01(corpseElapsed / GREY_RAMP_FRACTION);
 
   return {
     skullAlpha: SKULL_BASE_ALPHA * (1 - skullProgress),
