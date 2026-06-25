@@ -499,12 +499,30 @@ describe('enemyAISystem', () => {
     expect(Math.abs(vy)).toBeLessThan(0.2);
   });
 
+  it('does not enter leap mode until within leap distance (~5 ft) of the player', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // 80px ≈ 10 ft: aggroed but well beyond the ~5 ft pounce band. The slime
+    // must close like a normal enemy here rather than start the slow telegraph
+    // wiggle — the old 12 ft trigger pounced uselessly from this far out.
+    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
+
+    enemyAISystem(world);
+
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    // Full-speed straight approach (−x), not a slow sideways prep wiggle.
+    expect(vx).toBeLessThan(-0.5);
+    expect(Math.abs(vy)).toBeLessThan(0.2);
+    expect(Math.hypot(vx, vy)).toBeGreaterThan(0.8);
+  });
+
   it('makes leaper enemies pause-wiggle before fast leaps', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Spawn inside the pounce band: beyond the inner range (where the slime
-    // reverts to a hittable normal approach) but within SLIME_LEAP_RANGE.
-    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
+    // reverts to a hittable normal approach) but within SLIME_LEAP_RANGE (~5 ft).
+    const enemy = spawnBehaviorEnemy(world, 30, 0, 20, AI_TYPE.LEAPER, 1, 200, 0);
 
     enemyAISystem(world);
     const firstSpeed = Math.hypot(
@@ -548,7 +566,7 @@ describe('enemyAISystem', () => {
     // to attack after dodging the pounce.
     spawnPlayer(world, 0, 0);
     // Spawn inside the pounce band (beyond the inner range, within leap range).
-    const enemy = spawnBehaviorEnemy(world, 80, 0, 20, AI_TYPE.LEAPER, 1.5, 200, 0);
+    const enemy = spawnBehaviorEnemy(world, 30, 0, 20, AI_TYPE.LEAPER, 1.5, 200, 0);
 
     let maxSpeed = 0;
     let longestFrozenStreak = 0;

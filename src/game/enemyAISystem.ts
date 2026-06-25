@@ -52,18 +52,21 @@ const MAX_PAIRWISE_SEPARATION_ENEMIES = 48;
 // into. The freeze (not the prep crouch) is now the reliable hittable window, so
 // the slime can keep pouncing instead of reverting to an evasive juke.
 //
-// Distance (px) at which a slime commits to a pounce. Outside this range the
-// slime paths toward the player like a normal enemy. Kept tight so the slime
-// only pounces from close range.
-const SLIME_LEAP_RANGE = 96;
-// Inner range (px) below which a slime will not *start* a new pounce and instead
-// closes like a normal enemy. A slime that is already close has nowhere to leap,
-// so it just chases — this is the reliable melee regime the Floor 1 clear gate
-// depends on (the AI orbit-strikes at ~36px; see the "decouple slime leap" fix).
-// An in-flight pounce always finishes its full prep → leap → frozen-recovery
-// cycle even if it lands inside this range, guaranteeing the player a stationary
-// window to attack.
-const SLIME_LEAP_INNER_RANGE = 52;
+// Distance at which a slime commits to a pounce. Beyond it the slime paths
+// toward the player like a normal enemy; it only *enters* the telegraph → leap
+// loop once it has closed to within ~5 ft. A slime's leap travels only a couple
+// of feet at its low base speed, so winding up from across the room read as a
+// leap at nothing — the pounce has to begin within leap distance to land as a
+// real lunge at the player. ftToPx(5) ≈ 40px.
+const SLIME_LEAP_RANGE = ftToPx(5);
+// Inner range below which a slime will not *start* a new pounce, closing like a
+// normal enemy instead: point-blank it has nowhere to leap. Melee-range
+// hittability — which the Floor 1 clear gate depends on — is guaranteed by the
+// frozen-recovery window after every leap, not by this range: an in-flight
+// pounce always finishes its full prep → leap → frozen-recovery cycle even when
+// it lands inside the inner range, so the player always gets a stationary window
+// to attack. ftToPx(2) ≈ 16px.
+const SLIME_LEAP_INNER_RANGE = ftToPx(2);
 // Anticipation crouch before the pounce: a short, readable wind-up telegraph
 // that tells the player a leap is coming. It no longer has to be the hittable
 // window — the frozen recovery is — but it stays long enough to read clearly.
