@@ -42,7 +42,7 @@ A pure function `resolveBossHealthBar(bossBattles, ecs, health) → BossHealthBa
 
 - Iterates `world.floor1.objective.bossBattles` (a `Map`) in **insertion order**
   and returns the first encounter that is `started` and whose `bossEid` is a live
-  entity with positive HP. Insertion order is the priority order
+  entity. Insertion order is the priority order
   ('slime-rat' before 'staircase').
 - Clamps `current ≥ 0`, `max ≥ 1`, `pct ∈ [0, 1]`.
 - Picks a color band: `pct > 0.5` high (green), `≥ 0.25` mid (amber), else low
