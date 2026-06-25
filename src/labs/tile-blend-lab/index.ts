@@ -82,6 +82,7 @@ interface SheetImage {
   error: boolean;
   frameWidth: number;
   frameHeight: number;
+  margin: number;
   spacing: number;
   cols: number;
 }
@@ -95,6 +96,7 @@ function loadSheetImages(): Map<string, SheetImage> {
       error: false,
       frameWidth: sheet.frameWidth,
       frameHeight: sheet.frameHeight,
+      margin: sheet.margin,
       spacing: sheet.spacing,
       cols: sheet.cols,
     };
@@ -200,8 +202,8 @@ function createTileBlendLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     const fh = sheetEntry.frameHeight;
     const col = frame % sheetEntry.cols;
     const row = Math.floor(frame / sheetEntry.cols);
-    const srcX = col * (fw + sheetEntry.spacing);
-    const srcY = row * (fh + sheetEntry.spacing);
+    const srcX = sheetEntry.margin + col * (fw + sheetEntry.spacing);
+    const srcY = sheetEntry.margin + row * (fh + sheetEntry.spacing);
 
     const offscreen = document.createElement('canvas');
     offscreen.width = fw;
@@ -234,8 +236,8 @@ function createTileBlendLab(canvasHost: HTMLElement, controls: HTMLElement): () 
         const frameW = sheet.frameWidth;
         const col = frame % sheet.cols;
         const row = Math.floor(frame / sheet.cols);
-        const srcX = col * (frameW + sheet.spacing);
-        const srcY = row * (sheet.frameHeight + sheet.spacing);
+        const srcX = sheet.margin + col * (frameW + sheet.spacing);
+        const srcY = sheet.margin + row * (sheet.frameHeight + sheet.spacing);
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(sheet.img, srcX, srcY, frameW, sheet.frameHeight, px, py, cs, cs);
         return;
@@ -388,7 +390,6 @@ function createTileBlendLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       for (let ty = 0; ty < mh; ty++) {
         for (let tx = 0; tx < mw; tx++) {
           const t = terrain[ty * mw + tx] as TerrainType;
-          const myColor = TERRAIN_FALLBACK_COLORS[t] ?? 0x05060f;
           const px = tx * cs;
           const py = ty * cs;
 
@@ -402,7 +403,6 @@ function createTileBlendLab(canvasHost: HTMLElement, controls: HTMLElement): () 
             // Blend between this tile's colour and the neighbour's colour.
             // We draw the neighbour's colour fading INTO this tile at the edge.
             const nColor = TERRAIN_FALLBACK_COLORS[nt] ?? 0x05060f;
-            void myColor; // used for dither variant; gradient uses nColor directly
 
             if (settings.blendMode === 'gradient') {
               applyGradientBlend(px, py, cs, dir, nColor, bw);

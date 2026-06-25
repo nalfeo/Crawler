@@ -79,6 +79,7 @@ interface SheetImage {
   error: boolean;
   frameWidth: number;
   frameHeight: number;
+  margin: number;
   spacing: number;
   cols: number;
 }
@@ -92,6 +93,7 @@ function loadSheetImages(): Map<string, SheetImage> {
       error: false,
       frameWidth: sheet.frameWidth,
       frameHeight: sheet.frameHeight,
+      margin: sheet.margin,
       spacing: sheet.spacing,
       cols: sheet.cols,
     };
@@ -123,8 +125,8 @@ function extractSpriteFrame(entry: SheetImage, frame: number): HTMLCanvasElement
   const fh = entry.frameHeight;
   const col = frame % entry.cols;
   const row = Math.floor(frame / entry.cols);
-  const srcX = col * (fw + entry.spacing);
-  const srcY = row * (fh + entry.spacing);
+  const srcX = entry.margin + col * (fw + entry.spacing);
+  const srcY = entry.margin + row * (fh + entry.spacing);
 
   const off = document.createElement('canvas');
   off.width = fw;
@@ -169,7 +171,7 @@ function applyPaletteSwap(
 
 /**
  * Build a simple palette-swap map: find all unique opaque colours in the
- * sprite and remap them by blending each source colour 70% toward targetRGB.
+ * sprite and remap them by blending each source colour 65% toward targetRGB.
  */
 function buildPaletteSwapMap(
   src: HTMLCanvasElement,
@@ -184,7 +186,7 @@ function buildPaletteSwapMap(
     const key = `${d[i]},${d[i + 1]},${d[i + 2]}`;
     if (swapMap.has(key)) continue;
     const [sr, sg, sb] = [d[i]!, d[i + 1]!, d[i + 2]!];
-    // Blend 70% toward target to preserve some luminance variation
+    // Blend 65% toward target to preserve some luminance variation
     const blend = 0.65;
     swapMap.set(key, [
       Math.round(sr * (1 - blend) + targetRGB[0] * blend),
@@ -374,6 +376,10 @@ function createSpriteTintLab(canvasHost: HTMLElement, controls: HTMLElement): ()
           octx.globalCompositeOperation = 'multiply';
           octx.fillStyle = settings.tintColor;
           octx.fillRect(0, 0, fw, fh);
+          // Re-clip the tinted fill back to the sprite silhouette so the
+          // transparent background stays transparent (matches sprite.setTint()).
+          octx.globalCompositeOperation = 'destination-in';
+          octx.drawImage(baseFrame, 0, 0);
           octx.globalCompositeOperation = 'source-over';
           ctx.drawImage(off, px, imgY, panelW, imgH);
           break;
@@ -389,6 +395,10 @@ function createSpriteTintLab(canvasHost: HTMLElement, controls: HTMLElement): ()
           octx.globalCompositeOperation = 'screen';
           octx.fillStyle = settings.tintColor;
           octx.fillRect(0, 0, fw, fh);
+          // Re-clip to the sprite silhouette so the transparent background is
+          // not filled with an opaque tint block.
+          octx.globalCompositeOperation = 'destination-in';
+          octx.drawImage(baseFrame, 0, 0);
           octx.globalCompositeOperation = 'source-over';
           ctx.drawImage(off, px, imgY, panelW, imgH);
           break;
