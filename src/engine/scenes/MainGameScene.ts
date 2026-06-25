@@ -1366,7 +1366,7 @@ export class MainGameScene extends Phaser.Scene {
 
   private formatAbilityTrigger(abilityId: string): string {
     const triggerText: Record<string, string> = {
-      fireball: 'Auto: fires at enemy clusters (2+ targets)',
+      fireball: 'Auto: hits the nearest enemy, favoring clusters',
       heal: 'Auto: casts when HP deficit warrants it',
       'pulse-shield': 'Auto: casts at low HP when surrounded',
     };
@@ -1406,7 +1406,7 @@ export class MainGameScene extends Phaser.Scene {
           name: 'Fireball',
           mpCost: 5,
           cooldownSec: 5,
-          description: 'Launches a fireball at clumps of enemies.',
+          description: 'Launches a fireball at the nearest enemy, favoring clusters.',
         },
         heal: {
           name: 'Heal',

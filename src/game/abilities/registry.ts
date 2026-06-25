@@ -31,7 +31,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     kind: 'spell',
     mpCost: 5,
     cooldownFrames: 300,
-    trigger: { kind: 'enemy_cluster', minEnemies: 2, withinFeet: 6 },
+    trigger: { kind: 'enemy_cluster', minEnemies: 1, withinFeet: 6 },
     effects: [{ type: 'spell_fireball', damagePercent: 1.5, radiusTiles: 3 }],
   },
   {
