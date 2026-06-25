@@ -126,6 +126,28 @@ const GATE_WEAPONS = ['sword', 'bow', 'baseball-bat'] as const;
 const HEADLESS_HOOK_TIMEOUT_MS = 180_000;
 
 /**
+ * Coarse per-combo wall-clock ceiling — a **performance-regression guard**, not a
+ * correctness SLA. Correctness is asserted on deterministic game-time above; this
+ * is the one place the gate looks at wall time, and it does so only to catch a
+ * specific class of catastrophic slowdown.
+ *
+ * Background: a pathfinding regression once made `resolveReachableGoalTile` re-run
+ * a ring of ~110–169 rot-js A* searches **every poll** (the fallback was never
+ * cached), collapsing the headless runner from <10s to ~58s for a single run —
+ * see the 2026-06-25 `headless-runner-pathfinding-slowdown` handoff. That class of
+ * regression is ~30x and pushes **every** combo here from a few seconds to well
+ * over a minute, so a generous ceiling still catches it decisively.
+ *
+ * Wall time is machine-variant — CI runners are 2–3x slower than a dev box and
+ * subject to noisy-neighbour jitter — so this budget is deliberately loose
+ * (~4.5x the slowest combo observed on a dev box, ~6.7s) to **never flake**, while
+ * still sitting far below the ~58s blowup it guards against. Do **not** tighten it
+ * toward the observed runtimes: that trades a real regression signal for CI
+ * flakes. If a combo legitimately approaches this ceiling, raise it.
+ */
+const HEADLESS_WALL_TIME_BUDGET_MS = 30_000;
+
+/**
  * Run the full headless Floor 1 simulation for a (seed, weapon) pair. The seed
  * is passed to BOTH the AI (its decision RNG) and `runHeadless` (world
  * generation) so the run is fully reproducible; `forceWeaponId` swaps only the
@@ -172,6 +194,22 @@ describe('Floor 1 headless completion gate', () => {
               `${(stats.gameTimeMs / 1000).toFixed(1)}s — over the ` +
               `${FLOOR1_TIME_BUDGET_MS / 1000}s budget`,
           ).toBeLessThan(FLOOR1_TIME_BUDGET_MS);
+        });
+
+        it('stays within the wall-time budget (perf-regression guard)', () => {
+          // Coarse guard against a pathfinding-style blowup (see
+          // HEADLESS_WALL_TIME_BUDGET_MS) — the only wall-time assertion in this
+          // gate. Game-time above proves the run is correct; this proves it is
+          // not catastrophically slow.
+          expect(
+            stats.wallTimeMs,
+            `[seed ${seed} · ${weapon}] took ` +
+              `${(stats.wallTimeMs / 1000).toFixed(1)}s wall-clock over ` +
+              `${stats.totalFrames} frames — over the ` +
+              `${HEADLESS_WALL_TIME_BUDGET_MS / 1000}s perf-regression budget. ` +
+              `This is a coarse blowup guard, not a precise SLA; if the run is ` +
+              `legitimately this slow now, profile the AI before raising the budget`,
+          ).toBeLessThan(HEADLESS_WALL_TIME_BUDGET_MS);
         });
 
         it('completes every Floor 1 quest', () => {
