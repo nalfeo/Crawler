@@ -91,6 +91,12 @@ const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
 const FLOOR_1_VIEWPORT_WIDTH_PX = GAME.WIDTH / FLOOR_1_CAMERA_ZOOM;
 const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 2;
 const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
+/**
+ * Minimum distance (px) a pre-populated room-wave enemy must keep from the
+ * player, so a wave reads as already occupying the room rather than spawning on
+ * top of the player at the doorway.
+ */
+const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_PX = 96;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 
 /** Blood colours for Floor 1 enemy archetypes. */
@@ -180,6 +186,15 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
 const spawnerStateByWorld = new WeakMap<GameWorld, Floor1SpawnerState>();
 const playerBonusApplied = new WeakSet<GameWorld>();
 
+/**
+ * Rooms whose one-time pre-population roll has already been resolved, keyed by
+ * world. A room id is recorded the first time the player stands inside it,
+ * whether or not a wave actually spawned, so re-entering never re-rolls. Uses a
+ * WeakMap (mirroring {@link spawnerStateByWorld}) so scenario state and lab
+ * initializers don't need to construct it.
+ */
+const populatedRoomsByWorld = new WeakMap<GameWorld, Set<number>>();
+
 function getSpawnerState(world: GameWorld): Floor1SpawnerState {
   let state = spawnerStateByWorld.get(world);
   if (state === undefined) {
@@ -187,6 +202,15 @@ function getSpawnerState(world: GameWorld): Floor1SpawnerState {
     spawnerStateByWorld.set(world, state);
   }
   return state;
+}
+
+function getPopulatedRooms(world: GameWorld): Set<number> {
+  let rooms = populatedRoomsByWorld.get(world);
+  if (rooms === undefined) {
+    rooms = new Set<number>();
+    populatedRoomsByWorld.set(world, rooms);
+  }
+  return rooms;
 }
 
 function pickStarterChoices(world: GameWorld): string[] {
@@ -773,6 +797,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     failReason: null,
     runSummary: null,
   };
+  // Clean slate for the per-world director state so a re-initialised floor (e.g.
+  // a fresh run on a reused world) re-rolls room pre-population and resets the
+  // spawn cadence rather than inheriting the previous floor's bookkeeping.
+  populatedRoomsByWorld.delete(world);
+  spawnerStateByWorld.delete(world);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.safeRoomDiscovered`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseUnlocked`, false);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.staircaseDiscovered`, false);
@@ -938,16 +967,17 @@ function resolveSpawnPosition(
   world: GameWorld,
   playerX: number,
   playerY: number,
+  maxRadius: number = FLOOR_1_SPAWN_RADIUS_MAX,
 ): { x: number; y: number } {
   const floorMap = world.floorMap;
   const pack = floor1EnemyPack;
   if (!floorMap) {
     return { x: playerX + pack.spawnRadiusMin, y: playerY };
   }
+  const outerRadius = Math.max(pack.spawnRadiusMin, maxRadius);
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
-    const radius =
-      pack.spawnRadiusMin + world.rng.next() * (FLOOR_1_SPAWN_RADIUS_MAX - pack.spawnRadiusMin);
+    const radius = pack.spawnRadiusMin + world.rng.next() * (outerRadius - pack.spawnRadiusMin);
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
@@ -1319,88 +1349,88 @@ export function floor1PlayerStatSystem(world: GameWorld): void {
   world.stores.velocity.y[player] = (world.stores.velocity.y[player] ?? 0) * speedScale;
 }
 
-export function floor1EnemyDirectorSystem(world: GameWorld): void {
-  if (!world.floor1 || world.state !== 'playing') {
-    return;
-  }
+/** Squared distance between two points. */
+function distSq(ax: number, ay: number, bx: number, by: number): number {
+  const dx = ax - bx;
+  const dy = ay - by;
+  return dx * dx + dy * dy;
+}
 
+/**
+ * Count living enemies within `radiusSq` of the player — the "engaging" set the
+ * director keeps topped up. Corpses in their death-linger window (health 0) are
+ * excluded so a pile of fresh kills doesn't suppress replenishment.
+ */
+function countEngagingEnemies(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+  radiusSq: number,
+): number {
+  const { position, health } = world.stores;
+  let count = 0;
+  for (const eid of query(world.ecs, [Enemy, Position])) {
+    if ((health.current[eid] ?? 0) <= 0) {
+      continue;
+    }
+    if (distSq(position.x[eid] ?? 0, position.y[eid] ?? 0, playerX, playerY) <= radiusSq) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * Recycle up to `count` ambient enemies that are well outside the engagement
+ * ring (`minDistSq`), furthest first, to free global-cap budget for fresh spawns
+ * closer to the player. Never evicts enemies inside the ring (the fight the
+ * player is in) and only ever touches tracked ambient archetypes — bosses and
+ * quest enemies are untouched. Returns the number actually evicted.
+ */
+function evictFurthestAmbient(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+  minDistSq: number,
+  count: number,
+): number {
+  if (!world.floor1 || count <= 0) {
+    return 0;
+  }
+  const candidates = [...world.floor1.enemyArchetypes.keys()]
+    .filter((eid) => entityExists(world.ecs, eid))
+    .map((eid) => ({
+      eid,
+      distanceSq: distSq(
+        world.stores.position.x[eid] ?? 0,
+        world.stores.position.y[eid] ?? 0,
+        playerX,
+        playerY,
+      ),
+    }))
+    .filter((c) => c.distanceSq > minDistSq)
+    .sort((a, b) => b.distanceSq - a.distanceSq);
+  const evictCount = Math.min(count, candidates.length);
+  for (let i = 0; i < evictCount; i += 1) {
+    const victim = candidates[i]!.eid;
+    clearEntityStores(world, victim);
+    removeEntity(world.ecs, victim);
+    world.floor1.enemyArchetypes.delete(victim);
+  }
+  return evictCount;
+}
+
+/**
+ * Spawn one weighted ambient archetype at a pixel position, wiring its sprite,
+ * blood colour, and ambient-tracking entry. Returns the new entity id.
+ */
+function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   const pack = floor1EnemyPack;
-  if (world.floor1.enemyArchetypes.size >= pack.enemyCap) {
-    return;
-  }
-
-  const state = getSpawnerState(world);
-  if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
-    return;
-  }
-
-  const players = query(world.ecs, [Player, Position]);
-  const player = players[0];
-  if (player === undefined) {
-    return;
-  }
-
-  const playerX = world.stores.position.x[player] ?? 0;
-  const playerY = world.stores.position.y[player] ?? 0;
-  pruneAmbientOutOfRange(world, playerX, playerY);
-  const totalEnemies = query(world.ecs, [Enemy]).length;
-  if (totalEnemies > pack.enemyCap) {
-    pruneAmbientOverflow(world, playerX, playerY, totalEnemies - pack.enemyCap);
-  }
-  if (query(world.ecs, [Enemy]).length >= pack.enemyCap) {
-    return;
-  }
-  const spawnMaxDistanceSq =
-    FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
-  let spawnPoint = resolveSpawnPosition(world, playerX, playerY);
-  const isInvalidSpawn = (x: number, y: number): boolean => {
-    const dx = x - playerX;
-    const dy = y - playerY;
-    return (
-      dx * dx + dy * dy > spawnMaxDistanceSq ||
-      !isInAnyRoom(world, x, y) ||
-      isInRoom(world, x, y, world.floorMap?.bossStairRoom ?? null) ||
-      (world.floorMap?.roomGraph
-        .getRoomsByRole(RoomRole.SAFE)
-        .some((r) => isInRoom(world, x, y, r)) ??
-        false)
-    );
-  };
-  if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {
-    const floorMap = world.floorMap;
-    if (!floorMap) {
-      return;
-    }
-    let found = false;
-    for (let i = 0; i < 64; i += 1) {
-      const tx = world.rng.nextInt(0, floorMap.width - 1);
-      const ty = world.rng.nextInt(0, floorMap.height - 1);
-      const candidate = floorMap.tileToPixel(tx, ty);
-      if (
-        !floorMap.isPassableAt(candidate.x, candidate.y) ||
-        isInvalidSpawn(candidate.x, candidate.y)
-      ) {
-        continue;
-      }
-      spawnPoint = candidate;
-      found = true;
-      break;
-    }
-    if (!found) {
-      return;
-    }
-  }
-  if (isInvalidSpawn(spawnPoint.x, spawnPoint.y)) {
-    return;
-  }
-
-  // Pick enemy archetype using weighted selection from pack
   const archetype = pickEnemyArchetype(pack.archetypes, () => world.rng.next());
-
   const eid = spawnBehaviorEnemy(
     world,
-    spawnPoint.x,
-    spawnPoint.y,
+    x,
+    y,
     archetype.hp,
     archetype.id === 'slime' ? AI_TYPE.LEAPER : AI_TYPE.CHASE,
     archetype.speed,
@@ -1412,11 +1442,215 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
   });
-
-  // Set blood colour based on archetype: slimes bleed green, rats bleed red.
+  // Slimes bleed green, rats bleed red.
   setBloodColor(world, eid, archetype.id === 'slime' ? BLOOD_COLOR_SLIME : BLOOD_COLOR_RAT);
+  world.floor1!.enemyArchetypes.set(eid, archetype.id);
+  return eid;
+}
 
-  world.floor1.enemyArchetypes.set(eid, archetype.id);
+/**
+ * Whether an ambient spawn position is unusable: beyond `maxDistanceSq` of the
+ * player, not inside any room, or inside the boss-stair / a safe room.
+ */
+function isInvalidAmbientSpawn(
+  world: GameWorld,
+  x: number,
+  y: number,
+  playerX: number,
+  playerY: number,
+  maxDistanceSq: number,
+): boolean {
+  return (
+    distSq(x, y, playerX, playerY) > maxDistanceSq ||
+    !isInAnyRoom(world, x, y) ||
+    isInRoom(world, x, y, world.floorMap?.bossStairRoom ?? null) ||
+    (world.floorMap?.roomGraph
+      .getRoomsByRole(RoomRole.SAFE)
+      .some((r) => isInRoom(world, x, y, r)) ??
+      false)
+  );
+}
+
+/**
+ * Resolve a near-player ambient spawn position. Sampling is biased into the
+ * engagement ring (so spawns appear close, keeping combat constant) while the
+ * absolute validity ceiling stays at the ambient max distance, with a
+ * whole-map passable-tile fallback. Returns null when no valid tile is found.
+ */
+function resolveAmbientSpawnPoint(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+): { x: number; y: number } | null {
+  const pack = floor1EnemyPack;
+  const maxDistanceSq =
+    FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
+  const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusPx);
+  if (!isInvalidAmbientSpawn(world, ringPoint.x, ringPoint.y, playerX, playerY, maxDistanceSq)) {
+    return ringPoint;
+  }
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return null;
+  }
+  for (let i = 0; i < 64; i += 1) {
+    const tx = world.rng.nextInt(0, floorMap.width - 1);
+    const ty = world.rng.nextInt(0, floorMap.height - 1);
+    const candidate = floorMap.tileToPixel(tx, ty);
+    if (
+      floorMap.isPassableAt(candidate.x, candidate.y) &&
+      !isInvalidAmbientSpawn(world, candidate.x, candidate.y, playerX, playerY, maxDistanceSq)
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Pick a passable interior tile of `roomId` for a pre-population spawn, kept a
+ * little away from the player so the wave reads as already present rather than
+ * materialising on top of them at the doorway. Returns null if none is found.
+ */
+function resolveRoomInteriorSpawn(
+  world: GameWorld,
+  roomId: number,
+  playerX: number,
+  playerY: number,
+): { x: number; y: number } | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return null;
+  }
+  const minSpawnDistSq =
+    FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_PX * FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_PX;
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const tile = floorMap.roomGraph.getRandomInteriorTile(roomId, world.rng);
+    if (!tile) {
+      return null;
+    }
+    const candidate = floorMap.tileToPixel(tile.x, tile.y);
+    if (!floorMap.isPassableAt(candidate.x, candidate.y)) {
+      continue;
+    }
+    if (distSq(candidate.x, candidate.y, playerX, playerY) < minSpawnDistSq) {
+      continue;
+    }
+    return candidate;
+  }
+  return null;
+}
+
+/**
+ * The first time the player stands inside a NORMAL combat room, roll
+ * `roomWaveChance` to pre-populate it with a wave already inside — so entering a
+ * fresh room usually means walking into a fight. The room id is recorded on the
+ * first visit regardless of the roll outcome, so leaving and re-entering never
+ * re-rolls. SPAWN, SAFE, and BOSS_STAIR rooms are never seeded.
+ */
+function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: number): void {
+  const floorMap = world.floorMap;
+  if (!floorMap || !world.floor1) {
+    return;
+  }
+  const tile = floorMap.pixelToTile(playerX, playerY);
+  const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
+  if (roomId < 0) {
+    return;
+  }
+  const populated = getPopulatedRooms(world);
+  if (populated.has(roomId)) {
+    return;
+  }
+  populated.add(roomId);
+  const room = floorMap.roomGraph.get(roomId);
+  if (!room || room.role !== RoomRole.NORMAL) {
+    return;
+  }
+  const pack = floor1EnemyPack;
+  if (world.rng.next() >= pack.roomWaveChance) {
+    return;
+  }
+  const waveMax = Math.max(pack.roomWaveMin, pack.roomWaveMax);
+  const waveSize = world.rng.nextInt(pack.roomWaveMin, waveMax);
+  for (let i = 0; i < waveSize; i += 1) {
+    if (query(world.ecs, [Enemy]).length >= pack.enemyCap) {
+      break;
+    }
+    const pos = resolveRoomInteriorSpawn(world, roomId, playerX, playerY);
+    if (pos) {
+      spawnAmbientArchetype(world, pos.x, pos.y);
+    }
+  }
+}
+
+/**
+ * Floor 1 enemy director — keeps the player in constant combat.
+ *
+ * Each tick it (1) recycles ambient mobs the player has left far behind and
+ * enforces the global {@link EnemyPackDef.enemyCap}, (2) pre-populates a freshly
+ * entered combat room with a wave, then (3) burst-spawns ambient enemies near
+ * the player until the *engaging* count (within {@link EnemyPackDef.engageRadiusPx})
+ * reaches {@link EnemyPackDef.engageTarget}. The engagement budget is separate
+ * from the global cap: the cap fills distant rooms, while the target guarantees
+ * a steady swarm around the player even when they outrun the field. When at the
+ * cap, the furthest stragglers outside the engagement ring are recycled to make
+ * room for closer spawns.
+ */
+export function floor1EnemyDirectorSystem(world: GameWorld): void {
+  if (!world.floor1 || world.state !== 'playing') {
+    return;
+  }
+
+  const players = query(world.ecs, [Player, Position]);
+  const player = players[0];
+  if (player === undefined) {
+    return;
+  }
+  const pack = floor1EnemyPack;
+  const playerX = world.stores.position.x[player] ?? 0;
+  const playerY = world.stores.position.y[player] ?? 0;
+
+  // Recycle mobs left far behind, then enforce the global ceiling. Both run
+  // every tick so budget is freed promptly as the player moves.
+  pruneAmbientOutOfRange(world, playerX, playerY);
+  const overflow = query(world.ecs, [Enemy]).length - pack.enemyCap;
+  if (overflow > 0) {
+    pruneAmbientOverflow(world, playerX, playerY, overflow);
+  }
+
+  // High chance a freshly entered combat room already contains a wave. Runs
+  // every tick (cheap set check) so it fires the instant the player walks in,
+  // independent of the burst cadence below.
+  prepopulateEnteredRoom(world, playerX, playerY);
+
+  // Engagement top-up, throttled to one burst per spawn interval.
+  const state = getSpawnerState(world);
+  if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
+    return;
+  }
+  const engageRadiusSq = pack.engageRadiusPx * pack.engageRadiusPx;
+  const engaging = countEngagingEnemies(world, playerX, playerY, engageRadiusSq);
+  if (engaging >= pack.engageTarget) {
+    // Plenty of nearby threats; re-check next tick without burning the interval.
+    return;
+  }
+
+  const burst = Math.min(pack.engageTarget - engaging, pack.maxSpawnsPerTick);
+  for (let i = 0; i < burst; i += 1) {
+    // At the global cap, make room near the player by recycling the furthest
+    // straggler outside the engagement ring. If nothing can be freed, stop.
+    if (query(world.ecs, [Enemy]).length >= pack.enemyCap) {
+      if (evictFurthestAmbient(world, playerX, playerY, engageRadiusSq, 1) === 0) {
+        break;
+      }
+    }
+    const spawnPoint = resolveAmbientSpawnPoint(world, playerX, playerY);
+    if (!spawnPoint) {
+      break;
+    }
+    spawnAmbientArchetype(world, spawnPoint.x, spawnPoint.y);
+  }
   state.lastSpawnMs = world.elapsedMs;
 }
 

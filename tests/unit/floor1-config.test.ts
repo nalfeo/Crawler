@@ -67,11 +67,11 @@ describe('floor1Config', () => {
   });
 
   it('should have valid spawning configuration', () => {
-    expect(floor1Config.spawning.enemyCap).toBe(14);
-    expect(floor1Config.spawning.spawnIntervalMs).toBe(900);
+    expect(floor1Config.spawning.enemyCap).toBe(100);
+    expect(floor1Config.spawning.spawnIntervalMs).toBe(500);
     expect(floor1Config.spawning.spawnRadiusMin).toBe(160);
     expect(floor1Config.spawning.ambientSpawnMaxDistancePx).toBe(1280);
-    expect(floor1Config.spawning.ambientDespawnDistancePx).toBe(1920);
+    expect(floor1Config.spawning.ambientDespawnDistancePx).toBe(2400);
   });
 
   it('should have valid player bonuses', () => {

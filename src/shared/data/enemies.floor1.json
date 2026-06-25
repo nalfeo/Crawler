@@ -27,8 +27,14 @@
       "spawnWeight": 0.38
     }
   ],
-  "enemyCap": 14,
-  "spawnIntervalMs": 900,
+  "enemyCap": 100,
+  "spawnIntervalMs": 500,
   "spawnRadiusMin": 160,
-  "despawnDistancePx": 1920
+  "despawnDistancePx": 2400,
+  "engageRadiusPx": 720,
+  "engageTarget": 6,
+  "maxSpawnsPerTick": 3,
+  "roomWaveChance": 0.65,
+  "roomWaveMin": 2,
+  "roomWaveMax": 3
 }
