@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-25",
+  "session": "mana-and-abilities",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6,
+  "notes": "ITEM 6 (PR2 of PR Group B). (a) Wisdom -> mana pool: pure shared/mana.ts model (MANA_BASE 80 + MANA_PER_WISDOM 20, regen 5/s via GAME.DELTA_MS), new deterministic manaSystem(world) deriving playerMaxMp from effective Wisdom + frame regen + clamp, wired into headless (simulation-step) and visual (floor1-main-scene-options preSystems), exported via core barrel, mana-lab added + registered. stat-display now shows Wisdom mana gain (Charisma still reserved). (b) Spell-unlock hardening: ensureBossBattleSpellReward safety net guarantees quest-completion => concrete spell learned + featureUnlocks.spells true, with idempotent default-grant fallback (heal). 39 new/updated assertions; full suite green. Headless seed 15 re-probed: still VICTORY, all quests ~135s, WINNING_SEEDS unchanged. Estimate 3 apples held: touched 5 layers but each change was small and the seed did not move."
+}
