@@ -550,4 +550,45 @@ describe('BehaviorTreeAI', () => {
       expect(tileMap.isPassable(resolved.x, resolved.y)).toBe(true);
     });
   });
+
+  // Regression guard: reset() is the provider's "start fresh" hook and clears the
+  // analogous per-run caches (resolvedGoalCache, targetReachableCache). The BFS
+  // refactor (PR #324) added the resolveGoalMemo + navEpoch/navSignature cache,
+  // which must be cleared too — otherwise a reused provider whose new world's
+  // (floor + blocked-door) signature collides with the previous one skips the
+  // navEpoch bump and serves stale reachability from a different floor topology.
+  describe('reset() restores the reachable-goal memo and navigation epoch', () => {
+    type NavCacheState = {
+      resolveGoalMemo: Map<string, TilePoint>;
+      resolveGoalMemoEpoch: number;
+      navEpoch: number;
+      navSignature: string | null;
+    };
+
+    it('clears the memo and resets the nav signature/epoch to construction state', () => {
+      const world = createTestWorld({ seed: 99 });
+      world.floorMap = makeOpenRoom(16, 16);
+      spawnPlayer(world, 112, 112); // tile (3,3)
+      spawnGold(world, 400, 112, 3); // distant gold drives Collect path planning
+
+      const ai = new BehaviorTreeAI({ seed: 99 });
+      ai.poll(createInputState(), world);
+
+      const state = ai as unknown as NavCacheState;
+      // Precondition: the poll populated the nav cache (refreshed every poll, and
+      // Collect plans a path through the memoised resolver), so reset() has real
+      // state to clear.
+      expect(state.navSignature).not.toBeNull();
+      expect(state.navEpoch).toBeGreaterThan(0);
+      expect(state.resolveGoalMemo.size).toBeGreaterThan(0);
+
+      ai.reset();
+
+      // Post-reset the nav cache must match a freshly-constructed provider.
+      expect(state.resolveGoalMemo.size).toBe(0);
+      expect(state.resolveGoalMemoEpoch).toBe(-1);
+      expect(state.navEpoch).toBe(0);
+      expect(state.navSignature).toBeNull();
+    });
+  });
 });

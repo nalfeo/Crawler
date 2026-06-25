@@ -3883,6 +3883,15 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.doorAwarePassable = null;
     this.knownLockedDoors.clear();
     this.resolvedGoalCache = null;
+    // Restore the reachable-goal memo + navigation epoch to their fresh-construction
+    // state, mirroring resolvedGoalCache/targetReachableCache above. Leaving
+    // navSignature set would let a reused provider skip the navEpoch bump when a new
+    // world's (floor + blocked-door) signature collides with the previous one, and
+    // serve stale reachability from a different floor topology.
+    this.resolveGoalMemo.clear();
+    this.resolveGoalMemoEpoch = -1;
+    this.navEpoch = 0;
+    this.navSignature = null;
     this.exploredSeen = null;
     this.frontierBfsVisited = null;
     this.retreating = false;
