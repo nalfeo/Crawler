@@ -1,0 +1,169 @@
+# ADR 0023: Re-runnable PostProcess & Judge over stored sprite sheets
+
+## Status
+
+Accepted
+
+## Date
+
+2026-06-26
+
+## Estimated Complexity
+
+🍎 x 4 — multi-subsystem (new shared pipeline module + re-run orchestrator +
+two sidecar endpoints + tests), ADR required, but no new ECS system and no new
+lab (sidecar/devtools infra).
+
+## Context
+
+The sprite-generation workflow is moving from a 6-stage flow to a 7-stage one
+(tracked across the PR2 stack):
+
+```
+old: Synthesize → Choose → Promote → Generate → Approve → Tag
+new: Synthesize → Choose → Generate → PostProcess → Judge → Approve → Tag
+```
+
+The old **Generate** stage was monolithic: a single `generateOne` call
+produced the raw sheet, sliced it, post-processed every variant, ran the VLM
+judge, and wrote `summary.json` — all or nothing. If an operator wanted to
+tweak a post-processing option (e.g. background tolerance) or re-judge with a
+different gate, the **only** path was to regenerate the sheet from scratch.
+That re-rolls the expensive image-model call and **discards the exact pixels
+the operator was iterating on** — the sheet is the single most costly artifact
+in the pipeline, and it was being thrown away to change a cheap downstream
+step.
+
+Two facts about the existing system made a cheaper path possible:
+
+- Raw sheets are **already persisted durably**. `generateOne` writes
+  `sheet-NN.png` for every attempt through the injected `RunStore`
+  (`<briefId>/<runId>/sheet-NN.png`), local or Azure Blob (ADR 0017).
+- Slicing is **already a single content-aware path** (ADR 0018):
+  `sliceSheetFromBrief` is deterministic and shared by generation and the
+  `/api/slice-map` debugger.
+
+So the raw sheet can serve as a durable **source artifact** that PostProcess
+and Judge re-derive from, without regeneration. The risk was divergence: if a
+re-run used even slightly different post-processing or judge-gating code than a
+fresh generation, a re-processed run would no longer match what generation (and
+`approve`) would have produced — the exact class of bug ADR 0018 fixed for
+slicing.
+
+## Decision
+
+**Extract the per-variant work `generateOne` did inline into one shared
+pipeline module, and build PostProcess/Judge re-runs on top of it so a re-run
+over a stored sheet reproduces generation-time artifacts byte-for-byte.**
+
+### 1. Shared per-variant pipeline — `scripts/sprites/run-pipeline.ts`
+
+The post-process → score → write-artifacts block and the gated VLM judge pass
+were lifted verbatim out of `generateOne` into three exported helpers:
+
+- `postprocessScoreAndStoreVariant` — post-process one raw cell, score it, and
+  write every per-variant artifact (raw/processed PNG, scorecard,
+  pipeline-step PNGs + index, anchor sidecars, anchor-overlay) through the
+  store.
+- `runJudgePass` — the gated judge pass. Eligibility is unchanged from
+  generation (only sensor-passing variants, ranked by sensor score, capped at
+  `brief.judge.maxVariants`), with two **new** parameters:
+  - `force` — judge variants that **failed** their sensors (override the
+    sensor gate); powers the "force judge" operator action.
+  - `variantIndexes` — restrict judging to a subset so a partial re-judge can
+    merge over prior verdicts.
+- `assembleSummaryEntries` — fold each variant's sensor result and judge
+  verdict into the final `RunSummaryEntry`, computing
+  `combinedPassed = passed && (!judgeEnabled || judge.passed)` in one place.
+
+`generateOne` now **consumes** these helpers (it shrank from 542 to 332 lines).
+Behavioural equivalence is pinned by the pre-existing integration suites
+(`generate-one.test.ts`, `judge-pipeline.test.ts`), which still pass unchanged.
+
+### 2. Re-run orchestrator — `scripts/sprites/rerun.ts`
+
+A new module re-derives a run's downstream artifacts from its stored sheet:
+
+- `repostprocessRun` — re-slice the stored sheet (content-aware) and
+  re-post-process + re-score every variant with tweakable `PostprocessOptions`,
+  overwriting `processed/**` + `summary.json` **in place**. Judge verdicts are
+  **reset** (the prior verdicts judged different pixels), so each candidate
+  comes back with `judgeScorecard: null`, `judgeSkipReason: null`, and
+  `combinedPassed` gated on sensors alone.
+- `rejudgeRun` — re-run the judge over the stored `processed/NN.png` without
+  touching pixels. Treats judging as enabled, supports `force` and
+  `variantIndexes`, and **merges** new verdicts over the prior summary so an
+  untouched variant keeps its existing verdict.
+
+The module is deliberately **decoupled from the sidecar**: callers pass an
+already-resolved `brief`/`palette` (plus references/style guide for judging)
+and the loaded `RunSummary`, so every function is unit-testable against a
+`LocalRunStore` tmp dir with no HTTP or brief-file IO. Errors are a typed
+`RerunError` with a `kind` the sidecar maps to an HTTP status.
+
+### 3. Sidecar endpoints — `scripts/sprites/sidecar/server.ts`
+
+- `POST /api/runs/:briefId/:runId/postprocess` (body `{ options?, sheet? }`) —
+  deterministic, so **CI-safe**.
+- `POST /api/runs/:briefId/:runId/judge` (body `{ variantIndexes?, force? }`) —
+  LLM-as-judge, so **refused in CI** (Constitutional §3, `403`) and `400` when
+  no vision provider is configured.
+
+Both share a `resolveRunForRerun` helper that mirrors the slice-map handler
+(load `summary.json` → resolve the brief path) plus the generate handler's
+re-materialisation of a checkpoint-wiped draft brief from the store.
+
+## Consequences
+
+### Positive
+
+- PostProcess and Judge are re-runnable on the stored sheet **without
+  regenerating** — the expensive image-model call is made once and the operator
+  iterates on cheap downstream steps.
+- Generation and re-run share **one code path** (`run-pipeline.ts`), so a
+  re-post-process reproduces generation-time bytes exactly — the ADR 0018
+  "one code path" discipline, now extended to post-processing and judging. A
+  parity test asserts this byte-for-byte.
+- `generateOne` is materially smaller and its per-variant logic is now
+  independently unit-tested.
+- `force` and per-subset `variantIndexes` give the upcoming Judge UI (PR2c) the
+  primitives for "force judge past a failing sensor" and partial re-judge.
+
+### Negative
+
+- The raw sheet is now a long-lived source artifact that re-runs depend on. Runs
+  whose sheets were pruned cannot be re-processed (the endpoints return
+  `sheet-not-found` / `404`).
+- `repostprocessRun` overwrites `processed/**` + `summary.json` in place — there
+  is no history of prior post-process results for a run.
+
+### Risks
+
+- A re-judge needs the stored `processed/NN.png`; if PostProcess has not been
+  run (or its artifacts were pruned) `rejudgeRun` throws `processed-missing`.
+  The operator re-runs PostProcess first. This is surfaced as a typed error, not
+  a crash.
+- `repostprocessRun` resets judge verdicts to `judgeSkipReason: null` (meaning
+  "post-processed, not yet judged"), which is a new state distinct from
+  `judge-disabled`. Consumers that exhaustively switch on `JudgeSkipReason`
+  should treat `null` as "no verdict yet". No new `RunSummary` fields were added,
+  so existing serialization guards are unaffected.
+
+## Alternatives Considered
+
+- **Keep regeneration as the only path; just make it cheaper.** Rejected — it
+  still re-rolls the image model and discards the pixels under iteration, which
+  is the core problem.
+- **Add a second "reprocess" implementation separate from generation.**
+  Rejected — that reintroduces exactly the divergence ADR 0018 eliminated for
+  slicing. Sharing `run-pipeline.ts` is what guarantees parity.
+- **Persist a new `sheetFile`/judge-history field on `RunSummary`.** Deferred —
+  adding fields risks breaking the serialization guards; the re-run preserves
+  run identity and rewrites only the derived candidate/judge fields. Sheet
+  selection defaults to the newest `sheet-NN.png` (matching `/api/slice-map`)
+  with an explicit override in the request body.
+- **Make the judge endpoint inject its vision provider for testing.** Deferred —
+  the sidecar builds the provider from env via `createVisionProvider`; the judge
+  happy-path is covered at the `rerun.ts` layer with a mock provider, and the
+  endpoint tests pin the gates the sidecar owns (CI refusal, missing config,
+  validation, run resolution).
