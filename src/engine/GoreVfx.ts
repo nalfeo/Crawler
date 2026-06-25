@@ -21,8 +21,10 @@ const PARTICLE_SPEED = 120;
 const PARTICLE_SIZE_MIN = 2;
 const PARTICLE_SIZE_MAX = 6;
 
+/** Base red blood colour used when an event carries no explicit bloodColor. */
+const DEFAULT_BLOOD_COLOR = 0xcc0000;
 /** Fallback red blood palette when no bloodColor is supplied. */
-const DEFAULT_BLOOD_COLORS = [0xcc0000, 0xaa0000, 0x880000, 0x660000, 0x990000];
+const DEFAULT_BLOOD_COLORS = [DEFAULT_BLOOD_COLOR, 0xaa0000, 0x880000, 0x660000, 0x990000];
 
 const BLOOD_POOL_LIFETIME_MS = 30_000;
 const BLOOD_POOL_BASE_RADIUS = 8;
@@ -298,7 +300,7 @@ export function createGoreVfx(
       spawnX,
       spawnY,
       overkill,
-      event.bloodColor !== undefined ? event.bloodColor : 0xcc0000,
+      event.bloodColor !== undefined ? event.bloodColor : DEFAULT_BLOOD_COLOR,
       renderElapsedMs,
     );
   }
