@@ -79,6 +79,26 @@ function makeSealedRoom(widthTiles: number, heightTiles: number, wallColumnX: nu
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
 
+function makeDiagonalCornerMap(): FloorMap {
+  const tileMap = new TileMap(5, 5);
+  const terrain = new Uint8Array(25);
+  const config: MapConfig = {
+    widthTiles: 5,
+    heightTiles: 5,
+    tileSizePx: 32,
+    biome: BiomeType.ARENA,
+    seed: 1,
+    roomWidthRange: [3, 5],
+    roomHeightRange: [3, 5],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+  tileMap.fill(TilePresets.FLOOR);
+  tileMap.setFlags(2, 1, TilePresets.WALL);
+  tileMap.setFlags(1, 2, TilePresets.WALL);
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
+}
+
 const MIN_DIAGONAL_COMPONENT = 0.15;
 
 /**
@@ -254,6 +274,22 @@ describe('BehaviorTreeAI', () => {
     // on it and wiggled until the dwell watchdog abandoned it ~180 frames later).
     expect(decision.state).not.toBe(AIState.COLLECT);
     expect(decision.reason).not.toContain('gold');
+  });
+
+  it('treats blocked diagonal corners as obstructed when string-pulling a path', () => {
+    const world = createTestWorld({ seed: 7 });
+    world.floorMap = makeDiagonalCornerMap();
+    const ai = new BehaviorTreeAI({ seed: 7 }) as unknown as {
+      hasClearLineOfSight: (
+        world: GameWorld,
+        startX: number,
+        startY: number,
+        endX: number,
+        endY: number,
+      ) => boolean;
+    };
+
+    expect(ai.hasClearLineOfSight(world, 48, 48, 80, 80)).toBe(false);
   });
 
   it('drops a previously collectable gold target once it becomes unreachable', () => {

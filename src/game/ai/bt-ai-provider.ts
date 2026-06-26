@@ -2460,6 +2460,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       return floorMap.isPassableAt(endX, endY);
     }
     const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_SAMPLE_PX));
+    let prevX = startX;
+    let prevY = startY;
+    let prevTile = floorMap.pixelToTile(startX, startY);
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const sampleX = startX + (endX - startX) * t;
@@ -2467,6 +2470,18 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (!floorMap.isPassableAt(sampleX, sampleY)) {
         return false;
       }
+      const sampleTile = floorMap.pixelToTile(sampleX, sampleY);
+      const crossesBlockedCorner =
+        sampleTile.x !== prevTile.x &&
+        sampleTile.y !== prevTile.y &&
+        !floorMap.isPassableAt(sampleX, prevY) &&
+        !floorMap.isPassableAt(prevX, sampleY);
+      if (crossesBlockedCorner) {
+        return false;
+      }
+      prevX = sampleX;
+      prevY = sampleY;
+      prevTile = sampleTile;
     }
     return true;
   }
