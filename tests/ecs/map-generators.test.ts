@@ -363,15 +363,15 @@ describe('Map Generators', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
       // Use the floor1 map size and seed to catch real-world regressions
       const floor1Config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
-        roomWidthRange: [6, 14],
-        roomHeightRange: [5, 13],
-        maxRooms: 45,
-        floorDensity: 0.42,
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
+        maxRooms: 70,
+        floorDensity: 0.36,
       };
 
       for (const seed of REGRESSION_TEST_SEEDS) {
@@ -653,15 +653,15 @@ describe('Map Generators', () => {
 
     it('should apply cave regions to floor1 basic underground generation', () => {
       const config: MapConfig = {
-        widthTiles: 120,
-        heightTiles: 70,
+        widthTiles: 240,
+        heightTiles: 140,
         tileSizePx: 32,
         biome: BiomeType.BASIC_UNDERGROUND,
         seed: 42,
-        roomWidthRange: [6, 14],
-        roomHeightRange: [5, 13],
-        maxRooms: 45,
-        floorDensity: 0.42,
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
+        maxRooms: 70,
+        floorDensity: 0.36,
       };
 
       const floor = getGenerator(BiomeType.BASIC_UNDERGROUND).generate(

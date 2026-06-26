@@ -16,14 +16,14 @@
     "markerRadiusPx": 64
   },
   "map": {
-    "widthTiles": 120,
-    "heightTiles": 70,
+    "widthTiles": 240,
+    "heightTiles": 140,
     "tileSizePx": 32,
     "seed": 42,
-    "roomWidthRange": [6, 14],
-    "roomHeightRange": [5, 13],
-    "maxRooms": 45,
-    "floorDensity": 0.42
+    "roomWidthRange": [10, 22],
+    "roomHeightRange": [9, 20],
+    "maxRooms": 70,
+    "floorDensity": 0.36
   },
   "enemyPackId": "floor1-ambient",
   "player": {

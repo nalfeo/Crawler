@@ -71,8 +71,8 @@ describe('floor 1 welcome signs', () => {
     }
   });
 
-  it('regression: seed 731683 follows the navigable room path instead of pointing straight at the goal', () => {
-    const world = initFloor1(731683);
+  it('regression: seed 20 follows the navigable room path instead of pointing straight at the goal', () => {
+    const world = initFloor1(20);
     const floorMap = world.floorMap!;
     const roomPath = navigableRoomPath(world);
     expect(roomPath.length).toBeGreaterThan(6);

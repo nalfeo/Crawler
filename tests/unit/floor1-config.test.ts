@@ -26,14 +26,14 @@ describe('floor1Config', () => {
   });
 
   it('should have valid map configuration', () => {
-    expect(floor1Config.map.widthTiles).toBe(120);
-    expect(floor1Config.map.heightTiles).toBe(70);
+    expect(floor1Config.map.widthTiles).toBe(240);
+    expect(floor1Config.map.heightTiles).toBe(140);
     expect(floor1Config.map.tileSizePx).toBe(32);
     expect(floor1Config.map.seed).toBe(42);
-    expect(floor1Config.map.roomWidthRange).toEqual([6, 14]);
-    expect(floor1Config.map.roomHeightRange).toEqual([5, 13]);
-    expect(floor1Config.map.maxRooms).toBe(45);
-    expect(floor1Config.map.floorDensity).toBe(0.42);
+    expect(floor1Config.map.roomWidthRange).toEqual([10, 22]);
+    expect(floor1Config.map.roomHeightRange).toEqual([9, 20]);
+    expect(floor1Config.map.maxRooms).toBe(70);
+    expect(floor1Config.map.floorDensity).toBe(0.36);
   });
 
   it('should have valid enemy configurations', () => {
