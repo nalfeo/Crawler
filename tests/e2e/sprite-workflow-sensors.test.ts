@@ -93,6 +93,58 @@ function makeSeededQueueJson(): string {
   return serializeQueue(state);
 }
 
+/**
+ * Build a run that exercises the candidate-detail sidebar + the unjudged-label
+ * regression:
+ *   • variant 0 — all sensors pass but it was NOT judged (combinedPassed=false,
+ *     judge=null). It must read as neutral "not judged", never red "sensor fail".
+ *   • variant 1 — judged + combined-pass, with axis scores in persisted state so
+ *     clicking its sprite opens the detail panel with the named judge axes
+ *     (Style match / Brief match / Readability) straight from cache (no sidecar).
+ */
+function makeDetailSeededQueueJson(): string {
+  const allPass = [
+    { sensor: 'silhouette', ok: true, reason: null, pixelCount: null },
+    { sensor: 'transparency', ok: true, reason: null, pixelCount: null },
+    { sensor: 'edge-bleed', ok: true, reason: null, pixelCount: null },
+  ];
+  const run: QueueRun = {
+    briefId: 'amber-amulet',
+    runId: 'run-0002',
+    candidates: [
+      {
+        index: 0,
+        score: 3,
+        outOf: 3,
+        passed: true,
+        combinedPassed: false,
+        judge: null,
+        sensors: allPass,
+      },
+      {
+        index: 1,
+        score: 3,
+        outOf: 3,
+        passed: true,
+        combinedPassed: true,
+        judge: {
+          passed: true,
+          minScore: 4,
+          styleMatch: 5,
+          briefMatch: 4,
+          readability: 4,
+          rejectedBy: [],
+        },
+        sensors: allPass,
+      },
+    ],
+  };
+  let state = addItem(createEmptyQueue(), 'Amber Amulet');
+  const itemId = state.items[0]?.id ?? 'item-1';
+  state = updateItem(state, itemId, { stage: 'postprocessed', run });
+  return serializeQueue(state);
+}
+
 /** Save a screenshot to tmp/e2e-screenshots/ for debugging failures. */
 function saveDebugShot(buf: Buffer, filename: string): void {
   try {
@@ -109,6 +161,7 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
   let context: BrowserContext;
   let page: Page;
   const seededQueue = makeSeededQueueJson();
+  const detailQueue = makeDetailSeededQueueJson();
 
   beforeAll(async () => {
     browser = await chromium.launch({ headless: true });
@@ -123,7 +176,7 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
     await closeQuietly(browser);
   });
 
-  async function loadSeededDevtools(): Promise<void> {
+  async function loadSeededDevtools(queueJson: string = seededQueue): Promise<void> {
     // First load primes the origin so localStorage is writable, then we seed the
     // queue and reload — exercising the resume-after-refresh path from cache.
     await page.goto(DEVTOOLS_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
@@ -131,15 +184,17 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       ([key, value]) => {
         window.localStorage.setItem(key, value);
       },
-      [QUEUE_STORAGE_KEY, seededQueue] as const,
+      [QUEUE_STORAGE_KEY, queueJson] as const,
     );
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
     // The run-candidates panel renders synchronously from cache on boot; wait for
-    // the post-processed run header to confirm the panel mounted. The timeout is
+    // its run header to confirm the panel mounted. The header reads either
+    // "…post-processed, not yet judged" (no judged variant) or "…pass the judge"
+    // (once any variant carries a verdict), so accept both. The timeout is
     // generous because a cold Vite dev server pays a one-time transform cost for
     // the large devtools module graph on the first hit under CI load.
     await page.waitForFunction(
-      () => document.body.textContent?.includes('post-processed') ?? false,
+      () => /post-processed|pass the judge/.test(document.body.textContent ?? ''),
       undefined,
       { timeout: 60_000 },
     );
@@ -233,5 +288,43 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
     } finally {
       await page.unroute('**/api/runs/**/judge');
     }
+  });
+
+  // Candidate-detail sidebar + the unjudged-label regression. A variant whose
+  // sensors all pass but which was never judged (combinedPassed=false,
+  // judge=null) must read as neutral "not judged" — NOT red "sensor fail" — and
+  // clicking a judged variant's sprite must open an inline detail panel with the
+  // named judge axes drawn straight from cache (the sidecar is aborted).
+  it('labels an unjudged variant correctly and opens the detail sidebar on click', async () => {
+    await loadSeededDevtools(detailQueue);
+    const bodyText = (await page.locator('body').textContent()) ?? '';
+    // Regression: the sensors-pass-but-unjudged variant reads as "not judged".
+    expect(bodyText.toLowerCase()).toContain('not judged');
+    // It is an all-sensors-pass variant, so it must NOT be tallied as a failure.
+    expect(bodyText).not.toMatch(/sensors? failed/);
+
+    // Clicking a card sprite opens the inline detail panel. Cards are ranked
+    // combined-pass-first, so the first sprite is the judged variant #1.
+    const sprite = page
+      .locator('img[title="Click for the full judge scorecard + sensor detail"]')
+      .first();
+    await sprite.click();
+
+    // The detail panel surfaces the FULL named judge axes (not the S/B/R chips).
+    const judgeTitle = page.getByText('Judge (advisory)');
+    await judgeTitle.waitFor({ state: 'visible', timeout: 10_000 });
+    expect(await judgeTitle.isVisible()).toBe(true);
+    for (const axis of ['Style match', 'Brief match', 'Readability']) {
+      const axisLabel = page.getByText(axis, { exact: true });
+      await axisLabel.waitFor({ state: 'visible', timeout: 10_000 });
+      expect(await axisLabel.isVisible()).toBe(true);
+    }
+    // And the per-variant header identifies which variant is open.
+    const variantHeader = page.getByText('Variant #1', { exact: true });
+    await variantHeader.waitFor({ state: 'visible', timeout: 10_000 });
+    expect(await variantHeader.isVisible()).toBe(true);
+
+    const buf = await page.screenshot({ type: 'png', fullPage: true });
+    saveDebugShot(buf, 'sprite-workflow-detail-panel.png');
   });
 });
