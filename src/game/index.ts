@@ -1,6 +1,21 @@
 export { AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE, enemyAISystem } from './enemyAISystem.js';
 export { configureEnemySpawner, enemySpawnerSystem } from './enemySpawnerSystem.js';
 export type { SpawnerBounds, SpawnerConfig } from './enemySpawnerSystem.js';
+export { spawnerSystem } from './spawners/index.js';
+export {
+  SPAWNER_ARCHETYPES,
+  getSpawnerArchetype,
+  getSpawnerArchetypeIndex,
+  getSpawnerArchetypeByIndex,
+  pickFromPool,
+} from './spawners/index.js';
+export type {
+  MobTemplate,
+  SpawnPoolEntry,
+  SpawnMode,
+  DeathSpawnGroup,
+  SpawnerArchetype,
+} from './spawners/index.js';
 export {
   weaponSystem,
   weaponEntitySystem,
