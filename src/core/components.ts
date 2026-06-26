@@ -240,7 +240,7 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       remainingMs: new Float32Array(maxEntities),
     },
     spawnAnim: {
-      /** Milliseconds left in the spawn-in animation / invulnerability window. */
+      /** Milliseconds left in the cosmetic spawn-in animation. */
       remainingMs: new Float32Array(maxEntities),
       /** Total duration captured at spawn, for normalised animation progress. */
       totalMs: new Float32Array(maxEntities),

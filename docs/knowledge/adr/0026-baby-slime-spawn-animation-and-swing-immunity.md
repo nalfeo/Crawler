@@ -1,4 +1,4 @@
-# ADR 0025: Baby slime spawn animation (size + pop-out) and swing-immunity
+# ADR 0026: Baby slime spawn animation (size + pop-out) and swing-immunity
 
 ## Status
 

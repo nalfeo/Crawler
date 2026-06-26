@@ -125,3 +125,35 @@ Windows box — see Key Decisions):
   no-op for this change** yet was one of the two — proving the blips are machine
   contention. The guard is documented in the test as "deliberately loose to never flake"
   and calibrated for CI runners (~2–3× a dev box); CI is expected to pass.
+
+## Rebase & Review-Resolution Addendum (2026-06-26, shepherding pass)
+
+The original owning session ended with the PR open but **CONFLICTING/DIRTY** against a
+fast-moving `main`. A shepherding pass rebased it and resolved all blocking review
+threads:
+
+- **Rebased onto `origin/main` @ `8cb53d6`** (118 files had landed since the merge-base,
+  including the VFX pipeline #346, generic Spawner mob-type #345, and Floor-1 spawn
+  density #343). Only `src/lab-main.ts` had a real conflict — resolved by **unioning**
+  both sides' additive lab registrations (kept main's `spawner-lab` / `spawner` category
+  hint **and** this PR's `spawnanim-lab`; corrected this PR's category-hint key from the
+  non-matching `spawn` to the correct `spawnanim` token). `src/core/components.ts`,
+  `src/core/world.ts`, and `src/engine/PhaserBridge.ts` auto-merged cleanly — verified by
+  hand that both main's additions (`Spawner` component/store, `vfxEvents`, `EffectsVfx`
+  wiring) **and** this PR's additions (`SpawnAnim` component/store, `applyEnemyScale`,
+  spawn-pop render branch) survived intact.
+- **ADR renumbered `0025` → `0026`** (`docs/knowledge/adr/0026-baby-slime-spawn-animation-and-swing-immunity.md`).
+  Three `0025` ADRs had already landed on `main` (#340, #345, #346); moved to the next
+  free number and updated the in-file title. No other cross-references existed.
+- **Resolved 5 Copilot review threads** — all flagged stale "invulnerability" wording that
+  contradicts the shipped **cosmetic-only** design. Reframed every reference (no behaviour
+  change): the lab README (title, emerge bullets, control table, cyan-ring caption), the
+  `spawnAnim` store comment in `components.ts`, the `MINI_SLIME_SPAWN_ANIM_MS` comment in
+  `spawn-anim.ts`, and the lab `index.ts` (hint text, on-canvas `Invulnerable:` →
+  `Spawning:` counter, `INVULN_RING` → `SPAWN_RING`, `Anim / invuln (ms)` →
+  `Anim (ms)` control, registry description). The cosmetic animation grants no
+  invulnerability; babies survive only their parent's killing swing via
+  `markImmuneToActiveMeleeSwings` (owned by `dropSystem` + `meleeSwingSystem`).
+- **Telemetry:** `files/guard-telemetry.jsonl` does not exist this pass — nothing to paste.
+- **Re-verified:** `npm run verify:fast` green (809 unit tests after the merge picked up
+  main's suites); full `npm run verify` + `lab-gate-check.sh` re-run before merge.

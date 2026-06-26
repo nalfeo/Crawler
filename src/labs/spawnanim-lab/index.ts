@@ -33,7 +33,7 @@ const BACKGROUND = '#0d0d14';
 const FULL_SLIME_RADIUS = 34;
 const SLIME_BODY = '#54d66a';
 const SLIME_GLOSS = '#b9f5c4';
-const INVULN_RING = '#6cf2ff';
+const SPAWN_RING = '#6cf2ff';
 const LAB_SEED = 0x5_1_1_3;
 
 function createSpawnAnimLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
@@ -58,9 +58,10 @@ function createSpawnAnimLab(canvasHost: HTMLElement, controls: HTMLElement): () 
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Baby slimes pop out smaller than a full slime, wiggle into existence, and stay ' +
-    'invulnerable (cyan ring) until the animation settles. Mirrors spawnAnimSystem + the ' +
-    'shared spawn-anim math used by the real renderer.';
+    'Baby slimes pop out smaller than a full slime and wiggle into existence; the ' +
+    'cyan ring marks a spawn still in progress. The animation is purely cosmetic — ' +
+    'it grants no invulnerability. Mirrors spawnAnimSystem + the shared spawn-anim ' +
+    'math used by the real renderer.';
   hint.style.marginTop = '16px';
   hint.style.color = '#9fe7ff';
   hint.style.lineHeight = '1.6';
@@ -198,9 +199,9 @@ function createSpawnAnimLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     context.font = '15px monospace';
     context.textAlign = 'left';
     context.textBaseline = 'top';
-    const invulnCount = babies.filter((b) => b.remainingMs > 0).length;
+    const spawningCount = babies.filter((b) => b.remainingMs > 0).length;
     context.fillText(
-      `Babies: ${babies.length} | Invulnerable: ${invulnCount}` +
+      `Babies: ${babies.length} | Spawning: ${spawningCount}` +
         (settings.paused ? '  [PAUSED]' : ''),
       18,
       16,
@@ -217,15 +218,15 @@ function createSpawnAnimLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const baseRadius = FULL_SLIME_RADIUS * baby.sizeScale;
       const radiusX = baseRadius * pop.x;
       const radiusY = baseRadius * pop.y;
-      const invulnerable = baby.remainingMs > 0;
+      const spawning = baby.remainingMs > 0;
 
       drawSlime(baby.x, baby.y, radiusX, radiusY, 1);
 
-      if (invulnerable) {
-        // Pulsing invulnerability ring that fades as the animation settles.
+      if (spawning) {
+        // Pulsing spawn-progress ring that fades as the animation settles.
         const ringAlpha = 0.85 * (1 - progress) + 0.15;
         context.globalAlpha = ringAlpha;
-        context.strokeStyle = INVULN_RING;
+        context.strokeStyle = SPAWN_RING;
         context.lineWidth = 2.5;
         context.beginPath();
         context.ellipse(
@@ -250,7 +251,7 @@ function createSpawnAnimLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     clearAll,
   };
 
-  gui.add(settings, 'animMs', 100, 1500, 10).name('Anim / invuln (ms)');
+  gui.add(settings, 'animMs', 100, 1500, 10).name('Anim (ms)');
   gui.add(settings, 'wiggleAmplitude', 0, 0.6, 0.01).name('Wiggle amplitude');
   gui.add(settings, 'wiggleCycles', 0, 8, 1).name('Wiggle cycles');
   gui.add(settings, 'miniSizeScale', 0.2, 1, 0.05).name('Baby size scale');
@@ -278,6 +279,6 @@ registerLab('spawnanim-lab', {
   category: 'Entities' as LabCategory,
   name: 'Spawn Animation',
   description:
-    'Visualize the baby-slime spawn-in pop/wiggle and the invulnerability window driven by spawnAnimSystem.',
+    'Visualize the baby-slime spawn-in pop/wiggle — the cosmetic animation driven by spawnAnimSystem.',
   create: createSpawnAnimLab,
 });

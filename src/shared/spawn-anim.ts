@@ -11,7 +11,7 @@
  * and identical wherever it is evaluated.
  */
 
-/** Duration of a mini-slime's spawn-in animation / invulnerability window (ms). */
+/** Duration of a mini-slime's spawn-in (pop-out + wiggle) animation (ms). */
 export const MINI_SLIME_SPAWN_ANIM_MS = 280;
 
 /** Default jelly-wiggle amplitude (fraction of base scale) at p = 0. */
