@@ -83,6 +83,42 @@ class MockImage {
     return this;
   }
 
+  // --- Additions exercised by the corpse-shatter VFX ---
+  originX = 0.5;
+  originY = 0.5;
+  depth = 0;
+  cropped = false;
+  cropRect: { x: number; y: number; w: number; h: number } | null = null;
+
+  setOrigin(x: number, y: number): this {
+    this.originX = x;
+    this.originY = y;
+    return this;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
+    return this;
+  }
+
+  setCrop(x: number, y: number, w: number, h: number): this {
+    this.cropped = true;
+    this.cropRect = { x, y, w, h };
+    return this;
+  }
+
+  get isTinted(): boolean {
+    return this.tinted;
+  }
+
+  get tintTopLeft(): number {
+    return this.tint;
+  }
+
+  get texture(): { key: string } {
+    return { key: this.textureKey };
+  }
+
   destroy(): void {
     this.destroyed = true;
   }
@@ -337,6 +373,96 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     expect(corpse.tint).toBe(0xffffff);
     expect(corpse.alpha).toBe(1);
+  });
+
+  it('detonates a hit corpse into cropped sprite shards on a corpseExplode event', () => {
+    const { scene, images } = createSceneStub();
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    // A corpse: dead enemy still lingering, with an on-screen visual.
+    addComponent(world.ecs, eid, set(Position, { x: 100, y: 120 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
+    bridge.sync(world);
+    const baseline = images.length;
+
+    // Emit the event the core damage path would emit when the corpse is struck.
+    world.combatEvents.push({
+      type: 'corpseExplode',
+      x: 100,
+      y: 120,
+      amount: 20,
+      targetType: 'enemy',
+      timestamp: 0,
+      targetEid: eid,
+      bloodColor: 0xcc0000,
+      spriteTextureId: 0,
+      knockbackDirX: 0,
+      knockbackDirY: 1,
+    });
+    bridge.sync(world);
+
+    // A 3x3 cut yields 9 shard images, each cropped to one grid cell and
+    // depth-sorted into the world VFX band.
+    const shards = images.slice(baseline);
+    expect(shards.length).toBeGreaterThanOrEqual(9);
+    expect(shards.every((s) => s.cropped)).toBe(true);
+    expect(shards.every((s) => s.depth > 0)).toBe(true);
+    // The crop rectangles tile the 16x16 frame exactly.
+    const area = shards.reduce((sum, s) => sum + s.cropRect!.w * s.cropRect!.h, 0);
+    expect(area).toBe(16 * 16);
+  });
+
+  it('shatters a baby-slime corpse at its shrunken on-screen scale, not the base scale', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    // Floor1 sidecar so the renderer can read the 'slime-mini' archetype.
+    world.floor1 = {
+      enemyArchetypes: new Map<number, string>(),
+      objective: { bossBattles: new Map() },
+    } as unknown as NonNullable<typeof world.floor1>;
+
+    // A baby-slime corpse: shrunken Sprite.width + 'slime-mini' archetype, so it
+    // renders at 16/24 of a full slime — its base scale is larger than what the
+    // player actually sees.
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 60, y: 60 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
+    world.floor1!.enemyArchetypes.set(eid, 'slime-mini');
+
+    bridge.sync(world);
+    const corpseImg = images[0]!;
+    const renderedScale = corpseImg.scaleX; // baseScale * (16/24), the on-screen size
+    const baseline = images.length;
+
+    world.combatEvents.push({
+      type: 'corpseExplode',
+      x: 60,
+      y: 60,
+      amount: 20,
+      targetType: 'enemy',
+      timestamp: 0,
+      targetEid: eid,
+      bloodColor: 0xcc0000,
+      spriteTextureId: 2,
+      knockbackDirX: 0,
+      knockbackDirY: 1,
+    });
+    bridge.sync(world);
+
+    // Shards are sized to the corpse's actual on-screen scale, not its (larger)
+    // base scale — so a baby slime sprays baby-sized chunks.
+    const shards = images.slice(baseline).filter((s) => s.cropped);
+    expect(shards.length).toBeGreaterThanOrEqual(9);
+    for (const s of shards) {
+      expect(s.scaleX).toBeCloseTo(renderedScale, 5);
+    }
   });
 
   it('renders rats and slimes with distinct enemy textures', () => {
