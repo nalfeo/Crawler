@@ -209,4 +209,29 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       await page.unroute('**/api/runs/**/judge');
     }
   });
+
+  // Parity guard (mirrors PR2b-1 discipline): the shared runJudge refactor only
+  // ADDS the force option — the normal Judge button must keep PR2b-2's behavior
+  // and send NO force/variantIndexes flags. An empty POST body proves the default
+  // judge call is byte-identical (server applies the sensor gate as before).
+  it('posts no force flag from the normal Judge button', async () => {
+    await page.route('**/api/runs/**/judge', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ summary: { candidates: [] } }),
+      });
+    });
+    try {
+      await loadSeededDevtools();
+      // The normal Judge button (label exactly "Judge") is not confirm-gated and
+      // is enabled at the `postprocessed` stage.
+      const normalJudgeRequest = page.waitForRequest((req) => req.url().includes('/judge'));
+      await page.getByRole('button', { name: /^Judge$/ }).click();
+      // Empty body — no `force`, no `variantIndexes`: the default path is unchanged.
+      expect((await normalJudgeRequest).postDataJSON()).toEqual({});
+    } finally {
+      await page.unroute('**/api/runs/**/judge');
+    }
+  });
 });
