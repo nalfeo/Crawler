@@ -19,6 +19,7 @@ import { CLASS_SKILL_THRESHOLDS, TYPE_SKILL_THRESHOLDS } from '../shared/weapon-
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { PIXEL_UI, PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
 import { SKILL_HARD_CAP, SKILL_NATURAL_CAP } from '../shared/skills.js';
+import { applyCrispText } from './ui-scale.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -142,6 +143,13 @@ export function createHudSkillTracker(
 
   const classRow = makeSkillRow(0, COLORS.barClass, COLORS.classSkill);
   const typeRow = makeSkillRow(1, COLORS.barType, COLORS.typeSkill);
+  const detachCrispText = applyCrispText(scene, [
+    titleText,
+    classRow.nameText,
+    classRow.levelText,
+    typeRow.nameText,
+    typeRow.levelText,
+  ]);
 
   function setAllVisible(visible: boolean): void {
     panel.setVisible(visible);
@@ -231,6 +239,7 @@ export function createHudSkillTracker(
   }
 
   function destroy(): void {
+    detachCrispText();
     panel.destroy();
     titleStrip.destroy();
     titleText.destroy();

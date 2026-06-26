@@ -7,6 +7,7 @@
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
+import { applyCrispText } from './ui-scale.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -98,6 +99,7 @@ export function createHudManaBar(
   icon.setVisible(false);
 
   parent?.add([shell, fill, label, icon]);
+  const detachCrispText = applyCrispText(scene, [label, icon]);
 
   function sync(world: GameWorld): void {
     // Only show mana bar when spells feature is unlocked
@@ -127,6 +129,7 @@ export function createHudManaBar(
   }
 
   function destroy(): void {
+    detachCrispText();
     shell.destroy();
     fill.destroy();
     label.destroy();

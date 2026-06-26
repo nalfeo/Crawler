@@ -17,6 +17,7 @@ import {
   createStatBar,
   addPixelIcon,
 } from './pixel-ui.js';
+import { applyCrispText } from './ui-scale.js';
 
 const PAD = 7;
 const ICON_SIZE = 16;
@@ -69,6 +70,7 @@ export function createHudExperienceBar(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.overlay);
   parent?.add(label);
+  const detachCrispText = applyCrispText(scene, [label]);
 
   function setVisible(visible: boolean): void {
     panel.setVisible(visible);
@@ -96,6 +98,7 @@ export function createHudExperienceBar(
   }
 
   function destroy(): void {
+    detachCrispText();
     panel.destroy();
     bar.destroy();
     label.destroy();

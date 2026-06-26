@@ -17,6 +17,7 @@ import {
 } from '../core/systems/questSystem.js';
 import { getQuestDef, MAX_ACTIVE_QUESTS } from '../shared/quest-types.js';
 import { PIXEL_UI_DEPTH, PIXEL_ICON, createBeveledPanel, addPixelIcon } from './pixel-ui.js';
+import { applyCrispText } from './ui-scale.js';
 
 const RIGHT_X = GAME.WIDTH - 16;
 // Sit below the top-right minimap panel (which ends at y≈190) so the two
@@ -118,6 +119,7 @@ export function createHudQuestTracker(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
   parent?.add([titleStrip, titleText, chevron, body]);
+  const detachCrispText = applyCrispText(scene, [titleText, chevron, body]);
 
   let collapsed = readCollapsedPref();
   let lastWorld: GameWorld | null = null;
@@ -197,6 +199,7 @@ export function createHudQuestTracker(
   }
 
   function destroy(): void {
+    detachCrispText();
     panel.destroy();
     titleStrip.destroy();
     titleIcon.destroy();
