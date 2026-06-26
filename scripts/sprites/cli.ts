@@ -27,7 +27,7 @@ import process from 'node:process';
 import { spawn } from 'node:child_process';
 import { getSessionServerPorts } from '../shared/session-server-ports.js';
 import { JudgeBudget } from './cost-tracker.js';
-import { generateOne } from './generate-one.js';
+import { runFull } from './run-full.js';
 import { JudgeCache } from './judge-cache.js';
 import {
   createImageProvider,
@@ -370,7 +370,7 @@ async function runOne(
     const provider = createImageProvider();
     const textProvider = createTextProvider();
     const visionProvider = createVisionProvider();
-    const result = await generateOne({
+    const result = await runFull({
       briefPath,
       provider,
       textProvider,

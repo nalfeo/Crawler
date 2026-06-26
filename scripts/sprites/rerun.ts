@@ -26,6 +26,7 @@
  * and the CI refusal; this module owns the artifact math.
  */
 
+import { variantCount } from './brief-schema.js';
 import type { Brief, PaletteColors } from './brief-schema.js';
 import type { JudgeBudget } from './cost-tracker.js';
 import { computeDiversity } from './diversity.js';
@@ -57,6 +58,7 @@ export type RerunErrorKind =
   | 'sheet-not-found'
   | 'unsupported-sheet-filename'
   | 'slice-failed'
+  | 'variant-count-mismatch'
   | 'processed-missing';
 
 /**
@@ -178,6 +180,22 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
     throw new RerunError('slice-failed', err instanceof Error ? err.message : String(err));
   }
 
+  // Carry-forward guard (PR2a review): recompute the expected variant count
+  // from the brief rather than trusting `summary.variantCount`. If the brief's
+  // grid/variant config changed since generation, re-slicing yields a different
+  // cell count and silently carrying the stale number would corrupt the
+  // summary. Reject the mismatch instead. (Generate applies the same gate, ADR
+  // 0024, so a stored sheet that ever passed Generate matches at post-process
+  // time unless the brief itself was edited.)
+  const expected = variantCount(brief);
+  if (sliced.length !== expected) {
+    throw new RerunError(
+      'variant-count-mismatch',
+      `re-slicing the stored sheet produced ${sliced.length} cells but the brief ` +
+        `expects ${expected}; the brief's grid/variant config changed since generation`,
+    );
+  }
+
   const variants: ProcessedVariant[] = [];
   const processedBuffers: Buffer[] = [];
   for (let i = 0; i < sliced.length; i++) {
@@ -210,6 +228,7 @@ export async function repostprocessRun(args: RepostprocessArgs): Promise<RerunRe
     chosen: pickChosen(ranked, brief),
     judgeBudget: null,
     judgeCache: null,
+    variantCount: expected,
     extra: { sheetFile },
   });
 }
@@ -356,6 +375,8 @@ async function writeRunSummary(
     chosen: RunSummary['chosen'];
     judgeBudget: RunSummary['judgeBudget'];
     judgeCache: RunSummary['judgeCache'];
+    /** Recomputed variant count. Omit to carry the prior summary's value. */
+    variantCount?: number;
     extra?: { sheetFile?: string };
   },
 ): Promise<RerunResult> {
@@ -366,6 +387,7 @@ async function writeRunSummary(
     chosen: patch.chosen,
     judgeBudget: patch.judgeBudget,
     judgeCache: patch.judgeCache,
+    variantCount: patch.variantCount ?? prior.variantCount,
   };
   const summaryKey = storeKey('summary.json');
   await store.put(summaryKey, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`));

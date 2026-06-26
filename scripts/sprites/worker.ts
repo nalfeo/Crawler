@@ -22,7 +22,6 @@ import type { AssetQueue } from './queue/types.js';
 import type { RunStore } from './store/types.js';
 import type { ImageProvider } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
-import type { VisionProvider } from './provider/vision-types.js';
 
 export interface WorkerOptions {
   /** Queue to poll for generation requests. */
@@ -35,8 +34,6 @@ export interface WorkerOptions {
   readonly provider: ImageProvider;
   /** Optional text provider for variation expansion. Defaults to none. */
   readonly textProvider?: TextProvider | null;
-  /** Optional vision provider for the VLM judge. Defaults to none. */
-  readonly visionProvider?: VisionProvider | null;
   /**
    * How long (ms) to wait between polls when the queue is empty.
    * Default: 5 000 ms.
@@ -98,7 +95,6 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
         briefPath: path.resolve(repoRoot, request.briefPath),
         provider,
         textProvider: options.textProvider ?? null,
-        visionProvider: options.visionProvider ?? null,
         repoRoot,
         store,
       });

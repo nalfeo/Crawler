@@ -1,5 +1,5 @@
 /**
- * Integration test for the VLM judge wired into generateOne.
+ * Integration test for the VLM judge wired into runFull.
  *
  * Mocks both ImageProvider (returns a 2x2 sheet of good-sword fixtures) and
  * VisionProvider (returns canned scorecards keyed by call order). Asserts:
@@ -16,7 +16,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
-import { generateOne } from '../../scripts/sprites/generate-one.js';
+import { runFull } from '../../scripts/sprites/run-full.js';
 import { loadBrief, type LoadedBrief } from '../../scripts/sprites/load-brief.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import type {
@@ -116,7 +116,7 @@ interface MockVision {
 
 /**
  * Vision provider that returns the next canned response per call. Scores are
- * keyed by call index (in the order generateOne issues them, which is sensor
+ * keyed by call index (in the order runFull issues them, which is sensor
  * score desc → index asc).
  */
 function mockVisionProvider(responses: EvaluateResponse[]): MockVision {
@@ -176,7 +176,7 @@ function makeAzureLikeStore(runsDir: string): RunStore {
   };
 }
 
-describe('generateOne + VLM judge (integration)', () => {
+describe('runFull + VLM judge (integration)', () => {
   let root: string;
   let outputRoot: string;
   let preloaded: LoadedBrief;
@@ -223,7 +223,7 @@ describe('generateOne + VLM judge (integration)', () => {
       scorecard({ style: 5, brief: 5, readability: 5 }), // index 3: minScore 5 (winner)
     ]);
 
-    const result = await generateOne({
+    const result = await runFull({
       briefPath,
       preloaded,
       provider: makeMockProvider(sheet),
@@ -299,7 +299,7 @@ describe('generateOne + VLM judge (integration)', () => {
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
 
     await expect(
-      generateOne({
+      runFull({
         briefPath,
         preloaded,
         provider: makeMockProvider(sheet),
@@ -320,7 +320,7 @@ describe('generateOne + VLM judge (integration)', () => {
       scorecard({ style: 5, brief: 5, readability: 5 }),
     ]);
 
-    const result = await generateOne({
+    const result = await runFull({
       briefPath,
       preloaded,
       provider: makeMockProvider(sheet),
@@ -352,7 +352,7 @@ describe('generateOne + VLM judge (integration)', () => {
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([]);
 
-    const result = await generateOne({
+    const result = await runFull({
       briefPath,
       preloaded,
       provider: makeMockProvider(sheet),
@@ -394,7 +394,7 @@ describe('generateOne + VLM judge (integration)', () => {
     const store = makeAzureLikeStore(path.join(root, 'azure-runs'));
 
     // Must not throw (pre-fix this rejected with ENOENT from the sidecar write).
-    const result = await generateOne({
+    const result = await runFull({
       briefPath,
       preloaded,
       provider: makeMockProvider(sheet),

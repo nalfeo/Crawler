@@ -990,13 +990,14 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           queueBackend: queue.backend,
         };
       }
+      // Generate stores the raw sheet ONLY (Option B, ADR 0024). PostProcess
+      // and Judge are explicit operator-driven steps (POST /api/runs/:briefId/
+      // :runId/postprocess and /judge); they are NOT run inline here.
       const result = await generateOne({
         briefPath,
         provider: createImageProvider({ env }),
         textProvider: createTextProvider({ env }),
-        visionProvider: createVisionProvider({ env }),
         repoRoot: deps.repoRoot,
-        env,
         store,
       });
       return {
@@ -1267,6 +1268,8 @@ function rerunErrorStatus(kind: RerunErrorKind): number {
       return 404;
     case 'unsupported-sheet-filename':
       return 415;
+    case 'variant-count-mismatch':
+      return 422;
     case 'summary-invalid':
     case 'slice-failed':
       return 500;

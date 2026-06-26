@@ -1,10 +1,10 @@
 /**
  * Integration test: synthesise a brief, then run it through the full
- * `generateOne` pipeline.
+ * `runFull` pipeline.
  *
  * The provider for synthesis returns a single fixed weapon candidate
  * (no real network); the synthesiser writes the YAML; `loadBrief`
- * reads it back; `generateOne` then runs the slicer/postprocess/sensor
+ * reads it back; `runFull` then runs the slicer/postprocess/sensor
  * chain with the mocked image provider used elsewhere in the
  * integration suite.
  *
@@ -17,7 +17,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
-import { generateOne } from '../../scripts/sprites/generate-one.js';
+import { runFull } from '../../scripts/sprites/run-full.js';
 import { loadBrief } from '../../scripts/sprites/load-brief.js';
 import { synthesizeBrief } from '../../scripts/sprites/synthesize-brief.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
@@ -114,7 +114,7 @@ function makeSynthProvider(): SynthProvider {
   };
 }
 
-describe('sprites:synth → loadBrief → generateOne (integration)', () => {
+describe('sprites:synth → loadBrief → runFull (integration)', () => {
   let root: string;
 
   beforeEach(() => {
@@ -166,7 +166,7 @@ describe('sprites:synth → loadBrief → generateOne (integration)', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('synthesises a weapon brief and runs it end-to-end through generateOne', async () => {
+  it('synthesises a weapon brief and runs it end-to-end through runFull', async () => {
     // 1. Synthesise into generated/brief-candidates/scythe/.
     const synth = await synthesizeBrief({
       name: 'scythe',
@@ -211,7 +211,7 @@ describe('sprites:synth → loadBrief → generateOne (integration)', () => {
       4,
       4,
     );
-    const result = await generateOne({
+    const result = await runFull({
       briefPath: draftPath,
       preloaded: loaded,
       provider: makeImageProvider(sheet),

@@ -23,7 +23,7 @@ import path from 'node:path';
 import {
   projectDryRunCost,
   runBatch,
-  type GenerateOneFactory,
+  type RunFullFactory,
 } from '../../../scripts/sprites/batch.js';
 import { JudgeBudget } from '../../../scripts/sprites/cost-tracker.js';
 import { JudgeCache } from '../../../scripts/sprites/judge-cache.js';
@@ -181,7 +181,7 @@ describe('runBatch', () => {
   it('empty brief list produces zero-attempt summary with no errors', async () => {
     const root = tmpRoot();
     try {
-      const generate: GenerateOneFactory = vi.fn();
+      const generate: RunFullFactory = vi.fn();
       const summary = await runBatch({
         briefPaths: [],
         repoRoot: root,
@@ -204,7 +204,7 @@ describe('runBatch', () => {
   it('single happy-path brief is captured in the summary', async () => {
     const root = tmpRoot();
     try {
-      const generate: GenerateOneFactory = vi.fn(async (_opts) => {
+      const generate: RunFullFactory = vi.fn(async (_opts) => {
         return fakeResult(path.join(root, 'generated', 'runs', 'sword'), 'sword');
       });
       const summary = await runBatch({
@@ -243,8 +243,8 @@ describe('runBatch', () => {
         stateFile,
         reset: true,
       });
-      const generate: GenerateOneFactory = vi.fn(async (_opts) => {
-        // Simulate generateOne recording one judge call (pushes spend past cap).
+      const generate: RunFullFactory = vi.fn(async (_opts) => {
+        // Simulate runFull recording one judge call (pushes spend past cap).
         budget.recordCall({ promptTokens: 1500, completionTokens: 80, totalTokens: 1580 });
         return fakeResult(path.join(root, 'generated', 'runs', 'a'), 'a');
       });
@@ -276,7 +276,7 @@ describe('runBatch', () => {
     const root = tmpRoot();
     try {
       const calls: string[] = [];
-      const generate: GenerateOneFactory = vi.fn(async (opts) => {
+      const generate: RunFullFactory = vi.fn(async (opts) => {
         calls.push(opts.briefPath);
         if (opts.briefPath.endsWith('boom.yaml')) {
           throw new Error('bad-grid: expected 4 got 3');
@@ -308,7 +308,7 @@ describe('runBatch', () => {
     try {
       const batchDir = path.join(root, 'generated', 'runs', '_batch', 'fixed');
       let snapshotAfterFirst: string | null = null;
-      const generate: GenerateOneFactory = vi.fn(async (_opts) => {
+      const generate: RunFullFactory = vi.fn(async (_opts) => {
         // Capture the on-disk summary immediately after brief 1 returns
         // but BEFORE brief 2 starts (via onBriefComplete hook below).
         return fakeResult(path.join(root, 'generated', 'runs', 'x'), 'x');
@@ -363,7 +363,7 @@ describe('runBatch', () => {
         reset: true,
       });
       const cache = new JudgeCache({ cacheDir: path.join(root, 'cache') });
-      const generate: GenerateOneFactory = vi.fn(async (opts) => {
+      const generate: RunFullFactory = vi.fn(async (opts) => {
         // Each brief simulates one judge call + one cache miss.
         budget.recordCall({ promptTokens: 1500, completionTokens: 80, totalTokens: 1580 });
         cache.put(
@@ -441,5 +441,5 @@ describe('projectDryRunCost', () => {
   });
 });
 
-// (BatchBriefResult and GenerateOneFactory are imported for type usage above;
+// (BatchBriefResult and RunFullFactory are imported for type usage above;
 // the imports stay even if every assertion gets inlined later.)

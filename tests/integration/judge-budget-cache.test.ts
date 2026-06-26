@@ -1,12 +1,12 @@
 /**
  * Integration tests for the judge cost ceiling + vision cache wired
- * into `generateOne`.
+ * into `runFull`.
  *
  * Coverage:
  *   1. Budget exhaustion: a tiny cap forces only the first variant
  *      through, the rest are tagged `judgeSkipReason: 'over-budget'`,
  *      and the RunSummary surfaces the skip counters cleanly.
- *   2. Cache replay: two `generateOne` runs with identical inputs.
+ *   2. Cache replay: two `runFull` runs with identical inputs.
  *      First populates the cache; second issues ZERO provider calls,
  *      all judge scorecards come from cache, and the RunSummary cache
  *      stats reflect this (hits == sensor-passing-variants, misses == 0).
@@ -22,7 +22,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
 
-import { generateOne } from '../../scripts/sprites/generate-one.js';
+import { runFull } from '../../scripts/sprites/run-full.js';
 import { JudgeBudget } from '../../scripts/sprites/cost-tracker.js';
 import { JudgeCache } from '../../scripts/sprites/judge-cache.js';
 import { loadBrief, type LoadedBrief } from '../../scripts/sprites/load-brief.js';
@@ -198,7 +198,7 @@ const fixedClock = () => new Date('2026-06-05T12:00:00.000Z');
 const isJudgedCandidate = (candidate: { judgeSkipReason: string | null }) =>
   candidate.judgeSkipReason === null;
 
-describe('generateOne + JudgeBudget (integration)', () => {
+describe('runFull + JudgeBudget (integration)', () => {
   let harness: Harness;
   afterEach(() => harness && rmSync(harness.root, { recursive: true, force: true }));
 
@@ -222,7 +222,7 @@ describe('generateOne + JudgeBudget (integration)', () => {
     });
     const { provider, callCount } = makeCountingVisionProvider(makePerfectScorecard());
 
-    const result = await generateOne({
+    const result = await runFull({
       briefPath: harness.briefPath,
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
@@ -261,7 +261,7 @@ describe('generateOne + JudgeBudget (integration)', () => {
     });
     const { provider, callCount } = makeCountingVisionProvider(makePerfectScorecard());
 
-    const result = await generateOne({
+    const result = await runFull({
       briefPath: harness.briefPath,
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
@@ -282,7 +282,7 @@ describe('generateOne + JudgeBudget (integration)', () => {
   });
 });
 
-describe('generateOne + JudgeCache (integration)', () => {
+describe('runFull + JudgeCache (integration)', () => {
   let harness: Harness;
   afterEach(() => harness && rmSync(harness.root, { recursive: true, force: true }));
 
@@ -296,7 +296,7 @@ describe('generateOne + JudgeCache (integration)', () => {
 
     // Run 1: cache empty -> all calls go through.
     const run1 = makeCountingVisionProvider(makePerfectScorecard());
-    const result1 = await generateOne({
+    const result1 = await runFull({
       briefPath: harness.briefPath,
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
@@ -316,7 +316,7 @@ describe('generateOne + JudgeCache (integration)', () => {
 
     // Run 2: same inputs, same cache -> zero provider calls.
     const run2 = makeCountingVisionProvider(makePerfectScorecard());
-    const result2 = await generateOne({
+    const result2 = await runFull({
       briefPath: harness.briefPath,
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
@@ -361,7 +361,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       reset: true,
     });
     const seedProv = makeCountingVisionProvider(makePerfectScorecard());
-    await generateOne({
+    await runFull({
       briefPath: harness.briefPath,
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
@@ -386,7 +386,7 @@ describe('generateOne + JudgeCache (integration)', () => {
       reset: true,
     });
     const replay = makeCountingVisionProvider(makePerfectScorecard());
-    const result = await generateOne({
+    const result = await runFull({
       briefPath: harness.briefPath,
       preloaded: harness.preloaded,
       provider: makeMockImageProvider(sheet),
