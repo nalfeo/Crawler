@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-26",
+  "session": "pr2b-2-7-stage-workflow",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "note": "Restructured the devtools sprite workflow 6->7 stages (drop standalone Promote, fold into Generate; add explicit PostProcess + Judge stages) across the pure state machine (sprite-workflow-queue.ts) and the large devtools UI (devtools-main.ts), wired the new buttons to PR2a's re-run endpoints, made Generate land a sheet-only run (PR2b-1 Option B), made the run-candidates panel stage-aware, reworked the unit suite 38->41, and wrote ADR 0025. Landed exactly at a Large: the PostProcess/Judge endpoints, the breakdown/sensors data, and the RawGenerateCandidate shape already existed (PR2a/PR2b-1), so no new pipeline/subsystem/lab kept it from being a 5. State-machine + UI are compile-coupled (STEP_LABELS/WorkflowStage union), so no split was possible without a red verify intermediate."
+}
