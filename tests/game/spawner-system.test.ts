@@ -15,6 +15,8 @@ import { createTestWorld } from '../helpers/world-factory.js';
 
 const RATS_NEST_INDEX = getSpawnerArchetypeIndex('rats-nest');
 const RATS_NEST = getSpawnerArchetype('rats-nest')!;
+const SLIME_POOL_INDEX = getSpawnerArchetypeIndex('slime-pool');
+const SLIME_POOL = getSpawnerArchetype('slime-pool')!;
 
 function makeNest(world: ReturnType<typeof createTestWorld>, x = 100, y = 100): number {
   return spawnSpawner(world, x, y, RATS_NEST.hp, {
@@ -39,6 +41,29 @@ describe('spawnSpawner', () => {
     expect(hasComponent(world.ecs, nest, EnemyBehavior)).toBe(false);
     expect(world.stores.health.max[nest]).toBe(RATS_NEST.hp);
     expect(world.stores.spawner.mode[nest]).toBe(0);
+  });
+
+  it('forwards the archetype weight to the Weight component instead of the 200 default', () => {
+    const world = createTestWorld();
+    const pool = spawnSpawner(world, 100, 100, SLIME_POOL.hp, {
+      defIndex: SLIME_POOL_INDEX,
+      contactDamage: SLIME_POOL.contactDamage,
+      weight: SLIME_POOL.weight,
+      bloodColor: SLIME_POOL.bloodColor,
+      spriteWidth: SLIME_POOL.spriteWidth,
+      spriteHeight: SLIME_POOL.spriteHeight,
+    });
+
+    // Slime Pool's designed weight (250) must survive — not be silently dropped to the 200 default.
+    expect(SLIME_POOL.weight).toBe(250);
+    expect(world.stores.weight.value[pool]).toBe(SLIME_POOL.weight);
+  });
+
+  it('falls back to the 200 default weight when no weight option is forwarded', () => {
+    const world = createTestWorld();
+    const nest = makeNest(world);
+
+    expect(world.stores.weight.value[nest]).toBe(200);
   });
 });
 

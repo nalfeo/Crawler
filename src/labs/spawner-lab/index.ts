@@ -194,6 +194,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       spawnSpawner(this.world, this.viewportW() * 0.28, cy, RATS_NEST.hp, {
         defIndex: RATS_NEST_INDEX,
         contactDamage: RATS_NEST.contactDamage,
+        weight: RATS_NEST.weight,
         bloodColor: RATS_NEST.bloodColor,
         spriteWidth: RATS_NEST.spriteWidth,
         spriteHeight: RATS_NEST.spriteHeight,
@@ -201,6 +202,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       spawnSpawner(this.world, this.viewportW() * 0.72, cy, SLIME_POOL.hp, {
         defIndex: SLIME_POOL_INDEX,
         contactDamage: SLIME_POOL.contactDamage,
+        weight: SLIME_POOL.weight,
         bloodColor: SLIME_POOL.bloodColor,
         spriteWidth: SLIME_POOL.spriteWidth,
         spriteHeight: SLIME_POOL.spriteHeight,
