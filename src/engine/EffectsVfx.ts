@@ -58,7 +58,11 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     typeof scene.tweens?.add === 'function';
 
   const active = new Set<Shape>();
-  let lastPlayerHurtMs = -Infinity;
+  // Seed the player-hurt throttle one full window in the past so the FIRST hurt
+  // always fires. Kept finite (never ±Infinity) so a queue-sourced `playerHurt`
+  // VfxEvent stamping this value can't poison the throttle and permanently
+  // silence later player-hurt feedback.
+  let lastPlayerHurtMs = -PLAYER_HURT_THROTTLE_MS;
 
   /** Non-deterministic RNG — render-only, never affects simulation. */
   let vfxSeed = 1;
@@ -190,7 +194,7 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
-  function handleVfxEvent(event: VfxEvent): void {
+  function handleVfxEvent(event: VfxEvent, renderElapsedMs: number): void {
     switch (event.kind) {
       case 'pickupSparkle':
         pickupSparkle(event.x, event.y, event.color ?? 0xffffff);
@@ -220,8 +224,9 @@ export function createEffectsVfx(scene: Phaser.Scene): {
         deathPop(event.x, event.y, event.color ?? 0xcc0000, event.intensity ?? 1);
         break;
       case 'playerHurt':
-        // playerHurt from the queue has no timing context; treat as immediate.
-        playerHurt(Number.POSITIVE_INFINITY);
+        // Queue-sourced player-hurt shares the combat throttle; stamp it with the
+        // real render clock so `lastPlayerHurtMs` stays finite (see init note).
+        playerHurt(renderElapsedMs);
         break;
     }
   }
@@ -258,7 +263,7 @@ export function createEffectsVfx(scene: Phaser.Scene): {
 
       // Generic effect requests (drain — we are the sole consumer).
       for (const event of world.vfxEvents) {
-        handleVfxEvent(event);
+        handleVfxEvent(event, renderElapsedMs);
       }
       world.vfxEvents.length = 0;
     },
