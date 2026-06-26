@@ -131,6 +131,30 @@ const doorRevisionByWorld = new WeakMap<GameWorld, DoorRevisionState>();
 const wanderStatesByWorld = new WeakMap<GameWorld, Map<number, WanderState>>();
 const slimeLeapStatesByWorld = new WeakMap<GameWorld, Map<number, SlimeLeapState>>();
 
+/**
+ * Cross-enemy memo of computed tile paths, keyed on the same string as each
+ * enemy's per-entity {@link PathState} (`enemyTile|targetTile|traversal|doorRev`).
+ *
+ * `findTilePath` is a pure function of the floor's static walls plus the live
+ * door states; the only thing that mutates tile passability at runtime is a door
+ * opening/closing, which `getDoorRevision` already folds into the key. So every
+ * enemy that re-paths from the same tile toward the same target tile under the
+ * same door revision computes a byte-identical path — historically once PER
+ * ENEMY, PER refresh. This memo collapses those redundant A* searches (including
+ * repeated *failed* searches to an unreachable target) into one, and it also
+ * absorbs the extra churn when a moving target oscillates between a few tiles
+ * and every chaser re-keys in lock-step. The cached arrays are treated as
+ * read-only (`nextWaypointDirection` only reads `.length`/indexes and advances a
+ * per-enemy cursor), so sharing one array across enemies is safe and allocation-
+ * free. The map is cleared whenever the door revision changes, so it never
+ * returns a path stale with respect to current passability and stays bounded to
+ * the live door state's working set.
+ */
+const sharedPathMemoByWorld = new WeakMap<
+  GameWorld,
+  { revision: number; map: Map<string, TilePoint[]> }
+>();
+
 function getWanderStateMap(world: GameWorld): Map<number, WanderState> {
   let map = wanderStatesByWorld.get(world);
   if (!map) {
@@ -553,6 +577,23 @@ function getPathStateMap(world: GameWorld): Map<number, PathState> {
   return map;
 }
 
+/**
+ * Return the cross-enemy path memo for `world`, scoped to the current door
+ * revision. When the revision changes (a door opened or closed), the cache is
+ * cleared so it can never hand back a path computed against stale passability.
+ */
+function getSharedPathMemo(world: GameWorld, doorRevision: number): Map<string, TilePoint[]> {
+  let entry = sharedPathMemoByWorld.get(world);
+  if (!entry) {
+    entry = { revision: doorRevision, map: new Map() };
+    sharedPathMemoByWorld.set(world, entry);
+  } else if (entry.revision !== doorRevision) {
+    entry.revision = doorRevision;
+    entry.map.clear();
+  }
+  return entry.map;
+}
+
 function getDoorRevision(world: GameWorld): number {
   const doors = query(world.ecs, [DoorState]);
   const { doorState } = world.stores;
@@ -777,11 +818,20 @@ function followPathWithCaching(
     pathState.waypointIndex >= pathState.waypoints.length;
 
   if (shouldRefresh) {
-    const path = findTilePath(floorMap, enemyTile, targetTile, {
-      traversalMode:
-        traversalMode === TRAVERSAL_MODE.FLYING ? PATH_TRAVERSAL.FLYING : PATH_TRAVERSAL.GROUND,
-      maxPathLength: 8_192,
-    });
+    // Reuse an identical path another enemy (or this one on an earlier frame)
+    // already computed under the current door revision instead of running a
+    // fresh A*. findTilePath is deterministic for a given key, so this is
+    // behavior-preserving; it only removes redundant searches.
+    const memo = getSharedPathMemo(world, doorRevision);
+    let path = memo.get(pathKey);
+    if (path === undefined) {
+      path = findTilePath(floorMap, enemyTile, targetTile, {
+        traversalMode:
+          traversalMode === TRAVERSAL_MODE.FLYING ? PATH_TRAVERSAL.FLYING : PATH_TRAVERSAL.GROUND,
+        maxPathLength: 8_192,
+      });
+      memo.set(pathKey, path);
+    }
     if (path.length === 0) {
       pathStates.delete(eid);
       return false;
