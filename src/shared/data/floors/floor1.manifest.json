@@ -4,7 +4,7 @@
   "protagonist": "Rhea Vale",
   "starterWeapons": ["sword", "bow", "baseball-bat"],
   "timer": {
-    "durationMs": 300000,
+    "durationMs": 360000,
     "stairSpawnCountdownMs": 30000
   },
   "objectives": {

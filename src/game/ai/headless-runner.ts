@@ -84,7 +84,7 @@ export interface HeadlessRunnerConfig {
    * wander fast-fails with a clear reason instead of burning the whole budget.
    * Sized above the slowest legitimate inter-progress gap on winning seeds and
    * above the in-AI relocate cycle (now 200s on the 240×140 map) so it never
-   * false-fails a healthy run. Set to 0 to disable. Default 18 000 (~300s at
+   * false-fails a healthy run. Set to 0 to disable. Default 21 600 (~360s at
    * 60 FPS).
    */
   questStallFrames?: number;
@@ -99,7 +99,7 @@ const DEFAULT_CONFIG: Required<
   progressInterval: 0,
   debug: false,
   eventSampleInterval: 15,
-  questStallFrames: 18_000, // ~300s of frozen quest progress on the 240×140 map
+  questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
 };
 
 /**

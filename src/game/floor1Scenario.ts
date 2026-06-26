@@ -29,6 +29,7 @@ import {
   DoorState,
   Enemy,
   Damage,
+  DeathTimer,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
@@ -1596,7 +1597,12 @@ function floor1ObjectiveTick(world: GameWorld): void {
   }
 
   const staircaseEid = staircaseBattle.bossEid;
-  const staircaseAlive = staircaseEid !== null && entityExists(world.ecs, staircaseEid);
+  // Treat the boss as dead as soon as its HP reaches 0 (DeathTimer added by dropSystem),
+  // so the stairs unlock during the death animation rather than after the body despawns.
+  const staircaseAlive =
+    staircaseEid !== null &&
+    entityExists(world.ecs, staircaseEid) &&
+    !hasComponent(world.ecs, staircaseEid, DeathTimer);
   if (staircaseBattle.started && !staircaseAlive && !objective.staircaseSpawned) {
     objective.staircaseSpawned = true;
     objective.staircaseLocked = false;
