@@ -328,7 +328,10 @@ export class DungeonGenerator implements MapGenerator {
     // post-processing (ellipse, L-shape, corridor widening) and would trap the
     // player or enemies in permanently unreachable areas.
     cullIsolatedFloorTiles(tileMap, terrain, w, h, playerSpawn);
-    pruneInaccessibleDoors(roomGraph, tileMap, terrain, w);
+
+    if (this.caveRegions) {
+      pruneInaccessibleDoors(roomGraph, tileMap, terrain, w);
+    }
 
     return new FloorMap(config, tileMap, roomGraph, terrain, playerSpawn);
   }
@@ -1382,7 +1385,7 @@ function pruneInaccessibleDoors(
  * Horizontal corridors (neighboured E/W by floor) get a north or south tile added;
  * vertical corridors get an east or west tile added. Uses a two-pass approach
  * to avoid cascading widening from a single pass.
- * ~85% of corridor tiles are widened to keep hallways broadly wide.
+ * ~60% of corridor tiles are widened to preserve some narrow sections.
  */
 function widenCorridors(
   tileMap: TileMap,
@@ -1398,7 +1401,7 @@ function widenCorridors(
     for (let x = 1; x < w - 1; x++) {
       const idx = y * w + x;
       if (terrain[idx] !== TerrainType.CORRIDOR) continue;
-      if (rng.next() > 0.85) continue; // only widen ~85% of corridor tiles
+      if (rng.next() > 0.6) continue; // only widen ~60% of corridor tiles
 
       const tN = terrain[(y - 1) * w + x]!;
       const tS = terrain[(y + 1) * w + x]!;
@@ -1465,7 +1468,7 @@ function addDiagonalShortcuts(
   const connected = new Set<string>();
 
   for (let i = 0; i < rooms.length; i++) {
-    if (rng.next() >= 0.2) continue; // attempt a diagonal shortcut for ~20% of rooms
+    if (rng.next() >= 0.7) continue; // attempt a diagonal shortcut for ~30% of rooms
 
     const a = rooms[i]!;
     const cxA = Math.floor(a.bounds.x + a.bounds.width / 2);
@@ -1486,10 +1489,10 @@ function addDiagonalShortcuts(
       const dy = Math.abs(cyB - cyA);
 
       // Both components must be significant (truly diagonal)
-      if (dx < 10 || dy < 10) continue;
+      if (dx < 8 || dy < 8) continue;
       // Not too far to be a useful shortcut
       const dist = dx + dy; // Manhattan, fast
-      if (dist > 45) continue;
+      if (dist > 60) continue;
       // Diagonal ratio: neither axis should dominate more than ~3:1
       if (dx > dy * 3 || dy > dx * 3) continue;
 
