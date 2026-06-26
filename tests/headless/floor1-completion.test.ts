@@ -39,8 +39,8 @@
  * verifying the seed clears on *all three* weapons within budget. Probe each
  * combo via the per-weapon CLI `npm run ai:headless -- --seed N --weapon bow`
  * (repeat for sword and baseball-bat) and confirm every weapon reports VICTORY
- * with all required quests. Seeds 7 and 10 are additional verified all-weapon
- * clears held in reserve; most seeds do NOT clear on every weapon within the
+ * with all required quests. Seed 10 is an additional verified all-weapon clear
+ * held in reserve; most seeds do NOT clear on every weapon within the
  * budget. Note bow runs simulate the full frame budget and are markedly slower
  * in wall time than sword/bat.
  *
@@ -106,7 +106,7 @@ const REQUIRED_QUEST_IDS = [
  * - 6: new main's canonical sword clear; also clears bow (~186s) and bat (~163s).
  * - 7: reserve all-weapon clear promoted after the same-room aggro fix (worst
  *      case bat ~213s, with bow ~209s still comfortably under budget).
- * - 5: all-weapon clear, widest margin (worst case bow ~206s).
+ * - 5: all-weapon clear (worst case bow ~206s).
  *
  * Seed 10 is an additional verified all-weapon clear held in reserve.
  */
