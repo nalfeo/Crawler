@@ -155,6 +155,52 @@ transparency: bg-not-transparent (1234px) / edge-bleed: edge-halo` with a
   returned by a forced judge call — a PR2a concern (already merged + tested), and
   PR2c adds no backend, so the mocked-payload assertion is the correct seam here.
 
+## Known follow-ups
+
+**Live-Azure end-to-end DoD pass — deferred to a human/credentialed run (NOT a
+blocker).** Stated plainly so the epic closes with the gap visible:
+
+- **What the DoD asked:** iterate with Playwright until the 7-stage flow works
+  E2E against **live Azure**: generate a sheet → re-run PostProcess **and** Judge
+  on the STORED sheet WITHOUT regenerating → verify sensor-failure detail shows →
+  force-judge past a failing sensor → confirm resume-after-refresh.
+- **Why it could not run in this worktree:** no Azure/LLM credentials are present
+  (`AZURE_OPENAI_*`, `OPENAI_API_KEY`, `AZURE_STORAGE_CONNECTION_STRING`,
+  `VITE_SPRITES_SIDECAR_BASE_URL` all unset; no `.env`), and `npm run setup:azure`
+  **provisions real cloud resources** (`-ProvisionResources -IncludeStorage`),
+  which must not run unattended on this shared box. Per Constitution §3 this also
+  cannot live in the CI gate (no live vision/LLM in CI).
+- **What substitutes for it now (committed + durable):** the CI-safe Playwright
+  spec (`tests/e2e/sprite-workflow-sensors.test.ts`, 4/4) drives real headless
+  Chromium against the lab dev server rendering the actual devtools UI from seeded
+  state with the judge endpoint mocked, plus the captured screenshot
+  (`session files/pr2c-sensor-evidence.png`). The 1:1 DoD→evidence map in
+  **Blockers** above maps each DoD line to a specific committed assertion. This
+  proves every UI behavior; only the live network round-trip to PR2a's
+  already-merged-and-tested force endpoint is mocked rather than real.
+- **What a human should run later to fully tick the DoD checklist** (one-time,
+  with creds, locally — never in CI):
+  1. `npm install` then `npm run setup:azure` (provisions Azure OpenAI + storage;
+     populates the sidecar env). Start the live sidecar for this worktree's ports.
+  2. In devtools (`?page=sprite-generation-workflow`): **Generate** a sheet for a
+     brief → confirm only the raw sheet is stored (PR2b-1).
+  3. **PostProcess** then **Judge** the STORED sheet via the stage buttons —
+     WITHOUT regenerating — and confirm the returned summary merges back.
+  4. Confirm a variant that fails a sensor shows the **failure detail**
+     (name · reason · pixelCount) in the run-candidates panel.
+  5. Click **Force judge** (or **Force judge variant**) on that gated variant and
+     confirm the LLM judge actually runs past the sensor gate (real verdict
+     returned, not mocked).
+  6. Refresh the page and confirm the run + sensor detail + verdicts **resume from
+     durable state** (Azure workflow-state), not just localStorage.
+  - Capture screenshots/log excerpts mapping 1:1 to steps 2–6 and attach to a
+    short follow-up note. This fully ticks the live-Azure DoD; nothing in the code
+    needs to change for it to pass (PR2c adds no backend).
+- **Other non-PR2 future ideas** (do not assume scope): concurrency for re-run
+  triggers (would make the atomic-`put` fix load-bearing rather than
+  belt-and-braces); a sweep of stale `processed/NN.judge.json` if a judge-reset
+  UI is ever added.
+
 ## Branch State
 
 - Branch: `nalfeo-pr2c-sensor-viz-force-judge`
