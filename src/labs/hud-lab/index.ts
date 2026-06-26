@@ -1,6 +1,6 @@
 /**
  * HUD Lab — Phaser-based sandbox for HudHealthBar, HudFloorTimer, HudBossBar,
- * and HudMinimap.
+ * HudAbilityBar, and HudMinimap.
  *
  * Spins up a real Phaser.Game instance with a synthetic GameWorld so the actual
  * Phaser code paths (RenderTexture bake, Rectangle fill, tween lifecycle) run.
@@ -9,6 +9,7 @@
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME, FLOOR } from '../../shared/constants.js';
+import { FLOOR1_BOSS_REWARD_SPELL_IDS, type AbilityState } from '../../shared/abilities.js';
 import { createHudUI } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnEnemy, spawnPlayer } from '../../core/index.js';
@@ -24,6 +25,7 @@ interface HudLabSettings {
   minimapExpanded: boolean;
   bossFightActive: boolean;
   bossHpPercent: number;
+  spellsUnlocked: boolean;
 }
 
 export interface HudProbeApi {
@@ -39,6 +41,23 @@ const SCENE_KEY = 'HudLabScene';
 /** Boss max HP used by the lab so the boss bar can be exercised. */
 const LAB_BOSS_MAX_HP = 500;
 
+/**
+ * Equip a few active abilities so the bottom-center ability bar renders. The
+ * lab mirrors the Floor 1 boss reward spells; HudAbilityBar stays hidden until
+ * `featureUnlocks.spells` is set, so the lab unlocks that flag alongside this.
+ */
+function makeLabAbilityState(): AbilityState {
+  const equipped = [...FLOOR1_BOSS_REWARD_SPELL_IDS];
+  return {
+    learnedSpellIds: [...equipped],
+    equippedActiveAbilityIds: [...equipped],
+    passiveAbilityIds: [],
+    cooldownByAbilityId: new Map(),
+    cooldownFramesByAbilityId: new Map(),
+    appliedPassiveAbilityIds: new Set(),
+  };
+}
+
 function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as ControlsWithGui).__labGui;
   if (!(gui instanceof GUI)) {
@@ -53,6 +72,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     minimapExpanded: false,
     bossFightActive: false,
     bossHpPercent: 100,
+    spellsUnlocked: true,
   };
 
   const root = document.createElement('div');
@@ -93,6 +113,11 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       // Override default health to match lab settings
       world.stores.health.current[playerEid] = (settings.hpPercent / 100) * settings.maxHp;
       world.stores.health.max[playerEid] = settings.maxHp;
+
+      // Unlock spells and equip active abilities so the bottom-center ability
+      // bar renders (HudAbilityBar stays hidden until featureUnlocks.spells).
+      world.featureUnlocks.spells = settings.spellsUnlocked;
+      world.abilityStatesByEntity.set(playerEid, makeLabAbilityState());
 
       // Fake a floor1 objective for timer display
       const deadlineMs = settings.timeRemainingS * 1000;
@@ -222,6 +247,13 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       world.stores.health.current[playerEid] = current;
       world.stores.health.max[playerEid] = settings.maxHp;
 
+      // Keep the spells unlock in sync so toggling the control live shows/hides
+      // the ability bar; ensure the ability state survives scene restarts.
+      world.featureUnlocks.spells = settings.spellsUnlocked;
+      if (!world.abilityStatesByEntity.has(playerEid)) {
+        world.abilityStatesByEntity.set(playerEid, makeLabAbilityState());
+      }
+
       // Drive the boss encounter so the boss bar shows beneath the floor timer.
       const bossBattle = world.floor1?.objective.bossBattles.get('slime-rat');
       if (bossBattle && bossEid >= 0) {
@@ -269,6 +301,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
     .onChange(() => {});
   gui.add(settings, 'bossFightActive').name('Boss fight active');
   gui.add(settings, 'bossHpPercent', 0, 100, 1).name('Boss HP %');
+  gui.add(settings, 'spellsUnlocked').name('Spells unlocked (ability bar)');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
   createGame();
@@ -284,6 +317,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
 registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'HUD Lab',
-  description: 'Interactive Phaser sandbox for health bar, floor timer, boss bar, and minimap.',
+  description:
+    'Interactive Phaser sandbox for health bar, floor timer, boss bar, ability bar, and minimap.',
   create: createHudLab,
 });
