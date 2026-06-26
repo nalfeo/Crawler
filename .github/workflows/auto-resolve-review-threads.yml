@@ -47,11 +47,17 @@ jobs:
     name: Resolve addressed review threads
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # Mirror the App id into the job env so step-level `if:` conditions can read
+      # it. The `secrets` context is NOT available in `if:` expressions — using it
+      # there (e.g. `if: ${{ secrets.APP_ID != '' }}`) fails the whole workflow at
+      # startup with zero jobs created. The `env` context IS available in `if:`.
+      APP_ID: ${{ secrets.APP_ID }}
     steps:
       - name: Generate app token
         id: app-token
         # secrets are blank for fork-PR events — skip gracefully there.
-        if: ${{ secrets.APP_ID != '' }}
+        if: ${{ env.APP_ID != '' }}
         uses: actions/create-github-app-token@v1
         with:
           app-id: ${{ secrets.APP_ID }}
