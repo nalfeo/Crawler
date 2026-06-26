@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-26",
+  "slug": "fix-targeting-corpses",
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "on-estimate",
+  "summary": "Skip enemies with DeathTimer or HP<=0 in weaponSystem's two target-acquisition helpers so auto-fire/auto-swing stop locking onto corpses during the death-linger window.",
+  "notes": "Two adjacent helpers + two unit tests. No scope creep."
+}
