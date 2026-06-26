@@ -32,6 +32,8 @@ export const WORLD_VFX_DEPTH = {
   gore: 10,
   /** Floating damage numbers / MISS / BLOCKED text. */
   combatText: 20,
+  /** AI debug flow-field heatmap (labs only); sits beneath the path overlay. */
+  debugFlowField: 45,
   /** AI debug path overlay (labs only). */
   debugPath: 50,
 } as const;
