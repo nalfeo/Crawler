@@ -1,0 +1,913 @@
+{
+  "version": 1,
+  "packId": "earth-set-pieces-v1",
+  "setPieces": [
+    {
+      "id": "jimmys-pizza",
+      "name": "Jimmy's Pizza",
+      "theme": "food",
+      "sizing": "exact",
+      "width": 8,
+      "height": 6,
+      "description": "A cramped New York slice joint lifted straight off the corner, grease stains and all.",
+      "tags": ["nyc", "restaurant", "named"],
+      "props": [
+        {
+          "id": "counter",
+          "kind": "fixture",
+          "x": 1,
+          "y": 4,
+          "width": 6,
+          "height": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 2, "row": 5 } }
+          ]
+        },
+        {
+          "id": "pizza-oven",
+          "kind": "fixture",
+          "x": 6,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "brick-pizza-oven",
+                "label": "Brick pizza oven",
+                "prompt": "A wood-fired brick pizza oven with a glowing arched mouth, 16x16 pixel art top-down.",
+                "tags": ["food", "appliance"],
+                "placeholder": {
+                  "source": "sheet",
+                  "sheetKey": "kenney-tiny-town",
+                  "col": 4,
+                  "row": 6
+                }
+              }
+            }
+          ]
+        },
+        {
+          "id": "neon-sign",
+          "kind": "decoration",
+          "x": 2,
+          "y": 0,
+          "width": 4,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "jimmys-neon-sign",
+                "label": "Jimmy's neon sign",
+                "prompt": "Hot pink and cyan neon sign reading JIMMY'S in a retro cursive script, glowing, pixel art.",
+                "widthTiles": 4,
+                "heightTiles": 1,
+                "tags": ["neon", "signage"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "booth-table",
+          "kind": "furniture",
+          "x": 1,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            },
+            {
+              "sprite": { "source": "catalog", "spriteId": "sprite:item.gem" },
+              "offsetX": 4,
+              "offsetY": -3,
+              "scale": 0.6
+            }
+          ]
+        },
+        {
+          "id": "jimmy",
+          "kind": "actor",
+          "x": 5,
+          "y": 4,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:npc.guide" } }]
+        }
+      ]
+    },
+    {
+      "id": "nyc-bodega",
+      "name": "Corner Bodega",
+      "theme": "retail",
+      "sizing": "exact",
+      "width": 7,
+      "height": 5,
+      "description": "A 24-hour bodega with a bulletproof counter, lottery tickets, and a very judgmental cat.",
+      "tags": ["nyc", "shop", "named"],
+      "props": [
+        {
+          "id": "shelving-left",
+          "kind": "fixture",
+          "x": 0,
+          "y": 1,
+          "width": 1,
+          "height": 3,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 10,
+                "row": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "register-counter",
+          "kind": "fixture",
+          "x": 4,
+          "y": 3,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 2, "row": 5 } },
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "cash-register",
+                "label": "Cash register",
+                "prompt": "A chunky retro cash register, beige with green buttons, 16x16 pixel art.",
+                "tags": ["retail"]
+              },
+              "offsetX": 2,
+              "offsetY": -4
+            }
+          ]
+        },
+        {
+          "id": "bodega-cat",
+          "kind": "actor",
+          "x": 5,
+          "y": 2,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:enemy.rat" } }]
+        },
+        {
+          "id": "door",
+          "kind": "door",
+          "x": 3,
+          "y": 4,
+          "layers": [
+            {
+              "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-dungeon", "col": 4, "row": 2 }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "subway-platform",
+      "name": "Subway Platform",
+      "theme": "transit",
+      "sizing": "exact",
+      "width": 10,
+      "height": 4,
+      "description": "An express platform ripped from underground, complete with flickering lights and one stalled train.",
+      "tags": ["nyc", "transit", "named"],
+      "props": [
+        {
+          "id": "bench",
+          "kind": "furniture",
+          "x": 2,
+          "y": 2,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 6, "row": 7 } }
+          ]
+        },
+        {
+          "id": "turnstile",
+          "kind": "fixture",
+          "x": 8,
+          "y": 1,
+          "height": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "subway-turnstile",
+                "label": "Subway turnstile",
+                "prompt": "A metal subway turnstile with rotating arms, top-down 16x16 pixel art.",
+                "tags": ["transit"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "platform-edge",
+          "kind": "decoration",
+          "x": 0,
+          "y": 3,
+          "width": 10,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 3,
+                "row": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "rider",
+          "kind": "actor",
+          "x": 4,
+          "y": 1,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:player" } }]
+        }
+      ]
+    },
+    {
+      "id": "corner-diner",
+      "name": "Corner Diner",
+      "theme": "food",
+      "sizing": "exact",
+      "width": 8,
+      "height": 5,
+      "description": "A chrome-and-vinyl diner booth set, bottomless coffee not guaranteed.",
+      "tags": ["diner", "named"],
+      "props": [
+        {
+          "id": "booth-1",
+          "kind": "furniture",
+          "x": 1,
+          "y": 1,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "booth-2",
+          "kind": "furniture",
+          "x": 5,
+          "y": 1,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            },
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "coffee-mug",
+                "label": "Coffee mug",
+                "prompt": "A small white diner coffee mug with steam, 16x16 pixel art.",
+                "tags": ["food", "prop"]
+              },
+              "offsetX": 5,
+              "offsetY": -2,
+              "scale": 0.5
+            }
+          ]
+        },
+        {
+          "id": "service-counter",
+          "kind": "fixture",
+          "x": 1,
+          "y": 3,
+          "width": 6,
+          "height": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 2, "row": 5 } }
+          ]
+        },
+        {
+          "id": "waitress",
+          "kind": "actor",
+          "x": 4,
+          "y": 3,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:npc.guide" } }]
+        }
+      ]
+    },
+    {
+      "id": "gas-station-mart",
+      "name": "Gas Station Mart",
+      "theme": "retail",
+      "sizing": "exact",
+      "width": 7,
+      "height": 6,
+      "description": "A highway mini-mart with roller-grill hot dogs and a wall of energy drinks.",
+      "tags": ["roadside", "shop", "named"],
+      "props": [
+        {
+          "id": "drink-cooler",
+          "kind": "fixture",
+          "x": 0,
+          "y": 1,
+          "width": 1,
+          "height": 4,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "drink-cooler",
+                "label": "Glass-door drink cooler",
+                "prompt": "A tall glass-door refrigerator full of colorful drink bottles, top-down 16x16 pixel art tileable vertically.",
+                "heightTiles": 4,
+                "tags": ["retail", "appliance"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "snack-aisle",
+          "kind": "fixture",
+          "x": 3,
+          "y": 2,
+          "width": 1,
+          "height": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 10,
+                "row": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "checkout",
+          "kind": "fixture",
+          "x": 5,
+          "y": 4,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 2, "row": 5 } }
+          ]
+        },
+        {
+          "id": "clerk",
+          "kind": "actor",
+          "x": 5,
+          "y": 3,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:npc.guide" } }]
+        }
+      ]
+    },
+    {
+      "id": "doctors-office",
+      "name": "Doctor's Office",
+      "theme": "medical",
+      "sizing": "themed",
+      "width": 6,
+      "height": 5,
+      "maxWidth": 9,
+      "maxHeight": 7,
+      "description": "An exam room kit: paper-covered table, eye chart, and the lingering smell of antiseptic.",
+      "tags": ["medical", "themed"],
+      "props": [
+        {
+          "id": "exam-table",
+          "kind": "furniture",
+          "x": 1,
+          "y": 1,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "exam-table",
+                "label": "Medical exam table",
+                "prompt": "A padded medical exam table with paper roll, light blue, top-down 16x16 pixel art.",
+                "widthTiles": 2,
+                "tags": ["medical", "furniture"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "sink-cabinet",
+          "kind": "fixture",
+          "x": 4,
+          "y": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 5, "row": 6 } }
+          ]
+        },
+        {
+          "id": "eye-chart",
+          "kind": "decoration",
+          "x": 0,
+          "y": 0,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "eye-chart",
+                "label": "Snellen eye chart",
+                "prompt": "A wall-mounted Snellen eye chart poster, big E at top, 16x16 pixel art.",
+                "tags": ["medical", "signage"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "doctor",
+          "kind": "actor",
+          "x": 4,
+          "y": 3,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:npc.guide" } }]
+        }
+      ]
+    },
+    {
+      "id": "dentist-waiting-room",
+      "name": "Dentist Waiting Room",
+      "theme": "medical",
+      "sizing": "themed",
+      "width": 6,
+      "height": 4,
+      "maxWidth": 9,
+      "maxHeight": 6,
+      "description": "A waiting room of stiff chairs, a fish tank, and ten-year-old magazines.",
+      "tags": ["medical", "themed"],
+      "props": [
+        {
+          "id": "chair-row",
+          "kind": "furniture",
+          "x": 1,
+          "y": 1,
+          "width": 3,
+          "height": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 6, "row": 7 } }
+          ]
+        },
+        {
+          "id": "side-table",
+          "kind": "furniture",
+          "x": 4,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            },
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "magazine-stack",
+                "label": "Magazine stack",
+                "prompt": "A small stack of dog-eared magazines, top-down 16x16 pixel art.",
+                "tags": ["prop"]
+              },
+              "offsetX": 3,
+              "offsetY": -2,
+              "scale": 0.6
+            }
+          ]
+        },
+        {
+          "id": "fish-tank",
+          "kind": "decoration",
+          "x": 0,
+          "y": 3,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "waiting-room-fish-tank",
+                "label": "Fish tank",
+                "prompt": "A glowing aquarium with a few orange fish and bubbles, top-down 16x16 pixel art.",
+                "tags": ["decoration"]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "blue-collar-breakroom",
+      "name": "Blue Collar Break Room",
+      "theme": "office",
+      "sizing": "themed",
+      "width": 5,
+      "height": 4,
+      "maxWidth": 8,
+      "maxHeight": 6,
+      "description": "Folding tables, a temperamental vending machine, and a microwave with a history.",
+      "tags": ["office", "industrial", "themed"],
+      "props": [
+        {
+          "id": "folding-table",
+          "kind": "furniture",
+          "x": 1,
+          "y": 1,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "vending-machine",
+          "kind": "fixture",
+          "x": 4,
+          "y": 0,
+          "height": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "vending-machine",
+                "label": "Snack vending machine",
+                "prompt": "A red snack vending machine with a glass front and glowing buttons, top-down 16x16 pixel art.",
+                "heightTiles": 2,
+                "tags": ["appliance"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "coffee-station",
+          "kind": "fixture",
+          "x": 0,
+          "y": 3,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 5, "row": 6 } }
+          ]
+        },
+        {
+          "id": "worker",
+          "kind": "actor",
+          "x": 2,
+          "y": 2,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:player" } }]
+        }
+      ]
+    },
+    {
+      "id": "corporate-cubicles",
+      "name": "Corporate Cubicles",
+      "theme": "office",
+      "sizing": "themed",
+      "width": 6,
+      "height": 5,
+      "maxWidth": 10,
+      "maxHeight": 8,
+      "description": "A maze of grey cubicles, dying potted plants, and a single motivational poster.",
+      "tags": ["office", "corporate", "themed"],
+      "props": [
+        {
+          "id": "cubicle-desk-a",
+          "kind": "furniture",
+          "x": 1,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            },
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "desktop-computer",
+                "label": "Desktop computer",
+                "prompt": "A beige CRT desktop computer and monitor, top-down 16x16 pixel art.",
+                "tags": ["office", "prop"]
+              },
+              "offsetX": 2,
+              "offsetY": -3,
+              "scale": 0.7
+            }
+          ]
+        },
+        {
+          "id": "cubicle-desk-b",
+          "kind": "furniture",
+          "x": 4,
+          "y": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "potted-plant",
+          "kind": "decoration",
+          "x": 0,
+          "y": 4,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 8, "row": 4 } },
+            {
+              "sprite": { "source": "catalog", "spriteId": "sprite:item.gem" },
+              "offsetX": 4,
+              "offsetY": -2,
+              "scale": 0.4,
+              "tintHex": "#3fae5a"
+            }
+          ]
+        },
+        {
+          "id": "cubicle-wall",
+          "kind": "wall",
+          "x": 3,
+          "y": 0,
+          "height": 5,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 1,
+                "row": 0
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "suburban-living-room",
+      "name": "Suburban Living Room",
+      "theme": "domestic",
+      "sizing": "themed",
+      "width": 6,
+      "height": 5,
+      "maxWidth": 8,
+      "maxHeight": 7,
+      "description": "A cozy living room kit: couch, coffee table, and a TV permanently tuned to the reality show.",
+      "tags": ["home", "themed"],
+      "props": [
+        {
+          "id": "couch",
+          "kind": "furniture",
+          "x": 1,
+          "y": 3,
+          "width": 3,
+          "height": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 6, "row": 7 } }
+          ]
+        },
+        {
+          "id": "coffee-table",
+          "kind": "furniture",
+          "x": 2,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            },
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "tv-remote",
+                "label": "TV remote",
+                "prompt": "A small black TV remote control, top-down 16x16 pixel art.",
+                "tags": ["prop"]
+              },
+              "offsetX": 5,
+              "offsetY": -1,
+              "scale": 0.4
+            }
+          ]
+        },
+        {
+          "id": "television",
+          "kind": "fixture",
+          "x": 2,
+          "y": 0,
+          "width": 2,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "crt-television",
+                "label": "CRT television",
+                "prompt": "A boxy CRT television showing a glowing reality-show broadcast, top-down 16x16 pixel art.",
+                "widthTiles": 2,
+                "tags": ["appliance"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "house-cat",
+          "kind": "actor",
+          "x": 4,
+          "y": 4,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:enemy.slime" } }]
+        }
+      ]
+    },
+    {
+      "id": "coin-laundromat",
+      "name": "Coin Laundromat",
+      "theme": "services",
+      "sizing": "themed",
+      "width": 5,
+      "height": 5,
+      "maxWidth": 8,
+      "maxHeight": 7,
+      "description": "Rows of humming machines, a wall of detergent, and one sock that never makes it home.",
+      "tags": ["services", "themed"],
+      "props": [
+        {
+          "id": "washer-bank",
+          "kind": "fixture",
+          "x": 0,
+          "y": 1,
+          "width": 4,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "washing-machine",
+                "label": "Washing machine",
+                "prompt": "A front-loading washing machine with a round glass door, top-down 16x16 pixel art tileable horizontally.",
+                "widthTiles": 4,
+                "tags": ["appliance"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "folding-counter",
+          "kind": "fixture",
+          "x": 1,
+          "y": 3,
+          "width": 3,
+          "height": 1,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 2, "row": 5 } }
+          ]
+        },
+        {
+          "id": "waiting-chair",
+          "kind": "furniture",
+          "x": 4,
+          "y": 4,
+          "layers": [
+            { "sprite": { "source": "sheet", "sheetKey": "kenney-tiny-town", "col": 6, "row": 7 } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "grade-school-classroom",
+      "name": "Grade School Classroom",
+      "theme": "education",
+      "sizing": "themed",
+      "width": 7,
+      "height": 5,
+      "maxWidth": 10,
+      "maxHeight": 7,
+      "description": "Tiny desks, a chalkboard of half-erased equations, and a cubby of forgotten lunches.",
+      "tags": ["school", "themed"],
+      "props": [
+        {
+          "id": "chalkboard",
+          "kind": "decoration",
+          "x": 1,
+          "y": 0,
+          "width": 4,
+          "height": 1,
+          "layers": [
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "chalkboard",
+                "label": "Chalkboard",
+                "prompt": "A green chalkboard with faint white equations and a wooden frame, 16x16 pixel art tileable horizontally.",
+                "widthTiles": 4,
+                "tags": ["education", "signage"]
+              }
+            }
+          ]
+        },
+        {
+          "id": "desk-a",
+          "kind": "furniture",
+          "x": 1,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "desk-b",
+          "kind": "furniture",
+          "x": 3,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            },
+            {
+              "sprite": {
+                "source": "custom",
+                "requestId": "apple-on-desk",
+                "label": "Apple",
+                "prompt": "A shiny red apple, top-down 16x16 pixel art.",
+                "tags": ["prop"]
+              },
+              "offsetX": 5,
+              "offsetY": -2,
+              "scale": 0.4,
+              "tintHex": "#d83a3a"
+            }
+          ]
+        },
+        {
+          "id": "desk-c",
+          "kind": "furniture",
+          "x": 5,
+          "y": 2,
+          "layers": [
+            {
+              "sprite": {
+                "source": "sheet",
+                "sheetKey": "kenney-roguelike-rpg-pack",
+                "col": 7,
+                "row": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "teacher",
+          "kind": "actor",
+          "x": 3,
+          "y": 1,
+          "layers": [{ "sprite": { "source": "catalog", "spriteId": "sprite:npc.guide" } }]
+        }
+      ]
+    }
+  ]
+}
