@@ -81,15 +81,18 @@ PR2a (#323) and is already tested.
   server from `global-setup.ts`). Seeds `localStorage[QUEUE_STORAGE_KEY]` with a
   run whose variant #0 fails two sensors, loads
   `devtools.html?page=sprite-generation-workflow`, **reloads** (exercising
-  resume-after-refresh), and with **all `/api/**` aborted\*\* asserts:
+  resume-after-refresh), and with **all `/api/**` aborted\*\* asserts (4 tests):
   1. sensor-failure detail text renders per variant
      (`transparency: bg-not-transparent (1234px)`, `edge-bleed: edge-halo`,
      `2/3 sensors failed`, `3 sensors passed`);
   2. both force controls are visible;
   3. the controls **POST the right payloads** — `{ force: true }` (run-level) and
      `{ force: true, variantIndexes: [0] }` (per-variant) — with the judge
-     endpoint mocked (200 + empty summary). This proves the **wiring**, not just
-     that the buttons render.
+     endpoint mocked (200 + empty summary). Proves the **wiring**, not just render.
+  4. **Parity guard (mirrors PR2b-1 discipline):** the normal **Judge** button
+     posts an **empty body** (`{}`) — NO `force` / `variantIndexes`. The shared
+     `runJudge` refactor only ADDS the force option; the default judge call is
+     byte-identical to PR2b-2 (server still applies the sensor gate).
 
 ### 4. Carry-forward disposition (epic closeout — see "Key Decisions")
 
@@ -139,6 +142,18 @@ transparency: bg-not-transparent (1234px) / edge-bleed: edge-halo` with a
   Because PR2c adds **no backend**, the only thing a live-Azure run would add over
   this is the network round-trip to PR2a's already-merged-and-tested force endpoint
   — which the committed payload-assertion test exercises against a mock.
+- **DoD checklist → evidence map (1:1):**
+  | User DoD step | Evidence (substitute) |
+  | --- | --- |
+  | generate a sheet | PR2b-1 (#337, merged) stores the raw sheet; the seeded run starts at the post-`Generate` `postprocessed` stage. Covered by PR2b-1's tests. |
+  | re-run PostProcess **and** Judge on the STORED sheet WITHOUT regenerating | PR2a (#337/#323, merged) durable re-run endpoints + PR2b-2's PostProcess/Judge buttons. The seeded queue holds an already-post-processed run (no regenerate); the Judge button drives `/judge` directly (e2e test 4). |
+  | sensor-failure detail visibly shows | e2e test 1 asserts `transparency: bg-not-transparent (1234px)`, `edge-bleed: edge-halo`, `2/3 sensors failed`; screenshot `pr2c-sensor-evidence.png` shows it rendered. |
+  | force-judge past a failing sensor | e2e tests 2–3 assert both force controls are visible and POST `{force:true}` / `{force:true,variantIndexes:[0]}` to the (mocked) judge endpoint; screenshot shows the **Force judge** + **Force judge variant** buttons on the gated variant. |
+  | resume-after-refresh persists | e2e `loadSeededDevtools` **reloads** the page and re-asserts the rendered detail from `localStorage` cache — the resume-after-refresh path, run for every test. |
+
+  The only DoD nuance NOT executed against live Azure is the actual LLM verdict
+  returned by a forced judge call — a PR2a concern (already merged + tested), and
+  PR2c adds no backend, so the mocked-payload assertion is the correct seam here.
 
 ## Branch State
 
@@ -151,6 +166,8 @@ transparency: bg-not-transparent (1234px) / edge-bleed: edge-halo` with a
   1. `feat(devtools): render sensor failures + force-judge override`
   2. `fix(sprites): make LocalRunStore.put atomic (temp-file + rename)`
   3. `test(e2e): assert force-judge override posts force/variantIndexes`
+  4. `test(e2e): assert normal Judge posts no force flag (parity guard)`
+  5. `docs(handoff): PR2c sensor-viz + force-judge; close PR2 7-stage epic`
 
 ## Agent-OS Telemetry
 
@@ -159,7 +176,7 @@ transparency: bg-not-transparent (1234px) / edge-bleed: edge-halo` with a
 ## Test Results
 
 - `npm run verify:fast` — ✅ 174 unit tests pass (typecheck + lint + tests).
-- `tests/e2e/sprite-workflow-sensors.test.ts` — ✅ 3/3 (chromium headless).
+- `tests/e2e/sprite-workflow-sensors.test.ts` — ✅ 4/4 (chromium headless).
 - `npm run verify` (full, 8 steps) — steps 1-6 (typecheck, lint, format,
   dead-code, unit+coverage 174✅, integration 49✅/1 skipped) and step 8 (vite
   build ✅) all pass. **Step 7 (headless Floor 1 gate) reported 2 failures under
@@ -183,8 +200,11 @@ transparency: bg-not-transparent (1234px) / edge-bleed: edge-halo` with a
 ## Key Decisions Made
 
 No ADR added — PR2c is pure UI + tests + a self-contained store fix, no
-cross-system decision. The two robustness carry-forwards are resolved here so the
-epic ends with no loose ends:
+cross-system decision. The two robustness carry-forwards (which rode the whole
+PR2 stack as **ADR 0023 review-note lineage** — see ADR 0023
+`rerunnable-postprocess-judge` §4 structured-per-sensor + the durable-store
+review notes) are resolved here so the epic ends with no loose ends. All THREE
+verdicts are recorded durably below:
 
 1. **Atomic `LocalRunStore.put` — IMPLEMENTED.** Temp-file + `renameSync` is
    ~15 lines, zero API change, and `renameSync` overwrites atomically on the same
@@ -193,10 +213,18 @@ epic ends with no loose ends:
    it is cheap insurance against a torn `summary.json` from a crash mid-write, and
    pairs with the already-tolerant `loadRunSummary`. Temp orphans (crash-only) are
    filtered by every consumer (`SHEET_RE`, exact `summary.json` reads) so they are
-   harmless.
-2. **Tolerant `loadRunSummary` — ALREADY SATISFIED, no change.** `rerun.ts`
-   already has-checks the key and wraps parse in try/catch, surfacing typed
-   `RerunError`s on a missing/torn summary.
+   harmless. Backed by a unit test (`tests/unit/sprites/run-store.test.ts`).
+2. **Tolerant `loadRunSummary` — ALREADY SATISFIED, no change, but verified to
+   degrade gracefully end-to-end.** `loadRunSummary` (`rerun.ts:94`) has-checks
+   the key (→ typed `RerunError('run-not-found')`) and wraps parse in try/catch
+   (→ `RerunError('summary-invalid')`). The **caller path does NOT hard-crash**:
+   the sidecar's `resolveRunForRerun` (`server.ts:559`) catches `RerunError` and
+   returns a structured `{ status, body: { error, message } }` HTTP response; the
+   devtools `fetchJson` rejects on `!res.ok`, and `runJudge`'s catch reverts the
+   stage and shows `Judge failed: <message>` via `setWorkflowStatus` — a clean UI
+   degrade, not a crash. With atomic `put` eliminating torn reads, the only live
+   case is **missing-file** (`run-not-found`), which follows the exact same
+   graceful path. Verified by reading both sides; no code change needed.
 3. **Stale `processed/NN.judge.json` on judge reset — WON'T-FIX (cosmetic).**
    PR2c does not touch the PR2a re-postprocess reset path. `summary.json` is the
    authoritative record and re-judge overwrites/merges per variant index, so no
