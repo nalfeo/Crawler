@@ -1,0 +1,93 @@
+{
+  "request": {
+    "variantIndexes": [2]
+  },
+  "status": 200,
+  "candidate": {
+    "index": 2,
+    "score": 7,
+    "outOf": 7,
+    "breakdown": [
+      {
+        "ok": true,
+        "sensor": "dimensions-exact"
+      },
+      {
+        "ok": true,
+        "sensor": "alpha-binary"
+      },
+      {
+        "ok": true,
+        "sensor": "palette-membership"
+      },
+      {
+        "ok": true,
+        "sensor": "opaque-bbox-fits"
+      },
+      {
+        "ok": true,
+        "sensor": "opaque-ratio"
+      },
+      {
+        "ok": true,
+        "sensor": "anchor-derivable",
+        "anchor": {
+          "x": 30,
+          "y": 60
+        }
+      },
+      {
+        "ok": true,
+        "sensor": "silhouette-orientation-axis"
+      }
+    ],
+    "passed": true,
+    "rawPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/raw/02.png",
+    "processedPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/02.png",
+    "scorecardPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/02.scorecard.json",
+    "derivedAnchor": {
+      "x": 30,
+      "y": 60
+    },
+    "derivedAnchors": {
+      "hold": {
+        "x": 30,
+        "y": 60
+      },
+      "centerOfGravity": {
+        "x": 30,
+        "y": 24
+      }
+    },
+    "anchorSidecarPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/02.anchor.json",
+    "centerOfGravitySidecarPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/02.anchor.cog.json",
+    "anchorOverlayPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/02.anchor-overlay.png",
+    "judgeScorecard": {
+      "variantIndex": 2,
+      "modelDeployment": "gpt-4o",
+      "judgedAt": "2026-06-26T22:24:08.544Z",
+      "styleMatch": {
+        "score": 2,
+        "rationale": "The candidate sprite does not match the grungy indie style of the references. The outline is inconsistent, with some areas appearing too thick or uneven. The shading lacks the distinct 3–5 color stops per material, and the colors are overly clean and lack the worn, gritty texture seen in the references."
+      },
+      "briefMatch": {
+        "score": 4,
+        "rationale": "The sprite depicts a skull on a stick, which aligns with the brief. However, the skull's details, such as the eye sockets and nasal cavity, are not as readable as they should be at native size, and the pommel and band are overly simplified."
+      },
+      "readability": {
+        "score": 3,
+        "rationale": "The silhouette is generally readable as a skull on a stick, but the lack of clear detail in the skull and the overly clean shading reduce its clarity. The sprite does not pop as much as it should against the dark floor tile."
+      },
+      "passed": false,
+      "minScore": 2,
+      "rejectedBy": ["style_match"],
+      "usage": {
+        "promptTokens": 2379,
+        "completionTokens": 227,
+        "totalTokens": 2606
+      }
+    },
+    "judgeSkipReason": null,
+    "combinedPassed": false
+  }
+}

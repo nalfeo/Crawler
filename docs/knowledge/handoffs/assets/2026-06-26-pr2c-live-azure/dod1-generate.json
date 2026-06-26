@@ -1,0 +1,47 @@
+{
+  "status": "completed",
+  "briefPath": "briefs/weapons/skull-mace.yaml",
+  "runId": "2026-06-26T22-20-57-74f0559a",
+  "briefId": "skull-mace",
+  "runDir": "https:/crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a",
+  "summary": {
+    "brief": "skull-mace",
+    "briefPath": "briefs/weapons/skull-mace.yaml",
+    "runId": "2026-06-26T22-20-57-74f0559a",
+    "createdAt": "2026-06-26T22:20:57.327Z",
+    "promptHash": "eabd6f75",
+    "attempts": 1,
+    "variantCount": 16,
+    "variations": {
+      "seed": [
+        "wolf or ram skull replacing the human skull",
+        "spiked iron pommel at the base of the haft"
+      ],
+      "proposed": [
+        "cracked skull with a missing jaw",
+        "bronze band reinforcing the skull's crown",
+        "haft wrapped in tattered black cloth",
+        "skull with a single iron spike through temple",
+        "chipped haft with visible wood grain",
+        "small engraved rune on the pommel"
+      ],
+      "final": [
+        "wolf or ram skull replacing the human skull",
+        "spiked iron pommel at the base of the haft",
+        "cracked skull with a missing jaw",
+        "bronze band reinforcing the skull's crown",
+        "haft wrapped in tattered black cloth",
+        "skull with a single iron spike through temple",
+        "chipped haft with visible wood grain",
+        "small engraved rune on the pommel"
+      ],
+      "minVariations": 8,
+      "skippedReason": null
+    },
+    "candidates": [],
+    "diversity": null,
+    "chosen": null,
+    "judgeBudget": null,
+    "judgeCache": null
+  }
+}
