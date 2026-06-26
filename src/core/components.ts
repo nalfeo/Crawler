@@ -79,6 +79,14 @@ export const DeathTimer = {};
 export const Npc = {};
 /** Marks an entity as invincible — applyDamage skips it entirely. */
 export const Invincible = {};
+/**
+ * Plays a spawn-in "pop out + wiggle" animation. Purely cosmetic: spawnAnimSystem
+ * counts the timer down and strips the component when it expires, and the engine
+ * uses the elapsed progress to drive the pop/wiggle render scale. It grants no
+ * invulnerability — baby slimes survive their parent's killing swing via
+ * swing-immunity (see markImmuneToActiveMeleeSwings). Effect data lives in the store.
+ */
+export const SpawnAnim = {};
 /** Physical weight of an entity (lbs). Used for knockback, strength interactions, etc. */
 export const Weight = {};
 /**
@@ -230,6 +238,12 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
     },
     deathTimer: {
       remainingMs: new Float32Array(maxEntities),
+    },
+    spawnAnim: {
+      /** Milliseconds left in the spawn-in animation / invulnerability window. */
+      remainingMs: new Float32Array(maxEntities),
+      /** Total duration captured at spawn, for normalised animation progress. */
+      totalMs: new Float32Array(maxEntities),
     },
     npc: {
       /** Index into the NPC registry; used to look up NpcDef. Stored as a compact uint16. */

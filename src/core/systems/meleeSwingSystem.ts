@@ -70,6 +70,27 @@ export function clearMeleeSwingHits(world: GameWorld, eid: number): void {
 }
 
 /**
+ * Register a target in every currently-active melee swing's hit set so that no
+ * in-progress swing will damage it.
+ *
+ * This implements "a baby slime survives the swing that killed its parent":
+ * when a slime dies mid-swing, dropSystem spawns babies at the parent's
+ * position *after* this system already ran for the frame. On the next frame the
+ * same still-active swing would otherwise find those fresh babies (absent from
+ * its hit set) and cut them down in the same motion. Pre-marking them makes the
+ * killing swing skip them — the player must swing again, which spawns a
+ * brand-new MeleeSwing entity with an empty hit set that can hit them.
+ *
+ * Deterministic: pure set membership, no RNG and no wall-clock.
+ */
+export function markImmuneToActiveMeleeSwings(world: GameWorld, targetEid: number): void {
+  const swings = query(world.ecs, [MeleeSwing]);
+  for (const swingEid of swings) {
+    getHitSet(world, swingEid).add(targetEid);
+  }
+}
+
+/**
  * Melee swing system — handles blade line-segment collision detection.
  *
  * Each MeleeSwing entity represents a blade sweeping through an arc.

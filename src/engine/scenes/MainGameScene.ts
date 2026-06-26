@@ -25,6 +25,7 @@ import {
   projectileCleanupSystem,
   returningProjectileSystem,
   safeRoomSystem,
+  spawnAnimSystem,
   spawnPlayer,
   trapSystem,
   type GameWorld,
@@ -820,6 +821,7 @@ export class MainGameScene extends Phaser.Scene {
       itemPickupSystem(this.world, collision);
       dropSystem(this.world);
       deathTimerSystem(this.world);
+      spawnAnimSystem(this.world);
       healthSystem(this.world);
       lifetimeSystem(this.world);
       projectileCleanupSystem(this.world);

@@ -14,6 +14,7 @@ import {
   Projectile,
   Returning,
   Rotation,
+  SpawnAnim,
   Sprite,
   Team,
   Trap,
@@ -28,6 +29,7 @@ import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { TeamId, MeleeSpriteId } from '../shared/constants.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
+import { computeSpawnPopScale, spawnAnimProgress } from '../shared/spawn-anim.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -383,6 +385,14 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
   dead_skull: 1.0,
 };
 
+/**
+ * Logical sprite width (px) of a full-grown slime. Baby slimes spawned by a
+ * split carry a smaller `Sprite.width`, and we render them proportionally
+ * smaller than this reference. Keep in sync with the `slime` archetype
+ * `spriteWidth` in `src/shared/data/enemies.floor1.json`.
+ */
+const SLIME_FULL_SPRITE_WIDTH = 24;
+
 interface ResolvedTexture {
   key: string;
   /** Frame index when `key` references a spritesheet. */
@@ -463,6 +473,44 @@ function getProceduralTextureForType(type: string): string {
     default:
       return TEX_BULLET;
   }
+}
+
+/**
+ * Apply the live render scale for an enemy image: baby slimes render
+ * proportionally smaller than a full slime, and any enemy mid-spawn plays the
+ * "pop out + wiggle" animation (smaller → overshoot → settle) on top of that.
+ */
+function applyEnemyScale(
+  img: Phaser.GameObjects.Image,
+  world: GameWorld,
+  eid: number,
+  baseScale: number,
+): void {
+  let scaleX = baseScale;
+  let scaleY = baseScale;
+
+  // Baby slimes carry a shrunken Sprite.width; render them at the matching
+  // fraction of a full slime. Scoped to the 'slime-mini' archetype so full
+  // slimes, rats, and slime-textured bosses are untouched.
+  if (world.floor1?.enemyArchetypes.get(eid) === 'slime-mini') {
+    const width = world.stores.sprite.width[eid] ?? SLIME_FULL_SPRITE_WIDTH;
+    const sizeMul = Math.max(0.2, Math.min(1, width / SLIME_FULL_SPRITE_WIDTH));
+    scaleX *= sizeMul;
+    scaleY *= sizeMul;
+  }
+
+  // Spawn-in pop + jelly wiggle while the SpawnAnim timer is running.
+  if (hasComponent(world.ecs, eid, SpawnAnim)) {
+    const progress = spawnAnimProgress(
+      world.stores.spawnAnim.remainingMs[eid] ?? 0,
+      world.stores.spawnAnim.totalMs[eid] ?? 0,
+    );
+    const pop = computeSpawnPopScale(progress);
+    scaleX *= pop.x;
+    scaleY *= pop.y;
+  }
+
+  img.setScale(scaleX, scaleY);
 }
 
 export function createPhaserBridge(scene: Phaser.Scene): {
@@ -917,8 +965,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           default:
             img.setAlpha(1);
-            img.setScale(visual.baseScale);
             img.setRotation(0);
+            if (entityType === 'enemy') {
+              applyEnemyScale(img, world, eid, visual.baseScale);
+            } else {
+              img.setScale(visual.baseScale);
+            }
             break;
         }
 

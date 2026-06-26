@@ -60,9 +60,9 @@ class MockImage {
     return this;
   }
 
-  setScale(scale: number): this {
-    this.scaleX = scale;
-    this.scaleY = scale;
+  setScale(x: number, y?: number): this {
+    this.scaleX = x;
+    this.scaleY = y ?? x;
     return this;
   }
 
@@ -352,6 +352,48 @@ describe('createPhaserBridge', () => {
     expect(images).toHaveLength(2);
     expect(images[0]?.textureKey).toBe('__cw_enemy_rat');
     expect(images[1]?.textureKey).toBe('__cw_enemy_slime');
+  });
+
+  it('renders slime-mini babies smaller than a full slime', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    // Minimal floor1 sidecar so the renderer can read the 'slime-mini' archetype
+    // and iterate boss battles (both accessed during enemy sync).
+    world.floor1 = {
+      enemyArchetypes: new Map<number, string>(),
+      objective: { bossBattles: new Map() },
+    } as unknown as NonNullable<typeof world.floor1>;
+
+    const fullSlime = addEntity(world.ecs);
+    const miniSlime = addEntity(world.ecs);
+
+    // Full slime: no archetype, so it renders at the base enemy scale.
+    addComponent(world.ecs, fullSlime, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, fullSlime, Enemy);
+    addComponent(world.ecs, fullSlime, set(Sprite, { textureId: 2, width: 24, height: 24 }));
+
+    // Baby slime: shrunken Sprite.width + 'slime-mini' archetype, no SpawnAnim so
+    // it renders at a steady, smaller size (16/24 of the full slime).
+    addComponent(world.ecs, miniSlime, set(Position, { x: 30, y: 10 }));
+    addComponent(world.ecs, miniSlime, Enemy);
+    addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 16, height: 16 }));
+    world.floor1!.enemyArchetypes.set(miniSlime, 'slime-mini');
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    const fullImg = images[0]!;
+    const miniImg = images[1]!;
+
+    // Full slime is scaled uniformly at the base scale.
+    expect(fullImg.scaleX).toBeCloseTo(fullImg.scaleY, 6);
+    expect(fullImg.scaleX).toBeGreaterThan(0);
+
+    // Baby renders smaller, at 16/24 of the full slime's scale, still uniform.
+    expect(miniImg.scaleX).toBeLessThan(fullImg.scaleX);
+    expect(miniImg.scaleX).toBeCloseTo(miniImg.scaleY, 6);
+    expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * (16 / 24), 5);
   });
 
   it('hides enemies on tiles outside current FOV visibility', () => {
