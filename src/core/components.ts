@@ -21,6 +21,12 @@ export const Damage = {};
 export const Player = {};
 export const Enemy = {};
 export const EnemyBehavior = {};
+/**
+ * Marks an immobile enemy structure that periodically spawns other mobs.
+ * Driven by `spawnerSystem`; configuration lives in the SPAWNER_ARCHETYPES
+ * registry, indexed by `spawner.defIndex`.
+ */
+export const Spawner = {};
 export const Flying = {};
 export const Projectile = {};
 /** Marks an entity as an enemy projectile. */
@@ -125,6 +131,18 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       aggroedPermanently: new Uint8Array(maxEntities),
       /** Frames since velocity was zero (used to detect stuck enemies). */
       stuckFrames: new Uint16Array(maxEntities),
+    },
+    spawner: {
+      /** Index into the SPAWNER_ARCHETYPES registry (src/game/spawners). */
+      defIndex: new Uint16Array(maxEntities),
+      /** Spawn mode: 0 = passive, 1 = defensive (enraged after taking damage). */
+      mode: new Uint8Array(maxEntities),
+      /** Elapsed-ms threshold after which the next spawn pulse is allowed. */
+      nextSpawnMs: new Float32Array(maxEntities),
+      /** Total children spawned over this spawner's lifetime. */
+      spawnedTotal: new Uint16Array(maxEntities),
+      /** Set to 1 once the on-death finale wave has been emitted. */
+      deathResolved: new Uint8Array(maxEntities),
     },
     broadcastScore: { current: new Float32Array(maxEntities) },
     droppedItem: { itemIndex: new Uint16Array(maxEntities) },

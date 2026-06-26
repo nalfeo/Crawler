@@ -56,6 +56,31 @@ export const enemyPackDefSchema = z
     spawnRadiusMin: z.number().nonnegative(),
     /** Maximum spawn distance from player before despawning (in feet). */
     despawnDistanceFt: z.number().nonnegative(),
+    /**
+     * Radius (ft) around the player within which an enemy counts as actively
+     * "engaging/pursuing". Drives the engagement-budget top-up and the inner
+     * recycling ring (enemies outside this ring are eligible for eviction when
+     * the global cap is reached and the player needs closer threats).
+     */
+    engageRadiusFt: z.number().positive(),
+    /**
+     * Desired number of engaging enemies within {@link engageRadiusFt}. The
+     * director burst-spawns near the player to keep the engaging count topped up
+     * to this target, giving constant combat with no dead zones when the player
+     * outruns the field. Separate from {@link enemyCap} (the global ceiling).
+     */
+    engageTarget: z.number().int().positive(),
+    /** Maximum ambient enemies the director may burst-spawn in a single tick. */
+    maxSpawnsPerTick: z.number().int().positive(),
+    /**
+     * Probability (0-1) that the first time the player enters a NORMAL combat
+     * room it is pre-populated with a monster wave already inside.
+     */
+    roomWaveChance: z.number().min(0).max(1),
+    /** Minimum wave size when a room is pre-populated. */
+    roomWaveMin: z.number().int().nonnegative(),
+    /** Maximum wave size when a room is pre-populated. */
+    roomWaveMax: z.number().int().nonnegative(),
   })
   .strict();
 

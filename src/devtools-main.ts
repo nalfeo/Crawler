@@ -24,6 +24,7 @@ import {
   QUEUE_STORAGE_KEY,
   SPRITE_TYPES,
   addItem as queueAddItem,
+  candidateForceEligible,
   clearQueue as queueClear,
   createEmptyQueue,
   describeGenerationProgress,
@@ -32,7 +33,9 @@ import {
   isBusyStage,
   primaryActionLabel,
   removeItem as queueRemoveItem,
+  runHasSensorFailures,
   selectItem as queueSelectItem,
+  sensorSummary,
   serializeQueue,
   slugify,
   stepperFor,
@@ -258,12 +261,14 @@ function el<K extends keyof HTMLElementTagNameMap>(
   options: {
     readonly text?: string;
     readonly className?: string;
+    readonly title?: string;
     readonly style?: Partial<CSSStyleDeclaration>;
   } = {},
 ): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (options.text !== undefined) node.textContent = options.text;
   if (options.className) node.className = options.className;
+  if (options.title !== undefined) node.title = options.title;
   if (options.style) Object.assign(node.style, options.style);
   return node;
 }
@@ -849,15 +854,44 @@ function render(): void {
       cursor: 'pointer',
     },
   });
-  const promoteBtn = el('button', {
-    text: 'Promote brief',
+  const postprocessBtn = el('button', {
+    text: 'PostProcess',
     style: {
       padding: '8px 10px',
       borderRadius: '8px',
-      border: '1px solid rgba(52,211,153,0.5)',
-      background: '#052e2b',
-      color: '#d1fae5',
+      border: '1px solid rgba(34,211,238,0.5)',
+      background: '#083344',
+      color: '#cffafe',
       cursor: 'pointer',
+    },
+  });
+  const judgeBtn = el('button', {
+    text: 'Judge',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(167,139,250,0.5)',
+      background: '#2e1065',
+      color: '#ede9fe',
+      cursor: 'pointer',
+    },
+  });
+  // Override affordance: judge variants the sensor gate would otherwise skip.
+  // Hidden by default (set visible in renderWorkflowSelection only when the run
+  // actually has sensor-failed variants) so it reads as a deliberate override,
+  // not the default path. Styled distinctly (orange) from the normal Judge.
+  const forceJudgeBtn = el('button', {
+    text: 'Force judge',
+    title:
+      'Force the LLM judge to run even on variants that failed a sensor (ignores the sensor gate).',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(251,146,60,0.6)',
+      background: '#431407',
+      color: '#fed7aa',
+      cursor: 'pointer',
+      display: 'none',
     },
   });
   const generateBtn = el('button', {
@@ -920,8 +954,10 @@ function render(): void {
   });
   workflowButtons.append(
     synthBtn,
-    promoteBtn,
     generateBtn,
+    postprocessBtn,
+    judgeBtn,
+    forceJudgeBtn,
     cancelGenerateBtn,
     launchWorkerBtn,
     metadataBtn,
@@ -1590,9 +1626,11 @@ function render(): void {
     draft: { text: 'Draft', color: '#94a3b8' },
     synthesizing: { text: 'Synthesizing…', color: '#38bdf8' },
     candidates: { text: 'Choose candidate', color: '#7dd3fc' },
-    promoting: { text: 'Promoting…', color: '#34d399' },
-    promoted: { text: 'Promoted', color: '#34d399' },
     generating: { text: 'Generating…', color: '#facc15' },
+    sheet: { text: 'Sheet ready · PostProcess', color: '#22d3ee' },
+    postprocessing: { text: 'Post-processing…', color: '#22d3ee' },
+    postprocessed: { text: 'Post-processed · Judge', color: '#a78bfa' },
+    judging: { text: 'Judging…', color: '#a78bfa' },
     variants: { text: 'Pick winner', color: '#fbbf24' },
     approved: { text: 'Approved', color: '#a78bfa' },
     tagging: { text: 'Tagging…', color: '#a78bfa' },
@@ -1762,7 +1800,9 @@ function render(): void {
       activeItemLabel.textContent = 'Active item: none — add a brief above to begin.';
       renderStepper(null);
       synthBtn.disabled = true;
-      promoteBtn.disabled = true;
+      postprocessBtn.disabled = true;
+      judgeBtn.disabled = true;
+      forceJudgeBtn.style.display = 'none';
       generateBtn.disabled = true;
       metadataBtn.disabled = true;
       removeItemBtn.disabled = true;
@@ -1777,9 +1817,34 @@ function render(): void {
     renderStepper(item);
     const busy = isBusyStage(item.stage);
     synthBtn.disabled = busy || !(item.stage === 'draft' || item.stage === 'candidates');
-    promoteBtn.disabled = busy || item.stage !== 'candidates' || item.chosenCandidatePath === null;
-    generateBtn.disabled =
-      busy || !(item.stage === 'promoted' || item.stage === 'variants') || item.briefPath === null;
+    // Generate folds in brief promotion: it is reachable only from `candidates`
+    // (with a chosen candidate). Re-rolling a fresh sheet is reached by
+    // re-Choosing, which resets briefPath/run. Iterating on an existing sheet is
+    // done via the re-runnable PostProcess/Judge steps, not by regenerating.
+    generateBtn.disabled = busy || item.stage !== 'candidates' || item.chosenCandidatePath === null;
+    // PostProcess re-runs over the stored sheet, so it stays available after the
+    // first pass (a re-postprocess resets judge verdicts back to `postprocessed`).
+    postprocessBtn.disabled =
+      busy ||
+      item.run === null ||
+      !(item.stage === 'sheet' || item.stage === 'postprocessed' || item.stage === 'variants');
+    // Judge needs the stored processed/NN.png, so it is gated behind PostProcess
+    // (only once variants exist) and is re-runnable from `variants`.
+    judgeBtn.disabled =
+      busy ||
+      item.run === null ||
+      item.run.candidates.length === 0 ||
+      !(item.stage === 'postprocessed' || item.stage === 'variants');
+    // Force-judge override: only surfaced when the run actually has variants the
+    // sensor gate would skip, and only while a judge step is reachable — hidden
+    // otherwise so it never reads as the default path.
+    const showForceJudge =
+      item.run !== null &&
+      item.run.candidates.length > 0 &&
+      (item.stage === 'postprocessed' || item.stage === 'variants') &&
+      runHasSensorFailures(item.run);
+    forceJudgeBtn.style.display = showForceJudge ? '' : 'none';
+    forceJudgeBtn.disabled = busy || !showForceJudge;
     metadataBtn.disabled = busy || !(item.stage === 'approved' || item.stage === 'done');
     removeItemBtn.disabled = false;
     const nextAction = primaryActionLabel(item.stage);
@@ -1914,17 +1979,43 @@ function render(): void {
     runResultsHost.replaceChildren();
     if (!currentRun) return;
     const run = currentRun;
+    // The selected item drives stage-gated affordances (e.g. the per-variant
+    // force-judge override is only offered while a judge step is reachable).
+    const selectedItem = getSelectedItem(queueState);
+    const judgeStageActive =
+      selectedItem !== null &&
+      !isBusyStage(selectedItem.stage) &&
+      (selectedItem.stage === 'postprocessed' || selectedItem.stage === 'variants');
+    // Sheet-only stage (PR2b-1): Generate stores a raw sheet with no variants.
+    // PostProcess is what slices it into the scored candidates rendered below.
+    if (run.candidates.length === 0) {
+      runResultsHost.append(
+        el('div', {
+          text: `Run ${run.briefId}/${run.runId} — raw sheet stored, no variants yet.`,
+          style: { fontSize: '12px', color: '#93c5fd', marginBottom: '2px' },
+        }),
+        el('div', {
+          text: 'Click PostProcess to slice, background-fix, and resize the sheet into scored variants.',
+          style: { fontSize: '10px', color: '#94a3b8', marginBottom: '6px' },
+        }),
+      );
+      return;
+    }
     const ranked = rankRunCandidates(run.candidates);
+    const judged = ranked.some((c) => c.judge !== null);
     const passingCount = ranked.filter((c) => c.combinedPassed).length;
     const title = el('div', {
-      text: `Run ${run.briefId}/${run.runId} — ${passingCount}/${ranked.length} pass the judge`,
+      text: judged
+        ? `Run ${run.briefId}/${run.runId} — ${passingCount}/${ranked.length} pass the judge`
+        : `Run ${run.briefId}/${run.runId} — ${ranked.length} variant(s) post-processed, not yet judged`,
       style: { fontSize: '12px', color: '#93c5fd', marginBottom: '2px' },
     });
     const hint = el('div', {
-      text:
-        passingCount > 0
+      text: judged
+        ? passingCount > 0
           ? 'Approve a recommended variant, or override any other with “Approve anyway”.'
-          : 'The judge flagged every variant. Pick the best and use “Approve anyway” — the judge is advisory; you have the final say.',
+          : 'The judge flagged every variant. Pick the best and use “Approve anyway” — the judge is advisory; you have the final say.'
+        : 'Click Judge to rank these variants, or Approve one directly — judging is optional.',
       style: { fontSize: '10px', color: '#94a3b8', marginBottom: '6px' },
     });
     const grid = el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } });
@@ -1956,7 +2047,11 @@ function render(): void {
         margin: '0 auto 6px',
         background: '#334155',
       });
-      const statusLabel = candidate.combinedPassed ? 'PASS' : 'judge fail';
+      const statusLabel = candidate.combinedPassed
+        ? 'PASS'
+        : candidate.judge
+          ? 'judge fail'
+          : 'sensor fail';
       const header = el('div', {
         style: {
           display: 'flex',
@@ -1990,6 +2085,60 @@ function render(): void {
           judgeAxisChip('R', candidate.judge.readability),
         );
         card.append(chips);
+      }
+      // Per-sensor failure detail (PR2c): show WHICH sensors failed and why for
+      // this variant — not just the pass/fail tally — so an operator can decide
+      // whether to fix the brief, re-postprocess, or force-judge past the gate.
+      const sensors = sensorSummary(candidate);
+      if (sensors) {
+        const sensorBlock = el('div', { style: { marginBottom: '5px' } });
+        if (sensors.failed === 0) {
+          sensorBlock.append(
+            el('div', {
+              text: `✓ ${sensors.total} sensor${sensors.total === 1 ? '' : 's'} passed`,
+              style: { fontSize: '9px', color: '#86efac' },
+            }),
+          );
+        } else {
+          sensorBlock.append(
+            el('div', {
+              text: `⚠ ${sensors.failed}/${sensors.total} sensor${
+                sensors.total === 1 ? '' : 's'
+              } failed`,
+              style: {
+                fontSize: '9px',
+                fontWeight: '600',
+                color: '#fca5a5',
+                marginBottom: '2px',
+              },
+            }),
+          );
+          const list = el('div', {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1px',
+              maxHeight: '64px',
+              overflowY: 'auto',
+            },
+          });
+          for (const label of sensors.failingLabels) {
+            list.append(
+              el('div', {
+                text: label,
+                title: label,
+                style: {
+                  fontSize: '9px',
+                  lineHeight: '1.3',
+                  color: '#fecaca',
+                  wordBreak: 'break-word',
+                },
+              }),
+            );
+          }
+          sensorBlock.append(list);
+        }
+        card.append(sensorBlock);
       }
       const overrideNeeded = !candidate.combinedPassed;
       const approveBtn = el('button', {
@@ -2077,6 +2226,31 @@ function render(): void {
         }
       });
       card.append(approveBtn, debugBtn);
+      // Per-variant override: judge this one sensor-failed variant past the gate
+      // (only while a judge step is reachable). Calls the shared runJudge with a
+      // variantIndexes subset. The handler references runJudge lazily at click
+      // time, after it is initialised — never during this synchronous render.
+      if (judgeStageActive && candidateForceEligible(candidate)) {
+        const forceVariantBtn = el('button', {
+          text: 'Force judge variant',
+          title: 'Force the LLM judge on this sensor-failed variant (ignores the sensor gate).',
+          style: {
+            width: '100%',
+            marginTop: '6px',
+            padding: '4px 6px',
+            borderRadius: '6px',
+            border: '1px solid rgba(251,146,60,0.55)',
+            background: '#431407',
+            color: '#fed7aa',
+            cursor: 'pointer',
+            fontSize: '11px',
+          },
+        });
+        forceVariantBtn.addEventListener('click', () => {
+          void runJudge({ force: true, variantIndexes: [candidate.index] });
+        });
+        card.append(forceVariantBtn);
+      }
       grid.append(card);
     });
     runResultsHost.append(title, hint, grid);
@@ -3538,7 +3712,7 @@ function render(): void {
           ? `\nRejected:\n${result.rejected.map((entry) => `  - #${entry.index}: ${entry.reason}`).join('\n')}`
           : '';
       setWorkflowStatus(
-        `Synthesis completed: ${result.written.length} candidate(s) [type: ${result.type}]. Choose one, then Promote.${rejected}`,
+        `Synthesis completed: ${result.written.length} candidate(s) [type: ${result.type}]. Choose one, then Generate.${rejected}`,
         '#bef264',
       );
     } catch (error) {
@@ -3799,63 +3973,6 @@ function render(): void {
     })();
   }
 
-  promoteBtn.addEventListener('click', async () => {
-    const item = getSelectedItem(queueState);
-    if (!item || !item.chosenCandidatePath) {
-      setWorkflowStatus('Synthesize and choose a candidate brief first.', '#fca5a5');
-      return;
-    }
-    const type = item.resolvedType ?? (item.requestedType === 'auto' ? null : item.requestedType);
-    if (!type) {
-      setWorkflowStatus('Cannot promote: sprite type is unknown. Re-run Synthesize.', '#fca5a5');
-      return;
-    }
-    queueState = queueUpdateItem(queueState, item.id, { stage: 'promoting', lastError: null });
-    writeQueueState();
-    renderQueue();
-    setButtonBusy(promoteBtn, true, 'Promote brief', 'Promoting...');
-    try {
-      const result = await fetchJson<{ briefPath: string }>(
-        `${SIDECAR_BASE}/api/workflow/promote-brief`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sourceYamlPath: item.chosenCandidatePath,
-            type,
-            name: item.kebabName,
-            target: 'draft',
-          }),
-        },
-      );
-      queueState = queueUpdateItem(queueState, item.id, {
-        stage: 'promoted',
-        briefPath: result.briefPath,
-        generationRequestedAt: null,
-        lastError: null,
-      });
-      writeQueueState();
-      draftBriefKeys.add(briefKey(type, item.kebabName));
-      renderQueue();
-      renderWorkflowSelection();
-      setWorkflowStatus(`Promoted brief to ${result.briefPath}. Click Generate run.`, '#bef264');
-      writeWorkflowState();
-      void recompute();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      queueState = queueUpdateItem(queueState, item.id, {
-        stage: 'candidates',
-        lastError: message,
-      });
-      writeQueueState();
-      renderQueue();
-      renderWorkflowSelection();
-      setWorkflowStatus(`Promote failed: ${message}`, '#fca5a5');
-    } finally {
-      setButtonBusy(promoteBtn, false, 'Promote brief', 'Promoting...');
-    }
-  });
-
   const toWorkflowRunState = (
     briefId: string,
     runId: string,
@@ -3874,22 +3991,31 @@ function render(): void {
     })),
   });
 
-  const applyGeneratedRunToQueue = (
+  const applyRunToQueue = (
     itemId: string,
     briefId: string,
     runId: string,
     candidates: RawGenerateCandidate[],
+    opts: {
+      readonly stage: WorkflowStage;
+      readonly status: string;
+      readonly statusColor?: string;
+      readonly resetApproval?: boolean;
+    },
   ): void => {
     generationPollAttempts.delete(itemId);
     pendingGenerateAborts.delete(itemId);
-    queueState = queueUpdateItem(queueState, itemId, {
-      stage: 'variants',
+    const patch: Partial<QueueItem> = {
+      stage: opts.stage,
       run: toWorkflowRunState(briefId, runId, candidates),
       generationRequestedAt: null,
       generationStartedAt: null,
-      approvedAssetPath: null,
       lastError: null,
-    });
+    };
+    if (opts.resetApproval) {
+      patch.approvedAssetPath = null;
+    }
+    queueState = queueUpdateItem(queueState, itemId, patch);
     writeQueueState();
     debugTarget = candidates[0]
       ? {
@@ -3903,11 +4029,140 @@ function render(): void {
     renderQueue();
     renderWorkflowSelection();
     writeWorkflowState();
-    setWorkflowStatus(
-      `Generation completed for ${briefId} (${candidates.length} candidates). Approve a passing variant.`,
-      '#bef264',
-    );
+    setWorkflowStatus(opts.status, opts.statusColor ?? '#bef264');
   };
+
+  /**
+   * PostProcess the stored raw sheet: slice → background-fix → resize → store
+   * the final variants via PR2a's re-runnable endpoint. Idempotent and
+   * re-runnable on the SAME sheet without regenerating; a re-postprocess resets
+   * judge verdicts, so the item lands back on `postprocessed`.
+   */
+  postprocessBtn.addEventListener('click', async () => {
+    const item = getSelectedItem(queueState);
+    if (!item || !item.run) {
+      setWorkflowStatus('Generate a sheet before post-processing.', '#fca5a5');
+      return;
+    }
+    const { briefId, runId } = item.run;
+    const priorStage = item.stage;
+    queueState = queueUpdateItem(queueState, item.id, { stage: 'postprocessing', lastError: null });
+    writeQueueState();
+    renderQueue();
+    renderWorkflowSelection();
+    setButtonBusy(postprocessBtn, true, 'PostProcess', 'Post-processing...');
+    try {
+      const result = await fetchJson<{ summary?: { candidates?: RawGenerateCandidate[] } }>(
+        `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/postprocess`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+      const candidates = result.summary?.candidates ?? [];
+      applyRunToQueue(item.id, briefId, runId, candidates, {
+        stage: 'postprocessed',
+        status: `Post-processed ${candidates.length} variant(s) for ${briefId}. Click Judge to rank, or Approve a variant directly.`,
+        resetApproval: true,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      queueState = queueUpdateItem(queueState, item.id, { stage: priorStage, lastError: message });
+      writeQueueState();
+      renderQueue();
+      renderWorkflowSelection();
+      setWorkflowStatus(`PostProcess failed: ${message}`, '#fca5a5');
+    } finally {
+      setButtonBusy(postprocessBtn, false, 'PostProcess', 'Post-processing...');
+    }
+  });
+
+  /**
+   * Run the LLM judge over the post-processed variants via PR2a's re-runnable
+   * endpoint. Needs the stored `processed/NN.png`, so it is only reachable once
+   * PostProcess has populated variants; re-runnable from `variants`. Refused in
+   * CI (403) and 400 with no vision provider — both surface via the standard
+   * error path.
+   *
+   * `force` lifts the sensor gate so variants that failed a sensor are judged
+   * anyway (the override path); `variantIndexes` restricts the pass to a subset
+   * (the per-variant override). Shared by the Judge button, the run-level
+   * Force-judge override, and the per-card Force-judge-variant affordance.
+   */
+  const runJudge = async (
+    opts: { readonly force?: boolean; readonly variantIndexes?: readonly number[] } = {},
+  ): Promise<void> => {
+    const item = getSelectedItem(queueState);
+    if (!item || !item.run || item.run.candidates.length === 0) {
+      setWorkflowStatus('Post-process the sheet before judging.', '#fca5a5');
+      return;
+    }
+    const { briefId, runId } = item.run;
+    const priorStage = item.stage;
+    const forced = opts.force === true;
+    const subset =
+      opts.variantIndexes && opts.variantIndexes.length > 0 ? [...opts.variantIndexes] : undefined;
+    const body: { force?: boolean; variantIndexes?: number[] } = {};
+    if (forced) body.force = true;
+    if (subset) body.variantIndexes = subset;
+    queueState = queueUpdateItem(queueState, item.id, { stage: 'judging', lastError: null });
+    writeQueueState();
+    renderQueue();
+    renderWorkflowSelection();
+    const triggerBtn = forced ? forceJudgeBtn : judgeBtn;
+    const triggerLabel = forced ? 'Force judge' : 'Judge';
+    setButtonBusy(triggerBtn, true, triggerLabel, 'Judging...');
+    try {
+      const result = await fetchJson<{ summary?: { candidates?: RawGenerateCandidate[] } }>(
+        `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/judge`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+      );
+      const candidates = result.summary?.candidates ?? [];
+      const passing = candidates.filter((candidate) => candidate.combinedPassed).length;
+      const scope = subset ? ` variant${subset.length === 1 ? '' : 's'} ${subset.join(', ')}` : '';
+      const forcedNote = forced ? ' (forced past sensor gate)' : '';
+      applyRunToQueue(item.id, briefId, runId, candidates, {
+        stage: 'variants',
+        status: `Judged ${briefId}${scope}${forcedNote}: ${passing}/${candidates.length} pass. Pick the best variant and Approve.`,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      queueState = queueUpdateItem(queueState, item.id, { stage: priorStage, lastError: message });
+      writeQueueState();
+      renderQueue();
+      renderWorkflowSelection();
+      setWorkflowStatus(`Judge failed: ${message}`, '#fca5a5');
+    } finally {
+      setButtonBusy(triggerBtn, false, triggerLabel, 'Judging...');
+    }
+  };
+
+  judgeBtn.addEventListener('click', () => {
+    void runJudge();
+  });
+
+  // Run-level override: judge every sensor-failed variant past the gate. Gated
+  // by a confirm so it never fires by accident, and only shown (in
+  // renderWorkflowSelection) when the run actually has sensor-failed variants.
+  forceJudgeBtn.addEventListener('click', () => {
+    const item = getSelectedItem(queueState);
+    if (!item || !item.run || item.run.candidates.length === 0) {
+      setWorkflowStatus('Post-process the sheet before judging.', '#fca5a5');
+      return;
+    }
+    const ok = window.confirm(
+      'Force the LLM judge to run on variants that FAILED a sensor check? ' +
+        'This ignores the sensor gate — the judge stays advisory and you still ' +
+        'decide whether to approve.',
+    );
+    if (!ok) return;
+    void runJudge({ force: true });
+  });
 
   const beginQueuedRunPolling = (itemId: string): void => {
     if (pendingGenerationPolls.has(itemId)) {
@@ -3972,12 +4227,11 @@ function render(): void {
               const summary = (await fetchRunSummary(match.briefId, match.runId)) as {
                 candidates?: RawGenerateCandidate[];
               };
-              applyGeneratedRunToQueue(
-                itemId,
-                match.briefId,
-                match.runId,
-                summary.candidates ?? [],
-              );
+              applyRunToQueue(itemId, match.briefId, match.runId, summary.candidates ?? [], {
+                stage: 'sheet',
+                status: `Sheet generated for ${match.briefId}. Click PostProcess to slice, background-fix, and store variants.`,
+                resetApproval: true,
+              });
               return;
             }
           } catch (pollError) {
@@ -3989,7 +4243,7 @@ function render(): void {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         queueState = queueUpdateItem(queueState, itemId, {
-          stage: 'promoted',
+          stage: 'candidates',
           generationRequestedAt: null,
           generationStartedAt: null,
           lastError: message,
@@ -4008,8 +4262,12 @@ function render(): void {
 
   generateBtn.addEventListener('click', async () => {
     const item = getSelectedItem(queueState);
-    if (!item || !item.briefPath) {
-      setWorkflowStatus('Promote a brief first.', '#fca5a5');
+    if (!item) {
+      setWorkflowStatus('Select a queue item to generate.', '#fca5a5');
+      return;
+    }
+    if (!item.briefPath && !item.chosenCandidatePath) {
+      setWorkflowStatus('Choose a candidate brief first.', '#fca5a5');
       return;
     }
     generationPollAttempts.delete(item.id);
@@ -4026,12 +4284,43 @@ function render(): void {
     setButtonBusy(generateBtn, true, 'Generate run', 'Generating...');
     renderGenerationProgress();
     try {
+      // Fold the former standalone Promote step into Generate: when this item
+      // has no promoted draft brief yet, promote the chosen candidate first,
+      // then generate the raw sheet from it. Re-Choosing clears `briefPath`, so
+      // a re-roll re-promotes from the freshly chosen candidate.
+      let briefPath = item.briefPath;
+      if (!briefPath) {
+        const type =
+          item.resolvedType ?? (item.requestedType === 'auto' ? null : item.requestedType);
+        if (!type) {
+          throw new Error('Cannot generate: sprite type is unknown. Re-run Synthesize.');
+        }
+        const promoted = await fetchJson<{ briefPath: string }>(
+          `${SIDECAR_BASE}/api/workflow/promote-brief`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceYamlPath: item.chosenCandidatePath,
+              type,
+              name: item.kebabName,
+              target: 'draft',
+            }),
+            signal: abortController.signal,
+          },
+        );
+        briefPath = promoted.briefPath;
+        draftBriefKeys.add(briefKey(type, item.kebabName));
+        queueState = queueUpdateItem(queueState, item.id, { briefPath });
+        writeQueueState();
+        void recompute();
+      }
       const result = await fetchJson<
         WorkflowGenerateCompletedResponse | WorkflowGenerateQueuedResponse
       >(`${SIDECAR_BASE}/api/workflow/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ briefPath: item.briefPath }),
+        body: JSON.stringify({ briefPath }),
         signal: abortController.signal,
       });
       if (result.status === 'queued') {
@@ -4051,7 +4340,11 @@ function render(): void {
         );
         beginQueuedRunPolling(item.id);
       } else {
-        applyGeneratedRunToQueue(item.id, result.briefId, result.runId, result.summary.candidates);
+        applyRunToQueue(item.id, result.briefId, result.runId, result.summary.candidates, {
+          stage: 'sheet',
+          status: `Sheet generated for ${result.briefId}. Click PostProcess to slice, background-fix, and store variants.`,
+          resetApproval: true,
+        });
       }
     } catch (error) {
       // A user-initiated Cancel aborts the fetch; the Cancel handler has
@@ -4061,7 +4354,7 @@ function render(): void {
       }
       const message = error instanceof Error ? error.message : String(error);
       queueState = queueUpdateItem(queueState, item.id, {
-        stage: 'promoted',
+        stage: 'candidates',
         generationRequestedAt: null,
         generationStartedAt: null,
         lastError: message,
@@ -4096,11 +4389,11 @@ function render(): void {
       pendingGenerateAborts.delete(item.id);
     }
     generationPollAttempts.delete(item.id);
-    // Return to the stage the Generate button is reachable from: `variants`
-    // when a prior run already exists (a re-generate), otherwise `promoted`.
-    const resetStage: WorkflowStage = item.run ? 'variants' : 'promoted';
+    // Generate is reachable only from `candidates` (promotion folds into it), so
+    // a cancel always returns there — the chosen candidate/brief is unchanged
+    // and re-running PostProcess/Judge is the iteration path for an existing run.
     queueState = queueUpdateItem(queueState, item.id, {
-      stage: resetStage,
+      stage: 'candidates',
       generationRequestedAt: null,
       generationStartedAt: null,
       lastError: null,

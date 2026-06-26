@@ -1,7 +1,7 @@
 import { addComponent, entityExists, query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { DeathTimer, Position, Rotation, Sprite } from '../../src/core/components.js';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { DeathTimer, Enemy, Position, Rotation, Sprite } from '../../src/core/components.js';
+import { spawnBehaviorEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
   ensureBossBattleSpellReward,
@@ -38,6 +38,8 @@ import {
 } from '../../src/shared/quest-types.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.js';
+import { AI_TYPE } from '../../src/game/enemyAISystem.js';
+import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -1051,6 +1053,194 @@ describe('floor1Scenario', () => {
       battle.defeated = true;
 
       expect(getNpcQuestIndicatorState(world, 'spell-quest-giver')).toBe('actionable');
+    });
+  });
+
+  describe('enemy director — spawn density & engagement budget', () => {
+    const pack = floor1EnemyPack;
+
+    const countWithin = (
+      world: ReturnType<typeof createTestWorld>,
+      cx: number,
+      cy: number,
+      radiusFt: number,
+    ): number => {
+      const radiusSq = radiusFt * radiusFt;
+      let n = 0;
+      for (const eid of query(world.ecs, [Enemy, Position])) {
+        const dx = (world.stores.position.x[eid] ?? 0) - cx;
+        const dy = (world.stores.position.y[eid] ?? 0) - cy;
+        if (dx * dx + dy * dy <= radiusSq) n += 1;
+      }
+      return n;
+    };
+
+    const countInRoom = (
+      world: ReturnType<typeof createTestWorld>,
+      bounds: { x: number; y: number; width: number; height: number },
+    ): number => {
+      const map = world.floorMap!;
+      let n = 0;
+      for (const eid of query(world.ecs, [Enemy, Position])) {
+        const tile = map.worldToTile(
+          world.stores.position.x[eid] ?? 0,
+          world.stores.position.y[eid] ?? 0,
+        );
+        if (
+          tile.x >= bounds.x &&
+          tile.x < bounds.x + bounds.width &&
+          tile.y >= bounds.y &&
+          tile.y < bounds.y + bounds.height
+        ) {
+          n += 1;
+        }
+      }
+      return n;
+    };
+
+    const largestNormalRoom = (world: ReturnType<typeof createTestWorld>) =>
+      [...world.floorMap!.roomGraph.getRoomsByRole(RoomRole.NORMAL)].sort(
+        (a, b) => b.bounds.width * b.bounds.height - a.bounds.width * a.bounds.height,
+      )[0];
+
+    it('burst-spawns several enemies in a single tick (no more one-at-a-time trickle)', () => {
+      const world = createTestWorld({ seed: 99 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const before = query(world.ecs, [Enemy]).length;
+      world.elapsedMs = 1_000;
+      floor1EnemyDirectorSystem(world);
+      const burst = query(world.ecs, [Enemy]).length - before;
+
+      // The old director crept in one enemy per interval; the rework spawns a
+      // catch-up burst so a fast-moving player is never left with nothing nearby.
+      expect(burst).toBeGreaterThan(1);
+      expect(burst).toBeLessThanOrEqual(pack.maxSpawnsPerTick);
+    });
+
+    it('tops the engaging swarm up to the target while respecting the global cap', () => {
+      const world = createTestWorld({ seed: 99 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      const map = world.floorMap!;
+
+      // Stand in the roomiest combat room so the engagement ring is full of valid
+      // spawn tiles, then let the director ramp up.
+      const room = largestNormalRoom(world);
+      expect(room).toBeDefined();
+      const cx = room!.bounds.x + Math.floor(room!.bounds.width / 2);
+      const cy = room!.bounds.y + Math.floor(room!.bounds.height / 2);
+      const center = map.tileToWorld(cx, cy);
+      world.stores.position.x[player] = center.x;
+      world.stores.position.y[player] = center.y;
+
+      let t = 1_000;
+      for (let i = 0; i < 80; i += 1) {
+        t += pack.spawnIntervalMs;
+        world.elapsedMs = t;
+        floor1EnemyDirectorSystem(world);
+        // The global ceiling is never breached, however hard the director pushes.
+        expect(query(world.ecs, [Enemy]).length).toBeLessThanOrEqual(pack.enemyCap);
+      }
+
+      // A real swarm builds up — the global cap is far above the old hard cap of
+      // 14 — and the engagement ring around the player is kept populated for
+      // constant combat.
+      expect(pack.enemyCap).toBeGreaterThan(14);
+      expect(query(world.ecs, [Enemy]).length).toBeGreaterThanOrEqual(pack.engageTarget);
+      expect(countWithin(world, center.x, center.y, pack.engageRadiusFt)).toBeGreaterThanOrEqual(
+        pack.engageTarget,
+      );
+    });
+
+    it('recycles the furthest stragglers to spawn closer when at the global cap', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+
+      // Fill the field to the global cap, all parked well outside the engagement
+      // ring but inside the flat despawn distance (so the director won't simply
+      // delete them) — the player is momentarily surrounded by nothing close.
+      const farX = px + pack.engageRadiusFt + 37.5;
+      const existing = query(world.ecs, [Enemy]).length;
+      for (let i = existing; i < pack.enemyCap; i += 1) {
+        const eid = spawnBehaviorEnemy(world, farX, py, 20, AI_TYPE.CHASE, 0.5, 100, 0);
+        world.floor1!.enemyArchetypes.set(eid, 'rat');
+      }
+      expect(query(world.ecs, [Enemy]).length).toBe(pack.enemyCap);
+      const engagingBefore = countWithin(world, px, py, pack.engageRadiusFt);
+
+      world.elapsedMs = 10_000;
+      floor1EnemyDirectorSystem(world);
+
+      // Still capped, but the furthest stragglers were recycled into fresh spawns
+      // inside the engagement ring — the player has nearby threats again.
+      expect(query(world.ecs, [Enemy]).length).toBeLessThanOrEqual(pack.enemyCap);
+      expect(countWithin(world, px, py, pack.engageRadiusFt)).toBeGreaterThan(engagingBefore);
+    });
+
+    it('pre-populates a freshly entered combat room with a one-time wave', () => {
+      let firedSeed = -1;
+      for (const seed of [42, 7, 99, 123, 2024, 1, 2, 3, 5, 11, 13, 17, 31, 64]) {
+        const world = createTestWorld({ seed });
+        const player = spawnPlayer(world, 0, 0);
+        initializeFloor1Scenario(world, player);
+        selectFloor1StarterWeapon(world, 0);
+        const map = world.floorMap!;
+
+        // Largest NORMAL room maximises the interior available for a wave that
+        // must keep its distance from the player standing at the room centre.
+        const room = largestNormalRoom(world);
+        if (!room) continue;
+        const cx = room.bounds.x + Math.floor(room.bounds.width / 2);
+        const cy = room.bounds.y + Math.floor(room.bounds.height / 2);
+        if (map.roomGraph.getRoomAt(cx, cy) !== room.id) continue;
+
+        // Prime the burst timer in the (SPAWN) start room so the engagement
+        // top-up is gated off when we step into the combat room, isolating the
+        // pre-population spawn.
+        world.elapsedMs = 5_000;
+        floor1EnemyDirectorSystem(world);
+
+        const center = map.tileToWorld(cx, cy);
+        world.stores.position.x[player] = center.x;
+        world.stores.position.y[player] = center.y;
+
+        const before = countInRoom(world, room.bounds);
+        if (before !== 0) continue; // stray ambient already inside; pick a cleaner seed
+        floor1EnemyDirectorSystem(world);
+        const delta = countInRoom(world, room.bounds) - before;
+        if (delta === 0) continue; // wave roll missed this seed; try the next
+
+        expect(delta).toBeGreaterThanOrEqual(pack.roomWaveMin);
+        expect(delta).toBeLessThanOrEqual(pack.roomWaveMax);
+
+        // The wave reads as "already inside" — it keeps clear of the doorway the
+        // player just walked through rather than materialising on top of them.
+        for (const eid of query(world.ecs, [Enemy, Position])) {
+          const ex = world.stores.position.x[eid] ?? 0;
+          const ey = world.stores.position.y[eid] ?? 0;
+          const dx = ex - center.x;
+          const dy = ey - center.y;
+          expect(dx * dx + dy * dy).toBeGreaterThanOrEqual(12 * 12);
+        }
+
+        // Re-ticking the same room never re-rolls another wave.
+        const afterFirst = countInRoom(world, room.bounds);
+        floor1EnemyDirectorSystem(world);
+        expect(countInRoom(world, room.bounds)).toBe(afterFirst);
+
+        firedSeed = seed;
+        break;
+      }
+      expect(firedSeed).not.toBe(-1);
     });
   });
 });

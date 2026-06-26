@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItem,
+  candidateForceEligible,
   clearQueue,
   createEmptyQueue,
   deserializeQueue,
   describeGenerationProgress,
+  failingSensors,
   formatGenerationElapsed,
+  formatSensorResult,
   getItem,
   getSelectedItem,
   primaryActionLabel,
   removeItem,
+  runHasSensorFailures,
   selectItem,
+  sensorSummary,
   serializeQueue,
   slugify,
   stageActiveStep,
@@ -18,6 +23,9 @@ import {
   updateItem,
   GENERATION_QUEUED_STALL_HINT_MS,
   GENERATION_SYNC_STALL_HINT_MS,
+  type QueueRun,
+  type QueueRunCandidate,
+  type QueueSensorResult,
   type QueueState,
 } from '../../src/devtools/sprite-workflow-queue.js';
 
@@ -81,8 +89,8 @@ describe('addItem', () => {
 describe('updateItem / getItem / getSelectedItem', () => {
   it('patches a single item by id', () => {
     const state = addItem(createEmptyQueue(), 'Purple Potion Bottle');
-    const next = updateItem(state, 'item-1', { stage: 'promoted', briefPath: 'briefs/x.yaml' });
-    expect(getItem(next, 'item-1')!.stage).toBe('promoted');
+    const next = updateItem(state, 'item-1', { stage: 'sheet', briefPath: 'briefs/x.yaml' });
+    expect(getItem(next, 'item-1')!.stage).toBe('sheet');
     expect(getItem(next, 'item-1')!.briefPath).toBe('briefs/x.yaml');
   });
 
@@ -134,19 +142,48 @@ describe('selectItem / clearQueue', () => {
 describe('stage helpers', () => {
   it('maps stages to the active stepper milestone', () => {
     expect(stageActiveStep('draft')).toBe(0);
+    expect(stageActiveStep('synthesizing')).toBe(0);
     expect(stageActiveStep('candidates')).toBe(1);
-    expect(stageActiveStep('promoted')).toBe(3);
-    expect(stageActiveStep('variants')).toBe(4);
-    expect(stageActiveStep('approved')).toBe(5);
-    expect(stageActiveStep('done')).toBe(6);
+    expect(stageActiveStep('generating')).toBe(2);
+    expect(stageActiveStep('sheet')).toBe(3);
+    expect(stageActiveStep('postprocessing')).toBe(3);
+    expect(stageActiveStep('postprocessed')).toBe(4);
+    expect(stageActiveStep('judging')).toBe(4);
+    expect(stageActiveStep('variants')).toBe(5);
+    expect(stageActiveStep('approved')).toBe(6);
+    expect(stageActiveStep('tagging')).toBe(6);
+    expect(stageActiveStep('done')).toBe(7);
   });
 
-  it('marks done steps before the active one and flags busy stages', () => {
+  it('marks done steps before the active one and flags the generating busy stage', () => {
     const cells = stepperFor('generating');
-    expect(cells[0]!.status).toBe('done');
-    expect(cells[3]!.status).toBe('active');
+    expect(cells[0]!.status).toBe('done'); // Synthesize
+    expect(cells[1]!.status).toBe('done'); // Choose
+    expect(cells[2]!.status).toBe('active'); // Generate
+    expect(cells[2]!.busy).toBe(true);
+    expect(cells[3]!.status).toBe('todo'); // PostProcess
+  });
+
+  it('flags the postprocessing busy stage on the PostProcess step', () => {
+    const cells = stepperFor('postprocessing');
+    expect(cells[2]!.status).toBe('done'); // Generate
+    expect(cells[3]!.status).toBe('active'); // PostProcess
     expect(cells[3]!.busy).toBe(true);
-    expect(cells[4]!.status).toBe('todo');
+    expect(cells[4]!.status).toBe('todo'); // Judge
+  });
+
+  it('flags the judging busy stage on the Judge step', () => {
+    const cells = stepperFor('judging');
+    expect(cells[3]!.status).toBe('done'); // PostProcess
+    expect(cells[4]!.status).toBe('active'); // Judge
+    expect(cells[4]!.busy).toBe(true);
+    expect(cells[5]!.status).toBe('todo'); // Approve
+  });
+
+  it('marks the sheet stage active on PostProcess without busy', () => {
+    const cells = stepperFor('sheet');
+    expect(cells[3]!.status).toBe('active');
+    expect(cells[3]!.busy).toBe(false);
   });
 
   it('marks every step done at the terminal stage', () => {
@@ -155,9 +192,13 @@ describe('stage helpers', () => {
 
   it('exposes a contextual primary action label', () => {
     expect(primaryActionLabel('draft')).toBe('Synthesize');
-    expect(primaryActionLabel('promoted')).toBe('Generate run');
+    expect(primaryActionLabel('candidates')).toBe('Generate run');
+    expect(primaryActionLabel('sheet')).toBe('PostProcess');
+    expect(primaryActionLabel('postprocessed')).toBe('Judge');
     expect(primaryActionLabel('approved')).toBe('Tag (generate metadata)');
     expect(primaryActionLabel('synthesizing')).toBeNull();
+    expect(primaryActionLabel('generating')).toBeNull();
+    expect(primaryActionLabel('variants')).toBeNull();
     expect(primaryActionLabel('done')).toBeNull();
   });
 });
@@ -437,5 +478,149 @@ describe('describeGenerationProgress', () => {
     });
     expect(before).not.toContain('Cancel and retry');
     expect(after).toContain('Cancel and retry');
+  });
+});
+
+function makeSensor(
+  sensor: string,
+  ok: boolean,
+  reason: string | null = null,
+  pixelCount: number | null = null,
+): QueueSensorResult {
+  return { sensor, ok, reason, pixelCount };
+}
+
+function makeCandidate(
+  index: number,
+  combinedPassed: boolean,
+  sensors: QueueSensorResult[],
+): QueueRunCandidate {
+  return {
+    index,
+    score: 0,
+    outOf: 0,
+    passed: sensors.every((sensor) => sensor.ok),
+    combinedPassed,
+    judge: null,
+    sensors,
+  };
+}
+
+describe('failingSensors', () => {
+  it('returns only the failing sensors, preserving source order', () => {
+    const candidate = makeCandidate(0, false, [
+      makeSensor('silhouette', true),
+      makeSensor('transparency', false, 'bg-not-transparent', 1234),
+      makeSensor('edge', false, 'edge-bleed'),
+    ]);
+    expect(failingSensors(candidate).map((sensor) => sensor.sensor)).toEqual([
+      'transparency',
+      'edge',
+    ]);
+  });
+
+  it('returns an empty array when every sensor passed', () => {
+    const candidate = makeCandidate(0, true, [makeSensor('silhouette', true)]);
+    expect(failingSensors(candidate)).toEqual([]);
+  });
+});
+
+describe('formatSensorResult', () => {
+  it('labels a passing sensor', () => {
+    expect(formatSensorResult(makeSensor('silhouette', true))).toBe('silhouette: passed');
+  });
+
+  it('includes the reason and the pixelCount magnitude hint when failed', () => {
+    expect(formatSensorResult(makeSensor('transparency', false, 'bg-not-transparent', 1234))).toBe(
+      'transparency: bg-not-transparent (1234px)',
+    );
+  });
+
+  it('omits the pixel hint when pixelCount is null', () => {
+    expect(formatSensorResult(makeSensor('edge', false, 'edge-bleed'))).toBe('edge: edge-bleed');
+  });
+
+  it('falls back to "failed" when a failed sensor has no reason', () => {
+    expect(formatSensorResult(makeSensor('edge', false, null, 42))).toBe('edge: failed (42px)');
+  });
+});
+
+describe('sensorSummary', () => {
+  it('returns null when the candidate carries no sensor detail', () => {
+    expect(sensorSummary(makeCandidate(0, true, []))).toBeNull();
+  });
+
+  it('reports zero failures when all sensors pass', () => {
+    const summary = sensorSummary(
+      makeCandidate(0, true, [makeSensor('silhouette', true), makeSensor('edge', true)]),
+    );
+    expect(summary).toEqual({ total: 2, failed: 0, failingLabels: [] });
+  });
+
+  it('counts failures and renders their labels in source order', () => {
+    const summary = sensorSummary(
+      makeCandidate(0, false, [
+        makeSensor('silhouette', true),
+        makeSensor('transparency', false, 'bg-not-transparent', 1234),
+        makeSensor('edge', false, 'edge-bleed'),
+      ]),
+    );
+    expect(summary).toEqual({
+      total: 3,
+      failed: 2,
+      failingLabels: ['transparency: bg-not-transparent (1234px)', 'edge: edge-bleed'],
+    });
+  });
+});
+
+describe('candidateForceEligible', () => {
+  it('is true for a non-combined-pass candidate with a failing sensor', () => {
+    expect(
+      candidateForceEligible(
+        makeCandidate(0, false, [makeSensor('transparency', false, 'bg-not-transparent')]),
+      ),
+    ).toBe(true);
+  });
+
+  it('is false when the candidate already combined-passed', () => {
+    expect(
+      candidateForceEligible(
+        makeCandidate(0, true, [makeSensor('transparency', false, 'bg-not-transparent')]),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false when no sensor failed (a non-sensor gate)', () => {
+    expect(candidateForceEligible(makeCandidate(0, false, [makeSensor('edge', true)]))).toBe(false);
+  });
+
+  it('is false when there is no sensor detail at all', () => {
+    expect(candidateForceEligible(makeCandidate(0, false, []))).toBe(false);
+  });
+});
+
+describe('runHasSensorFailures', () => {
+  function makeRun(candidates: QueueRunCandidate[]): QueueRun {
+    return { briefId: 'brief', runId: 'run', candidates };
+  }
+
+  it('is true when any candidate is force-eligible', () => {
+    const run = makeRun([
+      makeCandidate(0, true, [makeSensor('silhouette', true)]),
+      makeCandidate(1, false, [makeSensor('transparency', false, 'bg-not-transparent')]),
+    ]);
+    expect(runHasSensorFailures(run)).toBe(true);
+  });
+
+  it('is false when every candidate passes its sensors', () => {
+    const run = makeRun([
+      makeCandidate(0, true, [makeSensor('silhouette', true)]),
+      makeCandidate(1, true, [makeSensor('edge', true)]),
+    ]);
+    expect(runHasSensorFailures(run)).toBe(false);
+  });
+
+  it('is false for a run with no candidates', () => {
+    expect(runHasSensorFailures(makeRun([]))).toBe(false);
   });
 });

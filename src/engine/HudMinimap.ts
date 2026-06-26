@@ -12,7 +12,7 @@ import {
   type MinimapZoomLimits,
 } from './minimap-view-state.js';
 import { PIXEL_UI } from './pixel-ui.js';
-import { getUiScale, type ScreenBounds } from './ui-scale.js';
+import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
@@ -932,6 +932,7 @@ export function createHudMinimap(scene: Phaser.Scene): {
   }
 
   function destroy(): void {
+    detachCrispText();
     window.removeEventListener('keydown', handleKeyDown);
     scene.scale.off('resize', updateLayout);
     scene.input.off('wheel', handleWheel);
@@ -985,6 +986,14 @@ export function createHudMinimap(scene: Phaser.Scene): {
 
   updateLayout();
   closeOverlay();
+
+  const detachCrispText = applyCrispText(scene, [
+    hudCompass,
+    hudMapLabel,
+    panelTitle,
+    panelHint,
+    closeLabel,
+  ]);
 
   return {
     sync,

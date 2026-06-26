@@ -37,6 +37,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'drop-lab': '/src/labs/drop-lab/index.ts',
   'visual-snapshot-lab': '/src/labs/visual-snapshot-lab/index.ts',
   'gore-lab': '/src/labs/gore-lab/index.ts',
+  'juice-lab': '/src/labs/juice-lab/index.ts',
   'fov-lab': '/src/labs/fov-lab/index.ts',
   'door-lab': '/src/labs/door-lab/index.ts',
   'door-lock-lab': '/src/labs/door-lock-lab/index.ts',
@@ -59,6 +60,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'sprite-tint-lab': '/src/labs/sprite-tint-lab/index.ts',
   'ui-probe-lab': '/src/labs/ui-probe-lab/index.ts',
   'set-piece-lab': '/src/labs/set-piece-lab/index.ts',
+  'spawner-lab': '/src/labs/spawner-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {
@@ -111,6 +113,7 @@ const CATEGORY_HINTS: Readonly<Record<string, LabCategory>> = {
   hud: 'Meta',
   ux: 'Meta',
   death: 'Entities',
+  spawner: 'Entities',
 };
 
 function inferCategory(labId: string): LabCategory | undefined {

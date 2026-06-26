@@ -1,7 +1,7 @@
 /**
- * Seed a complete, on-disk sprite run via the REAL `generateOne` pipeline so
+ * Seed a complete, on-disk sprite run via the REAL `runFull` pipeline so
  * the re-run tests (`rerun.ts`, the sidecar re-run endpoints) operate on the
- * exact artifacts a fresh generation produces — no hand-rolled summary stubs.
+ * exact artifacts a fresh full run produces — no hand-rolled summary stubs.
  *
  * The brief/sheet recipe mirrors `tests/integration/judge-pipeline.test.ts`:
  * a 2x2 sheet of 1024x1024 fixtures that content-aware slicing (ADR 0018)
@@ -12,7 +12,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { PNG } from 'pngjs';
-import { generateOne } from '../../../scripts/sprites/generate-one.js';
+import { runFull } from '../../../scripts/sprites/run-full.js';
 import { loadBrief, type LoadedBrief } from '../../../scripts/sprites/load-brief.js';
 import type { Brief, PaletteColors } from '../../../scripts/sprites/brief-schema.js';
 import type {
@@ -177,7 +177,7 @@ export interface SeededRun {
 
 /**
  * Materialise a repo (palette, style guide, brief, references) and run
- * `generateOne` into a `LocalRunStore`, returning everything a re-run needs.
+ * `runFull` into a `LocalRunStore`, returning everything a re-run needs.
  */
 export async function seedRun(options: SeedRunOptions): Promise<SeededRun> {
   const root = options.repoRoot;
@@ -198,7 +198,7 @@ export async function seedRun(options: SeedRunOptions): Promise<SeededRun> {
   const sheet = tileVariantsIntoSheet(variants);
   const store = new LocalRunStore(runsDir);
 
-  const result = await generateOne({
+  const result = await runFull({
     briefPath,
     preloaded,
     provider: makeMockProvider(sheet),

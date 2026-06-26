@@ -101,7 +101,6 @@ function baseDeps(over: Partial<WorkerControllerDeps> = {}): WorkerControllerDep
     env: {},
     createImageProvider: () => stubImageProvider,
     createTextProvider: () => null,
-    createVisionProvider: () => null,
     now: () => FIXED_NOW,
     ...over,
   };

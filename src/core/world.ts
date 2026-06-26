@@ -9,6 +9,7 @@ import { createWorld as createBitecsWorld, observe, onSet } from 'bitecs';
 import { SeededRandom } from '../shared/random.js';
 import type { InventoryBag } from '../shared/inventory.js';
 import type { CombatEvent } from '../shared/combat-events.js';
+import type { VfxEvent } from '../shared/vfx-events.js';
 import type { AbilityState, AbilityTriggerEvent } from '../shared/abilities.js';
 import { createLogger } from '../shared/logger.js';
 import type { DoorLockConfig } from './door-lock.js';
@@ -23,6 +24,7 @@ import {
   XpGem,
   Sprite,
   EnemyBehavior,
+  Spawner,
   BroadcastScore,
   DroppedItem,
   Weapon,
@@ -104,6 +106,11 @@ export interface GameWorld {
   goalFlags: Map<string, boolean>;
   /** Combat events emitted this frame — consumed and drained by the render layer. */
   combatEvents: CombatEvent[];
+  /**
+   * Generic cosmetic VFX effect-requests emitted this frame — drained by the
+   * engine-layer EffectsVfx renderer. Cosmetic-only; never read by game logic.
+   */
+  vfxEvents: VfxEvent[];
   /** Player's gold (currency) — separate from BroadcastScore (reality show rating). */
   playerGold: number;
   /** Procedurally generated floor map — null until floor is loaded. */
@@ -200,6 +207,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, XpGem, stores.xpGem);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
+  wireStore(ecs, Spawner, stores.spawner);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
   wireStore(ecs, DroppedItem, stores.droppedItem);
   wireStore(ecs, Weapon, stores.weapon);
@@ -249,6 +257,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     doorLockConfigs: new Map(),
     goalFlags: new Map(),
     combatEvents: [],
+    vfxEvents: [],
     playerGold: 0,
     floorMap: null,
     floor1: null,

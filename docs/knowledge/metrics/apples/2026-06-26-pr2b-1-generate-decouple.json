@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-26",
+  "session": "pr2b-1-generate-decouple",
+  "estimated_apples": 4,
+  "actual_apples": 4,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.8,
+  "note": "Splitting generateOne into a sheet-only wrapper + shared generateSheetCore, a new runFull one-shot orchestrator reusing PR2a's run-pipeline.ts, sidecar/worker rewire with vision-plumbing removal, a rerun variantCount guard, ~9 reworked test files, and ADR 0024 — landed exactly at a Large. The seam PR2a built (run-pipeline.ts) kept it from being a 5."
+}

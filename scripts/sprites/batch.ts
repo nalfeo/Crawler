@@ -1,7 +1,7 @@
 /**
  * Batch orchestrator for the sprite pipeline (Phase 3 build 6).
  *
- * Wraps `generateOne` so a directory of briefs can be processed in one
+ * Wraps `runFull` so a directory of briefs can be processed in one
  * command, with a single cross-run `JudgeBudget` + `JudgeCache` instance
  * threaded through every brief. This is the build that makes the cost
  * ceiling actually do work: without batch, the budget is a per-process
@@ -9,7 +9,7 @@
  *
  * Design rules:
  *
- *   1. Composable, not coupled. This module imports `generateOne` and
+ *   1. Composable, not coupled. This module imports `runFull` and
  *      treats it as a black box. It does NOT modify the per-brief
  *      pipeline. PR #52 (gallery skeleton) is editing `generate-one.ts`
  *      and `run-artifacts.ts` concurrently; the batch layer must avoid
@@ -35,26 +35,25 @@
  *   5. Budget gate is pre-flight, per BRIEF. Once `wouldExceed()`
  *      returns true we stop starting new briefs — but a brief already
  *      in flight runs to completion. The per-variant budget gate
- *      inside `generateOne` handles mid-brief exhaustion; this layer
+ *      inside `runFull` handles mid-brief exhaustion; this layer
  *      only decides whether to even start.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { generateOne } from './generate-one.js';
-import type { GenerateOneOptions, GenerateOneResult } from './generate-one.js';
+import { runFull } from './run-full.js';
+import type { RunFullOptions, RunFullResult } from './run-full.js';
 import type { JudgeBudget } from './cost-tracker.js';
 import type { JudgeCache } from './judge-cache.js';
 import type { RunSummary } from './run-artifacts.js';
 
 /**
- * Options the batch passes through to each `generateOne` call. We deliberately
+ * Options the batch passes through to each `runFull` call. We deliberately
  * accept the strict subset that varies across briefs/tests, so the batch type
- * doesn't drift if `GenerateOneOptions` grows new fields the batch shouldn't
- * touch.
+ * doesn't drift if `RunFullOptions` grows new fields the batch shouldn't touch.
  */
-export type GenerateOneFactory = (options: GenerateOneOptions) => Promise<GenerateOneResult>;
+export type RunFullFactory = (options: RunFullOptions) => Promise<RunFullResult>;
 
 export interface BatchOptions {
   readonly briefPaths: ReadonlyArray<string>;
@@ -65,9 +64,9 @@ export interface BatchOptions {
   readonly judgeBudget: JudgeBudget | null;
   readonly judgeCache: JudgeCache | null;
   /** Pass-through generate-one wiring. */
-  readonly provider: GenerateOneOptions['provider'];
-  readonly textProvider?: GenerateOneOptions['textProvider'];
-  readonly visionProvider?: GenerateOneOptions['visionProvider'];
+  readonly provider: RunFullOptions['provider'];
+  readonly textProvider?: RunFullOptions['textProvider'];
+  readonly visionProvider?: RunFullOptions['visionProvider'];
   /** Reserved for future parallel execution. Currently must be 1. */
   readonly concurrency?: number;
   /** Clock injection for deterministic batch IDs + timestamps. */
@@ -79,11 +78,11 @@ export interface BatchOptions {
    */
   readonly onBriefComplete?: (result: BatchBriefResult, index: number, total: number) => void;
   /**
-   * Test seam: substitute the real `generateOne` for a stub. Defaults to
-   * the production import. Lets the batch unit tests assert
-   * non-invocation without spinning up a full mock provider stack.
+   * Test seam: substitute the real `runFull` for a stub. Defaults to the
+   * production import. Lets the batch unit tests assert non-invocation
+   * without spinning up a full mock provider stack.
    */
-  readonly generate?: GenerateOneFactory;
+  readonly generate?: RunFullFactory;
   /**
    * Where to write `batch-summary.json`. Defaults to
    * `<outputRoot>/runs/_batch/<batchId>/batch-summary.json`. When null,
@@ -99,7 +98,7 @@ export interface BatchBudgetSnapshot {
   readonly remainingUsd: number;
   /** Calls actually issued by this batch (sums across briefs). */
   readonly callsThisRun: number;
-  /** Per-variant skips inside `generateOne` due to over-budget. */
+  /** Per-variant skips inside `runFull` due to over-budget. */
   readonly callsSkipped: number;
 }
 
@@ -204,7 +203,7 @@ export async function runBatch(options: BatchOptions): Promise<BatchSummary> {
             summaryPath: path.join(options.batchDir, 'batch-summary.json'),
           }
         : batchPaths(outputRoot, batchId);
-  const generate = options.generate ?? generateOne;
+  const generate = options.generate ?? runFull;
 
   const briefs: BatchBriefResult[] = [];
   const writeSnapshot = (finishedAt: string | null): BatchSummary => {
@@ -250,7 +249,7 @@ export async function runBatch(options: BatchOptions): Promise<BatchSummary> {
     }
 
     try {
-      const generateOptions: GenerateOneOptions = {
+      const generateOptions: RunFullOptions = {
         briefPath,
         provider: options.provider,
         textProvider: options.textProvider ?? null,

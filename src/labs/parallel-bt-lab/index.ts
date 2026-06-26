@@ -382,13 +382,19 @@ registerLab('parallel-bt', {
 
       // Track B values panel
       const pullActive = Math.hypot(opp.pullX, opp.pullY) > 0.01;
+      const farmActive = Math.hypot(opp.farmX, opp.farmY) > 0.01;
       const dodgeActive = Math.hypot(opp.dodgeX, opp.dodgeY) > 0.01;
       trackBEl.innerHTML = `
         <div style="font-weight:bold;margin-bottom:6px;color:#ab47bc;">Track B: Opportunistic</div>
         <div style="margin-bottom:3px;">
-          <span style="color:${pullActive ? '#26c6da' : '#555'};">● Collect/Farm pull</span>
+          <span style="color:${pullActive ? '#26c6da' : '#555'};">● Collect (loot) detour</span>
           <span style="color:#888;margin-left:6px;font-size:10px;">(${opp.pullX.toFixed(2)}, ${opp.pullY.toFixed(2)})</span>
           ${pullActive ? '<span style="color:#26c6da;margin-left:6px;font-size:10px;">ACTIVE</span>' : ''}
+        </div>
+        <div style="margin-bottom:3px;">
+          <span style="color:${farmActive ? '#9ccc65' : '#555'};">● Farm (enemy) pull</span>
+          <span style="color:#888;margin-left:6px;font-size:10px;">(${opp.farmX.toFixed(2)}, ${opp.farmY.toFixed(2)})</span>
+          ${farmActive ? '<span style="color:#9ccc65;margin-left:6px;font-size:10px;">ACTIVE</span>' : '<span style="color:#555;margin-left:6px;font-size:10px;">dormant</span>'}
         </div>
         <div>
           <span style="color:${dodgeActive ? '#ff9800' : '#555'};">● Dodge</span>

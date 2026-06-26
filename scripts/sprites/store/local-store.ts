@@ -14,12 +14,16 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
 import path from 'node:path';
 import { StoreNotFoundError, type RunStore } from './types.js';
+
+/** Monotonic suffix so concurrent `put`s in the same ms get distinct temp names. */
+let tmpCounter = 0;
 
 export class LocalRunStore implements RunStore {
   readonly backend = 'local' as const;
@@ -33,7 +37,26 @@ export class LocalRunStore implements RunStore {
   async put(key: string, data: Buffer): Promise<void> {
     const abs = this.abs(key);
     mkdirSync(path.dirname(abs), { recursive: true });
-    writeFileSync(abs, data);
+    // Atomic write: stage to a sibling temp file then rename into place. A
+    // crash (or a concurrent re-run reading the same key) therefore never sees
+    // a half-written artifact — readers observe either the old bytes or the
+    // complete new bytes. `renameSync` is atomic on the same filesystem and
+    // overwrites an existing destination cross-platform under Node. The temp
+    // name is per-pid + monotonic so concurrent writers never collide; a
+    // failure between write and rename leaves only an orphan `.tmp-*` file,
+    // never a torn target.
+    const tmp = `${abs}.tmp-${process.pid}-${Date.now()}-${(tmpCounter = (tmpCounter + 1) >>> 0)}`;
+    try {
+      writeFileSync(tmp, data);
+      renameSync(tmp, abs);
+    } catch (err) {
+      try {
+        rmSync(tmp, { force: true });
+      } catch {
+        // Best-effort cleanup; surface the original write/rename error.
+      }
+      throw err;
+    }
   }
 
   async get(key: string): Promise<Buffer> {

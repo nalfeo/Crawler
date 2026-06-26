@@ -16,6 +16,7 @@ import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, PIXEL_ICON, createBeveledPanel, addPixelIcon } from './pixel-ui.js';
+import { applyCrispText } from './ui-scale.js';
 
 const PAD = 7;
 const ICON_SIZE = 16;
@@ -83,6 +84,7 @@ export function createHudLootCounter(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.overlay);
   parent?.add([goldText, junkText]);
+  const detachCrispText = applyCrispText(scene, [goldText, junkText]);
 
   let lastGold = -1;
   let lastJunk = -1;
@@ -116,6 +118,7 @@ export function createHudLootCounter(
   }
 
   function destroy(): void {
+    detachCrispText();
     scene.tweens.killTweensOf(goldIcon);
     scene.tweens.killTweensOf(junkIcon);
     panel.destroy();

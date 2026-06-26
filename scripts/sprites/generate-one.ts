@@ -1,60 +1,53 @@
 /**
- * generateOne — the sprite-generation orchestrator.
+ * generateOne — the GENERATE stage of the sprite pipeline (Option B, ADR 0024).
  *
- * Single entry point used by both the CLI and tests. Given a brief path,
- * a provider, and some IO hooks, runs the pipeline end-to-end:
+ * Produces and stores the raw multi-variant sheet ONLY. It does NOT
+ * post-process, score, or judge — those are explicit, re-runnable stages
+ * (`repostprocessRun` / `rejudgeRun`, ADR 0023) the operator drives over the
+ * stored sheet. Flow:
  *
  *   1. Load + validate brief, resolve palette, load reference PNGs
- *   2. Load style guide and build the sheet prompt
- *   3. Call provider -> raw multi-variant sheet PNG
- *   4. Slice into variants
- *   5. Post-process each variant
- *   6. Score each variant via the universal + family sensors
- *   7. Write all artifacts under generated/runs/<brief>/<run-id>/
- *   8. Return a ranked summary
+ *   2. Expand variations + build the sheet prompt
+ *   3. Call provider -> raw multi-variant sheet PNG (bounded retries)
+ *   4. Slice the sheet PURELY as a quality gate: assert it yields exactly
+ *      `variantCount(brief)` cells, retrying generation on a bad grid. The
+ *      sliced cells are NOT post-processed here — slicing is cheap and a
+ *      single content-aware path (ADR 0018), so the gate stays in Generate
+ *      while the heavy per-variant work moves to PostProcess.
+ *   5. Store the raw sheet(s) + a minimal sheet-only `summary.json`
+ *      (no candidates / diversity / chosen / judge fields).
+ *
+ * The full one-shot pipeline the CLI (`sprites:run`) and batch tools use lives
+ * in `run-full.ts` (`runFull`); it reuses `generateSheetCore` here plus the
+ * shared `run-pipeline.ts` helpers so a one-shot run and a
+ * generate→postprocess→judge sequence produce byte-identical artifacts.
  *
  * Retry policy (bounded, 1-3 attempts):
  *   - On `bad-grid`, `non-png`: re-issue the same prompt up to maxAttempts
  *     because models occasionally drop a cell or emit a junk byte stream
  *     and the next attempt usually succeeds.
  *   - On `auth`: fail immediately. A wrong key won't fix itself.
- *   - On `network`, `rate-limit`, `provider-error`: fail. The CLI surfaces
- *     the kind so the human can decide whether to re-run.
- *   - On a "no variant passed" outcome: do NOT auto-retry. The artifacts
- *     are still useful (the human reviews the sheet to see what went wrong);
- *     the orchestrator returns the summary with `passed = []` and the CLI
- *     prints a clear "no candidate passed all sensors" line and exits
- *     non-zero. Re-running with a tweaked prompt is a human decision.
+ *   - On `network`, `rate-limit`, `provider-error`: fail and surface the kind.
  *
  * Everything here is impure (network + filesystem). The pure pieces it
- * composes (`loadBrief`, `buildSheetPrompt`, `sliceSheet`, `postprocess`,
- * `scoreCandidate`) all live in their own modules with their own unit tests.
+ * composes (`loadBrief`, `buildSheetPrompt`, `sliceSheetFromBrief`) live in
+ * their own modules with their own unit tests.
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { variantCount } from './brief-schema.js';
-import type { Brief } from './brief-schema.js';
+import type { Brief, PaletteColors } from './brief-schema.js';
 import { buildSheetPrompt, loadStyleGuide } from './build-prompt.js';
-import type { JudgeBudget } from './cost-tracker.js';
-import { computeDiversity } from './diversity.js';
 import { expandVariations } from './expand-variations.js';
-import type { JudgeCache } from './judge-cache.js';
 import { loadBrief, type LoadedBrief } from './load-brief.js';
-import {
-  assembleSummaryEntries,
-  postprocessScoreAndStoreVariant,
-  type ProcessedVariant,
-  runJudgePass,
-} from './run-pipeline.js';
 import { sliceSheetFromBrief } from './slice-sheet.js';
 import type { ImageProvider, ProviderErrorKind } from './provider/types.js';
 import { ProviderError } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
-import type { VisionProvider } from './provider/vision-types.js';
 import { LocalRunStore } from './store/local-store.js';
 import type { RunStore } from './store/types.js';
-import { makeRunId, pickChosen, rankCandidates, type RunSummary } from './run-artifacts.js';
+import { makeRunId, type RunSummary } from './run-artifacts.js';
 
 export interface GenerateOneOptions {
   readonly briefPath: string;
@@ -64,38 +57,12 @@ export interface GenerateOneOptions {
    * the orchestrator skips the expansion pass (the brief's seed
    * `variations` flow through untouched) and emits a single warning iff
    * the brief actually wanted more variations than the seed provides.
+   *
+   * Variation expansion is part of GENERATE (the prompt embeds the final
+   * variations), so the text provider stays here — unlike the vision
+   * provider, which belongs to the explicit Judge stage (`run-full.ts`).
    */
   readonly textProvider?: TextProvider | null;
-  /**
-   * Optional vision provider for the local-only VLM judge (spec §F4).
-   *
-   * Required when `brief.judge.enabled === true` — the orchestrator
-   * throws rather than silently skipping the judge if a brief asked
-   * for it but no provider was supplied. The judge is a quality gate;
-   * silently dropping it would defeat the whole point.
-   *
-   * Omitted/null is fine for any brief with `judge.enabled: false`.
-   */
-  readonly visionProvider?: VisionProvider | null;
-  /**
-   * Optional cross-run cost ceiling. When supplied, each judge call
-   * is gated by `JudgeBudget.wouldExceed()` and the budget records
-   * actual spend after a successful call. Variants gated out by the
-   * budget appear with `judgeSkipReason: 'over-budget'`.
-   *
-   * Omit to disable the cost gate entirely (current behavior for
-   * one-off single-brief runs). The CLI auto-constructs a budget
-   * with cap=Infinity when neither flag nor env var is set, which is
-   * functionally equivalent to omitting.
-   */
-  readonly judgeBudget?: JudgeBudget | null;
-  /**
-   * Optional VLM-judge cache. When supplied, judge calls go through
-   * the cache; on hit, no provider call is made. The orchestrator
-   * never instantiates the cache itself — the CLI does, so test
-   * harnesses can run without ever touching the filesystem cache.
-   */
-  readonly judgeCache?: JudgeCache | null;
   /** Repository root used to resolve the style guide + reference PNGs. */
   readonly repoRoot: string;
   /** Output directory for run artifacts. Defaults to `<repoRoot>/generated`. */
@@ -110,8 +77,6 @@ export interface GenerateOneOptions {
   readonly preloaded?: LoadedBrief;
   /** Warning sink (mainly for expand-variations). Defaults to logger.warn. */
   readonly warn?: (message: string) => void;
-  /** Environment override used by local-only judge checks (primarily tests). */
-  readonly env?: NodeJS.ProcessEnv;
   /**
    * RunStore for writing all artifacts. Defaults to a `LocalRunStore` rooted
    * at `<outputRoot>/runs` so existing local workflows are unaffected.
@@ -133,13 +98,65 @@ export interface GenerateOneResult {
   readonly brief: Brief;
 }
 
+/**
+ * The run-identity fields shared by every `summary.json`, whatever stage wrote
+ * it. `generateOne` writes these plus null/empty pipeline fields; `runFull`
+ * (and the explicit PostProcess/Judge re-runs) write these plus the computed
+ * candidates / diversity / chosen / judge fields.
+ */
+export type RunSummaryIdentity = Pick<
+  RunSummary,
+  | 'brief'
+  | 'briefPath'
+  | 'runId'
+  | 'createdAt'
+  | 'promptHash'
+  | 'attempts'
+  | 'variantCount'
+  | 'variations'
+>;
+
+/**
+ * Everything `generateSheetCore` produces: a stored raw sheet, the
+ * gate-validated cells (reused — not re-sliced — by `runFull`), and the
+ * resolved inputs (`brief`, `palette`, `referencePngs`, `styleGuide`) the
+ * downstream post-process / judge stages need. Deliberately NO `summary.json`
+ * is written here — the caller decides whether it's a sheet-only summary
+ * (`generateOne`) or a full one (`runFull`).
+ */
+export interface GenerateSheetCoreResult {
+  readonly runId: string;
+  readonly store: RunStore;
+  /** Maps a run-relative path (e.g. `summary.json`) to a full store key. */
+  readonly storeKey: (rel: string) => string;
+  readonly runDir: string;
+  /** Original (un-expanded) brief — drives variantCount, postprocess + judge. */
+  readonly brief: Brief;
+  readonly palette: PaletteColors;
+  readonly referencePngs: Buffer[];
+  readonly styleGuide: string;
+  /**
+   * The gate-validated variant cells from the stored sheet. Generate slices
+   * PURELY to assert `cells.length === expected`; `runFull` reuses these
+   * buffers so the full pipeline never re-reads the sheet from the store.
+   */
+  readonly sliced: Buffer[];
+  readonly attempts: number;
+  /** `variantCount(brief)` — the gate's expected cell count. */
+  readonly expected: number;
+  readonly identity: RunSummaryIdentity;
+}
+
 const RETRYABLE_PROVIDER_KINDS: ReadonlySet<ProviderErrorKind> = new Set(['bad-grid', 'non-png']);
 
-export async function generateOne(options: GenerateOneOptions): Promise<GenerateOneResult> {
+export async function generateSheetCore(
+  options: GenerateOneOptions,
+): Promise<GenerateSheetCoreResult> {
   const repoRoot = options.repoRoot;
   const outputRoot = options.outputRoot ?? path.join(repoRoot, 'generated');
   const maxAttempts = options.maxAttempts ?? 2;
   const now = options.now ?? (() => new Date());
+  const createdAt = now();
   const readReference = options.readReference ?? ((p) => readFileSync(p));
   // Default to a local store rooted at <outputRoot>/runs — same layout as before.
   const store: RunStore = options.store ?? new LocalRunStore(path.join(outputRoot, 'runs'));
@@ -172,7 +189,7 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     readReference(path.resolve(repoRoot, ref.path)),
   );
 
-  const runId = makeRunId(now(), `${brief.name}|${prompt}`);
+  const runId = makeRunId(createdAt, `${brief.name}|${prompt}`);
   // Store-key helper: returns a key relative to the store root.
   const storeKey = (rel: string) => `${brief.name}/${runId}/${rel}`;
   const pad2 = (n: number) => String(n).padStart(2, '0');
@@ -208,82 +225,20 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
     }
   }
   if (!sliced) {
-    throw lastError ?? new Error('generateOne: no sheet produced and no error captured');
+    throw lastError ?? new Error('generateSheetCore: no sheet produced and no error captured');
   }
-
-  // --- Postprocess + score each variant via the shared run pipeline. ---
-  // Keep the post-processed buffers so the diversity pass doesn't re-read
-  // every variant from the store. Sensor scoring + artifact writes live in
-  // `postprocessScoreAndStoreVariant` so a re-run reproduces them byte-for-byte.
-  const processedBuffers: Buffer[] = [];
-  const sensorEntries: ProcessedVariant[] = [];
-  for (let i = 0; i < sliced.length; i++) {
-    const variant = await postprocessScoreAndStoreVariant({
-      store,
-      storeKey,
-      index: i,
-      raw: sliced[i]!,
-      brief,
-      palette,
-    });
-    sensorEntries.push(variant);
-    processedBuffers.push(variant.processed);
-  }
-
-  // --- Optional VLM judge pass (spec §F4, local-only per Constitutional §3). ---
-  const judgeEnabled = brief.judge.enabled;
-  if (judgeEnabled && !options.visionProvider) {
-    throw new Error(
-      `Brief '${brief.name}' opted into VLM judging (judge.enabled: true) but no vision ` +
-        `provider was supplied. Either disable the judge for this brief or configure ` +
-        `AZURE_OPENAI_VISION_DEPLOYMENT (and run with SPRITES_VISION_PROVIDER=azure-openai, ` +
-        `which is the default).`,
-    );
-  }
-  // Sensor + judge gating lives in `runJudgePass`; folding both fresh runs and
-  // re-runs through it keeps the judge eligibility rules in exactly one place.
-  const { judgePlan, judgeSkipReason } = await runJudgePass({
-    variants: sensorEntries,
-    judgeEnabled,
-    brief,
-    referencePngs,
-    styleGuide,
-    visionProvider: options.visionProvider ?? null,
-    store,
-    storeKey,
-    ...(options.judgeBudget ? { judgeBudget: options.judgeBudget } : {}),
-    ...(options.judgeCache ? { judgeCache: options.judgeCache } : {}),
-    ...(options.now ? { now: options.now } : {}),
-    ...(options.env ? { env: options.env } : {}),
-    ...(options.warn ? { warn: options.warn } : {}),
-  });
-
-  const entries = assembleSummaryEntries({
-    variants: sensorEntries,
-    judgePlan,
-    judgeSkipReason,
-    judgeEnabled,
-  });
-
-  const ranked = rankCandidates(entries);
-  const diversity = computeDiversity(processedBuffers);
-  const chosen = pickChosen(ranked, brief);
-  const budgetSnap = judgeEnabled && options.judgeBudget ? options.judgeBudget.snapshot() : null;
-  const cacheStats = judgeEnabled && options.judgeCache ? { ...options.judgeCache.stats } : null;
 
   // Convert absolute briefPath to repo-relative with forward slashes (required by validation)
   const repoRelativeBriefPath = path.relative(repoRoot, loaded.briefPath).replace(/\\/g, '/');
 
-  const summary: RunSummary = {
+  const identity: RunSummaryIdentity = {
     brief: brief.name,
     briefPath: repoRelativeBriefPath,
     runId,
-    createdAt: now().toISOString(),
+    createdAt: createdAt.toISOString(),
     promptHash: shortPromptHash(prompt),
     attempts,
     variantCount: expected,
-    candidates: ranked,
-    diversity,
     variations: {
       seed: expansion.seed,
       proposed: expansion.proposed,
@@ -291,26 +246,50 @@ export async function generateOne(options: GenerateOneOptions): Promise<Generate
       minVariations: brief.minVariations,
       skippedReason: expansion.skippedReason,
     },
-    chosen,
-    judgeBudget: budgetSnap
-      ? {
-          budgetUsd: budgetSnap.budgetUsd,
-          spentUsd: budgetSnap.spentUsd,
-          remainingUsd:
-            typeof budgetSnap.remainingUsd === 'number'
-              ? budgetSnap.remainingUsd
-              : Number.POSITIVE_INFINITY,
-          callCount: budgetSnap.callCount,
-          callsThisRun: budgetSnap.callsThisRun,
-          callsSkippedDueToBudget: budgetSnap.callsSkippedDueToBudget,
-        }
-      : null,
-    judgeCache: cacheStats,
   };
+
+  return {
+    runId,
+    store,
+    storeKey,
+    runDir: store.resolve(`${brief.name}/${runId}`),
+    brief,
+    palette,
+    referencePngs,
+    styleGuide,
+    sliced,
+    attempts,
+    expected,
+    identity,
+  };
+}
+
+/**
+ * GENERATE stage (Option B, ADR 0024): produce + store the raw sheet only,
+ * plus a minimal sheet-only `summary.json` (empty candidates, null
+ * diversity/chosen/judge fields). Post-process / score / judge are explicit,
+ * re-runnable stages over the stored sheet — see `run-full.ts` for the
+ * one-shot full pipeline and `rerun.ts` for the operator-driven re-runs.
+ *
+ * The slice inside `generateSheetCore` is a quality GATE only (retry on a bad
+ * grid); it does not post-process or persist the sliced cells.
+ */
+export async function generateOne(options: GenerateOneOptions): Promise<GenerateOneResult> {
+  const core = await generateSheetCore(options);
+  const { store, storeKey, runDir, brief, attempts, identity } = core;
+
+  const summary: RunSummary = {
+    ...identity,
+    candidates: [],
+    diversity: null,
+    chosen: null,
+    judgeBudget: null,
+    judgeCache: null,
+  };
+
   const summaryKey = storeKey('summary.json');
   await store.put(summaryKey, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`));
   const summaryPath = store.resolve(summaryKey);
-  const runDir = store.resolve(`${brief.name}/${runId}`);
 
   return { summary, summaryPath, runDir, attempts, brief };
 }

@@ -1,18 +1,22 @@
 /**
- * Integration test for the generateOne orchestrator.
+ * Integration test for the generateOne GENERATE stage (Option B, ADR 0024).
  *
- * Uses a mock ImageProvider that returns a synthetic 2x2 sheet built from
- * the same primitives the unit tests use. The whole pipeline runs:
- *   load brief -> build prompt -> mock provider -> slice -> postprocess ->
- *   score -> write artifacts -> rank.
+ * Uses a mock ImageProvider that returns a synthetic 2x2 sheet built from the
+ * same primitives the unit tests use. Generate must:
+ *   load brief -> build prompt -> mock provider -> slice (GATE ONLY) ->
+ *   store the RAW sheet + a minimal sheet-only summary.
  *
- * No real network and no on-disk briefs from the repo root — the test
- * writes a temporary brief + style guide + palette into a tmp dir and
- * points the orchestrator at it.
+ * It must NOT post-process, score, or judge — those are explicit, re-runnable
+ * stages exercised in `run-full.test.ts` and `sprites/rerun.test.ts`. The
+ * sliceability retry gate (bad-grid -> retry) is still covered here because it
+ * is the one quality check Generate keeps.
+ *
+ * No real network and no on-disk briefs from the repo root — the test writes a
+ * temporary brief + style guide + palette into a tmp dir.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PNG } from 'pngjs';
@@ -20,11 +24,7 @@ import { generateOne } from '../../scripts/sprites/generate-one.js';
 import { loadBrief, type LoadedBrief } from '../../scripts/sprites/load-brief.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import { ProviderError } from '../../scripts/sprites/provider/types.js';
-import {
-  buildGoodSwordFixture,
-  buildEmptyFixture,
-  buildHorizontalBarFixture,
-} from '../fixtures/sprites/builders.js';
+import { buildGoodSwordFixture } from '../fixtures/sprites/builders.js';
 
 const STYLE_GUIDE = [
   '# Style guide',
@@ -134,7 +134,7 @@ function makeFailingProvider(
   };
 }
 
-describe('generateOne (integration)', () => {
+describe('generateOne — sheet-only generate stage (integration)', () => {
   let root: string;
   let outputRoot: string;
   let preloaded: LoadedBrief;
@@ -164,8 +164,11 @@ describe('generateOne (integration)', () => {
 
   const fixedClock = () => new Date('2026-06-04T12:00:00.000Z');
 
-  it('runs the full pipeline end-to-end and writes ranked artifacts', async () => {
-    // 4 good sword variants -> all pass -> rank is index-order on score tie.
+  it('stores ONLY the raw sheet plus a minimal sheet-only summary', async () => {
+    // 4 good sword variants. Generate must store the raw sheet and a summary
+    // with NO candidates / postprocess / judge — those are explicit later
+    // stages (ADR 0024). The sliceability gate still runs internally (it must,
+    // to reject bad grids) but its sliced cells are discarded here.
     const variants = Array.from({ length: 4 }, () => buildGoodSwordFixture());
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const result = await generateOne({
@@ -176,63 +179,26 @@ describe('generateOne (integration)', () => {
       outputRoot,
       now: fixedClock,
     });
-    expect(result.summary.candidates).toHaveLength(4);
-    expect(result.summary.candidates.every((c) => c.passed)).toBe(true);
-    // Artifacts live where we expect.
+
+    // The raw sheet + summary are written...
     expect(existsSync(path.join(result.runDir, 'sheet-00.png'))).toBe(true);
     expect(existsSync(result.summaryPath)).toBe(true);
-    for (const candidate of result.summary.candidates) {
-      expect(existsSync(candidate.rawPath)).toBe(true);
-      expect(existsSync(candidate.processedPath)).toBe(true);
-      expect(existsSync(candidate.scorecardPath)).toBe(true);
-      // Every variant gets an anchor-overlay PNG, even when derivation
-      // produced no anchor. The file always exists so the gallery can
-      // composite it without branching on whether an anchor was found.
-      expect(candidate.anchorOverlayPath).toMatch(/\.anchor-overlay\.png$/);
-      expect(existsSync(candidate.anchorOverlayPath)).toBe(true);
-      const card = JSON.parse(readFileSync(candidate.scorecardPath, 'utf8'));
-      expect(card.passed).toBe(true);
-      const padded = String(candidate.index).padStart(2, '0');
-      const pipelinePath = path.join(result.runDir, 'processed', `${padded}.pipeline.json`);
-      expect(existsSync(pipelinePath)).toBe(true);
-      const pipeline = JSON.parse(readFileSync(pipelinePath, 'utf8')) as {
-        profile?: string;
-        steps?: Array<{ file?: string }>;
-      };
-      expect(pipeline.profile).toBe('default');
-      expect(Array.isArray(pipeline.steps)).toBe(true);
-      expect((pipeline.steps?.length ?? 0) > 0).toBe(true);
-      const firstStep = pipeline.steps?.[0]?.file;
-      expect(typeof firstStep).toBe('string');
-      if (typeof firstStep === 'string') {
-        expect(existsSync(path.join(result.runDir, 'processed', firstStep))).toBe(true);
-      }
-    }
     expect(result.attempts).toBe(1);
-  });
 
-  it('ranks passing candidates ahead of failing ones, then by score desc', async () => {
-    // Mix: 2 good + 1 horizontal bar (fails diag axis) + 1 empty (fails bbox).
-    const variants = [
-      buildGoodSwordFixture(),
-      buildHorizontalBarFixture(),
-      buildGoodSwordFixture(),
-      buildEmptyFixture(),
-    ];
-    const sheet = tileVariantsIntoSheet(variants, 2, 2);
-    const result = await generateOne({
-      briefPath,
-      preloaded,
-      provider: makeMockProvider(sheet),
-      repoRoot: root,
-      outputRoot,
-      now: fixedClock,
-    });
-    const passed = result.summary.candidates.filter((c) => c.passed);
-    expect(passed).toHaveLength(2);
-    // All passed candidates come before any failed one in the ranking.
-    const firstFailIdx = result.summary.candidates.findIndex((c) => !c.passed);
-    expect(firstFailIdx).toBe(2);
+    // ...but NOTHING is post-processed: empty candidates and no raw/processed dirs.
+    expect(result.summary.candidates).toEqual([]);
+    expect(result.summary.diversity).toBeNull();
+    expect(result.summary.chosen).toBeNull();
+    expect(result.summary.judgeBudget).toBeNull();
+    expect(result.summary.judgeCache).toBeNull();
+    expect(result.summary.variantCount).toBe(4);
+    expect(existsSync(path.join(result.runDir, 'processed'))).toBe(false);
+    expect(existsSync(path.join(result.runDir, 'raw'))).toBe(false);
+
+    // Identity + variation metadata is still captured for auditability.
+    expect(typeof result.summary.runId).toBe('string');
+    expect(result.summary.runId.length).toBeGreaterThan(0);
+    expect(Array.isArray(result.summary.variations.final)).toBe(true);
   });
 
   it('retries on a bad-grid error and ultimately succeeds within maxAttempts', async () => {
@@ -251,7 +217,10 @@ describe('generateOne (integration)', () => {
     });
     expect(callCount()).toBe(2);
     expect(result.attempts).toBe(2);
-    expect(result.summary.candidates).toHaveLength(4);
+    // Sheet-only: the successful (2nd) attempt's sheet is stored; the gate
+    // passed but Generate produces no candidates.
+    expect(existsSync(path.join(result.runDir, 'sheet-01.png'))).toBe(true);
+    expect(result.summary.candidates).toEqual([]);
   });
 
   it('does not retry on a non-retryable error (auth)', async () => {

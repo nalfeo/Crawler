@@ -1,12 +1,13 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { hasComponent, query } from 'bitecs';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { spawnPlayer, spawnDroppedItem } from '../../src/core/helpers.js';
+import { spawnPlayer, spawnDroppedItem, spawnGold, spawnXpGem } from '../../src/core/helpers.js';
 import { DroppedItem, Inventory } from '../../src/core/components.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { itemPickupSystem } from '../../src/core/systems/itemPickupSystem.js';
 import { getItemCount } from '../../src/shared/inventory.js';
 import { getItemByIndex } from '../../src/shared/items.js';
+import { PICKUP_SPARKLE_COLORS } from '../../src/shared/vfx-events.js';
 import type { GameWorld } from '../../src/core/world.js';
 
 describe('itemPickupSystem', () => {
@@ -91,5 +92,57 @@ describe('itemPickupSystem', () => {
 
     const bag = world.inventories.get(playerEid)!;
     expect(bag.slots.length).toBe(0);
+  });
+
+  describe('pickup sparkle VFX', () => {
+    it('emits a gold-tinted sparkle at the gold position on pickup', () => {
+      spawnGold(world, 100, 100, 50);
+
+      const collisions = collisionSystem(world);
+      itemPickupSystem(world, collisions);
+
+      expect(world.vfxEvents).toHaveLength(1);
+      expect(world.vfxEvents[0]).toMatchObject({
+        kind: 'pickupSparkle',
+        x: 100,
+        y: 100,
+        color: PICKUP_SPARKLE_COLORS.gold,
+      });
+    });
+
+    it('emits a gem-tinted sparkle on XP gem pickup', () => {
+      spawnXpGem(world, 100, 100, 5);
+
+      const collisions = collisionSystem(world);
+      itemPickupSystem(world, collisions);
+
+      expect(world.vfxEvents).toHaveLength(1);
+      expect(world.vfxEvents[0]).toMatchObject({
+        kind: 'pickupSparkle',
+        color: PICKUP_SPARKLE_COLORS.gem,
+      });
+    });
+
+    it('emits an item-tinted sparkle on dropped-item pickup', () => {
+      spawnDroppedItem(world, 100, 100, 0);
+
+      const collisions = collisionSystem(world);
+      itemPickupSystem(world, collisions);
+
+      expect(world.vfxEvents).toHaveLength(1);
+      expect(world.vfxEvents[0]).toMatchObject({
+        kind: 'pickupSparkle',
+        color: PICKUP_SPARKLE_COLORS.item,
+      });
+    });
+
+    it('does not emit a sparkle when nothing is picked up', () => {
+      spawnGold(world, 500, 500, 50);
+
+      const collisions = collisionSystem(world);
+      itemPickupSystem(world, collisions);
+
+      expect(world.vfxEvents).toHaveLength(0);
+    });
   });
 });

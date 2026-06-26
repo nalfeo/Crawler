@@ -134,6 +134,58 @@ If you only want resource provisioning (no `.env.local` writes or secrets sync),
 pwsh scripts/setup-azure-resources.ps1
 ```
 
+### Idempotency & re-creating resources
+
+`setup-azure-resources.ps1` is **idempotent by default** — every resource is
+created only if missing and is otherwise left untouched. In particular the
+storage template is **not** redeployed when the account already exists, so a
+normal `setup:azure` run never needlessly re-creates resources. Resource groups
+and the Azure OpenAI account are containers and are only ever created-if-missing;
+they are never deleted automatically.
+
+For dev/test environments you can reset the **stateful** resources (the storage
+account and the model deployments) with `-Recreate`:
+
+```powershell
+# Reset a NON-persistent dev/test storage account to a clean slate:
+pwsh scripts/setup-azure-resources.ps1 -StorageAccountName crawlerspritesdev -Recreate
+```
+
+> [!WARNING]
+> Deleting the storage account destroys **every stored sprite run and the durable
+> workflow-state queue** the DevTools UI reads. To protect the environment you
+> interact with day to day, `-Recreate` **refuses** to delete any resource named
+> in `-PersistentResourceNames` (default: `crawlersprites`, `aoai-crawler-nalfeo`,
+> and their resource groups) unless you also pass `-AllowRecreatePersistent`. The
+> persistent version is never blown away without you explicitly asking for it:
+
+```powershell
+# DESTRUCTIVE — deletes the persistent account's runs + workflow-state. Opt-in required:
+pwsh scripts/setup-azure-resources.ps1 -Recreate -AllowRecreatePersistent
+```
+
+To re-assert the storage template (container/queue) on an existing account
+**without deleting it**, use `-Force` (an idempotent ARM redeploy, no data loss):
+
+```powershell
+pwsh scripts/setup-azure-resources.ps1 -Force
+```
+
+These flags pass through `setup-azure-env.ps1` as `-Recreate`,
+`-AllowRecreatePersistent`, and `-ForceProvision` (the latter renamed so it does
+not collide with that script's `-Force`, which controls overwriting `.env.local`):
+
+```powershell
+pwsh scripts/setup-azure-env.ps1 -ProvisionResources -IncludeStorage -ForceProvision
+```
+
+The pure decision logic behind these flags is covered by a dependency-free test
+(no Azure CLI needed):
+
+```powershell
+pwsh -NoProfile -File scripts/setup-azure-resources.tests.ps1
+```
+
 ---
 
 ## Local emulation with Azurite

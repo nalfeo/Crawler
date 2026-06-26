@@ -73,10 +73,22 @@ export interface AIConfig {
    */
   dodgeWeight?: number;
   /**
-   * Weight of the collect/farm pull vector from the opportunistic layer.
-   * Blended additively with the Track A movement vector before smoothing.
+   * Weight of the opportunistic loot-collect pull vector. Blended additively
+   * with the Track A movement vector before smoothing so the player curves into
+   * a *slight detour* toward loot that lies within 5 ft of its forward path (see
+   * the path-corridor gate in `OpportunisticCollect`). 0 = no detour, 1 = full
+   * override.
    */
   collectPullWeight?: number;
+  /**
+   * Weight of the opportunistic enemy-farm pull vector (drift toward the nearest
+   * enemy during genuine idle wander). Kept separate from {@link collectPullWeight}
+   * and defaulting to 0 so re-enabling loot detours never silently re-enables
+   * enemy seeking — the latter biases the AI into enemy-dense zones and can blow
+   * the floor-clear time budget. Validate additional headless seeds before
+   * setting > 0.
+   */
+  farmPullWeight?: number;
   /** Enable debug logging */
   debug?: boolean;
 }

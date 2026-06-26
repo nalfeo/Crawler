@@ -20,6 +20,43 @@ interface FloatingText {
   startY: number;
 }
 
+/** Resolved presentation for a floating combat indicator. */
+export interface FloaterStyle {
+  label: string;
+  color: string;
+  fontSize: string;
+}
+
+/**
+ * Pure mapping from a combat event to its floating-text presentation.
+ *
+ * Numeric damage is rounded to a whole number for display: the underlying
+ * amounts come from f32-backed ECS stores (health / damage), so an integer
+ * value such as 8 round-trips to `8.00000011920929`. Rounding is display-only —
+ * the precise amount is preserved in the event and in the health stores.
+ */
+export function combatFloaterStyle(event: CombatEvent): FloaterStyle {
+  if (event.type === 'miss') {
+    return { label: 'MISS', color: '#a0a0a0', fontSize: FONT_SIZE };
+  }
+  if (event.type === 'dodge') {
+    return { label: 'DODGE', color: '#44ddff', fontSize: FONT_SIZE };
+  }
+  if (event.type === 'blocked') {
+    return { label: 'BLOCKED', color: '#888888', fontSize: FONT_SIZE };
+  }
+
+  const amount = Math.round(event.amount);
+  if (event.targetType === 'player') {
+    return { label: `-${amount}`, color: '#ff4444', fontSize: FONT_SIZE };
+  }
+  if (event.isCrit) {
+    // Critical hit on an enemy — emphasized: brighter, larger, trailing "!".
+    return { label: `-${amount}!`, color: '#ff8800', fontSize: CRIT_FONT_SIZE };
+  }
+  return { label: `-${amount}`, color: '#ffdd44', fontSize: FONT_SIZE };
+}
+
 export function createCombatVfx(scene: Phaser.Scene): {
   update(world: GameWorld, renderElapsedMs: number): void;
   destroy(): void;
@@ -27,31 +64,7 @@ export function createCombatVfx(scene: Phaser.Scene): {
   const floaters: FloatingText[] = [];
 
   function spawnFloater(event: CombatEvent, renderElapsedMs: number): void {
-    let label: string;
-    let color: string;
-    let fontSize = FONT_SIZE;
-
-    if (event.type === 'miss') {
-      label = 'MISS';
-      color = '#a0a0a0';
-    } else if (event.type === 'dodge') {
-      label = 'DODGE';
-      color = '#44ddff';
-    } else if (event.type === 'blocked') {
-      label = 'BLOCKED';
-      color = '#888888';
-    } else if (event.targetType === 'player') {
-      label = `-${event.amount}`;
-      color = '#ff4444';
-    } else if (event.isCrit) {
-      // Critical hit on an enemy — emphasized: brighter, larger, trailing "!".
-      label = `-${event.amount}!`;
-      color = '#ff8800';
-      fontSize = CRIT_FONT_SIZE;
-    } else {
-      label = `-${event.amount}`;
-      color = '#ffdd44';
-    }
+    const { label, color, fontSize } = combatFloaterStyle(event);
 
     // event.x/y are world feet; scale to pixels for rendering. The -8 rise is
     // a pixel offset applied after scaling.

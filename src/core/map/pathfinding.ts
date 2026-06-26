@@ -29,7 +29,7 @@ export interface TilePoint {
 
 const DEFAULT_MAX_PATH_LENGTH = 4_096;
 
-function isTileTraversable(
+export function isTileTraversable(
   floorMap: FloorMap,
   x: number,
   y: number,

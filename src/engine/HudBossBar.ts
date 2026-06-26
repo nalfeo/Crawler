@@ -11,6 +11,7 @@ import type { GameWorld } from '../core/world.js';
 import { GAME } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH } from './pixel-ui.js';
 import { resolveBossHealthBar } from './boss-health-bar-state.js';
+import { applyCrispText } from './ui-scale.js';
 
 const CENTER_X = GAME.WIDTH / 2;
 const BAR_WIDTH = 360;
@@ -74,6 +75,7 @@ export function createHudBossBar(
     .setDepth(PIXEL_UI_DEPTH.overlay)
     .setVisible(false);
   parent?.add(nameText);
+  const detachCrispText = applyCrispText(scene, [label, nameText]);
 
   function sync(world: GameWorld): void {
     const state = resolveBossHealthBar(
@@ -96,6 +98,7 @@ export function createHudBossBar(
   }
 
   function destroy(): void {
+    detachCrispText();
     shell.destroy();
     fill.destroy();
     label.destroy();
