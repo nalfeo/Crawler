@@ -325,6 +325,76 @@ export function primaryActionLabel(stage: WorkflowStage): string | null {
   }
 }
 
+// ── Sensor-failure presentation + force-judge eligibility (PR2c) ──────────────
+// Pure, DOM-free helpers the devtools UI uses to render WHICH sensors failed and
+// why (not just a pass/fail tally) and to decide when the "force judge" override
+// (which judges past a failing sensor gate) is offered. Kept here so the
+// rendering/wiring logic is unit-testable without a DOM.
+
+/** The sensors on a candidate that did not pass. Preserves source order. */
+export function failingSensors(candidate: QueueRunCandidate): QueueSensorResult[] {
+  return candidate.sensors.filter((sensor) => !sensor.ok);
+}
+
+/**
+ * One-line human label for a single sensor result, e.g.
+ *   `transparency: bg-not-transparent (1234px)` — failed, with reason + the
+ *     optional pixelCount magnitude hint.
+ *   `silhouette: passed`                         — passed.
+ * A failed sensor with no `reason` falls back to `failed`; the `(Npx)` hint is
+ * appended only when `pixelCount` is present.
+ */
+export function formatSensorResult(sensor: QueueSensorResult): string {
+  if (sensor.ok) return `${sensor.sensor}: passed`;
+  const reason = sensor.reason ?? 'failed';
+  const magnitude = sensor.pixelCount !== null ? ` (${sensor.pixelCount}px)` : '';
+  return `${sensor.sensor}: ${reason}${magnitude}`;
+}
+
+/** A candidate's sensor outcome condensed for the variant card header. */
+export interface SensorSummary {
+  /** Total sensors that ran for the candidate. */
+  readonly total: number;
+  /** How many of them failed. */
+  readonly failed: number;
+  /** `formatSensorResult` labels for the failing sensors, in source order. */
+  readonly failingLabels: readonly string[];
+}
+
+/**
+ * Summarise a candidate's sensors for the UI, or `null` when no sensor detail
+ * is available (older runs persisted an empty `sensors[]`) so the caller can
+ * omit the block entirely rather than render an empty "0 sensors" line.
+ */
+export function sensorSummary(candidate: QueueRunCandidate): SensorSummary | null {
+  if (candidate.sensors.length === 0) return null;
+  const failing = failingSensors(candidate);
+  return {
+    total: candidate.sensors.length,
+    failed: failing.length,
+    failingLabels: failing.map(formatSensorResult),
+  };
+}
+
+/**
+ * A candidate is eligible for a per-variant "force judge" override when it has
+ * at least one failing sensor (so the normal sensor gate would skip it) and it
+ * is not already a combined pass. The override judges it anyway via the judge
+ * endpoint's `force` flag scoped to this `variantIndexes`.
+ */
+export function candidateForceEligible(candidate: QueueRunCandidate): boolean {
+  return !candidate.combinedPassed && candidate.sensors.some((sensor) => !sensor.ok);
+}
+
+/**
+ * Whether a run has any candidate the normal judge would gate out on a failing
+ * sensor — i.e. whether the run-level "Force judge (ignore sensor gate)"
+ * override is worth offering.
+ */
+export function runHasSensorFailures(run: QueueRun): boolean {
+  return run.candidates.some(candidateForceEligible);
+}
+
 export function serializeQueue(state: QueueState): string {
   return JSON.stringify(state);
 }

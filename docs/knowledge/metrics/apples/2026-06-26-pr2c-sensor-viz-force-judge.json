@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-26",
+  "session": "pr2c-sensor-viz-force-judge",
+  "estimated_apples": 3,
+  "actual_apples": 3,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.6,
+  "note": "Final PR of the PR2 7-stage epic: render the per-sensor failure detail that already persists in queue state, add a force-judge override (per-run + per-variant) calling PR2a's already-merged force/variantIndexes endpoint, pure helpers in sprite-workflow-queue.ts with unit tests, a CI-safe Playwright visual that seeds localStorage and asserts both render and POST payloads against a mocked judge, and an atomic LocalRunStore.put carry-forward. No new backend, no ECS system, no ADR. Landed exactly at Medium — the committable devtools E2E harness stayed light because the Vite lab server already serves devtools.html and seeded state renders deterministically with the sidecar aborted."
+}

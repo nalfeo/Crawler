@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItem,
+  candidateForceEligible,
   clearQueue,
   createEmptyQueue,
   deserializeQueue,
   describeGenerationProgress,
+  failingSensors,
   formatGenerationElapsed,
+  formatSensorResult,
   getItem,
   getSelectedItem,
   primaryActionLabel,
   removeItem,
+  runHasSensorFailures,
   selectItem,
+  sensorSummary,
   serializeQueue,
   slugify,
   stageActiveStep,
@@ -18,6 +23,9 @@ import {
   updateItem,
   GENERATION_QUEUED_STALL_HINT_MS,
   GENERATION_SYNC_STALL_HINT_MS,
+  type QueueRun,
+  type QueueRunCandidate,
+  type QueueSensorResult,
   type QueueState,
 } from '../../src/devtools/sprite-workflow-queue.js';
 
@@ -470,5 +478,149 @@ describe('describeGenerationProgress', () => {
     });
     expect(before).not.toContain('Cancel and retry');
     expect(after).toContain('Cancel and retry');
+  });
+});
+
+function makeSensor(
+  sensor: string,
+  ok: boolean,
+  reason: string | null = null,
+  pixelCount: number | null = null,
+): QueueSensorResult {
+  return { sensor, ok, reason, pixelCount };
+}
+
+function makeCandidate(
+  index: number,
+  combinedPassed: boolean,
+  sensors: QueueSensorResult[],
+): QueueRunCandidate {
+  return {
+    index,
+    score: 0,
+    outOf: 0,
+    passed: sensors.every((sensor) => sensor.ok),
+    combinedPassed,
+    judge: null,
+    sensors,
+  };
+}
+
+describe('failingSensors', () => {
+  it('returns only the failing sensors, preserving source order', () => {
+    const candidate = makeCandidate(0, false, [
+      makeSensor('silhouette', true),
+      makeSensor('transparency', false, 'bg-not-transparent', 1234),
+      makeSensor('edge', false, 'edge-bleed'),
+    ]);
+    expect(failingSensors(candidate).map((sensor) => sensor.sensor)).toEqual([
+      'transparency',
+      'edge',
+    ]);
+  });
+
+  it('returns an empty array when every sensor passed', () => {
+    const candidate = makeCandidate(0, true, [makeSensor('silhouette', true)]);
+    expect(failingSensors(candidate)).toEqual([]);
+  });
+});
+
+describe('formatSensorResult', () => {
+  it('labels a passing sensor', () => {
+    expect(formatSensorResult(makeSensor('silhouette', true))).toBe('silhouette: passed');
+  });
+
+  it('includes the reason and the pixelCount magnitude hint when failed', () => {
+    expect(formatSensorResult(makeSensor('transparency', false, 'bg-not-transparent', 1234))).toBe(
+      'transparency: bg-not-transparent (1234px)',
+    );
+  });
+
+  it('omits the pixel hint when pixelCount is null', () => {
+    expect(formatSensorResult(makeSensor('edge', false, 'edge-bleed'))).toBe('edge: edge-bleed');
+  });
+
+  it('falls back to "failed" when a failed sensor has no reason', () => {
+    expect(formatSensorResult(makeSensor('edge', false, null, 42))).toBe('edge: failed (42px)');
+  });
+});
+
+describe('sensorSummary', () => {
+  it('returns null when the candidate carries no sensor detail', () => {
+    expect(sensorSummary(makeCandidate(0, true, []))).toBeNull();
+  });
+
+  it('reports zero failures when all sensors pass', () => {
+    const summary = sensorSummary(
+      makeCandidate(0, true, [makeSensor('silhouette', true), makeSensor('edge', true)]),
+    );
+    expect(summary).toEqual({ total: 2, failed: 0, failingLabels: [] });
+  });
+
+  it('counts failures and renders their labels in source order', () => {
+    const summary = sensorSummary(
+      makeCandidate(0, false, [
+        makeSensor('silhouette', true),
+        makeSensor('transparency', false, 'bg-not-transparent', 1234),
+        makeSensor('edge', false, 'edge-bleed'),
+      ]),
+    );
+    expect(summary).toEqual({
+      total: 3,
+      failed: 2,
+      failingLabels: ['transparency: bg-not-transparent (1234px)', 'edge: edge-bleed'],
+    });
+  });
+});
+
+describe('candidateForceEligible', () => {
+  it('is true for a non-combined-pass candidate with a failing sensor', () => {
+    expect(
+      candidateForceEligible(
+        makeCandidate(0, false, [makeSensor('transparency', false, 'bg-not-transparent')]),
+      ),
+    ).toBe(true);
+  });
+
+  it('is false when the candidate already combined-passed', () => {
+    expect(
+      candidateForceEligible(
+        makeCandidate(0, true, [makeSensor('transparency', false, 'bg-not-transparent')]),
+      ),
+    ).toBe(false);
+  });
+
+  it('is false when no sensor failed (a non-sensor gate)', () => {
+    expect(candidateForceEligible(makeCandidate(0, false, [makeSensor('edge', true)]))).toBe(false);
+  });
+
+  it('is false when there is no sensor detail at all', () => {
+    expect(candidateForceEligible(makeCandidate(0, false, []))).toBe(false);
+  });
+});
+
+describe('runHasSensorFailures', () => {
+  function makeRun(candidates: QueueRunCandidate[]): QueueRun {
+    return { briefId: 'brief', runId: 'run', candidates };
+  }
+
+  it('is true when any candidate is force-eligible', () => {
+    const run = makeRun([
+      makeCandidate(0, true, [makeSensor('silhouette', true)]),
+      makeCandidate(1, false, [makeSensor('transparency', false, 'bg-not-transparent')]),
+    ]);
+    expect(runHasSensorFailures(run)).toBe(true);
+  });
+
+  it('is false when every candidate passes its sensors', () => {
+    const run = makeRun([
+      makeCandidate(0, true, [makeSensor('silhouette', true)]),
+      makeCandidate(1, true, [makeSensor('edge', true)]),
+    ]);
+    expect(runHasSensorFailures(run)).toBe(false);
+  });
+
+  it('is false for a run with no candidates', () => {
+    expect(runHasSensorFailures(makeRun([]))).toBe(false);
   });
 });

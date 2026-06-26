@@ -24,6 +24,7 @@ import {
   QUEUE_STORAGE_KEY,
   SPRITE_TYPES,
   addItem as queueAddItem,
+  candidateForceEligible,
   clearQueue as queueClear,
   createEmptyQueue,
   describeGenerationProgress,
@@ -32,7 +33,9 @@ import {
   isBusyStage,
   primaryActionLabel,
   removeItem as queueRemoveItem,
+  runHasSensorFailures,
   selectItem as queueSelectItem,
+  sensorSummary,
   serializeQueue,
   slugify,
   stepperFor,
@@ -258,12 +261,14 @@ function el<K extends keyof HTMLElementTagNameMap>(
   options: {
     readonly text?: string;
     readonly className?: string;
+    readonly title?: string;
     readonly style?: Partial<CSSStyleDeclaration>;
   } = {},
 ): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
   if (options.text !== undefined) node.textContent = options.text;
   if (options.className) node.className = options.className;
+  if (options.title !== undefined) node.title = options.title;
   if (options.style) Object.assign(node.style, options.style);
   return node;
 }
@@ -871,6 +876,24 @@ function render(): void {
       cursor: 'pointer',
     },
   });
+  // Override affordance: judge variants the sensor gate would otherwise skip.
+  // Hidden by default (set visible in renderWorkflowSelection only when the run
+  // actually has sensor-failed variants) so it reads as a deliberate override,
+  // not the default path. Styled distinctly (orange) from the normal Judge.
+  const forceJudgeBtn = el('button', {
+    text: 'Force judge',
+    title:
+      'Force the LLM judge to run even on variants that failed a sensor (ignores the sensor gate).',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(251,146,60,0.6)',
+      background: '#431407',
+      color: '#fed7aa',
+      cursor: 'pointer',
+      display: 'none',
+    },
+  });
   const generateBtn = el('button', {
     text: 'Generate run',
     style: {
@@ -934,6 +957,7 @@ function render(): void {
     generateBtn,
     postprocessBtn,
     judgeBtn,
+    forceJudgeBtn,
     cancelGenerateBtn,
     launchWorkerBtn,
     metadataBtn,
@@ -1778,6 +1802,7 @@ function render(): void {
       synthBtn.disabled = true;
       postprocessBtn.disabled = true;
       judgeBtn.disabled = true;
+      forceJudgeBtn.style.display = 'none';
       generateBtn.disabled = true;
       metadataBtn.disabled = true;
       removeItemBtn.disabled = true;
@@ -1810,6 +1835,16 @@ function render(): void {
       item.run === null ||
       item.run.candidates.length === 0 ||
       !(item.stage === 'postprocessed' || item.stage === 'variants');
+    // Force-judge override: only surfaced when the run actually has variants the
+    // sensor gate would skip, and only while a judge step is reachable — hidden
+    // otherwise so it never reads as the default path.
+    const showForceJudge =
+      item.run !== null &&
+      item.run.candidates.length > 0 &&
+      (item.stage === 'postprocessed' || item.stage === 'variants') &&
+      runHasSensorFailures(item.run);
+    forceJudgeBtn.style.display = showForceJudge ? '' : 'none';
+    forceJudgeBtn.disabled = busy || !showForceJudge;
     metadataBtn.disabled = busy || !(item.stage === 'approved' || item.stage === 'done');
     removeItemBtn.disabled = false;
     const nextAction = primaryActionLabel(item.stage);
@@ -1944,6 +1979,13 @@ function render(): void {
     runResultsHost.replaceChildren();
     if (!currentRun) return;
     const run = currentRun;
+    // The selected item drives stage-gated affordances (e.g. the per-variant
+    // force-judge override is only offered while a judge step is reachable).
+    const selectedItem = getSelectedItem(queueState);
+    const judgeStageActive =
+      selectedItem !== null &&
+      !isBusyStage(selectedItem.stage) &&
+      (selectedItem.stage === 'postprocessed' || selectedItem.stage === 'variants');
     // Sheet-only stage (PR2b-1): Generate stores a raw sheet with no variants.
     // PostProcess is what slices it into the scored candidates rendered below.
     if (run.candidates.length === 0) {
@@ -2044,6 +2086,60 @@ function render(): void {
         );
         card.append(chips);
       }
+      // Per-sensor failure detail (PR2c): show WHICH sensors failed and why for
+      // this variant — not just the pass/fail tally — so an operator can decide
+      // whether to fix the brief, re-postprocess, or force-judge past the gate.
+      const sensors = sensorSummary(candidate);
+      if (sensors) {
+        const sensorBlock = el('div', { style: { marginBottom: '5px' } });
+        if (sensors.failed === 0) {
+          sensorBlock.append(
+            el('div', {
+              text: `✓ ${sensors.total} sensor${sensors.total === 1 ? '' : 's'} passed`,
+              style: { fontSize: '9px', color: '#86efac' },
+            }),
+          );
+        } else {
+          sensorBlock.append(
+            el('div', {
+              text: `⚠ ${sensors.failed}/${sensors.total} sensor${
+                sensors.total === 1 ? '' : 's'
+              } failed`,
+              style: {
+                fontSize: '9px',
+                fontWeight: '600',
+                color: '#fca5a5',
+                marginBottom: '2px',
+              },
+            }),
+          );
+          const list = el('div', {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '1px',
+              maxHeight: '64px',
+              overflowY: 'auto',
+            },
+          });
+          for (const label of sensors.failingLabels) {
+            list.append(
+              el('div', {
+                text: label,
+                title: label,
+                style: {
+                  fontSize: '9px',
+                  lineHeight: '1.3',
+                  color: '#fecaca',
+                  wordBreak: 'break-word',
+                },
+              }),
+            );
+          }
+          sensorBlock.append(list);
+        }
+        card.append(sensorBlock);
+      }
       const overrideNeeded = !candidate.combinedPassed;
       const approveBtn = el('button', {
         text: overrideNeeded ? 'Approve anyway' : 'Approve',
@@ -2130,6 +2226,31 @@ function render(): void {
         }
       });
       card.append(approveBtn, debugBtn);
+      // Per-variant override: judge this one sensor-failed variant past the gate
+      // (only while a judge step is reachable). Calls the shared runJudge with a
+      // variantIndexes subset. The handler references runJudge lazily at click
+      // time, after it is initialised — never during this synchronous render.
+      if (judgeStageActive && candidateForceEligible(candidate)) {
+        const forceVariantBtn = el('button', {
+          text: 'Force judge variant',
+          title: 'Force the LLM judge on this sensor-failed variant (ignores the sensor gate).',
+          style: {
+            width: '100%',
+            marginTop: '6px',
+            padding: '4px 6px',
+            borderRadius: '6px',
+            border: '1px solid rgba(251,146,60,0.55)',
+            background: '#431407',
+            color: '#fed7aa',
+            cursor: 'pointer',
+            fontSize: '11px',
+          },
+        });
+        forceVariantBtn.addEventListener('click', () => {
+          void runJudge({ force: true, variantIndexes: [candidate.index] });
+        });
+        card.append(forceVariantBtn);
+      }
       grid.append(card);
     });
     runResultsHost.append(title, hint, grid);
@@ -3958,13 +4079,20 @@ function render(): void {
   });
 
   /**
-   * Judge the post-processed variants (LLM judge + sensors) via PR2a's
-   * re-runnable endpoint. Needs the stored `processed/NN.png`, so it is only
-   * reachable once PostProcess has populated variants; re-runnable from
-   * `variants`. Refused in CI (403) and 400 with no vision provider — both
-   * surface via the standard error path.
+   * Run the LLM judge over the post-processed variants via PR2a's re-runnable
+   * endpoint. Needs the stored `processed/NN.png`, so it is only reachable once
+   * PostProcess has populated variants; re-runnable from `variants`. Refused in
+   * CI (403) and 400 with no vision provider — both surface via the standard
+   * error path.
+   *
+   * `force` lifts the sensor gate so variants that failed a sensor are judged
+   * anyway (the override path); `variantIndexes` restricts the pass to a subset
+   * (the per-variant override). Shared by the Judge button, the run-level
+   * Force-judge override, and the per-card Force-judge-variant affordance.
    */
-  judgeBtn.addEventListener('click', async () => {
+  const runJudge = async (
+    opts: { readonly force?: boolean; readonly variantIndexes?: readonly number[] } = {},
+  ): Promise<void> => {
     const item = getSelectedItem(queueState);
     if (!item || !item.run || item.run.candidates.length === 0) {
       setWorkflowStatus('Post-process the sheet before judging.', '#fca5a5');
@@ -3972,25 +4100,35 @@ function render(): void {
     }
     const { briefId, runId } = item.run;
     const priorStage = item.stage;
+    const forced = opts.force === true;
+    const subset =
+      opts.variantIndexes && opts.variantIndexes.length > 0 ? [...opts.variantIndexes] : undefined;
+    const body: { force?: boolean; variantIndexes?: number[] } = {};
+    if (forced) body.force = true;
+    if (subset) body.variantIndexes = subset;
     queueState = queueUpdateItem(queueState, item.id, { stage: 'judging', lastError: null });
     writeQueueState();
     renderQueue();
     renderWorkflowSelection();
-    setButtonBusy(judgeBtn, true, 'Judge', 'Judging...');
+    const triggerBtn = forced ? forceJudgeBtn : judgeBtn;
+    const triggerLabel = forced ? 'Force judge' : 'Judge';
+    setButtonBusy(triggerBtn, true, triggerLabel, 'Judging...');
     try {
       const result = await fetchJson<{ summary?: { candidates?: RawGenerateCandidate[] } }>(
         `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}/judge`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}),
+          body: JSON.stringify(body),
         },
       );
       const candidates = result.summary?.candidates ?? [];
       const passing = candidates.filter((candidate) => candidate.combinedPassed).length;
+      const scope = subset ? ` variant${subset.length === 1 ? '' : 's'} ${subset.join(', ')}` : '';
+      const forcedNote = forced ? ' (forced past sensor gate)' : '';
       applyRunToQueue(item.id, briefId, runId, candidates, {
         stage: 'variants',
-        status: `Judged ${briefId}: ${passing}/${candidates.length} pass. Pick the best variant and Approve.`,
+        status: `Judged ${briefId}${scope}${forcedNote}: ${passing}/${candidates.length} pass. Pick the best variant and Approve.`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -4000,8 +4138,30 @@ function render(): void {
       renderWorkflowSelection();
       setWorkflowStatus(`Judge failed: ${message}`, '#fca5a5');
     } finally {
-      setButtonBusy(judgeBtn, false, 'Judge', 'Judging...');
+      setButtonBusy(triggerBtn, false, triggerLabel, 'Judging...');
     }
+  };
+
+  judgeBtn.addEventListener('click', () => {
+    void runJudge();
+  });
+
+  // Run-level override: judge every sensor-failed variant past the gate. Gated
+  // by a confirm so it never fires by accident, and only shown (in
+  // renderWorkflowSelection) when the run actually has sensor-failed variants.
+  forceJudgeBtn.addEventListener('click', () => {
+    const item = getSelectedItem(queueState);
+    if (!item || !item.run || item.run.candidates.length === 0) {
+      setWorkflowStatus('Post-process the sheet before judging.', '#fca5a5');
+      return;
+    }
+    const ok = window.confirm(
+      'Force the LLM judge to run on variants that FAILED a sensor check? ' +
+        'This ignores the sensor gate — the judge stays advisory and you still ' +
+        'decide whether to approve.',
+    );
+    if (!ok) return;
+    void runJudge({ force: true });
   });
 
   const beginQueuedRunPolling = (itemId: string): void => {
