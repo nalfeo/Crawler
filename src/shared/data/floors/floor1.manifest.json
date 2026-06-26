@@ -49,10 +49,10 @@
       "speed": 0.14375,
       "detectRange": 67.5,
       "fireballCooldownMs": 5000,
-      "spawnRadiusMin": 64,
-      "spawnRadiusMax": 110,
-      "spriteWidth": 30,
-      "spriteHeight": 30
+      "spawnRadiusMin": 8,
+      "spawnRadiusMax": 13.75,
+      "spriteWidth": 3.75,
+      "spriteHeight": 3.75
     }
   },
   "npcPlacements": [

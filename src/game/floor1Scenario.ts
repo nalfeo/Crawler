@@ -695,8 +695,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
         eid,
         set(Sprite, {
           textureId: welcomeSignTextureId,
-          width: 32,
-          height: 16,
+          width: 4,
+          height: 2,
         }),
       );
     };

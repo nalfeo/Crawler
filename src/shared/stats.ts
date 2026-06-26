@@ -116,11 +116,11 @@ export type StatKey = (typeof STAT_KEYS)[number];
 /** Base stat values for a fresh player. */
 export const STAT_BASE: Record<StatKey, number> = {
   maxHp: 100,
-  moveSpeed: 3.0,
+  moveSpeed: 0.375,
   damage: 10,
   armor: 0,
   attackSpeed: 1.0,
-  pickupRange: 24,
+  pickupRange: 3.0,
   projectileCount: 0,
   projectileSpeed: 1.0,
   /** Accuracy bonus — added to weapon's baseAccuracy. Starts at 0. */
@@ -130,11 +130,11 @@ export const STAT_BASE: Record<StatKey, number> = {
 /** How much each stat point adds to this stat. */
 export const STAT_POINT_INCREMENT: Record<StatKey, number> = {
   maxHp: 10,
-  moveSpeed: 0.1,
+  moveSpeed: 0.0125,
   damage: 2,
   armor: 1,
   attackSpeed: 0.05,
-  pickupRange: 8,
+  pickupRange: 1.0,
   projectileCount: 1,
   projectileSpeed: 0.05,
   /**
@@ -155,7 +155,7 @@ export const STAT_MIN: Record<StatKey, number> = {
   damage: 0,
   armor: 0,
   attackSpeed: 0.1,
-  pickupRange: 8,
+  pickupRange: 1.0,
   projectileCount: 0,
   projectileSpeed: 0.1,
   accuracy: 0,
@@ -190,7 +190,7 @@ export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<Stat
   /** Strength: raw damage output and physical resilience. */
   strength: { damage: 2, armor: 1 },
   /** Dexterity: speed of attack, foot movement, and weapon accuracy. */
-  dexterity: { attackSpeed: 0.05, moveSpeed: 0.1, accuracy: 0.01 },
+  dexterity: { attackSpeed: 0.05, moveSpeed: 0.0125, accuracy: 0.01 },
   /** Constitution: health pool depth. */
   constitution: { maxHp: 10 },
   /** Intelligence: projectile control and arcane precision. */
@@ -200,7 +200,7 @@ export const CORE_STAT_GAINS: Readonly<Record<PrimaryStatId, Partial<Record<Stat
   /** Charisma: reserved — will affect XP gain and NPC prices. */
   charisma: {},
   /** Luck: item magnetism and fortune. */
-  luck: { pickupRange: 4 },
+  luck: { pickupRange: 0.5 },
 };
 
 /**

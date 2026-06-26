@@ -182,7 +182,7 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
         level: 20,
         name: 'Juggernaut',
         description: 'Aura — damages nearby enemies for 5% of your damage per second',
-        effect: { type: 'aura', radius: 6, dpsPercentOfDamage: 0.05 },
+        effect: { type: 'aura', radius: 0.75, dpsPercentOfDamage: 0.05 },
       },
     ],
     flavorText:
@@ -198,25 +198,25 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       30, 80, 150, 240, 350, 480, 630, 800, 990, 1200, 1430, 1680, 1950, 2240, 2550, 2880, 3230,
       3600, 3990, 4400,
     ],
-    perLevelBonus: { moveSpeed: 0.05, pickupRange: 2 },
+    perLevelBonus: { moveSpeed: 0.00625, pickupRange: 0.25 },
     milestones: [
       {
         level: 5,
         name: 'Quick Feet',
-        description: '+0.3 move speed',
-        effect: { type: 'stat_add', stat: 'moveSpeed', value: 0.3 },
+        description: '+0.0375 move speed',
+        effect: { type: 'stat_add', stat: 'moveSpeed', value: 0.0375 },
       },
       {
         level: 10,
         name: 'Slipstream',
-        description: '+8 pickup range',
-        effect: { type: 'stat_add', stat: 'pickupRange', value: 8 },
+        description: '+1 pickup range',
+        effect: { type: 'stat_add', stat: 'pickupRange', value: 1.0 },
       },
       {
         level: 15,
         name: 'Ghost Step',
-        description: '+0.5 move speed',
-        effect: { type: 'stat_add', stat: 'moveSpeed', value: 0.5 },
+        description: '+0.0625 move speed',
+        effect: { type: 'stat_add', stat: 'moveSpeed', value: 0.0625 },
       },
       {
         level: 20,
@@ -330,8 +330,8 @@ const SKILL_DEFINITIONS_RAW: SkillDefinition[] = [
       {
         level: 10,
         name: 'Juggernaut Step',
-        description: '+8 pickup range from scattered debris',
-        effect: { type: 'stat_add', stat: 'pickupRange', value: 8 },
+        description: '+1 pickup range from scattered debris',
+        effect: { type: 'stat_add', stat: 'pickupRange', value: 1.0 },
       },
       {
         level: 15,

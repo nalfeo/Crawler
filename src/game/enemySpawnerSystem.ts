@@ -9,7 +9,7 @@ const logger = createLogger('game:enemy-spawner');
 
 const ENEMY_RADIUS = 1; // half of the default 2×2 ft enemy sprite
 const MAX_OVERLAP_FRACTION = 0.25;
-const SEPARATION_FORCE = 2.0;
+const SEPARATION_FORCE = 0.25;
 const EPSILON = 0.0001;
 
 export interface SpawnerConfig {

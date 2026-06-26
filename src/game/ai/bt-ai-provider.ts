@@ -3390,7 +3390,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const fwdX = primaryTarget.x - playerX;
     const fwdY = primaryTarget.y - playerY;
     const fwdLen = Math.hypot(fwdX, fwdY);
-    if (fwdLen < 1) return false;
+    if (fwdLen < 0.125) return false;
     const fwdNx = fwdX / fwdLen;
     const fwdNy = fwdY / fwdLen;
 
@@ -3401,7 +3401,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       const dx = ex - playerX;
       const dy = ey - playerY;
       const dist = Math.hypot(dx, dy);
-      if (dist > KITE_BACK_THREAT_RADIUS_FT || dist < 1) continue;
+      if (dist > KITE_BACK_THREAT_RADIUS_FT || dist < 0.125) continue;
       // Dot < 0 means the enemy is behind the player relative to primary target.
       const dot = (dx / dist) * fwdNx + (dy / dist) * fwdNy;
       if (dot < 0) return true;
@@ -3501,11 +3501,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     let rx = playerX - target.x;
     let ry = playerY - target.y;
     let dist = Math.hypot(rx, ry);
-    if (dist < 1) {
+    if (dist < 0.125) {
       // Enemy is on top of us — pick an arbitrary outward axis to escape along.
-      rx = 1;
+      rx = 0.125;
       ry = 0;
-      dist = 1;
+      dist = 0.125;
     }
     const ux = rx / dist;
     const uy = ry / dist;
@@ -3620,11 +3620,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     let rx = playerX - target.x;
     let ry = playerY - target.y;
     let dist = Math.hypot(rx, ry);
-    if (dist < 1) {
+    if (dist < 0.125) {
       // Enemy is on top of us — pick an arbitrary outward axis to escape along.
-      rx = 1;
+      rx = 0.125;
       ry = 0;
-      dist = 1;
+      dist = 0.125;
     }
     const ux = rx / dist;
     const uy = ry / dist;

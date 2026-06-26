@@ -163,8 +163,8 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
   const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
   const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
-  const miniWidth = Math.max(1, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
-  const miniHeight = Math.max(1, parentSpriteHeight * MINI_SLIME_SIZE_SCALE);
+  const miniWidth = Math.max(1, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
+  const miniHeight = Math.max(1, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
   // Inherit blood colour from the parent slime
   const parentBloodColor = hasComponent(world.ecs, eid, BloodColor)
     ? (world.stores.bloodColor.r[eid]! << 16) |
