@@ -84,8 +84,14 @@ future floor-content session so Floor 1 pacing is tuned deliberately.
 ### Negative
 
 - Per-spawner concurrency reuses the `Owner` component (originally for projectile
-  ownership) on enemies. Verified safe today (only projectiles read `Owner`), but
-  any future system that assigns `Owner` to enemies must account for child counts.
+  ownership) on enemy children so `spawnerSystem` can count them. Verified safe
+  today, but for a subtler reason than "only projectiles read `Owner`": the
+  damage-attribution readers (`damageSystem`, `meleeSwingSystem`, `beamSystem`,
+  `aoeOnImpactSystem`, `areaDamageSystem`, `trapSystem`) each read `Owner` on the
+  **damage-source entity** (a projectile, swing, beam, trap, or AoE field), never on
+  an enemy/target — so tagging enemy children with `Owner` cannot collide with damage
+  ownership. Any future system that reads `Owner` _on enemies_ (rather than on damage
+  sources) must account for these spawner child-count links.
 - `Spawner.defIndex` is a positional index into an **append-only** array; reordering
   `SPAWNER_ARCHETYPES` would invalidate persisted/serialised spawners.
 
