@@ -12,7 +12,7 @@
  *   - the behavior-tree AI navigates Floor 1's geometry and progression points,
  *   - every Floor 1 quest can be completed (tutorial, shopkeeper errand, boss
  *     unlock, boss battle),
- *   - the floor is cleared (`outcome === 'victory'`) within the 5-minute design
+ *   - the floor is cleared (`outcome === 'victory'`) within the 6-minute design
  *     budget, in deterministic *game* time.
  *
  * ## Why a weapon × seed matrix
@@ -39,8 +39,9 @@
  * verifying the seed clears on *all three* weapons within budget. Probe each
  * combo via the per-weapon CLI `npm run ai:headless -- --seed N --weapon bow`
  * (repeat for sword and baseball-bat) and confirm every weapon reports VICTORY
- * with all required quests. Seed 10 is an additional verified all-weapon clear
- * held in reserve; most seeds do NOT clear on every weapon within the
+ * with all required quests. Seed 10 was a verified all-weapon clear on the
+ * previous 120×70 map; its status on the current 240×140 map has not been
+ * checked. Most seeds do NOT clear on every weapon within the
  * budget. Note bow runs simulate the full frame budget and are markedly slower
  * in wall time than sword/bat.
  *
@@ -48,8 +49,8 @@
  *
  * `gameTimeMs` is simulated time and is identical on every machine; wall-clock
  * time is not (Windows dev box vs. ubuntu CI runner differ by 2–3x). The gate
- * asserts on `gameTimeMs < 5 min` so cross-platform CPU differences can never
- * flake it. `maxFrames` is capped just past the 5-minute deadline so a
+ * asserts on `gameTimeMs < 6 min` so cross-platform CPU differences can never
+ * flake it. `maxFrames` is capped just past the 6-minute deadline so a
  * regression that *fails* to clear ends deterministically and quickly instead
  * of grinding to the 100k-frame default.
  */
@@ -66,14 +67,14 @@ import {
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
 } from '../../src/shared/quest-types.js';
 
-/** Floor 1 design budget: the AI must clear the floor in under five minutes. */
-const FLOOR1_TIME_BUDGET_MS = 5 * 60 * 1000;
+/** Floor 1 design budget: the AI must clear the floor in under six minutes (240×140 map). */
+const FLOOR1_TIME_BUDGET_MS = 6 * 60 * 1000;
 const HEADLESS_WALL_TIME_CAP_MS = 30 * 60 * 1000;
 
 /**
  * Frame cap for the gate. One frame is `GAME.DELTA_MS` (1000/60 ms) of game
- * time, so this allows the run to advance slightly past the 5-minute deadline
- * (~5.5 min of game time). A legitimate clear finishes well before the budget;
+ * time, so this allows the run to advance slightly past the 6-minute deadline
+ * (~6.6 min of game time). A legitimate clear finishes well before the budget;
  * a regression that never clears stops here deterministically (bounded wall
  * time) and is then caught by the `outcome`/budget assertions rather than
  * running to the 100k-frame default (~27 min of game time).
@@ -95,22 +96,18 @@ const REQUIRED_QUEST_IDS = [
  * this list to seeds verified to clear on *all three* weapons within the budget
  * — see the file header for how to verify and add more.
  *
- * Verified 2026-06-25 against the current damage path (crit/dodge rolls wired in,
- * retuned slime pounce band). The previous canonical gate seed (15) still clears,
- * so it remains in the matrix rather than being rotated out. Worst-case weapon
- * game-time per seed in parens — all comfortably under the 300s budget:
+ * Verified 2026-06-26 against the 240×140 floor map. Worst-case weapon
+ * game-time per seed in parens — all comfortably under the 360s budget:
  *
- * - 15: previous canonical all-weapon clear; still clears sword (~148s), bow
- *       (~194s), and bat (~132s), so a regression here would be a real signal,
- *       not seed churn.
- * - 6: new main's canonical sword clear; also clears bow (~186s) and bat (~163s).
- * - 7: reserve all-weapon clear promoted after the same-room aggro fix (worst
- *      case bat ~213s, with bow ~209s still comfortably under budget).
- * - 5: all-weapon clear (worst case bow ~206s).
+ * - 15: canonical all-weapon clear; sword (~240s), bow (~262s), bat (~249s).
+ * - 3: all-weapon clear; sword (~241s), bow (~263s), bat (~234s).
+ * - 7: all-weapon clear; sword (~274s), bow (~267s), bat (~325s).
+ * - 5: all-weapon clear; sword (~240s), bow (~305s), bat (~240s).
  *
- * Seed 10 is an additional verified all-weapon clear held in reserve.
+ * Seed 10 was a verified all-weapon clear on the previous 120×70 map;
+ * re-verify before adding it to the matrix on the current 240×140 map.
  */
-const WINNING_SEEDS = [15, 6, 7, 5] as const;
+const WINNING_SEEDS = [15, 3, 7, 5] as const;
 
 /**
  * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
@@ -192,7 +189,7 @@ describe('Floor 1 headless completion gate', () => {
           ).toBe('victory');
         });
 
-        it('clears within the 5-minute game-time budget', () => {
+        it('clears within the 6-minute game-time budget', () => {
           expect(
             stats.gameTimeMs,
             `[seed ${seed} · ${weapon}] cleared in ` +

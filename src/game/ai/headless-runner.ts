@@ -82,9 +82,10 @@ export interface HeadlessRunnerConfig {
    * quest-level diagnostic. Keys on quest progress, not on the AI reaching its
    * movement goals, so a knockback/kite deadlock or a "can't find the next NPC"
    * wander fast-fails with a clear reason instead of burning the whole budget.
-   * Sized above the slowest legitimate inter-progress gap on winning seeds (~50s)
-   * and above the in-AI relocate cycle (~100s) so it never false-fails a healthy
-   * run. Set to 0 to disable. Default 9000 (~150s at 60 FPS).
+   * Sized above the slowest legitimate inter-progress gap on winning seeds and
+   * above the in-AI relocate cycle (now 200s on the 240×140 map) so it never
+   * false-fails a healthy run. Set to 0 to disable. Default 21_600 (~360s at
+   * 60 FPS).
    */
   questStallFrames?: number;
 }
@@ -98,7 +99,7 @@ const DEFAULT_CONFIG: Required<
   progressInterval: 0,
   debug: false,
   eventSampleInterval: 15,
-  questStallFrames: 9000, // ~150s of frozen quest progress
+  questStallFrames: 21_600, // ~360s of frozen quest progress on the 240×140 map
 };
 
 /**

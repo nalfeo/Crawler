@@ -41,7 +41,10 @@ export function getRegisteredBiomes(): BiomeType[] {
 const dungeonGen = new DungeonGenerator();
 registerGenerator(BiomeType.DUNGEON, dungeonGen);
 registerGenerator(BiomeType.CASTLE, dungeonGen);
-registerGenerator(BiomeType.BASIC_UNDERGROUND, new DungeonGenerator({ roomVariety: true }));
+registerGenerator(
+  BiomeType.BASIC_UNDERGROUND,
+  new DungeonGenerator({ roomVariety: true, caveRegions: true }),
+);
 
 registerGenerator(BiomeType.CAVE, new CaveGenerator());
 registerGenerator(

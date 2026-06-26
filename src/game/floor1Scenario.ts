@@ -1035,10 +1035,24 @@ function resolveBossSpawnPosition(
       return floorMap.tileToPixel(tile.x, tile.y);
     }
   }
-  const fallbackTile = floorMap.pixelToTile(
-    stairX + floor1Config.bossVariants!.ratSlime.spawnRadiusMin,
-    stairY,
-  );
+  const fallbackTile = floorMap.pixelToTile(stairX, stairY);
+  if (floorMap.tileMap.isPassable(fallbackTile.x, fallbackTile.y)) {
+    return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
+  }
+  const maxRadius = Math.max(floorMap.width, floorMap.height);
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.abs(dx) !== radius && Math.abs(dy) !== radius) continue;
+        const tx = fallbackTile.x + dx;
+        const ty = fallbackTile.y + dy;
+        if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
+        if (floorMap.tileMap.isPassable(tx, ty)) {
+          return floorMap.tileToPixel(tx, ty);
+        }
+      }
+    }
+  }
   return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
 }
 

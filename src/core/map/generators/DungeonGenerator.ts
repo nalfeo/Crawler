@@ -14,7 +14,7 @@
 import { Map as ROTMap, RNG } from 'rot-js';
 import type { MapConfig, DoorLocation, RoomBounds } from '../../../shared/map-types';
 import { TilePresets, TileFlags, TerrainType, RoomRole } from '../../../shared/map-types';
-import type { SeededRandom } from '../../../shared/random';
+import { SeededRandom } from '../../../shared/random';
 import { TileMap } from '../TileMap';
 import { RoomGraph } from '../RoomGraph';
 import { FloorMap } from '../FloorMap';
@@ -24,10 +24,17 @@ import type { MapGenerator } from './types';
 export const SPECIAL_ROOM_MIN_WIDTH = 9;
 /** Default minimum bounds height (tiles, walls included) for BOSS_STAIR and SAFE rooms. */
 export const SPECIAL_ROOM_MIN_HEIGHT = 9;
+const CAVE_REGION_DENSITY_DIVISOR = 5000;
+const CAVE_PATCH_JITTER_FACTOR = 0.35;
 
 export interface DungeonGeneratorOptions {
   /** When true, applies round/L-shaped rooms, wide corridors, and diagonal shortcuts. */
   readonly roomVariety?: boolean;
+  /**
+   * When true, carves cave sub-regions with curved/non-linear tunnels and
+   * non-uniform cave chambers inside dungeon layouts.
+   */
+  readonly caveRegions?: boolean;
   /**
    * Minimum bounds width (tiles, walls included) that a room must have to be
    * eligible for the BOSS_STAIR or SAFE role. Defaults to SPECIAL_ROOM_MIN_WIDTH.
@@ -47,11 +54,13 @@ type RoomDoorSide = 'left' | 'right' | 'top' | 'bottom';
 export class DungeonGenerator implements MapGenerator {
   readonly name = 'DungeonGenerator';
   private readonly roomVariety: boolean;
+  private readonly caveRegions: boolean;
   private readonly specialRoomMinWidth: number;
   private readonly specialRoomMinHeight: number;
 
   constructor(options: DungeonGeneratorOptions = {}) {
     this.roomVariety = options.roomVariety ?? false;
+    this.caveRegions = options.caveRegions ?? false;
     this.specialRoomMinWidth = options.specialRoomMinWidth ?? SPECIAL_ROOM_MIN_WIDTH;
     this.specialRoomMinHeight = options.specialRoomMinHeight ?? SPECIAL_ROOM_MIN_HEIGHT;
   }
@@ -166,6 +175,11 @@ export class DungeonGenerator implements MapGenerator {
       const widenedCorridorTiles = widenCorridors(tileMap, terrain, w, h, rng, protectedWalls);
       addDiagonalShortcuts(tileMap, terrain, roomGraph, w, h, rng, protectedWalls);
       expandDoorsForWideCorridors(tileMap, terrain, roomGraph, w, widenedCorridorTiles);
+    }
+
+    if (this.caveRegions) {
+      const caveProtectedMask = buildCaveProtectedMask(roomGraph, w, h);
+      carveCaveRegions(tileMap, terrain, roomGraph, w, h, caveProtectedMask, config.seed);
     }
 
     // Rooms are linked by corridors (and occasionally a shared door), so we
@@ -314,6 +328,10 @@ export class DungeonGenerator implements MapGenerator {
     // post-processing (ellipse, L-shape, corridor widening) and would trap the
     // player or enemies in permanently unreachable areas.
     cullIsolatedFloorTiles(tileMap, terrain, w, h, playerSpawn);
+
+    if (this.caveRegions) {
+      pruneInaccessibleDoors(roomGraph, tileMap, terrain, w);
+    }
 
     return new FloorMap(config, tileMap, roomGraph, terrain, playerSpawn);
   }
@@ -551,6 +569,20 @@ function carveRoomConnector(
   blocked: Uint8Array | null,
 ): boolean {
   const { x, y, width, height } = room.bounds;
+  const isRoomPerimeterNonDoor = (idx: number): boolean => {
+    if (room.doors.length === 0) return false;
+    const tx = idx % w;
+    const ty = (idx - tx) / w;
+    const onPerimeter =
+      tx >= x &&
+      tx < x + width &&
+      ty >= y &&
+      ty < y + height &&
+      (tx === x || tx === x + width - 1 || ty === y || ty === y + height - 1);
+    if (!onPerimeter) return false;
+    const flags = tileMap.flags[idx]!;
+    return (flags & TileFlags.DOOR) === 0;
+  };
 
   // Seed BFS from door tiles when present (preserves door-gated entry); fall back
   // to the interior perimeter for the rare door-less room.
@@ -620,6 +652,7 @@ function carveRoomConnector(
       const nIdx = ny * w + nx;
       if (parent[nIdx] !== -2) continue;
       if (blocked && blocked[nIdx]) continue;
+      if (isRoomPerimeterNonDoor(nIdx)) continue;
       parent[nIdx] = idx;
       queue.push(nIdx);
     }
@@ -1307,11 +1340,52 @@ function ensureDoorAccess(
 }
 
 /**
+ * Remove door markers that no longer have any passable interior-adjacent tile.
+ * This can happen after reachability culling seals isolated room interiors.
+ */
+function pruneInaccessibleDoors(
+  roomGraph: RoomGraph,
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  w: number,
+): void {
+  for (const room of roomGraph.getAll()) {
+    const keptDoors: DoorLocation[] = [];
+    for (const door of room.doors) {
+      const side = getDoorSide(room.bounds, door);
+      const inward: [number, number] =
+        side === 'left'
+          ? [door.x + 1, door.y]
+          : side === 'right'
+            ? [door.x - 1, door.y]
+            : side === 'top'
+              ? [door.x, door.y + 1]
+              : [door.x, door.y - 1];
+      const [ix, iy] = inward;
+      const hasInteriorAccess =
+        ix > room.bounds.x &&
+        ix < room.bounds.x + room.bounds.width - 1 &&
+        iy > room.bounds.y &&
+        iy < room.bounds.y + room.bounds.height - 1 &&
+        tileMap.isPassable(ix, iy);
+      if (hasInteriorAccess) {
+        keptDoors.push(door);
+        continue;
+      }
+      const idx = door.y * w + door.x;
+      tileMap.flags[idx] = TilePresets.WALL;
+      terrain[idx] = TerrainType.STONE_WALL;
+    }
+    Object.assign(room, { doors: keptDoors });
+  }
+}
+
+/**
  * Widen corridors by one tile perpendicular to their primary direction.
  * Horizontal corridors (neighboured E/W by floor) get a north or south tile added;
  * vertical corridors get an east or west tile added. Uses a two-pass approach
  * to avoid cascading widening from a single pass.
- * ~60 % of corridor tiles are widened to preserve some narrow sections.
+ * ~60% of corridor tiles are widened to preserve some narrow sections.
  */
 function widenCorridors(
   tileMap: TileMap,
@@ -1327,7 +1401,7 @@ function widenCorridors(
     for (let x = 1; x < w - 1; x++) {
       const idx = y * w + x;
       if (terrain[idx] !== TerrainType.CORRIDOR) continue;
-      if (rng.next() > 0.6) continue; // only widen ~60 % of corridor tiles
+      if (rng.next() > 0.6) continue; // only widen ~60% of corridor tiles
 
       const tN = terrain[(y - 1) * w + x]!;
       const tS = terrain[(y + 1) * w + x]!;
@@ -1394,7 +1468,7 @@ function addDiagonalShortcuts(
   const connected = new Set<string>();
 
   for (let i = 0; i < rooms.length; i++) {
-    if (rng.next() >= 0.7) continue; // attempt a diagonal shortcut for ~30 % of rooms
+    if (rng.next() >= 0.7) continue; // attempt a diagonal shortcut for ~30% of rooms
 
     const a = rooms[i]!;
     const cxA = Math.floor(a.bounds.x + a.bounds.width / 2);
@@ -1492,6 +1566,130 @@ function carveBresenhamPath(
     if (e2 < dx) {
       err += dx;
       y += sy;
+    }
+  }
+}
+
+function buildCaveProtectedMask(roomGraph: RoomGraph, w: number, h: number): Uint8Array {
+  const blocked = new Uint8Array(w * h);
+  for (const room of roomGraph.getAll()) {
+    if (room.role !== RoomRole.SAFE && room.role !== RoomRole.BOSS_STAIR) continue;
+    const { x, y, width, height } = room.bounds;
+    for (let ty = Math.max(0, y - 1); ty < Math.min(h, y + height + 1); ty++) {
+      for (let tx = Math.max(0, x - 1); tx < Math.min(w, x + width + 1); tx++) {
+        blocked[ty * w + tx] = 1;
+      }
+    }
+  }
+  return blocked;
+}
+
+function carveCaveRegions(
+  tileMap: TileMap,
+  terrain: Uint8Array,
+  roomGraph: RoomGraph,
+  w: number,
+  h: number,
+  blocked: Uint8Array,
+  seed: number,
+): void {
+  // Use a deterministic cave-only RNG stream derived from map seed + dimensions.
+  // This keeps cave shaping stable across runs while isolating it from the main
+  // dungeon RNG progression used by room/corridor generation.
+  const caveRng = new SeededRandom(seed ^ 0x9e3779b9 ^ (w << 8) ^ h);
+  const caveRand = (): number => caveRng.next();
+  const caveRandInt = (min: number, max: number): number => caveRng.nextInt(min, max);
+
+  const candidates: number[] = [];
+  const inBounds = (x: number, y: number): boolean => x > 1 && x < w - 2 && y > 1 && y < h - 2;
+
+  for (let y = 2; y < h - 2; y++) {
+    for (let x = 2; x < w - 2; x++) {
+      const idx = y * w + x;
+      if (blocked[idx]) continue;
+      if ((tileMap.flags[idx]! & TileFlags.DOOR) !== 0) continue;
+      if (terrain[idx] !== TerrainType.STONE_FLOOR) continue;
+      const roomId = roomGraph.getRoomAt(x, y);
+      if (roomId !== -1) {
+        const room = roomGraph.get(roomId);
+        if (!room || room.role !== RoomRole.NORMAL) continue;
+      }
+      candidates.push(idx);
+    }
+  }
+
+  if (candidates.length === 0) return;
+
+  const regionCount = Math.max(2, Math.min(8, Math.floor((w * h) / CAVE_REGION_DENSITY_DIVISOR)));
+
+  const carveTile = (x: number, y: number): void => {
+    if (!inBounds(x, y)) return;
+    const idx = y * w + x;
+    if (blocked[idx]) return;
+    const flags = tileMap.flags[idx]!;
+    if ((flags & TileFlags.DOOR) !== 0) return;
+    if ((flags & TileFlags.PASSABLE) === 0) return;
+    terrain[idx] = TerrainType.CAVE_FLOOR;
+  };
+
+  const carveOrganicPatch = (cx: number, cy: number, rx: number, ry: number): void => {
+    for (let y = cy - ry; y <= cy + ry; y++) {
+      for (let x = cx - rx; x <= cx + rx; x++) {
+        if (!inBounds(x, y)) continue;
+        const nx = rx <= 0 ? 0 : (x - cx) / rx;
+        const ny = ry <= 0 ? 0 : (y - cy) / ry;
+        const jitter = (caveRand() - 0.5) * CAVE_PATCH_JITTER_FACTOR;
+        if (nx * nx + ny * ny <= 1 + jitter) {
+          carveTile(x, y);
+        }
+      }
+    }
+  };
+
+  for (let i = 0; i < regionCount; i++) {
+    const start = candidates[caveRandInt(0, candidates.length - 1)]!;
+    let x = start % w;
+    let y = (start - x) / w;
+    let angle = caveRand() * Math.PI * 2;
+    let curvature = (caveRand() - 0.5) * 0.8;
+    const steps = caveRandInt(22, 64);
+
+    for (let step = 0; step < steps; step++) {
+      carveOrganicPatch(x, y, caveRandInt(1, 2), caveRandInt(1, 2));
+
+      if (caveRand() < 0.18) {
+        carveOrganicPatch(x, y, caveRandInt(3, 6), caveRandInt(2, 5));
+      }
+
+      curvature = curvature * 0.72 + (caveRand() - 0.5) * 0.35;
+      angle += curvature;
+      x = Math.round(x + Math.cos(angle));
+      y = Math.round(y + Math.sin(angle));
+
+      if (!inBounds(x, y) || blocked[y * w + x]) {
+        angle += Math.PI * (0.6 + caveRand() * 0.8);
+        x = Math.min(w - 3, Math.max(2, x));
+        y = Math.min(h - 3, Math.max(2, y));
+      }
+    }
+  }
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      if (terrain[idx] !== TerrainType.CAVE_FLOOR) continue;
+      for (const [nx, ny] of [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ] as const) {
+        const nIdx = ny * w + nx;
+        if (blocked[nIdx]) continue;
+        if (terrain[nIdx] === TerrainType.STONE_WALL) {
+          terrain[nIdx] = TerrainType.CAVE_WALL;
+        }
+      }
     }
   }
 }

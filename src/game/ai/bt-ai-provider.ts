@@ -292,7 +292,9 @@ const EXPLORE_FAR_CANDIDATE_POOL = 3;
 // Cap on tiles expanded by the frontier BFS per re-pick, so a fully-open floor
 // cannot make the search unbounded. A re-pick only happens when the player nears
 // its current target (~every 1-2s) or a watchdog clears it, so this is cheap.
-const EXPLORE_FRONTIER_BFS_MAX_TILES = 8_192;
+// Set to exceed the largest map tile count (240×140 = 33_600 tiles) so the
+// frontier sweep can always reach the farthest unseen tile on the current floor.
+const EXPLORE_FRONTIER_BFS_MAX_TILES = 40_000;
 // Only return frontier targets at least this far from the player. The Explore
 // behavior re-picks within 50px, so a closer target would thrash without moving;
 // requiring real travel guarantees the fog (and thus the frontier set) changes
@@ -327,12 +329,13 @@ const GLOBAL_DWELL_ENEMY_PROGRESS_PX = 8;
 // Quest score is weighted far above gold so a shop purchase's one-frame gold dip
 // still reads as forward progress.
 const QUEST_PROGRESS_SCORE_WEIGHT = 1000;
-// Frames of zero floor-progress before forcing a relocation. 6000 ≈ 100s at
-// 60fps: safely longer than the slowest legitimate single-fingerprint span
-// (cross-map travel ~60s; the bat boss whittle ~76s is additionally guarded)
-// yet far under the budget the observed ~188s deadlock wastes, so it converts
-// those timeouts/deaths into wins with margin to spare.
-const QUEST_PROGRESS_STALL_FRAMES = 6000;
+// Frames of zero floor-progress before forcing a relocation. 12 000 ≈ 200s at
+// 60fps: safely longer than the slowest legitimate single-fingerprint span on the
+// doubled 240×140 map (cross-map travel ~120s on the bigger floor; the bat boss
+// whittle is additionally guarded by the active-boss check) yet far under the
+// budget the observed ~188s deadlock wastes on the old map, so it still converts
+// genuine deadlocks into wins with margin to spare.
+const QUEST_PROGRESS_STALL_FRAMES = 12_000;
 
 /**
  * Pure, near-monotonic "floor progress" score over a set of quests + gold.
