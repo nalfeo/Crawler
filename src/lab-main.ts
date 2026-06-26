@@ -61,6 +61,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'ui-probe-lab': '/src/labs/ui-probe-lab/index.ts',
   'set-piece-lab': '/src/labs/set-piece-lab/index.ts',
   'spawner-lab': '/src/labs/spawner-lab/index.ts',
+  'spawnanim-lab': '/src/labs/spawnanim-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {
@@ -114,6 +115,7 @@ const CATEGORY_HINTS: Readonly<Record<string, LabCategory>> = {
   ux: 'Meta',
   death: 'Entities',
   spawner: 'Entities',
+  spawnanim: 'Entities',
 };
 
 function inferCategory(labId: string): LabCategory | undefined {
