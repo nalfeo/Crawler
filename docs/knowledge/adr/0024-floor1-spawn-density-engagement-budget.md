@@ -133,3 +133,82 @@ the chance roll), and same-seed worlds spawn identically.
 - **Continuous room population (spawn while occupied).** Re-seeding rooms on every
   visit was rejected as non-deterministic-feeling and prone to runaway counts; a
   one-time roll recorded per room keeps it predictable.
+
+## Follow-up (2026-06-26): shared flow-field pathfinding + diagonal movement
+
+### Estimated Complexity
+
+🍎 x 5 — a new core pathfinding primitive, an enemy-AI integration with a subtle
+steering-oscillation fix, two lab visualisations, and a re-calibration against the
+headless gates.
+
+### Context
+
+The "Negative / Risk" above came true: at `enemyCap = 100`, every ground chaser
+ran its **own** A\* search toward the player almost every time anyone crossed a
+tile boundary. In dense ranged fights with a kiting player that re-derived the
+same routing data dozens of times per frame — the dominant CPU cost — and it blew
+the headless wall-time perf guard.
+
+### Decision
+
+Replace per-enemy A\* for the common case with a **shared single-source flow
+field** (`src/core/map/flow-field.ts`), the standard swarm/bullet-hell technique:
+
+- **One BFS per frame** sweeps outward from the player's tile, computing the
+  shortest-path tile distance to every reachable tile (`computeFlowField`). It is
+  rebuilt only when the goal tile or door layout changes, and shared by every
+  ground chaser that frame.
+- Each ground chaser then takes an **O(1) gradient step** (`flowFieldStep`) to the
+  most-downhill neighbour instead of searching. N A\* searches collapse into one
+  BFS plus N trivial lookups. Pursuit stays exactly as tight as per-enemy A\* (it
+  is the same shortest-path data), with none of the staleness of "re-path less
+  often" hacks.
+- **Ranged standoff, flanker, and flying** mobs keep per-enemy A\* — their targets
+  are not the player's tile, so they cannot share the field.
+
+**Diagonal movement.** The BFS distance field stays cheap 4-connected, but
+`flowFieldStep` descends over **8 neighbours** (cardinals first for deterministic
+ties, then diagonals) with a corner-cut guard — a diagonal is eligible only when
+both orthogonally adjacent cells are reachable, so a chaser never clips a wall
+corner. In open space a diagonal toward the goal is strictly more downhill than
+either cardinal, so chasers glide along clean diagonal lines instead of
+stair-stepping; due-N/E/S/W goals stay cardinal. This restores the diagonal
+movement the pre-flow-field A\*+string-pulling produced.
+
+**Steering oscillation fix.** Naively aiming a continuous-space chaser at the
+_centre_ of a diagonal neighbour tile makes its heading depend on sub-tile
+position and flip whenever it drifts across the shared corner into an orthogonal
+tile. In a dense swarm that oscillates mobs in place, churning into a blockade
+that pins the player. `followFlowField` therefore steers **diagonal** steps along
+the pure gradient direction (constant within a tile) while keeping **cardinal**
+centre-seeking (which gently re-centres mobs on the tile lane and matches the
+validated baseline).
+
+### Validation (before / after)
+
+Measured on the headless gate suite (`npm run test:headless`, 53 tests):
+
+- Diagonal stepping with naive centre-steering **failed** the gates: the suite
+  took **176 s**, seed 6 · bow blew the wall-time guard at **100 s**, and seed 6 ·
+  sword wiggled for an **86.75 s** episode (pinned by the oscillating swarm).
+- After the direction-steering fix the suite runs in **~62 s** with **all 53 gates
+  green** and the wiggle/perf metrics back at baseline — diagonal movement with no
+  regression. Prior-segment profiling of the cardinal field showed seed 6 · bow
+  dropping ~24 s → ~18 s with A\* call volume down ~3.6×.
+
+### Lab visualisation
+
+Both movement labs gained a **default-off** flow-field overlay so the field is
+inspectable: a hot→cool distance heatmap, per-tile **diagonal arrows** straight
+from `flowFieldStep`, and a goal marker.
+
+- `src/labs/ai-runner-lab/` — Phaser overlay on the live Floor 1 sim.
+- `src/labs/pathfinding-lab/` — canvas-2D overlay; its stale "Show Mob Paths" A\*
+  overlay was relabelled "Show A\* Paths" (accurate for flankers/flying/ranged)
+  now that ground chasers follow the flow field.
+
+`flow-field.ts` is a pure core utility (no rendering/ECS/game imports), unit-tested
+in `tests/ecs/flow-field.test.ts` (door routing parity with A\*, diagonal descent,
+straight-diagonal travel, and corner-cut prevention); like `pathfinding.ts` it is a
+primitive, not an ECS system, so it needs no lab of its own.

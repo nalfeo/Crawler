@@ -10,6 +10,7 @@ import {
 } from '../../core/index.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
 import { findTilePath, PATH_TRAVERSAL } from '../../core/map/pathfinding.js';
+import { computeFlowField, flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { enemyAISystem, AI_TYPE, PATH_PERSONA, TRAVERSAL_MODE } from '../../game/index.js';
@@ -259,6 +260,57 @@ function tileCenter(tileX: number, tileY: number): { x: number; y: number } {
   return { x: tileX * CELL_SIZE + CELL_SIZE / 2, y: tileY * CELL_SIZE + CELL_SIZE / 2 };
 }
 
+/**
+ * Heat colour for a flow-field cell: hot (red) at the goal, cooling through
+ * orange/green to blue as tile distance grows. `t` is the normalised distance in
+ * [0, 1]. Kept translucent so the underlying tiles still read through.
+ */
+function flowHeatColor(t: number): string {
+  const hue = 250 * Math.max(0, Math.min(1, t));
+  return `hsla(${String(hue)}, 85%, 55%, 0.22)`;
+}
+
+/**
+ * Draw a centred flow arrow (shaft + two barbs) pointing along the unit vector
+ * `(dirX, dirY)`. Because the direction comes straight from {@link flowFieldStep}
+ * it can be diagonal, so the rendered arrows fan out at 45° angles rather than
+ * snapping to the cardinal axes.
+ */
+function drawFlowArrow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  dirX: number,
+  dirY: number,
+  half: number,
+  color: string,
+): void {
+  const tipX = cx + dirX * half;
+  const tipY = cy + dirY * half;
+  const tailX = cx - dirX * half;
+  const tailY = cy - dirY * half;
+  // Barbs: reverse the heading, then rotate it ±45° (cos = sin = SQRT1_2).
+  const s = Math.SQRT1_2;
+  const bx = -dirX;
+  const by = -dirY;
+  const barb = half * 0.8;
+  const b1x = (bx * s - by * s) * barb;
+  const b1y = (bx * s + by * s) * barb;
+  const b2x = (bx * s + by * s) * barb;
+  const b2y = (-bx * s + by * s) * barb;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(tailX, tailY);
+  ctx.lineTo(tipX, tipY);
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX + b1x, tipY + b1y);
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX + b2x, tipY + b2y);
+  ctx.stroke();
+}
+
 function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): () => void {
   const gui = (controls as HTMLElement & { __labGui?: GUI }).__labGui;
   if (!(gui instanceof GUI)) {
@@ -288,6 +340,7 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
   const labSettings = {
     mapPresetId: LAB_MAP_PRESETS[0]!.id,
     showPaths: false,
+    showFlowField: false,
   };
 
   const mobEnabled: Record<string, boolean> = {};
@@ -417,7 +470,51 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const playerY = world.stores.position.y[playerEid] ?? 0;
     const playerTile = floorMap.pixelToTile(playerX, playerY);
 
-    // Path overlays
+    // Flow-field overlay: the shared single-source field that ground chasers now
+    // descend instead of running a per-mob A*. Heat = tile distance to the
+    // player; arrows are the per-tile step from flowFieldStep, which can be
+    // diagonal — so they fan out at 45° angles rather than snapping to the
+    // cardinal axes, mirroring how mobs travel in diagonal lines.
+    if (labSettings.showFlowField) {
+      const field = computeFlowField(floorMap, playerTile, {
+        traversalMode: PATH_TRAVERSAL.GROUND,
+      });
+      let maxDistance = 1;
+      for (let i = 0; i < field.distance.length; i += 1) {
+        const d = field.distance[i] ?? FLOW_UNREACHABLE;
+        if (d > maxDistance) maxDistance = d;
+      }
+      for (let ty = 0; ty < currentPreset.mapH; ty += 1) {
+        for (let tx = 0; tx < currentPreset.mapW; tx += 1) {
+          const d = field.distance[ty * field.width + tx] ?? FLOW_UNREACHABLE;
+          if (d === FLOW_UNREACHABLE) continue;
+          renderCtx.fillStyle = flowHeatColor(d / maxDistance);
+          renderCtx.fillRect(tx * CELL_SIZE, ty * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+          const step = flowFieldStep(field, tx, ty);
+          if (!step) continue;
+          const len = Math.hypot(step.x, step.y) || 1;
+          const center = tileCenter(tx, ty);
+          drawFlowArrow(
+            renderCtx,
+            center.x,
+            center.y,
+            step.x / len,
+            step.y / len,
+            CELL_SIZE * 0.3,
+            'rgba(214,228,255,0.75)',
+          );
+        }
+      }
+      const goal = tileCenter(field.goalX, field.goalY);
+      renderCtx.strokeStyle = '#f6e05e';
+      renderCtx.lineWidth = 2;
+      renderCtx.beginPath();
+      renderCtx.arc(goal.x, goal.y, CELL_SIZE * 0.4, 0, Math.PI * 2);
+      renderCtx.stroke();
+    }
+
+    // A* path overlays — the per-mob search still used by flankers, flying mobs,
+    // and ranged standoff targets. Ground chasers follow the flow field above.
     if (labSettings.showPaths) {
       for (const mob of mobs) {
         const mx = world.stores.position.x[mob.eid] ?? 0;
@@ -473,8 +570,11 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
     const lines: string[] = [
       'Click a passable tile to move the player.',
       `Room: ${currentPreset.name}  |  Door: ${currentPreset.doorTile !== null ? (doorOpen ? 'open' : 'closed') : 'none'}`,
-      `Mobs: ${mobs.length}  |  Path overlay: ${labSettings.showPaths ? 'on' : 'off'}`,
+      `Mobs: ${mobs.length}  |  A* paths: ${labSettings.showPaths ? 'on' : 'off'}  |  Flow field: ${labSettings.showFlowField ? 'on' : 'off'}`,
     ];
+    if (labSettings.showFlowField) {
+      lines.push('Flow field: heat = distance to player, arrows = diagonal step.');
+    }
     for (const spec of MOB_SPECS) {
       if (mobEnabled[spec.key] && (mobCount[spec.key] ?? 0) > 0) {
         lines.push(`${spec.color.slice(0, 7)}  ${spec.label}`);
@@ -516,7 +616,8 @@ function createPathfindingLab(canvasHost: HTMLElement, controls: HTMLElement): (
     .name('Room Layout')
     .onChange(() => resetWorld());
 
-  gui.add(labSettings, 'showPaths').name('Show Mob Paths');
+  gui.add(labSettings, 'showPaths').name('Show A* Paths');
+  gui.add(labSettings, 'showFlowField').name('Show Flow Field');
 
   const doorApi = {
     toggleDoor: () => setDoorState(!doorOpen),
@@ -569,6 +670,6 @@ registerLab(LAB_ID, {
   category: 'Movement & Physics',
   name: 'Pathfinding Lab',
   description:
-    'Compare stupid, navigator, flanker, and flying mob pathing across 4 room layouts. Toggle path overlays and control which mob types spawn.',
+    'Compare stupid, navigator, flanker, and flying mob pathing across 4 room layouts. Visualise the shared flow field (heat + diagonal arrows) ground chasers descend, or the per-mob A* paths used by flankers and flying mobs.',
   create: createPathfindingLab,
 });

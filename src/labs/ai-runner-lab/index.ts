@@ -19,7 +19,9 @@ import {
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
 import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
+import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
+import { peekGroundFlowField } from '../../game/enemyAISystem.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
@@ -120,6 +122,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let pendingGearEquipPreview = false;
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
+  let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
+  let showFlowField = false;
   let lastStepReason = '';
 
   const aiInputProvider = {
@@ -308,6 +312,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     pendingGearEquipPreview = false;
     pathGraphics?.destroy();
     pathGraphics = null;
+    flowFieldGraphics?.destroy();
+    flowFieldGraphics = null;
 
     const phaserScene = getPhaserScene();
     if (phaserScene) {
@@ -521,6 +527,92 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
   };
 
+  const ensureFlowFieldGraphics = (): Phaser.GameObjects.Graphics | null => {
+    const scene = getPhaserScene();
+    if (!scene) {
+      return null;
+    }
+    if (!flowFieldGraphics || !flowFieldGraphics.scene) {
+      flowFieldGraphics = scene.add.graphics();
+      // World-space debug overlay: depth must stay below UI_DEPTH_CUTOFF (see render-depths.ts)
+      // and below the path overlay so the cyan route reads on top of the heatmap.
+      flowFieldGraphics.setDepth(WORLD_VFX_DEPTH.debugFlowField);
+      (scene.cameras.getCamera('ui') as Phaser.Cameras.Scene2D.Camera | null)?.ignore(
+        flowFieldGraphics,
+      );
+    }
+    return flowFieldGraphics;
+  };
+
+  /**
+   * Render the shared ground flow field that dense chasers steer down. Each
+   * reachable tile is shaded by its shortest-path distance to the player (hot =
+   * close, cool = far) and ticked toward its downhill neighbour, so the swarm's
+   * routing is visible at a glance. Off by default — purely a debug aid.
+   */
+  const drawFlowFieldOverlay = (): void => {
+    if (!showFlowField) {
+      flowFieldGraphics?.clear();
+      return;
+    }
+    const graphics = ensureFlowFieldGraphics();
+    const scene = getScene();
+    const world = scene?.world;
+    if (!graphics || !scene || !world || !world.floorMap) {
+      return;
+    }
+    graphics.clear();
+
+    const field = peekGroundFlowField(world);
+    if (!field) {
+      return;
+    }
+
+    const floorMap = world.floorMap;
+    const tileSize = floorMap.config.tileSizePx;
+    const { width, height, distance } = field;
+
+    let maxDistance = 1;
+    for (let i = 0; i < distance.length; i++) {
+      const d = distance[i]!;
+      if (d > maxDistance) {
+        maxDistance = d;
+      }
+    }
+
+    // Heatmap fills, accumulating direction arrows for a single batched stroke.
+    const arrowSegments: number[] = [];
+    for (let ty = 0; ty < height; ty++) {
+      for (let tx = 0; tx < width; tx++) {
+        const d = distance[ty * width + tx]!;
+        if (d === FLOW_UNREACHABLE) {
+          continue;
+        }
+        const center = floorMap.tileToPixel(tx, ty);
+        graphics.fillStyle(flowHeatColor(d / maxDistance), 0.32);
+        graphics.fillRect(center.x - tileSize / 2, center.y - tileSize / 2, tileSize, tileSize);
+
+        const step = flowFieldStep(field, tx, ty);
+        if (step) {
+          pushFlowArrow(arrowSegments, center.x, center.y, step.x, step.y, tileSize);
+        }
+      }
+    }
+
+    graphics.lineStyle(1, 0x0b1220, 0.7);
+    graphics.beginPath();
+    for (let i = 0; i < arrowSegments.length; i += 4) {
+      graphics.moveTo(arrowSegments[i]!, arrowSegments[i + 1]!);
+      graphics.lineTo(arrowSegments[i + 2]!, arrowSegments[i + 3]!);
+    }
+    graphics.strokePath();
+
+    // Goal tile (the player tile the whole field flows toward).
+    const goal = floorMap.tileToPixel(field.goalX, field.goalY);
+    graphics.lineStyle(2, 0x9cff57, 0.95);
+    graphics.strokeCircle(goal.x, goal.y, tileSize * 0.4);
+  };
+
   const renderDecisionTree = (
     treeContainer: HTMLElement,
     tree: SerializedBTNode,
@@ -596,6 +688,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <button id="ai-manual-toggle" type="button" style="padding:6px 10px; cursor:pointer; font-weight:bold;">🎮 Take manual control</button>
             <span id="ai-control-mode" style="font-size:12px;"></span>
           </div>
+          <div style="display:flex; gap:8px; margin:0 0 12px 0; flex-wrap:wrap; align-items:center;">
+            <label for="ai-flow-field-toggle" style="display:flex; gap:6px; align-items:center; cursor:pointer; font-size:12px;">
+              <input id="ai-flow-field-toggle" type="checkbox" style="cursor:pointer;" />
+              <span>Show enemy flow field</span>
+            </label>
+          </div>
           <div id="ai-decision" style="margin-top: 8px; padding: 8px; background: #2a2a4e; border-radius: 4px;">
             <div><strong>State:</strong> <span id="ai-state">-</span></div>
             <div><strong>Reason:</strong> <span id="ai-reason">-</span></div>
@@ -612,6 +710,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• Take manual control to play it yourself (WASD/arrows move, Space attacks, E interacts)</div>
             <div>• The recorder tags every event AI vs MANUAL so handovers are clear in the log</div>
             <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
+            <div>• Toggle "Show enemy flow field" to heatmap the shared chase gradient with flow arrows (hot = near player); off by default</div>
           </div>
         </div>
       </div>
@@ -665,6 +764,23 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       manualButton.textContent = manualControl ? '🤖 Return to AI' : '🎮 Take manual control';
       manualButton.onclick = () => {
         setManualControl(!manualControl);
+      };
+    }
+
+    const flowFieldToggle = document.getElementById(
+      'ai-flow-field-toggle',
+    ) as HTMLInputElement | null;
+    if (flowFieldToggle) {
+      // renderControls() rebuilds innerHTML on every call, so restore the live
+      // state onto the freshly created checkbox.
+      flowFieldToggle.checked = showFlowField;
+      flowFieldToggle.onchange = () => {
+        showFlowField = flowFieldToggle.checked;
+        if (showFlowField) {
+          drawFlowFieldOverlay();
+        } else {
+          flowFieldGraphics?.clear();
+        }
       };
     }
 
@@ -841,6 +957,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       renderDecisionTree(treeElem, ai.getTree().serialize(), decision);
     }
     drawPathOverlay();
+    drawFlowFieldOverlay();
     const debugElem = document.getElementById('ai-runner-debug');
     if (debugElem) {
       const scene = getScene();
@@ -862,6 +979,8 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     disposeHardwareInput();
     pathGraphics?.destroy();
     pathGraphics = null;
+    flowFieldGraphics?.destroy();
+    flowFieldGraphics = null;
     game.destroy(true);
   };
 }
@@ -869,6 +988,78 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 function getStateName(state: number): string {
   const names = ['EXPLORE', 'ENGAGE', 'RETREAT', 'COLLECT', 'INTERACT'];
   return names[state] ?? 'UNKNOWN';
+}
+
+/**
+ * Append a small arrow (shaft + two barbs) pointing from a tile centre toward
+ * its downhill flow-field neighbour. Segments are pushed as flat
+ * `x0,y0,x1,y1` quads so the caller can stroke every arrow in one batched path.
+ */
+function pushFlowArrow(
+  out: number[],
+  cx: number,
+  cy: number,
+  dirX: number,
+  dirY: number,
+  tileSize: number,
+): void {
+  const shaft = tileSize * 0.34;
+  const head = tileSize * 0.18;
+  const tipX = cx + dirX * shaft;
+  const tipY = cy + dirY * shaft;
+  out.push(cx, cy, tipX, tipY);
+
+  // Barbs: the reversed direction rotated ±45° off the tip.
+  const bx = -dirX;
+  const by = -dirY;
+  const c = Math.SQRT1_2;
+  out.push(tipX, tipY, tipX + (bx * c - by * c) * head, tipY + (bx * c + by * c) * head);
+  out.push(tipX, tipY, tipX + (bx * c + by * c) * head, tipY + (by * c - bx * c) * head);
+}
+
+/**
+ * Map a normalized flow-field distance (0 at the player, 1 at the farthest
+ * reachable tile) to a hot→cool packed RGB colour: red/orange near the goal,
+ * fading through green to blue/violet at the edges of the field.
+ */
+function flowHeatColor(t: number): number {
+  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+  const hue = 12 + clamped * 240;
+  return hsvToColor(hue, 0.85, 1);
+}
+
+/** Convert HSV (h in degrees, s/v in 0..1) to a packed 0xRRGGBB integer. */
+function hsvToColor(h: number, s: number, v: number): number {
+  const c = v * s;
+  const hp = (((h % 360) + 360) % 360) / 60;
+  const x = c * (1 - Math.abs((hp % 2) - 1));
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (hp < 1) {
+    r = c;
+    g = x;
+  } else if (hp < 2) {
+    r = x;
+    g = c;
+  } else if (hp < 3) {
+    g = c;
+    b = x;
+  } else if (hp < 4) {
+    g = x;
+    b = c;
+  } else if (hp < 5) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+  const m = v - c;
+  const ri = Math.round((r + m) * 255);
+  const gi = Math.round((g + m) * 255);
+  const bi = Math.round((b + m) * 255);
+  return (ri << 16) | (gi << 8) | bi;
 }
 
 registerLab('ai-runner', {

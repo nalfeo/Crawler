@@ -10,6 +10,7 @@ import {
   Velocity,
 } from '../core/components.js';
 import { findTilePath, PATH_TRAVERSAL, type TilePoint } from '../core/map/pathfinding.js';
+import { computeFlowField, flowFieldStep, type FlowField } from '../core/map/flow-field.js';
 import { spawnAoeProjectile, spawnEnemyProjectile } from '../core/helpers.js';
 import { isPointInSafeSpace } from '../core/safe-space.js';
 import type { GameWorld } from '../core/world.js';
@@ -154,6 +155,18 @@ const sharedPathMemoByWorld = new WeakMap<
   GameWorld,
   { revision: number; map: Map<string, TilePoint[]> }
 >();
+
+interface GroundFlowCache {
+  goalX: number;
+  goalY: number;
+  doorRevision: number;
+  field: FlowField;
+}
+
+// One shared ground flow field per world, aimed at the player's tile. Rebuilt
+// only when the goal tile or the traversable layout (doors) changes, then reused
+// by every ground chaser that frame.
+const groundFlowByWorld = new WeakMap<GameWorld, GroundFlowCache>();
 
 function getWanderStateMap(world: GameWorld): Map<number, WanderState> {
   let map = wanderStatesByWorld.get(world);
@@ -784,6 +797,97 @@ function nextWaypointDirection(
   return { x: 0, y: 0, valid: false };
 }
 
+/**
+ * Get the shared ground flow field aimed at the player's current tile, rebuilding
+ * it only when the goal tile or the traversable layout (doors) changes. One BFS
+ * is shared by every ground chaser that frame, replacing a per-enemy A* storm.
+ * Returns null when there is no floor map.
+ */
+function getGroundFlowField(
+  world: GameWorld,
+  playerX: number,
+  playerY: number,
+  doorRevision: number,
+): GroundFlowCache | null {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return null;
+  }
+
+  const playerTile = floorMap.pixelToTile(playerX, playerY);
+  const goal = findNearestTraversableTile(world, playerTile, TRAVERSAL_MODE.GROUND) ?? playerTile;
+
+  const cached = groundFlowByWorld.get(world);
+  if (
+    cached &&
+    cached.goalX === goal.x &&
+    cached.goalY === goal.y &&
+    cached.doorRevision === doorRevision &&
+    cached.field.width === floorMap.tileMap.width &&
+    cached.field.height === floorMap.tileMap.height
+  ) {
+    return cached;
+  }
+
+  const field = computeFlowField(floorMap, goal, { traversalMode: PATH_TRAVERSAL.GROUND });
+  const next: GroundFlowCache = { goalX: goal.x, goalY: goal.y, doorRevision, field };
+  groundFlowByWorld.set(world, next);
+  return next;
+}
+
+/**
+ * Read-only accessor for the most recently built ground flow field, for
+ * debugging/visualisation overlays (e.g. the AI runner lab). Returns null until
+ * {@link enemyAISystem} has built one for this world.
+ */
+export function peekGroundFlowField(world: GameWorld): FlowField | null {
+  return groundFlowByWorld.get(world)?.field ?? null;
+}
+
+/**
+ * Steer `eid` one tile down the shared flow-field gradient toward the player.
+ * O(1): a single neighbour lookup, no per-enemy search. Returns false when the
+ * enemy sits on the goal tile or an unreachable tile so the caller can fall back
+ * to A* or direct steering for the final approach.
+ *
+ * Diagonal steps steer along the gradient direction itself, while cardinal steps
+ * seek the neighbouring tile centre. Aiming at a *diagonal* tile centre makes the
+ * heading depend on sub-tile position and flip whenever an enemy drifts across
+ * the shared corner into an orthogonal tile, which oscillates a dense swarm in
+ * place; a pure direction is constant within a tile, so chasers glide along a
+ * clean diagonal. Cardinal centre-seeking is retained because it gently
+ * re-centres mobs on the tile lane and matches the validated baseline.
+ */
+function followFlowField(world: GameWorld, eid: number, speed: number, field: FlowField): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return false;
+  }
+
+  const enemyX = world.stores.position.x[eid] ?? 0;
+  const enemyY = world.stores.position.y[eid] ?? 0;
+  const tile = floorMap.pixelToTile(enemyX, enemyY);
+  const step = flowFieldStep(field, tile.x, tile.y);
+  if (!step) {
+    return false;
+  }
+
+  let direction: { x: number; y: number; length: number };
+  if (step.x !== 0 && step.y !== 0) {
+    direction = normalize(step.x, step.y);
+  } else {
+    const center = floorMap.tileToPixel(tile.x + step.x, tile.y + step.y);
+    direction = normalize(center.x - enemyX, center.y - enemyY);
+  }
+  if (direction.length <= EPSILON) {
+    setVelocity(world, eid, 0, 0);
+    return true;
+  }
+
+  setVelocity(world, eid, direction.x * speed, direction.y * speed);
+  return true;
+}
+
 function followPathWithCaching(
   world: GameWorld,
   eid: number,
@@ -1162,6 +1266,7 @@ function applyPathDrivenBehavior(
   speed: number,
   attackRange: number,
   doorRevision: number,
+  groundFlow: GroundFlowCache | null,
 ): void {
   const enemyX = world.stores.position.x[eid] ?? 0;
   const enemyY = world.stores.position.y[eid] ?? 0;
@@ -1203,14 +1308,22 @@ function applyPathDrivenBehavior(
     }
   }
 
-  const usedPath = followPathWithCaching(
-    world,
-    eid,
-    speed,
-    targetTile,
-    traversalMode,
-    doorRevision,
-  );
+  // Shared flow-field fast path: every ground chaser heads for the player's tile,
+  // so one BFS (built once per frame) replaces their individual A* searches. Only
+  // eligible when the resolved target IS the field's goal — ranged standoff and
+  // flank targets differ, so those keep using per-enemy A*.
+  let usedPath = false;
+  if (
+    groundFlow &&
+    traversalMode === TRAVERSAL_MODE.GROUND &&
+    targetTile.x === groundFlow.goalX &&
+    targetTile.y === groundFlow.goalY
+  ) {
+    usedPath = followFlowField(world, eid, speed, groundFlow.field);
+  }
+  if (!usedPath) {
+    usedPath = followPathWithCaching(world, eid, speed, targetTile, traversalMode, doorRevision);
+  }
 
   if (!usedPath) {
     const waypoint = world.floorMap?.tileToPixel(targetTile.x, targetTile.y);
@@ -1472,6 +1585,7 @@ export function enemyAISystem(world: GameWorld): void {
   const swarmEntities = enemyList.filter((eid) => enemyBehavior.type[eid] === AI_TYPE.SWARM);
   const activeEnemies: number[] = [];
   const doorRevision = floorMap ? getDoorRevision(world) : 0;
+  const groundFlow = getGroundFlowField(world, playerX, playerY, doorRevision);
   const playerHiddenInSafeRoom = world.playerInSafeRoom;
 
   for (const eid of enemies) {
@@ -1555,6 +1669,7 @@ export function enemyAISystem(world: GameWorld): void {
           speed,
           attackRange,
           doorRevision,
+          groundFlow,
         );
       } else {
         applyLegacyChase(world, eid, playerDx, playerDy, distanceToPlayer, aggroRange, speed);
@@ -1601,6 +1716,7 @@ export function enemyAISystem(world: GameWorld): void {
         speed,
         attackRange,
         doorRevision,
+        groundFlow,
       );
     }
 
