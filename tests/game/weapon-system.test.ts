@@ -1,6 +1,13 @@
-import { query } from 'bitecs';
+import { addComponent, query, set } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Damage, Position, Projectile, Velocity } from '../../src/core/components.js';
+import {
+  Damage,
+  DeathTimer,
+  MeleeSwing,
+  Position,
+  Projectile,
+  Velocity,
+} from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { setActiveWeapon, weaponSystem } from '../../src/game/weaponSystem.js';
 import { WEAPON } from '../../src/shared/constants.js';
@@ -74,5 +81,46 @@ describe('weaponSystem', () => {
     weaponSystem(world);
 
     expect(query(world.ecs, [Projectile]).length).toBe(1);
+  });
+
+  it('skips corpses when picking a target — a dead enemy must not be shot at', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Nearer "corpse": Enemy + Position but 0 HP and a DeathTimer (still in the
+    // death-linger window). The player must shoot the live enemy past it.
+    const corpse = spawnEnemy(world, 30, 0, 10);
+    world.stores.health.current[corpse] = 0;
+    addComponent(world.ecs, corpse, set(DeathTimer, { remainingMs: 500 }));
+    spawnEnemy(world, 80, 0, 10);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+
+    const projectile = query(world.ecs, [Projectile])[0];
+    expect(projectile).toBeDefined();
+    // Targeting the live enemy means the shot fires straight right (+X) at full
+    // speed; targeting the corpse would also be +X but we additionally assert
+    // no projectile sits on top of the corpse and damage flows past it.
+    expect(world.stores.velocity.x[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
+    expect(world.stores.velocity.y[projectile!]).toBeCloseTo(0, 5);
+  });
+
+  it('skips corpses for melee target acquisition', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    const corpse = spawnEnemy(world, 10, 0, 10);
+    world.stores.health.current[corpse] = 0;
+    addComponent(world.ecs, corpse, set(DeathTimer, { remainingMs: 500 }));
+    // No live enemy: with only a corpse in range, melee auto-fire must NOT
+    // spawn a swing. Before the fix, the corpse was treated as a target.
+    const sword = getWeaponDef('sword')!;
+    setActiveWeapon(world, sword);
+    world.elapsedMs = sword.cooldownMs;
+
+    weaponSystem(world);
+
+    expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
   });
 });
