@@ -72,4 +72,21 @@ describe('levelSystem', () => {
     levelSystem(world); // same XP, already at level 2
     expect(world.playerLevel.unspentPoints).toBe(pointsAfterFirst);
   });
+
+  it('emits a levelUpBurst VFX at the player position on level-up', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 64, 48);
+    world.playerLevel.xp = xpRequiredForLevel(1);
+    levelSystem(world);
+    expect(world.vfxEvents).toHaveLength(1);
+    expect(world.vfxEvents[0]).toMatchObject({ kind: 'levelUpBurst', x: 64, y: 48 });
+  });
+
+  it('does not emit a levelUpBurst when no level-up occurs', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    world.playerLevel.xp = xpRequiredForLevel(1) - 1;
+    levelSystem(world);
+    expect(world.vfxEvents).toHaveLength(0);
+  });
 });

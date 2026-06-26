@@ -23,6 +23,7 @@ import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
+import { createEffectsVfx } from './EffectsVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { TeamId, MeleeSpriteId } from '../shared/constants.js';
@@ -481,6 +482,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     typeof scene.add.rectangle === 'function'
       ? createGoreVfx(scene, { intensity: 1.25, hitGoreEnabled: true })
       : null;
+  const effectsVfx = createEffectsVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
   let lastRenderMs: number | null = null;
@@ -979,6 +981,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       if (goreVfx) {
         goreVfx.update(world, renderElapsedMs, deltaMs, interpAlpha);
       }
+      // Juice effects (hit sparks, crit bursts, death pops, pickups, level-up).
+      // Reads combatEvents BEFORE CombatVfx drains them; drains world.vfxEvents.
+      effectsVfx.update(world, renderElapsedMs);
       // Process combat VFX (floating damage numbers)
       combatVfx.update(world, renderElapsedMs);
     },
@@ -1005,6 +1010,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       arcGraphics.clear();
       arcSpawnMs.clear();
       goreVfx?.destroy();
+      effectsVfx.destroy();
       combatVfx.destroy();
     },
   };

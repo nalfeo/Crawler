@@ -30,6 +30,14 @@ export const WORLD_VFX_DEPTH = {
   bloodPool: 5,
   /** Blood/gore splatter particles. */
   gore: 10,
+  /** Enemy death "pop" ring + scatter (EffectsVfx). */
+  deathPop: 11,
+  /** Weapon impact spark / crit burst (EffectsVfx). */
+  hitSpark: 12,
+  /** Pickup collect sparkle — gem / gold / item (EffectsVfx). */
+  pickupSparkle: 15,
+  /** Level-up celebratory burst (EffectsVfx). */
+  levelUpBurst: 18,
   /** Floating damage numbers / MISS / BLOCKED text. */
   combatText: 20,
   /** AI debug flow-field heatmap (labs only); sits beneath the path overlay. */
