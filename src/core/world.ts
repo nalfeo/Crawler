@@ -23,6 +23,7 @@ import {
   XpGem,
   Sprite,
   EnemyBehavior,
+  Spawner,
   BroadcastScore,
   DroppedItem,
   Weapon,
@@ -200,6 +201,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, XpGem, stores.xpGem);
   wireStore(ecs, Sprite, stores.sprite);
   wireStore(ecs, EnemyBehavior, stores.enemyBehavior);
+  wireStore(ecs, Spawner, stores.spawner);
   wireStore(ecs, BroadcastScore, stores.broadcastScore);
   wireStore(ecs, DroppedItem, stores.droppedItem);
   wireStore(ecs, Weapon, stores.weapon);
