@@ -173,4 +173,40 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
     await forceVariantButton.waitFor({ state: 'visible', timeout: 10_000 });
     expect(await forceVariantButton.isVisible()).toBe(true);
   });
+
+  it('posts force flags to the judge endpoint from the override controls', async () => {
+    // Mock the judge endpoint so the override controls have a real network call
+    // to drive — still no Azure/LLM: we only assert the request payload, proving
+    // the force wiring (force / variantIndexes) end-to-end through the UI.
+    await page.route('**/api/runs/**/judge', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ summary: { candidates: [] } }),
+      });
+    });
+    try {
+      // Run-level override → force the whole run past the sensor gate: { force: true }.
+      await loadSeededDevtools();
+      page.once('dialog', (dialog) => void dialog.accept());
+      const runJudgeRequest = page.waitForRequest((req) => req.url().includes('/judge'));
+      await page.getByRole('button', { name: /^Force judge$/ }).click();
+      expect((await runJudgeRequest).postDataJSON()).toEqual({ force: true });
+
+      // Per-variant override → force only the sensor-failed variant #0:
+      // { force: true, variantIndexes: [0] }. Re-seed first to reset the run.
+      await loadSeededDevtools();
+      const variantJudgeRequest = page.waitForRequest((req) => req.url().includes('/judge'));
+      await page
+        .getByRole('button', { name: /^Force judge variant$/ })
+        .first()
+        .click();
+      expect((await variantJudgeRequest).postDataJSON()).toEqual({
+        force: true,
+        variantIndexes: [0],
+      });
+    } finally {
+      await page.unroute('**/api/runs/**/judge');
+    }
+  });
 });
