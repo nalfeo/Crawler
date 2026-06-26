@@ -39,6 +39,12 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
   3. Fix the underlying CI failure, then re-run `gh pr merge --auto --squash`.
 - If `gh pr merge` explicitly states that reviews are required, stop and report this to the user — do not guess.
 
+### Resolving addressed review comments
+
+- Review-comment threads are auto-resolved by `.github/workflows/auto-resolve-review-threads.yml` — do **not** click "Resolve conversation", and no PAT is used (it runs as the GitHub App bot, never as a human).
+- When you address a review comment (push a fix **or** explain in-thread why no change is needed), reply **in that thread** with the marker `✅ Addressed` (ideally `✅ Addressed in <sha>: <one-line note>`). The workflow resolves the thread on the next push/sweep; the code does **not** need to be outdated.
+- Only replies from the PR owner/member/collaborator or a trusted bot (e.g. the Copilot coding agent) are honored.
+
 ## Test Strategy
 
 - Unit tests for all pure functions (damage calc, loot tables, XP curves)

@@ -120,6 +120,12 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
   3. Fix the underlying CI failure, then re-run `gh pr merge --auto --squash`.
 - Only stop and report to the user if `gh pr merge` itself explicitly states a review is required.
 
+### Resolving addressed review comments
+
+- Review-comment threads are auto-resolved by `.github/workflows/auto-resolve-review-threads.yml` — you do **not** click "Resolve conversation", and no PAT is involved (it runs as the GitHub App bot, never as a human).
+- When you address a review comment — whether by pushing a fix **or** by explaining in-thread why no change is needed — reply **in that thread** with the marker `✅ Addressed` (ideally `✅ Addressed in <sha>: <one-line note>`). The workflow resolves the thread on the next push/sweep. The code does **not** need to be outdated.
+- Only replies from the PR owner/member/collaborator or a trusted bot (e.g. the Copilot coding agent) count, so drive-by comments cannot bypass the conversation-resolution merge gate.
+
 ## Tech Stack
 
 TypeScript (strict) · Phaser 4 · bitecs 0.4 · Vite · Vitest · fast-check · ESLint · Prettier · GitHub Actions
