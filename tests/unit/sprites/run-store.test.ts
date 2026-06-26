@@ -7,7 +7,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { LocalRunStore } from '../../../scripts/sprites/store/local-store.js';
@@ -51,6 +51,34 @@ describe('LocalRunStore', () => {
       await store.put('k', Buffer.from('second'));
       const result = await store.get('k');
       expect(result.toString()).toBe('second');
+    });
+  });
+
+  describe('put (atomic write)', () => {
+    it('leaves no temp files behind after a successful write', async () => {
+      await store.put('brief/run/summary.json', Buffer.from('{"ok":true}'));
+      const entries = readdirSync(path.join(tmpDir, 'brief', 'run'));
+      expect(entries).toEqual(['summary.json']);
+      expect(entries.some((entry) => entry.includes('.tmp-'))).toBe(false);
+    });
+
+    it('overwrite atomically replaces with no temp orphan', async () => {
+      await store.put('k.json', Buffer.from('first'));
+      await store.put('k.json', Buffer.from('second'));
+      const entries = readdirSync(tmpDir);
+      expect(entries).toEqual(['k.json']);
+      expect((await store.get('k.json')).toString()).toBe('second');
+    });
+
+    it('concurrent puts to distinct keys all land without collision', async () => {
+      await Promise.all(
+        Array.from({ length: 12 }, (_unused, i) =>
+          store.put(`brief/run/processed/${String(i).padStart(2, '0')}.png`, Buffer.from([i])),
+        ),
+      );
+      const entries = readdirSync(path.join(tmpDir, 'brief', 'run', 'processed')).sort();
+      expect(entries).toHaveLength(12);
+      expect(entries.some((entry) => entry.includes('.tmp-'))).toBe(false);
     });
   });
 
