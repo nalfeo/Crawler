@@ -17,6 +17,7 @@ import {
   createStatBar,
   addPixelIcon,
 } from './pixel-ui.js';
+import { applyCrispText } from './ui-scale.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -88,6 +89,7 @@ export function createHudHealthBar(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.overlay);
   parent?.add(label);
+  const detachCrispText = applyCrispText(scene, [label]);
 
   let pulseTween: Phaser.Tweens.Tween | undefined;
   let wasPulsing = false;
@@ -135,6 +137,7 @@ export function createHudHealthBar(
   }
 
   function destroy(): void {
+    detachCrispText();
     pulseTween?.stop();
     panel.destroy();
     bar.destroy();

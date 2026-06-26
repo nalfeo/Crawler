@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../shared/abilities.js';
 import { GAME } from '../shared/constants.js';
+import { applyCrispText } from './ui-scale.js';
 
 const DEPTH = 1000;
 const SLOT_SIZE = 64;
@@ -82,6 +83,7 @@ export function createHudAbilityBar(
   }
 
   parent?.add([...slots, ...labels, ...cooldownBars]);
+  const detachCrispText = applyCrispText(scene, [title, ...labels]);
   const setVisible = (visible: boolean): void => {
     title.setVisible(visible);
     for (const node of slots) node.setVisible(visible);
@@ -134,6 +136,7 @@ export function createHudAbilityBar(
   }
 
   function destroy(): void {
+    detachCrispText();
     title.destroy();
     for (const node of slots) node.destroy();
     for (const node of labels) node.destroy();

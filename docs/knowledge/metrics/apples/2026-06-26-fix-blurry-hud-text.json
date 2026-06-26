@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-26",
+  "session": "fix-blurry-hud-text",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "Fixed blurry persistent HUD text (floor timer, minimap labels, quest tracker, health/mana/xp bars, skill + ability trackers, boss bar, loot counter). Root cause: the game runs pixelArt:true (antialias off, NEAREST filtering) + Scale.FIT at a fixed 1280x720 design resolution, so the canvas is nearest-neighbour magnified to the display; modal UIs (DialogueBox/LevelUpUI/ModalPickerUI) already compensate by bumping Phaser Text resolution, but the HUD text objects never did, so glyphs rasterised at resolution 1 and blurred under FIT magnification / HiDPI. Added pure computeTextResolution + getTextResolution + applyCrispText helpers to src/engine/ui-scale.ts (resolution = ceil(max(FIT magnification, responsive uiScale) * devicePixelRatio), clamped [1,4]) and wired applyCrispText into all 10 HUD components with resize re-application + destroy() unsubscribe. Added 8 computeTextResolution unit tests. Mechanical, low-risk, no surprises -> exact 2-apple call. verify:fast green; full verify green on every code gate (typecheck, lint, prettier, knip, unit+coverage, integration, vite build). The only failures were the headless Floor 1 wall-clock perf guard (tests/headless/floor1-completion.test.ts:214), which is a known CPU-contention flake: frame counts are deterministic/identical run-to-run while wall-clock varies 32.5s->98.4s, and the headless import graph touches only src/game/ai, src/core, src/shared -- never src/engine -- so this engine-layer change provably cannot affect it."
+}

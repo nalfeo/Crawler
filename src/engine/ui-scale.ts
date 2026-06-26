@@ -160,3 +160,111 @@ export function onUiScaleChange(
     scene.scale.off(SCALE_RESIZE_EVENT, handler);
   };
 }
+
+/**
+ * Upper bound on screen-space text render resolution. Phaser rasterises text to
+ * an internal glyph texture `resolution`× larger than its font size; capping the
+ * value stops long HUD strings from allocating oversized textures on 4K / high-DPI
+ * displays while still covering every realistic on-screen pixel density.
+ */
+export const MAX_TEXT_RESOLUTION = 4;
+
+export interface ComputeTextResolutionOptions {
+  /** Design width the canvas renders at before FIT scaling. Defaults to GAME.WIDTH. */
+  readonly designWidth?: number;
+  /** Design height the canvas renders at before FIT scaling. Defaults to GAME.HEIGHT. */
+  readonly designHeight?: number;
+  /**
+   * Extra in-canvas scale a responsive container applies to the text (e.g. the
+   * HUD corner groups that grow on small screens). Defaults to 1 (no container scale).
+   */
+  readonly responsiveScale?: number;
+  /** Largest allowed resolution. Defaults to {@link MAX_TEXT_RESOLUTION}. */
+  readonly max?: number;
+}
+
+/**
+ * Pure: the glyph render resolution that keeps screen-space text crisp.
+ *
+ * The game renders at the design size and `Phaser.Scale.FIT` scales the whole
+ * canvas to the display, so each design pixel covers
+ * `min(displayW/designW, displayH/designH)` CSS pixels (the FIT magnification).
+ * `devicePixelRatio` converts CSS pixels to physical pixels, and `responsiveScale`
+ * accounts for HUD groups that additionally scale text up on small screens. The
+ * dominant of the FIT magnification and the responsive scale, times DPR, is how
+ * many physical pixels each design pixel spans — i.e. the resolution at which text
+ * must be rasterised so it is not nearest-neighbour upscaled (the cause of blurry
+ * HUD text). Rounded up (oversampling stays sharp; undersampling blurs) and clamped
+ * to `[1, max]`.
+ */
+export function computeTextResolution(
+  displayWidth: number,
+  displayHeight: number,
+  devicePixelRatio: number,
+  options: ComputeTextResolutionOptions = {},
+): number {
+  const designWidth = options.designWidth ?? GAME.WIDTH;
+  const designHeight = options.designHeight ?? GAME.HEIGHT;
+  const responsiveScale = options.responsiveScale ?? 1;
+  const max = options.max ?? MAX_TEXT_RESOLUTION;
+  const dpr = devicePixelRatio > 0 ? devicePixelRatio : 1;
+
+  // Degenerate sizes (pre-layout / headless): fall back to native resolution.
+  if (!(displayWidth > 0) || !(displayHeight > 0)) {
+    return 1;
+  }
+
+  const fitMagnification = Math.min(displayWidth / designWidth, displayHeight / designHeight);
+  const onScreenScale = Math.max(fitMagnification, responsiveScale) * dpr;
+  return Math.min(max, Math.max(1, Math.ceil(onScreenScale)));
+}
+
+/** Read `window.devicePixelRatio`, falling back to 1 outside a DOM context. */
+function readDevicePixelRatio(): number {
+  if (typeof window !== 'undefined' && window.devicePixelRatio > 0) {
+    return window.devicePixelRatio;
+  }
+  return 1;
+}
+
+/**
+ * Live screen-space text resolution for a scene (see {@link computeTextResolution}).
+ * Combines the canvas FIT magnification, device pixel ratio, and the responsive
+ * HUD scale so HUD text rasterises crisply at the current display size.
+ */
+export function getTextResolution(scene: Phaser.Scene): number {
+  const { width, height } = readDisplaySize(scene);
+  return computeTextResolution(width, height, readDevicePixelRatio(), {
+    designWidth: scene.scale.width,
+    designHeight: scene.scale.height,
+    responsiveScale: getUiScale(scene),
+  });
+}
+
+/**
+ * Set a crisp render resolution on screen-space text now and whenever the canvas
+ * is resized, so HUD glyphs stay sharp instead of being nearest-neighbour
+ * upscaled by `Phaser.Scale.FIT`. Returns an unsubscribe function the caller must
+ * invoke on teardown.
+ */
+export function applyCrispText(
+  scene: Phaser.Scene,
+  texts: ReadonlyArray<Phaser.GameObjects.Text>,
+): () => void {
+  let lastResolution = 0;
+  const apply = (): void => {
+    const resolution = getTextResolution(scene);
+    if (resolution === lastResolution) {
+      return;
+    }
+    lastResolution = resolution;
+    for (const text of texts) {
+      text.setResolution(resolution);
+    }
+  };
+  apply();
+  scene.scale.on(SCALE_RESIZE_EVENT, apply);
+  return () => {
+    scene.scale.off(SCALE_RESIZE_EVENT, apply);
+  };
+}

@@ -9,6 +9,7 @@ import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { GAME, FLOOR } from '../shared/constants.js';
 import { PIXEL_UI_DEPTH, createBeveledPanel } from './pixel-ui.js';
+import { applyCrispText } from './ui-scale.js';
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -49,6 +50,7 @@ export function createHudFloorTimer(
     .setScrollFactor(0)
     .setDepth(PIXEL_UI_DEPTH.content);
   parent?.add(timerText);
+  const detachCrispText = applyCrispText(scene, [timerText]);
 
   let pulseTween: Phaser.Tweens.Tween | undefined;
   let wasPulsing = false;
@@ -114,6 +116,7 @@ export function createHudFloorTimer(
   }
 
   function destroy(): void {
+    detachCrispText();
     pulseTween?.stop();
     panel.destroy();
     timerText.destroy();
