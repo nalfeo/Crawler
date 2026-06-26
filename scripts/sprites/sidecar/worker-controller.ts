@@ -32,11 +32,7 @@
  * clock is injectable via `deps.now` for deterministic tests.
  */
 
-import {
-  createImageProvider,
-  createTextProvider,
-  createVisionProvider,
-} from '../provider/factory.js';
+import { createImageProvider, createTextProvider } from '../provider/factory.js';
 import { runWorker as defaultRunWorker } from '../worker.js';
 import type { WorkerOptions, WorkerStatus } from '../worker.js';
 import type { AssetQueue } from '../queue/types.js';
@@ -48,7 +44,6 @@ export type RunWorkerFn = (options: WorkerOptions) => Promise<void>;
 /** Provider-factory signatures, injectable so tests avoid network providers. */
 export type CreateImageProviderFn = typeof createImageProvider;
 export type CreateTextProviderFn = typeof createTextProvider;
-export type CreateVisionProviderFn = typeof createVisionProvider;
 
 export interface WorkerControllerDeps {
   /** Queue the worker polls. Its `backend` is surfaced in status. */
@@ -67,8 +62,6 @@ export interface WorkerControllerDeps {
   readonly createImageProvider?: CreateImageProviderFn;
   /** Text-provider factory. Defaults to the real one. */
   readonly createTextProvider?: CreateTextProviderFn;
-  /** Vision-provider factory. Defaults to the real one. */
-  readonly createVisionProvider?: CreateVisionProviderFn;
   /** Clock for timestamps. Defaults to `Date.now`. */
   readonly now?: () => number;
   /** Optional extra status sink (the controller always records internally). */
@@ -124,7 +117,6 @@ export function createWorkerController(deps: WorkerControllerDeps): WorkerContro
   const runWorker = deps.runWorker ?? defaultRunWorker;
   const makeImageProvider = deps.createImageProvider ?? createImageProvider;
   const makeTextProvider = deps.createTextProvider ?? createTextProvider;
-  const makeVisionProvider = deps.createVisionProvider ?? createVisionProvider;
   const now = deps.now ?? Date.now;
   const env = deps.env ?? process.env;
 
@@ -189,7 +181,6 @@ export function createWorkerController(deps: WorkerControllerDeps): WorkerContro
     try {
       const provider = makeImageProvider({ env });
       const textProvider = makeTextProvider({ env });
-      const visionProvider = makeVisionProvider({ env });
       abortController = new AbortController();
       options = {
         queue: deps.queue,
@@ -197,7 +188,6 @@ export function createWorkerController(deps: WorkerControllerDeps): WorkerContro
         repoRoot: deps.repoRoot,
         provider,
         textProvider,
-        visionProvider,
         signal: abortController.signal,
         onStatus: recordStatus,
         ...(deps.pollIntervalMs !== undefined ? { pollIntervalMs: deps.pollIntervalMs } : {}),

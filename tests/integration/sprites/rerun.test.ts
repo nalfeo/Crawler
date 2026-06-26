@@ -2,7 +2,7 @@
  * Integration tests for the re-run orchestration (`rerun.ts`): re-running PostProcess
  * and Judge over an ALREADY-GENERATED run without regenerating the sheet.
  *
- * Each test seeds a real run through `generateOne` (`seedRun`) into a
+ * Each test seeds a real run through `runFull` (`seedRun`) into a
  * `LocalRunStore`, then drives the re-run functions over the stored artifacts.
  * Re-running shares the same per-variant pipeline as generation, so a
  * re-post-process reproduces the generation-time processed bytes exactly.
@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { variantCount } from '../../../scripts/sprites/brief-schema.js';
 import {
   RerunError,
   loadRunSummary,
@@ -162,6 +163,37 @@ describe('repostprocessRun', () => {
       options: { background: { colorToleranceSq: 5_000_000 } },
     });
     expect(await processedBytes(seed, 0)).not.toEqual(baseline);
+  });
+
+  it('rejects a variant-count mismatch when the brief grid changed since generation', async () => {
+    // Generation stored a 2x2 (4-cell) sheet. If the brief's grid is later
+    // widened to 2x3 (variantCount 6), content-aware re-slicing of the SAME
+    // stored sheet still recovers 4 cells. Blindly carrying the stale
+    // variantCount would corrupt the summary, so the guard (ADR 0024, mirroring
+    // Generate's gate) rejects it with `variant-count-mismatch` (→ HTTP 422).
+    const seed = await seedRun({ repoRoot: freshRoot() });
+    const before = await loadRunSummary(seed.store, seed.briefId, seed.runId);
+    const widenedBrief = {
+      ...seed.brief,
+      generation: {
+        ...seed.brief.generation,
+        sheet: { ...seed.brief.generation.sheet, cols: 3 },
+      },
+    };
+    // Precondition: the brief now expects 6 variants while the stored sheet
+    // still slices to 4.
+    expect(variantCount(widenedBrief)).toBe(6);
+
+    await expect(
+      repostprocessRun({
+        store: seed.store,
+        briefId: seed.briefId,
+        runId: seed.runId,
+        summary: before,
+        brief: widenedBrief,
+        palette: seed.palette,
+      }),
+    ).rejects.toMatchObject({ name: 'RerunError', kind: 'variant-count-mismatch' });
   });
 });
 

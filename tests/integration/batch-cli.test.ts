@@ -1,7 +1,7 @@
 /**
  * Integration tests for the batch CLI orchestrator (Phase 3 build 6).
  *
- * Drives `runBatch` against the REAL `generateOne` pipeline with mock
+ * Drives `runBatch` against the REAL `runFull` pipeline with mock
  * image + vision providers — the same scaffolding as
  * `judge-budget-cache.test.ts`, but with three briefs under a shared
  * budget in the no-text-provider path. This is the test that proves
@@ -24,7 +24,7 @@ import { PNG } from 'pngjs';
 
 import { runBatch, type BatchSummary } from '../../scripts/sprites/batch.js';
 import { JudgeBudget } from '../../scripts/sprites/cost-tracker.js';
-import { generateOne } from '../../scripts/sprites/generate-one.js';
+import { runFull } from '../../scripts/sprites/run-full.js';
 import { JudgeCache } from '../../scripts/sprites/judge-cache.js';
 import type { GenerateSheetRequest, ImageProvider } from '../../scripts/sprites/provider/types.js';
 import type {
@@ -223,7 +223,7 @@ describe('runBatch (integration)', () => {
       provider: makeMockImageProvider(sheet),
       visionProvider: vision,
       now: fixedClock,
-      generate: (options) => generateOne({ ...options, env: {} }),
+      generate: (options) => runFull({ ...options, env: {} }),
     });
 
     // Judge is disabled for this harness, so the batch still succeeds and
