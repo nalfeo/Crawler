@@ -395,6 +395,75 @@ export function runHasSensorFailures(run: QueueRun): boolean {
   return run.candidates.some(candidateForceEligible);
 }
 
+/** Coarse pipeline outcome used to label a variant card. */
+export type CandidateStatusKind = 'pass' | 'sensor-failed' | 'judge-rejected' | 'unjudged';
+
+export interface CandidateStatus {
+  readonly kind: CandidateStatusKind;
+  /** Short human label for the card header (e.g. `judge fail`). */
+  readonly label: string;
+}
+
+/**
+ * Minimal candidate shape the status derivation needs. Both the persisted
+ * `QueueRunCandidate` and the devtools `WorkflowRunCandidate` satisfy it
+ * structurally, so the UI and the pure tests share one classifier.
+ */
+export interface CandidateStatusInput {
+  /** Sensor gate result — authoritative, independent of per-sensor detail. */
+  readonly passed: boolean;
+  /** Combined sensor + judge gate. */
+  readonly combinedPassed: boolean;
+  /** Judge verdict, or null when the judge did not run for this candidate. */
+  readonly judge: { readonly passed: boolean } | null;
+}
+
+/**
+ * Classify a candidate for the variant card. Distinguishes the four real states
+ * so the UI never mislabels a sensor-passing-but-unjudged variant as a sensor
+ * failure:
+ *   - `pass`           — cleared the combined sensor + judge gate.
+ *   - `sensor-failed`  — a sensor gate failed (red).
+ *   - `judge-rejected` — sensors passed but the judge rejected it (red).
+ *   - `unjudged`       — sensors passed and no judge verdict exists yet (neutral,
+ *                        NOT a failure). Reached when the judge was capped,
+ *                        budget-skipped, disabled, or simply not run.
+ *
+ * Uses the authoritative `passed` sensor flag rather than re-deriving from the
+ * per-sensor list, so it stays correct for older runs that persisted an empty
+ * `sensors[]`.
+ */
+export function candidateStatus(candidate: CandidateStatusInput): CandidateStatus {
+  if (candidate.combinedPassed) return { kind: 'pass', label: 'PASS' };
+  if (!candidate.passed) return { kind: 'sensor-failed', label: 'sensor fail' };
+  if (candidate.judge && !candidate.judge.passed) {
+    return { kind: 'judge-rejected', label: 'judge fail' };
+  }
+  return { kind: 'unjudged', label: 'not judged' };
+}
+
+/**
+ * Why a candidate carries no judge verdict, phrased for an operator. `reason` is
+ * the sidecar's `judgeSkipReason` for the variant (null when the judge ran or
+ * the field is absent); `judged` is whether a scorecard exists. Returns null
+ * when there is nothing to explain (the candidate WAS judged).
+ */
+export function describeJudgeSkipReason(reason: string | null, judged: boolean): string | null {
+  if (judged) return null;
+  switch (reason) {
+    case 'sensor-failed':
+      return 'Not judged — a sensor gate failed. Use “Force judge” to score it anyway.';
+    case 'over-cap':
+      return 'Not judged — only the top variants (by sensor score) are judged to bound cost. Raise the brief’s judge.maxVariants to judge more.';
+    case 'over-budget':
+      return 'Not judged — the run’s judge budget was exhausted.';
+    case 'judge-disabled':
+      return 'Not judged — judging is disabled for this brief.';
+    default:
+      return 'Not judged yet — run Judge to score this variant.';
+  }
+}
+
 export function serializeQueue(state: QueueState): string {
   return JSON.stringify(state);
 }

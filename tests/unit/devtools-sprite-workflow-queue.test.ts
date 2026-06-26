@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   addItem,
   candidateForceEligible,
+  candidateStatus,
   clearQueue,
   createEmptyQueue,
+  describeJudgeSkipReason,
   deserializeQueue,
   describeGenerationProgress,
   failingSensors,
@@ -23,6 +25,7 @@ import {
   updateItem,
   GENERATION_QUEUED_STALL_HINT_MS,
   GENERATION_SYNC_STALL_HINT_MS,
+  type CandidateStatusInput,
   type QueueRun,
   type QueueRunCandidate,
   type QueueSensorResult,
@@ -622,5 +625,78 @@ describe('runHasSensorFailures', () => {
 
   it('is false for a run with no candidates', () => {
     expect(runHasSensorFailures(makeRun([]))).toBe(false);
+  });
+});
+
+describe('candidateStatus', () => {
+  function input(
+    passed: boolean,
+    combinedPassed: boolean,
+    judge: { passed: boolean } | null,
+  ): CandidateStatusInput {
+    return { passed, combinedPassed, judge };
+  }
+
+  it('labels a combined pass as PASS even if the sensor list is empty', () => {
+    expect(candidateStatus(input(true, true, { passed: true }))).toEqual({
+      kind: 'pass',
+      label: 'PASS',
+    });
+  });
+
+  it('labels a sensor-gate failure as sensor fail', () => {
+    expect(candidateStatus(input(false, false, null))).toEqual({
+      kind: 'sensor-failed',
+      label: 'sensor fail',
+    });
+  });
+
+  it('labels a sensors-pass / judge-reject as judge fail', () => {
+    expect(candidateStatus(input(true, false, { passed: false }))).toEqual({
+      kind: 'judge-rejected',
+      label: 'judge fail',
+    });
+  });
+
+  it('does NOT mislabel a sensors-pass-but-unjudged variant as a sensor failure', () => {
+    // Regression: an over-cap / not-yet-judged variant has passed sensors but no
+    // judge verdict, so combinedPassed is false. It must read as neutral
+    // "not judged", never red "sensor fail".
+    expect(candidateStatus(input(true, false, null))).toEqual({
+      kind: 'unjudged',
+      label: 'not judged',
+    });
+  });
+
+  it('treats a sensor failure as sensor fail even when a (stale) judge verdict exists', () => {
+    expect(candidateStatus(input(false, false, { passed: true })).kind).toBe('sensor-failed');
+  });
+});
+
+describe('describeJudgeSkipReason', () => {
+  it('returns null once the candidate has been judged', () => {
+    expect(describeJudgeSkipReason('sensor-failed', true)).toBeNull();
+    expect(describeJudgeSkipReason(null, true)).toBeNull();
+  });
+
+  it('explains the sensor gate and points at force judge', () => {
+    expect(describeJudgeSkipReason('sensor-failed', false)).toContain('Force judge');
+  });
+
+  it('explains the per-run cap and how to raise it', () => {
+    expect(describeJudgeSkipReason('over-cap', false)).toContain('judge.maxVariants');
+  });
+
+  it('explains an exhausted budget', () => {
+    expect(describeJudgeSkipReason('over-budget', false)).toContain('budget');
+  });
+
+  it('explains a disabled judge', () => {
+    expect(describeJudgeSkipReason('judge-disabled', false)).toContain('disabled');
+  });
+
+  it('falls back to a generic prompt for an unknown or absent reason', () => {
+    expect(describeJudgeSkipReason(null, false)).toContain('run Judge');
+    expect(describeJudgeSkipReason('something-new', false)).toContain('run Judge');
   });
 });
