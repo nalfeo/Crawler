@@ -78,6 +78,9 @@ const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
+const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
+const INTERACTION_HINT_MAX_SCALE = 1.25;
+const INTERACTION_HINT_BOTTOM_MARGIN = 12;
 const FLOOR_1_COMMENTARY = {
   intro: 'Floor 1 opens. Rhea Vale enters the dungeon and the cameras are rolling.',
   questAccepted: 'Tutorial Goon unlocks XP drops. First milestone: hit level 2 for the audience.',
@@ -1047,7 +1050,7 @@ export class MainGameScene extends Phaser.Scene {
 
     // Screen-space interaction hint / Talk button — bottom-center, big tap target.
     this.interactionHint = this.add
-      .text(GAME.WIDTH / 2, GAME.HEIGHT - 56, '', {
+      .text(GAME.WIDTH / 2, GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN, '', {
         fontFamily: 'monospace',
         fontSize: '22px',
         fontStyle: 'bold',
@@ -1065,7 +1068,8 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedInteraction = true;
     });
     const applyInteractionHintScale = (scale: number): void => {
-      this.interactionHint?.setScale(scale);
+      const hintScale = Math.min(scale, INTERACTION_HINT_MAX_SCALE);
+      this.interactionHint?.setScale(hintScale).setY(GAME.HEIGHT - INTERACTION_HINT_BOTTOM_MARGIN);
     };
     applyInteractionHintScale(getUiScale(this));
     this.offInteractionHintScale = onUiScaleChange(this, applyInteractionHintScale);
@@ -1100,10 +1104,11 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedEquip = true;
     });
     const applyMobileButtonScale = (scale: number): void => {
-      this.inventoryButton?.setScale(scale);
-      this.equipButton?.setScale(scale);
+      const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
+      this.inventoryButton?.setScale(buttonScale);
+      this.equipButton?.setScale(buttonScale);
       // Keep the second button clear of the (scaled) first button.
-      this.equipButton?.setY(16 + (this.inventoryButton?.height ?? 44) * scale + 8);
+      this.equipButton?.setY(16 + (this.inventoryButton?.height ?? 44) * buttonScale + 8);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
