@@ -16,15 +16,20 @@ export type RequestedType = SpriteType | 'auto';
 
 /**
  * Lifecycle stages for a single queue item. `*-ing` stages are transient
- * "busy" states held while a sidecar request is in flight.
+ * "busy" states held while a sidecar request is in flight. The flow is
+ * Synthesize → Choose → Generate (raw sheet only) → PostProcess → Judge →
+ * Approve → Tag; brief promotion folds into the Choose→Generate transition, so
+ * there is no standalone Promote stage.
  */
 export const WORKFLOW_STAGES = [
   'draft',
   'synthesizing',
   'candidates',
-  'promoting',
-  'promoted',
   'generating',
+  'sheet',
+  'postprocessing',
+  'postprocessed',
+  'judging',
   'variants',
   'approved',
   'tagging',
@@ -36,30 +41,34 @@ export type WorkflowStage = (typeof WORKFLOW_STAGES)[number];
 export const STEP_LABELS = [
   'Synthesize',
   'Choose',
-  'Promote',
   'Generate',
+  'PostProcess',
+  'Judge',
   'Approve',
   'Tag',
 ] as const;
 
-/** Index of the active stepper milestone for a given stage (6 === all done). */
+/** Index of the active stepper milestone for a given stage (7 === all done). */
 const STAGE_ACTIVE_STEP: Readonly<Record<WorkflowStage, number>> = {
   draft: 0,
   synthesizing: 0,
   candidates: 1,
-  promoting: 2,
-  promoted: 3,
-  generating: 3,
-  variants: 4,
-  approved: 5,
-  tagging: 5,
-  done: 6,
+  generating: 2,
+  sheet: 3,
+  postprocessing: 3,
+  postprocessed: 4,
+  judging: 4,
+  variants: 5,
+  approved: 6,
+  tagging: 6,
+  done: 7,
 };
 
 const BUSY_STAGES: ReadonlySet<WorkflowStage> = new Set<WorkflowStage>([
   'synthesizing',
-  'promoting',
   'generating',
+  'postprocessing',
+  'judging',
   'tagging',
 ]);
 
@@ -304,9 +313,11 @@ export function primaryActionLabel(stage: WorkflowStage): string | null {
     case 'draft':
       return 'Synthesize';
     case 'candidates':
-      return 'Promote chosen candidate';
-    case 'promoted':
       return 'Generate run';
+    case 'sheet':
+      return 'PostProcess';
+    case 'postprocessed':
+      return 'Judge';
     case 'approved':
       return 'Tag (generate metadata)';
     default:
