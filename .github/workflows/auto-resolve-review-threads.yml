@@ -1,0 +1,209 @@
+name: Auto-resolve addressed review threads
+
+# Automatically marks PR review-comment threads as resolved once they have been
+# addressed, so the branch-protection "Require conversation resolution before
+# merging" gate clears without a human (or you) clicking "Resolve conversation".
+#
+# Identity: this runs as a GitHub App installation token (secrets.APP_ID /
+# APP_PRIVATE_KEY) — a bot identity, NOT a PAT and NOT a human user. The default
+# GITHUB_TOKEN cannot resolve threads authored by another app (e.g. Copilot code
+# review); it returns "Resource not accessible by integration". The App needs the
+# `pull_requests: write` permission for resolveReviewThread to succeed.
+#
+# Detection is fully deterministic (no LLM-as-judge in CI — AGENTS.md rule). A
+# thread is resolved when an authorized actor (PR owner/member/collaborator, or a
+# trusted bot such as the Copilot coding agent) leaves a reply matching the
+# "addressed" marker. The code does NOT need to be outdated: a comment can be
+# addressed without any code change (e.g. the agent explains in-thread why no
+# change is needed). The judgment of "addressed" is made by whoever does the
+# fixing (they emit the marker); this workflow is a dumb script that only acts on
+# that explicit signal. Set REQUIRE_OUTDATED=true to additionally require the
+# thread to be outdated.
+
+on:
+  pull_request:
+    types: [synchronize]
+  pull_request_review_comment:
+    types: [created, edited]
+  schedule:
+    - cron: '15 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'Optional PR number to scope the sweep (blank = all open PRs)'
+        required: false
+        type: string
+
+concurrency:
+  group: auto-resolve-review-threads-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  resolve-addressed-threads:
+    name: Resolve addressed review threads
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Generate app token
+        id: app-token
+        # secrets are blank for fork-PR events — skip gracefully there.
+        if: ${{ secrets.APP_ID != '' }}
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Resolve marker-confirmed review threads
+        if: ${{ steps.app-token.outputs.token != '' }}
+        uses: actions/github-script@v7
+        env:
+          # Optional corroboration: set to 'true' to ALSO require the thread to be
+          # outdated (commented code changed). Default 'false' resolves on the
+          # marker alone, so comments addressed without a code change still clear.
+          REQUIRE_OUTDATED: 'false'
+          # Case-insensitive regex identifying an "addressed" marker reply.
+          ADDRESSED_MARKER: '(✅\s*addressed\b)|(<!--\s*addressed\s*-->)'
+          # Comma-separated bot logins whose marker replies are trusted, in
+          # addition to human OWNER/MEMBER/COLLABORATOR authors.
+          MARKER_BOTS: 'copilot-swe-agent[bot],github-actions[bot],copilot'
+          DISPATCH_PR: ${{ inputs.pr_number }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const requireOutdated =
+              (process.env.REQUIRE_OUTDATED ?? 'true').toLowerCase() !== 'false';
+            const markerRegex = new RegExp(
+              process.env.ADDRESSED_MARKER ?? '✅\\s*addressed\\b',
+              'i',
+            );
+            const trustedBots = new Set(
+              (process.env.MARKER_BOTS ?? '')
+                .split(',')
+                .map((s) => s.trim().toLowerCase())
+                .filter(Boolean),
+            );
+            const trustedAssociations = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
+
+            // Resolve the set of PRs to scan.
+            let prNumbers = [];
+            const dispatchPr = (process.env.DISPATCH_PR ?? '').trim();
+            if (context.payload.pull_request?.number) {
+              prNumbers = [context.payload.pull_request.number];
+            } else if (dispatchPr) {
+              prNumbers = [Number.parseInt(dispatchPr, 10)].filter((n) => Number.isFinite(n));
+            } else {
+              const open = await github.paginate(github.rest.pulls.list, {
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100,
+              });
+              prNumbers = open.map((pr) => pr.number);
+            }
+
+            if (prNumbers.length === 0) {
+              core.info('No target PRs to scan.');
+              return;
+            }
+
+            const threadsQuery = `
+              query ($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    reviewThreads(first: 100, after: $cursor) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes {
+                        id
+                        isResolved
+                        isOutdated
+                        viewerCanResolve
+                        comments(first: 100) {
+                          nodes {
+                            author { login }
+                            authorAssociation
+                            body
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }`;
+
+            const resolveMutation = `
+              mutation ($threadId: ID!) {
+                resolveReviewThread(input: { threadId: $threadId }) {
+                  thread { id isResolved }
+                }
+              }`;
+
+            const hasTrustedMarker = (comment) => {
+              if (!comment?.body || !markerRegex.test(comment.body)) {
+                return false;
+              }
+              const association = (comment.authorAssociation ?? '').toUpperCase();
+              if (trustedAssociations.has(association)) {
+                return true;
+              }
+              const login = (comment.author?.login ?? '').toLowerCase();
+              return trustedBots.has(login);
+            };
+
+            let resolved = 0;
+            let skipped = 0;
+
+            for (const number of prNumbers) {
+              let cursor = null;
+              do {
+                const data = await github.graphql(threadsQuery, {
+                  owner,
+                  repo,
+                  number,
+                  cursor,
+                });
+                const connection = data.repository?.pullRequest?.reviewThreads;
+                if (!connection) {
+                  break;
+                }
+
+                for (const thread of connection.nodes) {
+                  if (thread.isResolved) {
+                    continue;
+                  }
+                  if (requireOutdated && !thread.isOutdated) {
+                    skipped += 1;
+                    continue;
+                  }
+                  if (thread.viewerCanResolve === false) {
+                    skipped += 1;
+                    continue;
+                  }
+                  const comments = thread.comments?.nodes ?? [];
+                  if (!comments.some(hasTrustedMarker)) {
+                    skipped += 1;
+                    continue;
+                  }
+
+                  try {
+                    await github.graphql(resolveMutation, { threadId: thread.id });
+                    resolved += 1;
+                    core.info(`Resolved thread ${thread.id} on PR #${number}.`);
+                  } catch (error) {
+                    core.warning(
+                      `Could not resolve thread ${thread.id} on PR #${number}: ${error.message}`,
+                    );
+                  }
+                }
+
+                cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+              } while (cursor);
+            }
+
+            core.info(`Done. Threads resolved: ${resolved}. Threads skipped: ${skipped}.`);
