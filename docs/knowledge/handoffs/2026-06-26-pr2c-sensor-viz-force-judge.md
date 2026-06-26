@@ -124,7 +124,10 @@ a sweep of stale `processed/NN.judge.json` if a judge-reset UI is ever added.
 
 ## Blockers
 
-None blocking the PR. One environment constraint on the **live-Azure** evidence:
+None blocking the PR. One environment constraint applied to the **live-Azure**
+evidence at first handoff — **now RESOLVED**: the live-Azure DoD was executed and
+passed; see **"Validated against live Azure (DoD closed)"** below. The original
+substitute-evidence write-up is retained for context:
 
 - **Live-Azure E2E was not runnable in this worktree.** No Azure creds are present
   (`AZURE_OPENAI_*`, `OPENAI_API_KEY`, `AZURE_STORAGE_CONNECTION_STRING`, and
@@ -155,47 +158,45 @@ transparency: bg-not-transparent (1234px) / edge-bleed: edge-halo` with a
   returned by a forced judge call — a PR2a concern (already merged + tested), and
   PR2c adds no backend, so the mocked-payload assertion is the correct seam here.
 
+## Validated against live Azure (DoD closed)
+
+**The live-Azure end-to-end DoD pass — originally deferred — was executed and
+PASSED.** After the user authenticated Azure (`nalfeo@hotmail.com`, tenant
+`81f46c6b…`, subscription `308f5463…`, "Visual Studio Enterprise"), this worktree
+ran the minimal, cost-conscious live flow against **real Azure OpenAI**
+(`gpt-image-1` generate + `gpt-4o` judge) with the run store on `azure-blob` and
+the durable workflow-state round-tripping through Azure blob. All six DoD lines
+were ticked with real artifacts, committed under
+[`assets/2026-06-26-pr2c-live-azure/`](./assets/2026-06-26-pr2c-live-azure/).
+
+- **Run under test:** `skull-mace / 2026-06-26T22-20-57-74f0559a` — 16 variants,
+  5 with a real `anchor-derivable` sensor failure (variants 0, 1, 4, 8, 12).
+- **Cost discipline:** exactly **1** `gpt-image-1` sheet (all 16 variants in one
+  call) + **2** `gpt-4o` judge calls (one normal, one forced) ≈ well under $0.20.
+  One generation only; PostProcess re-runs are local/free.
+
+**DoD checklist → live-Azure evidence (1:1):**
+
+| #   | User DoD step                                                        | Live-Azure evidence (committed)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | generate a sheet                                                     | `POST /api/workflow/generate {briefPath:'briefs/weapons/skull-mace.yaml'}` → `200` in 56.5s; real `gpt-image-1` sheet stored to Azure blob. → `dod1-generate.json`                                                                                                                                                                                                                                                                                                                                                                           |
+| 2   | re-run **PostProcess** on the STORED sheet WITHOUT regenerating      | `POST /api/runs/skull-mace/<runId>/postprocess {}` — no image call → 16 variants, 5 sensor failures detected. → `dod2-postprocess-sensor-summary.json`                                                                                                                                                                                                                                                                                                                                                                                       |
+| 3   | re-run **Judge** on the STORED sheet WITHOUT regenerating            | `POST …/judge {variantIndexes:[2]}` (sensor-passing variant) → real `gpt-4o` scorecard (`modelDeployment:"gpt-4o"`). → `dod3-judge-passing.json`                                                                                                                                                                                                                                                                                                                                                                                             |
+| 4   | sensor-failure detail visibly renders per variant                    | Real devtools UI (hydrated from durable Azure state) renders `⚠ 1/7 sensors failed → anchor-derivable: grip midpoint x=26 is outside ±3 of center 32` on each of the 5 failing cards (5 occurrences + 5 `⚠` asserted). → `dod4-5-sensor-detail-and-force-controls.png`, `dod4-5-6-playwright-ui-result.json`                                                                                                                                                                                                                                 |
+| 5   | force-judge past a FAILING sensor                                    | **Gate held:** `POST …/judge {variantIndexes:[0]}` (variant 0 fails `anchor-derivable`) → `judgeSkipReason:'sensor-failed'`, no verdict (`dod5-judge-failing-gated.json`). **Override:** `POST …/judge {force:true,variantIndexes:[0]}` → real `gpt-4o` scorecard (style 2/brief 4/readability 3, `rejectedBy:["style_match"]`) despite `passed(sensors)=false` (`dod5-judge-failing-forced.json`). **UI:** run-level **Force judge** + per-variant **Force judge variant** buttons visible (`dod4-5-sensor-detail-and-force-controls.png`). |
+| 6   | resume-after-refresh persists (durable Azure, not just localStorage) | With `localStorage` **empty**, the UI hydrated the run from `GET /api/workflow/state` (Azure blob). After `localStorage.clear()` + reload (verified still empty), the full run + sensor detail + judge chips re-rendered — sourced purely from durable Azure. → `dod6-resume-after-refresh.png`, `dod4-5-6-playwright-ui-result.json`                                                                                                                                                                                                        |
+
+How it was driven (one-time, local, cost-conscious — never CI): a live sidecar on
+this worktree's ports (`store=azure-blob`, `queue=noop` for inline generate) drove
+DoD 1–3 and 5 via the sidecar HTTP API; a headless-Chromium Playwright pass
+against the real `vite --mode devtools` server (which reads durable Azure state
+through the loopback-CORS sidecar) captured DoD 4/6 and the UI side of DoD 5. The
+committed CI-safe spec (`tests/e2e/sprite-workflow-sensors.test.ts`, 4/4) is
+**unchanged** and remains the CI artifact — per Constitution §3 the live
+vision/LLM run stays out of CI.
+
 ## Known follow-ups
 
-**Live-Azure end-to-end DoD pass — deferred to a human/credentialed run (NOT a
-blocker).** Stated plainly so the epic closes with the gap visible:
-
-- **What the DoD asked:** iterate with Playwright until the 7-stage flow works
-  E2E against **live Azure**: generate a sheet → re-run PostProcess **and** Judge
-  on the STORED sheet WITHOUT regenerating → verify sensor-failure detail shows →
-  force-judge past a failing sensor → confirm resume-after-refresh.
-- **Why it could not run in this worktree:** no Azure/LLM credentials are present
-  (`AZURE_OPENAI_*`, `OPENAI_API_KEY`, `AZURE_STORAGE_CONNECTION_STRING`,
-  `VITE_SPRITES_SIDECAR_BASE_URL` all unset; no `.env`), and `npm run setup:azure`
-  **provisions real cloud resources** (`-ProvisionResources -IncludeStorage`),
-  which must not run unattended on this shared box. Per Constitution §3 this also
-  cannot live in the CI gate (no live vision/LLM in CI).
-- **What substitutes for it now (committed + durable):** the CI-safe Playwright
-  spec (`tests/e2e/sprite-workflow-sensors.test.ts`, 4/4) drives real headless
-  Chromium against the lab dev server rendering the actual devtools UI from seeded
-  state with the judge endpoint mocked, plus the captured screenshot
-  (`session files/pr2c-sensor-evidence.png`). The 1:1 DoD→evidence map in
-  **Blockers** above maps each DoD line to a specific committed assertion. This
-  proves every UI behavior; only the live network round-trip to PR2a's
-  already-merged-and-tested force endpoint is mocked rather than real.
-- **What a human should run later to fully tick the DoD checklist** (one-time,
-  with creds, locally — never in CI):
-  1. `npm install` then `npm run setup:azure` (provisions Azure OpenAI + storage;
-     populates the sidecar env). Start the live sidecar for this worktree's ports.
-  2. In devtools (`?page=sprite-generation-workflow`): **Generate** a sheet for a
-     brief → confirm only the raw sheet is stored (PR2b-1).
-  3. **PostProcess** then **Judge** the STORED sheet via the stage buttons —
-     WITHOUT regenerating — and confirm the returned summary merges back.
-  4. Confirm a variant that fails a sensor shows the **failure detail**
-     (name · reason · pixelCount) in the run-candidates panel.
-  5. Click **Force judge** (or **Force judge variant**) on that gated variant and
-     confirm the LLM judge actually runs past the sensor gate (real verdict
-     returned, not mocked).
-  6. Refresh the page and confirm the run + sensor detail + verdicts **resume from
-     durable state** (Azure workflow-state), not just localStorage.
-  - Capture screenshots/log excerpts mapping 1:1 to steps 2–6 and attach to a
-    short follow-up note. This fully ticks the live-Azure DoD; nothing in the code
-    needs to change for it to pass (PR2c adds no backend).
 - **Other non-PR2 future ideas** (do not assume scope): concurrency for re-run
   triggers (would make the atomic-`put` fix load-bearing rather than
   belt-and-braces); a sweep of stale `processed/NN.judge.json` if a judge-reset
@@ -214,6 +215,12 @@ blocker).** Stated plainly so the epic closes with the gap visible:
   3. `test(e2e): assert force-judge override posts force/variantIndexes`
   4. `test(e2e): assert normal Judge posts no force flag (parity guard)`
   5. `docs(handoff): PR2c sensor-viz + force-judge; close PR2 7-stage epic`
+- Live-Azure follow-up (separate branch off `main`,
+  `nalfeo-pr2c-live-azure-evidence`): `docs(handoff): validate PR2c against live
+Azure (DoD closed)` — upgrades the deferred live-Azure section above to
+  **Validated against live Azure** and commits the real evidence bundle under
+  `assets/2026-06-26-pr2c-live-azure/`. No code change; the CI-safe spec is
+  untouched.
 
 ## Agent-OS Telemetry
 

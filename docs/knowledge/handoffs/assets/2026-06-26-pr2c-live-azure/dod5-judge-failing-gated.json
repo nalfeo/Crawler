@@ -1,0 +1,60 @@
+{
+  "request": {
+    "variantIndexes": [0]
+  },
+  "status": 200,
+  "candidate": {
+    "index": 0,
+    "score": 6,
+    "outOf": 7,
+    "breakdown": [
+      {
+        "ok": true,
+        "sensor": "dimensions-exact"
+      },
+      {
+        "ok": true,
+        "sensor": "alpha-binary"
+      },
+      {
+        "ok": true,
+        "sensor": "palette-membership"
+      },
+      {
+        "ok": true,
+        "sensor": "opaque-bbox-fits"
+      },
+      {
+        "ok": true,
+        "sensor": "opaque-ratio"
+      },
+      {
+        "ok": false,
+        "sensor": "anchor-derivable",
+        "reason": "grip midpoint x=26 is outside ±3 of center 32"
+      },
+      {
+        "ok": true,
+        "sensor": "silhouette-orientation-axis"
+      }
+    ],
+    "passed": false,
+    "rawPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/raw/00.png",
+    "processedPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/00.png",
+    "scorecardPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/00.scorecard.json",
+    "derivedAnchor": null,
+    "derivedAnchors": {
+      "hold": null,
+      "centerOfGravity": {
+        "x": 26,
+        "y": 23
+      }
+    },
+    "anchorSidecarPath": null,
+    "centerOfGravitySidecarPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/00.anchor.cog.json",
+    "anchorOverlayPath": "https://crawlersprites.blob.core.windows.net/generated-runs/skull-mace/2026-06-26T22-20-57-74f0559a/processed/00.anchor-overlay.png",
+    "judgeScorecard": null,
+    "judgeSkipReason": "sensor-failed",
+    "combinedPassed": false
+  }
+}

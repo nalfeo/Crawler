@@ -1,0 +1,58 @@
+{
+  "briefId": "skull-mace",
+  "runId": "2026-06-26T22-20-57-74f0559a",
+  "total": 16,
+  "failVariants": 5,
+  "failures": [
+    {
+      "index": 0,
+      "sensors": [
+        {
+          "sensor": "anchor-derivable",
+          "reason": "grip midpoint x=26 is outside ±3 of center 32",
+          "pixelCount": null
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "sensors": [
+        {
+          "sensor": "anchor-derivable",
+          "reason": "no opaque pixel in bottom 4 rows (first opaque row y=59)",
+          "pixelCount": null
+        }
+      ]
+    },
+    {
+      "index": 4,
+      "sensors": [
+        {
+          "sensor": "anchor-derivable",
+          "reason": "grip midpoint x=26 is outside ±3 of center 32",
+          "pixelCount": null
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "sensors": [
+        {
+          "sensor": "anchor-derivable",
+          "reason": "no opaque pixel in bottom 4 rows (first opaque row y=59)",
+          "pixelCount": null
+        }
+      ]
+    },
+    {
+      "index": 12,
+      "sensors": [
+        {
+          "sensor": "anchor-derivable",
+          "reason": "grip midpoint x=26 is outside ±3 of center 32",
+          "pixelCount": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "url": "http://localhost:8382/devtools.html?page=sprite-generation-workflow",
+  "dod": {
+    "4_sensor_detail": {
+      "failLabelOccurrences": 5,
+      "warningCount": 5,
+      "sampleLabel": "anchor-derivable: grip midpoint x=26 is outside ±3 of center 32"
+    },
+    "5_force_controls": {
+      "runLevelForceVisible": true,
+      "runLevelTitle": "Force the LLM judge to run even on variants that failed a sensor (ignores the sensor gate).",
+      "perVariantForceCount": 5
+    },
+    "6_resume_after_refresh": {
+      "localStorageClearedBeforeReload": true,
+      "resumedFailLabelOccurrences": 5
+    }
+  },
+  "verdict": "PASS"
+}
