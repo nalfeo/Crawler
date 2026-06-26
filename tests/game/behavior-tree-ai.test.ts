@@ -85,6 +85,45 @@ function makeSealedRoom(widthTiles: number, heightTiles: number, wallColumnX: nu
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
 
+/**
+ * Build a 1-tile-tall horizontal corridor split into two A*-disconnected floor
+ * segments by a full-height wall column at `wallColumnX`. An entity standing on
+ * the far (right) segment is within pixel range of a player on the near (left)
+ * segment but has no walkable path to it. This is the asymmetry the opportunistic
+ * dodge/detour scans (which reason in raw pixel space) rely on versus Track A's
+ * reachable-target selection — letting an enemy trigger a dodge while the AI is
+ * still idle-wandering (EXPLORE + null target) instead of flipping to ENGAGE.
+ */
+function makeSealedCorridor(
+  widthTiles: number,
+  heightTiles: number,
+  tileSizePx: number,
+  wallColumnX: number,
+): FloorMap {
+  const tileMap = new TileMap(widthTiles, heightTiles);
+  const terrain = new Uint8Array(widthTiles * heightTiles);
+  const config: MapConfig = {
+    widthTiles,
+    heightTiles,
+    tileSizePx,
+    biome: BiomeType.ARENA,
+    seed: 1,
+    roomWidthRange: [4, 8],
+    roomHeightRange: [4, 8],
+    maxRooms: 1,
+    floorDensity: 1,
+  };
+  const openRow = Math.floor(heightTiles / 2);
+  for (let y = 0; y < heightTiles; y += 1) {
+    for (let x = 0; x < widthTiles; x += 1) {
+      const idx = y * widthTiles + x;
+      const open = y === openRow && x >= 1 && x <= widthTiles - 2 && x !== wallColumnX;
+      tileMap.flags[idx] = open ? TilePresets.FLOOR : TilePresets.WALL;
+    }
+  }
+  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: openRow });
+}
+
 function makeDiagonalCornerMap(): FloorMap {
   const tileMap = new TileMap(5, 5);
   const terrain = new Uint8Array(25);
@@ -434,6 +473,68 @@ describe('BehaviorTreeAI', () => {
       const dbg = ai.getOpportunisticDebug();
       expect(dbg.pullX).toBe(0);
       expect(dbg.pullY).toBe(0);
+    });
+
+    it('suppresses the loot detour while dodging a charging enemy (idle-wander)', () => {
+      // The dodge-suppression gate in buildOpportunisticCollect is only reachable
+      // in the one Track-A state where the detour is otherwise live AND a dodge can
+      // run: EXPLORE with a null target (idle-wander). The ENGAGE-suppression test
+      // above is gated out earlier by the COLLECT/ENGAGE state check and never hits
+      // the dodgeVec gate, so this exercises it directly.
+      //
+      // Holding idle-wander with a dodge-triggering enemy on screen needs the enemy
+      // to be close in pixels (so the dodge scan reacts) yet A*-unreachable (so Track
+      // A's reachability filter skips it instead of flipping to ENGAGE). A 1-tile
+      // corridor sealed by a wall column gives exactly that: the player wanders the
+      // left segment heading +x toward the wall while the gem and enemy sit on the
+      // disconnected right floor — seen by the raw-pixel detour/dodge scans, unseen
+      // by reachable-target selection.
+      const setup = (withEnemy: boolean): BehaviorTreeAI => {
+        const world = createTestWorld({ seed: 5 });
+        // 20px tiles keep the unreachable far floor (>=3 tiles past the wall, to clear
+        // the 2-tile approach-search) inside the 120px grab / 96px dodge radii.
+        world.floorMap = makeSealedCorridor(10, 3, 20, 3);
+        // Tile (1,1) = pixel (30,30), the left end, so the wander heads +x.
+        spawnPlayer(world, 30, 30);
+        const ai = new BehaviorTreeAI({ seed: 5 });
+        const input = createInputState();
+        ai.poll(input, world); // establishes the +x travel heading
+        expect(ai.getDecision().state).toBe(AIState.EXPLORE);
+        expect(ai.getDecision().targetEid).toBeNull();
+
+        // On-path gem on the unreachable far floor: tile (6,1)=100px dead ahead,
+        // inside the 120px grab radius and the 5 ft forward corridor.
+        spawnXpGem(world, 130, 30, 5);
+        if (withEnemy) {
+          // Enemy on the far floor 80px ahead (inside the 96px dodge radius) charging
+          // straight at the player, well over the 1.5px/frame closing-speed threshold.
+          const enemy = spawnEnemy(world, 110, 30, 20);
+          world.stores.velocity.x[enemy] = -3;
+          world.stores.velocity.y[enemy] = 0;
+        }
+        ai.poll(input, world);
+        return ai;
+      };
+
+      // Control: with no enemy the on-path gem drives the detour, proving the gem is
+      // genuinely on the forward path and would otherwise be grabbed this frame.
+      const control = setup(false);
+      expect(control.getDecision().state).toBe(AIState.EXPLORE);
+      expect(control.getDecision().targetEid).toBeNull();
+      const controlDbg = control.getOpportunisticDebug();
+      expect(Math.hypot(controlDbg.pullX, controlDbg.pullY)).toBeGreaterThan(0.5);
+
+      // Suppressed: the same gem yields zero pull once a dodge is active this frame.
+      const dodging = setup(true);
+      // Still idle-wandering — the unreachable enemy must NOT have flipped Track A to
+      // ENGAGE, or the suppression would be the ENGAGE gate (already covered above)
+      // rather than the dodge gate under test.
+      expect(dodging.getDecision().state).toBe(AIState.EXPLORE);
+      expect(dodging.getDecision().targetEid).toBeNull();
+      const dodgeDbg = dodging.getOpportunisticDebug();
+      expect(Math.hypot(dodgeDbg.dodgeX, dodgeDbg.dodgeY)).toBeGreaterThan(0); // dodge active
+      expect(dodgeDbg.pullX).toBe(0); // loot detour suppressed this frame
+      expect(dodgeDbg.pullY).toBe(0);
     });
 
     it('keeps the enemy-farm pull dormant unless explicitly weighted', () => {
