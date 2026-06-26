@@ -1,8 +1,65 @@
 import { hasComponent, query } from 'bitecs';
-import { Player, Enemy, Invincible, EffectiveStats } from './components.js';
+import { Player, Enemy, Invincible, EffectiveStats, DeathTimer, BloodColor } from './components.js';
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
 import { resolveCrit, resolveDodge } from './combat-rolls.js';
+
+/** Fallback blood colour (red) when an enemy carries no BloodColor component. */
+const DEFAULT_BLOOD_COLOR = 0xcc0000;
+
+/**
+ * Emit a `corpseExplode` combat event for a corpse struck during its
+ * death-linger window. Render-only: the engine cuts the corpse sprite into
+ * shards that spray along the blow's direction. Reads the dying enemy's blood
+ * colour and sprite variant so the shards match the body that just burst.
+ */
+function emitCorpseExplosion(
+  world: GameWorld,
+  target: number,
+  x: number,
+  y: number,
+  amount: number,
+  sourceX?: number,
+  sourceY?: number,
+): void {
+  const bloodColor = hasComponent(world.ecs, target, BloodColor)
+    ? ((world.stores.bloodColor.r[target] ?? 0) << 16) |
+      ((world.stores.bloodColor.g[target] ?? 0) << 8) |
+      (world.stores.bloodColor.b[target] ?? 0)
+    : DEFAULT_BLOOD_COLOR;
+  const spriteTextureId = world.stores.sprite.textureId[target] ?? 0;
+
+  // Shards spray away from the attacker (the same way the force travelled).
+  let dirX = 0;
+  let dirY = 0;
+  if (
+    sourceX !== undefined &&
+    sourceY !== undefined &&
+    (Math.abs(x - sourceX) > 0.01 || Math.abs(y - sourceY) > 0.01)
+  ) {
+    const dx = x - sourceX;
+    const dy = y - sourceY;
+    const dist = Math.hypot(dx, dy);
+    dirX = dx / dist;
+    dirY = dy / dist;
+  }
+
+  world.combatEvents.push({
+    type: 'corpseExplode',
+    x,
+    y,
+    amount,
+    targetType: 'enemy',
+    timestamp: world.elapsedMs,
+    targetEid: target,
+    bloodColor,
+    spriteTextureId,
+    knockbackDirX: dirX,
+    knockbackDirY: dirY,
+    sourceX,
+    sourceY,
+  });
+}
 
 /**
  * Single choke point for all damage application.
@@ -32,6 +89,21 @@ export function applyDamage(
 ): number {
   if (!Number.isFinite(amount) || amount <= 0) return 0;
   if (hasComponent(world.ecs, target, Invincible)) return 0;
+
+  // Corpse drama: a dead enemy still in its death-linger window bursts into
+  // sprite shards when hit by any player attack rather than soaking the blow.
+  // All offensive damage (projectile / melee / AoE / beam) funnels through here,
+  // so this single guard covers every weapon. The corpse is already at 0 HP, so
+  // we emit the VFX event once (guarded on a still-running timer) and zero the
+  // death timer — deathTimerSystem reaps the entity later this same frame.
+  if (hasComponent(world.ecs, target, Enemy) && hasComponent(world.ecs, target, DeathTimer)) {
+    const remainingMs = world.stores.deathTimer.remainingMs[target] ?? 0;
+    if (remainingMs > 0) {
+      emitCorpseExplosion(world, target, x, y, amount, sourceX, sourceY);
+      world.stores.deathTimer.remainingMs[target] = 0;
+    }
+    return 0;
+  }
 
   const isPlayerTarget = hasComponent(world.ecs, target, Player);
 

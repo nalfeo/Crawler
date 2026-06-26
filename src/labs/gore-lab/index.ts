@@ -85,7 +85,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Move with WASD to trigger weapon auto-fire on the stationary enemy. Watch for gore particles on hit and death.';
+    'Move with WASD to trigger weapon auto-fire on the stationary enemy. Watch for gore on hit and death — then watch the corpse burst into spraying sprite shards when a follow-up shot lands during its linger window.';
   hint.style.marginTop = '16px';
   hint.style.color = '#fbcfe8';
   hint.style.lineHeight = '1.6';
@@ -104,6 +104,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     private world!: GameWorld;
     private respawnTimer = 0;
     private lastGoreEventCount = 0;
+    private lastCorpseExplosions = 0;
 
     constructor() {
       super({ key: 'GoreLabScene' });
@@ -190,6 +191,9 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       this.lastGoreEventCount = this.world.combatEvents.filter(
         (e) => e.type === 'hit' || e.type === 'death',
       ).length;
+      this.lastCorpseExplosions += this.world.combatEvents.filter(
+        (e) => e.type === 'corpseExplode',
+      ).length;
 
       // Gore VFX processes combat events and animates particles
       this.gore.update(this.world, renderElapsedMs, delta);
@@ -264,6 +268,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
         `Weapon: ${def?.name ?? settings.activeWeapon}`,
         `Enemy HP: ${enemyHp.toFixed(0)} / ${settings.enemyHp}`,
         `Gore Events: ${this.lastGoreEventCount}`,
+        `Corpse Explosions: ${this.lastCorpseExplosions}`,
         `Intensity: ${settings.intensity.toFixed(1)}x`,
       ].join('\n');
     }
@@ -319,6 +324,6 @@ registerLab('gore-lab', {
   category: 'Combat' as LabCategory,
   name: 'Gore Lab',
   description:
-    'Stationary enemy target with live gore VFX. Tune intensity, weapon type, and enemy HP to see blood splatter effects.',
+    'Stationary enemy target with live gore VFX. Tune intensity, weapon type, and enemy HP to see blood splatter — and watch corpses detonate into spraying sprite shards when hit during their linger window.',
   create: createGoreLab,
 });
