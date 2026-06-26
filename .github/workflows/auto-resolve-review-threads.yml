@@ -78,7 +78,7 @@ jobs:
             const repo = context.repo.repo;
 
             const requireOutdated =
-              (process.env.REQUIRE_OUTDATED ?? 'true').toLowerCase() !== 'false';
+              (process.env.REQUIRE_OUTDATED ?? 'false').toLowerCase() !== 'false';
             const markerRegex = new RegExp(
               process.env.ADDRESSED_MARKER ?? '✅\\s*addressed\\b',
               'i',
