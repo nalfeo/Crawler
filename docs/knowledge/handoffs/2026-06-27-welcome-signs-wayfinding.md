@@ -75,8 +75,8 @@ director/pathfinding region) — and the gate then passed all 68 combos in ~124s
 
 ## What's Next
 
-- Open a PR for branch `nalfeo-welcome-signs-path` and arm auto-merge
-  (`gh pr merge --auto --squash`) per repo merge policy.
+- PR #360 is open; arm auto-merge (`gh pr merge --auto --squash`) once a reviewer
+  / the user authorizes per repo merge policy.
 - Optional polish: signs whose exit door is **exactly** vertical (arrow N/S,
   `cos≈0`) render WELCOME sideways — inherent to a single rotating board. If
   desired, add up/down text variants; out of scope here (user only specified the
@@ -88,9 +88,9 @@ None. All gates green on the up-to-date base.
 
 ## Branch State
 
-- Branch: `nalfeo-welcome-signs-path` (rebased onto `origin/main` @ 8cb53d6)
+- Branch: `nalfeo-welcome-signs-path` (rebased onto `origin/main`)
 - All tests passing: yes (`npm run verify` ✅ — all 8 steps)
-- PR created: no
+- PR created: yes — #360
 
 ## Agent-OS Telemetry
 
