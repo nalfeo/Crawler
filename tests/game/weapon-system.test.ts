@@ -87,11 +87,14 @@ describe('weaponSystem', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Nearer "corpse": Enemy + Position but 0 HP and a DeathTimer (still in the
-    // death-linger window). The player must shoot the live enemy past it.
+    // death-linger window). The player must shoot the live enemy instead.
     const corpse = spawnEnemy(world, 30, 0, 10);
     world.stores.health.current[corpse] = 0;
     addComponent(world.ecs, corpse, set(DeathTimer, { remainingMs: 500 }));
-    spawnEnemy(world, 80, 0, 10);
+    // Live enemy off the corpse's axis: a correct (corpse-skipping) shot fires
+    // +Y at it, while wrongly targeting the nearer corpse would fire +X. This
+    // makes the assertions fail if the corpse skip is reverted.
+    spawnEnemy(world, 0, 80, 10);
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -100,11 +103,8 @@ describe('weaponSystem', () => {
 
     const projectile = query(world.ecs, [Projectile])[0];
     expect(projectile).toBeDefined();
-    // Targeting the live enemy means the shot fires straight right (+X) at full
-    // speed; targeting the corpse would also be +X but we additionally assert
-    // no projectile sits on top of the corpse and damage flows past it.
-    expect(world.stores.velocity.x[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
-    expect(world.stores.velocity.y[projectile!]).toBeCloseTo(0, 5);
+    expect(world.stores.velocity.y[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
+    expect(world.stores.velocity.x[projectile!]).toBeCloseTo(0, 5);
   });
 
   it('skips corpses for melee target acquisition', () => {

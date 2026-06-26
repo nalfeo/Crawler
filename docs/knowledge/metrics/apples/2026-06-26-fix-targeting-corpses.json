@@ -1,9 +1,10 @@
 {
   "date": "2026-06-26",
-  "slug": "fix-targeting-corpses",
-  "estimate": 2,
-  "actual": 2,
-  "verdict": "on-estimate",
-  "summary": "Skip enemies with DeathTimer or HP<=0 in weaponSystem's two target-acquisition helpers so auto-fire/auto-swing stop locking onto corpses during the death-linger window.",
-  "notes": "Two adjacent helpers + two unit tests. Coverage follow-up added three deterministic branch-coverage tests (getNearestEnemyTarget Health-only corpse; findBossTargetInRange DeathTimer + 0-HP boss corpses) to lift src/game/weaponSystem.ts branches from 79.5% to 81% and clear the 80% gate. No production code changed in the follow-up; no scope creep."
+  "session": "2026-06-26-fix-targeting-corpses",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "Skip enemies with DeathTimer or HP<=0 in weaponSystem's two target-acquisition helpers so auto-fire/auto-swing stop locking onto corpses during the death-linger window. Two adjacent helpers + unit tests. Coverage follow-up added three deterministic branch-coverage tests (getNearestEnemyTarget Health-only corpse; findBossTargetInRange DeathTimer + 0-HP boss corpses) to lift src/game/weaponSystem.ts branches from 79.5% to 81% and clear the 80% gate. No production code changed in the follow-up; no scope creep."
 }
