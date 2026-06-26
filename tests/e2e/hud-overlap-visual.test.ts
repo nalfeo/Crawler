@@ -73,6 +73,62 @@ async function setBossFightActive(page: Page, active: boolean): Promise<void> {
   }, active);
 }
 
+describe('hud ability bar visual regression guard (mobile scale)', () => {
+  let browser: Browser;
+  let context: BrowserContext;
+  let page: Page;
+
+  beforeAll(async () => {
+    browser = await chromium.launch({ headless: true });
+    // 800×450 is 16:9 like the design canvas (1280×720), so Phaser FIT fills the
+    // viewport exactly. The resulting ui-scale is max(1280/800, 720/450) = 1.6,
+    // which exceeds ABILITY_BAR_MAX_SCALE (1.2) and exercises the scale cap.
+    context = await browser.newContext({ viewport: { width: 800, height: 450 } });
+    page = await context.newPage();
+  });
+
+  afterAll(async () => {
+    await closeQuietly(browser);
+  });
+
+  it('ability bar stays visible with ABILITY_BAR_MAX_SCALE cap applied', async () => {
+    await loadHudLab(page);
+    await page.waitForTimeout(400);
+
+    const buf = await page.screenshot({ type: 'png' });
+    const png = parsePng(buf);
+    const canvas = await getCanvasRect(page);
+
+    const scaleX = canvas.width / GAME_W;
+    const centerX = gameToScreen(canvas, GAME_W / 2, 0).x;
+    const bandWidth = Math.round(220 * scaleX);
+
+    const band = (topGy: number, bottomGy: number) => {
+      const top = gameToScreen(canvas, 0, topGy).y;
+      const bottom = gameToScreen(canvas, 0, bottomGy).y;
+      return {
+        x: centerX - Math.floor(bandWidth / 2),
+        y: top,
+        w: bandWidth,
+        h: Math.max(1, bottom - top),
+      };
+    };
+
+    // At ABILITY_BAR_MAX_SCALE=1.2 the bottomCenter container sits at
+    // y = GAME_H*(1-1.2) = -144. The ability bar title+slots (design y 550–636)
+    // render at scene y ≈ 516–619.
+    const abilityBandRatio = nonBackgroundRatio(png, band(510, 625));
+    // The region between the top HUD and the ability bar should be mostly empty.
+    const midGapRatio = nonBackgroundRatio(png, band(430, 490));
+
+    expect(abilityBandRatio, 'ability bar must be visible at mobile scale').toBeGreaterThan(0.1);
+    expect(
+      midGapRatio,
+      `mid-screen gap must be sparser than ability bar (gap=${midGapRatio.toFixed(3)}, bar=${abilityBandRatio.toFixed(3)})`,
+    ).toBeLessThan(abilityBandRatio * 0.5);
+  });
+});
+
 describe('hud visual regression overlap guard', () => {
   let browser: Browser;
   let context: BrowserContext;
