@@ -39,8 +39,9 @@
  * verifying the seed clears on *all three* weapons within budget. Probe each
  * combo via the per-weapon CLI `npm run ai:headless -- --seed N --weapon bow`
  * (repeat for sword and baseball-bat) and confirm every weapon reports VICTORY
- * with all required quests. Seed 10 is an additional verified all-weapon clear
- * held in reserve; most seeds do NOT clear on every weapon within the
+ * with all required quests. Seed 10 was a verified all-weapon clear on the
+ * previous 120×70 map; its status on the current 240×140 map has not been
+ * checked. Most seeds do NOT clear on every weapon within the
  * budget. Note bow runs simulate the full frame budget and are markedly slower
  * in wall time than sword/bat.
  *
@@ -103,7 +104,8 @@ const REQUIRED_QUEST_IDS = [
  * - 7: all-weapon clear; sword (~274s), bow (~267s), bat (~325s).
  * - 5: all-weapon clear; sword (~240s), bow (~305s), bat (~240s).
  *
- * Seed 10 is an additional verified all-weapon clear held in reserve.
+ * Seed 10 was a verified all-weapon clear on the previous 120×70 map;
+ * re-verify before adding it to the matrix on the current 240×140 map.
  */
 const WINNING_SEEDS = [15, 3, 7, 5] as const;
 

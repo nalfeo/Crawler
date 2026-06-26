@@ -292,7 +292,7 @@ const EXPLORE_FAR_CANDIDATE_POOL = 3;
 // Cap on tiles expanded by the frontier BFS per re-pick, so a fully-open floor
 // cannot make the search unbounded. A re-pick only happens when the player nears
 // its current target (~every 1-2s) or a watchdog clears it, so this is cheap.
-// Set to exceed the largest map tile count (240×140 = 33 600 tiles) so the
+// Set to exceed the largest map tile count (240×140 = 33_600 tiles) so the
 // frontier sweep can always reach the farthest unseen tile on the current floor.
 const EXPLORE_FRONTIER_BFS_MAX_TILES = 40_000;
 // Only return frontier targets at least this far from the player. The Explore
