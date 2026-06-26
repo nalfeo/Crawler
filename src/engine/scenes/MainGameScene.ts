@@ -32,6 +32,7 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import { UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
+import { getRenderScale } from '../render-scale.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
   FLOOR1_BOSS_REWARD_SPELL_IDS,
@@ -1228,7 +1229,7 @@ export class MainGameScene extends Phaser.Scene {
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.updateDoorOverlay();
     this.cameras.main.setBounds(0, 0, floorMap.widthPx, floorMap.heightPx);
-    this.cameras.main.setZoom(CAMERA.BASE_ZOOM);
+    this.cameras.main.setZoom(CAMERA.BASE_ZOOM * getRenderScale(this));
     this.cameraInSafeRoom = false;
   }
 
@@ -1236,9 +1237,22 @@ export class MainGameScene extends Phaser.Scene {
     if (this.uiCamera) {
       return;
     }
-    this.uiCamera = this.cameras.add(0, 0, GAME.WIDTH, GAME.HEIGHT, false, 'ui');
+    const renderScale = getRenderScale(this);
+    this.uiCamera = this.cameras.add(
+      0,
+      0,
+      GAME.WIDTH * renderScale,
+      GAME.HEIGHT * renderScale,
+      false,
+      'ui',
+    );
     this.uiCamera.setScroll(0, 0);
-    this.uiCamera.setZoom(1);
+    // Scale the 1280×720 design-space UI up to fill the supersampled framebuffer.
+    // Origin (0,0) pivots the zoom at the top-left, so scroll-factor-0 HUD/modal
+    // objects map design (x, y) → framebuffer (x × S, y × S) rather than zooming
+    // around the centre (which would push the corners off-screen).
+    this.uiCamera.setOrigin(0, 0);
+    this.uiCamera.setZoom(renderScale);
     this.uiCamera.roundPixels = true;
   }
 
@@ -1573,7 +1587,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.cameraInSafeRoom = inSafeRoom;
     this.cameras.main.zoomTo(
-      safeRoomCameraZoom(inSafeRoom),
+      safeRoomCameraZoom(inSafeRoom) * getRenderScale(this),
       CAMERA.SAFE_ROOM_ZOOM_DURATION_MS,
       undefined,
       true,
