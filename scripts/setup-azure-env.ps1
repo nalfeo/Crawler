@@ -32,6 +32,15 @@ param(
     [switch]$IncludeStorage,
     [switch]$ProvisionResources,
     [switch]$SyncGitHubSecrets,
+    # Forwarded to setup-azure-resources.ps1 (only used with -ProvisionResources):
+    #   -Recreate                 delete + re-create stateful resources (dev/test reset)
+    #   -AllowRecreatePersistent  permit -Recreate to destroy a persistent resource
+    #   -ForceProvision           redeploy the storage template without deleting it
+    # Named -ForceProvision here so it does not collide with -Force (which controls
+    # overwriting an existing .env.local below).
+    [switch]$Recreate,
+    [switch]$AllowRecreatePersistent,
+    [switch]$ForceProvision,
     [string]$GitHubRepo = 'nalfeo/Crawler',
     [string]$ExpectedUser = 'nalfeo@hotmail.com',
     [string]$TenantDomain = 'nalfeohotmail.onmicrosoft.com',
@@ -91,7 +100,10 @@ if ($ProvisionResources) {
         -OpenAIVisionDeployment $OpenAIVisionDeployment `
         -OpenAIImageDeployment $OpenAIImageDeployment `
         -StorageResourceGroup $StorageResourceGroup `
-        -StorageAccountName $StorageAccountName
+        -StorageAccountName $StorageAccountName `
+        -Recreate:$Recreate `
+        -AllowRecreatePersistent:$AllowRecreatePersistent `
+        -Force:$ForceProvision
     if ($LASTEXITCODE -ne 0) {
         throw "Azure resource provisioning failed."
     }
