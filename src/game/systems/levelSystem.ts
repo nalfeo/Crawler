@@ -2,6 +2,7 @@ import { addComponent, hasComponent, query } from 'bitecs';
 import { Player, Stats, SkillHolder } from '../../core/components.js';
 import type { GameWorld } from '../../core/world.js';
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
+import { pushVfxEvent } from '../../shared/vfx-events.js';
 
 /**
  * Accumulates XP into world.playerLevel and grants stat points on level-up.
@@ -39,6 +40,13 @@ export function levelSystem(world: GameWorld): void {
       if (!hasComponent(world.ecs, player, SkillHolder)) {
         addComponent(world.ecs, player, SkillHolder);
       }
+
+      // Queue a celebratory burst at the player (render-only; cosmetic).
+      pushVfxEvent(world.vfxEvents, {
+        kind: 'levelUpBurst',
+        x: world.stores.position.x[player] ?? 0,
+        y: world.stores.position.y[player] ?? 0,
+      });
     }
   }
 }

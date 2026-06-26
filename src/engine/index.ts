@@ -1,5 +1,6 @@
 export { createPhaserBridge } from './PhaserBridge.js';
 export { createCombatVfx } from './CombatVfx.js';
+export { createEffectsVfx } from './EffectsVfx.js';
 export { createInventoryUI } from './InventoryUI.js';
 export type { InventoryUIConfig } from './InventoryUI.js';
 export { createModalPickerUI } from './ModalPickerUI.js';

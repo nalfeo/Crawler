@@ -14,6 +14,17 @@ import type { GameWorld } from '../world.js';
 import type { CollisionResult } from './collisionSystem.js';
 import { addItem } from '../../shared/inventory.js';
 import { getItemByIndex } from '../../shared/items.js';
+import { PICKUP_SPARKLE_COLORS, pushVfxEvent, type PickupKind } from '../../shared/vfx-events.js';
+
+/** Queue a cosmetic collect-sparkle at a pickup's position (render-only). */
+function emitPickupSparkle(world: GameWorld, eid: number, kind: PickupKind): void {
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'pickupSparkle',
+    x: world.stores.position.x[eid] ?? 0,
+    y: world.stores.position.y[eid] ?? 0,
+    color: PICKUP_SPARKLE_COLORS[kind],
+  });
+}
 
 export function itemPickupSystem(world: GameWorld, collisions: CollisionResult): void {
   for (const pair of collisions.pairs) {
@@ -38,6 +49,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
     if (hasComponent(world.ecs, otherEid, Gold)) {
       const goldValue = world.stores.gold.value[otherEid] ?? 0;
       world.playerGold += goldValue;
+      emitPickupSparkle(world, otherEid, 'gold');
       removeEntity(world.ecs, otherEid);
       continue;
     }
@@ -48,6 +60,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       const currentScore = world.stores.broadcastScore.current[playerEid] ?? 0;
       world.stores.broadcastScore.current[playerEid] = currentScore + gemValue;
       world.playerLevel.xp += gemValue;
+      emitPickupSparkle(world, otherEid, 'gem');
       removeEntity(world.ecs, otherEid);
       continue;
     }
@@ -65,6 +78,7 @@ export function itemPickupSystem(world: GameWorld, collisions: CollisionResult):
       if (def) {
         addItem(bag, def.id, 1);
       }
+      emitPickupSparkle(world, otherEid, 'item');
       removeEntity(world.ecs, otherEid);
     }
   }
