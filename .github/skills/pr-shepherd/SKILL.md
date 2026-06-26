@@ -1,0 +1,54 @@
+---
+name: pr-shepherd
+description: >-
+  Drive open GitHub pull requests to a clean squash-merge in the Crawler repo.
+  Use when asked to "shepherd" a PR, run a "PR shepherding loop", drive/babysit
+  PRs to merge, clear the open-PR queue, or unblock a stuck PR through CI and
+  review. Covers discovering in-scope PRs (open, no active session), launching
+  one child session per PR in parallel, diagnosing and fixing REAL CI failures,
+  resolving review threads, and arming auto-merge per the repo merge policy.
+---
+
+# PR Shepherd
+
+Take one or more open PRs from "open" to "squash-merged into `main`" without hand-holding: discover what is in scope, fix the real blockers (CI failures, unresolved review threads), and let GitHub auto-merge finish the job. **No human review is required to merge this repo** — never blame a "review block" without explicit proof from `gh pr merge` output.
+
+This skill has two modes. Pick based on the request:
+
+- **Coordinator** — "shepherd the open PRs" / "run a shepherding loop". You orchestrate: discover in-scope PRs and launch one child session per PR in parallel, then relay results. You do **not** fix PRs yourself unless a session can't.
+- **Shepherd** — "shepherd PR #N" / a child session spawned by the coordinator. You own getting that one PR merged end-to-end.
+
+> Detailed command recipes, the exact session-tool parameters, the SQL tracking
+> schema, and every gotcha live in
+> [`references/playbook.md`](references/playbook.md). Read it before launching
+> sessions or touching `gh` for anything non-trivial.
+
+## Crawler merge facts (authoritative)
+
+- **Merge command:** `gh pr merge <n> --auto --squash`. This enables GitHub auto-merge; it completes on its own once required checks pass. Do **not** poll/wait manually after arming it.
+- **Required checks (branch protection):** only `ci` (the aggregate) and `commit-lint`. Everything else (`Build` shows "skipping", `PR Ready/Reviewer Guard`, coverage, security advisory) is **non-required** and never blocks merge.
+- **`required_conversation_resolution: true`** — an unresolved review thread blocks auto-merge **even when CI is green**. Always reply to and resolve every review thread.
+- **No required human review.** `reviewDecision` is empty by design. Auto-approve automation satisfies any nominal 1-review rule.
+- **Strict / up-to-date is on.** A `rebase-prs` bot auto-rebases branches that fall behind `main`; you rarely need to rebase by hand. Expect transient `BLOCKED` right after arming auto-merge while it rebases + re-runs CI.
+- **Squash-merge auto-deletes the branch.** For a stacked PR whose head ref must survive, restore the ref afterward (see playbook).
+
+## Per-PR shepherd loop (Mode B)
+
+1. **Read state:** `gh pr view <n> --json state,mergeStateStatus,mergeable,reviewDecision,headRefName,isDraft` + `gh pr checks <n>`.
+2. **Preflight locally** (persona: **Producer**, declare a 🍎 apple estimate first): `bash scripts/agent/preflight.sh`, then `npm run verify:fast`.
+3. **Diagnose every failing/cancelled check before concluding anything.** `gh pr checks <n>` mislabels `CANCELLED` as `fail`. Confirm with `gh run list --branch <branch>` → `gh run view <run-id> --log-failed`. Distinguish a real failure from a concurrency/timing artifact (see playbook §Diagnose).
+4. **Fix real failures** with a surgical commit on the PR branch. Add/repair unit coverage in touched areas. Re-run `npm run verify:fast` and `bash scripts/agent/lab-gate-check.sh`.
+5. **Resolve review threads:** read inline comments, address actionable ones in code, then reply to + resolve each thread (conversation-resolution gate).
+6. **Arm auto-merge:** `gh pr merge <n> --auto --squash`. If `BLOCKED`, diagnose the actual cause (almost always: CI not yet reported on the latest head, or an unresolved thread) — not "review required".
+7. **Confirm + record:** verify `state=MERGED`, write a handoff in `docs/knowledge/handoffs/`, score apples in `docs/knowledge/metrics/apples/`, commit with a conventional message + the `Co-authored-by: Copilot` trailer. Report the final merge commit.
+
+## Scope & worktree rules (Mode A)
+
+- **In scope = open PR with no _active_ session on its head branch.** A PR whose owning session is **archived** (`archived: true`, empty `path`) **is in scope**. Determine via `gh pr list` + `list_sessions_and_chats`/`get_session`.
+- **Never `open_pr_session` on a branch already checked out in another live worktree** — it conflicts. Resolve by owner state:
+  - Owner **active** → delegate via `send_session_message` (pass the actionable review comments + CI run IDs). Do not touch its worktree.
+  - Owner **archived / winding down** → take over directly. Edit locked files via the GitHub Contents API (byte-faithful) rather than checking out the branch.
+  - **No session** → `open_pr_session` and launch a fresh shepherd.
+  - Verify with `git -C <main_checkout> worktree list`.
+
+See [`references/playbook.md`](references/playbook.md) for the discovery commands, `open_pr_session` parameters, the `pr_shepherds` SQL tracker, cross-session reporting, and the full diagnosis cookbook.
