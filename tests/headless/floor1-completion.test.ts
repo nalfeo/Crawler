@@ -39,8 +39,8 @@
  * verifying the seed clears on *all three* weapons within budget. Probe each
  * combo via the per-weapon CLI `npm run ai:headless -- --seed N --weapon bow`
  * (repeat for sword and baseball-bat) and confirm every weapon reports VICTORY
- * with all required quests. Seeds 7 and 10 are additional verified all-weapon
- * clears held in reserve; most seeds do NOT clear on every weapon within the
+ * with all required quests. Seed 10 is an additional verified all-weapon clear
+ * held in reserve; most seeds do NOT clear on every weapon within the
  * budget. Note bow runs simulate the full frame budget and are markedly slower
  * in wall time than sword/bat.
  *
@@ -96,16 +96,21 @@ const REQUIRED_QUEST_IDS = [
  * — see the file header for how to verify and add more.
  *
  * Verified 2026-06-25 against the current damage path (crit/dodge rolls wired in,
- * retuned slime pounce band). Worst-case weapon game-time per seed in parens —
- * all comfortably under the 300s budget:
+ * retuned slime pounce band). The previous canonical gate seed (15) still clears,
+ * so it remains in the matrix rather than being rotated out. Worst-case weapon
+ * game-time per seed in parens — all comfortably under the 300s budget:
  *
- * - 6: new main's canonical sword clear; also clears bow (~227s) and bat (~139s).
- * - 2: all-weapon clear, widest margin (worst case bow ~179s).
- * - 5: all-weapon clear, widest margin (worst case bow ~179s).
+ * - 15: previous canonical all-weapon clear; still clears sword (~148s), bow
+ *       (~194s), and bat (~132s), so a regression here would be a real signal,
+ *       not seed churn.
+ * - 6: new main's canonical sword clear; also clears bow (~186s) and bat (~163s).
+ * - 7: reserve all-weapon clear promoted after the same-room aggro fix (worst
+ *      case bat ~213s, with bow ~209s still comfortably under budget).
+ * - 5: all-weapon clear (worst case bow ~206s).
  *
- * Seeds 7 and 10 are additional verified all-weapon clears held in reserve.
+ * Seed 10 is an additional verified all-weapon clear held in reserve.
  */
-const WINNING_SEEDS = [6, 2, 5] as const;
+const WINNING_SEEDS = [15, 6, 7, 5] as const;
 
 /**
  * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
