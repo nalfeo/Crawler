@@ -15,13 +15,40 @@ In both target-acquisition helpers, skip any enemy that has `DeathTimer` **or** 
 ## Files touched
 
 - `src/game/weaponSystem.ts` — corpse skip in `getNearestEnemyTarget` + `findBossTargetInRange`.
-- `tests/game/weapon-system.test.ts` — two new tests:
+- `tests/game/weapon-system.test.ts` — original two tests:
   - ranged: corpse at +30px, live enemy at +80px → projectile aims at the live enemy.
   - melee: only a corpse in range → no `MeleeSwing` is spawned.
 
+## Coverage follow-up (clearing the 80% branch gate)
+
+The initial two tests gave the corpse **both** a `DeathTimer` and 0 HP, so the
+`DeathTimer` guard short-circuited first and left the independent `Health`/`HP<=0`
+branches uncovered. The per-file gate `src/game/weaponSystem.ts: { branches: 80 }`
+landed at **79.5%** and the Unit Tests job went red.
+
+Added three deterministic branch-coverage tests (still in `tests/game/weapon-system.test.ts`,
+all using `createTestWorld()`, no `Math.random()`/`Date.now()`):
+
+- `getNearestEnemyTarget` **Health-only corpse**: nearer enemy with `health.current=0`
+  and **no** `DeathTimer`, plus a live enemy off-axis → projectile fires at the live
+  enemy (exercises the `Health && current<=0` skip independent of `DeathTimer`).
+- `findBossTargetInRange` **DeathTimer boss corpse**: permanently-aggroed boss
+  (`aggroedPermanently=1`) with positive HP + a `DeathTimer` → skipped, fire falls
+  back to the live nearest enemy.
+- `findBossTargetInRange` **0-HP boss corpse**: permanently-aggroed boss with
+  `health.current=0` and no `DeathTimer` → skipped, fire falls back to the live enemy.
+
+Each test fails if its corresponding guard is removed (live enemy is placed on a
+different axis from the corpse so the projectile velocity distinguishes the target).
+
 ## Verification
 
-`npm run verify:fast` → 311/311 pass (was 309 + 2 new tests). ~3.6s.
+- `npx vitest run --project unit --coverage` (CI's Unit Tests command) → **188 files /
+  2096 tests pass**, exit 0. `src/game/weaponSystem.ts` now **81% branches** (≥80 gate),
+  93.5% statements, 100% funcs, 93.48% lines. No `Coverage for branches … threshold` error.
+- `npm run typecheck`, `npm run lint`, `bash scripts/agent/lab-gate-check.sh` → all green.
+- The headless/e2e perf-budget specs flake locally only under coverage-load (30s
+  wall-clock guard); they pass on clean CI runners and this change is test-only.
 
 ## Unresolved / next steps
 
@@ -30,5 +57,7 @@ In both target-acquisition helpers, skip any enemy that has `DeathTimer` **or** 
 ## Apple complexity
 
 - Estimate: 🍎🍎
-- Actual: 🍎🍎 (small surgical fix in two adjacent helpers, two unit tests, no scope creep).
+- Actual: 🍎🍎 (small surgical fix in two adjacent helpers; initial two unit tests,
+  plus a 🍎 coverage follow-up adding three branch-coverage tests to clear the 80%
+  `weaponSystem.ts` branch gate — no production code changed in the follow-up).
 - Verdict: on estimate.

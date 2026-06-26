@@ -123,4 +123,72 @@ describe('weaponSystem', () => {
 
     expect(query(world.ecs, [MeleeSwing]).length).toBe(0);
   });
+
+  it('skips a 0-HP enemy that has no DeathTimer yet (Health-only corpse guard)', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Nearer "corpse": 0 HP but NOT yet flagged with a DeathTimer. This exercises
+    // the Health-only skip in getNearestEnemyTarget independently of the
+    // DeathTimer guard (which would otherwise short-circuit first).
+    const corpse = spawnEnemy(world, 20, 0, 10);
+    world.stores.health.current[corpse] = 0;
+    // Live enemy off to the side: a correct (corpse-skipping) shot fires +Y,
+    // while wrongly targeting the nearer dead enemy would fire +X.
+    spawnEnemy(world, 0, 50, 10);
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+
+    const projectile = query(world.ecs, [Projectile])[0];
+    expect(projectile).toBeDefined();
+    expect(world.stores.velocity.y[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
+    expect(world.stores.velocity.x[projectile!]).toBeCloseTo(0, 5);
+  });
+
+  it('skips a permanently-aggroed boss corpse with a DeathTimer, firing at the live enemy', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    // Live regular enemy to the right — the legitimate fallback target.
+    spawnEnemy(world, 30, 0, 10);
+    // Boss/elite below the player, flagged for boss-priority aim, but in its
+    // death-linger window: still has positive HP yet carries a DeathTimer, so
+    // only the DeathTimer guard in findBossTargetInRange protects it.
+    const boss = spawnEnemy(world, 0, 40, 10);
+    world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
+    addComponent(world.ecs, boss, set(DeathTimer, { remainingMs: 500 }));
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+
+    const projectile = query(world.ecs, [Projectile])[0];
+    expect(projectile).toBeDefined();
+    // Boss corpse skipped → fall back to the live enemy → fire +X, not +Y.
+    expect(world.stores.velocity.x[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
+    expect(world.stores.velocity.y[projectile!]).toBeCloseTo(0, 5);
+  });
+
+  it('skips a permanently-aggroed boss corpse with 0 HP and no DeathTimer, firing at the live enemy', () => {
+    const world = createTestWorld();
+    spawnPlayer(world, 0, 0);
+    spawnEnemy(world, 30, 0, 10);
+    // Dead boss with no DeathTimer yet, so only the Health guard in
+    // findBossTargetInRange keeps boss-priority aim off the corpse.
+    const boss = spawnEnemy(world, 0, 40, 10);
+    world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
+    world.stores.health.current[boss] = 0;
+    const pistol = getWeaponDef('pistol')!;
+    setActiveWeapon(world, pistol);
+    world.elapsedMs = pistol.cooldownMs;
+
+    weaponSystem(world);
+
+    const projectile = query(world.ecs, [Projectile])[0];
+    expect(projectile).toBeDefined();
+    expect(world.stores.velocity.x[projectile!]).toBeCloseTo(WEAPON.PROJECTILE_SPEED, 5);
+    expect(world.stores.velocity.y[projectile!]).toBeCloseTo(0, 5);
+  });
 });

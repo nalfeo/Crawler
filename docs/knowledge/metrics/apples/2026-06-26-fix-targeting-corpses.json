@@ -5,5 +5,5 @@
   "actual": 2,
   "verdict": "on-estimate",
   "summary": "Skip enemies with DeathTimer or HP<=0 in weaponSystem's two target-acquisition helpers so auto-fire/auto-swing stop locking onto corpses during the death-linger window.",
-  "notes": "Two adjacent helpers + two unit tests. No scope creep."
+  "notes": "Two adjacent helpers + two unit tests. Coverage follow-up added three deterministic branch-coverage tests (getNearestEnemyTarget Health-only corpse; findBossTargetInRange DeathTimer + 0-HP boss corpses) to lift src/game/weaponSystem.ts branches from 79.5% to 81% and clear the 80% gate. No production code changed in the follow-up; no scope creep."
 }
