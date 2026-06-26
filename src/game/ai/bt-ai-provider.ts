@@ -1835,7 +1835,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.lastPlayerY = playerY;
 
     // If stuck for too long, clear path and pick new goal. NOTE: stuckFrames is
-    // a weak signal — at ~3px/frame normal travel it can climb even while moving
+    // a weak signal — at ~0.375ft/frame normal travel it can climb even while moving
     // productively, so enemy abandonment is handled by updateEngageWatchdog
     // (real distance/HP progress) rather than here. We only blacklist loot here.
     if (this.stuckFrames > 60) {

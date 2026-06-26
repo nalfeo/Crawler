@@ -163,7 +163,7 @@ describe('meleeSwingSystem coverage edges', () => {
     expect(world.stores.health.current[enemy]).toBe(90);
     expect(hasComponent(world.ecs, enemy, Knockback)).toBe(true);
     expect(world.stores.knockback.remaining[enemy]).toBe(3.75);
-    expect(world.stores.knockback.speed[enemy]).toBe(1);
+    expect(world.stores.knockback.speed[enemy]).toBe(0.375);
     expect(world.stores.knockback.dirX[enemy]).toBeCloseTo(1, 6);
     expect(world.stores.knockback.dirY[enemy]).toBeCloseTo(0, 6);
   });

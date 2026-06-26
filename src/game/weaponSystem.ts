@@ -41,10 +41,10 @@ interface EnemyTarget {
   direction: { x: number; y: number };
   distanceSq: number;
   radiusFt: number;
-  /** Vector from the shooter to the target's current position (px). */
+  /** Vector from the shooter to the target's current position (ft). */
   deltaX: number;
   deltaY: number;
-  /** Target velocity (px/frame), used to lead projectiles. */
+  /** Target velocity (ft/frame), used to lead projectiles. */
   velocityX: number;
   velocityY: number;
 }
@@ -90,7 +90,7 @@ function normalizeVector(x: number, y: number): { x: number; y: number } {
 
 /**
  * Compute a normalized aim direction that leads a moving target so a projectile
- * fired at `projectileSpeed` (px/frame) intercepts it, rather than aiming at
+ * fired at `projectileSpeed` (ft/frame) intercepts it, rather than aiming at
  * where the target currently is. Solves the standard intercept quadratic
  * |delta + targetVelocity * t| = projectileSpeed * t for the smallest positive
  * time `t`, then aims at the predicted position `delta + targetVelocity * t`.

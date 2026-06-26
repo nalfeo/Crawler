@@ -46,9 +46,9 @@ export interface PlayerSessionEvent extends SimEvent {
   inputMoveY: number;
   /** Whether the attack/action button was held this frame. */
   inputAction: boolean;
-  /** Pointer world X (px) — where the player aimed. */
+  /** Pointer world X (ft) — where the player aimed. */
   inputPointerX: number;
-  /** Pointer world Y (px) — where the player aimed. */
+  /** Pointer world Y (ft) — where the player aimed. */
   inputPointerY: number;
   /** Which controller produced this record — `'AI'` or `'MANUAL'`. */
   controller: SessionController;

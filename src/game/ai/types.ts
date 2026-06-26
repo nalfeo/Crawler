@@ -61,7 +61,7 @@ export interface AIConfig {
   /** How far to maintain from ranged enemies (in feet) */
   rangedSafeDistance?: number;
   /**
-   * Radius (px) within which the opportunistic collect layer pulls the player
+   * Radius (ft) within which the opportunistic collect layer pulls the player
    * toward nearby loot regardless of the current Track A movement goal.
    * Also used for path-waypoint sweep (loot within this radius of any waypoint).
    */
