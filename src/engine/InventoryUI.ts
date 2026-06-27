@@ -11,6 +11,8 @@
 import Phaser from 'phaser';
 import type { GameWorld } from '../core/world.js';
 import { fitUiScale, type ScreenBounds } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
+import { GAME } from '../shared/constants.js';
 import type { InventoryBag, InventorySlot, TabPreferences } from '../shared/inventory.js';
 import {
   createTabPreferences,
@@ -91,7 +93,7 @@ export function createInventoryUI(
   scene.cameras.main.roundPixels = true;
 
   const snap = (value: number): number => Math.round(value);
-  const baseResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const baseResolution = getRenderScale(scene);
   let textResolution = baseResolution;
   const crispText = (
     x: number,
@@ -110,8 +112,8 @@ export function createInventoryUI(
   // tabs and text grow on small screens while staying centred and on-canvas.
   let uiScale = fitUiScale(scene, panelWidth, panelHeight);
   textResolution = Math.max(1, Math.round(baseResolution * uiScale));
-  const viewWidth = (): number => scene.scale.width / uiScale;
-  const viewHeight = (): number => scene.scale.height / uiScale;
+  const viewWidth = (): number => GAME.WIDTH / uiScale;
+  const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
   let visible = false;
   let activeTag: ItemTag | null = null;

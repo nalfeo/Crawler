@@ -18,6 +18,7 @@ import { createHudQuestTracker } from './HudQuestTracker.js';
 import { createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
+import { GAME } from '../shared/constants.js';
 
 /**
  * Upper bound on HUD magnification. The HUD is authored to fill the full 1280px
@@ -73,8 +74,8 @@ export function createHudUI(scene: Phaser.Scene): {
   function applyScale(): void {
     const s = Math.min(getUiScale(scene), HUD_MAX_SCALE);
     const bottomCenterScale = Math.min(s, ABILITY_BAR_MAX_SCALE);
-    const w = scene.scale.width;
-    const h = scene.scale.height;
+    const w = GAME.WIDTH;
+    const h = GAME.HEIGHT;
     const cx = w / 2;
 
     bottomLeft.setScale(s).setPosition(0, h * (1 - s));

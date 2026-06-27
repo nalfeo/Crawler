@@ -15,6 +15,8 @@
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
 import { fitUiScale, type ScreenBounds } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
+import { GAME } from '../shared/constants.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../shared/stats.js';
 import { PRIMARY_STAT_DISPLAY, formatCoreStatGains } from '../shared/stat-display.js';
 import {
@@ -145,7 +147,7 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
   // text and controls grow with the device. Text resolution is bumped by the
   // same factor to keep the upscaled glyphs crisp.
   let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
-  const baseResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const baseResolution = getRenderScale(scene);
   let textResolution = Math.max(1, Math.round(baseResolution * uiScale));
   const snap = (value: number): number => Math.round(value);
   const crispText = (
@@ -157,9 +159,9 @@ export function createLevelUpUI(scene: Phaser.Scene, hooks: LevelUpUIHooks): Lev
     scene.add.text(snap(x), snap(y), text, style).setResolution(textResolution);
 
   /** Virtual viewport width the panel is centred within (real width ÷ uiScale). */
-  const viewWidth = (): number => scene.scale.width / uiScale;
+  const viewWidth = (): number => GAME.WIDTH / uiScale;
   /** Virtual viewport height the panel is centred within (real height ÷ uiScale). */
-  const viewHeight = (): number => scene.scale.height / uiScale;
+  const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
   const overlay = scene.add.container(0, 0).setDepth(5000).setVisible(false).setScrollFactor(0);
   const backdrop = scene.add
