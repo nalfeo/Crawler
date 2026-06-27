@@ -261,23 +261,222 @@ function sheetConstraintsBlock(brief: Brief): string {
   ].join('\n');
 }
 
+/**
+ * A subject's intended color, resolved either from a color word in the brief
+ * prompt or from an explicit per-sprite `palette.colors` entry. We carry the
+ * precomputed HSV so the selector can reason about hue families rather than raw
+ * RGB distance alone.
+ */
+interface DominantColor {
+  readonly rgb: readonly [number, number, number];
+  readonly h: number;
+  readonly s: number;
+  readonly v: number;
+}
+
+/**
+ * Curated color-word lexicon mapping natural-language color names — as authors
+ * actually write them in briefs (the synth guidance explicitly asks for "the
+ * dominant colour by name") — to a representative saturated RGB. Order matters:
+ * multi-word phrases come before the bare words they contain so e.g. "sky blue"
+ * wins over "blue". Each representative only needs the right HUE; the selector
+ * cares about hue family, not the exact shade.
+ *
+ * Achromatic words (black/white/gray/silver) are deliberately omitted: they
+ * carry no hue and must not constrain the background choice.
+ */
+const COLOR_LEXICON: ReadonlyArray<readonly [RegExp, readonly [number, number, number]]> = [
+  // Multi-word phrases first (more specific than the bare words they contain).
+  [/\blime green\b/, [150, 210, 40]],
+  [/\bforest green\b/, [34, 120, 50]],
+  [/\bemerald green\b/, [20, 170, 90]],
+  [/\bsky blue\b/, [90, 165, 230]],
+  [/\bnavy blue\b/, [20, 30, 110]],
+  [/\broyal blue\b/, [40, 70, 200]],
+  [/\bdeep purple\b/, [90, 20, 150]],
+  [/\bhot pink\b/, [240, 60, 150]],
+  [/\bblood red\b/, [150, 15, 20]],
+  // Single words.
+  [/\bpurple\b/, [140, 40, 175]],
+  [/\bviolet\b/, [148, 30, 200]],
+  [/\bindigo\b/, [75, 0, 130]],
+  [/\blavender\b/, [150, 120, 200]],
+  [/\bmagenta\b/, [210, 30, 180]],
+  [/\bfuchsia\b/, [220, 40, 170]],
+  [/\bpink\b/, [240, 110, 170]],
+  [/\bcrimson\b/, [200, 20, 50]],
+  [/\bscarlet\b/, [210, 30, 30]],
+  [/\bmaroon\b/, [110, 20, 30]],
+  [/\bred\b/, [210, 30, 30]],
+  [/\borange\b/, [230, 120, 20]],
+  [/\bamber\b/, [230, 160, 20]],
+  [/\bgold(?:en)?\b/, [220, 180, 40]],
+  [/\byellow\b/, [235, 215, 30]],
+  [/\bolive\b/, [120, 130, 30]],
+  [/\blime\b/, [150, 210, 40]],
+  [/\bemerald\b/, [20, 170, 90]],
+  [/\bgreen\b/, [40, 160, 55]],
+  [/\bteal\b/, [20, 150, 140]],
+  [/\bturquoise\b/, [40, 200, 190]],
+  [/\baqua\b/, [40, 200, 200]],
+  [/\bcyan\b/, [30, 200, 210]],
+  [/\bazure\b/, [60, 140, 230]],
+  [/\bnavy\b/, [20, 30, 110]],
+  [/\bcobalt\b/, [40, 70, 200]],
+  [/\bblue\b/, [40, 90, 200]],
+  [/\bbronze\b/, [150, 90, 40]],
+  [/\bcopper\b/, [180, 95, 50]],
+  [/\bbrown\b/, [120, 70, 35]],
+];
+
+/** Below this saturation (or value) a color has no reliable hue to contrast. */
+const ACHROMATIC_SATURATION = 0.2;
+const ACHROMATIC_VALUE = 0.12;
+/** Hue scores within this many degrees are treated as a tie (RGB breaks it). */
+const HUE_TIE_EPSILON_DEG = 1;
+
+function rgbToHsv(r: number, g: number, b: number): { h: number; s: number; v: number } {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const delta = max - min;
+  let h = 0;
+  if (delta > 0) {
+    if (max === rn) h = ((gn - bn) / delta) % 6;
+    else if (max === gn) h = (bn - rn) / delta + 2;
+    else h = (rn - gn) / delta + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  const s = max === 0 ? 0 : delta / max;
+  return { h, s, v: max };
+}
+
+/** Smallest angular distance between two hues, in [0, 180] degrees. */
+function hueDistanceDeg(a: number, b: number): number {
+  const d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function toDominantColor(rgb: readonly [number, number, number]): DominantColor {
+  const { h, s, v } = rgbToHsv(rgb[0], rgb[1], rgb[2]);
+  return { rgb, h, s, v };
+}
+
+function isChromatic(color: DominantColor): boolean {
+  return color.s >= ACHROMATIC_SATURATION && color.v >= ACHROMATIC_VALUE;
+}
+
+/**
+ * Extract the intended subject colors named in a brief prompt. Returns one
+ * representative RGB per matched color word (deduped by representative). Pure
+ * and exported so the selection logic can be unit-tested directly.
+ */
+export function extractPromptColors(prompt: string): Array<readonly [number, number, number]> {
+  const text = prompt.toLowerCase();
+  const found: Array<readonly [number, number, number]> = [];
+  const seen = new Set<string>();
+  for (const [pattern, rgb] of COLOR_LEXICON) {
+    if (pattern.test(text)) {
+      const key = rgb.join(',');
+      if (!seen.has(key)) {
+        seen.add(key);
+        found.push(rgb);
+      }
+    }
+  }
+  return found;
+}
+
+function minRgbDistanceSq(
+  rgb: readonly [number, number, number],
+  colors: ReadonlyArray<readonly [number, number, number]>,
+): number {
+  let min = Number.POSITIVE_INFINITY;
+  for (const [r, g, b] of colors) {
+    const dr = rgb[0] - r;
+    const dg = rgb[1] - g;
+    const db = rgb[2] - b;
+    min = Math.min(min, dr * dr + dg * dg + db * db);
+  }
+  return min;
+}
+
+/**
+ * Choose the flat background color to request in the generation prompt.
+ *
+ * Background removal in post-processing is a corner flood-fill keyed on color
+ * similarity, so the background must read as a DIFFERENT color family from the
+ * sprite — not merely numerically far in RGB. Bright magenta is "far" from a
+ * dark purple in raw RGB yet shares its hue family, which is exactly what made
+ * a purple slime's background hard to key out. We therefore:
+ *
+ *   1. Collect the sprite's intended dominant colors — color words named in the
+ *      brief prompt plus any explicit per-sprite `palette.colors`.
+ *   2. Pick the candidate that maximizes the MINIMUM hue distance to those
+ *      colors (so it cannot sit in the same family as any of them), using the
+ *      minimum RGB distance only as a tiebreak.
+ *
+ * Falls back to the previous RGB-maximin behavior when there is no usable hue
+ * signal (e.g. a grayscale subject with an explicit palette), and to the first
+ * candidate (bright magenta) when there is no color information at all.
+ */
 export function pickContrastingBackgroundColor(brief: Brief): BackgroundCandidate {
+  const explicit = (brief.palette.colors ?? []).map(toDominantColor);
+  const fromPrompt = extractPromptColors(brief.prompt).map(toDominantColor);
+  const dominant = [...fromPrompt, ...explicit];
+  const chromatic = dominant.filter(isChromatic);
+
+  if (chromatic.length > 0) {
+    return pickByHueDistance(chromatic, dominant);
+  }
+
+  // No reliable hue signal. Preserve the original behavior: maximize the
+  // minimum RGB distance to any explicit palette color, or default to the
+  // first candidate when the brief carries no color information at all.
   const paletteColors = brief.palette.colors ?? [];
   if (paletteColors.length === 0) {
     return BACKGROUND_CANDIDATES[0]!;
   }
+  return pickByRgbDistance(paletteColors);
+}
 
+function pickByHueDistance(
+  chromatic: ReadonlyArray<DominantColor>,
+  allDominant: ReadonlyArray<DominantColor>,
+): BackgroundCandidate {
+  const dominantRgb = allDominant.map((c) => c.rgb);
+  let best = BACKGROUND_CANDIDATES[0]!;
+  let bestHue = -1;
+  let bestRgb = -1;
+  for (const candidate of BACKGROUND_CANDIDATES) {
+    const candidateHue = rgbToHsv(candidate.rgb[0], candidate.rgb[1], candidate.rgb[2]).h;
+    let hueScore = Number.POSITIVE_INFINITY;
+    for (const color of chromatic) {
+      hueScore = Math.min(hueScore, hueDistanceDeg(candidateHue, color.h));
+    }
+    const rgbScore = minRgbDistanceSq(candidate.rgb, dominantRgb);
+    const better =
+      hueScore > bestHue + HUE_TIE_EPSILON_DEG ||
+      (Math.abs(hueScore - bestHue) <= HUE_TIE_EPSILON_DEG && rgbScore > bestRgb);
+    if (better) {
+      best = candidate;
+      bestHue = hueScore;
+      bestRgb = rgbScore;
+    }
+  }
+  return best;
+}
+
+function pickByRgbDistance(
+  paletteColors: ReadonlyArray<readonly [number, number, number]>,
+): BackgroundCandidate {
   let best = BACKGROUND_CANDIDATES[0]!;
   let bestMinDistance = -1;
   for (const candidate of BACKGROUND_CANDIDATES) {
-    const minDistance = paletteColors.reduce((min, color) => {
-      const [r, g, b] = color;
-      const dr = candidate.rgb[0] - r;
-      const dg = candidate.rgb[1] - g;
-      const db = candidate.rgb[2] - b;
-      const distSq = dr * dr + dg * dg + db * db;
-      return Math.min(min, distSq);
-    }, Number.POSITIVE_INFINITY);
+    const minDistance = minRgbDistanceSq(candidate.rgb, paletteColors);
     if (minDistance > bestMinDistance) {
       bestMinDistance = minDistance;
       best = candidate;
