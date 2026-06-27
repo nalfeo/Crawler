@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addItem,
+  approvedItemPatch,
   candidateForceEligible,
   candidateStatus,
   clearQueue,
@@ -391,6 +392,90 @@ describe('stage helpers', () => {
     expect(primaryActionLabel('generating')).toBeNull();
     expect(primaryActionLabel('variants')).toBeNull();
     expect(primaryActionLabel('done')).toBeNull();
+  });
+});
+
+describe('approvedItemPatch', () => {
+  it('advances a fresh approval to the approved stage with a score summary', () => {
+    const patch = approvedItemPatch({
+      briefId: 'green-slime-baby-v1',
+      variantIndex: 2,
+      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      sensorScore: '6/7',
+      judgeScore: '4',
+    });
+    expect(patch.stage).toBe('approved');
+    expect(patch.approvedAssetPath).toBe('generated/green-slime-baby-v1-var-2.png');
+    expect(patch.generationRequestedAt).toBeNull();
+    expect(patch.lastError).toBeNull();
+    expect(patch.approvalSummary).toBe(
+      'Approved green-slime-baby-v1 variant 2 -> generated/green-slime-baby-v1-var-2.png ' +
+        '(6/7, judge 4). Now Tag to add catalog metadata.',
+    );
+  });
+
+  it('omits the judge segment when there is no judge score', () => {
+    const patch = approvedItemPatch({
+      briefId: 'bent-pipe-v1',
+      variantIndex: 0,
+      assetPath: 'generated/bent-pipe-v1-var-0.png',
+      sensorScore: '7/7',
+      judgeScore: null,
+    });
+    expect(patch.approvalSummary).toBe(
+      'Approved bent-pipe-v1 variant 0 -> generated/bent-pipe-v1-var-0.png (7/7). ' +
+        'Now Tag to add catalog metadata.',
+    );
+  });
+
+  it('notes a judge override in the summary', () => {
+    const patch = approvedItemPatch({
+      briefId: 'slime-king-v1',
+      variantIndex: 4,
+      assetPath: 'generated/slime-king-v1-var-4.png',
+      sensorScore: '5/7',
+      judgeScore: '2',
+      judgeOverride: true,
+    });
+    expect(patch.approvalSummary).toContain('(judge override)');
+  });
+
+  it('still advances to approved on the already-approved (409) path so Tag unlocks', () => {
+    // Regression: re-approving an already-approved variant must NOT dead-end on
+    // the Approve step — the asset is in the catalog, so it has to reach `approved`.
+    const patch = approvedItemPatch({
+      briefId: 'green-slime-baby-v1',
+      variantIndex: 2,
+      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      alreadyApproved: true,
+    });
+    expect(patch.stage).toBe('approved');
+    expect(patch.approvedAssetPath).toBe('generated/green-slime-baby-v1-var-2.png');
+    expect(patch.lastError).toBeNull();
+    expect(patch.approvalSummary).toContain('already approved with identical content');
+    expect(patch.approvalSummary).toContain('Tag to add catalog metadata');
+  });
+
+  it('produces a patch that drives an item from variants to approved via updateItem', () => {
+    let state = createEmptyQueue();
+    state = addItem(state, 'Green Slime Baby');
+    const item = state.items[0]!;
+    state = updateItem(state, item.id, { stage: 'variants' });
+    expect(stageActiveStep(getItem(state, item.id)!.stage)).toBe(5);
+
+    const patch = approvedItemPatch({
+      briefId: 'green-slime-baby-v1',
+      variantIndex: 2,
+      assetPath: 'generated/green-slime-baby-v1-var-2.png',
+      alreadyApproved: true,
+    });
+    state = updateItem(state, item.id, patch);
+
+    const updated = getItem(state, item.id)!;
+    expect(updated.stage).toBe('approved');
+    // Approved is step 6 — i.e. the Tag step is now the active/next action.
+    expect(stageActiveStep(updated.stage)).toBe(6);
+    expect(primaryActionLabel(updated.stage)).toBe('Tag (generate metadata)');
   });
 });
 

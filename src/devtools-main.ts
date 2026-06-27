@@ -33,6 +33,7 @@ import {
   candidateStatus,
   clearQueue as queueClear,
   createEmptyQueue,
+  approvedItemPatch,
   describeGenerationProgress,
   describeJudgeSkipReason,
   deserializeQueue,
@@ -3098,44 +3099,46 @@ function render(): void {
           // Mark approved locally so the card flips to "✓ Approved!" immediately,
           // before the async recompute re-reads the manifest to confirm.
           approvedVariantKeys.add(variantKey);
+          const patch = approvedItemPatch({
+            briefId: run.briefId,
+            variantIndex: candidate.index,
+            assetPath: approved.assetPath,
+            sensorScore: approved.sensorScore,
+            judgeScore: approved.judgeScore,
+            judgeOverride: overrideNeeded,
+          });
           const active = getSelectedItem(queueState);
           if (active) {
-            const approvalSummary = `Approved ${run.briefId} variant ${candidate.index}${
-              overrideNeeded ? ' (judge override)' : ''
-            } -> ${approved.assetPath} (${approved.sensorScore}${
-              approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''
-            }). Now Tag to add catalog metadata.`;
-            queueState = queueUpdateItem(queueState, active.id, {
-              stage: 'approved',
-              approvedAssetPath: approved.assetPath,
-              generationRequestedAt: null,
-              approvalSummary,
-              lastError: null,
-            });
+            queueState = queueUpdateItem(queueState, active.id, patch);
             writeQueueState();
           }
           renderQueue();
           renderWorkflowSelection();
-          setWorkflowStatus(
-            `Approved ${run.briefId} variant ${candidate.index}${
-              overrideNeeded ? ' (judge override)' : ''
-            } -> ${approved.assetPath} (${approved.sensorScore}${
-              approved.judgeScore ? ` · judge ${approved.judgeScore}` : ''
-            }). Now Tag to add catalog metadata.`,
-            '#bef264',
-          );
+          setWorkflowStatus(patch.approvalSummary, '#bef264');
           void recompute();
         } catch (error) {
-          // The sidecar returns 409 (already-approved) only when the exact
-          // variant key already exists WITH byte-identical content — surface it
-          // as a friendly notice and resync the approved-key set.
+          // The sidecar returns 409 (already-approved) only when this exact
+          // variant key already exists WITH byte-identical content. That is NOT
+          // a failure: the asset IS in the catalog, so advance the item to the
+          // `approved` stage (unlocking Tag) exactly like a fresh approval —
+          // otherwise re-approving an already-approved variant dead-ends on the
+          // Approve step and the operator can never reach Tag/Done.
           if (error instanceof ApproveRequestError && error.status === 409) {
-            approvedVariantKeys.add(`${run.briefId}-var-${candidate.index}`);
-            setWorkflowStatus(
-              `Variant ${run.briefId}-var-${candidate.index} is already approved with ` +
-                'identical content. Re-run post-processing to change the image first.',
-              '#fca5a5',
-            );
+            approvedVariantKeys.add(variantKey);
+            const patch = approvedItemPatch({
+              briefId: run.briefId,
+              variantIndex: candidate.index,
+              assetPath: `generated/${variantKey}.png`,
+              alreadyApproved: true,
+            });
+            const active = getSelectedItem(queueState);
+            if (active) {
+              queueState = queueUpdateItem(queueState, active.id, patch);
+              writeQueueState();
+            }
+            renderQueue();
+            renderWorkflowSelection();
+            setWorkflowStatus(patch.approvalSummary, '#bef264');
             void recompute();
           } else {
             setWorkflowStatus(
