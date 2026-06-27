@@ -52,8 +52,12 @@ const TEX_EXPLOSION = '__cw_explosion';
 const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
 const TEX_DEAD_SKULL = '__cw_dead_skull';
 const TEX_WELCOME_SIGN = '__cw_welcome_sign';
+const TEX_WELCOME_SIGN_LEFT = '__cw_welcome_sign_left';
 const SPRITE_TEX_WELCOME_SIGN = 3;
 const DEAD_SKULL_Y_OFFSET = 18;
+/** Native dimensions of the baked welcome-sign texture (board + word + arrow). */
+const WELCOME_SIGN_WIDTH = 48;
+const WELCOME_SIGN_HEIGHT = 26;
 const logger = createLogger('engine:phaser-bridge');
 
 function generateTextures(scene: Phaser.Scene): void {
@@ -268,21 +272,80 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillRect(7, 9, 2, 1);
   g.generateTexture(TEX_DEAD_SKULL, 16, 16);
 
-  // Welcome sign — wooden board with painted white arrow (pointing right)
-  g.clear();
-  g.fillStyle(0x8b5a2b, 1);
-  g.fillRect(0, 0, 32, 16);
-  g.lineStyle(2, 0x5c3a21, 1);
-  g.strokeRect(1, 1, 30, 14);
-  g.lineStyle(3, 0xffffff, 0.9);
-  g.beginPath();
-  g.moveTo(6, 8);
-  g.lineTo(26, 8);
-  g.moveTo(20, 3);
-  g.lineTo(26, 8);
-  g.lineTo(20, 13);
-  g.strokePath();
-  g.generateTexture(TEX_WELCOME_SIGN, 32, 16);
+  // Welcome sign — a wooden board with the word "WELCOME" and a direction arrow
+  // baked into a single canvas texture so the word is PART of the sign. Two
+  // variants are baked: the arrow points right in one and left in the other,
+  // with "WELCOME" upright in both. The renderer uses the left variant (rotating
+  // from the −x reference) once a sign points past vertical, so the word always
+  // reads upright instead of flipping over when the sign rotates leftward.
+  const w = WELCOME_SIGN_WIDTH;
+  const h = WELCOME_SIGN_HEIGHT;
+  const drawSignArrow = (
+    pen: { moveTo: (x: number, y: number) => void; lineTo: (x: number, y: number) => void },
+    dir: 'left' | 'right',
+  ): void => {
+    if (dir === 'right') {
+      pen.moveTo(8, 18);
+      pen.lineTo(w - 9, 18);
+      pen.moveTo(w - 15, 13);
+      pen.lineTo(w - 9, 18);
+      pen.lineTo(w - 15, 23);
+    } else {
+      pen.moveTo(w - 8, 18);
+      pen.lineTo(9, 18);
+      pen.moveTo(15, 13);
+      pen.lineTo(9, 18);
+      pen.lineTo(15, 23);
+    }
+  };
+  const bakeSignTexture = (key: string, dir: 'left' | 'right'): void => {
+    const signCanvas =
+      typeof scene.textures.createCanvas === 'function'
+        ? scene.textures.createCanvas(key, w, h)
+        : null;
+    const signCtx = signCanvas?.context ?? null;
+    if (signCtx) {
+      // Wooden board with a darker border.
+      signCtx.fillStyle = '#8b5a2b';
+      signCtx.fillRect(0, 0, w, h);
+      signCtx.strokeStyle = '#5c3a21';
+      signCtx.lineWidth = 2;
+      signCtx.strokeRect(1, 1, w - 2, h - 2);
+      // "WELCOME" painted across the top half.
+      signCtx.fillStyle = '#ffe9a8';
+      signCtx.strokeStyle = '#3a2410';
+      signCtx.lineWidth = 2;
+      signCtx.font = 'bold 9px monospace';
+      signCtx.textAlign = 'center';
+      signCtx.textBaseline = 'middle';
+      signCtx.strokeText('WELCOME', w / 2, 8);
+      signCtx.fillText('WELCOME', w / 2, 8);
+      // Arrow across the bottom half.
+      signCtx.strokeStyle = '#ffffff';
+      signCtx.lineWidth = 3;
+      signCtx.lineCap = 'round';
+      signCtx.lineJoin = 'round';
+      signCtx.beginPath();
+      drawSignArrow(signCtx, dir);
+      signCtx.stroke();
+      signCanvas?.refresh();
+      return;
+    }
+    // Fallback for renderers without canvas textures: board + arrow via graphics
+    // (no baked word, but the sign still exists and points the right way).
+    g.clear();
+    g.fillStyle(0x8b5a2b, 1);
+    g.fillRect(0, 0, w, h);
+    g.lineStyle(2, 0x5c3a21, 1);
+    g.strokeRect(1, 1, w - 2, h - 2);
+    g.lineStyle(3, 0xffffff, 0.9);
+    g.beginPath();
+    drawSignArrow(g, dir);
+    g.strokePath();
+    g.generateTexture(key, w, h);
+  };
+  bakeSignTexture(TEX_WELCOME_SIGN, 'right');
+  bakeSignTexture(TEX_WELCOME_SIGN_LEFT, 'left');
 
   g.destroy();
   logger.info('Generated procedural fallback textures');
@@ -293,6 +356,12 @@ interface EntityVisual {
   type: string;
   /** Base scale to restore in the default per-frame branch. */
   baseScale: number;
+  /**
+   * Which baked welcome-sign variant is currently applied ('right' arrow vs
+   * 'left' arrow). Tracked so the renderer only swaps the texture when the
+   * sign's facing hemisphere actually changes.
+   */
+  welcomeFacing?: 'left' | 'right';
   /**
    * Death-timer duration captured the first frame this corpse is seen dead.
    * Used to normalise the corpse fade/desaturation curve. Undefined while alive.
@@ -1013,9 +1082,19 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
 
           case 'welcome_sign': {
-            if (hasComponent(world.ecs, eid, Rotation)) {
-              img.setRotation(world.stores.rotation.angle[eid] ?? 0);
+            const angle = hasComponent(world.ecs, eid, Rotation)
+              ? (world.stores.rotation.angle[eid] ?? 0)
+              : 0;
+            // Past vertical (left hemisphere, cos < 0) the arrow-right board
+            // would render "WELCOME" upside-down, so swap to the arrow-left board
+            // and measure rotation from the −x reference. The word then stays
+            // within ±90° of upright while the arrow still points along `angle`.
+            const facing: 'left' | 'right' = Math.cos(angle) < 0 ? 'left' : 'right';
+            if (visual.welcomeFacing !== facing) {
+              img.setTexture(facing === 'left' ? TEX_WELCOME_SIGN_LEFT : TEX_WELCOME_SIGN);
+              visual.welcomeFacing = facing;
             }
+            img.setRotation(facing === 'left' ? angle - Math.PI : angle);
             break;
           }
 

@@ -30,6 +30,7 @@ import {
   Enemy,
   Damage,
   DeathTimer,
+  Npc,
 } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
@@ -98,6 +99,12 @@ const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_PX = 96;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
+
+// Native footprint of the welcome-sign sprite (board + baked "WELCOME" + arrow),
+// mirrored from the procedural texture in PhaserBridge so the Sprite component
+// carries matching dimensions.
+const WELCOME_SIGN_WIDTH = 48;
+const WELCOME_SIGN_HEIGHT = 26;
 
 /** Blood colours for Floor 1 enemy archetypes. */
 const BLOOD_COLOR_RAT = DEFAULT_BLOOD_COLOR; // red — 0xcc0000
@@ -480,33 +487,177 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
   }
 }
 
-export function findNavigableRoomPath(
+/** One room on the navigable path, with the door the player exits through next. */
+export interface NavigableRoomStep {
+  /** Room id on the path. */
+  roomId: number;
+  /**
+   * The door tile the player should walk through to leave this room and make
+   * progress toward the target. `null` only for the final room (the
+   * destination), which has no onward door.
+   */
+  exitDoor: TilePoint | null;
+}
+
+/**
+ * Derive the room-by-room route from `start` to `target` over the real
+ * door-aware tile path, recording for each room the first door tile the player
+ * crosses on the way out. That door is "the door to take to make progress",
+ * which welcome signs point at.
+ */
+export function findNavigableRoomPathSteps(
   floorMap: FloorMap,
   start: TilePoint,
   target: TilePoint,
-): number[] | null {
+): NavigableRoomStep[] | null {
   const tilePath = findTilePath(floorMap, start, target, {
     isTilePassable: (x, y) => floorMap.tileMap.isPassable(x, y) || floorMap.tileMap.isDoor(x, y),
   });
   if (tilePath.length === 0) {
     return null;
   }
-  const roomPath: number[] = [];
+  const steps: NavigableRoomStep[] = [];
+  let currentRoom = -1;
   for (const point of tilePath) {
     const roomId = floorMap.roomGraph.getRoomAt(point.x, point.y);
-    if (roomId >= 0 && roomPath[roomPath.length - 1] !== roomId) {
-      roomPath.push(roomId);
+    if (roomId >= 0) {
+      // Interior tile: open a new step the first time we enter each room.
+      if (roomId !== currentRoom) {
+        currentRoom = roomId;
+        steps.push({ roomId, exitDoor: null });
+      }
+      continue;
+    }
+    // Corridor/perimeter tile: the first door crossed after a room's interior
+    // is that room's exit door toward the goal. Later doors (the next room's
+    // entry) are ignored because the slot is already filled.
+    if (floorMap.tileMap.isDoor(point.x, point.y)) {
+      const last = steps[steps.length - 1];
+      if (last && last.exitDoor === null) {
+        last.exitDoor = { x: point.x, y: point.y };
+      }
     }
   }
-  return roomPath.length > 0 ? roomPath : null;
+  return steps.length > 0 ? steps : null;
 }
 
-function getNextWelcomeSignRoomIndex(currentIndex: number, pathLength: number): number {
-  const remainingRooms = pathLength - 1 - currentIndex;
-  // Keep signs sparse while there is plenty of path ahead, then tighten to 2-room
-  // gaps for the last stretch so the final breadcrumb is never more than 3 rooms
-  // from the welcome office.
-  return currentIndex + (remainingRooms <= 4 ? 2 : 3);
+/**
+ * Plant the floor's welcome wayfinding signs: one sign in every room along the
+ * door-aware path from the spawn room to the welcome office (the destination
+ * room is excluded), each pointing at the door the player should walk through
+ * next to make progress.
+ *
+ * Must run AFTER NPCs have spawned: each sign resolves to a passable interior
+ * tile that is neither the player's spawn tile nor occupied by an NPC, so signs
+ * never spawn on top of an NPC.
+ */
+function placeWelcomeSigns(world: GameWorld, welcomeOfficePos: { x: number; y: number }): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return;
+  }
+  const welcomeSignTextureId = floor1Config.sprites?.welcomeSign;
+  if (welcomeSignTextureId === undefined || !floorMap.spawnRoom) {
+    return;
+  }
+  const welcomeOfficeTile = floorMap.pixelToTile(welcomeOfficePos.x, welcomeOfficePos.y);
+  const welcomeGoonRoomId = floorMap.roomGraph.getRoomAt(welcomeOfficeTile.x, welcomeOfficeTile.y);
+  if (welcomeGoonRoomId < 0) {
+    return;
+  }
+  const steps = findNavigableRoomPathSteps(floorMap, floorMap.playerSpawn, welcomeOfficeTile);
+  if (!steps || steps.length < 2) {
+    return;
+  }
+
+  // Tiles a sign must never cover: the player's spawn tile and every NPC tile.
+  const tileKey = (x: number, y: number): string => `${x},${y}`;
+  const blockedTiles = new Set<string>();
+  blockedTiles.add(tileKey(floorMap.playerSpawn.x, floorMap.playerSpawn.y));
+  for (const npcEid of query(world.ecs, [Npc, Position])) {
+    const npcTile = floorMap.pixelToTile(
+      world.stores.position.x[npcEid] ?? 0,
+      world.stores.position.y[npcEid] ?? 0,
+    );
+    blockedTiles.add(tileKey(npcTile.x, npcTile.y));
+  }
+
+  // Resolve a passable interior tile for a room's sign, spiralling outward from
+  // the room centre when the centre is a wall or already blocked (e.g. an NPC
+  // standing on it). Returns null only if the whole interior is unavailable.
+  const resolveSignTile = (room: RoomData): TilePoint | null => {
+    const center = centerOfRoom(room);
+    const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+    const minX = bx + 1;
+    const minY = by + 1;
+    const maxX = bx + bw - 2;
+    const maxY = by + bh - 2;
+    const isFree = (tx: number, ty: number): boolean =>
+      floorMap.tileMap.isPassable(tx, ty) && !blockedTiles.has(tileKey(tx, ty));
+    if (isFree(center.x, center.y)) {
+      return { x: center.x, y: center.y };
+    }
+    const maxRadius = Math.max(bw, bh);
+    for (let r = 1; r <= maxRadius; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) {
+            continue;
+          }
+          const tx = center.x + dx;
+          const ty = center.y + dy;
+          if (tx >= minX && tx <= maxX && ty >= minY && ty <= maxY && isFree(tx, ty)) {
+            return { x: tx, y: ty };
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  // Place a sign in `roomId` pointing at `targetTile` (the door to take next).
+  // The angle is measured from the room centre so the arrow reads as "go this
+  // way" even when the sign tile is nudged off-centre to dodge an NPC.
+  const placeSign = (roomId: number, targetTile: TilePoint): void => {
+    const room = floorMap.roomGraph.get(roomId);
+    if (!room) {
+      return;
+    }
+    const signTile = resolveSignTile(room);
+    if (!signTile) {
+      return;
+    }
+    blockedTiles.add(tileKey(signTile.x, signTile.y));
+    const center = centerOfRoom(room);
+    const angle = Math.atan2(targetTile.y - center.y, targetTile.x - center.x);
+    const pos = floorMap.tileToPixel(signTile.x, signTile.y);
+    const eid = createEntity(world);
+    addComponent(world.ecs, eid, set(Position, { x: pos.x, y: pos.y }));
+    addComponent(world.ecs, eid, set(Rotation, { angle }));
+    addComponent(
+      world.ecs,
+      eid,
+      set(Sprite, {
+        textureId: welcomeSignTextureId,
+        width: WELCOME_SIGN_WIDTH,
+        height: WELCOME_SIGN_HEIGHT,
+      }),
+    );
+  };
+
+  // Directional breadcrumb trail: one sign per room on the path (excluding the
+  // destination), each aimed at the door leading onward.
+  for (let i = 0; i < steps.length - 1; i++) {
+    const step = steps[i]!;
+    // Prefer the actual exit door; fall back to the next room's centre if a
+    // door tile wasn't recorded (defensive — keeps a sign in every room).
+    const nextRoom = floorMap.roomGraph.get(steps[i + 1]!.roomId);
+    const targetTile = step.exitDoor ?? (nextRoom ? centerOfRoom(nextRoom) : null);
+    if (!targetTile) {
+      continue;
+    }
+    placeSign(step.roomId, targetTile);
+  }
 }
 
 /**
@@ -678,64 +829,8 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     extraRoomIds: slimeRatRoomId >= 0 ? [slimeRatRoomId] : [],
   });
 
-  const welcomeSignTextureId = floor1Config.sprites?.welcomeSign;
-  const welcomeOfficeTile = floorMap.pixelToTile(welcomeOfficePos.x, welcomeOfficePos.y);
-  const welcomeGoonRoomId = floorMap.roomGraph.getRoomAt(welcomeOfficeTile.x, welcomeOfficeTile.y);
-  if (welcomeSignTextureId !== undefined && floorMap.spawnRoom && welcomeGoonRoomId >= 0) {
-    const path = findNavigableRoomPath(floorMap, floorMap.playerSpawn, welcomeOfficeTile);
-
-    const placeWelcomeSign = (fromRoomId: number, toRoomId: number): void => {
-      const room = floorMap.roomGraph.get(fromRoomId);
-      const nextRoom = floorMap.roomGraph.get(toRoomId);
-      if (!room || !nextRoom) {
-        return;
-      }
-      const c1 = centerOfRoom(room);
-      const c2 = centerOfRoom(nextRoom);
-      const pos = resolvePassableRoomCenter(floorMap, room);
-      const angle = Math.atan2(c2.y - c1.y, c2.x - c1.x);
-
-      // Never plant a sign directly under the player. If this room's sign tile
-      // coincides with the player's spawn tile, push it one tile forward (toward
-      // the next room) so it reads as a directional pointer the player walks up
-      // to, rather than spawning on top of it.
-      const signTile = floorMap.pixelToTile(pos.x, pos.y);
-      let signX = pos.x;
-      let signY = pos.y;
-      if (signTile.x === floorMap.playerSpawn.x && signTile.y === floorMap.playerSpawn.y) {
-        const step = floorMap.config.tileSizePx;
-        signX += Math.cos(angle) * step;
-        signY += Math.sin(angle) * step;
-      }
-
-      const eid = createEntity(world);
-      addComponent(world.ecs, eid, set(Position, { x: signX, y: signY }));
-      addComponent(world.ecs, eid, set(Rotation, { angle }));
-      addComponent(
-        world.ecs,
-        eid,
-        set(Sprite, {
-          textureId: welcomeSignTextureId,
-          width: 32,
-          height: 16,
-        }),
-      );
-    };
-
-    if (path && path.length >= 2) {
-      // Directional breadcrumb trail from the spawn room toward the safe room.
-      // Signs appear every 2-3 rooms on the real door-aware room path, while each
-      // sign still points to the immediate next room so arrows follow corridor
-      // turns instead of drawing a straight line to the destination.
-      for (let i = 0; i < path.length - 1; ) {
-        placeWelcomeSign(path[i]!, path[i + 1]!);
-        if (path.length - 1 - i <= 2) {
-          break;
-        }
-        i = getNextWelcomeSignRoomIndex(i, path.length);
-      }
-    }
-  }
+  // Welcome wayfinding signs are planted further down, after NPCs spawn, so a
+  // sign can detect and avoid landing on top of an NPC (see placeWelcomeSigns).
 
   world.floor1 = {
     protagonistName: floor1Config.protagonist,
@@ -862,6 +957,10 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     );
     world.floor1.shopkeeperNpcEid = spawnNpc(world, shopRoomPos.x, shopRoomPos.y, 'shopkeeper');
   }
+
+  // Plant the welcome wayfinding signs now that NPCs exist, so a sign never
+  // lands on top of one.
+  placeWelcomeSigns(world, welcomeOfficePos);
 
   // Spawn the merchant's fetch quest item
   world.floor1.questItemEid = spawnDroppedItem(
