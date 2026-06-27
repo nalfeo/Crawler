@@ -13,12 +13,12 @@ note as the project evolves; do not treat it as live status.
 ## Observations
 
 - [memory] Persistent agent memory was added via the MCP memory server seeded from docs/knowledge/agent-memory.jsonl #memory
-- [memory] The live memory graph file is an absolute, per-user path set by MEMORY_FILE_PATH in .mcp.json (machine-specific) #memory
+- [memory] The live memory graph file is resolved portably by scripts/agent/mcp-memory-server.mjs (per-user, under ~/.copilot/crawler-memory) — .mcp.json holds no machine-specific path #memory
 - [memory] This Basic Memory KB under docs/knowledge/memory/ is the curated, in-repo companion to that graph #memory
 - [memory] Setup, caveats, and sync workflow are documented in docs/guides/agent-memory.md #docs
 - [memory] File-based memory remains primary: ~299 handoffs in docs/knowledge/handoffs/ plus ADRs and personas #memory
 - [blocker] Basic Memory's MCP server failed to build on arm64 Windows (httptools wheel missing); delivered as ready-to-enable #blocker
-- [caveat] The official memory server resolves a relative MEMORY_FILE_PATH against its own install dir, so absolute paths are required #caveat
+- [caveat] The CLI does not expand variables in .mcp.json and the memory server needs an absolute path, so the wrapper resolves and seeds it in code #caveat
 
 ## Relations
 

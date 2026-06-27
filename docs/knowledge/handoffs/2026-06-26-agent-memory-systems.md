@@ -27,11 +27,15 @@ Hello kitties: 3/5 = 0.60 🎀
 Researched and then adopted persistent **agent memory** for the repo. Two layers
 were wired/seeded and one was delivered ready-to-enable:
 
-- **MCP memory graph (Option 1):** wired `.mcp.json` `memory` server with an
-  absolute, per-user `MEMORY_FILE_PATH` (survives worktree rotation) and seeded
-  it from a new committed snapshot `docs/knowledge/agent-memory.jsonl`
+- **MCP memory graph (Option 1):** wired `.mcp.json` `memory` server through a
+  committed portable launcher `scripts/agent/mcp-memory-server.mjs` that resolves
+  a stable per-user live file (`~/.copilot/crawler-memory/agent-memory.jsonl`),
+  one-time-seeds it from the committed snapshot `docs/knowledge/agent-memory.jsonl`
   (29 entities + 31 relations; facts verified against constants.ts and the ADR
-  directory).
+  directory), sets `MEMORY_FILE_PATH`, and execs the real server. `.mcp.json`
+  holds no machine-specific path. `preflight.sh` runs the launcher's `--ensure`
+  step so session setup seeds the file. Verified end-to-end via an MCP
+  initialize + tools/list handshake (memory-server v0.6.3).
 - **Basic Memory KB:** authored a curated Markdown knowledge base under
   `docs/knowledge/memory/` (README + 6 notes) using Basic Memory's
   observation/relation conventions.
@@ -48,8 +52,9 @@ were wired/seeded and one was delivered ready-to-enable:
   `basic-memory project add crawler ./docs/knowledge/memory && basic-memory sync`.
 - Establish a habit of syncing the live memory graph back to
   `docs/knowledge/agent-memory.jsonl` and committing periodically.
-- Consider whether the machine-specific `MEMORY_FILE_PATH` in `.mcp.json` should
-  stay committed or move to a per-environment override.
+- `.mcp.json` portability is resolved: the launcher wrapper computes the path
+  from `os.homedir()` (override via `CRAWLER_MEMORY_FILE_PATH`), so no
+  machine-specific path is committed.
 
 ## Blockers
 
@@ -58,8 +63,10 @@ basic-memory` fails compiling native `httptools` (no cp312 win-arm64 wheel, no
   C/C++ toolchain). Delivered as ready-to-enable; workarounds documented in the
   guide.
 - The official memory server resolves a **relative** `MEMORY_FILE_PATH` against
-  its own npx-cache install dir, so an absolute path is mandatory; that path is
-  environment-specific.
+  its own npx-cache install dir, and the CLI does **not** expand
+  `${env:VAR}`/`${workspaceFolder}` in `.mcp.json` (verified against the CLI
+  binary). The launcher wrapper resolves the absolute path in code instead, so
+  this is handled rather than left as a footgun.
 
 ## Branch State
 
@@ -79,8 +86,10 @@ integration (49 passed/1 skipped), headless Floor 1 gate (68 passed), and
 
 ## Key Decisions Made
 
-- Use a **stable per-user absolute path** for the live memory file plus a
-  **committed repo snapshot** as the version-controlled source of truth, rather
-  than a fragile relative or in-worktree absolute path.
+- Use a committed **portable launcher** that resolves the live memory path from
+  `os.homedir()` and self-seeds, rather than a machine-specific absolute path in
+  `.mcp.json` (the CLI has no variable expansion, so resolution must happen in
+  code). Keep the **committed repo snapshot** as the version-controlled source of
+  truth.
 - Keep file-based memory (handoffs/ADRs) primary; the MCP graph and Basic Memory
   KB are queryable companions, not replacements.

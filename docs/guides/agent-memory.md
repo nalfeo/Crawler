@@ -37,53 +37,64 @@ file and exposes tools like `read_graph`, `search_nodes`, `create_entities`, and
 
 ### Wiring
 
+`.mcp.json` launches the server through a small committed wrapper so it carries
+**no machine-specific path**:
+
 ```jsonc
 "memory": {
-  "command": "npx",
-  "args": ["-y", "@modelcontextprotocol/server-memory"],
-  "env": {
-    // Absolute path required — see the footgun below.
-    "MEMORY_FILE_PATH": "C:\\Users\\nalfeo\\.copilot\\crawler-memory\\agent-memory.jsonl"
-  }
+  "command": "node",
+  "args": ["scripts/agent/mcp-memory-server.mjs"]
 }
 ```
 
-### ⚠️ The MEMORY_FILE_PATH footgun
+The wrapper (`scripts/agent/mcp-memory-server.mjs`) resolves a stable per-user
+live graph file, seeds it once from the committed snapshot, sets
+`MEMORY_FILE_PATH`, then hands off to the real
+`@modelcontextprotocol/server-memory` over stdio. The same config works for every
+user and machine with nothing to edit.
+
+### ⚠️ Why a wrapper (the MEMORY_FILE_PATH footgun)
 
 The server resolves a **relative** `MEMORY_FILE_PATH` against _its own install
 directory_ (the `npx` cache), **not** the repo root or your working directory. A
 value like `./docs/knowledge/agent-memory.jsonl` would silently read/write inside
-the npx cache and never touch the repo. **Always use an absolute path.**
+the npx cache and never touch the repo, so an **absolute** path is required.
 
-Because Copilot worktrees rotate per session
-(`...\copilot-worktrees\Crawler\<random-name>`), an absolute path that points
-_into the current worktree_ would break next session. We therefore point the live
-file at a **stable per-user location** that survives worktree rotation:
+A hard-coded absolute path is itself a problem: it is machine/user-specific, and
+Copilot worktrees rotate per session
+(`...\copilot-worktrees\Crawler\<random-name>`), so a path into the current
+worktree breaks next session. The CLI also does **not** expand `${env:VAR}` or
+`${workspaceFolder}` in `.mcp.json` (verified against the CLI binary), so the path
+can't be templated in config either.
+
+The wrapper sidesteps all of this by computing the path in code at launch:
 
 ```
-C:\Users\nalfeo\.copilot\crawler-memory\agent-memory.jsonl
+<homedir>/.copilot/crawler-memory/agent-memory.jsonl
 ```
 
-Trade-off: that absolute path is **machine/user-specific**. On another machine or
-user, edit `.mcp.json` to a valid local path (and re-seed it, below). This is the
-main reason Basic Memory (Layer 3, plain in-repo Markdown) is attractive — it has
-no path-resolution problem.
+Override it with the `CRAWLER_MEMORY_FILE_PATH` environment variable for CI or a
+shared location. (Basic Memory — Layer 3 — avoids the whole class of problem by
+keeping its store as plain in-repo Markdown.)
 
-> MCP servers load at CLI startup, so edits to `.mcp.json` take effect in the
-> **next** session, not the current one.
+> MCP servers load at CLI startup, so edits to `.mcp.json` (or the wrapper) take
+> effect in the **next** session, not the current one.
 
 ### Seed vs. live file
 
 - `docs/knowledge/agent-memory.jsonl` — the **version-controlled snapshot** (the
   reviewable source of truth). 29 entities + 31 relations covering the project,
   determinism rule, layer boundaries, conventions, key systems, and core ADRs.
-- The per-user **live file** is what the running server reads and writes. It is
-  seeded by copying the repo snapshot.
+- The per-user **live file** is what the running server reads and writes. The
+  wrapper seeds it from the snapshot the first time it runs (and `bash
+scripts/agent/preflight.sh` runs the same `--ensure` step at session start), so
+  there is normally nothing to do by hand.
 
-Seed (or re-seed) the live file from the snapshot:
+To **re-seed** the live file manually (e.g. to pull snapshot updates onto a
+machine that already has a live file), overwrite it from the snapshot:
 
 ```powershell
-$live = "C:\Users\nalfeo\.copilot\crawler-memory\agent-memory.jsonl"
+$live = Join-Path $HOME ".copilot\crawler-memory\agent-memory.jsonl"
 New-Item -ItemType Directory -Force -Path (Split-Path $live) | Out-Null
 Copy-Item ".\docs\knowledge\agent-memory.jsonl" $live -Force
 ```
@@ -92,7 +103,7 @@ To **commit new memory** the agent has accumulated, copy the live file back over
 the repo snapshot, eyeball the diff, and commit:
 
 ```powershell
-Copy-Item "C:\Users\nalfeo\.copilot\crawler-memory\agent-memory.jsonl" `
+Copy-Item (Join-Path $HOME ".copilot\crawler-memory\agent-memory.jsonl") `
   ".\docs\knowledge\agent-memory.jsonl" -Force
 ```
 
@@ -183,8 +194,10 @@ Local SQLite index/artifacts live under `~/.basic-memory/` and are git-ignored.
 ## Caveats summary
 
 - The official memory server needs an **absolute** `MEMORY_FILE_PATH`; relative
-  paths resolve into the npx cache.
-- That absolute path is **environment-specific**; adjust per machine/user.
-- `.mcp.json` changes apply **next session** (servers load at startup).
+  paths resolve into the npx cache. The wrapper sets this for you.
+- The CLI does **not** expand `${env:VAR}`/`${workspaceFolder}` in `.mcp.json`, so
+  the path is resolved in `scripts/agent/mcp-memory-server.mjs` instead. Override
+  with `CRAWLER_MEMORY_FILE_PATH`.
+- `.mcp.json` and wrapper changes apply **next session** (servers load at startup).
 - Basic Memory's server **cannot build on arm64 Windows** here yet; the Markdown
   KB is still valuable and portable in the meantime.
