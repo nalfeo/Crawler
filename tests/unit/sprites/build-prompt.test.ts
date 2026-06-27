@@ -13,6 +13,7 @@ import {
   buildPrompt,
   buildSheetPrompt,
   extractPreamble,
+  extractPromptColors,
   pickContrastingBackgroundColor,
 } from '../../../scripts/sprites/build-prompt.js';
 import type { Brief } from '../../../scripts/sprites/brief-schema.js';
@@ -319,5 +320,96 @@ describe('buildSheetPrompt — thematic variations', () => {
     const brief = makeBrief({ variations: ['spiked pommel'] } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).not.toMatch(/## Thematic variations/);
+  });
+});
+
+describe('extractPromptColors', () => {
+  it('extracts the named dominant color from a prompt', () => {
+    expect(extractPromptColors('A gelatinous purple slime, glistening.')).toEqual([[140, 40, 175]]);
+  });
+
+  it('returns an empty list when no color word is present', () => {
+    expect(extractPromptColors('An iron sword, pixel-art style, blade up-right.')).toEqual([]);
+  });
+
+  it('does not match color words embedded inside other words', () => {
+    // "evergreen" must not register as green; "goldfish" must not register as gold.
+    expect(extractPromptColors('An evergreen goldfish ornament.')).toEqual([]);
+  });
+
+  it('extracts every distinct color named in a multi-color prompt', () => {
+    const colors = extractPromptColors('A purple slime with glowing lime-green eyes.');
+    expect(colors).toContainEqual([140, 40, 175]); // purple
+    expect(colors).toContainEqual([150, 210, 40]); // lime green
+    expect(colors).toContainEqual([40, 160, 55]); // green
+  });
+
+  it('prefers the multi-word phrase over the bare color word', () => {
+    // "sky blue" maps to its own representative, not the generic "blue".
+    expect(extractPromptColors('A sky blue sprite.')).toContainEqual([90, 165, 230]);
+  });
+});
+
+describe('pickContrastingBackgroundColor — hue-aware selection', () => {
+  const bgFor = (prompt: string) =>
+    pickContrastingBackgroundColor(makeBrief({ prompt } as Partial<Brief>));
+
+  it('picks green (not magenta) for a purple slime — the reported regression', () => {
+    const bg = bgFor('A gelatinous purple slime, translucent and glistening.');
+    expect(bg.name).toBe('neon lime');
+    expect(bg.hex).toBe('#39ff14');
+    expect(bg.name).not.toBe('bright magenta');
+  });
+
+  it('avoids the magenta/purple family for violet and magenta subjects', () => {
+    // Both are the same hue family that broke background removal; the picker
+    // must steer well clear of bright magenta for them.
+    expect(bgFor('A violet wisp creature.').name).not.toBe('bright magenta');
+    expect(bgFor('A magenta blob monster.').name).not.toBe('bright magenta');
+  });
+
+  it('picks complementary backgrounds for primary-colored subjects', () => {
+    // Red -> cyan, green -> magenta, blue -> yellow (opposite hue families).
+    expect(bgFor('A bright red imp with horns.').name).toBe('electric cyan');
+    expect(bgFor('A green goblin warrior.').name).toBe('bright magenta');
+    expect(bgFor('A deep blue water elemental.').name).toBe('vivid yellow');
+  });
+
+  it('steers clear of every hue named in a multi-color subject', () => {
+    // Purple body + lime-green eyes: the background must avoid BOTH families,
+    // so neither magenta (purple-adjacent) nor lime (green) is acceptable.
+    const bg = bgFor('A purple slime with glowing lime-green eyes.');
+    expect(bg.name).not.toBe('bright magenta');
+    expect(bg.name).not.toBe('neon lime');
+  });
+
+  it('falls back to the magenta default for achromatic or color-less subjects', () => {
+    // No reliable hue to contrast against -> keep the classic chroma-key default.
+    expect(bgFor('A grey stone golem.').name).toBe('bright magenta');
+    expect(bgFor('An iron sword, pixel-art style, blade up-right.').name).toBe('bright magenta');
+  });
+
+  it('still honors an explicit per-sprite palette when no color word is present', () => {
+    const brief = makeBrief({
+      prompt: 'A blade, pixel-art style.',
+      palette: {
+        id: 'kenney-roguelike',
+        colors: [
+          [210, 25, 25],
+          [170, 40, 40],
+          [120, 20, 20],
+        ],
+      },
+    } as Partial<Brief>);
+    // Red-heavy palette (hue ~0) -> complementary cyan, never a red-family color.
+    expect(pickContrastingBackgroundColor(brief).name).toBe('electric cyan');
+  });
+
+  it('embeds the hue-chosen background color into the generated sheet prompt', () => {
+    const out = buildSheetPrompt(
+      makeBrief({ prompt: 'A gelatinous purple slime, translucent.' } as Partial<Brief>),
+      FAKE_STYLE_GUIDE,
+    );
+    expect(out).toContain('Prefer neon lime (#39ff14)');
   });
 });
