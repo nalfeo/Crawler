@@ -363,6 +363,8 @@ describe('mergeMinimalIntoDefaults — size variants', () => {
   type Anchor = { x: number; y: number };
   const nativeCanvasOf = (v: unknown): number =>
     (v as { sheet: { nativeCanvas: number } }).sheet.nativeCanvas;
+  const sheetOf = (v: unknown): { rows: number; cols: number; nativeCanvas: number } =>
+    (v as { sheet: { rows: number; cols: number; nativeCanvas: number } }).sheet;
 
   function enemyDefaults(): Record<string, unknown> {
     return {
@@ -386,34 +388,34 @@ describe('mergeMinimalIntoDefaults — size variants', () => {
     expect(merged.sizeVariant).toBeUndefined();
   });
 
-  it('scales width only for wide', () => {
+  it('scales width and reshapes the grid for wide', () => {
     const merged = mergeMinimalIntoDefaults(
       { name: 'slime', description: 'a wide slime', sizeVariant: 'wide' },
       enemyDefaults() as never,
     );
     expect(merged.size).toEqual({ width: 128, height: 64 });
     expect(merged.anchor).toEqual({ x: 64, y: 32 });
-    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+    expect(sheetOf(merged.generation)).toMatchObject({ rows: 4, cols: 2, nativeCanvas: 1024 });
   });
 
-  it('scales height only for tall', () => {
+  it('scales height and reshapes the grid for tall', () => {
     const merged = mergeMinimalIntoDefaults(
       { name: 'slime', description: 'a tall slime', sizeVariant: 'tall' },
       enemyDefaults() as never,
     );
     expect(merged.size).toEqual({ width: 64, height: 128 });
     expect(merged.anchor).toEqual({ x: 32, y: 64 });
-    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+    expect(sheetOf(merged.generation)).toMatchObject({ rows: 2, cols: 4, nativeCanvas: 1024 });
   });
 
-  it('scales both axes for large', () => {
+  it('scales both axes and reshapes the grid for large', () => {
     const merged = mergeMinimalIntoDefaults(
       { name: 'slime', description: 'a large slime', sizeVariant: 'large' },
       enemyDefaults() as never,
     );
     expect(merged.size).toEqual({ width: 128, height: 128 });
     expect(merged.anchor).toEqual({ x: 64, y: 64 });
-    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+    expect(sheetOf(merged.generation)).toMatchObject({ rows: 2, cols: 2, nativeCanvas: 1024 });
   });
 
   it('lets an explicit author size/anchor win over the variant scaling', () => {
@@ -427,10 +429,11 @@ describe('mergeMinimalIntoDefaults — size variants', () => {
       },
       enemyDefaults() as never,
     );
-    // Author wins on size/anchor; nativeCanvas (not overridden) still scales.
+    // Author wins on size/anchor; the inherited grid still reshapes (large → 2×2)
+    // and nativeCanvas (never inflated) stays at the base 1024.
     expect(merged.size).toEqual({ width: 100, height: 40 });
     expect(merged.anchor).toEqual({ x: 10, y: 20 });
-    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+    expect(sheetOf(merged.generation)).toMatchObject({ rows: 2, cols: 2, nativeCanvas: 1024 });
   });
 
   it('keeps the anchor strictly inside the scaled size', () => {

@@ -92,9 +92,10 @@ export interface SynthesizeBriefOptions {
   readonly candidates?: number;
   /**
    * Size variant to stamp on every written candidate. Default `'default'`.
-   * Scales the per-type size/anchor/native canvas at brief-load time
-   * (wide = 2× width, tall = 2× height, large = 2× both). Written into the
-   * candidate YAML (and recorded in the sidecar) only when not `'default'`.
+   * Reshapes the sheet grid on a fixed native canvas at brief-load time
+   * (wide → 8 double-width cells, tall → 8 double-height, large → 4; see
+   * ADR 0029) and scales the per-type size/anchor. Written into the candidate
+   * YAML (and recorded in the sidecar) only when not `'default'`.
    */
   readonly sizeVariant?: SizeVariant;
   /** Synth provider — typically `createSynthProvider()` from `factory`. */
