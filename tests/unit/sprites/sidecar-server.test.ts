@@ -459,6 +459,18 @@ describe('buildServer routes (inject)', () => {
     expect(res.json().error).toBe('bad-request');
   });
 
+  it('POST /api/workflow/synthesize rejects a non-string body.brief', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: { name: 'iron-sword', brief: 123 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toBe('body.brief must be a string when provided');
+  });
+
   it('POST /api/workflow/promote-brief validates required fields', async () => {
     const res = await app.inject({
       method: 'POST',

@@ -102,8 +102,6 @@ No backend change was needed for reload beyond the existing
 
 ## Files Changed
 
-## Files Changed
-
 | File                                                | Change                                                                                     |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `scripts/sprites/approve.ts`                        | Hash-based re-approval guard (`contentHash`) — committed `672c1654`                        |
@@ -127,7 +125,6 @@ No backend change was needed for reload beyond the existing
 
 ## Notes for Next Agent
 
-- **`addItem` arg order changed** to `(state, name, brief, requestedType,
 - **`addItem` arg order changed** to `(state, name, brief, requestedType,
 source)`. Any new caller must pass `name` first; `brief` is the optional
   synthesis hint, not the requestedType.
