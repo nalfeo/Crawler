@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { loadBrief } from '../../../scripts/sprites/load-brief.js';
+import { loadBrief, mergeMinimalIntoDefaults } from '../../../scripts/sprites/load-brief.js';
 
 const SAMPLE_BRIEF_YAML = `
 type: weapon
@@ -355,5 +355,129 @@ describe('loadBrief', () => {
       // not silently succeed by inheriting the sprite-type defaults.
       expect(() => loadBrief(briefPath, { projectRoot: root })).toThrow(/sensors/);
     });
+  });
+});
+
+describe('mergeMinimalIntoDefaults — size variants', () => {
+  type Dim = { width: number; height: number };
+  type Anchor = { x: number; y: number };
+  const nativeCanvasOf = (v: unknown): number =>
+    (v as { sheet: { nativeCanvas: number } }).sheet.nativeCanvas;
+
+  function enemyDefaults(): Record<string, unknown> {
+    return {
+      type: 'enemy',
+      size: { width: 64, height: 64 },
+      palette: { id: 'kenney-roguelike' },
+      anchor: { x: 32, y: 32 },
+      tags: ['enemy'],
+      generation: { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
+    };
+  }
+
+  it('leaves the per-type defaults untouched for the default variant', () => {
+    const merged = mergeMinimalIntoDefaults(
+      { name: 'slime', description: 'a green slime', sizeVariant: 'default' },
+      enemyDefaults() as never,
+    );
+    expect(merged.size).toEqual({ width: 64, height: 64 });
+    expect(merged.anchor).toEqual({ x: 32, y: 32 });
+    expect(nativeCanvasOf(merged.generation)).toBe(1024);
+    expect(merged.sizeVariant).toBeUndefined();
+  });
+
+  it('scales width only for wide', () => {
+    const merged = mergeMinimalIntoDefaults(
+      { name: 'slime', description: 'a wide slime', sizeVariant: 'wide' },
+      enemyDefaults() as never,
+    );
+    expect(merged.size).toEqual({ width: 128, height: 64 });
+    expect(merged.anchor).toEqual({ x: 64, y: 32 });
+    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+  });
+
+  it('scales height only for tall', () => {
+    const merged = mergeMinimalIntoDefaults(
+      { name: 'slime', description: 'a tall slime', sizeVariant: 'tall' },
+      enemyDefaults() as never,
+    );
+    expect(merged.size).toEqual({ width: 64, height: 128 });
+    expect(merged.anchor).toEqual({ x: 32, y: 64 });
+    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+  });
+
+  it('scales both axes for large', () => {
+    const merged = mergeMinimalIntoDefaults(
+      { name: 'slime', description: 'a large slime', sizeVariant: 'large' },
+      enemyDefaults() as never,
+    );
+    expect(merged.size).toEqual({ width: 128, height: 128 });
+    expect(merged.anchor).toEqual({ x: 64, y: 64 });
+    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+  });
+
+  it('lets an explicit author size/anchor win over the variant scaling', () => {
+    const merged = mergeMinimalIntoDefaults(
+      {
+        name: 'slime',
+        description: 'a pinned slime',
+        sizeVariant: 'large',
+        size: { width: 100, height: 40 },
+        anchor: { x: 10, y: 20 },
+      },
+      enemyDefaults() as never,
+    );
+    // Author wins on size/anchor; nativeCanvas (not overridden) still scales.
+    expect(merged.size).toEqual({ width: 100, height: 40 });
+    expect(merged.anchor).toEqual({ x: 10, y: 20 });
+    expect(nativeCanvasOf(merged.generation)).toBe(2048);
+  });
+
+  it('keeps the anchor strictly inside the scaled size', () => {
+    const characterDefaults = {
+      type: 'character',
+      size: { width: 64, height: 64 },
+      palette: { id: 'kenney-roguelike' },
+      anchor: { x: 32, y: 63 },
+      generation: { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
+    };
+    const merged = mergeMinimalIntoDefaults(
+      { name: 'hero', description: 'a tall hero', sizeVariant: 'tall' },
+      characterDefaults as never,
+    );
+    expect((merged.anchor as Anchor).y).toBeLessThan((merged.size as Dim).height);
+    expect(merged.anchor).toEqual({ x: 32, y: 126 });
+    expect(merged.size).toEqual({ width: 64, height: 128 });
+  });
+
+  it('strips sizeVariant so the strict schema never sees it', () => {
+    const merged = mergeMinimalIntoDefaults(
+      { name: 'slime', description: 'a slime', sizeVariant: 'wide' },
+      enemyDefaults() as never,
+    );
+    expect('sizeVariant' in merged).toBe(false);
+  });
+
+  it('no-ops scaling when the type has no defaults file (null defaults)', () => {
+    const merged = mergeMinimalIntoDefaults(
+      {
+        name: 'x',
+        description: 'no defaults',
+        sizeVariant: 'wide',
+        size: { width: 10, height: 10 },
+      },
+      null,
+    );
+    expect(merged.size).toEqual({ width: 10, height: 10 });
+    expect('sizeVariant' in merged).toBe(false);
+  });
+
+  it('throws a clear error for an unknown variant', () => {
+    expect(() =>
+      mergeMinimalIntoDefaults(
+        { name: 'x', description: 'bad', sizeVariant: 'huge' },
+        enemyDefaults() as never,
+      ),
+    ).toThrow(/Invalid sizeVariant/);
   });
 });

@@ -230,6 +230,78 @@ describe('synthesizeBrief — happy path', () => {
   });
 });
 
+describe('synthesizeBrief — size variants', () => {
+  it('writes sizeVariant into every YAML, the sidecar, and the result when non-default', async () => {
+    const provider = makeProvider(() => makeWeaponResponse([makeCandidate(), makeCandidate()]));
+    const { hooks, files } = makeFsWrites();
+    const result = await synthesizeBrief({
+      name: 'banner',
+      type: 'weapon',
+      candidates: 2,
+      sizeVariant: 'wide',
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      referenceCatalogOptions: makeCatalogHooks(),
+      fsWrites: hooks,
+    });
+
+    expect(result.sizeVariant).toBe('wide');
+    for (const candidate of result.written) {
+      const parsed = parseYaml(files.get(candidate.yamlPath)!) as Record<string, unknown>;
+      expect(parsed.sizeVariant).toBe('wide');
+      // The merged brief picks up the scaled default size.
+      const merged = mergeMinimalIntoDefaults(parsed, {
+        ...WEAPON_DEFAULTS,
+        size: { width: 64, height: 64 },
+        anchor: { x: 32, y: 32 },
+      } as never);
+      expect(merged.size).toEqual({ width: 128, height: 64 });
+    }
+    const sidecar = JSON.parse(files.get(result.sidecarPath)!) as Record<string, unknown>;
+    expect(sidecar.sizeVariant).toBe('wide');
+  });
+
+  it('omits sizeVariant from the YAML for the default variant', async () => {
+    const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
+    const { hooks, files } = makeFsWrites();
+    const result = await synthesizeBrief({
+      name: 'plain',
+      type: 'weapon',
+      candidates: 1,
+      provider,
+      repoRoot: REPO_ROOT,
+      env: {},
+      referenceCatalogOptions: makeCatalogHooks(),
+      fsWrites: hooks,
+    });
+
+    expect(result.sizeVariant).toBe('default');
+    const [written] = result.written;
+    const parsed = parseYaml(files.get(written!.yamlPath)!) as Record<string, unknown>;
+    expect('sizeVariant' in parsed).toBe(false);
+    const sidecar = JSON.parse(files.get(result.sidecarPath)!) as Record<string, unknown>;
+    expect(sidecar.sizeVariant).toBe('default');
+  });
+
+  it('rejects an unknown size variant', async () => {
+    const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));
+    await expect(
+      synthesizeBrief({
+        name: 'oops',
+        type: 'weapon',
+        candidates: 1,
+        sizeVariant: 'huge' as never,
+        provider,
+        repoRoot: REPO_ROOT,
+        env: {},
+        referenceCatalogOptions: makeCatalogHooks(),
+        fsWrites: makeFsWrites().hooks,
+      }),
+    ).rejects.toThrow(/Invalid sizeVariant/);
+  });
+});
+
 describe('synthesizeBrief — CI guard', () => {
   it('refuses to run when env.CI is set to a truthy value', async () => {
     const provider = makeProvider(() => makeWeaponResponse([makeCandidate()]));

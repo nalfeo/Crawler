@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   briefSchema,
+  minimalBriefSchema,
   type Brief,
   SPRITE_TYPES,
   variantCount,
@@ -264,6 +265,29 @@ describe('briefSchema', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.variations).toEqual(['spiked pommel']);
+    }
+  });
+});
+
+describe('minimalBriefSchema — sizeVariant', () => {
+  const base = { type: 'enemy', name: 'slime', description: 'a green slime' } as const;
+
+  it('accepts a brief with no sizeVariant', () => {
+    const result = minimalBriefSchema.safeParse(base);
+    expect(result.success).toBe(true);
+  });
+
+  it.each(['default', 'wide', 'tall', 'large'])('accepts sizeVariant=%s', (variant) => {
+    const result = minimalBriefSchema.safeParse({ ...base, sizeVariant: variant });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an unknown sizeVariant', () => {
+    const result = minimalBriefSchema.safeParse({ ...base, sizeVariant: 'huge' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'));
+      expect(paths).toContain('sizeVariant');
     }
   });
 });
