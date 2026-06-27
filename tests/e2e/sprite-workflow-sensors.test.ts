@@ -327,4 +327,83 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
     const buf = await page.screenshot({ type: 'png', fullPage: true });
     saveDebugShot(buf, 'sprite-workflow-detail-panel.png');
   });
+
+  // Issue #1 the user hit: approving a sprite never surfaced a GitHub issue,
+  // because approve is local-only and the issue-creating check-in step had no UI
+  // button. Drive the new "Check in to GitHub" button against a mocked
+  // /api/checkin and prove the filed issue URL is rendered as a clickable link.
+  it('checks in approved sprites and surfaces the filed asset-checkin issue link', async () => {
+    await page.route('**/api/checkin', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          branch: 'assets/checkin-2026-06-08-abc123',
+          issueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+          assets: [
+            {
+              assetPath: 'generated/slime-king-var-1.png',
+              manifestKey: 'slime-king-var-1',
+              briefId: 'slime-king',
+              variantIndex: 1,
+            },
+          ],
+        }),
+      });
+    });
+    try {
+      await loadSeededDevtools();
+      // The check-in button confirms before pushing/filing; accept the dialog.
+      page.once('dialog', (dialog) => void dialog.accept());
+      const checkinRequest = page.waitForRequest((req) => req.url().includes('/api/checkin'));
+      await page.getByRole('button', { name: /^Check in to GitHub$/ }).click();
+      await checkinRequest;
+      const issueLink = page.getByRole('link', { name: /View asset-checkin issue/ });
+      await issueLink.waitFor({ state: 'visible', timeout: 10_000 });
+      expect(await issueLink.getAttribute('href')).toBe(
+        'https://github.com/nalfeo/Crawler/issues/99',
+      );
+      expect(await page.locator('body').textContent()).toContain('Checked in 1 asset on');
+    } finally {
+      await page.unroute('**/api/checkin');
+    }
+  });
+
+  // Issue #2 the user hit: a Judge (or PostProcess) request had no Cancel/retry,
+  // so a hung step wedged the button until a page reload. Hold the judge request
+  // pending, prove the shared "Cancel step" button appears, cancel it, and prove
+  // the prior stage is restored (Judge re-enabled) so the step can be retried.
+  it('cancels a running Judge step and restores the prior stage for retry', async () => {
+    let releaseJudge: () => void = () => {};
+    const judgeHang = new Promise<void>((resolve) => {
+      releaseJudge = resolve;
+    });
+    await page.route('**/api/runs/**/judge', async (route) => {
+      await judgeHang; // keep the request pending so the Cancel button stays visible
+      try {
+        await route.abort();
+      } catch {
+        // The client AbortController already canceled the request — nothing to do.
+      }
+    });
+    try {
+      await loadSeededDevtools();
+      await page.getByRole('button', { name: /^Judge$/ }).click();
+      const cancelStep = page.getByRole('button', { name: /^Cancel step$/ });
+      await cancelStep.waitFor({ state: 'visible', timeout: 10_000 });
+      await cancelStep.click();
+      await page.waitForFunction(
+        () => /Canceled Judge/.test(document.body.textContent ?? ''),
+        undefined,
+        { timeout: 10_000 },
+      );
+      // Retry is possible: the trigger button is re-enabled and the cancel button
+      // hides again now that no step is in flight.
+      expect(await page.getByRole('button', { name: /^Judge$/ }).isEnabled()).toBe(true);
+      expect(await cancelStep.isVisible()).toBe(false);
+    } finally {
+      releaseJudge();
+      await page.unroute('**/api/runs/**/judge');
+    }
+  });
 });
