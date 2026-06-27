@@ -53,6 +53,26 @@
       }
     },
     {
+      "id": "floor1-meet-npcs",
+      "title": "The Director's Shortlist",
+      "summary": "The boss door won't budge until the Sweaty Merchant and the Spell Broker have both signed off on you. Two stops, two errands — then you fight the actual boss.",
+      "giverNpcId": "tutorial-goon",
+      "objectives": [
+        {
+          "id": "complete-merchant-errand",
+          "label": "Complete the Sweaty Merchant's errand",
+          "kind": "goal",
+          "goalId": "floor1-shop-quest-complete"
+        },
+        {
+          "id": "complete-spell-broker-quest",
+          "label": "Complete the Spell Broker's quest",
+          "kind": "goal",
+          "goalId": "floor1-boss-battle-complete"
+        }
+      ]
+    },
+    {
       "id": "floor1-boss-battle",
       "title": "Neighborhood Watch",
       "summary": "Defeat the Slime Rat, then return to the Spell Broker to claim your spellbook and unlock abilities.",
