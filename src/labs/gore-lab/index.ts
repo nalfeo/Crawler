@@ -22,12 +22,29 @@ import { deathTimerSystem } from '../../core/systems/deathTimerSystem.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { createGoreVfx } from '../../engine/GoreVfx.js';
+import {
+  fetchGeneratedSpriteRegistry,
+  GENERATED_SPRITE_REGISTRY_KEY,
+  preloadGeneratedSprites,
+} from '../../engine/generatedAssets/index.js';
+import { SHEETS } from '../../engine/sprites/index.js';
 import { setActiveWeapon, weaponSystem } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
+import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { pxToFt } from '../../shared/units.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
+
+// Mirrors BootScene: these sheets back the entity sprites PhaserBridge renders.
+// Without preloading them, the lab falls back to procedural diamonds and the
+// gore VFX is judged against a placeholder instead of the real art.
+const CRITICAL_SHEET_KEYS = new Set([
+  'kenney-tiny-dungeon',
+  'kenney-tiny-town',
+  'kenney-roguelike-rpg-pack',
+  'custom-pixel-sprites',
+]);
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -111,6 +128,26 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       super({ key: 'GoreLabScene' });
     }
 
+    preload(): void {
+      if (!this.load) return;
+      // Failures are non-fatal: PhaserBridge falls back to procedural textures.
+      this.load.on('loaderror', (file: Phaser.Loader.File) => {
+        console.warn('[gore-lab] sprite sheet failed to load', file.key, file.url);
+      });
+      for (const sheet of SHEETS) {
+        if (!CRITICAL_SHEET_KEYS.has(sheet.key)) continue;
+        this.load.spritesheet(sheet.key, sheet.path, {
+          frameWidth: sheet.frameWidth,
+          frameHeight: sheet.frameHeight,
+          margin: sheet.margin,
+          spacing: sheet.spacing,
+        });
+      }
+      // Seed an empty generated-sprite registry so downstream consumers always
+      // see a non-null value, then warm the manifest asynchronously.
+      this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, emptyGeneratedSpriteRegistry());
+    }
+
     create(): void {
       this.inputState = createInputState();
       this.inputCapture = createInputCapture(this);
@@ -124,6 +161,8 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       });
       this.resetWorld();
 
+      void this.warmGeneratedSprites();
+
       this.events.once('shutdown', () => {
         this.inputCapture?.destroy();
         this.inputCapture = undefined;
@@ -132,6 +171,19 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
         this.bridge?.destroy();
         this.bridge = undefined;
       });
+    }
+
+    private async warmGeneratedSprites(): Promise<void> {
+      try {
+        const registry = await fetchGeneratedSpriteRegistry();
+        this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
+        if (registry.size === 0 || !this.load) return;
+        const queued = preloadGeneratedSprites(this.load, registry);
+        if (queued.length === 0) return;
+        this.load.start();
+      } catch {
+        // Soft-fail — built-in Kenney sheets are already loaded.
+      }
     }
 
     update(_time: number, delta: number): void {
@@ -304,6 +356,10 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     width: initialSize.width,
     height: initialSize.height,
     backgroundColor: '#120714',
+    // Match the real game so Kenney pixel-art sprites stay crisp instead of
+    // being LINEAR-sampled into mush (would defeat the "judge it visually" goal).
+    pixelArt: true,
+    roundPixels: true,
     scene: [GoreLabScene],
     scale: {
       mode: Phaser.Scale.RESIZE,
