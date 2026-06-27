@@ -34,7 +34,7 @@ function createSlashSwing(world: ReturnType<typeof createTestWorld>, x: number, 
     world.ecs,
     swing,
     set(MeleeSwing, {
-      bladeLength: 32,
+      bladeLength: 4,
       arcCenterRad: 0,
       arcHalfRad: 0,
       damage: 10,
@@ -52,9 +52,9 @@ function createSlashSwing(world: ReturnType<typeof createTestWorld>, x: number, 
 describe('meleeSwingSystem coverage edges', () => {
   it('can hit again after clearMeleeSwingHits removes tracked targets', () => {
     const world = createTestWorld();
-    const swing = createSlashSwing(world, 100, 100);
+    const swing = createSlashSwing(world, 12.5, 12.5);
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 120, y: 100 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 15, y: 12.5 }));
     addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, enemy, Enemy);
 
@@ -71,9 +71,9 @@ describe('meleeSwingSystem coverage edges', () => {
 
   it('markImmuneToActiveMeleeSwings makes an active swing skip a target until it is replaced', () => {
     const world = createTestWorld();
-    const swing = createSlashSwing(world, 100, 100);
+    const swing = createSlashSwing(world, 12.5, 12.5);
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 120, y: 100 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 15, y: 12.5 }));
     addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, enemy, Enemy);
 
@@ -93,7 +93,7 @@ describe('meleeSwingSystem coverage edges', () => {
   it('handles zero-length blade segment via shaft distance fallback', () => {
     const world = createTestWorld();
     const swing = createEntity(world);
-    addComponent(world.ecs, swing, set(Position, { x: 50, y: 50 }));
+    addComponent(world.ecs, swing, set(Position, { x: 6.25, y: 6.25 }));
     addComponent(
       world.ecs,
       swing,
@@ -112,7 +112,7 @@ describe('meleeSwingSystem coverage edges', () => {
     );
 
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 50, y: 50 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 6.25, y: 6.25 }));
     addComponent(world.ecs, enemy, set(Health, { current: 20, max: 20 }));
     addComponent(world.ecs, enemy, Enemy);
 
@@ -122,10 +122,10 @@ describe('meleeSwingSystem coverage edges', () => {
 
   it('ignores entities that have Health+Position but are neither Enemy nor Player', () => {
     const world = createTestWorld();
-    createSlashSwing(world, 100, 100);
+    createSlashSwing(world, 12.5, 12.5);
 
     const neutral = createEntity(world);
-    addComponent(world.ecs, neutral, set(Position, { x: 120, y: 100 }));
+    addComponent(world.ecs, neutral, set(Position, { x: 15, y: 12.5 }));
     addComponent(world.ecs, neutral, set(Health, { current: 40, max: 40 }));
 
     meleeSwingSystem(world);
@@ -134,11 +134,11 @@ describe('meleeSwingSystem coverage edges', () => {
 
   it('skips same-team targets', () => {
     const world = createTestWorld();
-    const swing = createSlashSwing(world, 100, 100);
+    const swing = createSlashSwing(world, 12.5, 12.5);
     addComponent(world.ecs, swing, set(Team, { id: 1 }));
 
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 120, y: 100 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 15, y: 12.5 }));
     addComponent(world.ecs, enemy, set(Health, { current: 50, max: 50 }));
     addComponent(world.ecs, enemy, Enemy);
     addComponent(world.ecs, enemy, set(Team, { id: 1 }));
@@ -150,26 +150,26 @@ describe('meleeSwingSystem coverage edges', () => {
   it('updates existing Knockback via setComponent when target already has Knockback', () => {
     const world = createTestWorld();
     const swing = createEntity(world);
-    addComponent(world.ecs, swing, set(Position, { x: 100, y: 100 }));
+    addComponent(world.ecs, swing, set(Position, { x: 12.5, y: 12.5 }));
     addComponent(
       world.ecs,
       swing,
       set(MeleeSwing, {
-        bladeLength: 48,
+        bladeLength: 6,
         arcCenterRad: 0,
         arcHalfRad: 0,
         damage: 10,
         spawnAtMs: 0,
         durationMs: 1000,
         style: MeleeStyle.SLASH,
-        headRadius: 12,
+        headRadius: 1.5,
         shaftDamageMult: 1,
-        knockback: 30,
+        knockback: 3.75,
       }),
     );
 
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 148, y: 100 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 18.5, y: 12.5 }));
     addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, enemy, Enemy);
     addComponent(
@@ -187,8 +187,8 @@ describe('meleeSwingSystem coverage edges', () => {
 
     expect(world.stores.health.current[enemy]).toBe(90);
     expect(hasComponent(world.ecs, enemy, Knockback)).toBe(true);
-    expect(world.stores.knockback.remaining[enemy]).toBe(30);
-    expect(world.stores.knockback.speed[enemy]).toBe(3);
+    expect(world.stores.knockback.remaining[enemy]).toBe(3.75);
+    expect(world.stores.knockback.speed[enemy]).toBe(0.375);
     expect(world.stores.knockback.dirX[enemy]).toBeCloseTo(1, 6);
     expect(world.stores.knockback.dirY[enemy]).toBeCloseTo(0, 6);
   });
@@ -196,7 +196,7 @@ describe('meleeSwingSystem coverage edges', () => {
   it('does not apply knockback when target overlaps swing origin (zero knockback direction)', () => {
     const world = createTestWorld();
     const swing = createEntity(world);
-    addComponent(world.ecs, swing, set(Position, { x: 100, y: 100 }));
+    addComponent(world.ecs, swing, set(Position, { x: 12.5, y: 12.5 }));
     addComponent(
       world.ecs,
       swing,
@@ -208,14 +208,14 @@ describe('meleeSwingSystem coverage edges', () => {
         spawnAtMs: 0,
         durationMs: 1000,
         style: MeleeStyle.SLASH,
-        headRadius: 20,
+        headRadius: 2.5,
         shaftDamageMult: 1,
-        knockback: 40,
+        knockback: 5,
       }),
     );
 
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 100, y: 100 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 12.5, y: 12.5 }));
     addComponent(world.ecs, enemy, set(Health, { current: 50, max: 50 }));
     addComponent(world.ecs, enemy, Enemy);
 
@@ -228,15 +228,15 @@ describe('meleeSwingSystem coverage edges', () => {
   it('does not damage the owner even when owner is in the Health query', () => {
     const world = createTestWorld();
     const owner = createEntity(world);
-    addComponent(world.ecs, owner, set(Position, { x: 100, y: 100 }));
+    addComponent(world.ecs, owner, set(Position, { x: 12.5, y: 12.5 }));
     addComponent(world.ecs, owner, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, owner, Player);
 
-    const swing = createSlashSwing(world, 100, 100);
+    const swing = createSlashSwing(world, 12.5, 12.5);
     addComponent(world.ecs, swing, set(Owner, { eid: owner }));
 
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 120, y: 100 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 15, y: 12.5 }));
     addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, enemy, Enemy);
 
@@ -251,18 +251,18 @@ describe('meleeSwingSystem coverage edges', () => {
     const owner = createEntity(world);
     addComponent(world.ecs, owner, Player);
 
-    const swing = createSlashSwing(world, 100, 100);
+    const swing = createSlashSwing(world, 12.5, 12.5);
     addComponent(world.ecs, swing, set(Owner, { eid: owner }));
 
     meleeSwingSystem(world);
 
-    expect(world.stores.position.x[swing]).toBe(100);
-    expect(world.stores.position.y[swing]).toBe(100);
+    expect(world.stores.position.x[swing]).toBe(12.5);
+    expect(world.stores.position.y[swing]).toBe(12.5);
   });
 });
 
 describe('meleeSwingSystem line-of-sight gating', () => {
-  const TILE = 32;
+  const TILE = 4; // feet per tile (matches FloorMap.tileToWorld)
   const cx = (tx: number): number => tx * TILE + TILE / 2;
   const cy = (ty: number): number => ty * TILE + TILE / 2;
 
@@ -297,7 +297,7 @@ describe('meleeSwingSystem line-of-sight gating', () => {
       world.ecs,
       swing,
       set(MeleeSwing, {
-        bladeLength: 320,
+        bladeLength: 40,
         arcCenterRad: 0,
         arcHalfRad: 0,
         damage: 10,
@@ -377,7 +377,7 @@ describe('returningProjectileSystem coverage edges', () => {
     addComponent(
       world.ecs,
       projectile,
-      set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }),
+      set(Returning, { isReturning: 1, returnSpeed: 1.25, maxRange: 12.5 }),
     );
     addComponent(world.ecs, projectile, set(Owner, { eid: 999 }));
 
@@ -396,7 +396,7 @@ describe('returningProjectileSystem coverage edges', () => {
     addComponent(
       world.ecs,
       projectile,
-      set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }),
+      set(Returning, { isReturning: 1, returnSpeed: 1.25, maxRange: 12.5 }),
     );
     addComponent(world.ecs, projectile, set(Owner, { eid: owner }));
 
@@ -410,15 +410,15 @@ describe('returningProjectileSystem coverage edges', () => {
     addComponent(world.ecs, owner, set(Position, { x: 0, y: 0 }));
 
     const projectile = createEntity(world);
-    addComponent(world.ecs, projectile, set(Position, { x: 30, y: 0 }));
+    addComponent(world.ecs, projectile, set(Position, { x: 3.75, y: 0 }));
     addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
     addComponent(
       world.ecs,
       projectile,
       set(Returning, {
         isReturning: 0,
-        returnSpeed: 12,
-        maxRange: 10,
+        returnSpeed: 1.5,
+        maxRange: 1.25,
         originX: 0,
         originY: 0,
       }),
@@ -437,15 +437,15 @@ describe('returningProjectileSystem coverage edges', () => {
     addComponent(world.ecs, owner, set(Position, { x: 0, y: 0 }));
 
     const projectile = createEntity(world);
-    addComponent(world.ecs, projectile, set(Position, { x: 30, y: 0 }));
+    addComponent(world.ecs, projectile, set(Position, { x: 3.75, y: 0 }));
     addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
     addComponent(
       world.ecs,
       projectile,
       set(Returning, {
         isReturning: 0,
-        returnSpeed: 12,
-        maxRange: 10,
+        returnSpeed: 1.5,
+        maxRange: 1.25,
         originX: 0,
         originY: 0,
       }),
@@ -463,7 +463,7 @@ describe('returningProjectileSystem coverage edges', () => {
   it('steers velocity toward owner while returning', () => {
     const world = createTestWorld();
     const owner = createEntity(world);
-    addComponent(world.ecs, owner, set(Position, { x: 100, y: 0 }));
+    addComponent(world.ecs, owner, set(Position, { x: 12.5, y: 0 }));
 
     const projectile = createEntity(world);
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
@@ -473,8 +473,8 @@ describe('returningProjectileSystem coverage edges', () => {
       projectile,
       set(Returning, {
         isReturning: 1,
-        returnSpeed: 20,
-        maxRange: 100,
+        returnSpeed: 2.5,
+        maxRange: 12.5,
         originX: 0,
         originY: 0,
       }),
@@ -483,14 +483,14 @@ describe('returningProjectileSystem coverage edges', () => {
 
     returningProjectileSystem(world);
 
-    expect(world.stores.velocity.x[projectile]).toBeCloseTo(20, 6);
+    expect(world.stores.velocity.x[projectile]).toBeCloseTo(2.5, 6);
     expect(world.stores.velocity.y[projectile]).toBeCloseTo(0, 6);
   });
 
   it('removes projectile when it reaches pickup radius while returning', () => {
     const world = createTestWorld();
     const owner = createEntity(world);
-    addComponent(world.ecs, owner, set(Position, { x: 8, y: 0 }));
+    addComponent(world.ecs, owner, set(Position, { x: 1, y: 0 }));
 
     const projectile = createEntity(world);
     addComponent(world.ecs, projectile, set(Position, { x: 0, y: 0 }));
@@ -500,8 +500,8 @@ describe('returningProjectileSystem coverage edges', () => {
       projectile,
       set(Returning, {
         isReturning: 1,
-        returnSpeed: 20,
-        maxRange: 100,
+        returnSpeed: 2.5,
+        maxRange: 12.5,
         originX: 0,
         originY: 0,
       }),
@@ -518,15 +518,15 @@ describe('returningProjectileSystem coverage edges', () => {
     addComponent(world.ecs, owner, set(Position, { x: 0, y: 0 }));
 
     const projectile = createEntity(world);
-    addComponent(world.ecs, projectile, set(Position, { x: 9, y: 0 }));
+    addComponent(world.ecs, projectile, set(Position, { x: 1.125, y: 0 }));
     addComponent(world.ecs, projectile, set(Velocity, { x: 0, y: 0 }));
     addComponent(
       world.ecs,
       projectile,
       set(Returning, {
         isReturning: 0,
-        returnSpeed: 12,
-        maxRange: 10,
+        returnSpeed: 1.5,
+        maxRange: 1.25,
         originX: 0,
         originY: 0,
       }),
@@ -546,7 +546,7 @@ describe('returningProjectileSystem coverage edges', () => {
     addComponent(
       world.ecs,
       projectile,
-      set(Returning, { isReturning: 1, returnSpeed: 10, maxRange: 100 }),
+      set(Returning, { isReturning: 1, returnSpeed: 1.25, maxRange: 12.5 }),
     );
 
     returningProjectileSystem(world);

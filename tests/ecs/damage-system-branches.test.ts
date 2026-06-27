@@ -18,7 +18,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 12,
   heightTiles: 12,
-  tileSizePx: 32,
+  tileSizeFt: 4,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],
@@ -44,7 +44,7 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('damages the player and destroys an enemy projectile on hit', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    const projectile = spawnEnemyProjectile(world, 4, 0, 0, 0, 7);
+    const projectile = spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7);
 
     damageSystem(world, collisionSystem(world));
 
@@ -56,8 +56,8 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
     const world = createTestWorld();
     world.floorMap = makeSafeRoomMap();
     // Tile (2,2) centre -> inside the safe room.
-    const player = spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
-    const projectile = spawnEnemyProjectile(world, 2 * 32 + 18, 2 * 32 + 16, 0, 0, 7);
+    const player = spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
+    const projectile = spawnEnemyProjectile(world, 2 * 4 + 2.25, 2 * 4 + 2, 0, 0, 7);
 
     damageSystem(world, collisionSystem(world));
 
@@ -68,14 +68,14 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('blocks an enemy projectile during the invincibility window', () => {
     const world = createTestWorld();
     const player = spawnPlayer(world, 0, 0);
-    spawnEnemyProjectile(world, 4, 0, 0, 0, 7);
+    spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7);
 
     damageSystem(world, collisionSystem(world));
     const healthAfterFirst = world.stores.health.current[player]!;
     world.combatEvents.length = 0;
 
     // Second projectile within the invincibility window is blocked.
-    spawnEnemyProjectile(world, 4, 0, 0, 0, 7);
+    spawnEnemyProjectile(world, 0.5, 0, 0, 0, 7);
     world.elapsedMs += 50;
     damageSystem(world, collisionSystem(world));
 
@@ -86,8 +86,8 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('does not damage the player from enemy contact while in a safe space', () => {
     const world = createTestWorld();
     world.floorMap = makeSafeRoomMap();
-    const player = spawnPlayer(world, 2 * 32 + 16, 2 * 32 + 16);
-    spawnEnemy(world, 2 * 32 + 18, 2 * 32 + 16, 25);
+    const player = spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
+    spawnEnemy(world, 2 * 4 + 2.25, 2 * 4 + 2, 25);
 
     damageSystem(world, collisionSystem(world));
 
@@ -100,7 +100,7 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
     // Stats component gates armor mitigation; the armor value lives in the stats store.
     addComponent(world.ecs, player, Stats);
     world.stores.stats.armor[player] = 100;
-    spawnEnemy(world, 8, 0, 25);
+    spawnEnemy(world, 1, 0, 25);
 
     damageSystem(world, collisionSystem(world));
 

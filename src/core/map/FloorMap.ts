@@ -68,48 +68,48 @@ export class FloorMap implements FloorMapData {
     return this.config.heightTiles;
   }
 
-  /** Map width in pixels. */
-  get widthPx(): number {
-    return this.config.widthTiles * this.config.tileSizePx;
+  /** Map width in feet. */
+  get widthFt(): number {
+    return this.config.widthTiles * this.config.tileSizeFt;
   }
 
-  /** Map height in pixels. */
-  get heightPx(): number {
-    return this.config.heightTiles * this.config.tileSizePx;
+  /** Map height in feet. */
+  get heightFt(): number {
+    return this.config.heightTiles * this.config.tileSizeFt;
   }
 
-  /** Convert pixel coords to tile coords. */
-  pixelToTile(px: number, py: number): { x: number; y: number } {
+  /** Convert feet world coords to tile coords. */
+  worldToTile(x: number, y: number): { x: number; y: number } {
     return {
-      x: Math.floor(px / this.config.tileSizePx),
-      y: Math.floor(py / this.config.tileSizePx),
+      x: Math.floor(x / this.config.tileSizeFt),
+      y: Math.floor(y / this.config.tileSizeFt),
     };
   }
 
-  /** Convert tile coords to pixel coords (center of tile). */
-  tileToPixel(tx: number, ty: number): { x: number; y: number } {
-    const half = this.config.tileSizePx / 2;
+  /** Convert tile coords to feet world coords (center of tile). */
+  tileToWorld(tx: number, ty: number): { x: number; y: number } {
+    const half = this.config.tileSizeFt / 2;
     return {
-      x: tx * this.config.tileSizePx + half,
-      y: ty * this.config.tileSizePx + half,
+      x: tx * this.config.tileSizeFt + half,
+      y: ty * this.config.tileSizeFt + half,
     };
   }
 
-  /** Check if a pixel position is on a passable tile. */
-  isPassableAt(px: number, py: number): boolean {
-    const t = this.pixelToTile(px, py);
+  /** Check if a feet world position is on a passable tile. */
+  isPassableAt(x: number, y: number): boolean {
+    const t = this.worldToTile(x, y);
     return this.tileMap.isPassable(t.x, t.y);
   }
 
   /**
-   * Check whether a straight line between two pixel positions is unobstructed
-   * by opaque tiles. Converts both endpoints to tile coordinates and delegates
-   * to `TileMap.lineOfSight`. Used by combat targeting so weapons never fire
-   * through walls at enemies in the next room.
+   * Check whether a straight line between two feet world positions is
+   * unobstructed by opaque tiles. Converts both endpoints to tile coordinates
+   * and delegates to `TileMap.lineOfSight`. Used by combat targeting so weapons
+   * never fire through walls at enemies in the next room.
    */
-  hasLineOfSight(px0: number, py0: number, px1: number, py1: number): boolean {
-    const from = this.pixelToTile(px0, py0);
-    const to = this.pixelToTile(px1, py1);
+  hasLineOfSight(x0: number, y0: number, x1: number, y1: number): boolean {
+    const from = this.worldToTile(x0, y0);
+    const to = this.worldToTile(x1, y1);
     return this.tileMap.lineOfSight(from.x, from.y, to.x, to.y);
   }
 

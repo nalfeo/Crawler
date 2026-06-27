@@ -16,7 +16,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 20,
   heightTiles: 20,
-  tileSizePx: 32,
+  tileSizeFt: 32,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],
@@ -37,7 +37,7 @@ function makeMapWithSafeRoom(): FloorMap {
   return new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(w * h), { x: 12, y: 12 });
 }
 
-const SAFE_PX = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
+const SAFE_FT = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
 
 function countAreaAttacks(world: ReturnType<typeof createTestWorld>): number {
   return Array.from(query(world.ecs, [AreaDamage])).length;
@@ -71,11 +71,11 @@ describe('aoeOnImpactSystem', () => {
   it('suppresses the explosion when the owner is inside a safe room', () => {
     const world = createTestWorld();
     world.floorMap = makeMapWithSafeRoom();
-    const player = spawnPlayer(world, SAFE_PX.x, SAFE_PX.y);
+    const player = spawnPlayer(world, SAFE_FT.x, SAFE_FT.y);
     const proj = spawnAoeProjectile(
       world,
-      SAFE_PX.x,
-      SAFE_PX.y,
+      SAFE_FT.x,
+      SAFE_FT.y,
       1,
       0,
       10,

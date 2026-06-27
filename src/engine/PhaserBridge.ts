@@ -29,6 +29,7 @@ import { createEffectsVfx } from './EffectsVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { TeamId, MeleeSpriteId } from '../shared/constants.js';
+import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../shared/spawn-anim.js';
 
@@ -713,8 +714,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
                   ? 'enemy_slime'
                   : 'enemy'
             : entityType;
-        const x = (position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha;
-        const y = (position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha;
+        // Positions/velocities are stored in feet; scale feet → pixels for
+        // rendering (the only place pixels exist). All downstream geometry
+        // (beam/melee/aoe lengths, tip offsets) is computed in pixels too.
+        const x = ftToPx((position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha);
+        const y = ftToPx((position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha);
 
         // --- Beam rendering (uses Graphics, not Image) ---
         if (entityType === 'beam') {
@@ -727,7 +731,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           const dirX = lineDamage.dirX[eid] ?? 1;
           const dirY = lineDamage.dirY[eid] ?? 0;
-          const length = lineDamage.length[eid] ?? 0;
+          const length = ftToPx(lineDamage.length[eid] ?? 0);
 
           // Lifetime fade
           const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
@@ -766,11 +770,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
           ag.clear();
 
-          const bladeLen = meleeSwing.bladeLength[eid] ?? 0;
+          const bladeLen = ftToPx(meleeSwing.bladeLength[eid] ?? 0);
           const arcCenter = meleeSwing.arcCenterRad[eid] ?? 0;
           const arcHalf = meleeSwing.arcHalfRad[eid] ?? 0;
           const style = meleeSwing.style[eid] ?? 0;
-          const headRadius = meleeSwing.headRadius[eid] ?? 0;
+          const headRadius = ftToPx(meleeSwing.headRadius[eid] ?? 0);
           const spawnTime = arcSpawnMs.get(eid) ?? renderElapsedMs;
           const expiresAt = lifetime.expiresAtMs[eid] ?? 0;
           const totalDuration = Math.max(1, expiresAt - spawnTime);
@@ -898,7 +902,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const img = visual.obj;
         let isVisible = true;
         if (entityType === 'enemy' && world.floorMap) {
-          const tile = world.floorMap.pixelToTile(x, y);
+          // worldToTile expects feet; x/y here are pixels, so use the raw
+          // feet position store directly for the tile/FOV lookup.
+          const tile = world.floorMap.worldToTile(position.x[eid] ?? 0, position.y[eid] ?? 0);
           isVisible = world.floorMap.isVisible(tile.x, tile.y);
           if (!isVisible && world.debugFlags.showAllRooms) {
             // Debug: show enemies in closed rooms dimly — does NOT affect game FOV
@@ -975,7 +981,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
           case 'aoe':
           case 'enemy_aoe': {
-            const radius = areaDamage.radius[eid] ?? 32;
+            const radius = ftToPx(areaDamage.radius[eid] ?? 4);
             const arcHalf = areaDamage.arcHalfRad[eid] ?? 0;
             const arcCenter = areaDamage.arcCenterRad[eid] ?? 0;
             const isArc = arcHalf > 0 && arcHalf < Math.PI;

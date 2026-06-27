@@ -22,6 +22,7 @@ import {
   weaponSystem,
 } from '../../game/index.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
+import { ftToPx, pxToFt } from '../../shared/units.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -87,7 +88,7 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     maxEnemies: 30,
     spawnIntervalMs: 750,
     enemyHp: 20,
-    enemySpeed: 1.25,
+    enemySpeed: 0.15625,
     ...(loadLabState<CombatLabSettings>(LAB_ID) ?? {}),
   };
 
@@ -121,8 +122,9 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
       this.accumulator = 0;
@@ -210,8 +212,8 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
 
     private applySpawnerBounds(): void {
       configureEnemySpawner(this.world, {
-        width: this.getSimulationWidth(),
-        height: this.getSimulationHeight(),
+        width: pxToFt(this.getSimulationWidth()),
+        height: pxToFt(this.getSimulationHeight()),
       });
     }
 
@@ -228,8 +230,8 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
       this.world = createGameWorld({ seed: LAB_SEED });
       this.playerEid = spawnPlayer(
         this.world,
-        this.getSimulationWidth() / 2,
-        this.getSimulationHeight() / 2,
+        pxToFt(this.getSimulationWidth()) / 2,
+        pxToFt(this.getSimulationHeight()) / 2,
       );
       addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
 
@@ -262,11 +264,11 @@ function createCombatLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     },
   };
 
-  gui.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
+  gui.add(settings, 'playerSpeed', 0.125, 1.875, 0.0125).name('Player Speed');
   gui.add(settings, 'maxEnemies', 5, 200, 1).name('Max Enemies');
   gui.add(settings, 'spawnIntervalMs', 100, 5000, 1).name('Spawn Interval');
   gui.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');
-  gui.add(settings, 'enemySpeed', 0.5, 5, 0.1).name('Enemy Speed');
+  gui.add(settings, 'enemySpeed', 0.0625, 0.625, 0.0125).name('Enemy Speed');
   gui.add(controlsApi, 'reset').name('Reset');
   gui.onChange(() => saveLabState(LAB_ID, settings));
 

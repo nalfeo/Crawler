@@ -70,7 +70,7 @@ export function doorSystem(world: GameWorld): void {
     const px = world.stores.position.x[player] ?? 0;
     const py = world.stores.position.y[player] ?? 0;
     if (safeRoom && isPointInSafeSpace(world, px, py)) {
-      const playerTile = floorMap.pixelToTile(px, py);
+      const playerTile = floorMap.worldToTile(px, py);
       let closeSafeDoors = true;
       for (const door of safeRoom.doors) {
         const manhattan = Math.abs(playerTile.x - door.x) + Math.abs(playerTile.y - door.y);
@@ -87,7 +87,7 @@ export function doorSystem(world: GameWorld): void {
         }
       }
     }
-    const tile = floorMap.pixelToTile(px, py);
+    const tile = floorMap.worldToTile(px, py);
 
     for (let dy = -AUTO_OPEN_RADIUS_TILES; dy <= AUTO_OPEN_RADIUS_TILES; dy += 1) {
       for (let dx = -AUTO_OPEN_RADIUS_TILES; dx <= AUTO_OPEN_RADIUS_TILES; dx += 1) {

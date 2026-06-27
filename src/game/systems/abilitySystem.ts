@@ -10,7 +10,6 @@ import type { GameWorld } from '../../core/world.js';
 import { getAbilityDefinition } from '../abilities/registry.js';
 import { applyCatalogEffect } from './progressionEffects.js';
 import { removeStatModifiers } from './statsSystem.js';
-import { ftToPx } from '../../shared/units.js';
 
 export function createAbilityState(): AbilityState {
   return {
@@ -109,9 +108,9 @@ function getHealthRatio(world: GameWorld, holderEid: number): number {
   return current / max;
 }
 
-function countEnemiesWithin(world: GameWorld, x: number, y: number, radiusPx: number): number {
+function countEnemiesWithin(world: GameWorld, x: number, y: number, radiusFt: number): number {
   const enemies = query(world.ecs, [Enemy, Position, Health]);
-  const radiusSq = radiusPx * radiusPx;
+  const radiusSq = radiusFt * radiusFt;
   let count = 0;
   for (const enemyEid of enemies) {
     if ((world.stores.health.current[enemyEid] ?? 0) <= 0) continue;
@@ -126,11 +125,11 @@ function countEnemiesWithin(world: GameWorld, x: number, y: number, radiusPx: nu
   return count;
 }
 
-function countEnemiesNearCaster(world: GameWorld, casterEid: number, radiusPx: number): number {
+function countEnemiesNearCaster(world: GameWorld, casterEid: number, radiusFt: number): number {
   const casterX = world.stores.position.x[casterEid] ?? 0;
   const casterY = world.stores.position.y[casterEid] ?? 0;
   const enemies = [...query(world.ecs, [Enemy, Position, Health])];
-  const radiusSq = radiusPx * radiusPx;
+  const radiusSq = radiusFt * radiusFt;
   let clusterSize = 0;
 
   for (const enemy of enemies) {
@@ -154,7 +153,7 @@ function shouldAutoTriggerAbility(
 ): boolean {
   switch (trigger.kind) {
     case 'enemy_cluster': {
-      const clusterSize = countEnemiesNearCaster(world, holderEid, ftToPx(trigger.withinFeet));
+      const clusterSize = countEnemiesNearCaster(world, holderEid, trigger.withinFeet);
       return clusterSize >= trigger.minEnemies;
     }
     case 'low_health':
@@ -165,10 +164,7 @@ function shouldAutoTriggerAbility(
       }
       const holderX = world.stores.position.x[holderEid] ?? 0;
       const holderY = world.stores.position.y[holderEid] ?? 0;
-      return (
-        countEnemiesWithin(world, holderX, holderY, ftToPx(trigger.withinFeet)) >=
-        trigger.minEnemies
-      );
+      return countEnemiesWithin(world, holderX, holderY, trigger.withinFeet) >= trigger.minEnemies;
     }
     case 'health_deficit_at_least': {
       const max = world.stores.health.max[holderEid] ?? 0;

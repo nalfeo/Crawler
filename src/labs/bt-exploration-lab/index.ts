@@ -205,7 +205,7 @@ function createBtExplorationLab(canvasHost: HTMLElement, controls: HTMLElement):
       index: (tx, ty) => (tx < 0 || ty < 0 || tx >= GW || ty >= GH ? -1 : ty * GW + tx),
       isSeen: (idx) => seen[idx] !== 0,
       isPassable: (tx, ty) => tileIsPassable(tx, ty),
-      tileDistancePx: (tx, ty) => {
+      tileDistanceFt: (tx, ty) => {
         const c = tileCenterPx(tx, ty);
         return Math.hypot(c.x - player.x, c.y - player.y);
       },

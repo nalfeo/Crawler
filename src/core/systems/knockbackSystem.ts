@@ -6,6 +6,12 @@ import type { GameWorld } from '../world.js';
 // read as a wall hit because of floating-point rounding.
 const COLLISION_EPSILON = 0.001;
 
+// Knockback is resolved in fixed-size substeps so a fast slide cannot tunnel
+// through a thin wall. The substep length is the spatial resolution of that
+// sweep; ~1px keeps wall contact crisp. Expressed in feet (the canonical unit)
+// so the substep count scales with the move distance independent of render px.
+const KNOCKBACK_SUBSTEP_FT = 0.125;
+
 function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number): boolean {
   const floorMap = world.floorMap;
   if (!floorMap) {
@@ -19,11 +25,11 @@ function isFootprintPassable(world: GameWorld, eid: number, x: number, y: number
   // footprint can overlap a wall before its center crosses into the blocked tile.
   // Zero/near-zero dimensions also fall back to the center point; knockback in
   // this codebase targets creature-sized sprites, not projectile footprints.
-  const tileSizePx = floorMap.config.tileSizePx;
+  const tileSizeFt = floorMap.config.tileSizeFt;
   if (
     width <= COLLISION_EPSILON * 2 ||
     height <= COLLISION_EPSILON * 2 ||
-    (width <= tileSizePx * 0.5 && height <= tileSizePx * 0.5)
+    (width <= tileSizeFt * 0.5 && height <= tileSizeFt * 0.5)
   ) {
     return floorMap.isPassableAt(x, y);
   }
@@ -79,8 +85,8 @@ export function knockbackSystem(world: GameWorld): void {
       if (isFlying) {
         const newX = oldX + dirX * step;
         const newY = oldY + dirY * step;
-        const inBoundsX = newX >= 0 && newX < floorMap.widthPx;
-        const inBoundsY = newY >= 0 && newY < floorMap.heightPx;
+        const inBoundsX = newX >= 0 && newX < floorMap.widthFt;
+        const inBoundsY = newY >= 0 && newY < floorMap.heightFt;
 
         if (inBoundsX) {
           position.x[eid] = newX;
@@ -89,7 +95,7 @@ export function knockbackSystem(world: GameWorld): void {
           position.y[eid] = newY;
         }
       } else {
-        const substepCount = Math.max(1, Math.ceil(step));
+        const substepCount = Math.max(1, Math.ceil(step / KNOCKBACK_SUBSTEP_FT));
         const substep = step / substepCount;
 
         for (let i = 0; i < substepCount; i += 1) {

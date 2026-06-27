@@ -48,6 +48,7 @@ import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
 import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
+import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, removeItem } from '../shared/inventory.js';
 import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
@@ -87,24 +88,26 @@ import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 
-// Derived constants computed from config at module initialization
+// Derived constants computed from config at module initialization.
+// The camera/viewport is a render-pixel concept, so convert it to feet at this
+// boundary (ADR 0023) before comparing against feet-space world positions.
 const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
-const FLOOR_1_VIEWPORT_WIDTH_PX = GAME.WIDTH / FLOOR_1_CAMERA_ZOOM;
-const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX = FLOOR_1_VIEWPORT_WIDTH_PX * 2;
-const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
+const FLOOR_1_VIEWPORT_WIDTH_FT = pxToFt(GAME.WIDTH / FLOOR_1_CAMERA_ZOOM);
+const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT = FLOOR_1_VIEWPORT_WIDTH_FT * 2;
+const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
 /**
- * Minimum distance (px) a pre-populated room-wave enemy must keep from the
+ * Minimum distance (ft) a pre-populated room-wave enemy must keep from the
  * player, so a wave reads as already occupying the room rather than spawning on
  * top of the player at the doorway.
  */
-const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_PX = 96;
+const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 
 // Native footprint of the welcome-sign sprite (board + baked "WELCOME" + arrow),
-// mirrored from the procedural texture in PhaserBridge so the Sprite component
-// carries matching dimensions.
-const WELCOME_SIGN_WIDTH = 48;
-const WELCOME_SIGN_HEIGHT = 26;
+// mirrored from the procedural texture in PhaserBridge (48x26 px) so the Sprite
+// component carries matching dimensions in feet (px / PIXELS_PER_FOOT).
+const WELCOME_SIGN_WIDTH = 6;
+const WELCOME_SIGN_HEIGHT = 3.25;
 
 /** Blood colours for Floor 1 enemy archetypes. */
 const BLOOD_COLOR_RAT = DEFAULT_BLOOD_COLOR; // red — 0xcc0000
@@ -146,8 +149,8 @@ function pruneAmbientOverflow(
 
 /**
  * Seal the perimeter breaches of the room at `roomPos`. Thin wrapper around the
- * generic {@link sealRoomPerimeter} core utility: resolves the room from a pixel
- * position, then walls every non-door perimeter gap that can be walled without
+ * generic {@link sealRoomPerimeter} core utility: resolves the room from a world
+ * (feet) position, then walls every non-door perimeter gap that can be walled without
  * stranding a spawn-reachable region, converting load-bearing gaps to doors.
  *
  * Exported for unit testing; production code seals via {@link sealSpecialRooms}.
@@ -158,7 +161,7 @@ export function sealRoomPerimeterOpenings(
 ): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
-  const tile = floorMap.pixelToTile(roomPos.x, roomPos.y);
+  const tile = floorMap.worldToTile(roomPos.x, roomPos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) return;
   const room = floorMap.roomGraph.get(roomId);
@@ -171,7 +174,7 @@ function pruneAmbientOutOfRange(world: GameWorld, playerX: number, playerY: numb
     return;
   }
   const pack = floor1EnemyPack;
-  const maxDistanceSq = pack.despawnDistancePx * pack.despawnDistancePx;
+  const maxDistanceSq = pack.despawnDistanceFt * pack.despawnDistanceFt;
   for (const eid of [...world.floor1.enemyArchetypes.keys()]) {
     if (!entityExists(world.ecs, eid)) {
       world.floor1.enemyArchetypes.delete(eid);
@@ -244,12 +247,12 @@ function centerOfRoom(room: { bounds: { x: number; y: number; width: number; hei
 }
 
 /**
- * Resolve the pixel position for a room's logical centre.
+ * Resolve the world position for a room's logical centre.
  *
  * Returns the centre of the room's bounding box if that tile is passable.
  * When the center has been walled off (e.g. by an ellipse or L-shape
  * post-processing pass), spirals outward within the room's interior until a
- * passable tile is found, then returns its pixel position. This guarantees
+ * passable tile is found, then returns its world position. This guarantees
  * that NPCs and items are never spawned inside walls.
  */
 function resolvePassableRoomCenter(
@@ -258,7 +261,7 @@ function resolvePassableRoomCenter(
 ): { x: number; y: number } {
   const center = centerOfRoom(room);
   if (floorMap.tileMap.isPassable(center.x, center.y)) {
-    return floorMap.tileToPixel(center.x, center.y);
+    return floorMap.tileToWorld(center.x, center.y);
   }
 
   const { x: bx, y: by, width: bw, height: bh } = room.bounds;
@@ -281,14 +284,14 @@ function resolvePassableRoomCenter(
           ty <= maxY &&
           floorMap.tileMap.isPassable(tx, ty)
         ) {
-          return floorMap.tileToPixel(tx, ty);
+          return floorMap.tileToWorld(tx, ty);
         }
       }
     }
   }
 
-  // Absolute fallback: return the bounding-box center pixel even if it's a wall.
-  return floorMap.tileToPixel(center.x, center.y);
+  // Absolute fallback: return the bounding-box center point even if it's a wall.
+  return floorMap.tileToWorld(center.x, center.y);
 }
 
 function chooseObjectiveTiles(world: GameWorld): {
@@ -301,14 +304,14 @@ function chooseObjectiveTiles(world: GameWorld): {
   questItemPos: { x: number; y: number };
 } {
   const floorMap = world.floorMap;
-  const fallbackWelcome = { x: 120, y: 120 };
-  const fallbackStair = { x: floorMap?.widthPx ? floorMap.widthPx - 120 : 1120, y: 560 };
+  const fallbackWelcome = { x: 15, y: 15 };
+  const fallbackStair = { x: floorMap?.widthFt ? floorMap.widthFt - 15 : 140, y: 70 };
   const fallbackSlimeRat = {
-    x: floorMap?.widthPx ? Math.floor(floorMap.widthPx * 0.75) : 960,
-    y: 520,
+    x: floorMap?.widthFt ? floorMap.widthFt * 0.75 : 120,
+    y: 65,
   };
-  const fallbackShop = { x: floorMap?.widthPx ? floorMap.widthPx - 240 : 880, y: 340 };
-  const fallbackItem = { x: floorMap?.widthPx ? Math.floor(floorMap.widthPx / 2) : 640, y: 340 };
+  const fallbackShop = { x: floorMap?.widthFt ? floorMap.widthFt - 30 : 110, y: 42.5 };
+  const fallbackItem = { x: floorMap?.widthFt ? floorMap.widthFt / 2 : 80, y: 42.5 };
 
   if (!floorMap) {
     return {
@@ -470,7 +473,7 @@ function chooseObjectiveTiles(world: GameWorld): {
 function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): void {
   const floorMap = world.floorMap;
   if (!floorMap) return;
-  const tile = floorMap.pixelToTile(roomPos.x, roomPos.y);
+  const tile = floorMap.worldToTile(roomPos.x, roomPos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) return;
   floorMap.roomGraph.setRole(roomId, RoomRole.SAFE);
@@ -560,7 +563,7 @@ function placeWelcomeSigns(world: GameWorld, welcomeOfficePos: { x: number; y: n
   if (welcomeSignTextureId === undefined || !floorMap.spawnRoom) {
     return;
   }
-  const welcomeOfficeTile = floorMap.pixelToTile(welcomeOfficePos.x, welcomeOfficePos.y);
+  const welcomeOfficeTile = floorMap.worldToTile(welcomeOfficePos.x, welcomeOfficePos.y);
   const welcomeGoonRoomId = floorMap.roomGraph.getRoomAt(welcomeOfficeTile.x, welcomeOfficeTile.y);
   if (welcomeGoonRoomId < 0) {
     return;
@@ -575,7 +578,7 @@ function placeWelcomeSigns(world: GameWorld, welcomeOfficePos: { x: number; y: n
   const blockedTiles = new Set<string>();
   blockedTiles.add(tileKey(floorMap.playerSpawn.x, floorMap.playerSpawn.y));
   for (const npcEid of query(world.ecs, [Npc, Position])) {
-    const npcTile = floorMap.pixelToTile(
+    const npcTile = floorMap.worldToTile(
       world.stores.position.x[npcEid] ?? 0,
       world.stores.position.y[npcEid] ?? 0,
     );
@@ -630,7 +633,7 @@ function placeWelcomeSigns(world: GameWorld, welcomeOfficePos: { x: number; y: n
     blockedTiles.add(tileKey(signTile.x, signTile.y));
     const center = centerOfRoom(room);
     const angle = Math.atan2(targetTile.y - center.y, targetTile.x - center.x);
-    const pos = floorMap.tileToPixel(signTile.x, signTile.y);
+    const pos = floorMap.tileToWorld(signTile.x, signTile.y);
     const eid = createEntity(world);
     addComponent(world.ecs, eid, set(Position, { x: pos.x, y: pos.y }));
     addComponent(world.ecs, eid, set(Rotation, { angle }));
@@ -781,7 +784,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const config: MapConfig = {
     widthTiles: floor1Config.map.widthTiles,
     heightTiles: floor1Config.map.heightTiles,
-    tileSizePx: floor1Config.map.tileSizePx,
+    tileSizeFt: floor1Config.map.tileSizeFt,
     biome: BiomeType.BASIC_UNDERGROUND,
     seed: world.rng.nextInt(1, 2_000_000),
     roomWidthRange: floor1Config.map.roomWidthRange,
@@ -792,7 +795,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   const floorMap = getGenerator(config.biome).generate(config, world.rng);
   world.floorMap = floorMap;
 
-  const spawn = floorMap.tileToPixel(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
+  const spawn = floorMap.tileToWorld(floorMap.playerSpawn.x, floorMap.playerSpawn.y);
   if (hasComponent(world.ecs, playerEid, Position)) {
     setComponent(world.ecs, playerEid, Position, { x: spawn.x, y: spawn.y });
   }
@@ -823,7 +826,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
   // generically: every SAFE + BOSS_STAIR room plus the slime-rat quest room. Each
   // breach is walled unless walling it would strand a region, in which case it
   // becomes a door so the room stays enclosed without softlocking the floor.
-  const slimeRatTile = floorMap.pixelToTile(slimeRatRoomPos.x, slimeRatRoomPos.y);
+  const slimeRatTile = floorMap.worldToTile(slimeRatRoomPos.x, slimeRatRoomPos.y);
   const slimeRatRoomId = floorMap.roomGraph.getRoomAt(slimeRatTile.x, slimeRatTile.y);
   sealSpecialRooms(floorMap, {
     extraRoomIds: slimeRatRoomId >= 0 ? [slimeRatRoomId] : [],
@@ -866,7 +869,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       spellQuestGiverPos,
       shopRoomPos,
       questItemPos,
-      markerRadiusPx: floor1Config.objectives.markerRadiusPx,
+      markerRadiusFt: floor1Config.objectives.markerRadiusFt,
       questAccepted: false,
       questCompleted: false,
       ratsKilled: 0,
@@ -1080,8 +1083,8 @@ function resolveSpawnPosition(
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
-      const tile = floorMap.pixelToTile(x, y);
-      const candidate = floorMap.tileToPixel(tile.x, tile.y);
+      const tile = floorMap.worldToTile(x, y);
+      const candidate = floorMap.tileToWorld(tile.x, tile.y);
       if (isInAnyRoom(world, candidate.x, candidate.y)) {
         return candidate;
       }
@@ -1099,14 +1102,14 @@ function resolveSpawnPosition(
       const maxY = Math.max(minY, room.bounds.y + room.bounds.height - 2);
       const tx = world.rng.nextInt(minX, maxX);
       const ty = world.rng.nextInt(minY, maxY);
-      const candidate = floorMap.tileToPixel(tx, ty);
+      const candidate = floorMap.tileToWorld(tx, ty);
       if (floorMap.isPassableAt(candidate.x, candidate.y)) {
         return candidate;
       }
     }
   }
-  const fallbackTile = floorMap.pixelToTile(playerX + pack.spawnRadiusMin, playerY);
-  return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
+  const fallbackTile = floorMap.worldToTile(playerX + pack.spawnRadiusMin, playerY);
+  return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
 }
 
 function resolveBossSpawnPosition(
@@ -1125,12 +1128,12 @@ function resolveBossSpawnPosition(
     for (let attempt = 0; attempt < 24; attempt += 1) {
       const tx = world.rng.nextInt(minX, maxX);
       const ty = world.rng.nextInt(minY, maxY);
-      const candidate = floorMap.tileToPixel(tx, ty);
+      const candidate = floorMap.tileToWorld(tx, ty);
       if (floorMap.isPassableAt(candidate.x, candidate.y)) {
         return candidate;
       }
     }
-    const centerCandidate = floorMap.tileToPixel(center.x, center.y);
+    const centerCandidate = floorMap.tileToWorld(center.x, center.y);
     if (floorMap.isPassableAt(centerCandidate.x, centerCandidate.y)) {
       return centerCandidate;
     }
@@ -1140,7 +1143,7 @@ function resolveBossSpawnPosition(
     const { x: bx, y: by, width: bw, height: bh } = bossRoom.bounds;
     for (let scanY = by + 1; scanY < by + bh - 1; scanY++) {
       for (let scanX = bx + 1; scanX < bx + bw - 1; scanX++) {
-        const scanCandidate = floorMap.tileToPixel(scanX, scanY);
+        const scanCandidate = floorMap.tileToWorld(scanX, scanY);
         if (floorMap.isPassableAt(scanCandidate.x, scanCandidate.y)) {
           return scanCandidate;
         }
@@ -1160,13 +1163,13 @@ function resolveBossSpawnPosition(
     const x = stairX + Math.cos(angle) * radius;
     const y = stairY + Math.sin(angle) * radius;
     if (floorMap.isPassableAt(x, y)) {
-      const tile = floorMap.pixelToTile(x, y);
-      return floorMap.tileToPixel(tile.x, tile.y);
+      const tile = floorMap.worldToTile(x, y);
+      return floorMap.tileToWorld(tile.x, tile.y);
     }
   }
-  const fallbackTile = floorMap.pixelToTile(stairX, stairY);
+  const fallbackTile = floorMap.worldToTile(stairX, stairY);
   if (floorMap.tileMap.isPassable(fallbackTile.x, fallbackTile.y)) {
-    return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
+    return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
   }
   const maxRadius = Math.max(floorMap.width, floorMap.height);
   for (let radius = 1; radius <= maxRadius; radius += 1) {
@@ -1177,12 +1180,12 @@ function resolveBossSpawnPosition(
         const ty = fallbackTile.y + dy;
         if (tx < 0 || ty < 0 || tx >= floorMap.width || ty >= floorMap.height) continue;
         if (floorMap.tileMap.isPassable(tx, ty)) {
-          return floorMap.tileToPixel(tx, ty);
+          return floorMap.tileToWorld(tx, ty);
         }
       }
     }
   }
-  return floorMap.tileToPixel(fallbackTile.x, fallbackTile.y);
+  return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
 }
 
 function isInRoom(
@@ -1192,7 +1195,7 @@ function isInRoom(
   room: { bounds: { x: number; y: number; width: number; height: number } } | null,
 ): boolean {
   if (!world.floorMap || !room) return false;
-  const tile = world.floorMap.pixelToTile(px, py);
+  const tile = world.floorMap.worldToTile(px, py);
   const { x, y, width, height } = room.bounds;
   return tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height;
 }
@@ -1203,7 +1206,7 @@ function isFullyInsideBossRoom(world: GameWorld, px: number, py: number): boolea
   if (!floorMap || !bossRoom || !isInRoom(world, px, py, bossRoom)) {
     return false;
   }
-  const playerTile = floorMap.pixelToTile(px, py);
+  const playerTile = floorMap.worldToTile(px, py);
   for (const door of bossRoom.doors) {
     if (playerTile.x === door.x && playerTile.y === door.y) {
       return false;
@@ -1223,7 +1226,7 @@ function roomAtPosition(
   if (!floorMap) {
     return null;
   }
-  const tile = floorMap.pixelToTile(pos.x, pos.y);
+  const tile = floorMap.worldToTile(pos.x, pos.y);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) {
     return null;
@@ -1242,7 +1245,7 @@ function isFullyInsideObjectiveRoom(
   if (!floorMap || !room || !isInRoom(world, px, py, room)) {
     return false;
   }
-  const playerTile = floorMap.pixelToTile(px, py);
+  const playerTile = floorMap.worldToTile(px, py);
   for (const door of room.doors) {
     if (playerTile.x === door.x && playerTile.y === door.y) {
       return false;
@@ -1256,7 +1259,7 @@ function isInAnyRoom(world: GameWorld, px: number, py: number): boolean {
   if (!floorMap) {
     return false;
   }
-  const tile = floorMap.pixelToTile(px, py);
+  const tile = floorMap.worldToTile(px, py);
   for (const room of floorMap.rooms) {
     const { x, y, width, height } = room.bounds;
     if (tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height) {
@@ -1335,8 +1338,8 @@ function spawnFloor1SlimeRatBoss(world: GameWorld): number {
   );
   setComponent(world.ecs, eid, Sprite, {
     textureId: floor1Config.enemies.slime.spriteTexture,
-    width: floor1Config.bossVariants!.ratSlime.spriteWidth - 4,
-    height: floor1Config.bossVariants!.ratSlime.spriteHeight - 4,
+    width: floor1Config.bossVariants!.ratSlime.spriteWidth - 0.5,
+    height: floor1Config.bossVariants!.ratSlime.spriteHeight - 0.5,
   });
   // slimeRat quest boss is primarily a slime creature.
   setBloodColor(world, eid, BLOOD_COLOR_SLIME);
@@ -1520,7 +1523,7 @@ function evictFurthestAmbient(
 }
 
 /**
- * Spawn one weighted ambient archetype at a pixel position, wiring its sprite,
+ * Spawn one weighted ambient archetype at a world (feet) position, wiring its sprite,
  * blood colour, and ambient-tracking entry. Returns the new entity id.
  */
 function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
@@ -1583,8 +1586,8 @@ function resolveAmbientSpawnPoint(
 ): { x: number; y: number } | null {
   const pack = floor1EnemyPack;
   const maxDistanceSq =
-    FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_PX;
-  const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusPx);
+    FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
+  const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusFt);
   if (!isInvalidAmbientSpawn(world, ringPoint.x, ringPoint.y, playerX, playerY, maxDistanceSq)) {
     return ringPoint;
   }
@@ -1595,7 +1598,7 @@ function resolveAmbientSpawnPoint(
   for (let i = 0; i < 64; i += 1) {
     const tx = world.rng.nextInt(0, floorMap.width - 1);
     const ty = world.rng.nextInt(0, floorMap.height - 1);
-    const candidate = floorMap.tileToPixel(tx, ty);
+    const candidate = floorMap.tileToWorld(tx, ty);
     if (
       floorMap.isPassableAt(candidate.x, candidate.y) &&
       !isInvalidAmbientSpawn(world, candidate.x, candidate.y, playerX, playerY, maxDistanceSq)
@@ -1622,13 +1625,13 @@ function resolveRoomInteriorSpawn(
     return null;
   }
   const minSpawnDistSq =
-    FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_PX * FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_PX;
+    FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT * FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT;
   for (let attempt = 0; attempt < 24; attempt += 1) {
     const tile = floorMap.roomGraph.getRandomInteriorTile(roomId, world.rng);
     if (!tile) {
       return null;
     }
-    const candidate = floorMap.tileToPixel(tile.x, tile.y);
+    const candidate = floorMap.tileToWorld(tile.x, tile.y);
     if (!floorMap.isPassableAt(candidate.x, candidate.y)) {
       continue;
     }
@@ -1652,7 +1655,7 @@ function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: numb
   if (!floorMap || !world.floor1) {
     return;
   }
-  const tile = floorMap.pixelToTile(playerX, playerY);
+  const tile = floorMap.worldToTile(playerX, playerY);
   const roomId = floorMap.roomGraph.getRoomAt(tile.x, tile.y);
   if (roomId < 0) {
     return;
@@ -1689,7 +1692,7 @@ function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: numb
  * Each tick it (1) recycles ambient mobs the player has left far behind and
  * enforces the global {@link EnemyPackDef.enemyCap}, (2) pre-populates a freshly
  * entered combat room with a wave, then (3) burst-spawns ambient enemies near
- * the player until the *engaging* count (within {@link EnemyPackDef.engageRadiusPx})
+ * the player until the *engaging* count (within {@link EnemyPackDef.engageRadiusFt})
  * reaches {@link EnemyPackDef.engageTarget}. The engagement budget is separate
  * from the global cap: the cap fills distant rooms, while the target guarantees
  * a steady swarm around the player even when they outrun the field. When at the
@@ -1728,7 +1731,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   if (world.elapsedMs - state.lastSpawnMs < pack.spawnIntervalMs) {
     return;
   }
-  const engageRadiusSq = pack.engageRadiusPx * pack.engageRadiusPx;
+  const engageRadiusSq = pack.engageRadiusFt * pack.engageRadiusFt;
   const engaging = countEngagingEnemies(world, playerX, playerY, engageRadiusSq);
   if (engaging >= pack.engageTarget) {
     // Plenty of nearby threats; re-check next tick without burning the interval.
@@ -1851,7 +1854,7 @@ function floor1ObjectiveTick(world: GameWorld): void {
   const playerY = world.stores.position.y[player] ?? 0;
   const safeDx = playerX - world.floor1.objective.safeRoomPos.x;
   const safeDy = playerY - world.floor1.objective.safeRoomPos.y;
-  if (Math.hypot(safeDx, safeDy) <= world.floor1.objective.markerRadiusPx) {
+  if (Math.hypot(safeDx, safeDy) <= world.floor1.objective.markerRadiusFt) {
     world.floor1.objective.safeRoomDiscovered = true;
   }
 
@@ -2026,7 +2029,7 @@ export function startFloor1BossEncounter(world: GameWorld, playerEid: number): b
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, true);
 
   const center = centerOfRoom(bossRoom);
-  const bossEntryPoint = floorMap.tileToPixel(center.x, center.y);
+  const bossEntryPoint = floorMap.tileToWorld(center.x, center.y);
   setComponent(world.ecs, playerEid, Position, bossEntryPoint);
   world.stores.velocity.x[playerEid] = 0;
   world.stores.velocity.y[playerEid] = 0;

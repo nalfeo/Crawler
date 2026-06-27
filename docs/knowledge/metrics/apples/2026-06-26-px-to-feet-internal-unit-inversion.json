@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-26",
+  "session": "px-to-feet-internal-unit-inversion",
+  "estimated_apples": 5,
+  "actual_apples": 5,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 1.0,
+  "note": "Pervasive unit inversion across every non-rendering layer, the engine conversion boundary, all spatial data files, and ~160 test files — exactly the 5-apple blast radius estimated."
+}

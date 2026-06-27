@@ -23,6 +23,7 @@ import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { peekGroundFlowField } from '../../game/enemyAISystem.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
+import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
 import { buildSmoothedOverlayPath, OVERLAY_LINE_OF_SIGHT_SAMPLE_PX } from './path-overlay.js';
@@ -236,8 +237,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
           return undefined;
         }
         return {
-          x: scene.world.stores.position.x[eid] ?? 0,
-          y: scene.world.stores.position.y[eid] ?? 0,
+          // Camera world-space is pixels; scale the player's feet position.
+          x: ftToPx(scene.world.stores.position.x[eid] ?? 0),
+          y: ftToPx(scene.world.stores.position.y[eid] ?? 0),
         };
       },
     });
@@ -380,7 +382,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         Math.hypot(
           (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
           (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-        ) <= objective.markerRadiusPx
+        ) <= objective.markerRadiusFt
       ) {
         sceneOptions.onStairDescend?.(world, playerEid);
         modalPicker.close();
@@ -428,7 +430,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       Math.hypot(
         (world.stores.position.x[playerEid] ?? 0) - objective.staircasePos.x,
         (world.stores.position.y[playerEid] ?? 0) - objective.staircasePos.y,
-      ) <= objective.markerRadiusPx;
+      ) <= objective.markerRadiusFt;
     if (shouldInteractNpc || nearStairs) {
       scene.queuedInteraction = true;
     }
@@ -487,7 +489,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     const playerY = world.stores.position.y[playerEid] ?? 0;
 
     const worldPoints = nav.pathWaypoints.map((tile) =>
-      world.floorMap!.tileToPixel(tile.x, tile.y),
+      world.floorMap!.tileToWorld(tile.x, tile.y),
     );
 
     // The AI plans on a 4-connected grid (cardinal hops) but string-pulls at
@@ -499,17 +501,18 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       { x: playerX, y: playerY },
       upcomingPoints,
       (x, y) => world.floorMap!.isPassableAt(x, y),
-      OVERLAY_LINE_OF_SIGHT_SAMPLE_PX,
-      (x, y) => world.floorMap!.pixelToTile(x, y),
+      pxToFt(OVERLAY_LINE_OF_SIGHT_SAMPLE_PX),
+      (x, y) => world.floorMap!.worldToTile(x, y),
     );
 
     if (smoothedPath.length > 1) {
       graphics.lineStyle(2, 0x4fc3f7, 0.95);
       graphics.beginPath();
       const [firstPoint, ...restPoints] = smoothedPath;
-      graphics.moveTo(firstPoint!.x, firstPoint!.y);
+      // Overlay points are feet; scale to the camera's pixel world-space.
+      graphics.moveTo(ftToPx(firstPoint!.x), ftToPx(firstPoint!.y));
       for (const point of restPoints) {
-        graphics.lineTo(point.x, point.y);
+        graphics.lineTo(ftToPx(point.x), ftToPx(point.y));
       }
       graphics.strokePath();
     }
@@ -518,12 +521,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       worldPoints[Math.min(nav.pathIndex, Math.max(0, worldPoints.length - 1))];
     if (activeWaypoint) {
       graphics.fillStyle(0xffeb3b, 0.9);
-      graphics.fillCircle(activeWaypoint.x, activeWaypoint.y, 5);
+      graphics.fillCircle(ftToPx(activeWaypoint.x), ftToPx(activeWaypoint.y), 5);
     }
 
     if (decision.targetX !== null && decision.targetY !== null) {
       graphics.lineStyle(2, 0xff7043, 0.9);
-      graphics.strokeCircle(decision.targetX, decision.targetY, 10);
+      graphics.strokeCircle(ftToPx(decision.targetX), ftToPx(decision.targetY), 10);
     }
   };
 
@@ -569,7 +572,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     const floorMap = world.floorMap;
-    const tileSize = floorMap.config.tileSizePx;
+    const tileSize = floorMap.config.tileSizeFt;
+    // Overlay draws into the camera's pixel world-space; scale feet sizes up.
+    const tileSizePx = ftToPx(tileSize);
     const { width, height, distance } = field;
 
     let maxDistance = 1;
@@ -588,13 +593,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
         if (d === FLOW_UNREACHABLE) {
           continue;
         }
-        const center = floorMap.tileToPixel(tx, ty);
+        const center = floorMap.tileToWorld(tx, ty);
+        const cx = ftToPx(center.x);
+        const cy = ftToPx(center.y);
         graphics.fillStyle(flowHeatColor(d / maxDistance), 0.32);
-        graphics.fillRect(center.x - tileSize / 2, center.y - tileSize / 2, tileSize, tileSize);
+        graphics.fillRect(cx - tileSizePx / 2, cy - tileSizePx / 2, tileSizePx, tileSizePx);
 
         const step = flowFieldStep(field, tx, ty);
         if (step) {
-          pushFlowArrow(arrowSegments, center.x, center.y, step.x, step.y, tileSize);
+          pushFlowArrow(arrowSegments, cx, cy, step.x, step.y, tileSizePx);
         }
       }
     }
@@ -608,9 +615,9 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     graphics.strokePath();
 
     // Goal tile (the player tile the whole field flows toward).
-    const goal = floorMap.tileToPixel(field.goalX, field.goalY);
+    const goal = floorMap.tileToWorld(field.goalX, field.goalY);
     graphics.lineStyle(2, 0x9cff57, 0.95);
-    graphics.strokeCircle(goal.x, goal.y, tileSize * 0.4);
+    graphics.strokeCircle(ftToPx(goal.x), ftToPx(goal.y), tileSizePx * 0.4);
   };
 
   const renderDecisionTree = (

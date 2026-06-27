@@ -11,6 +11,7 @@
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { GAME, FLOOR } from '../../shared/constants.js';
+import { pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { createHudUI } from '../../engine/HudUI.js';
 import { createDialogueBox, type DialogueBox } from '../../engine/DialogueBox.js';
 import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
@@ -50,14 +51,16 @@ const DOOR_CLOSED_ROW = Math.floor(GH / 2);
 /**
  * Builds a synthetic FloorMap mirroring the visible Floor-1 room so the docked
  * round radar shows real terrain (teal safe-room floor + wall ring + doors).
- * `tileSizePx` matches the lab's TILE so ECS entity pixel coords line up with
- * radar tile maths. Fully revealed (no FOV system runs in labs).
+ * `tileSizeFt` = TILE / PIXELS_PER_FOOT so the lab's pixel TILE grid maps to the
+ * canonical feet the radar tile maths expect (ECS coords are spawned in feet via
+ * pxToFt, so blips line up with the on-screen sprites). Fully revealed (no FOV
+ * system runs in labs).
  */
 function buildRadarFloorMap(): FloorMap {
   const cfg = {
     widthTiles: GW,
     heightTiles: GH,
-    tileSizePx: TILE,
+    tileSizeFt: TILE / PIXELS_PER_FOOT,
     biome: BiomeType.DUNGEON as BiomeType,
     seed: 7,
     roomWidthRange: [4, 18] as [number, number],
@@ -349,16 +352,18 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       world = createGameWorld({ seed: 7 });
       world.floor = 1;
       // Revealed safe-room floorMap so the docked round radar shows real
-      // terrain + room; tileSizePx == TILE keeps ECS coords aligned.
+      // terrain + room; tileSizeFt = TILE/PIXELS_PER_FOOT keeps the feet ECS
+      // coords (pxToFt below) aligned with the pixel TILE rendering grid.
       world.floorMap = buildRadarFloorMap();
       world.state = 'playing';
-      playerEid = spawnPlayer(world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+      playerEid = spawnPlayer(world, pxToFt(GAME.WIDTH / 2), pxToFt(GAME.HEIGHT / 2));
 
-      // ECS mobs + NPC co-located with the visible actors so radar blips match
-      // the on-screen sprites (red = enemy, green = NPC, white = player).
-      spawnNpc(world, 4 * TILE + TILE / 2, 3 * TILE + TILE / 2, 'shopkeeper');
-      spawnEnemy(world, 5 * TILE + TILE / 2, 8 * TILE + TILE / 2, 30);
-      spawnEnemy(world, 14 * TILE + TILE / 2, 7 * TILE + TILE / 2, 12);
+      // ECS mobs + NPC co-located (in feet) with the visible pixel actors so
+      // radar blips match the on-screen sprites (red = enemy, green = NPC,
+      // white = player).
+      spawnNpc(world, pxToFt(4 * TILE + TILE / 2), pxToFt(3 * TILE + TILE / 2), 'shopkeeper');
+      spawnEnemy(world, pxToFt(5 * TILE + TILE / 2), pxToFt(8 * TILE + TILE / 2), 30);
+      spawnEnemy(world, pxToFt(14 * TILE + TILE / 2), pxToFt(7 * TILE + TILE / 2), 12);
 
       // XP unlocked so the experience bar is visible.
       world.goalFlags.set('floor1-drops-unlocked', true);
@@ -386,14 +391,14 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
           requiredJunk: 2,
           deadlineMs: settings.timeRemainingS * 1000,
           staircaseSpawnCountdownMs: 30_000,
-          safeRoomPos: { x: 300, y: 300 },
-          staircasePos: { x: 600, y: 400 },
-          welcomeOfficePos: { x: 100, y: 100 },
-          slimeRatRoomPos: { x: 800, y: 200 },
-          spellQuestGiverPos: { x: 900, y: 300 },
-          shopRoomPos: { x: 500, y: 300 },
-          questItemPos: { x: 700, y: 500 },
-          markerRadiusPx: 32,
+          safeRoomPos: { x: pxToFt(300), y: pxToFt(300) },
+          staircasePos: { x: pxToFt(600), y: pxToFt(400) },
+          welcomeOfficePos: { x: pxToFt(100), y: pxToFt(100) },
+          slimeRatRoomPos: { x: pxToFt(800), y: pxToFt(200) },
+          spellQuestGiverPos: { x: pxToFt(900), y: pxToFt(300) },
+          shopRoomPos: { x: pxToFt(500), y: pxToFt(300) },
+          questItemPos: { x: pxToFt(700), y: pxToFt(500) },
+          markerRadiusFt: 4,
           questAccepted: true,
           questCompleted: false,
           ratsKilled: 2,

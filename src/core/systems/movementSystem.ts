@@ -20,8 +20,8 @@ export function movementSystem(world: GameWorld): void {
     const isFlying = hasComponent(world.ecs, eid, Flying);
     if (floorMap) {
       if (isFlying) {
-        const inBoundsX = newX >= 0 && newX < floorMap.widthPx;
-        const inBoundsY = newY >= 0 && newY < floorMap.heightPx;
+        const inBoundsX = newX >= 0 && newX < floorMap.widthFt;
+        const inBoundsY = newY >= 0 && newY < floorMap.heightFt;
 
         if (inBoundsX) {
           position.x[eid] = newX;
@@ -32,8 +32,8 @@ export function movementSystem(world: GameWorld): void {
         continue;
       }
 
-      const oldTile = floorMap.pixelToTile(oldX, oldY);
-      const newTile = floorMap.pixelToTile(newX, newY);
+      const oldTile = floorMap.worldToTile(oldX, oldY);
+      const newTile = floorMap.worldToTile(newX, newY);
       const triesToCrossCorner = oldTile.x !== newTile.x && oldTile.y !== newTile.y;
       const xOnlyPassable = floorMap.isPassableAt(newX, oldY);
       const yOnlyPassable = floorMap.isPassableAt(oldX, newY);

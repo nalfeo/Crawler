@@ -24,10 +24,10 @@ import {
 //   ?  fog floor           (unseen + passable underneath)
 //   x  fog wall            (unseen + NOT passable)
 //
-// `tileDistancePx` is measured from the start tile in whole tiles * TILE_PX so
+// `tileDistanceFt` is measured from the start tile in whole tiles * TILE_FT so
 // the minimum-distance gate is easy to reason about.
 
-const TILE_PX = 16;
+const TILE_FT = 4;
 
 function parseGrid(rows: readonly string[]): {
   grid: FrontierGrid;
@@ -58,7 +58,7 @@ function parseGrid(rows: readonly string[]): {
     index: (tx, ty) => (tx < 0 || ty < 0 || tx >= width || ty >= height ? -1 : ty * width + tx),
     isSeen: (idx) => seen[idx] === true,
     isPassable: (tx, ty) => passable[ty * width + tx] === true,
-    tileDistancePx: (tx, ty) => Math.hypot(tx - startX, ty - startY) * TILE_PX,
+    tileDistanceFt: (tx, ty) => Math.hypot(tx - startX, ty - startY) * TILE_FT,
   };
   return { grid, start: { x: startX, y: startY }, visited: new Uint8Array(width * height) };
 }
@@ -73,19 +73,19 @@ describe('findNearestFrontierTile (C1 unexplored-tile preference)', () => {
 
   it('honours the minimum-distance gate by skipping a too-close frontier', () => {
     // (0,0) borders fog at (0,1) so it is a frontier at distance 0; with a
-    // minimum of 10px it is rejected and BFS continues to (1,1) (~22.6px).
+    // minimum of 2.5ft it is rejected and BFS continues to (1,1) (~5.7ft).
     const { grid, start, visited } = parseGrid(['S...', '?..?']);
     const close = findNearestFrontierTile(grid, start.x, start.y, 0, 1000, visited);
     expect(close).toEqual({ tileX: 0, tileY: 0 });
 
-    const gated = findNearestFrontierTile(grid, start.x, start.y, 10, 1000, visited);
+    const gated = findNearestFrontierTile(grid, start.x, start.y, 2.5, 1000, visited);
     expect(gated).toEqual({ tileX: 1, tileY: 1 });
   });
 
   it('returns null when the only frontier is closer than the minimum distance', () => {
-    // Single frontier at x2 (32px); a 40px minimum leaves nothing reachable.
+    // Single frontier at x2 (8ft); a 10ft minimum leaves nothing reachable.
     const { grid, start, visited } = parseGrid(['S..?']);
-    expect(findNearestFrontierTile(grid, start.x, start.y, 40, 1000, visited)).toBeNull();
+    expect(findNearestFrontierTile(grid, start.x, start.y, 10, 1000, visited)).toBeNull();
   });
 
   it('only expands through seen, passable ground (a wall blocks the fog behind it)', () => {
@@ -122,8 +122,8 @@ describe('findNearestFrontierTile (C1 unexplored-tile preference)', () => {
   it('is deterministic across repeated calls with the same inputs', () => {
     const a = parseGrid(['S...', '?..?']);
     const b = parseGrid(['S...', '?..?']);
-    const first = findNearestFrontierTile(a.grid, 0, 0, 10, 1000, a.visited);
-    const second = findNearestFrontierTile(b.grid, 0, 0, 10, 1000, b.visited);
+    const first = findNearestFrontierTile(a.grid, 0, 0, 2.5, 1000, a.visited);
+    const second = findNearestFrontierTile(b.grid, 0, 0, 2.5, 1000, b.visited);
     expect(first).toEqual(second);
   });
 
@@ -170,7 +170,7 @@ describe('pickNearestPoi (C2 minimap / POI seeking)', () => {
   });
 
   it('excludes a POI sitting exactly on the radius boundary', () => {
-    // minDist starts at maxRadiusPx and selection is strict <, so dist == radius
+    // minDist starts at maxRadiusFt and selection is strict <, so dist == radius
     // is not selected.
     expect(pickNearestPoi([poi('edge', 100, 0, true)], 0, 0, 100)).toBeNull();
   });
@@ -251,25 +251,25 @@ describe('updateLockedDoorMemory / isDoorKnownLocked (C3 locked-door memory)', (
 
 describe('nextStuckFrames (C4 per-frame stuck counter)', () => {
   it('increments while movement stays below the epsilon', () => {
-    expect(nextStuckFrames(0, 1, 4)).toBe(1);
-    expect(nextStuckFrames(5, 3.9, 4)).toBe(6);
+    expect(nextStuckFrames(0, 0.125, 0.5)).toBe(1);
+    expect(nextStuckFrames(5, 0.4875, 0.5)).toBe(6);
   });
 
   it('resets to zero the moment real travel happens', () => {
-    expect(nextStuckFrames(10, 8, 4)).toBe(0);
+    expect(nextStuckFrames(10, 1, 0.5)).toBe(0);
   });
 
   it('treats movement exactly at the epsilon as real travel (strict <)', () => {
-    expect(nextStuckFrames(10, 4, 4)).toBe(0);
+    expect(nextStuckFrames(10, 0.5, 0.5)).toBe(0);
   });
 
   it('accumulates across a run of stalled frames', () => {
     let frames = 0;
     for (let i = 0; i < 5; i += 1) {
-      frames = nextStuckFrames(frames, 0, 4);
+      frames = nextStuckFrames(frames, 0, 0.5);
     }
     expect(frames).toBe(5);
-    frames = nextStuckFrames(frames, 100, 4); // one good step clears it
+    frames = nextStuckFrames(frames, 12.5, 0.5); // one good step clears it
     expect(frames).toBe(0);
   });
 });
@@ -280,39 +280,39 @@ describe('nextStuckFrames (C4 per-frame stuck counter)', () => {
 
 describe('DwellTracker (C4 net-displacement watchdog)', () => {
   it('arms on the first update and reports zero parked frames', () => {
-    const dwell = new DwellTracker(64, 4);
-    expect(dwell.update(100, 100)).toBe('armed');
+    const dwell = new DwellTracker(8, 4);
+    expect(dwell.update(12.5, 12.5)).toBe('armed');
     expect(dwell.isActive).toBe(true);
     expect(dwell.framesParked).toBe(0);
   });
 
   it('accumulates parked frames while inside the escape circle', () => {
-    const dwell = new DwellTracker(64, 4);
-    dwell.update(100, 100); // armed
-    expect(dwell.update(101, 100)).toBe('accumulating');
-    expect(dwell.update(100, 101)).toBe('accumulating');
+    const dwell = new DwellTracker(8, 4);
+    dwell.update(12.5, 12.5); // armed
+    expect(dwell.update(12.625, 12.5)).toBe('accumulating');
+    expect(dwell.update(12.5, 12.625)).toBe('accumulating');
     expect(dwell.framesParked).toBe(2);
   });
 
   it('re-anchors and forgives the counter when net travel escapes the circle', () => {
-    const dwell = new DwellTracker(64, 10);
+    const dwell = new DwellTracker(8, 10);
     dwell.update(0, 0); // armed
-    dwell.update(1, 0); // accumulating, frames=1
+    dwell.update(0.125, 0); // accumulating, frames=1
     expect(dwell.framesParked).toBe(1);
-    expect(dwell.update(200, 0)).toBe('progress'); // moved > 64px
+    expect(dwell.update(25, 0)).toBe('progress'); // moved > 8ft
     expect(dwell.framesParked).toBe(0);
   });
 
   it('treats an explicit progress signal as escaping even without movement', () => {
-    const dwell = new DwellTracker(64, 10);
+    const dwell = new DwellTracker(8, 10);
     dwell.update(0, 0); // armed
-    dwell.update(1, 0); // accumulating
-    expect(dwell.update(1, 0, true)).toBe('progress');
+    dwell.update(0.125, 0); // accumulating
+    expect(dwell.update(0.125, 0, true)).toBe('progress');
     expect(dwell.framesParked).toBe(0);
   });
 
   it('fires after frameLimit parked frames, then auto-resets to re-arm', () => {
-    const dwell = new DwellTracker(64, 3);
+    const dwell = new DwellTracker(8, 3);
     expect(dwell.update(0, 0)).toBe('armed');
     expect(dwell.update(0, 0)).toBe('accumulating'); // 1
     expect(dwell.update(0, 0)).toBe('accumulating'); // 2
@@ -325,7 +325,7 @@ describe('DwellTracker (C4 net-displacement watchdog)', () => {
   });
 
   it('reset() forgets the current episode', () => {
-    const dwell = new DwellTracker(64, 3);
+    const dwell = new DwellTracker(8, 3);
     dwell.update(0, 0);
     dwell.update(0, 0);
     expect(dwell.isActive).toBe(true);
@@ -337,14 +337,14 @@ describe('DwellTracker (C4 net-displacement watchdog)', () => {
 
   it('is deterministic for an identical update sequence', () => {
     const drive = (): string[] => {
-      const dwell = new DwellTracker(50, 3);
+      const dwell = new DwellTracker(6.25, 3);
       const steps: Array<[number, number]> = [
         [0, 0],
-        [10, 0],
-        [20, 0],
-        [25, 0],
-        [25, 0],
-        [25, 0],
+        [1.25, 0],
+        [2.5, 0],
+        [3.125, 0],
+        [3.125, 0],
+        [3.125, 0],
       ];
       return steps.map(([x, y]) => dwell.update(x, y));
     };

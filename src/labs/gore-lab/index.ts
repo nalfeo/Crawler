@@ -25,6 +25,7 @@ import { createGoreVfx } from '../../engine/GoreVfx.js';
 import { setActiveWeapon, weaponSystem } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { pxToFt } from '../../shared/units.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
@@ -236,8 +237,8 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     }
 
     private spawnTargetEnemy(): void {
-      const cx = this.getSimWidth() / 2;
-      const cy = this.getSimHeight() / 2 - 60;
+      const cx = pxToFt(this.getSimWidth()) / 2;
+      const cy = pxToFt(this.getSimHeight()) / 2 - 7.5;
       this.enemyEid = spawnEnemy(this.world, cx, cy, settings.enemyHp);
     }
 
@@ -246,7 +247,11 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       this.respawnTimer = 0;
       this.corpseExplosionTotal = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
-      spawnPlayer(this.world, this.getSimWidth() / 2, this.getSimHeight() / 2 + 60);
+      spawnPlayer(
+        this.world,
+        pxToFt(this.getSimWidth()) / 2,
+        pxToFt(this.getSimHeight()) / 2 + 7.5,
+      );
       this.spawnTargetEnemy();
       this.applyActiveWeapon();
       this.bridge?.sync(this.world);

@@ -29,6 +29,7 @@
 import Phaser from 'phaser';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import { TerrainType } from '../shared/map-types.js';
+import { PIXELS_PER_FOOT } from '../shared/units.js';
 import { TERRAIN_FALLBACK_COLORS } from '../shared/terrain-colors.js';
 import { getTileVisual, resolveFrame } from './sprites/tile-visuals.js';
 import { getSheet } from './sprites/index.js';
@@ -59,7 +60,10 @@ export interface TerrainLayerResult {
  */
 export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): TerrainLayerResult {
   const { width, height, config } = floorMap;
-  const tileSize = config.tileSizePx;
+  // Bake terrain at native pixel resolution: feet → px via PIXELS_PER_FOOT.
+  // The renderer keeps the world in pixel-space, so this layer is placed at
+  // pixel coordinates (0,0) and spans width*tileSize × height*tileSize px.
+  const tileSize = config.tileSizeFt * PIXELS_PER_FOOT;
 
   // setOrigin(0,0) so that internal pixel (tx*tileSize, ty*tileSize) maps
   // directly to world position (tx*tileSize, ty*tileSize). The default Image

@@ -200,7 +200,7 @@ function createMapGenLab(canvasHost: HTMLElement, controls: HTMLElement): () => 
     return {
       widthTiles: settings.widthTiles,
       heightTiles: settings.heightTiles,
-      tileSizePx: 32,
+      tileSizeFt: 32,
       biome: settings.biome as BiomeType,
       seed: settings.seed,
       roomWidthRange: [settings.roomWidthMin, settings.roomWidthMax] as const,

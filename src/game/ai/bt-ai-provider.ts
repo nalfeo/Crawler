@@ -48,7 +48,6 @@ import {
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../shared/quest-types.js';
 import type { QuestState } from '../../shared/quest-types.js';
-import { ftToPx } from '../../shared/units.js';
 import { AIState, type AIInputProvider, type AIDecision, type AIConfig } from './types.js';
 import {
   BehaviorTree,
@@ -75,10 +74,10 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   seed: 12345,
   aggression: 1,
   retreatThreshold: 0.15,
-  retreatDangerRadius: 160,
-  scanRadius: 400,
-  rangedSafeDistance: 120,
-  opportunisticGrabRadius: 120,
+  retreatDangerRadius: 20,
+  scanRadius: 50,
+  rangedSafeDistance: 15,
+  opportunisticGrabRadius: 15,
   dodgeWeight: 0.25,
   // Loot-detour pull weight. The opportunistic collect layer only pulls toward
   // loot within 5 ft of the player's forward path (an "on-path detour"), so
@@ -96,35 +95,35 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   debug: false,
 };
 
-const DIRECT_MOVE_EPSILON_PX = 10;
+const DIRECT_MOVE_EPSILON_FT = 1.25;
 // --- Ranged kiting (standoff orbit) ---
 // For ranged weapons the AI wants to stay at ~75 % of weapon range: close enough
 // to land shots but far enough that enemies cannot freely swing at it. It orbits
 // laterally (reusing the same sign/flip infrastructure as melee kite) so it is
 // never a stationary target.
-// Desired orbit as a fraction of the weapon's pixel reach. Kept moderate (not the
+// Desired orbit as a fraction of the weapon's feet reach. Kept moderate (not the
 // full weapon range): at long standoff the projectile's travel time lets wandering
 // ambient enemies sidestep shots, so the AI orbited for minutes without finishing
 // the last quest kills. Fighting nearer trades a little incoming-hit exposure for
 // reliable hits (and line-of-sight) on weak swarm enemies — a net win for clear speed.
 const RANGED_STANDOFF_FRACTION = 0.5;
-// Absolute cap (px) on the ranged standoff orbit, independent of the weapon's
-// (often huge) max range. The bow's reach is 352px, but at that distance a 6px/
-// frame projectile takes ~0.5s to arrive and a wandering rat (1.25px/frame)
+// Absolute cap (ft) on the ranged standoff orbit, independent of the weapon's
+// (often huge) max range. The bow's reach is 44ft, but at that distance a 0.75ft/
+// frame projectile takes ~0.5s to arrive and a wandering rat (0.15625ft/frame)
 // sidesteps it — so long-standoff bows whiff most shots and never finish the
-// swarm. The player moves 3px/frame (2.4x a rat), so it can hold a much tighter
+// swarm. The player moves 0.375ft/frame (2.4x a rat), so it can hold a much tighter
 // ring and still never be caught: fighting at ~12ft makes projectile travel time
 // short enough that shots reliably connect, roughly tripling effective bow DPS.
-// Floored at CONTACT_SAFE_ORBIT_PX so it never parks inside body-contact range.
-const RANGED_STANDOFF_ABS_PX = 48;
+// Floored at CONTACT_SAFE_ORBIT_FT so it never parks inside body-contact range.
+const RANGED_STANDOFF_ABS_FT = 6;
 // Ranged micro-spacing: fraction of the standoff radius the AI eases farther out
 // while a shot is on cooldown (then settles back to the standoff as the shot
 // readies), so all weapons stutter-step rather than holding a static distance.
 const RANGED_RECOVER_EXTRA_FRACTION = 0.2;
-// Tolerance band around the desired orbit (px). Inside this band the AI switches
+// Tolerance band around the desired orbit (ft). Inside this band the AI switches
 // from a direct A*-navigated approach/retreat to fine-grained orbit steps so it
 // does not constantly re-plan the path to a moving target.
-const RANGED_APPROACH_BUFFER_PX = 24;
+const RANGED_APPROACH_BUFFER_FT = 3;
 
 // --- Melee kiting (stutter-step orbit) ---
 // When in melee, the player must NOT park on the enemy and trade blows. Instead
@@ -151,43 +150,43 @@ const MELEE_DEFENSIVE_HP_FRACTION = 0.4;
 // Matches weaponSystem's ATTACK_TARGET_GATE_MULTIPLIER: a melee swing connects out
 // to reach*1.5, so this is the outer radius at which kiting can still land hits.
 const ATTACK_GATE_MULTIPLIER = 1.5;
-// Minimum center-to-center distance (px) the melee kite holds so the player body
+// Minimum center-to-center distance (ft) the melee kite holds so the player body
 // never overlaps a swarm enemy's body. Swarm enemies (rats/slimes) carry NO ranged
 // attackRange — they deal CONTACT damage on AABB body overlap (damageSystem). The
-// player half-extent is 12px and the largest swarm (slime) is 12px, so head-on
-// contact fires at ≤24px center distance; this sits a ~12px buffer outside that.
-// Crucially it is still inside every melee swing radius (sword 40 / bat 44 /
-// hammer 48 px) so auto-fire swings keep landing while the body stays untouched —
+// player half-extent is 1.5ft and the largest swarm (slime) is 1.5ft, so head-on
+// contact fires at ≤3ft center distance; this sits a ~1.5ft buffer outside that.
+// Crucially it is still inside every melee swing radius (sword 5 / bat 5.5 /
+// hammer 6 ft) so auto-fire swings keep landing while the body stays untouched —
 // the single biggest fix for the melee "retreat death-spiral" (orbiting at the old
-// 22-31px band meant standing INSIDE contact range, bleeding ~20 dmg/s for free).
-const CONTACT_SAFE_ORBIT_PX = 36;
-// Micro-spacing dodge amplitude (px) added beyond the contact-safe strike hold when
+// 2.75-3.875ft band meant standing INSIDE contact range, bleeding ~20 dmg/s for free).
+const CONTACT_SAFE_ORBIT_FT = 4.5;
+// Micro-spacing dodge amplitude (ft) added beyond the contact-safe strike hold when
 // a swing is on cooldown. Modest by design: a gentle in/out poke that breaks body
 // contact between swings without backing so far the clear slows (prior large-
 // amplitude experiments measurably regressed winning seeds).
-const MELEE_DODGE_AMPLITUDE_PX = 14;
-// Extra px held beyond a (smaller-than-reach) enemy's own attackRange when we can
+const MELEE_DODGE_AMPLITUDE_FT = 1.75;
+// Extra ft held beyond a (smaller-than-reach) enemy's own attackRange when we can
 // safely poke from outside its strike range. Ignored for long-range bosses whose
 // attackRange dwarfs our reach (geometrically impossible to outrange).
-const KITE_DODGE_BUFFER_PX = 14;
-// Per-step orbit travel target distance. Small (< CLOSE_APPROACH_DIRECT_PX) so the
+const KITE_DODGE_BUFFER_FT = 1.75;
+// Per-step orbit travel target distance. Small (< CLOSE_APPROACH_DIRECT_FT) so the
 // move primitive's close-approach branch drives it with obstacle-sliding local
 // navigation instead of tile A*, yielding smooth strafing rather than wiggle.
-const KITE_STEP_PX = 28;
+const KITE_STEP_FT = 3.5;
 // Max radial correction blended per step toward the desired orbit radius. Set equal
-// to KITE_STEP_PX so forward/backward corrections fully dominate when off-radius.
-const KITE_RADIAL_STEP_PX = KITE_STEP_PX;
+// to KITE_STEP_FT so forward/backward corrections fully dominate when off-radius.
+const KITE_RADIAL_STEP_FT = KITE_STEP_FT;
 // Lateral strafe component when no back-threat is detected. Keep small so the
 // primary motion is radial (advance/retreat) with just a juke twitch; full orbit
-// is reserved for enemies approaching from behind. ~25 % of KITE_STEP_PX.
-const KITE_STRAFE_PX = Math.round(KITE_STEP_PX * 0.25);
-// Radius (px) within which a non-primary enemy counts as a back threat.
-const KITE_BACK_THREAT_RADIUS_PX = 160;
+// is reserved for enemies approaching from behind. ~25 % of KITE_STEP_FT.
+const KITE_STRAFE_FT = KITE_STEP_FT * 0.25;
+// Radius (ft) within which a non-primary enemy counts as a back threat.
+const KITE_BACK_THREAT_RADIUS_FT = 20;
 // Frames between deterministic orbit-direction flips (~2.2s at 60fps). Periodic
 // reversal keeps the player juking and prevents it from grinding into one wall
 // forever; far longer than any oscillation so it reads as intentional kiting.
 const KITE_FLIP_FRAMES = 132;
-const NAVIGATION_LOOKAHEAD_PX = 24;
+const NAVIGATION_LOOKAHEAD_FT = 3;
 // Per-frame blend fraction for output-direction smoothing. Exponential decay
 // toward the desired move vector so waypoint transitions and kite reversals
 // produce a smooth arc rather than an instant 90° snap. Value is tuned so a
@@ -196,26 +195,32 @@ const NAVIGATION_LOOKAHEAD_PX = 24;
 const MOVE_SMOOTH_FACTOR = 0.5;
 // Close-range direct approach threshold (~1.5 tiles). Within this distance, and
 // with a clear straight corridor, the AI abandons tile-granular A* and slides
-// straight at the exact target pixel. Tile A* targets tile CENTERS and cannot
-// step the 24px player body onto an 8px pickup; resolveReachableGoalTile also
+// straight at the exact target position. Tile A* targets tile CENTERS and cannot
+// step the 3ft player body onto a 1ft pickup; resolveReachableGoalTile also
 // diverts to an adjacent tile whenever the target sits in the player's own tile
 // (same-tile A* is trivial), producing the walk-away/walk-back "wiggling on
 // pickups" oscillation. Direct approach drives the body to physically overlap
-// the pickup (AABB overlap fires within 16px/axis) so collision collects it.
-const CLOSE_APPROACH_DIRECT_PX = 48;
-// Step (px) used to sample the corridor for hasClearLineOfSight. Half a tile so
+// the pickup (AABB overlap fires within 2ft/axis) so collision collects it.
+const CLOSE_APPROACH_DIRECT_FT = 6;
+// Step (ft) used to sample the corridor for hasClearLineOfSight. Half a tile so
 // a wall tile between the player and target cannot be skipped over.
-const LINE_OF_SIGHT_SAMPLE_PX = 8;
+const LINE_OF_SIGHT_SAMPLE_FT = 1;
+// Distance (ft) at which the player is considered to have reached a path
+// waypoint and advances to the next. A quarter-tile (1ft) keeps the body on the
+// A* line through corners; a looser radius makes the AI cut corners early and
+// wedge against the wall it was routing around (observed as a multi-second
+// EXPLORE oscillation that collapses travel efficiency).
+const WAYPOINT_ARRIVE_FT = 1;
 // Wedge recovery for path-following: if the player is aiming at a waypoint but
-// collision keeps it from advancing more than MOVE_WEDGE_PROGRESS_PX per frame
+// collision keeps it from advancing more than MOVE_WEDGE_PROGRESS_FT per frame
 // for MOVE_WEDGE_FRAMES straight frames, it is wedged on a choke/corner (e.g. a
 // doorway into the boss room). Skip the stuck waypoint and hand off to
 // obstacle-sliding local navigation so it threads the gap instead of vibrating
-// 13px short of the goal forever (observed seed 3 freezing 160s at a boss door).
-const MOVE_WEDGE_PROGRESS_PX = 1.5;
+// 1.625ft short of the goal forever (observed seed 3 freezing 160s at a boss door).
+const MOVE_WEDGE_PROGRESS_FT = 0.1875;
 const MOVE_WEDGE_FRAMES = 24;
 const PATH_GOAL_SEARCH_RADIUS_TILES = 6;
-const STUCK_PROGRESS_EPSILON_PX = 4;
+const STUCK_PROGRESS_EPSILON_FT = 0.5;
 const NAVIGATION_MAX_PATH_LENGTH = 1_024;
 // Upper bound on distinct (start, goal, radius) entries kept in the
 // resolve-reachable-goal memo before it is flushed. The memo is also cleared
@@ -224,14 +229,14 @@ const NAVIGATION_MAX_PATH_LENGTH = 1_024;
 const RESOLVE_GOAL_MEMO_MAX = 512;
 // How long (frames) to ignore an enemy after abandoning it as unreachable.
 const ENEMY_IGNORE_FRAMES = 240;
-// Minimum px the gap to a target enemy must close to count as engagement progress.
-const ENGAGE_PROGRESS_EPSILON_PX = 6;
+// Minimum ft the gap to a target enemy must close to count as engagement progress.
+const ENGAGE_PROGRESS_EPSILON_FT = 0.75;
 // Frames of no distance/HP progress against the same enemy before we abandon it.
 const ENGAGE_GIVEUP_FRAMES = 120;
-// Minimum px from the enemy the player stops actively pursuing. Mirrors
+// Minimum ft from the enemy the player stops actively pursuing. Mirrors
 // MIN_MOB_PLAYER_DISTANCE in enemyAISystem so the player closes to the same
 // near-contact range as melee mobs before the kite/orbit loop takes over.
-const MIN_PLAYER_ENEMY_CONTACT_PX = 12;
+const MIN_PLAYER_ENEMY_CONTACT_FT = 1.5;
 // Smoothed-velocity magnitude below which the player is considered stalled
 // during ENGAGE. When stalled but enemy is still far, direct pursuit replaces
 // the stall — mirrors enemyAISystem's pathDirection.length ≤ EPSILON check.
@@ -248,21 +253,21 @@ const LOOT_IGNORE_FRAMES = 300;
 // player stays parked inside a small circle for too long (wiggling against a wall
 // chasing an unreachable cluster), we blacklist every loot pile in that circle at
 // once so the tree falls through to Hunt/Explore.
-// Net px the player must travel from the dwell anchor to count as real progress.
-const COLLECT_DWELL_ESCAPE_PX = 64;
+// Net ft the player must travel from the dwell anchor to count as real progress.
+const COLLECT_DWELL_ESCAPE_FT = 8;
 // Frames parked inside the dwell circle (no net escape) before we give up.
 const COLLECT_DWELL_FRAMES = 180;
-// Radius (px) around the parked player whose loot is blacklisted as unreachable.
-const COLLECT_DWELL_CLUSTER_RADIUS_PX = 96;
+// Radius (ft) around the parked player whose loot is blacklisted as unreachable.
+const COLLECT_DWELL_CLUSTER_RADIUS_FT = 12;
 // EXPLORE dwell watchdog: pickExploreTarget chooses a random passable tile and the
-// Explore node only re-picks once the player gets within 50px of it. If that tile
+// Explore node only re-picks once the player gets within 6.25ft of it. If that tile
 // is unreachable (behind a locked door, across an unpathable gap), the player
 // wiggles against the obstacle forever without ever re-picking — the per-frame
 // stuck counter is defeated by the same wiggle that keeps net displacement above
 // its epsilon. So we track NET displacement while continuously in EXPLORE and, if
 // the player never escapes a small circle, force a fresh explore target.
-// Net px the player must travel from the dwell anchor to count as real progress.
-const EXPLORE_DWELL_ESCAPE_PX = 64;
+// Net ft the player must travel from the dwell anchor to count as real progress.
+const EXPLORE_DWELL_ESCAPE_FT = 8;
 // Frames parked inside the dwell circle before we force a new explore target.
 const EXPLORE_DWELL_FRAMES = 180;
 // After a dwell-watchdog fires on a position-based progress target (Tutorial Goon,
@@ -307,26 +312,26 @@ const EXPLORE_FRONTIER_BFS_MAX_TILES = 40_000;
 // behavior re-picks within 50px, so a closer target would thrash without moving;
 // requiring real travel guarantees the fog (and thus the frontier set) changes
 // between picks, which structurally prevents a zero-progress lock-on.
-const EXPLORE_FRONTIER_MIN_PX = 80;
+const EXPLORE_FRONTIER_MIN_FT = 10;
 // GLOBAL dwell watchdog: the per-state dwell watchdogs (engage/collect/explore)
 // each reset the instant their state stops running, so they structurally cannot
 // catch CROSS-STATE thrash. When the behavior tree flip-flops between two states
 // every single frame — e.g. an enemy that oscillates A*-reachable/unreachable as
-// the player wiggles a few px across a tile edge at a doorway choke, alternating
+// the player wiggles a few ft across a tile edge at a doorway choke, alternating
 // ENGAGE (chase the enemy one way) with COLLECT (grab loot the other way) — each
 // switch zeroes the other state's counter, none ever accumulate, and the player
 // vibrates in place with zero net progress forever (observed: 400s+ frozen). This
 // state-agnostic watchdog runs every poll and only forgives genuine progress
 // (net travel, closing on the nearest enemy, or damaging the local wave).
-// Net px the player must travel from the dwell anchor to count as real progress.
-const GLOBAL_DWELL_ESCAPE_PX = 96;
+// Net ft the player must travel from the dwell anchor to count as real progress.
+const GLOBAL_DWELL_ESCAPE_FT = 12;
 // Frames wedged with no progress of any kind before we force a relocation. Set
 // longer than the per-state nets (180f) so those fire first whenever they apply;
 // this only catches the cross-state thrash they cannot.
 const GLOBAL_DWELL_FRAMES = 300;
-// Px the gap to the nearest reachable enemy must close to count as approach
+// Ft the gap to the nearest reachable enemy must close to count as approach
 // progress (mirrors the engage watchdog's epsilon, slightly looser).
-const GLOBAL_DWELL_ENEMY_PROGRESS_PX = 8;
+const GLOBAL_DWELL_ENEMY_PROGRESS_FT = 1;
 // --- Quest-progress stall watchdog ---------------------------------------
 // The global-dwell watchdog re-anchors on spatial drift + nearby-enemy chip
 // damage, so a knockback/kite loop (the bat punts a quest enemy just out of
@@ -378,13 +383,13 @@ export function computeFloorProgressScore(quests: Iterable<QuestState>, gold: nu
   }
   return questScore * QUEST_PROGRESS_SCORE_WEIGHT + gold;
 }
-// How far (px) beyond the nearest enemy the leave-safe-room move target is placed.
+// How far (ft) beyond the nearest enemy the leave-safe-room move target is placed.
 // The weapon is disabled inside safe rooms, so the AI must decisively exit rather
-// than nudge a few px against the boundary. Sized larger than a tile (32px) so the
+// than nudge a few ft against the boundary. Sized larger than a tile (4ft) so the
 // clamped A* goal lands outside the safe-room rect even when the enemy hugs it.
-const SAFE_ROOM_EXIT_OVERSHOOT_PX = 96;
+const SAFE_ROOM_EXIT_OVERSHOOT_FT = 12;
 // How long (frames) a per-enemy reachability result is reused before recomputing.
-// Player movement changes reachability slowly (~3px/frame), so a short TTL keeps
+// Player movement changes reachability slowly (~0.4ft/frame), so a short TTL keeps
 // the A* cost bounded without noticeably lagging behind door/room openings.
 const REACHABILITY_CACHE_TTL_FRAMES = 20;
 // Radius (tiles) searched for a pathable approach tile when an enemy's exact
@@ -423,7 +428,7 @@ const RETREAT_ARC_OFFSETS_RAD = [
 const RETREAT_DISTANCE_MULTS = [1, 0.5] as const;
 // Only enemies within this radius shape the flee centroid and the open-space
 // score; distant mobs should not bias the escape direction.
-const RETREAT_THREAT_SCAN_PX = 600;
+const RETREAT_THREAT_SCAN_FT = 75;
 // Cap A* verifications per re-pick so the arc scan stays cheap even with the
 // full 18-candidate grid.
 const RETREAT_MAX_PATH_VERIFICATIONS = 6;
@@ -431,32 +436,32 @@ const RETREAT_MAX_PATH_VERIFICATIONS = 6;
 // AI has no target or has arrived near the current one — keeping the bounded A*
 // calls to roughly three re-picks per second instead of one per frame.
 const RETREAT_REPICK_INTERVAL_FRAMES = 18;
-const RETREAT_REPICK_ARRIVE_PX = 80;
+const RETREAT_REPICK_ARRIVE_FT = 10;
 
 // When the player still owes gold for the merchant charm, the AI actively farms
 // the ambient swarm instead of wandering. These scan radii are deliberately
 // wider than the default scanRadius so the AI walks toward the swarm/gold across
 // a room rather than treating "no enemy within 400px" as "nothing to do" and
 // exploring away from the very enemies that drop the gold it needs.
-const GOLD_FARM_ENEMY_SCAN_RADIUS_PX = 1200;
-const GOLD_FARM_GOLD_SCAN_RADIUS_PX = 800;
+const GOLD_FARM_ENEMY_SCAN_RADIUS_FT = 150;
+const GOLD_FARM_GOLD_SCAN_RADIUS_FT = 100;
 // Only divert to an already-dropped gold pile when it is this close; a pile
 // farther than this is more cheaply earned by hunting the swarm (which drops
 // fresh coins right next to the kill) than by trekking across the room toward a
 // single pile that may have rolled into an unreachable spot. Sized a little
 // larger than the melee engage hold (~160px) so coins dropped at a kill site are
 // still swept up on the next tick.
-const GOLD_FARM_COLLECT_RADIUS_PX = 260;
+const GOLD_FARM_COLLECT_RADIUS_FT = 32.5;
 
 // --- Opportunistic behavior constants ---
-// Enemy must be within this radius (px) to count as a dodge threat.
+// Enemy must be within this radius (ft) to count as a dodge threat.
 // Kept small (≈12 ft) so dodge only fires when an enemy is genuinely
 // imminent — a large radius caused the AI to route around enemy pockets
 // during EXPLORE/PROGRESS instead of engaging them.
-const DODGE_THREAT_RADIUS_PX = 96;
-// Minimum closing speed (px/frame): dot product of enemy velocity with the
+const DODGE_THREAT_RADIUS_FT = 12;
+// Minimum closing speed (ft/frame): dot product of enemy velocity with the
 // unit toward-player vector. Higher threshold = only fast chargers trigger dodge.
-const DODGE_CLOSING_SPEED_PX_PER_FRAME = 1.5;
+const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.1875;
 // --- On-path loot detour (OpportunisticCollect) ---
 // Rule (player's words): "if there is loot within 5' of my path and I am not
 // actively fighting or dodging enemies, make the slight detour to grab it."
@@ -464,7 +469,7 @@ const DODGE_CLOSING_SPEED_PX_PER_FRAME = 1.5;
 // "My path" is the ray from the player along the CURRENT heading (previous-frame
 // smoothed output). A loot qualifies for a detour pull only if it lies AHEAD of
 // the player (positive projection onto the heading) AND its perpendicular
-// distance to that path ray is within PATH_CORRIDOR_HALF_WIDTH_PX. This narrow
+// distance to that path ray is within PATH_CORRIDOR_HALF_WIDTH_FT. This narrow
 // forward corridor is the key difference from the reverted omnidirectional pull:
 // by ignoring loot behind or far to the side of the travel direction, the detour
 // stays genuinely "slight" and cannot systematically bias the net exploration
@@ -474,7 +479,7 @@ const DODGE_CLOSING_SPEED_PX_PER_FRAME = 1.5;
 //
 // 5 feet of lateral slack from the path ray. Loot farther to the side than this
 // is not "on my path" and earns no detour.
-const PATH_CORRIDOR_HALF_WIDTH_PX = ftToPx(5);
+const PATH_CORRIDOR_HALF_WIDTH_FT = 5;
 // Below this heading magnitude the player has no meaningful travel direction
 // (effectively stationary), so the path ray is undefined and the detour is
 // skipped — pickups while standing still are handled by Track A's Collect
@@ -549,7 +554,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private retreating: boolean = false;
   /**
-   * Cached kite-retreat destination (pixel center of a reachable open tile) plus
+   * Cached kite-retreat destination (world center of a reachable open tile) plus
    * the frame it was chosen. Recomputing the arc scan + A* verification every
    * frame is wasteful and jittery, so {@link pickRetreatTarget} is throttled: the
    * target is only refreshed when it is null, when the player has arrived near it,
@@ -576,7 +581,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   private collectDwellAnchorX: number = 0;
   private collectDwellAnchorY: number = 0;
   private collectDwellFrames: number = 0;
-  private readonly exploreDwell = new DwellTracker(EXPLORE_DWELL_ESCAPE_PX, EXPLORE_DWELL_FRAMES);
+  private readonly exploreDwell = new DwellTracker(EXPLORE_DWELL_ESCAPE_FT, EXPLORE_DWELL_FRAMES);
   /**
    * Frame after which a suppressed position-based progress goal (Tutorial Goon,
    * Shopkeeper, boss room, staircase…) becomes eligible again. Set by
@@ -799,7 +804,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           this.retreatTargetX !== null &&
           this.retreatTargetY !== null &&
           Math.hypot(this.retreatTargetX - ctx.playerX, this.retreatTargetY - ctx.playerY) <=
-            RETREAT_REPICK_ARRIVE_PX;
+            RETREAT_REPICK_ARRIVE_FT;
         const stale =
           ctx.world.frameCount - this.retreatRepickFrame >= RETREAT_REPICK_INTERVAL_FRAMES;
         if (this.retreatTargetX === null || this.retreatTargetY === null || arrived || stale) {
@@ -857,7 +862,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if ((world.stores.health.current[eid] ?? 0) <= 0) continue;
       const ex = world.stores.position.x[eid] ?? 0;
       const ey = world.stores.position.y[eid] ?? 0;
-      if (Math.hypot(ex - playerX, ey - playerY) > RETREAT_THREAT_SCAN_PX) continue;
+      if (Math.hypot(ex - playerX, ey - playerY) > RETREAT_THREAT_SCAN_FT) continue;
       enemyPositions.push({ x: ex, y: ey });
       centroidX += ex;
       centroidY += ey;
@@ -872,7 +877,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       baseAngle = Math.atan2(playerY - threat.y, playerX - threat.x);
     }
 
-    const startTile = floorMap.pixelToTile(playerX, playerY);
+    const startTile = floorMap.worldToTile(playerX, playerY);
     const candidates: Array<{ x: number; y: number; score: number }> = [];
     for (const offset of RETREAT_ARC_OFFSETS_RAD) {
       const angle = baseAngle + offset;
@@ -880,9 +885,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       const dirY = Math.sin(angle);
       for (const mult of RETREAT_DISTANCE_MULTS) {
         const dist = this.config.scanRadius * mult;
-        const px = playerX + dirX * dist;
-        const py = playerY + dirY * dist;
-        const tile = floorMap.pixelToTile(px, py);
+        const wx = playerX + dirX * dist;
+        const wy = playerY + dirY * dist;
+        const tile = floorMap.worldToTile(wx, wy);
         if (tile.x === startTile.x && tile.y === startTile.y) continue;
         const passable = this.doorAwarePassable
           ? this.doorAwarePassable(tile.x, tile.y)
@@ -890,10 +895,10 @@ export class BehaviorTreeAI implements AIInputProvider {
         if (!passable) continue;
         let minEnemyDist = Number.POSITIVE_INFINITY;
         for (const enemy of enemyPositions) {
-          const d = Math.hypot(enemy.x - px, enemy.y - py);
+          const d = Math.hypot(enemy.x - wx, enemy.y - wy);
           if (d < minEnemyDist) minEnemyDist = d;
         }
-        candidates.push({ x: px, y: py, score: minEnemyDist });
+        candidates.push({ x: wx, y: wy, score: minEnemyDist });
       }
     }
 
@@ -903,11 +908,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     let verifications = 0;
     for (const candidate of candidates) {
       if (verifications >= RETREAT_MAX_PATH_VERIFICATIONS) break;
-      const goalTile = floorMap.pixelToTile(candidate.x, candidate.y);
+      const goalTile = floorMap.worldToTile(candidate.x, candidate.y);
       verifications += 1;
       const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
       if (path.length > 1) {
-        const center = floorMap.tileToPixel(goalTile.x, goalTile.y);
+        const center = floorMap.tileToWorld(goalTile.x, goalTile.y);
         return { x: center.x, y: center.y };
       }
     }
@@ -928,7 +933,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           ctx.playerX,
           ctx.playerY,
         );
-        if (nearest && nearest.distance < 100) {
+        if (nearest && nearest.distance < 12.5) {
           ctx.blackboard['nearestNpc'] = nearest;
           return true;
         }
@@ -941,7 +946,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetX = nearest.x;
         this.decision.targetY = nearest.y;
         this.talkedNpcDefs.add(nearest.defId);
-        this.decision.reason = `Interacting with ${nearest.defId} (${nearest.interactionReason}) at ${nearest.distance.toFixed(0)}px`;
+        this.decision.reason = `Interacting with ${nearest.defId} (${nearest.interactionReason}) at ${nearest.distance.toFixed(0)}ft`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -1013,7 +1018,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetEid = nearest.eid;
         this.decision.targetX = nearest.x;
         this.decision.targetY = nearest.y;
-        this.decision.reason = `Collecting ${nearest.kind} at distance ${nearest.distance.toFixed(0)}px`;
+        this.decision.reason = `Collecting ${nearest.kind} at distance ${nearest.distance.toFixed(1)}ft`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -1051,7 +1056,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.targetEid = nearest.eid;
         this.decision.targetX = plan.targetX;
         this.decision.targetY = plan.targetY;
-        this.decision.reason = `Hunting enemy at distance ${nearest.distance.toFixed(0)}px`;
+        this.decision.reason = `Hunting enemy at distance ${nearest.distance.toFixed(1)}ft`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -1091,9 +1096,9 @@ export class BehaviorTreeAI implements AIInputProvider {
         const len = Math.hypot(dx, dy) || 1;
         this.decision.state = AIState.ENGAGE;
         this.decision.targetEid = threat.eid;
-        this.decision.targetX = threat.x + (dx / len) * SAFE_ROOM_EXIT_OVERSHOOT_PX;
-        this.decision.targetY = threat.y + (dy / len) * SAFE_ROOM_EXIT_OVERSHOOT_PX;
-        this.decision.reason = `Leaving safe room to engage enemy at ${threat.distance.toFixed(0)}px`;
+        this.decision.targetX = threat.x + (dx / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
+        this.decision.targetY = threat.y + (dy / len) * SAFE_ROOM_EXIT_OVERSHOOT_FT;
+        this.decision.reason = `Leaving safe room to engage enemy at ${threat.distance.toFixed(1)}ft`;
         return BTStatus.SUCCESS;
       }),
     );
@@ -1150,7 +1155,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             ctx.playerX - this.decision.targetX,
             ctx.playerY - this.decision.targetY,
           );
-          if (dist < 50) {
+          if (dist < 6.25) {
             const target = this.pickExploreTarget(ctx.world, ctx.playerX, ctx.playerY);
             this.decision.targetX = target.x;
             this.decision.targetY = target.y;
@@ -1191,7 +1196,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * and I am not actively fighting or dodging enemies, make the slight detour to
    * grab it." A loot qualifies only when it lies AHEAD of the player along the
    * current heading and its perpendicular distance to that path ray is within
-   * `PATH_CORRIDOR_HALF_WIDTH_PX` (5 ft). The earlier implementation pulled toward
+   * `PATH_CORRIDOR_HALF_WIDTH_FT` (5 ft). The earlier implementation pulled toward
    * ANY nearby loot in any direction, which systematically biased the net
    * trajectory toward loot-dense (= recently enemy-killed) zones and blew the
    * floor-clear budget. Restricting to a narrow forward corridor keeps the detour
@@ -1235,7 +1240,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       const headingY = this.smoothMoveY / headingMag;
 
       // Pick the nearest loot within the grab radius that is AHEAD of the player
-      // and within PATH_CORRIDOR_HALF_WIDTH_PX of the path ray. Loot behind, or
+      // and within PATH_CORRIDOR_HALF_WIDTH_FT of the path ray. Loot behind, or
       // farther to the side than the corridor, is ignored so the detour stays
       // slight and cannot bias the net trajectory.
       let nearestX = 0;
@@ -1267,7 +1272,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           // Perpendicular distance from the path ray must be within the corridor.
           const lateralSq = d * d - forward * forward;
           const lateral = lateralSq > 0 ? Math.sqrt(lateralSq) : 0;
-          if (lateral > PATH_CORRIDOR_HALF_WIDTH_PX) continue;
+          if (lateral > PATH_CORRIDOR_HALF_WIDTH_FT) continue;
           nearestDist = d;
           nearestX = lx;
           nearestY = ly;
@@ -1292,9 +1297,9 @@ export class BehaviorTreeAI implements AIInputProvider {
    * OpportunisticDodge: inject a perpendicular strafe impulse when an enemy
    * is closing fast toward the player.
    *
-   * For each enemy within `DODGE_THREAT_RADIUS_PX`, we compute the dot product
+   * For each enemy within `DODGE_THREAT_RADIUS_FT`, we compute the dot product
    * of its velocity with the toward-player unit vector. If the closing speed
-   * exceeds `DODGE_CLOSING_SPEED_PX_PER_FRAME`, we pick the perpendicular that
+   * exceeds `DODGE_CLOSING_SPEED_FT_PER_FRAME`, we pick the perpendicular that
    * keeps the kite orbit sign and write it into `this.dodgeVecX/Y`.
    *
    * Only the closest closing enemy drives the dodge so the vector is stable.
@@ -1331,16 +1336,16 @@ export class BehaviorTreeAI implements AIInputProvider {
         const ex = ctx.world.stores.position.x[eid] ?? 0;
         const ey = ctx.world.stores.position.y[eid] ?? 0;
         const dist = Math.hypot(ex - ctx.playerX, ey - ctx.playerY);
-        if (dist > DODGE_THREAT_RADIUS_PX) continue;
+        if (dist > DODGE_THREAT_RADIUS_FT) continue;
 
         const vx = ctx.world.stores.velocity.x[eid] ?? 0;
         const vy = ctx.world.stores.velocity.y[eid] ?? 0;
         // Unit vector from enemy toward player
-        const toPx = (ctx.playerX - ex) / (dist || 1);
-        const toPy = (ctx.playerY - ey) / (dist || 1);
+        const toPlayerX = (ctx.playerX - ex) / (dist || 1);
+        const toPlayerY = (ctx.playerY - ey) / (dist || 1);
         // Closing speed = component of enemy velocity in the toward-player direction
-        const closingSpeed = vx * toPx + vy * toPy;
-        if (closingSpeed < DODGE_CLOSING_SPEED_PX_PER_FRAME) continue;
+        const closingSpeed = vx * toPlayerX + vy * toPlayerY;
+        if (closingSpeed < DODGE_CLOSING_SPEED_FT_PER_FRAME) continue;
 
         if (dist < closestThreatDist) {
           closestThreatDist = dist;
@@ -1397,7 +1402,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         ctx.world,
         ctx.playerX,
         ctx.playerY,
-        GOLD_FARM_ENEMY_SCAN_RADIUS_PX,
+        GOLD_FARM_ENEMY_SCAN_RADIUS_FT,
       );
       if (!nearest) return BTStatus.FAILURE;
 
@@ -1433,7 +1438,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     // Inside a safe room the weapon is hard-disabled, so the player can neither
-    // close the final px nor drop the enemy's HP. That is not "unreachable" —
+    // close the final ft nor drop the enemy's HP. That is not "unreachable" —
     // the LeaveSafeRoom behavior is actively walking the player out. Resetting
     // the no-progress counter here prevents the watchdog from blacklisting the
     // entire wave (which would collapse Engage into a COLLECT wiggle deadlock).
@@ -1464,7 +1469,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const dist = Math.hypot(ex - playerX, ey - playerY);
     let progressed = false;
-    if (dist < this.engageBestDistance - ENGAGE_PROGRESS_EPSILON_PX) {
+    if (dist < this.engageBestDistance - ENGAGE_PROGRESS_EPSILON_FT) {
       this.engageBestDistance = dist;
       progressed = true;
     }
@@ -1497,7 +1502,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * Blacklist every loot pile (XP gem, gold, dropped item) within {@param radius}
-   * px of the given point for {@link LOOT_IGNORE_FRAMES}. Used by the COLLECT dwell
+   * ft of the given point for {@link LOOT_IGNORE_FRAMES}. Used by the COLLECT dwell
    * watchdog to abandon an entire cluster of mutually-unreachable loot at once,
    * rather than one entity at a time (which lets the AI rotate forever between
    * neighbours in the same cluster).
@@ -1538,11 +1543,11 @@ export class BehaviorTreeAI implements AIInputProvider {
    * A per-target distance watchdog is defeated when the AI rotates between several
    * mutually-unreachable gems clustered at e.g. a safe-room boundary: each target
    * switch resets the per-target counter before it can fire, and per-frame stuck
-   * detection is fooled by wiggle (net displacement stays a few px while the player
+   * detection is fooled by wiggle (net displacement stays a few ft while the player
    * oscillates). So we track the player's NET displacement while it is continuously
    * in COLLECT. If the player never escapes a small dwell circle for
    * {@link COLLECT_DWELL_FRAMES}, the whole nearby cluster is unreachable — blacklist
-   * every pile inside {@link COLLECT_DWELL_CLUSTER_RADIUS_PX} so the tree drops
+   * every pile inside {@link COLLECT_DWELL_CLUSTER_RADIUS_FT} so the tree drops
    * through COLLECT to Hunt/Explore and makes real progress.
    */
   private updateCollectWatchdog(world: GameWorld, playerX: number, playerY: number): void {
@@ -1564,7 +1569,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       playerX - this.collectDwellAnchorX,
       playerY - this.collectDwellAnchorY,
     );
-    if (drift > COLLECT_DWELL_ESCAPE_PX) {
+    if (drift > COLLECT_DWELL_ESCAPE_FT) {
       // Player netted real travel out of the dwell circle — it is making progress,
       // so re-anchor and keep collecting.
       this.collectDwellAnchorX = playerX;
@@ -1579,7 +1584,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         world,
         playerX,
         playerY,
-        COLLECT_DWELL_CLUSTER_RADIUS_PX,
+        COLLECT_DWELL_CLUSTER_RADIUS_FT,
       );
       this.decision.targetEid = null;
       this.decision.targetX = null;
@@ -1649,7 +1654,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * The engage/collect/explore dwell watchdogs each reset the instant their
    * state stops running. When the tree flip-flops between two states every frame
    * (e.g. an enemy oscillating A*-reachable/unreachable as the player wiggles a
-   * few px across a tile edge at a doorway choke, so it alternates ENGAGE one way
+   * few ft across a tile edge at a doorway choke, so it alternates ENGAGE one way
    * and COLLECT the other), each switch zeroes the *other* counter, none ever
    * accumulate, and the player vibrates in place forever (observed 400s+).
    *
@@ -1688,10 +1693,10 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const drift = Math.hypot(playerX - this.globalDwellAnchorX, playerY - this.globalDwellAnchorY);
     const closedOnEnemy =
-      nearestDist < this.globalDwellBestEnemyDist - GLOBAL_DWELL_ENEMY_PROGRESS_PX;
-    const dealtDamage = nearbyHp < this.globalDwellBestEnemyHp - ENGAGE_PROGRESS_EPSILON_PX;
+      nearestDist < this.globalDwellBestEnemyDist - GLOBAL_DWELL_ENEMY_PROGRESS_FT;
+    const dealtDamage = nearbyHp < this.globalDwellBestEnemyHp - ENGAGE_PROGRESS_EPSILON_FT;
 
-    if (drift > GLOBAL_DWELL_ESCAPE_PX || closedOnEnemy || dealtDamage) {
+    if (drift > GLOBAL_DWELL_ESCAPE_FT || closedOnEnemy || dealtDamage) {
       this.globalDwellAnchorX = playerX;
       this.globalDwellAnchorY = playerY;
       this.globalDwellFrames = 0;
@@ -1746,7 +1751,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       world,
       playerX,
       playerY,
-      COLLECT_DWELL_CLUSTER_RADIUS_PX,
+      COLLECT_DWELL_CLUSTER_RADIUS_FT,
     );
 
     this.decision.targetEid = null;
@@ -1889,12 +1894,12 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // Update stuck detection
     const dist = Math.hypot(playerX - this.lastPlayerX, playerY - this.lastPlayerY);
-    this.stuckFrames = nextStuckFrames(this.stuckFrames, dist, STUCK_PROGRESS_EPSILON_PX);
+    this.stuckFrames = nextStuckFrames(this.stuckFrames, dist, STUCK_PROGRESS_EPSILON_FT);
     this.lastPlayerX = playerX;
     this.lastPlayerY = playerY;
 
     // If stuck for too long, clear path and pick new goal. NOTE: stuckFrames is
-    // a weak signal — at ~3px/frame normal travel it can climb even while moving
+    // a weak signal — at ~0.375ft/frame normal travel it can climb even while moving
     // productively, so enemy abandonment is handled by updateEngageWatchdog
     // (real distance/HP progress) rather than here. We only blacklist loot here.
     if (this.stuckFrames > 60) {
@@ -2022,7 +2027,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Anti-stall for ENGAGE: when the blended direction drops below the stall
     // threshold (kite reversal or state-transition blend passing through zero)
     // while the enemy is still outside minimum contact range, bypass the
-    // smooth stall and drive directly toward the enemy's pixel position.
+    // smooth stall and drive directly toward the enemy's world position.
     // Mirrors the enemyAISystem pathDirection.length ≤ EPSILON → direct
     // pursuit correction that fixed enemy "dancing" at tile-center distance.
     if (
@@ -2061,7 +2066,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   /**
    * Returns the normalised direction vector from the player to the given enemy
    * EID, or null if the enemy position is unavailable or already within
-   * MIN_PLAYER_ENEMY_CONTACT_PX. Used by both the anti-stall override and the
+   * MIN_PLAYER_ENEMY_CONTACT_FT. Used by both the anti-stall override and the
    * ENGAGE fallback to avoid duplicating the position-validity + range check.
    */
   private enemyPursuitDirection(
@@ -2076,7 +2081,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const dx = ex - playerX;
     const dy = ey - playerY;
     const dist = Math.hypot(dx, dy);
-    if (dist <= MIN_PLAYER_ENEMY_CONTACT_PX) return null;
+    if (dist <= MIN_PLAYER_ENEMY_CONTACT_FT) return null;
     return { dx, dy, dist };
   }
 
@@ -2131,7 +2136,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const deltaY = targetY - playerY;
     const distance = Math.hypot(deltaX, deltaY);
 
-    if (distance < DIRECT_MOVE_EPSILON_PX) {
+    if (distance < DIRECT_MOVE_EPSILON_FT) {
       // Close enough - stop moving
       state.moveX = 0;
       state.moveY = 0;
@@ -2144,11 +2149,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     // sits in the player's own tile (same-tile A* is trivial), so the player
     // oscillates walk-away/walk-back around a gem/gold it never overlaps (the
     // "wiggling on pickups" bug). When the target is within ~1.5 tiles and a
-    // straight corridor is clear, skip A* and slide straight at the exact pixel
+    // straight corridor is clear, skip A* and slide straight at the exact world point
     // with obstacle-aware local navigation so the body physically overlaps the
     // pickup and collision collects it.
     if (
-      distance <= CLOSE_APPROACH_DIRECT_PX &&
+      distance <= CLOSE_APPROACH_DIRECT_FT &&
       this.hasClearLineOfSight(world, playerX, playerY, targetX, targetY)
     ) {
       this.pathWaypoints = [];
@@ -2167,8 +2172,8 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const floorMap = world.floorMap;
     if (floorMap) {
-      const startTile = floorMap.pixelToTile(playerX, playerY);
-      const goalTile = floorMap.pixelToTile(targetX, targetY);
+      const startTile = floorMap.worldToTile(playerX, playerY);
+      const goalTile = floorMap.worldToTile(targetX, targetY);
       const rawGoalKey = `${goalTile.x},${goalTile.y}`;
       let resolvedGoal: TilePoint;
       if (this.resolvedGoalCache?.rawKey === rawGoalKey) {
@@ -2232,7 +2237,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.pathIndex = 0;
         this.pathGoalKey = null;
       } else {
-        const waypointWorld = floorMap ? floorMap.tileToPixel(waypoint.x, waypoint.y) : null;
+        const waypointWorld = floorMap ? floorMap.tileToWorld(waypoint.x, waypoint.y) : null;
         if (!waypointWorld) {
           this.pathWaypoints = [];
           this.pathIndex = 0;
@@ -2241,7 +2246,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         }
         const waypointDist = Math.hypot(playerX - waypointWorld.x, playerY - waypointWorld.y);
 
-        if (waypointDist < 8) {
+        if (waypointDist < WAYPOINT_ARRIVE_FT) {
           // Reached waypoint - move to next
           this.pathIndex++;
           if (this.pathIndex >= this.pathWaypoints.length) {
@@ -2259,7 +2264,7 @@ export class BehaviorTreeAI implements AIInputProvider {
             : Math.hypot(playerX - this.moveWedgeLastX, playerY - this.moveWedgeLastY);
           this.moveWedgeLastX = playerX;
           this.moveWedgeLastY = playerY;
-          if (movedSinceLast < MOVE_WEDGE_PROGRESS_PX) {
+          if (movedSinceLast < MOVE_WEDGE_PROGRESS_FT) {
             this.moveWedgeFrames++;
           } else {
             this.moveWedgeFrames = 0;
@@ -2299,7 +2304,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
 
     // Fallback: direct movement toward target. In ENGAGE mode, prefer the
-    // enemy's current pixel position over the plan target so the player closes
+    // enemy's current world position over the plan target so the player closes
     // the sub-tile gap precisely — mirrors the enemy AI's direct pursuit when
     // its path waypoints are exhausted but the player has drifted within the
     // tile (see enemyAISystem "Tile center already reached" fix).
@@ -2421,7 +2426,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // is unreachable within NAVIGATION_MAX_PATH_LENGTH.
     const pathLengthTo = (x: number, y: number): number => {
       // Bounds-check before indexing `dist`: goal tiles are not clamped to the
-      // map (FloorMap.pixelToTile can return out-of-bounds coords), and an
+      // map (FloorMap.worldToTile can return out-of-bounds coords), and an
       // out-of-bounds (x, y) can still yield an in-bounds linear index
       // `y * width + x` that aliases an unrelated reachable tile. findTilePath
       // rejects out-of-bounds goals, so mirror that here -- treat them as
@@ -2501,7 +2506,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (!wp) {
         continue;
       }
-      const wpWorld = floorMap.tileToPixel(wp.x, wp.y);
+      const wpWorld = floorMap.tileToWorld(wp.x, wp.y);
       if (this.hasClearLineOfSight(world, playerX, playerY, wpWorld.x, wpWorld.y)) {
         this.pathIndex = i;
         return;
@@ -2513,7 +2518,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * Sample the straight corridor between two world points and report whether
    * every sampled position is on passable ground. Used to decide when the AI may
    * abandon tile-granular A* for a direct sub-tile approach onto a close target
-   * (see CLOSE_APPROACH_DIRECT_PX). Returns false when no floor map is present so
+   * (see CLOSE_APPROACH_DIRECT_FT). Returns false when no floor map is present so
    * the caller keeps its existing A* / local-nav fallback.
    */
   private hasClearLineOfSight(
@@ -2531,10 +2536,10 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (distance <= 0) {
       return floorMap.isPassableAt(endX, endY);
     }
-    const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_SAMPLE_PX));
+    const steps = Math.max(1, Math.ceil(distance / LINE_OF_SIGHT_SAMPLE_FT));
     let prevX = startX;
     let prevY = startY;
-    let prevTile = floorMap.pixelToTile(startX, startY);
+    let prevTile = floorMap.worldToTile(startX, startY);
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const sampleX = startX + (endX - startX) * t;
@@ -2542,7 +2547,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (!floorMap.isPassableAt(sampleX, sampleY)) {
         return false;
       }
-      const sampleTile = floorMap.pixelToTile(sampleX, sampleY);
+      const sampleTile = floorMap.worldToTile(sampleX, sampleY);
       const crossesBlockedCorner =
         sampleTile.x !== prevTile.x &&
         sampleTile.y !== prevTile.y &&
@@ -2581,8 +2586,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       for (const offset of NAVIGATION_ANGLE_OFFSETS) {
         const candidateX = baseX * Math.cos(offset) - baseY * Math.sin(offset);
         const candidateY = baseX * Math.sin(offset) + baseY * Math.cos(offset);
-        const sampleX = playerX + candidateX * NAVIGATION_LOOKAHEAD_PX;
-        const sampleY = playerY + candidateY * NAVIGATION_LOOKAHEAD_PX;
+        const sampleX = playerX + candidateX * NAVIGATION_LOOKAHEAD_FT;
+        const sampleY = playerY + candidateY * NAVIGATION_LOOKAHEAD_FT;
         if (floorMap.isPassableAt(sampleX, sampleY)) {
           const normalized = normalizeInputDirection(candidateX, candidateY);
           state.moveX = normalized.moveX;
@@ -2634,7 +2639,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // fall through to Explore, which A*-routes to a reachable area instead of
     // local-navigating straight into a wall and wiggling forever.
     for (const candidate of candidates) {
-      if (candidate.distance <= DIRECT_MOVE_EPSILON_PX) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
         return candidate;
       }
       if (this.isTargetReachable(world, playerX, playerY, candidate)) {
@@ -2691,7 +2696,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     candidates.sort((a, b) => a.distance - b.distance);
 
     for (const candidate of candidates) {
-      if (candidate.distance <= DIRECT_MOVE_EPSILON_PX) {
+      if (candidate.distance <= DIRECT_MOVE_EPSILON_FT) {
         return candidate;
       }
       if (this.isTargetReachable(world, playerX, playerY, candidate)) {
@@ -2703,7 +2708,7 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Nearest dropped Gold pile within {@link maxRadius}px, ignoring loot we've
+   * Nearest dropped Gold pile within {@link maxRadius} ft, ignoring loot we've
    * flagged unreachable. Unlike {@link findNearestLoot} this is gold-only and
    * uses a wider default radius: it backs the "farm gold for the merchant charm"
    * objective, where the AI must actively sweep up coins across a room rather
@@ -2773,8 +2778,8 @@ export class BehaviorTreeAI implements AIInputProvider {
       return cached.reachable;
     }
 
-    const startTile = floorMap.pixelToTile(playerX, playerY);
-    const goalTile = floorMap.pixelToTile(target.x, target.y);
+    const startTile = floorMap.worldToTile(playerX, playerY);
+    const goalTile = floorMap.worldToTile(target.x, target.y);
     let reachable: boolean;
     if (startTile.x === goalTile.x && startTile.y === goalTile.y) {
       reachable = true;
@@ -2906,12 +2911,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       // AI commit to gold instead of treating distant enemies as "nothing to do"
       // and exploring away from them.
       const goldOwed = SHOPKEEPER_EQUIPMENT_COST - world.playerGold;
-      const goldPile = this.findNearestGold(world, playerX, playerY, GOLD_FARM_GOLD_SCAN_RADIUS_PX);
+      const goldPile = this.findNearestGold(world, playerX, playerY, GOLD_FARM_GOLD_SCAN_RADIUS_FT);
 
       // Prefer a *nearby* pile we can realistically walk onto. The stuck handler
       // blacklists piles we get wedged against, so a deadlocked coin eventually
       // drops out of this scan and we fall through to hunting.
-      if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_PX) {
+      if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT) {
         return this.createProgressTarget(
           goldPile.x,
           goldPile.y,
@@ -2924,7 +2929,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
       // No close coin: close on the swarm so auto-fire drops fresh gold right at
       // the kill, which the branch above then sweeps up on a later tick.
-      const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_PX);
+      const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_FT);
       if (prey) {
         return this.createProgressTarget(
           prey.x,
@@ -3071,12 +3076,12 @@ export class BehaviorTreeAI implements AIInputProvider {
       return this.config.scanRadius * 0.4;
     }
 
-    const reachPx = ftToPx(Math.max(weapon.range, weapon.aoeRadius));
+    const reachFt = Math.max(weapon.range, weapon.aoeRadius);
     if (weapon.weaponType === WeaponType.MELEE) {
-      return Math.max(reachPx * 4, 160);
+      return Math.max(reachFt * 4, 20);
     }
 
-    return Math.min(this.config.scanRadius, Math.max(reachPx, this.config.rangedSafeDistance * 2));
+    return Math.min(this.config.scanRadius, Math.max(reachFt, this.config.rangedSafeDistance * 2));
   }
 
   private findNearestLoot(world: GameWorld, playerX: number, playerY: number): LootTarget | null {
@@ -3134,7 +3139,7 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * A loot pile is collectable when it sits essentially under the player (within
-   * {@link DIRECT_MOVE_EPSILON_PX}, so a direct step closes it and no A* is
+   * {@link DIRECT_MOVE_EPSILON_FT}, so a direct step closes it and no A* is
    * needed) or the player can A*-path to it. The reachability test is door-aware,
    * so loot sealed behind a locked-unsatisfied door reads as uncollectable until
    * the lock opens — the moment it does, the same pile becomes a valid goal again.
@@ -3145,7 +3150,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerY: number,
     loot: LootTarget,
   ): boolean {
-    if (loot.distance <= DIRECT_MOVE_EPSILON_PX) {
+    if (loot.distance <= DIRECT_MOVE_EPSILON_FT) {
       return true;
     }
     return this.isTargetReachable(world, playerX, playerY, loot);
@@ -3234,7 +3239,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    * sweep that surfaces objective rooms (and their NPCs) far sooner than random
    * sampling.
    *
-   * Only frontiers beyond {@link EXPLORE_FRONTIER_MIN_PX} are returned so every
+   * Only frontiers beyond {@link EXPLORE_FRONTIER_MIN_FT} are returned so every
    * target forces real travel — which always changes the fog, so the frontier set
    * always changes and the AI can never lock onto a zero-movement target. Returns
    * `null` when no qualifying frontier remains (near-complete exploration), so the
@@ -3257,7 +3262,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const passable =
       this.doorAwarePassable ?? ((tx: number, ty: number): boolean => tileMap.isPassable(tx, ty));
 
-    const start = floorMap.pixelToTile(playerX, playerY);
+    const start = floorMap.worldToTile(playerX, playerY);
     if (tileMap.index(start.x, start.y) === -1) {
       return null;
     }
@@ -3272,9 +3277,9 @@ export class BehaviorTreeAI implements AIInputProvider {
       index: (tx, ty) => tileMap.index(tx, ty),
       isSeen: (idx) => seen[idx] !== 0,
       isPassable: (tx, ty) => passable(tx, ty),
-      tileDistancePx: (tx, ty) => {
-        const px = floorMap.tileToPixel(tx, ty);
-        return Math.hypot(px.x - playerX, px.y - playerY);
+      tileDistanceFt: (tx, ty) => {
+        const wp = floorMap.tileToWorld(tx, ty);
+        return Math.hypot(wp.x - playerX, wp.y - playerY);
       },
     };
 
@@ -3282,15 +3287,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       grid,
       start.x,
       start.y,
-      EXPLORE_FRONTIER_MIN_PX,
+      EXPLORE_FRONTIER_MIN_FT,
       EXPLORE_FRONTIER_BFS_MAX_TILES,
       this.frontierBfsVisited,
     );
     if (!frontier) {
       return null;
     }
-    const px = floorMap.tileToPixel(frontier.tileX, frontier.tileY);
-    return { x: px.x, y: px.y };
+    const wp = floorMap.tileToWorld(frontier.tileX, frontier.tileY);
+    return { x: wp.x, y: wp.y };
   }
 
   private pickExploreTarget(
@@ -3301,14 +3306,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     const floorMap = world.floorMap;
     if (!floorMap) {
       const angle = this.rng.next() * Math.PI * 2;
-      const distance = 200 + this.rng.next() * 200;
+      const distance = 25 + this.rng.next() * 25;
       return {
         x: playerX + Math.cos(angle) * distance,
         y: playerY + Math.sin(angle) * distance,
       };
     }
 
-    const startTile = floorMap.pixelToTile(playerX, playerY);
+    const startTile = floorMap.worldToTile(playerX, playerY);
 
     // Prefer the nearest fog-of-war frontier: this sweeps the map outward through
     // known-passable ground and reveals unentered rooms (and their NPCs/doors) far
@@ -3325,19 +3330,19 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     // A*-verify a passable candidate and record it if the player can actually
     // reach it. Returns true once we have gathered enough reachable candidates.
-    const consider = (px: number, py: number): boolean => {
-      if (!floorMap.isPassableAt(px, py)) {
+    const consider = (wx: number, wy: number): boolean => {
+      if (!floorMap.isPassableAt(wx, wy)) {
         return false;
       }
       if (!sawPassable) {
-        firstPassable.x = px;
-        firstPassable.y = py;
+        firstPassable.x = wx;
+        firstPassable.y = wy;
         sawPassable = true;
       }
-      const goalTile = floorMap.pixelToTile(px, py);
+      const goalTile = floorMap.worldToTile(wx, wy);
       const path = findTilePath(floorMap, startTile, goalTile, this.groundPathOptions());
       if (path.length > 1) {
-        reachable.push({ x: px, y: py, dist: Math.hypot(px - playerX, py - playerY) });
+        reachable.push({ x: wx, y: wy, dist: Math.hypot(wx - playerX, wy - playerY) });
       }
       return reachable.length >= EXPLORE_REACHABLE_SAMPLE_TARGET;
     };
@@ -3354,7 +3359,7 @@ export class BehaviorTreeAI implements AIInputProvider {
         const maxY = Math.max(minY, room.bounds.y + room.bounds.height - 2);
         const tx = this.rng.nextInt(minX, maxX);
         const ty = this.rng.nextInt(minY, maxY);
-        const candidate = floorMap.tileToPixel(tx, ty);
+        const candidate = floorMap.tileToWorld(tx, ty);
         if (consider(candidate.x, candidate.y)) {
           break;
         }
@@ -3365,7 +3370,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       for (let attempt = 0; attempt < EXPLORE_REACHABLE_SAMPLE_ATTEMPTS; attempt += 1) {
         const tx = this.rng.nextInt(1, Math.max(1, floorMap.width - 2));
         const ty = this.rng.nextInt(1, Math.max(1, floorMap.height - 2));
-        const candidate = floorMap.tileToPixel(tx, ty);
+        const candidate = floorMap.tileToWorld(tx, ty);
         if (consider(candidate.x, candidate.y)) {
           break;
         }
@@ -3401,47 +3406,47 @@ export class BehaviorTreeAI implements AIInputProvider {
       return {
         targetX: target.x,
         targetY: target.y,
-        reason: `Engaging enemy at distance ${target.distance.toFixed(0)}px`,
+        reason: `Engaging enemy at distance ${target.distance.toFixed(1)}ft`,
       };
     }
 
-    const reachPx = ftToPx(Math.max(weapon.range, weapon.aoeRadius));
+    const reachFt = Math.max(weapon.range, weapon.aoeRadius);
 
     if (weapon.weaponType === WeaponType.RANGED) {
-      return this.planRangedEngagement(world, playerX, playerY, target, reachPx);
+      return this.planRangedEngagement(world, playerX, playerY, target, reachFt);
     }
 
     if (weapon.weaponType !== WeaponType.MELEE) {
       return {
         targetX: target.x,
         targetY: target.y,
-        reason: `Engaging enemy at distance ${target.distance.toFixed(0)}px`,
+        reason: `Engaging enemy at distance ${target.distance.toFixed(1)}ft`,
       };
     }
     // Actual gate at which a melee swing connects (weaponSystem fires when an enemy
     // is within reach*1.5 and the cooldown has elapsed — independent of whether the
     // player is moving). Once inside it we KITE instead of parking.
-    const strikeGatePx = reachPx * ATTACK_GATE_MULTIPLIER;
-    if (target.distance <= strikeGatePx) {
-      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachPx);
+    const strikeGateFt = reachFt * ATTACK_GATE_MULTIPLIER;
+    if (target.distance <= strikeGateFt) {
+      return this.computeMeleeKiteTarget(world, playerX, playerY, target, reachFt);
     }
 
     // Out of strike range: close in toward the orbit band (just inside the gate) so
     // the next poll can start kiting and landing hits.
-    const engageBandPx = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
+    const engageBandFt = Math.max(DIRECT_MOVE_EPSILON_FT, reachFt * MELEE_HOLD_FRACTION);
     const deltaX = target.x - playerX;
     const deltaY = target.y - playerY;
-    const scale = (target.distance - engageBandPx) / target.distance;
+    const scale = (target.distance - engageBandFt) / target.distance;
     return {
       targetX: playerX + deltaX * scale,
       targetY: playerY + deltaY * scale,
-      reason: `Closing to melee range (${(reachPx / 8).toFixed(1)}ft) from ${target.distance.toFixed(0)}px`,
+      reason: `Closing to melee range (${reachFt.toFixed(1)}ft) from ${target.distance.toFixed(1)}ft`,
     };
   }
 
   /**
    * Returns true when any enemy other than `primaryTarget` is within
-   * KITE_BACK_THREAT_RADIUS_PX AND is positioned behind or to the side of the
+   * KITE_BACK_THREAT_RADIUS_FT AND is positioned behind or to the side of the
    * player relative to the primary target direction. Used to decide whether to
    * use full lateral orbit (back-threat dodge) or a mostly-radial advance/retreat.
    */
@@ -3454,7 +3459,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     const fwdX = primaryTarget.x - playerX;
     const fwdY = primaryTarget.y - playerY;
     const fwdLen = Math.hypot(fwdX, fwdY);
-    if (fwdLen < 1) return false;
+    if (fwdLen < 0.125) return false;
     const fwdNx = fwdX / fwdLen;
     const fwdNy = fwdY / fwdLen;
 
@@ -3465,7 +3470,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       const dx = ex - playerX;
       const dy = ey - playerY;
       const dist = Math.hypot(dx, dy);
-      if (dist > KITE_BACK_THREAT_RADIUS_PX || dist < 1) continue;
+      if (dist > KITE_BACK_THREAT_RADIUS_FT || dist < 0.125) continue;
       // Dot < 0 means the enemy is behind the player relative to primary target.
       const dot = (dx / dist) * fwdNx + (dy / dist) * fwdNy;
       if (dot < 0) return true;
@@ -3503,7 +3508,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     target: WorldTarget,
-    reachPx: number,
+    reachFt: number,
   ): { targetX: number; targetY: number; reason: string } {
     const readiness = getActiveWeaponReadiness(world);
     const ready = readiness?.ready ?? true;
@@ -3517,35 +3522,35 @@ export class BehaviorTreeAI implements AIInputProvider {
         ? Math.max(0, Math.min(1, readiness.remainingMs / readiness.cooldownMs))
         : 0;
 
-    const innerOrbitFallback = Math.max(DIRECT_MOVE_EPSILON_PX, reachPx * MELEE_HOLD_FRACTION);
-    const swingRadius = reachPx;
-    const strikeGate = reachPx * ATTACK_GATE_MULTIPLIER;
+    const innerOrbitFallback = Math.max(DIRECT_MOVE_EPSILON_FT, reachFt * MELEE_HOLD_FRACTION);
+    const swingRadius = reachFt;
+    const strikeGate = reachFt * ATTACK_GATE_MULTIPLIER;
     let innerOrbit: number;
     let outerOrbit: number;
-    if (CONTACT_SAFE_ORBIT_PX <= swingRadius) {
+    if (CONTACT_SAFE_ORBIT_FT <= swingRadius) {
       // Weapon out-reaches swarm body contact: anchor the micro-spacing band JUST
       // outside contact (strike, hits still land within the swing radius) and poke a
       // modest amount further out on cooldown (dodge), capped at the strike gate.
-      innerOrbit = Math.min(swingRadius, CONTACT_SAFE_ORBIT_PX);
-      outerOrbit = Math.min(strikeGate, innerOrbit + MELEE_DODGE_AMPLITUDE_PX);
+      innerOrbit = Math.min(swingRadius, CONTACT_SAFE_ORBIT_FT);
+      outerOrbit = Math.min(strikeGate, innerOrbit + MELEE_DODGE_AMPLITUDE_FT);
     } else {
       // Very short weapon (e.g. knife, reach < contact): cannot poke from outside
       // contact while still landing hits, so keep the tight reach-fraction strike
       // band and accept the trade.
       innerOrbit = innerOrbitFallback;
-      outerOrbit = Math.max(innerOrbit, reachPx * MELEE_RECOVER_HOLD_FRACTION);
+      outerOrbit = Math.max(innerOrbit, reachFt * MELEE_RECOVER_HOLD_FRACTION);
     }
     let desiredOrbit = innerOrbit + (outerOrbit - innerOrbit) * cooldownFrac;
 
-    const enemyAttackPx = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
+    const enemyAttackFt = world.stores.enemyBehavior.attackRange[target.eid] ?? 0;
     // When wounded, prioritise not being hit: allow the orbit to expand all the way
     // out to the strike gate (a swing still connects out to reach*1.5) so the player
     // can sit just beyond the enemy's own attackRange and poke from safety. At healthy
     // HP we keep the tighter recover band for maximum DPS / AoE cleave.
     const defensive = this.getPlayerHealthFraction(world) < MELEE_DEFENSIVE_HP_FRACTION;
-    const safeOrbitCap = defensive ? reachPx * ATTACK_GATE_MULTIPLIER : outerOrbit;
-    if (enemyAttackPx > 0) {
-      const safeOrbit = enemyAttackPx + KITE_DODGE_BUFFER_PX;
+    const safeOrbitCap = defensive ? reachFt * ATTACK_GATE_MULTIPLIER : outerOrbit;
+    if (enemyAttackFt > 0) {
+      const safeOrbit = enemyAttackFt + KITE_DODGE_BUFFER_FT;
       if (safeOrbit <= safeOrbitCap) {
         // We can stand outside the enemy's strike range and still land hits.
         desiredOrbit = Math.min(safeOrbitCap, Math.max(desiredOrbit, safeOrbit));
@@ -3565,34 +3570,34 @@ export class BehaviorTreeAI implements AIInputProvider {
     let rx = playerX - target.x;
     let ry = playerY - target.y;
     let dist = Math.hypot(rx, ry);
-    if (dist < 1) {
+    if (dist < 0.125) {
       // Enemy is on top of us — pick an arbitrary outward axis to escape along.
-      rx = 1;
+      rx = 0.125;
       ry = 0;
-      dist = 1;
+      dist = 0.125;
     }
     const ux = rx / dist;
     const uy = ry / dist;
     // Radial correction toward the desired orbit radius (+ux pushes outward).
     const radialMag = Math.max(
-      -KITE_RADIAL_STEP_PX,
-      Math.min(KITE_RADIAL_STEP_PX, desiredOrbit - dist),
+      -KITE_RADIAL_STEP_FT,
+      Math.min(KITE_RADIAL_STEP_FT, desiredOrbit - dist),
     );
 
     // Use full lateral orbit only when an enemy is closing from behind; otherwise
     // favour forward/backward motion (radial) with a small lateral juke so the
     // weapon stays on target instead of constantly circling past it.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafePx = backThreat ? KITE_STEP_PX : KITE_STRAFE_PX;
+    const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
 
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafePx;
-      let sy = uy * radialMag + ty * strafePx;
+      let sx = ux * radialMag + tx * strafeFt;
+      let sy = uy * radialMag + ty * strafeFt;
       const slen = Math.hypot(sx, sy) || 1;
-      sx = (sx / slen) * KITE_STEP_PX;
-      sy = (sy / slen) * KITE_STEP_PX;
+      sx = (sx / slen) * KITE_STEP_FT;
+      sy = (sy / slen) * KITE_STEP_FT;
       return { x: sx, y: sy };
     };
 
@@ -3620,7 +3625,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return {
       targetX: playerX + step.x,
       targetY: playerY + step.y,
-      reason: `Kiting enemy at ${target.distance.toFixed(0)}px (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(0)}px)`,
+      reason: `Kiting enemy at ${target.distance.toFixed(1)}ft (${ready ? 'strike' : 'dodge'}, orbit ${desiredOrbit.toFixed(1)}ft)`,
     };
   }
 
@@ -3635,14 +3640,14 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
     target: WorldTarget,
-    reachPx: number,
+    reachFt: number,
   ): { targetX: number; targetY: number; reason: string } {
     const desiredOrbit = Math.max(
-      CONTACT_SAFE_ORBIT_PX,
-      Math.min(reachPx * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_PX),
+      CONTACT_SAFE_ORBIT_FT,
+      Math.min(reachFt * RANGED_STANDOFF_FRACTION, RANGED_STANDOFF_ABS_FT),
     );
 
-    if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_PX) {
+    if (target.distance > desiredOrbit + RANGED_APPROACH_BUFFER_FT) {
       // Too far to orbit: navigate toward a point at the desired standoff distance
       // from the enemy so A* can plan the full route.
       const dx = target.x - playerX;
@@ -3651,7 +3656,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       return {
         targetX: playerX + dx * scale,
         targetY: playerY + dy * scale,
-        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(0)}px) from ${target.distance.toFixed(0)}px`,
+        reason: `Closing to ranged standoff (${desiredOrbit.toFixed(1)}ft) from ${target.distance.toFixed(1)}ft`,
       };
     }
 
@@ -3684,11 +3689,11 @@ export class BehaviorTreeAI implements AIInputProvider {
     let rx = playerX - target.x;
     let ry = playerY - target.y;
     let dist = Math.hypot(rx, ry);
-    if (dist < 1) {
+    if (dist < 0.125) {
       // Enemy is on top of us — pick an arbitrary outward axis to escape along.
-      rx = 1;
+      rx = 0.125;
       ry = 0;
-      dist = 1;
+      dist = 0.125;
     }
     const ux = rx / dist;
     const uy = ry / dist;
@@ -3705,22 +3710,22 @@ export class BehaviorTreeAI implements AIInputProvider {
     // Positive radialMag = push away from enemy (when too close).
     // Negative radialMag = nudge toward enemy (when slightly too far).
     const radialMag = Math.max(
-      -KITE_RADIAL_STEP_PX,
-      Math.min(KITE_RADIAL_STEP_PX, spacedOrbit - dist),
+      -KITE_RADIAL_STEP_FT,
+      Math.min(KITE_RADIAL_STEP_FT, spacedOrbit - dist),
     );
 
     // Prefer radial (forward/backward) motion; orbit fully only when flanked.
     const backThreat = this.hasThreatFromBehind(world, playerX, playerY, target);
-    const strafePx = backThreat ? KITE_STEP_PX : KITE_STRAFE_PX;
+    const strafeFt = backThreat ? KITE_STEP_FT : KITE_STRAFE_FT;
 
     const buildStep = (sign: 1 | -1): { x: number; y: number } => {
       const tx = -uy * sign;
       const ty = ux * sign;
-      let sx = ux * radialMag + tx * strafePx;
-      let sy = uy * radialMag + ty * strafePx;
+      let sx = ux * radialMag + tx * strafeFt;
+      let sy = uy * radialMag + ty * strafeFt;
       const slen = Math.hypot(sx, sy) || 1;
-      sx = (sx / slen) * KITE_STEP_PX;
-      sy = (sy / slen) * KITE_STEP_PX;
+      sx = (sx / slen) * KITE_STEP_FT;
+      sy = (sy / slen) * KITE_STEP_FT;
       return { x: sx, y: sy };
     };
 
@@ -3747,7 +3752,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     return {
       targetX: playerX + step.x,
       targetY: playerY + step.y,
-      reason: `Ranged orbit at ${dist.toFixed(0)}px (standoff ${spacedOrbit.toFixed(0)}px)`,
+      reason: `Ranged orbit at ${dist.toFixed(0)}ft (standoff ${spacedOrbit.toFixed(1)}ft)`,
     };
   }
 

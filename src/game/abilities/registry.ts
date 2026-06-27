@@ -20,7 +20,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
     kind: 'passive',
     effects: [
       { type: 'stat_add', stat: 'armor', value: 2 },
-      { type: 'stat_add', stat: 'pickupRange', value: 6 },
+      { type: 'stat_add', stat: 'pickupRange', value: 0.75 },
     ],
   },
   {
@@ -59,7 +59,7 @@ const ABILITY_DEFINITIONS_RAW: AbilityDefinition[] = [
       minEnemies: 3,
       withinFeet: 5,
     },
-    effects: [{ type: 'spell_pulse_shield', knockbackForce: 8, radiusTiles: 4 }],
+    effects: [{ type: 'spell_pulse_shield', knockbackForce: 1.0, radiusTiles: 4 }],
   },
 ];
 

@@ -43,7 +43,7 @@ export interface Floor1ObjectiveState {
   readonly shopRoomPos: { x: number; y: number };
   /** Position where the shopkeeper's gross fetch item is dropped in the world. */
   readonly questItemPos: { x: number; y: number };
-  readonly markerRadiusPx: number;
+  readonly markerRadiusFt: number;
   /** True after the player talks to the Tutorial Goon and accepts the rat/slime quest. */
   questAccepted: boolean;
   /** True once the combined rat+slime kill target is met after quest acceptance. */

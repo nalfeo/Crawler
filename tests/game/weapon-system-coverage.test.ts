@@ -21,7 +21,6 @@ import {
 } from '../../src/game/weaponSystem.js';
 import { WEAPON, WeaponType, TeamId, type WeaponTypeValue } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
-import { ftToPx } from '../../src/shared/units.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
@@ -32,7 +31,7 @@ describe('weaponSystem coverage paths', () => {
   it('keeps cooldown when updating active weapon; clearing weapon silences auto-fire', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
 
     const fireball = getWeaponDef('fireball')!;
     setActiveWeapon(world, fireball);
@@ -83,7 +82,7 @@ describe('weaponSystem coverage paths', () => {
   it('handles unknown active weapon types without spawning an attack', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const def = { ...getWeaponDef('fireball')!, weaponType: 255 as unknown as WeaponTypeValue };
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -109,8 +108,8 @@ describe('weaponEntitySystem coverage paths', () => {
 
   it('fires ranged weapon entities and respects cooldown gating', () => {
     const world = createTestWorld();
-    const owner = spawnPlayer(world, 10, 20);
-    spawnEnemy(world, 100, 20, 50);
+    const owner = spawnPlayer(world, 1.25, 2.5);
+    spawnEnemy(world, 12.5, 2.5, 50);
     const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 20, 50, 0, 200, TeamId.PLAYER);
 
     world.elapsedMs = 50;
@@ -128,7 +127,7 @@ describe('weaponEntitySystem coverage paths', () => {
     const world = createTestWorld();
     const owner = spawnPlayer(world, 0, 0);
     // Enemy at 50px is still reachable once melee gate includes enemy collision radius.
-    spawnEnemy(world, 50, 0, 50);
+    spawnEnemy(world, 6.25, 0, 50);
     addComponent(world.ecs, owner, set(Team, { id: TeamId.ENEMY }));
     spawnWeapon(world, owner, WeaponType.MELEE, 15, 10, 33, 0, TeamId.PLAYER);
     world.elapsedMs = 10;
@@ -140,8 +139,8 @@ describe('weaponEntitySystem coverage paths', () => {
     expect(world.stores.team.id[firstArea!]).toBe(TeamId.ENEMY);
     expect(world.stores.areaDamage.radius[firstArea!]).toBe(33);
 
-    const owner2 = spawnPlayer(world, 5, 5);
-    spawnEnemy(world, 25, 5, 50);
+    const owner2 = spawnPlayer(world, 0.625, 0.625);
+    spawnEnemy(world, 3.125, 0.625, 50);
     spawnWeapon(world, owner2, WeaponType.MELEE, 10, 10, 20, 0, TeamId.PLAYER);
     world.elapsedMs = 20;
     weaponEntitySystem(world);
@@ -155,7 +154,7 @@ describe('weaponEntitySystem coverage paths', () => {
   it('falls back to projectile spawn for unknown weapon type', () => {
     const world = createTestWorld();
     const owner = spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const weapon = createEntity(world);
     addComponent(
       world.ecs,
@@ -194,7 +193,7 @@ describe('weaponEntitySystem coverage paths', () => {
     const world = createTestWorld();
     const owner = spawnPlayer(world, 0, 0);
     // Enemy is found (no FOV map) but sits far beyond the 10px gate range.
-    spawnEnemy(world, 5000, 0, 50);
+    spawnEnemy(world, 625, 0, 50);
     const weapon = spawnWeapon(world, owner, WeaponType.RANGED, 12, 50, 10, 300, TeamId.PLAYER);
     world.elapsedMs = 50;
 
@@ -210,7 +209,7 @@ describe('weaponSystem range-gating paths', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Enemy is nearby and in combat radius, but no active weapon is set.
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     world.elapsedMs = WEAPON.FIRE_RATE_MS;
 
     weaponSystem(world);
@@ -238,7 +237,7 @@ describe('weaponSystem range-gating paths', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Enemy far beyond any ranged gate range.
-    spawnEnemy(world, 10000, 0, 50);
+    spawnEnemy(world, 1250, 0, 50);
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -251,8 +250,8 @@ describe('weaponSystem range-gating paths', () => {
   it('does not fire a melee weapon when not in combat', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    // Enemy far outside combat radius (COMBAT_RADIUS_PX = 1200).
-    spawnEnemy(world, 5000, 0, 50);
+    // Enemy far outside combat radius (COMBAT_RADIUS_FT = 150).
+    spawnEnemy(world, 625, 0, 50);
     const sword = getWeaponDef('sword')!;
     setActiveWeapon(world, sword);
     world.elapsedMs = sword.cooldownMs;
@@ -267,7 +266,7 @@ describe('weaponSystem miss events', () => {
   it('emits a miss CombatEvent when the accuracy roll fails', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     // Force a miss: baseAccuracy = 0 so effectiveAccuracy = 0; rng.next() > 0 always misses.
     const pistol = { ...getWeaponDef('pistol')!, baseAccuracy: 0 };
     setActiveWeapon(world, pistol);
@@ -286,18 +285,18 @@ describe('weaponSystem miss events', () => {
     expect(missEvent?.amount).toBe(0);
     expect(missEvent?.targetType).toBe('enemy');
     // The miss VFX is projected forward along the aim direction (toward the enemy
-    // on the +x axis) and capped at MAX_MISS_VFX_REACH_FT = 8ft, so it lands at
-    // ftToPx(min(aoeRadius || range, 8)) on x and stays on the y axis.
-    const expectedReachPx = ftToPx(Math.min(pistol.aoeRadius || pistol.range, 8));
-    expect(expectedReachPx).toBe(ftToPx(8));
-    expect(missEvent?.x).toBeCloseTo(expectedReachPx);
+    // on the +x axis) and capped at MAX_MISS_VFX_REACH_FT = 8 ft, so it lands at
+    // min(aoeRadius || range, 8) ft on x and stays on the y axis.
+    const expectedReachFt = Math.min(pistol.aoeRadius || pistol.range, 8);
+    expect(expectedReachFt).toBe(8);
+    expect(missEvent?.x).toBeCloseTo(expectedReachFt);
     expect(missEvent?.y).toBeCloseTo(0);
   });
 
   it('does not emit a miss event when the accuracy roll succeeds', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const pistol = { ...getWeaponDef('pistol')!, baseAccuracy: 1 };
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -315,7 +314,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a beam weapon (laser) and creates a LineDamage entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const laser = getWeaponDef('laser')!;
     setActiveWeapon(world, laser);
     world.elapsedMs = laser.cooldownMs;
@@ -356,7 +355,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a THROWN returning projectile (boomerang) and creates a Projectile entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const boomerang = getWeaponDef('boomerang')!;
     setActiveWeapon(world, boomerang);
     world.elapsedMs = boomerang.cooldownMs;
@@ -370,7 +369,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a THROWN bouncing projectile (throwing-knife) and creates a Projectile entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     const throwingKnife = getWeaponDef('throwing-knife')!;
     setActiveWeapon(world, throwingKnife);
     world.elapsedMs = throwingKnife.cooldownMs;
@@ -384,7 +383,7 @@ describe('weaponSystem weapon type paths', () => {
   it('fires a THROWN plain projectile (custom def) and creates a Projectile entity', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 100, 0, 50);
+    spawnEnemy(world, 12.5, 0, 50);
     // A thrown weapon with neither return nor bounce → plain spawnProjectile path
     const plain = {
       ...getWeaponDef('boomerang')!,
@@ -429,9 +428,9 @@ describe('weaponSystem boss priority targeting', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Regular enemy closer to player
-    spawnEnemy(world, 30, 0, 50);
+    spawnEnemy(world, 3.75, 0, 50);
     // Boss enemy slightly farther but still in range
-    const boss = spawnEnemy(world, 60, 0, 50);
+    const boss = spawnEnemy(world, 7.5, 0, 50);
     world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
 
     const sword = getWeaponDef('sword')!;
@@ -449,9 +448,9 @@ describe('weaponSystem boss priority targeting', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Regular enemy in reach
-    spawnEnemy(world, 30, 0, 50);
+    spawnEnemy(world, 3.75, 0, 50);
     // Boss far out of range
-    const boss = spawnEnemy(world, 9000, 0, 50);
+    const boss = spawnEnemy(world, 1125, 0, 50);
     world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
 
     const sword = getWeaponDef('sword')!;
@@ -467,8 +466,8 @@ describe('weaponSystem boss priority targeting', () => {
 });
 
 describe('weaponSystem line-of-sight gating', () => {
-  const TILE = 32;
-  // Center pixel of a tile, matching FloorMap.tileToPixel.
+  const TILE = 4;
+  // Center point of a tile (feet), matching FloorMap.tileToWorld.
   const cx = (tx: number): number => tx * TILE + TILE / 2;
   const cy = (ty: number): number => ty * TILE + TILE / 2;
 
@@ -493,7 +492,7 @@ describe('weaponSystem line-of-sight gating', () => {
     // Vertical wall column at tile x=5 separates the player from the enemy.
     world.floorMap = makeOpenFloorMap(5);
     spawnPlayer(world, cx(2), cy(5));
-    // Enemy is 192px away (well inside the bow's ~528px gate range) and inside
+    // Enemy is 24 ft away (well inside the bow's 44 ft gate range) and inside
     // the combat radius, but the wall blocks line of sight — so it must not fire.
     spawnEnemy(world, cx(8), cy(5), 50);
     const bow = getWeaponDef('bow')!;
@@ -541,12 +540,12 @@ describe('weaponSystem line-of-sight gating', () => {
 
   it('does not swing a melee weapon at an enemy through a wall', () => {
     const world = createTestWorld();
-    // Wall column at tile x=3 (pixels 96–128) sits between the player and enemy.
+    // Wall column at tile x=3 (12–16 ft) sits between the player and enemy.
     world.floorMap = makeOpenFloorMap(3);
-    spawnPlayer(world, cx(2), cy(5)); // (80, 176)
-    // Enemy 50px to the right — within the sword's 60px melee gate, but the wall
+    spawnPlayer(world, cx(2), cy(5)); // (10, 22) ft
+    // Enemy 6.25 ft to the right — within the sword's 7.5 ft melee gate, but the wall
     // strictly blocks the straight line, so the swing must not auto-aim at it.
-    spawnEnemy(world, cx(2) + 50, cy(5), 50); // (130, 176), tile (4,5)
+    spawnEnemy(world, cx(2) + 6.25, cy(5), 50); // (16.25, 22) ft, tile (4,5)
     const sword = getWeaponDef('sword')!;
     setActiveWeapon(world, sword);
     world.elapsedMs = sword.cooldownMs;
@@ -561,7 +560,7 @@ describe('weaponSystem line-of-sight gating', () => {
     const world = createTestWorld();
     world.floorMap = makeOpenFloorMap(); // no walls
     spawnPlayer(world, cx(2), cy(5));
-    spawnEnemy(world, cx(2) + 50, cy(5), 50);
+    spawnEnemy(world, cx(2) + 6.25, cy(5), 50);
     const sword = getWeaponDef('sword')!;
     setActiveWeapon(world, sword);
     world.elapsedMs = sword.cooldownMs;

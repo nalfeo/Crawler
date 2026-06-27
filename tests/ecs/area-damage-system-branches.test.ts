@@ -15,7 +15,7 @@ import type { GameWorld } from '../../src/core/world.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 20,
   heightTiles: 20,
-  tileSizePx: 32,
+  tileSizeFt: 32,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],
@@ -36,8 +36,8 @@ function makeMapWithSafeRoom(): FloorMap {
   return new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(w * h), { x: 12, y: 12 });
 }
 
-/** Pixel centre of the safe room (tile 3,3). */
-const SAFE_PX = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
+/** Feet centre of the safe room (tile 3,3). */
+const SAFE_FT = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
 
 function addBareTarget(
   world: GameWorld,
@@ -61,10 +61,10 @@ describe('areaDamageSystem branch coverage', () => {
   it('skips player-owned area attacks when the owner is inside a safe room', () => {
     const world = createTestWorld();
     world.floorMap = makeMapWithSafeRoom();
-    const player = spawnPlayer(world, SAFE_PX.x, SAFE_PX.y);
-    const enemy = spawnEnemy(world, SAFE_PX.x + 8, SAFE_PX.y, 50);
+    const player = spawnPlayer(world, SAFE_FT.x, SAFE_FT.y);
+    const enemy = spawnEnemy(world, SAFE_FT.x + 8, SAFE_FT.y, 50);
     world.elapsedMs = 100;
-    spawnAreaAttack(world, SAFE_PX.x, SAFE_PX.y, player, 15, 40, 200, TeamId.PLAYER);
+    spawnAreaAttack(world, SAFE_FT.x, SAFE_FT.y, player, 15, 40, 200, TeamId.PLAYER);
 
     const collision = collisionSystem(world);
     areaDamageSystem(world, collision);

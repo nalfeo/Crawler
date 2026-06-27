@@ -62,7 +62,7 @@ describe('floor1Scenario', () => {
     // the spell guy").
     const roomIdAt = (world: ReturnType<typeof createTestWorld>, pos: { x: number; y: number }) => {
       const map = world.floorMap!;
-      const tile = map.pixelToTile(pos.x, pos.y);
+      const tile = map.worldToTile(pos.x, pos.y);
       const room = map.rooms.find(
         (r) =>
           tile.x >= r.bounds.x &&
@@ -175,7 +175,7 @@ describe('floor1Scenario', () => {
         if (world.stores.sprite.textureId[eid] !== WELCOME_SIGN_TEXTURE) continue;
         const sx = world.stores.position.x[eid] ?? 0;
         const sy = world.stores.position.y[eid] ?? 0;
-        const signTile = map.pixelToTile(sx, sy);
+        const signTile = map.worldToTile(sx, sy);
         expect(`${signTile.x},${signTile.y}`).not.toBe(`${spawnTile.x},${spawnTile.y}`);
       }
     }
@@ -872,7 +872,7 @@ describe('floor1Scenario', () => {
       for (const room of floorMap.roomGraph.getRoomsByRole(RoomRole.BOSS_STAIR)) {
         targetRoomIds.add(room.id);
       }
-      const slimeTile = floorMap.pixelToTile(
+      const slimeTile = floorMap.worldToTile(
         objective.slimeRatRoomPos.x,
         objective.slimeRatRoomPos.y,
       );
@@ -934,7 +934,7 @@ describe('floor1Scenario', () => {
 
       const bx = world.stores.position.x[bossEid!] ?? 0;
       const by = world.stores.position.y[bossEid!] ?? 0;
-      const tile = floorMap.pixelToTile(bx, by);
+      const tile = floorMap.worldToTile(bx, by);
       expect(floorMap.tileMap.isPassable(tile.x, tile.y)).toBe(true);
     });
 
@@ -954,7 +954,7 @@ describe('floor1Scenario', () => {
       if (!bossRoom) return;
 
       const questItemPos = world.floor1!.objective.questItemPos;
-      const questTile = floorMap.pixelToTile(questItemPos.x, questItemPos.y);
+      const questTile = floorMap.worldToTile(questItemPos.x, questItemPos.y);
       const questRoomId = floorMap.roomGraph.getRoomAt(questTile.x, questTile.y);
 
       // The quest item room must be reachable from spawn without traversing the
@@ -1063,9 +1063,9 @@ describe('floor1Scenario', () => {
       world: ReturnType<typeof createTestWorld>,
       cx: number,
       cy: number,
-      radiusPx: number,
+      radiusFt: number,
     ): number => {
-      const radiusSq = radiusPx * radiusPx;
+      const radiusSq = radiusFt * radiusFt;
       let n = 0;
       for (const eid of query(world.ecs, [Enemy, Position])) {
         const dx = (world.stores.position.x[eid] ?? 0) - cx;
@@ -1082,7 +1082,7 @@ describe('floor1Scenario', () => {
       const map = world.floorMap!;
       let n = 0;
       for (const eid of query(world.ecs, [Enemy, Position])) {
-        const tile = map.pixelToTile(
+        const tile = map.worldToTile(
           world.stores.position.x[eid] ?? 0,
           world.stores.position.y[eid] ?? 0,
         );
@@ -1133,7 +1133,7 @@ describe('floor1Scenario', () => {
       expect(room).toBeDefined();
       const cx = room!.bounds.x + Math.floor(room!.bounds.width / 2);
       const cy = room!.bounds.y + Math.floor(room!.bounds.height / 2);
-      const center = map.tileToPixel(cx, cy);
+      const center = map.tileToWorld(cx, cy);
       world.stores.position.x[player] = center.x;
       world.stores.position.y[player] = center.y;
 
@@ -1151,7 +1151,7 @@ describe('floor1Scenario', () => {
       // constant combat.
       expect(pack.enemyCap).toBeGreaterThan(14);
       expect(query(world.ecs, [Enemy]).length).toBeGreaterThanOrEqual(pack.engageTarget);
-      expect(countWithin(world, center.x, center.y, pack.engageRadiusPx)).toBeGreaterThanOrEqual(
+      expect(countWithin(world, center.x, center.y, pack.engageRadiusFt)).toBeGreaterThanOrEqual(
         pack.engageTarget,
       );
     });
@@ -1168,14 +1168,14 @@ describe('floor1Scenario', () => {
       // Fill the field to the global cap, all parked well outside the engagement
       // ring but inside the flat despawn distance (so the director won't simply
       // delete them) — the player is momentarily surrounded by nothing close.
-      const farX = px + pack.engageRadiusPx + 300;
+      const farX = px + pack.engageRadiusFt + 37.5;
       const existing = query(world.ecs, [Enemy]).length;
       for (let i = existing; i < pack.enemyCap; i += 1) {
         const eid = spawnBehaviorEnemy(world, farX, py, 20, AI_TYPE.CHASE, 0.5, 100, 0);
         world.floor1!.enemyArchetypes.set(eid, 'rat');
       }
       expect(query(world.ecs, [Enemy]).length).toBe(pack.enemyCap);
-      const engagingBefore = countWithin(world, px, py, pack.engageRadiusPx);
+      const engagingBefore = countWithin(world, px, py, pack.engageRadiusFt);
 
       world.elapsedMs = 10_000;
       floor1EnemyDirectorSystem(world);
@@ -1183,7 +1183,7 @@ describe('floor1Scenario', () => {
       // Still capped, but the furthest stragglers were recycled into fresh spawns
       // inside the engagement ring — the player has nearby threats again.
       expect(query(world.ecs, [Enemy]).length).toBeLessThanOrEqual(pack.enemyCap);
-      expect(countWithin(world, px, py, pack.engageRadiusPx)).toBeGreaterThan(engagingBefore);
+      expect(countWithin(world, px, py, pack.engageRadiusFt)).toBeGreaterThan(engagingBefore);
     });
 
     it('pre-populates a freshly entered combat room with a one-time wave', () => {
@@ -1209,7 +1209,7 @@ describe('floor1Scenario', () => {
         world.elapsedMs = 5_000;
         floor1EnemyDirectorSystem(world);
 
-        const center = map.tileToPixel(cx, cy);
+        const center = map.tileToWorld(cx, cy);
         world.stores.position.x[player] = center.x;
         world.stores.position.y[player] = center.y;
 
@@ -1229,7 +1229,7 @@ describe('floor1Scenario', () => {
           const ey = world.stores.position.y[eid] ?? 0;
           const dx = ex - center.x;
           const dy = ey - center.y;
-          expect(dx * dx + dy * dy).toBeGreaterThanOrEqual(96 * 96);
+          expect(dx * dx + dy * dy).toBeGreaterThanOrEqual(12 * 12);
         }
 
         // Re-ticking the same room never re-rolls another wave.

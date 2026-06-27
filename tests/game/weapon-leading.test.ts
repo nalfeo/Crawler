@@ -67,11 +67,11 @@ describe('computeLeadDirection', () => {
 describe('weaponSystem ranged leading', () => {
   it('leads a laterally moving enemy instead of aiming at its current position', () => {
     const world = createTestWorld();
-    spawnPlayer(world, 100, 100);
-    // Enemy directly to the right, moving downward (+y) at 2 px/frame.
-    const enemy = spawnEnemy(world, 300, 100, 10);
+    spawnPlayer(world, 12.5, 12.5);
+    // Enemy directly to the right, moving downward (+y) at 0.25 ft/frame.
+    const enemy = spawnEnemy(world, 37.5, 12.5, 10);
     world.stores.velocity.x[enemy] = 0;
-    world.stores.velocity.y[enemy] = 2;
+    world.stores.velocity.y[enemy] = 0.25;
 
     const bow = getWeaponDef('bow')!;
     setActiveWeapon(world, bow);

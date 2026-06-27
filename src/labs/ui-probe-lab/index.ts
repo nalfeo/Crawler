@@ -41,6 +41,7 @@ import { GENERATED_SPRITE_REGISTRY_KEY } from '../../engine/generatedAssets/inde
 import { buildGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { MERCHANTS_CHARM_DEF } from '../../shared/equipmentDefs.js';
 import { GAME } from '../../shared/constants.js';
+import { PIXELS_PER_FOOT, pxToFt } from '../../shared/units.js';
 import { addItem } from '../../shared/inventory.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -51,6 +52,7 @@ const LAB_ID = 'ui-probe-lab';
 const SCENE_KEY = 'UiProbeScene';
 const LAB_SEED = 4242;
 
+/** On-screen grid pitch in canvas pixels (this lab reasons in CSS/canvas px). */
 const TILE = 64;
 const GW = Math.ceil(GAME.WIDTH / TILE);
 const GH = Math.ceil(GAME.HEIGHT / TILE);
@@ -110,7 +112,7 @@ function buildProbeFloorMap(): FloorMap {
   const cfg = {
     widthTiles: GW,
     heightTiles: GH,
-    tileSizePx: TILE,
+    tileSizeFt: TILE / PIXELS_PER_FOOT,
     biome: BiomeType.DUNGEON as BiomeType,
     seed: LAB_SEED,
     roomWidthRange: [4, 18] as [number, number],
@@ -244,7 +246,9 @@ function createUiProbeLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.world.floor = 1;
       this.world.state = 'safe_room';
       this.world.floorMap = buildProbeFloorMap();
-      this.playerEid = spawnPlayer(this.world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+      // Spawn at the room centre in FEET (pxToFt of the canvas centre) so the
+      // minimap dot lands mid-map; tileSizeFt = TILE/PIXELS_PER_FOOT.
+      this.playerEid = spawnPlayer(this.world, pxToFt(GAME.WIDTH / 2), pxToFt(GAME.HEIGHT / 2));
       initializeBaseStats(this.world, this.playerEid);
 
       const bag = this.world.inventories.get(this.playerEid);

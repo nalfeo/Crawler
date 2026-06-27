@@ -22,6 +22,7 @@ import type { CombatEvent } from '../shared/combat-events.js';
 import type { VfxEvent } from '../shared/vfx-events.js';
 import type { GameWorld } from '../core/world.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
+import { ftToPx } from '../shared/units.js';
 
 type Shape = Phaser.GameObjects.Shape;
 
@@ -195,33 +196,25 @@ export function createEffectsVfx(scene: Phaser.Scene): {
   }
 
   function handleVfxEvent(event: VfxEvent, renderElapsedMs: number): void {
+    // World-feet → render px: effects spawn as world-space Phaser objects, so the
+    // anchor is converted here while the helpers keep their px-space size/spread.
+    const x = ftToPx(event.x);
+    const y = ftToPx(event.y);
     switch (event.kind) {
       case 'pickupSparkle':
-        pickupSparkle(event.x, event.y, event.color ?? 0xffffff);
+        pickupSparkle(x, y, event.color ?? 0xffffff);
         break;
       case 'levelUpBurst':
-        levelUpBurst(event.x, event.y, event.color ?? COLOR_LEVEL_UP, event.intensity ?? 1);
+        levelUpBurst(x, y, event.color ?? COLOR_LEVEL_UP, event.intensity ?? 1);
         break;
       case 'hitSpark':
-        hitSpark(
-          event.x,
-          event.y,
-          event.color ?? COLOR_HIT_SPARK,
-          HIT_SPARK_COUNT,
-          WORLD_VFX_DEPTH.hitSpark,
-        );
+        hitSpark(x, y, event.color ?? COLOR_HIT_SPARK, HIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);
         break;
       case 'critBurst':
-        hitSpark(
-          event.x,
-          event.y,
-          event.color ?? COLOR_CRIT_SPARK,
-          CRIT_SPARK_COUNT,
-          WORLD_VFX_DEPTH.hitSpark,
-        );
+        hitSpark(x, y, event.color ?? COLOR_CRIT_SPARK, CRIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);
         break;
       case 'deathPop':
-        deathPop(event.x, event.y, event.color ?? 0xcc0000, event.intensity ?? 1);
+        deathPop(x, y, event.color ?? 0xcc0000, event.intensity ?? 1);
         break;
       case 'playerHurt':
         // Queue-sourced player-hurt shares the combat throttle; stamp it with the
@@ -237,14 +230,17 @@ export function createEffectsVfx(scene: Phaser.Scene): {
         playerHurt(renderElapsedMs);
         return;
       }
-      hitSpark(event.x, event.y, COLOR_HIT_SPARK, HIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);
+      // World-feet → render px (world-space Phaser objects).
+      const x = ftToPx(event.x);
+      const y = ftToPx(event.y);
+      hitSpark(x, y, COLOR_HIT_SPARK, HIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);
       if (event.isCrit) {
-        hitSpark(event.x, event.y, COLOR_CRIT_SPARK, CRIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);
+        hitSpark(x, y, COLOR_CRIT_SPARK, CRIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);
       }
     } else if (event.type === 'death' && event.targetType === 'enemy') {
       const overkill = event.overkill ?? 0;
       const intensity = 1 + Math.min(overkill / 20, 1.5);
-      deathPop(event.x, event.y, event.bloodColor ?? 0xcc0000, intensity);
+      deathPop(ftToPx(event.x), ftToPx(event.y), event.bloodColor ?? 0xcc0000, intensity);
     }
   }
 

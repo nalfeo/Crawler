@@ -19,7 +19,7 @@ import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 20,
   heightTiles: 20,
-  tileSizePx: 32,
+  tileSizeFt: 32,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],
@@ -30,8 +30,8 @@ const MAP_CFG: MapConfig = {
 
 /**
  * Build a minimal FloorMap with:
- *   - a SAFE room at tiles (1,1)–(4,4) (exclusive), centre pixel ≈ (80, 80)
- *   - a NORMAL room at tiles (10,10)–(14,14), centre pixel ≈ (384, 384)
+ *   - a SAFE room at tiles (1,1)–(4,4) (exclusive), centre (feet) ≈ (80, 80)
+ *   - a NORMAL room at tiles (10,10)–(14,14), centre (feet) ≈ (384, 384)
  */
 function makeMapWithSafeRoom(): FloorMap {
   const w = 20;
@@ -56,10 +56,10 @@ function makeMapWithSafeRoom(): FloorMap {
   return new FloorMap(MAP_CFG, tileMap, graph, terrain, { x: 12, y: 12 });
 }
 
-/** Pixel centre of the safe room (tile 3,3 → pixel 3*32+16=112, same for y). */
-const SAFE_PX = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
-/** Pixel centre of the normal room (tile 12,12 → pixel 12*32+16=400). */
-const NORMAL_PX = { x: 12 * 32 + 16, y: 12 * 32 + 16 };
+/** Feet centre of the safe room (tile 3,3 → 3*32+16=112, same for y). */
+const SAFE_FT = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
+/** Feet centre of the normal room (tile 12,12 → 12*32+16=400). */
+const NORMAL_FT = { x: 12 * 32 + 16, y: 12 * 32 + 16 };
 
 // ---------------------------------------------------------------------------
 // isPointInSafeSpace
@@ -74,16 +74,16 @@ describe('isPointInSafeSpace', () => {
   });
 
   it('returns true when point is inside the safe room', () => {
-    expect(isPointInSafeSpace(world, SAFE_PX.x, SAFE_PX.y)).toBe(true);
+    expect(isPointInSafeSpace(world, SAFE_FT.x, SAFE_FT.y)).toBe(true);
   });
 
   it('returns false when point is in a normal room', () => {
-    expect(isPointInSafeSpace(world, NORMAL_PX.x, NORMAL_PX.y)).toBe(false);
+    expect(isPointInSafeSpace(world, NORMAL_FT.x, NORMAL_FT.y)).toBe(false);
   });
 
   it('returns false when world has no floorMap', () => {
     world.floorMap = null;
-    expect(isPointInSafeSpace(world, SAFE_PX.x, SAFE_PX.y)).toBe(false);
+    expect(isPointInSafeSpace(world, SAFE_FT.x, SAFE_FT.y)).toBe(false);
   });
 
   it('returns false when there are no SAFE rooms', () => {
@@ -91,7 +91,7 @@ describe('isPointInSafeSpace', () => {
     graph.add({ x: 1, y: 1, width: 4, height: 4 }, [], [], RoomRole.NORMAL);
     const tileMap = new TileMap(20, 20);
     world.floorMap = new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(400), { x: 2, y: 2 });
-    expect(isPointInSafeSpace(world, SAFE_PX.x, SAFE_PX.y)).toBe(false);
+    expect(isPointInSafeSpace(world, SAFE_FT.x, SAFE_FT.y)).toBe(false);
   });
 });
 
@@ -106,7 +106,7 @@ describe('safeRoomSystem', () => {
   beforeEach(() => {
     world = createTestWorld();
     world.floorMap = makeMapWithSafeRoom();
-    playerEid = spawnPlayer(world, SAFE_PX.x, SAFE_PX.y);
+    playerEid = spawnPlayer(world, SAFE_FT.x, SAFE_FT.y);
   });
 
   it('sets playerInSafeRoom=true when player is in a safe room', () => {
@@ -116,8 +116,8 @@ describe('safeRoomSystem', () => {
   });
 
   it('sets playerInSafeRoom=false when player is outside safe rooms', () => {
-    world.stores.position.x[playerEid] = NORMAL_PX.x;
-    world.stores.position.y[playerEid] = NORMAL_PX.y;
+    world.stores.position.x[playerEid] = NORMAL_FT.x;
+    world.stores.position.y[playerEid] = NORMAL_FT.y;
     world.state = 'playing';
     safeRoomSystem(world);
     expect(world.playerInSafeRoom).toBe(false);
@@ -150,14 +150,14 @@ describe('safeRoomSystem', () => {
     expect(world.playerInSafeRoom).toBe(true);
 
     // Move to normal room
-    world.stores.position.x[playerEid] = NORMAL_PX.x;
-    world.stores.position.y[playerEid] = NORMAL_PX.y;
+    world.stores.position.x[playerEid] = NORMAL_FT.x;
+    world.stores.position.y[playerEid] = NORMAL_FT.y;
     safeRoomSystem(world);
     expect(world.playerInSafeRoom).toBe(false);
 
     // Move back into safe room
-    world.stores.position.x[playerEid] = SAFE_PX.x;
-    world.stores.position.y[playerEid] = SAFE_PX.y;
+    world.stores.position.x[playerEid] = SAFE_FT.x;
+    world.stores.position.y[playerEid] = SAFE_FT.y;
     safeRoomSystem(world);
     expect(world.playerInSafeRoom).toBe(true);
   });

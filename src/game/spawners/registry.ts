@@ -21,15 +21,15 @@ const RAT: MobTemplate = {
   name: 'Rat',
   aiType: AI_TYPE.CHASE,
   hp: 8,
-  speed: 1.8,
-  aggroRange: 320,
+  speed: 0.225,
+  aggroRange: 40,
   attackRange: 0,
   contactDamage: 4,
   weight: 6,
   bloodColor: BLOOD_RAT,
   textureId: 0,
-  spriteWidth: 12,
-  spriteHeight: 12,
+  spriteWidth: 1.5,
+  spriteHeight: 1.5,
 };
 
 const RAT_BRUTE: MobTemplate = {
@@ -37,15 +37,15 @@ const RAT_BRUTE: MobTemplate = {
   name: 'Rat Brute',
   aiType: AI_TYPE.CHASE,
   hp: 28,
-  speed: 1.2,
-  aggroRange: 340,
+  speed: 0.15,
+  aggroRange: 42.5,
   attackRange: 0,
   contactDamage: 10,
   weight: 30,
   bloodColor: BLOOD_RAT,
   textureId: 0,
-  spriteWidth: 18,
-  spriteHeight: 18,
+  spriteWidth: 2.25,
+  spriteHeight: 2.25,
 };
 
 const RAT_KING: MobTemplate = {
@@ -53,15 +53,15 @@ const RAT_KING: MobTemplate = {
   name: 'Rat King',
   aiType: AI_TYPE.CHASE,
   hp: 90,
-  speed: 1.4,
-  aggroRange: 520,
+  speed: 0.175,
+  aggroRange: 65,
   attackRange: 0,
   contactDamage: 16,
   weight: 70,
   bloodColor: BLOOD_RAT,
   textureId: 0,
-  spriteWidth: 24,
-  spriteHeight: 24,
+  spriteWidth: 3,
+  spriteHeight: 3,
 };
 
 const RAT_QUEEN: MobTemplate = {
@@ -69,15 +69,15 @@ const RAT_QUEEN: MobTemplate = {
   name: 'Rat Queen',
   aiType: AI_TYPE.CHASE,
   hp: 80,
-  speed: 1.7,
-  aggroRange: 560,
+  speed: 0.2125,
+  aggroRange: 70,
   attackRange: 0,
   contactDamage: 14,
   weight: 60,
   bloodColor: BLOOD_RAT,
   textureId: 0,
-  spriteWidth: 24,
-  spriteHeight: 24,
+  spriteWidth: 3,
+  spriteHeight: 3,
 };
 
 // --- Slime Pool mobs --------------------------------------------------------
@@ -87,15 +87,15 @@ const SLIME: MobTemplate = {
   name: 'Slime',
   aiType: AI_TYPE.LEAPER,
   hp: 12,
-  speed: 0.9,
-  aggroRange: 320,
+  speed: 0.1125,
+  aggroRange: 40,
   attackRange: 0,
   contactDamage: 6,
   weight: 20,
   bloodColor: BLOOD_SLIME,
   textureId: 0,
-  spriteWidth: 16,
-  spriteHeight: 16,
+  spriteWidth: 2,
+  spriteHeight: 2,
 };
 
 const MAMA_SLIME: MobTemplate = {
@@ -103,15 +103,15 @@ const MAMA_SLIME: MobTemplate = {
   name: 'Mama Slime',
   aiType: AI_TYPE.LEAPER,
   hp: 100,
-  speed: 0.7,
-  aggroRange: 420,
+  speed: 0.0875,
+  aggroRange: 52.5,
   attackRange: 0,
   contactDamage: 18,
   weight: 130,
   bloodColor: BLOOD_SLIME,
   textureId: 0,
-  spriteWidth: 28,
-  spriteHeight: 28,
+  spriteWidth: 3.5,
+  spriteHeight: 3.5,
 };
 
 const PAPA_SLIME: MobTemplate = {
@@ -119,15 +119,15 @@ const PAPA_SLIME: MobTemplate = {
   name: 'Papa Slime',
   aiType: AI_TYPE.LEAPER,
   hp: 120,
-  speed: 0.6,
-  aggroRange: 420,
+  speed: 0.075,
+  aggroRange: 52.5,
   attackRange: 0,
   contactDamage: 22,
   weight: 160,
   bloodColor: BLOOD_SLIME,
   textureId: 0,
-  spriteWidth: 30,
-  spriteHeight: 30,
+  spriteWidth: 3.75,
+  spriteHeight: 3.75,
 };
 
 // --- Archetypes -------------------------------------------------------------
@@ -139,8 +139,8 @@ const RATS_NEST: SpawnerArchetype = {
   weight: 200,
   bloodColor: BLOOD_RAT,
   textureId: 0,
-  spriteWidth: 26,
-  spriteHeight: 26,
+  spriteWidth: 3.25,
+  spriteHeight: 3.25,
   contactDamage: 4,
   // Passive: a slow trickle of rats, with the occasional brute.
   passive: {
@@ -183,8 +183,8 @@ const SLIME_POOL: SpawnerArchetype = {
   weight: 250,
   bloodColor: BLOOD_SLIME,
   textureId: 0,
-  spriteWidth: 28,
-  spriteHeight: 28,
+  spriteWidth: 3.5,
+  spriteHeight: 3.5,
   contactDamage: 5,
   // Passive: lone slimes ooze out slowly.
   passive: {

@@ -33,7 +33,7 @@ export const STAT_DISPLAY: Readonly<Record<StatKey, StatDisplayInfo>> = {
   moveSpeed: {
     label: 'Move Speed',
     description: 'How quickly you move around the floor.',
-    decimals: 1,
+    decimals: 4,
   },
   damage: {
     label: 'Damage',
@@ -93,7 +93,7 @@ export const PRIMARY_STAT_DISPLAY: Readonly<Record<PrimaryStatId, StatDisplayInf
   dexterity: {
     label: 'Dexterity',
     description:
-      '+0.05 Attack Speed · +0.1 Move Speed · +0.01 Accuracy · +0.3% Dodge Chance per point. Agility and precision.',
+      '+0.05 Attack Speed · +0.0125 Move Speed · +0.01 Accuracy · +0.3% Dodge Chance per point. Agility and precision.',
     decimals: 0,
   },
   constitution: {

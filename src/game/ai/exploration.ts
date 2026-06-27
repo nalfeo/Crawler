@@ -24,7 +24,7 @@ import type { DoorUnlockRequirement } from '../../core/door-navigation.js';
 /**
  * Read-only view of the floor a frontier search runs over. Supplied by the
  * caller so the BFS stays a pure function of grid shape + predicates, with no
- * dependency on {@link FloorMap} or pixel geometry.
+ * dependency on {@link FloorMap} or feet geometry.
  */
 export interface FrontierGrid {
   readonly width: number;
@@ -35,8 +35,8 @@ export interface FrontierGrid {
   isSeen(index: number): boolean;
   /** True when the AI may walk onto this tile (door-aware passability). */
   isPassable(tileX: number, tileY: number): boolean;
-  /** Pixel distance from the reference point (the player) to this tile's centre. */
-  tileDistancePx(tileX: number, tileY: number): number;
+  /** Distance in feet from the reference point (the player) to this tile's centre. */
+  tileDistanceFt(tileX: number, tileY: number): number;
 }
 
 export interface FrontierTile {
@@ -47,7 +47,7 @@ export interface FrontierTile {
 /**
  * Breadth-first search from the player through SEEN, passable ground for the
  * nearest "frontier" tile — a seen tile with at least one unseen in-bounds
- * neighbour — that lies at least {@link minDistancePx} away. Because BFS expands
+ * neighbour — that lies at least {@link minDistanceFt} away. Because BFS expands
  * nearest-first by step count, the first qualifying frontier is effectively the
  * closest useful one. Expansion is capped at {@link maxTiles} so a fully-open
  * floor cannot make the search unbounded.
@@ -68,7 +68,7 @@ export function findNearestFrontierTile(
   grid: FrontierGrid,
   startTileX: number,
   startTileY: number,
-  minDistancePx: number,
+  minDistanceFt: number,
   maxTiles: number,
   visited: Uint8Array,
 ): FrontierTile | null {
@@ -116,7 +116,7 @@ export function findNearestFrontierTile(
       }
     }
 
-    if (isFrontier && grid.tileDistancePx(tx, ty) >= minDistancePx) {
+    if (isFrontier && grid.tileDistanceFt(tx, ty) >= minDistanceFt) {
       // BFS is nearest-first by step count, so the first frontier past the
       // minimum travel distance is effectively the nearest useful one.
       return { tileX: tx, tileY: ty };
@@ -144,7 +144,7 @@ export interface PoiCandidate {
 }
 
 /**
- * Pick the nearest still-relevant POI strictly within {@link maxRadiusPx} of
+ * Pick the nearest still-relevant POI strictly within {@link maxRadiusFt} of
  * the reference point. Mirrors the AI's NPC/objective scan: candidates outside
  * the scan radius are ignored, already-handled ones (relevant === false) are
  * skipped, and ties resolve to the first candidate encountered (caller controls
@@ -157,10 +157,10 @@ export function pickNearestPoi<T extends PoiCandidate>(
   candidates: Iterable<T>,
   fromX: number,
   fromY: number,
-  maxRadiusPx: number,
+  maxRadiusFt: number,
 ): T | null {
   let nearest: T | null = null;
-  let minDist = maxRadiusPx;
+  let minDist = maxRadiusFt;
   for (const candidate of candidates) {
     if (!candidate.relevant) {
       continue;
@@ -237,12 +237,12 @@ export function isDoorKnownLocked(
 
 /**
  * Advance the per-frame stuck counter: increment while the player moves less
- * than {@link epsilonPx} between polls, reset to 0 the moment real travel
+ * than {@link epsilonFt} between polls, reset to 0 the moment real travel
  * happens. A weak signal on its own (a slow productive crawl can still climb
  * it), so callers pair it with the net-displacement {@link DwellTracker} below.
  */
-export function nextStuckFrames(prevFrames: number, movedPx: number, epsilonPx: number): number {
-  return movedPx < epsilonPx ? prevFrames + 1 : 0;
+export function nextStuckFrames(prevFrames: number, movedFt: number, epsilonFt: number): number {
+  return movedFt < epsilonFt ? prevFrames + 1 : 0;
 }
 
 export type DwellResult =
@@ -273,11 +273,11 @@ export class DwellTracker {
   private frames = 0;
 
   /**
-   * @param escapePx  net travel from the anchor that counts as escaping the dwell.
+   * @param escapeFt  net travel from the anchor that counts as escaping the dwell.
    * @param frameLimit polls parked inside the circle before reporting `'fired'`.
    */
   constructor(
-    private readonly escapePx: number,
+    private readonly escapeFt: number,
     private readonly frameLimit: number,
   ) {}
 
@@ -312,7 +312,7 @@ export class DwellTracker {
     }
 
     const drift = Math.hypot(x - this.anchorX, y - this.anchorY);
-    if (drift > this.escapePx || extraProgress) {
+    if (drift > this.escapeFt || extraProgress) {
       this.anchorX = x;
       this.anchorY = y;
       this.frames = 0;

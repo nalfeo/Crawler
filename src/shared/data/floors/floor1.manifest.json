@@ -13,23 +13,23 @@
     "requiredTotalKills": 10,
     "requiredGold": 15,
     "requiredJunk": 2,
-    "markerRadiusPx": 64
+    "markerRadiusFt": 8.0
   },
   "map": {
     "widthTiles": 240,
     "heightTiles": 140,
-    "tileSizePx": 32,
     "seed": 42,
     "roomWidthRange": [10, 22],
     "roomHeightRange": [9, 20],
     "maxRooms": 70,
-    "floorDensity": 0.36
+    "floorDensity": 0.36,
+    "tileSizeFt": 4.0
   },
   "enemyPackId": "floor1-ambient",
   "player": {
     "hpBonus": 20,
-    "moveSpeedBonus": 0.2,
-    "pickupRangeBonus": 8
+    "moveSpeedBonus": 0.025,
+    "pickupRangeBonus": 1.0
   },
   "camera": {
     "zoom": 2.0
@@ -40,19 +40,19 @@
   "bossVariants": {
     "slimeRat": {
       "hp": 140,
-      "speed": 1.0,
-      "detectRange": 440,
+      "speed": 0.125,
+      "detectRange": 55.0,
       "fireballCooldownMs": 7000
     },
     "ratSlime": {
       "hp": 280,
-      "speed": 1.15,
-      "detectRange": 540,
+      "speed": 0.14375,
+      "detectRange": 67.5,
       "fireballCooldownMs": 5000,
-      "spawnRadiusMin": 64,
-      "spawnRadiusMax": 110,
-      "spriteWidth": 30,
-      "spriteHeight": 30
+      "spawnRadiusMin": 8,
+      "spawnRadiusMax": 13.75,
+      "spriteWidth": 3.75,
+      "spriteHeight": 3.75
     }
   },
   "npcPlacements": [

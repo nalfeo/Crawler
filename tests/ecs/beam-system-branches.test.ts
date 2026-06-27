@@ -14,7 +14,7 @@ import type { GameWorld } from '../../src/core/world.js';
 const MAP_CFG: MapConfig = {
   widthTiles: 20,
   heightTiles: 20,
-  tileSizePx: 32,
+  tileSizeFt: 32,
   biome: BiomeType.DUNGEON,
   seed: 1,
   roomWidthRange: [4, 8],
@@ -35,7 +35,7 @@ function makeMapWithSafeRoom(): FloorMap {
   return new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(w * h), { x: 12, y: 12 });
 }
 
-const SAFE_PX = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
+const SAFE_FT = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
 
 function addBareHealthTarget(world: GameWorld, x: number, y: number, team?: number): number {
   const eid = addEntity(world.ecs);
@@ -65,10 +65,10 @@ describe('beamSystem branch coverage', () => {
   it('skips beams owned by a player standing in a safe room', () => {
     const world = createTestWorld();
     world.floorMap = makeMapWithSafeRoom();
-    const player = spawnPlayer(world, SAFE_PX.x, SAFE_PX.y);
-    const enemy = spawnEnemy(world, SAFE_PX.x + 20, SAFE_PX.y, 50);
+    const player = spawnPlayer(world, SAFE_FT.x, SAFE_FT.y);
+    const enemy = spawnEnemy(world, SAFE_FT.x + 20, SAFE_FT.y, 50);
     world.elapsedMs = 1000;
-    spawnBeam(world, SAFE_PX.x, SAFE_PX.y, 1, 0, 64, 15, 500, 0, player, TeamId.PLAYER);
+    spawnBeam(world, SAFE_FT.x, SAFE_FT.y, 1, 0, 64, 15, 500, 0, player, TeamId.PLAYER);
 
     beamSystem(world);
 

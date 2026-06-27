@@ -32,6 +32,7 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import { UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
+import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
@@ -386,8 +387,9 @@ export class MainGameScene extends Phaser.Scene {
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
     }
@@ -963,8 +965,8 @@ export class MainGameScene extends Phaser.Scene {
         this.previousBossEids.set(bossId, bossEid);
         if (bossEid !== null && entityExists(this.world.ecs, bossEid)) {
           this.triggerBossSpawnFx(
-            this.world.stores.position.x[bossEid] ?? 0,
-            this.world.stores.position.y[bossEid] ?? 0,
+            ftToPx(this.world.stores.position.x[bossEid] ?? 0),
+            ftToPx(this.world.stores.position.y[bossEid] ?? 0),
           );
         }
       }
@@ -1228,7 +1230,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.updateDoorOverlay();
-    this.cameras.main.setBounds(0, 0, floorMap.widthPx, floorMap.heightPx);
+    this.cameras.main.setBounds(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt));
     this.cameras.main.setZoom(CAMERA.BASE_ZOOM * getRenderScale(this));
     this.cameraInSafeRoom = false;
   }
@@ -1515,7 +1517,7 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.doorImages.length = 0;
 
-    const tileSize = floorMap.config.tileSizePx;
+    const tileSize = floorMap.config.tileSizeFt * PIXELS_PER_FOOT;
     const TD_KEY = 'kenney-tiny-dungeon';
     const DOOR_CLOSED_FRAME = 46; // brown arched wooden door
     const DOOR_OPEN_FRAME = 34; // door swung open, clear passage
@@ -1569,9 +1571,12 @@ export class MainGameScene extends Phaser.Scene {
     if (this.playerEid < 0) {
       return;
     }
-    const x = this.world.stores.position.x[this.playerEid] ?? GAME.WIDTH * 0.5;
-    const y = this.world.stores.position.y[this.playerEid] ?? GAME.HEIGHT * 0.5;
-    this.cameras.main.centerOn(x, y);
+    const px = this.world.stores.position.x[this.playerEid];
+    const py = this.world.stores.position.y[this.playerEid];
+    this.cameras.main.centerOn(
+      px !== undefined ? ftToPx(px) : GAME.WIDTH * 0.5,
+      py !== undefined ? ftToPx(py) : GAME.HEIGHT * 0.5,
+    );
     this.updateSafeRoomZoom();
   }
 
@@ -1602,49 +1607,39 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     const objective = this.world.floor1.objective;
+    // Marker positions/radii are in feet; scale to pixels for world rendering.
+    const staircaseX = ftToPx(objective.staircasePos.x);
+    const staircaseY = ftToPx(objective.staircasePos.y);
+    const markerRadiusPx = ftToPx(objective.markerRadiusFt);
     if (!this.staircaseMarker) {
       this.staircaseMarker = this.add
-        .circle(
-          objective.staircasePos.x,
-          objective.staircasePos.y,
-          objective.markerRadiusPx,
-          0x10b981,
-          0.25,
-        )
+        .circle(staircaseX, staircaseY, markerRadiusPx, 0x10b981, 0.25)
         .setStrokeStyle(2, 0x86efac, 0.95)
         .setDepth(20);
     }
     const staircaseFill = objective.staircaseLocked ? 0xf59e0b : 0x10b981;
     const staircaseStroke = objective.staircaseLocked ? 0xfcd34d : 0x86efac;
-    this.staircaseMarker.setPosition(objective.staircasePos.x, objective.staircasePos.y);
-    this.staircaseMarker.setRadius(objective.markerRadiusPx);
+    this.staircaseMarker.setPosition(staircaseX, staircaseY);
+    this.staircaseMarker.setRadius(markerRadiusPx);
     this.staircaseMarker.setFillStyle(staircaseFill, 0.25);
     this.staircaseMarker.setStrokeStyle(2, staircaseStroke, 0.95);
     this.staircaseMarker.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
     // World-space staircase label above the marker
     if (!this.stairsLabel) {
       this.stairsLabel = this.add
-        .text(
-          objective.staircasePos.x,
-          objective.staircasePos.y - objective.markerRadiusPx - 10,
-          '▼ STAIRS',
-          {
-            fontFamily: 'monospace',
-            fontSize: '13px',
-            color: '#fef9c3',
-            backgroundColor: '#422006cc',
-            padding: { x: 8, y: 4 },
-            align: 'center',
-          },
-        )
+        .text(staircaseX, staircaseY - markerRadiusPx - 10, '▼ STAIRS', {
+          fontFamily: 'monospace',
+          fontSize: '13px',
+          color: '#fef9c3',
+          backgroundColor: '#422006cc',
+          padding: { x: 8, y: 4 },
+          align: 'center',
+        })
         .setOrigin(0.5, 1)
         .setDepth(25)
         .setVisible(false);
     }
-    this.stairsLabel.setPosition(
-      objective.staircasePos.x,
-      objective.staircasePos.y - objective.markerRadiusPx - 10,
-    );
+    this.stairsLabel.setPosition(staircaseX, staircaseY - markerRadiusPx - 10);
     this.stairsLabel.setColor(objective.staircaseLocked ? '#fcd34d' : '#86efac');
     this.stairsLabel.setVisible(objective.staircaseSpawned && !objective.staircaseDiscovered);
     this.updateNpcQuestIndicators();
@@ -1676,8 +1671,9 @@ export class MainGameScene extends Phaser.Scene {
       }
       liveNpcEids.add(eid);
       const def = getNpcDef(instance.defId);
-      const x = this.world.stores.position.x[eid] ?? 0;
-      const y = this.world.stores.position.y[eid] ?? 0;
+      // World-space indicator: scale the NPC's feet position to render px.
+      const x = ftToPx(this.world.stores.position.x[eid] ?? 0);
+      const y = ftToPx(this.world.stores.position.y[eid] ?? 0);
       const target =
         indicator ??
         this.add
@@ -1690,7 +1686,7 @@ export class MainGameScene extends Phaser.Scene {
           })
           .setOrigin(0.5, 1)
           .setDepth(45);
-      const heightPx = def?.heightPx ?? 28;
+      const heightPx = ftToPx(def?.heightFt ?? 3.5);
       target.setColor(indicatorState === 'actionable' ? '#facc15' : '#9ca3af');
       target.setPosition(x, y - heightPx * 0.5 - 4 + bobOffset);
       this.npcQuestIndicators.set(eid, target);
@@ -1970,7 +1966,7 @@ export class MainGameScene extends Phaser.Scene {
       objective.staircaseSpawned &&
       !objective.staircaseDiscovered &&
       Math.hypot(playerX - objective.staircasePos.x, playerY - objective.staircasePos.y) <=
-        objective.markerRadiusPx;
+        objective.markerRadiusFt;
 
     if (nearNpcEid >= 0) {
       this.interactionHint?.setText('Talk').setVisible(true);

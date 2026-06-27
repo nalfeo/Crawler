@@ -1,6 +1,6 @@
 {
   "player": {
-    "speed": 3.0,
+    "speed": 0.375,
     "invincibilityMs": 250
   },
   "damage": {
@@ -8,7 +8,7 @@
     "defaultContactDamage": 5
   },
   "weapon": {
-    "projectileSpeed": 5.0,
+    "projectileSpeed": 0.625,
     "fireRateMs": 500,
     "baseDamage": 10,
     "meleeRange": 5,
@@ -19,12 +19,12 @@
     "trapArmMs": 500,
     "trapTriggerRadius": 4,
     "trapExplosionRadius": 8,
-    "thrownReturnSpeed": 4.0,
+    "thrownReturnSpeed": 0.5,
     "thrownMaxRange": 25,
     "aoeRadius": 6
   },
   "enemyProjectile": {
-    "speed": 3.0,
+    "speed": 0.375,
     "fireCooldownMs": 1200,
     "damage": 8,
     "muzzleOffset": 1.5,
@@ -33,7 +33,7 @@
   "xp": {
     "basePerLevel": 10,
     "scalingFactor": 1.15,
-    "gemAttractionRadius": 32,
+    "gemAttractionRadius": 4.0,
     "dropAmounts": {
       "small": 1,
       "medium": 3,

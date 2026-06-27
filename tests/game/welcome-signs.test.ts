@@ -19,7 +19,7 @@ const SEEDS = [1, 2, 3, 5, 7, 11, 13, 17, 23, 42, 99, 256];
 
 function tileKeyAt(world: ReturnType<typeof createTestWorld>, eid: number): string {
   const floorMap = world.floorMap!;
-  const tile = floorMap.pixelToTile(
+  const tile = floorMap.worldToTile(
     world.stores.position.x[eid] ?? 0,
     world.stores.position.y[eid] ?? 0,
   );
@@ -41,7 +41,7 @@ function initFloor1(seed: number): ReturnType<typeof createTestWorld> {
 
 function navigableRoomSteps(world: ReturnType<typeof createTestWorld>): NavigableRoomStep[] {
   const floorMap = world.floorMap!;
-  const welcomeTile = floorMap.pixelToTile(
+  const welcomeTile = floorMap.worldToTile(
     world.floor1!.objective.welcomeOfficePos.x,
     world.floor1!.objective.welcomeOfficePos.y,
   );
@@ -81,7 +81,7 @@ describe('floor 1 welcome signs', () => {
       const spawnTile = floorMap!.playerSpawn;
 
       const signTiles = welcomeSignEids(world).map((eid) =>
-        floorMap!.pixelToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
+        floorMap!.worldToTile(world.stores.position.x[eid] ?? 0, world.stores.position.y[eid] ?? 0),
       );
 
       // A sign still guides the player out of the spawn room...

@@ -84,8 +84,8 @@ describe('sealRoomPerimeterOpenings connectivity guard', () => {
     const { world, floorMap, breachIdx } = buildWorld(false);
 
     sealRoomPerimeterOpenings(world, {
-      x: 6 * DEFAULT_MAP_CONFIG.tileSizePx,
-      y: 3 * DEFAULT_MAP_CONFIG.tileSizePx,
+      x: 6 * DEFAULT_MAP_CONFIG.tileSizeFt,
+      y: 3 * DEFAULT_MAP_CONFIG.tileSizeFt,
     });
 
     const flags = floorMap.tileMap.flags[breachIdx]!;
@@ -98,8 +98,8 @@ describe('sealRoomPerimeterOpenings connectivity guard', () => {
     const { world, floorMap, breachIdx } = buildWorld(true);
 
     sealRoomPerimeterOpenings(world, {
-      x: 6 * DEFAULT_MAP_CONFIG.tileSizePx,
-      y: 3 * DEFAULT_MAP_CONFIG.tileSizePx,
+      x: 6 * DEFAULT_MAP_CONFIG.tileSizeFt,
+      y: 3 * DEFAULT_MAP_CONFIG.tileSizeFt,
     });
 
     // Tiles 9..12 are reachable ONLY through the breach, so walling it would

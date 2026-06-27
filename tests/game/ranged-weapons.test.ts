@@ -12,7 +12,7 @@ describe('ranged weapons', () => {
   it('pistol fires a projectile at the nearest enemy', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 50, 0, 20);
+    spawnEnemy(world, 6.25, 0, 20);
     const def = getWeaponDef('pistol')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -44,8 +44,8 @@ describe('ranged weapons', () => {
   it('projectile with pierce=0 is destroyed on first hit', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnEnemy(world, 10, 0, 50);
-    const proj = spawnProjectile(world, 8, 0, 1, 0, 10, 0);
+    const enemy = spawnEnemy(world, 1.25, 0, 50);
+    const proj = spawnProjectile(world, 1, 0, 0.125, 0, 10, 0);
 
     const collision = collisionSystem(world);
     damageSystem(world, collision);
@@ -57,11 +57,11 @@ describe('ranged weapons', () => {
   it('projectile with pierce=2 survives first two hits', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const e1 = spawnEnemy(world, 10, 0, 50);
-    const e2 = spawnEnemy(world, 20, 0, 50);
-    const e3 = spawnEnemy(world, 30, 0, 50);
+    const e1 = spawnEnemy(world, 1.25, 0, 50);
+    const e2 = spawnEnemy(world, 2.5, 0, 50);
+    const e3 = spawnEnemy(world, 3.75, 0, 50);
     // Pierce=2 means pass through 2 enemies, destroyed on 3rd
-    const proj = spawnProjectile(world, 8, 0, 1, 0, 10, 2);
+    const proj = spawnProjectile(world, 1, 0, 0.125, 0, 10, 2);
 
     // Hit first enemy
     let collision = collisionSystem(world);
@@ -70,14 +70,14 @@ describe('ranged weapons', () => {
     expect(entityExists(world.ecs, proj)).toBe(true);
 
     // Move to second enemy
-    world.stores.position.x[proj] = 18;
+    world.stores.position.x[proj] = 2.25;
     collision = collisionSystem(world);
     damageSystem(world, collision);
     expect(world.stores.health.current[e2]).toBe(40);
     expect(entityExists(world.ecs, proj)).toBe(true);
 
     // Move to third enemy — should be destroyed
-    world.stores.position.x[proj] = 28;
+    world.stores.position.x[proj] = 3.5;
     collision = collisionSystem(world);
     damageSystem(world, collision);
     expect(world.stores.health.current[e3]).toBe(40);
@@ -87,8 +87,8 @@ describe('ranged weapons', () => {
   it('piercing projectile does not double-hit the same enemy', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnEnemy(world, 10, 0, 50);
-    const proj = spawnProjectile(world, 8, 0, 0, 0, 10, 5);
+    const enemy = spawnEnemy(world, 1.25, 0, 50);
+    const proj = spawnProjectile(world, 1, 0, 0, 0, 10, 5);
 
     // Run collision twice while overlapping same enemy
     let collision = collisionSystem(world);
@@ -105,7 +105,7 @@ describe('ranged weapons', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Enemy to the right; projectile should aim right but deflect off-axis
-    spawnEnemy(world, 100, 0, 20);
+    spawnEnemy(world, 12.5, 0, 20);
     const def = getWeaponDef('pistol')!;
     setActiveWeapon(world, def);
     world.elapsedMs = def.cooldownMs;
@@ -132,7 +132,7 @@ describe('ranged weapons', () => {
   it('ranged miss projectile deals no damage on contact', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const enemy = spawnEnemy(world, 100, 0, 20);
+    const enemy = spawnEnemy(world, 12.5, 0, 20);
     const def = getWeaponDef('pistol')!;
     const initialHp = world.stores.health.current[enemy]!;
     setActiveWeapon(world, def);
@@ -144,7 +144,7 @@ describe('ranged weapons', () => {
     // Place the miss projectile directly on the enemy to force collision
     const projectiles = Array.from(query(world.ecs, [Projectile]));
     expect(projectiles).toHaveLength(1);
-    world.stores.position.x[projectiles[0]!] = 100;
+    world.stores.position.x[projectiles[0]!] = 12.5;
     world.stores.position.y[projectiles[0]!] = 0;
 
     const collision = collisionSystem(world);

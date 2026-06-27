@@ -34,18 +34,17 @@ import {
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
 import { createLogger } from '../../shared/logger.js';
-import { ftToPx } from '../../shared/units.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
 import { markImmuneToActiveMeleeSwings } from './meleeSwingSystem.js';
 
 const logger = createLogger('core:drop-system');
 
 /** Base knockback distance for death (1 foot). Scales with overkill. */
-const DEATH_KNOCKBACK_BASE = ftToPx(1);
+const DEATH_KNOCKBACK_BASE = 1;
 /** Max knockback distance on death (8 feet). */
-const DEATH_KNOCKBACK_MAX = ftToPx(8);
-/** Knockback speed (pixels per frame-step). */
-const DEATH_KNOCKBACK_SPEED = 6;
+const DEATH_KNOCKBACK_MAX = 8;
+/** Knockback speed (feet per frame-step). */
+const DEATH_KNOCKBACK_SPEED = 0.75;
 /** How long a dead entity persists before removal (ms). */
 const DEATH_LINGER_MS = 3000;
 const DEFAULT_CONTACT_DAMAGE = 5;
@@ -54,6 +53,12 @@ const SLIME_LEAPER_AI_TYPE = 3;
 const SLIME_SPLIT_CHANCE = 0.35;
 const MINI_SLIME_COUNT = 2;
 const MINI_SLIME_SIZE_SCALE = 0.65;
+/**
+ * Floor for a baby slime's sprite size in feet, so a degenerate (zero-width)
+ * parent can't yield an invisible baby. Equal to the legacy 1px floor ÷
+ * PIXELS_PER_FOOT; real slimes (2–3.75 ft wide) never reach it.
+ */
+const MINI_SLIME_MIN_SIZE_FT = 0.125;
 
 export interface DropSystemOptions {
   readonly spawnLoot?: boolean;
@@ -112,8 +117,8 @@ function spawnDrops(
 
   for (const drop of drops) {
     // Scatter drops slightly around the death position
-    const offsetX = (world.rng.next() - 0.5) * 20;
-    const offsetY = (world.rng.next() - 0.5) * 20;
+    const offsetX = (world.rng.next() - 0.5) * 2.5;
+    const offsetY = (world.rng.next() - 0.5) * 2.5;
     const dx = x + offsetX;
     const dy = y + offsetY;
 
@@ -122,8 +127,8 @@ function spawnDrops(
         for (let i = 0; i < drop.quantity; i++) {
           // Always consume RNG to keep the seeded sequence stable regardless
           // of whether drops are currently gated (Floor 1 onboarding pacing).
-          const gx = dx + (world.rng.next() - 0.5) * 8;
-          const gy = dy + (world.rng.next() - 0.5) * 8;
+          const gx = dx + (world.rng.next() - 0.5) * 1;
+          const gy = dy + (world.rng.next() - 0.5) * 1;
           if (allowDrops) {
             spawnGold(world, gx, gy, drop.value);
           }
@@ -133,8 +138,8 @@ function spawnDrops(
         for (let i = 0; i < drop.quantity; i++) {
           // Always consume RNG to keep the seeded sequence stable regardless
           // of whether drops are currently gated.
-          const ex = dx + (world.rng.next() - 0.5) * 8;
-          const ey = dy + (world.rng.next() - 0.5) * 8;
+          const ex = dx + (world.rng.next() - 0.5) * 1;
+          const ey = dy + (world.rng.next() - 0.5) * 1;
           if (allowDrops) {
             spawnXpGem(world, ex, ey, drop.value);
           }
@@ -169,14 +174,14 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
     ? Math.max(1, world.stores.damage.amount[eid] ?? DEFAULT_CONTACT_DAMAGE)
     : DEFAULT_CONTACT_DAMAGE;
   const miniDamage = Math.max(1, Math.round(parentDamage * 0.5));
-  const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.9;
-  const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 320;
+  const parentSpeed = world.stores.enemyBehavior.speed[eid] ?? 0.1125;
+  const parentAggroRange = world.stores.enemyBehavior.aggroRange[eid] ?? 40;
   const hasSprite = hasComponent(world.ecs, eid, Sprite);
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
-  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 16) : 16;
-  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 16) : 16;
-  const miniWidth = Math.max(8, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
-  const miniHeight = Math.max(8, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
+  const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
+  const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
+  const miniWidth = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
+  const miniHeight = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteHeight * MINI_SLIME_SIZE_SCALE);
   // Inherit blood colour from the parent slime
   const parentBloodColor = hasComponent(world.ecs, eid, BloodColor)
     ? (world.stores.bloodColor.r[eid]! << 16) |
@@ -186,20 +191,20 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
 
   for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
     const angle = world.rng.next() * Math.PI * 2;
-    const distance = 4 + world.rng.next() * 12;
+    const distance = 0.5 + world.rng.next() * 1.5;
     const miniEid = spawnBehaviorEnemy(
       world,
       x + Math.cos(angle) * distance,
       y + Math.sin(angle) * distance,
       miniHp,
       SLIME_LEAPER_AI_TYPE,
-      Math.max(0.4, parentSpeed),
-      Math.max(48, parentAggroRange),
+      Math.max(0.05, parentSpeed),
+      Math.max(6, parentAggroRange),
       0,
       {
         persona: world.stores.enemyBehavior.persona[eid] ?? 0,
         traversalMode: world.stores.enemyBehavior.traversalMode[eid] ?? 0,
-        flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 96,
+        flankDistance: world.stores.enemyBehavior.flankDistance[eid] ?? 12,
         pathRefreshFrames: world.stores.enemyBehavior.pathRefreshFrames[eid] ?? 10,
         isFlying: (world.stores.enemyBehavior.traversalMode[eid] ?? 0) === 1,
         weight: Math.max(1, (world.stores.weight.value[eid] ?? 120) * 0.5),
@@ -350,8 +355,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
       overkill,
       knockbackDirX: killDirX,
       knockbackDirY: killDirY,
-      sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 20 : undefined,
-      sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 20 : undefined,
+      sourceX: killDirX !== 0 || killDirY !== 0 ? x - killDirX * 2.5 : undefined,
+      sourceY: killDirX !== 0 || killDirY !== 0 ? y - killDirY * 2.5 : undefined,
       bloodColor,
     });
 

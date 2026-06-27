@@ -25,7 +25,7 @@ function makePathMap(doorOpen: boolean): FloorMap {
   const config: MapConfig = {
     widthTiles: WIDTH,
     heightTiles: HEIGHT,
-    tileSizePx: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -76,7 +76,7 @@ function makeOpenMap(extraWalls: ReadonlyArray<readonly [number, number]> = []):
   const config: MapConfig = {
     widthTiles: WIDTH,
     heightTiles: HEIGHT,
-    tileSizePx: 32,
+    tileSizeFt: 4,
     biome: BiomeType.ARENA,
     seed: 7,
     roomWidthRange: [4, 8],

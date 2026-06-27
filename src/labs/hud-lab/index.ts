@@ -13,6 +13,7 @@ import { FLOOR1_BOSS_REWARD_SPELL_IDS, type AbilityState } from '../../shared/ab
 import { createHudUI } from '../../engine/HudUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnEnemy, spawnPlayer } from '../../core/index.js';
+import { pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -109,7 +110,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
       world.floor = settings.floor;
 
       // Spawn a player entity so health reads are valid
-      playerEid = spawnPlayer(world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+      playerEid = spawnPlayer(world, pxToFt(GAME.WIDTH) / 2, pxToFt(GAME.HEIGHT) / 2);
       // Override default health to match lab settings
       world.stores.health.current[playerEid] = (settings.hpPercent / 100) * settings.maxHp;
       world.stores.health.max[playerEid] = settings.maxHp;
@@ -151,7 +152,7 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
           spellQuestGiverPos: { x: 700, y: 500 },
           shopRoomPos: { x: 500, y: 300 },
           questItemPos: { x: 700, y: 500 },
-          markerRadiusPx: 32,
+          markerRadiusFt: 4,
           questAccepted: false,
           questCompleted: false,
           ratsKilled: 0,
@@ -184,7 +185,12 @@ function createHudLab(canvasHost: HTMLElement, controls: HTMLElement): () => voi
 
       // Spawn a boss entity and wire it into the first boss battle so the boss
       // bar can be toggled on/off and driven via lil-gui.
-      bossEid = spawnEnemy(world, GAME.WIDTH / 2, GAME.HEIGHT / 2 - 90, LAB_BOSS_MAX_HP);
+      bossEid = spawnEnemy(
+        world,
+        pxToFt(GAME.WIDTH) / 2,
+        pxToFt(GAME.HEIGHT) / 2 - 11.25,
+        LAB_BOSS_MAX_HP,
+      );
       const slimeRatBattle = world.floor1.objective.bossBattles.get('slime-rat');
       if (slimeRatBattle) {
         slimeRatBattle.bossEid = bossEid;

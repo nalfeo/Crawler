@@ -14,7 +14,7 @@ function makeSmallMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 20,
     heightTiles: 20,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [4, 8],

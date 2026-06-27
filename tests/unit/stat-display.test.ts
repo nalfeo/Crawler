@@ -20,13 +20,13 @@ describe('stat display metadata', () => {
 
   it('formats values using the configured precision', () => {
     expect(formatStatValue('maxHp', 120)).toBe('120');
-    expect(formatStatValue('moveSpeed', 3)).toBe('3.0');
+    expect(formatStatValue('moveSpeed', 3)).toBe('3.0000');
     expect(formatStatValue('attackSpeed', 1)).toBe('1.00');
   });
 
   it('formats per-point increments with a leading plus', () => {
     expect(formatStatIncrement('maxHp')).toBe(`+${STAT_POINT_INCREMENT.maxHp.toFixed(0)}`);
-    expect(formatStatIncrement('moveSpeed')).toBe('+0.1');
+    expect(formatStatIncrement('moveSpeed')).toBe('+0.0125');
     expect(formatStatIncrement('attackSpeed')).toBe('+0.05');
   });
 });

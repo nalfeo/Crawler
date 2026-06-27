@@ -20,6 +20,7 @@ import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { AI_TYPE, enemyAISystem } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -34,11 +35,11 @@ interface EnemyAiLabSettings {
   attackRange: number;
 }
 
-const GROUP_OFFSET = 220;
-const GROUP_RADIUS = 84;
+const GROUP_OFFSET = 27.5;
+const GROUP_RADIUS = 10.5;
 const MAX_STEPS_PER_FRAME = 4;
 const PLAYER_HEALTH = 1_000;
-const SWARM_RADIUS = 56;
+const SWARM_RADIUS = 7;
 const LAB_ID = 'enemy-ai-lab';
 const COLLISION_EPSILON = 0.0001;
 
@@ -88,12 +89,12 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   canvasHost.append(root);
 
   const settings: EnemyAiLabSettings = {
-    chaseSpeed: 1.8,
-    swarmSpeed: 1.4,
-    rangedSpeed: 1.1,
-    leaperSpeed: 1.5,
-    aggroRange: 260,
-    attackRange: 180,
+    chaseSpeed: 0.225,
+    swarmSpeed: 0.175,
+    rangedSpeed: 0.1375,
+    leaperSpeed: 0.1875,
+    aggroRange: 32.5,
+    attackRange: 22.5,
     ...(loadLabState<EnemyAiLabSettings>(LAB_ID) ?? {}),
   };
 
@@ -132,14 +133,15 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
       this.playerEid = spawnPlayer(
         this.world,
-        this.getViewportWidth() / 2,
-        this.getViewportHeight() / 2,
+        pxToFt(this.getViewportWidth()) / 2,
+        pxToFt(this.getViewportHeight()) / 2,
       );
       setComponent(this.world.ecs, this.playerEid, Health, {
         current: PLAYER_HEALTH,
@@ -324,8 +326,8 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     }
 
     private getGroupAnchor(type: number): { x: number; y: number } {
-      const centerX = this.getViewportWidth() / 2;
-      const centerY = this.getViewportHeight() / 2;
+      const centerX = pxToFt(this.getViewportWidth()) / 2;
+      const centerY = pxToFt(this.getViewportHeight()) / 2;
 
       switch (type) {
         case AI_TYPE.SWARM:
@@ -367,15 +369,16 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       const radius = type === AI_TYPE.SWARM ? SWARM_RADIUS : GROUP_RADIUS;
       const speed = this.getSpeedForType(type);
       const hp = type === AI_TYPE.RANGED ? 18 : 24;
-      const maxX = this.getViewportWidth() - 24;
-      const maxY = this.getViewportHeight() - 24;
+      const minMargin = 3;
+      const maxX = pxToFt(this.getViewportWidth()) - minMargin;
+      const maxY = pxToFt(this.getViewportHeight()) - minMargin;
 
       for (let index = 0; index < count; index += 1) {
         const angle = ((Math.PI * 2) / Math.max(1, count)) * index;
         const jitter = (this.world.rng.next() - 0.5) * 0.75;
         const distance = radius * (0.45 + this.world.rng.next() * 0.55);
-        const x = clamp(anchor.x + Math.cos(angle + jitter) * distance, 24, maxX);
-        const y = clamp(anchor.y + Math.sin(angle + jitter) * distance, 24, maxY);
+        const x = clamp(anchor.x + Math.cos(angle + jitter) * distance, minMargin, maxX);
+        const y = clamp(anchor.y + Math.sin(angle + jitter) * distance, minMargin, maxY);
 
         spawnBehaviorEnemy(
           this.world,
@@ -465,27 +468,27 @@ function createEnemyAiLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   gui.add(controlsApi, 'spawnRanged').name('Spawn Ranged (5)');
   gui.add(controlsApi, 'spawnLeapers').name('Spawn Leapers (4)');
   gui
-    .add(settings, 'chaseSpeed', 0.5, 5, 0.1)
+    .add(settings, 'chaseSpeed', 0.0625, 0.625, 0.0125)
     .name('Chase Speed')
     .onChange(() => syncSettingsFromGui());
   gui
-    .add(settings, 'swarmSpeed', 0.5, 5, 0.1)
+    .add(settings, 'swarmSpeed', 0.0625, 0.625, 0.0125)
     .name('Swarm Speed')
     .onChange(() => syncSettingsFromGui());
   gui
-    .add(settings, 'rangedSpeed', 0.5, 3, 0.1)
+    .add(settings, 'rangedSpeed', 0.0625, 0.375, 0.0125)
     .name('Ranged Speed')
     .onChange(() => syncSettingsFromGui());
   gui
-    .add(settings, 'leaperSpeed', 0.5, 3, 0.1)
+    .add(settings, 'leaperSpeed', 0.0625, 0.375, 0.0125)
     .name('Leaper Speed')
     .onChange(() => syncSettingsFromGui());
   gui
-    .add(settings, 'aggroRange', 50, 400, 5)
+    .add(settings, 'aggroRange', 6.25, 50, 0.625)
     .name('Aggro Range')
     .onChange(() => syncSettingsFromGui());
   gui
-    .add(settings, 'attackRange', 100, 300, 5)
+    .add(settings, 'attackRange', 12.5, 37.5, 0.625)
     .name('Attack Range')
     .onChange(() => syncSettingsFromGui());
   gui.add(controlsApi, 'clearEnemies').name('Clear Enemies');

@@ -28,7 +28,6 @@ import type { GameWorld } from '../core/world.js';
 import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
-import { ftToPx } from '../shared/units.js';
 
 interface WeaponState {
   lastFireMs: number;
@@ -43,18 +42,18 @@ interface WeaponState {
 interface EnemyTarget {
   direction: { x: number; y: number };
   distanceSq: number;
-  radiusPx: number;
-  /** Vector from the shooter to the target's current position (px). */
+  radiusFt: number;
+  /** Vector from the shooter to the target's current position (ft). */
   deltaX: number;
   deltaY: number;
-  /** Target velocity (px/frame), used to lead projectiles. */
+  /** Target velocity (ft/frame), used to lead projectiles. */
   velocityX: number;
   velocityY: number;
 }
 
 const ATTACK_TARGET_GATE_MULTIPLIER = 1.5;
-// Enemies spawn around 1000px away, so keep combat targeting slightly beyond that.
-const COMBAT_RADIUS_PX = 1200;
+// Enemies spawn around 160ft away, so keep combat targeting slightly beyond that.
+const COMBAT_RADIUS_FT = 150;
 
 const weaponStates = new WeakMap<GameWorld, WeaponState>();
 const logger = createLogger('game:weapon-system');
@@ -93,7 +92,7 @@ function normalizeVector(x: number, y: number): { x: number; y: number } {
 
 /**
  * Compute a normalized aim direction that leads a moving target so a projectile
- * fired at `projectileSpeed` (px/frame) intercepts it, rather than aiming at
+ * fired at `projectileSpeed` (ft/frame) intercepts it, rather than aiming at
  * where the target currently is. Solves the standard intercept quadratic
  * |delta + targetVelocity * t| = projectileSpeed * t for the smallest positive
  * time `t`, then aims at the predicted position `delta + targetVelocity * t`.
@@ -209,7 +208,7 @@ function getNearestEnemyTarget(
     // enemies just past the FOV radius in the same room). This stops ranged
     // weapons from firing through walls at enemies in the next room.
     if (!ignoreFov && world.floorMap) {
-      const tile = world.floorMap.pixelToTile(ex, ey);
+      const tile = world.floorMap.worldToTile(ex, ey);
       const visible = world.floorMap.isVisible(tile.x, tile.y);
       if (!visible && !world.floorMap.hasLineOfSight(playerX, playerY, ex, ey)) {
         continue;
@@ -225,12 +224,12 @@ function getNearestEnemyTarget(
     }
 
     nearestDistanceSq = distanceSq;
-    const enemyRadiusPx =
+    const enemyRadiusFt =
       Math.max(world.stores.sprite.width[enemy] ?? 0, world.stores.sprite.height[enemy] ?? 0) * 0.5;
     nearestTarget = {
       direction: normalizeVector(deltaX, deltaY),
       distanceSq,
-      radiusPx: enemyRadiusPx,
+      radiusFt: enemyRadiusFt,
       deltaX,
       deltaY,
       velocityX: world.stores.velocity.x[enemy] ?? 0,
@@ -243,26 +242,26 @@ function getNearestEnemyTarget(
 
 /**
  * Boss-priority targeting: returns a target aimed at a permanently-aggroed boss
- * (the elite marker, set only on Floor 1 bosses) when one is within `gateRangePx`
+ * (the elite marker, set only on Floor 1 bosses) when one is within `gateRangeFt`
  * and reachable. Auto-fire otherwise locks onto the strictly nearest enemy — in a
  * room full of respawning adds an add is almost always nearer than the boss, so a
  * single-target shot or arc swing rarely lands on the boss, leaving it effectively
  * unkillable. Focusing the elite when it is already in legitimate reach is a
  * standard combat heuristic: it does not bypass weapon range (still gated by
- * `gateRangePx`), quest gating, or any UI-driven choice.
+ * `gateRangeFt`), quest gating, or any UI-driven choice.
  */
 function findBossTargetInRange(
   world: GameWorld,
   playerX: number,
   playerY: number,
-  gateRangePx: number,
+  gateRangeFt: number,
 ): EnemyTarget | undefined {
   const behavior = world.stores.enemyBehavior;
   if (behavior?.aggroedPermanently === undefined) {
     return undefined;
   }
   const enemies = query(world.ecs, [Enemy, Position]);
-  const gateSq = gateRangePx * gateRangePx;
+  const gateSq = gateRangeFt * gateRangeFt;
   let best: EnemyTarget | undefined;
   let bestDistanceSq = Number.POSITIVE_INFINITY;
 
@@ -286,7 +285,7 @@ function findBossTargetInRange(
     // straight through the wall. Mirrors getNearestEnemyTarget's sight gate so
     // both the melee and ranged call sites respect line of sight to the boss.
     if (world.floorMap) {
-      const tile = world.floorMap.pixelToTile(ex, ey);
+      const tile = world.floorMap.worldToTile(ex, ey);
       if (
         !world.floorMap.isVisible(tile.x, tile.y) &&
         !world.floorMap.hasLineOfSight(playerX, playerY, ex, ey)
@@ -302,12 +301,12 @@ function findBossTargetInRange(
       continue;
     }
     bestDistanceSq = distanceSq;
-    const enemyRadiusPx =
+    const enemyRadiusFt =
       Math.max(world.stores.sprite.width[enemy] ?? 0, world.stores.sprite.height[enemy] ?? 0) * 0.5;
     best = {
       direction: normalizeVector(deltaX, deltaY),
       distanceSq,
-      radiusPx: enemyRadiusPx,
+      radiusFt: enemyRadiusFt,
       deltaX,
       deltaY,
       velocityX: world.stores.velocity.x[enemy] ?? 0,
@@ -318,20 +317,20 @@ function findBossTargetInRange(
   return best;
 }
 
-function getWeaponGateRangePx(def: WeaponDef): number {
+function getWeaponGateRangeFt(def: WeaponDef): number {
   switch (def.weaponType) {
     case WeaponType.MELEE:
-      return ftToPx(Math.max(def.aoeRadius, def.range));
+      return Math.max(def.aoeRadius, def.range);
     case WeaponType.BEAM:
-      return ftToPx(Math.max(def.beamLength, def.range));
+      return Math.max(def.beamLength, def.range);
     case WeaponType.TRAP:
-      return ftToPx(Math.max(def.trapTriggerRadius, def.trapExplosionRadius, def.range));
+      return Math.max(def.trapTriggerRadius, def.trapExplosionRadius, def.range);
     case WeaponType.THROWN:
-      return ftToPx(def.maxRange > 0 ? def.maxRange : def.range);
+      return def.maxRange > 0 ? def.maxRange : def.range;
     case WeaponType.RANGED:
     case WeaponType.MAGIC:
     default:
-      return ftToPx(def.range);
+      return def.range;
   }
 }
 
@@ -361,16 +360,16 @@ function fireMeleeAttack(
     py,
     player,
     def.baseDamage,
-    ftToPx(def.aoeRadius),
+    def.aoeRadius,
     def.durationMs,
     dir.x,
     dir.y,
     def.swingArcDeg,
     TeamId.PLAYER,
     def.meleeStyle,
-    ftToPx(def.headRadius),
+    def.headRadius,
     def.shaftDamageMult,
-    ftToPx(def.knockback),
+    def.knockback,
     getMeleeSpriteId(def.id),
   );
 }
@@ -403,7 +402,7 @@ function fireRangedAttack(
     dir.y * def.projectileSpeed,
     def.baseDamage,
     def.pierce,
-    ftToPx(def.range),
+    def.range,
     1,
     player,
   );
@@ -424,11 +423,11 @@ function fireMagicAttack(
     dir.x * def.projectileSpeed,
     dir.y * def.projectileSpeed,
     def.baseDamage,
-    ftToPx(def.aoeRadius),
+    def.aoeRadius,
     def.baseDamage,
     player,
     TeamId.PLAYER,
-    ftToPx(def.range),
+    def.range,
   );
 }
 
@@ -450,7 +449,7 @@ function fireThrownAttack(
       def.baseDamage,
       player,
       def.returnSpeed,
-      ftToPx(def.maxRange),
+      def.maxRange,
       TeamId.PLAYER,
       def.pierce,
     );
@@ -467,7 +466,7 @@ function fireThrownAttack(
       def.baseDamage,
       def.bounceCount,
       def.pierce,
-      ftToPx(def.range),
+      def.range,
       player,
     );
     return;
@@ -481,7 +480,7 @@ function fireThrownAttack(
     dir.y * def.projectileSpeed,
     def.baseDamage,
     def.pierce,
-    ftToPx(def.range),
+    def.range,
     1,
     player,
   );
@@ -501,7 +500,7 @@ function fireBeamAttack(
     py,
     dir.x,
     dir.y,
-    ftToPx(def.beamLength),
+    def.beamLength,
     def.baseDamage,
     def.durationMs,
     def.beamTickMs,
@@ -518,8 +517,8 @@ function fireTrapAttack(world: GameWorld, player: number, def: WeaponDef): void 
     px,
     py,
     def.baseDamage,
-    ftToPx(def.trapTriggerRadius),
-    ftToPx(def.trapExplosionRadius),
+    def.trapTriggerRadius,
+    def.trapExplosionRadius,
     def.trapArmMs,
     player,
     TeamId.PLAYER,
@@ -610,8 +609,8 @@ function dispatchAttack(
     const attackReach = Math.min(def.aoeRadius || def.range, MAX_MISS_VFX_REACH_FT);
     world.combatEvents.push({
       type: 'miss',
-      x: px + dir.x * ftToPx(attackReach),
-      y: py + dir.y * ftToPx(attackReach),
+      x: px + dir.x * attackReach,
+      y: py + dir.y * attackReach,
       amount: 0,
       targetType: 'enemy',
       timestamp: world.elapsedMs,
@@ -757,7 +756,7 @@ export function weaponSystem(world: GameWorld): void {
     const dx = ex - playerX;
     const dy = ey - playerY;
     const distSq = dx * dx + dy * dy;
-    if (distSq < COMBAT_RADIUS_PX * COMBAT_RADIUS_PX) {
+    if (distSq < COMBAT_RADIUS_FT * COMBAT_RADIUS_FT) {
       inCombat = true;
       break;
     }
@@ -793,8 +792,8 @@ export function weaponSystem(world: GameWorld): void {
       if (world.elapsedMs - lastFire < def.cooldownMs) {
         return;
       }
-      const gateRangePx = getWeaponGateRangePx(def) * ATTACK_TARGET_GATE_MULTIPLIER;
-      if (target.distanceSq > gateRangePx * gateRangePx) {
+      const gateRangeFt = getWeaponGateRangeFt(def) * ATTACK_TARGET_GATE_MULTIPLIER;
+      if (target.distanceSq > gateRangeFt * gateRangeFt) {
         return;
       }
 
@@ -802,7 +801,7 @@ export function weaponSystem(world: GameWorld): void {
       // center the swing on it so the arc reliably lands on the boss instead of a
       // transient add. Falls back to the nearest enemy when no boss is in range,
       // preserving normal add-clearing.
-      const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangePx);
+      const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangeFt);
       const fireTarget = bossTarget ?? target;
 
       dispatchAttack(world, player, def, fireTarget.direction);
@@ -819,8 +818,8 @@ export function weaponSystem(world: GameWorld): void {
     if (!target) {
       return;
     }
-    const gateRangePx = getWeaponGateRangePx(def) * ATTACK_TARGET_GATE_MULTIPLIER;
-    if (target.distanceSq > gateRangePx * gateRangePx) {
+    const gateRangeFt = getWeaponGateRangeFt(def) * ATTACK_TARGET_GATE_MULTIPLIER;
+    if (target.distanceSq > gateRangeFt * gateRangeFt) {
       return;
     }
     const lastFire = state.lastFireMs;
@@ -832,7 +831,7 @@ export function weaponSystem(world: GameWorld): void {
     // Boss-priority aim: focus an in-reach boss/elite so projectiles reliably
     // land on it instead of a transient add (mirrors the melee path). A slow
     // arrow chasing the nearest respawning add never closes the boss fight.
-    const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangePx);
+    const bossTarget = findBossTargetInRange(world, playerX, playerY, gateRangeFt);
     const fireTarget = bossTarget ?? target;
 
     // Lead moving targets for forward-fired projectiles so slow arrows/bolts
@@ -889,11 +888,11 @@ export function weaponEntitySystem(world: GameWorld): void {
     const weaponType = weapon.weaponType[weid]!;
     const rawRange = weapon.range[weid] ?? 0;
     if (rawRange > 0) {
-      let gateRangePx = rawRange * ATTACK_TARGET_GATE_MULTIPLIER;
+      let gateRangeFt = rawRange * ATTACK_TARGET_GATE_MULTIPLIER;
       if (weaponType === WeaponType.MELEE) {
-        gateRangePx += target.radiusPx;
+        gateRangeFt += target.radiusFt;
       }
-      if (target.distanceSq > gateRangePx * gateRangePx) {
+      if (target.distanceSq > gateRangeFt * gateRangeFt) {
         continue;
       }
     }

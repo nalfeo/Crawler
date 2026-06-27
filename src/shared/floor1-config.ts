@@ -28,8 +28,8 @@ const bossArchetypeConfigSchema = z
     detectRange: z.number().nonnegative(),
     spawnRadiusMin: z.number().nonnegative(),
     spawnRadiusMax: z.number().nonnegative(),
-    spriteWidth: z.number().int().positive(),
-    spriteHeight: z.number().int().positive(),
+    spriteWidth: z.number().positive(),
+    spriteHeight: z.number().positive(),
     fireballCooldownMs: z.number().int().nonnegative(),
   })
   .strict();
@@ -52,8 +52,8 @@ const bossVariantConfigSchema = z
         fireballCooldownMs: z.number().int().nonnegative(),
         spawnRadiusMin: z.number().nonnegative(),
         spawnRadiusMax: z.number().nonnegative(),
-        spriteWidth: z.number().int().positive(),
-        spriteHeight: z.number().int().positive(),
+        spriteWidth: z.number().positive(),
+        spriteHeight: z.number().positive(),
       })
       .strict(),
   })
@@ -76,14 +76,14 @@ export const floor1ConfigSchema = z
         requiredTotalKills: z.number().int().nonnegative(),
         requiredGold: z.number().int().nonnegative(),
         requiredJunk: z.number().int().nonnegative(),
-        markerRadiusPx: z.number().nonnegative(),
+        markerRadiusFt: z.number().nonnegative(),
       })
       .strict(),
     map: z
       .object({
         widthTiles: z.number().int().positive(),
         heightTiles: z.number().int().positive(),
-        tileSizePx: z.number().int().positive(),
+        tileSizeFt: z.number().positive(),
         seed: z.number().int().positive(),
         roomWidthRange: z.tuple([z.number().int().positive(), z.number().int().positive()]),
         roomHeightRange: z.tuple([z.number().int().positive(), z.number().int().positive()]),
@@ -104,8 +104,8 @@ export const floor1ConfigSchema = z
         enemyCap: z.number().int().positive(),
         spawnIntervalMs: z.number().int().positive(),
         spawnRadiusMin: z.number().nonnegative(),
-        ambientSpawnMaxDistancePx: z.number().nonnegative(),
-        ambientDespawnDistancePx: z.number().nonnegative(),
+        ambientSpawnMaxDistanceFt: z.number().nonnegative(),
+        ambientDespawnDistanceFt: z.number().nonnegative(),
       })
       .strict(),
     player: z
@@ -164,12 +164,12 @@ function loadFloor1ConfigFromManifest(): Floor1Config {
       },
       boss: {
         hp: 280, // Hardcoded for now, will be in enemy pack in future
-        speed: 1.15,
-        detectRange: 540,
-        spawnRadiusMin: 64,
-        spawnRadiusMax: 110,
-        spriteWidth: 30,
-        spriteHeight: 30,
+        speed: 0.14375,
+        detectRange: 67.5,
+        spawnRadiusMin: 8,
+        spawnRadiusMax: 13.75,
+        spriteWidth: 3.75,
+        spriteHeight: 3.75,
         fireballCooldownMs: 5000,
       },
     },
@@ -178,8 +178,8 @@ function loadFloor1ConfigFromManifest(): Floor1Config {
       enemyCap: enemyPack.enemyCap,
       spawnIntervalMs: enemyPack.spawnIntervalMs,
       spawnRadiusMin: enemyPack.spawnRadiusMin,
-      ambientSpawnMaxDistancePx: 1280, // Derived from viewport
-      ambientDespawnDistancePx: enemyPack.despawnDistancePx,
+      ambientSpawnMaxDistanceFt: 160, // Derived from viewport (1280px / 8)
+      ambientDespawnDistanceFt: enemyPack.despawnDistanceFt,
     },
     player: manifest.player,
     camera: manifest.camera,

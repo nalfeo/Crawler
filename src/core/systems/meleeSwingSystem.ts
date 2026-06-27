@@ -15,8 +15,15 @@ import type { GameWorld } from '../world.js';
 import { MeleeStyle } from '../../shared/constants.js';
 import { emitWeaponHitSkillEvents } from '../weapon-skill-bridge.js';
 
-/** Half-width of the blade hitbox in pixels. */
-const BLADE_HIT_HALF_WIDTH = 12;
+/** Half-width of the blade hitbox in feet. */
+const BLADE_HIT_HALF_WIDTH = 1.5;
+
+/**
+ * Minimum per-frame knockback speed in feet (was a 1px/frame floor pre-feet).
+ * Matches the canonical PIXELS_PER_FOOT=8 conversion (1px = 0.125ft) and the
+ * KNOCKBACK_SUBSTEP_FT convention in knockbackSystem.
+ */
+const MIN_KNOCKBACK_SPEED_FT = 0.125;
 
 /** Distance from a point to a line segment (squared). */
 function pointToSegmentDistSq(
@@ -227,7 +234,7 @@ export function meleeSwingSystem(world: GameWorld): void {
             const nx = kbDx / kbDist;
             const ny = kbDy / kbDist;
             // Spread the knockback over ~10 frames for smooth motion
-            const kbSpeed = Math.max(1, knockback / 10);
+            const kbSpeed = Math.max(MIN_KNOCKBACK_SPEED_FT, knockback / 10);
             if (hasComponent(world.ecs, target, Knockback)) {
               setComponent(world.ecs, target, Knockback, {
                 dirX: nx,

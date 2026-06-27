@@ -31,6 +31,7 @@ import {
   weaponSystem,
 } from '../../game/index.js';
 import { GAME, MeleeStyle, PLAYER_SPEED, WeaponType } from '../../shared/constants.js';
+import { ftToPx, pxToFt } from '../../shared/units.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { WEAPON_DEFS, type WeaponDef } from '../../shared/weaponDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -139,7 +140,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     maxEnemies: 30,
     spawnIntervalMs: 750,
     enemyHp: 30,
-    enemySpeed: 1.25,
+    enemySpeed: 0.15625,
     activeWeapon: WEAPON_IDS[0] ?? 'sword',
     invulnerable: true,
     ...(saved?.settings ?? {}),
@@ -179,8 +180,9 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
       this.accumulator = 0;
@@ -298,8 +300,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     private applySpawnerBounds(): void {
       configureEnemySpawner(this.world, {
-        width: this.getSimulationWidth(),
-        height: this.getSimulationHeight(),
+        width: pxToFt(this.getSimulationWidth()),
+        height: pxToFt(this.getSimulationHeight()),
       });
     }
 
@@ -316,8 +318,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       this.world = createGameWorld({ seed: LAB_SEED });
       this.playerEid = spawnPlayer(
         this.world,
-        this.getSimulationWidth() / 2,
-        this.getSimulationHeight() / 2,
+        pxToFt(this.getSimulationWidth()) / 2,
+        pxToFt(this.getSimulationHeight()) / 2,
       );
       addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
 
@@ -391,7 +393,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     // Melee / Unarmed: show only relevant controls per weapon
     if (wt === WeaponType.MELEE) {
-      weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 120, 1).name('Blade Length');
+      weaponFolder.add(tunedWeapon, 'aoeRadius', 1, 15, 0.125).name('Blade Length');
       weaponFolder
         .add(tunedWeapon, 'meleeStyle', { Slash: MeleeStyle.SLASH, Stab: MeleeStyle.STAB })
         .name('Style');
@@ -402,36 +404,36 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       weaponFolder.add(tunedWeapon, 'durationMs', 50, 1000, 10).name('Swing Speed (ms)');
       // Head/shaft only for weapons with a head
       if (baseDef.headRadius > 0) {
-        weaponFolder.add(tunedWeapon, 'headRadius', 0, 32, 1).name('Head Radius');
+        weaponFolder.add(tunedWeapon, 'headRadius', 0, 4, 0.125).name('Head Radius');
         weaponFolder.add(tunedWeapon, 'shaftDamageMult', 0, 1, 0.05).name('Shaft Damage %');
       }
-      weaponFolder.add(tunedWeapon, 'knockback', 0, 100, 1).name('Knockback (px)');
+      weaponFolder.add(tunedWeapon, 'knockback', 0, 12.5, 0.125).name('Knockback (ft)');
     }
 
     // Ranged: projectile speed + pierce
     if (wt === WeaponType.RANGED) {
-      weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Projectile Speed');
+      weaponFolder.add(tunedWeapon, 'projectileSpeed', 0.125, 2.5, 0.0625).name('Projectile Speed');
       weaponFolder.add(tunedWeapon, 'pierce', 0, 20, 1).name('Pierce');
     }
 
     // Magic: projectile speed + AoE radius
     if (wt === WeaponType.MAGIC) {
-      weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Projectile Speed');
-      weaponFolder.add(tunedWeapon, 'aoeRadius', 8, 150, 1).name('Explosion Radius');
+      weaponFolder.add(tunedWeapon, 'projectileSpeed', 0.125, 2.5, 0.0625).name('Projectile Speed');
+      weaponFolder.add(tunedWeapon, 'aoeRadius', 1, 18.75, 0.125).name('Explosion Radius');
     }
 
     // Thrown: projectile speed + return speed + max range
     if (wt === WeaponType.THROWN) {
-      weaponFolder.add(tunedWeapon, 'projectileSpeed', 1, 20, 0.5).name('Throw Speed');
+      weaponFolder.add(tunedWeapon, 'projectileSpeed', 0.125, 2.5, 0.0625).name('Throw Speed');
       weaponFolder.add(tunedWeapon, 'pierce', 0, 20, 1).name('Pierce');
-      weaponFolder.add(tunedWeapon, 'returnSpeed', 1, 15, 0.5).name('Return Speed');
-      weaponFolder.add(tunedWeapon, 'maxRange', 50, 500, 10).name('Max Range');
+      weaponFolder.add(tunedWeapon, 'returnSpeed', 0.125, 1.875, 0.0625).name('Return Speed');
+      weaponFolder.add(tunedWeapon, 'maxRange', 6.25, 62.5, 1.25).name('Max Range');
       weaponFolder.add(tunedWeapon, 'bounceCount', 0, 12, 1).name('Bounce Count');
     }
 
     // Beam: length + duration + tick interval
     if (wt === WeaponType.BEAM) {
-      weaponFolder.add(tunedWeapon, 'beamLength', 50, 500, 10).name('Beam Length');
+      weaponFolder.add(tunedWeapon, 'beamLength', 6.25, 62.5, 1.25).name('Beam Length');
       weaponFolder.add(tunedWeapon, 'durationMs', 100, 2000, 50).name('Duration (ms)');
       weaponFolder.add(tunedWeapon, 'beamTickMs', 25, 500, 25).name('Tick Interval (ms)');
     }
@@ -439,8 +441,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     // Trap: arm time + trigger radius + explosion radius
     if (wt === WeaponType.TRAP) {
       weaponFolder.add(tunedWeapon, 'trapArmMs', 0, 3000, 50).name('Arm Delay (ms)');
-      weaponFolder.add(tunedWeapon, 'trapTriggerRadius', 8, 100, 1).name('Trigger Radius');
-      weaponFolder.add(tunedWeapon, 'trapExplosionRadius', 16, 200, 1).name('Explosion Radius');
+      weaponFolder.add(tunedWeapon, 'trapTriggerRadius', 1, 12.5, 0.125).name('Trigger Radius');
+      weaponFolder.add(tunedWeapon, 'trapExplosionRadius', 2, 25, 0.125).name('Explosion Radius');
     }
 
     // Reset to defaults button
@@ -479,12 +481,12 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     });
 
   const arenaFolder = gui.addFolder('Arena');
-  arenaFolder.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
+  arenaFolder.add(settings, 'playerSpeed', 0.125, 1.875, 0.0125).name('Player Speed');
   arenaFolder.add(settings, 'invulnerable').name('Invulnerable');
   arenaFolder.add(settings, 'maxEnemies', 5, 200, 1).name('Max Enemies');
   arenaFolder.add(settings, 'spawnIntervalMs', 100, 5000, 1).name('Spawn Interval');
   arenaFolder.add(settings, 'enemyHp', 10, 500, 1).name('Enemy HP');
-  arenaFolder.add(settings, 'enemySpeed', 0.5, 5, 0.1).name('Enemy Speed');
+  arenaFolder.add(settings, 'enemySpeed', 0.0625, 0.625, 0.0125).name('Enemy Speed');
   arenaFolder.add(controlsApi, 'reset').name('Reset');
 
   // Build initial weapon folder

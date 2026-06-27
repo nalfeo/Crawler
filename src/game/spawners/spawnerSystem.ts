@@ -37,9 +37,9 @@ import type { MobTemplate, SpawnMode } from './types.js';
 
 const logger = createLogger('game:spawner');
 
-/** Children appear in a ring this many px from the spawner's centre. */
-const CHILD_SPAWN_RADIUS_MIN = 16;
-const CHILD_SPAWN_RADIUS_MAX = 40;
+/** Children appear in a ring this many feet from the spawner's centre. */
+const CHILD_SPAWN_RADIUS_MIN = 2;
+const CHILD_SPAWN_RADIUS_MAX = 5;
 
 const SPAWN_MODE = { PASSIVE: 0, DEFENSIVE: 1 } as const;
 

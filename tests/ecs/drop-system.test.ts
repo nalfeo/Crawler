@@ -204,9 +204,12 @@ describe('dropSystem', () => {
       expect(world.stores.damage.amount[miniEid]).toBe(expectedMiniDamage);
       expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
       expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
-      // Babies render smaller than the parent (16px) sprite.
+      // Babies render smaller than their 2 ft parent, and the feet-scale size is
+      // preserved exactly (0.65×) rather than rounded up to a whole foot.
       expect(hasComponent(world.ecs, miniEid, Sprite)).toBe(true);
-      expect(world.stores.sprite.width[miniEid]).toBeLessThan(16);
+      expect(world.stores.sprite.width[miniEid]).toBeCloseTo(2 * 0.65);
+      expect(world.stores.sprite.height[miniEid]).toBeCloseTo(2 * 0.65);
+      expect(world.stores.sprite.width[miniEid]).not.toBe(1);
       // Babies pop in with a cosmetic spawn animation but are NOT time-invulnerable;
       // they survive only their parent's killing swing (see swing-immunity test below).
       expect(hasComponent(world.ecs, miniEid, SpawnAnim)).toBe(true);

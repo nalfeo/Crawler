@@ -149,7 +149,7 @@ function createBridgeTestMap(): FloorMap {
   const config: MapConfig = {
     widthTiles: 20,
     heightTiles: 20,
-    tileSizePx: 32,
+    tileSizeFt: 32,
     biome: BiomeType.ARENA,
     seed: 42,
     roomWidthRange: [4, 8],
@@ -187,8 +187,8 @@ describe('createPhaserBridge', () => {
 
     expect(images).toHaveLength(1);
     expect(images[0]).toMatchObject({
-      x: 10,
-      y: 20,
+      x: 80,
+      y: 160,
       destroyed: false,
     });
 
@@ -198,7 +198,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
 
     expect(images).toHaveLength(1);
-    expect(images[0]).toMatchObject({ x: 30, y: 40 });
+    expect(images[0]).toMatchObject({ x: 240, y: 320 });
   });
 
   it('destroys images when entities disappear or the bridge is destroyed', () => {
@@ -287,8 +287,8 @@ describe('createPhaserBridge', () => {
     const corpse = images[0]!;
     const skull = images[1]!;
     expect(skull).toMatchObject({
-      x: 12,
-      y: 16, // 34 - DEAD_SKULL_Y_OFFSET, no rise yet
+      x: 96,
+      y: 254, // ftToPx(34) - DEAD_SKULL_Y_OFFSET, no rise yet
       textureKey: '__cw_dead_skull',
       destroyed: false,
     });
@@ -301,7 +301,7 @@ describe('createPhaserBridge', () => {
     bridge.sync(world);
     expect(skull.alpha).toBeLessThan(0.95);
     expect(skull.alpha).toBeGreaterThan(0);
-    expect(skull.y).toBeLessThan(16); // risen upward
+    expect(skull.y).toBeLessThan(254); // risen upward
     expect(corpse.tinted).toBe(true);
     expect(corpse.tint).not.toBe(0xffffff); // draining toward grey
 

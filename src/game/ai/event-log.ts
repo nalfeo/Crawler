@@ -34,9 +34,9 @@ export interface SimEvent {
   frame: number;
   /** Simulated game time in ms. */
   gameMs: number;
-  /** Player world X (px). */
+  /** Player world X (ft). */
   px: number;
-  /** Player world Y (px). */
+  /** Player world Y (ft). */
   py: number;
   /** AI behavioral state name (see {@link AI_STATE_NAME}). */
   state: string;
@@ -44,11 +44,11 @@ export interface SimEvent {
   reason: string;
   /** Target entity id, if any. */
   targetEid: number | null;
-  /** Distance to the AI's chosen target (px), if any. */
+  /** Distance to the AI's chosen target (ft), if any. */
   targetDist: number | null;
   /** Live enemy count. */
   enemyCount: number;
-  /** Distance to nearest enemy (px), if any. */
+  /** Distance to nearest enemy (ft), if any. */
   nearestEnemyDist: number | null;
   /** Player level. */
   level: number;
@@ -62,9 +62,9 @@ export interface SimEvent {
   stuckFrames: number;
   /** Remaining waypoints in the current A* path. */
   pathLen: number;
-  /** Straight-line displacement since the previous sample (px). */
+  /** Straight-line displacement since the previous sample (ft). */
   netDisp: number;
-  /** Total path distance actually traveled since the previous sample (px). */
+  /** Total path distance actually traveled since the previous sample (ft). */
   pathTravel: number;
   /** Optional annotation for non-sample events. */
   note?: string;
@@ -114,9 +114,9 @@ export interface EventSummary {
   wiggleEpisodes: WastedEpisode[];
   /** Notable stuck episodes, longest first. */
   stuckEpisodes: WastedEpisode[];
-  /** Total path distance actually traveled across the run (px). */
+  /** Total path distance actually traveled across the run (ft). */
   totalPathTravel: number;
-  /** Net straight-line displacement summed across samples (px). */
+  /** Net straight-line displacement summed across samples (ft). */
   totalNetDisp: number;
   /** Overall efficiency: net displacement / path traveled (0..1). */
   travelEfficiency: number;
@@ -124,12 +124,12 @@ export interface EventSummary {
 
 /** Tunables for what counts as wasted motion. Exposed for tests/tuning. */
 export interface SummaryThresholds {
-  /** Min path travel (px) in a sample window to consider "actively moving". */
-  movingTravelPx: number;
+  /** Min path travel (ft) in a sample window to consider "actively moving". */
+  movingTravelFt: number;
   /** netDisp/pathTravel below this while moving ⇒ wiggle. */
   wiggleEfficiency: number;
-  /** Path travel (px) below this ⇒ idle (not moving). */
-  idleTravelPx: number;
+  /** Path travel (ft) below this ⇒ idle (not moving). */
+  idleTravelFt: number;
   /** stuckFrames at/above this ⇒ stuck. */
   stuckFrames: number;
   /** Minimum episode duration (ms) to report. */
@@ -139,9 +139,9 @@ export interface SummaryThresholds {
 }
 
 export const DEFAULT_SUMMARY_THRESHOLDS: SummaryThresholds = {
-  movingTravelPx: 12,
+  movingTravelFt: 1.5,
   wiggleEfficiency: 0.35,
-  idleTravelPx: 1.5,
+  idleTravelFt: 0.1875,
   stuckFrames: 45,
   minEpisodeMs: 800,
   maxEpisodes: 12,
@@ -202,10 +202,10 @@ export function summarizeEvents(
     stateMs[sample.state] = (stateMs[sample.state] ?? 0) + dt;
     reasonMs[sample.reason] = (reasonMs[sample.reason] ?? 0) + dt;
 
-    const moving = sample.pathTravel >= thresholds.movingTravelPx;
+    const moving = sample.pathTravel >= thresholds.movingTravelFt;
     const efficiency = sample.pathTravel > 0 ? sample.netDisp / sample.pathTravel : 1;
     const isWiggle = moving && efficiency < thresholds.wiggleEfficiency;
-    const isIdle = sample.pathTravel < thresholds.idleTravelPx;
+    const isIdle = sample.pathTravel < thresholds.idleTravelFt;
     const isStuck = sample.stuckFrames >= thresholds.stuckFrames;
 
     if (isWiggle) wiggleMs += dt;

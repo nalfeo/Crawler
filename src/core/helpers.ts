@@ -83,7 +83,7 @@ export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: 100, max: 100 }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 24, height: 24 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 3, height: 3 }));
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Player);
   addComponent(world.ecs, eid, Inventory);
@@ -105,7 +105,7 @@ export function spawnEnemy(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Enemy);
   setBloodColor(world, eid, bloodColorHex);
@@ -139,7 +139,7 @@ export function spawnBehaviorEnemy(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: 0, y: 0 }));
   addComponent(world.ecs, eid, set(Health, { current: hp, max: hp }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 2, height: 2 }));
   addComponent(world.ecs, eid, set(Weight, { value: options?.weight ?? 120 }));
   addComponent(world.ecs, eid, Enemy);
   addComponent(
@@ -152,7 +152,7 @@ export function spawnBehaviorEnemy(
       attackRange,
       persona: options?.persona ?? PATH_PERSONA.NAVIGATOR,
       traversalMode,
-      flankDistance: options?.flankDistance ?? 96,
+      flankDistance: options?.flankDistance ?? 12,
       pathRefreshFrames: options?.pathRefreshFrames ?? 10,
     }),
   );
@@ -176,9 +176,9 @@ export interface SpawnSpawnerOptions {
   bloodColor?: number;
   /** Sprite texture id. Default 0. */
   textureId?: number;
-  /** Sprite width in px. Default 24. */
+  /** Sprite width in feet. Default 3. */
   spriteWidth?: number;
-  /** Sprite height in px. Default 24. */
+  /** Sprite height in feet. Default 3. */
   spriteHeight?: number;
   /** Extra delay (ms) before the first spawn pulse is allowed. Default 0. */
   initialDelayMs?: number;
@@ -210,8 +210,8 @@ export function spawnSpawner(
     eid,
     set(Sprite, {
       textureId: options.textureId ?? 0,
-      width: options.spriteWidth ?? 24,
-      height: options.spriteHeight ?? 24,
+      width: options.spriteWidth ?? 3,
+      height: options.spriteHeight ?? 3,
     }),
   );
   addComponent(world.ecs, eid, set(Weight, { value: options.weight ?? 200 }));
@@ -250,7 +250,7 @@ export function spawnXpGem(
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(XpGem, { value }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
@@ -267,7 +267,7 @@ export function spawnGold(
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Gold, { value }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
@@ -290,7 +290,7 @@ export function spawnProjectile(
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(Velocity, { x: vx, y: vy }));
   addComponent(world.ecs, eid, set(Damage, { amount: damage, cooldownMs: 0, lastFireMs: 0 }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 6, height: 6 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 0.75, height: 0.75 }));
   addComponent(
     world.ecs,
     eid,
@@ -329,7 +329,7 @@ export function spawnDroppedItem(
 
   addComponent(world.ecs, eid, set(Position, { x, y }));
   addComponent(world.ecs, eid, set(DroppedItem, { itemIndex: sanitizedItemIndex }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 10, height: 10 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1.25, height: 1.25 }));
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
 
   return eid;
@@ -500,7 +500,7 @@ export function spawnBeam(
   addComponent(world.ecs, eid, set(Lifetime, { expiresAtMs: world.elapsedMs + durationMs }));
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: length, height: 4 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: length, height: 0.5 }));
   return eid;
 }
 
@@ -530,7 +530,7 @@ export function spawnTrap(
   );
   addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
   addComponent(world.ecs, eid, set(Team, { id: teamId }));
-  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 12, height: 12 }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1.5, height: 1.5 }));
   return eid;
 }
 
@@ -605,7 +605,7 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
   addComponent(
     world.ecs,
     eid,
-    set(Sprite, { textureId: def.textureId, width: def.widthPx, height: def.heightPx }),
+    set(Sprite, { textureId: def.textureId, width: def.widthFt, height: def.heightFt }),
   );
   addComponent(world.ecs, eid, set(Npc, { defIdIndex: 0 }));
   addComponent(world.ecs, eid, Invincible);
