@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('createFloor1GameConfig', () => {
   it('captures the shared base-game host settings that visual labs should inherit', () => {
-    const source = readFileSync('src/bootstrap/floor1-game-config.ts', 'utf-8');
+    const source = readFileSync('src/bootstrap/floor-game-config.ts', 'utf-8');
 
     expect(source).toContain("backgroundColor: '#111111'");
     expect(source).toContain('width: GAME.WIDTH');
