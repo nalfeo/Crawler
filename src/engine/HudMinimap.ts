@@ -13,6 +13,8 @@ import {
 } from './minimap-view-state.js';
 import { PIXEL_UI } from './pixel-ui.js';
 import { applyCrispText, getUiScale, type ScreenBounds } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
+import { GAME } from '../shared/constants.js';
 
 const HUD_DEPTH = 1000;
 const MAP_BORDER = 2;
@@ -322,7 +324,20 @@ export function createHudMinimap(scene: Phaser.Scene): {
   let lastPinchDist = 0;
 
   function getGameSize(): { width: number; height: number } {
-    return { width: scene.scale.gameSize.width, height: scene.scale.gameSize.height };
+    // HUD geometry is laid out in design space (1280×720). After the HiDPI
+    // supersampling in #353 the canvas backing store is `design × S`, and a
+    // zoom-`S` UI camera scales HUD objects back up. Reading the backing store
+    // here would double-scale the radar/overlay off-screen, so anchor layout to
+    // the design constants instead (identity at S=1).
+    return { width: GAME.WIDTH, height: GAME.HEIGHT };
+  }
+
+  // Phaser pointer coordinates live in backing-store space (`[0, design × S]`
+  // after #353). The overlay viewport is laid out in design space, so convert
+  // pointer input before hit-testing or panning. Identity at S=1.
+  function toDesignSpace(x: number, y: number): { x: number; y: number } {
+    const s = getRenderScale(scene);
+    return { x: x / s, y: y / s };
   }
 
   function updateLayout(): void {
@@ -832,10 +847,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
     if (!overlayOpen || !viewState) {
       return;
     }
-    if (!isInsideViewport(pointer.x, pointer.y, viewport)) {
+    const { x: px, y: py } = toDesignSpace(pointer.x, pointer.y);
+    if (!isInsideViewport(px, py, viewport)) {
       return;
     }
-    const local = screenToViewport(pointer.x, pointer.y, viewport);
+    const local = screenToViewport(px, py, viewport);
     const nextZoom = deltaY > 0 ? viewState.zoom * ZOOM_STEP_OUT : viewState.zoom * ZOOM_STEP_IN;
     viewState = zoomMinimapAtPoint(viewState, nextZoom, local.x, local.y, zoomLimits);
     applyViewTransform();
@@ -853,9 +869,8 @@ export function createHudMinimap(scene: Phaser.Scene): {
       const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
       if (lastPinchDist > 0 && dist > 0) {
         const scaleFactor = dist / lastPinchDist;
-        const midX = (p1.x + p2.x) / 2;
-        const midY = (p1.y + p2.y) / 2;
-        const local = screenToViewport(midX, midY, viewport);
+        const mid = toDesignSpace((p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+        const local = screenToViewport(mid.x, mid.y, viewport);
         viewState = zoomMinimapAtPoint(
           viewState,
           viewState.zoom * scaleFactor,
@@ -875,10 +890,11 @@ export function createHudMinimap(scene: Phaser.Scene): {
     if (!dragging) {
       return;
     }
-    const dx = pointer.x - lastPointerX;
-    const dy = pointer.y - lastPointerY;
-    lastPointerX = pointer.x;
-    lastPointerY = pointer.y;
+    const { x: px, y: py } = toDesignSpace(pointer.x, pointer.y);
+    const dx = px - lastPointerX;
+    const dy = py - lastPointerY;
+    lastPointerX = px;
+    lastPointerY = py;
     viewState = panMinimapByScreenDelta(viewState, dx, dy);
     applyViewTransform();
   }
@@ -973,8 +989,9 @@ export function createHudMinimap(scene: Phaser.Scene): {
       return;
     }
     dragging = true;
-    lastPointerX = pointer.x;
-    lastPointerY = pointer.y;
+    const { x: px, y: py } = toDesignSpace(pointer.x, pointer.y);
+    lastPointerX = px;
+    lastPointerY = py;
   });
 
   window.addEventListener('keydown', handleKeyDown);
