@@ -25,8 +25,9 @@ import {
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
+import { getGenerator } from '../../src/core/map/generators/registry.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
-import { TileFlags, RoomRole } from '../../src/shared/map-types.js';
+import { BiomeType, TileFlags, RoomRole } from '../../src/shared/map-types.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -89,6 +90,147 @@ describe('floor1Scenario', () => {
       expect(spellRoom).not.toBe(-1);
       expect(itemRoom).not.toBe(-1);
       expect(spellRoom).not.toBe(itemRoom);
+    }
+  });
+
+  it('prefers single-door side rooms for welcome, shopkeeper, and spell broker, with welcome closest by path', () => {
+    const roomIdAt = (
+      map: NonNullable<ReturnType<typeof createTestWorld>['floorMap']>,
+      pos: { x: number; y: number },
+    ) => {
+      const tile = map.worldToTile(pos.x, pos.y);
+      const room = map.rooms.find(
+        (r) =>
+          tile.x >= r.bounds.x &&
+          tile.x < r.bounds.x + r.bounds.width &&
+          tile.y >= r.bounds.y &&
+          tile.y < r.bounds.y + r.bounds.height,
+      );
+      return room?.id ?? -1;
+    };
+
+    for (const seed of [1, 7, 19, 42, 99, 123, 2024, 665790]) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      const map = world.floorMap!;
+      const objective = world.floor1!.objective;
+      const replayWorld = createTestWorld({ seed });
+      const replaySeed = replayWorld.rng.nextInt(1, 2_000_000);
+      const replayMap = getGenerator(BiomeType.BASIC_UNDERGROUND).generate(
+        { ...map.config, seed: replaySeed },
+        replayWorld.rng,
+      );
+
+      const welcomeRoomId = roomIdAt(replayMap, objective.welcomeOfficePos);
+      const shopRoomId = roomIdAt(replayMap, objective.shopRoomPos);
+      const spellRoomId = roomIdAt(replayMap, objective.spellQuestGiverPos);
+
+      expect(welcomeRoomId).toBeGreaterThanOrEqual(0);
+      expect(shopRoomId).toBeGreaterThanOrEqual(0);
+      expect(spellRoomId).toBeGreaterThanOrEqual(0);
+
+      const selectedSpecialRoomIds = new Set([welcomeRoomId, shopRoomId, spellRoomId]);
+      const originalSafeRoom = replayMap.roomGraph
+        .getRoomsByRole(RoomRole.SAFE)
+        .find((room) => !selectedSpecialRoomIds.has(room.id));
+      const reserved = new Set(
+        [replayMap.spawnRoom, originalSafeRoom, replayMap.bossStairRoom].filter(
+          (room): room is NonNullable<typeof room> => room != null,
+        ),
+      );
+
+      const bossStairRoomId = replayMap.bossStairRoom?.id;
+      const roomsReachableWithoutBossRoom = new Set<number>();
+      const roomPathStepsFromSpawn = new Map<number, number>();
+      const bfsQueue: number[] = [];
+      const bfsVisited = new Set<number>();
+      const startRoomId = replayMap.spawnRoom?.id;
+      if (startRoomId !== undefined) {
+        bfsQueue.push(startRoomId);
+        bfsVisited.add(startRoomId);
+        roomPathStepsFromSpawn.set(startRoomId, 0);
+        while (bfsQueue.length > 0) {
+          const currId = bfsQueue.shift()!;
+          const currRoom = replayMap.roomGraph.get(currId);
+          if (!currRoom) continue;
+          roomsReachableWithoutBossRoom.add(currId);
+          const currSteps = roomPathStepsFromSpawn.get(currId) ?? 0;
+          for (const neighborId of currRoom.neighbors) {
+            if (!bfsVisited.has(neighborId) && neighborId !== bossStairRoomId) {
+              bfsVisited.add(neighborId);
+              roomPathStepsFromSpawn.set(neighborId, currSteps + 1);
+              bfsQueue.push(neighborId);
+            }
+          }
+        }
+      }
+
+      const candidateRooms = replayMap.rooms.filter(
+        (room) =>
+          !reserved.has(room) &&
+          (roomsReachableWithoutBossRoom.size === 0 || roomsReachableWithoutBossRoom.has(room.id)),
+      );
+      const selectedRooms = [welcomeRoomId, shopRoomId, spellRoomId]
+        .map((roomId) => replayMap.roomGraph.get(roomId))
+        .filter((room) => room !== undefined);
+      const selectedIds = [welcomeRoomId, shopRoomId, spellRoomId];
+      const LOCAL_SPECIAL_ROOM_PREFERENCE_WINDOW = 5;
+      for (let i = 0; i < selectedIds.length; i += 1) {
+        const selectedId = selectedIds[i]!;
+        const remaining = candidateRooms
+          .filter((room) => !selectedIds.slice(0, i).includes(room.id))
+          .sort((a, b) => {
+            const aPathSteps = roomPathStepsFromSpawn.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+            const bPathSteps = roomPathStepsFromSpawn.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+            if (aPathSteps !== bPathSteps) {
+              return aPathSteps - bPathSteps;
+            }
+            const aCenter = {
+              x: Math.floor(a.bounds.x + a.bounds.width / 2),
+              y: Math.floor(a.bounds.y + a.bounds.height / 2),
+            };
+            const bCenter = {
+              x: Math.floor(b.bounds.x + b.bounds.width / 2),
+              y: Math.floor(b.bounds.y + b.bounds.height / 2),
+            };
+            const aDx = aCenter.x - replayMap.playerSpawn.x;
+            const aDy = aCenter.y - replayMap.playerSpawn.y;
+            const bDx = bCenter.x - replayMap.playerSpawn.x;
+            const bDy = bCenter.y - replayMap.playerSpawn.y;
+            return aDx * aDx + aDy * aDy - (bDx * bDx + bDy * bDy);
+          });
+        const bestPathSteps = Math.min(
+          ...remaining.map(
+            (room) => roomPathStepsFromSpawn.get(room.id) ?? Number.MAX_SAFE_INTEGER,
+          ),
+        );
+        const pool =
+          i === 0
+            ? remaining.filter(
+                (room) =>
+                  (roomPathStepsFromSpawn.get(room.id) ?? Number.MAX_SAFE_INTEGER) ===
+                  bestPathSteps,
+              )
+            : remaining.slice(0, LOCAL_SPECIAL_ROOM_PREFERENCE_WINDOW);
+        const selectedRoom = selectedRooms[i];
+        expect(selectedRoom).toBeDefined();
+        if (!selectedRoom) continue;
+
+        expect(pool.map((room) => room.id)).toContain(selectedId);
+        const minDoorCount = Math.min(...pool.map((room) => room.doors.length));
+        expect(selectedRoom.doors.length).toBe(minDoorCount);
+        if (pool.some((room) => room.doors.length === 1)) {
+          expect(selectedRoom.doors.length).toBe(1);
+        }
+      }
+
+      const welcomePathSteps = roomPathStepsFromSpawn.get(welcomeRoomId) ?? Number.MAX_SAFE_INTEGER;
+      const shopPathSteps = roomPathStepsFromSpawn.get(shopRoomId) ?? Number.MAX_SAFE_INTEGER;
+      const spellPathSteps = roomPathStepsFromSpawn.get(spellRoomId) ?? Number.MAX_SAFE_INTEGER;
+      expect(welcomePathSteps).toBeLessThanOrEqual(shopPathSteps);
+      expect(welcomePathSteps).toBeLessThanOrEqual(spellPathSteps);
     }
   });
 

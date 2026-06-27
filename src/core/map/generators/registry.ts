@@ -38,7 +38,7 @@ export function getRegisteredBiomes(): BiomeType[] {
 
 // --- Register built-in generators ---
 
-const dungeonGen = new DungeonGenerator();
+const dungeonGen = new DungeonGenerator({ roomVariety: true });
 registerGenerator(BiomeType.DUNGEON, dungeonGen);
 registerGenerator(BiomeType.CASTLE, dungeonGen);
 registerGenerator(

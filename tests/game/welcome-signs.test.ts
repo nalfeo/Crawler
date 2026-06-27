@@ -131,9 +131,11 @@ describe('floor 1 welcome signs', () => {
   it('regression: seed 20 points each sign at the door that leads onward, in every path room', () => {
     const world = initFloor1(20);
     const steps = navigableRoomSteps(world);
-    // Seed 20 winds through a long chain of rooms — the original straight-to-goal
-    // bug short-circuited this, so a long path is the regression's fingerprint.
-    expect(steps.length).toBeGreaterThan(6);
+    // The welcome room is now intentionally allowed to sit closer to spawn, so
+    // only require a non-trivial multi-room route here. The regression target is
+    // still the same: every intermediate room on the actual path needs a sign
+    // that points at the onward door, not straight at the final destination.
+    expect(steps.length).toBeGreaterThan(1);
 
     const signs = welcomeSignEids(world);
     // One door-pointing sign per room, excluding the destination room.

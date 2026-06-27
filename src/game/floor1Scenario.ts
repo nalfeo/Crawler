@@ -295,6 +295,77 @@ function resolvePassableRoomCenter(
   return floorMap.tileToWorld(center.x, center.y);
 }
 
+interface ObjectiveRoomCandidate {
+  readonly room: RoomData;
+  readonly center: { x: number; y: number };
+  readonly distanceSq: number;
+  readonly pathSteps: number;
+  readonly doorCount: number;
+}
+
+const LOCAL_SPECIAL_ROOM_PREFERENCE_WINDOW = 5;
+
+function compareObjectiveRoomProximity(
+  a: ObjectiveRoomCandidate,
+  b: ObjectiveRoomCandidate,
+): number {
+  if (a.pathSteps !== b.pathSteps) {
+    return a.pathSteps - b.pathSteps;
+  }
+  if (a.distanceSq !== b.distanceSq) {
+    return a.distanceSq - b.distanceSq;
+  }
+  return a.room.id - b.room.id;
+}
+
+function comparePreferredSpecialRoomCandidates(
+  a: ObjectiveRoomCandidate,
+  b: ObjectiveRoomCandidate,
+): number {
+  const aSingleDoorPenalty = a.doorCount === 1 ? 0 : 1;
+  const bSingleDoorPenalty = b.doorCount === 1 ? 0 : 1;
+  if (aSingleDoorPenalty !== bSingleDoorPenalty) {
+    return aSingleDoorPenalty - bSingleDoorPenalty;
+  }
+  if (a.doorCount !== b.doorCount) {
+    return a.doorCount - b.doorCount;
+  }
+  if (a.pathSteps !== b.pathSteps) {
+    return a.pathSteps - b.pathSteps;
+  }
+  if (a.distanceSq !== b.distanceSq) {
+    return a.distanceSq - b.distanceSq;
+  }
+  return a.room.id - b.room.id;
+}
+
+function pickPreferredSpecialRoomCandidate(
+  candidates: readonly ObjectiveRoomCandidate[],
+  used: ReadonlySet<ObjectiveRoomCandidate>,
+): ObjectiveRoomCandidate | undefined {
+  const remaining = candidates.filter((entry) => !used.has(entry));
+  if (remaining.length === 0) {
+    return undefined;
+  }
+  return remaining
+    .slice(0, LOCAL_SPECIAL_ROOM_PREFERENCE_WINDOW)
+    .sort(comparePreferredSpecialRoomCandidates)[0];
+}
+
+function pickClosestWelcomeRoomCandidate(
+  candidates: readonly ObjectiveRoomCandidate[],
+  used: ReadonlySet<ObjectiveRoomCandidate>,
+): ObjectiveRoomCandidate | undefined {
+  const remaining = candidates.filter((entry) => !used.has(entry));
+  if (remaining.length === 0) {
+    return undefined;
+  }
+  const bestPathSteps = Math.min(...remaining.map((entry) => entry.pathSteps));
+  return remaining
+    .filter((entry) => entry.pathSteps === bestPathSteps)
+    .sort(comparePreferredSpecialRoomCandidates)[0];
+}
+
 function chooseObjectiveTiles(world: GameWorld): {
   welcomeOfficePos: { x: number; y: number };
   safeRoomPos: { x: number; y: number };
@@ -362,6 +433,7 @@ function chooseObjectiveTiles(world: GameWorld): {
   // where the rat-tail fetch item ended up in a room whose only connection was
   // the locked boss-stair room). BFS from spawn treating boss-stair as a wall.
   const bossStairRoomId = floorMap.bossStairRoom?.id;
+  const roomPathStepsFromSpawn = new Map<number, number>();
   // roomsReachableWithoutBossRoom: the set of rooms the player can visit without
   // ever entering the boss staircase room (which is locked until all quests finish).
   // Stays empty when the spawn room is not set — the fallback path below then uses
@@ -375,14 +447,17 @@ function chooseObjectiveTiles(world: GameWorld): {
     if (startRoomId !== undefined) {
       bfsQueue.push(startRoomId);
       bfsVisited.add(startRoomId);
+      roomPathStepsFromSpawn.set(startRoomId, 0);
       while (bfsQueue.length > 0) {
         const currId = bfsQueue.shift()!;
         const currRoom = floorMap.roomGraph.get(currId);
         if (currRoom) {
           roomsReachableWithoutBossRoom.add(currRoom);
+          const currSteps = roomPathStepsFromSpawn.get(currId) ?? 0;
           for (const neighborId of currRoom.neighbors) {
             if (!bfsVisited.has(neighborId) && neighborId !== bossStairRoomId) {
               bfsVisited.add(neighborId);
+              roomPathStepsFromSpawn.set(neighborId, currSteps + 1);
               bfsQueue.push(neighborId);
             }
           }
@@ -401,15 +476,36 @@ function chooseObjectiveTiles(world: GameWorld): {
       const center = centerOfRoom(room);
       const dx = center.x - spawnTile.x;
       const dy = center.y - spawnTile.y;
-      return { room, center, distanceSq: dx * dx + dy * dy };
+      return {
+        room,
+        center,
+        distanceSq: dx * dx + dy * dy,
+        pathSteps: roomPathStepsFromSpawn.get(room.id) ?? Number.MAX_SAFE_INTEGER,
+        doorCount: room.doors.length,
+      };
     })
     .sort((a, b) => a.distanceSq - b.distanceSq);
 
-  const welcomeEntry = candidates[0];
-  const shopEntry = candidates.length > 1 ? candidates[1] : candidates[0];
-  const itemEntry = [...candidates]
-    .reverse()
-    .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
+  const nearbySpecialCandidates = [...candidates].sort(compareObjectiveRoomProximity);
+  const usedSpecialEntries = new Set<ObjectiveRoomCandidate>();
+  const welcomeEntry = pickClosestWelcomeRoomCandidate(nearbySpecialCandidates, usedSpecialEntries);
+  if (welcomeEntry) {
+    usedSpecialEntries.add(welcomeEntry);
+  }
+  const shopEntry = pickPreferredSpecialRoomCandidate(nearbySpecialCandidates, usedSpecialEntries);
+  if (shopEntry) {
+    usedSpecialEntries.add(shopEntry);
+  }
+  const spellEntry = pickPreferredSpecialRoomCandidate(nearbySpecialCandidates, usedSpecialEntries);
+  if (spellEntry) {
+    usedSpecialEntries.add(spellEntry);
+  }
+  const reservedSpecialEntries = new Set([welcomeEntry, shopEntry, spellEntry]);
+  const reverseCandidates = [...candidates].reverse();
+  const itemEntry =
+    reverseCandidates.find((entry) => !reservedSpecialEntries.has(entry)) ??
+    reverseCandidates.find((entry) => entry !== spellEntry) ??
+    reverseCandidates[0];
   const welcomeOfficePos = welcomeEntry
     ? resolvePassableRoomCenter(floorMap, welcomeEntry.room)
     : fallbackWelcome;
@@ -420,9 +516,22 @@ function chooseObjectiveTiles(world: GameWorld): {
     ? resolvePassableRoomCenter(floorMap, itemEntry.room)
     : fallbackItem;
   const safeRoomPos = welcomeOfficePos;
-  const specialPoints = [welcomeOfficePos, staircasePos, shopRoomPos, questItemPos];
+  const spellFallbackPos =
+    shopRoomPos.x !== questItemPos.x || shopRoomPos.y !== questItemPos.y
+      ? shopRoomPos
+      : welcomeOfficePos;
+  const spellQuestGiverPos = spellEntry
+    ? resolvePassableRoomCenter(floorMap, spellEntry.room)
+    : spellFallbackPos;
+  const specialPoints = [
+    welcomeOfficePos,
+    staircasePos,
+    shopRoomPos,
+    spellQuestGiverPos,
+    questItemPos,
+  ];
   const slimeRatEntry = candidates
-    .filter((entry) => entry !== shopEntry && entry !== itemEntry)
+    .filter((entry) => !reservedSpecialEntries.has(entry) && entry !== itemEntry)
     .sort((a, b) => {
       const aPos = resolvePassableRoomCenter(floorMap, a.room);
       const bPos = resolvePassableRoomCenter(floorMap, b.room);
@@ -445,19 +554,6 @@ function chooseObjectiveTiles(world: GameWorld): {
   const slimeRatRoomPos = slimeRatEntry
     ? resolvePassableRoomCenter(floorMap, slimeRatEntry.room)
     : questItemPos;
-  // The Spell Broker gets a room of its own — explicitly NOT the room that holds
-  // the merchant's gross fetch item (the rat tail). Pick the nearest unused
-  // candidate so the broker is still discoverable; fall back to a room that is
-  // guaranteed distinct from the fetch-item room on degenerate (tiny) maps.
-  const usedEntries = new Set([welcomeEntry, shopEntry, itemEntry, slimeRatEntry]);
-  const spellEntry = candidates.find((entry) => !usedEntries.has(entry));
-  const spellFallbackPos =
-    shopRoomPos.x !== questItemPos.x || shopRoomPos.y !== questItemPos.y
-      ? shopRoomPos
-      : welcomeOfficePos;
-  const spellQuestGiverPos = spellEntry
-    ? resolvePassableRoomCenter(floorMap, spellEntry.room)
-    : spellFallbackPos;
 
   return {
     welcomeOfficePos,

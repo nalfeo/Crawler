@@ -359,6 +359,32 @@ describe('Map Generators', () => {
       expect(varietyPairCounts.some((count) => count > 0)).toBe(true);
     });
 
+    it('should enable room-variety doorway widening for dungeon and castle biomes in the registry', () => {
+      const config: MapConfig = {
+        widthTiles: 120,
+        heightTiles: 70,
+        tileSizeFt: 4,
+        biome: BiomeType.DUNGEON,
+        seed: 42,
+        roomWidthRange: [6, 14],
+        roomHeightRange: [5, 13],
+        maxRooms: 45,
+        floorDensity: 0.42,
+      };
+
+      for (const biome of [BiomeType.BASIC_UNDERGROUND, BiomeType.DUNGEON, BiomeType.CASTLE]) {
+        const pairCounts: number[] = [];
+        for (const seed of REGRESSION_TEST_SEEDS) {
+          const floor = getGenerator(biome).generate(
+            { ...config, biome, seed },
+            new SeededRandom(seed),
+          );
+          pairCounts.push(countAdjacentDoorPairs(floor as GeneratedFloor));
+        }
+        expect(pairCounts.some((count) => count > 0)).toBe(true);
+      }
+    });
+
     it('should have no isolated passable floor tiles (all reachable from spawn when doors are open)', () => {
       const gen = new DungeonGenerator({ roomVariety: true });
       // Use the floor1 map size and seed to catch real-world regressions
