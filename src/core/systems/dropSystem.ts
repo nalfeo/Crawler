@@ -53,6 +53,12 @@ const SLIME_LEAPER_AI_TYPE = 3;
 const SLIME_SPLIT_CHANCE = 0.35;
 const MINI_SLIME_COUNT = 2;
 const MINI_SLIME_SIZE_SCALE = 0.65;
+/**
+ * Floor for a baby slime's sprite size in feet, so a degenerate (zero-width)
+ * parent can't yield an invisible baby. Equal to the legacy 1px floor ÷
+ * PIXELS_PER_FOOT; real slimes (2–3.75 ft wide) never reach it.
+ */
+const MINI_SLIME_MIN_SIZE_FT = 0.125;
 
 export interface DropSystemOptions {
   readonly spawnLoot?: boolean;
@@ -174,8 +180,8 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
   const parentSpriteTexture = hasSprite ? (world.stores.sprite.textureId[eid] ?? 0) : 0;
   const parentSpriteWidth = hasSprite ? (world.stores.sprite.width[eid] ?? 2) : 2;
   const parentSpriteHeight = hasSprite ? (world.stores.sprite.height[eid] ?? 2) : 2;
-  const miniWidth = Math.max(1, Math.round(parentSpriteWidth * MINI_SLIME_SIZE_SCALE));
-  const miniHeight = Math.max(1, Math.round(parentSpriteHeight * MINI_SLIME_SIZE_SCALE));
+  const miniWidth = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteWidth * MINI_SLIME_SIZE_SCALE);
+  const miniHeight = Math.max(MINI_SLIME_MIN_SIZE_FT, parentSpriteHeight * MINI_SLIME_SIZE_SCALE);
   // Inherit blood colour from the parent slime
   const parentBloodColor = hasComponent(world.ecs, eid, BloodColor)
     ? (world.stores.bloodColor.r[eid]! << 16) |
