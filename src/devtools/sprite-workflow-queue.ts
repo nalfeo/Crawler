@@ -15,6 +15,21 @@ export type SpriteType = (typeof SPRITE_TYPES)[number];
 export type RequestedType = SpriteType | 'auto';
 
 /**
+ * Output size variants. A sprite's *type* fixes a square house-style footprint;
+ * the size variant scales that footprint independently — `default` (1×1),
+ * `wide` (2×1), `tall` (1×2), `large` (2×2). Mirrors the canonical list in
+ * `scripts/sprites/size-variants.ts`, kept local so the devtools (`src/`) layer
+ * does not import across the `src/` ↔ `scripts/` boundary.
+ */
+export const SIZE_VARIANTS = ['default', 'wide', 'tall', 'large'] as const;
+export type SizeVariant = (typeof SIZE_VARIANTS)[number];
+export const DEFAULT_SIZE_VARIANT: SizeVariant = 'default';
+
+export function isSizeVariant(value: unknown): value is SizeVariant {
+  return typeof value === 'string' && (SIZE_VARIANTS as readonly string[]).includes(value);
+}
+
+/**
  * Lifecycle stages for a single queue item. `*-ing` stages are transient
  * "busy" states held while a sidecar request is in flight. The flow is
  * Synthesize → Choose → Generate (raw sheet only) → PostProcess → Judge →
@@ -146,6 +161,12 @@ export interface QueueItem {
    */
   brief: string;
   requestedType: RequestedType;
+  /**
+   * Output size variant baked into the synthesized brief — scales the per-type
+   * default footprint (see {@link SIZE_VARIANTS}). Chosen in the composer before
+   * Synthesize and sent to the sidecar so the candidate YAML carries it.
+   */
+  sizeVariant: SizeVariant;
   resolvedType: SpriteType | null;
   /** Kebab-case slug derived from the name, used as the brief id. */
   kebabName: string;
@@ -219,6 +240,7 @@ function makeItem(
     name: trimmedName !== '' ? trimmedName : trimmedBrief,
     brief: trimmedBrief,
     requestedType,
+    sizeVariant: DEFAULT_SIZE_VARIANT,
     resolvedType: requestedType === 'auto' ? null : requestedType,
     kebabName: slugify(slugSource),
     stage: 'draft',
@@ -633,6 +655,7 @@ function sanitizeItem(value: unknown): QueueItem | null {
     name,
     brief,
     requestedType,
+    sizeVariant: isSizeVariant(raw.sizeVariant) ? raw.sizeVariant : DEFAULT_SIZE_VARIANT,
     resolvedType: isSpriteType(raw.resolvedType) ? raw.resolvedType : null,
     kebabName: typeof raw.kebabName === 'string' ? raw.kebabName : slugify(name),
     stage,

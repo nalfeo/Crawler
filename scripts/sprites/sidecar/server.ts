@@ -76,6 +76,7 @@ import {
   type RerunErrorKind,
 } from '../rerun.js';
 import { synthesizeBrief } from '../synthesize-brief.js';
+import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants.js';
 import { loadBrief, type LoadedBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { LocalRunStore } from '../store/local-store.js';
@@ -167,6 +168,7 @@ interface WorkflowSynthesizeBody {
   readonly brief?: unknown;
   readonly type?: unknown;
   readonly candidates?: unknown;
+  readonly sizeVariant?: unknown;
 }
 
 interface WorkflowPromoteBody {
@@ -178,6 +180,11 @@ interface WorkflowPromoteBody {
 
 interface WorkflowGenerateBody {
   readonly briefPath?: unknown;
+}
+
+interface WorkflowBriefSaveBody {
+  readonly yamlPath?: unknown;
+  readonly yaml?: unknown;
 }
 
 interface WorkflowMetadataBody {
@@ -914,6 +921,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       }
       candidates = body.candidates;
     }
+    let sizeVariant: SizeVariant | undefined;
+    if (body.sizeVariant !== undefined && body.sizeVariant !== null) {
+      if (!isSizeVariant(body.sizeVariant)) {
+        reply.code(400);
+        return {
+          error: 'bad-request',
+          message: `body.sizeVariant must be one of ${SIZE_VARIANTS.join(', ')}`,
+        };
+      }
+      sizeVariant = body.sizeVariant;
+    }
 
     try {
       const env = deps.env ?? process.env;
@@ -922,6 +940,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         name: body.name,
         ...(briefHint ? { briefHint } : {}),
         ...(type ? { type } : {}),
+        ...(sizeVariant ? { sizeVariant } : {}),
         candidates,
         partial: true,
         provider,
@@ -937,6 +956,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return {
         name: result.name,
         type: result.type,
+        sizeVariant: result.sizeVariant,
         written: result.written.map((candidate) => ({
           id: candidate.id,
           yamlPath: toRepoRelativePath(deps.repoRoot, candidate.yamlPath),
@@ -1007,6 +1027,64 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       briefPath: toRepoRelativePath(deps.repoRoot, destAbs),
       target,
     };
+  });
+
+  app.put<{ Body: WorkflowBriefSaveBody }>('/api/workflow/brief', async (req, reply) => {
+    const body = (req.body ?? {}) as WorkflowBriefSaveBody;
+    if (typeof body.yamlPath !== 'string' || body.yamlPath.trim() === '') {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.yamlPath must be a non-empty string' };
+    }
+    if (typeof body.yaml !== 'string' || body.yaml.trim() === '') {
+      reply.code(400);
+      return { error: 'bad-request', message: 'body.yaml must be a non-empty string' };
+    }
+    const abs = resolveRepoPath(deps.repoRoot, body.yamlPath);
+    if (!abs) {
+      reply.code(400);
+      return {
+        error: 'bad-request',
+        message: 'yamlPath must be a repo-relative path inside the repo',
+      };
+    }
+    // Restrict edits to brief YAML files so this endpoint can never overwrite
+    // arbitrary repo files.
+    const relPosix = toRepoRelativePath(deps.repoRoot, abs);
+    if (!relPosix.startsWith('briefs/') || !relPosix.endsWith('.yaml')) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'yamlPath must be a briefs/**/*.yaml file' };
+    }
+    // Validate BEFORE persisting durably: write the candidate text, then run it
+    // through the full brief loader (YAML parse + per-type defaults merge + Zod
+    // schema). On failure, roll back to the prior content so a bad edit never
+    // leaves an invalid brief on disk.
+    const previous = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, body.yaml, 'utf8');
+    let description = '';
+    try {
+      loadBrief(abs, { projectRoot: deps.repoRoot });
+      const parsed = parseYaml(body.yaml) as { description?: unknown; prompt?: unknown };
+      if (typeof parsed.description === 'string') {
+        description = parsed.description;
+      } else if (typeof parsed.prompt === 'string') {
+        description = parsed.prompt;
+      }
+    } catch (err) {
+      if (previous === null) {
+        rmSync(abs, { force: true });
+      } else {
+        writeFileSync(abs, previous, 'utf8');
+      }
+      reply.code(400);
+      return {
+        error: 'invalid-brief',
+        message: err instanceof Error ? err.message : String(err),
+      };
+    }
+    // Mirror the edited brief so a later generate survives a checkpoint wipe.
+    await mirrorBriefToStore(store, deps.repoRoot, abs);
+    return { yamlPath: relPosix, description, yaml: body.yaml };
   });
 
   app.post<{ Body: WorkflowGenerateBody }>('/api/workflow/generate', async (req, reply) => {

@@ -25,6 +25,9 @@ import {
   stageActiveStep,
   stepperFor,
   updateItem,
+  isSizeVariant,
+  SIZE_VARIANTS,
+  DEFAULT_SIZE_VARIANT,
   GENERATION_QUEUED_STALL_HINT_MS,
   GENERATION_SYNC_STALL_HINT_MS,
   type CandidateStatusInput,
@@ -109,6 +112,56 @@ describe('addItem', () => {
     state = addItem(state, 'two');
     expect(state.items.map((i) => i.id)).toEqual(['item-1', 'item-2']);
     expect(state.selectedId).toBe('item-2');
+  });
+});
+
+describe('sizeVariant', () => {
+  it('exposes the canonical variant list with default first', () => {
+    expect(SIZE_VARIANTS).toEqual(['default', 'wide', 'tall', 'large']);
+    expect(DEFAULT_SIZE_VARIANT).toBe('default');
+  });
+
+  it('guards valid variants and rejects everything else', () => {
+    for (const variant of SIZE_VARIANTS) {
+      expect(isSizeVariant(variant)).toBe(true);
+    }
+    expect(isSizeVariant('huge')).toBe(false);
+    expect(isSizeVariant('')).toBe(false);
+    expect(isSizeVariant(undefined)).toBe(false);
+    expect(isSizeVariant(2)).toBe(false);
+  });
+
+  it('defaults a newly added item to the default size', () => {
+    const item = addItem(createEmptyQueue(), 'Purple Potion Bottle').items[0]!;
+    expect(item.sizeVariant).toBe('default');
+  });
+
+  it('round-trips a non-default size through serialize/deserialize', () => {
+    let state = addItem(createEmptyQueue(), 'Banner', '', 'item');
+    state = updateItem(state, 'item-1', { sizeVariant: 'wide' });
+    const restored = deserializeQueue(serializeQueue(state));
+    expect(restored.items[0]!.sizeVariant).toBe('wide');
+  });
+
+  it('hydrates a missing or invalid persisted size to the default', () => {
+    const raw = JSON.stringify({
+      items: [
+        { id: 'item-1', seq: 1, name: 'a', brief: 'a', stage: 'draft', requestedType: 'auto' },
+        {
+          id: 'item-2',
+          seq: 2,
+          name: 'b',
+          brief: 'b',
+          stage: 'draft',
+          requestedType: 'auto',
+          sizeVariant: 'bogus',
+        },
+      ],
+      nextSeq: 3,
+    });
+    const items = deserializeQueue(raw).items;
+    expect(items[0]!.sizeVariant).toBe('default');
+    expect(items[1]!.sizeVariant).toBe('default');
   });
 });
 
