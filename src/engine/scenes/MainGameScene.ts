@@ -52,6 +52,19 @@ import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
+import {
+  blurLightField,
+  buildDirtyRectFromCircles,
+  chooseAutoStepPx,
+  clampLightingStepPx,
+  computeLightField,
+  createLightField,
+  DEFAULT_LIGHTING_CONFIG,
+  getLightingPresetStepPx,
+  type LightField,
+  type LightingConfig,
+  type LightingPresetId,
+} from '../lighting/light-field.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
@@ -183,6 +196,16 @@ declare global {
         modalOpen: boolean;
       };
       forceCompletionModal: () => void;
+      lighting: {
+        getConfig: () => LightingConfig;
+        setConfig: (partial: Partial<LightingConfig>) => void;
+        usePreset: (preset: LightingPresetId) => void;
+        getPerf: () => {
+          computeMsAvg: number;
+          stepPx: number;
+          updateEveryNFrames: number;
+        };
+      };
     };
     /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
     __playerSessionRecorder?: SessionRecorder;
@@ -233,6 +256,9 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Terrain tile layer — baked once per floor as a RenderTexture. */
   private mapRt?: Phaser.GameObjects.RenderTexture;
+
+  /** Dynamic darkness overlay rendered from a configurable light field. */
+  private lightOverlayRt?: Phaser.GameObjects.RenderTexture;
 
   private doorGraphics?: Phaser.GameObjects.Graphics;
 
@@ -369,6 +395,18 @@ export class MainGameScene extends Phaser.Scene {
 
   private cameraMasksDirty = true;
 
+  private lighting: LightingConfig = { ...DEFAULT_LIGHTING_CONFIG };
+
+  private lightField?: LightField;
+
+  private lightingDirty = true;
+
+  private lightingLastSource?: { x: number; y: number };
+
+  private lightingComputeMsAvg = 0;
+
+  private lightingOverBudgetFrames = 0;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -474,6 +512,7 @@ export class MainGameScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
+    this.updateLightingOverlay(true);
     this.bridge.sync(this.world);
     this.updateOverlayText();
     if (typeof window !== 'undefined') {
@@ -497,6 +536,16 @@ export class MainGameScene extends Phaser.Scene {
             this.showFloorCompletionScreenIfNeeded();
           }
         },
+        lighting: {
+          getConfig: () => ({ ...this.lighting }),
+          setConfig: (partial: Partial<LightingConfig>) => this.setLightingConfig(partial),
+          usePreset: (preset: LightingPresetId) => this.setLightingPreset(preset),
+          getPerf: () => ({
+            computeMsAvg: this.lightingComputeMsAvg,
+            stepPx: this.lighting.stepPx,
+            updateEveryNFrames: this.lighting.updateEveryNFrames,
+          }),
+        },
       };
     }
 
@@ -509,6 +558,7 @@ export class MainGameScene extends Phaser.Scene {
       this.bridge?.destroy();
       this.bridge = undefined;
       this.mapRt?.destroy();
+      this.lightOverlayRt?.destroy();
       this.doorGraphics?.destroy();
       for (const img of this.doorImages) {
         img.destroy();
@@ -547,6 +597,8 @@ export class MainGameScene extends Phaser.Scene {
         this.uiCamera = undefined;
       }
       this.mapRt = undefined;
+      this.lightOverlayRt = undefined;
+      this.lightField = undefined;
       this.doorGraphics = undefined;
       this.staircaseMarker = undefined;
       this.stairsLabel = undefined;
@@ -565,6 +617,10 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
+      this.lightingLastSource = undefined;
+      this.lightingDirty = true;
+      this.lightingComputeMsAvg = 0;
+      this.lightingOverBudgetFrames = 0;
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
@@ -678,6 +734,7 @@ export class MainGameScene extends Phaser.Scene {
 
     if (this.hudUi?.isMapOverlayOpen()) {
       this.updateDoorOverlay();
+      this.updateLightingOverlay();
       this.bridge.sync(this.world);
       this.playBossSpawnIntro();
       this.updateCamera();
@@ -1204,13 +1261,20 @@ export class MainGameScene extends Phaser.Scene {
 
   private drawFloorTerrain(): void {
     this.mapRt?.destroy();
+    this.lightOverlayRt?.destroy();
     this.doorGraphics?.destroy();
     for (const img of this.doorImages) {
       img.destroy();
     }
     this.doorImages.length = 0;
     this.mapRt = undefined;
+    this.lightOverlayRt = undefined;
+    this.lightField = undefined;
     this.doorGraphics = undefined;
+    this.lightingLastSource = undefined;
+    this.lightingDirty = true;
+    this.lightingComputeMsAvg = 0;
+    this.lightingOverBudgetFrames = 0;
 
     const floorMap = this.world.floorMap;
     if (!floorMap) {
@@ -1229,10 +1293,129 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.doorGraphics = this.add.graphics().setDepth(-19);
+    this.lightOverlayRt = this.add
+      .renderTexture(0, 0, floorMap.widthPx, floorMap.heightPx)
+      .setOrigin(0, 0)
+      .setDepth(-18);
+    this.rebuildLightField();
     this.updateDoorOverlay();
+    this.updateLightingOverlay(true);
     this.cameras.main.setBounds(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt));
     this.cameras.main.setZoom(CAMERA.BASE_ZOOM * getRenderScale(this));
     this.cameraInSafeRoom = false;
+  }
+
+  private setLightingPreset(preset: LightingPresetId): void {
+    const floorMap = this.world.floorMap;
+    const tileSize = floorMap?.config.tileSizePx ?? 32;
+    this.setLightingConfig({ stepPx: getLightingPresetStepPx(preset, tileSize) });
+  }
+
+  private setLightingConfig(partial: Partial<LightingConfig>): void {
+    const floorMap = this.world.floorMap;
+    const tileSize = floorMap?.config.tileSizePx ?? 32;
+    const next: LightingConfig = { ...this.lighting, ...partial };
+    next.stepPx = clampLightingStepPx(next.stepPx, tileSize);
+    next.ambient = Math.max(0, Math.min(1, next.ambient));
+    next.sourceIntensity = Math.max(0, Math.min(2, next.sourceIntensity));
+    next.sourceRadiusPx = Math.max(1, next.sourceRadiusPx);
+    next.falloffExponent = Math.max(0.1, next.falloffExponent);
+    next.updateEveryNFrames = Math.max(1, Math.round(next.updateEveryNFrames));
+    next.targetComputeMs = Math.max(0.25, next.targetComputeMs);
+    const stepChanged = next.stepPx !== this.lighting.stepPx;
+    this.lighting = next;
+    this.lightingDirty = true;
+    if (stepChanged) {
+      this.rebuildLightField();
+    }
+  }
+
+  private rebuildLightField(): void {
+    const floorMap = this.world.floorMap;
+    if (!floorMap) {
+      this.lightField = undefined;
+      return;
+    }
+    this.lightField = createLightField(floorMap.widthPx, floorMap.heightPx, this.lighting.stepPx);
+    this.lightingDirty = true;
+  }
+
+  private updateLightingOverlay(force = false): void {
+    const floorMap = this.world.floorMap;
+    const rt = this.lightOverlayRt;
+    const field = this.lightField;
+    if (!floorMap || !rt || !field || this.playerEid < 0) return;
+
+    const shouldSkip =
+      !force &&
+      !this.lightingDirty &&
+      this.lighting.updateEveryNFrames > 1 &&
+      this.world.frameCount % this.lighting.updateEveryNFrames !== 0;
+    if (shouldSkip) {
+      return;
+    }
+
+    const px = this.world.stores.position.x[this.playerEid] ?? 0;
+    const py = this.world.stores.position.y[this.playerEid] ?? 0;
+    const radius = this.lighting.sourceRadiusPx;
+    const dirtyRect =
+      this.lightingDirty || !this.lightingLastSource
+        ? null
+        : buildDirtyRectFromCircles(field, [
+            { x: this.lightingLastSource.x, y: this.lightingLastSource.y, radiusPx: radius },
+            { x: px, y: py, radiusPx: radius },
+          ]);
+
+    const t0 = performance.now();
+    computeLightField({
+      map: floorMap,
+      field,
+      source: { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
+      ambient: this.lighting.ambient,
+      falloffExponent: this.lighting.falloffExponent,
+      dirtyRect,
+    });
+    if (this.lighting.softness) {
+      blurLightField(field, dirtyRect);
+    }
+
+    rt.clear();
+    const bounds = dirtyRect ?? {
+      minX: 0,
+      minY: 0,
+      maxX: field.widthCells - 1,
+      maxY: field.heightCells - 1,
+    };
+    for (let y = bounds.minY; y <= bounds.maxY; y++) {
+      for (let x = bounds.minX; x <= bounds.maxX; x++) {
+        const idx = y * field.widthCells + x;
+        const darkness = 1 - Math.max(0, Math.min(1, field.values[idx] ?? 0));
+        if (darkness <= 0.01) continue;
+        rt.fill(0x000000, darkness, x * field.stepPx, y * field.stepPx, field.stepPx, field.stepPx);
+      }
+    }
+    rt.render();
+
+    const computeMs = performance.now() - t0;
+    this.lightingComputeMsAvg = this.lightingComputeMsAvg * 0.9 + computeMs * 0.1;
+    if (
+      this.lighting.autoAdjustQuality &&
+      this.lightingComputeMsAvg > this.lighting.targetComputeMs
+    ) {
+      this.lightingOverBudgetFrames += 1;
+      if (this.lightingOverBudgetFrames >= 20) {
+        const nextStep = chooseAutoStepPx(this.lighting.stepPx, floorMap.config.tileSizePx);
+        if (nextStep !== this.lighting.stepPx) {
+          this.setLightingConfig({ stepPx: nextStep });
+        }
+        this.lightingOverBudgetFrames = 0;
+      }
+    } else {
+      this.lightingOverBudgetFrames = 0;
+    }
+
+    this.lightingLastSource = { x: px, y: py };
+    this.lightingDirty = false;
   }
 
   private ensureUiCamera(): void {
