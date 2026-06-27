@@ -19,12 +19,22 @@
  * New entries go in `docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json`
  * (one JSON object per file). The legacy apple-log.json array is still read
  * for historical data. Skips cleanly when there are fewer than MIN_ENTRIES.
+ *
+ * Parsing/normalization and the aggregate maths live in
+ * `apple-calibration-lib.ts` so they can be unit-tested without file I/O.
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { Report, fromRepo } from '../shared/report.js';
+import {
+  type AppleEntry,
+  type RawAppleEntry,
+  computeCalibration,
+  normalizeEntry,
+  verdictEmoji,
+} from './apple-calibration-lib.js';
 
 const LEGACY_LOG_PATH = 'docs/knowledge/metrics/apple-log.json';
 const APPLES_DIR = 'docs/knowledge/metrics/apples';
@@ -33,38 +43,23 @@ const MISS_WARN_THRESHOLD = 0.2;
 const MISS_ERROR_THRESHOLD = 0.4;
 const BIAS_WARN_THRESHOLD = 0.5;
 
-type Verdict = 'exact' | 'under' | 'over' | 'miss';
-
-interface AppleEntry {
-  readonly date: string;
-  readonly session: string;
-  readonly estimated_apples: number;
-  readonly actual_apples: number;
-  readonly delta: number;
-  readonly verdict: Verdict;
-  readonly hello_kitties: number;
+interface SourcedEntry {
+  readonly source: string;
+  readonly raw: RawAppleEntry;
 }
 
-function verdictEmoji(v: Verdict): string {
-  switch (v) {
-    case 'exact':
-      return '🎯';
-    case 'under':
-      return '📉';
-    case 'over':
-      return '📈';
-    case 'miss':
-      return '💥';
-  }
+function formatDelta(n: number): string {
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
 }
 
-function loadLegacyEntries(report: Report): AppleEntry[] {
+function loadLegacyEntries(report: Report): SourcedEntry[] {
   const path = fromRepo(LEGACY_LOG_PATH);
   if (!existsSync(path)) return [];
   try {
     const raw = readFileSync(path, 'utf8').trim();
     if (!raw || raw === '[]') return [];
-    return JSON.parse(raw) as AppleEntry[];
+    const parsed = JSON.parse(raw) as RawAppleEntry[];
+    return parsed.map((entry, i) => ({ source: `${LEGACY_LOG_PATH}[${i}]`, raw: entry }));
   } catch {
     report.error(`${LEGACY_LOG_PATH} is not valid JSON.`, {
       remediation: 'Fix the JSON manually or reset the file to `[]`.',
@@ -73,16 +68,16 @@ function loadLegacyEntries(report: Report): AppleEntry[] {
   }
 }
 
-function loadDirEntries(report: Report): AppleEntry[] {
+function loadDirEntries(report: Report): SourcedEntry[] {
   const dir = fromRepo(APPLES_DIR);
   if (!existsSync(dir)) return [];
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
-  const entries: AppleEntry[] = [];
+  const entries: SourcedEntry[] = [];
   for (const file of files) {
     const filePath = join(dir, file);
     try {
       const raw = readFileSync(filePath, 'utf8').trim();
-      entries.push(JSON.parse(raw) as AppleEntry);
+      entries.push({ source: `${APPLES_DIR}/${file}`, raw: JSON.parse(raw) as RawAppleEntry });
     } catch {
       report.error(`${APPLES_DIR}/${file} is not valid JSON.`, {
         remediation: `Fix or remove ${APPLES_DIR}/${file}.`,
@@ -95,13 +90,30 @@ function loadDirEntries(report: Report): AppleEntry[] {
 async function main(): Promise<void> {
   const report = new Report('docs-apple-calibration');
 
-  const legacyEntries = loadLegacyEntries(report);
-  const dirEntries = loadDirEntries(report);
+  // Legacy first, then dir, so dir entries win during session deduplication.
+  const sourced = [...loadLegacyEntries(report), ...loadDirEntries(report)];
 
-  // Deduplicate by session key — dir entries win over legacy entries.
+  // Normalize every row and surface any that lack a usable estimate/actual.
+  // A missing/non-numeric field previously yielded `NaN` mean delta and an
+  // `undefined` verdict in the report; skipping (and warning about) such rows
+  // keeps the aggregate finite.
+  const normalized: AppleEntry[] = [];
+  for (const { source, raw } of sourced) {
+    const entry = normalizeEntry(raw);
+    if (entry) {
+      normalized.push(entry);
+    } else {
+      report.warn('Apple entry is missing a usable estimate/actual and was skipped.', {
+        file: source,
+        remediation:
+          'Use the canonical schema in docs/agent-os/policies/complexity-policy.md (estimated_apples, actual_apples, delta, verdict).',
+      });
+    }
+  }
+
+  // Deduplicate by session — dir entries (loaded last) win over legacy ones.
   const bySession = new Map<string, AppleEntry>();
-  for (const e of legacyEntries) bySession.set(e.session, e);
-  for (const e of dirEntries) bySession.set(e.session, e);
+  for (const e of normalized) bySession.set(e.session, e);
   const entries = [...bySession.values()];
 
   if (entries.length === 0) {
@@ -116,46 +128,28 @@ async function main(): Promise<void> {
     report.finish();
   }
 
-  const log = entries;
+  const stats = computeCalibration(entries);
+  const { totalSessions, meanDelta, missCount, missRate } = stats;
 
   // ── Overall metrics ──────────────────────────────────────────────────────
-  const totalSessions = log.length;
-  const meanDelta = log.reduce((s, e) => s + e.delta, 0) / totalSessions;
-  const missCount = log.filter((e) => Math.abs(e.delta) >= 2).length;
-  const missRate = missCount / totalSessions;
-
   process.stdout.write(`Apple calibration report — ${totalSessions} sessions\n`);
   process.stdout.write(
-    `Mean delta: ${meanDelta >= 0 ? '+' : ''}${meanDelta.toFixed(2)} | Miss rate: ${(missRate * 100).toFixed(1)}%\n\n`,
+    `Mean delta: ${formatDelta(meanDelta)} | Miss rate: ${(missRate * 100).toFixed(1)}%\n\n`,
   );
 
   // ── Per-level breakdown ───────────────────────────────────────────────────
-  const byLevel = new Map<number, AppleEntry[]>();
-  for (const e of log) {
-    const bucket = byLevel.get(e.estimated_apples) ?? [];
-    bucket.push(e);
-    byLevel.set(e.estimated_apples, bucket);
-  }
-
   for (const level of [1, 2, 3, 4, 5]) {
-    const bucket = byLevel.get(level);
-    if (!bucket || bucket.length === 0) continue;
-    const levelMiss = bucket.filter((e) => Math.abs(e.delta) >= 2).length;
-    const levelMissRate = levelMiss / bucket.length;
-    const levelMeanDelta = bucket.reduce((s, e) => s + e.delta, 0) / bucket.length;
+    const bucket = stats.byLevel.get(level);
+    if (!bucket) continue;
     const appleStr = '🍎'.repeat(level);
     process.stdout.write(
-      `${appleStr} (n=${bucket.length}) mean delta ${levelMeanDelta >= 0 ? '+' : ''}${levelMeanDelta.toFixed(2)} miss rate ${(levelMissRate * 100).toFixed(0)}%\n`,
+      `${appleStr} (n=${bucket.count}) mean delta ${formatDelta(bucket.meanDelta)} miss rate ${(bucket.missRate * 100).toFixed(0)}%\n`,
     );
   }
   process.stdout.write('\n');
 
   // ── Verdict distribution ─────────────────────────────────────────────────
-  const byVerdict = new Map<Verdict, number>();
-  for (const e of log) {
-    byVerdict.set(e.verdict, (byVerdict.get(e.verdict) ?? 0) + 1);
-  }
-  for (const [v, count] of byVerdict.entries()) {
+  for (const [v, count] of stats.byVerdict.entries()) {
     process.stdout.write(
       `${verdictEmoji(v)} ${v}: ${count} (${((count / totalSessions) * 100).toFixed(0)}%)\n`,
     );
@@ -166,7 +160,7 @@ async function main(): Promise<void> {
   if (Math.abs(meanDelta) > BIAS_WARN_THRESHOLD) {
     const direction = meanDelta > 0 ? 'underestimating' : 'overestimating';
     report.warn(
-      `Systematic bias detected: mean delta ${meanDelta >= 0 ? '+' : ''}${meanDelta.toFixed(2)} — agents are consistently ${direction}.`,
+      `Systematic bias detected: mean delta ${formatDelta(meanDelta)} — agents are consistently ${direction}.`,
       {
         remediation: `Review complexity-policy.md rubric. The ${direction === 'underestimating' ? 'higher' : 'lower'} apple levels may need sharper definitions.`,
       },
@@ -191,7 +185,7 @@ async function main(): Promise<void> {
     );
   } else {
     report.info(
-      `Calibration healthy: miss rate ${(missRate * 100).toFixed(1)}%, mean delta ${meanDelta >= 0 ? '+' : ''}${meanDelta.toFixed(2)}.`,
+      `Calibration healthy: miss rate ${(missRate * 100).toFixed(1)}%, mean delta ${formatDelta(meanDelta)}.`,
     );
   }
 
