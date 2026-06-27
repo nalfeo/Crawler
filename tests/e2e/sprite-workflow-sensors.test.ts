@@ -355,11 +355,18 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       await loadSeededDevtools();
       // The check-in button confirms before pushing/filing; accept the dialog.
       page.once('dialog', (dialog) => void dialog.accept());
-      const checkinRequest = page.waitForRequest((req) => req.url().includes('/api/checkin'));
+      // Gate on the mocked /api/checkin RESPONSE (not just the dispatched
+      // request) so the assertion below waits on the link render rather than the
+      // in-flight network round-trip.
+      const checkinResponse = page.waitForResponse((res) => res.url().includes('/api/checkin'));
       await page.getByRole('button', { name: /^Check in to GitHub$/ }).click();
-      await checkinRequest;
+      await checkinResponse;
       const issueLink = page.getByRole('link', { name: /View asset-checkin issue/ });
-      await issueLink.waitFor({ state: 'visible', timeout: 10_000 });
+      // Generous timeout: under CI CPU contention the post-response DOM replace
+      // over the large devtools module graph can spike well past a tight 10s
+      // budget (same cold-server rationale as loadSeededDevtools above), which
+      // intermittently failed this assertion in CI while passing locally.
+      await issueLink.waitFor({ state: 'visible', timeout: 30_000 });
       expect(await issueLink.getAttribute('href')).toBe(
         'https://github.com/nalfeo/Crawler/issues/99',
       );
