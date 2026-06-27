@@ -401,9 +401,22 @@ describe('HudMinimap mobile layout regression', () => {
     expect(source).toContain("scene.scale.off('resize', updateLayout);");
   });
 
-  it('reads layout dimensions from scene.scale.gameSize so it adapts to any viewport', () => {
-    expect(source).toContain('scene.scale.gameSize.width');
-    expect(source).toContain('scene.scale.gameSize.height');
+  it('anchors HUD layout to the design space (GAME.WIDTH/HEIGHT), not the HiDPI backing store', () => {
+    // Regression guard for the #353 supersampling bug: after #353 the canvas
+    // backing store is `design × S` and a zoom-S UI camera rescales HUD objects.
+    // Laying the radar/overlay out from scene.scale.gameSize double-scales them
+    // off-screen on HiDPI displays. Layout must use the design constants instead.
+    expect(source).toContain('return { width: GAME.WIDTH, height: GAME.HEIGHT };');
+    expect(source).not.toContain('scene.scale.gameSize');
+  });
+
+  it('converts pointer input to design space so HiDPI hit-testing and panning stay aligned', () => {
+    // Phaser pointer coords are in backing-store space; the overlay viewport is
+    // laid out in design space. Pointer input must be divided by the render scale
+    // (identity at S=1) before hit-testing or computing pan deltas.
+    expect(source).toContain('function toDesignSpace(');
+    expect(source).toContain('const s = getRenderScale(scene);');
+    expect(source).toContain('return { x: x / s, y: y / s };');
   });
 
   it('clamps the overlay panel width to a minimum of 640px for narrow screens', () => {
