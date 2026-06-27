@@ -31,6 +31,7 @@ import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
   FLOOR1_LEAVE_FLOOR_QUEST_ID,
+  FLOOR1_MEET_NPCS_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_TUTORIAL_QUEST_ID,
   SHOPKEEPER_EQUIPMENT_ITEM_ID,
@@ -640,6 +641,32 @@ describe('floor1Scenario', () => {
         DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID,
       );
     });
+  });
+
+  it('auto-accepts "The Director\'s Shortlist" after the goon kill-grind completes', () => {
+    const world = createTestWorld({ seed: 123 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+
+    // Not offered before the kill-grind is complete.
+    expect(world.questLog.has(FLOOR1_MEET_NPCS_QUEST_ID)).toBe(false);
+
+    // Setting the goon-quest-complete flag triggers auto-acceptance on the next tick.
+    world.goalFlags.set('floor1-goon-quest-complete', true);
+    floorObjectiveSystem(world);
+    expect(world.questLog.has(FLOOR1_MEET_NPCS_QUEST_ID)).toBe(true);
+    expect(isQuestComplete(world, FLOOR1_MEET_NPCS_QUEST_ID)).toBe(false);
+
+    // Completing both NPC quests satisfies the two goal objectives.
+    world.goalFlags.set('floor1-shop-quest-complete', true);
+    questSystem(world);
+    expect(isQuestComplete(world, FLOOR1_MEET_NPCS_QUEST_ID)).toBe(false);
+
+    world.goalFlags.set('floor1-boss-battle-complete', true);
+    questSystem(world);
+    expect(isQuestComplete(world, FLOOR1_MEET_NPCS_QUEST_ID)).toBe(true);
+    expect(world.questLog.get(FLOOR1_MEET_NPCS_QUEST_ID)?.status).toBe('complete');
   });
 
   it('auto-accepts then completes the "Leave the Floor" finale via the three-gate flow', () => {
