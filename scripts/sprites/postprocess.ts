@@ -131,11 +131,12 @@ export function postprocessWithTrace(
   // guarantees every subject-boundary pixel has a transparent neighbour, which
   // the post-resize background re-removal relies on to reach reintroduced
   // fringe. The same crop runs for every sprite type so the resize no longer
-  // needs its own internal re-trim.
+  // needs its own internal re-trim. `tightlyTrimmed` is already the tight crop,
+  // so we pad it directly rather than re-scanning the full-resolution source.
   const tightlyTrimmed = trimTransparentEdges(image);
   if (tightlyTrimmed.width > 0 && tightlyTrimmed.height > 0) {
     const marginPx = subjectTrimMarginPx(tightlyTrimmed.width, tightlyTrimmed.height);
-    image = trimTransparentEdges(image, marginPx);
+    image = trimTransparentEdges(tightlyTrimmed, marginPx);
     pushStep('transparent-trim', `Transparent trim (${marginPx}px margin)`, image);
   } else {
     pushStep('transparent-trim', 'Transparent trim (skipped, empty)', image);
