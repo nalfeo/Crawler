@@ -2546,29 +2546,33 @@ function render(): void {
       });
       approveBtn.addEventListener('click', async () => {
         const variantKey = `${run.briefId}-var-${candidate.index}`;
-        // Block re-approving the EXACT same variant (same brief + index). The
-        // server also enforces this (409), but catching it here avoids a
-        // pointless round-trip and gives a clearer message.
-        if (approvedVariantKeys.has(variantKey)) {
-          setWorkflowStatus(
-            `Variant ${variantKey} is already approved. Pick a different variant to add another.`,
-            '#fca5a5',
-          );
-          return;
-        }
-        // Confirm before approving an ADDITIONAL variant for a brief that
-        // already has one or more approved variants.
-        const siblingVariantCount = [...approvedVariantKeys].filter((key) =>
-          key.startsWith(`${run.briefId}-var-`),
-        ).length;
-        if (siblingVariantCount > 0) {
+        const isReapproval = approvedVariantKeys.has(variantKey);
+        if (isReapproval) {
+          // Re-approving the SAME variant slot is allowed only when the image
+          // actually changed (e.g. after re-running post-processing). The server
+          // is the source of truth: it compares content hashes and refuses an
+          // identical image with 409. Here we just confirm intent — no hard block.
           const ok = window.confirm(
-            `${run.briefId} already has ${siblingVariantCount} approved ` +
-              `variant${siblingVariantCount === 1 ? '' : 's'}. Approve variant ` +
-              `#${candidate.index} as an ADDITIONAL variant? At runtime the game ` +
-              'picks one of a brief\u2019s variants at random.',
+            `Variant ${variantKey} is already approved. Re-approve it with the ` +
+              'current image? This overwrites the existing asset if the image ' +
+              'changed; an identical image is refused.',
           );
           if (!ok) return;
+        } else {
+          // Confirm before approving an ADDITIONAL variant for a brief that
+          // already has one or more approved variants.
+          const siblingVariantCount = [...approvedVariantKeys].filter((key) =>
+            key.startsWith(`${run.briefId}-var-`),
+          ).length;
+          if (siblingVariantCount > 0) {
+            const ok = window.confirm(
+              `${run.briefId} already has ${siblingVariantCount} approved ` +
+                `variant${siblingVariantCount === 1 ? '' : 's'}. Approve variant ` +
+                `#${candidate.index} as an ADDITIONAL variant? At runtime the game ` +
+                'picks one of a brief\u2019s variants at random.',
+            );
+            if (!ok) return;
+          }
         }
         if (overrideNeeded) {
           const axes = candidate.judge?.rejectedBy?.length
@@ -2612,13 +2616,14 @@ function render(): void {
           );
           void recompute();
         } catch (error) {
-          // The sidecar returns 409 (already-approved) when the exact variant
-          // key already exists — surface it as a friendly notice and resync the
-          // approved-key set so the button blocks locally next time.
+          // The sidecar returns 409 (already-approved) only when the exact
+          // variant key already exists WITH byte-identical content — surface it
+          // as a friendly notice and resync the approved-key set.
           if (error instanceof ApproveRequestError && error.status === 409) {
             approvedVariantKeys.add(`${run.briefId}-var-${candidate.index}`);
             setWorkflowStatus(
-              `Variant ${run.briefId}-var-${candidate.index} is already approved.`,
+              `Variant ${run.briefId}-var-${candidate.index} is already approved with ` +
+                'identical content. Re-run post-processing to change the image first.',
               '#fca5a5',
             );
             void recompute();
