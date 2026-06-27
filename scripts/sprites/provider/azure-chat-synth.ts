@@ -221,8 +221,10 @@ export function buildUserPrompt(request: SynthesizeBriefRequest): string {
     request.type === null
       ? 'Sprite type: classify from the name.'
       : `Sprite type: ${request.type}.`;
+  const hint = request.briefHint?.trim();
   return [
     `Subject name: ${request.name}.`,
+    ...(hint ? [`Additional direction: ${hint}`] : []),
     typeLine,
     `Please return exactly ${request.candidates} candidate brief(s).`,
   ].join('\n');

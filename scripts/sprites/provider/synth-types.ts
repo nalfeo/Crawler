@@ -14,6 +14,12 @@ import { SPRITE_TYPES } from '../brief-schema.js';
 export interface SynthesizeBriefRequest {
   /** Human-supplied subject name, e.g. "devils-yoyo", "scythe". */
   readonly name: string;
+  /**
+   * Optional one-line direction that refines the subject without being part of
+   * its name/slug, e.g. "a corked glass vial of glowing purple liquid". Woven
+   * into the user prompt when present; absent/empty leaves the prompt unchanged.
+   */
+  readonly briefHint?: string;
   /** Caller-supplied type, or null when the model must classify. */
   readonly type: (typeof SPRITE_TYPES)[number] | null;
   /** Number of distinct candidates to return (1..5). */
