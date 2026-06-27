@@ -98,6 +98,13 @@ export interface ManifestEntry {
   readonly sensorScore: string;
   /** Judge `minScore` as a string, or `null` if not judged. */
   readonly judgeScore: string | null;
+  /**
+   * SHA-256 (hex) of the approved processed PNG's bytes. Lets re-approval tell a
+   * genuine content change (e.g. after re-post-processing) apart from a true
+   * byte-for-byte duplicate. Optional: entries approved before this field
+   * existed omit it, and the guard falls back to hashing the on-disk asset.
+   */
+  readonly contentHash?: string;
 }
 
 export interface Manifest {
@@ -234,21 +241,39 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   // Asset destination. Flat layout under public/assets/generated/.
   // Use variant-specific ID so multiple variants per brief coexist.
   const variantId = `${briefId}-var-${options.variantIndex}`;
+  const generatedDir = path.join(options.publicAssetsDir, 'generated');
+  const assetAbsPath = path.join(generatedDir, `${variantId}.png`);
 
-  // Block exact-duplicate approval (same brief + variant index) unless the
-  // caller explicitly opts into overwrite. Checked BEFORE copying the PNG so a
-  // refused approval mutates nothing.
-  if (!options.allowReapprove && manifestHasEntry(fs, options.manifestPath, variantId)) {
-    throw new ApproveError(
-      'already-approved',
-      `Variant ${variantId} is already approved. Approve a different variant, ` +
-        `or pass allowReapprove to overwrite it.`,
-    );
+  // Content hash of the exact image we're about to approve. Used both to block
+  // true byte-for-byte re-approval and to stamp the manifest entry so a later
+  // approval can tell "same pixels" from "re-post-processed, genuinely changed".
+  const contentHash = createHash('sha256').update(fs.readFileSync(processedPng)).digest('hex');
+
+  // Block re-approval ONLY when the identical image is already approved under
+  // this variant id — a genuine content change (e.g. after re-post-processing)
+  // is allowed to overwrite. `allowReapprove` forces overwrite unconditionally.
+  // Checked BEFORE copying the PNG so a refused approval mutates nothing.
+  if (!options.allowReapprove) {
+    const existing = readManifestEntry(fs, options.manifestPath, variantId);
+    if (existing) {
+      // Prefer the stored hash; fall back to hashing the on-disk asset for
+      // entries approved before contentHash existed. If neither is available
+      // (legacy entry whose asset is gone), allow the re-approval.
+      const storedHash =
+        existing.contentHash && existing.contentHash.length > 0
+          ? existing.contentHash
+          : hashFileIfExists(fs, assetAbsPath);
+      if (storedHash !== null && storedHash === contentHash) {
+        throw new ApproveError(
+          'already-approved',
+          `Variant ${variantId} is already approved with identical content. ` +
+            `Re-post-process to change the image, or pass allowReapprove to overwrite it.`,
+        );
+      }
+    }
   }
 
-  const generatedDir = path.join(options.publicAssetsDir, 'generated');
   fs.mkdirSync(generatedDir, { recursive: true });
-  const assetAbsPath = path.join(generatedDir, `${variantId}.png`);
   fs.copyFileSync(processedPng, assetAbsPath);
 
   // Anchor: prefer the per-variant derived sidecar, fall back to chosen.anchor.
@@ -284,6 +309,7 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
     anchors,
     sensorScore,
     judgeScore,
+    contentHash,
   };
 
   upsertManifest(fs, options.manifestPath, entry, variantId);
@@ -320,21 +346,36 @@ function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): 
 }
 
 /**
- * True when the manifest already has an entry under `entryKey`. Best-effort:
- * a missing or unparseable manifest reads as "no entry" so approval proceeds
- * (a corrupt manifest surfaces via `upsertManifest`'s own validation).
+ * Read the manifest entry stored under `entryKey`, or null when the manifest is
+ * missing/unparseable or has no such entry. Best-effort: a corrupt manifest
+ * reads as "no entry" so approval proceeds (corruption surfaces via
+ * `upsertManifest`'s own validation).
  */
-function manifestHasEntry(fs: ApproveFs, manifestPath: string, entryKey: string): boolean {
+function readManifestEntry(
+  fs: ApproveFs,
+  manifestPath: string,
+  entryKey: string,
+): ManifestEntry | null {
   if (!fs.existsSync(manifestPath)) {
-    return false;
+    return null;
   }
   try {
     const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Partial<Manifest>;
-    return Boolean(
-      parsed.entries && Object.prototype.hasOwnProperty.call(parsed.entries, entryKey),
-    );
+    return parsed.entries?.[entryKey] ?? null;
   } catch {
-    return false;
+    return null;
+  }
+}
+
+/** SHA-256 (hex) of a file's bytes, or null when the file is missing/unreadable. */
+function hashFileIfExists(fs: ApproveFs, absPath: string): string | null {
+  if (!fs.existsSync(absPath)) {
+    return null;
+  }
+  try {
+    return createHash('sha256').update(fs.readFileSync(absPath)).digest('hex');
+  } catch {
+    return null;
   }
 }
 

@@ -78,6 +78,12 @@ export interface SynthesizeBriefOptions {
   /** Subject name. Will be normalised to kebab-case. */
   readonly name: string;
   /**
+   * Optional one-line direction that refines the subject without being part of
+   * its name/slug. Passed through to the provider prompt; omitted/empty leaves
+   * the prompt (and its hash) unchanged.
+   */
+  readonly briefHint?: string;
+  /**
    * Caller-supplied type. When omitted, the model must classify with
    * `typeConfidence >= ${MIN_TYPE_CONFIDENCE}` or the call throws.
    */
@@ -245,8 +251,10 @@ export async function synthesizeBrief(
   const callerType = options.type ?? null;
   const loadMinVariations = options.loadMinVariations ?? defaultLoadMinVariations(options.repoRoot);
   const { effectiveMinSeeds, effectiveMaxSeeds } = resolveSeedBounds(callerType, loadMinVariations);
+  const briefHint = options.briefHint?.trim();
   const request = {
     name,
+    ...(briefHint ? { briefHint } : {}),
     type: callerType,
     candidates: requested,
     referenceCatalog: catalog,

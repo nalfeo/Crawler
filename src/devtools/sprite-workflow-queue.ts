@@ -133,11 +133,21 @@ export interface QueueRun {
 export interface QueueItem {
   readonly id: string;
   readonly seq: number;
-  /** Raw free-text brief, e.g. "Purple Potion Bottle". */
+  /**
+   * Short human name, e.g. "Purple Potion". Slugified into `kebabName` (the
+   * brief id / asset identity). Kept separate from `brief` so a more
+   * descriptive one-liner can be supplied without bloating the asset id.
+   */
+  name: string;
+  /**
+   * One-line description fed to synthesis as extra direction, e.g. "a corked
+   * glass vial of glowing purple liquid with a cork stopper". Optional — empty
+   * when the name alone is enough. Never embedded in `kebabName`.
+   */
   brief: string;
   requestedType: RequestedType;
   resolvedType: SpriteType | null;
-  /** Kebab-case slug derived from the brief, used as the brief id. */
+  /** Kebab-case slug derived from the name, used as the brief id. */
   kebabName: string;
   stage: WorkflowStage;
   source: 'manual' | 'asset-plan';
@@ -193,18 +203,24 @@ function isRequestedType(value: unknown): value is RequestedType {
 
 function makeItem(
   seq: number,
+  name: string,
   brief: string,
   requestedType: RequestedType,
   source: QueueItem['source'],
 ): QueueItem {
-  const trimmed = brief.trim();
+  const trimmedName = name.trim();
+  const trimmedBrief = brief.trim();
+  // The slug (identity) comes from the name; fall back to the brief when a
+  // caller supplied only a one-liner (e.g. asset-plan import with no name).
+  const slugSource = trimmedName !== '' ? trimmedName : trimmedBrief;
   return {
     id: `item-${seq}`,
     seq,
-    brief: trimmed,
+    name: trimmedName !== '' ? trimmedName : trimmedBrief,
+    brief: trimmedBrief,
     requestedType,
     resolvedType: requestedType === 'auto' ? null : requestedType,
-    kebabName: slugify(trimmed),
+    kebabName: slugify(slugSource),
     stage: 'draft',
     source,
     candidates: [],
@@ -221,19 +237,22 @@ function makeItem(
 }
 
 /**
- * Append a new item built from a free-text brief and select it. Returns the
- * state unchanged when the brief does not normalise to a valid slug.
+ * Append a new item built from a name (+ optional one-line brief) and select
+ * it. Returns the state unchanged when neither field normalises to a valid
+ * slug. `brief` is extra synthesis direction and is never part of the slug.
  */
 export function addItem(
   state: QueueState,
-  brief: string,
+  name: string,
+  brief = '',
   requestedType: RequestedType = 'auto',
   source: QueueItem['source'] = 'manual',
 ): QueueState {
-  if (slugify(brief) === '') {
+  const slugSource = name.trim() !== '' ? name : brief;
+  if (slugify(slugSource) === '') {
     return state;
   }
-  const item = makeItem(state.nextSeq, brief, requestedType, source);
+  const item = makeItem(state.nextSeq, name, brief, requestedType, source);
   return {
     items: [...state.items, item],
     selectedId: item.id,
@@ -323,6 +342,61 @@ export function primaryActionLabel(stage: WorkflowStage): string | null {
     default:
       return null;
   }
+}
+
+// ── Restart points (Brief / Sheet) ───────────────────────────────────────────
+// Pure transitions that rewind an item to one of the two operator-facing
+// restart points. They return a `Partial<QueueItem>` patch for `updateItem`, so
+// the UI never has to know which fields a restart clears. Kept here so the
+// reset semantics are unit-testable without a DOM or a live sidecar.
+
+/**
+ * Rewind an item to the **Brief** step (Synthesize / Choose). Clears every
+ * artifact produced from synthesis onward — candidates, the chosen brief, the
+ * generated sheet/run, and all approval/metadata — but keeps the operator's
+ * `name`, `brief`, and `requestedType` so they can re-synthesize from scratch.
+ * `resolvedType` resets to the requested type (null when auto) since a
+ * re-synthesis may reclassify.
+ */
+export function restartToBriefPatch(item: QueueItem): Partial<QueueItem> {
+  return {
+    stage: 'draft',
+    resolvedType: item.requestedType === 'auto' ? null : item.requestedType,
+    candidates: [],
+    chosenCandidatePath: null,
+    briefPath: null,
+    run: null,
+    generationRequestedAt: null,
+    generationStartedAt: null,
+    approvedAssetPath: null,
+    approvalSummary: null,
+    metadataSummary: null,
+    lastError: null,
+  };
+}
+
+/**
+ * Rewind an item to the **Sheet** step. The generated sheet (`run`) is the
+ * expensive AI artifact, so it is preserved and the item lands at `sheet` —
+ * PostProcess becomes the next action and re-uses the existing sheet by default
+ * (OpenAI is only called again on an explicit Generate). Every post-sheet
+ * artifact (approval/metadata) is cleared. When no run exists to reuse, falls
+ * back to the earliest stage that can still produce a sheet: `candidates` when a
+ * brief/choice is present, else `draft`.
+ */
+export function restartToSheetPatch(item: QueueItem): Partial<QueueItem> {
+  const hasSheet = item.run !== null;
+  const canGenerate = item.chosenCandidatePath !== null || item.briefPath !== null;
+  const stage: WorkflowStage = hasSheet ? 'sheet' : canGenerate ? 'candidates' : 'draft';
+  return {
+    stage,
+    generationRequestedAt: null,
+    generationStartedAt: null,
+    approvedAssetPath: null,
+    approvalSummary: null,
+    metadataSummary: null,
+    lastError: null,
+  };
 }
 
 // ── Sensor-failure presentation + force-judge eligibility (PR2c) ──────────────
@@ -547,13 +621,20 @@ function sanitizeItem(value: unknown): QueueItem | null {
     ? (raw.stage as WorkflowStage)
     : 'draft';
   const requestedType = isRequestedType(raw.requestedType) ? raw.requestedType : 'auto';
+  // Back-compat: items persisted before the name/brief split carry only
+  // `brief`. Derive `name` from the stored name when present, else fall back to
+  // the brief so the slug/identity is unchanged. `kebabName` is preserved
+  // as-stored, so no asset identity migrates.
+  const brief = raw.brief;
+  const name = typeof raw.name === 'string' && raw.name.trim() !== '' ? raw.name : brief;
   return {
     id: typeof raw.id === 'string' ? raw.id : `item-${raw.seq}`,
     seq: raw.seq,
-    brief: raw.brief,
+    name,
+    brief,
     requestedType,
     resolvedType: isSpriteType(raw.resolvedType) ? raw.resolvedType : null,
-    kebabName: typeof raw.kebabName === 'string' ? raw.kebabName : slugify(raw.brief),
+    kebabName: typeof raw.kebabName === 'string' ? raw.kebabName : slugify(name),
     stage,
     source: raw.source === 'asset-plan' ? 'asset-plan' : 'manual',
     candidates: Array.isArray(raw.candidates)

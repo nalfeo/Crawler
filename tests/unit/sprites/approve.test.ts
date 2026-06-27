@@ -9,6 +9,7 @@
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -183,6 +184,11 @@ describe('approveVariant', () => {
     const assetAbs = path.join(publicAssetsDir, 'generated', `${briefId}-var-1.png`);
     expect(readFileSync(assetAbs).toString()).toBe('PNG-1');
 
+    // Manifest entry is stamped with the SHA-256 of the approved PNG bytes.
+    expect(entry.contentHash).toBe(
+      createHash('sha256').update(readFileSync(assetAbs)).digest('hex'),
+    );
+
     const manifest = readManifest(manifestPath);
     expect(manifest.version).toBe(MANIFEST_VERSION);
     const entryKey = `${briefId}-var-1`;
@@ -294,7 +300,7 @@ describe('approveVariant', () => {
     expect(readFileSync(assetAbs3).toString()).toBe('PNG-3');
   });
 
-  it('throws already-approved when the exact same variant is approved twice', () => {
+  it('throws already-approved when the exact same variant (identical content) is approved twice', () => {
     const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0, 1] });
     const opts = {
       runDir,
@@ -308,7 +314,7 @@ describe('approveVariant', () => {
     const first = approveVariant(opts);
     expect(first.spriteName).toBe('iron-sword-var-1');
 
-    // Re-approving the EXACT same brief + variant index is refused.
+    // Re-approving the EXACT same brief + variant index with identical bytes is refused.
     expect(() => approveVariant(opts)).toThrowError(ApproveError);
     try {
       approveVariant(opts);
@@ -319,6 +325,66 @@ describe('approveVariant', () => {
     // The refused approval must not have mutated the manifest: still one entry.
     const manifest = readManifest(manifestPath);
     expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-1']);
+  });
+
+  it('allows re-approval when the variant content changed (e.g. after re-post-processing)', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0, 1] });
+    const opts = {
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    };
+    const first = approveVariant(opts);
+    const assetAbs = path.join(publicAssetsDir, 'generated', 'iron-sword-var-1.png');
+    expect(readFileSync(assetAbs).toString()).toBe('PNG-1');
+
+    // Simulate re-post-processing: the processed PNG now has different bytes.
+    writeFileSync(path.join(runDir, 'processed', '01.png'), Buffer.from('PNG-1-REPROCESSED'));
+
+    // Re-approval WITHOUT allowReapprove is permitted because the content differs.
+    const second = approveVariant(opts);
+
+    // Single entry, overwritten in place with the new bytes + a new content hash.
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-1']);
+    expect(readFileSync(assetAbs).toString()).toBe('PNG-1-REPROCESSED');
+    expect(second.contentHash).not.toBe(first.contentHash);
+    expect(manifest.entries['iron-sword-var-1']!.contentHash).toBe(second.contentHash);
+  });
+
+  it('blocks identical re-approval for a legacy entry lacking contentHash (on-disk asset fallback)', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0, 1] });
+    const opts = {
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    };
+    approveVariant(opts);
+
+    // Simulate a pre-existing entry approved before contentHash existed.
+    const manifest = readManifest(manifestPath);
+    const legacy: Record<string, unknown> = { ...manifest.entries['iron-sword-var-1']! };
+    delete legacy.contentHash;
+    writeFileSync(
+      manifestPath,
+      JSON.stringify({ version: manifest.version, entries: { 'iron-sword-var-1': legacy } }),
+    );
+
+    // Same bytes still on disk → fallback hash of the asset matches → refused.
+    expect(() => approveVariant(opts)).toThrowError(ApproveError);
+    try {
+      approveVariant(opts);
+    } catch (err) {
+      expect((err as ApproveError).kind).toBe('already-approved');
+    }
   });
 
   it('allows re-approving the same variant when allowReapprove is set', () => {

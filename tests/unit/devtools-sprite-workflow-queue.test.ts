@@ -15,6 +15,8 @@ import {
   getSelectedItem,
   primaryActionLabel,
   removeItem,
+  restartToBriefPatch,
+  restartToSheetPatch,
   runHasSensorFailures,
   selectItem,
   sensorSummary,
@@ -60,7 +62,8 @@ describe('addItem', () => {
     const item = state.items[0]!;
     expect(item.id).toBe('item-1');
     expect(item.seq).toBe(1);
-    expect(item.brief).toBe('Purple Potion Bottle');
+    expect(item.name).toBe('Purple Potion Bottle');
+    expect(item.brief).toBe('');
     expect(item.kebabName).toBe('purple-potion-bottle');
     expect(item.stage).toBe('draft');
     expect(item.requestedType).toBe('auto');
@@ -69,8 +72,28 @@ describe('addItem', () => {
     expect(state.nextSeq).toBe(2);
   });
 
+  it('keeps the name as identity and the brief as separate synthesis direction', () => {
+    const state = addItem(
+      createEmptyQueue(),
+      'Skull Mace',
+      'heavy two-handed, glowing green eye sockets',
+    );
+    const item = state.items[0]!;
+    expect(item.name).toBe('Skull Mace');
+    expect(item.brief).toBe('heavy two-handed, glowing green eye sockets');
+    // The brief direction must NOT leak into the slug/identity.
+    expect(item.kebabName).toBe('skull-mace');
+  });
+
+  it('falls back to the brief for the slug when no name is given', () => {
+    const state = addItem(createEmptyQueue(), '', 'Purple Potion Bottle');
+    const item = state.items[0]!;
+    expect(item.name).toBe('Purple Potion Bottle');
+    expect(item.kebabName).toBe('purple-potion-bottle');
+  });
+
   it('resolves explicit type immediately', () => {
-    const state = addItem(createEmptyQueue(), 'Purple Potion Bottle', 'item');
+    const state = addItem(createEmptyQueue(), 'Purple Potion Bottle', '', 'item');
     expect(state.items[0]!.requestedType).toBe('item');
     expect(state.items[0]!.resolvedType).toBe('item');
   });
@@ -208,7 +231,7 @@ describe('stage helpers', () => {
 
 describe('serialize / deserialize', () => {
   it('round-trips a populated queue', () => {
-    let state = addItem(createEmptyQueue(), 'Purple Potion Bottle', 'item');
+    let state = addItem(createEmptyQueue(), 'Purple Potion Bottle', '', 'item');
     state = updateItem(state, 'item-1', {
       stage: 'variants',
       resolvedType: 'item',
@@ -367,6 +390,117 @@ describe('createEmptyQueue', () => {
   it('starts empty with seq 1', () => {
     const state: QueueState = createEmptyQueue();
     expect(state).toEqual({ items: [], selectedId: null, nextSeq: 1 });
+  });
+});
+
+describe('deserialize name/brief back-compat', () => {
+  it('derives name from the brief for items persisted before the split', () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          id: 'item-1',
+          seq: 1,
+          brief: 'Purple Potion Bottle',
+          kebabName: 'purple-potion-bottle',
+          stage: 'draft',
+        },
+      ],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    const restored = deserializeQueue(raw);
+    const item = restored.items[0]!;
+    expect(item.name).toBe('Purple Potion Bottle');
+    expect(item.brief).toBe('Purple Potion Bottle');
+    // Identity slug is preserved verbatim — no migration.
+    expect(item.kebabName).toBe('purple-potion-bottle');
+  });
+
+  it('keeps a stored name distinct from the brief', () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          id: 'item-1',
+          seq: 1,
+          name: 'Skull Mace',
+          brief: 'heavy two-handed, glowing green eye sockets',
+          kebabName: 'skull-mace',
+          stage: 'draft',
+        },
+      ],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    const item = deserializeQueue(raw).items[0]!;
+    expect(item.name).toBe('Skull Mace');
+    expect(item.brief).toBe('heavy two-handed, glowing green eye sockets');
+    expect(item.kebabName).toBe('skull-mace');
+  });
+});
+
+describe('restartToBriefPatch', () => {
+  const run: QueueRun = { briefId: 'skull-mace', runId: 'run-1', candidates: [] };
+
+  it('rewinds to draft and clears every post-synthesis artifact', () => {
+    let state = addItem(createEmptyQueue(), 'Skull Mace', 'glowing eyes');
+    state = updateItem(state, 'item-1', {
+      stage: 'approved',
+      resolvedType: 'item',
+      candidates: [{ id: 'skull-mace-v1', yamlPath: 'a.yaml', description: 'd', yaml: 'y' }],
+      chosenCandidatePath: 'a.yaml',
+      briefPath: 'briefs/skull-mace.yaml',
+      run,
+      approvedAssetPath: 'public/assets/generated/skull-mace.png',
+    });
+    const patch = restartToBriefPatch(getItem(state, 'item-1')!);
+    expect(patch.stage).toBe('draft');
+    expect(patch.run).toBeNull();
+    expect(patch.candidates).toEqual([]);
+    expect(patch.chosenCandidatePath).toBeNull();
+    expect(patch.briefPath).toBeNull();
+    expect(patch.approvedAssetPath).toBeNull();
+    // Operator identity/direction is intentionally NOT touched.
+    expect('name' in patch).toBe(false);
+    expect('brief' in patch).toBe(false);
+    expect('requestedType' in patch).toBe(false);
+  });
+
+  it('resets resolvedType to null for auto items but keeps an explicit type', () => {
+    const autoItem = addItem(createEmptyQueue(), 'Skull Mace').items[0]!;
+    expect(restartToBriefPatch(autoItem).resolvedType).toBeNull();
+    const typedItem = addItem(createEmptyQueue(), 'Skull Mace', '', 'item').items[0]!;
+    expect(restartToBriefPatch(typedItem).resolvedType).toBe('item');
+  });
+});
+
+describe('restartToSheetPatch', () => {
+  const run: QueueRun = { briefId: 'skull-mace', runId: 'run-1', candidates: [] };
+
+  it('keeps the generated sheet and lands on the sheet step', () => {
+    let state = addItem(createEmptyQueue(), 'Skull Mace');
+    state = updateItem(state, 'item-1', {
+      stage: 'approved',
+      run,
+      approvedAssetPath: 'public/assets/generated/skull-mace.png',
+      metadataSummary: 'tagged',
+    });
+    const patch = restartToSheetPatch(getItem(state, 'item-1')!);
+    expect(patch.stage).toBe('sheet');
+    // The expensive AI sheet is preserved (not part of the patch).
+    expect('run' in patch).toBe(false);
+    expect(patch.approvedAssetPath).toBeNull();
+    expect(patch.metadataSummary).toBeNull();
+  });
+
+  it('falls back to candidates when no sheet exists but a brief/choice does', () => {
+    let state = addItem(createEmptyQueue(), 'Skull Mace');
+    state = updateItem(state, 'item-1', { stage: 'sheet', briefPath: 'briefs/skull-mace.yaml' });
+    expect(restartToSheetPatch(getItem(state, 'item-1')!).stage).toBe('candidates');
+  });
+
+  it('falls back to draft when neither a sheet nor a brief/choice exists', () => {
+    const item = addItem(createEmptyQueue(), 'Skull Mace').items[0]!;
+    expect(restartToSheetPatch(item).stage).toBe('draft');
   });
 });
 

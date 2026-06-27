@@ -36,6 +36,8 @@ import {
   isBusyStage,
   primaryActionLabel,
   removeItem as queueRemoveItem,
+  restartToBriefPatch,
+  restartToSheetPatch,
   runHasSensorFailures,
   selectItem as queueSelectItem,
   sensorSummary,
@@ -764,9 +766,21 @@ function render(): void {
       marginBottom: '10px',
     },
   });
+  const nameInput = el('input', {
+    style: {
+      flex: '1 1 180px',
+      minWidth: '140px',
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+    },
+  });
+  nameInput.placeholder = 'Name, e.g. "Skull Mace"';
   const briefInput = el('input', {
     style: {
-      flex: '1 1 280px',
+      flex: '2 1 280px',
       minWidth: '220px',
       padding: '8px 10px',
       borderRadius: '8px',
@@ -775,7 +789,7 @@ function render(): void {
       color: '#e5e7eb',
     },
   });
-  briefInput.placeholder = 'One-line brief, e.g. "Purple Potion Bottle"';
+  briefInput.placeholder = 'Optional one-line brief — extra detail not baked into the name';
   const typeSelect = el('select', {
     style: {
       padding: '8px 10px',
@@ -803,7 +817,7 @@ function render(): void {
       fontWeight: '600',
     },
   });
-  composerRow.append(briefInput, typeSelect, addToQueueBtn);
+  composerRow.append(nameInput, briefInput, typeSelect, addToQueueBtn);
 
   const queueBar = el('div', {
     style: {
@@ -956,6 +970,220 @@ function render(): void {
       marginLeft: 'auto',
     },
   });
+  const restartBriefBtn = el('button', {
+    text: '↺ Brief',
+    title:
+      'Rewind to the Brief step: clears candidates, the generated sheet, and approval, keeping the name + brief so you can re-synthesize.',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(148,163,184,0.5)',
+      background: '#1e293b',
+      color: '#e2e8f0',
+      cursor: 'pointer',
+      display: 'none',
+    },
+  });
+  const restartSheetBtn = el('button', {
+    text: '↺ Sheet',
+    title:
+      'Rewind to the Sheet step: keeps the generated sheet and re-runs PostProcess onward. Generate still calls OpenAI again for a fresh sheet.',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(148,163,184,0.5)',
+      background: '#1e293b',
+      color: '#e2e8f0',
+      cursor: 'pointer',
+      display: 'none',
+    },
+  });
+  restartBriefBtn.addEventListener('click', () => {
+    const item = getSelectedItem(queueState);
+    if (!item) return;
+    if (
+      !window.confirm(
+        `Rewind "${item.name}" to the Brief step? This clears its candidates, ` +
+          'generated sheet, and approval (the name + brief are kept).',
+      )
+    ) {
+      return;
+    }
+    queueState = queueUpdateItem(queueState, item.id, restartToBriefPatch(item));
+    writeQueueState();
+    debugTarget = null;
+    renderPostprocessDebugger();
+    renderQueue();
+    renderWorkflowSelection();
+    writeWorkflowState();
+    setWorkflowStatus(
+      `Rewound "${item.name}" to the Brief step. Synthesize to regenerate candidates.`,
+      '#cbd5e1',
+    );
+  });
+  restartSheetBtn.addEventListener('click', () => {
+    const item = getSelectedItem(queueState);
+    if (!item) return;
+    if (!item.run) {
+      setWorkflowStatus('No generated sheet to rewind to. Generate a sheet first.', '#fca5a5');
+      return;
+    }
+    if (
+      !window.confirm(
+        `Rewind "${item.name}" to the Sheet step? This keeps the generated sheet ` +
+          'and clears post-processing/approval so you can redo them.',
+      )
+    ) {
+      return;
+    }
+    queueState = queueUpdateItem(queueState, item.id, restartToSheetPatch(item));
+    writeQueueState();
+    renderQueue();
+    renderWorkflowSelection();
+    writeWorkflowState();
+    setWorkflowStatus(
+      `Rewound "${item.name}" to the Sheet step. PostProcess reuses the sheet; ` +
+        'Generate calls OpenAI again.',
+      '#cbd5e1',
+    );
+  });
+
+  // ── Reload from Azure ──────────────────────────────────────────────────────
+  // Recover a run (its generated sheet + variants) that still lives in the
+  // store after a worktree wiped the local queue. Lands the item at the Sheet
+  // restart point so PostProcess can re-run against the existing sheet by
+  // default (Generate is the explicit "call OpenAI again" path).
+  let azureRunChoices: SidecarRunListEntry[] = [];
+  const reloadRow = el('div', {
+    style: {
+      display: 'flex',
+      gap: '8px',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      marginBottom: '10px',
+    },
+  });
+  const reloadLabel = el('span', {
+    text: 'Reload from Azure:',
+    style: { fontSize: '11px', color: '#94a3b8' },
+  });
+  const reloadSelect = el('select', {
+    style: {
+      flex: '1 1 320px',
+      minWidth: '220px',
+      padding: '6px 8px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+      fontSize: '11px',
+    },
+  }) as HTMLSelectElement;
+  const reloadRefreshBtn = el('button', {
+    text: '↻ Runs',
+    title: 'List the runs available in the sidecar store (Azure or local).',
+    style: {
+      padding: '6px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#0c4a6e',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  });
+  const reloadLoadBtn = el('button', {
+    text: 'Load sheet',
+    title: 'Reconstruct a queue item from the selected run at the Sheet step.',
+    style: {
+      padding: '6px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(34,211,238,0.5)',
+      background: '#083344',
+      color: '#cffafe',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  });
+  const reloadStatus = el('span', {
+    text: '',
+    style: { fontSize: '11px', color: '#64748b' },
+  });
+  reloadRow.append(reloadLabel, reloadSelect, reloadRefreshBtn, reloadLoadBtn, reloadStatus);
+  const refreshAzureRuns = async (): Promise<void> => {
+    reloadStatus.textContent = 'Loading…';
+    try {
+      const runs = await listSidecarRuns();
+      azureRunChoices = runs;
+      reloadSelect.replaceChildren();
+      if (runs.length === 0) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = 'No runs found in the store';
+        reloadSelect.append(opt);
+        reloadStatus.textContent = 'No runs available.';
+        return;
+      }
+      runs.forEach((run, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        const ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : 'unknown time';
+        opt.textContent = `${run.briefId} · ${run.runId}${run.hasJudge ? ' · judged' : ''} · ${ts}`;
+        reloadSelect.append(opt);
+      });
+      reloadStatus.textContent = `${runs.length} run(s).`;
+    } catch (err) {
+      reloadStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  };
+  reloadRefreshBtn.addEventListener('click', () => {
+    void refreshAzureRuns();
+  });
+  reloadLoadBtn.addEventListener('click', () => {
+    void (async () => {
+      const idx = Number.parseInt(reloadSelect.value, 10);
+      const run = Number.isInteger(idx) ? azureRunChoices[idx] : undefined;
+      if (!run) {
+        reloadStatus.textContent = 'Pick a run first (click ↻ Runs).';
+        return;
+      }
+      setButtonBusy(reloadLoadBtn, true, 'Load sheet', 'Loading…');
+      reloadStatus.textContent = `Loading ${run.briefId}…`;
+      try {
+        // Reuse an existing queue item for this briefId, else create one.
+        let target: QueueItem | undefined = queueState.items.find(
+          (it) => it.kebabName === run.briefId,
+        );
+        if (target) {
+          queueState = queueSelectItem(queueState, target.id);
+        } else {
+          queueState = queueAddItem(queueState, run.briefId, '', 'auto', 'manual');
+          target = getSelectedItem(queueState) ?? undefined;
+        }
+        if (!target) {
+          reloadStatus.textContent = 'Could not create a queue item.';
+          return;
+        }
+        writeQueueState();
+        const summary = (await fetchRunSummary(run.briefId, run.runId)) as {
+          candidates?: RawGenerateCandidate[];
+        };
+        applyRunToQueue(target.id, run.briefId, run.runId, summary.candidates ?? [], {
+          stage: 'sheet',
+          status:
+            `Reloaded ${run.briefId} (${run.runId}) from the store at the Sheet step. ` +
+            'PostProcess reuses this sheet; Generate calls OpenAI again.',
+          resetApproval: true,
+        });
+        reloadStatus.textContent = `Loaded ${run.briefId}.`;
+      } catch (err) {
+        reloadStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        setButtonBusy(reloadLoadBtn, false, 'Load sheet', 'Loading…');
+      }
+    })();
+  });
+
   workflowButtons.append(
     synthBtn,
     generateBtn,
@@ -965,6 +1193,8 @@ function render(): void {
     cancelGenerateBtn,
     launchWorkerBtn,
     metadataBtn,
+    restartBriefBtn,
+    restartSheetBtn,
     removeItemBtn,
   );
 
@@ -1007,6 +1237,7 @@ function render(): void {
     workflowHint,
     composerRow,
     queueBar,
+    reloadRow,
     activeItemLabel,
     stepperHost,
     workflowButtons,
@@ -1721,7 +1952,7 @@ function render(): void {
       });
       chip.append(
         el('span', {
-          text: item.brief,
+          text: item.name,
           style: { fontWeight: '600', fontSize: '12px' },
         }),
         el('span', {
@@ -1729,6 +1960,7 @@ function render(): void {
           style: { color: badge.color, fontSize: '10px' },
         }),
       );
+      chip.title = item.brief ? `${item.name} — ${item.brief}` : item.name;
       chip.addEventListener('click', () => {
         queueState = queueSelectItem(queueState, item.id);
         writeQueueState();
@@ -1789,7 +2021,7 @@ function render(): void {
     const showWorkerLaunchHint =
       isQueued && sidecarQueueBackend === 'azure-queue' && !sidecarWorker?.running;
     generationProgress.textContent = describeGenerationProgress({
-      brief: item.brief,
+      brief: item.name,
       elapsedMs,
       pollAttempts,
       queueBackend: sidecarQueueBackend,
@@ -1814,22 +2046,28 @@ function render(): void {
       generateBtn.disabled = true;
       metadataBtn.disabled = true;
       removeItemBtn.disabled = true;
+      restartBriefBtn.style.display = 'none';
+      restartSheetBtn.style.display = 'none';
       renderSynthCandidates([]);
       renderRunCandidates();
       renderGenerationProgress();
       return;
     }
     const badge = STAGE_BADGES[item.stage];
-    activeItemLabel.textContent = `Active: "${item.brief}" → ${item.kebabName} [${item.resolvedType ?? item.requestedType}] · ${badge.text}`;
+    const briefSuffix = item.brief ? ` — ${item.brief}` : '';
+    activeItemLabel.textContent = `Active: "${item.name}"${briefSuffix} → ${item.kebabName} [${item.resolvedType ?? item.requestedType}] · ${badge.text}`;
     activeItemLabel.style.color = badge.color;
     renderStepper(item);
     const busy = isBusyStage(item.stage);
     synthBtn.disabled = busy || !(item.stage === 'draft' || item.stage === 'candidates');
-    // Generate folds in brief promotion: it is reachable only from `candidates`
-    // (with a chosen candidate). Re-rolling a fresh sheet is reached by
-    // re-Choosing, which resets briefPath/run. Iterating on an existing sheet is
-    // done via the re-runnable PostProcess/Judge steps, not by regenerating.
-    generateBtn.disabled = busy || item.stage !== 'candidates' || item.chosenCandidatePath === null;
+    // Generate produces a NEW sheet from the chosen brief candidate (or a
+    // reloaded item's promoted briefPath). Reachable from `candidates` and from
+    // `sheet`: at `sheet` it is the explicit "regenerate / call OpenAI again"
+    // path, while PostProcess reuses the existing sheet by default.
+    generateBtn.disabled =
+      busy ||
+      !(item.stage === 'candidates' || item.stage === 'sheet') ||
+      (item.chosenCandidatePath === null && item.briefPath === null);
     // PostProcess re-runs over the stored sheet, so it stays available after the
     // first pass (a re-postprocess resets judge verdicts back to `postprocessed`).
     postprocessBtn.disabled =
@@ -1855,6 +2093,15 @@ function render(): void {
     forceJudgeBtn.disabled = busy || !showForceJudge;
     metadataBtn.disabled = busy || !(item.stage === 'approved' || item.stage === 'done');
     removeItemBtn.disabled = false;
+    // Restart points: Brief is offered once the item has moved past the initial
+    // draft (there is something to rewind); Sheet is offered whenever a
+    // generated sheet exists to return to.
+    const pastBrief = item.stage !== 'draft' && item.stage !== 'synthesizing';
+    restartBriefBtn.style.display = pastBrief ? '' : 'none';
+    restartBriefBtn.disabled = busy;
+    const canRestartSheet = item.run !== null;
+    restartSheetBtn.style.display = canRestartSheet ? '' : 'none';
+    restartSheetBtn.disabled = busy || !canRestartSheet;
     const nextAction = primaryActionLabel(item.stage);
     if (item.lastError) {
       setWorkflowStatus(`Error: ${item.lastError}`, '#fca5a5');
@@ -2546,29 +2793,33 @@ function render(): void {
       });
       approveBtn.addEventListener('click', async () => {
         const variantKey = `${run.briefId}-var-${candidate.index}`;
-        // Block re-approving the EXACT same variant (same brief + index). The
-        // server also enforces this (409), but catching it here avoids a
-        // pointless round-trip and gives a clearer message.
-        if (approvedVariantKeys.has(variantKey)) {
-          setWorkflowStatus(
-            `Variant ${variantKey} is already approved. Pick a different variant to add another.`,
-            '#fca5a5',
-          );
-          return;
-        }
-        // Confirm before approving an ADDITIONAL variant for a brief that
-        // already has one or more approved variants.
-        const siblingVariantCount = [...approvedVariantKeys].filter((key) =>
-          key.startsWith(`${run.briefId}-var-`),
-        ).length;
-        if (siblingVariantCount > 0) {
+        const isReapproval = approvedVariantKeys.has(variantKey);
+        if (isReapproval) {
+          // Re-approving the SAME variant slot is allowed only when the image
+          // actually changed (e.g. after re-running post-processing). The server
+          // is the source of truth: it compares content hashes and refuses an
+          // identical image with 409. Here we just confirm intent — no hard block.
           const ok = window.confirm(
-            `${run.briefId} already has ${siblingVariantCount} approved ` +
-              `variant${siblingVariantCount === 1 ? '' : 's'}. Approve variant ` +
-              `#${candidate.index} as an ADDITIONAL variant? At runtime the game ` +
-              'picks one of a brief\u2019s variants at random.',
+            `Variant ${variantKey} is already approved. Re-approve it with the ` +
+              'current image? This overwrites the existing asset if the image ' +
+              'changed; an identical image is refused.',
           );
           if (!ok) return;
+        } else {
+          // Confirm before approving an ADDITIONAL variant for a brief that
+          // already has one or more approved variants.
+          const siblingVariantCount = [...approvedVariantKeys].filter((key) =>
+            key.startsWith(`${run.briefId}-var-`),
+          ).length;
+          if (siblingVariantCount > 0) {
+            const ok = window.confirm(
+              `${run.briefId} already has ${siblingVariantCount} approved ` +
+                `variant${siblingVariantCount === 1 ? '' : 's'}. Approve variant ` +
+                `#${candidate.index} as an ADDITIONAL variant? At runtime the game ` +
+                'picks one of a brief\u2019s variants at random.',
+            );
+            if (!ok) return;
+          }
         }
         if (overrideNeeded) {
           const axes = candidate.judge?.rejectedBy?.length
@@ -2612,13 +2863,14 @@ function render(): void {
           );
           void recompute();
         } catch (error) {
-          // The sidecar returns 409 (already-approved) when the exact variant
-          // key already exists — surface it as a friendly notice and resync the
-          // approved-key set so the button blocks locally next time.
+          // The sidecar returns 409 (already-approved) only when the exact
+          // variant key already exists WITH byte-identical content — surface it
+          // as a friendly notice and resync the approved-key set.
           if (error instanceof ApproveRequestError && error.status === 409) {
             approvedVariantKeys.add(`${run.briefId}-var-${candidate.index}`);
             setWorkflowStatus(
-              `Variant ${run.briefId}-var-${candidate.index} is already approved.`,
+              `Variant ${run.briefId}-var-${candidate.index} is already approved with ` +
+                'identical content. Re-run post-processing to change the image first.',
               '#fca5a5',
             );
             void recompute();
@@ -3730,17 +3982,16 @@ function render(): void {
   });
 
   const addBriefToQueue = (): void => {
-    const text = briefInput.value;
+    const name = nameInput.value;
+    const brief = briefInput.value;
     const requested = typeSelect.value as RequestedType;
-    const next = queueAddItem(queueState, text, requested, 'manual');
+    const next = queueAddItem(queueState, name, brief, requested, 'manual');
     if (next === queueState) {
-      setWorkflowStatus(
-        'Enter a brief (letters or numbers) before adding to the queue.',
-        '#fca5a5',
-      );
+      setWorkflowStatus('Enter a name (letters or numbers) before adding to the queue.', '#fca5a5');
       return;
     }
     queueState = next;
+    nameInput.value = '';
     briefInput.value = '';
     writeQueueState();
     renderQueue();
@@ -3748,7 +3999,7 @@ function render(): void {
     const active = getSelectedItem(queueState);
     setWorkflowStatus(
       active
-        ? `Added "${active.brief}" to the queue. Click Synthesize to start.`
+        ? `Added "${active.name}" to the queue. Click Synthesize to start.`
         : 'Added to queue.',
       '#bef264',
     );
@@ -3757,12 +4008,14 @@ function render(): void {
   addToQueueBtn.addEventListener('click', () => {
     addBriefToQueue();
   });
-  briefInput.addEventListener('keydown', (event) => {
+  const addOnEnter = (event: KeyboardEvent): void => {
     if (event.key === 'Enter') {
       event.preventDefault();
       addBriefToQueue();
     }
-  });
+  };
+  nameInput.addEventListener('keydown', addOnEnter);
+  briefInput.addEventListener('keydown', addOnEnter);
 
   clearQueueBtn.addEventListener('click', () => {
     queueState = queueClear(queueState);
@@ -3781,7 +4034,7 @@ function render(): void {
     writeQueueState();
     renderQueue();
     renderWorkflowSelection();
-    setWorkflowStatus(`Removed "${active.brief}" from the queue.`, '#cbd5e1');
+    setWorkflowStatus(`Removed "${active.name}" from the queue.`, '#cbd5e1');
   });
 
   const recompute = async (): Promise<void> => {
@@ -3947,7 +4200,7 @@ function render(): void {
         }
         queueBtn.disabled = true;
         selectedAssetId = asset.id;
-        queueState = queueAddItem(queueState, asset.label, requestedType, 'asset-plan');
+        queueState = queueAddItem(queueState, asset.label, '', requestedType, 'asset-plan');
         writeQueueState();
         renderQueue();
         renderWorkflowSelection();
@@ -4075,11 +4328,12 @@ function render(): void {
       setWorkflowStatus('Add a brief to the queue first.', '#fca5a5');
       return;
     }
-    const subject = item.brief.trim();
-    if (subject === '') {
-      setWorkflowStatus('This item has no brief text.', '#fca5a5');
+    const subject = item.name.trim() || item.kebabName;
+    if (item.kebabName === '') {
+      setWorkflowStatus('This item has no name.', '#fca5a5');
       return;
     }
+    const briefHint = item.brief.trim();
     const requestedType = item.requestedType === 'auto' ? undefined : item.requestedType;
     queueState = queueUpdateItem(queueState, item.id, { stage: 'synthesizing', lastError: null });
     writeQueueState();
@@ -4094,7 +4348,12 @@ function render(): void {
       }>(`${SIDECAR_BASE}/api/workflow/synthesize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: subject, type: requestedType, candidates: 3 }),
+        body: JSON.stringify({
+          name: item.kebabName,
+          ...(briefHint ? { brief: briefHint } : {}),
+          type: requestedType,
+          candidates: 3,
+        }),
       });
       const firstPath = result.written[0]?.yamlPath ?? null;
       queueState = queueUpdateItem(queueState, item.id, {
@@ -4817,7 +5076,7 @@ function render(): void {
     renderWorkflowSelection();
     setButtonBusy(generateBtn, false, 'Generate run', 'Generating...');
     setWorkflowStatus(
-      `Canceled generation for "${item.brief}". The brief is unchanged — click Generate run to retry.`,
+      `Canceled generation for "${item.name}". The brief is unchanged — click Generate run to retry.`,
       '#fcd34d',
     );
   });

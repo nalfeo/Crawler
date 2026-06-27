@@ -164,6 +164,7 @@ interface RunSummaryShape {
 
 interface WorkflowSynthesizeBody {
   readonly name?: unknown;
+  readonly brief?: unknown;
   readonly type?: unknown;
   readonly candidates?: unknown;
 }
@@ -875,6 +876,17 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       reply.code(400);
       return { error: 'bad-request', message: 'body.name must be a non-empty string' };
     }
+    let briefHint: string | undefined;
+    if (body.brief !== undefined) {
+      if (typeof body.brief !== 'string') {
+        reply.code(400);
+        return { error: 'bad-request', message: 'body.brief must be a string when provided' };
+      }
+      const trimmed = body.brief.trim();
+      if (trimmed !== '') {
+        briefHint = trimmed;
+      }
+    }
     let type: Brief['type'] | undefined;
     if (body.type !== undefined) {
       if (typeof body.type !== 'string' || !SPRITE_TYPES.includes(body.type as Brief['type'])) {
@@ -908,6 +920,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       const provider = createSynthProvider({ env });
       const result = await synthesizeBrief({
         name: body.name,
+        ...(briefHint ? { briefHint } : {}),
         ...(type ? { type } : {}),
         candidates,
         partial: true,
