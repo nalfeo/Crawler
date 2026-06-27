@@ -26,6 +26,21 @@
 - Maintain palette files (`data/palettes/<name>.json`) as new biomes / themes are introduced. New palettes are additive; never edit an existing palette in a way that breaks already-approved sprites.
 - Collaborate with the UX, game design, and systems engineering personas on threat visibility, reward signaling, and registry integration.
 
+## Observe Before Done
+
+- For any sprite, effect, or visual-hierarchy change, reading the diff, source, or
+  generated PNG is **not** verification. Before claiming it works, reproduce the
+  old/broken behavior in the running artifact — a lab via `npm run lab`
+  (`?lab=<name>`) or the game via `npm run dev` — and capture it (screenshot, a
+  `tests/e2e/helpers/ui-probe.ts` probe, or headless `RunStats`), then re-observe at
+  game scale after the fix to confirm the behavior actually changed. State the
+  before/after observation in the PR/handoff.
+- Promote any recurring in-game visual bug class into a **deterministic** check —
+  `tests/e2e/helpers/pixels.ts` / `ui-probe.ts` (see `tests/e2e/hud-overlap-visual.test.ts`)
+  or a headless assertion (see `tests/headless/floor1-completion.test.ts`). This is
+  distinct from the sprite-pipeline sensors and covers rendering in the live game.
+  Deterministic only — never an LLM-as-judge in CI.
+
 ## Quality Criteria
 
 - Approved sprites pass every deterministic sensor for their asset type.
