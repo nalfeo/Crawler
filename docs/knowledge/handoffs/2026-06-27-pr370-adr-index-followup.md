@@ -22,7 +22,7 @@ purely ADR documentation + index hygiene.
 
 Estimated: 🍎 x 3 <!-- declared at takeover, before any edits -->
 Actual: 🍎 x 2 <!-- honest assessment at handoff -->
-Verdict: 📉 Over — estimated 3 for a full 5-thread shepherd. The owner merged
+Verdict: 📈 Over — estimated 3 for a full 5-thread shepherd. The owner merged
 #370 mid-session and PR #379 then realigned the flagged ADR path refs, so the
 blocking work was done elsewhere. My shipped delta is a small, mechanical
 docs-only diff (3 ADR files), though it took non-trivial diagnosis and two
