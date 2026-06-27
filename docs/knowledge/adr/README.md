@@ -6,7 +6,7 @@ decisions that affect **2+ systems** require an ADR (see the constitution and
 `.github/copilot-instructions.md`).
 
 - **Template:** `docs/knowledge/adr/TEMPLATE.md`
-- **Count:** 43 ADRs (0001–0027, with number reuse — see below)
+- **Count:** 45 ADRs (0001–0028, with number reuse — see below)
 - **Status convention:** `## Status` heading with one of
   `Proposed | Accepted | Deprecated | Superseded by NNNN`
 
@@ -25,14 +25,14 @@ renumber** historical ADRs: their numbers are referenced by handoffs, other
 ADRs, commit messages, and code comments, so renumbering would silently break
 hundreds of inbound references.
 
-- **`0005` is intentionally unused** (gap — no ADR was ever filed under it).
+- **`0005`** was an intentional numbering gap, now filled by [Parameterized Floor Configuration System](0005-parameterized-floor-configuration.md).
 - **Reused numbers:** `0007` ×2, `0009` ×2, `0017` ×3, `0018` ×5, `0023` ×4,
   `0024` ×3, `0025` ×4, `0026` ×2. The slug disambiguates each.
 
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0028**).
+   number** (currently **0029**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -87,6 +87,7 @@ hundreds of inbound references.
 - [Generic special-room perimeter sealing with door-conversion](0023-generic-special-room-sealing.md)
 - [Set-piece themed rooms](0024-set-piece-themed-rooms.md)
 - [Door-pointing welcome-sign wayfinding](0026-welcome-sign-wayfinding.md)
+- [Parameterized floor configuration system](0005-parameterized-floor-configuration.md) — floor1→floor params via floor-registry; enables multi-floor progression.
 
 ### Quests & NPCs
 
@@ -107,6 +108,7 @@ hundreds of inbound references.
 - [Re-runnable PostProcess & Judge over stored sheets](0023-rerunnable-postprocess-judge.md)
 - [Generate stores the raw sheet only (Option B)](0024-generate-stores-raw-sheet-only.md)
 - [Devtools sprite workflow — 7-stage restructure](0025-workflow-7-stage-restructure.md)
+- [Multi-variant generated sprites](0028-generated-sprite-variants.md) — identity, selection, approval, and check-in.
 
 ### Rendering, HUD & VFX
 
@@ -132,6 +134,7 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0002 | [Lab-Gated Development](0002-lab-gated-development.md)                                                                          | Accepted | 2024-12-01 |
 | 0003 | [Sprite Generation Pipeline](0003-sprite-generation-pipeline.md)                                                                | Accepted | 2026-06-04 |
 | 0004 | [Chronicle as Agent-OS Telemetry Backend](0004-chronicle-telemetry.md)                                                          | Accepted | 2026-06-05 |
+| 0005 | [Parameterized Floor Configuration System](0005-parameterized-floor-configuration.md)                                           | Accepted | 2026-06-26 |
 | 0006 | [Drops System Architecture](0006-drops-system-architecture.md)                                                                  | Accepted | 2026-06-05 |
 | 0007 | [Looping Automation Workflows](0007-automation-loops.md)                                                                        | Accepted | 2026-06-07 |
 | 0007 | [Spatial Units Architecture (Pixels vs Feet)](0007-spatial-units-architecture.md)                                               | Accepted | 2026-06-08 |
@@ -171,3 +174,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0026 | [Baby Slime Spawn Animation and Swing-Immunity](0026-baby-slime-spawn-animation-and-swing-immunity.md)                          | Accepted | 2026-06-26 |
 | 0026 | [Door-Pointing Welcome-Sign Wayfinding](0026-welcome-sign-wayfinding.md)                                                        | Accepted | 2026-06-27 |
 | 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                              | Accepted | 2026-06-27 |
+| 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted | 2026-06-26 |

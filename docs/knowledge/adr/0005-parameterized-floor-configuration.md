@@ -1,8 +1,20 @@
 # ADR 0005: Parameterized Floor Configuration System
 
-**Status:** Accepted  
-**Date:** 2026-06-26  
-**Deciders:** Nick Alfeo (Producer), Copilot
+## Status
+
+Accepted
+
+## Date
+
+2026-06-26
+
+## Estimated Complexity
+
+🍎 x 3 — mechanical floor1→floor parameterization across core/engine/game/bootstrap/labs/shared with aliased exports; no new lab required.
+
+## Deciders
+
+Nick Alfeo (Producer), Copilot
 
 ---
 
