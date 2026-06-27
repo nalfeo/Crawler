@@ -1,6 +1,8 @@
 import { hasComponent, query, removeEntity } from 'bitecs';
 import {
+  DeathTimer,
   Enemy,
+  Health,
   MeleeSwing,
   Owner,
   Player,
@@ -187,6 +189,17 @@ function getNearestEnemyTarget(
   let nearestDistanceSq = Number.POSITIVE_INFINITY;
 
   for (const enemy of enemies) {
+    // Skip corpses. Dead enemies keep their Enemy + Position components during
+    // the death-linger window (deathTimerSystem removes them once the corpse
+    // animation finishes); auto-aim must not waste swings or projectiles on
+    // them, or the player keeps attacking a body while live enemies close in.
+    if (hasComponent(world.ecs, enemy, DeathTimer)) {
+      continue;
+    }
+    if (hasComponent(world.ecs, enemy, Health) && (world.stores.health.current[enemy] ?? 0) <= 0) {
+      continue;
+    }
+
     const ex = world.stores.position.x[enemy]!;
     const ey = world.stores.position.y[enemy]!;
 
@@ -254,6 +267,13 @@ function findBossTargetInRange(
 
   for (const enemy of enemies) {
     if ((behavior.aggroedPermanently[enemy] ?? 0) !== 1) {
+      continue;
+    }
+    // Skip corpses — see getNearestEnemyTarget for rationale.
+    if (hasComponent(world.ecs, enemy, DeathTimer)) {
+      continue;
+    }
+    if (hasComponent(world.ecs, enemy, Health) && (world.stores.health.current[enemy] ?? 0) <= 0) {
       continue;
     }
     const ex = world.stores.position.x[enemy]!;

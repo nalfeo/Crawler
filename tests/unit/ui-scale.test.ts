@@ -51,46 +51,47 @@ describe('computeUiScale', () => {
 });
 
 describe('computeTextResolution', () => {
-  const design = { designWidth: 1280, designHeight: 720 };
-
-  it('renders at native resolution when the canvas is shown at design size on a 1x display', () => {
-    expect(computeTextResolution(1280, 720, 1, design)).toBe(1);
+  it('renders at native resolution at on-screen scale 1 with no UI upscaling', () => {
+    expect(computeTextResolution(1, 1)).toBe(1);
   });
 
-  it('bumps resolution by the FIT magnification so upscaled glyphs stay crisp', () => {
-    // 1280x720 design shown at 1920x1080 → 1.5x FIT magnification (the cause of
-    // the blurry HUD text). Resolution must round up past 1 to compensate.
-    expect(computeTextResolution(1920, 1080, 1, design)).toBe(2);
-    expect(computeTextResolution(2560, 1440, 1, design)).toBe(2);
+  it('matches the HiDPI render scale so supersampled glyphs stay crisp', () => {
+    // The UI camera renders the design space into a 2× framebuffer, so text must
+    // be rasterised at 2× to fill its footprint instead of being upscaled.
+    expect(computeTextResolution(2, 1)).toBe(2);
   });
 
-  it('accounts for the device pixel ratio (HiDPI / OS scaling / browser zoom)', () => {
-    expect(computeTextResolution(1280, 720, 2, design)).toBe(2);
-    expect(computeTextResolution(1920, 1080, 2, design)).toBe(3);
+  it('accounts for a responsive UI scale on small screens', () => {
+    // On-screen scale 1, but the HUD group scales text up 2× → needs 2× glyphs.
+    expect(computeTextResolution(1, 2)).toBe(2);
   });
 
-  it('uses the limiting (smallest-magnification) axis like Phaser.Scale.FIT', () => {
-    // Width magnifies 1.5x but height only 1x → FIT scales by 1x, so resolution stays 1.
-    expect(computeTextResolution(1920, 720, 1, design)).toBe(1);
+  it('oversamples the residual FIT magnification the integer render scale drops', () => {
+    // A dpr=1 canvas shown ~1.25× larger than the design size: the framebuffer S
+    // rounds to 1, but the glyph is still FIT-upscaled ~1.25×. ceil keeps it crisp
+    // (PR #342's complementary layer); the old round(S × uiScale) gave 1 (soft).
+    expect(computeTextResolution(1.25, 1)).toBe(2);
+    expect(computeTextResolution(1.2, 1)).toBe(2);
   });
 
-  it('keeps text crisp when a responsive container scales it up on small screens', () => {
-    // Canvas minified to 0.5x but the HUD group scales text up by 2x → needs 2x glyphs.
-    expect(computeTextResolution(640, 360, 1, { ...design, responsiveScale: 2 })).toBe(2);
+  it('combines the on-screen scale and the UI scale', () => {
+    expect(computeTextResolution(2, 1.37)).toBe(3); // ceil(2.74)
   });
 
-  it('clamps to the maximum resolution on extreme displays', () => {
-    expect(computeTextResolution(3840, 2160, 3, design)).toBe(MAX_TEXT_RESOLUTION);
-    expect(computeTextResolution(3840, 2160, 1, { ...design, max: 6 })).toBe(3);
+  it('rounds fractional resolutions up to avoid undersampling', () => {
+    expect(computeTextResolution(1, 1.4)).toBe(2); // ceil(1.4)
+    expect(computeTextResolution(1, 1.6)).toBe(2); // ceil(1.6)
   });
 
-  it('treats a non-positive device pixel ratio as 1', () => {
-    expect(computeTextResolution(1920, 1080, 0, design)).toBe(2);
-    expect(computeTextResolution(1280, 720, Number.NaN, design)).toBe(1);
+  it('clamps to the maximum resolution', () => {
+    expect(computeTextResolution(2, 4)).toBe(MAX_TEXT_RESOLUTION); // ceil(8) → 4
+    expect(computeTextResolution(2, 4, { max: 6 })).toBe(6);
   });
 
-  it('falls back to native resolution for degenerate display sizes', () => {
-    expect(computeTextResolution(0, 0, 2, design)).toBe(1);
-    expect(computeTextResolution(Number.NaN, 100, 2, design)).toBe(1);
+  it('treats non-positive inputs as 1', () => {
+    expect(computeTextResolution(0, 1)).toBe(1);
+    expect(computeTextResolution(2, 0)).toBe(2); // uiScale → 1, ceil(2)
+    expect(computeTextResolution(Number.NaN, 1)).toBe(1);
+    expect(computeTextResolution(1, Number.NaN)).toBe(1);
   });
 });

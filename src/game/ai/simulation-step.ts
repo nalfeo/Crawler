@@ -20,6 +20,7 @@ import {
   itemPickupSystem,
   dropSystem,
   deathTimerSystem,
+  spawnAnimSystem,
   healthSystem,
   lifetimeSystem,
   projectileCleanupSystem,
@@ -114,6 +115,7 @@ export function runSimulationStep(
   itemPickupSystem(world, collision);
   dropSystem(world);
   deathTimerSystem(world);
+  spawnAnimSystem(world);
   healthSystem(world);
   lifetimeSystem(world);
   projectileCleanupSystem(world);

@@ -14,7 +14,11 @@ import {
   Velocity,
 } from '../../src/core/components.js';
 import { createEntity } from '../../src/core/helpers.js';
-import { clearMeleeSwingHits, meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
+import {
+  clearMeleeSwingHits,
+  markImmuneToActiveMeleeSwings,
+  meleeSwingSystem,
+} from '../../src/core/systems/meleeSwingSystem.js';
 import { returningProjectileSystem } from '../../src/core/systems/returningProjectileSystem.js';
 import { MeleeStyle } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -63,6 +67,27 @@ describe('meleeSwingSystem coverage edges', () => {
     clearMeleeSwingHits(world, swing);
     meleeSwingSystem(world);
     expect(world.stores.health.current[enemy]).toBe(80);
+  });
+
+  it('markImmuneToActiveMeleeSwings makes an active swing skip a target until it is replaced', () => {
+    const world = createTestWorld();
+    const swing = createSlashSwing(world, 100, 100);
+    const enemy = createEntity(world);
+    addComponent(world.ecs, enemy, set(Position, { x: 120, y: 100 }));
+    addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
+    addComponent(world.ecs, enemy, Enemy);
+
+    // Register the target in the active swing's hit set before it processes — as a
+    // freshly-split baby slime is the frame its parent dies mid-swing. The
+    // in-progress swing must now pass right through it.
+    markImmuneToActiveMeleeSwings(world, enemy);
+    meleeSwingSystem(world);
+    expect(world.stores.health.current[enemy]).toBe(100);
+
+    // The player swings again: a fresh swing (empty hit set) connects normally.
+    clearMeleeSwingHits(world, swing);
+    meleeSwingSystem(world);
+    expect(world.stores.health.current[enemy]).toBe(90);
   });
 
   it('handles zero-length blade segment via shaft distance fallback', () => {

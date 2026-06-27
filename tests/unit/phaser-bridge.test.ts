@@ -1,7 +1,14 @@
 import { addComponent, addEntity, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
-import { DeathTimer, Enemy, Player, Position, Sprite } from '../../src/core/components.js';
+import {
+  DeathTimer,
+  Enemy,
+  Player,
+  Position,
+  Rotation,
+  Sprite,
+} from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
@@ -60,9 +67,9 @@ class MockImage {
     return this;
   }
 
-  setScale(scale: number): this {
-    this.scaleX = scale;
-    this.scaleY = scale;
+  setScale(x: number, y?: number): this {
+    this.scaleX = x;
+    this.scaleY = y ?? x;
     return this;
   }
 
@@ -74,6 +81,42 @@ class MockImage {
   setVisible(visible: boolean): this {
     this.visible = visible;
     return this;
+  }
+
+  // --- Additions exercised by the corpse-shatter VFX ---
+  originX = 0.5;
+  originY = 0.5;
+  depth = 0;
+  cropped = false;
+  cropRect: { x: number; y: number; w: number; h: number } | null = null;
+
+  setOrigin(x: number, y: number): this {
+    this.originX = x;
+    this.originY = y;
+    return this;
+  }
+
+  setDepth(depth: number): this {
+    this.depth = depth;
+    return this;
+  }
+
+  setCrop(x: number, y: number, w: number, h: number): this {
+    this.cropped = true;
+    this.cropRect = { x, y, w, h };
+    return this;
+  }
+
+  get isTinted(): boolean {
+    return this.tinted;
+  }
+
+  get tintTopLeft(): number {
+    return this.tint;
+  }
+
+  get texture(): { key: string } {
+    return { key: this.textureKey };
   }
 
   destroy(): void {
@@ -332,6 +375,96 @@ describe('createPhaserBridge', () => {
     expect(corpse.alpha).toBe(1);
   });
 
+  it('detonates a hit corpse into cropped sprite shards on a corpseExplode event', () => {
+    const { scene, images } = createSceneStub();
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    // A corpse: dead enemy still lingering, with an on-screen visual.
+    addComponent(world.ecs, eid, set(Position, { x: 100, y: 120 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
+    bridge.sync(world);
+    const baseline = images.length;
+
+    // Emit the event the core damage path would emit when the corpse is struck.
+    world.combatEvents.push({
+      type: 'corpseExplode',
+      x: 100,
+      y: 120,
+      amount: 20,
+      targetType: 'enemy',
+      timestamp: 0,
+      targetEid: eid,
+      bloodColor: 0xcc0000,
+      spriteTextureId: 0,
+      knockbackDirX: 0,
+      knockbackDirY: 1,
+    });
+    bridge.sync(world);
+
+    // A 3x3 cut yields 9 shard images, each cropped to one grid cell and
+    // depth-sorted into the world VFX band.
+    const shards = images.slice(baseline);
+    expect(shards.length).toBeGreaterThanOrEqual(9);
+    expect(shards.every((s) => s.cropped)).toBe(true);
+    expect(shards.every((s) => s.depth > 0)).toBe(true);
+    // The crop rectangles tile the 16x16 frame exactly.
+    const area = shards.reduce((sum, s) => sum + s.cropRect!.w * s.cropRect!.h, 0);
+    expect(area).toBe(16 * 16);
+  });
+
+  it('shatters a baby-slime corpse at its shrunken on-screen scale, not the base scale', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    // Floor1 sidecar so the renderer can read the 'slime-mini' archetype.
+    world.floor1 = {
+      enemyArchetypes: new Map<number, string>(),
+      objective: { bossBattles: new Map() },
+    } as unknown as NonNullable<typeof world.floor1>;
+
+    // A baby-slime corpse: shrunken Sprite.width + 'slime-mini' archetype, so it
+    // renders at 16/24 of a full slime — its base scale is larger than what the
+    // player actually sees.
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 60, y: 60 }));
+    addComponent(world.ecs, eid, Enemy);
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
+    world.floor1!.enemyArchetypes.set(eid, 'slime-mini');
+
+    bridge.sync(world);
+    const corpseImg = images[0]!;
+    const renderedScale = corpseImg.scaleX; // baseScale * (16/24), the on-screen size
+    const baseline = images.length;
+
+    world.combatEvents.push({
+      type: 'corpseExplode',
+      x: 60,
+      y: 60,
+      amount: 20,
+      targetType: 'enemy',
+      timestamp: 0,
+      targetEid: eid,
+      bloodColor: 0xcc0000,
+      spriteTextureId: 2,
+      knockbackDirX: 0,
+      knockbackDirY: 1,
+    });
+    bridge.sync(world);
+
+    // Shards are sized to the corpse's actual on-screen scale, not its (larger)
+    // base scale — so a baby slime sprays baby-sized chunks.
+    const shards = images.slice(baseline).filter((s) => s.cropped);
+    expect(shards.length).toBeGreaterThanOrEqual(9);
+    for (const s of shards) {
+      expect(s.scaleX).toBeCloseTo(renderedScale, 5);
+    }
+  });
+
   it('renders rats and slimes with distinct enemy textures', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
@@ -352,6 +485,122 @@ describe('createPhaserBridge', () => {
     expect(images).toHaveLength(2);
     expect(images[0]?.textureKey).toBe('__cw_enemy_rat');
     expect(images[1]?.textureKey).toBe('__cw_enemy_slime');
+  });
+
+  it('renders slime-mini babies smaller than a full slime', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    // Minimal floor1 sidecar so the renderer can read the 'slime-mini' archetype
+    // and iterate boss battles (both accessed during enemy sync).
+    world.floor1 = {
+      enemyArchetypes: new Map<number, string>(),
+      objective: { bossBattles: new Map() },
+    } as unknown as NonNullable<typeof world.floor1>;
+
+    const fullSlime = addEntity(world.ecs);
+    const miniSlime = addEntity(world.ecs);
+
+    // Full slime: no archetype, so it renders at the base enemy scale.
+    addComponent(world.ecs, fullSlime, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, fullSlime, Enemy);
+    addComponent(world.ecs, fullSlime, set(Sprite, { textureId: 2, width: 24, height: 24 }));
+
+    // Baby slime: shrunken Sprite.width + 'slime-mini' archetype, no SpawnAnim so
+    // it renders at a steady, smaller size (16/24 of the full slime).
+    addComponent(world.ecs, miniSlime, set(Position, { x: 30, y: 10 }));
+    addComponent(world.ecs, miniSlime, Enemy);
+    addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 16, height: 16 }));
+    world.floor1!.enemyArchetypes.set(miniSlime, 'slime-mini');
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    const fullImg = images[0]!;
+    const miniImg = images[1]!;
+
+    // Full slime is scaled uniformly at the base scale.
+    expect(fullImg.scaleX).toBeCloseTo(fullImg.scaleY, 6);
+    expect(fullImg.scaleX).toBeGreaterThan(0);
+
+    // Baby renders smaller, at 16/24 of the full slime's scale, still uniform.
+    expect(miniImg.scaleX).toBeLessThan(fullImg.scaleX);
+    expect(miniImg.scaleX).toBeCloseTo(miniImg.scaleY, 6);
+    expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * (16 / 24), 5);
+  });
+
+  // A welcome sign is a Sprite+Position entity whose textureId is the welcome
+  // board (SPRITE_TEX_WELCOME_SIGN === 3). Its Rotation.angle aims the arrow at
+  // the door that leads onward; the renderer picks the baked board so the
+  // "WELCOME" word never reads upside-down.
+  it('points a right-hemisphere welcome sign along its angle with the base board', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    // cos(angle) >= 0: the arrow-right board already reads upright, so the
+    // renderer keeps the base texture and rotates straight to `angle`.
+    const angle = Math.PI / 6; // 30°, cos > 0
+    addComponent(world.ecs, eid, set(Position, { x: 40, y: 50 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 3, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(Rotation, { angle }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('__cw_welcome_sign');
+    expect(images[0]?.rotation).toBeCloseTo(angle, 6);
+  });
+
+  it('swaps a left-hemisphere welcome sign to the mirrored board, measured from −x', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    // cos(angle) < 0: aiming the arrow-right board here would flip "WELCOME"
+    // upside-down, so the renderer swaps to the arrow-left board and measures
+    // rotation from the −x reference (angle − π) to keep the word readable while
+    // the arrow still points along `angle`.
+    const angle = (3 * Math.PI) / 4; // 135°, cos < 0
+    addComponent(world.ecs, eid, set(Position, { x: 40, y: 50 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 3, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(Rotation, { angle }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('__cw_welcome_sign_left');
+    expect(images[0]?.rotation).toBeCloseTo(angle - Math.PI, 6);
+  });
+
+  it('flips a welcome sign between boards as it rotates across the vertical', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    const rightAngle = Math.PI / 4; // cos > 0 → base board
+    addComponent(world.ecs, eid, set(Position, { x: 40, y: 50 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 3, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(Rotation, { angle: rightAngle }));
+
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+    const sign = images[0]!;
+    expect(sign.textureKey).toBe('__cw_welcome_sign');
+    expect(sign.rotation).toBeCloseTo(rightAngle, 6);
+
+    // Rotate past vertical into the left hemisphere: the SAME sprite swaps to the
+    // mirrored board and re-references its rotation — no new image is created.
+    const leftAngle = (3 * Math.PI) / 4; // cos < 0 → mirrored board
+    world.stores.rotation.angle[eid] = leftAngle;
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(sign.textureKey).toBe('__cw_welcome_sign_left');
+    expect(sign.rotation).toBeCloseTo(leftAngle - Math.PI, 6);
   });
 
   it('hides enemies on tiles outside current FOV visibility', () => {

@@ -15,6 +15,8 @@ import Phaser from 'phaser';
 
 import { PIXEL_UI } from './pixel-ui.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
+import { GAME } from '../shared/constants.js';
 
 export interface DialogueBoxOptions {
   /** Panel width in px. Defaults to a readable width clamped to the screen. */
@@ -58,14 +60,14 @@ export function createDialogueBox(
   scene: Phaser.Scene,
   options: DialogueBoxOptions = {},
 ): DialogueBox {
-  const screenW = scene.scale.width;
-  const screenH = scene.scale.height;
+  const screenW = GAME.WIDTH;
+  const screenH = GAME.HEIGHT;
   // Responsive UI: the dialogue box is built in local (design) coordinates and
   // the whole container is scaled by uiScale so its text and close button grow
   // on small screens. The panel width is clamped to the *virtual* viewport
   // (real width ÷ uiScale) so the scaled box never overflows the canvas.
   let uiScale = getUiScale(scene);
-  const baseResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const baseResolution = getRenderScale(scene);
   const virtualWidth = (): number => screenW / uiScale;
   const width = Math.round(options.width ?? Math.min(560, virtualWidth() - 48));
   const depth = options.depth ?? 1100;

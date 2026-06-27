@@ -62,7 +62,7 @@ export function buildTerrainLayer(scene: Phaser.Scene, floorMap: FloorMap): Terr
   const { width, height, config } = floorMap;
   // Bake terrain at native pixel resolution: feet → px via PIXELS_PER_FOOT.
   // The renderer keeps the world in pixel-space, so this layer is placed at
-  // pixel coordinates (0,0) and spans width*tileSizePx × height*tileSizePx px.
+  // pixel coordinates (0,0) and spans width*tileSize × height*tileSize px.
   const tileSize = config.tileSizeFt * PIXELS_PER_FOOT;
 
   // setOrigin(0,0) so that internal pixel (tx*tileSize, ty*tileSize) maps

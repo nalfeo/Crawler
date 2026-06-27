@@ -25,9 +25,11 @@ import {
   SPRITE_TYPES,
   addItem as queueAddItem,
   candidateForceEligible,
+  candidateStatus,
   clearQueue as queueClear,
   createEmptyQueue,
   describeGenerationProgress,
+  describeJudgeSkipReason,
   deserializeQueue,
   getSelectedItem,
   isBusyStage,
@@ -40,6 +42,7 @@ import {
   slugify,
   stepperFor,
   updateItem as queueUpdateItem,
+  type CandidateStatusKind,
   type QueueItem,
   type QueueState,
   type RequestedType,
@@ -1947,10 +1950,11 @@ function render(): void {
   };
 
   /** A small colored chip showing one judge axis score (1-5, fail < 3). */
-  const judgeAxisChip = (label: string, score: number): HTMLElement => {
+  const judgeAxisChip = (label: string, score: number, axisName: string): HTMLElement => {
     const ok = score >= 3;
     return el('span', {
       text: `${label} ${score || '–'}`,
+      title: `${axisName}: ${score || '–'}/5 ${ok ? '(pass)' : '(below 3 — flagged)'}`,
       style: {
         display: 'inline-block',
         padding: '1px 5px',
@@ -1974,6 +1978,360 @@ function render(): void {
       if (bm !== am) return bm - am;
       return a.index - b.index;
     });
+
+  // ── Candidate detail sidebar ────────────────────────────────────────────────
+  // Clicking a variant's sprite opens an inline panel with the FULL judge
+  // scorecard (axis names + score + the model's per-axis rationale) and the full
+  // sensor breakdown — the same detail the sprite-gallery lab shows, embedded in
+  // the workflow. Scores + sensors come from persisted queue state (instant, and
+  // survive a refresh); the per-axis rationale + judge-skip reason are enriched
+  // from the run summary (GET /api/runs/:b/:r) when the sidecar is reachable.
+  const STATUS_KIND_COLORS: Readonly<Record<CandidateStatusKind, string>> = {
+    pass: '#86efac',
+    'sensor-failed': '#fca5a5',
+    'judge-rejected': '#fca5a5',
+    unjudged: '#94a3b8',
+  };
+  const JUDGE_AXES = [
+    { key: 'styleMatch', label: 'Style match' },
+    { key: 'briefMatch', label: 'Brief match' },
+    { key: 'readability', label: 'Readability' },
+  ] as const;
+  type JudgeAxisKey = (typeof JUDGE_AXES)[number]['key'];
+  interface SummaryJudgeDetail {
+    readonly passed: boolean;
+    readonly minScore: number;
+    readonly rejectedBy: readonly string[];
+    readonly rationale: Readonly<Record<JudgeAxisKey, string | null>>;
+    readonly modelDeployment: string | null;
+    readonly judgedAt: string | null;
+  }
+  interface SummaryCandidateDetail {
+    readonly judge: SummaryJudgeDetail | null;
+    readonly judgeSkipReason: string | null;
+    readonly raw: Record<string, unknown>;
+  }
+  const asRecord = (v: unknown): Record<string, unknown> | null =>
+    typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : null;
+
+  let runDetailSel: { readonly key: string; readonly index: number } | null = null;
+  let runDetailSummary: { key: string; byIndex: Map<number, Record<string, unknown>> } | null =
+    null;
+  let runDetailPendingKey: string | null = null;
+  const runDetailHost = el('aside', {
+    style: {
+      flex: '0 0 320px',
+      maxWidth: '340px',
+      display: 'none',
+      flexDirection: 'column',
+      gap: '8px',
+      padding: '10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(56,189,248,0.4)',
+      background: '#0b1220',
+    },
+  });
+
+  const runKey = (): string | null =>
+    currentRun ? `${currentRun.briefId}/${currentRun.runId}` : null;
+
+  const parseSummaryCandidate = (raw: Record<string, unknown>): SummaryCandidateDetail => {
+    const scorecard = asRecord(raw.judgeScorecard);
+    const axisRationale = (key: JudgeAxisKey): string | null => {
+      const axis = scorecard ? asRecord(scorecard[key]) : null;
+      return axis && typeof axis.rationale === 'string' ? axis.rationale : null;
+    };
+    const judge: SummaryJudgeDetail | null = scorecard
+      ? {
+          passed: scorecard.passed === true,
+          minScore: typeof scorecard.minScore === 'number' ? scorecard.minScore : 0,
+          rejectedBy: Array.isArray(scorecard.rejectedBy)
+            ? scorecard.rejectedBy.filter((r): r is string => typeof r === 'string')
+            : [],
+          rationale: {
+            styleMatch: axisRationale('styleMatch'),
+            briefMatch: axisRationale('briefMatch'),
+            readability: axisRationale('readability'),
+          },
+          modelDeployment:
+            typeof scorecard.modelDeployment === 'string' ? scorecard.modelDeployment : null,
+          judgedAt: typeof scorecard.judgedAt === 'string' ? scorecard.judgedAt : null,
+        }
+      : null;
+    return {
+      judge,
+      judgeSkipReason: typeof raw.judgeSkipReason === 'string' ? raw.judgeSkipReason : null,
+      raw,
+    };
+  };
+
+  const detailSectionTitle = (text: string): HTMLElement =>
+    el('div', {
+      text,
+      style: { fontWeight: '600', fontSize: '12px', color: '#f1f5f9', margin: '4px 0 2px' },
+    });
+
+  const paintRunDetail = (
+    candidate: WorkflowRunCandidate,
+    detail: SummaryCandidateDetail | null,
+  ): void => {
+    if (!currentRun) return;
+    const run = currentRun;
+    runDetailHost.replaceChildren();
+    runDetailHost.style.display = 'flex';
+    const status = candidateStatus(candidate);
+
+    const headerRow = el('div', {
+      style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    });
+    const closeBtn = el('button', {
+      text: '✕',
+      title: 'Close detail',
+      style: {
+        border: '1px solid rgba(148,163,184,0.4)',
+        background: 'transparent',
+        color: '#cbd5e1',
+        borderRadius: '4px',
+        cursor: 'pointer',
+        fontSize: '11px',
+        lineHeight: '1',
+        padding: '2px 6px',
+      },
+    });
+    closeBtn.addEventListener('click', () => openRunDetail(null));
+    headerRow.append(
+      el('div', {
+        text: `Variant #${candidate.index}`,
+        style: { fontWeight: '700', fontSize: '13px', color: '#e2e8f0' },
+      }),
+      closeBtn,
+    );
+
+    const statusPill = el('div', {
+      text: status.label,
+      style: {
+        alignSelf: 'flex-start',
+        fontSize: '10px',
+        fontWeight: '700',
+        color: STATUS_KIND_COLORS[status.kind],
+        textTransform: 'uppercase',
+        letterSpacing: '0.04em',
+      },
+    });
+
+    const padded = String(candidate.index).padStart(2, '0');
+    const big = document.createElement('img');
+    big.src = spriteUrl(run.briefId, run.runId, `${padded}.png`);
+    Object.assign(big.style, {
+      width: '160px',
+      height: '160px',
+      imageRendering: 'pixelated' as CSSStyleDeclaration['imageRendering'],
+      alignSelf: 'center',
+      background: '#1e293b',
+      borderRadius: '6px',
+    });
+
+    runDetailHost.append(headerRow, statusPill, big);
+
+    // Judge section: axis names + score/5 + per-axis rationale (when enriched).
+    const judgeSection = el('div');
+    judgeSection.append(detailSectionTitle('Judge (advisory)'));
+    if (candidate.judge) {
+      const scores: Record<JudgeAxisKey, number> = {
+        styleMatch: candidate.judge.styleMatch,
+        briefMatch: candidate.judge.briefMatch,
+        readability: candidate.judge.readability,
+      };
+      for (const axis of JUDGE_AXES) {
+        const score = scores[axis.key];
+        const ok = score >= 3;
+        const row = el('div', { style: { marginBottom: '4px' } });
+        const head = el('div', {
+          style: { display: 'flex', justifyContent: 'space-between', fontSize: '11px' },
+        });
+        head.append(
+          el('span', { text: axis.label, style: { color: '#e2e8f0', fontWeight: '600' } }),
+          el('span', {
+            text: `${score || '–'}/5 ${ok ? '✓' : '✗'}`,
+            style: { color: ok ? '#86efac' : '#fca5a5', fontWeight: '600' },
+          }),
+        );
+        row.append(head);
+        const rationale = detail?.judge?.rationale[axis.key] ?? null;
+        if (rationale) {
+          row.append(
+            el('div', {
+              text: rationale,
+              style: { fontSize: '10px', color: '#94a3b8', lineHeight: '1.35', marginTop: '1px' },
+            }),
+          );
+        }
+        judgeSection.append(row);
+      }
+      judgeSection.append(
+        el('div', {
+          text: `Verdict: ${candidate.judge.passed ? 'passed' : 'rejected'} · lowest axis ${
+            candidate.judge.minScore
+          }/5${
+            candidate.judge.rejectedBy.length
+              ? ` · rejected on ${candidate.judge.rejectedBy.join(', ')}`
+              : ''
+          }`,
+          style: {
+            fontSize: '10px',
+            color: candidate.judge.passed ? '#86efac' : '#fca5a5',
+            marginTop: '2px',
+          },
+        }),
+      );
+      const provenance = [detail?.judge?.modelDeployment, detail?.judge?.judgedAt]
+        .filter((s): s is string => typeof s === 'string' && s.length > 0)
+        .join(' · ');
+      if (provenance) {
+        judgeSection.append(
+          el('div', {
+            text: provenance,
+            style: { fontSize: '9px', color: '#64748b', marginTop: '1px' },
+          }),
+        );
+      }
+    } else {
+      judgeSection.append(
+        el('div', {
+          text:
+            describeJudgeSkipReason(detail ? detail.judgeSkipReason : null, false) ??
+            'Not judged yet — run Judge to score this variant.',
+          style: { fontSize: '11px', color: '#cbd5e1', lineHeight: '1.4' },
+        }),
+      );
+    }
+    runDetailHost.append(judgeSection);
+
+    // Sensor section: every sensor with pass/fail + reason.
+    const sensorSection = el('div');
+    sensorSection.append(detailSectionTitle('Sensors'));
+    if (candidate.sensors.length === 0) {
+      sensorSection.append(
+        el('div', {
+          text: candidate.passed
+            ? 'All sensors passed (no per-sensor detail recorded).'
+            : 'No per-sensor detail recorded for this run.',
+          style: { fontSize: '11px', color: candidate.passed ? '#86efac' : '#fecaca' },
+        }),
+      );
+    } else {
+      for (const sensor of candidate.sensors) {
+        const row = el('div', { style: { marginBottom: '3px' } });
+        const head = el('div', {
+          style: { display: 'flex', justifyContent: 'space-between', fontSize: '11px' },
+        });
+        head.append(
+          el('span', { text: sensor.sensor, style: { color: '#e2e8f0' } }),
+          el('span', {
+            text: sensor.ok ? '✓' : '✗',
+            style: { color: sensor.ok ? '#86efac' : '#fca5a5', fontWeight: '700' },
+          }),
+        );
+        row.append(head);
+        if (!sensor.ok && (sensor.reason || sensor.pixelCount !== null)) {
+          row.append(
+            el('div', {
+              text: `${sensor.reason ?? 'failed'}${
+                sensor.pixelCount !== null ? ` (${sensor.pixelCount}px)` : ''
+              }`,
+              style: { fontSize: '10px', color: '#fecaca', lineHeight: '1.3' },
+            }),
+          );
+        }
+        sensorSection.append(row);
+      }
+    }
+    runDetailHost.append(sensorSection);
+
+    // Raw candidate JSON — full parity with the gallery's detail view.
+    if (detail) {
+      const raw = el('details', { style: { marginTop: '2px' } });
+      raw.append(
+        el('summary', {
+          text: 'Raw candidate JSON',
+          style: { fontSize: '10px', color: '#7dd3fc', cursor: 'pointer' },
+        }),
+        el('pre', {
+          text: JSON.stringify(detail.raw, null, 2),
+          style: {
+            fontSize: '9px',
+            color: '#cbd5e1',
+            background: '#0f172a',
+            borderRadius: '4px',
+            padding: '6px',
+            overflowX: 'auto',
+            maxHeight: '220px',
+            marginTop: '4px',
+            whiteSpace: 'pre-wrap',
+          },
+        }),
+      );
+      runDetailHost.append(raw);
+    }
+  };
+
+  const renderRunDetail = (): void => {
+    const key = runKey();
+    if (!runDetailSel || !currentRun || !key || runDetailSel.key !== key) {
+      runDetailHost.replaceChildren();
+      runDetailHost.style.display = 'none';
+      return;
+    }
+    const sel = runDetailSel;
+    const candidate = currentRun.candidates.find((c) => c.index === sel.index);
+    if (!candidate) {
+      runDetailHost.replaceChildren();
+      runDetailHost.style.display = 'none';
+      return;
+    }
+    const cached =
+      runDetailSummary && runDetailSummary.key === key
+        ? (runDetailSummary.byIndex.get(candidate.index) ?? null)
+        : null;
+    paintRunDetail(candidate, cached ? parseSummaryCandidate(cached) : null);
+    if (cached || runDetailPendingKey === key) return;
+
+    // Enrich with per-axis rationale + skip reason from the run summary. Best
+    // effort: if the sidecar is unreachable the persisted-state panel stands.
+    runDetailPendingKey = key;
+    const briefId = currentRun.briefId;
+    const runId = currentRun.runId;
+    void (async () => {
+      try {
+        const summary = await fetchJson<{ candidates?: unknown }>(
+          `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`,
+        );
+        const byIndex = new Map<number, Record<string, unknown>>();
+        if (Array.isArray(summary.candidates)) {
+          for (const entry of summary.candidates) {
+            const rec = asRecord(entry);
+            if (rec && typeof rec.index === 'number') byIndex.set(rec.index, rec);
+          }
+        }
+        runDetailSummary = { key, byIndex };
+        const cur = runDetailSel;
+        if (cur && cur.key === key && cur.index === candidate.index && runKey() === key) {
+          const enriched = byIndex.get(candidate.index) ?? null;
+          if (enriched) paintRunDetail(candidate, parseSummaryCandidate(enriched));
+        }
+      } catch {
+        // Sidecar unreachable — base panel from persisted state remains.
+      } finally {
+        if (runDetailPendingKey === key) runDetailPendingKey = null;
+      }
+    })();
+  };
+
+  function openRunDetail(index: number | null): void {
+    const key = runKey();
+    runDetailSel = index === null || !key ? null : { key, index };
+    renderRunDetail();
+  }
 
   const renderRunCandidates = () => {
     runResultsHost.replaceChildren();
@@ -2004,6 +2362,10 @@ function render(): void {
     const ranked = rankRunCandidates(run.candidates);
     const judged = ranked.some((c) => c.judge !== null);
     const passingCount = ranked.filter((c) => c.combinedPassed).length;
+    const selectedDetailIndex =
+      runDetailSel && runDetailSel.key === `${run.briefId}/${run.runId}`
+        ? runDetailSel.index
+        : null;
     const title = el('div', {
       text: judged
         ? `Run ${run.briefId}/${run.runId} — ${passingCount}/${ranked.length} pass the judge`
@@ -2046,12 +2408,15 @@ function render(): void {
         display: 'block',
         margin: '0 auto 6px',
         background: '#334155',
+        cursor: 'pointer',
+        borderRadius: '4px',
+        outline:
+          candidate.index === selectedDetailIndex ? '2px solid #38bdf8' : '2px solid transparent',
       });
-      const statusLabel = candidate.combinedPassed
-        ? 'PASS'
-        : candidate.judge
-          ? 'judge fail'
-          : 'sensor fail';
+      sprite.title = 'Click for the full judge scorecard + sensor detail';
+      sprite.addEventListener('click', () => openRunDetail(candidate.index));
+      const status = candidateStatus(candidate);
+      const statusColor = STATUS_KIND_COLORS[status.kind];
       const header = el('div', {
         style: {
           display: 'flex',
@@ -2066,11 +2431,11 @@ function render(): void {
           style: { fontSize: '10px', color: '#cbd5e1' },
         }),
         el('span', {
-          text: isTop ? `${statusLabel} · best` : statusLabel,
+          text: isTop ? `${status.label} · best` : status.label,
           style: {
             fontSize: '9px',
             fontWeight: '600',
-            color: candidate.combinedPassed ? '#86efac' : '#fca5a5',
+            color: statusColor,
           },
         }),
       );
@@ -2080,9 +2445,9 @@ function render(): void {
           style: { display: 'flex', gap: '3px', flexWrap: 'wrap', marginBottom: '5px' },
         });
         chips.append(
-          judgeAxisChip('S', candidate.judge.styleMatch),
-          judgeAxisChip('B', candidate.judge.briefMatch),
-          judgeAxisChip('R', candidate.judge.readability),
+          judgeAxisChip('S', candidate.judge.styleMatch, 'Style match'),
+          judgeAxisChip('B', candidate.judge.briefMatch, 'Brief match'),
+          judgeAxisChip('R', candidate.judge.readability, 'Readability'),
         );
         card.append(chips);
       }
@@ -2253,7 +2618,13 @@ function render(): void {
       }
       grid.append(card);
     });
-    runResultsHost.append(title, hint, grid);
+    const bodyRow = el('div', {
+      style: { display: 'flex', gap: '10px', alignItems: 'flex-start', flexWrap: 'wrap' },
+    });
+    Object.assign(grid.style, { flex: '1 1 320px', minWidth: '0' });
+    bodyRow.append(grid, runDetailHost);
+    runResultsHost.append(title, hint, bodyRow);
+    renderRunDetail();
   };
 
   if (currentRun) {

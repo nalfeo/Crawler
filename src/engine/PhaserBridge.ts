@@ -14,6 +14,7 @@ import {
   Projectile,
   Returning,
   Rotation,
+  SpawnAnim,
   Sprite,
   Team,
   Trap,
@@ -23,12 +24,14 @@ import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
+import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
 import { createEffectsVfx } from './EffectsVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
 import { TeamId, MeleeSpriteId } from '../shared/constants.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
+import { computeSpawnPopScale, spawnAnimProgress } from '../shared/spawn-anim.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -50,8 +53,12 @@ const TEX_EXPLOSION = '__cw_explosion';
 const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
 const TEX_DEAD_SKULL = '__cw_dead_skull';
 const TEX_WELCOME_SIGN = '__cw_welcome_sign';
+const TEX_WELCOME_SIGN_LEFT = '__cw_welcome_sign_left';
 const SPRITE_TEX_WELCOME_SIGN = 3;
 const DEAD_SKULL_Y_OFFSET = 18;
+/** Native dimensions of the baked welcome-sign texture (board + word + arrow). */
+const WELCOME_SIGN_WIDTH = 48;
+const WELCOME_SIGN_HEIGHT = 26;
 const logger = createLogger('engine:phaser-bridge');
 
 function generateTextures(scene: Phaser.Scene): void {
@@ -266,21 +273,80 @@ function generateTextures(scene: Phaser.Scene): void {
   g.fillRect(7, 9, 2, 1);
   g.generateTexture(TEX_DEAD_SKULL, 16, 16);
 
-  // Welcome sign — wooden board with painted white arrow (pointing right)
-  g.clear();
-  g.fillStyle(0x8b5a2b, 1);
-  g.fillRect(0, 0, 32, 16);
-  g.lineStyle(2, 0x5c3a21, 1);
-  g.strokeRect(1, 1, 30, 14);
-  g.lineStyle(3, 0xffffff, 0.9);
-  g.beginPath();
-  g.moveTo(6, 8);
-  g.lineTo(26, 8);
-  g.moveTo(20, 3);
-  g.lineTo(26, 8);
-  g.lineTo(20, 13);
-  g.strokePath();
-  g.generateTexture(TEX_WELCOME_SIGN, 32, 16);
+  // Welcome sign — a wooden board with the word "WELCOME" and a direction arrow
+  // baked into a single canvas texture so the word is PART of the sign. Two
+  // variants are baked: the arrow points right in one and left in the other,
+  // with "WELCOME" upright in both. The renderer uses the left variant (rotating
+  // from the −x reference) once a sign points past vertical, so the word always
+  // reads upright instead of flipping over when the sign rotates leftward.
+  const w = WELCOME_SIGN_WIDTH;
+  const h = WELCOME_SIGN_HEIGHT;
+  const drawSignArrow = (
+    pen: { moveTo: (x: number, y: number) => void; lineTo: (x: number, y: number) => void },
+    dir: 'left' | 'right',
+  ): void => {
+    if (dir === 'right') {
+      pen.moveTo(8, 18);
+      pen.lineTo(w - 9, 18);
+      pen.moveTo(w - 15, 13);
+      pen.lineTo(w - 9, 18);
+      pen.lineTo(w - 15, 23);
+    } else {
+      pen.moveTo(w - 8, 18);
+      pen.lineTo(9, 18);
+      pen.moveTo(15, 13);
+      pen.lineTo(9, 18);
+      pen.lineTo(15, 23);
+    }
+  };
+  const bakeSignTexture = (key: string, dir: 'left' | 'right'): void => {
+    const signCanvas =
+      typeof scene.textures.createCanvas === 'function'
+        ? scene.textures.createCanvas(key, w, h)
+        : null;
+    const signCtx = signCanvas?.context ?? null;
+    if (signCtx) {
+      // Wooden board with a darker border.
+      signCtx.fillStyle = '#8b5a2b';
+      signCtx.fillRect(0, 0, w, h);
+      signCtx.strokeStyle = '#5c3a21';
+      signCtx.lineWidth = 2;
+      signCtx.strokeRect(1, 1, w - 2, h - 2);
+      // "WELCOME" painted across the top half.
+      signCtx.fillStyle = '#ffe9a8';
+      signCtx.strokeStyle = '#3a2410';
+      signCtx.lineWidth = 2;
+      signCtx.font = 'bold 9px monospace';
+      signCtx.textAlign = 'center';
+      signCtx.textBaseline = 'middle';
+      signCtx.strokeText('WELCOME', w / 2, 8);
+      signCtx.fillText('WELCOME', w / 2, 8);
+      // Arrow across the bottom half.
+      signCtx.strokeStyle = '#ffffff';
+      signCtx.lineWidth = 3;
+      signCtx.lineCap = 'round';
+      signCtx.lineJoin = 'round';
+      signCtx.beginPath();
+      drawSignArrow(signCtx, dir);
+      signCtx.stroke();
+      signCanvas?.refresh();
+      return;
+    }
+    // Fallback for renderers without canvas textures: board + arrow via graphics
+    // (no baked word, but the sign still exists and points the right way).
+    g.clear();
+    g.fillStyle(0x8b5a2b, 1);
+    g.fillRect(0, 0, w, h);
+    g.lineStyle(2, 0x5c3a21, 1);
+    g.strokeRect(1, 1, w - 2, h - 2);
+    g.lineStyle(3, 0xffffff, 0.9);
+    g.beginPath();
+    drawSignArrow(g, dir);
+    g.strokePath();
+    g.generateTexture(key, w, h);
+  };
+  bakeSignTexture(TEX_WELCOME_SIGN, 'right');
+  bakeSignTexture(TEX_WELCOME_SIGN_LEFT, 'left');
 
   g.destroy();
   logger.info('Generated procedural fallback textures');
@@ -291,6 +357,12 @@ interface EntityVisual {
   type: string;
   /** Base scale to restore in the default per-frame branch. */
   baseScale: number;
+  /**
+   * Which baked welcome-sign variant is currently applied ('right' arrow vs
+   * 'left' arrow). Tracked so the renderer only swaps the texture when the
+   * sign's facing hemisphere actually changes.
+   */
+  welcomeFacing?: 'left' | 'right';
   /**
    * Death-timer duration captured the first frame this corpse is seen dead.
    * Used to normalise the corpse fade/desaturation curve. Undefined while alive.
@@ -384,6 +456,14 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
   dead_skull: 1.0,
 };
 
+/**
+ * Logical sprite width (px) of a full-grown slime. Baby slimes spawned by a
+ * split carry a smaller `Sprite.width`, and we render them proportionally
+ * smaller than this reference. Keep in sync with the `slime` archetype
+ * `spriteWidth` in `src/shared/data/enemies.floor1.json`.
+ */
+const SLIME_FULL_SPRITE_WIDTH = 24;
+
 interface ResolvedTexture {
   key: string;
   /** Frame index when `key` references a spritesheet. */
@@ -466,6 +546,55 @@ function getProceduralTextureForType(type: string): string {
   }
 }
 
+/**
+ * Apply the live render scale for an enemy image: baby slimes render
+ * proportionally smaller than a full slime, and any enemy mid-spawn plays the
+ * "pop out + wiggle" animation (smaller → overshoot → settle) on top of that.
+ */
+function applyEnemyScale(
+  img: Phaser.GameObjects.Image,
+  world: GameWorld,
+  eid: number,
+  baseScale: number,
+): void {
+  let scaleX = baseScale;
+  let scaleY = baseScale;
+
+  // Baby slimes carry a shrunken Sprite.width; render them at the matching
+  // fraction of a full slime. Scoped to the 'slime-mini' archetype so full
+  // slimes, rats, and slime-textured bosses are untouched.
+  if (world.floor1?.enemyArchetypes.get(eid) === 'slime-mini') {
+    const width = world.stores.sprite.width[eid] ?? SLIME_FULL_SPRITE_WIDTH;
+    const sizeMul = Math.max(0.2, Math.min(1, width / SLIME_FULL_SPRITE_WIDTH));
+    scaleX *= sizeMul;
+    scaleY *= sizeMul;
+  }
+
+  // Spawn-in pop + jelly wiggle while the SpawnAnim timer is running.
+  if (hasComponent(world.ecs, eid, SpawnAnim)) {
+    const progress = spawnAnimProgress(
+      world.stores.spawnAnim.remainingMs[eid] ?? 0,
+      world.stores.spawnAnim.totalMs[eid] ?? 0,
+    );
+    const pop = computeSpawnPopScale(progress);
+    scaleX *= pop.x;
+    scaleY *= pop.y;
+  }
+
+  img.setScale(scaleX, scaleY);
+}
+
+/**
+ * Map a `Sprite.textureId` variant to the enemy visual type understood by
+ * {@link resolveTexture}. Used as the corpse-explosion texture fallback when the
+ * dying enemy's on-screen visual is no longer available.
+ */
+function enemyVariantFromTextureId(textureId: number | undefined): string {
+  if (textureId === 1) return 'enemy_rat';
+  if (textureId === 2) return 'enemy_slime';
+  return 'enemy';
+}
+
 export function createPhaserBridge(scene: Phaser.Scene): {
   sync(world: GameWorld, renderElapsedMs?: number, interpAlpha?: number): void;
   destroy(): void;
@@ -483,6 +612,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     typeof scene.add.rectangle === 'function'
       ? createGoreVfx(scene, { intensity: 1.25, hitGoreEnabled: true })
       : null;
+  const corpseShatterVfx =
+    typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
@@ -517,6 +648,48 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const activeEntities = new Set<number>();
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
+
+      // Corpse explosions: capture the texture to cut up NOW, while the dead
+      // enemy's visual is still in the map (it gets reaped by the cleanup loop
+      // below, since deathTimerSystem already removed the entity this frame).
+      // We replay these into the VFX after its per-frame clock advances.
+      let pendingShatter: CorpseExplodeOptions[] | null = null;
+      if (corpseShatterVfx) {
+        for (const event of world.combatEvents) {
+          if (event.type !== 'corpseExplode') continue;
+          const eid = event.targetEid;
+          const visual = eid !== undefined ? visuals.get(eid) : undefined;
+          let textureKey: string;
+          let frame: string | number | undefined;
+          let scale: number;
+          let tint: number | undefined;
+          if (visual && visual.type.startsWith('enemy') && visual.obj.texture) {
+            textureKey = visual.obj.texture.key;
+            frame = visual.obj.frame?.name;
+            // Use the live render scale (not baseScale) so shrunken variants
+            // like baby slimes shatter at their actual on-screen size.
+            scale = visual.obj.scaleX || visual.baseScale;
+            tint = visual.obj.isTinted ? visual.obj.tintTopLeft : undefined;
+          } else {
+            const tex = resolveTexture(scene, enemyVariantFromTextureId(event.spriteTextureId));
+            textureKey = tex.key;
+            frame = tex.frame;
+            scale = tex.scale;
+          }
+          (pendingShatter ??= []).push({
+            x: event.x,
+            y: event.y,
+            textureKey,
+            frame,
+            scale,
+            tint,
+            bloodColor: event.bloodColor ?? 0xcc0000,
+            dirX: event.knockbackDirX ?? 0,
+            dirY: event.knockbackDirY ?? 0,
+            amount: event.amount,
+          });
+        }
+      }
 
       for (const eid of entities) {
         activeEntities.add(eid);
@@ -915,16 +1088,30 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           }
 
           case 'welcome_sign': {
-            if (hasComponent(world.ecs, eid, Rotation)) {
-              img.setRotation(world.stores.rotation.angle[eid] ?? 0);
+            const angle = hasComponent(world.ecs, eid, Rotation)
+              ? (world.stores.rotation.angle[eid] ?? 0)
+              : 0;
+            // Past vertical (left hemisphere, cos < 0) the arrow-right board
+            // would render "WELCOME" upside-down, so swap to the arrow-left board
+            // and measure rotation from the −x reference. The word then stays
+            // within ±90° of upright while the arrow still points along `angle`.
+            const facing: 'left' | 'right' = Math.cos(angle) < 0 ? 'left' : 'right';
+            if (visual.welcomeFacing !== facing) {
+              img.setTexture(facing === 'left' ? TEX_WELCOME_SIGN_LEFT : TEX_WELCOME_SIGN);
+              visual.welcomeFacing = facing;
             }
+            img.setRotation(facing === 'left' ? angle - Math.PI : angle);
             break;
           }
 
           default:
             img.setAlpha(1);
-            img.setScale(visual.baseScale);
             img.setRotation(0);
+            if (entityType === 'enemy') {
+              applyEnemyScale(img, world, eid, visual.baseScale);
+            } else {
+              img.setScale(visual.baseScale);
+            }
             break;
         }
 
@@ -987,6 +1174,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       if (goreVfx) {
         goreVfx.update(world, renderElapsedMs, deltaMs, interpAlpha);
       }
+      if (corpseShatterVfx) {
+        // Advance existing shards first so the clock is current, then spawn this
+        // frame's bursts (born exactly at renderElapsedMs).
+        corpseShatterVfx.update(renderElapsedMs, deltaMs);
+        if (pendingShatter) {
+          for (const opts of pendingShatter) corpseShatterVfx.explode(opts);
+        }
+      }
       // Juice effects (hit sparks, crit bursts, death pops, pickups, level-up).
       // Reads combatEvents BEFORE CombatVfx drains them; drains world.vfxEvents.
       effectsVfx.update(world, renderElapsedMs);
@@ -1016,6 +1211,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       arcGraphics.clear();
       arcSpawnMs.clear();
       goreVfx?.destroy();
+      corpseShatterVfx?.destroy();
       effectsVfx.destroy();
       combatVfx.destroy();
     },

@@ -41,6 +41,7 @@ import {
   Knockback,
   DoorState,
   DeathTimer,
+  SpawnAnim,
   BaseStats,
   EffectiveStats,
   Gold,
@@ -224,6 +225,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Knockback, stores.knockback);
   wireStore(ecs, DoorState, stores.doorState);
   wireStore(ecs, DeathTimer, stores.deathTimer);
+  wireStore(ecs, SpawnAnim, stores.spawnAnim);
   wireStore(ecs, BaseStats, stores.baseStats);
   wireStore(ecs, EffectiveStats, stores.effectiveStats);
   wireStore(ecs, Gold, stores.gold);

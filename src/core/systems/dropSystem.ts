@@ -7,7 +7,16 @@
  * and applies death knockback.
  */
 import { query, addComponent, hasComponent, set, setComponent } from 'bitecs';
-import { BloodColor, Damage, DeathTimer, Enemy, Health, Knockback, Sprite } from '../components.js';
+import {
+  BloodColor,
+  Damage,
+  DeathTimer,
+  Enemy,
+  Health,
+  Knockback,
+  SpawnAnim,
+  Sprite,
+} from '../components.js';
 import {
   DEFAULT_BLOOD_COLOR,
   spawnBehaviorEnemy,
@@ -25,6 +34,8 @@ import {
 } from '../../shared/loot-tables.js';
 import { getItemIndex } from '../../shared/items.js';
 import { createLogger } from '../../shared/logger.js';
+import { MINI_SLIME_SPAWN_ANIM_MS } from '../../shared/spawn-anim.js';
+import { markImmuneToActiveMeleeSwings } from './meleeSwingSystem.js';
 
 const logger = createLogger('core:drop-system');
 
@@ -200,7 +211,20 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
       height: miniHeight,
     });
     addComponent(world.ecs, miniEid, set(Damage, { amount: miniDamage }));
+    // Babies pop out smaller and wiggle into existence; spawnAnimSystem ticks the
+    // timer and strips SpawnAnim when it expires (purely cosmetic).
+    addComponent(
+      world.ecs,
+      miniEid,
+      set(SpawnAnim, {
+        remainingMs: MINI_SLIME_SPAWN_ANIM_MS,
+        totalMs: MINI_SLIME_SPAWN_ANIM_MS,
+      }),
+    );
     world.floor1?.enemyArchetypes.set(miniEid, 'slime-mini');
+    // Survive the swing that killed the parent: register this baby in every
+    // active melee swing's hit set so the player must swing again to kill it.
+    markImmuneToActiveMeleeSwings(world, miniEid);
   }
 }
 

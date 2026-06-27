@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { PIXEL_UI } from './pixel-ui.js';
 import { fitUiScale } from './ui-scale.js';
+import { getRenderScale } from './render-scale.js';
+import { GAME } from '../shared/constants.js';
 import {
   cancelModalPickerSelection,
   confirmModalPickerSelection,
@@ -91,11 +93,11 @@ export function createModalPickerUI(scene: Phaser.Scene): {
   // uiScale) and scale the whole overlay container back up by uiScale, so the
   // menu stays centred while its text and rows grow on small screens. Text
   // resolution is bumped by the same factor to keep upscaled glyphs crisp.
-  const textResolution = Math.max(1, Math.round(window.devicePixelRatio || 1));
+  const textResolution = getRenderScale(scene);
   let uiScale = fitUiScale(scene, PANEL_WIDTH, PANEL_HEIGHT);
   let effectiveResolution = Math.max(1, Math.round(textResolution * uiScale));
-  const viewWidth = (): number => scene.scale.width / uiScale;
-  const viewHeight = (): number => scene.scale.height / uiScale;
+  const viewWidth = (): number => GAME.WIDTH / uiScale;
+  const viewHeight = (): number => GAME.HEIGHT / uiScale;
 
   const snap = (value: number): number => Math.round(value);
   const crispText = (

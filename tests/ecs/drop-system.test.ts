@@ -1,4 +1,4 @@
-import { query, setComponent } from 'bitecs';
+import { addComponent, query, hasComponent, set, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
 import {
   Damage,
@@ -8,11 +8,22 @@ import {
   EnemyBehavior,
   Gold,
   Health,
+  Invincible,
+  MeleeSwing,
   Position,
+  SpawnAnim,
+  Sprite,
   XpGem,
 } from '../../src/core/components.js';
-import { spawnBehaviorEnemy, spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
+import {
+  createEntity,
+  spawnBehaviorEnemy,
+  spawnEnemy,
+  spawnPlayer,
+} from '../../src/core/helpers.js';
 import { dropSystem } from '../../src/core/systems/dropSystem.js';
+import { meleeSwingSystem } from '../../src/core/systems/meleeSwingSystem.js';
+import { MeleeStyle } from '../../src/shared/constants.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
@@ -20,6 +31,7 @@ import {
 } from '../../src/game/floor1Scenario.js';
 import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';
 
 describe('dropSystem', () => {
   it('spawns loot when an enemy dies', () => {
@@ -192,8 +204,93 @@ describe('dropSystem', () => {
       expect(world.stores.damage.amount[miniEid]).toBe(expectedMiniDamage);
       expect(world.floor1?.enemyArchetypes.get(miniEid)).toBe('slime-mini');
       expect(world.stores.enemyBehavior.type[miniEid]).toBe(AI_TYPE.LEAPER);
+      // Babies render smaller than the parent (16px) sprite.
+      expect(hasComponent(world.ecs, miniEid, Sprite)).toBe(true);
+      expect(world.stores.sprite.width[miniEid]).toBeLessThan(16);
+      // Babies pop in with a cosmetic spawn animation but are NOT time-invulnerable;
+      // they survive only their parent's killing swing (see swing-immunity test below).
+      expect(hasComponent(world.ecs, miniEid, SpawnAnim)).toBe(true);
+      expect(hasComponent(world.ecs, miniEid, Invincible)).toBe(false);
+      expect(world.stores.spawnAnim.remainingMs[miniEid]).toBe(MINI_SLIME_SPAWN_ANIM_MS);
+      expect(world.stores.spawnAnim.totalMs[miniEid]).toBe(MINI_SLIME_SPAWN_ANIM_MS);
     }
     expect(query(world.ecs, [EnemyBehavior])).toContain(slainSlime);
+  });
+
+  it('baby slimes survive the melee swing that killed their parent, then die to a fresh swing', () => {
+    let world: ReturnType<typeof createTestWorld> | null = null;
+    let miniSlimes: number[] = [];
+
+    // A wide-area stab centred on the parent, standing in for the swing that just
+    // landed the killing blow. It is still active the frame the babies spawn.
+    const addKillingSwing = (w: ReturnType<typeof createTestWorld>): number => {
+      const swing = createEntity(w);
+      addComponent(w.ecs, swing, set(Position, { x: 100, y: 120 }));
+      addComponent(
+        w.ecs,
+        swing,
+        set(MeleeSwing, {
+          bladeLength: 0,
+          arcCenterRad: 0,
+          arcHalfRad: 0,
+          damage: 5,
+          spawnAtMs: w.elapsedMs,
+          durationMs: 1000,
+          style: MeleeStyle.STAB,
+          headRadius: 48,
+          shaftDamageMult: 1,
+          knockback: 0,
+        }),
+      );
+      return swing;
+    };
+
+    for (let seed = 1; seed <= 64; seed += 1) {
+      const candidate = createTestWorld({ seed });
+      const player = spawnPlayer(candidate, 0, 0);
+      initializeFloor1Scenario(candidate, player);
+      selectFloor1StarterWeapon(candidate, 0);
+
+      const slime = spawnBehaviorEnemy(candidate, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
+      candidate.floor1?.enemyArchetypes.set(slime, 'slime');
+      setComponent(candidate.ecs, slime, Damage, { amount: 7 });
+      setComponent(candidate.ecs, slime, Health, { current: 0, max: 30 });
+
+      // The killing swing must already exist when the split runs so the babies get
+      // registered into its hit set.
+      addKillingSwing(candidate);
+      dropSystem(candidate, { spawnLoot: false });
+
+      const minis = Array.from(query(candidate.ecs, [Enemy, Health])).filter(
+        (eid) => eid !== slime,
+      );
+      if (minis.length === 2) {
+        world = candidate;
+        miniSlimes = minis;
+        break;
+      }
+    }
+
+    expect(world).not.toBeNull();
+    if (!world) {
+      return;
+    }
+    expect(miniSlimes).toHaveLength(2);
+
+    // The killing swing is still active, but the freshly-spawned babies were
+    // registered in its hit set, so it passes straight through them.
+    meleeSwingSystem(world);
+    for (const miniEid of miniSlimes) {
+      expect(world.stores.health.current[miniEid]).toBe(15);
+    }
+
+    // The player swings again — a brand-new swing entity with an empty hit set —
+    // and now the babies take the hit.
+    addKillingSwing(world);
+    meleeSwingSystem(world);
+    for (const miniEid of miniSlimes) {
+      expect(world.stores.health.current[miniEid]).toBe(10);
+    }
   });
 
   it('allows baby slime drops even before floor1 tutorial drop unlock', () => {
