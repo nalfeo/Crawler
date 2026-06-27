@@ -19,6 +19,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { createSynthProvider } from './provider/factory.js';
+import { SIZE_VARIANTS, type SizeVariant } from './size-variants.js';
 import {
   MAX_CANDIDATES,
   MIN_CANDIDATES,
@@ -33,6 +34,7 @@ interface SynthCliArgs {
   readonly type: SpriteType | undefined;
   readonly candidates: number;
   readonly allowPartial: boolean;
+  readonly size: SizeVariant;
 }
 
 export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
@@ -40,6 +42,7 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
   let type: SpriteType | undefined;
   let candidates = 3;
   let allowPartial = false;
+  let size: SizeVariant = 'default';
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--type') {
@@ -49,6 +52,13 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
         throw new Error(`--type '${v}' is not one of ${SPRITE_TYPES.join('|')}`);
       }
       type = v as SpriteType;
+    } else if (arg === '--size') {
+      const v = argv[++i];
+      if (!v) throw new Error('--size requires a value');
+      if (!(SIZE_VARIANTS as ReadonlyArray<string>).includes(v)) {
+        throw new Error(`--size '${v}' is not one of ${SIZE_VARIANTS.join('|')}`);
+      }
+      size = v as SizeVariant;
     } else if (arg === '--candidates') {
       const v = argv[++i];
       if (!v) throw new Error('--candidates requires a value');
@@ -78,7 +88,7 @@ export function parseArgs(argv: ReadonlyArray<string>): SynthCliArgs {
       'Missing subject name. Usage: sprites:synth <name> [--type ...] [--candidates N]',
     );
   }
-  return { name, type, candidates, allowPartial };
+  return { name, type, candidates, allowPartial, size };
 }
 
 function printHelp(): void {
@@ -90,10 +100,12 @@ function printHelp(): void {
       '  npm run sprites:synth -- <name>',
       '  npm run sprites:synth -- <name> --type weapon',
       '  npm run sprites:synth -- <name> --type weapon --candidates 3',
+      '  npm run sprites:synth -- <name> --type enemy --size wide',
       '',
       'Options:',
       `  <name>             Subject name (kebab-cased automatically).`,
       `  --type <type>      One of ${SPRITE_TYPES.join('|')}. Required unless the model is >=0.9 confident.`,
+      `  --size <variant>   One of ${SIZE_VARIANTS.join('|')}. Scales the per-type size (wide=2x w, tall=2x h, large=2x both). Default default.`,
       `  --candidates <N>   Number of candidates to generate (${MIN_CANDIDATES}-${MAX_CANDIDATES}). Default 3.`,
       '  --allow-partial    Write the candidates that pass validation instead of aborting when any fail.',
       '  --help, -h         Show this help.',
@@ -141,6 +153,7 @@ async function main(): Promise<number> {
       ...(args.type ? { type: args.type } : {}),
       candidates: args.candidates,
       partial: args.allowPartial,
+      sizeVariant: args.size,
       provider,
       repoRoot: process.cwd(),
     });

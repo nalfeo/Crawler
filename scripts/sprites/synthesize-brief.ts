@@ -39,6 +39,7 @@ import path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 
 import { SPRITE_TYPES, type Brief } from './brief-schema.js';
+import { coerceSizeVariant, DEFAULT_SIZE_VARIANT, type SizeVariant } from './size-variants.js';
 import {
   buildReferenceCatalog,
   resolveReferenceId,
@@ -83,6 +84,13 @@ export interface SynthesizeBriefOptions {
   readonly type?: SpriteType;
   /** Number of candidates to request. Default 3, capped at MAX_CANDIDATES. */
   readonly candidates?: number;
+  /**
+   * Size variant to stamp on every written candidate. Default `'default'`.
+   * Scales the per-type size/anchor/native canvas at brief-load time
+   * (wide = 2× width, tall = 2× height, large = 2× both). Written into the
+   * candidate YAML (and recorded in the sidecar) only when not `'default'`.
+   */
+  readonly sizeVariant?: SizeVariant;
   /** Synth provider — typically `createSynthProvider()` from `factory`. */
   readonly provider: SynthProvider;
   /** Repository root used to resolve the reference catalog + output dir. */
@@ -166,6 +174,8 @@ export interface SynthesizedBriefRejection {
 export interface SynthesizeBriefResult {
   readonly name: string;
   readonly type: SpriteType;
+  /** Size variant stamped on the candidates (`'default'` when unset). */
+  readonly sizeVariant: SizeVariant;
   /** Output directory absolute path. */
   readonly outDir: string;
   /** Successfully written candidates. */
@@ -203,6 +213,7 @@ export async function synthesizeBrief(
   }
 
   const name = normaliseName(options.name);
+  const sizeVariant = coerceSizeVariant(options.sizeVariant);
   const requested = options.candidates ?? 3;
   if (!Number.isInteger(requested) || requested < MIN_CANDIDATES || requested > MAX_CANDIDATES) {
     throw new SynthesizeBriefError(
@@ -308,7 +319,7 @@ export async function synthesizeBrief(
 
   const written = accepted.map(({ candidate }, i) => {
     const yamlPath = path.join(outDir, `${name}-v${i + 1}.yaml`);
-    const yaml = renderCandidateYaml(candidate);
+    const yaml = renderCandidateYaml(candidate, sizeVariant);
     writes.writeFile(yamlPath, yaml);
     return { ...candidate, id: `${name}-v${i + 1}`, yamlPath };
   });
@@ -317,6 +328,7 @@ export async function synthesizeBrief(
   const sidecar = {
     name,
     type,
+    sizeVariant,
     requestedCandidates: requested,
     providerLabel: options.provider.providerLabel,
     promptHash,
@@ -335,6 +347,7 @@ export async function synthesizeBrief(
   return {
     name,
     type,
+    sizeVariant,
     outDir,
     written,
     rejected,
@@ -505,12 +518,18 @@ function reject(index: number, reason: string): EvaluatedCandidate {
   return { kind: 'rejected', index, reason };
 }
 
-function renderCandidateYaml(candidate: SynthesizedBriefCandidate): string {
-  // Minimal-brief shape only: type, name, description, references,
-  // variations. Let the loader's deep-merge fill in defaults.
+function renderCandidateYaml(
+  candidate: SynthesizedBriefCandidate,
+  sizeVariant: SizeVariant,
+): string {
+  // Minimal-brief shape only: type, name, [sizeVariant], description,
+  // references, variations. Let the loader's deep-merge fill in defaults.
+  // `sizeVariant` is emitted only when non-default so default briefs stay
+  // byte-for-byte identical to the pre-variant output.
   const doc = {
     type: candidate.type,
     name: candidate.id,
+    ...(sizeVariant === DEFAULT_SIZE_VARIANT ? {} : { sizeVariant }),
     description: candidate.description,
     references: candidate.references.map((r) => ({ path: r.path, note: r.note })),
     variations: candidate.embellishmentSeeds.slice(),

@@ -17,6 +17,7 @@ describe('synth-cli parseArgs', () => {
       type: undefined,
       candidates: 3,
       allowPartial: false,
+      size: 'default',
     });
   });
 
@@ -26,6 +27,22 @@ describe('synth-cli parseArgs', () => {
     expect(args.type).toBe('weapon');
     expect(args.candidates).toBe(5);
     expect(args.allowPartial).toBe(false);
+    expect(args.size).toBe('default');
+  });
+
+  it('parses --size variants and defaults to "default" when omitted', () => {
+    expect(parseArgs(['ogre', '--size', 'wide']).size).toBe('wide');
+    expect(parseArgs(['ogre', '--size', 'tall']).size).toBe('tall');
+    expect(parseArgs(['ogre', '--size', 'large']).size).toBe('large');
+    expect(parseArgs(['ogre']).size).toBe('default');
+  });
+
+  it('rejects an unknown --size variant', () => {
+    expect(() => parseArgs(['ogre', '--size', 'huge'])).toThrow(/not one of/);
+  });
+
+  it('rejects a missing value for --size', () => {
+    expect(() => parseArgs(['ogre', '--size'])).toThrow(/--size requires a value/);
   });
 
   it('parses --allow-partial as a boolean switch', () => {

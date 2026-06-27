@@ -323,6 +323,109 @@ describe('buildSheetPrompt — thematic variations', () => {
   });
 });
 
+describe('output size block', () => {
+  const sheet2048 = { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 2048 } };
+
+  it('describes the default square subject without a footprint band', () => {
+    const out = buildPrompt(makeBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toContain('## Output size');
+    expect(out).toContain('Each finished sprite resolves to exactly 16x16 pixels');
+    expect(out).toContain(
+      'Draw each subject at a 1:1 (square) proportion, centered within its square 256x256 source cell.',
+    );
+    // The square branch must not emit a stretched footprint band.
+    expect(out).not.toMatch(/source pixels wide and/);
+  });
+
+  it('describes a wide subject with a landscape proportion and footprint', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      size: { width: 128, height: 64 },
+      generation: sheet2048,
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('Each finished sprite resolves to exactly 128x64 pixels');
+    expect(out).toContain('landscape (wider than tall) at a 2:1 aspect ratio');
+    expect(out).toContain('span roughly 448-480 source pixels wide and 224-240 source pixels tall');
+    expect(out).toContain('square 512x512 source cell');
+  });
+
+  it('describes a tall subject with a portrait proportion and footprint', () => {
+    const brief = makeBrief({
+      type: 'character',
+      size: { width: 64, height: 128 },
+      anchor: { x: 32, y: 126 },
+      generation: sheet2048,
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('Each finished sprite resolves to exactly 64x128 pixels');
+    expect(out).toContain('portrait (taller than wide) at a 1:2 aspect ratio');
+    expect(out).toContain('span roughly 224-240 source pixels wide and 448-480 source pixels tall');
+  });
+
+  it('treats a large (2x2) subject as square at the scaled cell size', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      size: { width: 128, height: 128 },
+      generation: sheet2048,
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('Each finished sprite resolves to exactly 128x128 pixels');
+    expect(out).toContain(
+      'Draw each subject at a 1:1 (square) proportion, centered within its square 512x512 source cell.',
+    );
+  });
+
+  it('tells tiles to fill a non-square frame edge-to-edge', () => {
+    const brief = makeBrief({
+      type: 'tile',
+      size: { width: 128, height: 64 },
+      generation: sheet2048,
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain(
+      'The tile frame is landscape (128x64, 2:1); fill it edge-to-edge across both axes',
+    );
+    // Tiles use the footprint-free variant.
+    expect(out).not.toMatch(/source pixels wide and/);
+  });
+
+  it('keeps a square tile description simple', () => {
+    const brief = makeBrief({ type: 'tile', size: { width: 32, height: 32 } } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain('The tile frame is square (32x32); fill it edge-to-edge.');
+  });
+});
+
+describe('type rules scale with the brief size', () => {
+  const sheet2048 = { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 2048 } };
+
+  it('quotes the default 64px enemy band in a 256x256 cell', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      size: { width: 64, height: 64 },
+      anchor: { x: 32, y: 32 },
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain(
+      'roughly a full 64px-tall in-game sprite (about 224-240 source pixels tall in a 256x256 cell)',
+    );
+  });
+
+  it('scales the enemy band for a tall variant', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      size: { width: 64, height: 128 },
+      anchor: { x: 32, y: 64 },
+      generation: sheet2048,
+    } as Partial<Brief>);
+    const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
+    expect(out).toContain(
+      'roughly a full 128px-tall in-game sprite (about 448-480 source pixels tall in a 512x512 cell)',
+    );
+  });
+});
+
 describe('extractPromptColors', () => {
   it('extracts the named dominant color from a prompt', () => {
     expect(extractPromptColors('A gelatinous purple slime, glistening.')).toEqual([[140, 40, 175]]);

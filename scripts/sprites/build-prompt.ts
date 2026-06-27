@@ -88,6 +88,8 @@ export function buildPrompt(brief: Brief, styleGuide: string): string {
     styleGuide,
     '',
     briefSubjectBlock(brief),
+    '',
+    outputSizeBlock(brief),
     ...(rules ? ['', rules] : []),
     '',
     singleConstraintsBlock(brief),
@@ -114,6 +116,8 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
     styleGuide,
     '',
     briefSubjectBlock(brief),
+    '',
+    outputSizeBlock(brief),
     ...(rules ? ['', rules] : []),
     '',
     sheetLayoutBlock(rows, cols, count, emptyCells),
@@ -132,13 +136,111 @@ function briefSubjectBlock(brief: Brief): string {
   return ['## Subject', brief.prompt.trim()].join('\n');
 }
 
+type Aspect = 'square' | 'wide' | 'tall';
+
+function aspectOf(width: number, height: number): Aspect {
+  if (width > height) return 'wide';
+  if (height > width) return 'tall';
+  return 'square';
+}
+
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+/** Reduced `W:H` ratio text, e.g. 128×64 → "2:1", 64×128 → "1:2". */
+function aspectRatioText(width: number, height: number): string {
+  const divisor = gcd(width, height) || 1;
+  return `${width / divisor}:${height / divisor}`;
+}
+
+/** Pixel dimensions of one (square) source cell on the generated sheet. */
+function cellDims(brief: Brief): { cellW: number; cellH: number } {
+  const native = brief.generation.sheet.nativeCanvas;
+  const { rows, cols } = brief.generation.sheet;
+  return { cellW: Math.round(native / cols), cellH: Math.round(native / rows) };
+}
+
+/**
+ * The source-pixel bounding box the subject should occupy inside its square
+ * cell so that, once trimmed and fit into the final W×H box, it keeps its
+ * aspect ratio without letterboxing. Uniform scale on both axes (the limiting
+ * axis wins) reproduces the historical 0.875–0.9375 "224–240 in a 256 cell"
+ * band for the default square case and stretches correctly for wide/tall.
+ */
+function sourceFootprint(brief: Brief): {
+  loW: number;
+  hiW: number;
+  loH: number;
+  hiH: number;
+} {
+  const { cellW, cellH } = cellDims(brief);
+  const width = brief.size.width;
+  const height = brief.size.height;
+  const scaleLo = Math.min((cellW * 0.875) / width, (cellH * 0.875) / height);
+  const scaleHi = Math.min((cellW * 0.9375) / width, (cellH * 0.9375) / height);
+  return {
+    loW: Math.round(width * scaleLo),
+    hiW: Math.round(width * scaleHi),
+    loH: Math.round(height * scaleLo),
+    hiH: Math.round(height * scaleHi),
+  };
+}
+
+/**
+ * Tell the model the exact final pixel dimensions and, for non-square
+ * variants, the proportion to draw. The post-processor fits the trimmed
+ * subject into the brief's W×H box preserving aspect, so a subject drawn at
+ * the wrong proportion would letterbox; this block keeps wide/tall/large
+ * subjects shaped correctly. Tiles fill their frame edge-to-edge and so get a
+ * simpler footprint-free variant.
+ */
+function outputSizeBlock(brief: Brief): string {
+  const width = brief.size.width;
+  const height = brief.size.height;
+  const aspect = aspectOf(width, height);
+  const lines: string[] = ['## Output size'];
+  lines.push(
+    `- Each finished sprite resolves to exactly ${width}x${height} pixels after post-processing.`,
+  );
+
+  if (brief.type === 'tile') {
+    lines.push(
+      aspect === 'square'
+        ? `- The tile frame is square (${width}x${height}); fill it edge-to-edge.`
+        : `- The tile frame is ${aspect === 'wide' ? 'landscape' : 'portrait'} (${width}x${height}, ${aspectRatioText(width, height)}); fill it edge-to-edge across both axes — do not center a square motif.`,
+    );
+    return lines.join('\n');
+  }
+
+  const { cellW, cellH } = cellDims(brief);
+  if (aspect === 'square') {
+    lines.push(
+      `- Draw each subject at a 1:1 (square) proportion, centered within its square ${cellW}x${cellH} source cell.`,
+    );
+  } else {
+    const orientation =
+      aspect === 'wide' ? 'landscape (wider than tall)' : 'portrait (taller than wide)';
+    const { loW, hiW, loH, hiH } = sourceFootprint(brief);
+    lines.push(
+      `- The final sprite is ${orientation} at a ${aspectRatioText(width, height)} aspect ratio. Draw each subject to fill that proportion — do NOT default to a square subject.`,
+    );
+    lines.push(
+      `- Within each square ${cellW}x${cellH} source cell, the subject should span roughly ${loW}-${hiW} source pixels wide and ${loH}-${hiH} source pixels tall, centered, so it keeps its ${aspectRatioText(width, height)} shape without letterboxing.`,
+    );
+  }
+  return lines.join('\n');
+}
+
 function typeRulesBlock(brief: Brief): string | null {
   if (brief.type === 'enemy') {
+    const { cellW, cellH } = cellDims(brief);
+    const { loH, hiH } = sourceFootprint(brief);
     return [
       '## Mob rules',
       '- Draw the mob facing straight forward, not angled or in three-quarter view.',
       '- Keep the sprite body-only: no held weapons, no shields, no spell effects, no fire, no glow, no floating orbs, and no particle trails.',
-      '- For upright/humanoid mobs, normalize the figure to read as roughly a full 64px-tall in-game sprite (about 224-240 source pixels in a 256x256 cell) while keeping natural proportions. Avoid elongated, extra-tall limb/torso stretch.',
+      `- For upright/humanoid mobs, normalize the figure to read as roughly a full ${brief.size.height}px-tall in-game sprite (about ${loH}-${hiH} source pixels tall in a ${cellW}x${cellH} cell) while keeping natural proportions. Avoid elongated, extra-tall limb/torso stretch.`,
       '- Anchor and composition should read from the mob silhouette itself, centered around the body mass.',
     ].join('\n');
   }
@@ -152,11 +254,15 @@ function typeRulesBlock(brief: Brief): string | null {
     ].join('\n');
   }
   if (brief.type === 'character') {
+    const { cellW, cellH } = cellDims(brief);
+    const { loH, hiH } = sourceFootprint(brief);
+    const breatheLo = Math.round((cellH - hiH) / 2);
+    const breatheHi = Math.round((cellH - loH) / 2);
     return [
       '## Character rules',
       '- Keep the character front-facing with readable facial features and clear eye line toward camera.',
-      `- **Height normalization:** default to a 64px-tall final character read. In a 256×256 source cell this is roughly 224-240 source pixels tall (top of head to sole of feet) with small top/bottom breathing room (about 8-16 source pixels each). Keep proportions natural; do NOT stretch the body vertically to chase height, and do NOT center a tiny figure in a large empty box.`,
-      '- **Facial detail:** face must have individually readable eyes (pupils, whites), a nose bridge, and a closed or slightly open mouth — each feature rendered with multiple source pixels (4-pixel = 1 output pixel scale). No smeared blobs for a face.',
+      `- **Height normalization:** default to a ${brief.size.height}px-tall final character read. In a ${cellW}×${cellH} source cell this is roughly ${loH}-${hiH} source pixels tall (top of head to sole of feet) with small top/bottom breathing room (about ${breatheLo}-${breatheHi} source pixels each). Keep proportions natural; do NOT stretch the body vertically to chase height, and do NOT center a tiny figure in a large empty box.`,
+      '- **Facial detail:** face must have individually readable eyes (pupils, whites), a nose bridge, and a closed or slightly open mouth — each feature rendered with several source pixels per output pixel. No smeared blobs for a face.',
       '- **Hair readability:** preserve visible hair mass and hairline shape (braids/locs/twists/afro silhouette must be explicit). Do not collapse hair into a tiny cap, and do not blend hair into skin or background.',
       '- **Contrast control:** prioritize strong dark outlines and clear light-vs-dark separation on face, hair, and outfit seams. Keep 3–5 readable tone steps (base/shadow/deep shadow/highlight) and avoid both muddy mid-tone clusters and overly flat 2-tone blocks.',
       '- Avoid drab monochrome outfits. Use high-contrast wardrobe accents from across the available palette (cool + warm hues, not only browns/oranges).',
@@ -178,10 +284,19 @@ function singleConstraintsBlock(brief: Brief): string {
     ].join('\n');
   }
   const bg = pickContrastingBackgroundColor(brief);
+  const aspect = aspectOf(brief.size.width, brief.size.height);
+  const subjectLine =
+    aspect === 'square'
+      ? '- Exactly one subject, centered in a square frame.'
+      : `- Exactly one subject, centered in the frame at a ${aspectRatioText(brief.size.width, brief.size.height)} (${aspect === 'wide' ? 'landscape' : 'portrait'}) proportion.`;
+  const clipLine =
+    aspect === 'square'
+      ? '- Subject must not be clipped at any edge — leave at least 10% margin on all sides.'
+      : '- Subject must not be clipped at any edge — keep a small margin so nothing touches the edges, but do not shrink the subject to a square footprint.';
   return [
     '## Output requirements',
-    '- Exactly one subject, centered in a square frame.',
-    '- Subject must not be clipped at any edge — leave at least 10% margin on all sides.',
+    subjectLine,
+    clipLine,
     `- Transparent background, or a single flat high-contrast background color that is clearly distinct from the sprite palette. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No decorative borders, gradients, or scene elements.`,
     '- No text, numbers, digits, captions, watermarks, signatures, or UI overlays anywhere in the image.',
   ].join('\n');
@@ -254,7 +369,9 @@ function sheetConstraintsBlock(brief: Brief): string {
     brief.type === 'character' || brief.type === 'enemy'
       ? '- Each variant must fit fully within its grid cell — none cut off at any edge. Keep a small but explicit top/bottom margin so hair and feet never touch or cross the cell border. Horizontal side margins are acceptable.'
       : '- Each variant must fit fully within its grid cell — none cut off at any edge. Leave at least a 10% margin between the subject and the cell edge.',
-    '- All variants are square, share the same dimensions, and use the same orientation and scale.',
+    aspectOf(brief.size.width, brief.size.height) === 'square'
+      ? '- All variants are square, share the same dimensions, and use the same orientation and scale.'
+      : `- Every grid cell is the same square size; within each cell all subjects share the same ${aspectRatioText(brief.size.width, brief.size.height)} subject proportion, dimensions, orientation, and scale.`,
     '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
     `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No per-cell background variation, no decorative borders between cells.`,
     '- Do not draw a frame, header, or footer around the grid.',

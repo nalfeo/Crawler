@@ -33,6 +33,7 @@ import {
   type SpriteTypeDefaults,
 } from './brief-schema.js';
 import { deepMergeDefaults } from './deep-merge.js';
+import { applySizeVariantToDefaults, coerceSizeVariant } from './size-variants.js';
 
 export interface LoadedBrief {
   readonly brief: Brief;
@@ -117,29 +118,41 @@ export function loadBrief(briefPath: string, opts: LoadBriefOptions = {}): Loade
  * - `description` becomes `prompt` when the merged brief has no explicit
  *   `prompt`. The `description` field is then stripped because the strict
  *   `briefSchema` doesn't allow unknown keys.
+ * - `sizeVariant` (default/wide/tall/large) is consumed here, not merged: it
+ *   scales the per-type defaults (size/anchor/native canvas) BEFORE the
+ *   author's explicit fields merge on top, so a pinned `size`/`anchor` still
+ *   wins over the variant. It is stripped for the same strict-schema reason.
  * - `defaults` is treated as immutable.
  * - When `defaults` is `null` (loader returned no defaults for the type),
  *   the minimal brief is passed through more or less verbatim. The
- *   author is then responsible for supplying every required field.
+ *   author is then responsible for supplying every required field (and a
+ *   `sizeVariant` has nothing to scale, so it no-ops but is still stripped).
  */
 export function mergeMinimalIntoDefaults(
   minimal: Record<string, unknown>,
   defaults: SpriteTypeDefaults | null,
 ): Record<string, unknown> {
-  const base = defaults === null ? {} : defaults;
+  // Pull the size-variant directive off the minimal brief and strip it: it is
+  // an authoring convenience, not a strict-schema field. Apply it to the
+  // per-type defaults so the author's explicit fields still merge on top.
+  const variant = coerceSizeVariant(minimal.sizeVariant);
+  const sanitizedMinimal: Record<string, unknown> = { ...minimal };
+  delete sanitizedMinimal.sizeVariant;
+
+  const rawBase = defaults === null ? {} : (defaults as Record<string, unknown>);
+  const base = applySizeVariantToDefaults(rawBase, variant);
   // Safety: if the minimal brief explicitly provides a malformed `sensors`
   // (e.g. `sensors: null` or `sensors: "oops"`), skip the deep-merge for
   // that key — otherwise we'd silently overwrite the bad value with the
   // sprite-type sensor defaults and the user would never see their typo.
   // Pass it through so Zod surfaces a clear validation error. (PR #44.)
-  const sanitizedMinimal: Record<string, unknown> = { ...minimal };
   if (
     'sensors' in sanitizedMinimal &&
     !isPlainObject(sanitizedMinimal.sensors) &&
     sanitizedMinimal.sensors !== undefined
   ) {
     // Force-overwrite defaults.sensors so Zod sees the bad value verbatim.
-    const baseCopy = { ...(base as Record<string, unknown>) };
+    const baseCopy = { ...base };
     delete baseCopy.sensors;
     const merged = deepMergeDefaults(baseCopy, sanitizedMinimal);
     merged.sensors = sanitizedMinimal.sensors;
@@ -149,7 +162,7 @@ export function mergeMinimalIntoDefaults(
     delete merged.description;
     return merged;
   }
-  const merged = deepMergeDefaults(base as Record<string, unknown>, minimal);
+  const merged = deepMergeDefaults(base, sanitizedMinimal);
   if (merged.prompt === undefined && typeof merged.description === 'string') {
     merged.prompt = merged.description;
   }

@@ -25,6 +25,16 @@ A YAML brief in `briefs/<type>/<name>.yaml` is the only input needed to run the 
 - `prompt` — natural language description fed to the generator
 - `references` — optional list of registry sprite ids to embed as visual references in the gen call
 
+**Size variants (minimal-brief directive).** Type and size are chosen independently. A
+minimal brief (or the `sprites:synth --size` flag) may set an optional
+`sizeVariant` of `default` / `wide` / `tall` / `large`, which scales the per-type
+default `size`, `anchor`, and sheet `nativeCanvas` (by `width` ×{1,2,1,2},
+`height` ×{1,1,2,2}) at load time — before the author's explicit fields merge on
+top, so a pinned `size`/`anchor` still wins. The directive is consumed and
+stripped during the merge, so the strict `briefSchema` never sees it; the prompt
+builder reports the resulting aspect ratio so non-square subjects are drawn to
+proportion rather than letterboxed.
+
 #### F2. Generator
 
 **F2.1 Provider abstraction.** Generator is a strategy interface `ImageProvider` with two implementations: `OpenAIImageProvider` (default, `gpt-image-1`) and `MAIImageProvider` (`MAI-Image-2.5`, behind a feature flag). Selection via `SPRITE_GEN_PROVIDER=openai|mai` env var. Both use the OpenAI-compatible REST surface — the only differences are endpoint, deployment name, and credentials. This insulates downstream stages from provider churn.
@@ -143,13 +153,13 @@ A lab at `src/labs/sprite-gallery-lab/` provides the human-in-the-loop surface. 
 
 The lab cannot call Azure OpenAI directly (secrets, file I/O). `npm run sprites:gallery` starts Vite **and** a small Fastify sidecar (`scripts/sprites/sidecar/server.ts`, port 3010) that exposes:
 
-| Endpoint                                   | Purpose                                                           |
-| ------------------------------------------ | ----------------------------------------------------------------- |
-| `GET /api/health`                          | Sidecar readiness; lab uses this to enable/disable action buttons |
-| `GET /api/runs`                            | List available run directories                                    |
-| `GET /api/runs/:briefId/:runId`            | Return the run `summary.json`                                     |
-| `GET /api/runs/:briefId/:runId/processed/:filename` | Serve processed PNG/JSON artifacts                      |
-| `POST /api/runs/:briefId/:runId/approve`   | Approve a variant from an existing run                            |
+| Endpoint                                            | Purpose                                                           |
+| --------------------------------------------------- | ----------------------------------------------------------------- |
+| `GET /api/health`                                   | Sidecar readiness; lab uses this to enable/disable action buttons |
+| `GET /api/runs`                                     | List available run directories                                    |
+| `GET /api/runs/:briefId/:runId`                     | Return the run `summary.json`                                     |
+| `GET /api/runs/:briefId/:runId/processed/:filename` | Serve processed PNG/JSON artifacts                                |
+| `POST /api/runs/:briefId/:runId/approve`            | Approve a variant from an existing run                            |
 
 The sidecar is a thin HTTP shell over the same TypeScript modules the CLI uses. **No business logic in the sidecar.**
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SIZE_VARIANTS } from './size-variants.js';
 
 /**
  * Sprite brief schema.
@@ -353,6 +354,11 @@ export const minimalBriefSchema = z
       .min(1)
       .regex(/^[a-z0-9][a-z0-9-]*$/, 'name must be lowercase kebab-case'),
     description: z.string().trim().min(1).optional(),
+    // Optional size-variant directive. Scales the per-type defaults
+    // (size / anchor / native canvas) at load time so a brief can be wide,
+    // tall, or large without restating geometry. Consumed and stripped during
+    // the merge into defaults; the strict `briefSchema` never sees it.
+    sizeVariant: z.enum(SIZE_VARIANTS).optional(),
     // Legacy/fully-specified briefs may set `prompt` directly instead of
     // `description`. We accept it here as a typed passthrough so the
     // superRefine below can require one of the two without tripping on
