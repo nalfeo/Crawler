@@ -176,9 +176,9 @@ export interface SpawnSpawnerOptions {
   bloodColor?: number;
   /** Sprite texture id. Default 0. */
   textureId?: number;
-  /** Sprite width in px. Default 24. */
+  /** Sprite width in feet. Default 3. */
   spriteWidth?: number;
-  /** Sprite height in px. Default 24. */
+  /** Sprite height in feet. Default 3. */
   spriteHeight?: number;
   /** Extra delay (ms) before the first spawn pulse is allowed. Default 0. */
   initialDelayMs?: number;
@@ -210,8 +210,8 @@ export function spawnSpawner(
     eid,
     set(Sprite, {
       textureId: options.textureId ?? 0,
-      width: options.spriteWidth ?? 24,
-      height: options.spriteHeight ?? 24,
+      width: options.spriteWidth ?? 3,
+      height: options.spriteHeight ?? 3,
     }),
   );
   addComponent(world.ecs, eid, set(Weight, { value: options.weight ?? 200 }));

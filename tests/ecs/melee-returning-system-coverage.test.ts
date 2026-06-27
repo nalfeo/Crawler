@@ -71,9 +71,9 @@ describe('meleeSwingSystem coverage edges', () => {
 
   it('markImmuneToActiveMeleeSwings makes an active swing skip a target until it is replaced', () => {
     const world = createTestWorld();
-    const swing = createSlashSwing(world, 100, 100);
+    const swing = createSlashSwing(world, 12.5, 12.5);
     const enemy = createEntity(world);
-    addComponent(world.ecs, enemy, set(Position, { x: 120, y: 100 }));
+    addComponent(world.ecs, enemy, set(Position, { x: 15, y: 12.5 }));
     addComponent(world.ecs, enemy, set(Health, { current: 100, max: 100 }));
     addComponent(world.ecs, enemy, Enemy);
 

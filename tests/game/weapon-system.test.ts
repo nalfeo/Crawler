@@ -88,13 +88,13 @@ describe('weaponSystem', () => {
     spawnPlayer(world, 0, 0);
     // Nearer "corpse": Enemy + Position but 0 HP and a DeathTimer (still in the
     // death-linger window). The player must shoot the live enemy instead.
-    const corpse = spawnEnemy(world, 30, 0, 10);
+    const corpse = spawnEnemy(world, 3.75, 0, 10);
     world.stores.health.current[corpse] = 0;
     addComponent(world.ecs, corpse, set(DeathTimer, { remainingMs: 500 }));
     // Live enemy off the corpse's axis: a correct (corpse-skipping) shot fires
     // +Y at it, while wrongly targeting the nearer corpse would fire +X. This
     // makes the assertions fail if the corpse skip is reverted.
-    spawnEnemy(world, 0, 80, 10);
+    spawnEnemy(world, 0, 10, 10);
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -110,7 +110,7 @@ describe('weaponSystem', () => {
   it('skips corpses for melee target acquisition', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    const corpse = spawnEnemy(world, 10, 0, 10);
+    const corpse = spawnEnemy(world, 1.25, 0, 10);
     world.stores.health.current[corpse] = 0;
     addComponent(world.ecs, corpse, set(DeathTimer, { remainingMs: 500 }));
     // No live enemy: with only a corpse in range, melee auto-fire must NOT
@@ -130,11 +130,11 @@ describe('weaponSystem', () => {
     // Nearer "corpse": 0 HP but NOT yet flagged with a DeathTimer. This exercises
     // the Health-only skip in getNearestEnemyTarget independently of the
     // DeathTimer guard (which would otherwise short-circuit first).
-    const corpse = spawnEnemy(world, 20, 0, 10);
+    const corpse = spawnEnemy(world, 2.5, 0, 10);
     world.stores.health.current[corpse] = 0;
     // Live enemy off to the side: a correct (corpse-skipping) shot fires +Y,
     // while wrongly targeting the nearer dead enemy would fire +X.
-    spawnEnemy(world, 0, 50, 10);
+    spawnEnemy(world, 0, 6.25, 10);
     const pistol = getWeaponDef('pistol')!;
     setActiveWeapon(world, pistol);
     world.elapsedMs = pistol.cooldownMs;
@@ -151,11 +151,11 @@ describe('weaponSystem', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
     // Live regular enemy to the right — the legitimate fallback target.
-    spawnEnemy(world, 30, 0, 10);
+    spawnEnemy(world, 3.75, 0, 10);
     // Boss/elite below the player, flagged for boss-priority aim, but in its
     // death-linger window: still has positive HP yet carries a DeathTimer, so
     // only the DeathTimer guard in findBossTargetInRange protects it.
-    const boss = spawnEnemy(world, 0, 40, 10);
+    const boss = spawnEnemy(world, 0, 5, 10);
     world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
     addComponent(world.ecs, boss, set(DeathTimer, { remainingMs: 500 }));
     const pistol = getWeaponDef('pistol')!;
@@ -174,10 +174,10 @@ describe('weaponSystem', () => {
   it('skips a permanently-aggroed boss corpse with 0 HP and no DeathTimer, firing at the live enemy', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
-    spawnEnemy(world, 30, 0, 10);
+    spawnEnemy(world, 3.75, 0, 10);
     // Dead boss with no DeathTimer yet, so only the Health guard in
     // findBossTargetInRange keeps boss-priority aim off the corpse.
-    const boss = spawnEnemy(world, 0, 40, 10);
+    const boss = spawnEnemy(world, 0, 5, 10);
     world.stores.enemyBehavior.aggroedPermanently[boss] = 1;
     world.stores.health.current[boss] = 0;
     const pistol = getWeaponDef('pistol')!;

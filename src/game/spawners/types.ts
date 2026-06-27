@@ -21,11 +21,11 @@ export interface MobTemplate {
   readonly aiType: number;
   /** Starting/max hit points. */
   readonly hp: number;
-  /** Movement speed (px per fixed step). */
+  /** Movement speed (feet per fixed step). */
   readonly speed: number;
-  /** Aggro/detection range in px. */
+  /** Aggro/detection range in feet. */
   readonly aggroRange: number;
-  /** Attack range in px (0 for pure contact attackers). */
+  /** Attack range in feet (0 for pure contact attackers). */
   readonly attackRange: number;
   /** Contact damage dealt to the player on touch. */
   readonly contactDamage: number;
@@ -35,9 +35,9 @@ export interface MobTemplate {
   readonly bloodColor: number;
   /** Sprite texture id. */
   readonly textureId: number;
-  /** Sprite width in px. */
+  /** Sprite width in feet. */
   readonly spriteWidth: number;
-  /** Sprite height in px. */
+  /** Sprite height in feet. */
   readonly spriteHeight: number;
   /** Optional traversal mode (TRAVERSAL_MODE.*). Defaults to ground. */
   readonly traversalMode?: number;
@@ -89,9 +89,9 @@ export interface SpawnerArchetype {
   readonly bloodColor: number;
   /** Sprite texture id for the structure. */
   readonly textureId: number;
-  /** Structure sprite width in px. */
+  /** Structure sprite width in feet. */
   readonly spriteWidth: number;
-  /** Structure sprite height in px. */
+  /** Structure sprite height in feet. */
   readonly spriteHeight: number;
   /** Contact damage the structure deals to the player on touch. */
   readonly contactDamage: number;
