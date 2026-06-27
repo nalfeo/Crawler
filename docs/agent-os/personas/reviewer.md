@@ -65,7 +65,7 @@ Hands findings back to the owning persona (**Systems Engineer**, **Game Designer
 gate/tooling gaps to **DevOps Engineer**; engaged by the **Producer** before a
 multi-persona task is finalized.
 
-## Antagonistic review checklist
+## Antagonistic-review checklist
 
 > Mandatory judgment questions for an antagonistic review — answered by the
 > human/agent reviewer, **not** a CI LLM-judge. Each must be resolved before approval.
