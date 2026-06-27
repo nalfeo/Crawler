@@ -3,14 +3,15 @@ import {
   extractVariantIndices,
   listSidecarRuns,
   postApprove,
+  ApproveRequestError,
 } from '../../src/devtools/sprite-approval-api.js';
 
 describe('devtools sprite approval api', () => {
   it('posts JSON {variantIndex} to the approve endpoint and returns the parsed entry', async () => {
     const fakeEntry = {
       briefId: 'iron-sword',
-      spriteName: 'iron-sword',
-      assetPath: 'generated/iron-sword.png',
+      spriteName: 'iron-sword-var-1',
+      assetPath: 'generated/iron-sword-var-1.png',
       approvedAt: '2026-06-08T15:30:00.000Z',
       sourceRun: 'generated/runs/iron-sword/2026-06-08T12-00-00-deadbeef',
       variantIndex: 1,
@@ -76,6 +77,29 @@ describe('devtools sprite approval api', () => {
     await expect(
       postApprove('iron-sword', 'run-1', 0, fetcher as unknown as typeof fetch),
     ).rejects.toThrow(/approve failed \(500\): Internal Server Error/);
+  });
+
+  it('throws ApproveRequestError carrying status + errorCode on a 409 conflict', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: 'already-approved', message: 'Variant is already approved.' }),
+        {
+          status: 409,
+          statusText: 'Conflict',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      ),
+    );
+    const error = await postApprove(
+      'iron-sword',
+      'run-1',
+      1,
+      fetcher as unknown as typeof fetch,
+    ).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApproveRequestError);
+    expect((error as ApproveRequestError).status).toBe(409);
+    expect((error as ApproveRequestError).errorCode).toBe('already-approved');
+    expect((error as ApproveRequestError).message).toMatch(/approve failed \(409\): /);
   });
 
   it('parses sidecar run list response payload', async () => {

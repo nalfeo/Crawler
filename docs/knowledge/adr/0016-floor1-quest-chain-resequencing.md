@@ -1,7 +1,10 @@
 # ADR-0016: Floor 1 Quest-Chain Re-Sequencing
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-21
-**Status:** Accepted
 **Deciders:** Agent session (level1-quest-resequencing, Producer persona)
 
 ## Context

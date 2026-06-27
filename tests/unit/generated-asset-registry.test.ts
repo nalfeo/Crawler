@@ -12,8 +12,10 @@ import {
   emptyGeneratedSpriteRegistry,
   loadGeneratedManifest,
   parseGeneratedManifest,
+  pickGeneratedVariant,
   GENERATED_MANIFEST_VERSION,
 } from '../../src/shared/generated-assets.js';
+import { hashStringToSeed } from '../../src/shared/random.js';
 
 const baseEntry = {
   briefId: 'iron-sword',
@@ -141,6 +143,65 @@ describe('loadGeneratedManifest', () => {
   });
 });
 
+describe('loadGeneratedManifest — multiple variants per brief', () => {
+  // Mirrors what current approve.ts writes: per-variant manifest KEY
+  // (`<brief>-var-<N>`) but historically a brief-wide `spriteName`. The
+  // registry must key textures off the unique map key, not `spriteName`.
+  const variantManifest = {
+    version: GENERATED_MANIFEST_VERSION,
+    entries: {
+      'skull-mace-var-5': {
+        ...baseEntry,
+        briefId: 'skull-mace',
+        spriteName: 'skull-mace',
+        assetPath: 'generated/skull-mace-var-5.png',
+        variantIndex: 5,
+      },
+      'skull-mace-var-2': {
+        ...baseEntry,
+        briefId: 'skull-mace',
+        spriteName: 'skull-mace',
+        assetPath: 'generated/skull-mace-var-2.png',
+        variantIndex: 2,
+      },
+    },
+  };
+
+  it('derives a unique textureKey per variant from the manifest key', () => {
+    const registry = loadGeneratedManifest(variantManifest);
+    const keys = registry
+      .entries()
+      .map((e) => e.textureKey)
+      .sort();
+    expect(keys).toEqual(['skull-mace-var-2', 'skull-mace-var-5']);
+  });
+
+  it('counts every variant in size and flattens entries()', () => {
+    const registry = loadGeneratedManifest(variantManifest);
+    expect(registry.size).toBe(2);
+    expect(registry.entries()).toHaveLength(2);
+    expect(registry.briefIds()).toEqual(['skull-mace']);
+  });
+
+  it('exposes all variants for a brief sorted by variantIndex', () => {
+    const registry = loadGeneratedManifest(variantManifest);
+    const variants = registry.variants('skull-mace');
+    expect(variants.map((v) => v.variantIndex)).toEqual([2, 5]);
+    expect(variants.map((v) => v.textureKey)).toEqual(['skull-mace-var-2', 'skull-mace-var-5']);
+  });
+
+  it('lookup returns the first variant (lowest variantIndex) deterministically', () => {
+    const registry = loadGeneratedManifest(variantManifest);
+    expect(registry.lookup('skull-mace')?.textureKey).toBe('skull-mace-var-2');
+  });
+
+  it('variants() returns an empty list for an unknown brief', () => {
+    const registry = loadGeneratedManifest(variantManifest);
+    expect(registry.variants('nope')).toEqual([]);
+    expect(registry.has('nope')).toBe(false);
+  });
+});
+
 describe('buildGeneratedSpriteRegistry', () => {
   it('parses raw JSON and returns a lookup registry', () => {
     const registry = buildGeneratedSpriteRegistry({
@@ -162,5 +223,80 @@ describe('emptyGeneratedSpriteRegistry', () => {
     expect(registry.lookup('iron-sword')).toBeNull();
     expect(registry.has('iron-sword')).toBe(false);
     expect(registry.entries()).toEqual([]);
+  });
+});
+
+describe('pickGeneratedVariant', () => {
+  const make = (briefId: string, spriteName: string, variantIndex: number, assetPath: string) => ({
+    ...baseEntry,
+    briefId,
+    spriteName,
+    variantIndex,
+    assetPath,
+  });
+
+  const multi = loadGeneratedManifest({
+    version: GENERATED_MANIFEST_VERSION,
+    entries: {
+      'skull-mace-var-1': make('skull-mace', 'skull-mace', 1, 'generated/skull-mace-var-1.png'),
+      'skull-mace-var-2': make('skull-mace', 'skull-mace', 2, 'generated/skull-mace-var-2.png'),
+      'skull-mace-var-3': make('skull-mace', 'skull-mace', 3, 'generated/skull-mace-var-3.png'),
+    },
+  });
+
+  it('returns null for a brief with no approved variants', () => {
+    expect(pickGeneratedVariant(emptyGeneratedSpriteRegistry(), 'skull-mace', 123)).toBeNull();
+  });
+
+  it('returns the only variant without depending on the seed', () => {
+    const single = loadGeneratedManifest({
+      version: GENERATED_MANIFEST_VERSION,
+      entries: { 'iron-sword-var-0': baseEntry },
+    });
+    expect(pickGeneratedVariant(single, 'iron-sword', 1)?.textureKey).toBe('iron-sword-var-0');
+    expect(pickGeneratedVariant(single, 'iron-sword', 999)?.textureKey).toBe('iron-sword-var-0');
+  });
+
+  it('is deterministic for a given seed', () => {
+    const seed = hashStringToSeed('skull-mace') ^ 42;
+    const a = pickGeneratedVariant(multi, 'skull-mace', seed)?.textureKey;
+    const b = pickGeneratedVariant(multi, 'skull-mace', seed)?.textureKey;
+    expect(a).toBe(b);
+    expect(a).toMatch(/^skull-mace-var-[123]$/);
+  });
+
+  it('always returns one of the registered variants', () => {
+    const keys = new Set(multi.variants('skull-mace').map((v) => v.textureKey));
+    for (let seed = 0; seed < 50; seed++) {
+      const picked = pickGeneratedVariant(multi, 'skull-mace', seed * 2654435761)?.textureKey;
+      expect(picked).toBeDefined();
+      expect(keys.has(picked!)).toBe(true);
+    }
+  });
+
+  it('spreads across variants for different seeds', () => {
+    const seen = new Set<string>();
+    for (let seed = 0; seed < 64; seed++) {
+      const picked = pickGeneratedVariant(multi, 'skull-mace', seed * 0x9e3779b1)?.textureKey;
+      if (picked) seen.add(picked);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+});
+
+describe('hashStringToSeed', () => {
+  it('is deterministic for the same input', () => {
+    expect(hashStringToSeed('skull-mace')).toBe(hashStringToSeed('skull-mace'));
+  });
+
+  it('differs for different inputs (no trivial collisions on sample set)', () => {
+    const ids = ['skull-mace', 'iron-sword', 'throwing-star', 'bent-pipe-v1', 'a', 'b'];
+    const seeds = new Set(ids.map(hashStringToSeed));
+    expect(seeds.size).toBe(ids.length);
+  });
+
+  it('never returns 0 (the xorshift32 fixed point)', () => {
+    // Empty string would FNV-hash to the offset basis, not 0, but guard anyway.
+    expect(hashStringToSeed('')).not.toBe(0);
   });
 });

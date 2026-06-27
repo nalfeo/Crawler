@@ -20,7 +20,7 @@ re-probed (it did not move).
 ITEM 5 (ADR 0017) wired Luck → crit and Dexterity → dodge through
 `EffectiveStats`, but left **Wisdom** and **Charisma** showing
 "(no effect yet)". `world.playerMp` / `world.playerMaxMp` were hardcoded
-`100 / 100` in `core/world.ts`, disconnected from any stat. So allocating Wisdom
+`100 / 100` in `src/core/world.ts`, disconnected from any stat. So allocating Wisdom
 on level-up did nothing, even though the HUD already drew a mana bar and the
 boss-battle reward unlocked castable spells that spend MP.
 
@@ -39,7 +39,7 @@ mana pool — completing the Wisdom half of the ITEM 5 payoff.
 
 ## Decision
 
-1. **Pure mana model in `shared/mana.ts`.** `MANA_BASE = 80`,
+1. **Pure mana model in `src/shared/mana.ts`.** `MANA_BASE = 80`,
    `MANA_PER_WISDOM = 20`, and `deriveMaxMp(effectiveWisdom) = MANA_BASE +
 MANA_PER_WISDOM × max(0, wisdom)`. Tuned so a fresh player (effective
    Wisdom 1) maps to the historical `100` MP, preserving balance. Regen is
@@ -50,29 +50,29 @@ MANA_PER_WISDOM × max(0, wisdom)`. Tuned so a fresh player (effective
    the HUD, labs, and tests — and because a non-`(world)=>void` helper in
    `core/systems/` would (correctly) trip the lab gate.
 
-2. **New deterministic `manaSystem(world): void`** (`core/systems/manaSystem.ts`).
+2. **New deterministic `manaSystem(world): void`** (`src/core/systems/manaSystem.ts`).
    Queries the `[Player, EffectiveStats]` singleton; if absent it is a no-op (bare
    test/lab worlds keep their default 100/100). Otherwise it sets
    `playerMaxMp = deriveMaxMp(effectiveWisdom)`, regenerates `playerMp` by
    `MANA_REGEN_PER_FRAME`, and clamps to `[0, max]`. It runs **after** `statSystem`
    so the effective Wisdom it reads already folds in this frame's allocation and
-   equipment. Exported through the core barrel (`core/systems/index.ts` →
-   `core/index.ts`) like `statSystem`. Every new system needs a lab, so
+   equipment. Exported through the core barrel (`src/core/systems/index.ts` →
+   `src/core/index.ts`) like `statSystem`. Every new system needs a lab, so
    `src/labs/mana-lab/` is added and registered in `lab-main.ts`.
 
 3. **Wire into both pipelines.** Added to the headless loop
-   (`game/ai/simulation-step.ts`) and the visual game's `preSystems`
-   (`bootstrap/floor1-main-scene-options.ts`), immediately after `statSystem`, so
+   (`src/game/ai/simulation-step.ts`) and the visual game's `preSystems`
+   (`src/bootstrap/floor1-main-scene-options.ts`), immediately after `statSystem`, so
    the pool scales identically headless and visual. The HUD mana bar already reads
    `world.playerMp/playerMaxMp`, so it now reflects the Wisdom-scaled max with no
    HUD logic change.
 
-4. **Display.** `shared/stat-display.ts` now formats Wisdom as
+4. **Display.** `src/shared/stat-display.ts` now formats Wisdom as
    "+20 Max Mana per point" (its mana gain) instead of "(no effect yet)";
    Charisma stays reserved/"(no effect yet)".
 
 5. **Boss-battle spell-reward hardening.** New
-   `ensureBossBattleSpellReward(world, playerEid)` in `game/floor1Scenario.ts`,
+   `ensureBossBattleSpellReward(world, playerEid)` in `src/game/floor1Scenario.ts`,
    wired into `confirmFloor1StairDescend` (the floor-exit choke point). It is a
    **safety net**, idempotent and deterministic (no RNG, no modal):
    - No-op until the quest is complete OR the unlock flag is already set.

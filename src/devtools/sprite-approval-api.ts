@@ -33,6 +33,24 @@ interface ApproveErrorBody {
   readonly message?: string;
 }
 
+/**
+ * Error thrown by `postApprove` for a non-2xx sidecar response. Carries the HTTP
+ * `status` and machine-readable `errorCode` (the sidecar's `error` field, e.g.
+ * `already-approved`) so callers can branch on the conflict case without parsing
+ * the human message. The `message` keeps the historical
+ * `approve failed (<status>): <detail>` contract.
+ */
+export class ApproveRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly errorCode: string | null,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ApproveRequestError';
+  }
+}
+
 function runSummaryUrl(briefId: string, runId: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`;
 }
@@ -98,13 +116,19 @@ export async function postApprove(
   });
   if (!response.ok) {
     let detail = '';
+    let errorCode: string | null = null;
     try {
       const body = (await response.json()) as ApproveErrorBody;
       detail = body.message ?? body.error ?? '';
+      errorCode = body.error ?? null;
     } catch {
       // Body wasn't JSON; fall through with status text only.
     }
-    throw new Error(`approve failed (${response.status}): ${detail || response.statusText}`);
+    throw new ApproveRequestError(
+      response.status,
+      errorCode,
+      `approve failed (${response.status}): ${detail || response.statusText}`,
+    );
   }
   return (await response.json()) as ApproveResponse;
 }

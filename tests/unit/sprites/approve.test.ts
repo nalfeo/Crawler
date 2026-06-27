@@ -168,7 +168,7 @@ describe('approveVariant', () => {
     });
 
     expect(entry.briefId).toBe(briefId);
-    expect(entry.spriteName).toBe(briefId);
+    expect(entry.spriteName).toBe(`${briefId}-var-1`);
     expect(entry.assetPath).toBe(`generated/${briefId}-var-1.png`);
     expect(entry.variantIndex).toBe(1);
     expect(entry.anchor).toEqual({ x: 5, y: 12, source: 'derived' });
@@ -292,6 +292,57 @@ describe('approveVariant', () => {
     const assetAbs3 = path.join(publicAssetsDir, 'generated', 'iron-sword-var-3.png');
     expect(readFileSync(assetAbs0).toString()).toBe('PNG-0');
     expect(readFileSync(assetAbs3).toString()).toBe('PNG-3');
+  });
+
+  it('throws already-approved when the exact same variant is approved twice', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0, 1] });
+    const opts = {
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+      now: fixedNow,
+    };
+    const first = approveVariant(opts);
+    expect(first.spriteName).toBe('iron-sword-var-1');
+
+    // Re-approving the EXACT same brief + variant index is refused.
+    expect(() => approveVariant(opts)).toThrowError(ApproveError);
+    try {
+      approveVariant(opts);
+    } catch (err) {
+      expect((err as ApproveError).kind).toBe('already-approved');
+    }
+
+    // The refused approval must not have mutated the manifest: still one entry.
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-1']);
+  });
+
+  it('allows re-approving the same variant when allowReapprove is set', () => {
+    const { runDir } = writeFakeRun(repoRoot, { variantIndices: [0, 1] });
+    const base = {
+      runDir,
+      variantIndex: 1,
+      manifestPath,
+      catalogPath,
+      publicAssetsDir,
+      repoRoot,
+    };
+    approveVariant({ ...base, now: () => new Date('2026-06-08T10:00:00.000Z') });
+    const second = approveVariant({
+      ...base,
+      allowReapprove: true,
+      now: () => new Date('2026-06-08T14:00:00.000Z'),
+    });
+
+    // Overwrites in place: still a single entry, with the latest timestamp.
+    const manifest = readManifest(manifestPath);
+    expect(Object.keys(manifest.entries)).toEqual(['iron-sword-var-1']);
+    expect(second.approvedAt).toBe('2026-06-08T14:00:00.000Z');
+    expect(manifest.entries['iron-sword-var-1']).toEqual(second);
   });
 
   it('throws variant-not-found when the requested index is not in summary.candidates', () => {
@@ -434,8 +485,8 @@ describe('approveVariant', () => {
     expect(catalogEntry).toBeDefined();
     expect(catalogEntry).toMatchObject({
       kind: 'sprite',
-      label: briefId,
-      spriteId: briefId,
+      label: variantId,
+      spriteId: variantId,
       sheetKey: 'generated-manifest',
       tags: expect.arrayContaining(['generated', 'pipeline-approved']),
     });

@@ -75,6 +75,7 @@ export const MAX_ACTIVE_QUESTS = 3;
 export const FLOOR1_FIND_WELCOME_QUEST_ID = 'floor1-find-welcome';
 export const FLOOR1_TUTORIAL_QUEST_ID = 'floor1-tutorial';
 export const FLOOR1_BOSS_UNLOCK_QUEST_ID = 'floor1-boss-unlock';
+export const FLOOR1_MEET_NPCS_QUEST_ID = 'floor1-meet-npcs';
 export const FLOOR1_BOSS_BATTLE_QUEST_ID = 'floor1-boss-battle';
 export const FLOOR1_SHOP_QUEST_ID = 'floor1-shopkeeper-errand';
 /** Final Floor 1 quest: defeat the Floor Boss and take the stairs to Floor 2. */

@@ -25,8 +25,11 @@ import {
 import { type ItemDef, type ItemTag, RARITY_COLORS, getItemById } from '../shared/items.js';
 import {
   emptyGeneratedSpriteRegistry,
+  pickGeneratedVariant,
+  type GeneratedSpriteEntry,
   type GeneratedSpriteRegistry,
 } from '../shared/generated-assets.js';
+import { hashStringToSeed } from '../shared/random.js';
 import { GENERATED_SPRITE_REGISTRY_KEY } from './generatedAssets/index.js';
 
 // ---------------------------------------------------------------------------
@@ -146,6 +149,23 @@ export function createInventoryUI(
       | undefined;
     return registry ?? emptyGeneratedSpriteRegistry();
   };
+
+  // Run seed captured from the world on refresh. Used to choose a stable
+  // generated-sprite variant per item without consuming the gameplay RNG stream.
+  let currentWorldSeed = 0;
+
+  /**
+   * Choose which approved generated-sprite variant to render for an item.
+   * Deterministic per (itemId, run): the same item keeps the same variant for
+   * the whole run (no per-frame flicker) but may differ across runs/items.
+   * Returns null when the item has no approved generated sprite.
+   */
+  const selectGeneratedEntry = (itemId: string): GeneratedSpriteEntry | null =>
+    pickGeneratedVariant(
+      getGeneratedRegistry(),
+      itemId,
+      (hashStringToSeed(itemId) ^ currentWorldSeed) | 0,
+    );
 
   // Container for the entire UI
   const container = scene.add.container(0, 0);
@@ -450,8 +470,10 @@ export function createInventoryUI(
 
       // Item icon: prefer the approved generated sprite when the item's
       // id matches a manifest entry's briefId and Phaser has loaded the
-      // texture. Falls back to the 2-character placeholder otherwise.
-      const generatedEntry = getGeneratedRegistry().lookup(def.id);
+      // texture. When a brief has multiple approved variants, one is chosen
+      // deterministically per (item, run). Falls back to the 2-character
+      // placeholder otherwise.
+      const generatedEntry = selectGeneratedEntry(def.id);
       const generatedTextureLoaded =
         generatedEntry !== null && scene.textures?.exists(generatedEntry.textureKey) === true;
 
@@ -623,6 +645,7 @@ export function createInventoryUI(
   function refresh(world: GameWorld): void {
     playerEid = findPlayerEid(world);
     currentBag = playerEid >= 0 ? (world.inventories.get(playerEid) ?? null) : null;
+    currentWorldSeed = world.seed | 0;
     if (!visible) {
       return;
     }
@@ -639,16 +662,16 @@ export function createInventoryUI(
 
   function computeRenderSignature(): string {
     const slots = currentBag?.slots ?? [];
-    const registry = getGeneratedRegistry();
     let signature = `${activeTag ?? '*'}|${searchQuery}|${currentSortBy}`;
     for (const slot of slots) {
-      // Fold in whether this slot's generated icon texture is loaded yet, so
-      // the grid re-renders once async sprite warm-loading finishes (the slot
-      // contents alone are unchanged, so without this the cells would stay on
-      // their text fallback until the next inventory mutation).
-      const entry = registry.lookup(slot.itemId);
+      // Fold in the *selected* generated icon variant and whether its texture is
+      // loaded yet, so the grid re-renders once async sprite warm-loading
+      // finishes (the slot contents alone are unchanged, so without this the
+      // cells would stay on their text fallback until the next inventory
+      // mutation). Selecting via the same path as the icon keeps them in sync.
+      const entry = selectGeneratedEntry(slot.itemId);
       const iconReady = entry !== null && scene.textures?.exists(entry.textureKey) === true;
-      signature += `;${slot.itemId}:${slot.quantity}:${iconReady ? 1 : 0}`;
+      signature += `;${slot.itemId}:${slot.quantity}:${entry?.textureKey ?? ''}:${iconReady ? 1 : 0}`;
     }
     return signature;
   }

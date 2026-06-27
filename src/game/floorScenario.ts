@@ -58,6 +58,7 @@ import {
 } from '../shared/equipmentDefs.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  FLOOR1_MEET_NPCS_QUEST_ID,
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_SHOP_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -1875,6 +1876,17 @@ function floor1ObjectiveTick(world: GameWorld): void {
     setGoalFlag(world, 'floor1-goon-quest-complete', true);
   }
 
+  // Auto-accept the "meet the other two NPCs" meta-quest once the Goon's
+  // kill-grind is complete. This gives the player an explicit tracker entry
+  // directing them to find the Sweaty Merchant and the Spell Broker.
+  if (
+    world.goalFlags.get('floor1-goon-quest-complete') === true &&
+    !world.questLog.has(FLOOR1_MEET_NPCS_QUEST_ID)
+  ) {
+    acceptQuest(world, FLOOR1_MEET_NPCS_QUEST_ID);
+    setTrackedQuest(world, FLOOR1_MEET_NPCS_QUEST_ID);
+  }
+
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.safeRoomDiscovered`, objective.safeRoomDiscovered);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.combatComplete`, objective.questCompleted);
   setGoalFlag(world, `${FLOOR_1_GOAL_PREFIX}.lootComplete`, meetsLoot);
@@ -2133,6 +2145,7 @@ export function getNpcQuestIndicatorState(world: GameWorld, npcId: string): NpcQ
       if (
         hasActiveQuest(world, FLOOR1_TUTORIAL_QUEST_ID) ||
         hasActiveQuest(world, FLOOR1_BOSS_UNLOCK_QUEST_ID) ||
+        hasActiveQuest(world, FLOOR1_MEET_NPCS_QUEST_ID) ||
         hasActiveQuest(world, FLOOR1_LEAVE_FLOOR_QUEST_ID)
       ) {
         return 'accepted';

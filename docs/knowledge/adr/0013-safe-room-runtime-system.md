@@ -1,7 +1,10 @@
 # ADR-0013: Safe Room Runtime System
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-14  
-**Status:** Accepted  
 **Deciders:** Agent session (safe-room-formalization)
 
 ## Context

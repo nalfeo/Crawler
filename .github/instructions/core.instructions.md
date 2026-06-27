@@ -41,3 +41,7 @@ import { createTestWorld } from '../../tests/helpers/world-factory';
 const world = createTestWorld({ seed: 42 });
 // Add entities, run system, assert state
 ```
+
+> Layer boundaries are enforced by `eslint.config.js`. See `docs/README.md` for
+> the governance source-of-truth registry and `docs/architecture.md` for the
+> systems catalogue.

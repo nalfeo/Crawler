@@ -43,3 +43,20 @@ export class SeededRandom {
     return array;
   }
 }
+
+/**
+ * Deterministic FNV-1a hash of a string → 32-bit signed int.
+ *
+ * Use to derive a stable per-key seed (e.g. choosing a sprite variant for a
+ * given item id) WITHOUT consuming a gameplay RNG stream. Never returns 0
+ * (xorshift32's fixed point) — falls back to the golden-ratio constant, matching
+ * the `SeededRandom` constructor guard.
+ */
+export function hashStringToSeed(value: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h | 0 || 0x9e3779b9;
+}

@@ -1,6 +1,9 @@
 # ADR 0009 — Floor 1 Boss/Stair Room Architecture
 
-**Status**: Accepted  
+## Status
+
+Accepted
+
 **Date**: 2026-06-09
 
 ## Context

@@ -1,7 +1,10 @@
 # ADR 0018: Line-of-Sight Gate for Weapon Auto-Targeting
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-25
-**Status:** Accepted
 **Deciders:** Systems Engineer
 
 ## Estimated Complexity

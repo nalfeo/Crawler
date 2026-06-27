@@ -114,10 +114,10 @@
   {
     "id": "generated:purple-potion-bottle-v1-var-4",
     "kind": "sprite",
-    "label": "purple-potion-bottle-v1",
+    "label": "purple-potion-bottle-v1-var-4",
     "description": "Generated sprite from brief: purple-potion-bottle-v1.",
     "tags": ["item", "generated", "pipeline-approved"],
-    "spriteId": "purple-potion-bottle-v1",
+    "spriteId": "purple-potion-bottle-v1-var-4",
     "sheetKey": "generated-manifest",
     "assetPath": "generated/purple-potion-bottle-v1-var-4.png",
     "frame": 0,

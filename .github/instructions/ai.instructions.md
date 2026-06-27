@@ -18,3 +18,7 @@ Reserved layer for future Ollama/The Director integration.
 ## The Director's Voice
 
 The Director is an ancient AI showrunner with 1980s game show host enthusiasm and reality TV producer menace. Each playthrough has a procedurally chosen "season quirk."
+
+> `src/game/ai/` is also subject to the game-layer rules in
+> `.github/instructions/game.instructions.md`. See `docs/README.md` for the
+> governance source-of-truth registry.

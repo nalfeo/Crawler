@@ -4,8 +4,8 @@
  * Two responsibilities:
  *   1. Fetch + parse `public/assets/generated/manifest.json` at boot.
  *   2. Queue each entry's PNG onto a Phaser loader so the entry's
- *      `textureKey` (== manifest `spriteName`) is loadable in subsequent
- *      scenes.
+ *      `textureKey` (unique per variant — the manifest entry key) is loadable
+ *      in subsequent scenes. Every approved variant of a brief is queued.
  *
  * Both helpers are written to be cheap to unit-test: the fetcher and the
  * loader-like object are injected, so tests don't need to spin up a real

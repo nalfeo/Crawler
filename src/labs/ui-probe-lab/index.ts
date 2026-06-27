@@ -153,7 +153,10 @@ function buildProbeSpriteRegistry(): ReturnType<typeof buildGeneratedSpriteRegis
   return buildGeneratedSpriteRegistry({
     version: 1,
     entries: {
-      [MERCHANTS_CHARM_DEF.id]: {
+      // The manifest map KEY becomes the registry `textureKey`, so it must be
+      // the baked Phaser texture key. `briefId` stays the item id so the
+      // InventoryUI lookup by `def.id` still resolves this entry.
+      [PROBE_ICON_TEXTURE]: {
         briefId: MERCHANTS_CHARM_DEF.id,
         spriteName: PROBE_ICON_TEXTURE,
         assetPath: 'assets/generated/ui-probe-icon.png',

@@ -17,6 +17,7 @@ import {
   fetchRunSummary,
   listSidecarRuns,
   postApprove,
+  ApproveRequestError,
   type SidecarRunListEntry,
 } from './devtools/sprite-approval-api.js';
 import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
@@ -1277,6 +1278,10 @@ function render(): void {
 
   let reports: FloorArtPlanReport[] = [];
   let manifestError: string | null = null;
+  // Variant-unique keys (`<briefId>-var-<N>`) currently present in the approved
+  // manifest. Refreshed by recompute(). Used to block exact-duplicate approvals
+  // and to confirm before approving an additional variant for the same brief.
+  let approvedVariantKeys = new Set<string>();
   let selectedAssetId: string | null = null;
   let selectedCandidatePath: string | null = null;
   let promotedBriefPath: string | null = null;
@@ -2540,6 +2545,31 @@ function render(): void {
         location.href = postprocessDebuggerHref(run.briefId, run.runId, candidate.index);
       });
       approveBtn.addEventListener('click', async () => {
+        const variantKey = `${run.briefId}-var-${candidate.index}`;
+        // Block re-approving the EXACT same variant (same brief + index). The
+        // server also enforces this (409), but catching it here avoids a
+        // pointless round-trip and gives a clearer message.
+        if (approvedVariantKeys.has(variantKey)) {
+          setWorkflowStatus(
+            `Variant ${variantKey} is already approved. Pick a different variant to add another.`,
+            '#fca5a5',
+          );
+          return;
+        }
+        // Confirm before approving an ADDITIONAL variant for a brief that
+        // already has one or more approved variants.
+        const siblingVariantCount = [...approvedVariantKeys].filter((key) =>
+          key.startsWith(`${run.briefId}-var-`),
+        ).length;
+        if (siblingVariantCount > 0) {
+          const ok = window.confirm(
+            `${run.briefId} already has ${siblingVariantCount} approved ` +
+              `variant${siblingVariantCount === 1 ? '' : 's'}. Approve variant ` +
+              `#${candidate.index} as an ADDITIONAL variant? At runtime the game ` +
+              'picks one of a brief\u2019s variants at random.',
+          );
+          if (!ok) return;
+        }
         if (overrideNeeded) {
           const axes = candidate.judge?.rejectedBy?.length
             ? candidate.judge.rejectedBy.join(', ')
@@ -2582,10 +2612,22 @@ function render(): void {
           );
           void recompute();
         } catch (error) {
-          setWorkflowStatus(
-            `Approve failed: ${error instanceof Error ? error.message : String(error)}`,
-            '#fca5a5',
-          );
+          // The sidecar returns 409 (already-approved) when the exact variant
+          // key already exists — surface it as a friendly notice and resync the
+          // approved-key set so the button blocks locally next time.
+          if (error instanceof ApproveRequestError && error.status === 409) {
+            approvedVariantKeys.add(`${run.briefId}-var-${candidate.index}`);
+            setWorkflowStatus(
+              `Variant ${run.briefId}-var-${candidate.index} is already approved.`,
+              '#fca5a5',
+            );
+            void recompute();
+          } else {
+            setWorkflowStatus(
+              `Approve failed: ${error instanceof Error ? error.message : String(error)}`,
+              '#fca5a5',
+            );
+          }
         } finally {
           setButtonBusy(approveBtn, false, busyLabel, 'Approving...');
         }
@@ -3754,6 +3796,7 @@ function render(): void {
       manifest = (await response.json()) as unknown;
       const entries = ((manifest as { entries?: Record<string, { assetPath?: string }> }).entries ??
         {}) as Record<string, { assetPath?: string }>;
+      approvedVariantKeys = new Set(Object.keys(entries));
       await Promise.all(
         Object.values(entries)
           .filter((entry): entry is { assetPath: string } => typeof entry.assetPath === 'string')
