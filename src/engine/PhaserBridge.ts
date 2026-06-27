@@ -1244,20 +1244,24 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         arcSpawnMs.delete(eid);
       }
 
-      for (const [eid, shadow] of gemShadows) {
+      // Iterate the spawn-time maps (always populated on first sight), not the
+      // shadow maps (only populated when the scene supports add.ellipse), so
+      // gem/gold entities clean up even in headless/test render paths that never
+      // create a ground shadow. Destroy the shadow only if one exists.
+      for (const [eid] of gemSpawnMs) {
         if (activeEntities.has(eid)) {
           continue;
         }
-        shadow.destroy();
+        gemShadows.get(eid)?.destroy();
         gemShadows.delete(eid);
         gemSpawnMs.delete(eid);
       }
 
-      for (const [eid, shadow] of goldShadows) {
+      for (const [eid] of goldSpawnMs) {
         if (activeEntities.has(eid)) {
           continue;
         }
-        shadow.destroy();
+        goldShadows.get(eid)?.destroy();
         goldShadows.delete(eid);
         goldSpawnMs.delete(eid);
       }

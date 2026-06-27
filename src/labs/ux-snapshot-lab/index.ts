@@ -485,19 +485,19 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       inventoryUI = createInventoryUI(this);
       equipmentUI = createEquipmentUI(this);
 
-      // Keyboard shortcuts: [I] toggles inventory, [G] toggles equipment.
+      // Keyboard shortcuts: [I] toggles inventory, [G] toggles equipment. The
+      // update loop mirrors the resulting open state back into settings so the
+      // bound GUI checkboxes stay in sync.
       const onKeyDown = (event: KeyboardEvent): void => {
         if (event.key === 'i' || event.key === 'I') {
           event.preventDefault();
           if (world) {
             inventoryUI?.toggle(world);
-            settings.showInventory = inventoryUI?.isOpen() ?? false;
           }
         } else if (event.key === 'g' || event.key === 'G') {
           event.preventDefault();
           if (world) {
             equipmentUI?.toggle(world);
-            settings.showEquipment = equipmentUI?.isOpen() ?? false;
           }
         }
       };
@@ -565,6 +565,11 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       if (equipmentUI?.isOpen()) {
         equipmentUI.refresh(world);
       }
+
+      // Mirror panel open/close state into settings so the bound GUI checkboxes
+      // (which .listen()) reflect [I]/[G] toggles, scene restarts, and clicks.
+      settings.showInventory = inventoryUI?.isOpen() ?? false;
+      settings.showEquipment = equipmentUI?.isOpen() ?? false;
     }
   }
 
@@ -607,31 +612,23 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     });
   gui.add(settings, 'showAbilities').name('Show abilities');
   gui
-    .add(
-      {
-        toggleInventory: () => {
-          if (world) {
-            inventoryUI?.toggle(world);
-            settings.showInventory = inventoryUI?.isOpen() ?? false;
-          }
-        },
-      },
-      'toggleInventory',
-    )
-    .name('Toggle inventory [I]');
+    .add(settings, 'showInventory')
+    .name('Show inventory [I]')
+    .listen()
+    .onChange((v: boolean) => {
+      if (world && inventoryUI && inventoryUI.isOpen() !== v) {
+        inventoryUI.toggle(world);
+      }
+    });
   gui
-    .add(
-      {
-        toggleEquipment: () => {
-          if (world) {
-            equipmentUI?.toggle(world);
-            settings.showEquipment = equipmentUI?.isOpen() ?? false;
-          }
-        },
-      },
-      'toggleEquipment',
-    )
-    .name('Toggle equipment [G]');
+    .add(settings, 'showEquipment')
+    .name('Show equipment [G]')
+    .listen()
+    .onChange((v: boolean) => {
+      if (world && equipmentUI && equipmentUI.isOpen() !== v) {
+        equipmentUI.toggle(world);
+      }
+    });
   gui.add({ openModal: () => openSampleModal() }, 'openModal').name('Open choice modal');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
