@@ -1,0 +1,60 @@
+{"type":"entity","name":"Crawler","entityType":"project","observations":["A crafting-focused vampire-survivors-like game set in a brutal intergalactic reality-show dungeon narrated by an AI showrunner called The Director","Tech stack: TypeScript (strict), Phaser 4, bitecs 0.4, Vite, Vitest, fast-check","Entirely agent-driven project; all gameplay logic is deterministic","Repo: nalfeo/Crawler; default branch main"]}
+{"type":"entity","name":"Determinism_Rule","entityType":"convention","observations":["All game randomness MUST use SeededRandom from src/shared/random.ts; never Math.random()","Never use Date.now() in game logic; pass delta or frameCount as parameters","CI gates are deterministic scripts with exit codes; no LLM-as-judge in CI"]}
+{"type":"entity","name":"SeededRandom","entityType":"utility","observations":["Deterministic RNG used for ALL game randomness","Defined in src/shared/random.ts","Required by the determinism rule in place of Math.random()"]}
+{"type":"entity","name":"Layer_Boundaries","entityType":"convention","observations":["Five layers with strict one-way imports enforced by ESLint: core, engine, game, labs, shared","src/core must not import from engine, game, or labs","src/engine must not import from game or labs","src/game must not import from engine or labs","src/labs is unrestricted","Additional non-layer dirs exist: src/bootstrap and src/devtools"]}
+{"type":"entity","name":"src_core","entityType":"layer","observations":["Pure ECS game logic; no rendering imports","Must not import Phaser","Systems are usually shaped as (world: GameWorld) => void and are deterministic"]}
+{"type":"entity","name":"src_engine","entityType":"layer","observations":["Phaser 4 bridge; rendering only","Replaceable layer kept separate from logic via the bridge pattern"]}
+{"type":"entity","name":"src_game","entityType":"layer","observations":["Game systems: crafting, loot, floors, AI, combat, progression","Must not import from engine or labs"]}
+{"type":"entity","name":"src_labs","entityType":"layer","observations":["Dev sandboxes; unrestricted imports","Every new ECS system MUST have a lab here before it ships","Labs are registered in src/lab-main.ts and run via npm run lab"]}
+{"type":"entity","name":"src_shared","entityType":"layer","observations":["Constants, types, pure utilities","Contains src/shared/random.ts (SeededRandom) and src/shared/constants.ts","Tunable values load from src/shared/data/tuning.json"]}
+{"type":"entity","name":"Phaser_Bridge_Pattern","entityType":"pattern","observations":["No Phaser imports allowed in src/core to keep logic portable","Rendering lives only in src/engine; the bridge scales feet to pixels at draw time"]}
+{"type":"entity","name":"ECS_bitecs","entityType":"technology","observations":["Game logic uses bitecs 0.4 ECS","Systems are deterministic, usually (world: GameWorld) => void","Established in ADR 0001"]}
+{"type":"entity","name":"Lab_Gating_Rule","entityType":"policy","observations":["No ECS system ships without a lab in src/labs","Enforced in CI via scripts/agent/lab-gate-check.sh","Established in ADR 0002"]}
+{"type":"entity","name":"Conventional_Commits","entityType":"convention","observations":["Commit messages enforced by commitlint","Allowed types: feat, fix, chore, docs, lab, refactor, test, perf, ci, build, revert"]}
+{"type":"entity","name":"Verification_Commands","entityType":"workflow","observations":["npm run verify:fast runs typecheck + lint + format + dead-code + lab-gate (about 30s) after every change","npm run verify runs the full suite (about 3min) before committing","Test projects: unit, integration, e2e via vitest","Use createTestWorld from tests/helpers/world-factory.ts; never construct worlds manually"]}
+{"type":"entity","name":"Memory_Policy","entityType":"policy","observations":["Three-tier memory: hot (always-loaded rules), codified (personas/policies/guides/ADRs), on-demand (handoffs/notes)","Defined in docs/agent-os/policies/memory-policy.md","Principle: nothing is deleted, only archived"]}
+{"type":"entity","name":"Handoff_Protocol","entityType":"policy","observations":["Every session writes a handoff before ending: docs/knowledge/handoffs/YYYY-MM-DD-slug.md","Minimum contents: summary, files touched, verification run, unresolved issues, next steps","Part of the Memory Policy"]}
+{"type":"entity","name":"Apple_Complexity","entityType":"policy","observations":["Declare a complexity estimate of 1 to 5 apples before writing any code","Score actuals and a verdict at handoff","Record in docs/knowledge/metrics/apples/YYYY-MM-DD-slug.json","Defined in docs/agent-os/policies/complexity-policy.md"]}
+{"type":"entity","name":"Merge_Policy","entityType":"policy","observations":["Authorized merges use: gh pr merge --auto --squash","No human review is required to merge; branch protection does not require an approving review","Diagnose real CI failures before giving up; never blame a human review block without explicit proof"]}
+{"type":"entity","name":"Spatial_Units_Feet","entityType":"convention","observations":["Feet is the single internal spatial unit everywhere except rendering","PIXELS_PER_FOOT = 8; default arena is 160x90 ft, mirroring the 1280x720 px canvas","Render canvas is 1280x720 at 60 FPS fixed timestep (GAME.DELTA_MS = 1000/60)","Established in ADR 0023 (feet-as-single-internal-spatial-unit)"]}
+{"type":"entity","name":"createTestWorld","entityType":"utility","observations":["Factory for constructing ECS worlds in tests","Located at tests/helpers/world-factory.ts","Always use it; never construct worlds manually"]}
+{"type":"entity","name":"ADR_0001_ECS_Architecture","entityType":"decision","observations":["Establishes the bitecs ECS architecture","File: docs/knowledge/adr/0001-ecs-architecture.md","Status: accepted"]}
+{"type":"entity","name":"ADR_0002_Lab_Gated_Development","entityType":"decision","observations":["Every system must have a lab before shipping; enforced in CI","File: docs/knowledge/adr/0002-lab-gated-development.md","Status: accepted"]}
+{"type":"entity","name":"ADR_0023_Feet_Spatial_Unit","entityType":"decision","observations":["Adopts feet as the single internal spatial unit; bridge converts to pixels at render time","File: docs/knowledge/adr/0023-feet-as-single-internal-spatial-unit.md","Status: accepted"]}
+{"type":"entity","name":"Combat_System","entityType":"system","observations":["Damage, health, knockback, and melee/ranged/projectile/beam weapons","Lives in src/game; labs include combat-lab and weapons-lab","WeaponType enum (src/shared/constants.ts): MELEE, RANGED, MAGIC, THROWN, BEAM, TRAP"]}
+{"type":"entity","name":"Drops_Loot_System","entityType":"system","observations":["Loot drops and pickups","Lives in src/game; lab: drop-lab","Architecture in ADR 0006 (drops-system-architecture)"]}
+{"type":"entity","name":"AI_Behavior_Tree","entityType":"system","observations":["Enemy AI via behavior trees with pure, deterministic decision kernels","Lives in src/game/ai; pure kernels in src/game/ai/exploration.ts","src/game/ai is reserved for future Ollama integration, floor-load only; see ADR 0022"]}
+{"type":"entity","name":"Floor_System","entityType":"system","observations":["Procedural floor generation, rooms, doors, and special-room sealing","Lives in src/game; labs include floor1-lab, map-gen-lab, door-lab","Floor 1 has a headless victory completion gate in tests"]}
+{"type":"entity","name":"Sprite_Pipeline","entityType":"system","observations":["Multi-stage sprite generation and judging workflow under scripts/sprites","Commands: npm run sprites:* (run, gallery, approve, synth, batch, asset-plan, sync-catalog, metadata)","Architecture in ADR 0003 (sprite-generation-pipeline)"]}
+{"type":"entity","name":"Agent_Memory_Store","entityType":"infrastructure","observations":["This knowledge graph persists durable facts for AI coding agents across sessions","Backed by docs/knowledge/agent-memory.jsonl and served by the MCP memory server via MEMORY_FILE_PATH","At session start, call read_graph or search_nodes; record durable facts as entities, observations, and relations","Complements the file-based three-tier Memory Policy; setup and sync are documented in docs/guides/agent-memory.md"]}
+{"type":"relation","from":"Crawler","to":"ECS_bitecs","relationType":"uses"}
+{"type":"relation","from":"Crawler","to":"Determinism_Rule","relationType":"enforces"}
+{"type":"relation","from":"Crawler","to":"Layer_Boundaries","relationType":"enforces"}
+{"type":"relation","from":"Crawler","to":"Memory_Policy","relationType":"governed_by"}
+{"type":"relation","from":"Crawler","to":"Merge_Policy","relationType":"governed_by"}
+{"type":"relation","from":"Crawler","to":"Conventional_Commits","relationType":"requires"}
+{"type":"relation","from":"Layer_Boundaries","to":"src_core","relationType":"includes"}
+{"type":"relation","from":"Layer_Boundaries","to":"src_engine","relationType":"includes"}
+{"type":"relation","from":"Layer_Boundaries","to":"src_game","relationType":"includes"}
+{"type":"relation","from":"Layer_Boundaries","to":"src_labs","relationType":"includes"}
+{"type":"relation","from":"Layer_Boundaries","to":"src_shared","relationType":"includes"}
+{"type":"relation","from":"src_core","to":"src_engine","relationType":"must_not_import"}
+{"type":"relation","from":"src_core","to":"src_game","relationType":"must_not_import"}
+{"type":"relation","from":"src_engine","to":"src_game","relationType":"must_not_import"}
+{"type":"relation","from":"src_game","to":"src_engine","relationType":"must_not_import"}
+{"type":"relation","from":"Determinism_Rule","to":"SeededRandom","relationType":"requires"}
+{"type":"relation","from":"Phaser_Bridge_Pattern","to":"src_core","relationType":"protects"}
+{"type":"relation","from":"ECS_bitecs","to":"ADR_0001_ECS_Architecture","relationType":"documented_in"}
+{"type":"relation","from":"Lab_Gating_Rule","to":"ADR_0002_Lab_Gated_Development","relationType":"documented_in"}
+{"type":"relation","from":"Spatial_Units_Feet","to":"ADR_0023_Feet_Spatial_Unit","relationType":"documented_in"}
+{"type":"relation","from":"SeededRandom","to":"src_shared","relationType":"defined_in"}
+{"type":"relation","from":"Combat_System","to":"src_game","relationType":"lives_in"}
+{"type":"relation","from":"Drops_Loot_System","to":"src_game","relationType":"lives_in"}
+{"type":"relation","from":"AI_Behavior_Tree","to":"src_game","relationType":"lives_in"}
+{"type":"relation","from":"Floor_System","to":"src_game","relationType":"lives_in"}
+{"type":"relation","from":"Lab_Gating_Rule","to":"Combat_System","relationType":"applies_to"}
+{"type":"relation","from":"Handoff_Protocol","to":"Memory_Policy","relationType":"part_of"}
+{"type":"relation","from":"Apple_Complexity","to":"Memory_Policy","relationType":"part_of"}
+{"type":"relation","from":"Verification_Commands","to":"createTestWorld","relationType":"uses"}
+{"type":"relation","from":"Spatial_Units_Feet","to":"Floor_System","relationType":"applies_to"}
+{"type":"relation","from":"Agent_Memory_Store","to":"Crawler","relationType":"stores_memory_for"}

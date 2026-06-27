@@ -6,7 +6,10 @@
     },
     "memory": {
       "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {
+        "MEMORY_FILE_PATH": "C:\\Users\\nalfeo\\.copilot\\crawler-memory\\agent-memory.jsonl"
+      }
     },
     "context7": {
       "command": "npx",

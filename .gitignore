@@ -43,3 +43,6 @@ files/guard-telemetry.jsonl
 # .env.local is already covered by the *.local rule above; listed explicitly for clarity.
 .env.local
 .env
+
+# Basic Memory local index/artifacts (see docs/guides/agent-memory.md)
+**/.basic-memory/
