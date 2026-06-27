@@ -128,7 +128,24 @@ describe('runAssetPrConsolidation', () => {
       removeDir: () => Promise.resolve(),
       readJson: () => Promise.resolve({} as never),
       writeJson: () => Promise.resolve(),
+      env: {},
     });
     expect(result).toBeNull();
+  });
+
+  it('refuses to run under CI (local-only, mirrors runAssetCheckin)', async () => {
+    const exec: Exec = () => {
+      throw new Error('exec must not run when CI guard trips');
+    };
+    await expect(
+      runAssetPrConsolidation('/repo', {
+        exec,
+        makeTempDir: () => Promise.resolve('/tmp/x'),
+        removeDir: () => Promise.resolve(),
+        readJson: () => Promise.resolve({} as never),
+        writeJson: () => Promise.resolve(),
+        env: { CI: 'true' },
+      }),
+    ).rejects.toThrow(/local-only/);
   });
 });

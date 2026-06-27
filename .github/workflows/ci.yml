@@ -205,6 +205,12 @@ jobs:
               exit 1
             fi
           }
+          # The `changes` job MUST succeed. Heavy gates are skipped both when
+          # art_only == 'true' AND when `changes` fails (a failed `needs`
+          # dependency skips downstream jobs). Without this explicit, non-
+          # skippable check, a `changes`/detect-art-only failure on a code PR
+          # would skip every heavy gate and be silently counted as PASS.
+          check "Change scope detection"        "${{ needs.changes.result }}"
           # Heavy gameplay gates are allowed to be skipped on art-only changes
           # (see the `changes` job). They still BLOCK on any code change.
           check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"

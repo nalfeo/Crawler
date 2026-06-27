@@ -22,6 +22,7 @@ import {
 } from './asset-issues.js';
 import {
   ASSET_CHECKIN_LABEL,
+  CheckinError,
   type AssetCheckinPayload,
   type CheckinAsset,
   type Exec,
@@ -221,6 +222,15 @@ export async function runAssetPrConsolidation(
   deps: AssetPrRunnerDeps,
   options: AssetPrOptions = {},
 ): Promise<AssetPrResult | null> {
+  const env = deps.env ?? process.env;
+  if (env.CI !== undefined) {
+    throw new CheckinError(
+      'ci-refused',
+      'Per Constitutional §3, asset-PR consolidation is local-only: it pushes a ' +
+        'batch branch and opens a PR. Run it on a dev box (npm run sprites:asset-pr).',
+    );
+  }
+
   const remote = options.remote ?? 'origin';
   const baseBranch = options.baseBranch ?? 'main';
   const now = deps.now ?? (() => new Date());
