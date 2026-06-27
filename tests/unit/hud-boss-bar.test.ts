@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BOSS_BAR_COLORS, resolveBossHealthBar } from '../../src/engine/boss-health-bar-state.js';
-import type { Floor1BossEncounterState } from '../../src/shared/floor1.js';
+import type { Floor1BossEncounterState } from '../../src/shared/floor-types.js';
 import { spawnEnemy } from '../../src/core/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 

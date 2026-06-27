@@ -65,7 +65,7 @@ import {
   FLOOR1_QUEST_UNLOCK_LEVEL,
   getShopkeeperStage,
   SHOPKEEPER_EQUIPMENT_COST,
-} from '../floor1Scenario.js';
+} from '../floorScenario.js';
 import { getActiveWeapon, getActiveWeaponReadiness } from '../weaponSystem.js';
 
 const logger = createLogger('game:bt-ai-provider');

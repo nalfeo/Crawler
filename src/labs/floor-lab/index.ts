@@ -36,7 +36,7 @@ import {
   confirmFloor1StairDescend,
   meetSpellQuestGiver,
   selectSpellFromBossBattle,
-} from '../../game/floor1Scenario.js';
+} from '../../game/floorScenario.js';
 import { setGoalFlag } from '../../core/door-lock.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,

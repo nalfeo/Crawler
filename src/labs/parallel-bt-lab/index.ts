@@ -19,7 +19,7 @@
 
 import Phaser from 'phaser';
 import { query } from 'bitecs';
-import { createFloor1MainSceneOptions } from '../../bootstrap/floor1-main-scene-options.js';
+import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { BootScene, MainGameScene } from '../../engine/index.js';
 import { BehaviorTreeAI } from '../../game/ai/bt-ai-provider.js';
 import { Player, Position, Health, type GameWorld } from '../../core/index.js';

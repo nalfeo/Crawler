@@ -83,7 +83,7 @@ import {
 import { memorizeSpell } from './systems/abilitySystem.js';
 import { getAllSkillDefinitions } from './skills/registry.js';
 import type { SkillState } from '../shared/skills.js';
-import { floor1Config } from '../shared/floor1-config.js';
+import { floor1Config } from '../shared/floor-config.js';
 import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';

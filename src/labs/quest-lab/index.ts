@@ -24,7 +24,7 @@ import {
   equipPurchasedGear,
   getShopkeeperStage,
   SHOPKEEPER_EQUIPMENT_COST,
-} from '../../game/floor1Scenario.js';
+} from '../../game/floorScenario.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };

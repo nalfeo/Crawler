@@ -8,7 +8,7 @@ import {
   questSystem,
 } from '../../core/systems/questSystem.js';
 import { FLOOR1_BOSS_BATTLE_QUEST_ID, getQuestDef } from '../../shared/quest-types.js';
-import { initializeFloor1Scenario, selectSpellFromBossBattle } from '../../game/floor1Scenario.js';
+import { initializeFloor1Scenario, selectSpellFromBossBattle } from '../../game/floorScenario.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };

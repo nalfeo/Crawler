@@ -5,7 +5,7 @@ import {
   DEFAULT_FLOOR1_LOADOUT_CHOICE,
   applyFloor1LoadoutChoice,
   createFloor1LoadoutScenario,
-} from '../../src/game/scenarios/floor1LoadoutScenario.js';
+} from '../../src/game/scenarios/floorLoadoutScenario.js';
 
 describe('floor1LoadoutScenario', () => {
   it('builds an extensible picker scenario with selectable options', () => {

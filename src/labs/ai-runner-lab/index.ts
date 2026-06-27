@@ -8,9 +8,9 @@
  * - Comparing AI vs human performance
  */
 import Phaser from 'phaser';
-import { createFloor1GameConfig } from '../../bootstrap/floor1-game-config.js';
+import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
-import { createFloor1MainSceneOptions } from '../../bootstrap/floor1-main-scene-options.js';
+import { createFloor1MainSceneOptions } from '../../bootstrap/floor-main-scene-options.js';
 import { AIState, BehaviorTreeAI } from '../../game/ai/index.js';
 import {
   autoFloor1ProgressionSystem,

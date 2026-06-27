@@ -2,13 +2,13 @@
  * Enemy archetype identifier from the current floor's enemy pack.
  * Previously hardcoded as 'rat' | 'slime', now generalized to support any enemy ID.
  */
-export type Floor1EnemyArchetype = string;
+export type FloorEnemyArchetype = string;
 
 /**
  * State for a single boss encounter inside a boss room.
- * Keyed by a stable string ID in `Floor1ObjectiveState.bossBattles`.
+ * Keyed by a stable string ID in `FloorObjectiveState.bossBattles`.
  */
-export interface Floor1BossEncounterState {
+export interface FloorBossEncounterState {
   /** True once the player enters the boss room and the battle begins. */
   started: boolean;
   /** EID of the spawned boss entity, or null if not yet spawned or already dead. */
@@ -19,7 +19,7 @@ export interface Floor1BossEncounterState {
   displayName: string;
 }
 
-export interface Floor1ObjectiveState {
+export interface FloorObjectiveState {
   readonly requiredRats: number;
   readonly requiredSlimes: number;
   readonly requiredGold: number;
@@ -63,16 +63,16 @@ export interface Floor1ObjectiveState {
    * Generic boss encounter registry, keyed by a stable boss ID string.
    * Floor 1 uses 'slime-rat' (spell-quest room) and 'staircase' (end-of-floor room).
    */
-  bossBattles: Map<string, Floor1BossEncounterState>;
+  bossBattles: Map<string, FloorBossEncounterState>;
 }
 
-export interface Floor1RunSummary {
+export interface FloorRunSummary {
   outcome: 'failed_timeout' | 'cleared_floor';
   viewsEarned: number;
   fansEarned: number;
 }
 
-export interface Floor1ScenarioState {
+export interface FloorScenarioState {
   protagonistName: string;
   starterWeaponPool: readonly string[];
   starterChoices: string[];
@@ -83,7 +83,7 @@ export interface Floor1ScenarioState {
     moveSpeed: number;
     pickupRange: number;
   };
-  enemyArchetypes: Map<number, Floor1EnemyArchetype>;
+  enemyArchetypes: Map<number, FloorEnemyArchetype>;
   /** EID of the spawned Tutorial Goon NPC, or null if not yet spawned. */
   guideNpcEid: number | null;
   /** EID of the spawned spell-quest giver NPC, or null if not yet spawned. */
@@ -94,10 +94,17 @@ export interface Floor1ScenarioState {
   questItemEid: number | null;
   /**
    * Door entity IDs guarding each boss room, keyed by the same boss ID used in
-   * `Floor1ObjectiveState.bossBattles` ('slime-rat', 'staircase', …).
+   * `FloorObjectiveState.bossBattles` ('slime-rat', 'staircase', …).
    */
   bossRoomDoorEids: Map<string, number[]>;
-  objective: Floor1ObjectiveState;
+  objective: FloorObjectiveState;
   failReason: 'stair_timeout' | null;
-  runSummary: Floor1RunSummary | null;
+  runSummary: FloorRunSummary | null;
 }
+
+// Backward compatibility exports
+export type Floor1EnemyArchetype = FloorEnemyArchetype;
+export type Floor1BossEncounterState = FloorBossEncounterState;
+export type Floor1ObjectiveState = FloorObjectiveState;
+export type Floor1RunSummary = FloorRunSummary;
+export type Floor1ScenarioState = FloorScenarioState;

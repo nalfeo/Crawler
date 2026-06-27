@@ -87,17 +87,33 @@ export const enemyPackDefSchema = z
 export type EnemyPackDef = z.infer<typeof enemyPackDefSchema>;
 
 /**
- * Load and validate the Floor 1 enemy pack.
+ * Load and validate an enemy pack by ID.
  */
-function loadFloor1EnemyPack(): EnemyPackDef {
-  const parsed = enemyPackDefSchema.parse(floor1EnemyPackJson);
+function loadEnemyPackByJson(json: unknown): EnemyPackDef {
+  const parsed = enemyPackDefSchema.parse(json);
   return parsed;
 }
 
 /**
- * Validated Floor 1 enemy pack, loaded at module initialization.
+ * Enemy pack registry mapping pack IDs to their definitions.
  */
-export const floor1EnemyPack: EnemyPackDef = loadFloor1EnemyPack();
+const ENEMY_PACK_REGISTRY = new Map<string, EnemyPackDef>([
+  ['floor1-ambient', loadEnemyPackByJson(floor1EnemyPackJson)],
+]);
+
+/**
+ * Get an enemy pack by ID.
+ * @param packId - The enemy pack identifier (e.g., "floor1-ambient")
+ * @returns Enemy pack definition, or undefined if not found
+ */
+export function getFloorEnemyPack(packId: string): EnemyPackDef | undefined {
+  return ENEMY_PACK_REGISTRY.get(packId);
+}
+
+/**
+ * @deprecated Use getFloorEnemyPack("floor1-ambient") instead
+ */
+export const floor1EnemyPack: EnemyPackDef = ENEMY_PACK_REGISTRY.get('floor1-ambient')!;
 
 /**
  * Selects a random enemy archetype from the pack using weighted selection.
