@@ -52,7 +52,7 @@ import {
   type ComponentStores,
 } from './components.js';
 import type { StatModifier, SkillState, SkillUsageEvent, PlayerLevel } from '../shared/skills.js';
-import type { Floor1ScenarioState } from '../shared/floor1.js';
+import type { Floor1ScenarioState } from '../shared/floor-types.js';
 import type { NpcInstance } from '../shared/npc-types.js';
 import type { QuestState } from '../shared/quest-types.js';
 import type { QuestEvent } from '../shared/quest-events.js';

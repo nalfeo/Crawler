@@ -5,7 +5,7 @@ import { resolveBootRenderScale } from '../engine/render-scale.js';
 import { GAME } from '../shared/constants.js';
 
 /**
- * Shared Phaser bootstrap for the main Floor 1 experience surfaces.
+ * Shared Phaser bootstrap for floor experience surfaces.
  *
  * Keeping the base game and the visual AI runner on the same config path means
  * UX/rendering polish added to the shipped game host is inherited by the lab
@@ -16,10 +16,12 @@ import { GAME } from '../shared/constants.js';
  * displays). The 1280×720 design space is preserved for all gameplay, layout and
  * input via camera zoom — see src/engine/render-scale.ts. On a 1× display shown
  * at the design size `renderScale === 1`, so this is a no-op there.
+ * @param floorId - The floor identifier (e.g., "floor1")
  */
-export function createFloor1GameConfig(
+export function createFloorGameConfig(
   parent: string | HTMLElement,
   sceneOptions: MainGameSceneOptions,
+  _floorId: string = 'floor1',
 ): Phaser.Types.Core.GameConfig {
   const renderScale = resolveBootRenderScale(parent);
   return {
@@ -43,4 +45,14 @@ export function createFloor1GameConfig(
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
   };
+}
+
+/**
+ * @deprecated Use createFloorGameConfig instead
+ */
+export function createFloor1GameConfig(
+  parent: string | HTMLElement,
+  sceneOptions: MainGameSceneOptions,
+): Phaser.Types.Core.GameConfig {
+  return createFloorGameConfig(parent, sceneOptions, 'floor1');
 }

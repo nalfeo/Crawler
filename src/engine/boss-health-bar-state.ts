@@ -7,7 +7,7 @@
  */
 import { entityExists } from 'bitecs';
 import type { GameWorld } from '../core/world.js';
-import type { Floor1BossEncounterState } from '../shared/floor1.js';
+import type { Floor1BossEncounterState } from '../shared/floor-types.js';
 
 /** Fill colours keyed to the remaining-health band. */
 export const BOSS_BAR_COLORS = {

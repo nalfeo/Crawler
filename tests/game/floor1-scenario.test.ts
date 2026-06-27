@@ -21,7 +21,7 @@ import {
   shouldShowSpellSelector,
   startFloor1BossEncounter,
   SHOPKEEPER_EQUIPMENT_COST,
-} from '../../src/game/floor1Scenario.js';
+} from '../../src/game/floorScenario.js';
 import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';

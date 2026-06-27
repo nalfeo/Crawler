@@ -28,7 +28,7 @@ import {
   initializeFloor1Scenario,
   meetTutorialGoon,
   selectFloor1StarterWeapon,
-} from '../../src/game/floor1Scenario.js';
+} from '../../src/game/floorScenario.js';
 import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';

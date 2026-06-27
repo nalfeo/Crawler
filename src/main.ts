@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { createFloor1GameConfig } from './bootstrap/floor1-game-config.js';
+import { createFloor1GameConfig } from './bootstrap/floor-game-config.js';
 import { GAME } from './shared/constants.js';
 import {
   createLogger,
@@ -33,7 +33,7 @@ logger.info('Game bootstrapped', {
 });
 
 async function bootstrapGame(): Promise<void> {
-  const { createFloor1MainSceneOptions } = await import('./bootstrap/floor1-main-scene-options.js');
+  const { createFloor1MainSceneOptions } = await import('./bootstrap/floor-main-scene-options.js');
   const config = createFloor1GameConfig('game-container', createFloor1MainSceneOptions());
   new Phaser.Game(config);
 }

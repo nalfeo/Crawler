@@ -13,7 +13,7 @@ import {
   initializeFloor1Scenario,
   meetTutorialGoon,
   selectFloor1StarterWeapon,
-} from '../../src/game/floor1Scenario.js';
+} from '../../src/game/floorScenario.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
