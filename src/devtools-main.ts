@@ -26,6 +26,8 @@ import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
 import {
   QUEUE_STORAGE_KEY,
   SPRITE_TYPES,
+  SIZE_VARIANTS,
+  DEFAULT_SIZE_VARIANT,
   addItem as queueAddItem,
   candidateForceEligible,
   candidateStatus,
@@ -36,6 +38,7 @@ import {
   deserializeQueue,
   getSelectedItem,
   isBusyStage,
+  isSizeVariant,
   primaryActionLabel,
   removeItem as queueRemoveItem,
   restartToBriefPatch,
@@ -51,6 +54,7 @@ import {
   type QueueItem,
   type QueueState,
   type RequestedType,
+  type SizeVariant,
   type SpriteType,
   type WorkflowStage,
 } from './devtools/sprite-workflow-queue.js';
@@ -807,6 +811,31 @@ function render(): void {
     option.textContent = value === 'auto' ? 'Auto-detect type' : value;
     typeSelect.append(option);
   }
+  // Output size variant — scales the per-type footprint independently of type.
+  // Baked into the synthesized brief, so it is chosen here (before Synthesize).
+  const sizeSelect = el('select', {
+    title:
+      'Output size variant — scales the sprite footprint: default 1×1, wide 2×1, tall 1×2, large 2×2.',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+    },
+  }) as HTMLSelectElement;
+  const SIZE_VARIANT_LABELS: Readonly<Record<SizeVariant, string>> = {
+    default: 'Size: default (1×1)',
+    wide: 'Size: wide (2×1)',
+    tall: 'Size: tall (1×2)',
+    large: 'Size: large (2×2)',
+  };
+  for (const value of SIZE_VARIANTS) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = SIZE_VARIANT_LABELS[value];
+    sizeSelect.append(option);
+  }
   const addToQueueBtn = el('button', {
     text: 'Add to queue',
     style: {
@@ -819,7 +848,7 @@ function render(): void {
       fontWeight: '600',
     },
   });
-  composerRow.append(nameInput, briefInput, typeSelect, addToQueueBtn);
+  composerRow.append(nameInput, briefInput, typeSelect, sizeSelect, addToQueueBtn);
 
   const queueBar = el('div', {
     style: {
@@ -1556,6 +1585,7 @@ function render(): void {
   let currentRun: WorkflowRunState | null = null;
   let debugTarget: PostprocessDebugTarget | null = null;
   let debuggerRenderToken = 0;
+  let rawSheetRenderToken = 0;
   let rerenderPostprocessPipeline: (() => void) | null = null;
   let appliedBackgroundTweaks: BackgroundTweakState = {
     colorToleranceSq: DEFAULT_BACKGROUND_TWEAKS.colorToleranceSq,
@@ -1581,6 +1611,10 @@ function render(): void {
       readonly priorStage: WorkflowStage;
     }
   >();
+  // Which step last failed for an item, so the status line can name it and tell
+  // the user to re-click that button to requeue. Cleared when the step is
+  // retried, cancelled, or succeeds.
+  const lastFailedStep = new Map<string, 'postprocess' | 'judge'>();
   // Poll-attempt counters for the queued path, surfaced in the live progress
   // line. Ephemeral: cleared when generation ends or is cancelled, and reset
   // (not persisted) on reload when polling auto-resumes.
@@ -2107,7 +2141,9 @@ function render(): void {
     }
     const badge = STAGE_BADGES[item.stage];
     const briefSuffix = item.brief ? ` — ${item.brief}` : '';
-    activeItemLabel.textContent = `Active: "${item.name}"${briefSuffix} → ${item.kebabName} [${item.resolvedType ?? item.requestedType}] · ${badge.text}`;
+    const sizeSuffix =
+      item.sizeVariant === DEFAULT_SIZE_VARIANT ? '' : ` · size: ${item.sizeVariant}`;
+    activeItemLabel.textContent = `Active: "${item.name}"${briefSuffix} → ${item.kebabName} [${item.resolvedType ?? item.requestedType}]${sizeSuffix} · ${badge.text}`;
     activeItemLabel.style.color = badge.color;
     renderStepper(item);
     const busy = isBusyStage(item.stage);
@@ -2163,7 +2199,17 @@ function render(): void {
     cancelStepBtn.disabled = !stepRunning;
     const nextAction = primaryActionLabel(item.stage);
     if (item.lastError) {
-      setWorkflowStatus(`Error: ${item.lastError}`, '#fca5a5');
+      const failed = lastFailedStep.get(item.id);
+      if (failed === 'postprocess') {
+        setWorkflowStatus(
+          `PostProcess failed: ${item.lastError} — click PostProcess to retry.`,
+          '#fca5a5',
+        );
+      } else if (failed === 'judge') {
+        setWorkflowStatus(`Judge failed: ${item.lastError} — click Judge to retry.`, '#fca5a5');
+      } else {
+        setWorkflowStatus(`Error: ${item.lastError}`, '#fca5a5');
+      }
     } else if (item.metadataSummary && item.stage === 'done') {
       setWorkflowStatus(item.metadataSummary, '#bef264');
     } else if (item.approvalSummary && item.stage === 'approved') {
@@ -2237,25 +2283,110 @@ function render(): void {
         renderWorkflowSelection();
         writeWorkflowState();
       });
-      summaryNode.append(
-        chooseBtn,
-        el('span', { text: `${candidate.id} — ${candidate.description}` }),
-      );
-      card.append(
-        summaryNode,
-        el('pre', {
-          text: candidate.yaml,
-          style: {
-            marginTop: '8px',
-            fontSize: '10px',
-            lineHeight: '1.35',
-            color: '#cbd5e1',
-            whiteSpace: 'pre-wrap',
-            maxHeight: '220px',
-            overflow: 'auto',
-          },
-        }),
-      );
+      const descSpan = el('span', { text: `${candidate.id} — ${candidate.description}` });
+      summaryNode.append(chooseBtn, descSpan);
+      const editorWrap = el('div', { style: { marginTop: '8px' } });
+      const yamlEditor = el('textarea', {
+        title: 'Edit the synthesized brief YAML. Save validates it; Generate uses the saved file.',
+        style: {
+          width: '100%',
+          minHeight: '180px',
+          maxHeight: '320px',
+          boxSizing: 'border-box',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+          fontSize: '10px',
+          lineHeight: '1.35',
+          color: '#cbd5e1',
+          background: '#0b1220',
+          border: '1px solid rgba(148,163,184,0.25)',
+          borderRadius: '6px',
+          padding: '6px',
+          resize: 'vertical',
+          whiteSpace: 'pre',
+          overflow: 'auto',
+        },
+      });
+      yamlEditor.value = candidate.yaml;
+      yamlEditor.spellcheck = false;
+      const saveRow = el('div', {
+        style: { display: 'flex', gap: '8px', alignItems: 'center', marginTop: '6px' },
+      });
+      const saveBriefBtn = el('button', {
+        text: 'Save brief',
+        title: 'Validate and save the edited brief YAML. Generate will use the saved file.',
+        style: {
+          padding: '4px 10px',
+          borderRadius: '6px',
+          border: '1px solid rgba(125,211,252,0.5)',
+          background: '#082f49',
+          color: '#e0f2fe',
+          cursor: 'pointer',
+          fontSize: '11px',
+          fontWeight: '600',
+        },
+      });
+      const saveStatus = el('span', { style: { fontSize: '10px', color: '#94a3b8' } });
+      saveBriefBtn.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const yaml = yamlEditor.value;
+        if (yaml.trim() === '') {
+          saveStatus.textContent = 'Brief cannot be empty.';
+          saveStatus.style.color = '#fca5a5';
+          return;
+        }
+        setButtonBusy(saveBriefBtn, true, 'Save brief', 'Saving...');
+        saveStatus.textContent = '';
+        try {
+          const response = await fetch(`${SIDECAR_BASE}/api/workflow/brief`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ yamlPath: candidate.yamlPath, yaml }),
+          });
+          const payload = (await response.json().catch(() => ({}))) as {
+            description?: unknown;
+            yaml?: unknown;
+            message?: unknown;
+          };
+          if (!response.ok) {
+            const message =
+              typeof payload.message === 'string' ? payload.message : `HTTP ${response.status}`;
+            saveStatus.textContent = `Save failed: ${message}`;
+            saveStatus.style.color = '#fca5a5';
+            return;
+          }
+          const savedYaml = typeof payload.yaml === 'string' ? payload.yaml : yaml;
+          const savedDescription =
+            typeof payload.description === 'string' ? payload.description : candidate.description;
+          candidate.yaml = savedYaml;
+          candidate.description = savedDescription;
+          yamlEditor.value = savedYaml;
+          descSpan.textContent = `${candidate.id} — ${savedDescription}`;
+          // Persist onto the active item's candidate so reloads/re-renders keep
+          // the edit; Generate reads the saved file from disk.
+          const active = getSelectedItem(queueState);
+          if (active) {
+            queueState = queueUpdateItem(queueState, active.id, {
+              candidates: active.candidates.map((entry) =>
+                entry.yamlPath === candidate.yamlPath
+                  ? { ...entry, yaml: savedYaml, description: savedDescription }
+                  : entry,
+              ),
+            });
+            writeQueueState();
+          }
+          saveStatus.textContent = 'Saved. Generate will use the edited brief.';
+          saveStatus.style.color = '#bef264';
+        } catch (error) {
+          saveStatus.textContent = `Save failed: ${error instanceof Error ? error.message : String(error)}`;
+          saveStatus.style.color = '#fca5a5';
+        } finally {
+          setButtonBusy(saveBriefBtn, false, 'Save brief', 'Saving...');
+        }
+      });
+      saveRow.append(saveBriefBtn, saveStatus);
+      editorWrap.append(yamlEditor, saveRow);
+      card.append(summaryNode, editorWrap);
       synthResultsHost.append(card);
     }
   };
@@ -2664,10 +2795,72 @@ function render(): void {
           style: { fontSize: '12px', color: '#93c5fd', marginBottom: '2px' },
         }),
         el('div', {
-          text: 'Click PostProcess to slice, background-fix, and resize the sheet into scored variants.',
+          text: 'Below is the raw generated sheet. Click PostProcess to slice, background-fix, and resize it into scored variants.',
           style: { fontSize: '10px', color: '#94a3b8', marginBottom: '6px' },
         }),
       );
+      const sheetHost = el('div', {
+        style: { display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-start' },
+      });
+      runResultsHost.append(sheetHost);
+      // Async: list and render the raw sheet PNG(s) the Generate step stored.
+      // A render token guards against the selection changing mid-fetch.
+      const sheetBriefId = run.briefId;
+      const sheetRunId = run.runId;
+      const token = ++rawSheetRenderToken;
+      void (async () => {
+        try {
+          const response = await fetch(sheetsUrl(sheetBriefId, sheetRunId), { cache: 'no-store' });
+          if (token !== rawSheetRenderToken) return;
+          if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+          const data = (await response.json()) as { files?: unknown };
+          if (token !== rawSheetRenderToken) return;
+          const files = Array.isArray(data.files)
+            ? data.files.filter((value): value is string => typeof value === 'string')
+            : [];
+          if (files.length === 0) {
+            sheetHost.append(
+              el('div', {
+                text: 'No raw sheet image found for this run.',
+                style: { fontSize: '11px', color: '#94a3b8' },
+              }),
+            );
+            return;
+          }
+          for (const file of files) {
+            const figure = el('div', {
+              style: { display: 'flex', flexDirection: 'column', gap: '4px' },
+            });
+            const img = el('img', {
+              style: {
+                maxWidth: '320px',
+                imageRendering: 'pixelated',
+                border: '1px solid rgba(148,163,184,0.3)',
+                borderRadius: '6px',
+                background: '#0f172a',
+              },
+            });
+            img.src = sheetUrl(sheetBriefId, sheetRunId, file);
+            img.alt = `Raw sheet ${file} for ${sheetBriefId}/${sheetRunId}`;
+            figure.append(
+              img,
+              el('div', {
+                text: file,
+                style: { fontSize: '10px', color: '#64748b', textAlign: 'center' },
+              }),
+            );
+            sheetHost.append(figure);
+          }
+        } catch (error) {
+          if (token !== rawSheetRenderToken) return;
+          sheetHost.append(
+            el('div', {
+              text: `Could not load raw sheet: ${error instanceof Error ? error.message : String(error)}`,
+              style: { fontSize: '11px', color: '#fca5a5' },
+            }),
+          );
+        }
+      })();
       return;
     }
     const ranked = rankRunCandidates(run.candidates);
@@ -2817,22 +3010,8 @@ function render(): void {
         card.append(sensorBlock);
       }
       const overrideNeeded = !candidate.combinedPassed;
-      const approveBtn = el('button', {
-        text: overrideNeeded ? 'Approve anyway' : 'Approve',
-        style: {
-          width: '100%',
-          padding: '4px 6px',
-          borderRadius: '6px',
-          border: overrideNeeded
-            ? '1px solid rgba(250,204,21,0.6)'
-            : '1px solid rgba(34,197,94,0.6)',
-          background: overrideNeeded ? '#422006' : '#052e16',
-          color: overrideNeeded ? '#fef3c7' : '#bbf7d0',
-          cursor: 'pointer',
-          fontSize: '11px',
-          fontWeight: '600',
-        },
-      });
+      const variantKey = `${run.briefId}-var-${candidate.index}`;
+      const isApproved = approvedVariantKeys.has(variantKey);
       const debugBtn = el('button', {
         text: 'Debug',
         style: {
@@ -2850,8 +3029,10 @@ function render(): void {
       debugBtn.addEventListener('click', () => {
         location.href = postprocessDebuggerHref(run.briefId, run.runId, candidate.index);
       });
-      approveBtn.addEventListener('click', async () => {
-        const variantKey = `${run.briefId}-var-${candidate.index}`;
+      // Shared approve action. Reused by the initial Approve CTA and, once a
+      // variant is approved, by the secondary Re-approve control (re-running
+      // post-processing can change the image, which this re-approves).
+      const doApprove = async (triggerBtn: HTMLButtonElement, busyLabel: string): Promise<void> => {
         const isReapproval = approvedVariantKeys.has(variantKey);
         if (isReapproval) {
           // Re-approving the SAME variant slot is allowed only when the image
@@ -2890,10 +3071,12 @@ function render(): void {
           );
           if (!ok) return;
         }
-        const busyLabel = overrideNeeded ? 'Approve anyway' : 'Approve';
-        setButtonBusy(approveBtn, true, busyLabel, 'Approving...');
+        setButtonBusy(triggerBtn, true, busyLabel, 'Approving...');
         try {
           const approved = await postApprove(run.briefId, run.runId, candidate.index);
+          // Mark approved locally so the card flips to "✓ Approved!" immediately,
+          // before the async recompute re-reads the manifest to confirm.
+          approvedVariantKeys.add(variantKey);
           const active = getSelectedItem(queueState);
           if (active) {
             const approvalSummary = `Approved ${run.briefId} variant ${candidate.index}${
@@ -2940,10 +3123,69 @@ function render(): void {
             );
           }
         } finally {
-          setButtonBusy(approveBtn, false, busyLabel, 'Approving...');
+          setButtonBusy(triggerBtn, false, busyLabel, 'Approving...');
         }
-      });
-      card.append(approveBtn, debugBtn);
+      };
+      if (isApproved) {
+        const approvedBadge = el('button', {
+          text: '\u2713 Approved!',
+          title: `Variant #${candidate.index} is approved and written to the catalog.`,
+          style: {
+            width: '100%',
+            padding: '4px 6px',
+            borderRadius: '6px',
+            border: '1px solid rgba(34,197,94,0.6)',
+            background: '#052e16',
+            color: '#bbf7d0',
+            fontSize: '11px',
+            fontWeight: '700',
+            cursor: 'default',
+          },
+        });
+        approvedBadge.disabled = true;
+        const reapproveBtn = el('button', {
+          text: 'Re-approve',
+          title:
+            'Re-approve with the current image. Use after re-running post-processing changed it; an identical image is refused.',
+          style: {
+            width: '100%',
+            marginTop: '6px',
+            padding: '4px 6px',
+            borderRadius: '6px',
+            border: '1px solid rgba(148,163,184,0.4)',
+            background: '#0f172a',
+            color: '#cbd5e1',
+            cursor: 'pointer',
+            fontSize: '11px',
+          },
+        });
+        reapproveBtn.addEventListener('click', () => {
+          void doApprove(reapproveBtn, 'Re-approve');
+        });
+        card.append(approvedBadge, reapproveBtn, debugBtn);
+      } else {
+        const approveBtn = el('button', {
+          text: overrideNeeded ? 'Approve anyway' : 'Approve',
+          style: {
+            width: '100%',
+            padding: '4px 6px',
+            borderRadius: '6px',
+            border: overrideNeeded
+              ? '1px solid rgba(250,204,21,0.6)'
+              : '1px solid rgba(34,197,94,0.6)',
+            background: overrideNeeded ? '#422006' : '#052e16',
+            color: overrideNeeded ? '#fef3c7' : '#bbf7d0',
+            cursor: 'pointer',
+            fontSize: '11px',
+            fontWeight: '600',
+          },
+        });
+        const busyLabel = overrideNeeded ? 'Approve anyway' : 'Approve';
+        approveBtn.addEventListener('click', () => {
+          void doApprove(approveBtn, busyLabel);
+        });
+        card.append(approveBtn, debugBtn);
+      }
       // Per-variant override: judge this one sensor-failed variant past the gate
       // (only while a judge step is reachable). Calls the shared runJudge with a
       // variantIndexes subset. The handler references runJudge lazily at click
@@ -4050,6 +4292,12 @@ function render(): void {
       return;
     }
     queueState = next;
+    const addedId = next.selectedId;
+    if (addedId) {
+      queueState = queueUpdateItem(queueState, addedId, {
+        sizeVariant: isSizeVariant(sizeSelect.value) ? sizeSelect.value : DEFAULT_SIZE_VARIANT,
+      });
+    }
     nameInput.value = '';
     briefInput.value = '';
     writeQueueState();
@@ -4411,6 +4659,7 @@ function render(): void {
           name: item.kebabName,
           ...(briefHint ? { brief: briefHint } : {}),
           type: requestedType,
+          sizeVariant: item.sizeVariant,
           candidates: 3,
         }),
       });
@@ -4781,6 +5030,7 @@ function render(): void {
     const abort = new AbortController();
     inFlightSteps.set(item.id, { kind: 'postprocess', abort, priorStage });
     queueState = queueUpdateItem(queueState, item.id, { stage: 'postprocessing', lastError: null });
+    lastFailedStep.delete(item.id);
     writeQueueState();
     renderQueue();
     renderWorkflowSelection();
@@ -4808,11 +5058,12 @@ function render(): void {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
+      lastFailedStep.set(item.id, 'postprocess');
       queueState = queueUpdateItem(queueState, item.id, { stage: priorStage, lastError: message });
       writeQueueState();
       renderQueue();
       renderWorkflowSelection();
-      setWorkflowStatus(`PostProcess failed: ${message}`, '#fca5a5');
+      setWorkflowStatus(`PostProcess failed: ${message} — click PostProcess to retry.`, '#fca5a5');
     } finally {
       if (inFlightSteps.get(item.id)?.abort === abort) inFlightSteps.delete(item.id);
       setButtonBusy(postprocessBtn, false, 'PostProcess', 'Post-processing...');
@@ -4850,6 +5101,7 @@ function render(): void {
     const abort = new AbortController();
     inFlightSteps.set(item.id, { kind: 'judge', abort, priorStage });
     queueState = queueUpdateItem(queueState, item.id, { stage: 'judging', lastError: null });
+    lastFailedStep.delete(item.id);
     writeQueueState();
     renderQueue();
     renderWorkflowSelection();
@@ -4881,11 +5133,12 @@ function render(): void {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
+      lastFailedStep.set(item.id, 'judge');
       queueState = queueUpdateItem(queueState, item.id, { stage: priorStage, lastError: message });
       writeQueueState();
       renderQueue();
       renderWorkflowSelection();
-      setWorkflowStatus(`Judge failed: ${message}`, '#fca5a5');
+      setWorkflowStatus(`Judge failed: ${message} — click Judge to retry.`, '#fca5a5');
     } finally {
       if (inFlightSteps.get(item.id)?.abort === abort) inFlightSteps.delete(item.id);
       setButtonBusy(triggerBtn, false, triggerLabel, 'Judging...');
@@ -5168,6 +5421,7 @@ function render(): void {
     step.abort.abort();
     const label = step.kind === 'postprocess' ? 'PostProcess' : 'Judge';
     inFlightSteps.delete(item.id);
+    lastFailedStep.delete(item.id);
     queueState = queueUpdateItem(queueState, item.id, {
       stage: step.priorStage,
       lastError: null,

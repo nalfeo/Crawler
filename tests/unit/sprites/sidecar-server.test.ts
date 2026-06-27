@@ -471,6 +471,18 @@ describe('buildServer routes (inject)', () => {
     expect(res.json().message).toBe('body.brief must be a string when provided');
   });
 
+  it('POST /api/workflow/synthesize rejects an unknown body.sizeVariant', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workflow/synthesize',
+      headers: { 'content-type': 'application/json' },
+      payload: { name: 'iron-sword', sizeVariant: 'huge' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toBe('body.sizeVariant must be one of default, wide, tall, large');
+  });
+
   it('POST /api/workflow/promote-brief validates required fields', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -551,6 +563,138 @@ describe('buildServer routes (inject)', () => {
     expect(existsSync(path.join(root, 'runs', 'iron-sword', '2026-06-04T12-00-00-deadbeef'))).toBe(
       false,
     );
+  });
+});
+
+describe('PUT /api/workflow/brief (manual brief edit)', () => {
+  let root: string;
+  let app: FastifyInstance;
+
+  // A self-contained valid brief: supplies every field the schema needs so
+  // loadBrief only has to resolve the palette from disk (written below).
+  const validBriefYaml = [
+    'type: weapon',
+    'name: iron-sword',
+    'size: { width: 16, height: 16 }',
+    'palette:',
+    '  id: kenney-roguelike',
+    'anchor: { x: 8, y: 14 }',
+    'tags: [sword, melee]',
+    'prompt: |',
+    '  An iron sword, pixel-art style, blade up-right.',
+    'references:',
+    "  - { path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' }",
+    "  - { path: 'public/assets/kenney/roguelike/spritesheet.png' }",
+    '',
+  ].join('\n');
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-brief-'));
+    const runsDir = path.join(root, 'runs');
+    mkdirSync(runsDir, { recursive: true });
+    mkdirSync(path.join(root, 'data', 'palettes'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'data', 'palettes', 'kenney-roguelike.json'),
+      JSON.stringify([
+        [0, 0, 0],
+        [255, 255, 255],
+      ]),
+    );
+    app = buildServer({ repoRoot: root, runsDir, version: 'test' });
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('rejects a missing yamlPath', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { yaml: validBriefYaml },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toBe('body.yamlPath must be a non-empty string');
+  });
+
+  it('rejects an empty yaml body', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { yamlPath: 'briefs/draft/weapons/iron-sword.yaml', yaml: '   ' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toBe('body.yaml must be a non-empty string');
+  });
+
+  it('refuses to write outside briefs/**/*.yaml', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { yamlPath: 'src/devtools-main.ts', yaml: validBriefYaml },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('bad-request');
+    expect(res.json().message).toBe('yamlPath must be a briefs/**/*.yaml file');
+    // The unrelated file was never touched.
+    expect(existsSync(path.join(root, 'src', 'devtools-main.ts'))).toBe(false);
+  });
+
+  it('rejects an invalid brief and rolls back to the prior content', async () => {
+    const rel = 'briefs/draft/weapons/iron-sword.yaml';
+    const abs = path.join(root, 'briefs', 'draft', 'weapons', 'iron-sword.yaml');
+    mkdirSync(path.dirname(abs), { recursive: true });
+    writeFileSync(abs, validBriefYaml, 'utf8');
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/brief',
+      headers: { 'content-type': 'application/json' },
+      // BAD_NAME fails the brief name schema (must be kebab-case).
+      payload: { yamlPath: rel, yaml: 'type: weapon\nname: BAD_NAME\n' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('invalid-brief');
+    // Rolled back: the prior valid content is still on disk.
+    expect(readFileSync(abs, 'utf8')).toBe(validBriefYaml);
+  });
+
+  it('removes a freshly-written file when the first save is invalid', async () => {
+    const rel = 'briefs/draft/weapons/brand-new.yaml';
+    const abs = path.join(root, 'briefs', 'draft', 'weapons', 'brand-new.yaml');
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { yamlPath: rel, yaml: 'type: weapon\nname: BAD_NAME\n' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toBe('invalid-brief');
+    // No prior content existed, so the bad write is fully removed.
+    expect(existsSync(abs)).toBe(false);
+  });
+
+  it('accepts a valid edit, persists it, and echoes the description', async () => {
+    const rel = 'briefs/draft/weapons/iron-sword.yaml';
+    const abs = path.join(root, 'briefs', 'draft', 'weapons', 'iron-sword.yaml');
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workflow/brief',
+      headers: { 'content-type': 'application/json' },
+      payload: { yamlPath: rel, yaml: validBriefYaml },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.yamlPath).toBe(rel);
+    expect(body.description).toContain('An iron sword');
+    expect(body.yaml).toBe(validBriefYaml);
+    expect(readFileSync(abs, 'utf8')).toBe(validBriefYaml);
   });
 });
 

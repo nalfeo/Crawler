@@ -9,6 +9,13 @@
  * releases the port. An orphaned sidecar process from a prior run would
  * otherwise force operators to hunt PIDs.
  *
+ * Backends: the sidecar loads `.env.local` and defaults to the **Azure**
+ * run-store + queue (`store=azure-blob`, `queue=azure-queue`) — see
+ * `./backend-config.ts`. The local/noop backends are reserved for tests and
+ * explicit local runs (`SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop`);
+ * the sidecar never silently falls back to them. When Azure is selected but
+ * credentials are missing it exits non-zero with setup guidance.
+ *
  * No CLI flags today: the sidecar's location is implicit (`process.cwd()`),
  * the default port is derived from the current worktree, and the routes are
  * static. Add flags here if/when those need to vary.
@@ -20,6 +27,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createAssetQueue } from '../queue/index.js';
 import { createRunStore } from '../store/index.js';
 import { getSessionServerPorts } from '../../shared/session-server-ports.js';
+import {
+  resolveSidecarBackends,
+  SidecarAzureCredentialsError,
+  type SidecarBackendSelection,
+} from './backend-config.js';
+import { loadEnvLocal } from './env-local.js';
 import { buildServer } from './server.js';
 import { createWorkerController } from './worker-controller.js';
 
@@ -46,6 +59,30 @@ function resolvePort(): number {
 
 async function main(): Promise<number> {
   const repoRoot = process.cwd();
+
+  // Pick up Azure credentials + SPRITES_* selectors from .env.local (written by
+  // `npm run setup:azure`) without overwriting anything already in the shell.
+  loadEnvLocal(repoRoot);
+
+  // The sidecar defaults to the shared Azure backends; local/noop are opt-in
+  // for tests and offline runs. Fail fast (don't silently use local) when Azure
+  // is selected but credentials are missing.
+  let backends: SidecarBackendSelection;
+  try {
+    backends = resolveSidecarBackends(process.env);
+  } catch (err) {
+    if (err instanceof SidecarAzureCredentialsError) {
+      process.stderr.write(`sprites:gallery sidecar: ${err.message}\n`);
+      return 1;
+    }
+    throw err;
+  }
+  // Publish the resolved selectors so the store/queue factories (which read
+  // process.env) build the Azure-default backends unless the caller opted into
+  // local/noop explicitly.
+  process.env['SPRITES_RUN_STORE'] = backends.runStore;
+  process.env['SPRITES_ASSET_QUEUE'] = backends.assetQueue;
+
   const runsDir = path.join(repoRoot, 'generated', 'runs');
   const store = createRunStore({ repoRoot });
   const queue = createAssetQueue();
@@ -95,6 +132,9 @@ async function main(): Promise<number> {
     process.stdout.write(`  runsDir : ${runsDir}\n`);
     process.stdout.write(`  store   : ${store.backend}\n`);
     process.stdout.write(`  queue   : ${queue.backend}\n`);
+    process.stdout.write(
+      `  backend : ${backends.usesAzure ? 'Azure (sidecar default)' : 'local (explicit opt-in)'}\n`,
+    );
     process.stdout.write(
       `  routes  : /api/health, /api/runs, /api/runs/:brief/:run, /api/runs/:brief/:run/processed/:file\n`,
     );
