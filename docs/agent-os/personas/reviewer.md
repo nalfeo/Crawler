@@ -80,3 +80,18 @@ multi-persona task is finalized.
   root cause — no over-engineering, and no easy-lever shortcut that merely hides the
   problem? If the apple **actual** greatly exceeds the **estimate**, treat that delta
   as a wrong-shape alarm and reconsider the approach before approving.
+
+### Architectural consistency
+
+- [ ] **No dead parallel path.** When a change introduces a code path that overlaps
+      or duplicates an existing one (a second pipeline, a parallel implementation, a
+      forked helper), require **either** deleting the superseded path in the same
+      change **or** adding an ADR under `docs/knowledge/adr/` that documents why both
+      must coexist. The canonical failure is the divergent post-process /
+      sprite-slicing pipelines, where a human had to ask "Do we have divergent
+      post-process pipelines?" before the code was unified onto the modern path and the
+      old one deleted. `pr-preflight` already emits a cross-system-ADR warning for a
+      diff that spans 2+ architectural layers (`src/core`, `src/engine`, `src/game`)
+      without an ADR; this checklist item is the human-judgment complement that **also**
+      catches single-layer duplication the guard cannot see. Deterministic CI is
+      unchanged — this is review judgment, not a CI LLM-judge.
