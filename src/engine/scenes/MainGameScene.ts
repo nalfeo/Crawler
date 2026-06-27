@@ -32,7 +32,7 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import { UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
-import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
+import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
@@ -60,7 +60,10 @@ import {
   computeLightField,
   createLightField,
   DEFAULT_LIGHTING_CONFIG,
+  forEachDarknessRun,
   getLightingPresetStepPx,
+  LIGHTING_DARKNESS_LEVELS,
+  LIGHTING_MIN_DARKNESS,
   type LightField,
   type LightingConfig,
   type LightingPresetId,
@@ -1297,7 +1300,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.doorGraphics = this.add.graphics().setDepth(-19);
     this.lightOverlayRt = this.add
-      .renderTexture(0, 0, floorMap.widthPx, floorMap.heightPx)
+      .renderTexture(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt))
       .setOrigin(0, 0)
       .setDepth(-18);
     this.rebuildLightField();
@@ -1310,13 +1313,13 @@ export class MainGameScene extends Phaser.Scene {
 
   private setLightingPreset(preset: LightingPresetId): void {
     const floorMap = this.world.floorMap;
-    const tileSize = floorMap?.config.tileSizePx ?? 32;
+    const tileSize = floorMap ? ftToPx(floorMap.config.tileSizeFt) : 32;
     this.setLightingConfig({ stepPx: getLightingPresetStepPx(preset, tileSize) });
   }
 
   private setLightingConfig(partial: Partial<LightingConfig>): void {
     const floorMap = this.world.floorMap;
-    const tileSize = floorMap?.config.tileSizePx ?? 32;
+    const tileSize = floorMap ? ftToPx(floorMap.config.tileSizeFt) : 32;
     const next: LightingConfig = { ...this.lighting, ...partial };
     next.stepPx = clampLightingStepPx(next.stepPx, tileSize);
     next.ambient = Math.max(0, Math.min(1, next.ambient));
@@ -1339,7 +1342,11 @@ export class MainGameScene extends Phaser.Scene {
       this.lightField = undefined;
       return;
     }
-    this.lightField = createLightField(floorMap.widthPx, floorMap.heightPx, this.lighting.stepPx);
+    this.lightField = createLightField(
+      ftToPx(floorMap.widthFt),
+      ftToPx(floorMap.heightFt),
+      this.lighting.stepPx,
+    );
     this.lightingDirty = true;
   }
 
@@ -1358,8 +1365,8 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    const px = this.world.stores.position.x[this.playerEid] ?? 0;
-    const py = this.world.stores.position.y[this.playerEid] ?? 0;
+    const px = ftToPx(this.world.stores.position.x[this.playerEid] ?? 0);
+    const py = ftToPx(this.world.stores.position.y[this.playerEid] ?? 0);
     const radius = this.lighting.sourceRadiusPx;
     const dirtyRect =
       this.lightingDirty || !this.lightingLastSource
@@ -1371,7 +1378,15 @@ export class MainGameScene extends Phaser.Scene {
 
     const t0 = performance.now();
     computeLightField({
-      map: floorMap,
+      // The light field is expressed in render pixels; the FloorMap reasons in
+      // feet (the single internal spatial unit). Bridge the two here — pixels
+      // are an engine-only concept, so the conversion stays at this boundary.
+      map: {
+        pixelToTile: (mx, my) => floorMap.worldToTile(pxToFt(mx), pxToFt(my)),
+        isVisible: (tx, ty) => floorMap.isVisible(tx, ty),
+        hasLineOfSight: (x0, y0, x1, y1) =>
+          floorMap.hasLineOfSight(pxToFt(x0), pxToFt(y0), pxToFt(x1), pxToFt(y1)),
+      },
       field,
       source: { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
       ambient: this.lighting.ambient,
@@ -1382,6 +1397,11 @@ export class MainGameScene extends Phaser.Scene {
       blurLightField(field, dirtyRect);
     }
 
+    // rt.clear() wipes the whole texture, so the redraw must cover the full
+    // field even when only a dirty sub-rect was recomputed. forEachDarknessRun
+    // batches each row into a handful of fills (uniform regions collapse to one,
+    // the lit gradient to at most LIGHTING_DARKNESS_LEVELS per row) instead of
+    // one fill per cell, keeping the redraw cheap at sub-tile (1px) granularity.
     rt.clear();
     const bounds = {
       minX: 0,
@@ -1389,14 +1409,16 @@ export class MainGameScene extends Phaser.Scene {
       maxX: field.widthCells - 1,
       maxY: field.heightCells - 1,
     };
-    for (let y = bounds.minY; y <= bounds.maxY; y++) {
-      for (let x = bounds.minX; x <= bounds.maxX; x++) {
-        const idx = y * field.widthCells + x;
-        const darkness = 1 - Math.max(0, Math.min(1, field.values[idx] ?? 0));
-        if (darkness <= 0.01) continue;
-        rt.fill(0x000000, darkness, x * field.stepPx, y * field.stepPx, field.stepPx, field.stepPx);
-      }
-    }
+    const step = field.stepPx;
+    forEachDarknessRun(
+      field,
+      bounds,
+      LIGHTING_DARKNESS_LEVELS,
+      LIGHTING_MIN_DARKNESS,
+      (cellX, cellY, lengthCells, darkness) => {
+        rt.fill(0x000000, darkness, cellX * step, cellY * step, lengthCells * step, step);
+      },
+    );
     rt.render();
 
     const computeMs = performance.now() - t0;
@@ -1407,7 +1429,7 @@ export class MainGameScene extends Phaser.Scene {
     ) {
       this.lightingOverBudgetFrames += 1;
       if (this.lightingOverBudgetFrames >= 20) {
-        const nextStep = chooseAutoStepPx(this.lighting.stepPx, floorMap.config.tileSizePx);
+        const nextStep = chooseAutoStepPx(this.lighting.stepPx, ftToPx(floorMap.config.tileSizeFt));
         if (nextStep !== this.lighting.stepPx) {
           this.setLightingConfig({ stepPx: nextStep });
         }

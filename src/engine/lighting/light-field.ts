@@ -204,3 +204,71 @@ export function blurLightField(field: LightField, dirtyRect?: LightFieldDirtyRec
 export function chooseAutoStepPx(currentStepPx: number, tileSizePx: number): number {
   return clampLightingStepPx(currentStepPx * 2, tileSizePx);
 }
+
+/**
+ * Number of discrete darkness levels used when batching the overlay into
+ * horizontal runs. Quantizing the per-cell darkness lets the smooth light
+ * falloff collapse into a handful of fill commands per row instead of one fill
+ * per cell, while staying visually indistinguishable for an alpha shadow
+ * overlay.
+ */
+export const LIGHTING_DARKNESS_LEVELS = 32;
+
+/** Darkness at or below this alpha is treated as fully transparent (no fill). */
+export const LIGHTING_MIN_DARKNESS = 0.01;
+
+/**
+ * Walk `field` within `bounds` and invoke `emit` once per maximal horizontal run
+ * of cells that share the same quantized darkness (`1 - light`). Cells whose
+ * darkness is at or below `minDarkness` are skipped and break the current run,
+ * so transparent regions cost nothing.
+ *
+ * This is the batching that keeps the overlay cheap at fine granularity: instead
+ * of one fill per lit cell (hundreds of thousands at `stepPx = 1` across the
+ * light circle), uniform regions collapse to a single fill and the lit gradient
+ * coalesces into at most `levels` fills per row.
+ *
+ * Pure and deterministic: output depends only on `field.values`, `bounds`, and
+ * the numeric parameters — no `Math.random` / `Date.now`.
+ */
+export function forEachDarknessRun(
+  field: LightField,
+  bounds: LightFieldDirtyRect,
+  levels: number,
+  minDarkness: number,
+  emit: (cellX: number, cellY: number, lengthCells: number, darkness: number) => void,
+): void {
+  const safeLevels = Math.max(1, Math.round(levels));
+  const width = field.widthCells;
+  const minX = clamp(bounds.minX, 0, Math.max(0, width - 1));
+  const maxX = clamp(bounds.maxX, 0, Math.max(0, width - 1));
+  const minY = clamp(bounds.minY, 0, Math.max(0, field.heightCells - 1));
+  const maxY = clamp(bounds.maxY, 0, Math.max(0, field.heightCells - 1));
+
+  for (let y = minY; y <= maxY; y++) {
+    let runStart = -1;
+    let runDarkness = 0;
+    for (let x = minX; x <= maxX; x++) {
+      const light = clamp(field.values[y * width + x] ?? 0, 0, 1);
+      const darkness = 1 - light;
+      const quant =
+        darkness <= minDarkness ? 0 : Math.min(1, Math.round(darkness * safeLevels) / safeLevels);
+      if (runStart >= 0 && quant === runDarkness) {
+        continue;
+      }
+      if (runStart >= 0) {
+        emit(runStart, y, x - runStart, runDarkness);
+      }
+      if (quant > 0) {
+        runStart = x;
+        runDarkness = quant;
+      } else {
+        runStart = -1;
+        runDarkness = 0;
+      }
+    }
+    if (runStart >= 0) {
+      emit(runStart, y, maxX + 1 - runStart, runDarkness);
+    }
+  }
+}

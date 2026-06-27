@@ -3,6 +3,9 @@ import {
   clampLightingStepPx,
   computeLightField,
   createLightField,
+  forEachDarknessRun,
+  LIGHTING_DARKNESS_LEVELS,
+  LIGHTING_MIN_DARKNESS,
   type ComputeLightFieldParams,
 } from '../../src/engine/lighting/light-field';
 
@@ -83,5 +86,80 @@ describe('light-field', () => {
     const darkRight = blocked.values[4 * blocked.widthCells + 6] ?? 0;
     expect(litLeft).toBeGreaterThan(0.2);
     expect(darkRight).toBe(0);
+  });
+});
+
+describe('forEachDarknessRun', () => {
+  function collectRuns(
+    light: number[],
+    widthCells: number,
+    heightCells: number,
+    levels = LIGHTING_DARKNESS_LEVELS,
+  ): Array<{ x: number; y: number; len: number; darkness: number }> {
+    const field = createLightField(widthCells, heightCells, 1);
+    field.values.set(light);
+    const runs: Array<{ x: number; y: number; len: number; darkness: number }> = [];
+    forEachDarknessRun(
+      field,
+      { minX: 0, minY: 0, maxX: widthCells - 1, maxY: heightCells - 1 },
+      levels,
+      LIGHTING_MIN_DARKNESS,
+      (x, y, len, darkness) => runs.push({ x, y, len, darkness }),
+    );
+    return runs;
+  }
+
+  it('emits nothing for a fully lit field', () => {
+    expect(collectRuns([1, 1, 1, 1], 4, 1)).toEqual([]);
+  });
+
+  it('collapses a uniform dark row into a single run', () => {
+    const runs = collectRuns([0, 0, 0, 0], 4, 1);
+    expect(runs).toEqual([{ x: 0, y: 0, len: 4, darkness: 1 }]);
+  });
+
+  it('skips lit cells and breaks runs around them', () => {
+    // light: dark, dark, lit, dark → two separate runs around the lit gap
+    const runs = collectRuns([0, 0, 1, 0], 4, 1);
+    expect(runs).toEqual([
+      { x: 0, y: 0, len: 2, darkness: 1 },
+      { x: 3, y: 0, len: 1, darkness: 1 },
+    ]);
+  });
+
+  it('coalesces near-equal darkness via quantization', () => {
+    // darkness 0.50 and 0.51 both quantize to the same 32-level bucket.
+    const runs = collectRuns([0.5, 0.49], 2, 1);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ x: 0, y: 0, len: 2 });
+  });
+
+  it('splits distinct darkness levels into separate runs', () => {
+    // darkness 0.5 vs 0.9 land in different buckets.
+    const runs = collectRuns([0.5, 0.1], 2, 1);
+    expect(runs).toHaveLength(2);
+    expect(runs[0]!.x).toBe(0);
+    expect(runs[1]!.x).toBe(1);
+    expect(runs[0]!.darkness).not.toBe(runs[1]!.darkness);
+  });
+
+  it('processes each row independently and conserves dark-cell coverage', () => {
+    // Row 0 fully dark, row 1 fully lit.
+    const runs = collectRuns([0, 0, 0, 1, 1, 1], 3, 2);
+    expect(runs).toEqual([{ x: 0, y: 0, len: 3, darkness: 1 }]);
+  });
+
+  it('respects bounds and never exceeds the row width', () => {
+    const field = createLightField(5, 1, 1);
+    field.values.set([0, 0, 0, 0, 0]);
+    const runs: Array<{ x: number; len: number }> = [];
+    forEachDarknessRun(
+      field,
+      { minX: 1, minY: 0, maxX: 3, maxY: 0 },
+      LIGHTING_DARKNESS_LEVELS,
+      LIGHTING_MIN_DARKNESS,
+      (x, _y, len) => runs.push({ x, len }),
+    );
+    expect(runs).toEqual([{ x: 1, len: 3 }]);
   });
 });
