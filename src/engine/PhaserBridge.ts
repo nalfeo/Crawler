@@ -24,6 +24,7 @@ import type { GameWorld } from '../core/world.js';
 import { getSprite } from './sprites/index.js';
 import { createCombatVfx } from './CombatVfx.js';
 import { createGoreVfx } from './GoreVfx.js';
+import { createCorpseShatterVfx, type CorpseExplodeOptions } from './CorpseShatterVfx.js';
 import { createEffectsVfx } from './EffectsVfx.js';
 import { computeCorpseDecay, type CorpseDecay } from './corpse-decay.js';
 import { createLogger } from '../shared/logger.js';
@@ -582,6 +583,17 @@ function applyEnemyScale(
   img.setScale(scaleX, scaleY);
 }
 
+/**
+ * Map a `Sprite.textureId` variant to the enemy visual type understood by
+ * {@link resolveTexture}. Used as the corpse-explosion texture fallback when the
+ * dying enemy's on-screen visual is no longer available.
+ */
+function enemyVariantFromTextureId(textureId: number | undefined): string {
+  if (textureId === 1) return 'enemy_rat';
+  if (textureId === 2) return 'enemy_slime';
+  return 'enemy';
+}
+
 export function createPhaserBridge(scene: Phaser.Scene): {
   sync(world: GameWorld, renderElapsedMs?: number, interpAlpha?: number): void;
   destroy(): void;
@@ -599,6 +611,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     typeof scene.add.rectangle === 'function'
       ? createGoreVfx(scene, { intensity: 1.25, hitGoreEnabled: true })
       : null;
+  const corpseShatterVfx =
+    typeof scene.add.image === 'function' ? createCorpseShatterVfx(scene) : null;
   const effectsVfx = createEffectsVfx(scene);
   const missingSpriteWarnings = new Set<string>();
   const missingTypeWarnings = new Set<string>();
@@ -633,6 +647,48 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       const activeEntities = new Set<number>();
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
+
+      // Corpse explosions: capture the texture to cut up NOW, while the dead
+      // enemy's visual is still in the map (it gets reaped by the cleanup loop
+      // below, since deathTimerSystem already removed the entity this frame).
+      // We replay these into the VFX after its per-frame clock advances.
+      let pendingShatter: CorpseExplodeOptions[] | null = null;
+      if (corpseShatterVfx) {
+        for (const event of world.combatEvents) {
+          if (event.type !== 'corpseExplode') continue;
+          const eid = event.targetEid;
+          const visual = eid !== undefined ? visuals.get(eid) : undefined;
+          let textureKey: string;
+          let frame: string | number | undefined;
+          let scale: number;
+          let tint: number | undefined;
+          if (visual && visual.type.startsWith('enemy') && visual.obj.texture) {
+            textureKey = visual.obj.texture.key;
+            frame = visual.obj.frame?.name;
+            // Use the live render scale (not baseScale) so shrunken variants
+            // like baby slimes shatter at their actual on-screen size.
+            scale = visual.obj.scaleX || visual.baseScale;
+            tint = visual.obj.isTinted ? visual.obj.tintTopLeft : undefined;
+          } else {
+            const tex = resolveTexture(scene, enemyVariantFromTextureId(event.spriteTextureId));
+            textureKey = tex.key;
+            frame = tex.frame;
+            scale = tex.scale;
+          }
+          (pendingShatter ??= []).push({
+            x: event.x,
+            y: event.y,
+            textureKey,
+            frame,
+            scale,
+            tint,
+            bloodColor: event.bloodColor ?? 0xcc0000,
+            dirX: event.knockbackDirX ?? 0,
+            dirY: event.knockbackDirY ?? 0,
+            amount: event.amount,
+          });
+        }
+      }
 
       for (const eid of entities) {
         activeEntities.add(eid);
@@ -1112,6 +1168,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       if (goreVfx) {
         goreVfx.update(world, renderElapsedMs, deltaMs, interpAlpha);
       }
+      if (corpseShatterVfx) {
+        // Advance existing shards first so the clock is current, then spawn this
+        // frame's bursts (born exactly at renderElapsedMs).
+        corpseShatterVfx.update(renderElapsedMs, deltaMs);
+        if (pendingShatter) {
+          for (const opts of pendingShatter) corpseShatterVfx.explode(opts);
+        }
+      }
       // Juice effects (hit sparks, crit bursts, death pops, pickups, level-up).
       // Reads combatEvents BEFORE CombatVfx drains them; drains world.vfxEvents.
       effectsVfx.update(world, renderElapsedMs);
@@ -1141,6 +1205,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       arcGraphics.clear();
       arcSpawnMs.clear();
       goreVfx?.destroy();
+      corpseShatterVfx?.destroy();
       effectsVfx.destroy();
       combatVfx.destroy();
     },

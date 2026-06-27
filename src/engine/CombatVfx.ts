@@ -84,6 +84,9 @@ export function createCombatVfx(scene: Phaser.Scene): {
     update(world: GameWorld, renderElapsedMs: number): void {
       // Spawn VFX for new events
       for (const event of world.combatEvents) {
+        // `corpseExplode` is consumed by the shatter VFX, not shown as a damage
+        // number — a corpse takes 0 actual damage, so a floater would mislead.
+        if (event.type === 'corpseExplode') continue;
         spawnFloater(event, renderElapsedMs);
       }
       // Drain the queue — we are the sole consumer

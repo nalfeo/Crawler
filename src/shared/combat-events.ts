@@ -4,7 +4,12 @@
  */
 
 export interface CombatEvent {
-  type: 'hit' | 'blocked' | 'death' | 'miss' | 'dodge';
+  /**
+   * `corpseExplode` is a render-only flourish: a dead enemy struck during its
+   * death-linger window bursts into sprite shards instead of absorbing the hit.
+   * The core damage path emits it and immediately expires the corpse.
+   */
+  type: 'hit' | 'blocked' | 'death' | 'miss' | 'dodge' | 'corpseExplode';
   /** Position where the VFX should appear (target position). */
   x: number;
   y: number;
@@ -30,4 +35,10 @@ export interface CombatEvent {
   bloodColor?: number;
   /** True when this hit critically struck (player-sourced damage only). */
   isCrit?: boolean;
+  /**
+   * Sprite variant id of the entity (mirrors the `Sprite.textureId` store) so
+   * the renderer can resolve which corpse texture to cut up for a
+   * `corpseExplode` event. 1 = rat, 2 = slime, otherwise the generic enemy.
+   */
+  spriteTextureId?: number;
 }
