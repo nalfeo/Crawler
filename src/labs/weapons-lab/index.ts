@@ -19,6 +19,9 @@ import {
   aoeOnImpactPostDamage,
   meleeSwingSystem,
   knockbackSystem,
+  dropSystem,
+  deathTimerSystem,
+  spawnAnimSystem,
   spawnPlayer,
   type GameWorld,
 } from '../../core/index.js';
@@ -73,10 +76,31 @@ interface TunableWeaponDef {
   knockback: number;
   pierce: number;
   bounceCount: number;
+  baseAccuracy: number;
+  goreFactor: number;
 }
 
 function cloneWeaponDef(def: WeaponDef): TunableWeaponDef {
   return { ...def };
+}
+
+function weaponTypeLabel(type: number | undefined): string {
+  switch (type) {
+    case WeaponType.MELEE:
+      return 'Melee';
+    case WeaponType.RANGED:
+      return 'Ranged';
+    case WeaponType.MAGIC:
+      return 'Magic';
+    case WeaponType.THROWN:
+      return 'Thrown';
+    case WeaponType.BEAM:
+      return 'Beam';
+    case WeaponType.TRAP:
+      return 'Trap';
+    default:
+      return 'Unknown';
+  }
 }
 
 interface WeaponsLabSettings {
@@ -124,7 +148,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
   const hint = document.createElement('p');
   hint.textContent =
-    'Move with WASD / arrows. Switch weapons in the controls panel. All weapon types auto-fire.';
+    'Move with WASD / arrows. Switch weapons in the controls panel. All weapon types auto-fire. ' +
+    'Tune Base Accuracy to see misses register in the HUD; killed enemies leave lingering corpses (with drops).';
   hint.style.marginTop = '16px';
   hint.style.color = '#a5b4fc';
   hint.style.lineHeight = '1.6';
@@ -164,6 +189,10 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     private playerEid = -1;
 
     private world!: GameWorld;
+
+    private hits = 0;
+
+    private misses = 0;
 
     constructor() {
       super({ key: 'WeaponsLabScene' });
@@ -229,7 +258,6 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
           playerInputSystem(this.world, this.inputState);
           this.applyPlayerSpeedSetting();
-          weaponSystem(this.world);
           enemySpawnerSystem(this.world, {
             maxEnemies: settings.maxEnemies,
             spawnIntervalMs: settings.spawnIntervalMs,
@@ -238,6 +266,7 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           });
           movementSystem(this.world);
           returningProjectileSystem(this.world);
+          weaponSystem(this.world);
 
           const collision = collisionSystem(this.world);
 
@@ -251,6 +280,9 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           beamSystem(this.world);
           trapSystem(this.world, collision);
 
+          dropSystem(this.world);
+          deathTimerSystem(this.world);
+          spawnAnimSystem(this.world);
           healthSystem(this.world);
           this.applyInvulnerability();
           lifetimeSystem(this.world);
@@ -267,8 +299,25 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
       const interpAlpha = Math.min(1, Math.max(0, this.accumulator / GAME.DELTA_MS));
       const renderElapsedMs = this.world.elapsedMs + this.accumulator;
+      this.tallyCombatEvents();
       this.bridge.sync(this.world, renderElapsedMs, interpAlpha);
       this.updateHud();
+    }
+
+    /**
+     * Count player weapon hits/misses from combatEvents for the current frame.
+     * Must run once per frame BEFORE bridge.sync, which drains combatEvents
+     * (via CombatVfx). Calling it per sim-step would double-count un-drained
+     * events.
+     */
+    private tallyCombatEvents(): void {
+      for (const event of this.world.combatEvents) {
+        if (event.type === 'hit' && event.targetType === 'enemy') {
+          this.hits += 1;
+        } else if (event.type === 'miss') {
+          this.misses += 1;
+        }
+      }
     }
 
     private applyActiveWeapon(): void {
@@ -315,6 +364,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     private resetWorld(): void {
       this.accumulator = 0;
+      this.hits = 0;
+      this.misses = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
       this.playerEid = spawnPlayer(
         this.world,
@@ -335,13 +386,19 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
       const score =
         this.playerEid >= 0 ? (this.world.stores.broadcastScore.current[this.playerEid] ?? 0) : 0;
       const enemyCount = query(this.world.ecs, [Enemy]).length;
-      const def = WEAPON_DEFS.get(settings.activeWeapon);
+      const activeDef = tunedWeapon ?? WEAPON_DEFS.get(settings.activeWeapon);
+      const baseAccuracyPct = ((activeDef?.baseAccuracy ?? 0) * 100).toFixed(0);
+      const attempts = this.hits + this.misses;
+      const hitRatePct = attempts > 0 ? ((this.hits / attempts) * 100).toFixed(0) : '—';
 
       hud.textContent = [
-        `Weapon: ${def?.name ?? settings.activeWeapon}`,
+        `Weapon: ${activeDef?.name ?? settings.activeWeapon}`,
+        `Type: ${weaponTypeLabel(activeDef?.weaponType)}`,
+        `Base Accuracy: ${baseAccuracyPct}%`,
         `Player HP: ${playerHp.toFixed(0)}`,
         `Score: ${score.toFixed(0)}`,
         `Enemies: ${enemyCount}`,
+        `Hits: ${this.hits}  Misses: ${this.misses}  (${hitRatePct}% hit)`,
         `State: ${this.world.state}`,
       ].join('\n');
     }
@@ -388,6 +445,8 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     // Common to all weapons
     weaponFolder.add(tunedWeapon, 'baseDamage', 1, 100, 1).name('Damage');
     weaponFolder.add(tunedWeapon, 'cooldownMs', 50, 5000, 10).name('Cooldown (ms)');
+    weaponFolder.add(tunedWeapon, 'baseAccuracy', 0, 1, 0.01).name('Base Accuracy');
+    weaponFolder.add(tunedWeapon, 'goreFactor', 0, 1, 0.05).name('Gore Factor');
 
     const wt = baseDef.weaponType;
 
