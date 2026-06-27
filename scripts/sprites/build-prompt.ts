@@ -106,9 +106,6 @@ export function buildPrompt(brief: Brief, styleGuide: string): string {
  * appeared only at the top.
  */
 export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: number): string {
-  const rows = brief.generation.sheet.rows;
-  const cols = brief.generation.sheet.cols;
-  const emptyCells = brief.generation.sheet.emptyCells;
   const count = variants ?? variantCount(brief);
   const rules = typeRulesBlock(brief);
   const variationsBlock = thematicVariationsBlock(brief.variations);
@@ -120,7 +117,7 @@ export function buildSheetPrompt(brief: Brief, styleGuide: string, variants?: nu
     outputSizeBlock(brief),
     ...(rules ? ['', rules] : []),
     '',
-    sheetLayoutBlock(rows, cols, count, emptyCells),
+    sheetLayoutBlock(brief, count),
     ...(variationsBlock ? ['', variationsBlock] : []),
     '',
     sheetConstraintsBlock(brief),
@@ -154,7 +151,7 @@ function aspectRatioText(width: number, height: number): string {
   return `${width / divisor}:${height / divisor}`;
 }
 
-/** Pixel dimensions of one (square) source cell on the generated sheet. */
+/** Pixel dimensions of one source cell on the generated sheet. */
 function cellDims(brief: Brief): { cellW: number; cellH: number } {
   const native = brief.generation.sheet.nativeCanvas;
   const { rows, cols } = brief.generation.sheet;
@@ -162,11 +159,12 @@ function cellDims(brief: Brief): { cellW: number; cellH: number } {
 }
 
 /**
- * The source-pixel bounding box the subject should occupy inside its square
- * cell so that, once trimmed and fit into the final W×H box, it keeps its
- * aspect ratio without letterboxing. Uniform scale on both axes (the limiting
- * axis wins) reproduces the historical 0.875–0.9375 "224–240 in a 256 cell"
- * band for the default square case and stretches correctly for wide/tall.
+ * The source-pixel bounding box the subject should occupy inside its cell so
+ * that, once trimmed and fit into the final W×H box, it keeps its aspect ratio
+ * without letterboxing. Uniform scale on both axes (the limiting axis wins)
+ * reproduces the historical 0.875–0.9375 "224–240 in a 256 cell" band for the
+ * default case and, now that cells are reshaped to match the subject aspect,
+ * fills wide/tall cells on both axes alike.
  */
 function sourceFootprint(brief: Brief): {
   loW: number;
@@ -226,7 +224,7 @@ function outputSizeBlock(brief: Brief): string {
       `- The final sprite is ${orientation} at a ${aspectRatioText(width, height)} aspect ratio. Draw each subject to fill that proportion — do NOT default to a square subject.`,
     );
     lines.push(
-      `- Within each square ${cellW}x${cellH} source cell, the subject should span roughly ${loW}-${hiW} source pixels wide and ${loH}-${hiH} source pixels tall, centered, so it keeps its ${aspectRatioText(width, height)} shape without letterboxing.`,
+      `- Within each ${cellW}x${cellH} source cell, the subject should span roughly ${loW}-${hiW} source pixels wide and ${loH}-${hiH} source pixels tall, centered, so it keeps its ${aspectRatioText(width, height)} shape without letterboxing.`,
     );
   }
   return lines.join('\n');
@@ -297,24 +295,25 @@ function singleConstraintsBlock(brief: Brief): string {
     '## Output requirements',
     subjectLine,
     clipLine,
-    `- Transparent background, or a single flat high-contrast background color that is clearly distinct from the sprite palette. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No decorative borders, gradients, or scene elements.`,
+    `- Transparent background, or a single flat high-contrast background color that is clearly distinct from the sprite palette. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Do NOT add any ground, cast, contact, or drop shadow beneath or around the subject — it must sit on a clean background with no shadow on the floor (shading and volume on the subject itself are fine). No decorative borders, gradients, or scene elements.`,
     '- No text, numbers, digits, captions, watermarks, signatures, or UI overlays anywhere in the image.',
   ].join('\n');
 }
 
-function sheetLayoutBlock(
-  rows: number,
-  cols: number,
-  count: number,
-  emptyCells: ReadonlyArray<readonly [number, number]>,
-): string {
+function sheetLayoutBlock(brief: Brief, count: number): string {
+  const { rows, cols, emptyCells } = brief.generation.sheet;
+  const { cellW, cellH } = cellDims(brief);
+  const cellShape =
+    cellW === cellH
+      ? 'perfectly square'
+      : `the same ${aspectRatioText(cellW, cellH)} ${cellW > cellH ? 'landscape' : 'portrait'} rectangle (${cellW}×${cellH} source pixels), matching the sprite proportion`;
   const lines: string[] = [];
   lines.push('## Sheet layout');
   lines.push(
     `Generate exactly ${count} variants on a single sheet, arranged in a regular ${rows}×${cols} grid (${rows} rows, ${cols} columns).`,
   );
   lines.push(
-    'Each grid cell must be the same size, perfectly square, and the variants must be laid out left-to-right, top-to-bottom in reading order.',
+    `Each grid cell must be the same size, ${cellShape}, and the variants must be laid out left-to-right, top-to-bottom in reading order.`,
   );
   if (emptyCells.length > 0) {
     const coords = emptyCells.map(([r, c]) => `(row ${r + 1}, col ${c + 1})`).join(', ');
@@ -325,7 +324,7 @@ function sheetLayoutBlock(
     lines.push('Every cell must contain exactly one variant — no empty cells.');
   }
   lines.push(
-    'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose / angle within the orientation rule, internal detail density, shading direction, individual material color choices (e.g. a different brown for a wrapped hilt, a different grey for steel). DO NOT vary along: art style, outline thickness, subject identity, orientation, level of stylization. If the subject description is short or leaves room for interpretation, lean into the variation axes above so the sheet covers the design space rather than producing 16 near-duplicates.',
+    'Treat each cell as a separate exploration of the same subject. VARY along: silhouette proportions, pose / angle within the orientation rule, internal detail density, shading direction, individual material color choices (e.g. a different brown for a wrapped hilt, a different grey for steel). DO NOT vary along: art style, outline thickness, subject identity, orientation, level of stylization. If the subject description is short or leaves room for interpretation, lean into the variation axes above so the sheet covers the design space rather than producing near-duplicates.',
   );
   return lines.join('\n');
 }
@@ -371,9 +370,9 @@ function sheetConstraintsBlock(brief: Brief): string {
       : '- Each variant must fit fully within its grid cell — none cut off at any edge. Leave at least a 10% margin between the subject and the cell edge.',
     aspectOf(brief.size.width, brief.size.height) === 'square'
       ? '- All variants are square, share the same dimensions, and use the same orientation and scale.'
-      : `- Every grid cell is the same square size; within each cell all subjects share the same ${aspectRatioText(brief.size.width, brief.size.height)} subject proportion, dimensions, orientation, and scale.`,
+      : `- Every grid cell is the same size; within each cell all subjects share the same ${aspectRatioText(brief.size.width, brief.size.height)} subject proportion, dimensions, orientation, and scale.`,
     '- Do NOT add numbers, labels, captions, watermarks, signatures, borders, dividers, or any text anywhere on the sheet or in any individual cell.',
-    `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Cast shadows must be neutral/dark (gray, cool gray, or brown) and must NOT be in the same color family as the background (never pink/magenta-family shadows on pink/magenta backgrounds). No per-cell background variation, no decorative borders between cells.`,
+    `- Use a transparent background, or one flat high-contrast background color that is clearly distinct from the sprite palette, consistently across the whole sheet. Prefer ${bg.name} (${bg.hex}). Do NOT use black backgrounds. Do NOT add any ground, cast, contact, or drop shadow beneath or around any variant — every cell must sit on a clean background with no shadow on the floor (shading and volume on the subject itself are fine). No per-cell background variation, no decorative borders between cells.`,
     '- Do not draw a frame, header, or footer around the grid.',
   ].join('\n');
 }

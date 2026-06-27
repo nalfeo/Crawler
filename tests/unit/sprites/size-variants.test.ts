@@ -3,8 +3,8 @@
  *
  * The module is pure: given per-type defaults and a variant it returns a
  * scaled copy. We assert the multipliers, the immutability contract, the
- * anchor-stays-valid invariant, the native-canvas clamp, and the
- * coercion/validation helper.
+ * anchor-stays-valid invariant, the grid reshape, and the coercion/validation
+ * helper.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -13,7 +13,6 @@ import {
   coerceSizeVariant,
   DEFAULT_SIZE_VARIANT,
   isSizeVariant,
-  MAX_NATIVE_CANVAS,
   SIZE_VARIANTS,
   SIZE_VARIANT_MULTIPLIERS,
 } from '../../../scripts/sprites/size-variants.js';
@@ -29,8 +28,8 @@ function enemyDefaults(): Record<string, unknown> {
 
 type Dim = { width: number; height: number };
 type Anchor = { x: number; y: number };
-type SheetGen = { sheet: { nativeCanvas: number } };
-const nativeCanvasOf = (v: unknown): number => (v as SheetGen).sheet.nativeCanvas;
+type Sheet = { rows: number; cols: number; nativeCanvas: number };
+const sheetOf = (v: unknown): Sheet => (v as { sheet: Sheet }).sheet;
 
 describe('SIZE_VARIANTS / multipliers', () => {
   it('exposes the four expected variants', () => {
@@ -79,26 +78,26 @@ describe('applySizeVariantToDefaults', () => {
     expect(out).toBe(defaults);
   });
 
-  it('doubles only the width for wide', () => {
+  it('doubles width and reshapes the grid to 4 rows × 2 cols for wide', () => {
     const out = applySizeVariantToDefaults(enemyDefaults(), 'wide');
     expect(out.size).toEqual({ width: 128, height: 64 });
     expect(out.anchor).toEqual({ x: 64, y: 32 });
-    // nativeCanvas scales by max(2,1)=2 → 2048.
-    expect(nativeCanvasOf(out.generation)).toBe(2048);
+    // Grid reshapes (cols ÷2) to 8 aspect-matched cells; canvas is NOT inflated.
+    expect(sheetOf(out.generation)).toMatchObject({ rows: 4, cols: 2, nativeCanvas: 1024 });
   });
 
-  it('doubles only the height for tall', () => {
+  it('doubles height and reshapes the grid to 2 rows × 4 cols for tall', () => {
     const out = applySizeVariantToDefaults(enemyDefaults(), 'tall');
     expect(out.size).toEqual({ width: 64, height: 128 });
     expect(out.anchor).toEqual({ x: 32, y: 64 });
-    expect(nativeCanvasOf(out.generation)).toBe(2048);
+    expect(sheetOf(out.generation)).toMatchObject({ rows: 2, cols: 4, nativeCanvas: 1024 });
   });
 
-  it('doubles both axes for large', () => {
+  it('doubles both axes and reshapes to a 2×2 grid for large', () => {
     const out = applySizeVariantToDefaults(enemyDefaults(), 'large');
     expect(out.size).toEqual({ width: 128, height: 128 });
     expect(out.anchor).toEqual({ x: 64, y: 64 });
-    expect(nativeCanvasOf(out.generation)).toBe(2048);
+    expect(sheetOf(out.generation)).toMatchObject({ rows: 2, cols: 2, nativeCanvas: 1024 });
   });
 
   it('preserves the anchor < size invariant after scaling', () => {
@@ -114,15 +113,15 @@ describe('applySizeVariantToDefaults', () => {
     expect(tall.size).toEqual({ width: 64, height: 128 });
   });
 
-  it('clamps nativeCanvas to the schema maximum', () => {
-    const big = {
+  it('reshapes from a base of 4 when the defaults omit rows/cols', () => {
+    const partial = {
       size: { width: 64, height: 64 },
       anchor: { x: 32, y: 32 },
-      generation: { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 1536 } },
+      generation: { sheet: { emptyCells: [], nativeCanvas: 1024 } },
     };
-    const out = applySizeVariantToDefaults(big, 'large');
-    // 1536 * 2 = 3072, clamped down to MAX_NATIVE_CANVAS.
-    expect(nativeCanvasOf(out.generation)).toBe(MAX_NATIVE_CANVAS);
+    const out = applySizeVariantToDefaults(partial, 'wide');
+    // Absent rows/cols fall back to the schema default of 4 before reshaping.
+    expect(sheetOf(out.generation)).toMatchObject({ rows: 4, cols: 2, nativeCanvas: 1024 });
   });
 
   it('does not mutate the input defaults', () => {

@@ -4,19 +4,26 @@
  * A sprite's *type* (weapon, enemy, item, …) fixes its house-style defaults —
  * palette, references, anchor, native canvas, and a base output size. Every
  * per-type default is square today (e.g. 64×64). A *size variant* is an
- * orthogonal authoring axis that scales those per-type defaults so the same
- * type can be emitted at a different footprint or aspect ratio without
- * hand-editing `size` / `anchor` / `nativeCanvas` on each brief:
+ * orthogonal authoring axis that emits the same type at a different footprint
+ * or aspect ratio without hand-editing `size` / `anchor` / `generation.sheet`
+ * on each brief:
  *
- *   default — 1× width, 1× height (the per-type base size)
- *   wide    — 2× width, 1× height (landscape)
- *   tall    — 1× width, 2× height (portrait)
- *   large   — 2× width, 2× height (bigger, same square aspect)
+ *   default — 1× width, 1× height → 4×4 = 16 cells (256×256 each)
+ *   wide    — 2× width, 1× height → 4 rows × 2 cols = 8 cells (512×256, 2:1)
+ *   tall    — 1× width, 2× height → 2 rows × 4 cols = 8 cells (256×512, 1:2)
+ *   large   — 2× width, 2× height → 2 rows × 2 cols = 4 cells (512×512, 1:1)
  *
- * Scaling is applied to the per-type DEFAULTS *before* the minimal brief's
- * explicit overrides are merged on top (see `mergeMinimalIntoDefaults`), so an
- * author can still pin an exact `size` / `anchor` and win over the variant —
- * the variant only stretches inherited defaults.
+ * The transform scales `size`/`anchor` AND **reshapes the sheet grid by the
+ * same multiplier on a fixed 1024² canvas** (a 2× wider cell ⇒ half the
+ * columns). It does NOT inflate `nativeCanvas`: the sheet keeps a fixed pixel
+ * budget and yields fewer, aspect-matched cells, so a "wide" request produces
+ * one sheet of 8 double-width options rather than 16 square ones. See
+ * ADR 0029.
+ *
+ * The transform is applied to the per-type DEFAULTS *before* the minimal
+ * brief's explicit overrides are merged on top (see `mergeMinimalIntoDefaults`),
+ * so an author can still pin an exact `size` / `anchor` / grid and win over the
+ * variant — the variant only reshapes inherited defaults.
  *
  * This module is intentionally dependency-free (it must NOT import the brief
  * schema) so `brief-schema.ts` can import `SIZE_VARIANTS` from here without an
@@ -42,14 +49,6 @@ export const SIZE_VARIANT_MULTIPLIERS: Readonly<Record<SizeVariant, SizeMultipli
   large: { width: 2, height: 2 },
 };
 
-/**
- * Upper bound for the supersampled native canvas after scaling. The brief
- * schema caps `generation.sheet.nativeCanvas` at 2048; scaling the default
- * 1024 by 2 lands exactly on the cap, and 2048 stays evenly divisible by the
- * default 4×4 grid (256 → 512 cells).
- */
-export const MAX_NATIVE_CANVAS = 2048;
-
 export function isSizeVariant(value: unknown): value is SizeVariant {
   return typeof value === 'string' && (SIZE_VARIANTS as readonly string[]).includes(value);
 }
@@ -70,21 +69,21 @@ export function coerceSizeVariant(value: unknown): SizeVariant {
 }
 
 /**
- * Return a deep copy of per-type defaults with `size`, `anchor`, and
- * `generation.sheet.nativeCanvas` scaled for the given variant.
+ * Return a deep copy of per-type defaults transformed for the given variant.
  *
+ * - `size` and `anchor` scale by the same per-axis multiplier, so the schema
+ *   invariant `anchor.x < size.width` (and the `.y` equivalent) is preserved:
+ *   strict integer inequality survives multiplication by a positive integer.
+ * - `generation.sheet.{rows,cols}` are **reshaped** by the same multiplier
+ *   (cols ÷ width, rows ÷ height, floored at 1) so the sheet keeps a fixed
+ *   pixel budget but yields fewer, aspect-matched cells. `nativeCanvas` is left
+ *   untouched — wide/tall/large no longer supersample to a larger canvas.
  * - Only fields that exist and are finite numbers are touched, so legacy or
  *   partial defaults (and `{}` for types without a defaults file) pass through
  *   unchanged.
- * - `size` and `anchor` scale by the same per-axis factor, so the schema
- *   invariant `anchor.x < size.width` (and the `.y` equivalent) is preserved:
- *   strict integer inequality survives multiplication by a positive integer.
- * - `nativeCanvas` scales by the larger of the two multipliers (to preserve
- *   the supersampling ratio on the longer axis) and is clamped to
- *   {@link MAX_NATIVE_CANVAS}.
  *
  * The input is treated as immutable. For the `'default'` variant the original
- * reference is returned as-is (no scaling needed — the caller's deep-merge
+ * reference is returned as-is (no transform needed — the caller's deep-merge
  * clones defaults anyway).
  */
 export function applySizeVariantToDefaults<T extends Record<string, unknown>>(
@@ -108,14 +107,27 @@ export function applySizeVariantToDefaults<T extends Record<string, unknown>>(
   const generation = scaled.generation;
   if (isPlainObject(generation) && isPlainObject(generation.sheet)) {
     const sheet = generation.sheet;
-    const native = sheet.nativeCanvas;
-    if (typeof native === 'number' && Number.isFinite(native)) {
-      const factor = Math.max(mult.width, mult.height);
-      sheet.nativeCanvas = Math.min(Math.round(native * factor), MAX_NATIVE_CANVAS);
-    }
+    // Reshape the grid by the SAME multiplier instead of inflating the canvas:
+    // a 2× wider cell means half as many columns, so the sheet stays a fixed
+    // pixel budget (nativeCanvas untouched) but yields fewer, aspect-matched
+    // cells — e.g. wide → 4 rows × 2 cols = 8 cells of 512×256. See ADR 0029.
+    sheet.cols = reshapeAxis(sheet.cols, mult.width);
+    sheet.rows = reshapeAxis(sheet.rows, mult.height);
   }
 
   return scaled;
+}
+
+/**
+ * Divide a base grid axis (rows or cols) by a size multiplier, flooring at 1.
+ * A non-numeric/absent base falls back to the schema default of 4, so a
+ * defaults file that omits the grid still reshapes correctly. The brief
+ * schema's divisibility check fails loud if a pathological base/multiplier
+ * combo would leave `nativeCanvas` non-divisible by the reshaped grid.
+ */
+function reshapeAxis(base: unknown, divisor: number): number {
+  const n = typeof base === 'number' && Number.isFinite(base) && base > 0 ? base : 4;
+  return Math.max(1, Math.round(n / divisor));
 }
 
 function scaleNumberField(obj: Record<string, unknown>, key: string, factor: number): void {

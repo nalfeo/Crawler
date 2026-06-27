@@ -127,8 +127,17 @@ describe('buildPrompt (single)', () => {
     expect(out).toMatch(/no text|no.*numbers/i);
     expect(out).toMatch(/transparent|high-contrast/i);
     expect(out).toMatch(/Do NOT use black backgrounds/i);
-    expect(out).toMatch(/shadows must be neutral\/dark/i);
-    expect(out).toMatch(/must NOT be in the same color family as the background/i);
+    expect(out).toMatch(/Do NOT add any ground, cast, contact, or drop shadow/i);
+    expect(out).toMatch(/no shadow on the floor/i);
+  });
+
+  it('forbids ground shadows on the single-sprite path and drops the old cast-shadow coloring rule', () => {
+    const out = buildPrompt(makeBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Do NOT add any ground, cast, contact, or drop shadow/i);
+    // Volume/form shading on the subject itself stays allowed.
+    expect(out).toMatch(/shading and volume on the subject itself are fine/i);
+    // The previous wording told the model how to color cast shadows — it is gone.
+    expect(out).not.toMatch(/shadows must be neutral\/dark/i);
   });
 });
 
@@ -199,10 +208,17 @@ describe('buildSheetPrompt', () => {
     // Background rule.
     expect(out).toMatch(/transparent.*background|high-contrast background/i);
     expect(out).toMatch(/Do NOT use black backgrounds/i);
-    expect(out).toMatch(/shadows must be neutral\/dark/i);
-    expect(out).toMatch(/must NOT be in the same color family as the background/i);
+    expect(out).toMatch(/Do NOT add any ground, cast, contact, or drop shadow/i);
+    expect(out).toMatch(/no shadow on the floor/i);
     // No decorative borders.
     expect(out).toMatch(/no.*decorative|no.*borders|no per-cell/i);
+  });
+
+  it('forbids ground shadows on the sheet path and drops the old cast-shadow coloring rule', () => {
+    const out = buildSheetPrompt(makeBrief(), FAKE_STYLE_GUIDE);
+    expect(out).toMatch(/Do NOT add any ground, cast, contact, or drop shadow/i);
+    expect(out).toMatch(/shading and volume on the subject itself are fine/i);
+    expect(out).not.toMatch(/shadows must be neutral\/dark/i);
   });
 
   it('puts subject info between preamble and layout instructions', () => {
@@ -324,8 +340,6 @@ describe('buildSheetPrompt — thematic variations', () => {
 });
 
 describe('output size block', () => {
-  const sheet2048 = { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 2048 } };
-
   it('describes the default square subject without a footprint band', () => {
     const out = buildPrompt(makeBrief(), FAKE_STYLE_GUIDE);
     expect(out).toContain('## Output size');
@@ -337,37 +351,43 @@ describe('output size block', () => {
     expect(out).not.toMatch(/source pixels wide and/);
   });
 
-  it('describes a wide subject with a landscape proportion and footprint', () => {
+  it('describes a wide subject in an aspect-matched landscape cell', () => {
+    // wide reshapes the grid to 4 rows × 2 cols on a fixed 1024 canvas → 512×256.
     const brief = makeBrief({
       type: 'enemy',
       size: { width: 128, height: 64 },
-      generation: sheet2048,
+      generation: { sheet: { rows: 4, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain('Each finished sprite resolves to exactly 128x64 pixels');
     expect(out).toContain('landscape (wider than tall) at a 2:1 aspect ratio');
     expect(out).toContain('span roughly 448-480 source pixels wide and 224-240 source pixels tall');
-    expect(out).toContain('square 512x512 source cell');
+    expect(out).toContain('Within each 512x256 source cell');
+    // The cell is no longer square — the wording must not call it square.
+    expect(out).not.toContain('square 512x256');
   });
 
-  it('describes a tall subject with a portrait proportion and footprint', () => {
+  it('describes a tall subject in an aspect-matched portrait cell', () => {
+    // tall reshapes the grid to 2 rows × 4 cols → 256×512 cells.
     const brief = makeBrief({
       type: 'character',
       size: { width: 64, height: 128 },
       anchor: { x: 32, y: 126 },
-      generation: sheet2048,
+      generation: { sheet: { rows: 2, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain('Each finished sprite resolves to exactly 64x128 pixels');
     expect(out).toContain('portrait (taller than wide) at a 1:2 aspect ratio');
     expect(out).toContain('span roughly 224-240 source pixels wide and 448-480 source pixels tall');
+    expect(out).toContain('Within each 256x512 source cell');
   });
 
-  it('treats a large (2x2) subject as square at the scaled cell size', () => {
+  it('treats a large (2x2) subject as square at the reshaped cell size', () => {
+    // large reshapes the grid to 2 rows × 2 cols → 512×512 square cells.
     const brief = makeBrief({
       type: 'enemy',
       size: { width: 128, height: 128 },
-      generation: sheet2048,
+      generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain('Each finished sprite resolves to exactly 128x128 pixels');
@@ -380,7 +400,6 @@ describe('output size block', () => {
     const brief = makeBrief({
       type: 'tile',
       size: { width: 128, height: 64 },
-      generation: sheet2048,
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
@@ -398,8 +417,6 @@ describe('output size block', () => {
 });
 
 describe('type rules scale with the brief size', () => {
-  const sheet2048 = { sheet: { rows: 4, cols: 4, emptyCells: [], nativeCanvas: 2048 } };
-
   it('quotes the default 64px enemy band in a 256x256 cell', () => {
     const brief = makeBrief({
       type: 'enemy',
@@ -413,15 +430,16 @@ describe('type rules scale with the brief size', () => {
   });
 
   it('scales the enemy band for a tall variant', () => {
+    // tall enemy reshapes to 2 rows × 4 cols → 256×512 cells.
     const brief = makeBrief({
       type: 'enemy',
       size: { width: 64, height: 128 },
       anchor: { x: 32, y: 64 },
-      generation: sheet2048,
+      generation: { sheet: { rows: 2, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
     expect(out).toContain(
-      'roughly a full 128px-tall in-game sprite (about 448-480 source pixels tall in a 512x512 cell)',
+      'roughly a full 128px-tall in-game sprite (about 448-480 source pixels tall in a 256x512 cell)',
     );
   });
 });
