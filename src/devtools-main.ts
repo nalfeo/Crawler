@@ -17,7 +17,9 @@ import {
   fetchRunSummary,
   listSidecarRuns,
   postApprove,
+  postCheckin,
   ApproveRequestError,
+  CheckinRequestError,
   type SidecarRunListEntry,
 } from './devtools/sprite-approval-api.js';
 import { getSpriteSidecarBaseUrl } from './shared/session-server-env.js';
@@ -935,6 +937,23 @@ function render(): void {
       display: 'none',
     },
   });
+  // Abort affordance for the in-flight PostProcess / Judge step. Hidden by
+  // default; shown (in renderWorkflowSelection) only while a step is running for
+  // the active item. Cancelling restores the prior stage so the trigger button
+  // re-enables and the step can be retried.
+  const cancelStepBtn = el('button', {
+    text: 'Cancel step',
+    title: 'Abort the running PostProcess or Judge step. Nothing is changed; you can retry.',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(248,113,113,0.5)',
+      background: '#3f1d1d',
+      color: '#fecaca',
+      cursor: 'pointer',
+      display: 'none',
+    },
+  });
   const launchWorkerBtn = el('button', {
     text: 'Launch worker',
     style: {
@@ -955,6 +974,22 @@ function render(): void {
       border: '1px solid rgba(167,139,250,0.5)',
       background: '#312e81',
       color: '#ede9fe',
+      cursor: 'pointer',
+    },
+  });
+  // Global publish action: pushes every locally-approved asset that differs from
+  // origin/main to a dedicated branch and files the asset-checkin tracking issue.
+  // Approve alone is local-only, so without this the work never reaches GitHub.
+  const checkinBtn = el('button', {
+    text: 'Check in to GitHub',
+    title:
+      'Publish all locally-approved sprites: push an assets/<slug> branch and file an asset-checkin issue (no PR).',
+    style: {
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(132,204,22,0.5)',
+      background: '#1a2e05',
+      color: '#ecfccb',
       cursor: 'pointer',
     },
   });
@@ -1191,10 +1226,12 @@ function render(): void {
     judgeBtn,
     forceJudgeBtn,
     cancelGenerateBtn,
+    cancelStepBtn,
     launchWorkerBtn,
     metadataBtn,
     restartBriefBtn,
     restartSheetBtn,
+    checkinBtn,
     removeItemBtn,
   );
 
@@ -1530,6 +1567,16 @@ function render(): void {
   // item id, so the Cancel button can abort a blocking request. Queued-path
   // polling is stopped instead by resetting the item's stage (see Cancel).
   const pendingGenerateAborts = new Map<string, AbortController>();
+  // The single in-flight PostProcess / Judge step, if any. Tracked so a shared
+  // Cancel button can abort the blocking POST and restore the item's prior stage
+  // (enabling retry). Only one such step runs at a time — the trigger buttons are
+  // disabled while a stage is busy — so a lone field (not a map) suffices.
+  let inFlightStep: {
+    readonly kind: 'postprocess' | 'judge';
+    readonly abort: AbortController;
+    readonly priorStage: WorkflowStage;
+    readonly itemId: string;
+  } | null = null;
   // Poll-attempt counters for the queued path, surfaced in the live progress
   // line. Ephemeral: cleared when generation ends or is cancelled, and reset
   // (not persisted) on reload when polling auto-resumes.
@@ -2048,6 +2095,7 @@ function render(): void {
       removeItemBtn.disabled = true;
       restartBriefBtn.style.display = 'none';
       restartSheetBtn.style.display = 'none';
+      cancelStepBtn.style.display = 'none';
       renderSynthCandidates([]);
       renderRunCandidates();
       renderGenerationProgress();
@@ -2102,6 +2150,15 @@ function render(): void {
     const canRestartSheet = item.run !== null;
     restartSheetBtn.style.display = canRestartSheet ? '' : 'none';
     restartSheetBtn.disabled = busy || !canRestartSheet;
+    // Show the shared Cancel button only while THIS item's PostProcess/Judge step
+    // is actually in flight (its trigger button is busy-disabled meanwhile), so
+    // a hung step can be aborted and retried instead of wedging the page.
+    const stepRunning =
+      inFlightStep !== null &&
+      inFlightStep.itemId === item.id &&
+      (item.stage === 'postprocessing' || item.stage === 'judging');
+    cancelStepBtn.style.display = stepRunning ? '' : 'none';
+    cancelStepBtn.disabled = !stepRunning;
     const nextAction = primaryActionLabel(item.stage);
     if (item.lastError) {
       setWorkflowStatus(`Error: ${item.lastError}`, '#fca5a5');
@@ -4719,6 +4776,8 @@ function render(): void {
     }
     const { briefId, runId } = item.run;
     const priorStage = item.stage;
+    const abort = new AbortController();
+    inFlightStep = { kind: 'postprocess', abort, priorStage, itemId: item.id };
     queueState = queueUpdateItem(queueState, item.id, { stage: 'postprocessing', lastError: null });
     writeQueueState();
     renderQueue();
@@ -4731,6 +4790,7 @@ function render(): void {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({}),
+          signal: abort.signal,
         },
       );
       const candidates = result.summary?.candidates ?? [];
@@ -4740,6 +4800,11 @@ function render(): void {
         resetApproval: true,
       });
     } catch (error) {
+      // A user-initiated Cancel aborts the fetch; the Cancel handler has already
+      // restored this item's prior stage, so don't clobber it with an error.
+      if ((error as { name?: string }).name === 'AbortError') {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       queueState = queueUpdateItem(queueState, item.id, { stage: priorStage, lastError: message });
       writeQueueState();
@@ -4747,6 +4812,7 @@ function render(): void {
       renderWorkflowSelection();
       setWorkflowStatus(`PostProcess failed: ${message}`, '#fca5a5');
     } finally {
+      if (inFlightStep?.abort === abort) inFlightStep = null;
       setButtonBusy(postprocessBtn, false, 'PostProcess', 'Post-processing...');
     }
   });
@@ -4779,6 +4845,8 @@ function render(): void {
     const body: { force?: boolean; variantIndexes?: number[] } = {};
     if (forced) body.force = true;
     if (subset) body.variantIndexes = subset;
+    const abort = new AbortController();
+    inFlightStep = { kind: 'judge', abort, priorStage, itemId: item.id };
     queueState = queueUpdateItem(queueState, item.id, { stage: 'judging', lastError: null });
     writeQueueState();
     renderQueue();
@@ -4793,6 +4861,7 @@ function render(): void {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
+          signal: abort.signal,
         },
       );
       const candidates = result.summary?.candidates ?? [];
@@ -4804,6 +4873,11 @@ function render(): void {
         status: `Judged ${briefId}${scope}${forcedNote}: ${passing}/${candidates.length} pass. Pick the best variant and Approve.`,
       });
     } catch (error) {
+      // A user-initiated Cancel aborts the fetch; the Cancel handler has already
+      // restored this item's prior stage, so don't clobber it with an error.
+      if ((error as { name?: string }).name === 'AbortError') {
+        return;
+      }
       const message = error instanceof Error ? error.message : String(error);
       queueState = queueUpdateItem(queueState, item.id, { stage: priorStage, lastError: message });
       writeQueueState();
@@ -4811,6 +4885,7 @@ function render(): void {
       renderWorkflowSelection();
       setWorkflowStatus(`Judge failed: ${message}`, '#fca5a5');
     } finally {
+      if (inFlightStep?.abort === abort) inFlightStep = null;
       setButtonBusy(triggerBtn, false, triggerLabel, 'Judging...');
     }
   };
@@ -5079,6 +5154,76 @@ function render(): void {
       `Canceled generation for "${item.name}". The brief is unchanged — click Generate run to retry.`,
       '#fcd34d',
     );
+  });
+
+  // Abort the in-flight PostProcess / Judge step. The aborted fetch's own
+  // finally re-enables its trigger button; here we just restore the prior stage
+  // (so the step can be retried) and report the cancellation.
+  cancelStepBtn.addEventListener('click', () => {
+    const step = inFlightStep;
+    if (!step) return;
+    step.abort.abort();
+    const label = step.kind === 'postprocess' ? 'PostProcess' : 'Judge';
+    inFlightStep = null;
+    queueState = queueUpdateItem(queueState, step.itemId, {
+      stage: step.priorStage,
+      lastError: null,
+    });
+    writeQueueState();
+    renderQueue();
+    renderWorkflowSelection();
+    setWorkflowStatus(
+      `Canceled ${label}. Nothing was changed — click ${label} to retry.`,
+      '#fcd34d',
+    );
+  });
+
+  // Publish every locally-approved asset that differs from origin/main: push an
+  // assets/<slug> branch and file the asset-checkin tracking issue (no PR). This
+  // is the step that actually reaches GitHub — approve alone is local-only.
+  checkinBtn.addEventListener('click', async () => {
+    const ok = window.confirm(
+      'Check in all locally-approved sprites? This pushes an assets/<slug> branch ' +
+        'and files an asset-checkin issue on GitHub (no PR is opened).',
+    );
+    if (!ok) return;
+    setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Checking in...');
+    try {
+      const result = await postCheckin();
+      const count = result.assets.length;
+      workflowStatus.style.color = '#bef264';
+      const link = el('a', {
+        text: 'View asset-checkin issue ↗',
+        style: { color: '#93c5fd', textDecoration: 'underline' },
+      });
+      link.href = result.issueUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      workflowStatus.replaceChildren(
+        document.createTextNode(
+          `Checked in ${count} asset${count === 1 ? '' : 's'} on ${result.branch}. `,
+        ),
+        link,
+      );
+    } catch (error) {
+      if (error instanceof CheckinRequestError && error.errorCode === 'nothing-to-checkin') {
+        setWorkflowStatus(
+          'Nothing to check in — approve a sprite first. Only assets that differ from ' +
+            'origin/main are published.',
+          '#fcd34d',
+        );
+      } else if (error instanceof CheckinRequestError && error.errorCode === 'ci-refused') {
+        setWorkflowStatus(
+          'Check-in is disabled in CI (it runs only from a local sidecar).',
+          '#fca5a5',
+        );
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        setWorkflowStatus(`Check-in failed: ${message}`, '#fca5a5');
+      }
+    } finally {
+      setButtonBusy(checkinBtn, false, 'Check in to GitHub', 'Checking in...');
+    }
   });
 
   launchWorkerBtn.addEventListener('click', async () => {

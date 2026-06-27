@@ -3,7 +3,9 @@ import {
   extractVariantIndices,
   listSidecarRuns,
   postApprove,
+  postCheckin,
   ApproveRequestError,
+  CheckinRequestError,
 } from '../../src/devtools/sprite-approval-api.js';
 
 describe('devtools sprite approval api', () => {
@@ -132,5 +134,66 @@ describe('devtools sprite approval api', () => {
       candidates: [{ index: 3 }, {}, { index: 5 }, { index: 3 }],
     });
     expect(indices).toEqual([3, 1, 5]);
+  });
+});
+
+describe('devtools sprite check-in api', () => {
+  it('POSTs an empty body to /api/checkin and returns the parsed payload', async () => {
+    const payload = {
+      branch: 'assets/checkin-2026-06-08-abc123',
+      issueUrl: 'https://github.com/nalfeo/Crawler/issues/42',
+      assets: [
+        {
+          assetPath: 'generated/slime-king-var-1.png',
+          manifestKey: 'slime-king-var-1',
+          briefId: 'slime-king',
+          variantIndex: 1,
+        },
+      ],
+    };
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const result = await postCheckin(fetcher as unknown as typeof fetch);
+
+    expect(result).toEqual(payload);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0]!;
+    expect(url).toBe('http://127.0.0.1:3010/api/checkin');
+    expect(init.method).toBe('POST');
+    expect(init.headers).toEqual({ 'Content-Type': 'application/json' });
+    expect(JSON.parse(init.body as string)).toEqual({});
+  });
+
+  it('throws CheckinRequestError carrying status + errorCode on a 409 nothing-to-checkin', async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'nothing-to-checkin',
+          message: 'No approved assets differ from origin/main.',
+        }),
+        { status: 409, statusText: 'Conflict', headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+    const error = await postCheckin(fetcher as unknown as typeof fetch).catch(
+      (err: unknown) => err,
+    );
+    expect(error).toBeInstanceOf(CheckinRequestError);
+    expect((error as CheckinRequestError).status).toBe(409);
+    expect((error as CheckinRequestError).errorCode).toBe('nothing-to-checkin');
+    expect((error as CheckinRequestError).message).toMatch(/check-in failed \(409\): /);
+  });
+
+  it('falls back to status text when the error body is not JSON', async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response('not json', { status: 502, statusText: 'Bad Gateway' }));
+    await expect(postCheckin(fetcher as unknown as typeof fetch)).rejects.toThrow(
+      /check-in failed \(502\): Bad Gateway/,
+    );
   });
 });

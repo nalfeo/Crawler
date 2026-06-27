@@ -51,6 +51,41 @@ export class ApproveRequestError extends Error {
   }
 }
 
+/** One published asset, as reported by the sidecar `/api/checkin` route. */
+export interface CheckinAsset {
+  readonly assetPath: string;
+  readonly manifestKey: string | null;
+  readonly briefId: string | null;
+  readonly variantIndex: number | null;
+}
+
+/**
+ * Successful `/api/checkin` payload: the pushed `assets/<slug>` branch, the URL
+ * of the filed `asset-checkin` tracking issue, and the assets it covers.
+ */
+export interface CheckinResponse {
+  readonly branch: string;
+  readonly issueUrl: string;
+  readonly assets: readonly CheckinAsset[];
+}
+
+/**
+ * Error thrown by `postCheckin` for a non-2xx sidecar response. Carries the HTTP
+ * `status` and machine-readable `errorCode` (the sidecar's `error` field, e.g.
+ * `nothing-to-checkin`, `ci-refused`) so callers can give a friendly message for
+ * the benign "nothing to check in" case without parsing the human text.
+ */
+export class CheckinRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly errorCode: string | null,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CheckinRequestError';
+  }
+}
+
 function runSummaryUrl(briefId: string, runId: string): string {
   return `${SIDECAR_BASE}/api/runs/${encodeURIComponent(briefId)}/${encodeURIComponent(runId)}`;
 }
@@ -131,4 +166,37 @@ export async function postApprove(
     );
   }
   return (await response.json()) as ApproveResponse;
+}
+
+/**
+ * Triggers the sidecar check-in: publishes every locally-approved asset that
+ * differs from `origin/main` as a dedicated `assets/<slug>` branch + an
+ * `asset-checkin` tracking issue (NO PR). This is the step that actually creates
+ * the GitHub issue — approve alone only mutates local files. Mirrors
+ * `postApprove`'s error contract, surfacing the sidecar `error` code so callers
+ * can special-case the benign `nothing-to-checkin` (409) conflict.
+ */
+export async function postCheckin(fetcher: typeof fetch = fetch): Promise<CheckinResponse> {
+  const response = await fetcher(`${SIDECAR_BASE}/api/checkin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  if (!response.ok) {
+    let detail = '';
+    let errorCode: string | null = null;
+    try {
+      const body = (await response.json()) as ApproveErrorBody;
+      detail = body.message ?? body.error ?? '';
+      errorCode = body.error ?? null;
+    } catch {
+      // Body wasn't JSON; fall through with status text only.
+    }
+    throw new CheckinRequestError(
+      response.status,
+      errorCode,
+      `check-in failed (${response.status}): ${detail || response.statusText}`,
+    );
+  }
+  return (await response.json()) as CheckinResponse;
 }
