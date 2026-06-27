@@ -1421,6 +1421,16 @@ export class MainGameScene extends Phaser.Scene {
     );
     rt.render();
 
+    // Acknowledge this frame's recompute BEFORE the auto-quality block may
+    // rebuild the field. A step change runs setLightingConfig() ->
+    // rebuildLightField(), which reallocates an all-zero field and sets
+    // lightingDirty = true to force a full recompute next frame. That signal
+    // must survive — clearing it after the rebuild would strand every cell
+    // outside the next (player-sized) dirty rect at darkness 1, leaving most of
+    // the map black until the next floor load.
+    this.lightingLastSource = { x: px, y: py };
+    this.lightingDirty = false;
+
     const computeMs = performance.now() - t0;
     this.lightingComputeMsAvg = this.lightingComputeMsAvg * 0.9 + computeMs * 0.1;
     if (
@@ -1438,9 +1448,6 @@ export class MainGameScene extends Phaser.Scene {
     } else {
       this.lightingOverBudgetFrames = 0;
     }
-
-    this.lightingLastSource = { x: px, y: py };
-    this.lightingDirty = false;
   }
 
   private ensureUiCamera(): void {

@@ -73,4 +73,21 @@ describe('MainGameScene lighting overlay behavior', () => {
     );
     expect(declaration?.initializer?.getText(file)).not.toContain('dirtyRect');
   });
+
+  it('clears the lighting-dirty flag before the auto-quality rebuild block', () => {
+    // Regression guard: auto-quality runs setLightingConfig() ->
+    // rebuildLightField(), which sets lightingDirty = true to force a full
+    // recompute of the freshly reallocated field. If the method cleared
+    // lightingDirty = false *after* that block it would drop the signal and
+    // leave most of the map black until the next floor load. The reset must
+    // therefore come before the auto-quality logic.
+    const method = findSceneMethod('updateLightingOverlay');
+    const body = method.body?.getText(file) ?? '';
+    const resetIndex = body.indexOf('this.lightingDirty = false');
+    const autoQualityIndex = body.indexOf('autoAdjustQuality');
+
+    expect(resetIndex).toBeGreaterThanOrEqual(0);
+    expect(autoQualityIndex).toBeGreaterThanOrEqual(0);
+    expect(resetIndex).toBeLessThan(autoQualityIndex);
+  });
 });
