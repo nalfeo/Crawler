@@ -101,6 +101,25 @@ SPRITES_ASSET_QUEUE=azure-queue
 
 ---
 
+## Sidecar backend defaults
+
+The sprite **sidecar** (`npm run sprites:gallery`, plus the DevTools/lab
+workflow server) is wired to the shared Azure environment: it loads `.env.local`
+and **defaults to the Azure backends** (`SPRITES_RUN_STORE=azure-blob`,
+`SPRITES_ASSET_QUEUE=azure-queue`) even when those selectors are unset. If an
+Azure backend is selected but no Storage credentials are found, the sidecar
+**exits non-zero** with setup guidance instead of silently falling back to the
+local filesystem.
+
+The `local` / `noop` backends are still the `createRunStore` /
+`createAssetQueue` factory defaults (used by tests and direct callers) and
+remain selectable — they are simply no longer a silent fallback for the sidecar.
+To run the sidecar fully local (offline, or in a test), opt in explicitly:
+
+```bash
+SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop npm run sprites:gallery
+```
+
 ## Automated setup (recommended)
 
 Use the setup script to provision missing resources, fetch credentials, and

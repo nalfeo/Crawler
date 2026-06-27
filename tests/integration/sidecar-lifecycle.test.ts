@@ -89,7 +89,16 @@ describe.skipIf(isWindows)('sidecar CLI lifecycle', () => {
     const tsxBin = path.join(REPO_ROOT, 'node_modules', '.bin', isWindows ? 'tsx.cmd' : 'tsx');
     child = spawn(tsxBin, [CLI_PATH], {
       cwd: REPO_ROOT,
-      env: { ...process.env, SPRITES_SIDECAR_PORT: String(port) },
+      // This test exercises the process/port lifecycle, not a backend. The
+      // sidecar now defaults to the Azure backends, so opt into local/noop
+      // explicitly (the sanctioned testing path) to avoid requiring Storage
+      // credentials on CI runners.
+      env: {
+        ...process.env,
+        SPRITES_SIDECAR_PORT: String(port),
+        SPRITES_RUN_STORE: 'local',
+        SPRITES_ASSET_QUEUE: 'noop',
+      },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
