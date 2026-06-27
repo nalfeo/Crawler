@@ -1,7 +1,14 @@
 import { addComponent, addEntity, removeEntity } from 'bitecs';
 import type Phaser from 'phaser';
 import { describe, expect, it, vi } from 'vitest';
-import { DeathTimer, Enemy, Player, Position, Sprite } from '../../src/core/components.js';
+import {
+  DeathTimer,
+  Enemy,
+  Player,
+  Position,
+  Rotation,
+  Sprite,
+} from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { set } from '../../src/core/world.js';
@@ -394,6 +401,80 @@ describe('createPhaserBridge', () => {
     expect(miniImg.scaleX).toBeLessThan(fullImg.scaleX);
     expect(miniImg.scaleX).toBeCloseTo(miniImg.scaleY, 6);
     expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * (16 / 24), 5);
+  });
+
+  // A welcome sign is a Sprite+Position entity whose textureId is the welcome
+  // board (SPRITE_TEX_WELCOME_SIGN === 3). Its Rotation.angle aims the arrow at
+  // the door that leads onward; the renderer picks the baked board so the
+  // "WELCOME" word never reads upside-down.
+  it('points a right-hemisphere welcome sign along its angle with the base board', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    // cos(angle) >= 0: the arrow-right board already reads upright, so the
+    // renderer keeps the base texture and rotates straight to `angle`.
+    const angle = Math.PI / 6; // 30°, cos > 0
+    addComponent(world.ecs, eid, set(Position, { x: 40, y: 50 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 3, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(Rotation, { angle }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('__cw_welcome_sign');
+    expect(images[0]?.rotation).toBeCloseTo(angle, 6);
+  });
+
+  it('swaps a left-hemisphere welcome sign to the mirrored board, measured from −x', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    // cos(angle) < 0: aiming the arrow-right board here would flip "WELCOME"
+    // upside-down, so the renderer swaps to the arrow-left board and measures
+    // rotation from the −x reference (angle − π) to keep the word readable while
+    // the arrow still points along `angle`.
+    const angle = (3 * Math.PI) / 4; // 135°, cos < 0
+    addComponent(world.ecs, eid, set(Position, { x: 40, y: 50 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 3, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(Rotation, { angle }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('__cw_welcome_sign_left');
+    expect(images[0]?.rotation).toBeCloseTo(angle - Math.PI, 6);
+  });
+
+  it('flips a welcome sign between boards as it rotates across the vertical', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    const rightAngle = Math.PI / 4; // cos > 0 → base board
+    addComponent(world.ecs, eid, set(Position, { x: 40, y: 50 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 3, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(Rotation, { angle: rightAngle }));
+
+    bridge.sync(world);
+    expect(images).toHaveLength(1);
+    const sign = images[0]!;
+    expect(sign.textureKey).toBe('__cw_welcome_sign');
+    expect(sign.rotation).toBeCloseTo(rightAngle, 6);
+
+    // Rotate past vertical into the left hemisphere: the SAME sprite swaps to the
+    // mirrored board and re-references its rotation — no new image is created.
+    const leftAngle = (3 * Math.PI) / 4; // cos < 0 → mirrored board
+    world.stores.rotation.angle[eid] = leftAngle;
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(sign.textureKey).toBe('__cw_welcome_sign_left');
+    expect(sign.rotation).toBeCloseTo(leftAngle - Math.PI, 6);
   });
 
   it('hides enemies on tiles outside current FOV visibility', () => {

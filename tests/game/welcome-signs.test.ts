@@ -1,8 +1,12 @@
 import { query } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { Sprite } from '../../src/core/components.js';
+import { Npc, Sprite } from '../../src/core/components.js';
 import { spawnPlayer } from '../../src/core/helpers.js';
-import { findNavigableRoomPath, initializeFloor1Scenario } from '../../src/game/floor1Scenario.js';
+import {
+  findNavigableRoomPathSteps,
+  initializeFloor1Scenario,
+  type NavigableRoomStep,
+} from '../../src/game/floor1Scenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // Mirror of the module-local SPRITE_TEX_WELCOME_SIGN in floor1Scenario.ts and
@@ -12,6 +16,15 @@ const WELCOME_SIGN_TEXTURE_ID = 3;
 // A spread of seeds: the earlier adjacency bug produced zero signs on every
 // seed, so we sample enough distinct dungeons to catch regressions.
 const SEEDS = [1, 2, 3, 5, 7, 11, 13, 17, 23, 42, 99, 256];
+
+function tileKeyAt(world: ReturnType<typeof createTestWorld>, eid: number): string {
+  const floorMap = world.floorMap!;
+  const tile = floorMap.pixelToTile(
+    world.stores.position.x[eid] ?? 0,
+    world.stores.position.y[eid] ?? 0,
+  );
+  return `${tile.x},${tile.y}`;
+}
 
 function welcomeSignEids(world: ReturnType<typeof createTestWorld>): number[] {
   return Array.from(query(world.ecs, [Sprite])).filter(
@@ -26,13 +39,25 @@ function initFloor1(seed: number): ReturnType<typeof createTestWorld> {
   return world;
 }
 
-function navigableRoomPath(world: ReturnType<typeof createTestWorld>): number[] {
+function navigableRoomSteps(world: ReturnType<typeof createTestWorld>): NavigableRoomStep[] {
   const floorMap = world.floorMap!;
   const welcomeTile = floorMap.pixelToTile(
     world.floor1!.objective.welcomeOfficePos.x,
     world.floor1!.objective.welcomeOfficePos.y,
   );
-  return findNavigableRoomPath(floorMap, floorMap.playerSpawn, welcomeTile) ?? [];
+  return findNavigableRoomPathSteps(floorMap, floorMap.playerSpawn, welcomeTile) ?? [];
+}
+
+/** Tile-space centre of a room, matching floor1Scenario's `centerOfRoom`. */
+function roomCenter(
+  world: ReturnType<typeof createTestWorld>,
+  roomId: number,
+): { x: number; y: number } {
+  const bounds = world.floorMap!.roomGraph.get(roomId)!.bounds;
+  return {
+    x: Math.floor(bounds.x + bounds.width / 2),
+    y: Math.floor(bounds.y + bounds.height / 2),
+  };
 }
 
 describe('floor 1 welcome signs', () => {
@@ -71,50 +96,75 @@ describe('floor 1 welcome signs', () => {
     }
   });
 
-  it('regression: seed 20 follows the navigable room path instead of pointing straight at the goal', () => {
-    const world = initFloor1(20);
-    const floorMap = world.floorMap!;
-    const roomPath = navigableRoomPath(world);
-    expect(roomPath.length).toBeGreaterThan(6);
+  it('plants one sign in every room along the path (except the destination)', () => {
+    for (const seed of SEEDS) {
+      const world = initFloor1(seed);
+      const steps = navigableRoomSteps(world);
+      // Every room on the path except the destination gets exactly one sign.
+      const expectedSignCount = Math.max(0, steps.length - 1);
+      expect(
+        welcomeSignEids(world).length,
+        `seed ${seed} should plant one sign per path room minus the destination`,
+      ).toBe(expectedSignCount);
+    }
+  });
 
-    const signSummaries = welcomeSignEids(world)
-      .map((eid) => {
-        const x = world.stores.position.x[eid] ?? 0;
-        const y = world.stores.position.y[eid] ?? 0;
-        const tile = floorMap.pixelToTile(x, y);
-        return {
-          roomId: floorMap.roomGraph.getRoomAt(tile.x, tile.y),
-          angle: world.stores.rotation.angle[eid] ?? 0,
-        };
-      })
-      .sort((a, b) => roomPath.indexOf(a.roomId) - roomPath.indexOf(b.roomId));
+  it('never plants a welcome sign on top of an NPC', () => {
+    for (const seed of SEEDS) {
+      const world = initFloor1(seed);
+      const npcTiles = new Set(
+        Array.from(query(world.ecs, [Npc])).map((eid) => tileKeyAt(world, eid)),
+      );
+      // NPCs exist to overlap with — otherwise the assertion is vacuous.
+      expect(npcTiles.size, `seed ${seed} should spawn NPCs`).toBeGreaterThan(0);
 
-    expect(signSummaries.length).toBeGreaterThan(1);
-    expect(signSummaries[0]?.roomId).toBe(roomPath[0]);
-
-    let previousRoomIndex = -1;
-    for (const sign of signSummaries) {
-      const roomIndex = roomPath.indexOf(sign.roomId);
-      expect(roomIndex).toBeGreaterThanOrEqual(0);
-      expect(roomIndex).toBeGreaterThan(previousRoomIndex);
-      if (previousRoomIndex >= 0) {
-        expect(roomIndex - previousRoomIndex).toBeGreaterThanOrEqual(2);
-        expect(roomIndex - previousRoomIndex).toBeLessThanOrEqual(3);
+      for (const signEid of welcomeSignEids(world)) {
+        const signTile = tileKeyAt(world, signEid);
+        expect(
+          npcTiles.has(signTile),
+          `seed ${seed} planted a welcome sign on an NPC at ${signTile}`,
+        ).toBe(false);
       }
+    }
+  });
 
-      const room = floorMap.roomGraph.get(sign.roomId)!;
-      const nextRoom = floorMap.roomGraph.get(roomPath[roomIndex + 1]!)!;
-      const roomCenter = {
-        x: Math.floor(room.bounds.x + room.bounds.width / 2),
-        y: Math.floor(room.bounds.y + room.bounds.height / 2),
-      };
-      const nextCenter = {
-        x: Math.floor(nextRoom.bounds.x + nextRoom.bounds.width / 2),
-        y: Math.floor(nextRoom.bounds.y + nextRoom.bounds.height / 2),
-      };
-      const expectedAngle = Math.atan2(nextCenter.y - roomCenter.y, nextCenter.x - roomCenter.x);
-      expect(sign.angle).toBeCloseTo(expectedAngle, 5);
-      previousRoomIndex = roomIndex;
+  it('regression: seed 20 points each sign at the door that leads onward, in every path room', () => {
+    const world = initFloor1(20);
+    const steps = navigableRoomSteps(world);
+    // Seed 20 winds through a long chain of rooms — the original straight-to-goal
+    // bug short-circuited this, so a long path is the regression's fingerprint.
+    expect(steps.length).toBeGreaterThan(6);
+
+    const signs = welcomeSignEids(world);
+    // One door-pointing sign per room, excluding the destination room.
+    expect(signs.length).toBe(steps.length - 1);
+
+    // The welcome office is door-gated, so at least the approach into it is a
+    // real DOOR tile — confirm the door-aware exit derivation actually fires.
+    const doorExits = steps.slice(0, -1).filter((step) => step.exitDoor !== null);
+    expect(doorExits.length, 'seed 20 path should cross at least one door').toBeGreaterThan(0);
+
+    // Each sign's stored angle must point from its room centre at the tile the
+    // player should head for: the recorded exit door, or (defensively) the next
+    // room's centre when no door tile was flagged on that boundary. The
+    // spawn-tile guard can nudge a sign's position by a tile but never its angle,
+    // so comparing the angle multisets is robust to that shift.
+    const expectedAngles = steps
+      .slice(0, -1)
+      .map((step, i) => {
+        const center = roomCenter(world, step.roomId);
+        const target = step.exitDoor ?? roomCenter(world, steps[i + 1]!.roomId);
+        return Math.atan2(target.y - center.y, target.x - center.x);
+      })
+      .sort((a, b) => a - b);
+
+    const actualAngles = signs
+      .map((eid) => world.stores.rotation.angle[eid] ?? 0)
+      .sort((a, b) => a - b);
+
+    expect(actualAngles.length).toBe(expectedAngles.length);
+    for (let i = 0; i < expectedAngles.length; i++) {
+      expect(actualAngles[i]).toBeCloseTo(expectedAngles[i]!, 5);
     }
   });
 });
