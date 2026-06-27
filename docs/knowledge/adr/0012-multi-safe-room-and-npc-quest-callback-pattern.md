@@ -19,14 +19,14 @@ Two design pressures converged:
 
 ### Safe rooms
 
-- **`tagShopRoomAsSafe(world, pos)`** in `floor1Scenario.ts`: after map generation, finds the shop room via `roomGraph.getRoomAt`, calls `roomGraph.setRole(id, RoomRole.SAFE)`, and repaints its floor tiles to `TerrainType.SAFE_ROOM_FLOOR` in the terrain array. This happens before `drawFloorTerrain()` bakes the RenderTexture.
+- **`tagShopRoomAsSafe(world, pos)`** in `floorScenario.ts`: after map generation, finds the shop room via `roomGraph.getRoomAt`, calls `roomGraph.setRole(id, RoomRole.SAFE)`, and repaints its floor tiles to `TerrainType.SAFE_ROOM_FLOOR` in the terrain array. This happens before `drawFloorTerrain()` bakes the RenderTexture.
 - **`isPointInSafeSpace`** in `src/core/safe-space.ts` now iterates _all_ rooms tagged `RoomRole.SAFE` via `roomGraph.getRoomsByRole(RoomRole.SAFE)`. The function no longer has a hard dependency on the single `floorMap.safeRoom` getter.
 - **Enemy spawner** (`floor1EnemyDirectorSystem`) and **spawn position resolver** (`resolveSpawnPosition`) updated to use role-based checks instead of object-identity comparisons against `floorMap.safeRoom`.
 
 ### NPC quest callbacks
 
 - `MainGameSceneOptions` now has an optional `tutorialGoon?: { meet: (world) => void }` field, mirroring the existing `shopkeeper` field.
-- `meetTutorialGoon(world)` in `floor1Scenario.ts` calls `acceptQuest`, `notifyQuestTalk`, and sets the legacy `questAccepted` flag — all in one place.
+- `meetTutorialGoon(world)` in `floorScenario.ts` calls `acceptQuest`, `notifyQuestTalk`, and sets the legacy `questAccepted` flag — all in one place.
 - `updateInteractions()` in `MainGameScene` calls `options.tutorialGoon?.meet()` on the player's first interaction with the `tutorial-goon` NPC. `objective.questAccepted = true` is no longer set for arbitrary NPC talk.
 
 ## Consequences

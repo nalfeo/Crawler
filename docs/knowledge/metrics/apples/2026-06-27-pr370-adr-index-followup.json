@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-27",
+  "session": "pr370-adr-index-followup",
+  "estimated_apples": 3,
+  "actual_apples": 2,
+  "delta": -1,
+  "verdict": "over",
+  "hello_kitties": 0.4,
+  "notes": "Takeover to shepherd PR #370's 5 review threads became a moving target: the owner squash-merged #370 mid-session, then PR #379 landed and already realigned the 8 ADR path refs the threads flagged. Two re-scopes left a tight, well-verified docs delta (ADR-0005 ## Status heading; README index reconcile incl. fixing the 'next unused 0028' collision trap; ADR-0012 stale basenames). Estimated 3 for a full shepherd; actual ~2 — heavy diagnosis/coordination across a churning main, but a small mechanical docs diff once redundant work was pruned."
+}
