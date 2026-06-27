@@ -32,12 +32,18 @@ if [ "${CI:-}" != "1" ] && command -v git >/dev/null 2>&1; then
   base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
   changed_ts=()
   while IFS= read -r f; do
-    [ -n "$f" ] && changed_ts+=("$f")
+    # Skip blanks and any path that no longer exists on disk. A file deleted or
+    # renamed-away in this branch still shows up in the diff, but ESLint errors
+    # when handed a path that isn't there — which would break the most
+    # frequently-run command for the life of the branch.
+    [ -n "$f" ] && [ -f "$f" ] && changed_ts+=("$f")
   done < <(
     {
-      [ -n "$base" ] && git diff --name-only "$base"
-      git diff --name-only
-      git diff --name-only --cached
+      # --diff-filter=ACMR drops deletions (D) and reports renames at their new
+      # path, so vanished paths never reach the existence check above.
+      [ -n "$base" ] && git diff --name-only --diff-filter=ACMR "$base"
+      git diff --name-only --diff-filter=ACMR
+      git diff --name-only --diff-filter=ACMR --cached
       git ls-files --others --exclude-standard
     } 2>/dev/null | grep -E '^(src|tests|scripts)/.*\.ts$' | sort -u
   )
