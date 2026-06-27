@@ -167,7 +167,7 @@ ARG API_KEY=actual-value
 ```hcl
 # Hardcoded sensitive values (should use var or data source)
 password = "hardcoded-password"
-access_key = "AKIAIOSFODNN7EXAMPLE"
+access_key = "AKIA...EXAMPLE"
 ```
 
 ---

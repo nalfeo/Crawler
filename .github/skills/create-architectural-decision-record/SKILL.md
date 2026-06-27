@@ -21,34 +21,32 @@ If any of the required inputs are not provided or cannot be determined from the 
 ## Requirements
 
 - Use precise, unambiguous language
-- Follow standardized ADR format with front matter
+- Follow this repo's ADR template at `docs/knowledge/adr/TEMPLATE.md` (no YAML front matter)
 - Include both positive and negative consequences
 - Document alternatives with rejection rationale
 - Structure for machine parsing and human reference
 - Use coded bullet points (3-4 letter codes + 3-digit numbers) for multi-item sections
 
-The ADR must be saved in the `/docs/adr/` directory using the naming convention: `adr-NNNN-[title-slug].md`, where NNNN is the next sequential 4-digit number (e.g., `adr-0001-database-selection.md`).
+The ADR must be saved in this repo's `docs/knowledge/adr/` directory using the naming convention `NNNN-[title-slug].md` (4-digit number, **no** `adr-` prefix), where NNNN is the next sequential number (e.g., `0029-database-selection.md`). This matches the existing ADRs (e.g. `docs/knowledge/adr/0017-azure-workflow-state-persistence.md`) and keeps the file in scope for the ADR consistency checker (`scripts/agent/docs/check-adr-consistency.ts`), which only scans `docs/knowledge/adr/*.md`.
 
 ## Required Documentation Structure
 
-The documentation file must follow the template below, ensuring that all sections are filled out appropriately. The front matter for the markdown should be structured correctly as per the example following:
+The documentation file must follow this repo's ADR template (`docs/knowledge/adr/TEMPLATE.md`). Do **not** add YAML front matter — the repo template uses none. Fill out every section; the coded bullet points (3-4 letter codes + 3-digit numbers) are an AI-parsing aid you may keep within each section.
 
 ```md
----
-title: 'ADR-NNNN: [Decision Title]'
-status: 'Proposed'
-date: 'YYYY-MM-DD'
-authors: '[Stakeholder Names/Roles]'
-tags: ['architecture', 'decision']
-supersedes: ''
-superseded_by: ''
----
-
-# ADR-NNNN: [Decision Title]
+# ADR NNNN: [Decision Title]
 
 ## Status
 
-**Proposed** | Accepted | Rejected | Superseded | Deprecated
+**Proposed** | Accepted | Deprecated | Superseded by NNNN
+
+## Date
+
+YYYY-MM-DD
+
+## Estimated Complexity
+
+🍎 x N — [one-line reason, e.g. "touches 2 systems but no new lab required"]
 
 ## Context
 
@@ -64,13 +62,15 @@ superseded_by: ''
 
 - **POS-001**: [Beneficial outcomes and advantages]
 - **POS-002**: [Performance, maintainability, scalability improvements]
-- **POS-003**: [Alignment with architectural principles]
 
 ### Negative
 
 - **NEG-001**: [Trade-offs, limitations, drawbacks]
 - **NEG-002**: [Technical debt or complexity introduced]
-- **NEG-003**: [Risks and future challenges]
+
+### Risks
+
+- **RSK-001**: [Risks and future challenges]
 
 ## Alternatives Considered
 
@@ -83,16 +83,4 @@ superseded_by: ''
 
 - **ALT-003**: **Description**: [Brief technical description]
 - **ALT-004**: **Rejection Reason**: [Why this option was not selected]
-
-## Implementation Notes
-
-- **IMP-001**: [Key implementation considerations]
-- **IMP-002**: [Migration or rollout strategy if applicable]
-- **IMP-003**: [Monitoring and success criteria]
-
-## References
-
-- **REF-001**: [Related ADRs]
-- **REF-002**: [External documentation]
-- **REF-003**: [Standards or frameworks referenced]
 ```

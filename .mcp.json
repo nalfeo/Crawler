@@ -23,6 +23,10 @@
     "azure": {
       "command": "npx",
       "args": ["-y", "@azure/mcp@latest", "server", "start"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
     }
   }
 }

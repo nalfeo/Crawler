@@ -199,7 +199,7 @@ Look for patterns like:
 API_KEY = "sk-..."
 password = "hunter2"
 SECRET = "abc123"
-private_key = "-----BEGIN RSA PRIVATE KEY-----"
+private_key = "-----BEGIN RSA PRIVATE KEY..."
 aws_secret_access_key = "wJalrXUtn..."
 ```
 

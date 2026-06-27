@@ -29,7 +29,7 @@ git commit -m "type(scope): description"
 
 ```xml
 <commit-message>
-	<type>feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert</type>
+	<type>feat|fix|chore|docs|lab|refactor|test|perf|ci|build|revert</type>
 	<scope>()</scope>
 	<description>A short, imperative summary of the change</description>
 	<body>(optional: more detailed explanation)</body>
@@ -46,6 +46,7 @@ git commit -m "type(scope): description"
 	<example>docs: update README with usage instructions</example>
 	<example>refactor: improve performance of data processing</example>
 	<example>chore: update dependencies</example>
+	<example>lab: add minimap render lab harness</example>
 	<example>feat!: send email on registration (BREAKING CHANGE: email service required)</example>
 </examples>
 ```
@@ -54,7 +55,7 @@ git commit -m "type(scope): description"
 
 ```xml
 <validation>
-	<type>Must be one of the allowed types. See <reference>https://www.conventionalcommits.org/en/v1.0.0/#specification</reference></type>
+	<type>Must be one of the types enforced by this repo's commitlint (`commitlint.config.cjs`): feat, fix, chore, docs, lab, refactor, test, perf, ci, build, revert. Note `style` is NOT allowed here, and `lab` is a repo-specific type for lab work. See <reference>https://www.conventionalcommits.org/en/v1.0.0/#specification</reference></type>
 	<scope>Optional, but recommended for clarity.</scope>
 	<description>Required. Use the imperative mood (e.g., "add", not "added").</description>
 	<body>Optional. Use for additional context.</body>
