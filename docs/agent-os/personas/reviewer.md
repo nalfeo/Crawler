@@ -64,3 +64,19 @@ Hands findings back to the owning persona (**Systems Engineer**, **Game Designer
 **Content Designer**, etc.); escalates effectiveness gaps to **QA Engineer** and
 gate/tooling gaps to **DevOps Engineer**; engaged by the **Producer** before a
 multi-persona task is finalized.
+
+## Antagonistic review checklist
+
+> Mandatory judgment questions for an antagonistic review — answered by the
+> human/agent reviewer, **not** a CI LLM-judge. Each must be resolved before approval.
+
+### Solution shape
+
+- **Root cause or symptom patch?** — Does this change fix the underlying cause, or
+  merely mask a symptom (tuning a magic constant, special-casing an input, disabling
+  a check, capping a count)? The author must **name the root cause**. A symptom patch
+  with no stated reason to defer the real fix is a **blocker**.
+- **Simplest correct shape?** — Is this the smallest change that **fully** fixes the
+  root cause — no over-engineering, and no easy-lever shortcut that merely hides the
+  problem? If the apple **actual** greatly exceeds the **estimate**, treat that delta
+  as a wrong-shape alarm and reconsider the approach before approving.
