@@ -996,13 +996,17 @@ function createSpriteCatalogLab(canvasHost: HTMLElement, controls: HTMLElement):
       }) => {
         if (manifest.entries) {
           for (const [key, entry] of Object.entries(manifest.entries)) {
+            // `key` is the unique per-variant manifest key (e.g.
+            // `bent-pipe-v1-var-1`). Use it for both id and spriteId/label so
+            // each approved variant shows as a distinct catalog row even when
+            // legacy `spriteName` was written brief-wide.
             entries.push({
               id: `generated:${key}`,
               kind: 'sprite',
-              label: entry.spriteName ?? key,
+              label: key,
               description: `Generated sprite from brief: ${entry.briefId}.`,
               tags: ['generated', 'pipeline-approved'],
-              spriteId: entry.spriteName ?? key,
+              spriteId: key,
               sheetKey: 'generated-manifest',
               assetPath: entry.assetPath,
               frame: 0,
