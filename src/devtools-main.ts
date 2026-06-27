@@ -1292,6 +1292,26 @@ function render(): void {
   });
   workflowStatus.textContent = 'Sidecar status: checking...';
 
+  // Dedicated, render-proof home for the check-in success banner + filed-issue
+  // link. The shared `workflowStatus` line is rewritten roughly once a second by
+  // renderWorkflowSelection's poll (e.g. "Next: Judge"), which previously
+  // clobbered the check-in result — making the filed-issue link vanish within a
+  // second, before the operator could click it. Rendering it here lets the
+  // result (and its clickable issue link) persist.
+  const checkinResult = el('div', {
+    style: {
+      display: 'none',
+      margin: '0 0 10px 0',
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(132,204,22,0.45)',
+      background: 'rgba(26,46,5,0.55)',
+      color: '#bef264',
+      fontSize: '12px',
+      whiteSpace: 'pre-wrap',
+    },
+  });
+
   const synthResultsHost = el('div', {
     style: { marginBottom: '10px', display: 'grid', gap: '6px' },
   });
@@ -1309,6 +1329,7 @@ function render(): void {
     workflowButtons,
     generationProgress,
     workflowStatus,
+    checkinResult,
     synthResultsHost,
     runResultsHost,
   );
@@ -5445,10 +5466,13 @@ function render(): void {
     );
     if (!ok) return;
     setButtonBusy(checkinBtn, true, 'Check in to GitHub', 'Checking in...');
+    // Clear any prior result so a stale success banner can't linger if this
+    // attempt fails.
+    checkinResult.style.display = 'none';
+    checkinResult.replaceChildren();
     try {
       const result = await postCheckin();
       const count = result.assets.length;
-      workflowStatus.style.color = '#bef264';
       const link = el('a', {
         text: 'View asset-checkin issue ↗',
         style: { color: '#93c5fd', textDecoration: 'underline' },
@@ -5456,7 +5480,10 @@ function render(): void {
       link.href = result.issueUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      workflowStatus.replaceChildren(
+      // Render into the dedicated element (not `workflowStatus`) so the 1s
+      // renderWorkflowSelection poll cannot clobber the filed-issue link.
+      checkinResult.style.display = 'block';
+      checkinResult.replaceChildren(
         document.createTextNode(
           `Checked in ${count} asset${count === 1 ? '' : 's'} on ${result.branch}. `,
         ),
