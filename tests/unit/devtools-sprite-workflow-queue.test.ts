@@ -14,6 +14,7 @@ import {
   getItem,
   getSelectedItem,
   primaryActionLabel,
+  recoverInterruptedItem,
   removeItem,
   restartToBriefPatch,
   restartToSheetPatch,
@@ -162,6 +163,117 @@ describe('sizeVariant', () => {
     const items = deserializeQueue(raw).items;
     expect(items[0]!.sizeVariant).toBe('default');
     expect(items[1]!.sizeVariant).toBe('default');
+  });
+});
+
+describe('recoverInterruptedItem', () => {
+  const runWithVariants: QueueRun = {
+    briefId: 'iron-sword',
+    runId: 'run-1',
+    candidates: [
+      {
+        index: 0,
+        score: 3,
+        outOf: 3,
+        passed: true,
+        combinedPassed: true,
+        judge: null,
+        sensors: [],
+      },
+    ],
+  };
+
+  const itemAt = (patch: Partial<Parameters<typeof updateItem>[2]>) => {
+    const state = updateItem(addItem(createEmptyQueue(), 'Iron Sword'), 'item-1', patch);
+    return state.items[0]!;
+  };
+
+  it('reverts synthesizing to draft when no candidates exist yet', () => {
+    expect(recoverInterruptedItem(itemAt({ stage: 'synthesizing' })).stage).toBe('draft');
+  });
+
+  it('reverts synthesizing to candidates when a re-synth had candidates', () => {
+    const item = itemAt({
+      stage: 'synthesizing',
+      candidates: [{ id: 'v1', yamlPath: 'a.yaml', description: 'd', yaml: 'y' }],
+    });
+    expect(recoverInterruptedItem(item).stage).toBe('candidates');
+  });
+
+  it('keeps a queued generation (server run resumes via polling)', () => {
+    const item = itemAt({
+      stage: 'generating',
+      generationRequestedAt: '2026-06-27T00:00:00.000Z',
+      generationStartedAt: '2026-06-27T00:00:00.000Z',
+    });
+    expect(recoverInterruptedItem(item)).toEqual(item);
+  });
+
+  it('reverts an interrupted synchronous generation to candidates and clears the timer', () => {
+    const item = itemAt({
+      stage: 'generating',
+      generationRequestedAt: null,
+      generationStartedAt: '2026-06-27T00:00:00.000Z',
+    });
+    const recovered = recoverInterruptedItem(item);
+    expect(recovered.stage).toBe('candidates');
+    expect(recovered.generationStartedAt).toBeNull();
+  });
+
+  it('reverts postprocessing to sheet when only the raw sheet exists', () => {
+    const item = itemAt({
+      stage: 'postprocessing',
+      run: { briefId: 'iron-sword', runId: 'run-1', candidates: [] },
+    });
+    expect(recoverInterruptedItem(item).stage).toBe('sheet');
+  });
+
+  it('reverts a postprocessing re-run to postprocessed when variants already exist', () => {
+    const item = itemAt({ stage: 'postprocessing', run: runWithVariants });
+    expect(recoverInterruptedItem(item).stage).toBe('postprocessed');
+  });
+
+  it('reverts judging to postprocessed where Judge and Approve remain available', () => {
+    const item = itemAt({ stage: 'judging', run: runWithVariants });
+    expect(recoverInterruptedItem(item).stage).toBe('postprocessed');
+  });
+
+  it('reverts tagging to approved', () => {
+    expect(recoverInterruptedItem(itemAt({ stage: 'tagging' })).stage).toBe('approved');
+  });
+
+  it('leaves stable stages untouched', () => {
+    for (const stage of [
+      'draft',
+      'candidates',
+      'sheet',
+      'postprocessed',
+      'variants',
+      'approved',
+      'done',
+    ] as const) {
+      const item = itemAt({ stage });
+      expect(recoverInterruptedItem(item)).toEqual(item);
+    }
+  });
+
+  it('is applied by deserializeQueue so a persisted in-flight step restores stable', () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          id: 'item-1',
+          seq: 1,
+          name: 'Iron Sword',
+          brief: 'Iron Sword',
+          stage: 'judging',
+          requestedType: 'auto',
+          run: runWithVariants,
+        },
+      ],
+      selectedId: 'item-1',
+      nextSeq: 2,
+    });
+    expect(deserializeQueue(raw).items[0]!.stage).toBe('postprocessed');
   });
 });
 

@@ -680,6 +680,55 @@ function sanitizeItem(value: unknown): QueueItem | null {
   };
 }
 
+/**
+ * Roll any interrupted transient step back to its last stable stage.
+ *
+ * The `*-ing` stages are "busy" states held only while a sidecar request is in
+ * flight, backed by an in-memory `AbortController` in the UI layer. That
+ * controller never survives a page reload (or an Azure state restore), so an
+ * item persisted mid-step would otherwise rehydrate as permanently "in
+ * progress" — with no in-flight request to finish it and (for synthesize/tag)
+ * not even a Cancel affordance. On load we therefore revert each interrupted
+ * step to the stable stage it came from so the user can simply re-trigger it.
+ *
+ * The sole exception is a *queued* generation (`generating` with a
+ * `generationRequestedAt`): that run lives on the server/worker and the UI
+ * resumes polling for it on reload, so it is left intact.
+ */
+export function recoverInterruptedItem(item: QueueItem): QueueItem {
+  switch (item.stage) {
+    case 'synthesizing':
+      // First synth comes from a raw draft; a re-synth already has candidates.
+      return { ...item, stage: item.candidates.length > 0 ? 'candidates' : 'draft' };
+    case 'generating':
+      // A queued run resumes via polling; only the synchronous in-flight POST
+      // is orphaned by a reload. Mirror the generate error path back to
+      // `candidates`, where Generate is available, and drop the live timer.
+      if (item.generationRequestedAt !== null) return item;
+      return { ...item, stage: 'candidates', generationStartedAt: null };
+    case 'postprocessing':
+      // A re-run keeps the already-sliced variants; a first run only has the
+      // raw sheet to fall back to.
+      return {
+        ...item,
+        stage: item.run && item.run.candidates.length > 0 ? 'postprocessed' : 'sheet',
+      };
+    case 'judging':
+      // Judging always operates on post-processed variants; land back where
+      // Judge and Approve are both available (defensive fallback to `sheet`
+      // if the run somehow carries no variants).
+      return {
+        ...item,
+        stage: item.run && item.run.candidates.length > 0 ? 'postprocessed' : 'sheet',
+      };
+    case 'tagging':
+      // Tagging runs after approval; land back on approved so it can re-tag.
+      return { ...item, stage: 'approved' };
+    default:
+      return item;
+  }
+}
+
 /** Parse persisted queue JSON leniently, dropping any malformed items. */
 export function deserializeQueue(raw: string | null | undefined): QueueState {
   if (!raw) return createEmptyQueue();
@@ -692,7 +741,10 @@ export function deserializeQueue(raw: string | null | undefined): QueueState {
   if (!parsed || typeof parsed !== 'object') return createEmptyQueue();
   const obj = parsed as Record<string, unknown>;
   const items = Array.isArray(obj.items)
-    ? obj.items.map(sanitizeItem).filter((item): item is QueueItem => item !== null)
+    ? obj.items
+        .map(sanitizeItem)
+        .filter((item): item is QueueItem => item !== null)
+        .map(recoverInterruptedItem)
     : [];
   const maxSeq = items.reduce((max, item) => Math.max(max, item.seq), 0);
   const nextSeq =
