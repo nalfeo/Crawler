@@ -49,6 +49,8 @@ Use Conventional Commit prefixes enforced by commitlint: `feat:`, `fix:`, `chore
 - `src/labs/`: 30% target
 - Overall: 80% target
 
+These are aspirational per-layer targets. Mechanical enforcement currently uses per-file thresholds in `vitest.config.ts`; see `docs/agent-os/policies/ci-policy.md` for the gate stack and enforcement details.
+
 ### 10. Hashimoto's Loop
 
 Every agent failure becomes a permanent fix: observe → classify → decide fix type → implement → add regression test → audit. Never "fix the prompt" — encode rules as sensors.

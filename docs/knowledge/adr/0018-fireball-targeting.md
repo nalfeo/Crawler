@@ -1,7 +1,10 @@
 # ADR 0018: Fireball Spell Targeting (Any Enemy, Cluster-Preferring)
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-25
-**Status:** Accepted
 **Deciders:** Producer (game systems)
 
 ## Estimated Complexity

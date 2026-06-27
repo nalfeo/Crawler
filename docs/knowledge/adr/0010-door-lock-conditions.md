@@ -1,7 +1,10 @@
 # ADR 0010: Flexible Door Lock Conditions with Optional Relock
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-09  
-**Status:** Accepted  
 **Deciders:** Systems Engineer
 
 ## Context

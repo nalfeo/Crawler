@@ -21,3 +21,6 @@ Game-specific systems: crafting, loot, floors, AI integration.
 - Content is generated during floor transitions (loading screen)
 - Always provide static JSON fallbacks
 - Validate AI output with Zod schemas
+
+> Layer boundaries are enforced by `eslint.config.js`. See `docs/README.md` for
+> the governance source-of-truth registry.

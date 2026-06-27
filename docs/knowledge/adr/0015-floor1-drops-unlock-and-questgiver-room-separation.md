@@ -1,7 +1,10 @@
 # ADR-0015: Floor 1 Drops Unlock & Quest-Giver Room Separation
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-21
-**Status:** Accepted
 **Deciders:** Agent session (level1-quest-flow-refresh, Producer persona)
 
 ## Context

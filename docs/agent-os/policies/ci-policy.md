@@ -26,7 +26,7 @@ Run the gate stack in this order:
 
 ## Coverage Thresholds
 
-Minimum line coverage targets:
+Minimum line-coverage **targets** by layer (the bar this project is steering toward):
 
 - `src/core/`: 90%
 - `src/game/`: 90%
@@ -35,7 +35,11 @@ Minimum line coverage targets:
 - `src/labs/`: 30%
 - Overall project: 80%
 
-If a directory threshold is not yet enforced mechanically, the next CI upgrade should add deterministic enforcement rather than lowering the target.
+**Current mechanical enforcement:** `vitest.config.ts` enforces a set of
+**per-file** coverage thresholds (see its `coverage.thresholds` block), not the
+per-directory aggregates listed above. The per-directory numbers are the agreed
+targets; as coverage rises, the next CI upgrade should ratchet deterministic
+enforcement toward them rather than lowering the target.
 
 ## Conventional Commit Enforcement
 
@@ -50,8 +54,10 @@ Allowed change types are:
 - `test:`
 - `perf:`
 - `ci:`
+- `build:`
+- `revert:`
 
-Pull requests must also use a semantic title that matches the same intent family.
+This list is enforced by `commitlint.config.cjs` (the canonical source — keep the two in sync). Pull requests must also use a semantic title that matches the same intent family.
 
 ## Branch Protection Rules
 

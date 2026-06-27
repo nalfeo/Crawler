@@ -1,7 +1,10 @@
 # ADR 0009: Projectile Max Range Despawn Rules
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-09  
-**Status:** Accepted  
 **Deciders:** Systems Engineer
 
 ## Context

@@ -46,7 +46,7 @@ async function main(): Promise<void> {
   let adrs: string[] = [];
   try {
     adrs = readdirSync(fromRepo(adrDir))
-      .filter((e) => e.endsWith('.md') && e !== 'TEMPLATE.md')
+      .filter((e) => e.endsWith('.md') && e !== 'TEMPLATE.md' && e !== 'README.md')
       .map((e) => `${adrDir}/${e}`);
   } catch {
     // dir missing

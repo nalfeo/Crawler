@@ -29,3 +29,7 @@ src/labs/<name>-lab/
 3. Call `registerLab(...)` from the lab `index.ts`
 4. Add lil-gui controls for tunable parameters
 5. Verify it loads via `npm run lab` → `?lab=<name>`
+
+> Labs are intentionally unrestricted. See `docs/README.md` for the governance
+> source-of-truth registry and `docs/guides/lab-authoring.md` for the full
+> workflow.

@@ -183,20 +183,23 @@ flowchart LR
     TRP --> PKP[itemPickupSystem]
     PKP --> DRP[dropSystem]
     DRP --> DTM[deathTimerSystem]
-    DTM --> HLT[healthSystem]
+    DTM --> SPA[spawnAnimSystem]
+    SPA --> HLT[healthSystem]
     HLT --> LFT[lifetimeSystem]
     LFT --> PCL[projectileCleanupSystem]
     PCL --> DOR[doorSystem]
     DOR --> FOV[fovSystem]
-    FOV --> POST[postSystems\n★ injected by scenario]
+    FOV --> SAF[safeRoomSystem]
+    SAF --> NPC[npcSystem]
+    NPC --> POST[postSystems\n★ injected by scenario]
 ```
 
-**Weapon & AI systems** run inside `preSystems`/`postSystems` (injected by the scenario at scene construction — see [Floor 1 scenario](systems/06-map-generation.md)):
+**Weapon & AI systems** run inside `preSystems`/`postSystems` (injected by the Floor 1 scenario — canonical source `src/bootstrap/floor1-main-scene-options.ts`; the visual loop lives in `src/engine/scenes/MainGameScene.ts` and is mirrored headlessly by `src/game/ai/simulation-step.ts`):
 
 ```
-preSystems: statsSystem → floor1PlayerStatSystem → weaponSystem
-            → enemyAISystem → floor1EnemyDirectorSystem
-postSystems: levelSystem → skillSystem → abilitySystem → floor1ObjectiveSystem
+preSystems: statsSystem → statSystem → manaSystem → floor1PlayerStatSystem
+            → weaponSystem → enemyAISystem → floor1EnemyDirectorSystem
+postSystems: levelSystem → skillSystem → abilitySystem → floorObjectiveSystem → questSystem
 ```
 
 ---
@@ -205,58 +208,68 @@ postSystems: levelSystem → skillSystem → abilitySystem → floor1ObjectiveSy
 
 ### Core systems (src/core/systems/)
 
-| System                      | Status | Brief                                                          | Detail                                           |
-| --------------------------- | ------ | -------------------------------------------------------------- | ------------------------------------------------ |
-| `playerInputSystem`         | ✅     | Converts InputState → Player Velocity                          | [Movement & Input](systems/01-movement-input.md) |
-| `movementSystem`            | ✅     | Applies Velocity to Position; slide-collision vs tile map      | [Movement & Input](systems/01-movement-input.md) |
-| `returningProjectileSystem` | ✅     | Reverse thrown-weapon trajectory when max range exceeded       | [Weapons](systems/03-weapons.md)                 |
-| `collisionSystem`           | ✅     | Spatial hash grid → CollisionPair[]                            | [Movement & Input](systems/01-movement-input.md) |
-| `aoeOnImpactPreDamage`      | ✅     | Snapshot AoE projectile positions before damage                | [Combat](systems/02-combat.md)                   |
-| `damageSystem`              | ✅     | Processes collision pairs → applyDamage, pierce, invincibility | [Combat](systems/02-combat.md)                   |
-| `aoeOnImpactPostDamage`     | ✅     | Spawn AoE blasts at snapshotted positions after damage         | [Combat](systems/02-combat.md)                   |
-| `areaDamageSystem`          | ✅     | Per-frame AoE tick damage from AreaDamage entities             | [Combat](systems/02-combat.md)                   |
-| `meleeSwingSystem`          | ✅     | Arc-sweep hit detection for MeleeSwing entities                | [Combat](systems/02-combat.md)                   |
-| `knockbackSystem`           | ✅     | Decays Knockback impulse, applies delta to Position            | [Combat](systems/02-combat.md)                   |
-| `beamSystem`                | ✅     | Continuous tick damage along a line from LineDamage entities   | [Combat](systems/02-combat.md)                   |
-| `trapSystem`                | ✅     | Arms on delay, triggers on proximity, spawns AoE blast         | [Combat](systems/02-combat.md)                   |
-| `itemPickupSystem`          | ✅     | Hoover XP gems, gold, DroppedItems within pickup range         | [Drops & Loot](systems/07-drops-loot.md)         |
-| `dropSystem`                | ✅     | Spawns Gold/XpGem/DroppedItem on enemy death (≤ 0 HP)          | [Drops & Loot](systems/07-drops-loot.md)         |
-| `deathTimerSystem`          | ✅     | Delays entity removal for death animation window               | [Combat](systems/02-combat.md)                   |
-| `healthSystem`              | ✅     | Removes zero-HP entities; sets game_over for player            | [Combat](systems/02-combat.md)                   |
-| `lifetimeSystem`            | ✅     | Removes entities when Lifetime.expiresAtMs is passed           | [Combat](systems/02-combat.md)                   |
-| `projectileCleanupSystem`   | ✅     | Removes out-of-bounds projectiles                              | [Weapons](systems/03-weapons.md)                 |
-| `doorSystem`                | ✅     | Auto-opens doors near player; syncs tile flags → FOV           | [Map Generation](systems/06-map-generation.md)   |
-| `fovSystem`                 | ✅     | Recursive shadowcasting FOV from player tile position          | [Map Generation](systems/06-map-generation.md)   |
-| `equipmentSystem`           | 🚧     | Equipment slot management; stat bonuses not yet wired          | [Progression](systems/05-progression.md)         |
+| System                      | Status | Brief                                                                | Detail                                                                           |
+| --------------------------- | ------ | -------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `playerInputSystem`         | ✅     | Converts InputState → Player Velocity                                | [Movement & Input](systems/01-movement-input.md)                                 |
+| `movementSystem`            | ✅     | Applies Velocity to Position; slide-collision vs tile map            | [Movement & Input](systems/01-movement-input.md)                                 |
+| `returningProjectileSystem` | ✅     | Reverse thrown-weapon trajectory when max range exceeded             | [Weapons](systems/03-weapons.md)                                                 |
+| `collisionSystem`           | ✅     | Spatial hash grid → CollisionPair[]                                  | [Movement & Input](systems/01-movement-input.md)                                 |
+| `aoeOnImpactPreDamage`      | ✅     | Snapshot AoE projectile positions before damage                      | [Combat](systems/02-combat.md)                                                   |
+| `damageSystem`              | ✅     | Processes collision pairs → applyDamage, pierce, invincibility       | [Combat](systems/02-combat.md)                                                   |
+| `aoeOnImpactPostDamage`     | ✅     | Spawn AoE blasts at snapshotted positions after damage               | [Combat](systems/02-combat.md)                                                   |
+| `areaDamageSystem`          | ✅     | Per-frame AoE tick damage from AreaDamage entities                   | [Combat](systems/02-combat.md)                                                   |
+| `meleeSwingSystem`          | ✅     | Arc-sweep hit detection for MeleeSwing entities                      | [Combat](systems/02-combat.md)                                                   |
+| `knockbackSystem`           | ✅     | Decays Knockback impulse, applies delta to Position                  | [Combat](systems/02-combat.md)                                                   |
+| `beamSystem`                | ✅     | Continuous tick damage along a line from LineDamage entities         | [Combat](systems/02-combat.md)                                                   |
+| `trapSystem`                | ✅     | Arms on delay, triggers on proximity, spawns AoE blast               | [Combat](systems/02-combat.md)                                                   |
+| `itemPickupSystem`          | ✅     | Hoover XP gems, gold, DroppedItems within pickup range               | [Drops & Loot](systems/07-drops-loot.md)                                         |
+| `dropSystem`                | ✅     | Spawns Gold/XpGem/DroppedItem on enemy death (≤ 0 HP)                | [Drops & Loot](systems/07-drops-loot.md)                                         |
+| `deathTimerSystem`          | ✅     | Delays entity removal for death animation window                     | [Combat](systems/02-combat.md)                                                   |
+| `spawnAnimSystem`           | ✅     | Plays spawn-in animation; gates swing-immunity window                | [ADR 0026](knowledge/adr/0026-baby-slime-spawn-animation-and-swing-immunity.md)  |
+| `healthSystem`              | ✅     | Removes zero-HP entities; sets game_over for player                  | [Combat](systems/02-combat.md)                                                   |
+| `lifetimeSystem`            | ✅     | Removes entities when Lifetime.expiresAtMs is passed                 | [Combat](systems/02-combat.md)                                                   |
+| `projectileCleanupSystem`   | ✅     | Removes out-of-bounds projectiles                                    | [Weapons](systems/03-weapons.md)                                                 |
+| `doorSystem`                | ✅     | Auto-opens doors near player; syncs tile flags → FOV                 | [Map Generation](systems/06-map-generation.md)                                   |
+| `fovSystem`                 | ✅     | Recursive shadowcasting FOV from player tile position                | [Map Generation](systems/06-map-generation.md)                                   |
+| `safeRoomSystem`            | ✅     | Sets `world.playerInSafeRoom` from player tile                       | [ADR 0013](knowledge/adr/0013-safe-room-runtime-system.md)                       |
+| `npcSystem`                 | ✅     | NPC proximity / interaction-prompt detection                         | [ADR 0012](knowledge/adr/0012-multi-safe-room-and-npc-quest-callback-pattern.md) |
+| `statSystem`                | ✅     | Per-frame EffectiveStats recompute (base + points + equipment)       | [Progression](systems/05-progression.md)                                         |
+| `manaSystem`                | ✅     | Wisdom-scaled max MP + per-frame MP regen                            | [ADR 0019](knowledge/adr/0019-wisdom-mana-pool.md)                               |
+| `equipmentSystem`           | ✅     | Slot equip/unequip; bonuses folded via `effective-stats.ts`          | [Progression](systems/05-progression.md)                                         |
+| `questSystem`               | ✅     | Data-driven quest-log eval + feature unlocks (run via `postSystems`) | [ADR 0011](knowledge/adr/0011-data-driven-quest-system.md)                       |
 
 ### Game systems (src/game/)
 
-| System                      | Status | Brief                                                   | Detail                                         |
-| --------------------------- | ------ | ------------------------------------------------------- | ---------------------------------------------- |
-| `weaponSystem`              | ✅     | Player auto-fires all 6 weapon types                    | [Weapons](systems/03-weapons.md)               |
-| `weaponEntitySystem`        | ✅     | Weapon entities auto-target nearest enemy and fire      | [Weapons](systems/03-weapons.md)               |
-| `enemyAISystem`             | ✅     | Pathfinding + 3 AI personas (Chase, Swarm, Ranged)      | [Enemy AI](systems/04-enemy-ai.md)             |
-| `enemySpawnerSystem`        | ✅     | Timed enemy spawning within bounds                      | [Enemy AI](systems/04-enemy-ai.md)             |
-| `levelSystem`               | ✅     | Accumulates XP; grants stat points on level-up          | [Progression](systems/05-progression.md)       |
-| `statsSystem`               | ✅     | Recomputes final stats from base + points + modifiers   | [Progression](systems/05-progression.md)       |
-| `skillSystem`               | ✅     | Processes SkillUsageEvents; levels skills at thresholds | [Progression](systems/05-progression.md)       |
-| `abilitySystem`             | ✅     | Active/passive abilities with trigger conditions        | [Progression](systems/05-progression.md)       |
-| `floor1PlayerStatSystem`    | ✅     | Applies Floor 1 scenario base stat bonuses              | [Map Generation](systems/06-map-generation.md) |
-| `floor1EnemyDirectorSystem` | ✅     | Wave-based enemy spawning for Floor 1                   | [Map Generation](systems/06-map-generation.md) |
-| `floor1ObjectiveSystem`     | ✅     | Kill / loot objective tracking for Floor 1              | [Map Generation](systems/06-map-generation.md) |
+| System                      | Status | Brief                                                   | Detail                                             |
+| --------------------------- | ------ | ------------------------------------------------------- | -------------------------------------------------- |
+| `weaponSystem`              | ✅     | Player auto-fires all 6 weapon types                    | [Weapons](systems/03-weapons.md)                   |
+| `weaponEntitySystem`        | ✅     | Weapon entities auto-target nearest enemy and fire      | [Weapons](systems/03-weapons.md)                   |
+| `enemyAISystem`             | ✅     | Pathfinding + 3 AI personas (Chase, Swarm, Ranged)      | [Enemy AI](systems/04-enemy-ai.md)                 |
+| `enemySpawnerSystem`        | ✅     | Timed enemy spawning within bounds                      | [Enemy AI](systems/04-enemy-ai.md)                 |
+| `levelSystem`               | ✅     | Accumulates XP; grants stat points on level-up          | [Progression](systems/05-progression.md)           |
+| `statsSystem`               | ✅     | Recomputes final stats from base + points + modifiers   | [Progression](systems/05-progression.md)           |
+| `skillSystem`               | ✅     | Processes SkillUsageEvents; levels skills at thresholds | [Progression](systems/05-progression.md)           |
+| `abilitySystem`             | ✅     | Active/passive abilities with trigger conditions        | [Progression](systems/05-progression.md)           |
+| `floor1PlayerStatSystem`    | ✅     | Applies Floor 1 scenario base stat bonuses              | [Map Generation](systems/06-map-generation.md)     |
+| `floor1EnemyDirectorSystem` | ✅     | Wave-based enemy spawning for Floor 1                   | [Map Generation](systems/06-map-generation.md)     |
+| `floorObjectiveSystem`      | ✅     | Floor objective tracking (kill / loot / level / reach)  | [Map Generation](systems/06-map-generation.md)     |
+| `spawnerSystem`             | ✅     | Generic Spawner mob-type (finale waves, enrage timers)  | [ADR 0025](knowledge/adr/0025-spawner-mob-type.md) |
 
 ### Engine subsystems (src/engine/)
 
-| Subsystem                                | Status | Brief                                                 | Detail                                           |
-| ---------------------------------------- | ------ | ----------------------------------------------------- | ------------------------------------------------ |
-| `PhaserBridge`                           | ✅     | Reads ECS → creates/syncs/destroys Phaser GameObjects | [Engine Bridge](systems/08-engine-bridge.md)     |
-| `InputCapture`                           | ✅     | Phaser keyboard + touch → InputState                  | [Movement & Input](systems/01-movement-input.md) |
-| `HudUI` (HealthBar, FloorTimer, Minimap) | ✅     | HUD overlay; synced from world each frame             | [Engine Bridge](systems/08-engine-bridge.md)     |
-| `CombatVfx`                              | ✅     | Hit flash / number popups from combatEvents           | [Engine Bridge](systems/08-engine-bridge.md)     |
-| `GoreVfx`                                | ✅     | Blood splatter particles from combatEvents            | [Engine Bridge](systems/08-engine-bridge.md)     |
-| `ModalPickerUI`                          | ✅     | Pause-over modal for loadout / level-up choices       | [Engine Bridge](systems/08-engine-bridge.md)     |
-| `InventoryUI`                            | 🚧     | Inventory display; item interaction not yet wired     | [Drops & Loot](systems/07-drops-loot.md)         |
-| `sprites/` (catalog + registry)          | 🚧     | Generated sprite catalog; partial sprite coverage     | [Engine Bridge](systems/08-engine-bridge.md)     |
+| Subsystem                                                                                             | Status | Brief                                                     | Detail                                                    |
+| ----------------------------------------------------------------------------------------------------- | ------ | --------------------------------------------------------- | --------------------------------------------------------- |
+| `PhaserBridge`                                                                                        | ✅     | Reads ECS → creates/syncs/destroys Phaser GameObjects     | [Engine Bridge](systems/08-engine-bridge.md)              |
+| `InputCapture`                                                                                        | ✅     | Phaser keyboard + touch → InputState                      | [Movement & Input](systems/01-movement-input.md)          |
+| `HudUI` (Health · Mana · XP · Loot · Skill · Ability · FloorTimer · BossBar · QuestTracker · Minimap) | ✅     | HUD overlay (≈10 components) synced from world each frame | [Engine Bridge](systems/08-engine-bridge.md)              |
+| `CombatVfx`                                                                                           | ✅     | Hit flash / number popups from combatEvents               | [Engine Bridge](systems/08-engine-bridge.md)              |
+| `GoreVfx`                                                                                             | ✅     | Blood splatter particles from combatEvents                | [Engine Bridge](systems/08-engine-bridge.md)              |
+| `EffectsVfx`                                                                                          | ✅     | Generic juice VFX (sparks, crit bursts, motes)            | [ADR 0025](knowledge/adr/0025-vfx-effects-pipeline.md)    |
+| `CorpseShatterVfx`                                                                                    | ✅     | Corpse shards on `corpseExplode` events                   | [ADR 0027](knowledge/adr/0027-corpse-explosion-on-hit.md) |
+| `ModalPickerUI`                                                                                       | ✅     | Pause-over modal for loadout / level-up choices           | [Engine Bridge](systems/08-engine-bridge.md)              |
+| `InventoryUI`                                                                                         | 🚧     | Inventory display; item interaction not yet wired         | [Drops & Loot](systems/07-drops-loot.md)                  |
+| `EquipmentUI`                                                                                         | ✅     | Paper-doll equipment panel (16 slots + live stats)        | [Progression](systems/05-progression.md)                  |
+| `sprites/` (catalog + registry)                                                                       | 🚧     | Generated sprite catalog; partial sprite coverage         | [Engine Bridge](systems/08-engine-bridge.md)              |
 
 ---
 
@@ -269,9 +282,10 @@ graph TD
         MGS[MainGameScene\ngame loop host]
         IC[InputCapture\nkeyboard + touch → InputState]
         PB[PhaserBridge\nECS → Phaser sync]
-        HUD[HudUI\nHealthBar · FloorTimer · Minimap]
-        VFX[CombatVfx · GoreVfx]
+        HUD[HudUI\nHealth · Mana · XP · BossBar · Minimap · …]
+        VFX[CombatVfx · GoreVfx · EffectsVfx · CorpseShatterVfx]
         INV[InventoryUI]
+        EQ[EquipmentUI\npaper-doll + stats]
         MP[ModalPickerUI\npauses simulation]
         SPR[sprites/ registry + catalog]
     end
@@ -283,6 +297,7 @@ graph TD
     MGS --> MP
     PB --> SPR
     MGS --> INV
+    MGS --> EQ
 ```
 
 ---
@@ -291,20 +306,20 @@ graph TD
 
 These systems are designed in the [Game Design Document](knowledge/game-design/game-design-document.md) or ADRs but have no implementation yet.
 
-| System                            | GDD Reference      | Notes                                        |
-| --------------------------------- | ------------------ | -------------------------------------------- |
-| 📋 Safe Room / Craft Table        | Tier 2 Crafting    | Between-floor shop & crafting bench          |
-| 📋 Production Office              | Meta-Progression   | Persistent currency → unlocks across runs    |
-| 📋 Broadcast Score accumulation   | Reality show frame | Kill-streak / close-call rating meter        |
-| 📋 Sponsor Gifts                  | Broadcast Score    | Care packages between floors                 |
-| 📋 Audience Layer                 | Reality show frame | Scrolling chat; vote prompts in safe rooms   |
-| 📋 Director Commentary (Ollama)   | Floor AI           | Local LLM narration; floor-load only per ADR |
-| 📋 Boss system                    | Floor design       | "Broadcast Deadline" triggers boss encounter |
-| 📋 Character roster (30+)         | Character system   | Each character = different weapon + passive  |
-| 📋 Floor themes (5 sample floors) | Floor design       | Shopping District, Game Show, etc.           |
-| 📋 Season meta-progression        | Rogue-lite layer   | Per-season story arc; Production Office      |
-| 📋 Full skill trees per character | Character system   | Brotato-style skill tree depth               |
-| 📋 Multiplayer                    | Deferred           | Out of prototype scope                       |
+| System                            | GDD Reference      | Notes                                                                                         |
+| --------------------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
+| 📋 Crafting Bench                 | Tier 2 Crafting    | Safe rooms shipped (ADR 0013); between-floor crafting bench still planned                     |
+| 📋 Production Office              | Meta-Progression   | Persistent currency → unlocks across runs                                                     |
+| 📋 Broadcast Score accumulation   | Reality show frame | Kill-streak / close-call rating meter                                                         |
+| 📋 Sponsor Gifts                  | Broadcast Score    | Care packages between floors                                                                  |
+| 📋 Audience Layer                 | Reality show frame | Scrolling chat; vote prompts in safe rooms                                                    |
+| 📋 Director Commentary (Ollama)   | Floor AI           | Local LLM narration; floor-load only per ADR                                                  |
+| 📋 Generic boss framework         | Floor design       | Floor 1 boss + boss-bar HUD shipped (ADR 0009/0017); reusable multi-floor boss system planned |
+| 📋 Character roster (30+)         | Character system   | Each character = different weapon + passive                                                   |
+| 📋 Floor themes (5 sample floors) | Floor design       | Shopping District, Game Show, etc.                                                            |
+| 📋 Season meta-progression        | Rogue-lite layer   | Per-season story arc; Production Office                                                       |
+| 📋 Full skill trees per character | Character system   | Brotato-style skill tree depth                                                                |
+| 📋 Multiplayer                    | Deferred           | Out of prototype scope                                                                        |
 
 ---
 
