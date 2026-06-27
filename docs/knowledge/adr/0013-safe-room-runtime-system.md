@@ -72,7 +72,7 @@ whenever the player is inside a safe room during gameplay.
 
 ### Floor collapse timer pausing
 
-`floor1ObjectiveSystem` in `src/game/floor1Scenario.ts` advances
+`floor1ObjectiveSystem` in `src/game/floorScenario.ts` advances
 `objective.deadlineMs` by `GAME.DELTA_MS` each tick when
 `world.playerInSafeRoom` is true. Because the deadline is an absolute
 elapsed-time threshold, advancing it by the same delta as `world.elapsedMs`

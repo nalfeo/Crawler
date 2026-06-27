@@ -12,7 +12,7 @@ Accepted
 
 🍎 x 3 — game-layer placement logic + engine-layer baked-texture rendering +
 regression tests; spans two layers (`src/game`, `src/engine`) but adds no new
-ECS system and needs no new lab (Floor 1 already has `src/labs/floor1-lab/`).
+ECS system and needs no new lab (Floor 1 already has `src/labs/floor-lab/`).
 
 ## Context
 
@@ -36,7 +36,7 @@ This decision affects two architectural layers — Floor 1 content placement
 
 ## Decision
 
-**Door-aware placement (`src/game/floor1Scenario.ts`).** Add
+**Door-aware placement (`src/game/floorScenario.ts`).** Add
 `findNavigableRoomPathSteps()` returning `NavigableRoomStep[]` — it walks the
 real door-aware tile path (rot-js A\* over passable + door tiles) from the player
 spawn to the welcome office and, for each room, records the first DOOR tile

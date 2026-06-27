@@ -81,6 +81,6 @@ Runtime behavior:
 
 - Core lock model: `src/core/door-lock.ts`
 - Door runtime/system updates: `src/core/components.ts`, `src/core/systems/doorSystem.ts`, `src/core/world.ts`
-- Scenario goal integration: `src/game/floor1Scenario.ts`
+- Scenario goal integration: `src/game/floorScenario.ts`
 - Lab: `src/labs/door-lock-lab/index.ts`
 - Tests: `tests/ecs/door-lock-system.test.ts`, `tests/ecs/door-system.test.ts`

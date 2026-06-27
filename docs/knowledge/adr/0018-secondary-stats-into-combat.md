@@ -63,7 +63,7 @@ core-stat allocation actually reach combat through `effectiveStats`.
 
 4. **Run `statSystem` in the loop.** Add it to the headless sim loop
    (`src/game/ai/simulation-step.ts`) and the visual game's `preSystems`
-   (`src/bootstrap/floor1-main-scene-options.ts`), right after `statsSystem`, so
+   (`src/bootstrap/floor-main-scene-options.ts`), right after `statsSystem`, so
    allocation reaches combat identically in both.
 
 5. **Render the outcomes.** `src/engine/CombatVfx.ts` emphasizes crits (orange,
