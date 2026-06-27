@@ -160,6 +160,8 @@ describe('runAssetCheckin', () => {
     expect(commandLine.some((l) => l.startsWith('git commit -m'))).toBe(true);
     expect(commandLine.some((l) => l.startsWith('git push -u origin assets/'))).toBe(true);
     expect(commandLine.some((l) => l.startsWith('gh issue create'))).toBe(true);
+    // The check-in label is ensured before filing so a fresh repo doesn't fail.
+    expect(commandLine.some((l) => l.startsWith('gh label create asset-checkin'))).toBe(true);
     // No PR is ever opened.
     expect(commandLine.some((l) => l.includes('pr create'))).toBe(false);
     // The pushed asset is enriched from the manifest.
@@ -182,6 +184,26 @@ describe('runAssetCheckin', () => {
     );
     const commandLine = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
     expect(commandLine.some((l) => l.includes('worktree remove'))).toBe(true);
+  });
+
+  it('deletes the pushed branch when issue creation fails (no orphaned branch)', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      // Label ensure succeeds; the issue create fails (e.g. transient gh error).
+      if (command === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+        return { code: 1, stderr: 'could not create issue' };
+      }
+      return {};
+    });
+
+    await expect(runAssetCheckin('/repo', { ...baseDeps(), exec })).rejects.toBeInstanceOf(
+      CheckinError,
+    );
+    const commandLine = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    // The orphaned remote branch is cleaned up so it isn't left untracked.
+    expect(commandLine.some((l) => l.startsWith('git push origin --delete assets/'))).toBe(true);
   });
 });
 
@@ -217,5 +239,35 @@ describe('detectApprovedAssets', () => {
         variantIndex: null,
       },
     ]);
+  });
+
+  it('includes freshly approved UNTRACKED PNGs via git ls-files --others', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      // Only the tracked manifest changed in the diff; the new variant PNG is
+      // untracked (written by copyFileSync, never git-added).
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/manifest.json\n' };
+      }
+      if (command === 'git' && args[0] === 'ls-files') {
+        return { stdout: 'public/assets/generated/new-mace-var-1.png\n' };
+      }
+      return {};
+    });
+    const assets = await detectApprovedAssets(exec, '/repo', 'origin', 'main', {});
+    expect(assets.map((a) => a.assetPath)).toEqual(['generated/new-mace-var-1.png']);
+  });
+
+  it('de-duplicates a PNG that appears in both diff and ls-files', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/dup-var-1.png\n' };
+      }
+      if (command === 'git' && args[0] === 'ls-files') {
+        return { stdout: 'public/assets/generated/dup-var-1.png\n' };
+      }
+      return {};
+    });
+    const assets = await detectApprovedAssets(exec, '/repo', 'origin', 'main', {});
+    expect(assets.map((a) => a.assetPath)).toEqual(['generated/dup-var-1.png']);
   });
 });

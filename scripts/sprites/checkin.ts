@@ -269,7 +269,20 @@ export async function runAssetCheckin(
     await git(deps.exec, worktree, ['commit', '-m', plan.commitMessage]);
     await git(deps.exec, worktree, ['push', '-u', remote, plan.branch]);
 
-    const issueUrl = await createIssue(deps.exec, repoRoot, plan);
+    // The branch is now on the remote. asset-pr consolidation discovers branches
+    // ONLY through their tracking issue, so a failed `gh issue create` would
+    // leave the branch orphaned (invisible to the consolidator, never cleaned by
+    // the worktree teardown below). Ensure the label exists first — a fresh repo
+    // has no `asset-checkin` label, which makes `gh issue create --label` fail —
+    // and delete the pushed branch if the issue still can't be filed.
+    let issueUrl: string;
+    try {
+      await ensureLabel(deps.exec, repoRoot, ASSET_CHECKIN_LABEL);
+      issueUrl = await createIssue(deps.exec, repoRoot, plan);
+    } catch (err) {
+      await git(deps.exec, repoRoot, ['push', remote, '--delete', plan.branch]).catch(() => {});
+      throw err;
+    }
     return { branch: plan.branch, issueUrl, plan };
   } finally {
     // Detach the throwaway worktree, then delete the dir. Best-effort: a failed
@@ -283,6 +296,12 @@ export async function runAssetCheckin(
  * List the art-surface PNGs that differ from the remote base, enriched with
  * manifest metadata when present. Compares the WORKING TREE (so freshly
  * approved, uncommitted assets count) against `<remote>/<baseBranch>`.
+ *
+ * `git diff` only reports TRACKED files, but a freshly approved variant PNG is
+ * written with `copyFileSync` and never `git add`ed — it is untracked. Since
+ * `public/assets/generated/**` is un-ignored, those brand-new PNGs must be
+ * collected separately via `git ls-files --others`; otherwise the primary
+ * approve→check-in flow sees no assets and throws `nothing-to-checkin`.
  */
 export async function detectApprovedAssets(
   exec: Exec,
@@ -298,10 +317,22 @@ export async function detectApprovedAssets(
     '--',
     ...ASSET_SURFACE_PATHS,
   ]);
-  const changed = diff.stdout
-    .split('\n')
+  const untracked = await git(exec, repoRoot, [
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '--',
+    ...ASSET_SURFACE_PATHS,
+  ]);
+  const seen = new Set<string>();
+  const changed = [...diff.stdout.split('\n'), ...untracked.stdout.split('\n')]
     .map((line) => line.trim())
-    .filter((line) => line.endsWith('.png'));
+    .filter((line) => line.endsWith('.png'))
+    .filter((file) => {
+      if (seen.has(file)) return false;
+      seen.add(file);
+      return true;
+    });
 
   const assets: CheckinAsset[] = [];
   for (const file of changed) {
@@ -357,6 +388,29 @@ async function createIssue(exec: Exec, repoRoot: string, plan: AssetCheckinPlan)
   // `gh issue create` prints the issue URL on stdout.
   const url = result.stdout.trim().split('\n').filter(Boolean).pop() ?? '';
   return url;
+}
+
+/**
+ * Idempotently ensure the check-in label exists so `gh issue create --label`
+ * doesn't fail on a fresh repo. `--force` creates the label or updates it in
+ * place. Best-effort: a non-zero exit here is non-fatal because `createIssue`
+ * surfaces (and triggers branch cleanup for) a genuine inability to file.
+ */
+async function ensureLabel(exec: Exec, repoRoot: string, label: string): Promise<void> {
+  await exec(
+    'gh',
+    [
+      'label',
+      'create',
+      label,
+      '--color',
+      'FBCA04',
+      '--description',
+      'Approved sprite art awaiting consolidation into a game PR',
+      '--force',
+    ],
+    { cwd: repoRoot },
+  );
 }
 
 async function git(exec: Exec, cwd: string, args: readonly string[]): Promise<ExecResult> {
