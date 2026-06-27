@@ -124,3 +124,38 @@ Guard telemetry artifact: `files/guard-telemetry.jsonl`
   }
 }
 ```
+
+## Rebase + review follow-up (2026-06-27, shepherd)
+
+The original session went idle/archived before review threads landed, so the PR
+shepherd finished it directly in a temp worktree (rebased onto current `main`,
+trivial `src/lab-main.ts` conflict resolved by keeping both `spawnanim-lab` and
+`render-scale-lab` registrations).
+
+Copilot Code Review opened 5 threads; all addressed (real fixes, not hand-waves):
+
+- **Thread E — substantive code (HUD text softening).** The new
+  `round(getRenderScale × uiScale)` dropped the sub-`S` FIT-magnification term and
+  switched `ceil → round`, so in the residual band (effective mag ~1–1.5 → `S=1`)
+  HUD text fell back to `round(1.x)=1`, re-blurring text that #342 kept crisp at
+  `ceil(1.x)=2`. Fix: added `computeOnScreenScale` (pure, continuous
+  `fitMagnification × dpr`) + `getOnScreenScale(scene)` (reads
+  `scale.displaySize`) in `render-scale.ts`; `computeTextResolution` is now
+  `ceil(onScreenScale × uiScale)` and `getTextResolution` feeds it the continuous
+  on-screen scale. Restores #342's net `ceil(continuous-mag × dpr)` behaviour as a
+  complementary layer. New unit coverage in `render-scale.test.ts` +
+  `ui-scale.test.ts` (incl. explicit S=1-band crispness asserts:
+  `computeTextResolution(1.25,1)===2`, `(1.2,1)===2`). e2e-safe: CI runs at
+  `dpr=1` near design size (mag≈1 → `ceil(1×1)=1`, unchanged).
+- **Threads A + D (duplicate) — apple metric.** `hello_kitties` corrected
+  `0.4 → 0.8` to match the `actual_apples / 5` convention (actual_apples = 4).
+- **Threads B + C — scope wording.** `S = round(min(cssW/1280, cssH/720) × dpr)`
+  also yields `S=2` for large `dpr=1` monitors whose FIT magnification alone
+  reaches ~1.5+, not just HiDPI. Behaviour is intentional → reconciled the PR
+  description, the ADR-0025 "Text resolution model" section, and the ADR
+  Consequences (no-op now scoped to "on-screen magnification rounds to S=1";
+  negative now covers large `dpr=1` monitors), no code change.
+
+`verify:fast` green (typecheck + lint full; unit changed-set 35/35). Branch
+force-pushed (`--force-with-lease`) after rebase. Threads replied `✅ Addressed`
+and resolved via the `resolveReviewThread` GraphQL mutation as PR owner.

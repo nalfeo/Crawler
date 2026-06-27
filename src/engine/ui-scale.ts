@@ -22,7 +22,7 @@
  */
 import type Phaser from 'phaser';
 import { GAME } from '../shared/constants.js';
-import { getRenderScale } from './render-scale.js';
+import { getOnScreenScale } from './render-scale.js';
 
 /**
  * Phaser's ScaleManager resize event name. Inlined as a string literal (rather
@@ -178,33 +178,38 @@ export interface ComputeTextResolutionOptions {
 /**
  * Pure: the glyph render resolution that keeps screen-space text crisp.
  *
- * Screen-space text is drawn by the UI camera, which renders the 1280×720 design
- * space into the `design × renderScale` HiDPI framebuffer (see render-scale.ts).
- * A glyph authored at font size `F`, scaled up by the responsive `uiScale` and
- * then by the UI camera's `renderScale` zoom, covers `F × uiScale × renderScale`
- * framebuffer pixels — so its texture must be rasterised at
- * `resolution = uiScale × renderScale` to fill that footprint 1:1 instead of
- * being nearest-neighbour upscaled (the cause of blurry HUD text). Rounded to the
- * nearest integer and clamped to `[1, max]`.
+ * `onScreenScale` is the *continuous* design→physical magnification `M` (see
+ * {@link getOnScreenScale}) — how many physical pixels each design pixel covers
+ * on screen, residual `FIT` upscaling included — and `uiScale` is the responsive
+ * HUD multiplier applied in design space. A glyph authored at font size `F`
+ * covers `F × uiScale × onScreenScale` physical pixels, so its texture must be
+ * rasterised at `resolution = ceil(uiScale × onScreenScale)` to fill that
+ * footprint 1:1 instead of being nearest-neighbour upscaled (the cause of blurry
+ * HUD text). `ceil` (never `round`) guarantees we oversample rather than
+ * undersample, so the per-text resolution stays a true complementary layer to the
+ * integer framebuffer render scale `S` even in the `S === 1` band where `S` has
+ * rounded the residual magnification away. Clamped to `[1, max]`.
  */
 export function computeTextResolution(
-  renderScale: number,
+  onScreenScale: number,
   uiScale: number,
   options: ComputeTextResolutionOptions = {},
 ): number {
   const max = options.max ?? MAX_TEXT_RESOLUTION;
-  const scale = renderScale > 0 ? renderScale : 1;
+  const scale = onScreenScale > 0 ? onScreenScale : 1;
   const ui = uiScale > 0 ? uiScale : 1;
-  return Math.min(max, Math.max(1, Math.round(scale * ui)));
+  return Math.min(max, Math.max(1, Math.ceil(scale * ui)));
 }
 
 /**
  * Live screen-space text resolution for a scene (see {@link computeTextResolution}).
- * Combines the HiDPI render scale (the UI camera zoom) with the responsive HUD
- * scale so HUD text rasterises crisply into the supersampled framebuffer.
+ * Combines the continuous on-screen magnification (FIT residual + devicePixelRatio,
+ * via {@link getOnScreenScale}) with the responsive HUD scale so HUD text stays
+ * crisp — including the `S === 1` band where the framebuffer is not supersampled
+ * but the canvas is still `FIT`-upscaled above the design size.
  */
 export function getTextResolution(scene: Phaser.Scene): number {
-  return computeTextResolution(getRenderScale(scene), getUiScale(scene));
+  return computeTextResolution(getOnScreenScale(scene), getUiScale(scene));
 }
 
 /**

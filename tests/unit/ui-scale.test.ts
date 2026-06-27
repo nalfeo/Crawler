@@ -51,7 +51,7 @@ describe('computeUiScale', () => {
 });
 
 describe('computeTextResolution', () => {
-  it('renders at native resolution at render scale 1 with no UI upscaling', () => {
+  it('renders at native resolution at on-screen scale 1 with no UI upscaling', () => {
     expect(computeTextResolution(1, 1)).toBe(1);
   });
 
@@ -62,27 +62,35 @@ describe('computeTextResolution', () => {
   });
 
   it('accounts for a responsive UI scale on small screens', () => {
-    // Render scale 1, but the HUD group scales text up 2× → needs 2× glyphs.
+    // On-screen scale 1, but the HUD group scales text up 2× → needs 2× glyphs.
     expect(computeTextResolution(1, 2)).toBe(2);
   });
 
-  it('combines the render scale and the UI scale', () => {
-    expect(computeTextResolution(2, 1.37)).toBe(3); // round(2.74)
+  it('oversamples the residual FIT magnification the integer render scale drops', () => {
+    // A dpr=1 canvas shown ~1.25× larger than the design size: the framebuffer S
+    // rounds to 1, but the glyph is still FIT-upscaled ~1.25×. ceil keeps it crisp
+    // (PR #342's complementary layer); the old round(S × uiScale) gave 1 (soft).
+    expect(computeTextResolution(1.25, 1)).toBe(2);
+    expect(computeTextResolution(1.2, 1)).toBe(2);
   });
 
-  it('rounds to the nearest integer resolution', () => {
-    expect(computeTextResolution(1, 1.4)).toBe(1); // round(1.4)
-    expect(computeTextResolution(1, 1.6)).toBe(2); // round(1.6)
+  it('combines the on-screen scale and the UI scale', () => {
+    expect(computeTextResolution(2, 1.37)).toBe(3); // ceil(2.74)
+  });
+
+  it('rounds fractional resolutions up to avoid undersampling', () => {
+    expect(computeTextResolution(1, 1.4)).toBe(2); // ceil(1.4)
+    expect(computeTextResolution(1, 1.6)).toBe(2); // ceil(1.6)
   });
 
   it('clamps to the maximum resolution', () => {
-    expect(computeTextResolution(2, 4)).toBe(MAX_TEXT_RESOLUTION); // round(8) → 4
+    expect(computeTextResolution(2, 4)).toBe(MAX_TEXT_RESOLUTION); // ceil(8) → 4
     expect(computeTextResolution(2, 4, { max: 6 })).toBe(6);
   });
 
   it('treats non-positive inputs as 1', () => {
     expect(computeTextResolution(0, 1)).toBe(1);
-    expect(computeTextResolution(2, 0)).toBe(2); // uiScale → 1, round(2)
+    expect(computeTextResolution(2, 0)).toBe(2); // uiScale → 1, ceil(2)
     expect(computeTextResolution(Number.NaN, 1)).toBe(1);
     expect(computeTextResolution(1, Number.NaN)).toBe(1);
   });

@@ -98,12 +98,25 @@ instead of `scene.scale.width/height`: `HudUI`, `ui-scale`
 
 ### Text resolution model (`src/engine/ui-scale.ts`)
 
-`computeTextResolution` is rebuilt from the old FIT-magnification formula to
-`round(S × uiScale)` (clamped `[1, MAX_TEXT_RESOLUTION = 4]`), and modals base
-their text resolution on `getRenderScale(scene)` rather than raw
-`devicePixelRatio`. This ties text detail to the framebuffer that actually exists,
-so on a 1080p `dpr: 1` monitor shown at 2× magnification text is rendered at `S=2`
-(crisp) instead of `dpr=1` (blurry).
+HUD text resolution is `computeTextResolution(onScreenScale, uiScale) =
+clamp(ceil(onScreenScale × uiScale), 1, MAX_TEXT_RESOLUTION = 4)`, where
+`onScreenScale = getOnScreenScale(scene)` is the **continuous** on-screen
+magnification `fitMagnification × devicePixelRatio` (read from
+`scene.scale.displaySize`, not rounded). This deliberately preserves PR #342's
+`ceil(continuous-magnification × dpr)` behaviour as a complementary layer: in the
+residual band where the integer framebuffer scale `S` rounds down (effective
+magnification ~1–1.5 → `S = 1`) the HUD still renders text at `ceil(1.x) = 2`,
+so HUD/label text stays crisp instead of softening back to `dpr`-level detail.
+Using `round` here — or feeding the already-rounded `getRenderScale` in place of
+the continuous on-screen scale — would drop that sub-`S` magnification term and
+re-blur text in the S=1 band, contradicting the "#342 kept as a complementary
+layer" intent.
+
+The five modals (`DialogueBox`, `EquipmentUI`, `InventoryUI`, `LevelUpUI`,
+`ModalPickerUI`) instead base text resolution on the integer framebuffer scale,
+`round(getRenderScale(scene) × uiScale)`, tying their detail to the framebuffer
+that actually exists. On a 1080p `dpr: 1` monitor shown at 2× magnification that
+is `S = 2` (crisp) rather than `dpr = 1` (blurry).
 
 ### `render-scale-lab`
 
@@ -120,15 +133,18 @@ size — making the supersampling effect directly observable.
   display's detail instead of upscaling a 720p image.
 - All gameplay, layout, and input stay in the fixed 1280×720 design space — no
   call site needs to reason about physical pixels.
-- Zero cost and zero behavioural change on 1× / design-size displays (`S = 1`),
-  so CI, e2e, and low-DPI machines are unaffected.
+- Zero cost and zero behavioural change whenever the on-screen magnification
+  (`fitMagnification × dpr`) rounds to `S = 1` — i.e. `dpr = 1` displays at or
+  near the 1280×720 design size, which covers CI, e2e, and low-DPI machines.
 - The render scale is a single pure function with unit tests, and the lab makes
   the effect reproducible without a HiDPI machine.
 
 ### Negative
 
-- HiDPI machines pay up to 4× fill rate (2560×1440 vs 1280×720). Bounded by
-  `MAX_RENDER_SCALE = 2`.
+- Any display whose on-screen magnification `fitMagnification × dpr ≥ 1.5` pays
+  up to 4× fill rate (2560×1440 vs 1280×720) — this is HiDPI displays **and**
+  large `dpr = 1` monitors whose FIT magnification alone reaches ~1.5+, since
+  `S = round(min(cssW/1280, cssH/720) × dpr)`. Bounded by `MAX_RENDER_SCALE = 2`.
 - "Design space vs backing store" is now a real distinction contributors must
   respect: lay out against `GAME.WIDTH/HEIGHT`, not `scene.scale.width`.
 

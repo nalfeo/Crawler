@@ -122,3 +122,53 @@ export function resolveBootRenderScale(
   const cssHeight = element?.clientHeight || window.innerHeight || GAME.HEIGHT;
   return computeRenderScale(cssWidth, cssHeight, readDevicePixelRatio(), options);
 }
+
+/**
+ * Pure: the *continuous* on-screen magnification `M` of a design pixel — how many
+ * physical pixels each design pixel actually covers on screen, **before** the
+ * integer render-scale rounding.
+ *
+ * `min(cssW/designW, cssH/designH)` is the `Phaser.Scale.FIT` magnification (CSS
+ * px per design px); `× devicePixelRatio` converts it to physical px per design
+ * px. Unlike {@link computeRenderScale} the result is **not** rounded to an
+ * integer, so it retains the residual magnification the framebuffer's integer `S`
+ * drops: a `dpr: 1` canvas shown 1.25× larger than the design size has `S = 1`
+ * but `M = 1.25`, and the glyph is still `FIT`-upscaled 1.25×. Text resolution
+ * keys off `M` (not `S`) so it can oversample that residual and stay crisp.
+ * Degenerate/pre-layout sizes fall back to `1` (the no-op baseline).
+ */
+export function computeOnScreenScale(
+  displayWidthCss: number,
+  displayHeightCss: number,
+  devicePixelRatio: number,
+  options: ComputeRenderScaleOptions = {},
+): number {
+  const designWidth = options.designWidth ?? GAME.WIDTH;
+  const designHeight = options.designHeight ?? GAME.HEIGHT;
+  const dpr = devicePixelRatio > 0 ? devicePixelRatio : 1;
+
+  if (!(displayWidthCss > 0) || !(displayHeightCss > 0)) {
+    return 1;
+  }
+
+  const fitMagnification = Math.min(displayWidthCss / designWidth, displayHeightCss / designHeight);
+  const onScreen = fitMagnification * dpr;
+  return onScreen > 0 ? onScreen : 1;
+}
+
+/**
+ * The live continuous on-screen magnification `M` for a scene: the canvas CSS
+ * display size (after `Phaser.Scale.FIT`) over the design size, × the device
+ * pixel ratio. Falls back to the integer {@link getRenderScale} when the display
+ * size is not yet known (headless/lab scenes booted at the design size), so the
+ * text path still gets a sane `≥ 1` magnification there.
+ */
+export function getOnScreenScale(scene: Phaser.Scene): number {
+  const display = scene.scale.displaySize;
+  const cssWidth = display?.width ?? 0;
+  const cssHeight = display?.height ?? 0;
+  if (!(cssWidth > 0) || !(cssHeight > 0)) {
+    return getRenderScale(scene);
+  }
+  return computeOnScreenScale(cssWidth, cssHeight, readDevicePixelRatio());
+}
