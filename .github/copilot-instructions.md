@@ -13,8 +13,8 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 
 ## Validation
 
-- After every change: `npm run verify:fast` (typecheck + lint + tests, ~30s)
-- Before committing: `npm run verify` (full suite, ~3min)
+- After every change: `npm run verify:fast` (typecheck + lint + changed unit tests, ~30s)
+- Before committing: `npm run verify` (full suite — typecheck, lint, format, unit/integration/headless tests, build). Coverage is **not** run locally by default (it ~5x's unit-test time and is enforced in CI); add `VERIFY_COVERAGE=1` or run `npm run verify:coverage` for a local coverage gate.
 - Before creating PR: Ensure `scripts/agent/lab-gate-check.sh` passes
 - During fixes/implementations, make a best effort to improve or preserve unit-test coverage in touched areas so changes move toward UT coverage goals.
 
