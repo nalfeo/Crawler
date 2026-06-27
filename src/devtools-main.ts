@@ -1567,16 +1567,20 @@ function render(): void {
   // item id, so the Cancel button can abort a blocking request. Queued-path
   // polling is stopped instead by resetting the item's stage (see Cancel).
   const pendingGenerateAborts = new Map<string, AbortController>();
-  // The single in-flight PostProcess / Judge step, if any. Tracked so a shared
-  // Cancel button can abort the blocking POST and restore the item's prior stage
-  // (enabling retry). Only one such step runs at a time — the trigger buttons are
-  // disabled while a stage is busy — so a lone field (not a map) suffices.
-  let inFlightStep: {
-    readonly kind: 'postprocess' | 'judge';
-    readonly abort: AbortController;
-    readonly priorStage: WorkflowStage;
-    readonly itemId: string;
-  } | null = null;
+  // In-flight PostProcess / Judge steps, keyed by item id (mirrors
+  // `pendingGenerateAborts`). Tracked so the shared Cancel button can abort the
+  // blocking POST and restore that item's prior stage (enabling retry). Keyed per
+  // item — not a lone field — because selecting a different queue item is ungated,
+  // so a user can start a step on item A, switch to B, and start a step on B; both
+  // must remain independently cancellable.
+  const inFlightSteps = new Map<
+    string,
+    {
+      readonly kind: 'postprocess' | 'judge';
+      readonly abort: AbortController;
+      readonly priorStage: WorkflowStage;
+    }
+  >();
   // Poll-attempt counters for the queued path, surfaced in the live progress
   // line. Ephemeral: cleared when generation ends or is cancelled, and reset
   // (not persisted) on reload when polling auto-resumes.
@@ -2154,9 +2158,7 @@ function render(): void {
     // is actually in flight (its trigger button is busy-disabled meanwhile), so
     // a hung step can be aborted and retried instead of wedging the page.
     const stepRunning =
-      inFlightStep !== null &&
-      inFlightStep.itemId === item.id &&
-      (item.stage === 'postprocessing' || item.stage === 'judging');
+      inFlightSteps.has(item.id) && (item.stage === 'postprocessing' || item.stage === 'judging');
     cancelStepBtn.style.display = stepRunning ? '' : 'none';
     cancelStepBtn.disabled = !stepRunning;
     const nextAction = primaryActionLabel(item.stage);
@@ -4777,7 +4779,7 @@ function render(): void {
     const { briefId, runId } = item.run;
     const priorStage = item.stage;
     const abort = new AbortController();
-    inFlightStep = { kind: 'postprocess', abort, priorStage, itemId: item.id };
+    inFlightSteps.set(item.id, { kind: 'postprocess', abort, priorStage });
     queueState = queueUpdateItem(queueState, item.id, { stage: 'postprocessing', lastError: null });
     writeQueueState();
     renderQueue();
@@ -4812,7 +4814,7 @@ function render(): void {
       renderWorkflowSelection();
       setWorkflowStatus(`PostProcess failed: ${message}`, '#fca5a5');
     } finally {
-      if (inFlightStep?.abort === abort) inFlightStep = null;
+      if (inFlightSteps.get(item.id)?.abort === abort) inFlightSteps.delete(item.id);
       setButtonBusy(postprocessBtn, false, 'PostProcess', 'Post-processing...');
     }
   });
@@ -4846,7 +4848,7 @@ function render(): void {
     if (forced) body.force = true;
     if (subset) body.variantIndexes = subset;
     const abort = new AbortController();
-    inFlightStep = { kind: 'judge', abort, priorStage, itemId: item.id };
+    inFlightSteps.set(item.id, { kind: 'judge', abort, priorStage });
     queueState = queueUpdateItem(queueState, item.id, { stage: 'judging', lastError: null });
     writeQueueState();
     renderQueue();
@@ -4885,7 +4887,7 @@ function render(): void {
       renderWorkflowSelection();
       setWorkflowStatus(`Judge failed: ${message}`, '#fca5a5');
     } finally {
-      if (inFlightStep?.abort === abort) inFlightStep = null;
+      if (inFlightSteps.get(item.id)?.abort === abort) inFlightSteps.delete(item.id);
       setButtonBusy(triggerBtn, false, triggerLabel, 'Judging...');
     }
   };
@@ -5160,12 +5162,13 @@ function render(): void {
   // finally re-enables its trigger button; here we just restore the prior stage
   // (so the step can be retried) and report the cancellation.
   cancelStepBtn.addEventListener('click', () => {
-    const step = inFlightStep;
-    if (!step) return;
+    const item = getSelectedItem(queueState);
+    const step = item ? inFlightSteps.get(item.id) : null;
+    if (!item || !step) return;
     step.abort.abort();
     const label = step.kind === 'postprocess' ? 'PostProcess' : 'Judge';
-    inFlightStep = null;
-    queueState = queueUpdateItem(queueState, step.itemId, {
+    inFlightSteps.delete(item.id);
+    queueState = queueUpdateItem(queueState, item.id, {
       stage: step.priorStage,
       lastError: null,
     });
