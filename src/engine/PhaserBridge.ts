@@ -607,6 +607,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
+  /** Tracks first-seen render time for XP gems so the bob phase is per-gem. */
+  const gemSpawnMs = new Map<number, number>();
+  /** Ground shadow ellipses for each XP gem entity. */
+  const gemShadows = new Map<number, Phaser.GameObjects.Ellipse>();
   const combatVfx = createCombatVfx(scene);
   const goreVfx =
     typeof scene.add.rectangle === 'function'
@@ -1104,6 +1108,33 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             break;
           }
 
+          case 'gem': {
+            // Floating bob: sine-wave offset so each gem feels alive. Phase
+            // offset by eid so nearby gems bob out of sync with each other.
+            if (!gemSpawnMs.has(eid)) {
+              gemSpawnMs.set(eid, renderElapsedMs);
+              // Create a faint ground shadow once on first sight (guarded so
+              // test environments without Phaser ellipse support still work).
+              if (typeof scene.add.ellipse === 'function') {
+                const shadow = scene.add.ellipse(x, y + 10, 18, 6, 0x000000, 0.28);
+                shadow.setDepth(img.depth - 1);
+                gemShadows.set(eid, shadow);
+              }
+            }
+            const phaseOffset = (eid % 13) * 0.48;
+            const elapsed = renderElapsedMs - (gemSpawnMs.get(eid) ?? renderElapsedMs);
+            const bob = Math.sin(elapsed * 0.007 + phaseOffset) * 5;
+            img.setPosition(x, y + bob);
+            img.setAlpha(1);
+            img.setScale(visual.baseScale);
+            // Keep shadow pinned to the ground under the bobbing gem.
+            const shadow = gemShadows.get(eid);
+            if (shadow) {
+              shadow.setPosition(x, y + 10);
+            }
+            break;
+          }
+
           default:
             img.setAlpha(1);
             img.setRotation(0);
@@ -1168,6 +1199,15 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         arcSpawnMs.delete(eid);
       }
 
+      for (const [eid, shadow] of gemShadows) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        shadow.destroy();
+        gemShadows.delete(eid);
+        gemSpawnMs.delete(eid);
+      }
+
       const deltaMs =
         lastRenderMs === null ? 16 : Math.max(1, Math.min(50, renderElapsedMs - lastRenderMs));
       lastRenderMs = renderElapsedMs;
@@ -1210,6 +1250,13 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
       arcGraphics.clear();
       arcSpawnMs.clear();
+
+      for (const shadow of gemShadows.values()) {
+        shadow.destroy();
+      }
+      gemShadows.clear();
+      gemSpawnMs.clear();
+
       goreVfx?.destroy();
       corpseShatterVfx?.destroy();
       effectsVfx.destroy();

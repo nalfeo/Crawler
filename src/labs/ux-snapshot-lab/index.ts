@@ -4,12 +4,14 @@
  * potion) so every UX surface can be eyeballed and iterated at once.
  *
  * Drives the REAL `HudUI` (health bar, XP bar, floor timer, quest tracker,
- * minimap) against a synthetic GameWorld, exactly like `hud-lab`, so the
- * actual Phaser render paths run. lil-gui sliders push the HUD through its
- * states (low HP, XP fill, amber/red timer, multiple active quests).
+ * minimap, ability bar) against a synthetic GameWorld, exactly like `hud-lab`,
+ * so the actual Phaser render paths run. lil-gui sliders push the HUD through
+ * its states (low HP, XP fill, amber/red timer, multiple active quests,
+ * abilities unlocked).
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
+import { addComponent } from 'bitecs';
 import { GAME, FLOOR } from '../../shared/constants.js';
 import { pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { createHudUI } from '../../engine/HudUI.js';
@@ -17,6 +19,7 @@ import { createDialogueBox, type DialogueBox } from '../../engine/DialogueBox.js
 import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer, spawnEnemy, spawnNpc } from '../../core/index.js';
+import { Stats, SkillHolder } from '../../core/components.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
@@ -26,6 +29,7 @@ import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR1_BOSS_UNLOCK_QUEST_ID } from '../../sha
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { SeededRandom } from '../../shared/random.js';
 import { registerLab, type LabCategory } from '../registry.js';
+import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -37,6 +41,7 @@ interface UxLabSettings {
   timeRemainingS: number;
   activeQuests: number;
   showDialog: boolean;
+  showAbilities: boolean;
 }
 
 const LAB_ID = 'ux-snapshot-lab';
@@ -173,6 +178,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     timeRemainingS: 50,
     activeQuests: 2,
     showDialog: true,
+    showAbilities: true,
   };
 
   const root = document.createElement('div');
@@ -185,7 +191,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
   const hint = document.createElement('p');
   hint.textContent =
-    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, gold/junk loot counter, quest tracker, minimap) plus the NPC dialogue box and choice modal, over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states; toggle the dialogue and open the choice modal from the controls.';
+    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, gold/junk loot counter, quest tracker, minimap, ability bar) plus the NPC dialogue box and choice modal, over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states; toggle the dialogue and open the choice modal from the controls.';
   hint.style.cssText = 'margin-top:16px;color:#c9d4ff;line-height:1.6;';
   controls.append(hint);
 
@@ -365,6 +371,19 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       spawnEnemy(world, pxToFt(5 * TILE + TILE / 2), pxToFt(8 * TILE + TILE / 2), 30);
       spawnEnemy(world, pxToFt(14 * TILE + TILE / 2), pxToFt(7 * TILE + TILE / 2), 12);
 
+      // Set up abilities UX: attach Stats + SkillHolder, initialize ability
+      // state, and equip a representative set of active abilities so the
+      // ability bar renders filled slots with cooldown indicators.
+      addComponent(world.ecs, playerEid, Stats);
+      addComponent(world.ecs, playerEid, SkillHolder);
+      const abilityState = getOrCreateAbilityState(world, playerEid);
+      equipActiveAbility(world, playerEid, 'fireball');
+      equipActiveAbility(world, playerEid, 'heal');
+      // Simulate a cooldown on fireball so the cooldown bar is visible.
+      abilityState.cooldownByAbilityId.set('fireball', 0);
+      abilityState.cooldownFramesByAbilityId.set('fireball', 300);
+      world.featureUnlocks.spells = settings.showAbilities;
+
       // XP unlocked so the experience bar is visible.
       world.goalFlags.set('floor1-drops-unlocked', true);
 
@@ -480,6 +499,9 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         world.floor1.objective.deadlineMs = settings.timeRemainingS * 1000;
       }
 
+      // Abilities toggle — latch the feature-unlock so the bar appears/hides.
+      world.featureUnlocks.spells = settings.showAbilities;
+
       hudUi.sync(world, playerEid);
     }
   }
@@ -521,6 +543,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     .onChange((v: boolean) => {
       dialogueBox?.setVisible(v);
     });
+  gui.add(settings, 'showAbilities').name('Show abilities');
   gui.add({ openModal: () => openSampleModal() }, 'openModal').name('Open choice modal');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
@@ -540,6 +563,6 @@ registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'UX Snapshot',
   description:
-    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, gold/junk loot counter, quest tracker, minimap, NPC dialogue box, and choice modal — over a Floor 1 room with in-world drops.',
+    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, gold/junk loot counter, quest tracker, minimap, ability bar, NPC dialogue box, and choice modal — over a Floor 1 room with in-world drops.',
   create: createUxLab,
 });

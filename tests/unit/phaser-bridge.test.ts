@@ -8,6 +8,7 @@ import {
   Position,
   Rotation,
   Sprite,
+  XpGem,
 } from '../../src/core/components.js';
 import { createPhaserBridge } from '../../src/engine/PhaserBridge.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -627,5 +628,52 @@ describe('createPhaserBridge', () => {
     expect(images).toHaveLength(2);
     expect(images[0]?.visible).toBe(true);
     expect(images[1]?.visible).toBe(false);
+  });
+
+  it('applies a sine-wave bob offset to XP gems each frame', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 100, y: 200 }));
+    addComponent(world.ecs, eid, set(XpGem, { value: 5 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+
+    // First frame: gem image should be created with x at the ECS position.
+    bridge.sync(world, 0);
+    expect(images).toHaveLength(1);
+    expect(images[0]!.x).toBe(100);
+    // The bob offset is ≤ 5 px, so y stays within [195, 205].
+    expect(Math.abs(images[0]!.y - 200)).toBeLessThanOrEqual(5);
+
+    // Second frame at t=450: position should still be within ±5 px of ECS y but
+    // may differ from the first frame (sine advances over time).
+    const yAtFrame1 = images[0]!.y;
+    bridge.sync(world, 450);
+    expect(Math.abs(images[0]!.y - 200)).toBeLessThanOrEqual(5);
+    // After 450 ms the sine phase has advanced enough that y should have changed.
+    expect(images[0]!.y).not.toBeCloseTo(yAtFrame1, 2);
+  });
+
+  it('cleans up gem spawn-time and shadow state when a gem entity is removed', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: false });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+
+    addComponent(world.ecs, eid, set(Position, { x: 50, y: 80 }));
+    addComponent(world.ecs, eid, set(XpGem, { value: 3 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 8, height: 8 }));
+
+    bridge.sync(world, 0);
+    expect(images).toHaveLength(1);
+    expect(images[0]!.destroyed).toBe(false);
+
+    // Remove the gem entity; the next sync should destroy the image and clean up
+    // internal gem state so there's no memory leak.
+    removeEntity(world.ecs, eid);
+    bridge.sync(world, 100);
+    expect(images[0]!.destroyed).toBe(true);
   });
 });
