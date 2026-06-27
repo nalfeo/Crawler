@@ -28,12 +28,16 @@ import {
   returnShopkeeperPrize,
   selectSpellFromBossBattle,
   SHOPKEEPER_EQUIPMENT_COST,
-} from '../game/floor1Scenario.js';
+} from '../game/floorScenario.js';
 import { statSystem, manaSystem, type GameWorld } from '../core/index.js';
 import { MERCHANTS_CHARM_DEF } from '../shared/equipmentDefs.js';
 import type { Floor1BossRewardSpellId } from '../shared/abilities.js';
 
-export function createFloor1MainSceneOptions() {
+/**
+ * Create main scene options for a floor.
+ * @param floorId - The floor identifier (e.g., "floor1")
+ */
+export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
   return {
     configureWorld: initializeFloor1Scenario,
     selectLoadoutOption: selectFloor1StarterWeapon,
@@ -80,4 +84,11 @@ export function createFloor1MainSceneOptions() {
     ],
     postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
   };
+}
+
+/**
+ * @deprecated Use createFloorMainSceneOptions instead
+ */
+export function createFloor1MainSceneOptions() {
+  return createFloorMainSceneOptions('floor1');
 }

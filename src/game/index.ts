@@ -33,7 +33,7 @@ export {
   floorObjectiveSystem,
   meetTutorialGoon,
   meetSpellQuestGiver,
-} from './floor1Scenario.js';
+} from './floorScenario.js';
 export {
   getShopkeeperStage,
   meetShopkeeper,
@@ -43,7 +43,7 @@ export {
   SHOPKEEPER_EQUIPMENT_COST,
   selectSpellFromBossBattle,
   ensureBossBattleSpellReward,
-} from './floor1Scenario.js';
+} from './floorScenario.js';
 export type { ShopkeeperStage } from '../shared/quest-types.js';
 export {
   questSystem,

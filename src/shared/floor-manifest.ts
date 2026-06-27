@@ -140,14 +140,26 @@ export const floorManifestDefSchema = z
 export type FloorManifestDef = z.infer<typeof floorManifestDefSchema>;
 
 /**
- * Load and validate the Floor 1 manifest.
+ * Load and validate a floor manifest by ID.
+ * @param floorId - The floor identifier (e.g., "floor1")
+ * @returns The loaded manifest
  */
-function loadFloor1Manifest(): FloorManifestDef {
-  const parsed = floorManifestDefSchema.parse(floor1ManifestJson);
+function loadFloorManifest(floorId: string): FloorManifestDef {
+  let manifestJson: unknown;
+
+  // For now, only floor1 is available
+  if (floorId === 'floor1') {
+    manifestJson = floor1ManifestJson;
+  } else {
+    throw new Error(`Floor manifest not found: ${floorId}`);
+  }
+
+  const parsed = floorManifestDefSchema.parse(manifestJson);
   return parsed;
 }
 
 /**
  * Validated Floor 1 manifest, loaded at module initialization.
+ * @deprecated Use floor-registry.ts instead
  */
-export const floor1Manifest: FloorManifestDef = loadFloor1Manifest();
+export const floor1Manifest: FloorManifestDef = loadFloorManifest('floor1');

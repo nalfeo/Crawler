@@ -6,7 +6,7 @@ import {
   findNavigableRoomPathSteps,
   initializeFloor1Scenario,
   type NavigableRoomStep,
-} from '../../src/game/floor1Scenario.js';
+} from '../../src/game/floorScenario.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 
 // Mirror of the module-local SPRITE_TEX_WELCOME_SIGN in floor1Scenario.ts and

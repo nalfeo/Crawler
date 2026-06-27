@@ -6,7 +6,7 @@ import {
   initializeFloor1Scenario,
   meetTutorialGoon,
   selectFloor1StarterWeapon,
-} from '../../src/game/floor1Scenario.js';
+} from '../../src/game/floorScenario.js';
 import { GAME } from '../../src/shared/constants.js';
 import { createInputState } from '../../src/shared/input.js';
 import { FLOOR1_TUTORIAL_QUEST_ID } from '../../src/shared/quest-types.js';

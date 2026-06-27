@@ -1,15 +1,12 @@
 /**
- * Floor 1 configuration schema and loader.
+ * Floor configuration schema and loader.
  *
- * DEPRECATED: This module is being replaced by floor-manifest.ts.
- * For now, it provides backward compatibility by deriving config from the manifest.
- *
- * Phase 3 Migration: floor1Config now loads from floor1.manifest.json
- * while maintaining the same interface for backward compatibility.
+ * Provides floor-specific configuration derived from the floor manifest and enemy pack.
+ * This is now fully parameterized to support any floor ID.
  */
 import { z } from 'zod';
-import { floor1Manifest } from './floor-manifest.js';
-import { floor1EnemyPack } from './enemy-packs.js';
+import { getFloorManifest } from './floor-registry.js';
+import { getFloorEnemyPack } from './enemy-packs.js';
 
 const enemyArchetypeConfigSchema = z
   .object({
@@ -59,7 +56,7 @@ const bossVariantConfigSchema = z
   })
   .strict();
 
-export const floor1ConfigSchema = z
+export const floorConfigSchema = z
   .object({
     protagonist: z.string().min(1),
     starterWeapons: z.array(z.string().min(1)).min(1),
@@ -129,14 +126,23 @@ export const floor1ConfigSchema = z
   })
   .strict();
 
-export type Floor1Config = z.infer<typeof floor1ConfigSchema>;
+export type FloorConfig = z.infer<typeof floorConfigSchema>;
 
 /**
- * Derive Floor1Config from the manifest and enemy pack for backward compatibility.
+ * Derive FloorConfig from the manifest and enemy pack.
+ * @param floorId - The floor identifier (e.g., "floor1")
+ * @returns Floor configuration, or null if the floor is not found
  */
-function loadFloor1ConfigFromManifest(): Floor1Config {
-  const manifest = floor1Manifest;
-  const enemyPack = floor1EnemyPack;
+export function loadFloorConfigFromManifest(floorId: string): FloorConfig | null {
+  const manifest = getFloorManifest(floorId);
+  if (!manifest) {
+    return null;
+  }
+
+  const enemyPack = getFloorEnemyPack(manifest.enemyPackId);
+  if (!enemyPack) {
+    throw new Error(`Enemy pack not found: ${manifest.enemyPackId}`);
+  }
 
   // Derive enemy config from enemy pack archetypes
   const ratArchetype = enemyPack.archetypes.find((a) => a.id === 'rat')!;
@@ -193,7 +199,29 @@ function loadFloor1ConfigFromManifest(): Floor1Config {
 }
 
 /**
- * Validated Floor 1 configuration, loaded at module initialization.
- * Now derived from floor1.manifest.json for Phase 3 compatibility.
+ * Get floor configuration by ID.
+ * @param floorId - The floor identifier (e.g., "floor1")
+ * @throws If the floor is not found
  */
-export const floor1Config: Floor1Config = loadFloor1ConfigFromManifest();
+export function getFloorConfig(floorId: string): FloorConfig {
+  const config = loadFloorConfigFromManifest(floorId);
+  if (!config) {
+    throw new Error(`Floor configuration not found: ${floorId}`);
+  }
+  return config;
+}
+
+// Backward compatibility exports
+export type Floor1Config = FloorConfig;
+
+/**
+ * @deprecated Use getFloorConfig("floor1") instead
+ */
+export function loadFloor1ConfigFromManifest(): FloorConfig {
+  return getFloorConfig('floor1');
+}
+
+/**
+ * @deprecated Use getFloorConfig("floor1") instead
+ */
+export const floor1Config: FloorConfig = getFloorConfig('floor1');

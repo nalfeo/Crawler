@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { sealRoomPerimeterOpenings } from '../../src/game/floor1Scenario.js';
+import { sealRoomPerimeterOpenings } from '../../src/game/floorScenario.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';

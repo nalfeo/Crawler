@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { floor1Config } from '../../src/shared/floor1-config.js';
+import { floor1Config } from '../../src/shared/floor-config.js';
 
 describe('floor1Config', () => {
   it('should load and validate the manifest-derived floor1 config', () => {
