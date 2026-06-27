@@ -12,6 +12,7 @@ import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
+  meetSpellQuestGiver,
   selectFloor1StarterWeapon,
 } from '../../src/game/floorScenario.js';
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
@@ -537,6 +538,23 @@ describe('BehaviorTreeAI', () => {
       expect(dodgeDbg.pullY).toBe(0);
     });
 
+    it('dodges charging enemies while pathing to quest objectives', () => {
+      const s = pollQuestNavHeading(42);
+      const enemy = spawnEnemy(s.world, s.px + s.ux * 9, s.py + s.uy * 3, 20);
+      const toPlayerX = s.px - (s.world.stores.position.x[enemy] ?? 0);
+      const toPlayerY = s.py - (s.world.stores.position.y[enemy] ?? 0);
+      const len = Math.hypot(toPlayerX, toPlayerY) || 1;
+      s.world.stores.velocity.x[enemy] = (toPlayerX / len) * 0.375;
+      s.world.stores.velocity.y[enemy] = (toPlayerY / len) * 0.375;
+
+      s.ai.poll(s.input, s.world);
+
+      expect(s.ai.getDecision().state).toBe(AIState.EXPLORE);
+      expect(s.ai.getDecision().targetEid).not.toBeNull();
+      const dbg = s.ai.getOpportunisticDebug();
+      expect(Math.hypot(dbg.dodgeX, dbg.dodgeY)).toBeGreaterThan(0);
+    });
+
     it('keeps the enemy-farm pull dormant unless explicitly weighted', () => {
       const buildWanderWorld = (): { world: GameWorld; cx: number; cy: number } => {
         const world = createTestWorld({ seed: 5 });
@@ -594,6 +612,112 @@ describe('BehaviorTreeAI', () => {
     expect(decision.reason).toContain('Hunting quest enemies');
     expect(decision.targetX).not.toBeNull();
     expect(decision.targetY).not.toBeNull();
+  });
+
+  it('detours to a visible quest giver when the extra path is short', () => {
+    const world = createTestWorld({ seed: 2 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    enterKillGrindStage(world);
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+
+    const questEnemy = spawnEnemy(world, 50, 14, 20);
+    world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
+    const spellNpcEid = world.floor1!.spellQuestGiverNpcEid;
+    expect(spellNpcEid).toBeDefined();
+    world.stores.position.x[spellNpcEid!] = 30;
+    world.stores.position.y[spellNpcEid!] = 14;
+
+    const ai = new BehaviorTreeAI({ seed: 2 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.targetEid).toBe(spellNpcEid);
+    expect(decision.reason).toContain('Detouring to spell-quest-giver');
+  });
+
+  it('detours to quest NPC interactions that are not accept-* steps', () => {
+    const world = createTestWorld({ seed: 11 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    enterKillGrindStage(world);
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+
+    const questEnemy = spawnEnemy(world, 50, 14, 20);
+    world.floor1!.enemyArchetypes.set(questEnemy, 'rat');
+    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    expect(shopkeeperNpcEid).toBeDefined();
+    world.stores.position.x[shopkeeperNpcEid!] = 30;
+    world.stores.position.y[shopkeeperNpcEid!] = 14;
+
+    const ai = new BehaviorTreeAI({ seed: 11 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.EXPLORE);
+    expect(decision.targetEid).toBe(shopkeeperNpcEid);
+    expect(decision.reason).toContain('Detouring to shopkeeper');
+    expect(decision.reason).toContain('meet shopkeeper');
+  });
+
+  it('engages nearby enemies before long NPC approach paths', () => {
+    const world = createTestWorld({ seed: 12 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.floor1!.objective.questCompleted = true;
+    world.floorMap = makeOpenRoom(40, 20);
+    world.stores.position.x[player] = 14;
+    world.stores.position.y[player] = 14;
+
+    const shopkeeperNpcEid = world.floor1!.shopkeeperNpcEid;
+    expect(shopkeeperNpcEid).toBeDefined();
+    world.stores.position.x[shopkeeperNpcEid!] = 38;
+    world.stores.position.y[shopkeeperNpcEid!] = 14;
+
+    spawnEnemy(world, 22, 14, 20);
+
+    const ai = new BehaviorTreeAI({ seed: 12 });
+    ai.poll(createInputState(), world);
+
+    const decision = ai.getDecision();
+    expect(decision.state).toBe(AIState.ENGAGE);
+    expect(decision.reason).toContain('Clearing nearby threat before NPC interaction');
+  });
+
+  it('recalculates destination immediately after accepting a new quest', () => {
+    const world = createTestWorld({ seed: 7 });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    meetTutorialGoon(world);
+    world.playerLevel.level = 2;
+    world.goalFlags.set('floor1-leveling-quest-complete', true);
+    world.goalFlags.set('floor1-shop-quest-complete', true);
+    world.floor1!.objective.questCompleted = true;
+
+    const ai = new BehaviorTreeAI({ seed: 7 });
+    const input = createInputState();
+    ai.poll(input, world);
+    const before = ai.getDecision();
+    expect(before.reason).toContain('Spell Broker');
+
+    meetSpellQuestGiver(world);
+    ai.poll(input, world);
+    const after = ai.getDecision();
+    expect(after.reason).toContain('Slime Rat room');
+    expect(after.targetX).toBe(world.floor1!.objective.slimeRatRoomPos.x);
+    expect(after.targetY).toBe(world.floor1!.objective.slimeRatRoomPos.y);
   });
 
   it('does not force a kill-grind Progress target when no swarm enemy is registered', () => {

@@ -485,6 +485,20 @@ const PATH_CORRIDOR_HALF_WIDTH_FT = 5;
 // skipped — pickups while standing still are handled by Track A's Collect
 // behavior, not the opportunistic detour.
 const DETOUR_MIN_HEADING_MAGNITUDE = 0.05;
+// Opportunistic quest-NPC detour while pathing: if an NPC with a pending quest
+// interaction is seen and visiting it adds only a small path-length penalty,
+// route Progress to that NPC first so interactions are not skipped while
+// traversing toward combat/room objectives. Distances are in feet (the internal
+// spatial unit): allow up to ~20 ft of extra path, or 0.5x the direct distance,
+// whichever is larger.
+const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 20;
+const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.5;
+// An NPC within this radius (ft) of the player counts as "at the interaction
+// point"; beyond it the NPC is only a navigation/detour target.
+const NPC_INTERACTION_RADIUS_FT = 12.5;
+// Clamp for the "clear a nearby threat before approaching an NPC" check: a threat
+// must be within min(engageRadius, this) feet to pre-empt the NPC approach.
+const NPC_APPROACH_THREAT_RADIUS_FT = 8;
 
 type LootKind = 'xp' | 'gold' | 'item';
 
@@ -674,6 +688,7 @@ export class BehaviorTreeAI implements AIInputProvider {
    */
   private dodgeVecX: number = 0;
   private dodgeVecY: number = 0;
+  private acceptedQuestCount: number = 0;
 
   constructor(config: AIConfig = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -933,7 +948,7 @@ export class BehaviorTreeAI implements AIInputProvider {
           ctx.playerX,
           ctx.playerY,
         );
-        if (nearest && nearest.distance < 12.5) {
+        if (nearest && nearest.distance < NPC_INTERACTION_RADIUS_FT) {
           ctx.blackboard['nearestNpc'] = nearest;
           return true;
         }
@@ -973,6 +988,29 @@ export class BehaviorTreeAI implements AIInputProvider {
       }),
       action('Set Progress State', (ctx) => {
         const target = ctx.blackboard['progressTarget'] as ProgressTarget;
+        const targetIsNpc =
+          target.eid >= 0 &&
+          entityExists(ctx.world.ecs, target.eid) &&
+          hasComponent(ctx.world.ecs, target.eid, Npc);
+        // If a quest NPC is the current progress objective but a nearby threat is
+        // already inside engagement range, clear the threat first instead of
+        // pathing straight through it toward the NPC.
+        if (targetIsNpc && target.distance > NPC_INTERACTION_RADIUS_FT) {
+          const nearestEnemy = this.findNearestEnemy(ctx.world, ctx.playerX, ctx.playerY);
+          const npcThreatRadius = Math.min(
+            this.getEngageRadius(ctx.world),
+            NPC_APPROACH_THREAT_RADIUS_FT,
+          );
+          if (nearestEnemy && nearestEnemy.distance <= npcThreatRadius) {
+            const plan = this.planEngagement(ctx.world, ctx.playerX, ctx.playerY, nearestEnemy);
+            this.decision.state = AIState.ENGAGE;
+            this.decision.targetEid = nearestEnemy.eid;
+            this.decision.targetX = plan.targetX;
+            this.decision.targetY = plan.targetY;
+            this.decision.reason = `Clearing nearby threat before NPC interaction — ${plan.reason}`;
+            return BTStatus.SUCCESS;
+          }
+        }
         // If this progress goal points at a living enemy (e.g. hunting quest mobs,
         // farming the swarm for charm gold), reuse the shared engagement kite so
         // the AI strafes and holds a safe strike distance instead of walking
@@ -1310,14 +1348,11 @@ export class BehaviorTreeAI implements AIInputProvider {
       // during active engagement (planEngagement's kite-strike orbit is
       // precision-tuned; a 0.4-weight perpendicular injection would displace
       // the player outside weapon range and stall the fight indefinitely),
-      // during NPC interaction (mustn't deflect approach to the NPC target),
-      // and during Progress-driven navigation (EXPLORE with a specific non-null
-      // target) so quest navigation is not deflected by closing enemies.
+      // and during NPC interaction (mustn't deflect approach to the NPC target).
       if (
         this.decision.state === AIState.RETREAT ||
         this.decision.state === AIState.ENGAGE ||
-        this.decision.state === AIState.INTERACT ||
-        (this.decision.state === AIState.EXPLORE && this.decision.targetEid !== null)
+        this.decision.state === AIState.INTERACT
       ) {
         return BTStatus.FAILURE;
       }
@@ -1948,6 +1983,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     // nets nor the global-dwell drift/HP watchdog ever fire. Keyed on quest
     // objective + gold progress, which a real deadlock leaves frozen.
     this.updateQuestProgressWatchdog(world, playerX, playerY);
+    this.refreshQuestAcceptanceNavigation(world);
 
     // Refresh door-aware navigation each poll: closed-but-openable doors become
     // passable for A*, while locked-unsatisfied doors stay walls. Rebuilding
@@ -2063,6 +2099,18 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
   }
 
+  private refreshQuestAcceptanceNavigation(world: GameWorld): void {
+    const acceptedQuestCount = world.questLog.size;
+    if (acceptedQuestCount === this.acceptedQuestCount) {
+      return;
+    }
+    this.acceptedQuestCount = acceptedQuestCount;
+    this.pathWaypoints = [];
+    this.pathIndex = 0;
+    this.pathGoalKey = null;
+    this.resolvedGoalCache = null;
+  }
+
   /**
    * Returns the normalised direction vector from the player to the given enemy
    * EID, or null if the enemy position is unavailable or already within
@@ -2122,6 +2170,50 @@ export class BehaviorTreeAI implements AIInputProvider {
       maxPathLength: NAVIGATION_MAX_PATH_LENGTH,
       ...(this.doorAwarePassable ? { isTilePassable: this.doorAwarePassable } : {}),
     };
+  }
+
+  private withQuestGiverDetour(
+    world: GameWorld,
+    playerEid: number,
+    playerX: number,
+    playerY: number,
+    target: ProgressTarget,
+  ): ProgressTarget {
+    if (target.eid >= 0 && world.npcs.has(target.eid)) {
+      return target;
+    }
+    const nearestNpc = this.findNearestRelevantNpc(world, playerEid, playerX, playerY);
+    if (
+      !nearestNpc ||
+      typeof nearestNpc.interactionReason !== 'string' ||
+      nearestNpc.interactionReason.length === 0
+    ) {
+      return target;
+    }
+    if (nearestNpc.eid === target.eid) {
+      return target;
+    }
+
+    const viaNpcDistance =
+      nearestNpc.distance + Math.hypot(target.x - nearestNpc.x, target.y - nearestNpc.y);
+    const detourExtra = viaNpcDistance - target.distance;
+    const detourCap = Math.max(
+      QUEST_GIVER_DETOUR_MAX_EXTRA_FT,
+      target.distance * QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION,
+    );
+    if (detourExtra > detourCap) {
+      return target;
+    }
+
+    const readableReason = nearestNpc.interactionReason.replaceAll('-', ' ');
+    return this.createProgressTarget(
+      nearestNpc.x,
+      nearestNpc.y,
+      playerX,
+      playerY,
+      `Detouring to ${nearestNpc.defId} (${readableReason})`,
+      nearestNpc.eid,
+    );
   }
 
   private moveToward(
@@ -2806,6 +2898,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     playerX: number,
     playerY: number,
   ): ProgressTarget | null {
+    const maybeDetourToQuestGiver = (target: ProgressTarget): ProgressTarget =>
+      this.withQuestGiverDetour(world, playerEid, playerX, playerY, target);
     const floor1 = world.floor1;
     const objective = floor1?.objective;
     if (!floor1 || !objective) {
@@ -2824,12 +2918,14 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (!tutorialAccepted) {
       if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.welcomeOfficePos.x,
-        objective.welcomeOfficePos.y,
-        playerX,
-        playerY,
-        'Seeking Tutorial Goon to unlock the floor quest',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.welcomeOfficePos.x,
+          objective.welcomeOfficePos.y,
+          playerX,
+          playerY,
+          'Seeking Tutorial Goon to unlock the floor quest',
+        ),
       );
     }
 
@@ -2855,13 +2951,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       if (questEnemy) {
         const ratsLeft = Math.max(0, objective.requiredRats - objective.ratsKilled);
         const slimesLeft = Math.max(0, objective.requiredSlimes - objective.slimesKilled);
-        return this.createProgressTarget(
-          questEnemy.x,
-          questEnemy.y,
-          playerX,
-          playerY,
-          `Hunting quest enemies (${ratsLeft} rats, ${slimesLeft} slimes to go)`,
-          questEnemy.eid,
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            questEnemy.x,
+            questEnemy.y,
+            playerX,
+            playerY,
+            `Hunting quest enemies (${ratsLeft} rats, ${slimesLeft} slimes to go)`,
+            questEnemy.eid,
+          ),
         );
       }
       return null;
@@ -2869,36 +2967,42 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (shopStage === 'not-met') {
       if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.shopRoomPos.x,
-        objective.shopRoomPos.y,
-        playerX,
-        playerY,
-        'Seeking Shopkeeper to start the merchant errand',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.shopRoomPos.x,
+          objective.shopRoomPos.y,
+          playerX,
+          playerY,
+          'Seeking Shopkeeper to start the merchant errand',
+        ),
       );
     }
 
     if (shopStage === 'awaiting-prize') {
       if (progressSuppressed) return null;
       const target = hasFetchItem ? objective.shopRoomPos : objective.questItemPos;
-      return this.createProgressTarget(
-        target.x,
-        target.y,
-        playerX,
-        playerY,
-        hasFetchItem ? 'Returning the merchant prize' : 'Seeking the merchant fetch item',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          target.x,
+          target.y,
+          playerX,
+          playerY,
+          hasFetchItem ? 'Returning the merchant prize' : 'Seeking the merchant fetch item',
+        ),
       );
     }
 
     if (shopStage === 'ready-to-buy') {
       if (world.playerGold >= SHOPKEEPER_EQUIPMENT_COST) {
         if (progressSuppressed) return null;
-        return this.createProgressTarget(
-          objective.shopRoomPos.x,
-          objective.shopRoomPos.y,
-          playerX,
-          playerY,
-          'Returning to the Shopkeeper to buy the charm',
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            objective.shopRoomPos.x,
+            objective.shopRoomPos.y,
+            playerX,
+            playerY,
+            'Returning to the Shopkeeper to buy the charm',
+          ),
         );
       }
 
@@ -2917,13 +3021,15 @@ export class BehaviorTreeAI implements AIInputProvider {
       // blacklists piles we get wedged against, so a deadlocked coin eventually
       // drops out of this scan and we fall through to hunting.
       if (goldPile && goldPile.distance <= GOLD_FARM_COLLECT_RADIUS_FT) {
-        return this.createProgressTarget(
-          goldPile.x,
-          goldPile.y,
-          playerX,
-          playerY,
-          `Collecting gold for the merchant charm (${goldOwed}g to go)`,
-          goldPile.eid,
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            goldPile.x,
+            goldPile.y,
+            playerX,
+            playerY,
+            `Collecting gold for the merchant charm (${goldOwed}g to go)`,
+            goldPile.eid,
+          ),
         );
       }
 
@@ -2931,25 +3037,29 @@ export class BehaviorTreeAI implements AIInputProvider {
       // the kill, which the branch above then sweeps up on a later tick.
       const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_FT);
       if (prey) {
-        return this.createProgressTarget(
-          prey.x,
-          prey.y,
-          playerX,
-          playerY,
-          `Hunting the swarm for charm gold (${goldOwed}g to go)`,
-          prey.eid,
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            prey.x,
+            prey.y,
+            playerX,
+            playerY,
+            `Hunting the swarm for charm gold (${goldOwed}g to go)`,
+            prey.eid,
+          ),
         );
       }
 
       // Nothing nearby to fight: a distant pile is still better than wandering.
       if (goldPile) {
-        return this.createProgressTarget(
-          goldPile.x,
-          goldPile.y,
-          playerX,
-          playerY,
-          `Collecting gold for the merchant charm (${goldOwed}g to go)`,
-          goldPile.eid,
+        return maybeDetourToQuestGiver(
+          this.createProgressTarget(
+            goldPile.x,
+            goldPile.y,
+            playerX,
+            playerY,
+            `Collecting gold for the merchant charm (${goldOwed}g to go)`,
+            goldPile.eid,
+          ),
         );
       }
 
@@ -2962,34 +3072,40 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (!bossBattleAccepted) {
       if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.spellQuestGiverPos.x,
-        objective.spellQuestGiverPos.y,
-        playerX,
-        playerY,
-        'Seeking the Spell Broker to start the Slime Rat quest',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.spellQuestGiverPos.x,
+          objective.spellQuestGiverPos.y,
+          playerX,
+          playerY,
+          'Seeking the Spell Broker to start the Slime Rat quest',
+        ),
       );
     }
 
     if (!objective.bossBattles.get('slime-rat')!.started) {
       if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.slimeRatRoomPos.x,
-        objective.slimeRatRoomPos.y,
-        playerX,
-        playerY,
-        'Heading to the Slime Rat room',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.slimeRatRoomPos.x,
+          objective.slimeRatRoomPos.y,
+          playerX,
+          playerY,
+          'Heading to the Slime Rat room',
+        ),
       );
     }
 
     if (objective.bossBattles.get('slime-rat')!.defeated && !world.featureUnlocks.spells) {
       if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.spellQuestGiverPos.x,
-        objective.spellQuestGiverPos.y,
-        playerX,
-        playerY,
-        'Returning to the Spell Broker to claim a spell reward',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.spellQuestGiverPos.x,
+          objective.spellQuestGiverPos.y,
+          playerX,
+          playerY,
+          'Returning to the Spell Broker to claim a spell reward',
+        ),
       );
     }
 
@@ -2998,23 +3114,27 @@ export class BehaviorTreeAI implements AIInputProvider {
       !objective.bossBattles.get('staircase')!.started
     ) {
       if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.staircasePos.x,
-        objective.staircasePos.y,
-        playerX,
-        playerY,
-        'Heading to the staircase boss room',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.staircasePos.x,
+          objective.staircasePos.y,
+          playerX,
+          playerY,
+          'Heading to the staircase boss room',
+        ),
       );
     }
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
       if (progressSuppressed) return null;
-      return this.createProgressTarget(
-        objective.staircasePos.x,
-        objective.staircasePos.y,
-        playerX,
-        playerY,
-        'Heading to the stairs to clear the floor',
+      return maybeDetourToQuestGiver(
+        this.createProgressTarget(
+          objective.staircasePos.x,
+          objective.staircasePos.y,
+          playerX,
+          playerY,
+          'Heading to the stairs to clear the floor',
+        ),
       );
     }
 
@@ -4000,5 +4120,6 @@ export class BehaviorTreeAI implements AIInputProvider {
     this.farmPullY = 0;
     this.dodgeVecX = 0;
     this.dodgeVecY = 0;
+    this.acceptedQuestCount = 0;
   }
 }
