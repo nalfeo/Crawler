@@ -66,6 +66,13 @@ export interface GameWorld {
   stores: ComponentStores;
   /** Seeded RNG — never use Math.random() */
   rng: SeededRandom;
+  /**
+   * Run seed (the value `rng` was constructed from). Stable for the whole run
+   * and replay-safe. Combine with a per-key hash (see `hashStringToSeed`) to make
+   * deterministic choices WITHOUT consuming the `rng` stream — e.g. selecting a
+   * generated-sprite variant per item id.
+   */
+  readonly seed: number;
   /** Current frame count */
   frameCount: number;
   /** Time elapsed in current floor (ms) */
@@ -237,6 +244,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     ecs,
     stores,
     rng: new SeededRandom(options.seed ?? 42),
+    seed: options.seed ?? 42,
     frameCount: 0,
     elapsedMs: 0,
     floor: options.floor ?? 1,

@@ -7,6 +7,27 @@ on:
     branches: [main]
 
 jobs:
+  # Job 0: Detect the change scope. When a push/PR touches ONLY the approved-art
+  # surface (public/assets/generated/** + sprite-catalog.json), the heavy
+  # gameplay gates (integration, headless, e2e, build) are skipped — adding a
+  # checked-in sprite cannot change game logic. typecheck/lint/format/unit always
+  # run. The merge-gate treats those skipped jobs as PASS for art-only changes.
+  changes:
+    name: Detect change scope
+    runs-on: ubuntu-latest
+    outputs:
+      art_only: ${{ steps.detect.outputs.art_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect art-only change set
+        id: detect
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: bash scripts/agent/ci/detect-art-only.sh
+
   # Job 1: Type & Lint checks (can run in parallel)
   check-types-and-lint:
     name: Types & Lint
@@ -94,6 +115,8 @@ jobs:
   test-integration:
     name: Integration Tests
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.art_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -109,6 +132,8 @@ jobs:
   test-headless:
     name: Headless Floor 1 Gate
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.art_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -121,8 +146,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test-unit]
+    needs: [changes, test-unit]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.art_only != 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -151,7 +176,16 @@ jobs:
   merge-gate:
     name: Merge gate
     runs-on: ubuntu-latest
-    needs: [check-types-and-lint, check-format-and-labs, test-unit, test-integration, test-headless, test-e2e]
+    needs:
+      [
+        changes,
+        check-types-and-lint,
+        check-format-and-labs,
+        test-unit,
+        test-integration,
+        test-headless,
+        test-e2e,
+      ]
     if: always()
     steps:
       - name: Check required jobs
@@ -163,7 +197,7 @@ jobs:
               return
             fi
             if [ "$allow_skipped" = "true" ] && [ "$result" = "skipped" ]; then
-              echo "✅ $name: $result"
+              echo "✅ $name: $result (skipped — art-only change)"
               return
             fi
             if [ "$result" != "success" ]; then
@@ -171,12 +205,20 @@ jobs:
               exit 1
             fi
           }
+          # The `changes` job MUST succeed. Heavy gates are skipped both when
+          # art_only == 'true' AND when `changes` fails (a failed `needs`
+          # dependency skips downstream jobs). Without this explicit, non-
+          # skippable check, a `changes`/detect-art-only failure on a code PR
+          # would skip every heavy gate and be silently counted as PASS.
+          check "Change scope detection"        "${{ needs.changes.result }}"
+          # Heavy gameplay gates are allowed to be skipped on art-only changes
+          # (see the `changes` job). They still BLOCK on any code change.
           check "Types & Lint"                  "${{ needs.check-types-and-lint.result }}"
           check "Format & Labs"                 "${{ needs.check-format-and-labs.result }}"
           check "Unit tests"                    "${{ needs.test-unit.result }}"
-          check "Integration tests"             "${{ needs.test-integration.result }}"
-          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"
-          check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"
+          check "Integration tests"             "${{ needs.test-integration.result }}"   "true"
+          check "Headless Floor 1 completion"   "${{ needs.test-headless.result }}"      "true"
+          check "E2E Visual Regression"         "${{ needs.test-e2e.result }}"           "true"
           echo "✅ All required checks passed"
 
   ci:
@@ -197,6 +239,8 @@ jobs:
   test-e2e:
     name: E2E Visual Regression
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.art_only != 'true'
     permissions:
       contents: read
     steps:

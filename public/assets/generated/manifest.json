@@ -102,7 +102,7 @@
     },
     "bent-pipe-v1-var-1": {
       "briefId": "bent-pipe-v1",
-      "spriteName": "bent-pipe-v1",
+      "spriteName": "bent-pipe-v1-var-1",
       "assetPath": "generated/bent-pipe-v1-var-1.png",
       "approvedAt": "2026-06-08T19:08:15.218Z",
       "sourceRun": "generated/runs/bent-pipe-v1/2026-06-08T17-00-57-6d29558d",
@@ -117,7 +117,7 @@
     },
     "bent-pipe-v1-var-5": {
       "briefId": "bent-pipe-v1",
-      "spriteName": "bent-pipe-v1",
+      "spriteName": "bent-pipe-v1-var-5",
       "assetPath": "generated/bent-pipe-v1-var-5.png",
       "approvedAt": "2026-06-08T19:08:16.273Z",
       "sourceRun": "generated/runs/bent-pipe-v1/2026-06-08T17-00-57-6d29558d",
@@ -847,7 +847,7 @@
     },
     "purple-potion-bottle-v1-var-4": {
       "briefId": "purple-potion-bottle-v1",
-      "spriteName": "purple-potion-bottle-v1",
+      "spriteName": "purple-potion-bottle-v1-var-4",
       "assetPath": "generated/purple-potion-bottle-v1-var-4.png",
       "approvedAt": "2026-06-19T23:58:53.403Z",
       "sourceRun": "generated/runs/purple-potion-bottle-v1/2026-06-19T23-50-46-2dc4b366",

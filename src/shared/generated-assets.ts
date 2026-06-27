@@ -13,6 +13,7 @@
  * loader glue lives in `src/engine/generatedAssets/`.
  */
 import { z } from 'zod';
+import { SeededRandom } from './random.js';
 
 /**
  * Default anchor used when a manifest entry's `anchor` is `null` — i.e.
@@ -83,7 +84,14 @@ export type GeneratedManifest = z.infer<typeof generatedManifestSchema>;
  */
 export interface GeneratedSpriteEntry {
   readonly briefId: string;
-  /** Phaser texture key. Same as the manifest `spriteName`. */
+  /**
+   * Phaser texture key — unique per variant. Derived from the manifest entry's
+   * own map key (e.g. `iron-sword-var-3`), NOT from `spriteName`. This keeps
+   * every approved variant of a brief on its own texture even on legacy data
+   * where an older `approve.ts` wrote a brief-wide `spriteName` (the historical
+   * render-collision bug). Equals `spriteName` for entries written by current
+   * `approve.ts`.
+   */
   readonly textureKey: string;
   /** `public/`-relative asset path, forward-slashed. */
   readonly assetPath: string;
@@ -98,12 +106,30 @@ export interface GeneratedSpriteEntry {
   readonly judgeScore: string | null;
 }
 
-/** Engine-portable lookup view over a parsed manifest. */
+/**
+ * Engine-portable lookup view over a parsed manifest.
+ *
+ * A brief may have MULTIPLE approved variants. The registry groups entries by
+ * `briefId`:
+ *   - `variants(briefId)` returns every approved variant (sorted by
+ *     `variantIndex`), so callers can pick one (see `pickGeneratedVariant`).
+ *   - `lookup(briefId)` returns the first variant — a deterministic, back-compat
+ *     convenience for callers that don't care which variant they get.
+ *   - `entries()` is the flattened list of ALL variants across ALL briefs, so the
+ *     preloader queues every variant's texture.
+ */
 export interface GeneratedSpriteRegistry {
   readonly version: typeof GENERATED_MANIFEST_VERSION;
+  /** First approved variant for a brief (lowest `variantIndex`), or null. */
   lookup(briefId: string): GeneratedSpriteEntry | null;
+  /** All approved variants for a brief, sorted by `variantIndex`. Empty if none. */
+  variants(briefId: string): readonly GeneratedSpriteEntry[];
+  /** Every variant across every brief, flattened (manifest insertion order). */
   entries(): readonly GeneratedSpriteEntry[];
+  /** Distinct briefIds that have at least one approved variant. */
+  briefIds(): readonly string[];
   has(briefId: string): boolean;
+  /** Total number of variants across all briefs. */
   readonly size: number;
 }
 
@@ -121,20 +147,46 @@ export function parseGeneratedManifest(raw: unknown): GeneratedManifest {
  * globals; safe to call from any layer.
  */
 export function loadGeneratedManifest(manifest: GeneratedManifest): GeneratedSpriteRegistry {
-  const resolved = new Map<string, GeneratedSpriteEntry>();
-  for (const [briefId, entry] of Object.entries(manifest.entries)) {
-    // Trust the manifest's own briefId field over the map key when they
-    // disagree — the writer (approve.ts) computes both from the same source.
-    const key = entry.briefId || briefId;
-    resolved.set(key, toRegistryEntry(entry));
+  const byBrief = new Map<string, GeneratedSpriteEntry[]>();
+  const flat: GeneratedSpriteEntry[] = [];
+  for (const [manifestKey, entry] of Object.entries(manifest.entries)) {
+    // textureKey comes from the manifest MAP KEY (unique per variant) so
+    // variants never collide, even on legacy data where `spriteName` was
+    // written brief-wide. `briefId` is the grouping key.
+    const resolved = toRegistryEntry(entry, manifestKey);
+    flat.push(resolved);
+    const group = byBrief.get(resolved.briefId);
+    if (group) {
+      group.push(resolved);
+    } else {
+      byBrief.set(resolved.briefId, [resolved]);
+    }
+  }
+  for (const group of byBrief.values()) {
+    group.sort(compareVariants);
   }
   return {
     version: GENERATED_MANIFEST_VERSION,
-    size: resolved.size,
-    has: (briefId) => resolved.has(briefId),
-    lookup: (briefId) => resolved.get(briefId) ?? null,
-    entries: () => Array.from(resolved.values()),
+    size: flat.length,
+    has: (briefId) => byBrief.has(briefId),
+    lookup: (briefId) => byBrief.get(briefId)?.[0] ?? null,
+    variants: (briefId) => byBrief.get(briefId) ?? EMPTY_VARIANTS,
+    entries: () => flat,
+    briefIds: () => Array.from(byBrief.keys()),
   };
+}
+
+/** Shared empty result so `variants()` never allocates for a miss. */
+const EMPTY_VARIANTS: readonly GeneratedSpriteEntry[] = Object.freeze([]);
+
+/** Deterministic variant order: by `variantIndex`, then `textureKey`. */
+function compareVariants(a: GeneratedSpriteEntry, b: GeneratedSpriteEntry): number {
+  if (a.variantIndex !== b.variantIndex) {
+    return a.variantIndex - b.variantIndex;
+  }
+  if (a.textureKey < b.textureKey) return -1;
+  if (a.textureKey > b.textureKey) return 1;
+  return 0;
 }
 
 /**
@@ -149,14 +201,14 @@ export function emptyGeneratedSpriteRegistry(): GeneratedSpriteRegistry {
   return loadGeneratedManifest({ version: GENERATED_MANIFEST_VERSION, entries: {} });
 }
 
-function toRegistryEntry(entry: ManifestEntry): GeneratedSpriteEntry {
+function toRegistryEntry(entry: ManifestEntry, manifestKey: string): GeneratedSpriteEntry {
   const hold = entry.anchors?.hold ?? entry.anchor;
   const center = entry.anchors?.centerOfGravity ?? hold;
   const anchor = hold ? { x: hold.x, y: hold.y } : { ...DEFAULT_GENERATED_ANCHOR };
   const centerOfGravity = center ? { x: center.x, y: center.y } : { ...anchor };
   return {
     briefId: entry.briefId,
-    textureKey: entry.spriteName,
+    textureKey: manifestKey,
     assetPath: entry.assetPath,
     anchor,
     centerOfGravity,
@@ -167,4 +219,30 @@ function toRegistryEntry(entry: ManifestEntry): GeneratedSpriteEntry {
     sensorScore: entry.sensorScore,
     judgeScore: entry.judgeScore,
   };
+}
+
+/**
+ * Pick one approved variant for a brief, deterministically for a given `seed`.
+ *
+ * Returns null when the brief has no approved variant. With a single variant it
+ * returns that variant (no RNG draw). With multiple, it uses `SeededRandom` so
+ * the choice is replay-safe — pass a seed derived from a stable per-context key
+ * (e.g. `hashStringToSeed(itemId) ^ world.seed`) to keep the same item on the
+ * same variant for a whole run while still varying across runs/items.
+ *
+ * NEVER uses `Math.random()` (Constitution: all randomness via `SeededRandom`).
+ */
+export function pickGeneratedVariant(
+  registry: GeneratedSpriteRegistry,
+  briefId: string,
+  seed: number,
+): GeneratedSpriteEntry | null {
+  const variants = registry.variants(briefId);
+  if (variants.length === 0) {
+    return null;
+  }
+  if (variants.length === 1) {
+    return variants[0] ?? null;
+  }
+  return new SeededRandom(seed).pick(variants);
 }

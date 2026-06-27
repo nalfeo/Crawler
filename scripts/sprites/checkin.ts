@@ -1,0 +1,425 @@
+/**
+ * Asset check-in: publish locally-approved generated art as a dedicated remote
+ * branch + a tracking GitHub issue, WITHOUT opening a pull request.
+ *
+ * Why no PR? Approving art is a high-frequency, low-risk local action. Opening
+ * a PR per approval would drown the queue. Instead each check-in pushes a
+ * self-contained `assets/<slug>` branch (the art-surface delta off the default
+ * branch) and files an `asset-checkin` issue describing it. A separate skill
+ * (`.github/skills/asset-pr/`) later consolidates every open asset-checkin
+ * issue into ONE game PR. See docs/knowledge/adr for the rationale.
+ *
+ * Design for testability:
+ *   - `planAssetCheckin()` is PURE — it turns a set of approved assets into the
+ *     branch name, commit message, issue title/body (with an embedded
+ *     machine-readable payload), and the paths to stage. No IO.
+ *   - `runAssetCheckin()` performs the side effects through injected `deps`
+ *     (an exec runner + small fs hooks), so unit tests can assert the exact
+ *     git/gh command sequence without touching the network or a real repo.
+ *
+ * Constitutional §3 (Deterministic CI Only / local-only mutation): check-in
+ * mutates remote state (push + issue) from locally-approved assets, so it
+ * REFUSES when `process.env.CI` is set — same guard as approve.ts's sidecar.
+ */
+
+import { hashStringToSeed } from '../../src/shared/random.js';
+
+/** The art surface a check-in captures (repo-relative, POSIX separators). */
+export const ASSET_SURFACE_PATHS = [
+  'public/assets/generated',
+  'src/shared/data/sprite-catalog.json',
+] as const;
+
+/** Label applied to every check-in tracking issue. */
+export const ASSET_CHECKIN_LABEL = 'asset-checkin';
+
+/** Marker that opens the machine-readable JSON payload in an issue body. */
+export const ASSET_CHECKIN_MARKER = 'asset-checkin:v1';
+
+/** One approved asset being checked in. */
+export interface CheckinAsset {
+  /** Repo-relative-under-`public/assets` path, e.g. `generated/foo-var-1.png`. */
+  readonly assetPath: string;
+  /** Manifest entry key (unique per variant), or null if not in the manifest. */
+  readonly manifestKey: string | null;
+  /** Owning brief id, or null when unknown. */
+  readonly briefId: string | null;
+  /** Variant index, or null when unknown. */
+  readonly variantIndex: number | null;
+}
+
+/** Machine-readable payload embedded in the issue body for the consolidator. */
+export interface AssetCheckinPayload {
+  readonly version: 1;
+  readonly branch: string;
+  readonly baseBranch: string;
+  readonly assets: readonly CheckinAsset[];
+}
+
+export interface AssetCheckinPlan {
+  readonly branch: string;
+  readonly baseBranch: string;
+  readonly commitMessage: string;
+  readonly issueTitle: string;
+  readonly issueBody: string;
+  readonly labels: readonly string[];
+  readonly assets: readonly CheckinAsset[];
+  /** Repo-relative paths to stage in the dedicated branch. */
+  readonly paths: readonly string[];
+}
+
+export type CheckinErrorKind = 'ci-refused' | 'nothing-to-checkin' | 'git-failed' | 'gh-failed';
+
+export class CheckinError extends Error {
+  constructor(
+    readonly kind: CheckinErrorKind,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'CheckinError';
+  }
+}
+
+export interface PlanAssetCheckinInput {
+  readonly assets: readonly CheckinAsset[];
+  /** Timestamp used for the slug + issue body. */
+  readonly now: Date;
+  /** Default branch the asset branch is cut from. Defaults to `main`. */
+  readonly baseBranch?: string;
+  /** Override the generated slug (tests). Defaults to a timestamp + hash slug. */
+  readonly slug?: string;
+}
+
+/**
+ * Build a deterministic check-in plan from a set of approved assets. Pure.
+ */
+export function planAssetCheckin(input: PlanAssetCheckinInput): AssetCheckinPlan {
+  const baseBranch = input.baseBranch ?? 'main';
+  const assets = [...input.assets].sort((a, b) => a.assetPath.localeCompare(b.assetPath));
+  const slug = input.slug ?? defaultSlug(assets, input.now);
+  const branch = `assets/${slug}`;
+  const count = assets.length;
+  const noun = count === 1 ? 'asset' : 'assets';
+
+  const commitMessage = `feat(sprites): check in ${count} approved ${noun}`;
+  const issueTitle = `Asset check-in: ${count} approved ${noun} (${slug})`;
+
+  const payload: AssetCheckinPayload = { version: 1, branch, baseBranch, assets };
+  const issueBody = renderIssueBody(branch, baseBranch, assets, payload);
+
+  return {
+    branch,
+    baseBranch,
+    commitMessage,
+    issueTitle,
+    issueBody,
+    labels: [ASSET_CHECKIN_LABEL],
+    assets,
+    paths: [...ASSET_SURFACE_PATHS],
+  };
+}
+
+function defaultSlug(assets: readonly CheckinAsset[], now: Date): string {
+  const stamp = formatStamp(now);
+  // Short, stable hash of the asset set so two check-ins in the same second
+  // still land on distinct branches.
+  const key = assets.map((a) => a.manifestKey ?? a.assetPath).join('|');
+  const hash = (hashStringToSeed(key) >>> 0).toString(16).padStart(8, '0').slice(0, 6);
+  return `checkin-${stamp}-${hash}`;
+}
+
+function formatStamp(now: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
+    `-${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}`
+  );
+}
+
+function renderIssueBody(
+  branch: string,
+  baseBranch: string,
+  assets: readonly CheckinAsset[],
+  payload: AssetCheckinPayload,
+): string {
+  const lines: string[] = [];
+  lines.push('## Asset check-in');
+  lines.push('');
+  lines.push(
+    `Approved generated art is staged on branch \`${branch}\` (cut from \`${baseBranch}\`).`,
+  );
+  lines.push('No pull request was opened — the **asset-pr** skill consolidates open');
+  lines.push('`asset-checkin` issues into a single game PR.');
+  lines.push('');
+  lines.push(`### Assets (${assets.length})`);
+  for (const asset of assets) {
+    const brief = asset.briefId ? ` — brief \`${asset.briefId}\`` : '';
+    const variant = asset.variantIndex !== null ? ` (variant ${asset.variantIndex})` : '';
+    lines.push(`- \`${asset.assetPath}\`${brief}${variant}`);
+  }
+  lines.push('');
+  lines.push(
+    '<!-- The block below is machine-read by the asset-pr skill. Do not edit by hand. -->',
+  );
+  lines.push(`<!-- ${ASSET_CHECKIN_MARKER}`);
+  lines.push(JSON.stringify(payload));
+  lines.push('-->');
+  return `${lines.join('\n')}\n`;
+}
+
+export interface ExecResult {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly code: number;
+}
+
+export type Exec = (
+  command: string,
+  args: readonly string[],
+  options?: { readonly cwd?: string },
+) => Promise<ExecResult>;
+
+/** Minimal manifest shape the check-in reads to enrich the issue body. */
+export interface CheckinManifest {
+  readonly entries?: Record<
+    string,
+    { readonly assetPath?: string; readonly briefId?: string; readonly variantIndex?: number }
+  >;
+}
+
+export interface CheckinRunnerDeps {
+  /** Runs an external command (git/gh). */
+  readonly exec: Exec;
+  /** Copy the live art surface from `srcRepoRoot` into the worktree `destRepoRoot`. */
+  readonly copyArtSurface: (srcRepoRoot: string, destRepoRoot: string) => Promise<void>;
+  /** Create + return an empty temp directory for the throwaway worktree. */
+  readonly makeTempDir: () => Promise<string>;
+  /** Remove a directory tree (best-effort cleanup). */
+  readonly removeDir: (dir: string) => Promise<void>;
+  /** Read the live manifest (to enrich assets). Defaults to empty on any error. */
+  readonly readManifest?: () => Promise<CheckinManifest>;
+  /** Env consulted for the CI refusal. Defaults to `process.env`. */
+  readonly env?: NodeJS.ProcessEnv;
+  /** Clock. Defaults to `() => new Date()`. */
+  readonly now?: () => Date;
+}
+
+export interface RunAssetCheckinOptions {
+  readonly baseBranch?: string;
+  readonly slug?: string;
+  /** Git remote name. Defaults to `origin`. */
+  readonly remote?: string;
+}
+
+export interface AssetCheckinResult {
+  readonly branch: string;
+  readonly issueUrl: string;
+  readonly plan: AssetCheckinPlan;
+}
+
+/**
+ * Execute a check-in: cut a dedicated branch off the remote base, stage the
+ * live art surface, commit, push (NO PR), and file the tracking issue. All side
+ * effects flow through `deps` so this is unit-testable with a fake exec.
+ */
+export async function runAssetCheckin(
+  repoRoot: string,
+  deps: CheckinRunnerDeps,
+  options: RunAssetCheckinOptions = {},
+): Promise<AssetCheckinResult> {
+  const env = deps.env ?? process.env;
+  if (env.CI !== undefined) {
+    throw new CheckinError(
+      'ci-refused',
+      'Per Constitutional §3, sprite check-in is local-only: it pushes approved ' +
+        'assets and files a GitHub issue. Run it on a dev box (npm run sprites:checkin).',
+    );
+  }
+
+  const remote = options.remote ?? 'origin';
+  const baseBranch = options.baseBranch ?? 'main';
+  const now = deps.now ?? (() => new Date());
+
+  await git(deps.exec, repoRoot, ['fetch', remote, baseBranch]);
+
+  const manifest = deps.readManifest ? await deps.readManifest().catch(() => ({})) : {};
+  const assets = await detectApprovedAssets(deps.exec, repoRoot, remote, baseBranch, manifest);
+  if (assets.length === 0) {
+    throw new CheckinError(
+      'nothing-to-checkin',
+      `No approved art differs from ${remote}/${baseBranch}. Approve a sprite first ` +
+        '(npm run sprites:gallery), then re-run check-in.',
+    );
+  }
+
+  const plan = planAssetCheckin({ assets, now: now(), baseBranch, slug: options.slug });
+
+  const worktree = await deps.makeTempDir();
+  try {
+    await git(deps.exec, repoRoot, [
+      'worktree',
+      'add',
+      worktree,
+      '-b',
+      plan.branch,
+      `${remote}/${baseBranch}`,
+    ]);
+    await deps.copyArtSurface(repoRoot, worktree);
+    await git(deps.exec, worktree, ['add', '--', ...plan.paths]);
+    await git(deps.exec, worktree, ['commit', '-m', plan.commitMessage]);
+    await git(deps.exec, worktree, ['push', '-u', remote, plan.branch]);
+
+    // The branch is now on the remote. asset-pr consolidation discovers branches
+    // ONLY through their tracking issue, so a failed `gh issue create` would
+    // leave the branch orphaned (invisible to the consolidator, never cleaned by
+    // the worktree teardown below). Ensure the label exists first — a fresh repo
+    // has no `asset-checkin` label, which makes `gh issue create --label` fail —
+    // and delete the pushed branch if the issue still can't be filed.
+    let issueUrl: string;
+    try {
+      await ensureLabel(deps.exec, repoRoot, ASSET_CHECKIN_LABEL);
+      issueUrl = await createIssue(deps.exec, repoRoot, plan);
+    } catch (err) {
+      await git(deps.exec, repoRoot, ['push', remote, '--delete', plan.branch]).catch(() => {});
+      throw err;
+    }
+    return { branch: plan.branch, issueUrl, plan };
+  } finally {
+    // Detach the throwaway worktree, then delete the dir. Best-effort: a failed
+    // cleanup must not mask a real error from the try block.
+    await git(deps.exec, repoRoot, ['worktree', 'remove', worktree, '--force']).catch(() => {});
+    await deps.removeDir(worktree).catch(() => {});
+  }
+}
+
+/**
+ * List the art-surface PNGs that differ from the remote base, enriched with
+ * manifest metadata when present. Compares the WORKING TREE (so freshly
+ * approved, uncommitted assets count) against `<remote>/<baseBranch>`.
+ *
+ * `git diff` only reports TRACKED files, but a freshly approved variant PNG is
+ * written with `copyFileSync` and never `git add`ed — it is untracked. Since
+ * `public/assets/generated/**` is un-ignored, those brand-new PNGs must be
+ * collected separately via `git ls-files --others`; otherwise the primary
+ * approve→check-in flow sees no assets and throws `nothing-to-checkin`.
+ */
+export async function detectApprovedAssets(
+  exec: Exec,
+  repoRoot: string,
+  remote: string,
+  baseBranch: string,
+  manifest: CheckinManifest = {},
+): Promise<CheckinAsset[]> {
+  const diff = await git(exec, repoRoot, [
+    'diff',
+    '--name-only',
+    `${remote}/${baseBranch}`,
+    '--',
+    ...ASSET_SURFACE_PATHS,
+  ]);
+  const untracked = await git(exec, repoRoot, [
+    'ls-files',
+    '--others',
+    '--exclude-standard',
+    '--',
+    ...ASSET_SURFACE_PATHS,
+  ]);
+  const seen = new Set<string>();
+  const changed = [...diff.stdout.split('\n'), ...untracked.stdout.split('\n')]
+    .map((line) => line.trim())
+    .filter((line) => line.endsWith('.png'))
+    .filter((file) => {
+      if (seen.has(file)) return false;
+      seen.add(file);
+      return true;
+    });
+
+  const assets: CheckinAsset[] = [];
+  for (const file of changed) {
+    // `public/assets/generated/foo-var-1.png` -> `generated/foo-var-1.png`
+    const assetPath = file.startsWith('public/assets/')
+      ? file.slice('public/assets/'.length)
+      : file;
+    const match = findManifestEntry(manifest, assetPath);
+    assets.push({
+      assetPath,
+      manifestKey: match?.key ?? null,
+      briefId: match?.briefId ?? null,
+      variantIndex: match?.variantIndex ?? null,
+    });
+  }
+  return assets;
+}
+
+function findManifestEntry(
+  manifest: CheckinManifest,
+  assetPath: string,
+): { key: string; briefId: string | null; variantIndex: number | null } | null {
+  const entries = manifest.entries ?? {};
+  for (const [key, entry] of Object.entries(entries)) {
+    if (entry.assetPath === assetPath) {
+      return {
+        key,
+        briefId: entry.briefId ?? null,
+        variantIndex: typeof entry.variantIndex === 'number' ? entry.variantIndex : null,
+      };
+    }
+  }
+  return null;
+}
+
+async function createIssue(exec: Exec, repoRoot: string, plan: AssetCheckinPlan): Promise<string> {
+  const args = [
+    'issue',
+    'create',
+    '--title',
+    plan.issueTitle,
+    '--body',
+    plan.issueBody,
+    ...plan.labels.flatMap((label) => ['--label', label]),
+  ];
+  const result = await exec('gh', args, { cwd: repoRoot });
+  if (result.code !== 0) {
+    throw new CheckinError(
+      'gh-failed',
+      `gh issue create failed: ${result.stderr || result.stdout}`,
+    );
+  }
+  // `gh issue create` prints the issue URL on stdout.
+  const url = result.stdout.trim().split('\n').filter(Boolean).pop() ?? '';
+  return url;
+}
+
+/**
+ * Idempotently ensure the check-in label exists so `gh issue create --label`
+ * doesn't fail on a fresh repo. `--force` creates the label or updates it in
+ * place. Best-effort: a non-zero exit here is non-fatal because `createIssue`
+ * surfaces (and triggers branch cleanup for) a genuine inability to file.
+ */
+async function ensureLabel(exec: Exec, repoRoot: string, label: string): Promise<void> {
+  await exec(
+    'gh',
+    [
+      'label',
+      'create',
+      label,
+      '--color',
+      'FBCA04',
+      '--description',
+      'Approved sprite art awaiting consolidation into a game PR',
+      '--force',
+    ],
+    { cwd: repoRoot },
+  );
+}
+
+async function git(exec: Exec, cwd: string, args: readonly string[]): Promise<ExecResult> {
+  const result = await exec('git', args, { cwd });
+  if (result.code !== 0) {
+    throw new CheckinError(
+      'git-failed',
+      `git ${args.join(' ')} failed (exit ${result.code}): ${result.stderr || result.stdout}`,
+    );
+  }
+  return result;
+}

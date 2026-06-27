@@ -145,17 +145,62 @@ describe('preloadGeneratedSprites', () => {
     expect(image).toHaveBeenCalledWith('iron-sword', '/crawler/assets/generated/iron-sword.png');
   });
 
-  it('skips duplicate texture keys within a single call', () => {
+  it('queues every approved variant of a brief on its own texture key', () => {
     const image = vi.fn();
-    const dupe = makeEntry('iron-sword');
+    const v1 = makeEntry('skull-mace');
+    const v2 = makeEntry('skull-mace');
     const registry = buildGeneratedSpriteRegistry({
       version: GENERATED_MANIFEST_VERSION,
       entries: {
-        'iron-sword': dupe,
-        // Second entry with a different briefId but identical spriteName
-        'iron-sword-bis': { ...dupe, briefId: 'iron-sword-bis' },
+        // Both variants share briefId + spriteName (legacy shape) but have
+        // distinct map keys + asset paths. The preloader must queue BOTH.
+        'skull-mace-var-1': { ...v1, assetPath: 'generated/skull-mace-var-1.png', variantIndex: 1 },
+        'skull-mace-var-2': { ...v2, assetPath: 'generated/skull-mace-var-2.png', variantIndex: 2 },
       },
     });
+    const queued = preloadGeneratedSprites({ image }, registry);
+    expect(image).toHaveBeenCalledTimes(2);
+    expect(queued.map((q) => q.textureKey).sort()).toEqual([
+      'skull-mace-var-1',
+      'skull-mace-var-2',
+    ]);
+    expect(image).toHaveBeenCalledWith(
+      'skull-mace-var-1',
+      '/assets/generated/skull-mace-var-1.png',
+    );
+    expect(image).toHaveBeenCalledWith(
+      'skull-mace-var-2',
+      '/assets/generated/skull-mace-var-2.png',
+    );
+  });
+
+  it('skips duplicate texture keys within a single call', () => {
+    const image = vi.fn();
+    // textureKeys are unique per variant in real manifests, but the loader's
+    // de-dupe guard is defensive. Drive it with a hand-built registry whose
+    // entries() deliberately returns two entries sharing a textureKey.
+    const shared = {
+      briefId: 'iron-sword',
+      textureKey: 'iron-sword-var-1',
+      assetPath: 'generated/iron-sword-var-1.png',
+      anchor: { x: 8, y: 8 },
+      centerOfGravity: { x: 8, y: 8 },
+      anchorIsDefault: false,
+      approvedAt: '2026-06-08T15:30:00.000Z',
+      sourceRun: 'generated/runs/iron-sword/run',
+      variantIndex: 1,
+      sensorScore: '7/7',
+      judgeScore: null,
+    } as const;
+    const registry = {
+      version: GENERATED_MANIFEST_VERSION,
+      size: 2,
+      has: () => true,
+      lookup: () => shared,
+      variants: () => [shared],
+      entries: () => [shared, { ...shared, assetPath: 'generated/other.png' }],
+      briefIds: () => ['iron-sword'],
+    };
     preloadGeneratedSprites({ image }, registry);
     expect(image).toHaveBeenCalledTimes(1);
   });

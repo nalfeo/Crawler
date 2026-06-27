@@ -1,0 +1,122 @@
+# Asset PR — playbook
+
+Detailed recipes for consolidating `asset-checkin` issues into one game PR.
+Read this before doing anything non-trivial with `gh` or git here.
+
+## The data model
+
+A check-in (`scripts/sprites/checkin.ts`) produces two artifacts:
+
+1. A pushed branch `assets/<slug>` containing the **art-surface delta** off
+   `main`:
+   - `public/assets/generated/**` (the approved PNG(s) + the updated
+     `manifest.json`)
+   - `src/shared/data/sprite-catalog.json`
+2. An issue labeled `asset-checkin` whose body ends with a machine-readable
+   block:
+
+   ```
+   <!-- asset-checkin:v1
+   {"version":1,"branch":"assets/checkin-…","baseBranch":"main","assets":[…]}
+   -->
+   ```
+
+`scripts/sprites/asset-issues.ts#parseAssetIssueBody` decodes that block;
+`scripts/sprites/asset-pr.ts#parseOpenAssetIssues` maps the `gh issue list`
+JSON into `{ number, title, payload }[]`.
+
+## What `npm run sprites:asset-pr` does
+
+`scripts/sprites/asset-pr.ts#runAssetPrConsolidation`:
+
+1. `gh issue list --label asset-checkin --state open --json number,title,body`
+   → parse payloads (issues without a valid payload are skipped).
+2. `planConsolidation` → batch branch `assets/batch-<UTC-stamp>`, PR title/body
+   (with `Closes #<n>` per issue), the deduped source branches, and the deduped
+   asset list.
+3. `git fetch origin main` + each source branch.
+4. `git worktree add <tmp> -b assets/batch-… origin/main` (the session branch is
+   never touched).
+5. For each source branch: read its `manifest.json` + `sprite-catalog.json` via
+   `git show <ref>:<path>` (text-safe), and materialize each approved PNG with
+   `git checkout <ref> -- <path>` (object-store → worktree, **binary-safe** — no
+   blob ever passes through stdout).
+6. Union: `mergeManifests(base, …overlays)` (by entry key) and
+   `mergeCatalogs(base, …overlays)` (by `id`), both later-wins. Write the merged
+   JSON back into the worktree.
+7. `git add` the art surface, commit (`feat(sprites): consolidate …`), `push -u`.
+8. `gh pr create --base main --head assets/batch-… --title … --body …`. Print
+   the PR URL.
+9. `finally`: `git worktree remove --force` + delete the temp dir.
+
+The pure pieces (`parseOpenAssetIssues`, `planConsolidation`, `mergeManifests`,
+`mergeCatalogs`, `parseAssetIssueBody`) are unit-tested in
+`tests/unit/sprites/asset-pr.test.ts` and `asset-issues.test.ts`.
+
+## Why union instead of `git merge`
+
+Every check-in branch edits the same `manifest.json` and `sprite-catalog.json`
+off `main`, so a plain N-way merge conflicts on those two text files every time.
+The PNGs never collide (each variant has a globally-unique
+`<briefId>-var-<n>.png` filename keyed to its content). So the backend copies the
+PNGs straight in and resolves the two JSON files deterministically with the union
+helpers — no merge-conflict handling, fully reproducible.
+
+## Merge facts (authoritative)
+
+- `gh pr merge <n> --auto --squash` — enable auto-merge, then stop. No manual
+  polling.
+- No required human review. Only invoke a "review block" with explicit proof
+  from `gh pr merge` output.
+- Required check is the aggregate `ci` job. For an **art-only** PR the heavy
+  jobs (integration, headless, e2e, build) are skipped by the `changes` job and
+  the merge-gate treats them as PASS — so the PR usually goes green within a few
+  minutes of unit + lint + format + typecheck.
+- Squash-merge auto-deletes the batch branch; that's fine, it's disposable.
+
+## §Recovery — when something goes wrong
+
+**A source branch was deleted** (e.g. someone pruned `assets/<slug>`):
+`git fetch origin <branch>` fails and the run aborts. Options:
+
+- If that asset is no longer wanted: close the stale issue
+  (`gh issue close <n> --comment "branch pruned; superseded"`) and re-run.
+- If it's still wanted: re-approve + `npm run sprites:checkin` to regenerate the
+  branch + issue, then re-run.
+
+**The PR opened but a check-in branch's asset is missing from the diff:**
+confirm the payload's `assets[].assetPath` matches a real file on the branch
+(`git show origin/<branch>:public/assets/<assetPath> | wc -c`). A mismatch means
+the issue payload drifted from the branch — re-check-in is the clean fix.
+
+**The union looks wrong** (a manifest entry or catalog id got dropped/overwritten
+unexpectedly): do **not** hand-edit the JSON in the PR. Reproduce in a unit test
+against `mergeManifests` / `mergeCatalogs`, fix the helper, and re-run the
+consolidation (close the bad PR first).
+
+**A non-art file showed up in the PR:** the `changes` CI job will route it
+through the full suite (correct, fail-safe). Investigate where it came from —
+the consolidation only ever stages `public/assets/generated` + the catalog, so a
+stray file means a dirty base or a hand edit. Reset and re-run.
+
+## Manual fallback (no script)
+
+If you must consolidate by hand (script unavailable), per source branch:
+
+```bash
+git worktree add /tmp/batch -b assets/batch-manual origin/main
+cd /tmp/batch
+# For each asset listed in each issue payload:
+git checkout origin/<branch> -- public/assets/generated/<file>.png
+# Then union the two JSON files by hand using the same key/id rules:
+#   manifest.json  → union entries by key (later check-in wins)
+#   sprite-catalog → union array by `id` (later check-in wins)
+git add public/assets/generated src/shared/data/sprite-catalog.json
+git commit -m "feat(sprites): consolidate approved assets"
+git push -u origin assets/batch-manual
+gh pr create --base main --head assets/batch-manual \
+  --title "Add approved assets" \
+  --body "$(printf 'Consolidated asset check-ins.\n\nCloses #3\nCloses #7\n')"
+```
+
+Prefer the script — the manual path is error-prone for the JSON union.

@@ -1357,3 +1357,29 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
     expect(res.json()).toMatchObject({ running: false, backend: 'azure-queue' });
   });
 });
+
+describe('sidecar POST /api/checkin', () => {
+  let root: string;
+  let app: ReturnType<typeof buildServer>;
+
+  beforeEach(() => {
+    root = mkdtempSync(path.join(tmpdir(), 'sidecar-checkin-'));
+  });
+
+  afterEach(async () => {
+    await app.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('refuses with 403 when CI is set (local-only, like approve)', async () => {
+    app = buildServer({
+      repoRoot: root,
+      runsDir: path.join(root, 'runs'),
+      version: 'test',
+      env: { CI: 'true' },
+    });
+    const res = await app.inject({ method: 'POST', url: '/api/checkin', payload: {} });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toMatchObject({ error: 'ci-refused' });
+  });
+});

@@ -16,13 +16,19 @@
  *     `^[a-z0-9][a-z0-9-]*$` (single safe path segment).
  *   - Approved assets are keyed by variant and written as
  *     `public/assets/generated/<briefId>-var-<N>.png`.
- *   - This preserves multiple approved variants per brief instead of
- *     overwriting a single `<briefId>.png` output.
+ *   - The manifest entry KEY, the entry's `spriteName`, the engine texture key,
+ *     and the catalog `id`/`spriteId` are all the SAME variant-unique id
+ *     (`<briefId>-var-<N>`). Keeping them aligned is what lets multiple approved
+ *     variants of one brief render independently instead of colliding on a
+ *     brief-wide texture key (the historical skull-mace render bug).
  *
  * Supersede policy
  * ----------------
- *   - **Latest-wins per variant key.** Re-approving the same variant index
- *     replaces that `briefId-var-N` entry in place.
+ *   - **Exact-variant re-approval is BLOCKED.** Approving a `briefId-var-N` that
+ *     already exists in the manifest throws `ApproveError('already-approved')`
+ *     (mapped to HTTP 409 by the sidecar). The UI must confirm before approving
+ *     a NEW variant and must refuse an exact duplicate. Pass
+ *     `allowReapprove: true` only for deliberate programmatic overwrites.
  *   - Different variant indices of the same brief coexist as separate
  *     manifest/catalog entries (`briefId-var-0`, `briefId-var-3`, ...).
  *
@@ -108,6 +114,7 @@ export class ApproveError extends Error {
       | 'summary-invalid'
       | 'variant-not-found'
       | 'processed-missing'
+      | 'already-approved'
       | 'manifest-invalid',
     message: string,
   ) {
@@ -168,6 +175,12 @@ export interface ApproveVariantOptions {
   readonly now?: () => Date;
   /** Injected fs for tests. Defaults to `node:fs`. */
   readonly fs?: ApproveFs;
+  /**
+   * Allow overwriting an already-approved `briefId-var-N` entry. Default false:
+   * approving an exact-duplicate variant throws `ApproveError('already-approved')`.
+   * Set true only for deliberate programmatic re-approval.
+   */
+  readonly allowReapprove?: boolean;
 }
 
 /**
@@ -221,6 +234,18 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
   // Asset destination. Flat layout under public/assets/generated/.
   // Use variant-specific ID so multiple variants per brief coexist.
   const variantId = `${briefId}-var-${options.variantIndex}`;
+
+  // Block exact-duplicate approval (same brief + variant index) unless the
+  // caller explicitly opts into overwrite. Checked BEFORE copying the PNG so a
+  // refused approval mutates nothing.
+  if (!options.allowReapprove && manifestHasEntry(fs, options.manifestPath, variantId)) {
+    throw new ApproveError(
+      'already-approved',
+      `Variant ${variantId} is already approved. Approve a different variant, ` +
+        `or pass allowReapprove to overwrite it.`,
+    );
+  }
+
   const generatedDir = path.join(options.publicAssetsDir, 'generated');
   fs.mkdirSync(generatedDir, { recursive: true });
   const assetAbsPath = path.join(generatedDir, `${variantId}.png`);
@@ -248,7 +273,8 @@ export function approveVariant(options: ApproveVariantOptions): ManifestEntry {
 
   const entry: ManifestEntry = {
     briefId,
-    spriteName: briefId,
+    // Variant-unique sprite name == manifest key == engine texture key.
+    spriteName: variantId,
     // Forward slashes so the engine can pass this straight to a URL/loader.
     assetPath: `generated/${variantId}.png`,
     approvedAt: now().toISOString(),
@@ -291,6 +317,25 @@ function resolveBriefType(fs: ApproveFs, repoRoot: string, briefPath?: string): 
   const captured = match?.[1];
   if (!captured) return null;
   return captured.toLowerCase();
+}
+
+/**
+ * True when the manifest already has an entry under `entryKey`. Best-effort:
+ * a missing or unparseable manifest reads as "no entry" so approval proceeds
+ * (a corrupt manifest surfaces via `upsertManifest`'s own validation).
+ */
+function manifestHasEntry(fs: ApproveFs, manifestPath: string, entryKey: string): boolean {
+  if (!fs.existsSync(manifestPath)) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Partial<Manifest>;
+    return Boolean(
+      parsed.entries && Object.prototype.hasOwnProperty.call(parsed.entries, entryKey),
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
