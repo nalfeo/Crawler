@@ -89,7 +89,7 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 | Agent personas            | `docs/agent-os/personas/*.md`                                                                |
 | Policies                  | `docs/agent-os/policies/*.md`                                                                |
 | Architecture decisions    | `docs/knowledge/adr/*.md`                                                                    |
-| Specs                     | `.specify/specs/*.md`                                                                         |
+| Specs                     | `.specify/specs/*.md`                                                                        |
 | Game design               | `docs/knowledge/game-design/*.md`                                                            |
 | Session handoffs          | `docs/knowledge/handoffs/*.md`                                                               |
 | Agent memory              | `docs/guides/agent-memory.md`, `docs/knowledge/memory/`, `docs/knowledge/agent-memory.jsonl` |
@@ -133,6 +133,7 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 - Review-comment threads are auto-resolved by `.github/workflows/auto-resolve-review-threads.yml` — you do **not** click "Resolve conversation", and no PAT is involved (it runs as the GitHub App bot, never as a human).
 - When you address a review comment — whether by pushing a fix **or** by explaining in-thread why no change is needed — reply **in that thread** with the marker `✅ Addressed` (ideally `✅ Addressed in <sha>: <one-line note>`). The workflow resolves the thread on the next push/sweep. The code does **not** need to be outdated.
 - Only replies from the PR owner/member/collaborator or a trusted bot (e.g. the Copilot coding agent) count, so drive-by comments cannot bypass the conversation-resolution merge gate.
+- **Copilot code-review threads need an owner resolve.** Threads authored by the `copilot-pull-request-reviewer` app come back with `viewerCanResolve: false` for the auto-resolve workflow's App token (a GitHub App can't resolve another App's thread), so the bot **skips** them even after you reply with the marker. After you reply `✅ Addressed in <sha>` on such a thread, resolve it yourself as the PR owner via GraphQL `resolveReviewThread` rather than waiting on the bot — otherwise an already-armed `--auto` merge stays **BLOCKED** on the conversation-resolution gate. Example: `gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' -f t='<thread-node-id>'`.
 
 ## Tech Stack
 

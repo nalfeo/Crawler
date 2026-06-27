@@ -44,6 +44,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 - Review-comment threads are auto-resolved by `.github/workflows/auto-resolve-review-threads.yml` — do **not** click "Resolve conversation", and no PAT is used (it runs as the GitHub App bot, never as a human).
 - When you address a review comment (push a fix **or** explain in-thread why no change is needed), reply **in that thread** with the marker `✅ Addressed` (ideally `✅ Addressed in <sha>: <one-line note>`). The workflow resolves the thread on the next push/sweep; the code does **not** need to be outdated.
 - Only replies from the PR owner/member/collaborator or a trusted bot (e.g. the Copilot coding agent) are honored.
+- **Copilot code-review threads need an owner resolve.** Threads authored by the `copilot-pull-request-reviewer` app come back with `viewerCanResolve: false` for the auto-resolve workflow's App token (a GitHub App can't resolve another App's thread), so the bot **skips** them even after you reply with the marker. After replying `✅ Addressed in <sha>`, resolve such a thread yourself as the PR owner via GraphQL `resolveReviewThread` rather than waiting on the bot — otherwise an already-armed `--auto` merge stays **BLOCKED** on the conversation-resolution gate.
 
 ## Test Strategy
 
