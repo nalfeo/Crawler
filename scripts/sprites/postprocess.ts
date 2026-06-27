@@ -5,11 +5,16 @@
  * game-ready PNG that gets handed to sensors and (eventually) the engine.
  *
  * Steps, in this exact order:
- *   1. Background removal: 4-corner flood fill -> alpha 0 on reachable pixels.
- *   2. Resample: nearest-neighbor fit to brief.size (preserve aspect ratio).
- *   3. Palette quantize: snap each opaque pixel to its nearest palette entry
- *      by Euclidean RGB distance.
- *   4. Alpha hard-threshold: alpha > 128 -> 255, else -> 0.
+ *   1. Background removal: 4-corner flood fill -> alpha 0 on reachable pixels,
+ *      plus near-background fringe and enclosed-region cleanup.
+ *   2. Transparent trim: crop to the opaque bounding box, then re-pad with a
+ *      small proportional transparent margin (~6% of the larger subject
+ *      dimension, min 1px) on each edge so the subject stays off the frame edge.
+ *   3. Resample: nearest-neighbor fit to brief.size (preserve aspect ratio).
+ *   4. Background re-removal: re-key against the original background colours to
+ *      clear pink fringe that nearest-neighbor stretching re-exposes.
+ *   5. Speckle cleanup, palette quantize (strict only), alpha hard-threshold,
+ *      and optional trim-and-fit.
  *
  * Purity contract:
  *   - No clocks (no Date.now, no performance.now).
@@ -120,16 +125,40 @@ export function postprocessWithTrace(
     );
   }
 
-  const fitMode = brief.type === 'enemy' || brief.type === 'character';
-  const fitResize = fitWithinNearest(image, brief.size.width, brief.size.height, fitMode);
+  // Trim phase: crop to the opaque bounding box, then re-pad with a small
+  // proportional transparent margin on every edge. The margin keeps the subject
+  // off the frame edge after the resize (so opaque-bbox-fits still passes) and
+  // guarantees every subject-boundary pixel has a transparent neighbour, which
+  // the post-resize background re-removal relies on to reach reintroduced
+  // fringe. The same crop runs for every sprite type so the resize no longer
+  // needs its own internal re-trim. `tightlyTrimmed` is already the tight crop,
+  // so we pad it directly rather than re-scanning the full-resolution source.
+  const tightlyTrimmed = trimTransparentEdges(image);
+  if (tightlyTrimmed.width > 0 && tightlyTrimmed.height > 0) {
+    const marginPx = subjectTrimMarginPx(tightlyTrimmed.width, tightlyTrimmed.height);
+    image = trimTransparentEdges(tightlyTrimmed, marginPx);
+    pushStep('transparent-trim', `Transparent trim (${marginPx}px margin)`, image);
+  } else {
+    pushStep('transparent-trim', 'Transparent trim (skipped, empty)', image);
+  }
+
+  const fitResize = fitWithinNearest(image, brief.size.width, brief.size.height);
   image = fitResize.image;
   pushStep(
     'resize-nearest',
-    fitMode
-      ? `Resize (nearest-fit, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${image.width}x${image.height})`
-      : `Resize (nearest, ${image.width}x${image.height})`,
+    `Resize (nearest-fit, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${image.width}x${image.height})`,
     image,
   );
+
+  // Re-run background removal after the resize. Stretching the trimmed subject
+  // with nearest-neighbor sampling can re-expose background-coloured (pink)
+  // fringe pixels; re-key against the ORIGINAL background colours to clear them
+  // without eating the now transparent-padded canvas's dark foreground.
+  image = removeReintroducedBackground(image, backgroundSource, {
+    fringeToleranceSq: backgroundFringeToleranceSq,
+    clearEnclosedIslands: shouldRunEnclosedBackgroundCleanup,
+  });
+  pushStep('background-rekey', 'Background re-removal (post-resize)', image);
 
   const speckleMode = options.modules?.speckleMode ?? 'edge-drop';
   if (speckleMode !== 'disabled') {
@@ -346,6 +375,32 @@ export function removeEnclosedBackgroundRegions(
   if (cornerColors.length === 0) return { width, height, data: dst };
   clearEnclosedBackgroundRegions(dst, width, height, cornerColors, toleranceSq);
   return { width, height, data: dst };
+}
+
+/**
+ * Re-run background removal on an image that was already keyed once but has
+ * since passed through a resampling (resize) step.
+ *
+ * Nearest-neighbor scaling can duplicate partially-keyed boundary samples and
+ * re-expose background-coloured (e.g. magenta) fringe pixels — "stretching
+ * brings the pink back". This re-keys against the ORIGINAL background colours,
+ * read from `source`'s corners, rather than the resized image's own corners:
+ * after a fit-resize the subject sits in a transparent-padded canvas, so the
+ * post-resize corners are the padding colour (0,0,0), and keying on that would
+ * eat dark foreground instead of the background. Keying on the original corner
+ * colours clears reintroduced fringe while leaving foreground intact.
+ *
+ * Exported for direct unit testing.
+ */
+export function removeReintroducedBackground(
+  image: RgbaImage,
+  source: RgbaImage,
+  options: { readonly fringeToleranceSq?: number; readonly clearEnclosedIslands?: boolean } = {},
+): RgbaImage {
+  const fringeToleranceSq = options.fringeToleranceSq ?? BACKGROUND_B_FRINGE_TOLERANCE_SQ;
+  const fringeCleaned = removeBackgroundFringe(image, source, fringeToleranceSq);
+  if (!(options.clearEnclosedIslands ?? true)) return fringeCleaned;
+  return removeEnclosedBackgroundRegions(fringeCleaned, source, fringeToleranceSq);
 }
 
 function removeBackgroundFringe(
@@ -582,14 +637,35 @@ function normalizeTolerance(raw: number | undefined, fallback: number): number {
   return normalized >= 0 ? normalized : fallback;
 }
 
+/**
+ * Fraction of the trimmed subject's larger dimension kept as a transparent
+ * margin on every edge by the trim phase. ~6% leaves the subject occupying
+ * roughly 88-90% of its dominant axis after the fit-resize, which keeps the
+ * main silhouette off the frame edge (so `opaque-bbox-fits` still passes) while
+ * maximising pixel utilisation.
+ *
+ * Exported for direct unit testing.
+ */
+export const SUBJECT_TRIM_MARGIN_FRACTION = 0.06;
+
+/**
+ * Per-edge transparent margin (in pixels) for a trimmed subject of the given
+ * dimensions. At least 1px so there is always a transparent border for the
+ * post-resize background re-removal to flood from.
+ *
+ * Exported for direct unit testing.
+ */
+export function subjectTrimMarginPx(width: number, height: number): number {
+  const maxDim = Math.max(width, height);
+  return Math.max(1, Math.round(maxDim * SUBJECT_TRIM_MARGIN_FRACTION));
+}
+
 function fitWithinNearest(
   image: RgbaImage,
   boxW: number,
   boxH: number,
-  centerSubject: boolean,
 ): { image: RgbaImage; fittedWidth: number; fittedHeight: number } {
-  const subject = centerSubject ? trimTransparentEdges(image) : image;
-  const { width: srcW, height: srcH } = subject;
+  const { width: srcW, height: srcH } = image;
   if (srcW <= 0 || srcH <= 0) {
     return {
       image: { width: boxW, height: boxH, data: new Uint8Array(boxW * boxH * 4) },
@@ -600,7 +676,7 @@ function fitWithinNearest(
   const scale = Math.min(boxW / srcW, boxH / srcH);
   const fittedWidth = Math.max(1, Math.min(boxW, Math.round(srcW * scale)));
   const fittedHeight = Math.max(1, Math.min(boxH, Math.round(srcH * scale)));
-  const scaled = upscaleNearest(subject, fittedWidth, fittedHeight);
+  const scaled = upscaleNearest(image, fittedWidth, fittedHeight);
   const out = new Uint8Array(boxW * boxH * 4);
   const offsetX = Math.floor((boxW - fittedWidth) / 2);
   const offsetY = Math.floor((boxH - fittedHeight) / 2);
@@ -700,12 +776,18 @@ export function hardThresholdAlpha(image: RgbaImage): RgbaImage {
  * A row is "empty" if every pixel in it has alpha === 0.
  * A column is "empty" if every pixel in it has alpha === 0.
  *
+ * When `border` is 0 (the default) the result is the tight opaque bounding box.
+ * When `border` is > 0, that many fully-transparent rows/columns are added back
+ * on every edge, so the result is the opaque bounding box surrounded by a
+ * uniform transparent margin (e.g. `border = 1` keeps exactly one transparent
+ * row/column on each edge).
+ *
  * Returns the cropped sub-image. If the image is entirely transparent,
  * returns a 0×0 image (callers should guard against this).
  *
  * Exported for direct unit testing.
  */
-export function trimTransparentEdges(image: RgbaImage): RgbaImage {
+export function trimTransparentEdges(image: RgbaImage, border = 0): RgbaImage {
   const { width, height, data } = image;
   if (width === 0 || height === 0) return { width: 0, height: 0, data: new Uint8Array(0) };
 
@@ -730,13 +812,16 @@ export function trimTransparentEdges(image: RgbaImage): RgbaImage {
   // Entirely transparent — return empty.
   if (bottom === -1) return { width: 0, height: 0, data: new Uint8Array(0) };
 
-  const newW = right - left + 1;
-  const newH = bottom - top + 1;
+  const pad = Math.max(0, Math.trunc(border));
+  const contentW = right - left + 1;
+  const contentH = bottom - top + 1;
+  const newW = contentW + pad * 2;
+  const newH = contentH + pad * 2;
   const dst = new Uint8Array(newW * newH * 4);
-  for (let y = 0; y < newH; y++) {
+  for (let y = 0; y < contentH; y++) {
     const srcRow = (top + y) * width + left;
-    const dstRow = y * newW;
-    for (let x = 0; x < newW; x++) {
+    const dstRow = (y + pad) * newW + pad;
+    for (let x = 0; x < contentW; x++) {
       const si = (srcRow + x) * 4;
       const di = (dstRow + x) * 4;
       dst[di] = data[si] ?? 0;

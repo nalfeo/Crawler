@@ -118,13 +118,33 @@ describe('scoreCandidate', () => {
     expect(fails).toContain('silhouette-orientation-axis');
   });
 
-  it('a tiny-dot fixture fails the opaque-ratio sensor (below min)', () => {
+  it('a tiny-dot fixture is scaled up by the trim phase and rejected by orientation', () => {
+    // Before the trim phase a compact tiny dot stayed tiny and tripped the
+    // opaque-ratio "below min" guard. The trim phase now crops to the subject
+    // and the resize scales it up to fill the frame, so opaque-ratio passes;
+    // the featureless square silhouette is instead rejected by the orientation
+    // sensor. (A genuinely sparse final sprite is still caught — see the
+    // directly-scored case below.)
     const brief = makeBrief();
     const processed = postprocess(buildTinyDotFixture(), brief, PALETTE);
     const card = scoreCandidate(processed, brief, PALETTE);
     expect(card.passed).toBe(false);
+    const opaqueResult = card.breakdown.find((r) => r.sensor === 'opaque-ratio');
+    expect(opaqueResult?.ok).toBe(true);
     const fails = card.breakdown.filter((r) => !r.ok).map((r) => r.sensor);
-    expect(fails).toContain('opaque-ratio');
+    expect(fails).toContain('silhouette-orientation-axis');
+  });
+
+  it('a sparse final sprite still fails the opaque-ratio sensor (below min)', () => {
+    // Scored directly (no postprocess), so the trim/scale-up does not run:
+    // a single opaque pixel in a 16x16 frame is well under the 0.1 min.
+    const brief = makeBrief();
+    const sparse = buildProcessedFixture(16, 16, [[8, 8]]);
+    const card = scoreCandidate(sparse, brief, PALETTE);
+    expect(card.passed).toBe(false);
+    const opaqueFail = card.breakdown.find((r) => !r.ok && r.sensor === 'opaque-ratio');
+    expect(opaqueFail).toBeDefined();
+    expect(opaqueFail && !opaqueFail.ok ? opaqueFail.reason : '').toMatch(/0\.1/);
   });
 
   it('non-weapon briefs do not run the weapon sensors', () => {
