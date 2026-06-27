@@ -32,7 +32,7 @@ import {
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
 import { UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
-import { ftToPx, PIXELS_PER_FOOT } from '../../shared/units.js';
+import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
 import {
   ACTIVE_ABILITY_SLOT_LIMIT,
@@ -52,6 +52,22 @@ import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
+import {
+  blurLightField,
+  buildDirtyRectFromCircles,
+  chooseAutoStepPx,
+  clampLightingStepPx,
+  computeLightField,
+  createLightField,
+  DEFAULT_LIGHTING_CONFIG,
+  forEachDarknessRun,
+  getLightingPresetStepPx,
+  LIGHTING_DARKNESS_LEVELS,
+  LIGHTING_MIN_DARKNESS,
+  type LightField,
+  type LightingConfig,
+  type LightingPresetId,
+} from '../lighting/light-field.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
@@ -183,6 +199,16 @@ declare global {
         modalOpen: boolean;
       };
       forceCompletionModal: () => void;
+      lighting: {
+        getConfig: () => LightingConfig;
+        setConfig: (partial: Partial<LightingConfig>) => void;
+        usePreset: (preset: LightingPresetId) => void;
+        getPerf: () => {
+          computeMsAvg: number;
+          stepPx: number;
+          updateEveryNFrames: number;
+        };
+      };
     };
     /** Dev-only: human player session recorder. Set when MainGameSceneOptions.sessionRecorderFactory is provided. */
     __playerSessionRecorder?: SessionRecorder;
@@ -233,6 +259,9 @@ export class MainGameScene extends Phaser.Scene {
 
   /** Terrain tile layer — baked once per floor as a RenderTexture. */
   private mapRt?: Phaser.GameObjects.RenderTexture;
+
+  /** Dynamic darkness overlay rendered from a configurable light field. */
+  private lightOverlayRt?: Phaser.GameObjects.RenderTexture;
 
   private doorGraphics?: Phaser.GameObjects.Graphics;
 
@@ -369,6 +398,18 @@ export class MainGameScene extends Phaser.Scene {
 
   private cameraMasksDirty = true;
 
+  private lighting: LightingConfig = { ...DEFAULT_LIGHTING_CONFIG };
+
+  private lightField?: LightField;
+
+  private lightingDirty = true;
+
+  private lightingLastSource?: { x: number; y: number };
+
+  private lightingComputeMsAvg = 0;
+
+  private lightingOverBudgetFrames = 0;
+
   constructor(private readonly options: MainGameSceneOptions = {}) {
     super({ key: MainGameScene.KEY });
   }
@@ -474,6 +515,7 @@ export class MainGameScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
+    this.updateLightingOverlay(true);
     this.bridge.sync(this.world);
     this.updateOverlayText();
     if (typeof window !== 'undefined') {
@@ -497,6 +539,16 @@ export class MainGameScene extends Phaser.Scene {
             this.showFloorCompletionScreenIfNeeded();
           }
         },
+        lighting: {
+          getConfig: () => ({ ...this.lighting }),
+          setConfig: (partial: Partial<LightingConfig>) => this.setLightingConfig(partial),
+          usePreset: (preset: LightingPresetId) => this.setLightingPreset(preset),
+          getPerf: () => ({
+            computeMsAvg: this.lightingComputeMsAvg,
+            stepPx: this.lighting.stepPx,
+            updateEveryNFrames: this.lighting.updateEveryNFrames,
+          }),
+        },
       };
     }
 
@@ -509,6 +561,7 @@ export class MainGameScene extends Phaser.Scene {
       this.bridge?.destroy();
       this.bridge = undefined;
       this.mapRt?.destroy();
+      this.lightOverlayRt?.destroy();
       this.doorGraphics?.destroy();
       for (const img of this.doorImages) {
         img.destroy();
@@ -547,6 +600,8 @@ export class MainGameScene extends Phaser.Scene {
         this.uiCamera = undefined;
       }
       this.mapRt = undefined;
+      this.lightOverlayRt = undefined;
+      this.lightField = undefined;
       this.doorGraphics = undefined;
       this.staircaseMarker = undefined;
       this.stairsLabel = undefined;
@@ -565,6 +620,10 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedInteraction = false;
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
+      this.lightingLastSource = undefined;
+      this.lightingDirty = true;
+      this.lightingComputeMsAvg = 0;
+      this.lightingOverBudgetFrames = 0;
       this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, this.markCameraMasksDirty, this);
       this.events.off(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
       this.input.off('pointerdown', this.handlePointerDown, this);
@@ -678,6 +737,7 @@ export class MainGameScene extends Phaser.Scene {
 
     if (this.hudUi?.isMapOverlayOpen()) {
       this.updateDoorOverlay();
+      this.updateLightingOverlay();
       this.bridge.sync(this.world);
       this.playBossSpawnIntro();
       this.updateCamera();
@@ -705,6 +765,7 @@ export class MainGameScene extends Phaser.Scene {
     // Freeze fixed-step gameplay while an NPC dialogue is active.
     if (this.conversationNpcEid !== null) {
       this.updateDoorOverlay();
+      this.updateLightingOverlay();
       this.bridge.sync(this.world);
       this.playBossSpawnIntro();
       this.updateCamera();
@@ -717,6 +778,7 @@ export class MainGameScene extends Phaser.Scene {
 
     if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
       this.updateDoorOverlay();
+      this.updateLightingOverlay();
       this.bridge.sync(this.world);
       this.playBossSpawnIntro();
       this.updateCamera();
@@ -873,6 +935,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.updateDoorOverlay();
+    this.updateLightingOverlay();
     this.bridge.sync(this.world);
     this.playBossSpawnIntro();
     this.updateCamera();
@@ -1204,13 +1267,20 @@ export class MainGameScene extends Phaser.Scene {
 
   private drawFloorTerrain(): void {
     this.mapRt?.destroy();
+    this.lightOverlayRt?.destroy();
     this.doorGraphics?.destroy();
     for (const img of this.doorImages) {
       img.destroy();
     }
     this.doorImages.length = 0;
     this.mapRt = undefined;
+    this.lightOverlayRt = undefined;
+    this.lightField = undefined;
     this.doorGraphics = undefined;
+    this.lightingLastSource = undefined;
+    this.lightingDirty = true;
+    this.lightingComputeMsAvg = 0;
+    this.lightingOverBudgetFrames = 0;
 
     const floorMap = this.world.floorMap;
     if (!floorMap) {
@@ -1229,10 +1299,155 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.doorGraphics = this.add.graphics().setDepth(-19);
+    this.lightOverlayRt = this.add
+      .renderTexture(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt))
+      .setOrigin(0, 0)
+      .setDepth(-18);
+    this.rebuildLightField();
     this.updateDoorOverlay();
+    this.updateLightingOverlay(true);
     this.cameras.main.setBounds(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt));
     this.cameras.main.setZoom(CAMERA.BASE_ZOOM * getRenderScale(this));
     this.cameraInSafeRoom = false;
+  }
+
+  private setLightingPreset(preset: LightingPresetId): void {
+    const floorMap = this.world.floorMap;
+    const tileSize = floorMap ? ftToPx(floorMap.config.tileSizeFt) : 32;
+    this.setLightingConfig({ stepPx: getLightingPresetStepPx(preset, tileSize) });
+  }
+
+  private setLightingConfig(partial: Partial<LightingConfig>): void {
+    const floorMap = this.world.floorMap;
+    const tileSize = floorMap ? ftToPx(floorMap.config.tileSizeFt) : 32;
+    const next: LightingConfig = { ...this.lighting, ...partial };
+    next.stepPx = clampLightingStepPx(next.stepPx, tileSize);
+    next.ambient = Math.max(0, Math.min(1, next.ambient));
+    next.sourceIntensity = Math.max(0, Math.min(2, next.sourceIntensity));
+    next.sourceRadiusPx = Math.max(1, next.sourceRadiusPx);
+    next.falloffExponent = Math.max(0.1, next.falloffExponent);
+    next.updateEveryNFrames = Math.max(1, Math.round(next.updateEveryNFrames));
+    next.targetComputeMs = Math.max(0.25, next.targetComputeMs);
+    const stepChanged = next.stepPx !== this.lighting.stepPx;
+    this.lighting = next;
+    this.lightingDirty = true;
+    if (stepChanged) {
+      this.rebuildLightField();
+    }
+  }
+
+  private rebuildLightField(): void {
+    const floorMap = this.world.floorMap;
+    if (!floorMap) {
+      this.lightField = undefined;
+      return;
+    }
+    this.lightField = createLightField(
+      ftToPx(floorMap.widthFt),
+      ftToPx(floorMap.heightFt),
+      this.lighting.stepPx,
+    );
+    this.lightingDirty = true;
+  }
+
+  private updateLightingOverlay(force = false): void {
+    const floorMap = this.world.floorMap;
+    const rt = this.lightOverlayRt;
+    const field = this.lightField;
+    if (!floorMap || !rt || !field || this.playerEid < 0) return;
+
+    const shouldSkip =
+      !force &&
+      !this.lightingDirty &&
+      this.lighting.updateEveryNFrames > 1 &&
+      this.world.frameCount % this.lighting.updateEveryNFrames !== 0;
+    if (shouldSkip) {
+      return;
+    }
+
+    const px = ftToPx(this.world.stores.position.x[this.playerEid] ?? 0);
+    const py = ftToPx(this.world.stores.position.y[this.playerEid] ?? 0);
+    const radius = this.lighting.sourceRadiusPx;
+    const dirtyRect =
+      this.lightingDirty || !this.lightingLastSource
+        ? null
+        : buildDirtyRectFromCircles(field, [
+            { x: this.lightingLastSource.x, y: this.lightingLastSource.y, radiusPx: radius },
+            { x: px, y: py, radiusPx: radius },
+          ]);
+
+    const t0 = performance.now();
+    computeLightField({
+      // The light field is expressed in render pixels; the FloorMap reasons in
+      // feet (the single internal spatial unit). Bridge the two here — pixels
+      // are an engine-only concept, so the conversion stays at this boundary.
+      map: {
+        pixelToTile: (mx, my) => floorMap.worldToTile(pxToFt(mx), pxToFt(my)),
+        isVisible: (tx, ty) => floorMap.isVisible(tx, ty),
+        hasLineOfSight: (x0, y0, x1, y1) =>
+          floorMap.hasLineOfSight(pxToFt(x0), pxToFt(y0), pxToFt(x1), pxToFt(y1)),
+      },
+      field,
+      source: { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
+      ambient: this.lighting.ambient,
+      falloffExponent: this.lighting.falloffExponent,
+      dirtyRect,
+    });
+    if (this.lighting.softness) {
+      blurLightField(field, dirtyRect);
+    }
+
+    // rt.clear() wipes the whole texture, so the redraw must cover the full
+    // field even when only a dirty sub-rect was recomputed. forEachDarknessRun
+    // batches each row into a handful of fills (uniform regions collapse to one,
+    // the lit gradient to at most LIGHTING_DARKNESS_LEVELS per row) instead of
+    // one fill per cell, keeping the redraw cheap at sub-tile (1px) granularity.
+    rt.clear();
+    const bounds = {
+      minX: 0,
+      minY: 0,
+      maxX: field.widthCells - 1,
+      maxY: field.heightCells - 1,
+    };
+    const step = field.stepPx;
+    forEachDarknessRun(
+      field,
+      bounds,
+      LIGHTING_DARKNESS_LEVELS,
+      LIGHTING_MIN_DARKNESS,
+      (cellX, cellY, lengthCells, darkness) => {
+        rt.fill(0x000000, darkness, cellX * step, cellY * step, lengthCells * step, step);
+      },
+    );
+    rt.render();
+
+    // Acknowledge this frame's recompute BEFORE the auto-quality block may
+    // rebuild the field. A step change runs setLightingConfig() ->
+    // rebuildLightField(), which reallocates an all-zero field and sets
+    // lightingDirty = true to force a full recompute next frame. That signal
+    // must survive — clearing it after the rebuild would strand every cell
+    // outside the next (player-sized) dirty rect at darkness 1, leaving most of
+    // the map black until the next floor load.
+    this.lightingLastSource = { x: px, y: py };
+    this.lightingDirty = false;
+
+    const computeMs = performance.now() - t0;
+    this.lightingComputeMsAvg = this.lightingComputeMsAvg * 0.9 + computeMs * 0.1;
+    if (
+      this.lighting.autoAdjustQuality &&
+      this.lightingComputeMsAvg > this.lighting.targetComputeMs
+    ) {
+      this.lightingOverBudgetFrames += 1;
+      if (this.lightingOverBudgetFrames >= 20) {
+        const nextStep = chooseAutoStepPx(this.lighting.stepPx, ftToPx(floorMap.config.tileSizeFt));
+        if (nextStep !== this.lighting.stepPx) {
+          this.setLightingConfig({ stepPx: nextStep });
+        }
+        this.lightingOverBudgetFrames = 0;
+      }
+    } else {
+      this.lightingOverBudgetFrames = 0;
+    }
   }
 
   private ensureUiCamera(): void {
