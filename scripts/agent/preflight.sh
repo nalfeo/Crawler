@@ -2,7 +2,31 @@
 set -euo pipefail
 
 echo "🔧 Preflight: Installing dependencies..."
-npm ci --prefer-offline --silent
+# Skip the (destructive, ~node_modules-wiping) `npm ci` when the installed
+# node_modules already corresponds exactly to the current package-lock.json.
+# We record the lockfile's content hash in a sentinel under node_modules after a
+# successful install; `npm ci` wipes node_modules (and the sentinel) on every
+# real run, so a present + matching sentinel proves a prior install completed
+# for this exact lockfile. This mirrors the repo's CI node_modules cache, which
+# is likewise keyed on hashFiles('package-lock.json') (.github/actions/setup-node).
+LOCK_HASH_FILE="node_modules/.preflight-lock-hash"
+compute_lock_hash() {
+  if command -v git >/dev/null 2>&1; then
+    git hash-object package-lock.json 2>/dev/null && return 0
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum package-lock.json | cut -d' ' -f1 && return 0
+  fi
+  echo ""
+}
+lock_hash="$(compute_lock_hash)"
+if [ -n "$lock_hash" ] && [ -d node_modules ] && [ -f "$LOCK_HASH_FILE" ] \
+  && [ "$(cat "$LOCK_HASH_FILE" 2>/dev/null)" = "$lock_hash" ]; then
+  echo "   ✓ node_modules already matches package-lock.json — skipping npm ci."
+else
+  npm ci --prefer-offline --silent
+  [ -n "$lock_hash" ] && printf '%s' "$lock_hash" > "$LOCK_HASH_FILE"
+fi
 
 echo "🌐 Preflight: Installing Playwright Chromium browser..."
 npx playwright install chromium

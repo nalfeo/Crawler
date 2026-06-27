@@ -18,9 +18,41 @@ run_with_timeout() {
 }
 
 echo "🔍 Step 1-2/3: Type checking + Linting (parallel)..."
+
+# Decide ESLint scope. CI lints the whole tree (authoritative gate). Locally we
+# lint only the files that changed vs the branch base + the working tree. This
+# is safe: the ESLint config here has NO type-aware or cross-file rules
+# (typescript-eslint "recommended" + per-file no-restricted-imports), and CI
+# re-lints everything on the PR. It matters a lot — ESLint hashes all ~465 files
+# for its cache even when nothing changed (~22s of pure overhead), whereas a
+# typical change set is a handful of files (~3-5s), making this the biggest win
+# on the most frequently run command.
+LINT_CMD=(npx eslint src/ tests/ scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+if [ "${CI:-}" != "1" ] && command -v git >/dev/null 2>&1; then
+  base="$(git merge-base HEAD origin/main 2>/dev/null || git merge-base HEAD main 2>/dev/null || true)"
+  changed_ts=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && changed_ts+=("$f")
+  done < <(
+    {
+      [ -n "$base" ] && git diff --name-only "$base"
+      git diff --name-only
+      git diff --name-only --cached
+      git ls-files --others --exclude-standard
+    } 2>/dev/null | grep -E '^(src|tests|scripts)/.*\.ts$' | sort -u
+  )
+  if [ "${#changed_ts[@]}" -eq 0 ]; then
+    echo "   ✓ No changed TS files to lint (full tree is re-linted in CI)."
+    LINT_CMD=(true)
+  else
+    echo "   Linting ${#changed_ts[@]} changed file(s) (full tree is re-linted in CI)..."
+    LINT_CMD=(npx eslint "${changed_ts[@]}" --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0)
+  fi
+fi
+
 npx tsc --noEmit --project tsconfig.src.json &
 TSC_PID=$!
-npx eslint src/ tests/ scripts/ --cache --cache-location .cache/eslint/.eslintcache --max-warnings 0 &
+"${LINT_CMD[@]}" &
 ESLINT_PID=$!
 trap 'kill "$TSC_PID" "$ESLINT_PID" 2>/dev/null || true' EXIT
 
