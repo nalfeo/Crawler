@@ -429,18 +429,18 @@ describe('createPhaserBridge', () => {
     } as unknown as NonNullable<typeof world.floor1>;
 
     // A baby-slime corpse: shrunken Sprite.width + 'slime-mini' archetype, so it
-    // renders at 16/24 of a full slime — its base scale is larger than what the
-    // player actually sees.
+    // renders at 0.65 of a full slime (1.95 ft / 3.0 ft, the real split scale) —
+    // its base scale is larger than what the player actually sees.
     const eid = addEntity(world.ecs);
     addComponent(world.ecs, eid, set(Position, { x: 60, y: 60 }));
     addComponent(world.ecs, eid, Enemy);
-    addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 16, height: 16 }));
+    addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     addComponent(world.ecs, eid, set(DeathTimer, { remainingMs: 500 }));
     world.floor1!.enemyArchetypes.set(eid, 'slime-mini');
 
     bridge.sync(world);
     const corpseImg = images[0]!;
-    const renderedScale = corpseImg.scaleX; // baseScale * (16/24), the on-screen size
+    const renderedScale = corpseImg.scaleX; // baseScale * 0.65, the on-screen size
     const baseline = images.length;
 
     world.combatEvents.push({
@@ -503,16 +503,18 @@ describe('createPhaserBridge', () => {
     const fullSlime = addEntity(world.ecs);
     const miniSlime = addEntity(world.ecs);
 
-    // Full slime: no archetype, so it renders at the base enemy scale.
+    // Full slime: no archetype, so it renders at the base enemy scale. Width is
+    // the real feet-based `spriteWidth` from enemies.floor1.json (3.0 ft).
     addComponent(world.ecs, fullSlime, set(Position, { x: 10, y: 10 }));
     addComponent(world.ecs, fullSlime, Enemy);
-    addComponent(world.ecs, fullSlime, set(Sprite, { textureId: 2, width: 24, height: 24 }));
+    addComponent(world.ecs, fullSlime, set(Sprite, { textureId: 2, width: 3, height: 3 }));
 
     // Baby slime: shrunken Sprite.width + 'slime-mini' archetype, no SpawnAnim so
-    // it renders at a steady, smaller size (16/24 of the full slime).
+    // it renders at a steady, smaller size. The split sets width to 0.65 of the
+    // parent (3.0 ft × 0.65 = 1.95 ft), so it must render at 0.65 of a full slime.
     addComponent(world.ecs, miniSlime, set(Position, { x: 30, y: 10 }));
     addComponent(world.ecs, miniSlime, Enemy);
-    addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 16, height: 16 }));
+    addComponent(world.ecs, miniSlime, set(Sprite, { textureId: 2, width: 1.95, height: 1.95 }));
     world.floor1!.enemyArchetypes.set(miniSlime, 'slime-mini');
 
     bridge.sync(world);
@@ -525,10 +527,12 @@ describe('createPhaserBridge', () => {
     expect(fullImg.scaleX).toBeCloseTo(fullImg.scaleY, 6);
     expect(fullImg.scaleX).toBeGreaterThan(0);
 
-    // Baby renders smaller, at 16/24 of the full slime's scale, still uniform.
+    // Baby renders smaller, at 0.65 of the full slime's scale (1.95 ft / 3.0 ft),
+    // still uniform. A pixel/feet unit mismatch in SLIME_FULL_SPRITE_WIDTH would
+    // clamp this to the 0.2 floor and make babies "incredibly small".
     expect(miniImg.scaleX).toBeLessThan(fullImg.scaleX);
     expect(miniImg.scaleX).toBeCloseTo(miniImg.scaleY, 6);
-    expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * (16 / 24), 5);
+    expect(miniImg.scaleX).toBeCloseTo(fullImg.scaleX * 0.65, 5);
   });
 
   // A welcome sign is a Sprite+Position entity whose textureId is the welcome

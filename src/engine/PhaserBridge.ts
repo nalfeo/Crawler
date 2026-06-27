@@ -472,12 +472,15 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
 };
 
 /**
- * Logical sprite width (px) of a full-grown slime. Baby slimes spawned by a
- * split carry a smaller `Sprite.width`, and we render them proportionally
- * smaller than this reference. Keep in sync with the `slime` archetype
- * `spriteWidth` in `src/shared/data/enemies.floor1.json`.
+ * Sprite width (in FEET) of a full-grown slime. Baby slimes spawned by a split
+ * carry a smaller `Sprite.width` (also in feet — the sim is feet-based per ADR
+ * 0023), and we render them proportionally smaller than this reference. Keep in
+ * sync with the `slime` archetype `spriteWidth` in
+ * `src/shared/data/enemies.floor1.json` (currently 3.0 ft). This MUST be the
+ * feet value, not its pixel equivalent: `applyEnemyScale` divides a feet-based
+ * `Sprite.width` by it, so a pixel value here shrinks babies to the 0.2 floor.
  */
-const SLIME_FULL_SPRITE_WIDTH = 24;
+const SLIME_FULL_SPRITE_WIDTH = 3;
 
 interface ResolvedTexture {
   key: string;
