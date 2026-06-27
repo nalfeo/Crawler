@@ -32,6 +32,7 @@ import { setActiveWeapon, weaponSystem } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { createLogger } from '../../shared/logger.js';
 import { pxToFt } from '../../shared/units.js';
 import { WEAPON_DEFS } from '../../shared/weaponDefs.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -45,6 +46,8 @@ const CRITICAL_SHEET_KEYS = new Set([
   'kenney-roguelike-rpg-pack',
   'custom-pixel-sprites',
 ]);
+
+const logger = createLogger('lab:gore-lab');
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -132,7 +135,10 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       if (!this.load) return;
       // Failures are non-fatal: PhaserBridge falls back to procedural textures.
       this.load.on('loaderror', (file: Phaser.Loader.File) => {
-        console.warn('[gore-lab] sprite sheet failed to load', file.key, file.url);
+        logger.warn('Sprite asset failed to load; falling back to procedural texture', {
+          key: file.key,
+          url: file.url,
+        });
       });
       for (const sheet of SHEETS) {
         if (!CRITICAL_SHEET_KEYS.has(sheet.key)) continue;
