@@ -762,6 +762,7 @@ export class MainGameScene extends Phaser.Scene {
     // Freeze fixed-step gameplay while an NPC dialogue is active.
     if (this.conversationNpcEid !== null) {
       this.updateDoorOverlay();
+      this.updateLightingOverlay();
       this.bridge.sync(this.world);
       this.playBossSpawnIntro();
       this.updateCamera();
@@ -774,6 +775,7 @@ export class MainGameScene extends Phaser.Scene {
 
     if (this.simulationPaused && this.pendingSimulationSteps <= 0) {
       this.updateDoorOverlay();
+      this.updateLightingOverlay();
       this.bridge.sync(this.world);
       this.playBossSpawnIntro();
       this.updateCamera();
@@ -930,6 +932,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     this.updateDoorOverlay();
+    this.updateLightingOverlay();
     this.bridge.sync(this.world);
     this.playBossSpawnIntro();
     this.updateCamera();
@@ -1380,7 +1383,7 @@ export class MainGameScene extends Phaser.Scene {
     }
 
     rt.clear();
-    const bounds = dirtyRect ?? {
+    const bounds = {
       minX: 0,
       minY: 0,
       maxX: field.widthCells - 1,
