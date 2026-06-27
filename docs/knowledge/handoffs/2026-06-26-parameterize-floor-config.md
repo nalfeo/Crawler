@@ -154,10 +154,19 @@ getFloorEnemyPack(packId: string): EnemyPackDef | undefined
 
 ## Guard Telemetry
 
-[If `files/guard-telemetry.jsonl` exists, execute]: ```bash
-
-npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section
-
-```
-
+```json
+{
+  "schema": "agent-os-guard-telemetry-summary/v1",
+  "artifact": "files/guard-telemetry.jsonl",
+  "events": 2,
+  "guards": {
+    "pr-preflight": {
+      "deny": 1,
+      "allow": 1
+    }
+  },
+  "tools": {
+    "create_pull_request": 2
+  }
+}
 ```

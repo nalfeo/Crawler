@@ -149,6 +149,8 @@ export function initializeFloorScenario(world, playerEid, floorId: string) {
 - 154 insertions(+), 68 deletions(-)
 - Includes all file renames, import updates, type generalization
 
+**Supporting ADR:** `docs/knowledge/adr/0005-parameterized-floor-configuration.md`
+
 ---
 
 ## Files Modified
@@ -162,6 +164,7 @@ export function initializeFloorScenario(world, playerEid, floorId: string) {
 - `src/bootstrap/floor1-game-config.ts` → `floor-game-config.ts`
 - `src/bootstrap/floor1-main-scene-options.ts` → `floor-main-scene-options.ts`
 - `src/labs/floor1-lab/` → `src/labs/floor-lab/`
+- Updated `src/lab-main.ts` and `scripts/agent/pr-lab-links.mjs` to keep the floor lab and lab-gate wiring aligned with the renamed module paths.
 - Plus test file renames and 7 other supporting files
 
 **Major Updates (16):**
