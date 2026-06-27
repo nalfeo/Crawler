@@ -3,6 +3,7 @@ import Phaser from 'phaser';
 import { createGameWorld, type GameWorld } from '../../core/index.js';
 import { createEffectsVfx } from '../../engine/EffectsVfx.js';
 import { GAME } from '../../shared/constants.js';
+import { pxToFt } from '../../shared/units.js';
 import type { CombatEvent } from '../../shared/combat-events.js';
 import {
   PICKUP_SPARKLE_COLORS,
@@ -92,17 +93,18 @@ function createJuiceLab(canvasHost: HTMLElement, controls: HTMLElement): () => v
       });
     }
 
+    // VFX/combat events carry feet; EffectsVfx scales feet→pixels at draw time.
     private center(): { x: number; y: number } {
       return {
-        x: Math.round((this.scale.width || GAME.WIDTH) / 2),
-        y: Math.round((this.scale.height || GAME.HEIGHT) / 2),
+        x: pxToFt(this.scale.width || GAME.WIDTH) / 2,
+        y: pxToFt(this.scale.height || GAME.HEIGHT) / 2,
       };
     }
 
     /** Random point in a band around the centre for auto-fire variety. */
     private scatterPoint(): { x: number; y: number } {
-      const w = this.scale.width || GAME.WIDTH;
-      const h = this.scale.height || GAME.HEIGHT;
+      const w = pxToFt(this.scale.width || GAME.WIDTH);
+      const h = pxToFt(this.scale.height || GAME.HEIGHT);
       return {
         x: w / 2 + (Math.random() - 0.5) * w * 0.6,
         y: h / 2 + (Math.random() - 0.5) * h * 0.6,

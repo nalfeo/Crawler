@@ -18,6 +18,7 @@ import { createLevelUpUI } from '../../engine/LevelUpUI.js';
 import { spendPoints, statsSystem } from '../../game/systems/statsSystem.js';
 import { PRIMARY_STATS } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
+import { pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -82,7 +83,7 @@ function createLevelUpLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
 
     create(): void {
       world = createGameWorld({ seed: 1337 });
-      playerEid = spawnPlayer(world, GAME.WIDTH / 2, GAME.HEIGHT / 2);
+      playerEid = spawnPlayer(world, pxToFt(GAME.WIDTH) / 2, pxToFt(GAME.HEIGHT) / 2);
       addComponent(world.ecs, playerEid, Stats);
       addComponent(world.ecs, playerEid, SkillHolder);
       world.playerLevel.unspentPoints = settings.pointsToGrant;

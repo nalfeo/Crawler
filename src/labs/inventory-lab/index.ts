@@ -28,6 +28,7 @@ import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
 import { addItem } from '../../shared/inventory.js';
 import { ITEM_CATALOG } from '../../shared/items.js';
+import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
@@ -89,7 +90,7 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
     playerSpeed: PLAYER_SPEED,
     autoSpawnItems: true,
     spawnIntervalMs: 2000,
-    spawnRadius: 200,
+    spawnRadius: 25,
     directAddItem: ITEM_CATALOG[0]?.id ?? 'iron-ore',
     directAddQty: 5,
   };
@@ -133,8 +134,9 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
       this.accumulator = 0;
@@ -280,7 +282,7 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       const playerY = this.world.stores.position.y[this.playerEid] ?? 0;
 
       const angle = this.world.rng.next() * Math.PI * 2;
-      const dist = this.world.rng.next() * settings.spawnRadius + 40;
+      const dist = this.world.rng.next() * settings.spawnRadius + 5;
       const x = playerX + Math.cos(angle) * dist;
       const y = playerY + Math.sin(angle) * dist;
 
@@ -293,15 +295,15 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
       this.lastSpawnMs = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
 
-      const w = this.getSimulationWidth();
-      const h = this.getSimulationHeight();
+      const w = pxToFt(this.getSimulationWidth());
+      const h = pxToFt(this.getSimulationHeight());
       this.playerEid = spawnPlayer(this.world, w / 2, h / 2);
       addComponent(this.world.ecs, this.playerEid, set(BroadcastScore, { current: 0 }));
 
       // Spawn a handful of starter items nearby
       for (let i = 0; i < 15; i++) {
         const angle = this.world.rng.next() * Math.PI * 2;
-        const dist = this.world.rng.next() * 120 + 30;
+        const dist = this.world.rng.next() * 15 + 3.75;
         const x = w / 2 + Math.cos(angle) * dist;
         const y = h / 2 + Math.sin(angle) * dist;
         const itemIndex = Math.floor(this.world.rng.next() * ITEM_CATALOG.length);
@@ -348,14 +350,14 @@ function createInventoryLab(canvasHost: HTMLElement, controls: HTMLElement): () 
   const spawnFolder = gui.addFolder('Item Spawning');
   spawnFolder.add(settings, 'autoSpawnItems').name('Auto-Spawn');
   spawnFolder.add(settings, 'spawnIntervalMs', 500, 10000, 100).name('Spawn Interval (ms)');
-  spawnFolder.add(settings, 'spawnRadius', 50, 500, 10).name('Spawn Radius');
+  spawnFolder.add(settings, 'spawnRadius', 6.25, 62.5, 1.25).name('Spawn Radius');
 
   const directFolder = gui.addFolder('Direct Add to Bag');
   directFolder.add(settings, 'directAddItem', itemNames).name('Item');
   directFolder.add(settings, 'directAddQty', 1, 99, 1).name('Quantity');
   directFolder.add(controlsApi, 'directAdd').name('Add to Inventory');
 
-  gui.add(settings, 'playerSpeed', 1, 15, 0.1).name('Player Speed');
+  gui.add(settings, 'playerSpeed', 0.125, 1.875, 0.0125).name('Player Speed');
   gui.add(controlsApi, 'reset').name('Reset World');
 
   const getSize = () => ({

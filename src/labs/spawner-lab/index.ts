@@ -28,6 +28,7 @@ import {
 } from '../../game/index.js';
 import { GAME } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 
 const LAB_ID = 'spawner-lab';
@@ -109,12 +110,17 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
 
-      this.playerEid = spawnPlayer(this.world, this.viewportW() / 2, this.viewportH() / 2);
+      this.playerEid = spawnPlayer(
+        this.world,
+        pxToFt(this.viewportW()) / 2,
+        pxToFt(this.viewportH()) / 2,
+      );
       this.world.stores.health.current[this.playerEid] = PLAYER_HEALTH;
       this.world.stores.health.max[this.playerEid] = PLAYER_HEALTH;
 
@@ -190,8 +196,9 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
     }
 
     private placeNests(): void {
-      const cy = this.viewportH() / 2;
-      spawnSpawner(this.world, this.viewportW() * 0.28, cy, RATS_NEST.hp, {
+      const viewportW = pxToFt(this.viewportW());
+      const cy = pxToFt(this.viewportH()) / 2;
+      spawnSpawner(this.world, viewportW * 0.28, cy, RATS_NEST.hp, {
         defIndex: RATS_NEST_INDEX,
         contactDamage: RATS_NEST.contactDamage,
         weight: RATS_NEST.weight,
@@ -199,7 +206,7 @@ function createSpawnerLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
         spriteWidth: RATS_NEST.spriteWidth,
         spriteHeight: RATS_NEST.spriteHeight,
       });
-      spawnSpawner(this.world, this.viewportW() * 0.72, cy, SLIME_POOL.hp, {
+      spawnSpawner(this.world, viewportW * 0.72, cy, SLIME_POOL.hp, {
         defIndex: SLIME_POOL_INDEX,
         contactDamage: SLIME_POOL.contactDamage,
         weight: SLIME_POOL.weight,

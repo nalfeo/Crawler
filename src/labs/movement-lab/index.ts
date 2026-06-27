@@ -14,6 +14,7 @@ import { createInputCapture } from '../../engine/InputCapture.js';
 import { createPhaserBridge } from '../../engine/PhaserBridge.js';
 import { GAME, PLAYER_SPEED } from '../../shared/constants.js';
 import { createInputState, type InputState } from '../../shared/input.js';
+import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { loadLabState, saveLabState } from '../lab-persistence.js';
 
@@ -34,9 +35,9 @@ interface MovementLabSettings {
 
 const MAX_STEPS_PER_FRAME = 4;
 const MAX_TRAIL_POINTS = 100;
-const GRID_SIZE = 48;
+const GRID_SIZE_FT = 6;
 const ENEMY_COUNT = 10;
-const ENEMY_MARGIN = 32;
+const ENEMY_MARGIN_FT = 4;
 const LAB_ID = 'movement-lab';
 
 class TrailBuffer {
@@ -201,8 +202,9 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
           this.playerEid < 0
             ? undefined
             : {
-                x: this.world.stores.position.x[this.playerEid] ?? 0,
-                y: this.world.stores.position.y[this.playerEid] ?? 0,
+                // Camera world-space is pixels; scale the player's feet position.
+                x: ftToPx(this.world.stores.position.x[this.playerEid] ?? 0),
+                y: ftToPx(this.world.stores.position.y[this.playerEid] ?? 0),
               },
       });
 
@@ -214,8 +216,8 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
       this.playerEid = spawnPlayer(
         this.world,
-        this.getViewportWidth() / 2,
-        this.getViewportHeight() / 2,
+        pxToFt(this.getViewportWidth()) / 2,
+        pxToFt(this.getViewportHeight()) / 2,
       );
       this.recordTrail(true);
 
@@ -283,14 +285,14 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
     }
 
     spawnEnemies(count: number): void {
-      const spawnWidth = this.getViewportWidth();
-      const spawnHeight = this.getViewportHeight();
-      const usableWidth = Math.max(1, spawnWidth - ENEMY_MARGIN * 2);
-      const usableHeight = Math.max(1, spawnHeight - ENEMY_MARGIN * 2);
+      const spawnWidth = pxToFt(this.getViewportWidth());
+      const spawnHeight = pxToFt(this.getViewportHeight());
+      const usableWidth = Math.max(1, spawnWidth - ENEMY_MARGIN_FT * 2);
+      const usableHeight = Math.max(1, spawnHeight - ENEMY_MARGIN_FT * 2);
 
       for (let index = 0; index < count; index += 1) {
-        const x = ENEMY_MARGIN + this.world.rng.next() * usableWidth;
-        const y = ENEMY_MARGIN + this.world.rng.next() * usableHeight;
+        const x = ENEMY_MARGIN_FT + this.world.rng.next() * usableWidth;
+        const y = ENEMY_MARGIN_FT + this.world.rng.next() * usableHeight;
         const hp = this.world.rng.nextInt(15, 40);
         spawnEnemy(this.world, x, y, hp);
       }
@@ -392,7 +394,8 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       const y = this.world.stores.position.y[this.playerEid] ?? 0;
       const lastPoint = this.trail.last();
 
-      if (force || !lastPoint || Math.hypot(lastPoint.x - x, lastPoint.y - y) > 0.05) {
+      // 0.00625 ft ≈ 0.05 px: resample the trail on any sub-pixel movement.
+      if (force || !lastPoint || Math.hypot(lastPoint.x - x, lastPoint.y - y) > 0.00625) {
         this.trail.push(x, y);
       }
     }
@@ -422,7 +425,12 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
         const alpha = index / points.length;
         graphics.lineStyle(2, 0x7ee0ff, alpha * 0.45);
-        graphics.lineBetween(previous.x, previous.y, current.x, current.y);
+        graphics.lineBetween(
+          ftToPx(previous.x),
+          ftToPx(previous.y),
+          ftToPx(current.x),
+          ftToPx(current.y),
+        );
       }
 
       for (let index = 0; index < points.length; index += 1) {
@@ -433,7 +441,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
 
         const alpha = (index + 1) / points.length;
         graphics.fillStyle(0x7ee0ff, alpha * 0.75);
-        graphics.fillCircle(point.x, point.y, 2 + alpha * 2);
+        graphics.fillCircle(ftToPx(point.x), ftToPx(point.y), 2 + alpha * 2);
       }
     }
 
@@ -450,11 +458,13 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
       graphics.fillRect(0, 0, width, height);
       graphics.lineStyle(1, 0x24324a, 0.45);
 
-      for (let x = 0; x <= width; x += GRID_SIZE) {
+      const gridSizePx = ftToPx(GRID_SIZE_FT);
+
+      for (let x = 0; x <= width; x += gridSizePx) {
         graphics.lineBetween(x, 0, x, height);
       }
 
-      for (let y = 0; y <= height; y += GRID_SIZE) {
+      for (let y = 0; y <= height; y += gridSizePx) {
         graphics.lineBetween(0, y, width, y);
       }
     }
@@ -475,7 +485,7 @@ function createMovementLab(canvasHost: HTMLElement, controls: HTMLElement): () =
   };
 
   gui
-    .add(settings, 'speed', 1, 15, 0.1)
+    .add(settings, 'speed', 0.125, 1.875, 0.0125)
     .name('Speed')
     .onChange(() => updateInfoFromGui());
   gui
