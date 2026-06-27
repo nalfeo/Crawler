@@ -13,6 +13,8 @@ architecture must accommodate them.
 
 > **Current-code note:** this spec covers gameplay stat keys (`STAT_KEYS` in `src/shared/stats.ts`). The codebase also contains primary/secondary equipment stats (`StatId`) used by the equipment system; bridges between these surfaces are system-owned.
 
+> **Units note (ADR 0023):** all spatial stats below are expressed in the engine's single internal unit — **feet** — not pixels. An earlier draft of this spec used pixels; values were divided by `PIXELS_PER_FOOT = 8` when the codebase unified on feet (see `docs/knowledge/adr/0023-feet-as-single-internal-spatial-unit.md`). Pixels appear only in `src/engine` at render time.
+
 ## Requirements
 
 ### Level System
@@ -33,23 +35,27 @@ architecture must accommodate them.
 - **Point bonuses:** Accumulated from player spending stat points
 - **Modifiers:** Named, stackable records from skills, floor effects (items deferred)
 - **Final stats:** `clamp(min, base + pointBonus + additive) * multiplicative`
+- **Primary-stat derivation:** allocated primary-stat points (Strength, Dexterity, …) also feed gameplay stats via `CORE_STAT_GAINS` and combat/secondary stats via `CORE_STAT_TO_SECONDARY` (`src/shared/stats.ts`). Effective fold: `STAT_BASE[key] + Σ(coreStatPoints[p] × CORE_STAT_GAINS[p][key]) + statPoints[key] + additive`, then multiplicative.
 - Stats recomputed on **dirty flag**, not every frame
 - Stats are the SINGLE source of truth consumed by all other systems
 
 #### Stat List (v1)
 
-| Stat              | Effect                         | Base | Point Increment | Min |
-| ----------------- | ------------------------------ | ---- | --------------- | --- |
-| `maxHp`           | Maximum health                 | 100  | +10             | 1   |
-| `moveSpeed`       | Movement pixels/frame          | 3.0  | +0.1            | 0   |
-| `damage`          | Projectile damage              | 10   | +2              | 0   |
-| `armor`           | Flat damage reduction          | 0    | +1              | 0   |
-| `attackSpeed`     | Fire rate multiplier           | 1.0  | +0.05           | 0.1 |
-| `pickupRange`     | XP gem magnet radius           | 24   | +8              | 8   |
-| `projectileCount` | Extra projectiles per shot     | 0    | +1 (integer)    | 0   |
-| `projectileSpeed` | Projectile velocity multiplier | 1.0  | +0.05           | 0.1 |
+| Stat              | Effect                                            | Base  | Point Increment   | Min |
+| ----------------- | ------------------------------------------------- | ----- | ----------------- | --- |
+| `maxHp`           | Maximum health                                    | 100   | +10               | 1   |
+| `moveSpeed`       | Movement **feet**/frame                           | 0.375 | +0.0125           | 0   |
+| `damage`          | Projectile damage                                 | 10    | +2                | 0   |
+| `armor`           | Flat damage reduction                             | 0     | +1                | 0   |
+| `attackSpeed`     | Fire rate multiplier                              | 1.0   | +0.05             | 0.1 |
+| `pickupRange`     | XP gem magnet radius (**feet**)                   | 3.0   | +1.0              | 1.0 |
+| `projectileCount` | Extra projectiles per shot                        | 0     | +1 (integer)      | 0   |
+| `projectileSpeed` | Projectile velocity multiplier                    | 1.0   | +0.05             | 0.1 |
+| `accuracy`        | Bonus hit-chance over weapon `baseAccuracy` (0–1) | 0     | +0.02 (reserved)¹ | 0   |
 
-> **Deferred to v2:** `luck`, `area` — no consumers exist yet
+> ¹ `accuracy` is not allocated directly in the level-up UI — it is trained via **Dexterity** (`+0.01` per effective point) and weapon-type skills (`+0.03`/level). The `+0.02` point increment is reserved for a future direct-allocation path. Applied in `weaponSystem` as `effectiveAccuracy = clamp(0, 1, weapon.baseAccuracy + stats.accuracy)`.
+
+> **Deferred to v2:** a dedicated `luck`/`area` **gameplay** stat key — no consumers exist yet. (The **primary** stat `luck` _is_ wired today: it raises `pickupRange` and crit chance via `CORE_STAT_GAINS` / `CORE_STAT_TO_SECONDARY` in `src/shared/stats.ts`.)
 
 **HP behavior on maxHp change:** `currentHp += delta` (preserve absolute HP, not percentage).
 Cap: `currentHp = min(currentHp, maxHp)`.
@@ -111,11 +117,27 @@ export const SkillHolder = {}; // entity has skills (player-only v1)
 
 // New stores — all Float32Array unless noted
 stats: {
-  (maxHp, moveSpeed, damage, armor, attackSpeed, pickupRange, projectileCount, projectileSpeed);
+  (maxHp,
+    moveSpeed,
+    damage,
+    armor,
+    attackSpeed,
+    pickupRange,
+    projectileCount,
+    projectileSpeed,
+    accuracy);
 }
 statPoints: {
   // accumulated point bonuses per stat (same fields as stats)
-  (maxHp, moveSpeed, damage, armor, attackSpeed, pickupRange, projectileCount, projectileSpeed);
+  (maxHp,
+    moveSpeed,
+    damage,
+    armor,
+    attackSpeed,
+    pickupRange,
+    projectileCount,
+    projectileSpeed,
+    accuracy);
 }
 ```
 
@@ -164,6 +186,7 @@ export const STAT_KEYS = [
   'pickupRange',
   'projectileCount',
   'projectileSpeed',
+  'accuracy',
 ] as const;
 export type StatKey = (typeof STAT_KEYS)[number];
 ```
@@ -255,7 +278,7 @@ skillSystem(world)
 
 ### Integration Points
 
-- `weaponSystem` reads `stats.damage`, `stats.attackSpeed`, `stats.projectileCount` (player eid)
+- `weaponSystem` reads `stats.damage`, `stats.attackSpeed`, `stats.projectileCount`, `stats.accuracy` (player eid)
 - `movementSystem` reads `stats.moveSpeed` (player eid)
 - `healthSystem` reads `stats.maxHp` for HP cap; handles delta on maxHp change
 - `damageSystem` reads `stats.armor`; emits skill usage events

@@ -64,7 +64,7 @@ calls.
    now points the user at that button. Health is refreshed during queued polling
    so the control appears mid-stall.
 
-Both the `sprites:gallery` launcher and direct `sidecar/cli.ts` invocation go
+Both the `sprites:gallery` launcher and direct `scripts/sprites/sidecar/cli.ts` invocation go
 through `cli.ts`, so auto-start is universal. The standalone `sprites:worker`
 process is retained for production / horizontal scaling.
 

@@ -17,11 +17,11 @@ reuses the existing `EffectiveStats` store.
 ## Context
 
 The ECS stores and UI for `critChance`, `critMultiplier`, and `dodgeChance`
-already existed (`core/components.ts`, `shared/stats.ts`, `EquipmentUI`, the stat
+already existed (`src/core/components.ts`, `src/shared/stats.ts`, `EquipmentUI`, the stat
 and equipment labs), but **no combat system read them** — a grep for crit/dodge
 across the combat path returned nothing. Level-up core-stat allocation flowed
 into a _separate_ stat pipeline (`stores.stats`, derived by
-`game/systems/statsSystem.ts`) that combat reads, while the richer
+`src/game/systems/statsSystem.ts`) that combat reads, while the richer
 `stores.effectiveStats` pipeline (PRIMARY + SECONDARY, derived by
 `equipmentSystem`) was read only by the Equipment UI. As a result Luck and
 Dexterity allocation had **no gameplay effect**, and Wisdom/Charisma showed
@@ -33,13 +33,13 @@ core-stat allocation actually reach combat through `effectiveStats`.
 ## Decision
 
 1. **Derive secondaries from effective primaries.** Add a
-   `CORE_STAT_TO_SECONDARY` map (`shared/stats.ts`): Luck → `critChance`
+   `CORE_STAT_TO_SECONDARY` map (`src/shared/stats.ts`): Luck → `critChance`
    (+0.005/effective point), Dexterity → `dodgeChance` (+0.003/effective point).
    The rate is applied to the **effective** primary (base 1 + allocated level-up
    points + equipment bonuses), so both allocation and gear flow through.
 
 2. **One shared EffectiveStats formula.** Extract `applyEffectiveStats`
-   (`core/effective-stats.ts`, a pure helper — _not_ a `(world)=>void` system, so
+   (`src/core/effective-stats.ts`, a pure helper — _not_ a `(world)=>void` system, so
    it lives in `core/` root next to `apply-damage.ts`/`combat-rolls.ts`, not in
    `core/systems/`). Both `equipmentSystem.recomputeEffectiveStats` (eager, on
    equip) and `statSystem` (per-frame) delegate to it: base → fold core points →
@@ -62,11 +62,11 @@ core-stat allocation actually reach combat through `effectiveStats`.
      `initializeBaseStats`) rolls.
 
 4. **Run `statSystem` in the loop.** Add it to the headless sim loop
-   (`game/ai/simulation-step.ts`) and the visual game's `preSystems`
-   (`bootstrap/floor1-main-scene-options.ts`), right after `statsSystem`, so
+   (`src/game/ai/simulation-step.ts`) and the visual game's `preSystems`
+   (`src/bootstrap/floor1-main-scene-options.ts`), right after `statsSystem`, so
    allocation reaches combat identically in both.
 
-5. **Render the outcomes.** `engine/CombatVfx.ts` emphasizes crits (orange,
+5. **Render the outcomes.** `src/engine/CombatVfx.ts` emphasizes crits (orange,
    larger, trailing `!`) and shows a cyan `DODGE` floater.
 
 ## Consequences

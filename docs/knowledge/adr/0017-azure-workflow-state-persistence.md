@@ -47,8 +47,8 @@ Make the **sidecar the source of truth** for workflow state and persist it throu
 
 ### 1. Reuse `generated-runs` under a `workflow-state/` key prefix
 
-No new container or infra for v1. Workflow state is stored at the blob key
-`workflow-state/queue.json`. The existing run-listing logic (`listRunsFromStore`) only matches
+No new container or infra for v1. Workflow state is stored under the `workflow-state/` blob-key
+prefix as `queue.json`. The existing run-listing logic (`listRunsFromStore`) only matches
 3-part `<briefId>/<runId>/summary.json` keys, so `workflow-state/*` keys never pollute `/api/runs`.
 
 ### 2. New sidecar endpoints
@@ -85,7 +85,7 @@ missing local file from the store before use, so a mid-flight generate survives 
 
 ### 6. Single global queue
 
-One blob (`workflow-state/queue.json`) backs one global team backlog — no per-session partitioning
+One blob (the `queue.json` object under the `workflow-state/` prefix) backs one global team backlog — no per-session partitioning
 in v1. Revisit if concurrent operators on separate sessions need isolated queues; the ETag conflict
 path already prevents silent clobbering if two clients share the global blob.
 
@@ -130,8 +130,8 @@ Validated end-to-end against **fully real Azure** (the `generated-runs` blob sto
 `asset-requests-e2e` queue + live `gpt-image-1` generation), driven headless with Playwright over
 10 sprites. Final state: **10/10 items durable at `variants`** in the blob.
 
-- **Page-refresh resume** — 12 refreshes re-hydrated every item and stage from
-  `workflow-state/queue.json`, byte-identical each time.
+- **Page-refresh resume** — 12 refreshes re-hydrated every item and stage from the
+  `workflow-state/` blob (`queue.json`), byte-identical each time.
 - **Sidecar process-restart resume** — a fresh sidecar process returned the identical state with the
   **identical content-hash etag**, proving the state reloads entirely from the blob (no in-memory
   source of truth).

@@ -1,7 +1,10 @@
 # ADR-0012: Multi-Safe-Room Support and NPC Quest Callback Pattern
 
+## Status
+
+Accepted
+
 **Date:** 2026-06-11  
-**Status:** Accepted  
 **Deciders:** Agent session (floor1-lab-ux-fixes)
 
 ## Context
