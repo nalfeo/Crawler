@@ -65,7 +65,7 @@ Two commits on this branch.
 - `scripts/agent/ci/detect-art-only.sh` + a `changes` job in `ci.yml`: art-only
   changes skip integration/headless/e2e/build; merge-gate treats them as PASS via
   the existing `allow_skipped` path. Fails safe to full CI.
-- `docs/knowledge/adr/0026-generated-sprite-variants.md`.
+- `docs/knowledge/adr/0028-generated-sprite-variants.md`.
 - New tests: `tests/unit/sprites/{checkin,asset-issues,asset-pr}.test.ts` (26) +
   a sidecar `/api/checkin` CI-refusal test.
 
@@ -114,4 +114,4 @@ checkin route test.
 - **Art-only CI lane via a `changes` job + `if:` guards** (not `on.push.paths`)
   so the required `ci` aggregate stays green while heavy jobs are skipped.
 
-See ADR 0026 for full rationale.
+See ADR 0028 for full rationale.

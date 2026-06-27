@@ -1,4 +1,4 @@
-# ADR 0026: Multi-variant generated sprites — identity, selection, approval, and check-in
+# ADR 0028: Multi-variant generated sprites — identity, selection, approval, and check-in
 
 ## Status
 
