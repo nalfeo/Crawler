@@ -366,6 +366,71 @@ export function primaryActionLabel(stage: WorkflowStage): string | null {
   }
 }
 
+/** Inputs needed to describe a freshly-approved (or already-approved) variant. */
+export interface ApprovedVariantInfo {
+  readonly briefId: string;
+  readonly variantIndex: number;
+  /** `generated/<briefId>-var-<index>.png` — the catalog asset path. */
+  readonly assetPath: string;
+  /**
+   * Sensor score string from the approve response, e.g. `"6/7"`. Omitted on the
+   * already-approved (sidecar 409) path, which has no fresh response body.
+   */
+  readonly sensorScore?: string;
+  readonly judgeScore?: string | null;
+  /** The variant was approved past a judge rejection ("Approve anyway"). */
+  readonly judgeOverride?: boolean;
+  /**
+   * The sidecar reported this exact variant is already in the catalog with
+   * byte-identical content (HTTP 409). Still a valid approved state — it must
+   * advance the item to `approved` so Tag unlocks rather than dead-end.
+   */
+  readonly alreadyApproved?: boolean;
+}
+
+/** Fields an approval writes onto a queue item (advancing it to `approved`). */
+export interface ApprovedItemPatch {
+  readonly stage: 'approved';
+  readonly approvedAssetPath: string;
+  readonly approvalSummary: string;
+  readonly generationRequestedAt: null;
+  readonly lastError: null;
+}
+
+/**
+ * Build the queue patch that advances an item into the `approved` stage once a
+ * variant is in the catalog. Shared by the fresh-approval path **and** the
+ * already-approved (sidecar 409) path: an already-approved variant is genuinely
+ * approved, so re-approving it must still unlock Tag instead of dead-ending on
+ * the Approve step (which left operators unable to reach Tag/Done). Pure so the
+ * transition is unit-testable without a DOM or a live sidecar.
+ */
+export function approvedItemPatch(info: ApprovedVariantInfo): ApprovedItemPatch {
+  let approvalSummary: string;
+  if (info.alreadyApproved) {
+    approvalSummary =
+      `Variant ${info.briefId}-var-${info.variantIndex} is already approved with identical ` +
+      `content -> ${info.assetPath}. Tag to add catalog metadata, or re-post-process to ` +
+      'change the image first.';
+  } else {
+    const overrideSuffix = info.judgeOverride ? ' (judge override)' : '';
+    const scoreSuffix =
+      info.sensorScore === undefined
+        ? ''
+        : ` (${info.sensorScore}${info.judgeScore ? `, judge ${info.judgeScore}` : ''})`;
+    approvalSummary =
+      `Approved ${info.briefId} variant ${info.variantIndex}${overrideSuffix} -> ` +
+      `${info.assetPath}${scoreSuffix}. Now Tag to add catalog metadata.`;
+  }
+  return {
+    stage: 'approved',
+    approvedAssetPath: info.assetPath,
+    approvalSummary,
+    generationRequestedAt: null,
+    lastError: null,
+  };
+}
+
 // ── Restart points (Brief / Sheet) ───────────────────────────────────────────
 // Pure transitions that rewind an item to one of the two operator-facing
 // restart points. They return a `Partial<QueueItem>` patch for `updateItem`, so
