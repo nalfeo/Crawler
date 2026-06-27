@@ -62,7 +62,7 @@ MANA_PER_WISDOM × max(0, wisdom)`. Tuned so a fresh player (effective
 
 3. **Wire into both pipelines.** Added to the headless loop
    (`src/game/ai/simulation-step.ts`) and the visual game's `preSystems`
-   (`src/bootstrap/floor1-main-scene-options.ts`), immediately after `statSystem`, so
+   (`src/bootstrap/floor-main-scene-options.ts`), immediately after `statSystem`, so
    the pool scales identically headless and visual. The HUD mana bar already reads
    `world.playerMp/playerMaxMp`, so it now reflects the Wisdom-scaled max with no
    HUD logic change.
@@ -72,7 +72,7 @@ MANA_PER_WISDOM × max(0, wisdom)`. Tuned so a fresh player (effective
    Charisma stays reserved/"(no effect yet)".
 
 5. **Boss-battle spell-reward hardening.** New
-   `ensureBossBattleSpellReward(world, playerEid)` in `src/game/floor1Scenario.ts`,
+   `ensureBossBattleSpellReward(world, playerEid)` in `src/game/floorScenario.ts`,
    wired into `confirmFloor1StairDescend` (the floor-exit choke point). It is a
    **safety net**, idempotent and deterministic (no RNG, no modal):
    - No-op until the quest is complete OR the unlock flag is already set.

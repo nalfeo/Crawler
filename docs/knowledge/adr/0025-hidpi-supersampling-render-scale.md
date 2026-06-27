@@ -66,7 +66,7 @@ layout, and input via camera zoom. On a 1× display at/below the design size,
 
 Engine layer only — Phaser types allowed, no imports from core/game/labs.
 
-### Framebuffer sizing (`src/bootstrap/floor1-game-config.ts`)
+### Framebuffer sizing (`src/bootstrap/floor-game-config.ts`)
 
 `createFloor1GameConfig` calls `resolveBootRenderScale(parent)` and sizes the game
 `width: GAME.WIDTH × S, height: GAME.HEIGHT × S`.
