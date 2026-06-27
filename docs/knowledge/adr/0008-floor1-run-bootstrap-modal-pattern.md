@@ -11,11 +11,13 @@ Accepted
 ## Context
 
 Floor 1 (the tutorial vertical slice) requires a coordinated startup flow:
+
 1. Player enters the game and must select a starter weapon from 3 randomly seeded options.
 2. The game state machine must pause and allow modal interaction before the main game loop begins.
 3. Decisions about where to place this logic affect at least three architectural layers: `src/core` (ECS state), `src/engine` (Phaser rendering), and `src/game` (high-level game flow).
 
 Previous approaches considered:
+
 - Putting modal logic directly in `MainGameScene.update()` → couples Phaser rendering to game state; harder to test independently.
 - Deferring modal until after first frame → causes visual stutter and confusion about when the player can act.
 
@@ -25,7 +27,7 @@ We implement a **reusable run bootstrap layer** (`src/game/<floorN>Scenario.ts`)
 
 ### Three-Layer Architecture
 
-1. **Game Layer** (`src/game/floor1Scenario.ts`): Owns run state machine (intro → loadout → playing → win/fail). State transitions are side-effect-free; scenario emits deterministic events (e.g., `onLoadoutDone`, `onObjectiveComplete`) that the bridge consumes.
+1. **Game Layer** (`src/game/floorScenario.ts`): Owns run state machine (intro → loadout → playing → win/fail). State transitions are side-effect-free; scenario emits deterministic events (e.g., `onLoadoutDone`, `onObjectiveComplete`) that the bridge consumes.
 
 2. **Engine Layer** (`src/engine/ModalPickerUI.ts`): Receives events from scenario, renders Phaser modal UI, and pauses the game by not calling `update()` on the game world until modal resolves.
 
@@ -47,7 +49,7 @@ We implement a **reusable run bootstrap layer** (`src/game/<floorN>Scenario.ts`)
 - **Deterministic**: All RNG seeded; replays are guaranteed to match.
 - **Reusable pattern**: Future floors can pass their own scenario; same bootstrap infrastructure.
 - **Pause-by-side-effect**: Pausing is a consequence of the modal event, not explicit pause logic; keeps game loop deterministic.
-- **Clear ownership**: Scenario owns *what*, modal UI owns *how*, shared code owns pure selection logic.
+- **Clear ownership**: Scenario owns _what_, modal UI owns _how_, shared code owns pure selection logic.
 
 ### Negative
 

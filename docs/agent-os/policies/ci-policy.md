@@ -102,6 +102,30 @@ Agents must fix every test, lint, typecheck, or build failure they encounter —
 - If a failure is genuinely caused by an in-progress external change (e.g. a dependency that hasn't landed yet), pause and flag it to the user; do not silently bypass it.
 - The only acceptable state for a PR to merge is: all CI gates green on real passing code.
 
+## Incremental Change Discipline
+
+When changing **behavior** in a system covered by the headless gate — AI, combat,
+pathfinding, or floor progression — make **one behavioral change per commit** and
+re-run `npm run test:headless` after each.
+
+- **One behavioral change per commit.** Do not batch multiple behavioral changes
+  into a single commit. Batching makes a regression un-bisectable and forces a
+  full revert of everything instead of reverting just the offending change. The
+  cautionary example is the swarm-kite revert (commit `28bfac4`, which shipped
+  swarm-separation kite + melee focus-dive + ranged line-of-sight reposition in
+  one commit): it broke the headless gate on correctness, performance, **and**
+  stability simultaneously and had to be reverted wholesale — see the
+  `docs/knowledge/handoffs/2026-06-23-revert-swarm-kite-regression.md` handoff.
+- **Expect an over-broad change to fail several assertions at once.** The headless
+  gate (`tests/headless/floor1-completion.test.ts`) asserts correctness on
+  deterministic _game_ time **and** a coarse wall-time perf-regression guard
+  across the full seed × weapon matrix, so a change that touches too much tends to
+  trip multiple assertions together. Isolate changes so the one that failed is
+  obvious.
+- **Keep it deterministic.** This is a process discipline, not a new gate — no
+  LLM-as-judge, no subjective grading. The headless gate stays a script with an
+  exit code.
+
 ## Non-Negotiable
 
 No CI step may call an LLM service, use subjective grading, or depend on non-deterministic runtime behavior.

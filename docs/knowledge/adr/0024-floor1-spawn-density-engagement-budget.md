@@ -20,7 +20,7 @@ dungeon the player should be under near-constant attack. In practice, moving
 quickly across the map left the player with **no enemies to fight**.
 
 The root causes all lived in `floor1EnemyDirectorSystem`
-(`src/game/floor1Scenario.ts`) — the system Floor 1 actually uses. (The generic
+(`src/game/floorScenario.ts`) — the system Floor 1 actually uses. (The generic
 `enemySpawnerSystem` is lab-only and does not drive Floor 1 gameplay.)
 
 - **Global cap of 14.** The whole floor could only ever hold 14 ambient enemies.

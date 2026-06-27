@@ -4,19 +4,25 @@
  * potion) so every UX surface can be eyeballed and iterated at once.
  *
  * Drives the REAL `HudUI` (health bar, XP bar, floor timer, quest tracker,
- * minimap) against a synthetic GameWorld, exactly like `hud-lab`, so the
- * actual Phaser render paths run. lil-gui sliders push the HUD through its
- * states (low HP, XP fill, amber/red timer, multiple active quests).
+ * minimap, ability bar) against a synthetic GameWorld, exactly like `hud-lab`,
+ * so the actual Phaser render paths run. lil-gui sliders push the HUD through
+ * its states (low HP, XP fill, amber/red timer, multiple active quests,
+ * abilities unlocked). Also mounts the InventoryUI and EquipmentUI panels so
+ * all gear and items UX surfaces are covered by the snapshot.
  */
 import GUI from 'lil-gui';
 import Phaser from 'phaser';
+import { addComponent } from 'bitecs';
 import { GAME, FLOOR } from '../../shared/constants.js';
 import { pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { createHudUI } from '../../engine/HudUI.js';
 import { createDialogueBox, type DialogueBox } from '../../engine/DialogueBox.js';
 import { createModalPickerUI } from '../../engine/ModalPickerUI.js';
+import { createInventoryUI } from '../../engine/InventoryUI.js';
+import { createEquipmentUI } from '../../engine/EquipmentUI.js';
 import { createGameWorld, type GameWorld } from '../../core/world.js';
 import { spawnPlayer, spawnEnemy, spawnNpc } from '../../core/index.js';
+import { Stats, SkillHolder } from '../../core/components.js';
 import { FloorMap } from '../../core/map/FloorMap.js';
 import { TileMap } from '../../core/map/TileMap.js';
 import { RoomGraph } from '../../core/map/RoomGraph.js';
@@ -26,6 +32,9 @@ import { FLOOR1_TUTORIAL_QUEST_ID, FLOOR1_BOSS_UNLOCK_QUEST_ID } from '../../sha
 import { xpRequiredForLevel } from '../../shared/xpMath.js';
 import { SeededRandom } from '../../shared/random.js';
 import { registerLab, type LabCategory } from '../registry.js';
+import { equipActiveAbility, getOrCreateAbilityState } from '../../game/systems/abilitySystem.js';
+import { addItem } from '../../shared/inventory.js';
+import { SHOPKEEPER_EQUIPMENT_ITEM_ID } from '../../shared/quest-types.js';
 
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
@@ -37,6 +46,9 @@ interface UxLabSettings {
   timeRemainingS: number;
   activeQuests: number;
   showDialog: boolean;
+  showAbilities: boolean;
+  showInventory: boolean;
+  showEquipment: boolean;
 }
 
 const LAB_ID = 'ux-snapshot-lab';
@@ -173,6 +185,9 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     timeRemainingS: 50,
     activeQuests: 2,
     showDialog: true,
+    showAbilities: true,
+    showInventory: false,
+    showEquipment: false,
   };
 
   const root = document.createElement('div');
@@ -185,7 +200,7 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
   const hint = document.createElement('p');
   hint.textContent =
-    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, gold/junk loot counter, quest tracker, minimap) plus the NPC dialogue box and choice modal, over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states; toggle the dialogue and open the choice modal from the controls.';
+    'UX Snapshot: the real pixel-UI HUD (health, XP, floor timer, gold/junk loot counter, quest tracker, minimap, ability bar) plus the NPC dialogue box, choice modal, inventory panel ([I]) and equipment panel ([G]), over a Floor 1 room with in-world drops. Drag the sliders to push every element through its states.';
   hint.style.cssText = 'margin-top:16px;color:#c9d4ff;line-height:1.6;';
   controls.append(hint);
 
@@ -195,6 +210,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
   let hudUi: ReturnType<typeof createHudUI> | undefined;
   let dialogueBox: DialogueBox | undefined;
   let modalPicker: ReturnType<typeof createModalPickerUI> | undefined;
+  let inventoryUI: ReturnType<typeof createInventoryUI> | undefined;
+  let equipmentUI: ReturnType<typeof createEquipmentUI> | undefined;
 
   const openSampleModal = (): void => {
     modalPicker?.open(
@@ -365,6 +382,19 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       spawnEnemy(world, pxToFt(5 * TILE + TILE / 2), pxToFt(8 * TILE + TILE / 2), 30);
       spawnEnemy(world, pxToFt(14 * TILE + TILE / 2), pxToFt(7 * TILE + TILE / 2), 12);
 
+      // Set up abilities UX: attach Stats + SkillHolder, initialize ability
+      // state, and equip a representative set of active abilities so the
+      // ability bar renders filled slots with cooldown indicators.
+      addComponent(world.ecs, playerEid, Stats);
+      addComponent(world.ecs, playerEid, SkillHolder);
+      const abilityState = getOrCreateAbilityState(world, playerEid);
+      equipActiveAbility(world, playerEid, 'fireball');
+      equipActiveAbility(world, playerEid, 'heal');
+      // Simulate a cooldown on fireball so the cooldown bar is visible.
+      abilityState.cooldownByAbilityId.set('fireball', 0);
+      abilityState.cooldownFramesByAbilityId.set('fireball', 300);
+      world.featureUnlocks.spells = settings.showAbilities;
+
       // XP unlocked so the experience bar is visible.
       world.goalFlags.set('floor1-drops-unlocked', true);
 
@@ -432,7 +462,46 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       // Carry some loot so the gold/junk HUD counter reads non-zero.
       world.playerGold = 137;
 
+      // Unlock inventory and equipment so both panels are accessible.
+      world.featureUnlocks.inventory = true;
+      world.featureUnlocks.equipment = true;
+      // Mark the player as being in a safe room so the panels can be opened
+      // (this mirrors the safe-room guard in MainGameScene).
+      world.playerInSafeRoom = true;
+
+      // Seed the player bag: misc items for the inventory panel + the
+      // equippable charm so the equipment panel has something to show.
+      const bag = world.inventories.get(playerEid);
+      if (bag) {
+        addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+        addItem(bag, 'iron-ore', 3);
+        addItem(bag, 'copper-ore', 2);
+        addItem(bag, 'ectoplasm-glob', 4);
+        addItem(bag, 'health-vial', 1);
+      }
+
       hudUi = createHudUI(this);
+
+      inventoryUI = createInventoryUI(this);
+      equipmentUI = createEquipmentUI(this);
+
+      // Keyboard shortcuts: [I] toggles inventory, [G] toggles equipment. The
+      // update loop mirrors the resulting open state back into settings so the
+      // bound GUI checkboxes stay in sync.
+      const onKeyDown = (event: KeyboardEvent): void => {
+        if (event.key === 'i' || event.key === 'I') {
+          event.preventDefault();
+          if (world) {
+            inventoryUI?.toggle(world);
+          }
+        } else if (event.key === 'g' || event.key === 'G') {
+          event.preventDefault();
+          if (world) {
+            equipmentUI?.toggle(world);
+          }
+        }
+      };
+      this.input.keyboard?.on('keydown', onKeyDown);
 
       modalPicker = createModalPickerUI(this);
       dialogueBox = createDialogueBox(this, {
@@ -451,10 +520,15 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
       this.events.once('shutdown', () => {
         hudUi?.destroy();
         hudUi = undefined;
+        inventoryUI?.destroy();
+        inventoryUI = undefined;
+        equipmentUI?.destroy();
+        equipmentUI = undefined;
         dialogueBox?.destroy();
         dialogueBox = undefined;
         modalPicker?.destroy();
         modalPicker = undefined;
+        this.input.keyboard?.off('keydown', onKeyDown);
       });
     }
 
@@ -480,7 +554,22 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
         world.floor1.objective.deadlineMs = settings.timeRemainingS * 1000;
       }
 
+      // Abilities toggle — latch the feature-unlock so the bar appears/hides.
+      world.featureUnlocks.spells = settings.showAbilities;
+
       hudUi.sync(world, playerEid);
+      // Refresh open panels so stat changes reflect immediately.
+      if (inventoryUI?.isOpen()) {
+        inventoryUI.refresh(world);
+      }
+      if (equipmentUI?.isOpen()) {
+        equipmentUI.refresh(world);
+      }
+
+      // Mirror panel open/close state into settings so the bound GUI checkboxes
+      // (which .listen()) reflect [I]/[G] toggles, scene restarts, and clicks.
+      settings.showInventory = inventoryUI?.isOpen() ?? false;
+      settings.showEquipment = equipmentUI?.isOpen() ?? false;
     }
   }
 
@@ -521,6 +610,25 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
     .onChange((v: boolean) => {
       dialogueBox?.setVisible(v);
     });
+  gui.add(settings, 'showAbilities').name('Show abilities');
+  gui
+    .add(settings, 'showInventory')
+    .name('Show inventory [I]')
+    .listen()
+    .onChange((v: boolean) => {
+      if (world && inventoryUI && inventoryUI.isOpen() !== v) {
+        inventoryUI.toggle(world);
+      }
+    });
+  gui
+    .add(settings, 'showEquipment')
+    .name('Show equipment [G]')
+    .listen()
+    .onChange((v: boolean) => {
+      if (world && equipmentUI && equipmentUI.isOpen() !== v) {
+        equipmentUI.toggle(world);
+      }
+    });
   gui.add({ openModal: () => openSampleModal() }, 'openModal').name('Open choice modal');
   gui.add({ restart: () => createGame() }, 'restart').name('Restart scene');
 
@@ -528,6 +636,8 @@ function createUxLab(canvasHost: HTMLElement, controls: HTMLElement): () => void
 
   return () => {
     hudUi?.destroy();
+    inventoryUI?.destroy();
+    equipmentUI?.destroy();
     dialogueBox?.destroy();
     modalPicker?.destroy();
     game?.destroy(true);
@@ -540,6 +650,6 @@ registerLab(LAB_ID, {
   category: 'Meta' as LabCategory,
   name: 'UX Snapshot',
   description:
-    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, gold/junk loot counter, quest tracker, minimap, NPC dialogue box, and choice modal — over a Floor 1 room with in-world drops.',
+    'All HUD/UX surfaces at once — health bar, XP bar, floor timer, gold/junk loot counter, quest tracker, minimap, ability bar, NPC dialogue box, choice modal, inventory panel, and equipment panel — over a Floor 1 room with in-world drops.',
   create: createUxLab,
 });

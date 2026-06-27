@@ -6,6 +6,7 @@ import {
   DeathTimer,
   Enemy,
   EnemyProjectile,
+  Gold,
   LineDamage,
   MeleeSwing,
   Npc,
@@ -54,6 +55,7 @@ const TEX_ENEMY_EXPLOSION = '__cw_enemy_explosion';
 const TEX_DEAD_SKULL = '__cw_dead_skull';
 const TEX_WELCOME_SIGN = '__cw_welcome_sign';
 const TEX_WELCOME_SIGN_LEFT = '__cw_welcome_sign_left';
+const TEX_GOLD = '__cw_gold';
 const SPRITE_TEX_WELCOME_SIGN = 3;
 const DEAD_SKULL_Y_OFFSET = 18;
 /** Native dimensions of the baked welcome-sign texture (board + word + arrow). */
@@ -348,6 +350,18 @@ function generateTextures(scene: Phaser.Scene): void {
   bakeSignTexture(TEX_WELCOME_SIGN, 'right');
   bakeSignTexture(TEX_WELCOME_SIGN_LEFT, 'left');
 
+  // Gold coin — round yellow disc with dark outline and a lighter highlight.
+  g.clear();
+  g.fillStyle(0x6b4a08, 1);
+  g.fillCircle(8, 8, 8);
+  g.fillStyle(0xffd24a, 1);
+  g.fillCircle(8, 8, 6);
+  g.fillStyle(0xd79320, 1);
+  g.fillCircle(9, 9, 3);
+  g.fillStyle(0xfff4c2, 1);
+  g.fillRect(5, 4, 2, 2);
+  g.generateTexture(TEX_GOLD, 16, 16);
+
   g.destroy();
   logger.info('Generated procedural fallback textures');
 }
@@ -375,6 +389,7 @@ function getEntityType(world: GameWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Npc)) return 'npc';
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
+  if (hasComponent(world.ecs, eid, Gold)) return 'gold';
   if (hasComponent(world.ecs, eid, LineDamage)) return 'beam';
   if (hasComponent(world.ecs, eid, MeleeSwing)) return 'melee_swing';
   if (hasComponent(world.ecs, eid, Trap)) return 'trap';
@@ -512,6 +527,8 @@ function getProceduralTextureForType(type: string): string {
       return TEX_ENEMY_SLIME;
     case 'gem':
       return TEX_GEM;
+    case 'gold':
+      return TEX_GOLD;
     case 'proj':
       return TEX_BULLET;
     case 'enemy_proj':
@@ -607,6 +624,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
+  /** Tracks first-seen render time for XP gems so the bob phase is per-gem. */
+  const gemSpawnMs = new Map<number, number>();
+  /** Ground shadow ellipses for each XP gem entity. */
+  const gemShadows = new Map<number, Phaser.GameObjects.Ellipse>();
+  /** Tracks first-seen render time for gold drops so the bob phase is per-coin. */
+  const goldSpawnMs = new Map<number, number>();
+  /** Ground shadow ellipses for each gold entity. */
+  const goldShadows = new Map<number, Phaser.GameObjects.Ellipse>();
   const combatVfx = createCombatVfx(scene);
   const goreVfx =
     typeof scene.add.rectangle === 'function'
@@ -1104,6 +1129,57 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             break;
           }
 
+          case 'gem': {
+            // Floating bob: sine-wave offset so each gem feels alive. Phase
+            // offset by eid so nearby gems bob out of sync with each other.
+            if (!gemSpawnMs.has(eid)) {
+              gemSpawnMs.set(eid, renderElapsedMs);
+              // Create a faint ground shadow once on first sight (guarded so
+              // test environments without Phaser ellipse support still work).
+              if (typeof scene.add.ellipse === 'function') {
+                const shadow = scene.add.ellipse(x, y + 10, 18, 6, 0x000000, 0.28);
+                shadow.setDepth(img.depth - 1);
+                gemShadows.set(eid, shadow);
+              }
+            }
+            const phaseOffset = (eid % 13) * 0.48;
+            const elapsed = renderElapsedMs - (gemSpawnMs.get(eid) ?? renderElapsedMs);
+            const bob = Math.sin(elapsed * 0.007 + phaseOffset) * 5;
+            img.setPosition(x, y + bob);
+            img.setAlpha(1);
+            img.setScale(visual.baseScale);
+            // Keep shadow pinned to the ground under the bobbing gem.
+            const shadow = gemShadows.get(eid);
+            if (shadow) {
+              shadow.setPosition(x, y + 10);
+            }
+            break;
+          }
+
+          case 'gold': {
+            // Bobbing coin drop: same sine-wave pattern as gems but slightly
+            // faster and smaller amplitude so coins feel lighter than crystals.
+            if (!goldSpawnMs.has(eid)) {
+              goldSpawnMs.set(eid, renderElapsedMs);
+              if (typeof scene.add.ellipse === 'function') {
+                const shadow = scene.add.ellipse(x, y + 9, 14, 5, 0x000000, 0.25);
+                shadow.setDepth(img.depth - 1);
+                goldShadows.set(eid, shadow);
+              }
+            }
+            const phaseOffset = (eid % 11) * 0.57;
+            const elapsed = renderElapsedMs - (goldSpawnMs.get(eid) ?? renderElapsedMs);
+            const bob = Math.sin(elapsed * 0.009 + phaseOffset) * 4;
+            img.setPosition(x, y + bob);
+            img.setAlpha(1);
+            img.setScale(visual.baseScale);
+            const shadow = goldShadows.get(eid);
+            if (shadow) {
+              shadow.setPosition(x, y + 9);
+            }
+            break;
+          }
+
           default:
             img.setAlpha(1);
             img.setRotation(0);
@@ -1168,6 +1244,28 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         arcSpawnMs.delete(eid);
       }
 
+      // Iterate the spawn-time maps (always populated on first sight), not the
+      // shadow maps (only populated when the scene supports add.ellipse), so
+      // gem/gold entities clean up even in headless/test render paths that never
+      // create a ground shadow. Destroy the shadow only if one exists.
+      for (const [eid] of gemSpawnMs) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        gemShadows.get(eid)?.destroy();
+        gemShadows.delete(eid);
+        gemSpawnMs.delete(eid);
+      }
+
+      for (const [eid] of goldSpawnMs) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        goldShadows.get(eid)?.destroy();
+        goldShadows.delete(eid);
+        goldSpawnMs.delete(eid);
+      }
+
       const deltaMs =
         lastRenderMs === null ? 16 : Math.max(1, Math.min(50, renderElapsedMs - lastRenderMs));
       lastRenderMs = renderElapsedMs;
@@ -1210,6 +1308,19 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
       arcGraphics.clear();
       arcSpawnMs.clear();
+
+      for (const shadow of gemShadows.values()) {
+        shadow.destroy();
+      }
+      gemShadows.clear();
+      gemSpawnMs.clear();
+
+      for (const shadow of goldShadows.values()) {
+        shadow.destroy();
+      }
+      goldShadows.clear();
+      goldSpawnMs.clear();
+
       goreVfx?.destroy();
       corpseShatterVfx?.destroy();
       effectsVfx.destroy();
