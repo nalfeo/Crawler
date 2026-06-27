@@ -355,14 +355,25 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       await loadSeededDevtools();
       // The check-in button confirms before pushing/filing; accept the dialog.
       page.once('dialog', (dialog) => void dialog.accept());
-      const checkinRequest = page.waitForRequest((req) => req.url().includes('/api/checkin'));
+      // Gate on the mocked /api/checkin response so the assertions below run once
+      // the success result has been rendered.
+      const checkinResponse = page.waitForResponse((res) => res.url().includes('/api/checkin'));
       await page.getByRole('button', { name: /^Check in to GitHub$/ }).click();
-      await checkinRequest;
+      await checkinResponse;
       const issueLink = page.getByRole('link', { name: /View asset-checkin issue/ });
       await issueLink.waitFor({ state: 'visible', timeout: 10_000 });
       expect(await issueLink.getAttribute('href')).toBe(
         'https://github.com/nalfeo/Crawler/issues/99',
       );
+      expect(await page.locator('body').textContent()).toContain('Checked in 1 asset on');
+      // Regression guard (issue #1 follow-up): the result + filed-issue link must
+      // PERSIST. They used to live on the shared workflow-status line, which the
+      // 1s renderWorkflowSelection poll overwrote with "Next: ..." within a
+      // second — making the issue link vanish before the operator could click it.
+      // The result now renders in a dedicated element; assert it survives a full
+      // poll cycle (the poll interval is 1s).
+      await page.waitForTimeout(1_200);
+      expect(await issueLink.isVisible()).toBe(true);
       expect(await page.locator('body').textContent()).toContain('Checked in 1 asset on');
     } finally {
       await page.unroute('**/api/checkin');
