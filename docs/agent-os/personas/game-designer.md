@@ -48,6 +48,19 @@ optimizer filling a spreadsheet.
 - Expose balance parameters through lil-gui so seeds and edge cases can be explored quickly.
 - Add balance tests and document intended outcomes for key tuning knobs.
 
+## Observe Before Done
+
+- For any visual or runtime change, reading the diff or source is **not**
+  verification. Before claiming a mechanic works, reproduce the old/broken behavior
+  in the running artifact — your lab via `npm run lab` (`?lab=<name>`) or the game
+  via `npm run dev` — and capture it (screenshot, a `tests/e2e/helpers/ui-probe.ts`
+  probe, or headless `RunStats`), then re-observe after the change to confirm the
+  behavior actually shifted. State the before/after observation in the PR/handoff.
+- Promote any recurring visual/runtime bug class into a **deterministic** check —
+  `tests/e2e/helpers/pixels.ts` / `ui-probe.ts` (see `tests/e2e/hud-overlap-visual.test.ts`)
+  or a headless assertion (see `tests/headless/floor1-completion.test.ts`).
+  Deterministic only — never an LLM-as-judge in CI.
+
 ## Quality Criteria
 
 - Every gameplay system has a corresponding lab.
