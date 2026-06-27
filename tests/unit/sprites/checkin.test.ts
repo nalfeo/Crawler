@@ -1,0 +1,221 @@
+/**
+ * Unit tests for checkin.ts.
+ *
+ * The pure planner (`planAssetCheckin`) is asserted directly. The executor
+ * (`runAssetCheckin`) is exercised with a fully faked `exec` + fs hooks so we
+ * can assert the exact git/gh command sequence without a real repo or network.
+ */
+
+import { describe, expect, it } from 'vitest';
+import {
+  ASSET_CHECKIN_LABEL,
+  ASSET_CHECKIN_MARKER,
+  ASSET_SURFACE_PATHS,
+  CheckinError,
+  detectApprovedAssets,
+  planAssetCheckin,
+  runAssetCheckin,
+  type CheckinAsset,
+  type Exec,
+  type ExecResult,
+} from '../../../scripts/sprites/checkin.js';
+import { parseAssetIssueBody } from '../../../scripts/sprites/asset-issues.js';
+
+const FIXED_NOW = new Date('2026-06-08T19:08:15.000Z');
+
+function asset(overrides: Partial<CheckinAsset> = {}): CheckinAsset {
+  return {
+    assetPath: 'generated/skull-mace-var-2.png',
+    manifestKey: 'skull-mace-var-2',
+    briefId: 'skull-mace',
+    variantIndex: 2,
+    ...overrides,
+  };
+}
+
+describe('planAssetCheckin', () => {
+  it('derives a deterministic branch, commit, and issue title from the assets', () => {
+    const plan = planAssetCheckin({ assets: [asset()], now: FIXED_NOW });
+    expect(plan.branch).toMatch(/^assets\/checkin-20260608-190815-[0-9a-f]{6}$/);
+    expect(plan.baseBranch).toBe('main');
+    expect(plan.commitMessage).toBe('feat(sprites): check in 1 approved asset');
+    expect(plan.issueTitle).toContain('1 approved asset');
+    expect(plan.labels).toEqual([ASSET_CHECKIN_LABEL]);
+    expect(plan.paths).toEqual([...ASSET_SURFACE_PATHS]);
+  });
+
+  it('pluralizes the noun for multiple assets', () => {
+    const plan = planAssetCheckin({
+      assets: [asset(), asset({ assetPath: 'generated/iron-sword-var-1.png' })],
+      now: FIXED_NOW,
+    });
+    expect(plan.commitMessage).toBe('feat(sprites): check in 2 approved assets');
+    expect(plan.issueTitle).toContain('2 approved assets');
+  });
+
+  it('is stable for the same asset set and varies across different sets', () => {
+    const a = planAssetCheckin({ assets: [asset()], now: FIXED_NOW });
+    const b = planAssetCheckin({ assets: [asset()], now: FIXED_NOW });
+    const c = planAssetCheckin({
+      assets: [asset({ assetPath: 'generated/other-var-1.png', manifestKey: 'other-var-1' })],
+      now: FIXED_NOW,
+    });
+    expect(a.branch).toBe(b.branch);
+    expect(a.branch).not.toBe(c.branch);
+  });
+
+  it('honors an explicit slug and base branch', () => {
+    const plan = planAssetCheckin({
+      assets: [asset()],
+      now: FIXED_NOW,
+      slug: 'my-slug',
+      baseBranch: 'develop',
+    });
+    expect(plan.branch).toBe('assets/my-slug');
+    expect(plan.baseBranch).toBe('develop');
+  });
+
+  it('embeds a machine-readable payload that round-trips through parseAssetIssueBody', () => {
+    const plan = planAssetCheckin({ assets: [asset()], now: FIXED_NOW, slug: 'roundtrip' });
+    expect(plan.issueBody).toContain(`<!-- ${ASSET_CHECKIN_MARKER}`);
+    const payload = parseAssetIssueBody(plan.issueBody);
+    expect(payload).not.toBeNull();
+    expect(payload!.branch).toBe('assets/roundtrip');
+    expect(payload!.assets).toEqual([asset()]);
+  });
+});
+
+/** Records every exec call and returns canned results keyed by a matcher. */
+function makeFakeExec(
+  responder: (command: string, args: readonly string[]) => Partial<ExecResult>,
+): { exec: Exec; calls: Array<{ command: string; args: string[]; cwd?: string }> } {
+  const calls: Array<{ command: string; args: string[]; cwd?: string }> = [];
+  const exec: Exec = (command, args, options) => {
+    calls.push({ command, args: [...args], cwd: options?.cwd });
+    const result = responder(command, args);
+    return Promise.resolve({ stdout: '', stderr: '', code: 0, ...result });
+  };
+  return { exec, calls };
+}
+
+describe('runAssetCheckin', () => {
+  const baseDeps = () => ({
+    copyArtSurface: () => Promise.resolve(),
+    makeTempDir: () => Promise.resolve('/tmp/checkin-xyz'),
+    removeDir: () => Promise.resolve(),
+    now: () => FIXED_NOW,
+    env: {} as NodeJS.ProcessEnv,
+  });
+
+  it('refuses to run under CI', async () => {
+    const { exec } = makeFakeExec(() => ({}));
+    await expect(
+      runAssetCheckin('/repo', { ...baseDeps(), exec, env: { CI: 'true' } }),
+    ).rejects.toMatchObject({ kind: 'ci-refused' });
+  });
+
+  it('throws nothing-to-checkin when no art differs from the base', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') return { stdout: '\n' };
+      return {};
+    });
+    await expect(runAssetCheckin('/repo', { ...baseDeps(), exec })).rejects.toMatchObject({
+      kind: 'nothing-to-checkin',
+    });
+  });
+
+  it('cuts a branch, pushes (no PR), and files the issue', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      if (command === 'gh') {
+        return { stdout: 'https://github.com/nalfeo/Crawler/issues/42\n' };
+      }
+      return {};
+    });
+
+    const result = await runAssetCheckin('/repo', {
+      ...baseDeps(),
+      exec,
+      readManifest: () =>
+        Promise.resolve({
+          entries: {
+            'skull-mace-var-2': {
+              assetPath: 'generated/skull-mace-var-2.png',
+              briefId: 'skull-mace',
+              variantIndex: 2,
+            },
+          },
+        }),
+    });
+
+    expect(result.issueUrl).toBe('https://github.com/nalfeo/Crawler/issues/42');
+    expect(result.branch).toBe(result.plan.branch);
+
+    const commandLine = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    // fetch base, diff, worktree add, add, commit, push, gh issue create, worktree remove.
+    expect(commandLine.some((l) => l.startsWith('git fetch origin main'))).toBe(true);
+    expect(commandLine.some((l) => l.includes('worktree add'))).toBe(true);
+    expect(commandLine.some((l) => l.startsWith('git commit -m'))).toBe(true);
+    expect(commandLine.some((l) => l.startsWith('git push -u origin assets/'))).toBe(true);
+    expect(commandLine.some((l) => l.startsWith('gh issue create'))).toBe(true);
+    // No PR is ever opened.
+    expect(commandLine.some((l) => l.includes('pr create'))).toBe(false);
+    // The pushed asset is enriched from the manifest.
+    expect(result.plan.assets[0]).toMatchObject({ briefId: 'skull-mace', variantIndex: 2 });
+  });
+
+  it('removes the throwaway worktree even when push fails', async () => {
+    const { exec, calls } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return { stdout: 'public/assets/generated/skull-mace-var-2.png\n' };
+      }
+      if (command === 'git' && args[0] === 'push') {
+        return { code: 1, stderr: 'remote rejected' };
+      }
+      return {};
+    });
+
+    await expect(runAssetCheckin('/repo', { ...baseDeps(), exec })).rejects.toBeInstanceOf(
+      CheckinError,
+    );
+    const commandLine = calls.map((c) => `${c.command} ${c.args.join(' ')}`);
+    expect(commandLine.some((l) => l.includes('worktree remove'))).toBe(true);
+  });
+});
+
+describe('detectApprovedAssets', () => {
+  it('maps changed PNGs to repo-relative-under-public/assets paths and enriches them', async () => {
+    const { exec } = makeFakeExec((command, args) => {
+      if (command === 'git' && args[0] === 'diff') {
+        return {
+          stdout:
+            'public/assets/generated/foo-var-1.png\n' +
+            'public/assets/generated/manifest.json\n' + // non-png ignored
+            'public/assets/generated/bar-var-3.png\n',
+        };
+      }
+      return {};
+    });
+    const assets = await detectApprovedAssets(exec, '/repo', 'origin', 'main', {
+      entries: {
+        'foo-var-1': { assetPath: 'generated/foo-var-1.png', briefId: 'foo', variantIndex: 1 },
+      },
+    });
+    expect(assets).toEqual([
+      {
+        assetPath: 'generated/foo-var-1.png',
+        manifestKey: 'foo-var-1',
+        briefId: 'foo',
+        variantIndex: 1,
+      },
+      {
+        assetPath: 'generated/bar-var-3.png',
+        manifestKey: null,
+        briefId: null,
+        variantIndex: null,
+      },
+    ]);
+  });
+});
