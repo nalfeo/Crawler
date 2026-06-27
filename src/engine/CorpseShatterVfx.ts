@@ -101,11 +101,16 @@ export function createCorpseShatterVfx(
   const specks: Speck[] = [];
   let lastRenderMs = 0;
 
-  // Lightweight non-deterministic RNG — VFX only, never game state.
-  let rngState = 0x9e3779b9;
+  // Lightweight non-deterministic RNG — VFX only, never game state. Uses the
+  // MINSTD LCG (multiplier 16807, modulus 2^31-1), matching GoreVfx.vfxRandom so
+  // every intermediate product stays within Number.MAX_SAFE_INTEGER. A 2^31
+  // modulus with a larger multiplier would overflow 2^53 and corrupt the low
+  // bits. Seed is the low 31 bits of the golden-ratio constant (non-zero,
+  // in-range) and distinct from GoreVfx's seed so the streams don't phase-lock.
+  let rngState = 0x9e3779b9 & 0x7fffffff;
   function rng(): number {
-    rngState = (rngState * 1103515245 + 12345) & 0x7fffffff;
-    return rngState / 0x7fffffff;
+    rngState = (rngState * 16807) % 2147483647;
+    return rngState / 2147483647;
   }
 
   function ignoreOnUiCamera(obj: Phaser.GameObjects.GameObject): void {

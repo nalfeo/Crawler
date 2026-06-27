@@ -104,7 +104,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     private world!: GameWorld;
     private respawnTimer = 0;
     private lastGoreEventCount = 0;
-    private lastCorpseExplosions = 0;
+    private corpseExplosionTotal = 0;
 
     constructor() {
       super({ key: 'GoreLabScene' });
@@ -191,7 +191,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
       this.lastGoreEventCount = this.world.combatEvents.filter(
         (e) => e.type === 'hit' || e.type === 'death',
       ).length;
-      this.lastCorpseExplosions += this.world.combatEvents.filter(
+      this.corpseExplosionTotal += this.world.combatEvents.filter(
         (e) => e.type === 'corpseExplode',
       ).length;
 
@@ -244,6 +244,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
     private resetWorld(): void {
       this.accumulator = 0;
       this.respawnTimer = 0;
+      this.corpseExplosionTotal = 0;
       this.world = createGameWorld({ seed: LAB_SEED });
       spawnPlayer(this.world, this.getSimWidth() / 2, this.getSimHeight() / 2 + 60);
       this.spawnTargetEnemy();
@@ -268,7 +269,7 @@ function createGoreLab(canvasHost: HTMLElement, controls: HTMLElement): () => vo
         `Weapon: ${def?.name ?? settings.activeWeapon}`,
         `Enemy HP: ${enemyHp.toFixed(0)} / ${settings.enemyHp}`,
         `Gore Events: ${this.lastGoreEventCount}`,
-        `Corpse Explosions: ${this.lastCorpseExplosions}`,
+        `Corpse Explosions: ${this.corpseExplosionTotal}`,
         `Intensity: ${settings.intensity.toFixed(1)}x`,
       ].join('\n');
     }
