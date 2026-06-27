@@ -5,8 +5,8 @@
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
     },
     "memory": {
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"]
+      "command": "node",
+      "args": ["scripts/agent/mcp-memory-server.mjs"]
     },
     "context7": {
       "command": "npx",

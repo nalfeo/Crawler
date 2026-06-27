@@ -5,10 +5,11 @@
 1. Run `bash scripts/agent/preflight.sh` at session start
 2. Select your persona from the routing matrix in `docs/agent-os/personas/README.md` (default to **Producer** for multi-layer or ambiguous tasks), then read that persona doc
 3. Check `docs/knowledge/handoffs/` for recent session context
-4. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
-5. Run `bash scripts/agent/verify.sh` before committing
-6. Write a handoff file before ending your session
-7. If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
+4. Load durable facts: call the memory MCP `read_graph` (or `search_nodes`) and skim `docs/knowledge/memory/` — see `docs/guides/agent-memory.md`
+5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
+6. Run `bash scripts/agent/verify.sh` before committing
+7. Write a handoff file before ending your session
+8. If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
 
 ## Commands
 
@@ -81,21 +82,22 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 
 ## Key Files
 
-| What                      | Where                             |
-| ------------------------- | --------------------------------- |
-| Docs hub & governance map | `docs/README.md`                  |
-| Architecture overview     | `docs/architecture.md`            |
-| Agent personas            | `docs/agent-os/personas/*.md`     |
-| Policies                  | `docs/agent-os/policies/*.md`     |
-| Architecture decisions    | `docs/knowledge/adr/*.md`         |
-| Specs                     | `.specify/specs/*.md`             |
-| Game design               | `docs/knowledge/game-design/*.md` |
-| Session handoffs          | `docs/knowledge/handoffs/*.md`    |
-| Guides                    | `docs/guides/*.md`                |
-| CI config                 | `.github/workflows/`              |
-| Automation loop scripts   | `scripts/agent/`                  |
-| Health metrics            | `docs/knowledge/metrics/`         |
-| SpecKit constitution      | `.specify/memory/constitution.md` |
+| What                      | Where                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| Docs hub & governance map | `docs/README.md`                                                                             |
+| Architecture overview     | `docs/architecture.md`                                                                       |
+| Agent personas            | `docs/agent-os/personas/*.md`                                                                |
+| Policies                  | `docs/agent-os/policies/*.md`                                                                |
+| Architecture decisions    | `docs/knowledge/adr/*.md`                                                                    |
+| Specs                     | `.specify/specs/*.md`                                                                         |
+| Game design               | `docs/knowledge/game-design/*.md`                                                            |
+| Session handoffs          | `docs/knowledge/handoffs/*.md`                                                               |
+| Agent memory              | `docs/guides/agent-memory.md`, `docs/knowledge/memory/`, `docs/knowledge/agent-memory.jsonl` |
+| Guides                    | `docs/guides/*.md`                                                                           |
+| CI config                 | `.github/workflows/`                                                                         |
+| Automation loop scripts   | `scripts/agent/`                                                                             |
+| Health metrics            | `docs/knowledge/metrics/`                                                                    |
+| SpecKit constitution      | `.specify/memory/constitution.md`                                                            |
 
 ## Rules
 

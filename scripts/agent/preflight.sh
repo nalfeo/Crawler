@@ -34,6 +34,12 @@ npx playwright install chromium
 echo "🔍 Preflight: Type checking..."
 npx tsc --noEmit
 
+echo "🧠 Preflight: Seeding agent memory graph..."
+# Creates and one-time-seeds the per-user live memory graph from the committed
+# snapshot so the MCP memory server has facts on first launch. Never overwrites
+# an existing live file. Non-fatal: memory is an enhancement, not a gate.
+node scripts/agent/mcp-memory-server.mjs --ensure || echo "⚠️  Memory seed skipped (non-fatal)"
+
 # Non-blocking persona-routing hint. Informational only — never fails the
 # preflight, never calls an LLM (keeps CI deterministic per the constitution).
 # Suggests a persona from changed paths if a diff vs main exists; otherwise just
