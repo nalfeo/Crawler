@@ -510,8 +510,7 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
 
   const candidateRooms = floorMap.roomGraph
     .getAll()
-    .filter((room) => room.role === RoomRole.NORMAL)
-    .slice();
+    .filter((room) => room.role === RoomRole.NORMAL);
   const requiredRoomCount =
     FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length * FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE;
   if (candidateRooms.length < requiredRoomCount) {
@@ -519,12 +518,7 @@ function spawnFloor1StaticSpawners(world: GameWorld): void {
       `Floor 1 requires at least ${requiredRoomCount} normal rooms for static spawners; got ${candidateRooms.length}.`,
     );
   }
-  for (let i = candidateRooms.length - 1; i > 0; i -= 1) {
-    const swapIndex = spawnerRng.nextInt(0, i);
-    const current = candidateRooms[i]!;
-    candidateRooms[i] = candidateRooms[swapIndex]!;
-    candidateRooms[swapIndex] = current;
-  }
+  spawnerRng.shuffle(candidateRooms);
 
   let roomCursor = 0;
   for (const archetypeId of FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS) {
