@@ -2,7 +2,7 @@
 
 **Status:** ✅ Implemented  
 **Layer:** `src/core/map/` + `src/game/floor1Scenario.ts`  
-**Labs:** `map-gen-lab`, `pathfinding-lab`, `fov-lab`, `door-lab`, `floor1-lab`
+**Labs:** `map-gen-lab`, `pathfinding-lab`, `fov-lab`, `door-lab`, `ai-runner`
 
 ---
 

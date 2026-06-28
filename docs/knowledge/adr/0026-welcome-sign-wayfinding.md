@@ -12,7 +12,7 @@ Accepted
 
 🍎 x 3 — game-layer placement logic + engine-layer baked-texture rendering +
 regression tests; spans two layers (`src/game`, `src/engine`) but adds no new
-ECS system and needs no new lab (Floor 1 already has `src/labs/floor-lab/`).
+ECS system and needs no new lab (Floor 1 coverage uses `ai-runner`).
 
 ## Context
 
