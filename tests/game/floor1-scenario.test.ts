@@ -51,6 +51,7 @@ import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getSpawnerArchetypeByIndex } from '../../src/game/spawners/registry.js';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -63,8 +64,11 @@ describe('floor1Scenario', () => {
     expect(world.floorMap).not.toBeNull();
     expect(world.floor1).not.toBeNull();
     expect(world.floor1?.protagonistName).toBe('Rhea Vale');
-    expect(world.floor1?.starterChoices).toHaveLength(3);
-    expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(3);
+    expect(world.floor1?.starterChoices).toHaveLength(6);
+    expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(6);
+    for (const weaponId of world.floor1?.starterChoices ?? []) {
+      expect(getWeaponDef(weaponId)).toBeDefined();
+    }
   });
 
   it('places the rat-tail fetch item in a different room from the Spell Broker', () => {

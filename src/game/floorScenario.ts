@@ -109,6 +109,8 @@ const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
 const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = ['slime-pool', 'rats-nest'] as const;
+const FLOOR_1_MAX_STARTER_CHOICES = 6;
+const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
 // Native footprint of the welcome-sign sprite (board + baked "WELCOME" + arrow),
 // mirrored from the procedural texture in PhaserBridge (48x26 px) so the Sprite
@@ -231,16 +233,47 @@ function getPopulatedRooms(world: GameWorld): Set<number> {
 }
 
 function pickStarterChoices(world: GameWorld): string[] {
-  const pool = [...floor1Config.starterWeapons];
-  const selected: string[] = [];
-  while (pool.length > 0 && selected.length < 3) {
-    const idx = world.rng.nextInt(0, pool.length - 1);
-    const id = pool.splice(idx, 1)[0];
-    if (id !== undefined) {
-      selected.push(id);
+  const seenWeaponIds = new Set<string>();
+  const pool: string[] = [];
+  for (const weaponId of floor1Config.starterWeapons) {
+    if (getWeaponDef(weaponId) === undefined || seenWeaponIds.has(weaponId)) {
+      continue;
+    }
+    seenWeaponIds.add(weaponId);
+    pool.push(weaponId);
+  }
+  if (pool.length > 0) {
+    // Preserve the historical world RNG progression from the old 3-choice picker
+    // so existing deterministic seed gates (headless/tests) stay stable.
+    // Keep legacy RNG advancement (3 draws) so existing deterministic seed-based
+    // headless/integration expectations remain stable after expanding choice count.
+    // TODO(seed-contract): Remove this compatibility shim only when we intentionally
+    // version and re-baseline deterministic seed expectations project-wide.
+    for (let remaining = Math.min(pool.length, 3); remaining > 0; remaining -= 1) {
+      world.rng.nextInt(0, remaining - 1);
+    }
+
+    const starterChoiceRng = new SeededRandom(
+      hashStringToSeed(`${world.seed}:floor1-starter-choices`),
+    );
+    const selected: string[] = [];
+    while (pool.length > 0 && selected.length < FLOOR_1_MAX_STARTER_CHOICES) {
+      const idx = starterChoiceRng.nextInt(0, pool.length - 1);
+      const id = pool.splice(idx, 1)[0];
+      if (id !== undefined) {
+        selected.push(id);
+      }
+    }
+    return selected;
+  }
+  for (const weaponId of FLOOR_1_FALLBACK_STARTER_WEAPON_IDS) {
+    // Return the first known-safe fallback weapon that still exists.
+    const fallbackWeapon = getWeaponDef(weaponId);
+    if (fallbackWeapon) {
+      return [fallbackWeapon.id];
     }
   }
-  return selected;
+  return [];
 }
 
 function centerOfRoom(room: { bounds: { x: number; y: number; width: number; height: number } }): {
