@@ -129,11 +129,24 @@ export const LOOT_TABLES = {
     ],
   } satisfies LootTable,
 
+  // Minor boss (slime-rat mid-floor encounter): dramatic but not final-boss scale.
+  // Drops a shower of XP gems + gold coins for a satisfying mid-floor payoff.
+  BOSS_MINOR: {
+    id: 'boss_minor',
+    entries: [
+      { type: 'xp' as const, value: 2, chance: 1.0, min: 4, max: 8 },
+      { type: 'gold' as const, value: 5, chance: 1.0, min: 14, max: 20 },
+      { type: 'item' as const, itemId: 'iron-ore', value: 1, chance: 0.3, min: 1, max: 1 },
+    ],
+  } satisfies LootTable,
+
+  // Major boss (staircase end-of-floor): the climactic finale drop.
+  // Many XP gems + a big haul of gold so the kill looks spectacular.
   BOSS: {
     id: 'boss',
     entries: [
-      { type: 'xp' as const, value: 20, chance: 1.0, min: 3, max: 5 },
-      { type: 'gold' as const, value: 10, chance: 1.0, min: 5, max: 15 },
+      { type: 'xp' as const, value: 2, chance: 1.0, min: 10, max: 16 },
+      { type: 'gold' as const, value: 8, chance: 1.0, min: 20, max: 28 },
       { type: 'item' as const, itemId: 'iron-ore', value: 1, chance: 0.5, min: 1, max: 3 },
     ],
   } satisfies LootTable,
@@ -142,7 +155,9 @@ export const LOOT_TABLES = {
   FLOOR_1: {
     id: 'floor_1',
     entries: [
-      { type: 'xp' as const, value: 4, chance: 1.0, min: 1, max: 1 },
+      // Reduced from value 4 → 1 so regular kills contribute ~2 XP each (BASIC_MELEE+FLOOR_1).
+      // Boss kills now provide the bulk of XP so the player reaches ~level 6 by floor end.
+      { type: 'xp' as const, value: 1, chance: 1.0, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'pebble', value: 1, chance: 0.2, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'rusted-scrap', value: 1, chance: 0.14, min: 1, max: 1 },
       { type: 'item' as const, itemId: 'old-sock', value: 1, chance: 0.08, min: 1, max: 1 },

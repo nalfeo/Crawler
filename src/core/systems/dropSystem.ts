@@ -68,18 +68,32 @@ export interface DropSystemOptions {
 
 /**
  * Resolve which loot tables apply for a given enemy.
- * Currently uses BASIC_MELEE for all enemies + floor-level table.
- * Future: read enemy-type component and area context.
+ * Boss entities (tracked via floor1 objective bossBattles) receive a dedicated
+ * boss-tier loot table instead of the standard BASIC_MELEE + floor bonus.
+ * BOSS_MINOR is used for the mid-floor Slime Rat encounter; BOSS for the final
+ * Rat Slime staircase boss.
  */
 function getEnemyLootTables(
   world: GameWorld,
-  _eid: number,
+  eid: number,
 ): {
   entityTable?: LootTable;
   typeTable?: LootTable;
   areaTable?: LootTable;
   floorTable?: LootTable;
 } {
+  // Detect boss entities by checking the floor 1 boss battle registry.
+  // dropSystem runs before floorObjectiveSystem each frame, so bossEid is still
+  // set when we process the death; it gets nulled out later that same tick.
+  if (world.floor1?.objective?.bossBattles) {
+    for (const [battleKey, battle] of world.floor1.objective.bossBattles) {
+      if (battle.bossEid === eid) {
+        const bossTable = battleKey === 'slime-rat' ? LOOT_TABLES.BOSS_MINOR : LOOT_TABLES.BOSS;
+        return { typeTable: bossTable };
+      }
+    }
+  }
+
   return {
     typeTable: LOOT_TABLES.BASIC_MELEE,
     floorTable: world.floor === 1 ? LOOT_TABLES.FLOOR_1 : undefined,
