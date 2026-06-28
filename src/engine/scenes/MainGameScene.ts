@@ -1364,22 +1364,23 @@ export class MainGameScene extends Phaser.Scene {
     const field = this.lightField;
     if (!floorMap || !rt || !field || this.playerEid < 0) return;
 
+    const viewRect = this.getLightingViewRect(field);
+    const viewRectUnchanged =
+      this.lightingLastViewRect !== undefined &&
+      this.areLightingRectsEqual(this.lightingLastViewRect, viewRect);
     const shouldSkip =
       !force &&
       !this.lightingDirty &&
       this.lighting.updateEveryNFrames > 1 &&
-      this.world.frameCount % this.lighting.updateEveryNFrames !== 0;
+      this.world.frameCount % this.lighting.updateEveryNFrames !== 0 &&
+      viewRectUnchanged;
     if (shouldSkip) {
       return;
     }
 
     const px = ftToPx(this.world.stores.position.x[this.playerEid] ?? 0);
     const py = ftToPx(this.world.stores.position.y[this.playerEid] ?? 0);
-    const viewRect = this.getLightingViewRect(field);
     const sourceUnchanged = this.lightingLastSource?.x === px && this.lightingLastSource?.y === py;
-    const viewRectUnchanged =
-      this.lightingLastViewRect !== undefined &&
-      this.areLightingRectsEqual(this.lightingLastViewRect, viewRect);
     if (!force && !this.lightingDirty && sourceUnchanged && viewRectUnchanged) {
       return;
     }
