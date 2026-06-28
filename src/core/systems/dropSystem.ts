@@ -30,6 +30,7 @@ import {
   rollLootTable,
   resolveLootTables,
   LOOT_TABLES,
+  getLootTable,
   type LootDrop,
   type LootTable,
 } from '../../shared/loot-tables.js';
@@ -86,9 +87,11 @@ function getEnemyLootTables(
   // dropSystem runs before floorObjectiveSystem each frame, so bossEid is still
   // set when we process the death; it gets nulled out later that same tick.
   if (world.floor1?.objective?.bossBattles) {
-    for (const [battleKey, battle] of world.floor1.objective.bossBattles) {
+    for (const battle of world.floor1.objective.bossBattles.values()) {
       if (battle.bossEid === eid) {
-        const bossTable = battleKey === 'slime-rat' ? LOOT_TABLES.BOSS_MINOR : LOOT_TABLES.BOSS;
+        // Use the loot table ID stored on the encounter config; fall back to BOSS.
+        const bossTable =
+          (battle.lootTableId ? getLootTable(battle.lootTableId) : undefined) ?? LOOT_TABLES.BOSS;
         return { typeTable: bossTable };
       }
     }
