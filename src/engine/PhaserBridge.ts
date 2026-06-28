@@ -725,6 +725,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
 
       for (const eid of entities) {
+        if (hasComponent(world.ecs, eid, Prop)) {
+          // Props are rendered in a dedicated pass below.
+          continue;
+        }
         activeEntities.add(eid);
 
         const entityType = getEntityType(world, eid);

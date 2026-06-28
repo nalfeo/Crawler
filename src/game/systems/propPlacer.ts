@@ -12,7 +12,7 @@
 
 import { TerrainType, RoomRole } from '../../shared/map-types.js';
 import type { BiomeTag } from '../../shared/biome-tags.js';
-import type { PropCategory } from '../../shared/decorationDefs.js';
+import type { PlacementZone, PropCategory } from '../../shared/decorationDefs.js';
 import { DECORATION_DEFS } from '../../shared/decorationDefs.js';
 import { spawnProp } from '../../core/helpers.js';
 import type { GameWorld } from '../../core/world.js';
@@ -56,7 +56,7 @@ const SPECIAL_ROLES = new Set([RoomRole.SPAWN, RoomRole.SAFE, RoomRole.BOSS_STAI
  * Build a Set of tile indices belonging to special rooms (SPAWN / SAFE / BOSS_STAIR).
  * Props with placementZone 'anywhere' skip these tiles.
  */
-function buildSpecialRoomMask(floorMap: FloorMap): Set<number> {
+export function buildSpecialRoomMask(floorMap: FloorMap): Set<number> {
   const mask = new Set<number>();
   const w = floorMap.width;
   for (const room of floorMap.rooms) {
@@ -75,7 +75,7 @@ function buildSpecialRoomMask(floorMap: FloorMap): Set<number> {
  * Build a Set of tile indices inside NORMAL rooms.
  * Used for 'room-only' placement.
  */
-function buildNormalRoomMask(floorMap: FloorMap): Set<number> {
+export function buildNormalRoomMask(floorMap: FloorMap): Set<number> {
   const mask = new Set<number>();
   const w = floorMap.width;
   for (const room of floorMap.rooms) {
@@ -118,9 +118,9 @@ function hasAdjacentWall(
 /**
  * Collect all candidate tiles for the given placement zone.
  */
-function resolveCandidates(
+export function resolveCandidates(
   floorMap: FloorMap,
-  zone: string,
+  zone: PlacementZone,
   specialMask: Set<number>,
   normalRoomMask: Set<number>,
 ): Candidate[] {
