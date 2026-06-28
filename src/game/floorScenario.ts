@@ -305,9 +305,9 @@ function resolvePassableRoomCenter(
 
 /**
  * Spawn harvestable resource nodes (mushrooms, flowers, lichens) across the
- * normal rooms of floor 1. Each def in HARVESTABLE_DEFS spawns up to
+ * normal and spawn rooms of floor 1. Each def in HARVESTABLE_DEFS spawns up to
  * `def.maxPerFloor` nodes, placed at randomly selected passable tiles in rooms
- * that are not special (not safe room, not boss/stair room, not spawn room).
+ * with role NORMAL or SPAWN (i.e. not safe room, boss room, or stair room).
  * Uses `world.rng` for all randomness.
  */
 function spawnFloor1HarvestableNodes(world: GameWorld): void {
