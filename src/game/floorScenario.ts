@@ -104,6 +104,10 @@ const FLOOR_1_CAMERA_ZOOM = floor1Config.camera.zoom;
 const FLOOR_1_VIEWPORT_WIDTH_FT = pxToFt(GAME.WIDTH / FLOOR_1_CAMERA_ZOOM);
 const FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT = FLOOR_1_VIEWPORT_WIDTH_FT * 2;
 const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
+const FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT = floor1EnemyPack.spawnRadiusMin;
+const UNBOUNDED_SPAWN_DISTANCE_SQ = Number.POSITIVE_INFINITY;
+/** Tiles with ≤ 2 cardinal passable neighbors are treated as narrow chokepoints. */
+const MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE = 2;
 /**
  * Minimum distance (ft) a pre-populated room-wave enemy must keep from the
  * player, so a wave reads as already occupying the room rather than spawning on
@@ -1249,17 +1253,18 @@ function resolveSpawnPosition(
     return { x: playerX + pack.spawnRadiusMin, y: playerY };
   }
   const outerRadius = Math.max(pack.spawnRadiusMin, maxRadius);
+  const minSpawnDistSq = pack.spawnRadiusMin * pack.spawnRadiusMin;
+  const maxSpawnDistSq = outerRadius * outerRadius;
   for (let attempt = 0; attempt < 16; attempt += 1) {
     const angle = world.rng.next() * Math.PI * 2;
     const radius = pack.spawnRadiusMin + world.rng.next() * (outerRadius - pack.spawnRadiusMin);
     const x = playerX + Math.cos(angle) * radius;
     const y = playerY + Math.sin(angle) * radius;
-    if (floorMap.isPassableAt(x, y)) {
-      const tile = floorMap.worldToTile(x, y);
-      const candidate = floorMap.tileToWorld(tile.x, tile.y);
-      if (isInAnyRoom(world, candidate.x, candidate.y)) {
-        return candidate;
-      }
+    const tile = floorMap.worldToTile(x, y);
+    if (
+      isValidEnemySpawnTile(world, tile.x, tile.y, playerX, playerY, minSpawnDistSq, maxSpawnDistSq)
+    ) {
+      return floorMap.tileToWorld(tile.x, tile.y);
     }
   }
   const viableRooms = floorMap.rooms.filter(
@@ -1274,13 +1279,31 @@ function resolveSpawnPosition(
       const maxY = Math.max(minY, room.bounds.y + room.bounds.height - 2);
       const tx = world.rng.nextInt(minX, maxX);
       const ty = world.rng.nextInt(minY, maxY);
-      const candidate = floorMap.tileToWorld(tx, ty);
-      if (floorMap.isPassableAt(candidate.x, candidate.y)) {
-        return candidate;
+      if (isValidEnemySpawnTile(world, tx, ty, playerX, playerY, minSpawnDistSq, maxSpawnDistSq)) {
+        return floorMap.tileToWorld(tx, ty);
       }
     }
   }
   const fallbackTile = floorMap.worldToTile(playerX + pack.spawnRadiusMin, playerY);
+  const maxSearchRadiusTiles = Math.ceil(outerRadius / floorMap.config.tileSizeFt) + 1;
+  for (let radius = 0; radius <= maxSearchRadiusTiles; radius += 1) {
+    for (let dy = -radius; dy <= radius; dy += 1) {
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        // Only evaluate the current square ring perimeter to avoid re-checking
+        // interior tiles from smaller radii.
+        if (!isOnSquarePerimeter(dx, dy, radius)) {
+          continue;
+        }
+        const tx = fallbackTile.x + dx;
+        const ty = fallbackTile.y + dy;
+        if (
+          isValidEnemySpawnTile(world, tx, ty, playerX, playerY, minSpawnDistSq, maxSpawnDistSq)
+        ) {
+          return floorMap.tileToWorld(tx, ty);
+        }
+      }
+    }
+  }
   return floorMap.tileToWorld(fallbackTile.x, fallbackTile.y);
 }
 
@@ -1424,21 +1447,6 @@ function isFullyInsideObjectiveRoom(
     }
   }
   return true;
-}
-
-function isInAnyRoom(world: GameWorld, px: number, py: number): boolean {
-  const floorMap = world.floorMap;
-  if (!floorMap) {
-    return false;
-  }
-  const tile = floorMap.worldToTile(px, py);
-  for (const room of floorMap.rooms) {
-    const { x, y, width, height } = room.bounds;
-    if (tile.x >= x && tile.x < x + width && tile.y >= y && tile.y < y + height) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function spawnFloor1StairBoss(world: GameWorld): number {
@@ -1740,22 +1748,96 @@ function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
  * Whether an ambient spawn position is unusable: beyond `maxDistanceSq` of the
  * player, not inside any room, or inside the boss-stair / a safe room.
  */
+function countCardinalPassableNeighbors(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  tx: number,
+  ty: number,
+): number {
+  let neighbors = 0;
+  for (const [dx, dy] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    const nx = tx + dx;
+    const ny = ty + dy;
+    if (floorMap.tileMap.isPassable(nx, ny)) {
+      neighbors += 1;
+    }
+  }
+  return neighbors;
+}
+
+function isNarrowSpawnTile(
+  floorMap: NonNullable<GameWorld['floorMap']>,
+  tx: number,
+  ty: number,
+): boolean {
+  return (
+    countCardinalPassableNeighbors(floorMap, tx, ty) <= MAX_PASSABLE_NEIGHBORS_FOR_NARROW_SPAWN_TILE
+  );
+}
+
+function isOnSquarePerimeter(dx: number, dy: number, radius: number): boolean {
+  return Math.abs(dx) === radius || Math.abs(dy) === radius;
+}
+
+function isValidEnemySpawnTile(
+  world: GameWorld,
+  tx: number,
+  ty: number,
+  playerX: number,
+  playerY: number,
+  minDistanceSq: number,
+  maxDistanceSq: number,
+): boolean {
+  const floorMap = world.floorMap;
+  if (!floorMap || !floorMap.tileMap.inBounds(tx, ty)) {
+    return false;
+  }
+  if (!floorMap.tileMap.isPassable(tx, ty) || floorMap.tileMap.isDoor(tx, ty)) {
+    return false;
+  }
+  const roomId = floorMap.roomGraph.getRoomAt(tx, ty);
+  if (roomId < 0) {
+    return false;
+  }
+  const room = floorMap.roomGraph.get(roomId);
+  if (!room || room.role === RoomRole.SAFE || room.role === RoomRole.BOSS_STAIR) {
+    return false;
+  }
+  const terrain = floorMap.terrain[ty * floorMap.width + tx];
+  if (terrain === TerrainType.CORRIDOR || isNarrowSpawnTile(floorMap, tx, ty)) {
+    return false;
+  }
+  const candidate = floorMap.tileToWorld(tx, ty);
+  const distanceSq = distSq(candidate.x, candidate.y, playerX, playerY);
+  return distanceSq >= minDistanceSq && distanceSq <= maxDistanceSq;
+}
+
 function isInvalidAmbientSpawn(
   world: GameWorld,
   x: number,
   y: number,
   playerX: number,
   playerY: number,
+  minDistanceSq: number,
   maxDistanceSq: number,
 ): boolean {
-  return (
-    distSq(x, y, playerX, playerY) > maxDistanceSq ||
-    !isInAnyRoom(world, x, y) ||
-    isInRoom(world, x, y, world.floorMap?.bossStairRoom ?? null) ||
-    (world.floorMap?.roomGraph
-      .getRoomsByRole(RoomRole.SAFE)
-      .some((r) => isInRoom(world, x, y, r)) ??
-      false)
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return true;
+  }
+  const tile = floorMap.worldToTile(x, y);
+  return !isValidEnemySpawnTile(
+    world,
+    tile.x,
+    tile.y,
+    playerX,
+    playerY,
+    minDistanceSq,
+    maxDistanceSq,
   );
 }
 
@@ -1771,10 +1853,22 @@ function resolveAmbientSpawnPoint(
   playerY: number,
 ): { x: number; y: number } | null {
   const pack = floor1EnemyPack;
+  const minDistanceSq =
+    FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT * FLOOR_1_AMBIENT_MIN_PLAYER_DISTANCE_FT;
   const maxDistanceSq =
     FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT * FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
   const ringPoint = resolveSpawnPosition(world, playerX, playerY, pack.engageRadiusFt);
-  if (!isInvalidAmbientSpawn(world, ringPoint.x, ringPoint.y, playerX, playerY, maxDistanceSq)) {
+  if (
+    !isInvalidAmbientSpawn(
+      world,
+      ringPoint.x,
+      ringPoint.y,
+      playerX,
+      playerY,
+      minDistanceSq,
+      maxDistanceSq,
+    )
+  ) {
     return ringPoint;
   }
   const floorMap = world.floorMap;
@@ -1786,8 +1880,15 @@ function resolveAmbientSpawnPoint(
     const ty = world.rng.nextInt(0, floorMap.height - 1);
     const candidate = floorMap.tileToWorld(tx, ty);
     if (
-      floorMap.isPassableAt(candidate.x, candidate.y) &&
-      !isInvalidAmbientSpawn(world, candidate.x, candidate.y, playerX, playerY, maxDistanceSq)
+      !isInvalidAmbientSpawn(
+        world,
+        candidate.x,
+        candidate.y,
+        playerX,
+        playerY,
+        minDistanceSq,
+        maxDistanceSq,
+      )
     ) {
       return candidate;
     }
@@ -1817,14 +1918,23 @@ function resolveRoomInteriorSpawn(
     if (!tile) {
       return null;
     }
-    const candidate = floorMap.tileToWorld(tile.x, tile.y);
-    if (!floorMap.isPassableAt(candidate.x, candidate.y)) {
+    if (
+      !isValidEnemySpawnTile(
+        world,
+        tile.x,
+        tile.y,
+        playerX,
+        playerY,
+        minSpawnDistSq,
+        UNBOUNDED_SPAWN_DISTANCE_SQ,
+      )
+    ) {
       continue;
     }
-    if (distSq(candidate.x, candidate.y, playerX, playerY) < minSpawnDistSq) {
+    if (floorMap.roomGraph.getRoomAt(tile.x, tile.y) !== roomId) {
       continue;
     }
-    return candidate;
+    return floorMap.tileToWorld(tile.x, tile.y);
   }
   return null;
 }

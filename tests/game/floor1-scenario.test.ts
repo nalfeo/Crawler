@@ -35,7 +35,7 @@ import { getActiveWeapon } from '../../src/game/weaponSystem.js';
 import { isQuestComplete, questSystem } from '../../src/core/systems/questSystem.js';
 import { doorSystem } from '../../src/core/systems/doorSystem.js';
 import { addItem, hasItem } from '../../src/shared/inventory.js';
-import { TileFlags, RoomRole } from '../../src/shared/map-types.js';
+import { TileFlags, RoomRole, TerrainType } from '../../src/shared/map-types.js';
 import {
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
   FLOOR1_FIND_WELCOME_QUEST_ID,
@@ -1246,6 +1246,26 @@ describe('floor1Scenario', () => {
     const countDirectorEnemies = (world: ReturnType<typeof createTestWorld>): number =>
       query(world.ecs, [Enemy]).filter((eid) => !hasComponent(world.ecs, eid, Spawner)).length;
 
+    const cardinalPassableNeighbors = (
+      world: ReturnType<typeof createTestWorld>,
+      tx: number,
+      ty: number,
+    ): number => {
+      const map = world.floorMap!;
+      let neighbors = 0;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        if (map.tileMap.isPassable(tx + dx, ty + dy)) {
+          neighbors += 1;
+        }
+      }
+      return neighbors;
+    };
+
     it('burst-spawns several enemies in a single tick (no more one-at-a-time trickle)', () => {
       const world = createTestWorld({ seed: 99 });
       const player = spawnPlayer(world, 0, 0);
@@ -1327,6 +1347,37 @@ describe('floor1Scenario', () => {
       // inside the engagement ring — the player has nearby threats again.
       expect(countDirectorEnemies(world)).toBeLessThanOrEqual(pack.enemyCap);
       expect(countWithin(world, px, py, pack.engageRadiusFt)).toBeGreaterThan(engagingBefore);
+    });
+
+    it('spawns enemies away from the player and outside corridor/door chokepoints', () => {
+      const world = createTestWorld({ seed: 99 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      selectFloor1StarterWeapon(world, 0);
+      const map = world.floorMap!;
+      const px = world.stores.position.x[player] ?? 0;
+      const py = world.stores.position.y[player] ?? 0;
+      const minSpawnDistSq = pack.spawnRadiusMin * pack.spawnRadiusMin;
+
+      world.elapsedMs = 1_000;
+      floor1EnemyDirectorSystem(world);
+
+      const spawned = query(world.ecs, [Enemy, Position]).filter(
+        (eid) => !hasComponent(world.ecs, eid, Spawner),
+      );
+      expect(spawned.length).toBeGreaterThan(0);
+      for (const eid of spawned) {
+        const ex = world.stores.position.x[eid] ?? 0;
+        const ey = world.stores.position.y[eid] ?? 0;
+        const tile = map.worldToTile(ex, ey);
+        const idx = tile.y * map.width + tile.x;
+        const dx = ex - px;
+        const dy = ey - py;
+        expect(dx * dx + dy * dy).toBeGreaterThanOrEqual(minSpawnDistSq);
+        expect(map.tileMap.isDoor(tile.x, tile.y)).toBe(false);
+        expect(map.terrain[idx]).not.toBe(TerrainType.CORRIDOR);
+        expect(cardinalPassableNeighbors(world, tile.x, tile.y)).toBeGreaterThan(2);
+      }
     });
 
     it('pre-populates a freshly entered combat room with a one-time wave', () => {
