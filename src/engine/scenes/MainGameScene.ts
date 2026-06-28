@@ -2426,7 +2426,7 @@ export class MainGameScene extends Phaser.Scene {
         {
           title: "The Merchant's Extra Wares",
           subtitle: `Gold: ${this.world.playerGold}`,
-          body: 'Fresh basics for the next rounds: weapons and armor.',
+          body: 'Fresh basics for the next rounds: weapons.',
           options: optionRows,
           allowCancel: true,
           initialSelectedId: firstEnabled?.id ?? optionRows[0]?.id,

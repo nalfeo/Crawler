@@ -13,8 +13,8 @@ assets:
 
   - id: iron-sword
     type: weapon
-    label: 'Iron Sword'
-    brief: 'Iron Sword — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Serviceable. Boring. Gets the job done.'
+    label: 'Sword'
+    brief: 'Sword — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Serviceable. Boring. Gets the job done.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
@@ -31,8 +31,8 @@ assets:
 
   - id: frost-bow
     type: weapon
-    label: 'Frost Bow'
-    brief: 'Frost Bow — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Arrows arrive pre-chilled.'
+    label: 'Bow'
+    brief: 'Bow — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Reliable and easy to carry.'
     placeholderInUse: true
     integration:
       kind: sprite-registry

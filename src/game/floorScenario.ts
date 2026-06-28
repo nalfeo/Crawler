@@ -2204,9 +2204,6 @@ const SHOPKEEPER_POST_QUEST_ITEM_COSTS: Readonly<Record<string, number>> = {
   'frost-bow': 26,
   'plasma-pistol': 30,
   'crystal-wand': 28,
-  'padded-hood': 16,
-  'reinforced-vest': 25,
-  'work-boots': 17,
 };
 
 function findPlayerEid(world: GameWorld): number | undefined {
