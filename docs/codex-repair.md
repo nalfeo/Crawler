@@ -19,6 +19,48 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
      - `CODEX_VALIDATION_COMMANDS` (newline-separated validation commands override)
 3. (Optional) Add `.github/codex-repair.json` for future per-repo settings.
 
+## Local auth + wrapper run (PR-synced sessions)
+
+If you want to run the same codex repair flow locally against a PR branch, use:
+
+- `/home/runner/work/Crawler/Crawler/scripts/codex-repair-local.sh`
+
+Create a local env file (do not commit it):
+
+```bash
+cat > /home/runner/work/Crawler/Crawler/.env.codex.local <<'EOF'
+OPENAI_API_KEY=...
+GITHUB_TOKEN=...
+GITHUB_REPOSITORY=nalfeo/Crawler
+CODEX_PROVIDER=codex
+CODEX_MODEL=gpt-5.5
+CODEX_BIN=codex
+EOF
+```
+
+Then run:
+
+```bash
+cd /home/runner/work/Crawler/Crawler
+scripts/codex-repair-local.sh --pr 123 --checkout
+```
+
+What this wrapper does:
+
+1. Loads env vars from `.env.codex.local` (or `--env-file`).
+2. Optionally checks out the PR branch (`--checkout`).
+3. Runs the same core local steps as the workflow:
+   - `node .github/scripts/codex/gather-context.mjs`
+   - `bash .github/scripts/codex/run-provider.sh`
+   - `bash .github/scripts/codex/validate.sh`
+
+### How Codex auth works
+
+- The default provider script (`.github/scripts/codex/providers/codex.sh`) runs `codex exec ...`.
+- For that provider, auth is expected from `OPENAI_API_KEY` in the environment.
+- If you use `CODEX_EXEC_COMMAND`, auth can be handled by your custom command instead.
+- GitHub API calls (`gather-context`, reporting, thread actions) use `GITHUB_TOKEN`.
+
 ## Supported triggers
 
 - `pull_request`: opened, synchronize, reopened, ready_for_review
