@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   AssetQueue,
   AssetRequest,
+  BriefPathAssetRequest,
   DequeuedMessage,
 } from '../../../scripts/sprites/queue/types.js';
 import type { RunStore } from '../../../scripts/sprites/store/types.js';
@@ -23,16 +24,22 @@ import { runWorker, type WorkerStatus } from '../../../scripts/sprites/worker.js
 vi.mock('../../../scripts/sprites/generate-one.js', () => ({
   generateOne: vi.fn(),
 }));
+vi.mock('../../../scripts/sprites/issue-pipeline.js', () => ({
+  runIssuePipeline: vi.fn(),
+}));
 
 import { generateOne } from '../../../scripts/sprites/generate-one.js';
+import { runIssuePipeline } from '../../../scripts/sprites/issue-pipeline.js';
 const mockGenerate = vi.mocked(generateOne);
+const mockIssuePipeline = vi.mocked(runIssuePipeline);
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeRequest(briefId = 'iron-sword'): AssetRequest {
+function makeRequest(briefId = 'iron-sword'): BriefPathAssetRequest {
   return {
+    kind: 'brief-path',
     briefId,
     briefPath: `briefs/weapons/${briefId}.yaml`,
     requestedBy: 'test',
@@ -240,7 +247,7 @@ describe('runWorker', () => {
     mockGenerate.mockResolvedValueOnce(fakeSummaryResult as never);
 
     const ack = vi.fn().mockResolvedValue(undefined);
-    const request: AssetRequest = {
+    const request: BriefPathAssetRequest = {
       ...makeRequest(),
       briefPath: 'briefs/weapons/iron-sword.yaml',
     };
@@ -269,5 +276,44 @@ describe('runWorker', () => {
         repoRoot: '/repo',
       }),
     );
+  });
+
+  it('runs issue-originated jobs through the automated issue pipeline', async () => {
+    mockIssuePipeline.mockResolvedValueOnce({
+      briefId: 'bone-dagger',
+      runId: 'run-1',
+      summaryPath: '/tmp/run-1/summary.json',
+    });
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const request: AssetRequest = {
+      kind: 'issue-request',
+      issueNumber: 99,
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+      fingerprint: 'abc',
+      claimedAt: new Date().toISOString(),
+      requestedBy: 'test',
+      requestedAt: new Date().toISOString(),
+      priority: 'normal',
+    };
+    const controller = new AbortController();
+    const queue = makeQueue([makeMessage(request, ack), null]);
+    await runWorker({
+      queue,
+      store: makeStore(),
+      repoRoot: '/repo',
+      provider: stubProvider,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {} as never,
+      issueApi: { comment: async () => {} },
+      signal: controller.signal,
+      pollIntervalMs: 0,
+      onStatus: (s) => {
+        if (s.type === 'done') controller.abort();
+      },
+    });
+    expect(mockIssuePipeline).toHaveBeenCalledOnce();
+    expect(ack).toHaveBeenCalledOnce();
   });
 });

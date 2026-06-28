@@ -219,6 +219,7 @@ describe('sprites:synth → loadBrief → runFull (integration)', () => {
       repoRoot: root,
       outputRoot: path.join(root, 'generated'),
       now: () => new Date('2026-06-05T12:00:00.000Z'),
+      env: {},
     });
     // Pipeline completed and wrote artifacts.
     expect(result.summary.candidates.length).toBe(16);

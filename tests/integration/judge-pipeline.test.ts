@@ -3,7 +3,7 @@
  *
  * Mocks both ImageProvider (returns a 2x2 sheet of good-sword fixtures) and
  * VisionProvider (returns canned scorecards keyed by call order). Asserts:
- *   - judge runs only on sensor-passing variants
+ *   - judge runs on all variants by default (subject to maxVariants/budget)
  *   - processed/NN.judge.json sidecars appear on disk
  *   - summary.candidates carry judgeScorecard + combinedPassed
  *   - chosen prefers higher judge minScore
@@ -204,7 +204,7 @@ describe('runFull + VLM judge (integration)', () => {
 
   const fixedClock = () => new Date('2026-06-05T12:00:00.000Z');
 
-  it('judges only sensor-passing variants and picks the highest judge minScore', async () => {
+  it('judges all variants and still picks the highest judge minScore among viable candidates', async () => {
     setupBrief('  enabled: true\n  maxVariants: 16');
     // 4 variants: 2 good (sensor-pass), 2 empty (sensor-fail).
     // Sensor-pass order in the run will be: index 0 then index 3
@@ -220,7 +220,9 @@ describe('runFull + VLM judge (integration)', () => {
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([
       scorecard({ style: 4, brief: 4, readability: 4 }), // index 0: minScore 4
-      scorecard({ style: 5, brief: 5, readability: 5 }), // index 3: minScore 5 (winner)
+      scorecard({ style: 1, brief: 1, readability: 1 }), // index 3: sensor-failed
+      scorecard({ style: 1, brief: 1, readability: 1 }), // index 1: sensor-failed
+      scorecard({ style: 5, brief: 5, readability: 5 }), // index 2: minScore 5 (winner)
     ]);
 
     const result = await runFull({
@@ -234,8 +236,8 @@ describe('runFull + VLM judge (integration)', () => {
       env: {},
     });
 
-    // Only 2 vision calls (the sensor-passing ones).
-    expect(calls).toHaveLength(2);
+    // All 4 variants are judge-eligible (cap permits all).
+    expect(calls).toHaveLength(4);
     // All three evaluators named in a single call — cost discipline.
     for (const c of calls) {
       expect(c.imageLabels).toContain('candidate');
@@ -249,13 +251,13 @@ describe('runFull + VLM judge (integration)', () => {
     expect(result.summary.candidates).toHaveLength(4);
     const byIndex = new Map(result.summary.candidates.map((c) => [c.index, c]));
 
-    // Sensor-passing variants have judge scorecards; failing ones don't.
+    // All variants now receive judge scorecards unless capped/budgeted out.
     expect(byIndex.get(0)!.judgeScorecard).not.toBeNull();
     expect(byIndex.get(3)!.judgeScorecard).not.toBeNull();
-    expect(byIndex.get(1)!.judgeScorecard).toBeNull();
-    expect(byIndex.get(1)!.judgeSkipReason).toBe('sensor-failed');
-    expect(byIndex.get(2)!.judgeScorecard).toBeNull();
-    expect(byIndex.get(2)!.judgeSkipReason).toBe('sensor-failed');
+    expect(byIndex.get(1)!.judgeScorecard).not.toBeNull();
+    expect(byIndex.get(1)!.judgeSkipReason).toBeNull();
+    expect(byIndex.get(2)!.judgeScorecard).not.toBeNull();
+    expect(byIndex.get(2)!.judgeSkipReason).toBeNull();
 
     // combinedPassed reflects sensor && judge.
     expect(byIndex.get(0)!.combinedPassed).toBe(true);
@@ -273,8 +275,8 @@ describe('runFull + VLM judge (integration)', () => {
     // Judge sidecar artifacts exist on disk.
     expect(existsSync(path.join(result.runDir, 'processed', '00.judge.json'))).toBe(true);
     expect(existsSync(path.join(result.runDir, 'processed', '03.judge.json'))).toBe(true);
-    expect(existsSync(path.join(result.runDir, 'processed', '01.judge.json'))).toBe(false);
-    expect(existsSync(path.join(result.runDir, 'processed', '02.judge.json'))).toBe(false);
+    expect(existsSync(path.join(result.runDir, 'processed', '01.judge.json'))).toBe(true);
+    expect(existsSync(path.join(result.runDir, 'processed', '02.judge.json'))).toBe(true);
 
     // Sensor scorecards still present (not overwritten).
     expect(existsSync(path.join(result.runDir, 'processed', '00.scorecard.json'))).toBe(true);
@@ -389,6 +391,8 @@ describe('runFull + VLM judge (integration)', () => {
     const sheet = tileVariantsIntoSheet(variants, 2, 2);
     const { provider: visionProvider, calls } = mockVisionProvider([
       scorecard({ style: 4, brief: 4, readability: 4 }),
+      scorecard({ style: 1, brief: 1, readability: 1 }),
+      scorecard({ style: 1, brief: 1, readability: 1 }),
       scorecard({ style: 5, brief: 5, readability: 5 }),
     ]);
     const store = makeAzureLikeStore(path.join(root, 'azure-runs'));
@@ -406,12 +410,12 @@ describe('runFull + VLM judge (integration)', () => {
       env: {},
     });
 
-    // Judging still ran on both sensor-passing variants...
-    expect(calls).toHaveLength(2);
+    // Judging ran across all variants when under cap...
+    expect(calls).toHaveLength(4);
     // ...and the scorecards are embedded in the summary (no data lost despite
     // skipping the standalone local sidecar file).
     const judged = result.summary.candidates.filter((c) => c.judgeScorecard !== null);
-    expect(judged).toHaveLength(2);
+    expect(judged).toHaveLength(4);
     expect(judged.every((c) => typeof c.judgeScorecard!.passed === 'boolean')).toBe(true);
     // Recorded paths are blob URLs, and the buggy CWD-relative sidecar dir was
     // never created.

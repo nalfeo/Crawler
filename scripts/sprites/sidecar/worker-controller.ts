@@ -32,11 +32,21 @@
  * clock is injectable via `deps.now` for deterministic tests.
  */
 
-import { createImageProvider, createTextProvider } from '../provider/factory.js';
+import {
+  createBriefSelectorProvider,
+  createImageProvider,
+  createSynthProvider,
+  createTextProvider,
+  createVisionProvider,
+} from '../provider/factory.js';
 import { runWorker as defaultRunWorker } from '../worker.js';
 import type { WorkerOptions, WorkerStatus } from '../worker.js';
 import type { AssetQueue } from '../queue/types.js';
 import type { RunStore } from '../store/types.js';
+import {
+  createGhAssetRequestIssueApi,
+  type AssetRequestIssueApi,
+} from './asset-request-issue-api.js';
 
 /** Signature of {@link runWorker}; injectable so tests avoid a real loop. */
 export type RunWorkerFn = (options: WorkerOptions) => Promise<void>;
@@ -44,6 +54,9 @@ export type RunWorkerFn = (options: WorkerOptions) => Promise<void>;
 /** Provider-factory signatures, injectable so tests avoid network providers. */
 export type CreateImageProviderFn = typeof createImageProvider;
 export type CreateTextProviderFn = typeof createTextProvider;
+export type CreateSynthProviderFn = typeof createSynthProvider;
+export type CreateBriefSelectorProviderFn = typeof createBriefSelectorProvider;
+export type CreateVisionProviderFn = typeof createVisionProvider;
 
 export interface WorkerControllerDeps {
   /** Queue the worker polls. Its `backend` is surfaced in status. */
@@ -62,6 +75,14 @@ export interface WorkerControllerDeps {
   readonly createImageProvider?: CreateImageProviderFn;
   /** Text-provider factory. Defaults to the real one. */
   readonly createTextProvider?: CreateTextProviderFn;
+  /** Synth-provider factory. Defaults to the real one. */
+  readonly createSynthProvider?: CreateSynthProviderFn;
+  /** Brief-selector provider factory. Defaults to the real one. */
+  readonly createBriefSelectorProvider?: CreateBriefSelectorProviderFn;
+  /** Vision-provider factory. Defaults to the real one. */
+  readonly createVisionProvider?: CreateVisionProviderFn;
+  /** GitHub issue API for issue-originated jobs. */
+  readonly issueApi?: AssetRequestIssueApi;
   /** Clock for timestamps. Defaults to `Date.now`. */
   readonly now?: () => number;
   /** Optional extra status sink (the controller always records internally). */
@@ -117,8 +138,12 @@ export function createWorkerController(deps: WorkerControllerDeps): WorkerContro
   const runWorker = deps.runWorker ?? defaultRunWorker;
   const makeImageProvider = deps.createImageProvider ?? createImageProvider;
   const makeTextProvider = deps.createTextProvider ?? createTextProvider;
+  const makeSynthProvider = deps.createSynthProvider ?? createSynthProvider;
+  const makeBriefSelectorProvider = deps.createBriefSelectorProvider ?? createBriefSelectorProvider;
+  const makeVisionProvider = deps.createVisionProvider ?? createVisionProvider;
   const now = deps.now ?? Date.now;
   const env = deps.env ?? process.env;
+  const issueApi = deps.issueApi ?? createGhAssetRequestIssueApi(deps.repoRoot);
 
   let running = false;
   let startedAt: string | null = null;
@@ -181,6 +206,14 @@ export function createWorkerController(deps: WorkerControllerDeps): WorkerContro
     try {
       const provider = makeImageProvider({ env });
       const textProvider = makeTextProvider({ env });
+      let synthProvider = null;
+      try {
+        synthProvider = makeSynthProvider({ env });
+      } catch {
+        // Optional unless an issue-request job is dequeued.
+      }
+      const briefSelectorProvider = makeBriefSelectorProvider({ env });
+      const visionProvider = makeVisionProvider({ env });
       abortController = new AbortController();
       options = {
         queue: deps.queue,
@@ -188,6 +221,10 @@ export function createWorkerController(deps: WorkerControllerDeps): WorkerContro
         repoRoot: deps.repoRoot,
         provider,
         textProvider,
+        synthProvider,
+        briefSelectorProvider,
+        visionProvider,
+        issueApi,
         signal: abortController.signal,
         onStatus: recordStatus,
         ...(deps.pollIntervalMs !== undefined ? { pollIntervalMs: deps.pollIntervalMs } : {}),

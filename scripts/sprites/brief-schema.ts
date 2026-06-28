@@ -140,8 +140,20 @@ const sensorOverridesSchema = z
       .optional(),
     enemy: z
       .object({
-        facing: z.enum(['front', 'any']).default('front'),
+        /**
+         * Intentionally optional so scoring can apply a type-aware default:
+         * omitted `facing` defaults to `any` for `enemy` briefs, while
+         * `character` briefs that reuse this same sensor block default to
+         * `front`.
+         */
+        facing: z.enum(['front', 'any']).optional(),
         toleranceDeg: z.number().min(0).max(45).default(2),
+      })
+      .strict()
+      .optional(),
+    interiorHoles: z
+      .object({
+        maxPixels: z.number().int().min(0).max(512).default(0),
       })
       .strict()
       .optional(),
