@@ -212,48 +212,6 @@ describe('buildDirtyRectFromCircles', () => {
     expect(buildDirtyRectFromCircles(field, [])).toBeNull();
   });
 
-  describe('buildDirtyRectFromPixelBounds', () => {
-    const field = createLightField(100, 80, 10); // 10x8 cells
-
-    it('maps pixel bounds to cell bounds', () => {
-      expect(buildDirtyRectFromPixelBounds(field, 12, 9, 38, 41)).toEqual({
-        minX: 1,
-        minY: 0,
-        maxX: 3,
-        maxY: 4,
-      });
-    });
-
-    it('clamps out-of-bounds coordinates', () => {
-      expect(buildDirtyRectFromPixelBounds(field, -100, -100, 1000, 1000)).toEqual({
-        minX: 0,
-        minY: 0,
-        maxX: 9,
-        maxY: 7,
-      });
-    });
-  });
-
-  describe('intersectDirtyRects', () => {
-    it('returns overlap when rects intersect', () => {
-      expect(
-        intersectDirtyRects(
-          { minX: 2, minY: 2, maxX: 6, maxY: 6 },
-          { minX: 4, minY: 1, maxX: 8, maxY: 3 },
-        ),
-      ).toEqual({ minX: 4, minY: 2, maxX: 6, maxY: 3 });
-    });
-
-    it('returns null when rects do not overlap', () => {
-      expect(
-        intersectDirtyRects(
-          { minX: 0, minY: 0, maxX: 1, maxY: 1 },
-          { minX: 3, minY: 3, maxX: 4, maxY: 4 },
-        ),
-      ).toBeNull();
-    });
-  });
-
   it('maps a zero-radius circle to its single containing cell', () => {
     expect(buildDirtyRectFromCircles(field, [{ x: 50, y: 50, radiusPx: 0 }])).toEqual({
       minX: 5,
@@ -305,6 +263,48 @@ describe('buildDirtyRectFromCircles', () => {
       maxX: 9,
       maxY: 9,
     });
+  });
+});
+
+describe('buildDirtyRectFromPixelBounds', () => {
+  const field = createLightField(100, 80, 10); // 10x8 cells
+
+  it('maps pixel bounds to cell bounds', () => {
+    expect(buildDirtyRectFromPixelBounds(field, 12, 9, 38, 41)).toEqual({
+      minX: 1,
+      minY: 0,
+      maxX: 3,
+      maxY: 4,
+    });
+  });
+
+  it('clamps out-of-bounds coordinates', () => {
+    expect(buildDirtyRectFromPixelBounds(field, -100, -100, 1000, 1000)).toEqual({
+      minX: 0,
+      minY: 0,
+      maxX: 9,
+      maxY: 7,
+    });
+  });
+});
+
+describe('intersectDirtyRects', () => {
+  it('returns overlap when rects intersect', () => {
+    expect(
+      intersectDirtyRects(
+        { minX: 2, minY: 2, maxX: 6, maxY: 6 },
+        { minX: 4, minY: 1, maxX: 8, maxY: 3 },
+      ),
+    ).toEqual({ minX: 4, minY: 2, maxX: 6, maxY: 3 });
+  });
+
+  it('returns null when rects do not overlap', () => {
+    expect(
+      intersectDirtyRects(
+        { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+        { minX: 3, minY: 3, maxX: 4, maxY: 4 },
+      ),
+    ).toBeNull();
   });
 });
 
