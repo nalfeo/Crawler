@@ -10,21 +10,97 @@
  * to route through Azure Storage Queue.
  */
 
-/** A request to generate sprites for a specific brief. */
-export interface AssetRequest {
+export interface AssetRequestBase {
   /** `brief.name` slug (e.g. `'iron-sword'`). */
-  readonly briefId: string;
-  /** Repo-relative path to the brief YAML (e.g. `'briefs/weapons/iron-sword.yaml'`). */
-  readonly briefPath: string;
-  /**
-   * Free-form identifier for the requestor — agent session ID, username, or
-   * process name. Used for audit logging only; not validated.
-   */
   readonly requestedBy: string;
   /** ISO-8601 timestamp at which the request was submitted. */
   readonly requestedAt: string;
   /** Generation priority. Workers MAY honour this; there is no SLA. */
   readonly priority: 'normal' | 'high';
+}
+
+/** Existing queue job shape: generate from an already-authored brief YAML path. */
+export interface BriefPathAssetRequest extends AssetRequestBase {
+  readonly kind: 'brief-path';
+  /** `brief.name` slug (e.g. `'iron-sword'`). */
+  readonly briefId: string;
+  /** Repo-relative path to the brief YAML (e.g. `'briefs/weapons/iron-sword.yaml'`). */
+  readonly briefPath: string;
+}
+
+/** New queue job shape: generate from an `asset-request` GitHub issue. */
+export interface IssueAssetRequest extends AssetRequestBase {
+  readonly kind: 'issue-request';
+  /** Source issue number (for comments + idempotency). */
+  readonly issueNumber: number;
+  /** Requested asset name from the issue contract. */
+  readonly name: string;
+  /** One-sentence brief from the issue contract. */
+  readonly briefSentence: string;
+  /** Stable hash of normalized issue payload (`name + briefSentence`). */
+  readonly fingerprint: string;
+  /** ISO-8601 timestamp when the ingester claimed/enqueued this issue payload. */
+  readonly claimedAt: string;
+}
+
+/** A request to generate sprites for a specific brief or issue-originated job. */
+export type AssetRequest = BriefPathAssetRequest | IssueAssetRequest;
+
+/**
+ * Back-compat parser:
+ * - v2 union messages use explicit `kind`.
+ * - legacy messages (pre-union) had `{ briefId, briefPath, ... }` only.
+ */
+export function normalizeAssetRequest(value: unknown): AssetRequest | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Record<string, unknown>;
+  const priority = v.priority === 'high' ? 'high' : v.priority === 'normal' ? 'normal' : null;
+  if (typeof v.requestedBy !== 'string' || typeof v.requestedAt !== 'string' || !priority) {
+    return null;
+  }
+  if (v.kind === 'issue-request') {
+    if (
+      typeof v.issueNumber !== 'number' ||
+      !Number.isInteger(v.issueNumber) ||
+      v.issueNumber < 1 ||
+      typeof v.name !== 'string' ||
+      v.name.trim() === '' ||
+      typeof v.briefSentence !== 'string' ||
+      v.briefSentence.trim() === '' ||
+      typeof v.fingerprint !== 'string' ||
+      v.fingerprint === '' ||
+      typeof v.claimedAt !== 'string'
+    ) {
+      return null;
+    }
+    return {
+      kind: 'issue-request',
+      issueNumber: v.issueNumber,
+      name: v.name,
+      briefSentence: v.briefSentence,
+      fingerprint: v.fingerprint,
+      claimedAt: v.claimedAt,
+      requestedBy: v.requestedBy,
+      requestedAt: v.requestedAt,
+      priority,
+    };
+  }
+  // Legacy or explicit brief-path message.
+  if (typeof v.briefId !== 'string' || typeof v.briefPath !== 'string') {
+    return null;
+  }
+  /**
+   * Free-form identifier for the requestor — agent session ID, username, or
+   * process name. Used for audit logging only; not validated.
+   */
+  return {
+    kind: 'brief-path',
+    briefId: v.briefId,
+    briefPath: v.briefPath,
+    requestedBy: v.requestedBy,
+    requestedAt: v.requestedAt,
+    priority,
+  };
 }
 
 /**

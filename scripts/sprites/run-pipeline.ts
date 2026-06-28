@@ -199,9 +199,8 @@ export interface JudgePassArgs {
   readonly env?: NodeJS.ProcessEnv;
   readonly warn?: (message: string) => void;
   /**
-   * Force the judge to run on variants that FAILED their sensors. Powers the
-   * "force judge" operator action: a sensor-failed variant is normally skipped
-   * with `judgeSkipReason: 'sensor-failed'`; with `force` it is judged anyway.
+   * Deprecated compatibility flag. Judging now considers all variants by
+   * default (subject to maxVariants + budget caps), regardless of sensor pass.
    */
   readonly force?: boolean;
   /**
@@ -220,9 +219,8 @@ export interface JudgePassResult {
 /**
  * Run the gated VLM judge over the considered variants.
  *
- * Eligibility (unchanged from `generateOne`): only sensor-passing variants are
- * judged — capped at `brief.judge.maxVariants` after ranking by sensor score —
- * unless `force` is set, which makes sensor-failed variants eligible too. The
+ * Eligibility: all considered variants are judgeable by default, capped at
+ * `brief.judge.maxVariants` after ranking by sensor score. The
  * per-call budget gate and judge cache behave exactly as in a fresh run.
  *
  * The returned maps only contain entries for the CONSIDERED variants (all of
@@ -232,7 +230,7 @@ export interface JudgePassResult {
 export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult> {
   const judgePlan = new Map<number, JudgeScorecard | null>();
   const judgeSkipReason = new Map<number, JudgeSkipReason | null>();
-  const { variants, brief, force } = args;
+  const { variants, brief } = args;
 
   const considered = (e: ProcessedVariant): boolean =>
     args.variantIndexes === undefined || args.variantIndexes.has(e.index);
@@ -248,16 +246,11 @@ export async function runJudgePass(args: JudgePassArgs): Promise<JudgePassResult
 
   // Decide which considered variants are judge-eligible. Cap by maxVariants to
   // bound cost; ranking by sensor score spends budget on the best candidates.
-  // `force` lifts the sensor-pass requirement so failing variants get judged.
-  const judgeable = consideredVariants.filter((e) => force || e.passed);
-  const ordered = [...judgeable].sort((a, b) => b.score - a.score || a.index - b.index);
+  const ordered = [...consideredVariants].sort((a, b) => b.score - a.score || a.index - b.index);
   const eligible = new Set(ordered.slice(0, brief.judge.maxVariants).map((e) => e.index));
 
   for (const e of consideredVariants) {
-    if (!force && !e.passed) {
-      judgePlan.set(e.index, null);
-      judgeSkipReason.set(e.index, 'sensor-failed');
-    } else if (!eligible.has(e.index)) {
+    if (!eligible.has(e.index)) {
       judgePlan.set(e.index, null);
       judgeSkipReason.set(e.index, 'over-cap');
     }

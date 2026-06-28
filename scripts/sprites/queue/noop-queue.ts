@@ -12,8 +12,12 @@ export class NoopAssetQueue implements AssetQueue {
   readonly backend = 'noop' as const;
 
   async enqueue(request: AssetRequest): Promise<void> {
+    const label =
+      request.kind === 'issue-request'
+        ? `issue #${request.issueNumber} (${request.name})`
+        : request.briefId;
     process.stdout.write(
-      `[noop-queue] enqueue: ${request.briefId} (priority=${request.priority}, by=${request.requestedBy})\n`,
+      `[noop-queue] enqueue: ${label} (priority=${request.priority}, by=${request.requestedBy})\n`,
     );
   }
 

@@ -35,6 +35,8 @@ import {
 import { loadEnvLocal } from './env-local.js';
 import { buildServer } from './server.js';
 import { createWorkerController } from './worker-controller.js';
+import { createIssueIngesterController } from './issue-ingester-controller.js';
+import { createGhAssetRequestIssueApi } from './asset-request-issue-api.js';
 
 const HOST = '127.0.0.1';
 const VERSION = '0.2.0-workflow';
@@ -87,6 +89,12 @@ async function main(): Promise<number> {
   const store = createRunStore({ repoRoot });
   const queue = createAssetQueue();
   const worker = createWorkerController({ queue, store, repoRoot });
+  const issueIngester = createIssueIngesterController({
+    queue,
+    store,
+    requestedBy: process.env['COPILOT_AGENT_SESSION'] ?? process.env['USER'] ?? 'sidecar',
+    issues: createGhAssetRequestIssueApi(repoRoot),
+  });
   const app = buildServer({
     repoRoot,
     runsDir,
@@ -95,6 +103,7 @@ async function main(): Promise<number> {
     store,
     queue,
     worker,
+    issueIngester,
   });
   const port = resolvePort();
 
@@ -144,15 +153,19 @@ async function main(): Promise<number> {
     process.stdout.write(`            POST /api/workflow/generate, POST /api/workflow/metadata\n`);
     process.stdout.write(`            GET/PUT /api/workflow/state (durable, ETag-guarded)\n`);
     process.stdout.write(
-      `            POST /api/workflow/worker/start|stop, GET /api/workflow/worker/status\n`,
+      `            POST /api/workflow/worker/start|stop, GET /api/workflow/worker/status,\n`,
+    );
+    process.stdout.write(
+      `            POST /api/workflow/issues/start|stop, GET /api/workflow/issues/status\n`,
     );
 
-    // Auto-start the in-process worker on the azure-queue backend so a queued
+    // Auto-start the in-process worker and issue ingester on the azure-queue backend so a queued
     // generate always has a consumer. On the noop backend the generate route
     // runs inline, so no worker is needed (and starting one would require Azure
     // credentials the local dev box doesn't have).
     if (queue.backend === 'azure-queue') {
       const result = worker.start();
+      issueIngester.start();
       if (result.started) {
         process.stdout.write(`  worker  : auto-started (backend=${queue.backend})\n`);
       } else {

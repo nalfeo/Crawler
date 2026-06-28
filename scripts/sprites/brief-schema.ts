@@ -140,8 +140,14 @@ const sensorOverridesSchema = z
       .optional(),
     enemy: z
       .object({
-        facing: z.enum(['front', 'any']).default('front'),
+        facing: z.enum(['front', 'any']).default('any'),
         toleranceDeg: z.number().min(0).max(45).default(2),
+      })
+      .strict()
+      .optional(),
+    interiorHoles: z
+      .object({
+        maxPixels: z.number().int().min(0).max(512).default(0),
       })
       .strict()
       .optional(),

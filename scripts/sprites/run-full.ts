@@ -129,6 +129,12 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
   });
 
   const ranked = rankCandidates(entries);
+  const orientationTotal = entries.filter((e) =>
+    e.breakdown.some((b) => b.sensor === 'silhouette-orientation-axis'),
+  ).length;
+  const orientationFailed = entries.filter((e) =>
+    e.breakdown.some((b) => b.sensor === 'silhouette-orientation-axis' && !b.ok),
+  ).length;
   const diversity = computeDiversity(processedBuffers);
   const chosen = pickChosen(ranked, brief);
   const budgetSnap = judgeEnabled && options.judgeBudget ? options.judgeBudget.snapshot() : null;
@@ -153,6 +159,12 @@ export async function runFull(options: RunFullOptions): Promise<RunFullResult> {
         }
       : null,
     judgeCache: cacheStats,
+    sensorTelemetry: {
+      orientation: {
+        failed: orientationFailed,
+        total: orientationTotal,
+      },
+    },
   };
   const summaryKey = storeKey('summary.json');
   await store.put(summaryKey, Buffer.from(`${JSON.stringify(summary, null, 2)}\n`));

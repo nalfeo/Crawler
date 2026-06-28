@@ -72,6 +72,7 @@ async function main(): Promise<void> {
   const queue = createAssetQueue();
 
   const request: AssetRequest = {
+    kind: 'brief-path',
     briefId,
     briefPath,
     requestedBy,

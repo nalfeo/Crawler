@@ -101,6 +101,11 @@ function baseDeps(over: Partial<WorkerControllerDeps> = {}): WorkerControllerDep
     env: {},
     createImageProvider: () => stubImageProvider,
     createTextProvider: () => null,
+    createSynthProvider: () => ({ synthesizeBrief: async () => ({}) }) as never,
+    createBriefSelectorProvider: () =>
+      ({ modelDeployment: 'selector', selectBrief: async () => ({}) }) as never,
+    createVisionProvider: () => null,
+    issueApi: { listOpenAssetRequestIssues: async () => [], comment: async () => {} },
     now: () => FIXED_NOW,
     ...over,
   };
