@@ -1,6 +1,13 @@
-import { addComponent, entityExists, query, removeEntity } from 'bitecs';
+import { addComponent, entityExists, hasComponent, query, removeEntity } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { DeathTimer, Enemy, Position, Rotation, Sprite } from '../../src/core/components.js';
+import {
+  DeathTimer,
+  Enemy,
+  Position,
+  Rotation,
+  Spawner,
+  Sprite,
+} from '../../src/core/components.js';
 import { spawnBehaviorEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import {
   confirmFloor1StairDescend,
@@ -41,6 +48,7 @@ import { createTestWorld } from '../helpers/world-factory.js';
 import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.js';
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
+import { getSpawnerArchetypeByIndex } from '../../src/game/spawners/registry.js';
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -158,6 +166,47 @@ describe('floor1Scenario', () => {
         }
       }
       expect(sealed).toEqual([]);
+    }
+  });
+
+  it('spawns 2 slime pools and 2 rat nests in distinct non-safe, non-boss rooms', () => {
+    for (const seed of [42, 7, 99, 123, 2024]) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      const map = world.floorMap!;
+      const spawners = query(world.ecs, [Spawner, Position]);
+      expect(spawners).toHaveLength(4);
+
+      const roomIds = new Set<number>();
+      let slimePools = 0;
+      let ratNests = 0;
+
+      for (const eid of spawners) {
+        const archetype = getSpawnerArchetypeByIndex(world.stores.spawner.defIndex[eid] ?? 0);
+        expect(archetype).toBeDefined();
+        if (!archetype) continue;
+        if (archetype.id === 'slime-pool') slimePools += 1;
+        if (archetype.id === 'rats-nest') ratNests += 1;
+
+        const x = world.stores.position.x[eid] ?? 0;
+        const y = world.stores.position.y[eid] ?? 0;
+        const tile = map.worldToTile(x, y);
+        const roomId = map.roomGraph.getRoomAt(tile.x, tile.y);
+        expect(roomId).toBeGreaterThanOrEqual(0);
+        expect(roomIds.has(roomId)).toBe(false);
+        roomIds.add(roomId);
+
+        const room = map.roomGraph.get(roomId);
+        expect(room).toBeDefined();
+        expect(room?.role).not.toBe(RoomRole.SAFE);
+        expect(room?.role).not.toBe(RoomRole.BOSS_STAIR);
+      }
+
+      expect(slimePools).toBe(2);
+      expect(ratNests).toBe(2);
+      expect(roomIds.size).toBe(4);
     }
   });
 
@@ -1130,16 +1179,19 @@ describe('floor1Scenario', () => {
         (a, b) => b.bounds.width * b.bounds.height - a.bounds.width * a.bounds.height,
       )[0];
 
+    const countDirectorEnemies = (world: ReturnType<typeof createTestWorld>): number =>
+      query(world.ecs, [Enemy]).filter((eid) => !hasComponent(world.ecs, eid, Spawner)).length;
+
     it('burst-spawns several enemies in a single tick (no more one-at-a-time trickle)', () => {
       const world = createTestWorld({ seed: 99 });
       const player = spawnPlayer(world, 0, 0);
       initializeFloor1Scenario(world, player);
       selectFloor1StarterWeapon(world, 0);
 
-      const before = query(world.ecs, [Enemy]).length;
+      const before = countDirectorEnemies(world);
       world.elapsedMs = 1_000;
       floor1EnemyDirectorSystem(world);
-      const burst = query(world.ecs, [Enemy]).length - before;
+      const burst = countDirectorEnemies(world) - before;
 
       // The old director crept in one enemy per interval; the rework spawns a
       // catch-up burst so a fast-moving player is never left with nothing nearby.
@@ -1170,14 +1222,14 @@ describe('floor1Scenario', () => {
         world.elapsedMs = t;
         floor1EnemyDirectorSystem(world);
         // The global ceiling is never breached, however hard the director pushes.
-        expect(query(world.ecs, [Enemy]).length).toBeLessThanOrEqual(pack.enemyCap);
+        expect(countDirectorEnemies(world)).toBeLessThanOrEqual(pack.enemyCap);
       }
 
       // A real swarm builds up — the global cap is far above the old hard cap of
       // 14 — and the engagement ring around the player is kept populated for
       // constant combat.
       expect(pack.enemyCap).toBeGreaterThan(14);
-      expect(query(world.ecs, [Enemy]).length).toBeGreaterThanOrEqual(pack.engageTarget);
+      expect(countDirectorEnemies(world)).toBeGreaterThanOrEqual(pack.engageTarget);
       expect(countWithin(world, center.x, center.y, pack.engageRadiusFt)).toBeGreaterThanOrEqual(
         pack.engageTarget,
       );
@@ -1196,12 +1248,12 @@ describe('floor1Scenario', () => {
       // ring but inside the flat despawn distance (so the director won't simply
       // delete them) — the player is momentarily surrounded by nothing close.
       const farX = px + pack.engageRadiusFt + 37.5;
-      const existing = query(world.ecs, [Enemy]).length;
+      const existing = countDirectorEnemies(world);
       for (let i = existing; i < pack.enemyCap; i += 1) {
         const eid = spawnBehaviorEnemy(world, farX, py, 20, AI_TYPE.CHASE, 0.5, 100, 0);
         world.floor1!.enemyArchetypes.set(eid, 'rat');
       }
-      expect(query(world.ecs, [Enemy]).length).toBe(pack.enemyCap);
+      expect(countDirectorEnemies(world)).toBe(pack.enemyCap);
       const engagingBefore = countWithin(world, px, py, pack.engageRadiusFt);
 
       world.elapsedMs = 10_000;
@@ -1209,7 +1261,7 @@ describe('floor1Scenario', () => {
 
       // Still capped, but the furthest stragglers were recycled into fresh spawns
       // inside the engagement ring — the player has nearby threats again.
-      expect(query(world.ecs, [Enemy]).length).toBeLessThanOrEqual(pack.enemyCap);
+      expect(countDirectorEnemies(world)).toBeLessThanOrEqual(pack.enemyCap);
       expect(countWithin(world, px, py, pack.engageRadiusFt)).toBeGreaterThan(engagingBefore);
     });
 
