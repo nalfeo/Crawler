@@ -27,7 +27,12 @@
 
 import { QueueServiceClient, StorageSharedKeyCredential } from '@azure/storage-queue';
 import type { QueueClient } from '@azure/storage-queue';
-import type { AssetQueue, AssetRequest, DequeuedMessage } from './types.js';
+import {
+  normalizeAssetRequest,
+  type AssetQueue,
+  type AssetRequest,
+  type DequeuedMessage,
+} from './types.js';
 
 export interface AzureStorageQueueOptions {
   readonly accountName: string;
@@ -87,11 +92,15 @@ export class AzureStorageQueue implements AssetQueue {
     const msg = response.receivedMessageItems[0];
     if (!msg) return null;
 
-    let request: AssetRequest;
+    let request: AssetRequest | null;
     try {
-      request = JSON.parse(msg.messageText) as AssetRequest;
+      request = normalizeAssetRequest(JSON.parse(msg.messageText));
     } catch {
       // Malformed message: ack it to avoid a poison-pill loop
+      await this.client.deleteMessage(msg.messageId, msg.popReceipt);
+      return null;
+    }
+    if (!request) {
       await this.client.deleteMessage(msg.messageId, msg.popReceipt);
       return null;
     }
@@ -110,7 +119,8 @@ export class AzureStorageQueue implements AssetQueue {
     const results: AssetRequest[] = [];
     for (const msg of response.peekedMessageItems) {
       try {
-        results.push(JSON.parse(msg.messageText) as AssetRequest);
+        const parsed = normalizeAssetRequest(JSON.parse(msg.messageText));
+        if (parsed) results.push(parsed);
       } catch {
         // Skip malformed messages in peek output
       }

@@ -264,6 +264,45 @@ SPRITES_ASSET_QUEUE=azure-queue npm run sprites:enqueue -- \
 
 ---
 
+## Asset-request issue flow (automated)
+
+Use the **Asset request** GitHub issue template (`asset-request` label). The issue
+body carries a machine-readable marker block (`asset-request:v1`) with:
+
+- `name` (kebab-case sprite id)
+- `briefSentence` (single sentence)
+
+When the sidecar is running with queue backend `azure-queue`, it runs a local
+issue-ingester loop that:
+
+1. Polls open `asset-request` issues
+2. Parses the marker payload
+3. Enqueues idempotent `issue-request` jobs (keyed by `issueNumber+fingerprint`)
+
+Worker lifecycle for issue jobs:
+
+1. synthesize brief candidates
+2. LLM brief selection (dedicated selector deployment)
+3. promote selected brief
+4. generate
+5. postprocess
+6. judge
+
+Progress and completion are posted as issue comments, and worker/ingester state
+is visible in sidecar health/status endpoints:
+
+- `GET /api/health`
+- `GET /api/workflow/worker/status`
+- `GET /api/workflow/issues/status`
+
+Failure recovery:
+
+- Fix env/provider/config issue
+- restart worker/ingester (`POST /api/workflow/worker/start`, `POST /api/workflow/issues/start`)
+- messages are at-least-once; idempotency claims prevent duplicate issue jobs
+
+---
+
 ## Future: migrating approved sprites out of the repo
 
 When the approved-sprite assets grow large enough to warrant their own repo or

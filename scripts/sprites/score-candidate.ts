@@ -6,6 +6,7 @@ import {
   dimensionsExact,
   opaqueBboxFits,
   opaqueBboxFitsWithOptions,
+  interiorTransparencyHoles,
   opaqueRatio,
   paletteMembership,
   type RgbaImage,
@@ -108,7 +109,7 @@ export function scoreCandidate(
       breakdown.push(result);
     }
   } else if (brief.type === 'enemy' || brief.type === 'character') {
-    const facing = brief.sensors.enemy?.facing ?? 'front';
+    const facing = brief.sensors.enemy?.facing ?? (brief.type === 'character' ? 'front' : 'any');
     const toleranceDeg = brief.sensors.enemy?.toleranceDeg;
     if (facing === 'front') {
       breakdown.push(
@@ -162,6 +163,7 @@ function runUniversal(image: RgbaImage, brief: Brief, palette: PaletteColors): S
     resolvePaletteMembership(image, brief, palette),
     resolveOpaqueBboxFits(image, brief),
     resolveOpaqueRatio(image, brief),
+    resolveInteriorHoles(image, brief),
     resolveAnchorSensor(image, brief),
   ];
 }
@@ -195,6 +197,12 @@ function resolveOpaqueRatio(image: RgbaImage, brief: Brief): SensorResult {
     return opaqueRatio(image);
   }
   return opaqueRatio(image, { min, max });
+}
+
+function resolveInteriorHoles(image: RgbaImage, brief: Brief): SensorResult {
+  return interiorTransparencyHoles(image, {
+    maxPixels: brief.sensors.interiorHoles?.maxPixels,
+  });
 }
 
 function resolveAnchorSensor(image: RgbaImage, brief: Brief): SensorResult {

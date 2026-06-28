@@ -186,6 +186,40 @@ describe('scoreCandidate', () => {
     expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(false);
   });
 
+  it('enemy briefs default facing to any (no orientation-axis gate unless requested)', () => {
+    const brief = makeBrief({
+      type: 'enemy',
+      anchor: { x: 8, y: 8 },
+      sensors: { anchor: { mode: 'center-of-mass' } } as Brief['sensors'],
+    });
+    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    expect(card.breakdown.map((r) => r.sensor)).not.toContain('silhouette-orientation-axis');
+  });
+
+  it('character briefs stay front-facing when an enemy sensor block omits facing', () => {
+    const brief = briefSchema.parse({
+      type: 'character',
+      name: 'iron-sword',
+      size: { width: 16, height: 16 },
+      palette: { id: 'kenney-roguelike' },
+      anchor: { x: 8, y: 8 },
+      tags: ['sword'],
+      prompt: 'iron sword',
+      references: [
+        { path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' },
+        { path: 'public/assets/kenney/roguelike-rpg-pack/spritesheet.png' },
+      ],
+      sensors: {
+        enemy: {},
+        anchor: { mode: 'center-of-mass' },
+      },
+    });
+    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(false);
+  });
+
   it('honors a brief override that relaxes the opaque-ratio max', () => {
     // The solid-block fixture normally fails opaque-ratio; bumping max to 1.0
     // should let it pass that sensor specifically.
@@ -273,12 +307,31 @@ describe('scoreCandidate', () => {
       anchor: { x: 8, y: 8 },
       sensors: {} as Brief['sensors'],
     });
+
     const card = scoreCandidate(withArtifact, brief, PALETTE);
     const edgeResult = card.breakdown.find((r) => r.sensor === 'opaque-bbox-fits');
     expect(edgeResult?.ok).toBe(false);
     expect(edgeResult && !edgeResult.ok ? edgeResult.reason : '').toContain(
       'detached edge artifact',
     );
+  });
+
+  it('rejects enclosed interior transparency holes while allowing transparent background', () => {
+    const ringPixels = [
+      ...rectPixels(5, 5, 10, 5),
+      ...rectPixels(5, 10, 10, 10),
+      ...rectPixels(5, 6, 5, 9),
+      ...rectPixels(10, 6, 10, 9),
+    ];
+    const withHole = buildProcessedFixture(16, 16, ringPixels);
+    const brief = makeBrief({
+      type: 'item',
+      anchor: { x: 8, y: 10 },
+      sensors: {} as Brief['sensors'],
+    });
+    const card = scoreCandidate(withHole, brief, PALETTE);
+    const result = card.breakdown.find((r) => r.sensor === 'interior-transparency-holes');
+    expect(result?.ok).toBe(false);
   });
 
   it('allows intentional edge touch when brief opts in', () => {

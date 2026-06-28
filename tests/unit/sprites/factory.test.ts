@@ -16,6 +16,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetChatDeploymentFallbackWarnings,
+  createBriefSelectorProvider,
   createSynthProvider,
   createTextProvider,
 } from '../../../scripts/sprites/provider/factory.js';
@@ -89,6 +90,20 @@ describe('createSynthProvider — chat deployment fallback', () => {
       }),
     ).not.toThrow();
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  describe('createBriefSelectorProvider', () => {
+    it('throws when selector deployment matches synth deployment', () => {
+      expect(() =>
+        createBriefSelectorProvider({
+          env: {
+            ...BASE_ENV,
+            AZURE_OPENAI_CHAT_DEPLOYMENT: 'same-deploy',
+            AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: 'same-deploy',
+          },
+        }),
+      ).toThrow(/must differ/);
+    });
   });
 
   it('falls back to AZURE_OPENAI_VISION_DEPLOYMENT when CHAT is missing and warns', () => {
