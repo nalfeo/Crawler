@@ -2,6 +2,14 @@ import { ITEM_CATALOG } from './shared/items.js';
 import { SPRITES } from './engine/sprites/index.js';
 import { DEVTOOLS_INDEX_ENTRIES } from './devtools/index.js';
 import {
+  ACHIEVEMENT_ART_BACKLOG,
+  FLOOR1_ACHIEVEMENTS,
+  LOOT_BOX_TIERS,
+  type AchievementDef,
+  type AchievementReward,
+  type LootBoxTier,
+} from './shared/achievements.js';
+import {
   STATUS_ORDER,
   buildFloorArtPlanReport,
   parseApprovedSprites,
@@ -67,12 +75,14 @@ const DEVTOOLS_PAGE_SPRITE_WORKFLOW = 'sprite-generation-workflow';
 const DEVTOOLS_PAGE_FLOOR_ART_LEGACY = 'floor-art';
 const DEVTOOLS_PAGE_SPRITE_REVIEW = 'sprite-review';
 const DEVTOOLS_PAGE_POSTPROCESS = 'postprocess';
+const DEVTOOLS_PAGE_ACHIEVEMENTS = 'achievements';
 const QUEUED_RUN_POLL_MS = 2000;
 type DevtoolsPage =
   | typeof DEVTOOLS_PAGE_HOME
   | typeof DEVTOOLS_PAGE_SPRITE_WORKFLOW
   | typeof DEVTOOLS_PAGE_SPRITE_REVIEW
-  | typeof DEVTOOLS_PAGE_POSTPROCESS;
+  | typeof DEVTOOLS_PAGE_POSTPROCESS
+  | typeof DEVTOOLS_PAGE_ACHIEVEMENTS;
 const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
   ready: '#16a34a',
   approved: '#0284c7',
@@ -408,6 +418,7 @@ function currentDevtoolsPage(): DevtoolsPage {
     return DEVTOOLS_PAGE_SPRITE_WORKFLOW;
   }
   if (value === DEVTOOLS_PAGE_SPRITE_REVIEW) return DEVTOOLS_PAGE_SPRITE_REVIEW;
+  if (value === DEVTOOLS_PAGE_ACHIEVEMENTS) return DEVTOOLS_PAGE_ACHIEVEMENTS;
   return value === DEVTOOLS_PAGE_POSTPROCESS ? DEVTOOLS_PAGE_POSTPROCESS : DEVTOOLS_PAGE_HOME;
 }
 
@@ -473,6 +484,497 @@ function parseDebugTargetFromUrl(): {
   return { briefId, runId, variantIndex };
 }
 
+const ACHIEVEMENT_EDITOR_STORAGE_KEY = 'crawler.devtools.achievement-overrides.v1';
+
+interface AchievementOverridePatch {
+  title?: string;
+  popupText?: string;
+  unlockCriteria?: string;
+  details?: string;
+  directorFlavor?: string;
+  iconId?: string;
+  reward?: AchievementReward;
+}
+
+type AchievementOverrideMap = Record<string, AchievementOverridePatch>;
+
+function loadAchievementOverrides(): AchievementOverrideMap {
+  try {
+    const raw = window.localStorage.getItem(ACHIEVEMENT_EDITOR_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    return parsed as AchievementOverrideMap;
+  } catch {
+    return {};
+  }
+}
+
+function saveAchievementOverrides(overrides: AchievementOverrideMap): void {
+  window.localStorage.setItem(ACHIEVEMENT_EDITOR_STORAGE_KEY, JSON.stringify(overrides));
+}
+
+function mergeAchievementWithOverride(
+  achievement: AchievementDef,
+  overrides: AchievementOverrideMap,
+): AchievementDef {
+  const patch = overrides[achievement.id];
+  if (!patch) return achievement;
+  return {
+    ...achievement,
+    ...patch,
+    reward: patch.reward ?? achievement.reward,
+  };
+}
+
+function renderAchievementsEditorPage(shell: HTMLElement): void {
+  const overrides = loadAchievementOverrides();
+  let selectedId = FLOOR1_ACHIEVEMENTS[0]?.id ?? null;
+  let query = '';
+
+  const panel = el('section', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '10px',
+      background: '#0b1220',
+      padding: '12px',
+      display: 'grid',
+      gap: '10px',
+    },
+  });
+  shell.append(panel);
+
+  const controls = el('div', {
+    style: { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' },
+  });
+  const search = el('input', {
+    style: {
+      flex: '1 1 220px',
+      padding: '8px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+    },
+  }) as HTMLInputElement;
+  search.type = 'search';
+  search.placeholder = 'Filter by id/title/criteria';
+  const resetSelectedBtn = el('button', {
+    text: 'Reset selected',
+    style: {
+      padding: '7px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#1f2937',
+      color: '#e5e7eb',
+      cursor: 'pointer',
+    },
+  }) as HTMLButtonElement;
+  const resetAllBtn = el('button', {
+    text: 'Reset all overrides',
+    style: {
+      padding: '7px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(248,113,113,0.45)',
+      background: '#3f1d1d',
+      color: '#fecaca',
+      cursor: 'pointer',
+    },
+  }) as HTMLButtonElement;
+  controls.append(search, resetSelectedBtn, resetAllBtn);
+  panel.append(controls);
+
+  const summary = el('p', { style: { fontSize: '12px', color: '#93c5fd' } });
+  panel.append(summary);
+
+  const workspace = el('div', {
+    style: {
+      display: 'grid',
+      gap: '10px',
+      gridTemplateColumns: 'minmax(260px, 1fr) minmax(360px, 2fr)',
+    },
+  });
+  const listHost = el('div', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '8px',
+      background: '#0f172a',
+      maxHeight: '58svh',
+      overflow: 'auto',
+      padding: '8px',
+      display: 'grid',
+      gap: '6px',
+    },
+  });
+  const editorHost = el('div', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '8px',
+      background: '#0f172a',
+      padding: '10px',
+      display: 'grid',
+      gap: '8px',
+    },
+  });
+  workspace.append(listHost, editorHost);
+  panel.append(workspace);
+
+  const artPanel = el('div', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '8px',
+      background: '#0f172a',
+      padding: '10px',
+      display: 'grid',
+      gap: '6px',
+    },
+  });
+  panel.append(artPanel);
+
+  const exportPanel = el('div', {
+    style: {
+      border: '1px solid rgba(229,231,235,0.2)',
+      borderRadius: '8px',
+      background: '#0f172a',
+      padding: '10px',
+      display: 'grid',
+      gap: '8px',
+    },
+  });
+  panel.append(exportPanel);
+
+  const exportText = el('textarea', {
+    style: {
+      width: '100%',
+      minHeight: '180px',
+      background: '#020617',
+      color: '#e2e8f0',
+      border: '1px solid rgba(148,163,184,0.35)',
+      borderRadius: '8px',
+      padding: '8px',
+      fontFamily: 'monospace',
+      fontSize: '12px',
+    },
+  }) as HTMLTextAreaElement;
+  exportText.readOnly = true;
+  const refreshExportBtn = el('button', {
+    text: 'Refresh export JSON',
+    style: {
+      padding: '7px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#082f49',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      width: 'fit-content',
+    },
+  }) as HTMLButtonElement;
+  exportPanel.append(
+    el('h3', { text: 'Export (base + local overrides)' }),
+    refreshExportBtn,
+    exportText,
+  );
+
+  function getMergedAchievements(): AchievementDef[] {
+    return FLOOR1_ACHIEVEMENTS.map((achievement) =>
+      mergeAchievementWithOverride(achievement, overrides),
+    );
+  }
+
+  function updateExport(): void {
+    exportText.value = JSON.stringify(getMergedAchievements(), null, 2);
+  }
+
+  function renderList(): void {
+    const merged = getMergedAchievements();
+    const filtered = merged.filter((achievement) => {
+      const haystack =
+        `${achievement.id} ${achievement.title} ${achievement.unlockCriteria}`.toLowerCase();
+      return haystack.includes(query);
+    });
+    summary.textContent = `Floor 1 achievements: ${merged.length} total · ${Object.keys(overrides).length} overridden locally · ${filtered.length} shown`;
+
+    listHost.replaceChildren();
+    for (const achievement of filtered) {
+      const isSelected = achievement.id === selectedId;
+      const hasOverride = Boolean(overrides[achievement.id]);
+      const row = el('button', {
+        style: {
+          width: '100%',
+          textAlign: 'left',
+          padding: '8px',
+          borderRadius: '8px',
+          border: isSelected ? '1px solid rgba(56,189,248,0.7)' : '1px solid rgba(148,163,184,0.3)',
+          background: isSelected ? '#082f49' : '#111827',
+          color: '#e5e7eb',
+          cursor: 'pointer',
+        },
+      }) as HTMLButtonElement;
+      row.append(
+        el('div', {
+          text: `${achievement.title}${hasOverride ? ' *' : ''}`,
+          style: { fontWeight: '600', fontSize: '13px' },
+        }),
+        el('code', { text: achievement.id, style: { fontSize: '11px', color: '#7dd3fc' } }),
+        el('div', {
+          text: achievement.unlockCriteria,
+          style: { marginTop: '4px', fontSize: '11px', color: '#cbd5e1' },
+        }),
+      );
+      row.addEventListener('click', () => {
+        selectedId = achievement.id;
+        renderList();
+        renderEditor();
+      });
+      listHost.append(row);
+    }
+  }
+
+  function createLabeledField(labelText: string): HTMLLabelElement {
+    const wrap = el('label', {
+      style: { display: 'grid', gap: '4px', fontSize: '12px', color: '#bfdbfe' },
+    }) as HTMLLabelElement;
+    wrap.append(el('span', { text: labelText }));
+    return wrap;
+  }
+
+  function readRewardOverride(
+    rewardTypeValue: string,
+    tierValue: string,
+    itemValue: string,
+    messageValue: string,
+  ): AchievementReward {
+    if (rewardTypeValue === 'lootBox') {
+      const tier = tierValue.trim().toLowerCase();
+      const safeTier = LOOT_BOX_TIERS.includes(tier as LootBoxTier)
+        ? (tier as LootBoxTier)
+        : 'common';
+      return { type: 'lootBox', tier: safeTier };
+    }
+    if (rewardTypeValue === 'item') {
+      return { type: 'item', itemId: itemValue.trim() };
+    }
+    if (rewardTypeValue === 'directorMessage') {
+      return { type: 'directorMessage', message: messageValue.trim() };
+    }
+    return { type: 'none' };
+  }
+
+  function renderEditor(): void {
+    editorHost.replaceChildren();
+    const achievement = getMergedAchievements().find((entry) => entry.id === selectedId) ?? null;
+    if (!achievement) {
+      editorHost.append(el('p', { text: 'No achievement selected.' }));
+      return;
+    }
+
+    const base = FLOOR1_ACHIEVEMENTS.find((entry) => entry.id === achievement.id) ?? achievement;
+    const patch: AchievementOverridePatch = { ...(overrides[achievement.id] ?? {}) };
+    const makeInput = (labelText: string, value: string): HTMLInputElement => {
+      const wrap = createLabeledField(labelText);
+      const input = el('input', {
+        style: {
+          padding: '7px 9px',
+          borderRadius: '8px',
+          border: '1px solid rgba(148,163,184,0.35)',
+          background: '#020617',
+          color: '#e5e7eb',
+        },
+      }) as HTMLInputElement;
+      input.value = value;
+      wrap.append(input);
+      editorHost.append(wrap);
+      return input;
+    };
+    const makeArea = (labelText: string, value: string, minHeight = 70): HTMLTextAreaElement => {
+      const wrap = createLabeledField(labelText);
+      const area = el('textarea', {
+        style: {
+          minHeight: `${minHeight}px`,
+          padding: '7px 9px',
+          borderRadius: '8px',
+          border: '1px solid rgba(148,163,184,0.35)',
+          background: '#020617',
+          color: '#e5e7eb',
+        },
+      }) as HTMLTextAreaElement;
+      area.value = value;
+      wrap.append(area);
+      editorHost.append(wrap);
+      return area;
+    };
+
+    editorHost.append(
+      el('h3', { text: `${achievement.title} (${achievement.id})` }),
+      el('p', {
+        text: `Difficulty: ${achievement.difficulty} · Reward: ${achievement.reward.type === 'lootBox' ? achievement.reward.tier : achievement.reward.type}`,
+        style: { fontSize: '12px', color: '#93c5fd' },
+      }),
+    );
+    const titleInput = makeInput('Title', achievement.title);
+    const popupInput = makeInput('Popup text', achievement.popupText);
+    const criteriaInput = makeInput('Unlock criteria', achievement.unlockCriteria);
+    const iconInput = makeInput('Icon placeholder ID', achievement.iconId);
+    const detailsInput = makeArea('Details', achievement.details);
+    const flavorInput = makeArea('Director flavor', achievement.directorFlavor, 110);
+
+    const rewardTypeWrap = el('label', {
+      style: { display: 'grid', gap: '4px', fontSize: '12px', color: '#bfdbfe' },
+    });
+    const rewardType = el('select', {
+      style: {
+        padding: '7px 9px',
+        borderRadius: '8px',
+        border: '1px solid rgba(148,163,184,0.35)',
+        background: '#020617',
+        color: '#e5e7eb',
+      },
+    }) as HTMLSelectElement;
+    for (const type of ['lootBox', 'item', 'directorMessage', 'none']) {
+      const option = document.createElement('option');
+      option.value = type;
+      option.textContent = type;
+      rewardType.append(option);
+    }
+    const rewardTier = makeInput(
+      'Reward loot-box tier (if lootBox)',
+      achievement.reward.type === 'lootBox' ? achievement.reward.tier : LOOT_BOX_TIERS[0],
+    );
+    const rewardItem = makeInput(
+      'Reward item ID (if item)',
+      achievement.reward.type === 'item' ? achievement.reward.itemId : '',
+    );
+    const rewardMessage = makeArea(
+      'Reward message (if directorMessage)',
+      achievement.reward.type === 'directorMessage' ? achievement.reward.message : '',
+      56,
+    );
+    rewardType.value = achievement.reward.type;
+    rewardTypeWrap.append(el('span', { text: 'Reward type' }), rewardType);
+    editorHost.append(rewardTypeWrap);
+
+    const actions = el('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } });
+    const saveBtn = el('button', {
+      text: 'Save override',
+      style: {
+        padding: '8px 10px',
+        borderRadius: '8px',
+        border: '1px solid rgba(34,197,94,0.55)',
+        background: '#052e16',
+        color: '#bbf7d0',
+        cursor: 'pointer',
+      },
+    }) as HTMLButtonElement;
+    const revertBtn = el('button', {
+      text: 'Revert selected',
+      style: {
+        padding: '8px 10px',
+        borderRadius: '8px',
+        border: '1px solid rgba(251,113,133,0.55)',
+        background: '#3f1d2e',
+        color: '#fecdd3',
+        cursor: 'pointer',
+      },
+    }) as HTMLButtonElement;
+    const saveStatus = el('span', { style: { color: '#93c5fd', fontSize: '12px' } });
+    actions.append(saveBtn, revertBtn, saveStatus);
+    editorHost.append(actions);
+
+    saveBtn.addEventListener('click', () => {
+      const reward = readRewardOverride(
+        rewardType.value,
+        rewardTier.value,
+        rewardItem.value,
+        rewardMessage.value,
+      );
+
+      patch.title = titleInput.value.trim();
+      patch.popupText = popupInput.value.trim();
+      patch.unlockCriteria = criteriaInput.value.trim();
+      patch.details = detailsInput.value.trim();
+      patch.directorFlavor = flavorInput.value.trim();
+      patch.iconId = iconInput.value.trim();
+      patch.reward = reward;
+      overrides[achievement.id] = patch;
+      saveAchievementOverrides(overrides);
+      saveStatus.textContent = 'Saved override in localStorage.';
+      renderList();
+      updateExport();
+    });
+
+    revertBtn.addEventListener('click', () => {
+      delete overrides[achievement.id];
+      saveAchievementOverrides(overrides);
+      selectedId = base.id;
+      renderList();
+      renderEditor();
+      updateExport();
+    });
+  }
+
+  function renderArtBacklog(): void {
+    artPanel.replaceChildren(
+      el('h3', { text: 'Placeholder art backlog (icons + loot boxes)' }),
+      el('p', {
+        text: `${ACHIEVEMENT_ART_BACKLOG.length} placeholder packs tracked for replacement.`,
+        style: { color: '#93c5fd', fontSize: '12px' },
+      }),
+    );
+    const list = el('div', { style: { display: 'grid', gap: '6px' } });
+    for (const item of ACHIEVEMENT_ART_BACKLOG) {
+      list.append(
+        el('div', {
+          style: {
+            border: '1px solid rgba(148,163,184,0.3)',
+            borderRadius: '8px',
+            padding: '8px',
+            background: '#111827',
+          },
+        }),
+      );
+      const card = list.lastChild as HTMLElement;
+      card.append(
+        el('div', {
+          text: `${item.kind === 'lootBox' ? '📦' : '🧷'} ${item.placeholderId}`,
+          style: { fontWeight: '600' },
+        }),
+        el('div', { text: item.description, style: { fontSize: '12px', color: '#cbd5e1' } }),
+        el('div', {
+          text: `Used by ${item.usedByAchievementIds.length} achievement(s)`,
+          style: { fontSize: '11px', color: '#94a3b8', marginTop: '2px' },
+        }),
+      );
+    }
+    artPanel.append(list);
+  }
+
+  search.addEventListener('input', () => {
+    query = search.value.trim().toLowerCase();
+    renderList();
+  });
+  resetSelectedBtn.addEventListener('click', () => {
+    if (!selectedId) return;
+    delete overrides[selectedId];
+    saveAchievementOverrides(overrides);
+    renderList();
+    renderEditor();
+    updateExport();
+  });
+  resetAllBtn.addEventListener('click', () => {
+    for (const key of Object.keys(overrides)) delete overrides[key];
+    saveAchievementOverrides(overrides);
+    renderList();
+    renderEditor();
+    updateExport();
+  });
+  refreshExportBtn.addEventListener('click', updateExport);
+
+  renderList();
+  renderEditor();
+  renderArtBacklog();
+  updateExport();
+}
+
 function render(): void {
   const root = document.getElementById('devtools-root');
   if (!(root instanceof HTMLElement)) {
@@ -486,6 +988,7 @@ function render(): void {
   const isSpriteReviewPage = currentPage === DEVTOOLS_PAGE_SPRITE_REVIEW;
   const isSpriteWorkflowPage = currentPage === DEVTOOLS_PAGE_SPRITE_WORKFLOW;
   const isPostprocessPage = currentPage === DEVTOOLS_PAGE_POSTPROCESS;
+  const isAchievementsPage = currentPage === DEVTOOLS_PAGE_ACHIEVEMENTS;
   const title = el('h1', { text: 'Crawler DevTools' });
   const subtitle = el('p', {
     text: LOCAL_HOSTS.has(window.location.hostname)
@@ -495,7 +998,9 @@ function render(): void {
           ? 'Postprocess debugger: inspect pipeline steps, slicing, and live postprocess traces.'
           : isSpriteReviewPage
             ? 'Sprite review — readonly viewer for approved sprite sheets.'
-            : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
+            : isAchievementsPage
+              ? 'Achievements editor — review/edit Floor 1 achievement text + rewards and track placeholder art backlog.'
+              : 'Sprite Generation Workflow — track backlog, synthesis, generation, approvals, and integration.'
       : 'DevTools is disabled outside localhost.',
     style: { marginBottom: '16px' },
   });
@@ -605,6 +1110,11 @@ function render(): void {
     search.addEventListener('input', () => renderTools(search.value));
     renderTools('');
     shell.append(count, search, list);
+    return;
+  }
+
+  if (isAchievementsPage) {
+    renderAchievementsEditorPage(shell);
     return;
   }
 
