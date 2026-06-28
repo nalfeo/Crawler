@@ -146,6 +146,13 @@ export interface GameWorld {
     /** Ability system and spells become usable once unlocked (Floor 1: after boss quest). */
     spells: boolean;
   };
+  /** Runtime achievement state for the active run. */
+  achievements: {
+    /** Achievement IDs unlocked this run. */
+    unlockedIds: Set<string>;
+    /** Newly unlocked IDs waiting to be surfaced by UI. */
+    pendingUnlockIds: string[];
+  };
   /** Player's current MP (mana points). */
   playerMp: number;
   /** Player's maximum MP (mana points). */
@@ -279,6 +286,10 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
       inventory: false,
       equipment: false,
       spells: false,
+    },
+    achievements: {
+      unlockedIds: new Set(),
+      pendingUnlockIds: [],
     },
     playerMp: 100,
     playerMaxMp: 100,

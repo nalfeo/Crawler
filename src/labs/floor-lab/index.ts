@@ -9,6 +9,7 @@ import {
   acceptQuest,
   enemyAISystem,
   floor1EnemyDirectorSystem,
+  achievementSystem,
   floorObjectiveSystem,
   floor1PlayerStatSystem,
   initializeFloor1Scenario,
@@ -549,7 +550,14 @@ function createFloor1Lab(canvasHost: HTMLElement, controls: HTMLElement): () => 
             enemyAISystem,
             floor1EnemyDirectorSystem,
           ],
-          postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
+          postSystems: [
+            levelSystem,
+            skillSystem,
+            abilitySystem,
+            floorObjectiveSystem,
+            questSystem,
+            achievementSystem,
+          ],
         }),
       ],
       scale: {

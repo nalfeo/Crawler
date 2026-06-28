@@ -10,3 +10,4 @@ export {
   queueAbilityTrigger,
   getOrCreateAbilityState,
 } from './abilitySystem.js';
+export { achievementSystem, unlockAchievement } from './achievementSystem.js';

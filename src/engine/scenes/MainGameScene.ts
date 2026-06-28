@@ -87,6 +87,7 @@ import {
 import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
+import { getAchievementById } from '../../shared/achievements.js';
 
 /** Maximum simulation steps per frame to prevent spiral of death. */
 const MAX_STEPS_PER_FRAME = 4;
@@ -1008,6 +1009,23 @@ export class MainGameScene extends Phaser.Scene {
     if (unlocks.spells && abilitiesToggleRequested) {
       this.openAbilitiesConfigModal();
     }
+
+    this.processAchievementUnlocks();
+  }
+
+  private processAchievementUnlocks(): void {
+    const unlockedId = this.world.achievements.pendingUnlockIds.shift();
+    if (!unlockedId) {
+      return;
+    }
+
+    const achievement = getAchievementById(unlockedId);
+    if (!achievement) {
+      return;
+    }
+
+    this.flashHint(achievement.popupText);
+    this.queueDirectorCommentary(achievement.directorFlavor);
   }
 
   /** Briefly show a transient message in the interaction-hint slot. */

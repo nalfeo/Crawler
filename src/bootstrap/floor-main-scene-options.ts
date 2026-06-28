@@ -10,6 +10,7 @@ import {
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
   floor1PlayerStatSystem,
+  achievementSystem,
   initializeFloor1Scenario,
   meetTutorialGoon,
   questSystem,
@@ -82,7 +83,14 @@ export function createFloorMainSceneOptions(_floorId: string = 'floor1') {
       enemyAISystem,
       floor1EnemyDirectorSystem,
     ],
-    postSystems: [levelSystem, skillSystem, abilitySystem, floorObjectiveSystem, questSystem],
+    postSystems: [
+      levelSystem,
+      skillSystem,
+      abilitySystem,
+      floorObjectiveSystem,
+      questSystem,
+      achievementSystem,
+    ],
   };
 }
 
