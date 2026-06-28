@@ -28,6 +28,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 - Write a handoff file before ending your session
 - If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
 - **Apple complexity**: declare your 🍎–🍎🍎🍎🍎🍎 estimate before writing any code; score actuals + verdict at handoff; create an individual file in `docs/knowledge/metrics/apples/YYYY-MM-DD-<slug>.json` — see `docs/agent-os/policies/complexity-policy.md`
+- **PR title/description synthesis**: When creating or updating a PR title/description — including after any feedback turns — always synthesize the _entire_ session's work. Read the existing PR title/description first (via `gh pr view`), then write a holistic title and description that covers every change on the branch, not just the most recent task. Never replace the primary purpose of the PR with a secondary or follow-up concern. The title must reflect the dominant feature/fix; secondary changes belong as bullet points in the description.
 
 ## Merge Policy
 
