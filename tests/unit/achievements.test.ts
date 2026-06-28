@@ -4,6 +4,7 @@ import {
   FLOOR1_ACHIEVEMENT_COUNT,
   FLOOR1_ACHIEVEMENTS,
   LOOT_BOX_TIERS,
+  parseAchievementCatalog,
 } from '../../src/shared/achievements.js';
 
 describe('floor1 achievements catalog', () => {
@@ -41,6 +42,12 @@ describe('floor1 achievements catalog', () => {
     }
   });
 
+  it('defines unlock rules for each achievement entry', () => {
+    for (const achievement of FLOOR1_ACHIEVEMENTS) {
+      expect(Array.isArray(achievement.unlockRules)).toBe(true);
+    }
+  });
+
   it('tracks placeholder art backlog for all icon packs and loot-box tiers', () => {
     const iconEntries = ACHIEVEMENT_ART_BACKLOG.filter((entry) => entry.kind === 'icon');
     const lootEntries = ACHIEVEMENT_ART_BACKLOG.filter((entry) => entry.kind === 'lootBox');
@@ -49,5 +56,23 @@ describe('floor1 achievements catalog', () => {
     expect(lootEntries.map((entry) => entry.id).sort()).toEqual(
       LOOT_BOX_TIERS.map((tier) => `lootBox:${tier}`).sort(),
     );
+  });
+
+  it('rejects unknown unlock rule types during catalog validation', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    raw[0]!.unlockRules = [
+      {
+        type: 'script',
+      },
+    ];
+
+    expect(() => parseAchievementCatalog(raw)).toThrow();
+  });
+
+  it('rejects entries without unlockRules during catalog validation', () => {
+    const raw = JSON.parse(JSON.stringify(FLOOR1_ACHIEVEMENTS)) as Array<Record<string, unknown>>;
+    delete raw[0]!.unlockRules;
+
+    expect(() => parseAchievementCatalog(raw)).toThrow();
   });
 });

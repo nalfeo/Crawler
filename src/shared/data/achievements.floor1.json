@@ -6,13 +6,21 @@
     "popupText": "New achievement: First Bonk!",
     "unlockCriteria": "Defeat your first enemy on Floor 1.",
     "details": "Unlock when you defeat your first enemy on Floor 1.",
-    "directorFlavor": "\"First Bonk? Nice television.\" — The Director",
+    "directorFlavor": "\"First Bonk? Nice television.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 1
+      }
+    ]
   },
   {
     "id": "slime-no-more",
@@ -21,13 +29,21 @@
     "popupText": "New achievement: Gel Exit!",
     "unlockCriteria": "Defeat your first slime.",
     "details": "Unlock when you defeat your first slime.",
-    "directorFlavor": "\"Gel Exit? Nice television.\" — The Director",
+    "directorFlavor": "\"Gel Exit? Nice television.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "slimesKilled",
+        "op": ">=",
+        "value": 1
+      }
+    ]
   },
   {
     "id": "rat-retired",
@@ -36,13 +52,21 @@
     "popupText": "New achievement: Rat Retirement!",
     "unlockCriteria": "Defeat your first rat.",
     "details": "Unlock when you defeat your first rat.",
-    "directorFlavor": "\"Rat Retirement? Nice television.\" — The Director",
+    "directorFlavor": "\"Rat Retirement? Nice television.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "ratsKilled",
+        "op": ">=",
+        "value": 1
+      }
+    ]
   },
   {
     "id": "triple-swipe",
@@ -51,13 +75,14 @@
     "popupText": "New achievement: Three at Once!",
     "unlockCriteria": "Defeat 3 enemies with one swing.",
     "details": "Unlock when you defeat 3 enemies with one swing.",
-    "directorFlavor": "\"Trigger condition: Defeat 3 enemies with one swing. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 3 enemies with one swing. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "five-chain",
@@ -66,13 +91,14 @@
     "popupText": "New achievement: Five-Alarm Combo!",
     "unlockCriteria": "Defeat 5 enemies within 4 seconds.",
     "details": "Unlock when you defeat 5 enemies within 4 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat 5 enemies within 4 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 5 enemies within 4 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "ten-chain",
@@ -81,13 +107,14 @@
     "popupText": "New achievement: Ten Tiny Funerals!",
     "unlockCriteria": "Defeat 10 enemies within 8 seconds.",
     "details": "Unlock when you defeat 10 enemies within 8 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat 10 enemies within 8 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 10 enemies within 8 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "door-camper",
@@ -96,13 +123,14 @@
     "popupText": "New achievement: Door Camper!",
     "unlockCriteria": "Defeat 5 enemies near a doorway.",
     "details": "Unlock when you defeat 5 enemies near a doorway.",
-    "directorFlavor": "\"Door Camper? Nice television.\" — The Director",
+    "directorFlavor": "\"Door Camper? Nice television.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "hallway-cleaner",
@@ -111,13 +139,14 @@
     "popupText": "New achievement: Hallway Cleaner!",
     "unlockCriteria": "Defeat 12 enemies in hallways on Floor 1.",
     "details": "Unlock when you defeat 12 enemies in hallways on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 12 enemies in hallways on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 12 enemies in hallways on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "room-sweeper",
@@ -126,13 +155,14 @@
     "popupText": "New achievement: Room Sweeper!",
     "unlockCriteria": "Defeat 20 enemies in one room before leaving it.",
     "details": "Unlock when you defeat 20 enemies in one room before leaving it.",
-    "directorFlavor": "\"Trigger condition: Defeat 20 enemies in one room before leaving it. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 20 enemies in one room before leaving it. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "no-scope-ish",
@@ -141,13 +171,14 @@
     "popupText": "New achievement: No Scope-ish!",
     "unlockCriteria": "Defeat an enemy at maximum weapon range.",
     "details": "Unlock when you defeat an enemy at maximum weapon range.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy at maximum weapon range. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat an enemy at maximum weapon range. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "close-quarters-tv",
@@ -156,13 +187,14 @@
     "popupText": "New achievement: Close-Quarters TV!",
     "unlockCriteria": "Defeat an enemy while within 1 foot of it.",
     "details": "Unlock when you defeat an enemy while within 1 foot of it.",
-    "directorFlavor": "\"Close-Quarters TV? Nice television.\" — The Director",
+    "directorFlavor": "\"Close-Quarters TV? Nice television.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "trap-finisher",
@@ -171,13 +203,14 @@
     "popupText": "New achievement: Hazard Assist!",
     "unlockCriteria": "Defeat an enemy that was recently hit by a trap.",
     "details": "Unlock when you defeat an enemy that was recently hit by a trap.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy that was recently hit by a trap. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat an enemy that was recently hit by a trap. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "lucky-bounce",
@@ -186,13 +219,14 @@
     "popupText": "New achievement: Lucky Bounce!",
     "unlockCriteria": "Defeat an enemy with a ricochet hit.",
     "details": "Unlock when you defeat an enemy with a ricochet hit.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy with a ricochet hit. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat an enemy with a ricochet hit. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "last-hit-hero",
@@ -201,13 +235,14 @@
     "popupText": "New achievement: Last Hit Hero!",
     "unlockCriteria": "Defeat an enemy while below 10 HP.",
     "details": "Unlock when you defeat an enemy while below 10 HP.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy while below 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat an enemy while below 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "crowd-control",
@@ -216,13 +251,26 @@
     "popupText": "New achievement: Crowd Control!",
     "unlockCriteria": "Defeat 30 total enemies before the Floor 1 boss appears.",
     "details": "Unlock when you defeat 30 total enemies before the Floor 1 boss appears.",
-    "directorFlavor": "\"Trigger condition: Defeat 30 total enemies before the Floor 1 boss appears. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 30 total enemies before the Floor 1 boss appears. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "staircaseBattleStarted",
+        "value": false
+      },
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 30
+      }
+    ]
   },
   {
     "id": "mob-eviction",
@@ -231,13 +279,21 @@
     "popupText": "New achievement: Mob Eviction!",
     "unlockCriteria": "Defeat 60 total enemies on Floor 1.",
     "details": "Unlock when you defeat 60 total enemies on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 60 total enemies on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 60 total enemies on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 60
+      }
+    ]
   },
   {
     "id": "ratings-climbing",
@@ -246,13 +302,21 @@
     "popupText": "New achievement: Ratings Climbing!",
     "unlockCriteria": "Defeat 100 total enemies on Floor 1.",
     "details": "Unlock when you defeat 100 total enemies on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 100 total enemies on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 100 total enemies on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "totalKills",
+        "op": ">=",
+        "value": 100
+      }
+    ]
   },
   {
     "id": "clean-up-crew",
@@ -261,13 +325,14 @@
     "popupText": "New achievement: Cleanup Crew!",
     "unlockCriteria": "Defeat the last enemy in a wave within 3 seconds.",
     "details": "Unlock when you defeat the last enemy in a wave within 3 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat the last enemy in a wave within 3 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat the last enemy in a wave within 3 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "spell-slap",
@@ -276,13 +341,14 @@
     "popupText": "New achievement: Spell Slap!",
     "unlockCriteria": "Defeat an enemy with a spell.",
     "details": "Unlock when you defeat an enemy with a spell.",
-    "directorFlavor": "\"Spell Slap? Nice television.\" — The Director",
+    "directorFlavor": "\"Spell Slap? Nice television.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "melee-main",
@@ -291,13 +357,14 @@
     "popupText": "New achievement: Melee Main!",
     "unlockCriteria": "Defeat 25 enemies with melee attacks on Floor 1.",
     "details": "Unlock when you defeat 25 enemies with melee attacks on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 25 enemies with melee attacks on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat 25 enemies with melee attacks on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-combat-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "skill-first-blood",
@@ -306,13 +373,21 @@
     "popupText": "New achievement: Tutorial Complete-ish!",
     "unlockCriteria": "Level up any skill for the first time.",
     "details": "Unlock when you level up any skill for the first time.",
-    "directorFlavor": "\"Tutorial Complete-ish? Nice television.\" — The Director",
+    "directorFlavor": "\"Tutorial Complete-ish? Nice television.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "maxSkillLevel",
+        "op": ">=",
+        "value": 1
+      }
+    ]
   },
   {
     "id": "skill-five",
@@ -321,13 +396,21 @@
     "popupText": "New achievement: Skill Issue Solved!",
     "unlockCriteria": "Reach skill level 5 on any skill.",
     "details": "Unlock when you reach skill level 5 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 5 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach skill level 5 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "maxSkillLevel",
+        "op": ">=",
+        "value": 5
+      }
+    ]
   },
   {
     "id": "skill-ten",
@@ -336,13 +419,21 @@
     "popupText": "New achievement: Double Digits!",
     "unlockCriteria": "Reach skill level 10 on any skill.",
     "details": "Unlock when you reach skill level 10 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 10 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach skill level 10 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "maxSkillLevel",
+        "op": ">=",
+        "value": 10
+      }
+    ]
   },
   {
     "id": "skill-fifteen",
@@ -351,13 +442,21 @@
     "popupText": "New achievement: Fifteen Minutes of Fame!",
     "unlockCriteria": "Reach skill level 15 on any skill.",
     "details": "Unlock when you reach skill level 15 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 15 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach skill level 15 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "maxSkillLevel",
+        "op": ">=",
+        "value": 15
+      }
+    ]
   },
   {
     "id": "skill-twenty",
@@ -366,13 +465,21 @@
     "popupText": "New achievement: Cap Curious!",
     "unlockCriteria": "Reach skill level 20 on any skill.",
     "details": "Unlock when you reach skill level 20 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 20 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach skill level 20 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "maxSkillLevel",
+        "op": ">=",
+        "value": 20
+      }
+    ]
   },
   {
     "id": "sword-five",
@@ -381,13 +488,14 @@
     "popupText": "New achievement: Sword Club 5!",
     "unlockCriteria": "Reach level 5 with a blade skill.",
     "details": "Unlock when you reach level 5 with a blade skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a blade skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach level 5 with a blade skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "ranged-five",
@@ -396,13 +504,14 @@
     "popupText": "New achievement: Ranged and Dangerous!",
     "unlockCriteria": "Reach level 5 with a ranged skill.",
     "details": "Unlock when you reach level 5 with a ranged skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a ranged skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach level 5 with a ranged skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "magic-five",
@@ -411,13 +520,14 @@
     "popupText": "New achievement: Wizard Adjacent!",
     "unlockCriteria": "Reach level 5 with a magic skill.",
     "details": "Unlock when you reach level 5 with a magic skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a magic skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach level 5 with a magic skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "defense-five",
@@ -426,13 +536,14 @@
     "popupText": "New achievement: Tank-ish!",
     "unlockCriteria": "Reach level 5 with a defense skill.",
     "details": "Unlock when you reach level 5 with a defense skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a defense skill. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach level 5 with a defense skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "utility-five",
@@ -441,13 +552,14 @@
     "popupText": "New achievement: Quality of Life!",
     "unlockCriteria": "Reach level 5 with a utility skill.",
     "details": "Unlock when you reach level 5 with a utility skill.",
-    "directorFlavor": "\"Quality of Life? Nice television.\" — The Director",
+    "directorFlavor": "\"Quality of Life? Nice television.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "dual-specialist",
@@ -456,13 +568,14 @@
     "popupText": "New achievement: Dual Specialist!",
     "unlockCriteria": "Get two different skills to level 10 in one Floor 1 run.",
     "details": "Unlock when you get two different skills to level 10 in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Get two different skills to level 10 in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Get two different skills to level 10 in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "triple-specialist",
@@ -471,13 +584,14 @@
     "popupText": "New achievement: Triple Specialist!",
     "unlockCriteria": "Get three different skills to level 10 in one Floor 1 run.",
     "details": "Unlock when you get three different skills to level 10 in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Get three different skills to level 10 in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Get three different skills to level 10 in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "milestone-hunter",
@@ -486,13 +600,14 @@
     "popupText": "New achievement: Milestone Hunter!",
     "unlockCriteria": "Trigger 4 skill milestones in one Floor 1 run.",
     "details": "Unlock when you trigger 4 skill milestones in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Trigger 4 skill milestones in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Trigger 4 skill milestones in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "loadout-locked-in",
@@ -501,13 +616,14 @@
     "popupText": "New achievement: Locked In!",
     "unlockCriteria": "Open abilities and assign your first bar setup.",
     "details": "Unlock when you open abilities and assign your first bar setup.",
-    "directorFlavor": "\"Locked In? Nice television.\" — The Director",
+    "directorFlavor": "\"Locked In? Nice television.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "respec-ritual",
@@ -516,13 +632,14 @@
     "popupText": "New achievement: Button-Masher Buildcraft!",
     "unlockCriteria": "Change your abilities bar 3 times in a run.",
     "details": "Unlock when you change your abilities bar 3 times in a run.",
-    "directorFlavor": "\"Trigger condition: Change your abilities bar 3 times in a run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Change your abilities bar 3 times in a run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "mana-miser",
@@ -531,13 +648,14 @@
     "popupText": "New achievement: Mana Miser!",
     "unlockCriteria": "Finish a fight with full mana after casting at least once.",
     "details": "Unlock when you finish a fight with full mana after casting at least once.",
-    "directorFlavor": "\"Trigger condition: Finish a fight with full mana after casting at least once. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Finish a fight with full mana after casting at least once. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "mana-bender",
@@ -546,13 +664,14 @@
     "popupText": "New achievement: Mana Bender!",
     "unlockCriteria": "Cast 20 spells on Floor 1.",
     "details": "Unlock when you cast 20 spells on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Cast 20 spells on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Cast 20 spells on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "weapon-scholar",
@@ -561,13 +680,14 @@
     "popupText": "New achievement: Weapon Scholar!",
     "unlockCriteria": "Land hits with 3 different weapon classes in one run.",
     "details": "Unlock when you land hits with 3 different weapon classes in one run.",
-    "directorFlavor": "\"Trigger condition: Land hits with 3 different weapon classes in one run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Land hits with 3 different weapon classes in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "stat-point-spender",
@@ -576,13 +696,21 @@
     "popupText": "New achievement: Point Investor!",
     "unlockCriteria": "Spend your first stat point.",
     "details": "Unlock when you spend your first stat point.",
-    "directorFlavor": "\"Point Investor? Nice television.\" — The Director",
+    "directorFlavor": "\"Point Investor? Nice television.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "spentStatPoints",
+        "op": ">=",
+        "value": 1
+      }
+    ]
   },
   {
     "id": "maxed-core",
@@ -591,13 +719,14 @@
     "popupText": "New achievement: Core Values!",
     "unlockCriteria": "Invest 15 total stat points in one Floor 1 run.",
     "details": "Unlock when you invest 15 total stat points in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Invest 15 total stat points in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Invest 15 total stat points in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-skill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "ouch-less",
@@ -606,13 +735,14 @@
     "popupText": "New achievement: Mostly Untouched!",
     "unlockCriteria": "Clear one combat room without taking damage.",
     "details": "Unlock when you clear one combat room without taking damage.",
-    "directorFlavor": "\"Trigger condition: Clear one combat room without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Clear one combat room without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "no-hit-floor1",
@@ -621,13 +751,14 @@
     "popupText": "New achievement: Untouchable TV!",
     "unlockCriteria": "Finish Floor 1 without taking damage.",
     "details": "Unlock when you finish Floor 1 without taking damage.",
-    "directorFlavor": "\"Trigger condition: Finish Floor 1 without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Finish Floor 1 without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "divine"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "ten-hp-ending",
@@ -636,13 +767,14 @@
     "popupText": "New achievement: One-Digit Ending!",
     "unlockCriteria": "Take the stairs with under 10 HP.",
     "details": "Unlock when you take the stairs with under 10 HP.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with under 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Take the stairs with under 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "five-hp-ending",
@@ -651,13 +783,14 @@
     "popupText": "New achievement: Heartbeat Finale!",
     "unlockCriteria": "Take the stairs with under 5 HP.",
     "details": "Unlock when you take the stairs with under 5 HP.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with under 5 HP. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Take the stairs with under 5 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "clutch-heal",
@@ -666,13 +799,14 @@
     "popupText": "New achievement: Medical Drama!",
     "unlockCriteria": "Use a heal while below 15 HP and survive.",
     "details": "Unlock when you use a heal while below 15 HP and survive.",
-    "directorFlavor": "\"Trigger condition: Use a heal while below 15 HP and survive. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Use a heal while below 15 HP and survive. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "safe-room-sprinter",
@@ -681,13 +815,14 @@
     "popupText": "New achievement: Nervous Pace!",
     "unlockCriteria": "Enter and leave a safe room in under 5 seconds.",
     "details": "Unlock when you enter and leave a safe room in under 5 seconds.",
-    "directorFlavor": "\"Nervous Pace? Nice television.\" — The Director",
+    "directorFlavor": "\"Nervous Pace? Nice television.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "safe-room-breather",
@@ -696,13 +831,14 @@
     "popupText": "New achievement: Tea Break!",
     "unlockCriteria": "Spend at least 45 seconds in the safe room.",
     "details": "Unlock when you spend at least 45 seconds in the safe room.",
-    "directorFlavor": "\"Tea Break? Nice television.\" — The Director",
+    "directorFlavor": "\"Tea Break? Nice television.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "directorMessage",
       "message": "Reward: nothing. You did not panic on camera."
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "late-stairs",
@@ -711,28 +847,30 @@
     "popupText": "New achievement: Buzzer Beater!",
     "unlockCriteria": "Take the stairs with less than 5 seconds left.",
     "details": "Unlock when you take the stairs with less than 5 seconds left.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with less than 5 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Take the stairs with less than 5 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "divine"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "just-in-time",
     "floor": 1,
-    "title": "Just In Time™",
-    "popupText": "New achievement: Just In Time™!",
+    "title": "Just In Time\u2122",
+    "popupText": "New achievement: Just In Time\u2122!",
     "unlockCriteria": "Take the stairs with less than 15 seconds left.",
     "details": "Unlock when you take the stairs with less than 15 seconds left.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with less than 15 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Take the stairs with less than 15 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "time-rich",
@@ -741,13 +879,14 @@
     "popupText": "New achievement: Ahead of Schedule!",
     "unlockCriteria": "Take the stairs with over 90 seconds left.",
     "details": "Unlock when you take the stairs with over 90 seconds left.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with over 90 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Take the stairs with over 90 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "camera-friendly",
@@ -756,13 +895,14 @@
     "popupText": "New achievement: Camera-Friendly!",
     "unlockCriteria": "Avoid standing still for more than 3 seconds during combat.",
     "details": "Unlock when you avoid standing still for more than 3 seconds during combat.",
-    "directorFlavor": "\"Trigger condition: Avoid standing still for more than 3 seconds during combat. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Avoid standing still for more than 3 seconds during combat. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "panic-dodge",
@@ -771,13 +911,14 @@
     "popupText": "New achievement: Panic Dodge!",
     "unlockCriteria": "Avoid lethal damage by dodging within 1 second of impact.",
     "details": "Unlock when you avoid lethal damage by dodging within 1 second of impact.",
-    "directorFlavor": "\"Trigger condition: Avoid lethal damage by dodging within 1 second of impact. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Avoid lethal damage by dodging within 1 second of impact. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "crowd-surfing",
@@ -786,13 +927,14 @@
     "popupText": "New achievement: Crowd Surfing!",
     "unlockCriteria": "Move through 20 nearby enemies without dying.",
     "details": "Unlock when you move through 20 nearby enemies without dying.",
-    "directorFlavor": "\"Trigger condition: Move through 20 nearby enemies without dying. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Move through 20 nearby enemies without dying. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "doorframe-duelist",
@@ -801,13 +943,14 @@
     "popupText": "New achievement: Doorframe Duelist!",
     "unlockCriteria": "Defeat an elite while never leaving one doorway area.",
     "details": "Unlock when you defeat an elite while never leaving one doorway area.",
-    "directorFlavor": "\"Trigger condition: Defeat an elite while never leaving one doorway area. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat an elite while never leaving one doorway area. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "no-potion",
@@ -816,13 +959,14 @@
     "popupText": "New achievement: No Potion Policy!",
     "unlockCriteria": "Finish Floor 1 without consuming a healing item.",
     "details": "Unlock when you finish Floor 1 without consuming a healing item.",
-    "directorFlavor": "\"Trigger condition: Finish Floor 1 without consuming a healing item. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Finish Floor 1 without consuming a healing item. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "no-safe-shop",
@@ -831,13 +975,14 @@
     "popupText": "New achievement: No Shopping Spree!",
     "unlockCriteria": "Finish Floor 1 without opening inventory or equipment screens.",
     "details": "Unlock when you finish Floor 1 without opening inventory or equipment screens.",
-    "directorFlavor": "\"Trigger condition: Finish Floor 1 without opening inventory or equipment screens. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Finish Floor 1 without opening inventory or equipment screens. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "loot-vacuum",
@@ -846,13 +991,14 @@
     "popupText": "New achievement: Loot Vacuum!",
     "unlockCriteria": "Collect 30 pickups before the Floor 1 boss fight.",
     "details": "Unlock when you collect 30 pickups before the Floor 1 boss fight.",
-    "directorFlavor": "\"Trigger condition: Collect 30 pickups before the Floor 1 boss fight. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Collect 30 pickups before the Floor 1 boss fight. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "gem-hoarder",
@@ -861,13 +1007,14 @@
     "popupText": "New achievement: Gem Hoarder!",
     "unlockCriteria": "Collect 50 XP gems in one run.",
     "details": "Unlock when you collect 50 XP gems in one run.",
-    "directorFlavor": "\"Trigger condition: Collect 50 XP gems in one run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Collect 50 XP gems in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "gold-goblin",
@@ -876,13 +1023,21 @@
     "popupText": "New achievement: Gold Goblin!",
     "unlockCriteria": "Collect 250 gold on Floor 1.",
     "details": "Unlock when you collect 250 gold on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Collect 250 gold on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Collect 250 gold on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "goldCollected",
+        "op": ">=",
+        "value": 250
+      }
+    ]
   },
   {
     "id": "broke-speedrun",
@@ -891,13 +1046,22 @@
     "popupText": "New achievement: Broke%!",
     "unlockCriteria": "Take the stairs with less than 30 gold in inventory.",
     "details": "Unlock when you take the stairs with less than 30 gold in inventory.",
-    "directorFlavor": "\"Broke%? Nice television.\" — The Director",
+    "directorFlavor": "\"Broke%? Nice television.\" \u2014 The Director",
     "iconId": "achv-survival-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "directorMessage",
       "message": "Reward: nothing. Poverty builds character."
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "playerGold",
+        "op": "<",
+        "value": 30,
+        "phase": "run_end_clear"
+      }
+    ]
   },
   {
     "id": "boss-found",
@@ -906,13 +1070,14 @@
     "popupText": "New achievement: Found the Main Event!",
     "unlockCriteria": "Enter the boss room on Floor 1.",
     "details": "Unlock when you enter the boss room on Floor 1.",
-    "directorFlavor": "\"Found the Main Event? Nice television.\" — The Director",
+    "directorFlavor": "\"Found the Main Event? Nice television.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-first-hit",
@@ -921,13 +1086,14 @@
     "popupText": "New achievement: Opening Statement!",
     "unlockCriteria": "Land the first hit on the boss.",
     "details": "Unlock when you land the first hit on the boss.",
-    "directorFlavor": "\"Trigger condition: Land the first hit on the boss. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Land the first hit on the boss. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-no-hit-30",
@@ -936,13 +1102,14 @@
     "popupText": "New achievement: Grace Under Ratings!",
     "unlockCriteria": "Survive 30 seconds in boss fight without taking damage.",
     "details": "Unlock when you survive 30 seconds in boss fight without taking damage.",
-    "directorFlavor": "\"Trigger condition: Survive 30 seconds in boss fight without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Survive 30 seconds in boss fight without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-ten-seconds",
@@ -951,13 +1118,14 @@
     "popupText": "New achievement: Fast Programming!",
     "unlockCriteria": "Defeat the Floor 1 boss in under 10 seconds.",
     "details": "Unlock when you defeat the Floor 1 boss in under 10 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss in under 10 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss in under 10 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "divine"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-thirty-seconds",
@@ -966,13 +1134,14 @@
     "popupText": "New achievement: Quick Episode!",
     "unlockCriteria": "Defeat the Floor 1 boss in under 30 seconds.",
     "details": "Unlock when you defeat the Floor 1 boss in under 30 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss in under 30 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss in under 30 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-finisher-lowhp",
@@ -981,13 +1150,14 @@
     "popupText": "New achievement: Finale at 1 HP!",
     "unlockCriteria": "Defeat the Floor 1 boss while below 10 HP.",
     "details": "Unlock when you defeat the Floor 1 boss while below 10 HP.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss while below 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss while below 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "divine"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-clean-fight",
@@ -996,13 +1166,14 @@
     "popupText": "New achievement: No Notes!",
     "unlockCriteria": "Defeat the Floor 1 boss without taking damage.",
     "details": "Unlock when you defeat the Floor 1 boss without taking damage.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "divine"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-overkill",
@@ -1011,13 +1182,14 @@
     "popupText": "New achievement: Overproduction!",
     "unlockCriteria": "Deal 3x boss max HP total damage during the encounter.",
     "details": "Unlock when you deal 3x boss max HP total damage during the encounter.",
-    "directorFlavor": "\"Trigger condition: Deal 3x boss max HP total damage during the encounter. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Deal 3x boss max HP total damage during the encounter. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-with-style",
@@ -1026,13 +1198,14 @@
     "popupText": "New achievement: Style Bonus!",
     "unlockCriteria": "Defeat the boss after triggering at least 3 abilities.",
     "details": "Unlock when you defeat the boss after triggering at least 3 abilities.",
-    "directorFlavor": "\"Trigger condition: Defeat the boss after triggering at least 3 abilities. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat the boss after triggering at least 3 abilities. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "boss-with-basic-gear",
@@ -1041,13 +1214,14 @@
     "popupText": "New achievement: Budget Boss Kill!",
     "unlockCriteria": "Defeat the boss with only common gear equipped.",
     "details": "Unlock when you defeat the boss with only common gear equipped.",
-    "directorFlavor": "\"Trigger condition: Defeat the boss with only common gear equipped. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Defeat the boss with only common gear equipped. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-boss-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "stairs-unlocked",
@@ -1056,13 +1230,20 @@
     "popupText": "New achievement: Exit Strategy!",
     "unlockCriteria": "Unlock the stairs objective on Floor 1.",
     "details": "Unlock when you unlock the stairs objective on Floor 1.",
-    "directorFlavor": "\"Exit Strategy? Nice television.\" — The Director",
+    "directorFlavor": "\"Exit Strategy? Nice television.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "staircaseUnlocked",
+        "value": true
+      }
+    ]
   },
   {
     "id": "stairs-discovered",
@@ -1071,13 +1252,21 @@
     "popupText": "New achievement: There It Is!",
     "unlockCriteria": "Discover the stairs location.",
     "details": "Unlock when you discover the stairs location.",
-    "directorFlavor": "\"There It Is? Nice television.\" — The Director",
+    "directorFlavor": "\"There It Is? Nice television.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "staircaseDiscovered",
+        "value": true,
+        "phase": "run_end_clear"
+      }
+    ]
   },
   {
     "id": "quest-accepted",
@@ -1086,13 +1275,21 @@
     "popupText": "New achievement: Paperwork Enjoyer!",
     "unlockCriteria": "Accept your first quest.",
     "details": "Unlock when you accept your first quest.",
-    "directorFlavor": "\"Paperwork Enjoyer? Nice television.\" — The Director",
+    "directorFlavor": "\"Paperwork Enjoyer? Nice television.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "questLogSize",
+        "op": ">",
+        "value": 0
+      }
+    ]
   },
   {
     "id": "quest-completed",
@@ -1101,13 +1298,21 @@
     "popupText": "New achievement: Task Manager!",
     "unlockCriteria": "Complete your first quest.",
     "details": "Unlock when you complete your first quest.",
-    "directorFlavor": "\"Trigger condition: Complete your first quest. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Complete your first quest. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "numberCompare",
+        "fact": "completedQuestCount",
+        "op": ">",
+        "value": 0
+      }
+    ]
   },
   {
     "id": "all-floor1-quests",
@@ -1116,13 +1321,27 @@
     "popupText": "New achievement: Completionist-ish!",
     "unlockCriteria": "Complete all Floor 1 quests in one run.",
     "details": "Unlock when you complete all Floor 1 quests in one run.",
-    "directorFlavor": "\"Trigger condition: Complete all Floor 1 quests in one run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Complete all Floor 1 quests in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "allQuestsComplete",
+        "questIds": [
+          "floor1-find-welcome",
+          "floor1-tutorial",
+          "floor1-boss-unlock",
+          "floor1-meet-npcs",
+          "floor1-shopkeeper-errand",
+          "floor1-boss-battle",
+          "floor1-leave-floor"
+        ]
+      }
+    ]
   },
   {
     "id": "safe-room-discovered",
@@ -1131,13 +1350,20 @@
     "popupText": "New achievement: HR Approved!",
     "unlockCriteria": "Discover the safe room.",
     "details": "Unlock when you discover the safe room.",
-    "directorFlavor": "\"HR Approved? Nice television.\" — The Director",
+    "directorFlavor": "\"HR Approved? Nice television.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "safeRoomDiscovered",
+        "value": true
+      }
+    ]
   },
   {
     "id": "npc-social",
@@ -1146,13 +1372,14 @@
     "popupText": "New achievement: Social Build!",
     "unlockCriteria": "Talk to all Floor 1 key NPCs.",
     "details": "Unlock when you talk to all Floor 1 key NPCs.",
-    "directorFlavor": "\"Trigger condition: Talk to all Floor 1 key NPCs. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Talk to all Floor 1 key NPCs. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "merchant-customer",
@@ -1161,13 +1388,20 @@
     "popupText": "New achievement: Loyal Customer!",
     "unlockCriteria": "Buy your first piece of gear.",
     "details": "Unlock when you buy your first piece of gear.",
-    "directorFlavor": "\"Trigger condition: Buy your first piece of gear. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Buy your first piece of gear. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "equipmentUnlocked",
+        "value": true
+      }
+    ]
   },
   {
     "id": "fully-equipped",
@@ -1176,13 +1410,14 @@
     "popupText": "New achievement: Dressed for Ratings!",
     "unlockCriteria": "Equip all major gear slots once.",
     "details": "Unlock when you equip all major gear slots once.",
-    "directorFlavor": "\"Trigger condition: Equip all major gear slots once. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Equip all major gear slots once. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "floor1-clear",
@@ -1191,13 +1426,21 @@
     "popupText": "New achievement: Roll Credits (Floor 1)!",
     "unlockCriteria": "Clear Floor 1 and take the stairs alive.",
     "details": "Unlock when you clear Floor 1 and take the stairs alive.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 and take the stairs alive. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Clear Floor 1 and take the stairs alive. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-objective-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": [
+      {
+        "type": "booleanIs",
+        "fact": "runClearedFloor",
+        "value": true,
+        "phase": "run_end_clear"
+      }
+    ]
   },
   {
     "id": "trap-stepper",
@@ -1206,13 +1449,14 @@
     "popupText": "New achievement: Kaboom!!",
     "unlockCriteria": "Step on your first trap and survive.",
     "details": "Unlock when you step on your first trap and survive.",
-    "directorFlavor": "\"Kaboom!? Nice television.\" — The Director",
+    "directorFlavor": "\"Kaboom!? Nice television.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "trap-tourist",
@@ -1221,13 +1465,14 @@
     "popupText": "New achievement: Frequent Flyer (Traps)!",
     "unlockCriteria": "Trigger 3 traps in one run and survive all of them.",
     "details": "Unlock when you trigger 3 traps in one run and survive all of them.",
-    "directorFlavor": "\"Trigger condition: Trigger 3 traps in one run and survive all of them. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Trigger 3 traps in one run and survive all of them. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "trap-speedrun",
@@ -1236,13 +1481,14 @@
     "popupText": "New achievement: Mine Sweepern't!",
     "unlockCriteria": "Trigger a trap and still clear the room.",
     "details": "Unlock when you trigger a trap and still clear the room.",
-    "directorFlavor": "\"Trigger condition: Trigger a trap and still clear the room. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Trigger a trap and still clear the room. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "trap-bait",
@@ -1251,13 +1497,14 @@
     "popupText": "New achievement: Bait Technician!",
     "unlockCriteria": "Lure 5 enemies through traps in one run.",
     "details": "Unlock when you lure 5 enemies through traps in one run.",
-    "directorFlavor": "\"Trigger condition: Lure 5 enemies through traps in one run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Lure 5 enemies through traps in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "wall-hugger",
@@ -1266,13 +1513,14 @@
     "popupText": "New achievement: Geometry Major!",
     "unlockCriteria": "Travel 500 feet while hugging room edges.",
     "details": "Unlock when you travel 500 feet while hugging room edges.",
-    "directorFlavor": "\"Geometry Major? Nice television.\" — The Director",
+    "directorFlavor": "\"Geometry Major? Nice television.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "zig-zag",
@@ -1281,13 +1529,14 @@
     "popupText": "New achievement: Zig. Zag. Win.!",
     "unlockCriteria": "Make 50 direction changes during one combat encounter.",
     "details": "Unlock when you make 50 direction changes during one combat encounter.",
-    "directorFlavor": "\"Trigger condition: Make 50 direction changes during one combat encounter. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Make 50 direction changes during one combat encounter. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "never-stop",
@@ -1296,13 +1545,14 @@
     "popupText": "New achievement: No Brake Pedal!",
     "unlockCriteria": "Go 60 seconds without stopping movement during combat.",
     "details": "Unlock when you go 60 seconds without stopping movement during combat.",
-    "directorFlavor": "\"Trigger condition: Go 60 seconds without stopping movement during combat. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Go 60 seconds without stopping movement during combat. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "door-dancer",
@@ -1311,13 +1561,14 @@
     "popupText": "New achievement: Door Dancer!",
     "unlockCriteria": "Cross the same doorway 10 times during one fight.",
     "details": "Unlock when you cross the same doorway 10 times during one fight.",
-    "directorFlavor": "\"Trigger condition: Cross the same doorway 10 times during one fight. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Cross the same doorway 10 times during one fight. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "common"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "corner-clutch",
@@ -1326,13 +1577,14 @@
     "popupText": "New achievement: Corner Clutch!",
     "unlockCriteria": "Survive 20 seconds while boxed near a corner.",
     "details": "Unlock when you survive 20 seconds while boxed near a corner.",
-    "directorFlavor": "\"Trigger condition: Survive 20 seconds while boxed near a corner. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Survive 20 seconds while boxed near a corner. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "rare"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "pickup-under-fire",
@@ -1341,13 +1593,14 @@
     "popupText": "New achievement: Loot Under Fire!",
     "unlockCriteria": "Collect 8 pickups while enemies are within melee range.",
     "details": "Unlock when you collect 8 pickups while enemies are within melee range.",
-    "directorFlavor": "\"Trigger condition: Collect 8 pickups while enemies are within melee range. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Collect 8 pickups while enemies are within melee range. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "xp-rush",
@@ -1356,13 +1609,14 @@
     "popupText": "New achievement: XP Rush!",
     "unlockCriteria": "Gain 3 levels within 60 seconds.",
     "details": "Unlock when you gain 3 levels within 60 seconds.",
-    "directorFlavor": "\"Trigger condition: Gain 3 levels within 60 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Gain 3 levels within 60 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "inventory-tour",
@@ -1371,13 +1625,14 @@
     "popupText": "New achievement: Bag Opened!",
     "unlockCriteria": "Open inventory for the first time in a safe room.",
     "details": "Unlock when you open inventory for the first time in a safe room.",
-    "directorFlavor": "\"Bag Opened? Nice television.\" — The Director",
+    "directorFlavor": "\"Bag Opened? Nice television.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "gear-tour",
@@ -1386,13 +1641,14 @@
     "popupText": "New achievement: Wardrobe Change!",
     "unlockCriteria": "Open equipment for the first time in a safe room.",
     "details": "Unlock when you open equipment for the first time in a safe room.",
-    "directorFlavor": "\"Wardrobe Change? Nice television.\" — The Director",
+    "directorFlavor": "\"Wardrobe Change? Nice television.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
       "tier": "trash"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "fashion-kill",
@@ -1401,13 +1657,14 @@
     "popupText": "New achievement: Fashion Kill!",
     "unlockCriteria": "Equip a new item and defeat an enemy within 5 seconds.",
     "details": "Unlock when you equip a new item and defeat an enemy within 5 seconds.",
-    "directorFlavor": "\"Trigger condition: Equip a new item and defeat an enemy within 5 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Equip a new item and defeat an enemy within 5 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
       "tier": "uncommon"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "starter-weapon-clear",
@@ -1416,13 +1673,14 @@
     "popupText": "New achievement: Starter Weapon Legend!",
     "unlockCriteria": "Clear Floor 1 without changing your starting weapon.",
     "details": "Unlock when you clear Floor 1 without changing your starting weapon.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 without changing your starting weapon. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Clear Floor 1 without changing your starting weapon. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "epic"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "single-skill-run",
@@ -1431,13 +1689,14 @@
     "popupText": "New achievement: One-Track Mind!",
     "unlockCriteria": "Clear Floor 1 while leveling only one skill tree.",
     "details": "Unlock when you clear Floor 1 while leveling only one skill tree.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 while leveling only one skill tree. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Clear Floor 1 while leveling only one skill tree. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "glass-cannon",
@@ -1446,13 +1705,14 @@
     "popupText": "New achievement: Glass Cannon TV!",
     "unlockCriteria": "Clear Floor 1 with zero defense upgrades.",
     "details": "Unlock when you clear Floor 1 with zero defense upgrades.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 with zero defense upgrades. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Clear Floor 1 with zero defense upgrades. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "divine"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "pacifist-ish",
@@ -1461,13 +1721,14 @@
     "popupText": "New achievement: Pacifist-ish!",
     "unlockCriteria": "Reach the boss room with under 20 enemy defeats.",
     "details": "Unlock when you reach the boss room with under 20 enemy defeats.",
-    "directorFlavor": "\"Trigger condition: Reach the boss room with under 20 enemy defeats. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Reach the boss room with under 20 enemy defeats. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "directorMessage",
       "message": "Reward: nothing. Minimal violence, maximum suspense."
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "showboater",
@@ -1476,13 +1737,14 @@
     "popupText": "New achievement: Showboater!",
     "unlockCriteria": "Trigger 5 different achievement categories in one run.",
     "details": "Unlock when you trigger 5 different achievement categories in one run.",
-    "directorFlavor": "\"Trigger condition: Trigger 5 different achievement categories in one run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Trigger 5 different achievement categories in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
       "tier": "legendary"
-    }
+    },
+    "unlockRules": []
   },
   {
     "id": "floor1-grand-tour",
@@ -1491,12 +1753,13 @@
     "popupText": "New achievement: Floor 1 Grand Tour!",
     "unlockCriteria": "Unlock 25 different achievements in a single Floor 1 run.",
     "details": "Unlock when you unlock 25 different achievements in a single Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Unlock 25 different achievements in a single Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" — The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" — The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" — The Director",
+    "directorFlavor": "\"Trigger condition: Unlock 25 different achievements in a single Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
     "iconId": "achv-challenge-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
       "tier": "divine"
-    }
+    },
+    "unlockRules": []
   }
 ]

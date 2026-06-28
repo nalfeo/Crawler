@@ -21,12 +21,57 @@ export type LootBoxTier = (typeof LOOT_BOX_TIERS)[number];
 
 export const ACHIEVEMENT_DIFFICULTIES = ['basic', 'standard', 'hard', 'brutal'] as const;
 export type AchievementDifficulty = (typeof ACHIEVEMENT_DIFFICULTIES)[number];
+export const ACHIEVEMENT_RULE_PHASES = ['tick', 'run_end_clear'] as const;
+export type AchievementRulePhase = (typeof ACHIEVEMENT_RULE_PHASES)[number];
+export const ACHIEVEMENT_NUMBER_FACTS = [
+  'totalKills',
+  'slimesKilled',
+  'ratsKilled',
+  'maxSkillLevel',
+  'spentStatPoints',
+  'goldCollected',
+  'completedQuestCount',
+  'questLogSize',
+  'playerGold',
+] as const;
+export type AchievementNumberFact = (typeof ACHIEVEMENT_NUMBER_FACTS)[number];
+export const ACHIEVEMENT_BOOLEAN_FACTS = [
+  'staircaseBattleStarted',
+  'staircaseUnlocked',
+  'safeRoomDiscovered',
+  'equipmentUnlocked',
+  'staircaseDiscovered',
+  'runClearedFloor',
+] as const;
+export type AchievementBooleanFact = (typeof ACHIEVEMENT_BOOLEAN_FACTS)[number];
+export const ACHIEVEMENT_NUMBER_OPERATORS = ['>=', '>', '<=', '<', '==='] as const;
+export type AchievementNumberOperator = (typeof ACHIEVEMENT_NUMBER_OPERATORS)[number];
 
 export type AchievementReward =
   | { readonly type: 'lootBox'; readonly tier: LootBoxTier }
   | { readonly type: 'item'; readonly itemId: string }
   | { readonly type: 'directorMessage'; readonly message: string }
   | { readonly type: 'none' };
+
+export type AchievementUnlockRule =
+  | {
+      readonly type: 'numberCompare';
+      readonly fact: AchievementNumberFact;
+      readonly op: AchievementNumberOperator;
+      readonly value: number;
+      readonly phase?: AchievementRulePhase;
+    }
+  | {
+      readonly type: 'booleanIs';
+      readonly fact: AchievementBooleanFact;
+      readonly value: boolean;
+      readonly phase?: AchievementRulePhase;
+    }
+  | {
+      readonly type: 'allQuestsComplete';
+      readonly questIds: readonly string[];
+      readonly phase?: AchievementRulePhase;
+    };
 
 export interface AchievementDef {
   readonly id: string;
@@ -39,6 +84,7 @@ export interface AchievementDef {
   readonly iconId: string;
   readonly difficulty: AchievementDifficulty;
   readonly reward: AchievementReward;
+  readonly unlockRules: readonly AchievementUnlockRule[];
 }
 
 export interface AchievementArtBacklogItem {
@@ -75,6 +121,34 @@ const achievementRewardSchema = z.discriminatedUnion('type', [
     .strict(),
 ]);
 
+const achievementRulePhaseSchema = z.enum(ACHIEVEMENT_RULE_PHASES);
+const achievementUnlockRuleSchema = z.discriminatedUnion('type', [
+  z
+    .object({
+      type: z.literal('numberCompare'),
+      fact: z.enum(ACHIEVEMENT_NUMBER_FACTS),
+      op: z.enum(ACHIEVEMENT_NUMBER_OPERATORS),
+      value: z.number().finite(),
+      phase: achievementRulePhaseSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('booleanIs'),
+      fact: z.enum(ACHIEVEMENT_BOOLEAN_FACTS),
+      value: z.boolean(),
+      phase: achievementRulePhaseSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('allQuestsComplete'),
+      questIds: z.array(z.string().min(1)).min(1),
+      phase: achievementRulePhaseSchema.optional(),
+    })
+    .strict(),
+]);
+
 const achievementSchema = z
   .object({
     id: z.string().min(1),
@@ -87,6 +161,7 @@ const achievementSchema = z
     iconId: z.string().min(1),
     difficulty: z.enum(ACHIEVEMENT_DIFFICULTIES),
     reward: achievementRewardSchema,
+    unlockRules: z.array(achievementUnlockRuleSchema),
   })
   .strict();
 
@@ -124,9 +199,12 @@ function removeUnlockCriteriaDuplication(achievement: AchievementDef): Achieveme
   };
 }
 
-export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = achievementCatalogSchema
-  .parse(floor1Achievements)
-  .map(removeUnlockCriteriaDuplication);
+export function parseAchievementCatalog(rawCatalog: unknown): readonly AchievementDef[] {
+  return achievementCatalogSchema.parse(rawCatalog).map(removeUnlockCriteriaDuplication);
+}
+
+export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] =
+  parseAchievementCatalog(floor1Achievements);
 
 export function getAchievementById(id: string): AchievementDef | undefined {
   return FLOOR1_ACHIEVEMENTS.find((achievement) => achievement.id === id);
