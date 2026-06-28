@@ -91,7 +91,7 @@ import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
-import { SeededRandom } from '../shared/random.js';
+import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -2150,6 +2150,36 @@ export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): 
 // Shopkeeper errand flow
 // ---------------------------------------------------------------------------
 
+export interface ShopkeeperStockItem {
+  readonly itemId: string;
+  readonly cost: number;
+}
+
+const SHOPKEEPER_POST_QUEST_WEAPON_ITEM_IDS = [
+  'rusty-shiv',
+  'iron-sword',
+  'bone-club',
+  'frost-bow',
+  'crystal-wand',
+] as const;
+
+const SHOPKEEPER_POST_QUEST_ARMOR_ITEM_IDS = [
+  'padded-hood',
+  'reinforced-vest',
+  'work-boots',
+] as const;
+
+const SHOPKEEPER_POST_QUEST_ITEM_COSTS: Readonly<Record<string, number>> = {
+  'rusty-shiv': 18,
+  'iron-sword': 24,
+  'bone-club': 20,
+  'frost-bow': 26,
+  'crystal-wand': 28,
+  'padded-hood': 16,
+  'reinforced-vest': 25,
+  'work-boots': 17,
+};
+
 function findPlayerEid(world: GameWorld): number | undefined {
   return query(world.ecs, [Player])[0];
 }
@@ -2177,6 +2207,42 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
     return 'not-met';
   }
   return 'awaiting-prize';
+}
+
+/** Deterministic post-quest merchant inventory (4-5 basic weapons/armor). */
+export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockItem[] {
+  const weaponCandidates: ShopkeeperStockItem[] = [...SHOPKEEPER_POST_QUEST_WEAPON_ITEM_IDS].map(
+    (itemId) => ({
+      itemId,
+      cost: SHOPKEEPER_POST_QUEST_ITEM_COSTS[itemId] ?? 20,
+    }),
+  );
+  const armorCandidates: ShopkeeperStockItem[] = [...SHOPKEEPER_POST_QUEST_ARMOR_ITEM_IDS].map(
+    (itemId) => ({
+      itemId,
+      cost: SHOPKEEPER_POST_QUEST_ITEM_COSTS[itemId] ?? 20,
+    }),
+  );
+  const stockRng = new SeededRandom(
+    hashStringToSeed(`${world.seed}:floor1-shopkeeper-post-quest-stock`),
+  );
+  stockRng.shuffle(weaponCandidates);
+  stockRng.shuffle(armorCandidates);
+
+  const stockCount = stockRng.nextInt(4, 5);
+  const maxWeaponCount = Math.min(3, stockCount - 2);
+  const weaponCount = stockRng.nextInt(2, maxWeaponCount);
+  const armorCount = stockCount - weaponCount;
+
+  const stock = [
+    ...weaponCandidates.slice(0, weaponCount),
+    ...armorCandidates.slice(0, armorCount),
+  ];
+  stockRng.shuffle(stock);
+  return stock.map((entry) => ({
+    itemId: entry.itemId,
+    cost: entry.cost,
+  }));
 }
 
 /** Character level required before the merchant / spell-broker quests unlock. */
@@ -2348,6 +2414,34 @@ export function purchaseShopkeeperEquipment(world: GameWorld, playerEid: number)
   }
   world.playerGold -= SHOPKEEPER_EQUIPMENT_COST;
   addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+  return true;
+}
+
+/** Buy one item from the post-quest merchant stock. */
+export function purchaseShopkeeperPostQuestItem(
+  world: GameWorld,
+  playerEid: number,
+  itemId: string,
+): boolean {
+  if (world.goalFlags.get('floor1-shop-quest-complete') !== true) {
+    return false;
+  }
+  const bag = world.inventories.get(playerEid);
+  if (!bag) {
+    return false;
+  }
+  if (hasItem(bag, itemId)) {
+    return false;
+  }
+  const stockEntry = getShopkeeperPostQuestStock(world).find((entry) => entry.itemId === itemId);
+  if (!stockEntry || !getItemById(itemId)) {
+    return false;
+  }
+  if (world.playerGold < stockEntry.cost) {
+    return false;
+  }
+  world.playerGold -= stockEntry.cost;
+  addItem(bag, itemId, 1);
   return true;
 }
 

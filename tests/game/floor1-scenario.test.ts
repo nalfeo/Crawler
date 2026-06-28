@@ -16,12 +16,14 @@ import {
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
   getNpcQuestIndicatorState,
+  getShopkeeperPostQuestStock,
   getShopkeeperStage,
   initializeFloor1Scenario,
   meetSpellQuestGiver,
   meetTutorialGoon,
   meetShopkeeper,
   purchaseShopkeeperEquipment,
+  purchaseShopkeeperPostQuestItem,
   returnShopkeeperPrize,
   selectFloor1StarterWeapon,
   selectSpellFromBossBattle,
@@ -848,6 +850,56 @@ describe('floor1Scenario', () => {
       expect(purchaseShopkeeperEquipment(world, player)).toBe(false);
       expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
       expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST - 1);
+    });
+
+    it('offers a deterministic 4-5 item post-quest stock with basic weapons and armor', () => {
+      const worldA = createTestWorld({ seed: 5 });
+      const playerA = spawnPlayer(worldA, 0, 0);
+      initializeFloor1Scenario(worldA, playerA);
+      worldA.goalFlags.set('floor1-shop-quest-complete', true);
+
+      const worldB = createTestWorld({ seed: 5 });
+      const playerB = spawnPlayer(worldB, 0, 0);
+      initializeFloor1Scenario(worldB, playerB);
+      worldB.goalFlags.set('floor1-shop-quest-complete', true);
+
+      const stockA = getShopkeeperPostQuestStock(worldA);
+      const stockB = getShopkeeperPostQuestStock(worldB);
+      expect(stockA).toEqual(stockB);
+      expect(stockA.length).toBeGreaterThanOrEqual(4);
+      expect(stockA.length).toBeLessThanOrEqual(5);
+      const weaponIds = new Set([
+        'rusty-shiv',
+        'iron-sword',
+        'bone-club',
+        'frost-bow',
+        'crystal-wand',
+      ]);
+      const armorIds = new Set(['padded-hood', 'reinforced-vest', 'work-boots']);
+      expect(stockA.some((entry) => weaponIds.has(entry.itemId))).toBe(true);
+      expect(stockA.some((entry) => armorIds.has(entry.itemId))).toBe(true);
+    });
+
+    it('sells post-quest stock items only after the merchant quest is complete', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      const bag = world.inventories.get(player)!;
+      const stock = getShopkeeperPostQuestStock(world);
+      const first = stock[0];
+      if (!first) {
+        throw new Error('Expected post-quest stock item');
+      }
+
+      world.playerGold = 999;
+      expect(purchaseShopkeeperPostQuestItem(world, player, first.itemId)).toBe(false);
+
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      const goldBefore = world.playerGold;
+      expect(purchaseShopkeeperPostQuestItem(world, player, first.itemId)).toBe(true);
+      expect(hasItem(bag, first.itemId)).toBe(true);
+      expect(world.playerGold).toBe(goldBefore - first.cost);
+      expect(purchaseShopkeeperPostQuestItem(world, player, first.itemId)).toBe(false);
     });
 
     it('does not let the player return a prize they do not hold', () => {

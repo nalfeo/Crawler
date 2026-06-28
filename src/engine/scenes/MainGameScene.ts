@@ -73,6 +73,7 @@ import {
 } from '../lighting/light-field.js';
 import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
+import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
 import {
   getNpcDef,
@@ -136,6 +137,8 @@ export interface MainGameSceneOptions {
     meet: (world: GameWorld) => void;
     returnPrize: (world: GameWorld, playerEid: number) => boolean;
     purchase: (world: GameWorld, playerEid: number) => boolean;
+    getPostQuestStock?: (world: GameWorld) => ReadonlyArray<{ itemId: string; cost: number }>;
+    purchasePostQuestItem?: (world: GameWorld, playerEid: number, itemId: string) => boolean;
     equip: (world: GameWorld, playerEid: number) => boolean;
     equipmentCost: number;
     equipmentName: string;
@@ -2378,6 +2381,61 @@ export class MainGameScene extends Phaser.Scene {
           onConfirm: () => {
             if (affordable && shop.purchase(this.world, this.playerEid)) {
               this.flashHint('Purchased! Press [I] then [G] to equip your gear.');
+              this.inventoryUI?.refresh(this.world);
+            }
+            this.updateOverlayText();
+          },
+        },
+      );
+      return true;
+    }
+    if (
+      stage === 'complete' &&
+      this.modalPicker &&
+      shop.getPostQuestStock &&
+      shop.purchasePostQuestItem
+    ) {
+      if (this.modalPicker.isOpen()) {
+        return true;
+      }
+      const stock = shop.getPostQuestStock(this.world);
+      if (stock.length <= 0) {
+        return false;
+      }
+      const optionRows = stock.map((entry) => {
+        const item = getItemById(entry.itemId);
+        const owned = item
+          ? this.world.inventories
+              .get(this.playerEid)
+              ?.slots.some((slot) => slot.itemId === item.id)
+          : false;
+        const affordable = this.world.playerGold >= entry.cost;
+        return {
+          id: `shop-stock:${entry.itemId}`,
+          label: item ? `${item.name} (${entry.cost}g)` : `${entry.itemId} (${entry.cost}g)`,
+          description: owned ? 'Already owned.' : (item?.description ?? 'Unknown item.'),
+          disabled: owned || !affordable,
+        };
+      });
+      const firstEnabled = optionRows.find((row) => !row.disabled);
+      if (!firstEnabled) {
+        this.flashHint('No affordable merchant stock right now.');
+        return false;
+      }
+      this.modalPicker.open(
+        {
+          title: "The Merchant's Extra Wares",
+          subtitle: `Gold: ${this.world.playerGold}`,
+          body: 'Fresh basics for the next rounds: weapons and armor.',
+          options: optionRows,
+          allowCancel: true,
+          initialSelectedId: firstEnabled?.id ?? optionRows[0]?.id,
+        },
+        {
+          onConfirm: ({ option }) => {
+            const itemId = option.id.replace(/^shop-stock:/, '');
+            if (shop.purchasePostQuestItem?.(this.world, this.playerEid, itemId)) {
+              this.flashHint('Purchased and added to your bag.');
               this.inventoryUI?.refresh(this.world);
             }
             this.updateOverlayText();
