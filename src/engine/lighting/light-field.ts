@@ -125,19 +125,34 @@ export interface ComputeLightFieldParams {
     hasLineOfSight: (px0: number, py0: number, px1: number, py1: number) => boolean;
   };
   field: LightField;
-  source: LightSource;
+  /**
+   * One or more light sources. All sources are accumulated per cell and clamped
+   * to 1. The first entry is conventionally the player's torch.
+   *
+   * For backward compatibility, the old single-source `source` field is still
+   * accepted and treated as `sources: [source]` when `sources` is absent.
+   */
+  sources?: LightSource[];
+  /** @deprecated Use `sources` instead. */
+  source?: LightSource;
   ambient: number;
   falloffExponent: number;
   dirtyRect?: LightFieldDirtyRect | null;
 }
 
 export function computeLightField(params: ComputeLightFieldParams): void {
-  const { map, field, source } = params;
+  const { map, field } = params;
   const ambient = clamp(params.ambient, 0, 1);
   const falloffExponent = Math.max(0.1, params.falloffExponent);
   const step = field.stepPx;
-  const radius = Math.max(0, source.radiusPx);
-  const invRadius = radius > 0 ? 1 / radius : 0;
+
+  // Resolve sources: prefer the new `sources` array, fall back to legacy `source`.
+  const sources: readonly LightSource[] =
+    params.sources !== undefined && params.sources.length > 0
+      ? params.sources
+      : params.source !== undefined
+        ? [params.source]
+        : [];
 
   const bounds = params.dirtyRect ?? {
     minX: 0,
@@ -157,13 +172,16 @@ export function computeLightField(params: ComputeLightFieldParams): void {
         continue;
       }
       let intensity = ambient;
-      if (radius > 0 && source.intensity > 0) {
-        const dx = sx - source.x;
-        const dy = sy - source.y;
-        const distance = Math.hypot(dx, dy);
-        if (distance <= radius && map.hasLineOfSight(source.x, source.y, sx, sy)) {
-          const t = clamp(1 - distance * invRadius, 0, 1);
-          intensity += source.intensity * Math.pow(t, falloffExponent);
+      for (const source of sources) {
+        const radius = Math.max(0, source.radiusPx);
+        if (radius > 0 && source.intensity > 0) {
+          const dx = sx - source.x;
+          const dy = sy - source.y;
+          const distance = Math.hypot(dx, dy);
+          if (distance <= radius && map.hasLineOfSight(source.x, source.y, sx, sy)) {
+            const t = clamp(1 - distance / radius, 0, 1);
+            intensity += source.intensity * Math.pow(t, falloffExponent);
+          }
         }
       }
       field.values[idx] = clamp(intensity, 0, 1);

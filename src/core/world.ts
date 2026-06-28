@@ -48,6 +48,8 @@ import {
   Npc,
   Weight,
   BloodColor,
+  Prop,
+  PropLight,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -239,6 +241,8 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, Npc, stores.npc);
   wireStore(ecs, Weight, stores.weight);
   wireStore(ecs, BloodColor, stores.bloodColor);
+  wireStore(ecs, Prop, stores.prop);
+  wireStore(ecs, PropLight, stores.propLight);
 
   const world: GameWorld = {
     ecs,

@@ -134,6 +134,20 @@ export const floorManifestDefSchema = z
       .optional(),
     /** NPC placements for this floor. */
     npcPlacements: z.array(npcPlacementDefSchema).optional(),
+    /** Optional prop/decoration configuration for this floor. */
+    props: z
+      .object({
+        /** Biome tag used to filter decoration defs. */
+        biomeTag: z.enum(['dungeon', 'organic', 'tech', 'void']),
+        /** Multiplier applied to each def's base density (default 1.0). */
+        densityMultiplier: z.number().positive().optional(),
+        /** Category whitelist — only defs in these categories are placed. */
+        allowedCategories: z
+          .array(z.enum(['rubbish', 'light-source', 'structural', 'organic', 'tech']))
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

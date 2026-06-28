@@ -234,7 +234,9 @@ describe('Generation Lab: Decoration Pipeline', () => {
 
   it('should have valid sprite references', () => {
     for (const def of DECORATION_DEFS.values()) {
-      expect(def.spriteId).toMatch(/^deco-/);
+      // Sprite IDs use either the legacy deco- prefix or the newer prop- prefix
+      // for scene-dressing props (junk-pile, wall-sconce, etc.).
+      expect(def.spriteId).toMatch(/^(deco|prop)-/);
     }
   });
 

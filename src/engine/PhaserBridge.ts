@@ -13,6 +13,7 @@ import {
   Player,
   Position,
   Projectile,
+  Prop,
   Returning,
   Rotation,
   SpawnAnim,
@@ -33,6 +34,8 @@ import { TeamId, MeleeSpriteId } from '../shared/constants.js';
 import { ftToPx } from '../shared/units.js';
 import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../shared/spawn-anim.js';
+import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
+import { PROP_DEPTH } from '../shared/render-depths.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -635,6 +638,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const goldSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each gold entity. */
   const goldShadows = new Map<number, Phaser.GameObjects.Ellipse>();
+  /** Placeholder rectangles for Prop entities (coloured by depth layer). */
+  const propVisuals = new Map<number, Phaser.GameObjects.Rectangle>();
   const combatVfx = createCombatVfx(scene);
   const goreVfx =
     typeof scene.add.rectangle === 'function'
@@ -1210,6 +1215,49 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             img.clearTint();
           }
           visual.deathTotalMs = undefined;
+        }
+      }
+
+      // --- Prop render pass ---
+      // Render Prop entities as coloured placeholder rectangles until real
+      // sprites are available. Props render at PROP_DEPTH below all entities.
+      const activePropEids = new Set<number>();
+      for (const propEid of query(world.ecs, [Prop, Position])) {
+        activePropEids.add(propEid);
+        const propX = ftToPx(position.x[propEid] ?? 0);
+        const propY = ftToPx(position.y[propEid] ?? 0);
+        const defIdIndex = world.stores.prop.defIdIndex[propEid] ?? 0;
+        const defId = DECORATION_INDEX_TO_ID[defIdIndex];
+        const decorationDef = defId !== undefined ? getDecorationDef(defId) : undefined;
+        const scalePx = ftToPx(decorationDef?.scale ?? 1.0);
+        const depth =
+          decorationDef?.depthLayer === 'back'
+            ? PROP_DEPTH.back
+            : decorationDef?.depthLayer === 'front'
+              ? PROP_DEPTH.front
+              : PROP_DEPTH.mid;
+        // Colour by category for easy visual identification in labs.
+        const fillColor =
+          decorationDef?.category === 'light-source'
+            ? 0xffb347
+            : decorationDef?.category === 'rubbish'
+              ? 0x8b7355
+              : 0x6b7280;
+
+        let rect = propVisuals.get(propEid);
+        if (!rect && typeof scene.add.rectangle === 'function') {
+          rect = scene.add.rectangle(propX, propY, scalePx, scalePx, fillColor, 0.6);
+          rect.setDepth(depth);
+          propVisuals.set(propEid, rect);
+        } else if (rect) {
+          rect.setPosition(propX, propY);
+        }
+      }
+      // Clean up removed prop visuals.
+      for (const [propEid, rect] of propVisuals) {
+        if (!activePropEids.has(propEid)) {
+          rect.destroy();
+          propVisuals.delete(propEid);
         }
       }
 
