@@ -55,6 +55,7 @@ import { createLevelUpUI } from '../LevelUpUI.js';
 import {
   blurLightField,
   buildDirtyRectFromCircles,
+  buildDirtyRectFromPixelBounds,
   chooseAutoStepPx,
   clampLightingStepPx,
   computeLightField,
@@ -62,9 +63,11 @@ import {
   DEFAULT_LIGHTING_CONFIG,
   forEachDarknessRun,
   getLightingPresetStepPx,
+  intersectDirtyRects,
   LIGHTING_DARKNESS_LEVELS,
   LIGHTING_MIN_DARKNESS,
   type LightField,
+  type LightFieldDirtyRect,
   type LightingConfig,
   type LightingPresetId,
 } from '../lighting/light-field.js';
@@ -97,6 +100,7 @@ const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
+const LIGHTING_VIEW_BUFFER_PX = 64;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
@@ -406,6 +410,8 @@ export class MainGameScene extends Phaser.Scene {
 
   private lightingLastSource?: { x: number; y: number };
 
+  private lightingLastViewRect?: LightFieldDirtyRect;
+
   private lightingComputeMsAvg = 0;
 
   private lightingOverBudgetFrames = 0;
@@ -621,6 +627,7 @@ export class MainGameScene extends Phaser.Scene {
       this.queuedConversationClose = false;
       this.queuedAbilitiesToggle = false;
       this.lightingLastSource = undefined;
+      this.lightingLastViewRect = undefined;
       this.lightingDirty = true;
       this.lightingComputeMsAvg = 0;
       this.lightingOverBudgetFrames = 0;
@@ -1278,6 +1285,7 @@ export class MainGameScene extends Phaser.Scene {
     this.lightField = undefined;
     this.doorGraphics = undefined;
     this.lightingLastSource = undefined;
+    this.lightingLastViewRect = undefined;
     this.lightingDirty = true;
     this.lightingComputeMsAvg = 0;
     this.lightingOverBudgetFrames = 0;
@@ -1367,14 +1375,25 @@ export class MainGameScene extends Phaser.Scene {
 
     const px = ftToPx(this.world.stores.position.x[this.playerEid] ?? 0);
     const py = ftToPx(this.world.stores.position.y[this.playerEid] ?? 0);
+    const viewRect = this.getLightingViewRect(field);
+    const sourceUnchanged = this.lightingLastSource?.x === px && this.lightingLastSource?.y === py;
+    const viewRectUnchanged =
+      this.lightingLastViewRect !== undefined &&
+      this.areLightingRectsEqual(this.lightingLastViewRect, viewRect);
+    if (!force && !this.lightingDirty && sourceUnchanged && viewRectUnchanged) {
+      return;
+    }
     const radius = this.lighting.sourceRadiusPx;
     const dirtyRect =
-      this.lightingDirty || !this.lightingLastSource
-        ? null
-        : buildDirtyRectFromCircles(field, [
-            { x: this.lightingLastSource.x, y: this.lightingLastSource.y, radiusPx: radius },
-            { x: px, y: py, radiusPx: radius },
-          ]);
+      this.lightingDirty || !this.lightingLastSource || !viewRectUnchanged
+        ? viewRect
+        : (intersectDirtyRects(
+            buildDirtyRectFromCircles(field, [
+              { x: this.lightingLastSource.x, y: this.lightingLastSource.y, radiusPx: radius },
+              { x: px, y: py, radiusPx: radius },
+            ]),
+            viewRect,
+          ) ?? viewRect);
 
     const t0 = performance.now();
     computeLightField({
@@ -1397,18 +1416,11 @@ export class MainGameScene extends Phaser.Scene {
       blurLightField(field, dirtyRect);
     }
 
-    // rt.clear() wipes the whole texture, so the redraw must cover the full
-    // field even when only a dirty sub-rect was recomputed. forEachDarknessRun
-    // batches each row into a handful of fills (uniform regions collapse to one,
-    // the lit gradient to at most LIGHTING_DARKNESS_LEVELS per row) instead of
-    // one fill per cell, keeping the redraw cheap at sub-tile (1px) granularity.
+    // rt.clear() wipes the whole texture, so redraw the camera-visible window
+    // (plus a small buffer) every update. forEachDarknessRun batches each row
+    // into a handful of fills instead of one fill per cell.
     rt.clear();
-    const bounds = {
-      minX: 0,
-      minY: 0,
-      maxX: field.widthCells - 1,
-      maxY: field.heightCells - 1,
-    };
+    const bounds = viewRect;
     const step = field.stepPx;
     forEachDarknessRun(
       field,
@@ -1429,6 +1441,7 @@ export class MainGameScene extends Phaser.Scene {
     // outside the next (player-sized) dirty rect at darkness 1, leaving most of
     // the map black until the next floor load.
     this.lightingLastSource = { x: px, y: py };
+    this.lightingLastViewRect = viewRect;
     this.lightingDirty = false;
 
     const computeMs = performance.now() - t0;
@@ -1448,6 +1461,21 @@ export class MainGameScene extends Phaser.Scene {
     } else {
       this.lightingOverBudgetFrames = 0;
     }
+  }
+
+  private getLightingViewRect(field: LightField): LightFieldDirtyRect {
+    const worldView = this.cameras.main.worldView;
+    return buildDirtyRectFromPixelBounds(
+      field,
+      worldView.x - LIGHTING_VIEW_BUFFER_PX,
+      worldView.y - LIGHTING_VIEW_BUFFER_PX,
+      worldView.right + LIGHTING_VIEW_BUFFER_PX,
+      worldView.bottom + LIGHTING_VIEW_BUFFER_PX,
+    );
+  }
+
+  private areLightingRectsEqual(a: LightFieldDirtyRect, b: LightFieldDirtyRect): boolean {
+    return a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;
   }
 
   private ensureUiCamera(): void {

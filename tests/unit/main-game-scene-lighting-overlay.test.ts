@@ -54,7 +54,7 @@ describe('MainGameScene lighting overlay behavior', () => {
     expect(hasNormalSyncSequence).toBe(true);
   });
 
-  it('redraws the full light field after clearing the render texture', () => {
+  it('redraws only the camera-scoped lighting window after clearing the render texture', () => {
     const method = findSceneMethod('updateLightingOverlay');
     const boundsDeclaration = (method.body?.statements ?? []).find((statement) => {
       if (!ts.isVariableStatement(statement)) return false;
@@ -68,10 +68,8 @@ describe('MainGameScene lighting overlay behavior', () => {
     const declaration = (
       boundsDeclaration as ts.VariableStatement
     ).declarationList.declarations.find((entry) => entry.name.getText(file) === 'bounds');
-    expect(declaration?.initializer && ts.isObjectLiteralExpression(declaration.initializer)).toBe(
-      true,
-    );
-    expect(declaration?.initializer?.getText(file)).not.toContain('dirtyRect');
+    expect(declaration?.initializer && ts.isIdentifier(declaration.initializer)).toBe(true);
+    expect(declaration?.initializer?.getText(file)).toBe('viewRect');
   });
 
   it('clears the lighting-dirty flag before the auto-quality rebuild block', () => {
