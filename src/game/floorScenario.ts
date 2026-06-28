@@ -28,6 +28,7 @@ import {
   Sprite,
   DoorState,
   Enemy,
+  Spawner,
   Damage,
   DeathTimer,
   Npc,
@@ -41,6 +42,7 @@ import {
   spawnNpc,
   createEntity,
   spawnDroppedItem,
+  spawnSpawner,
   setBloodColor,
   DEFAULT_BLOOD_COLOR,
 } from '../core/helpers.js';
@@ -89,6 +91,8 @@ import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
+import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
+import { SeededRandom } from '../shared/random.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -104,6 +108,8 @@ const FLOOR_1_SPAWN_RADIUS_MAX = FLOOR_1_AMBIENT_SPAWN_MAX_DISTANCE_FT;
  */
 const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
+const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
+const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = ['slime-pool', 'rats-nest'] as const;
 
 // Native footprint of the welcome-sign sprite (board + baked "WELCOME" + arrow),
 // mirrored from the procedural texture in PhaserBridge (48x26 px) so the Sprite
@@ -488,6 +494,53 @@ function tagRoomAsSafe(world: GameWorld, roomPos: { x: number; y: number }): voi
       if (floorMap.terrain[ty * w + tx] === TerrainType.STONE_FLOOR) {
         floorMap.terrain[ty * w + tx] = TerrainType.SAFE_ROOM_FLOOR;
       }
+    }
+  }
+}
+
+function spawnFloor1StaticSpawners(world: GameWorld): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return;
+  }
+  // Derive a deterministic, floor-local stream so static-spawner room assignment
+  // is stable per seed but does not consume the shared gameplay RNG sequence.
+  const spawnerRng = new SeededRandom(
+    world.seed ^ (floorMap.config.widthTiles << 8) ^ floorMap.config.heightTiles ^ 0x5f3759df,
+  );
+
+  const candidateRooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.NORMAL);
+  const requiredRoomCount =
+    FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS.length * FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE;
+  if (candidateRooms.length < requiredRoomCount) {
+    throw new Error(
+      `Floor 1 requires at least ${requiredRoomCount} normal rooms for static spawners; got ${candidateRooms.length}.`,
+    );
+  }
+  spawnerRng.shuffle(candidateRooms);
+
+  let roomCursor = 0;
+  for (const archetypeId of FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS) {
+    const archetype = getSpawnerArchetype(archetypeId);
+    const defIndex = getSpawnerArchetypeIndex(archetypeId);
+    if (!archetype || defIndex < 0) {
+      continue;
+    }
+    for (let i = 0; i < FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE; i += 1) {
+      const room = candidateRooms[roomCursor]!;
+      roomCursor += 1;
+      const spawnPos = resolvePassableRoomCenter(floorMap, room);
+      spawnSpawner(world, spawnPos.x, spawnPos.y, archetype.hp, {
+        defIndex,
+        contactDamage: archetype.contactDamage,
+        weight: archetype.weight,
+        bloodColor: archetype.bloodColor,
+        textureId: archetype.textureId,
+        spriteWidth: archetype.spriteWidth,
+        spriteHeight: archetype.spriteHeight,
+      });
     }
   }
 }
@@ -979,6 +1032,7 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
     questItemPos.y,
     getItemIndex(SHOPKEEPER_FETCH_ITEM_ID),
   );
+  spawnFloor1StaticSpawners(world);
 
   // Give the player base stats so purchased equipment can be equipped.
   initializeBaseStats(world, playerEid);
@@ -1479,12 +1533,26 @@ function countEngagingEnemies(
   const { position, health } = world.stores;
   let count = 0;
   for (const eid of query(world.ecs, [Enemy, Position])) {
+    if (hasComponent(world.ecs, eid, Spawner)) {
+      continue;
+    }
     if ((health.current[eid] ?? 0) <= 0) {
       continue;
     }
     if (distSq(position.x[eid] ?? 0, position.y[eid] ?? 0, playerX, playerY) <= radiusSq) {
       count += 1;
     }
+  }
+  return count;
+}
+
+function countDirectorEnemies(world: GameWorld): number {
+  let count = 0;
+  for (const eid of query(world.ecs, [Enemy])) {
+    if (hasComponent(world.ecs, eid, Spawner)) {
+      continue;
+    }
+    count += 1;
   }
   return count;
 }
@@ -1683,7 +1751,7 @@ function prepopulateEnteredRoom(world: GameWorld, playerX: number, playerY: numb
   const waveMax = Math.max(pack.roomWaveMin, pack.roomWaveMax);
   const waveSize = world.rng.nextInt(pack.roomWaveMin, waveMax);
   for (let i = 0; i < waveSize; i += 1) {
-    if (query(world.ecs, [Enemy]).length >= pack.enemyCap) {
+    if (countDirectorEnemies(world) >= pack.enemyCap) {
       break;
     }
     const pos = resolveRoomInteriorSpawn(world, roomId, playerX, playerY);
@@ -1723,7 +1791,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   // Recycle mobs left far behind, then enforce the global ceiling. Both run
   // every tick so budget is freed promptly as the player moves.
   pruneAmbientOutOfRange(world, playerX, playerY);
-  const overflow = query(world.ecs, [Enemy]).length - pack.enemyCap;
+  const overflow = countDirectorEnemies(world) - pack.enemyCap;
   if (overflow > 0) {
     pruneAmbientOverflow(world, playerX, playerY, overflow);
   }
@@ -1749,7 +1817,7 @@ export function floor1EnemyDirectorSystem(world: GameWorld): void {
   for (let i = 0; i < burst; i += 1) {
     // At the global cap, make room near the player by recycling the furthest
     // straggler outside the engagement ring. If nothing can be freed, stop.
-    if (query(world.ecs, [Enemy]).length >= pack.enemyCap) {
+    if (countDirectorEnemies(world) >= pack.enemyCap) {
       if (evictFurthestAmbient(world, playerX, playerY, engageRadiusSq, 1) === 0) {
         break;
       }

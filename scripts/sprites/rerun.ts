@@ -380,6 +380,12 @@ async function writeRunSummary(
     extra?: { sheetFile?: string };
   },
 ): Promise<RerunResult> {
+  const orientationTotal = patch.candidates.filter((c) =>
+    c.breakdown.some((b) => b.sensor === 'silhouette-orientation-axis'),
+  ).length;
+  const orientationFailed = patch.candidates.filter((c) =>
+    c.breakdown.some((b) => b.sensor === 'silhouette-orientation-axis' && !b.ok),
+  ).length;
   const summary: RunSummary = {
     ...prior,
     candidates: patch.candidates,
@@ -387,6 +393,12 @@ async function writeRunSummary(
     chosen: patch.chosen,
     judgeBudget: patch.judgeBudget,
     judgeCache: patch.judgeCache,
+    sensorTelemetry: {
+      orientation: {
+        failed: orientationFailed,
+        total: orientationTotal,
+      },
+    },
     variantCount: patch.variantCount ?? prior.variantCount,
   };
   const summaryKey = storeKey('summary.json');

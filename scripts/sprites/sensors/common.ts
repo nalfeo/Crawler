@@ -309,6 +309,75 @@ export function opaqueRatio(
   return ok(sensor);
 }
 
+export function interiorTransparencyHoles(
+  image: RgbaImage,
+  opts: { maxPixels?: number; maxReport?: number } = {},
+): SensorResult {
+  const sensor = 'interior-transparency-holes';
+  const maxPixels = opts.maxPixels ?? 0;
+  const maxReport = opts.maxReport ?? 16;
+  const stats = gatherOpaqueStats(image);
+  if (stats.count === 0) return ok(sensor);
+  const minX = stats.minX;
+  const maxX = stats.maxX;
+  const minY = stats.minY;
+  const maxY = stats.maxY;
+  const width = image.width;
+  const height = image.height;
+  const visited = new Uint8Array(width * height);
+  const qx: number[] = [];
+  const qy: number[] = [];
+  const push = (x: number, y: number): void => {
+    const idx = y * width + x;
+    if (visited[idx] === 1 || isOpaque(image, x, y)) return;
+    visited[idx] = 1;
+    qx.push(x);
+    qy.push(y);
+  };
+  // Flood transparent exterior from the bounding-box perimeter.
+  for (let x = minX; x <= maxX; x++) {
+    push(x, minY);
+    push(x, maxY);
+  }
+  for (let y = minY; y <= maxY; y++) {
+    push(minX, y);
+    push(maxX, y);
+  }
+  for (let i = 0; i < qx.length; i++) {
+    const x = qx[i]!;
+    const y = qy[i]!;
+    const neighbors: ReadonlyArray<readonly [number, number]> = [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ];
+    for (const [nx, ny] of neighbors) {
+      if (nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
+      push(nx, ny);
+    }
+  }
+
+  const holes: Pixel[] = [];
+  let holeCount = 0;
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const idx = y * width + x;
+      if (isOpaque(image, x, y) || visited[idx] === 1) continue;
+      holeCount += 1;
+      if (holes.length < maxReport) holes.push({ x, y });
+    }
+  }
+  if (holeCount > maxPixels) {
+    return fail(
+      sensor,
+      `found ${holeCount} enclosed transparent interior pixels (max ${maxPixels})`,
+      holes,
+    );
+  }
+  return ok(sensor);
+}
+
 export function anchorOpaque(image: RgbaImage, brief: Brief): SensorResult {
   const sensor = 'anchor-opaque';
   // When trimAndFit is on, the image dimensions change so the brief's static
@@ -345,6 +414,7 @@ export function universalSensors(
     paletteMembership(image, palette),
     opaqueBboxFits(image),
     opaqueRatio(image, { max: opaqueMax }),
+    interiorTransparencyHoles(image),
     anchorOpaque(image, brief),
   ];
 }

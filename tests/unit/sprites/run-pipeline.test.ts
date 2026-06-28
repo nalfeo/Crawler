@@ -122,26 +122,16 @@ describe('runJudgePass — gating', () => {
     expect([...res.judgePlan.values()]).toEqual([null, null]);
   });
 
-  it('sensor-failed variants are skipped (reason sensor-failed) and not judged', async () => {
+  it('sensor-failed variants are still judge-eligible by default', async () => {
     const variants = [variant(0, true, 7), variant(1, false, 3)];
     const { calls, args } = judgeArgs(variants, [
       scorecard({ style: 5, brief: 5, readability: 5 }),
-    ]);
-    const res = await runJudgePass(args);
-    expect(calls).toHaveLength(1); // only the sensor-passing variant
-    expect(res.judgeSkipReason.get(1)).toBe('sensor-failed');
-    expect(res.judgePlan.get(1)).toBeNull();
-    expect(res.judgePlan.get(0)).not.toBeNull();
-    expect(res.judgeSkipReason.get(0)).toBeNull();
-  });
-
-  it('force: a sensor-failed variant becomes judge-eligible', async () => {
-    const variants = [variant(0, false, 3)];
-    const { calls, args } = judgeArgs(variants, [
       scorecard({ style: 4, brief: 4, readability: 4 }),
     ]);
-    const res = await runJudgePass({ ...args, force: true });
-    expect(calls).toHaveLength(1);
+    const res = await runJudgePass(args);
+    expect(calls).toHaveLength(2);
+    expect(res.judgeSkipReason.get(1)).toBeNull();
+    expect(res.judgePlan.get(1)).not.toBeNull();
     expect(res.judgePlan.get(0)).not.toBeNull();
     expect(res.judgeSkipReason.get(0)).toBeNull();
   });
@@ -206,7 +196,7 @@ describe('assembleSummaryEntries — combinedPassed', () => {
       judgeSkipReason: new Map<number, JudgeSkipReason | null>([
         [0, null],
         [1, null],
-        [2, 'sensor-failed'],
+        [2, null],
       ]),
       judgeEnabled: true,
     });

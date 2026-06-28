@@ -12,10 +12,12 @@
 
 import { AzureOpenAIImageProvider } from './azure-openai.js';
 import { AzureOpenAIChatProvider } from './azure-chat.js';
+import { AzureOpenAIBriefSelectorProvider } from './azure-chat-brief-selector.js';
 import { AzureOpenAISynthProvider } from './azure-chat-synth.js';
 import { AzureOpenAIVisionProvider } from './azure-vision.js';
 import { resolveProviderTimeoutMs } from './fetch-timeout.js';
 import type { ImageProvider } from './types.js';
+import type { BriefSelectorProvider } from './brief-selector-types.js';
 import type { TextProvider } from './text-types.js';
 import type { SynthProvider } from './synth-types.js';
 import type { VisionProvider } from './vision-types.js';
@@ -230,6 +232,34 @@ export function createSynthProvider(options: CreateProviderOptions = {}): SynthP
   return new AzureOpenAISynthProvider({
     endpoint,
     deployment: resolved.deployment,
+    apiKey,
+    apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
+    ...(options.fetch ? { fetch: options.fetch } : {}),
+  });
+}
+
+export function createBriefSelectorProvider(
+  options: CreateProviderOptions = {},
+): BriefSelectorProvider | null {
+  const env = options.env ?? process.env;
+  const endpoint = env.AZURE_OPENAI_ENDPOINT;
+  const apiKey = env.AZURE_OPENAI_API_KEY;
+  const selectorDeployment = env.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT;
+  if (!endpoint || !apiKey || !selectorDeployment) return null;
+  const warn = options.warn ?? defaultWarn;
+  const synthResolved = resolveChatDeployment(env, warn);
+  const synthDeployment = synthResolved?.deployment ?? env.AZURE_OPENAI_CHAT_DEPLOYMENT ?? null;
+  if (synthDeployment && synthDeployment === selectorDeployment) {
+    throw new Error(
+      'AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT must differ from the synthesizer deployment ' +
+        `(resolved synth='${synthDeployment}').`,
+    );
+  }
+  const apiVersion = env.AZURE_OPENAI_API_VERSION ?? DEFAULT_AZURE_API_VERSION;
+  return new AzureOpenAIBriefSelectorProvider({
+    endpoint,
+    deployment: selectorDeployment,
     apiKey,
     apiVersion,
     timeoutMs: resolveProviderTimeoutMs(env),

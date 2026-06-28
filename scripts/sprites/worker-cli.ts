@@ -39,10 +39,17 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createAssetQueue } from './queue/index.js';
 import { createRunStore } from './store/index.js';
-import { createImageProvider, createTextProvider } from './provider/factory.js';
+import {
+  createBriefSelectorProvider,
+  createImageProvider,
+  createSynthProvider,
+  createTextProvider,
+  createVisionProvider,
+} from './provider/factory.js';
 import { runWorker } from './worker.js';
 import type { WorkerStatus } from './worker.js';
 import { createLogger } from '../../src/shared/logger.js';
+import { createGhAssetRequestIssueApi } from './sidecar/asset-request-issue-api.js';
 
 const logger = createLogger('infra:sprites:worker');
 
@@ -85,6 +92,15 @@ async function main(): Promise<void> {
   const store = createRunStore({ repoRoot });
   const provider = createImageProvider();
   const textProvider = createTextProvider();
+  let synthProvider = null;
+  try {
+    synthProvider = createSynthProvider();
+  } catch {
+    // Optional unless processing issue-originated jobs.
+  }
+  const briefSelectorProvider = createBriefSelectorProvider();
+  const visionProvider = createVisionProvider();
+  const issueApi = createGhAssetRequestIssueApi(repoRoot);
 
   logger.info(`worker started (queue=${queue.backend}, store=${store.backend}, pollMs=${pollMs})`);
 
@@ -94,6 +110,10 @@ async function main(): Promise<void> {
     repoRoot,
     provider,
     textProvider,
+    synthProvider,
+    briefSelectorProvider,
+    visionProvider,
+    issueApi,
     pollIntervalMs: pollMs,
     signal: abortController.signal,
     onStatus,

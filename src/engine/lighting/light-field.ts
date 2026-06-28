@@ -118,6 +118,40 @@ export function buildDirtyRectFromCircles(
   };
 }
 
+export function buildDirtyRectFromPixelBounds(
+  field: LightField,
+  minPxX: number,
+  minPxY: number,
+  maxPxX: number,
+  maxPxY: number,
+): LightFieldDirtyRect {
+  const maxFieldPxX = Math.max(0, field.widthPx - 1);
+  const maxFieldPxY = Math.max(0, field.heightPx - 1);
+  const clampedMinX = clamp(Math.min(minPxX, maxPxX), 0, maxFieldPxX);
+  const clampedMinY = clamp(Math.min(minPxY, maxPxY), 0, maxFieldPxY);
+  const clampedMaxX = clamp(Math.max(minPxX, maxPxX), 0, maxFieldPxX);
+  const clampedMaxY = clamp(Math.max(minPxY, maxPxY), 0, maxFieldPxY);
+  return {
+    minX: clamp(Math.floor(clampedMinX / field.stepPx), 0, field.widthCells - 1),
+    minY: clamp(Math.floor(clampedMinY / field.stepPx), 0, field.heightCells - 1),
+    maxX: clamp(Math.floor(clampedMaxX / field.stepPx), 0, field.widthCells - 1),
+    maxY: clamp(Math.floor(clampedMaxY / field.stepPx), 0, field.heightCells - 1),
+  };
+}
+
+export function intersectDirtyRects(
+  a: LightFieldDirtyRect | null,
+  b: LightFieldDirtyRect | null,
+): LightFieldDirtyRect | null {
+  if (!a || !b) return null;
+  const minX = Math.max(a.minX, b.minX);
+  const minY = Math.max(a.minY, b.minY);
+  const maxX = Math.min(a.maxX, b.maxX);
+  const maxY = Math.min(a.maxY, b.maxY);
+  if (maxX < minX || maxY < minY) return null;
+  return { minX, minY, maxX, maxY };
+}
+
 export interface ComputeLightFieldParams {
   map: {
     pixelToTile: (px: number, py: number) => { x: number; y: number };

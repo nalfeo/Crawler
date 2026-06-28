@@ -1063,8 +1063,8 @@ describe('describeJudgeSkipReason', () => {
     expect(describeJudgeSkipReason(null, true)).toBeNull();
   });
 
-  it('explains the sensor gate and points at force judge', () => {
-    expect(describeJudgeSkipReason('sensor-failed', false)).toContain('Force judge');
+  it('explains legacy sensor-gated judging', () => {
+    expect(describeJudgeSkipReason('sensor-failed', false)).toContain('legacy');
   });
 
   it('explains the per-run cap and how to raise it', () => {

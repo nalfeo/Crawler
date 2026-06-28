@@ -3,7 +3,7 @@
  */
 import { hasComponent, query, setComponent } from 'bitecs';
 import { describe, expect, it } from 'vitest';
-import { BloodColor, Enemy, Health } from '../../src/core/components.js';
+import { BloodColor, Enemy, Health, Spawner } from '../../src/core/components.js';
 import {
   spawnEnemy,
   spawnBehaviorEnemy,
@@ -119,7 +119,9 @@ describe('dropSystem blood color in death event', () => {
 
       dropSystem(world, { spawnLoot: false });
 
-      const enemies = Array.from(query(world.ecs, [Enemy, Health])).filter((e) => e !== slime);
+      const enemies = Array.from(query(world.ecs, [Enemy, Health])).filter(
+        (e) => e !== slime && !hasComponent(world.ecs, e, Spawner),
+      );
       if (enemies.length === 2) {
         for (const miniEid of enemies) {
           const r = world.stores.bloodColor.r[miniEid] ?? 0;

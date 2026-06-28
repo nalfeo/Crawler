@@ -18,10 +18,15 @@
 
 import path from 'node:path';
 import { generateOne } from './generate-one.js';
-import type { AssetQueue } from './queue/types.js';
+import type { AssetQueue, AssetRequest, IssueAssetRequest } from './queue/types.js';
 import type { RunStore } from './store/types.js';
 import type { ImageProvider } from './provider/types.js';
 import type { TextProvider } from './provider/text-types.js';
+import type { SynthProvider } from './provider/synth-types.js';
+import type { BriefSelectorProvider } from './provider/brief-selector-types.js';
+import type { VisionProvider } from './provider/vision-types.js';
+import type { IssuePipelineIssueApi } from './issue-pipeline.js';
+import { runIssuePipeline } from './issue-pipeline.js';
 
 export interface WorkerOptions {
   /** Queue to poll for generation requests. */
@@ -34,6 +39,14 @@ export interface WorkerOptions {
   readonly provider: ImageProvider;
   /** Optional text provider for variation expansion. Defaults to none. */
   readonly textProvider?: TextProvider | null;
+  /** Optional synth provider for issue-originated queue jobs. */
+  readonly synthProvider?: SynthProvider | null;
+  /** Optional brief selector provider for issue-originated queue jobs. */
+  readonly briefSelectorProvider?: BriefSelectorProvider | null;
+  /** Optional vision provider for judged issue-originated queue jobs. */
+  readonly visionProvider?: VisionProvider | null;
+  /** Optional issue API for status comments. */
+  readonly issueApi?: IssuePipelineIssueApi | null;
   /**
    * How long (ms) to wait between polls when the queue is empty.
    * Default: 5 000 ms.
@@ -88,20 +101,26 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     }
 
     const { request } = msg;
-    onStatus?.({ type: 'processing', briefId: request.briefId });
+    onStatus?.({ type: 'processing', briefId: describeRequest(request) });
 
     try {
-      const result = await generateOne({
-        briefPath: path.resolve(repoRoot, request.briefPath),
-        provider,
-        textProvider: options.textProvider ?? null,
-        repoRoot,
-        store,
-      });
+      const result =
+        request.kind === 'issue-request'
+          ? await runIssueRequest({
+              request,
+              options,
+            })
+          : await generateOne({
+              briefPath: path.resolve(repoRoot, request.briefPath),
+              provider,
+              textProvider: options.textProvider ?? null,
+              repoRoot,
+              store,
+            });
       await msg.ack();
       onStatus?.({
         type: 'done',
-        briefId: request.briefId,
+        briefId: describeRequest(request),
         runId: result.summary.runId,
         summaryPath: result.summaryPath,
       });
@@ -109,7 +128,42 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
       // Do NOT ack — the message will become visible again after the
       // visibility timeout so a fixed worker can retry it.
       const error = err instanceof Error ? err : new Error(String(err));
-      onStatus?.({ type: 'error', briefId: request.briefId, error });
+      onStatus?.({ type: 'error', briefId: describeRequest(request), error });
+    }
+
+    function describeRequest(request: AssetRequest): string {
+      return request.kind === 'issue-request'
+        ? `issue-${request.issueNumber}:${request.name}`
+        : request.briefId;
+    }
+
+    async function runIssueRequest(args: {
+      readonly request: IssueAssetRequest;
+      readonly options: WorkerOptions;
+    }) {
+      const { request, options } = args;
+      if (!options.synthProvider || !options.briefSelectorProvider || !options.issueApi) {
+        throw new Error(
+          'issue-request job requires synthProvider, briefSelectorProvider, and issueApi to be configured',
+        );
+      }
+      const result = await runIssuePipeline({
+        request,
+        repoRoot: options.repoRoot,
+        store: options.store,
+        imageProvider: options.provider,
+        textProvider: options.textProvider ?? null,
+        synthProvider: options.synthProvider,
+        briefSelectorProvider: options.briefSelectorProvider,
+        visionProvider: options.visionProvider ?? null,
+        issueApi: options.issueApi,
+      });
+      return {
+        summary: {
+          runId: result.runId,
+        },
+        summaryPath: result.summaryPath,
+      };
     }
   }
 

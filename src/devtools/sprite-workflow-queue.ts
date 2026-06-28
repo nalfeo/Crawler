@@ -613,7 +613,7 @@ export function describeJudgeSkipReason(reason: string | null, judged: boolean):
   if (judged) return null;
   switch (reason) {
     case 'sensor-failed':
-      return 'Not judged — a sensor gate failed. Use “Force judge” to score it anyway.';
+      return 'Not judged — this run used legacy sensor-gated judging.';
     case 'over-cap':
       return 'Not judged — only the top variants (by sensor score) are judged to bound cost. Raise the brief’s judge.maxVariants to judge more.';
     case 'over-budget':
