@@ -45,6 +45,11 @@ export interface LootDrop {
   quantity: number;
 }
 
+export interface EnemyDropConfig {
+  /** Whether this enemy archetype is allowed to spawn loot at all. */
+  dropsEnabled: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Roll logic (pure functions)
 // ---------------------------------------------------------------------------
@@ -144,6 +149,20 @@ export const LOOT_TABLES = {
     ],
   } satisfies LootTable,
 } as const;
+
+/**
+ * Per-archetype drop overrides layered on top of the default loot tables.
+ * Omitted archetypes inherit the standard enemy drop behavior.
+ */
+export const ENEMY_DROP_CONFIGS: Readonly<Record<string, EnemyDropConfig>> = {
+  'slime-mini': {
+    dropsEnabled: false,
+  },
+};
+
+export function getEnemyDropConfig(archetypeId: string | undefined): EnemyDropConfig | undefined {
+  return archetypeId ? ENEMY_DROP_CONFIGS[archetypeId] : undefined;
+}
 
 /** Convenience lookup by string id. */
 export function getLootTable(id: string): LootTable | undefined {

@@ -351,8 +351,9 @@ describe('dropSystem', () => {
     expect(query(world.ecs, [DroppedItem]).length).toBe(itemsAtInit);
   });
 
-  it('allows split baby slimes to drop xp after the floor1 tutorial unlock', () => {
+  it('still suppresses split baby slime drops after the floor1 tutorial unlock', () => {
     const { world, miniSlimes } = setupSplitBabySlimeWorld(true);
+    const itemsAtInit = query(world.ecs, [DroppedItem]).length;
 
     for (const miniEid of miniSlimes) {
       setComponent(world.ecs, miniEid, Health, {
@@ -363,6 +364,8 @@ describe('dropSystem', () => {
 
     dropSystem(world);
 
-    expect(query(world.ecs, [XpGem]).length).toBeGreaterThan(0);
+    expect(query(world.ecs, [XpGem]).length).toBe(0);
+    expect(query(world.ecs, [Gold]).length).toBe(0);
+    expect(query(world.ecs, [DroppedItem]).length).toBe(itemsAtInit);
   });
 });
