@@ -77,8 +77,23 @@ function shouldStopAuto(state) {
   return autoAttempts >= maxAutoAttempts || autoFailureStreak >= maxAutoFailureStreak;
 }
 
+function parseDispatchInputs() {
+  const inputs = payload.inputs || {};
+  const prNumber = Number.parseInt(String(inputs.pr_number || ''), 10);
+  if (!Number.isFinite(prNumber)) {
+    return null;
+  }
+  return {
+    pr_number: prNumber,
+    trigger: String(inputs.trigger || 'workflow_dispatch'),
+    command: String(inputs.command || ''),
+    mode: String(inputs.mode || 'auto'),
+    explicit: String(inputs.explicit || 'false').toLowerCase() === 'true',
+  };
+}
+
 const actorLogin = (payload.sender?.login || '').toLowerCase();
-if (actorLogin === 'github-actions[bot]') {
+if (actorLogin === 'github-actions[bot]' && eventName !== 'workflow_dispatch') {
   setOutput('should_run', 'false');
   setOutput('skip_reason', 'event from github-actions[bot]');
   process.exit(0);
@@ -89,8 +104,21 @@ let trigger = eventName;
 let command = '';
 let mode = 'auto';
 let explicit = false;
+let dispatchRequired = false;
 
-if (eventName === 'issue_comment') {
+if (eventName === 'workflow_dispatch') {
+  const inputs = parseDispatchInputs();
+  if (!inputs) {
+    setOutput('should_run', 'false');
+    setOutput('skip_reason', 'workflow_dispatch inputs.pr_number missing');
+    process.exit(0);
+  }
+  pr = await fetchPr(inputs.pr_number);
+  trigger = inputs.trigger;
+  command = inputs.command;
+  mode = inputs.mode;
+  explicit = inputs.explicit;
+} else if (eventName === 'issue_comment') {
   if (!payload.issue?.pull_request?.url) {
     setOutput('should_run', 'false');
     setOutput('skip_reason', 'issue_comment is not on a pull request');
@@ -108,6 +136,7 @@ if (eventName === 'issue_comment') {
   mode = parsed.mode;
   explicit = true;
   trigger = 'issue_comment_command';
+  dispatchRequired = true;
   pr = await fetchPr(payload.issue.number);
 } else if (eventName === 'pull_request') {
   pr = payload.pull_request;
@@ -116,10 +145,12 @@ if (eventName === 'issue_comment') {
   pr = payload.pull_request;
   mode = 'comments';
   trigger = `pull_request_review_${payload.action || 'updated'}`;
+  dispatchRequired = true;
 } else if (eventName === 'pull_request_review_comment') {
   pr = payload.pull_request;
   mode = 'comments';
   trigger = `pull_request_review_comment_${payload.action || 'updated'}`;
+  dispatchRequired = true;
 } else if (eventName === 'workflow_run') {
   const workflowRun = payload.workflow_run;
   if (!workflowRun || workflowRun.conclusion !== 'failure') {
@@ -137,6 +168,7 @@ if (eventName === 'issue_comment') {
   pr = await fetchPr(prRef.number);
   mode = 'ci';
   trigger = `workflow_run_failed:${workflowRun.name || 'unknown'}`;
+  dispatchRequired = true;
 } else {
   setOutput('should_run', 'false');
   setOutput('skip_reason', `unsupported event: ${eventName}`);
@@ -185,6 +217,7 @@ if (!explicit && shouldStopAuto(state)) {
 
 setOutput('should_run', 'true');
 setOutput('skip_reason', '');
+setOutput('dispatch_required', dispatchRequired ? 'true' : 'false');
 setOutput('pr_number', pr.number);
 setOutput('pr_branch', pr.head.ref || '');
 setOutput('pr_sha', headSha);

@@ -29,9 +29,11 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
 - `pull_request_review` (submitted)
 - `pull_request_review_comment` (created)
 - `workflow_run` (failed runs of `CI` tied to a PR)
+- `workflow_dispatch` (internal trusted reroute from privileged triggers)
 
 ## Security model
 
+- Uses a two-stage router/worker pattern: privileged event handlers route to `workflow_dispatch`, and only the dispatched run checks out and executes PR code.
 - Uses least-privilege workflow permissions:
   - `contents: write`
   - `pull-requests: write`
@@ -39,6 +41,7 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
   - `checks: read`
   - `actions: read`
 - Uses `GITHUB_TOKEN`; no PAT required.
+- Privileged triggers (`issue_comment`, `workflow_run`, review events) do not directly execute checked-out PR code.
 - Fork PRs are skipped for write operations by default.
 - Ignores events from `github-actions[bot]`.
 

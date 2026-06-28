@@ -39,6 +39,11 @@ ALL_PASSED=true
 TMP_RESULTS=()
 
 for cmd in "${COMMANDS[@]}"; do
+  if [[ "$cmd" =~ [`$<>] ]]; then
+    echo "Rejected unsafe validation command: $cmd" >&2
+    exit 1
+  fi
+
   echo "Running validation: $cmd"
   set +e
   output=$(bash -lc "$cmd" 2>&1)
