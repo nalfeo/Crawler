@@ -1,4 +1,4 @@
-name: Codex PR Repair
+name: Codex PR Repair Router
 
 on:
   pull_request:
@@ -12,58 +12,23 @@ on:
   workflow_run:
     workflows: ['CI']
     types: [completed]
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: Pull request number
-        required: true
-        type: string
-      trigger:
-        description: Trigger source label
-        required: false
-        default: workflow_dispatch
-        type: string
-      mode:
-        description: Repair mode
-        required: false
-        default: auto
-        type: string
-      command:
-        description: Explicit command text
-        required: false
-        default: ''
-        type: string
-      explicit:
-        description: Whether command was explicit
-        required: false
-        default: 'false'
-        type: string
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: write
   checks: read
-  actions: read
+  actions: write
 
 concurrency:
-  group: codex-repair-${{ github.event.pull_request.number || github.event.issue.number || github.event.inputs.pr_number || github.event.workflow_run.id || github.run_id }}
+  group: codex-repair-router-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.id || github.run_id }}
   cancel-in-progress: false
 
 jobs:
   route:
-    if: ${{ github.actor != 'github-actions[bot]' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    outputs:
-      should_run: ${{ steps.parse.outputs.should_run }}
-      dispatch_required: ${{ steps.parse.outputs.dispatch_required }}
-      pr_number: ${{ steps.parse.outputs.pr_number }}
-      pr_branch: ${{ steps.parse.outputs.pr_branch }}
-      trigger: ${{ steps.parse.outputs.trigger }}
-      mode: ${{ steps.parse.outputs.mode }}
-      command: ${{ steps.parse.outputs.command }}
-      explicit: ${{ steps.parse.outputs.is_explicit_command }}
     env:
       CODEX_MAX_AUTO_ATTEMPTS: '5'
       CODEX_MAX_AUTO_FAILURE_STREAK: '2'
@@ -82,7 +47,7 @@ jobs:
           echo "Skipping: ${{ steps.parse.outputs.skip_reason }}"
 
       - name: Dispatch trusted repair run
-        if: steps.parse.outputs.should_run == 'true' && steps.parse.outputs.dispatch_required == 'true'
+        if: steps.parse.outputs.should_run == 'true'
         env:
           PR_NUMBER: ${{ steps.parse.outputs.pr_number }}
           REPAIR_TRIGGER: ${{ steps.parse.outputs.trigger }}
@@ -90,85 +55,5 @@ jobs:
           REPAIR_COMMAND: ${{ steps.parse.outputs.command }}
           IS_EXPLICIT_COMMAND: ${{ steps.parse.outputs.is_explicit_command }}
           DISPATCH_REF: ${{ github.event.repository.default_branch }}
-          WORKFLOW_FILE: codex-repair.yml
+          WORKFLOW_FILE: codex-repair-runner.yml
         run: node .github/scripts/codex/dispatch-repair.mjs
-
-  repair:
-    needs: [route]
-    if: ${{ needs.route.outputs.should_run == 'true' && needs.route.outputs.dispatch_required != 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      CODEX_MODEL: ${{ vars.CODEX_MODEL || 'gpt-5.5' }}
-      CODEX_PROVIDER: ${{ vars.CODEX_PROVIDER || 'codex' }}
-      CODEX_BIN: ${{ vars.CODEX_BIN || 'codex' }}
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-    steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.route.outputs.pr_branch }}
-          fetch-depth: 0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install repo dependencies
-        run: npm ci
-
-      - name: Install Codex CLI
-        if: env.CODEX_PROVIDER == 'codex'
-        run: npm install -g @openai/codex@latest
-
-      - name: Gather PR context
-        env:
-          PR_NUMBER: ${{ needs.route.outputs.pr_number }}
-          REPAIR_TRIGGER: ${{ needs.route.outputs.trigger }}
-          REPAIR_MODE: ${{ needs.route.outputs.mode }}
-          REPAIR_COMMAND: ${{ needs.route.outputs.command }}
-        run: node .github/scripts/codex/gather-context.mjs
-
-      - name: Run Codex provider
-        id: codex
-        env:
-          CODEX_PROMPT_PATH: ${{ github.workspace }}/.github/scripts/codex/runtime/prompt.md
-          CODEX_RESULT_PATH: ${{ github.workspace }}/.github/scripts/codex/runtime/codex-result.json
-        run: bash .github/scripts/codex/run-provider.sh
-
-      - name: Validate changes
-        id: validate
-        continue-on-error: true
-        env:
-          CODEX_RESULT_PATH: ${{ github.workspace }}/.github/scripts/codex/runtime/codex-result.json
-          CODEX_VALIDATION_REPORT_PATH: ${{ github.workspace }}/.github/scripts/codex/runtime/validation-report.json
-          CODEX_VALIDATION_COMMANDS: ${{ vars.CODEX_VALIDATION_COMMANDS }}
-        run: bash .github/scripts/codex/validate.sh
-
-      - name: Commit and push changes
-        id: push
-        if: steps.validate.outcome == 'success'
-        env:
-          PR_BRANCH: ${{ needs.route.outputs.pr_branch }}
-        run: bash .github/scripts/codex/commit-and-push.sh
-
-      - name: Report status and thread updates
-        if: always()
-        env:
-          PR_NUMBER: ${{ needs.route.outputs.pr_number }}
-          REPAIR_TRIGGER: ${{ needs.route.outputs.trigger }}
-          REPAIR_MODE: ${{ needs.route.outputs.mode }}
-          REPAIR_COMMAND: ${{ needs.route.outputs.command }}
-          IS_EXPLICIT_COMMAND: ${{ needs.route.outputs.explicit }}
-          VALIDATION_SUCCEEDED: ${{ steps.validate.outcome == 'success' }}
-          CODEX_SUCCEEDED: ${{ steps.codex.outcome == 'success' }}
-          CHANGED_FILES: ${{ steps.push.outputs.files }}
-        run: node .github/scripts/codex/report.mjs
-
-      - name: Fail job when repair did not pass validation
-        if: steps.codex.outcome != 'success' || steps.validate.outcome != 'success'
-        run: |
-          echo "Codex repair did not complete successfully"
-          exit 1

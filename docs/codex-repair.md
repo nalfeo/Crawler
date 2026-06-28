@@ -1,8 +1,9 @@
 # Codex Repair Workflow
 
-This repository includes an autonomous PR-repair workflow at:
+This repository includes an autonomous PR-repair router/runner pair:
 
-- `.github/workflows/codex-repair.yml`
+- `.github/workflows/codex-repair.yml` (event router)
+- `.github/workflows/codex-repair-runner.yml` (trusted execution worker)
 
 It executes a CLI-based coding agent (Codex by default) and can be extended to other providers later.
 
@@ -105,6 +106,7 @@ Override with `CODEX_VALIDATION_COMMANDS` variable.
 Provider dispatch is in:
 
 - `.github/scripts/codex/run-provider.sh`
+- Router dispatch helper: `.github/scripts/codex/dispatch-repair.mjs`
 
 Current provider:
 

@@ -39,8 +39,8 @@ ALL_PASSED=true
 TMP_RESULTS=()
 
 for cmd in "${COMMANDS[@]}"; do
-  if [[ "$cmd" =~ [`$<>] ]]; then
-    echo "Rejected unsafe validation command: $cmd" >&2
+  if [[ ! "$cmd" =~ ^[A-Za-z0-9_./:+=,@\ -]+$ ]]; then
+    echo "Rejected unsafe validation command (allowed charset only): $cmd" >&2
     exit 1
   fi
 

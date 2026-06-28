@@ -197,11 +197,12 @@ const context = {
 
 fs.writeFileSync(contextPath, JSON.stringify(context, null, 2));
 
-const maxDiffChars = Number.parseInt(getEnv('CODEX_MAX_DIFF_CHARS', '50000'), 10);
-const trimmedDiff =
-  diffText.length > maxDiffChars
-    ? `${diffText.slice(0, maxDiffChars)}\n\n[diff truncated]`
-    : diffText;
+const maxDiffLines = Number.parseInt(getEnv('CODEX_MAX_DIFF_LINES', '1800'), 10);
+let trimmedDiff = diffText;
+const diffLines = diffText.split('\n');
+if (diffLines.length > maxDiffLines) {
+  trimmedDiff = `${diffLines.slice(0, maxDiffLines).join('\n')}\n\n[diff truncated]`;
+}
 
 const threadChecklist = unresolvedThreads
   .map((thread) => {
