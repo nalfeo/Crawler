@@ -998,8 +998,26 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
       // HUD boss bar (see resolveBossHealthBar), giving it priority when both
       // battles are active simultaneously.
       bossBattles: new Map([
-        ['slime-rat', { started: false, bossEid: null, defeated: false, displayName: 'Slime Rat' }],
-        ['staircase', { started: false, bossEid: null, defeated: false, displayName: 'Rat Slime' }],
+        [
+          'slime-rat',
+          {
+            started: false,
+            bossEid: null,
+            defeated: false,
+            displayName: 'Slime Rat',
+            lootTableId: 'boss_minor',
+          },
+        ],
+        [
+          'staircase',
+          {
+            started: false,
+            bossEid: null,
+            defeated: false,
+            displayName: 'Rat Slime',
+            lootTableId: 'boss',
+          },
+        ],
       ]),
     },
     failReason: null,
