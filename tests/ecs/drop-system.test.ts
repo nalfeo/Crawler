@@ -11,6 +11,7 @@ import {
   Invincible,
   MeleeSwing,
   Position,
+  Spawner,
   SpawnAnim,
   Sprite,
   XpGem,
@@ -181,7 +182,9 @@ describe('dropSystem', () => {
 
       dropSystem(candidate, { spawnLoot: false });
       const enemies = query(candidate.ecs, [Enemy, Health]);
-      const minis = Array.from(enemies).filter((eid) => eid !== slime);
+      const minis = Array.from(enemies).filter(
+        (eid) => eid !== slime && !hasComponent(candidate.ecs, eid, Spawner),
+      );
       if (minis.length === 2) {
         world = candidate;
         slainSlime = slime;
@@ -265,7 +268,7 @@ describe('dropSystem', () => {
       dropSystem(candidate, { spawnLoot: false });
 
       const minis = Array.from(query(candidate.ecs, [Enemy, Health])).filter(
-        (eid) => eid !== slime,
+        (eid) => eid !== slime && !hasComponent(candidate.ecs, eid, Spawner),
       );
       if (minis.length === 2) {
         world = candidate;
