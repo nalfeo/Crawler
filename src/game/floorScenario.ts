@@ -109,7 +109,7 @@ const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
 const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = ['slime-pool', 'rats-nest'] as const;
-const FLOOR_1_MAX_STARTER_CHOICES = 6;
+const FLOOR_1_MAX_STARTER_CHOICES = 3;
 const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
 // Native footprint of the welcome-sign sprite (board + baked "WELCOME" + arrow),
@@ -2188,25 +2188,21 @@ export interface ShopkeeperStockItem {
   readonly cost: number;
 }
 
-const SHOPKEEPER_POST_QUEST_WEAPON_ITEM_IDS = [
-  'rusty-shiv',
-  'iron-sword',
-  'bone-club',
-  'frost-bow',
-  'crystal-wand',
-] as const;
-
-const SHOPKEEPER_POST_QUEST_ARMOR_ITEM_IDS = [
-  'padded-hood',
-  'reinforced-vest',
-  'work-boots',
-] as const;
+const FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID: Readonly<Record<string, string>> = {
+  sword: 'iron-sword',
+  bow: 'frost-bow',
+  'baseball-bat': 'bone-club',
+  pistol: 'plasma-pistol',
+  'throwing-knife': 'rusty-shiv',
+  fireball: 'crystal-wand',
+};
 
 const SHOPKEEPER_POST_QUEST_ITEM_COSTS: Readonly<Record<string, number>> = {
   'rusty-shiv': 18,
   'iron-sword': 24,
   'bone-club': 20,
   'frost-bow': 26,
+  'plasma-pistol': 30,
   'crystal-wand': 28,
   'padded-hood': 16,
   'reinforced-vest': 25,
@@ -2242,40 +2238,47 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
   return 'awaiting-prize';
 }
 
-/** Deterministic post-quest merchant inventory (4-5 basic weapons/armor). */
+/** Deterministic post-quest merchant inventory (2 extra starter-weapon options). */
 export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockItem[] {
-  const weaponCandidates: ShopkeeperStockItem[] = [...SHOPKEEPER_POST_QUEST_WEAPON_ITEM_IDS].map(
-    (itemId) => ({
-      itemId,
-      cost: SHOPKEEPER_POST_QUEST_ITEM_COSTS[itemId] ?? 20,
-    }),
-  );
-  const armorCandidates: ShopkeeperStockItem[] = [...SHOPKEEPER_POST_QUEST_ARMOR_ITEM_IDS].map(
-    (itemId) => ({
-      itemId,
-      cost: SHOPKEEPER_POST_QUEST_ITEM_COSTS[itemId] ?? 20,
-    }),
-  );
+  const seen = new Set<string>();
+  const starterPool: string[] = [];
+  for (const weaponId of floor1Config.starterWeapons) {
+    if (
+      seen.has(weaponId) ||
+      getWeaponDef(weaponId) === undefined ||
+      FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID[weaponId] === undefined
+    ) {
+      continue;
+    }
+    seen.add(weaponId);
+    starterPool.push(weaponId);
+  }
+  const selectedAtStart = new Set(world.floor1?.starterChoices ?? []);
+  const remainingWeaponIds = starterPool.filter((weaponId) => !selectedAtStart.has(weaponId));
   const stockRng = new SeededRandom(
     hashStringToSeed(`${world.seed}:floor1-shopkeeper-post-quest-stock`),
   );
-  stockRng.shuffle(weaponCandidates);
-  stockRng.shuffle(armorCandidates);
+  stockRng.shuffle(remainingWeaponIds);
 
-  const stockCount = stockRng.nextInt(4, 5);
-  const maxWeaponCount = Math.min(3, stockCount - 2);
-  const weaponCount = stockRng.nextInt(2, maxWeaponCount);
-  const armorCount = stockCount - weaponCount;
-
-  const stock = [
-    ...weaponCandidates.slice(0, weaponCount),
-    ...armorCandidates.slice(0, armorCount),
-  ];
-  stockRng.shuffle(stock);
-  return stock.map((entry) => ({
-    itemId: entry.itemId,
-    cost: entry.cost,
-  }));
+  const pickedWeaponIds = remainingWeaponIds.slice(0, 2);
+  if (pickedWeaponIds.length < 2) {
+    const fallbackWeaponIds = starterPool.filter((weaponId) => !pickedWeaponIds.includes(weaponId));
+    stockRng.shuffle(fallbackWeaponIds);
+    for (const weaponId of fallbackWeaponIds) {
+      if (pickedWeaponIds.length >= 2) {
+        break;
+      }
+      pickedWeaponIds.push(weaponId);
+    }
+  }
+  return pickedWeaponIds
+    .map((weaponId) => FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID[weaponId])
+    .filter((itemId): itemId is string => itemId !== undefined)
+    .slice(0, 2)
+    .map((itemId) => ({
+      itemId,
+      cost: SHOPKEEPER_POST_QUEST_ITEM_COSTS[itemId] ?? 20,
+    }));
 }
 
 /** Character level required before the merchant / spell-broker quests unlock. */

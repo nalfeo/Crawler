@@ -64,8 +64,8 @@ describe('floor1Scenario', () => {
     expect(world.floorMap).not.toBeNull();
     expect(world.floor1).not.toBeNull();
     expect(world.floor1?.protagonistName).toBe('Rhea Vale');
-    expect(world.floor1?.starterChoices).toHaveLength(6);
-    expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(6);
+    expect(world.floor1?.starterChoices).toHaveLength(3);
+    expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(3);
     for (const weaponId of world.floor1?.starterChoices ?? []) {
       expect(getWeaponDef(weaponId)).toBeDefined();
     }
@@ -856,7 +856,7 @@ describe('floor1Scenario', () => {
       expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST - 1);
     });
 
-    it('offers a deterministic 4-5 item post-quest stock with basic weapons and armor', () => {
+    it('offers 2 deterministic extra starter-weapon options from the starter pool', () => {
       const worldA = createTestWorld({ seed: 5 });
       const playerA = spawnPlayer(worldA, 0, 0);
       initializeFloor1Scenario(worldA, playerA);
@@ -870,18 +870,26 @@ describe('floor1Scenario', () => {
       const stockA = getShopkeeperPostQuestStock(worldA);
       const stockB = getShopkeeperPostQuestStock(worldB);
       expect(stockA).toEqual(stockB);
-      expect(stockA.length).toBeGreaterThanOrEqual(4);
-      expect(stockA.length).toBeLessThanOrEqual(5);
-      const weaponIds = new Set([
-        'rusty-shiv',
-        'iron-sword',
-        'bone-club',
-        'frost-bow',
-        'crystal-wand',
-      ]);
-      const armorIds = new Set(['padded-hood', 'reinforced-vest', 'work-boots']);
-      expect(stockA.some((entry) => weaponIds.has(entry.itemId))).toBe(true);
-      expect(stockA.some((entry) => armorIds.has(entry.itemId))).toBe(true);
+      expect(stockA).toHaveLength(2);
+      expect(new Set(stockA.map((entry) => entry.itemId)).size).toBe(2);
+      const starterToItem: Record<string, string> = {
+        sword: 'iron-sword',
+        bow: 'frost-bow',
+        'baseball-bat': 'bone-club',
+        pistol: 'plasma-pistol',
+        'throwing-knife': 'rusty-shiv',
+        fireball: 'crystal-wand',
+      };
+      const starterChoices = new Set(worldA.floor1?.starterChoices ?? []);
+      const expectedItemIds = new Set(
+        (worldA.floor1?.starterWeaponPool ?? [])
+          .filter((weaponId) => !starterChoices.has(weaponId))
+          .map((weaponId) => starterToItem[weaponId])
+          .filter((itemId): itemId is string => Boolean(itemId)),
+      );
+      for (const entry of stockA) {
+        expect(expectedItemIds.has(entry.itemId)).toBe(true);
+      }
     });
 
     it('sells post-quest stock items only after the merchant quest is complete', () => {
