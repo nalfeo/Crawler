@@ -67,8 +67,8 @@ assets:
 
   - id: bone-club
     type: weapon
-    label: 'Bone Club'
-    brief: 'Bone Club — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Prehistoric but effective.'
+    label: 'Baseball Bat'
+    brief: 'Baseball Bat — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Heavy swing, simple results.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
@@ -76,8 +76,8 @@ assets:
 
   - id: plasma-pistol
     type: weapon
-    label: 'Plasma Pistol'
-    brief: 'Plasma Pistol — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Pew pew. But, like, actually dangerous.'
+    label: 'Pistol'
+    brief: 'Pistol — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. A standard sidearm with no sci-fi extras.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
@@ -85,8 +85,8 @@ assets:
 
   - id: crystal-wand
     type: weapon
-    label: 'Crystal Wand'
-    brief: 'Crystal Wand — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Channels pure arcane energy.'
+    label: 'Flare Gun'
+    brief: 'Flare Gun — a single centered weapon icon with a clear, readable silhouette on a transparent background. Show it in a clean side or three-quarter profile so the weapon type reads at a glance. Short-range firepower in a familiar package.'
     placeholderInUse: true
     integration:
       kind: sprite-registry
