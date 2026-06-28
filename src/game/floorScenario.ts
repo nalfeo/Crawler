@@ -469,22 +469,29 @@ function chooseObjectiveTiles(world: GameWorld): {
   // only the `!reserved.has(room)` guard, which preserves legacy behaviour on
   // degenerate maps that lack a tagged spawn room.
   const roomsReachableWithoutBossRoom = new Set<RoomData>();
+  // Hop distance from the spawn room to each reachable room (excluding the boss
+  // stair path). Used to constrain welcome-room placement to 3–8 hops from spawn.
+  const roomHopFromSpawn = new Map<number, number>();
   {
     const bfsQueue: number[] = [];
+    let bfsHead = 0;
     const bfsVisited = new Set<number>();
     const startRoomId = floorMap.spawnRoom?.id;
     if (startRoomId !== undefined) {
       bfsQueue.push(startRoomId);
       bfsVisited.add(startRoomId);
-      while (bfsQueue.length > 0) {
-        const currId = bfsQueue.shift()!;
+      roomHopFromSpawn.set(startRoomId, 0);
+      while (bfsHead < bfsQueue.length) {
+        const currId = bfsQueue[bfsHead++]!;
         const currRoom = floorMap.roomGraph.get(currId);
+        const currHop = roomHopFromSpawn.get(currId) ?? 0;
         if (currRoom) {
           roomsReachableWithoutBossRoom.add(currRoom);
           for (const neighborId of currRoom.neighbors) {
             if (!bfsVisited.has(neighborId) && neighborId !== bossStairRoomId) {
               bfsVisited.add(neighborId);
               bfsQueue.push(neighborId);
+              roomHopFromSpawn.set(neighborId, currHop + 1);
             }
           }
         }
@@ -506,8 +513,32 @@ function chooseObjectiveTiles(world: GameWorld): {
     })
     .sort((a, b) => a.distanceSq - b.distanceSq);
 
-  const welcomeEntry = candidates[0];
-  const shopEntry = candidates.length > 1 ? candidates[1] : candidates[0];
+  // Welcome office: 3–8 room-graph hops from spawn, targeting ~5 hops.
+  // Among rooms in the valid range, prefer the hop count closest to 5; break
+  // ties with Euclidean distance (nearest wins, matching prior behaviour).
+  // Falls back to the nearest Euclidean room when no room is in the hop range.
+  const WELCOME_MIN_HOPS = 3;
+  const WELCOME_MAX_HOPS = 8;
+  const WELCOME_TARGET_HOPS = 5;
+  const welcomeHopCandidates = candidates.filter((e) => {
+    const hops = roomHopFromSpawn.get(e.room.id);
+    return hops !== undefined && hops >= WELCOME_MIN_HOPS && hops <= WELCOME_MAX_HOPS;
+  });
+  const welcomeEntry =
+    welcomeHopCandidates.length > 0
+      ? welcomeHopCandidates.reduce((best, entry) => {
+          const bestHops = roomHopFromSpawn.get(best.room.id) ?? 0;
+          const entryHops = roomHopFromSpawn.get(entry.room.id) ?? 0;
+          const bestDelta = Math.abs(bestHops - WELCOME_TARGET_HOPS);
+          const entryDelta = Math.abs(entryHops - WELCOME_TARGET_HOPS);
+          if (entryDelta < bestDelta) return entry;
+          if (entryDelta > bestDelta) return best;
+          return entry.distanceSq < best.distanceSq ? entry : best;
+        })
+      : candidates[0];
+  // Shop: nearest Euclidean candidate that isn't the welcome room (so the
+  // merchant is always encountered early, independent of welcome placement).
+  const shopEntry = candidates.find((e) => e !== welcomeEntry) ?? candidates[0];
   const itemEntry = [...candidates]
     .reverse()
     .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
