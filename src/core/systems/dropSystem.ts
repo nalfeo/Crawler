@@ -26,6 +26,7 @@ import {
 } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
+  getEnemyDropConfig,
   rollLootTable,
   resolveLootTables,
   LOOT_TABLES,
@@ -264,6 +265,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
+    const archetypeId = world.floor1?.enemyArchetypes.get(eid);
+    const allowEnemyDrops = getEnemyDropConfig(archetypeId)?.dropsEnabled ?? true;
     maybeSplitSlime(world, eid, x, y);
     const maxHp = health.max[eid] ?? 0;
     // Overkill tracking: applyDamage clamps HP to 0, so we cannot derive
@@ -327,10 +330,10 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      const isMiniSlime = world.floor1?.enemyArchetypes.get(eid) === 'slime-mini';
-      spawnDrops(world, x, y, drops, allowFloorDrops || isMiniSlime);
+      spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops);
       logger.info('Processed enemy death drops', {
         eid,
+        archetypeId,
         x,
         y,
         dropCount: drops.length,
