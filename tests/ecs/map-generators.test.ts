@@ -533,6 +533,52 @@ describe('Map Generators', () => {
         expect(floor.rooms.filter((r) => r.role === RoomRole.SAFE)).toHaveLength(1);
       }
     });
+
+    it('should keep all rooms graph-connected from spawn in cave-region maps across floor1 seeds', () => {
+      // Regression: carveCaveRegions converts corridor tiles to CAVE_FLOOR terrain,
+      // which used to break the room-adjacency flood-fill (CORRIDOR-only connectors).
+      // The fix includes CAVE_FLOOR as a navigable connector so rooms connected
+      // through cave-covered corridors are correctly added to the room graph.
+      const gen = new DungeonGenerator({ roomVariety: true, caveRegions: true });
+      const floor1Config: MapConfig = {
+        widthTiles: 240,
+        heightTiles: 140,
+        tileSizeFt: 4,
+        biome: BiomeType.BASIC_UNDERGROUND,
+        seed: 42,
+        roomWidthRange: [10, 22],
+        roomHeightRange: [9, 20],
+        maxRooms: 70,
+        floorDensity: 0.36,
+      };
+
+      // 30 seeds is enough to surface the cave-carving regression, which previously
+      // caused graph-disconnection on ~73% of seeds (22/30).
+      const TEST_SEEDS = [1, 2, 3, 5, 7, 10, 12, 14, 15, 16, 17, 18, 20, 42, 99] as const;
+
+      for (const seed of TEST_SEEDS) {
+        const floor = gen.generate({ ...floor1Config, seed }, new SeededRandom(seed));
+        const spawnRoom = floor.spawnRoom;
+        if (!spawnRoom) continue;
+
+        const roomsWithPassableInterior = floor.rooms.filter((room) => {
+          const { x, y, width, height } = room.bounds;
+          for (let ty = y + 1; ty < y + height - 1; ty++) {
+            for (let tx = x + 1; tx < x + width - 1; tx++) {
+              if (floor.tileMap.isPassable(tx, ty)) return true;
+            }
+          }
+          return false;
+        });
+
+        const connected = connectedRoomIds(spawnRoom.id, floor.rooms);
+        const disconnectedWithInterior = roomsWithPassableInterior.filter(
+          (r) => !connected.has(r.id),
+        );
+
+        expect(disconnectedWithInterior).toHaveLength(0);
+      }
+    });
   });
 
   describe('CaveGenerator', () => {
