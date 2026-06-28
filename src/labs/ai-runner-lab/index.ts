@@ -17,11 +17,26 @@ import {
   computeAutoStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
+import {
+  acceptQuest,
+  questSystem,
+  setTrackedQuest,
+  startFloor1BossEncounter,
+} from '../../game/index.js';
 import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
+import { setGoalFlag } from '../../core/door-lock.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
 import { peekGroundFlowField } from '../../game/enemyAISystem.js';
+import {
+  FLOOR1_BOSS_BATTLE_QUEST_ID,
+  FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  FLOOR1_SHOP_QUEST_ID,
+  FLOOR1_TUTORIAL_QUEST_ID,
+  getQuestDef,
+  objectiveTarget,
+} from '../../shared/quest-types.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
 import { registerLab, type LabCategory } from '../registry.js';
@@ -104,7 +119,36 @@ interface RunnerSceneInternals {
   setSimulationPaused(paused: boolean): void;
   isSimulationPaused(): boolean;
   advanceSimulationFrames(frames?: number): void;
+  setDebugFlag?(flag: string, enabled: boolean): void;
 }
+
+type JumpTarget =
+  | 'spawn-room'
+  | 'welcome-office'
+  | 'slime-rat-room'
+  | 'quest-item-room'
+  | 'staircase-room'
+  | 'spell-quest-giver'
+  | 'shopkeeper'
+  | 'boss-encounter';
+
+const JUMP_TARGET_LABELS: Record<JumpTarget, string> = {
+  'spawn-room': 'Spawn room',
+  'welcome-office': 'Welcome office',
+  'slime-rat-room': 'Slime Rat room',
+  'quest-item-room': 'Quest item room',
+  'staircase-room': 'Staircase/boss room',
+  'spell-quest-giver': 'Spell quest giver NPC',
+  shopkeeper: 'Shopkeeper NPC',
+  'boss-encounter': 'Boss encounter (force)',
+};
+
+const QUEST_DEBUG_TARGETS = {
+  'Tutorial: floor1-tutorial': FLOOR1_TUTORIAL_QUEST_ID,
+  'Boss unlock: floor1-boss-unlock': FLOOR1_BOSS_UNLOCK_QUEST_ID,
+  'Boss battle: floor1-boss-battle': FLOOR1_BOSS_BATTLE_QUEST_ID,
+  'Shopkeeper errand: floor1-shopkeeper-errand': FLOOR1_SHOP_QUEST_ID,
+} as const;
 
 function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => void {
   let currentSeed = INITIAL_SEED;
@@ -126,6 +170,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
   let showFlowField = false;
   let lastStepReason = '';
+  const floorDebug = {
+    showAllRooms: false,
+    jumpTarget: 'spawn-room' as JumpTarget,
+    questId: FLOOR1_TUTORIAL_QUEST_ID,
+    questAction: 'accept' as 'accept' | 'complete',
+  };
 
   const aiInputProvider = {
     poll(state: {
@@ -215,6 +265,138 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   const getPhaserScene = (): Phaser.Scene | null =>
     game.scene.getScene('MainGameScene') as Phaser.Scene | null;
+
+  const findPlayerEid = (): number | undefined => {
+    const scene = getScene();
+    if (!scene?.world) {
+      return undefined;
+    }
+    if (typeof scene.playerEid === 'number' && scene.playerEid >= 0) {
+      return scene.playerEid;
+    }
+    return query(scene.world.ecs, [Player])[0];
+  };
+
+  const movePlayerTo = (x: number, y: number): boolean => {
+    const scene = getScene();
+    const playerEid = findPlayerEid();
+    const world = scene?.world;
+    if (!scene || !world || playerEid === undefined) {
+      return false;
+    }
+    world.stores.position.x[playerEid] = x;
+    world.stores.position.y[playerEid] = y;
+    world.stores.velocity.x[playerEid] = 0;
+    world.stores.velocity.y[playerEid] = 0;
+    return true;
+  };
+
+  const resolveJumpPosition = (
+    world: GameWorld,
+    target: Exclude<JumpTarget, 'boss-encounter'>,
+  ): { x: number; y: number } | null => {
+    const objective = world.floor1?.objective;
+    if (!objective) {
+      return null;
+    }
+    switch (target) {
+      case 'spawn-room': {
+        const spawnTile = world.floorMap?.playerSpawn;
+        if (spawnTile && world.floorMap) {
+          return world.floorMap.tileToWorld(spawnTile.x, spawnTile.y);
+        }
+        return null;
+      }
+      case 'welcome-office':
+        return objective.welcomeOfficePos;
+      case 'slime-rat-room':
+        return objective.slimeRatRoomPos;
+      case 'quest-item-room':
+        return objective.questItemPos;
+      case 'staircase-room':
+        return objective.staircasePos;
+      case 'spell-quest-giver':
+        return getNpcOrFallbackPosition(
+          world,
+          world.floor1?.spellQuestGiverNpcEid,
+          objective.spellQuestGiverPos,
+        );
+      case 'shopkeeper':
+        return getNpcOrFallbackPosition(
+          world,
+          world.floor1?.shopkeeperNpcEid,
+          objective.shopRoomPos,
+        );
+      default: {
+        const unreachableTarget: never = target;
+        void unreachableTarget;
+        return null;
+      }
+    }
+  };
+
+  const getNpcOrFallbackPosition = (
+    world: GameWorld,
+    npcEid: number | null | undefined,
+    fallbackPos: { x: number; y: number },
+  ): { x: number; y: number } => {
+    if (npcEid === null || npcEid === undefined) {
+      return fallbackPos;
+    }
+    return {
+      x: world.stores.position.x[npcEid] ?? fallbackPos.x,
+      y: world.stores.position.y[npcEid] ?? fallbackPos.y,
+    };
+  };
+
+  const jumpToTarget = (target: JumpTarget): void => {
+    const scene = getScene();
+    const world = scene?.world;
+    const playerEid = findPlayerEid();
+    if (!scene || !world || playerEid === undefined) {
+      return;
+    }
+    if (target === 'boss-encounter') {
+      startFloor1BossEncounter(world, playerEid);
+      return;
+    }
+    const pos = resolveJumpPosition(world, target);
+    if (!pos) {
+      return;
+    }
+    movePlayerTo(pos.x, pos.y);
+  };
+
+  const applyQuestDebug = (): void => {
+    const world = getScene()?.world;
+    if (!world) {
+      return;
+    }
+    const acceptedQuest = acceptQuest(world, floorDebug.questId);
+    if (!acceptedQuest) {
+      console.warn(`Quest debug failed: unable to accept quest ${floorDebug.questId}`);
+      return;
+    }
+    setTrackedQuest(world, floorDebug.questId);
+    if (floorDebug.questAction !== 'complete') {
+      return;
+    }
+    const def = getQuestDef(floorDebug.questId);
+    if (!def) {
+      return;
+    }
+    for (const objective of def.objectives) {
+      acceptedQuest.progress[objective.id] = objectiveTarget(objective);
+      acceptedQuest.done[objective.id] = true;
+      if (objective.kind === 'goal' && objective.goalId) {
+        setGoalFlag(world, objective.goalId, true);
+      }
+    }
+    if (def.onCompleteGoalFlag) {
+      setGoalFlag(world, def.onCompleteGoalFlag, true);
+    }
+    questSystem(world);
+  };
 
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
@@ -322,6 +504,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       // Re-sync sim speed/pause once the restarted scene finishes create().
       phaserScene.events.once(Phaser.Scenes.Events.CREATE, () => {
         syncSceneSimulationState();
+        getScene()?.setDebugFlag?.('showAllRooms', floorDebug.showAllRooms);
       });
       phaserScene.scene.restart();
     }
@@ -672,6 +855,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
 
   const renderControls = (): void => {
+    const jumpOptions = Object.entries(JUMP_TARGET_LABELS)
+      .map(([value, label]) => `<option value="${value}">${label}</option>`)
+      .join('');
+    const questOptions = Object.entries(QUEST_DEBUG_TARGETS)
+      .map(([label, value]) => `<option value="${value}">${label}</option>`)
+      .join('');
     controls.innerHTML = `
       <div style="font-family: monospace; padding: 12px;">
         <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
@@ -708,6 +897,29 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div><strong>Path:</strong> <span id="ai-path">-</span></div>
           </div>
           <div id="ai-tree"></div>
+          <div style="margin-top:12px; padding:8px; background:#111827; border-radius:4px;">
+            <div style="font-weight:bold; margin-bottom:8px;">Floor 1 Debug</div>
+            <div style="display:flex; gap:8px; margin:0 0 8px 0; flex-wrap:wrap; align-items:center;">
+              <label for="ai-jump-target"><strong>Jump target:</strong></label>
+              <select id="ai-jump-target" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${jumpOptions}</select>
+              <button id="ai-jump-now" type="button" style="padding:4px 8px; cursor:pointer;">Jump now</button>
+            </div>
+            <div style="display:flex; gap:8px; margin:0 0 8px 0; flex-wrap:wrap; align-items:center;">
+              <label for="ai-show-all-rooms" style="display:flex; gap:6px; align-items:center; cursor:pointer;">
+                <input id="ai-show-all-rooms" type="checkbox" style="cursor:pointer;" />
+                <span>Show all rooms (dim)</span>
+              </label>
+            </div>
+            <div style="display:flex; gap:8px; margin:0; flex-wrap:wrap; align-items:center;">
+              <label for="ai-quest-target"><strong>Quest target:</strong></label>
+              <select id="ai-quest-target" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">${questOptions}</select>
+              <select id="ai-quest-action" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">
+                <option value="accept">Accept / enable quest</option>
+                <option value="complete">Complete quest now</option>
+              </select>
+              <button id="ai-quest-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply quest debug</button>
+            </div>
+          </div>
           <div id="ai-recorder-host"></div>
           <div style="margin-top: 12px; padding: 8px; background: #1a1a3e; border-radius: 4px; font-size: 11px;">
             <div><strong>Tips:</strong></div>
@@ -718,6 +930,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• The recorder tags every event AI vs MANUAL so handovers are clear in the log</div>
             <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
             <div>• Toggle "Show enemy flow field" to heatmap the shared chase gradient with flow arrows (hot = near player); off by default</div>
+            <div>• Floor 1 Debug adds teleport, map reveal, and quest advancement helpers</div>
           </div>
         </div>
       </div>
@@ -791,6 +1004,52 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       };
     }
 
+    const jumpTarget = document.getElementById('ai-jump-target') as HTMLSelectElement | null;
+    if (jumpTarget) {
+      jumpTarget.value = floorDebug.jumpTarget;
+      jumpTarget.onchange = () => {
+        floorDebug.jumpTarget = jumpTarget.value as JumpTarget;
+      };
+    }
+    const jumpNow = document.getElementById('ai-jump-now') as HTMLButtonElement | null;
+    if (jumpNow) {
+      jumpNow.onclick = () => {
+        jumpToTarget(floorDebug.jumpTarget);
+      };
+    }
+
+    const showAllRoomsToggle = document.getElementById(
+      'ai-show-all-rooms',
+    ) as HTMLInputElement | null;
+    if (showAllRoomsToggle) {
+      showAllRoomsToggle.checked = floorDebug.showAllRooms;
+      showAllRoomsToggle.onchange = () => {
+        floorDebug.showAllRooms = showAllRoomsToggle.checked;
+        getScene()?.setDebugFlag?.('showAllRooms', floorDebug.showAllRooms);
+      };
+    }
+
+    const questTarget = document.getElementById('ai-quest-target') as HTMLSelectElement | null;
+    if (questTarget) {
+      questTarget.value = floorDebug.questId;
+      questTarget.onchange = () => {
+        floorDebug.questId = questTarget.value;
+      };
+    }
+    const questAction = document.getElementById('ai-quest-action') as HTMLSelectElement | null;
+    if (questAction) {
+      questAction.value = floorDebug.questAction;
+      questAction.onchange = () => {
+        floorDebug.questAction = questAction.value as 'accept' | 'complete';
+      };
+    }
+    const applyQuest = document.getElementById('ai-quest-apply') as HTMLButtonElement | null;
+    if (applyQuest) {
+      applyQuest.onclick = () => {
+        applyQuestDebug();
+      };
+    }
+
     for (const speed of SPEED_OPTIONS) {
       const button = document.getElementById(`ai-speed-${speed}`) as HTMLButtonElement | null;
       if (!button) {
@@ -835,6 +1094,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   game.events.once('ready', () => {
     syncSceneSimulationState();
+    getScene()?.setDebugFlag?.('showAllRooms', floorDebug.showAllRooms);
   });
 
   const onKeyDown = (event: KeyboardEvent): void => {
