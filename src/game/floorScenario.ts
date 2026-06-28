@@ -567,14 +567,16 @@ function chooseObjectiveTiles(world: GameWorld): {
   // Constraints are relaxed one at a time when no qualifying room exists.
   const SHOP_MIN_HOPS_FROM_WELCOME = 3;
   const welcomeDistSq = welcomeEntry?.distanceSq ?? 0;
-  const shopHopOk = (e: (typeof candidates)[0]) =>
+  const meetsShopHopConstraint = (e: (typeof candidates)[0]) =>
     (roomHopFromWelcome.get(e.room.id) ?? 0) >= SHOP_MIN_HOPS_FROM_WELCOME;
-  const shopDistOk = (e: (typeof candidates)[0]) => e.distanceSq > welcomeDistSq;
+  const meetsShopDistanceConstraint = (e: (typeof candidates)[0]) => e.distanceSq > welcomeDistSq;
 
   const shopEntry =
-    candidates.find((e) => e !== welcomeEntry && shopHopOk(e) && shopDistOk(e)) ??
-    candidates.find((e) => e !== welcomeEntry && shopHopOk(e)) ??
-    candidates.find((e) => e !== welcomeEntry && shopDistOk(e)) ??
+    candidates.find(
+      (e) => e !== welcomeEntry && meetsShopHopConstraint(e) && meetsShopDistanceConstraint(e),
+    ) ??
+    candidates.find((e) => e !== welcomeEntry && meetsShopHopConstraint(e)) ??
+    candidates.find((e) => e !== welcomeEntry && meetsShopDistanceConstraint(e)) ??
     candidates.find((e) => e !== welcomeEntry) ??
     candidates[0];
   const itemEntry = [...candidates]

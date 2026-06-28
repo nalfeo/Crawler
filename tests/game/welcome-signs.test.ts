@@ -173,7 +173,7 @@ describe('floor 1 welcome signs', () => {
     for (const actual of actualAngles) {
       const idx = remaining.findIndex((exp) => Math.abs(actual - exp) < 1e-5);
       expect(idx, `sign angle ${actual} not found in expected angles`).toBeGreaterThanOrEqual(0);
-      if (idx >= 0) remaining.splice(idx, 1);
+      remaining.splice(idx, 1);
     }
   });
 });
