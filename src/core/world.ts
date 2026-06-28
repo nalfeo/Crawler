@@ -50,6 +50,7 @@ import {
   BloodColor,
   Prop,
   PropLight,
+  Harvestable,
   createComponentStores,
   type ComponentStores,
 } from './components.js';
@@ -243,6 +244,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
   wireStore(ecs, BloodColor, stores.bloodColor);
   wireStore(ecs, Prop, stores.prop);
   wireStore(ecs, PropLight, stores.propLight);
+  wireStore(ecs, Harvestable, stores.harvestable);
 
   const world: GameWorld = {
     ecs,

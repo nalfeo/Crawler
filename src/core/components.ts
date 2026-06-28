@@ -98,6 +98,13 @@ export const BloodColor = {};
 export const Prop = {};
 /** Secondary light source attached to a Prop entity (e.g. wall sconce). */
 export const PropLight = {};
+/**
+ * Marks an entity as a harvestable resource node (mushroom, flower, lichen, etc.).
+ * The player must stand within HARVEST_RANGE_FT for durationMs to collect the item.
+ * Driven by `harvestSystem`; configuration lives in HARVESTABLE_DEFS, indexed by
+ * `harvestable.defIndex`.
+ */
+export const Harvestable = {};
 
 // --- Component Stores ---
 // Typed array stores for component data. Accessed directly: world.stores.<name>.<field>[eid]
@@ -263,6 +270,16 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       g: new Uint8Array(maxEntities),
       /** Blue channel 0–255. */
       b: new Uint8Array(maxEntities),
+    },
+    harvestable: {
+      /** Index into HARVESTABLE_DEFS registry. */
+      defIndex: new Uint16Array(maxEntities),
+      /** Total harvest duration in milliseconds (mirrors def.durationMs for hot-path access). */
+      durationMs: new Float32Array(maxEntities),
+      /** Current harvest progress in milliseconds (0 = not started). */
+      progressMs: new Float32Array(maxEntities),
+      /** EID of the entity currently harvesting this node; 0 = no active harvester. */
+      harvesterEid: new Uint16Array(maxEntities),
     },
     baseStats: {
       strength: new Float32Array(maxEntities),

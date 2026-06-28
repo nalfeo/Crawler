@@ -18,6 +18,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'enemy-ai-lab': '/src/labs/enemy-ai-lab/index.ts',
   'inventory-lab': '/src/labs/inventory-lab/index.ts',
   'itempickup-lab': '/src/labs/itempickup-lab/index.ts',
+  'harvest-lab': '/src/labs/harvest-lab/index.ts',
   'knockback-lab': '/src/labs/knockback-lab/index.ts',
   'lifetime-lab': '/src/labs/lifetime-lab/index.ts',
   'weapons-lab': '/src/labs/weapons-lab/index.ts',

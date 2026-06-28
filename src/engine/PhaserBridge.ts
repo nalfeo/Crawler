@@ -7,6 +7,7 @@ import {
   Enemy,
   EnemyProjectile,
   Gold,
+  Harvestable,
   LineDamage,
   MeleeSwing,
   Npc,
@@ -36,6 +37,7 @@ import { DEFAULT_HANDHELD_SPRITE_ANCHOR } from '../shared/sprite-anchor.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../shared/spawn-anim.js';
 import { DECORATION_INDEX_TO_ID, getDecorationDef } from '../shared/decorationDefs.js';
 import { PROP_DEPTH } from '../shared/render-depths.js';
+import { getHarvestableDefByIndex } from '../shared/harvestableDefs.js';
 
 // --- Texture keys ---
 const TEX_PLAYER = '__cw_player';
@@ -390,6 +392,7 @@ interface EntityVisual {
 function getEntityType(world: GameWorld, eid: number): string {
   if (hasComponent(world.ecs, eid, Player)) return 'player';
   if (hasComponent(world.ecs, eid, Npc)) return 'npc';
+  if (hasComponent(world.ecs, eid, Harvestable)) return 'harvestable';
   if (hasComponent(world.ecs, eid, Enemy)) return 'enemy';
   if (hasComponent(world.ecs, eid, XpGem)) return 'gem';
   if (hasComponent(world.ecs, eid, Gold)) return 'gold';
@@ -630,6 +633,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
   const arcGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks spawn time for arc entities so we can animate the sweep. */
   const arcSpawnMs = new Map<number, number>();
+  /** Per-harvestable node Graphics (body circle + progress ring redrawn each frame). */
+  const harvestNodeGraphics = new Map<number, Phaser.GameObjects.Graphics>();
   /** Tracks first-seen render time for XP gems so the bob phase is per-gem. */
   const gemSpawnMs = new Map<number, number>();
   /** Ground shadow ellipses for each XP gem entity. */
@@ -756,6 +761,50 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         // (beam/melee/aoe lengths, tip offsets) is computed in pixels too.
         const x = ftToPx((position.x[eid] ?? 0) + (velocity.x[eid] ?? 0) * interpAlpha);
         const y = ftToPx((position.y[eid] ?? 0) + (velocity.y[eid] ?? 0) * interpAlpha);
+
+        // --- Harvestable node rendering (body circle + progress ring) ---
+        if (entityType === 'harvestable') {
+          let hg = harvestNodeGraphics.get(eid);
+          if (!hg) {
+            hg = scene.add.graphics();
+            harvestNodeGraphics.set(eid, hg);
+          }
+          hg.clear();
+
+          const defIndex = world.stores.harvestable.defIndex[eid] ?? 0;
+          const def = getHarvestableDefByIndex(defIndex);
+          const nodeColor = def?.tint ?? 0x44aa44;
+          const progressMs = world.stores.harvestable.progressMs[eid] ?? 0;
+          const durationMs = world.stores.harvestable.durationMs[eid] ?? 1;
+          const BODY_RADIUS = 5;
+          const RING_RADIUS = 9;
+          const RING_WIDTH = 3;
+
+          // Node body: filled circle with outline.
+          hg.lineStyle(1, 0x000000, 0.7);
+          hg.fillStyle(nodeColor, 1.0);
+          hg.fillCircle(x, y, BODY_RADIUS);
+          hg.strokeCircle(x, y, BODY_RADIUS);
+
+          // Progress ring: visible only while being harvested.
+          if (progressMs > 0) {
+            const progress = Math.min(1, progressMs / durationMs);
+            // Background track ring.
+            hg.lineStyle(RING_WIDTH, 0x333333, 0.7);
+            hg.strokeCircle(x, y, RING_RADIUS);
+
+            // Filled arc from 12 o'clock (−π/2) clockwise.
+            const startAngle = -Math.PI / 2;
+            const endAngle = startAngle + Math.PI * 2 * progress;
+            hg.lineStyle(RING_WIDTH, 0x44ff88, 1.0);
+            hg.beginPath();
+            hg.arc(x, y, RING_RADIUS, startAngle, endAngle, false);
+            hg.strokePath();
+          }
+
+          // Harvestable nodes manage their own Graphics — skip the image path.
+          continue;
+        }
 
         // --- Beam rendering (uses Graphics, not Image) ---
         if (entityType === 'beam') {
@@ -1299,6 +1348,14 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         arcSpawnMs.delete(eid);
       }
 
+      for (const [eid, hg] of harvestNodeGraphics) {
+        if (activeEntities.has(eid)) {
+          continue;
+        }
+        hg.destroy();
+        harvestNodeGraphics.delete(eid);
+      }
+
       // Iterate the spawn-time maps (always populated on first sight), not the
       // shadow maps (only populated when the scene supports add.ellipse), so
       // gem/gold entities clean up even in headless/test render paths that never
@@ -1363,6 +1420,11 @@ export function createPhaserBridge(scene: Phaser.Scene): {
       }
       arcGraphics.clear();
       arcSpawnMs.clear();
+
+      for (const hg of harvestNodeGraphics.values()) {
+        hg.destroy();
+      }
+      harvestNodeGraphics.clear();
 
       for (const shadow of gemShadows.values()) {
         shadow.destroy();

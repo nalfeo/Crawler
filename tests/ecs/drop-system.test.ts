@@ -34,6 +34,40 @@ import { AI_TYPE } from '../../src/game/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
 import { MINI_SLIME_SPAWN_ANIM_MS } from '../../src/shared/spawn-anim.js';
 
+// 64 deterministic seeds gives ample headroom to find at least one 35% split roll
+// without making the regression test search unbounded.
+const MAX_SPLIT_BABY_SLIME_SEED_ATTEMPTS = 64;
+
+function setupSplitBabySlimeWorld(unlockedDrops = false): {
+  world: ReturnType<typeof createTestWorld>;
+  miniSlimes: number[];
+} {
+  for (let seed = 1; seed <= MAX_SPLIT_BABY_SLIME_SEED_ATTEMPTS; seed += 1) {
+    const world = createTestWorld({ seed });
+    const player = spawnPlayer(world, 0, 0);
+    initializeFloor1Scenario(world, player);
+    selectFloor1StarterWeapon(world, 0);
+    if (unlockedDrops) {
+      meetTutorialGoon(world);
+    }
+
+    const slime = spawnBehaviorEnemy(world, 100, 120, 30, AI_TYPE.LEAPER, 0.9, 320, 0);
+    world.floor1?.enemyArchetypes.set(slime, 'slime');
+    setComponent(world.ecs, slime, Damage, { amount: 7 });
+    setComponent(world.ecs, slime, Health, { current: 0, max: 30 });
+    dropSystem(world, { spawnLoot: false });
+
+    const miniSlimes = Array.from(query(world.ecs, [Enemy, Health])).filter(
+      (eid) => eid !== slime && !hasComponent(world.ecs, eid, Spawner),
+    );
+    if (miniSlimes.length === 2) {
+      return { world, miniSlimes };
+    }
+  }
+
+  throw new Error('Expected a deterministic seed that produces two split baby slimes');
+}
+
 describe('dropSystem', () => {
   it('spawns loot when an enemy dies', () => {
     const world = createTestWorld();
@@ -299,18 +333,39 @@ describe('dropSystem', () => {
     }
   });
 
-  it('allows baby slime drops even before floor1 tutorial drop unlock', () => {
-    const world = createTestWorld({ seed: 42 });
-    const player = spawnPlayer(world, 0, 0);
-    initializeFloor1Scenario(world, player);
-    selectFloor1StarterWeapon(world, 0);
+  it('suppresses split baby slime drops until the floor1 tutorial unlocks drops', () => {
+    const { world, miniSlimes } = setupSplitBabySlimeWorld();
 
-    const miniSlime = spawnBehaviorEnemy(world, 100, 120, 10, AI_TYPE.LEAPER, 0.9, 200, 0);
-    world.floor1?.enemyArchetypes.set(miniSlime, 'slime-mini');
-    setComponent(world.ecs, miniSlime, Health, { current: 0, max: 10 });
+    const itemsAtInit = query(world.ecs, [DroppedItem]).length;
+    for (const miniEid of miniSlimes) {
+      setComponent(world.ecs, miniEid, Health, {
+        current: 0,
+        max: world.stores.health.max[miniEid],
+      });
+    }
 
     dropSystem(world);
 
-    expect(query(world.ecs, [XpGem]).length).toBeGreaterThanOrEqual(1);
+    expect(query(world.ecs, [XpGem]).length).toBe(0);
+    expect(query(world.ecs, [Gold]).length).toBe(0);
+    expect(query(world.ecs, [DroppedItem]).length).toBe(itemsAtInit);
+  });
+
+  it('still suppresses split baby slime drops after the floor1 tutorial unlock', () => {
+    const { world, miniSlimes } = setupSplitBabySlimeWorld(true);
+    const itemsAtInit = query(world.ecs, [DroppedItem]).length;
+
+    for (const miniEid of miniSlimes) {
+      setComponent(world.ecs, miniEid, Health, {
+        current: 0,
+        max: world.stores.health.max[miniEid],
+      });
+    }
+
+    dropSystem(world);
+
+    expect(query(world.ecs, [XpGem]).length).toBe(0);
+    expect(query(world.ecs, [Gold]).length).toBe(0);
+    expect(query(world.ecs, [DroppedItem]).length).toBe(itemsAtInit);
   });
 });

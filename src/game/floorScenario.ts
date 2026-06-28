@@ -42,6 +42,7 @@ import {
   spawnNpc,
   createEntity,
   spawnDroppedItem,
+  spawnHarvestableNode,
   spawnSpawner,
   setBloodColor,
   DEFAULT_BLOOD_COLOR,
@@ -52,6 +53,7 @@ import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
 import { addItem, hasItem, removeItem } from '../shared/inventory.js';
+import { HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
 import { equip, initializeBaseStats } from '../core/systems/equipmentSystem.js';
 import {
   MERCHANTS_CHARM_COST,
@@ -300,6 +302,60 @@ function resolvePassableRoomCenter(
 
   // Absolute fallback: return the bounding-box center point even if it's a wall.
   return floorMap.tileToWorld(center.x, center.y);
+}
+
+/**
+ * Spawn harvestable resource nodes (mushrooms, flowers, lichens) across the
+ * normal and spawn rooms of floor 1. Each def in HARVESTABLE_DEFS spawns up to
+ * `def.maxPerFloor` nodes, placed at randomly selected passable tiles in rooms
+ * with role NORMAL or SPAWN (i.e. not safe room, boss room, or stair room).
+ * Uses `world.rng` for all randomness.
+ */
+function spawnFloor1HarvestableNodes(world: GameWorld): void {
+  const floorMap = world.floorMap;
+  if (!floorMap) return;
+
+  // Gather candidate tiles from all normal rooms.
+  const normalRooms = floorMap.roomGraph
+    .getAll()
+    .filter((room) => room.role === RoomRole.NORMAL || room.role === RoomRole.SPAWN);
+
+  if (normalRooms.length === 0) return;
+
+  for (let defIndex = 0; defIndex < HARVESTABLE_DEFS.length; defIndex++) {
+    const def = HARVESTABLE_DEFS[defIndex]!;
+    // Randomly choose a count between 2 and maxPerFloor (inclusive).
+    const count = 2 + world.rng.nextInt(0, def.maxPerFloor - 2);
+
+    const placed: Array<{ x: number; y: number }> = [];
+
+    // Attempt to place each node in a random room at a random passable tile.
+    // We allow multiple attempts per node to avoid clustering.
+    const maxAttempts = count * 12;
+    for (let attempt = 0; attempt < maxAttempts && placed.length < count; attempt++) {
+      const room = normalRooms[world.rng.nextInt(0, normalRooms.length - 1)]!;
+      const { x: bx, y: by, width: bw, height: bh } = room.bounds;
+
+      // Pick a random tile inside the room interior (1 tile margin from walls).
+      const tx = bx + 1 + world.rng.nextInt(0, Math.max(0, bw - 3));
+      const ty = by + 1 + world.rng.nextInt(0, Math.max(0, bh - 3));
+
+      if (!floorMap.tileMap.isPassable(tx, ty)) continue;
+
+      const pos = floorMap.tileToWorld(tx, ty);
+
+      // Avoid placing two nodes of the same type too close together (≥ 3 ft apart).
+      const tooClose = placed.some((p) => {
+        const ddx = p.x - pos.x;
+        const ddy = p.y - pos.y;
+        return ddx * ddx + ddy * ddy < 9;
+      });
+      if (tooClose) continue;
+
+      placed.push(pos);
+      spawnHarvestableNode(world, pos.x, pos.y, defIndex);
+    }
+  }
 }
 
 function chooseObjectiveTiles(world: GameWorld): {
@@ -1103,6 +1159,9 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   world.state = 'loadout';
   world.floorObjectiveTick = floor1ObjectiveTick;
+
+  // Spawn harvestable resource nodes after the map and all rooms are fully set up.
+  spawnFloor1HarvestableNodes(world);
 }
 
 export function selectFloor1StarterWeapon(world: GameWorld, optionIndex: number): void {
