@@ -33,6 +33,14 @@ describe('floor1 achievements catalog', () => {
     expect(avg(brutal)).toBeGreaterThan(avg(hard));
   });
 
+  it('does not duplicate unlock criteria text inside director flavor', () => {
+    for (const achievement of FLOOR1_ACHIEVEMENTS) {
+      expect(achievement.directorFlavor.toLowerCase()).not.toContain(
+        achievement.unlockCriteria.toLowerCase(),
+      );
+    }
+  });
+
   it('tracks placeholder art backlog for all icon packs and loot-box tiers', () => {
     const iconEntries = ACHIEVEMENT_ART_BACKLOG.filter((entry) => entry.kind === 'icon');
     const lootEntries = ACHIEVEMENT_ART_BACKLOG.filter((entry) => entry.kind === 'lootBox');

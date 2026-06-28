@@ -92,8 +92,41 @@ const achievementSchema = z
 
 const achievementCatalogSchema = z.array(achievementSchema).min(1);
 
-export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] =
-  achievementCatalogSchema.parse(floor1Achievements);
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeSpaces(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function removeUnlockCriteriaDuplication(achievement: AchievementDef): AchievementDef {
+  const unlockCriteria = achievement.unlockCriteria.trim();
+  if (unlockCriteria.length === 0) return achievement;
+
+  const escapedCriteria = escapeRegExp(unlockCriteria);
+  const triggerPattern = new RegExp(`Trigger condition:\\s*${escapedCriteria}`, 'gi');
+  const criteriaPattern = new RegExp(escapedCriteria, 'gi');
+
+  const sanitizedFlavor = normalizeSpaces(
+    achievement.directorFlavor
+      .replace(triggerPattern, 'Trigger condition met')
+      .replace(criteriaPattern, ''),
+  );
+
+  if (sanitizedFlavor.length === 0 || sanitizedFlavor === achievement.directorFlavor) {
+    return achievement;
+  }
+
+  return {
+    ...achievement,
+    directorFlavor: sanitizedFlavor,
+  };
+}
+
+export const FLOOR1_ACHIEVEMENTS: readonly AchievementDef[] = achievementCatalogSchema
+  .parse(floor1Achievements)
+  .map(removeUnlockCriteriaDuplication);
 
 export function getAchievementById(id: string): AchievementDef | undefined {
   return FLOOR1_ACHIEVEMENTS.find((achievement) => achievement.id === id);
