@@ -1744,10 +1744,7 @@ function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
   return eid;
 }
 
-/**
- * Whether an ambient spawn position is unusable: beyond `maxDistanceSq` of the
- * player, not inside any room, or inside the boss-stair / a safe room.
- */
+/** Returns the number of cardinal-direction passable neighbors of tile (tx, ty). */
 function countCardinalPassableNeighbors(
   floorMap: NonNullable<GameWorld['floorMap']>,
   tx: number,
@@ -1783,6 +1780,11 @@ function isOnSquarePerimeter(dx: number, dy: number, radius: number): boolean {
   return Math.abs(dx) === radius || Math.abs(dy) === radius;
 }
 
+/**
+ * Returns true when tile (tx, ty) is a legal enemy spawn: in-bounds, passable,
+ * not a door, not a corridor or narrow chokepoint, inside a normal room (not
+ * SAFE or BOSS_STAIR), and within [minDistanceSq, maxDistanceSq] of the player.
+ */
 function isValidEnemySpawnTile(
   world: GameWorld,
   tx: number,
