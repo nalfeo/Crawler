@@ -23,12 +23,12 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
 
 If you want to run the same codex repair flow locally against a PR branch, use:
 
-- `/home/runner/work/Crawler/Crawler/scripts/codex-repair-local.sh`
+- `scripts/codex-repair-local.sh`
 
 Create a local env file (do not commit it):
 
 ```bash
-cat > /home/runner/work/Crawler/Crawler/.env.codex.local <<'EOF'
+cat > .env.codex.local <<'EOF'
 OPENAI_API_KEY=...
 GITHUB_TOKEN=...
 GITHUB_REPOSITORY=nalfeo/Crawler
@@ -41,7 +41,6 @@ EOF
 Then run:
 
 ```bash
-cd /home/runner/work/Crawler/Crawler
 scripts/codex-repair-local.sh --pr 123 --checkout
 ```
 
