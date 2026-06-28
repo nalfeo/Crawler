@@ -13,6 +13,7 @@ import {
   dropSystem,
   Enemy,
   fovSystem,
+  harvestSystem,
   healthSystem,
   isInSafeContext,
   itemPickupSystem,
@@ -892,6 +893,7 @@ export class MainGameScene extends Phaser.Scene {
       beamSystem(this.world);
       trapSystem(this.world, collision);
       itemPickupSystem(this.world, collision);
+      harvestSystem(this.world);
       dropSystem(this.world);
       deathTimerSystem(this.world);
       spawnAnimSystem(this.world);

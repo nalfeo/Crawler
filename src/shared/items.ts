@@ -315,6 +315,50 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
   misc('pebble', 'Pebble', 'Smooth, ordinary, and somehow still worth carrying.', C),
+
+  // ── Floor 1 harvestable materials ────────────────────────────────────
+  mat(
+    'crimson-mushroom',
+    'Crimson Mushroom',
+    'A plump red cap dusted with white spores. Warm to the touch.',
+    C,
+    [customTag('Flora')],
+  ),
+  mat(
+    'azure-mushroom',
+    'Azure Mushroom',
+    'Deep blue gills that faintly glow in the dark. Handle with curiosity.',
+    U,
+    [customTag('Flora')],
+  ),
+  mat(
+    'sunpetal-flower',
+    'Sunpetal Flower',
+    'Bright gold petals that somehow bloom without any sunlight.',
+    C,
+    [customTag('Flora')],
+  ),
+  mat(
+    'moonbloom-flower',
+    'Moonbloom',
+    'Pale violet petals that unfurl only in darkness. Smells of cold stone.',
+    U,
+    [customTag('Flora')],
+  ),
+  mat(
+    'frost-lichen',
+    'Frost Lichen',
+    'A silvery crust of ice-laced lichen clinging to damp walls.',
+    C,
+    [customTag('Flora')],
+  ),
+  mat(
+    'shadow-lichen',
+    'Shadow Lichen',
+    'Dark grey patches that absorb light and whisper faintly when scraped.',
+    U,
+    [customTag('Flora')],
+  ),
 ];
 
 // ---------------------------------------------------------------------------
