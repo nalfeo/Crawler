@@ -19,6 +19,8 @@ interface GhIssueListItem {
   readonly body?: unknown;
 }
 
+const OPEN_ASSET_REQUEST_ISSUE_LIMIT = '200';
+
 export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssueApi {
   return {
     async listOpenAssetRequestIssues(): Promise<readonly OpenAssetRequestIssue[]> {
@@ -31,6 +33,8 @@ export function createGhAssetRequestIssueApi(repoRoot: string): AssetRequestIssu
           ASSET_REQUEST_LABEL,
           '--state',
           'open',
+          '--limit',
+          OPEN_ASSET_REQUEST_ISSUE_LIMIT,
           '--json',
           'number,body',
         ],

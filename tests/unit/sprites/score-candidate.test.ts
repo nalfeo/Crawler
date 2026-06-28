@@ -197,6 +197,29 @@ describe('scoreCandidate', () => {
     expect(card.breakdown.map((r) => r.sensor)).not.toContain('silhouette-orientation-axis');
   });
 
+  it('character briefs stay front-facing when an enemy sensor block omits facing', () => {
+    const brief = briefSchema.parse({
+      type: 'character',
+      name: 'iron-sword',
+      size: { width: 16, height: 16 },
+      palette: { id: 'kenney-roguelike' },
+      anchor: { x: 8, y: 8 },
+      tags: ['sword'],
+      prompt: 'iron sword',
+      references: [
+        { path: 'public/assets/kenney/tiny-dungeon/spritesheet.png' },
+        { path: 'public/assets/kenney/roguelike-rpg-pack/spritesheet.png' },
+      ],
+      sensors: {
+        enemy: {},
+        anchor: { mode: 'center-of-mass' },
+      },
+    });
+    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
+    const card = scoreCandidate(processed, brief, PALETTE);
+    expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(false);
+  });
+
   it('honors a brief override that relaxes the opaque-ratio max', () => {
     // The solid-block fixture normally fails opaque-ratio; bumping max to 1.0
     // should let it pass that sensor specifically.

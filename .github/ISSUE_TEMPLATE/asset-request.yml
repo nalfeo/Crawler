@@ -19,9 +19,3 @@ body:
       placeholder: A chipped bone dagger with twine-wrapped handle and faint green runes.
     validations:
       required: true
-  - type: markdown
-    attributes:
-      value: |
-        <!-- asset-request:v1
-        {"version":1,"name":"${{ inputs.name }}","briefSentence":"${{ inputs.brief }}"}
-        -->

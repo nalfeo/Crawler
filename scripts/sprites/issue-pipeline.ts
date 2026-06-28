@@ -11,6 +11,7 @@ import type { BriefSelectorProvider } from './provider/brief-selector-types.js';
 import type { VisionProvider } from './provider/vision-types.js';
 import { loadBrief } from './load-brief.js';
 import type { RunStore } from './store/types.js';
+import { briefDirectoryForType } from './brief-paths.js';
 
 export interface IssuePipelineIssueApi {
   comment(issueNumber: number, body: string): Promise<void>;
@@ -94,14 +95,21 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
     synthModel: synth.providerLabel,
     selectorModel: selected.modelDeployment,
   });
-  const promotedRel = path.join('briefs', 'draft', `${synth.type}s`, `${synth.name}.yaml`);
+  const promotedRel = path.join(
+    'briefs',
+    'draft',
+    briefDirectoryForType(synth.type),
+    `${synth.name}.yaml`,
+  );
   const promotedAbs = path.resolve(options.repoRoot, promotedRel);
   mkdirSync(path.dirname(promotedAbs), { recursive: true });
   copyFileSync(winner.yamlPath, promotedAbs);
-  enableJudge(promotedAbs, options.repoRoot);
+  const judgeEnabled = options.visionProvider !== null;
+  enableJudge(promotedAbs, options.repoRoot, judgeEnabled);
 
   await comment(
-    `📌 Promoted brief to \`${promotedRel}\`.\n\nStage: generate → postprocess → judge`,
+    `📌 Promoted brief to \`${promotedRel}\`.\n\nStage: generate → postprocess` +
+      `${judgeEnabled ? ' → judge' : ' (judge disabled: no vision deployment configured)'}`,
   );
   await setStatus('running-pipeline', { briefPath: promotedRel });
   const result = await runFull({
@@ -134,10 +142,10 @@ export async function runIssuePipeline(options: RunIssuePipelineOptions): Promis
   };
 }
 
-function enableJudge(briefPath: string, repoRoot: string): void {
+function enableJudge(briefPath: string, repoRoot: string, enabled: boolean): void {
   const doc = parseYaml(readFileSync(briefPath, 'utf8')) as Record<string, unknown>;
   const judge = (doc['judge'] as Record<string, unknown> | undefined) ?? {};
-  judge['enabled'] = true;
+  judge['enabled'] = enabled;
   if (typeof judge['maxVariants'] !== 'number') judge['maxVariants'] = 16;
   doc['judge'] = judge;
   writeFileSync(briefPath, stringifyYaml(doc), 'utf8');
