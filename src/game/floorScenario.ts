@@ -536,9 +536,47 @@ function chooseObjectiveTiles(world: GameWorld): {
           return entry.distanceSq < best.distanceSq ? entry : best;
         })
       : candidates[0];
-  // Shop: nearest Euclidean candidate that isn't the welcome room (so the
-  // merchant is always encountered early, independent of welcome placement).
-  const shopEntry = candidates.find((e) => e !== welcomeEntry) ?? candidates[0];
+  // BFS hop distances from the welcome room — used to enforce the shop
+  // placement constraint that the shop must be ≥ 3 hops from welcome.
+  const roomHopFromWelcome = new Map<number, number>();
+  if (welcomeEntry) {
+    const welcomeRoomId = welcomeEntry.room.id;
+    const wBfsQueue: number[] = [welcomeRoomId];
+    let wBfsHead = 0;
+    roomHopFromWelcome.set(welcomeRoomId, 0);
+    while (wBfsHead < wBfsQueue.length) {
+      const currId = wBfsQueue[wBfsHead++]!;
+      const currRoom = floorMap.roomGraph.get(currId);
+      const currHop = roomHopFromWelcome.get(currId) ?? 0;
+      if (currRoom) {
+        for (const neighborId of currRoom.neighbors) {
+          if (!roomHopFromWelcome.has(neighborId)) {
+            roomHopFromWelcome.set(neighborId, currHop + 1);
+            wBfsQueue.push(neighborId);
+          }
+        }
+      }
+    }
+  }
+
+  // Shop placement rules (applied in priority order, relaxed progressively):
+  //   1. At least 3 room-graph hops from the welcome room — requires genuine
+  //      exploration rather than backtracking to a nearby neighbour.
+  //   2. Further from the spawn room than the welcome room — so the player
+  //      reaches welcome before stumbling on the shop.
+  // Constraints are relaxed one at a time when no qualifying room exists.
+  const SHOP_MIN_HOPS_FROM_WELCOME = 3;
+  const welcomeDistSq = welcomeEntry?.distanceSq ?? 0;
+  const shopHopOk = (e: (typeof candidates)[0]) =>
+    (roomHopFromWelcome.get(e.room.id) ?? 0) >= SHOP_MIN_HOPS_FROM_WELCOME;
+  const shopDistOk = (e: (typeof candidates)[0]) => e.distanceSq > welcomeDistSq;
+
+  const shopEntry =
+    candidates.find((e) => e !== welcomeEntry && shopHopOk(e) && shopDistOk(e)) ??
+    candidates.find((e) => e !== welcomeEntry && shopHopOk(e)) ??
+    candidates.find((e) => e !== welcomeEntry && shopDistOk(e)) ??
+    candidates.find((e) => e !== welcomeEntry) ??
+    candidates[0];
   const itemEntry = [...candidates]
     .reverse()
     .find((entry) => entry !== welcomeEntry && entry !== shopEntry);
