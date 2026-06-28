@@ -521,6 +521,7 @@ export class MainGameScene extends Phaser.Scene {
     this.events.on(Phaser.Scenes.Events.REMOVED_FROM_SCENE, this.markCameraMasksDirty, this);
     this.refreshCameraMasks();
     this.openLoadoutModal();
+    fovSystem(this.world);
     this.updateLightingOverlay(true);
     this.bridge.sync(this.world);
     this.updateOverlayText();

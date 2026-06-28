@@ -41,6 +41,17 @@ function getTopLevelCallNames(method: ts.MethodDeclaration): string[] {
 }
 
 describe('MainGameScene lighting overlay behavior', () => {
+  it('computes initial FOV before first lighting overlay draw in create()', () => {
+    const createMethod = findSceneMethod('create');
+    const body = createMethod.body?.getText(file) ?? '';
+    const initialFovIndex = body.indexOf('fovSystem(this.world);');
+    const initialLightingDrawIndex = body.indexOf('this.updateLightingOverlay(true);');
+
+    expect(initialFovIndex).toBeGreaterThanOrEqual(0);
+    expect(initialLightingDrawIndex).toBeGreaterThanOrEqual(0);
+    expect(initialFovIndex).toBeLessThan(initialLightingDrawIndex);
+  });
+
   it('refreshes the lighting overlay in the normal playing sync path', () => {
     const updateMethod = findSceneMethod('update');
     const callNames = getTopLevelCallNames(updateMethod);
