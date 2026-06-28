@@ -7,6 +7,7 @@
  * - Showcasing the AI player
  * - Comparing AI vs human performance
  */
+import GUI from 'lil-gui';
 import Phaser from 'phaser';
 import { createFloor1GameConfig } from '../../bootstrap/floor-game-config.js';
 import { query } from 'bitecs';
@@ -21,16 +22,29 @@ import { Player } from '../../core/index.js';
 import type { GameWorld } from '../../core/world.js';
 import { flowFieldStep, FLOW_UNREACHABLE } from '../../core/map/flow-field.js';
 import { createInputCapture } from '../../engine/InputCapture.js';
+import {
+  DEFAULT_LIGHTING_CONFIG,
+  type LightingConfig,
+  type LightingPresetId,
+} from '../../engine/lighting/light-field.js';
 import { peekGroundFlowField } from '../../game/enemyAISystem.js';
 import { WORLD_VFX_DEPTH } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt } from '../../shared/units.js';
+import { loadLabState, saveLabState } from '../lab-persistence.js';
 import { registerLab, type LabCategory } from '../registry.js';
 import { createSessionRecorderControls } from '../session-recorder-controls.js';
 import { buildSmoothedOverlayPath, OVERLAY_LINE_OF_SIGHT_SAMPLE_PX } from './path-overlay.js';
 
+const LAB_ID = 'ai-runner-lab';
 const INITIAL_SEED = 42;
 const SPEED_OPTIONS = [1, 4, 16] as const;
 const INVENTORY_PREVIEW_TICKS = 4;
+type ControlsWithGui = HTMLElement & { __labGui?: GUI };
+
+interface AiRunnerLabState {
+  showFlowField: boolean;
+  lighting: LightingConfig;
+}
 
 /**
  * Live telemetry snapshot exposed on `window.__aiRunnerDebug()` for headless
@@ -107,6 +121,24 @@ interface RunnerSceneInternals {
 }
 
 function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => void {
+  const gui = (controls as ControlsWithGui).__labGui;
+  if (!(gui instanceof GUI)) {
+    throw new Error(
+      'Expected __labGui to be a GUI instance on controls. Ensure the lab runner initialized lil-gui before createAiRunnerLab runs.',
+    );
+  }
+  const persisted = loadLabState<AiRunnerLabState>(LAB_ID);
+  const lightingSettings: LightingConfig = {
+    ...DEFAULT_LIGHTING_CONFIG,
+    ...(persisted?.lighting ?? {}),
+  };
+  const lightingPerf = {
+    computeMsAvg: 0,
+    stepPx: lightingSettings.stepPx,
+    updateEveryNFrames: lightingSettings.updateEveryNFrames,
+  };
+  const panelRoot = document.createElement('div');
+  controls.append(panelRoot);
   let currentSeed = INITIAL_SEED;
   let ai = new BehaviorTreeAI({
     seed: currentSeed,
@@ -124,8 +156,15 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const lastMove = { x: 0, y: 0, action: false };
   let pathGraphics: Phaser.GameObjects.Graphics | null = null;
   let flowFieldGraphics: Phaser.GameObjects.Graphics | null = null;
-  let showFlowField = false;
+  let showFlowField = persisted?.showFlowField ?? false;
   let lastStepReason = '';
+
+  const persistLabState = (): void => {
+    saveLabState(LAB_ID, {
+      showFlowField,
+      lighting: { ...lightingSettings },
+    });
+  };
 
   const aiInputProvider = {
     poll(state: {
@@ -215,6 +254,118 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   const getPhaserScene = (): Phaser.Scene | null =>
     game.scene.getScene('MainGameScene') as Phaser.Scene | null;
+
+  const tryGetLightingDebugApi = () => window.__floor1Debug?.lighting ?? null;
+
+  const syncLightingTelemetry = (): void => {
+    const lighting = tryGetLightingDebugApi();
+    if (!lighting) {
+      return;
+    }
+    const config = lighting.getConfig();
+    Object.assign(lightingSettings, config);
+    const perf = lighting.getPerf();
+    lightingPerf.computeMsAvg = perf.computeMsAvg;
+    lightingPerf.stepPx = perf.stepPx;
+    lightingPerf.updateEveryNFrames = perf.updateEveryNFrames;
+  };
+
+  const applyLightingSettings = (): void => {
+    const lighting = tryGetLightingDebugApi();
+    if (!lighting) {
+      return;
+    }
+    lighting.setConfig({ ...lightingSettings });
+    syncLightingTelemetry();
+  };
+
+  const useLightingPreset = (preset: LightingPresetId): void => {
+    const lighting = tryGetLightingDebugApi();
+    if (!lighting) {
+      return;
+    }
+    lighting.usePreset(preset);
+    syncLightingTelemetry();
+    persistLabState();
+  };
+
+  const lightingFolder = gui.addFolder('Lighting');
+  for (const [preset, label] of [
+    ['tile', 'Preset: tile'],
+    ['halfTile', 'Preset: half tile'],
+    ['quarterTile', 'Preset: quarter tile'],
+    ['pixel', 'Preset: 1px'],
+  ] as const satisfies ReadonlyArray<readonly [LightingPresetId, string]>) {
+    lightingFolder.add({ activate: () => useLightingPreset(preset) }, 'activate').name(label);
+  }
+  lightingFolder
+    .add(lightingSettings, 'stepPx', 1, 64, 1)
+    .name('Step (px)')
+    .listen()
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'ambient', 0, 0.5, 0.01)
+    .name('Ambient')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'sourceRadiusPx', 40, 480, 5)
+    .name('Radius')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'sourceIntensity', 0, 2, 0.05)
+    .name('Intensity')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'falloffExponent', 0.3, 4, 0.1)
+    .name('Falloff')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'softness')
+    .name('Blur / Softness')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'updateEveryNFrames', 1, 8, 1)
+    .name('Update Every N')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'autoAdjustQuality')
+    .name('Auto quality')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  lightingFolder
+    .add(lightingSettings, 'targetComputeMs', 0.25, 10, 0.25)
+    .name('Target ms')
+    .onChange(() => {
+      persistLabState();
+      applyLightingSettings();
+    });
+  const lightingPerfFolder = lightingFolder.addFolder('Perf');
+  lightingPerfFolder.add(lightingPerf, 'computeMsAvg').name('Compute ms').listen();
+  lightingPerfFolder.add(lightingPerf, 'stepPx').name('Live step').listen();
+  lightingPerfFolder.add(lightingPerf, 'updateEveryNFrames').name('Live cadence').listen();
 
   /**
    * Lazily build a real hardware input capture (keyboard/mouse/touch) bound to
@@ -322,6 +473,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       // Re-sync sim speed/pause once the restarted scene finishes create().
       phaserScene.events.once(Phaser.Scenes.Events.CREATE, () => {
         syncSceneSimulationState();
+        applyLightingSettings();
       });
       phaserScene.scene.restart();
     }
@@ -672,7 +824,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   };
 
   const renderControls = (): void => {
-    controls.innerHTML = `
+    panelRoot.innerHTML = `
       <div style="font-family: monospace; padding: 12px;">
         <h3 style="margin: 0 0 12px 0;">AI Runner Lab</h3>
         <div id="ai-info" style="font-size: 12px; line-height: 1.6;">
@@ -718,6 +870,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <div>• The recorder tags every event AI vs MANUAL so handovers are clear in the log</div>
             <div>• Cyan line shows the AI's smoothed diagonal path, orange circle shows current target</div>
             <div>• Toggle "Show enemy flow field" to heatmap the shared chase gradient with flow arrows (hot = near player); off by default</div>
+            <div>• Use the lil-gui Lighting folder to tune darkness quality, cadence, and falloff live</div>
           </div>
         </div>
       </div>
@@ -783,6 +936,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
       flowFieldToggle.checked = showFlowField;
       flowFieldToggle.onchange = () => {
         showFlowField = flowFieldToggle.checked;
+        persistLabState();
         if (showFlowField) {
           drawFlowFieldOverlay();
         } else {
@@ -835,6 +989,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
 
   game.events.once('ready', () => {
     syncSceneSimulationState();
+    applyLightingSettings();
   });
 
   const onKeyDown = (event: KeyboardEvent): void => {
@@ -963,6 +1118,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (treeElem) {
       renderDecisionTree(treeElem, ai.getTree().serialize(), decision);
     }
+    syncLightingTelemetry();
     drawPathOverlay();
     drawFlowFieldOverlay();
     const debugElem = document.getElementById('ai-runner-debug');
@@ -984,10 +1140,12 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
     recorderControls.destroy();
     disposeHardwareInput();
+    persistLabState();
     pathGraphics?.destroy();
     pathGraphics = null;
     flowFieldGraphics?.destroy();
     flowFieldGraphics = null;
+    panelRoot.remove();
     game.destroy(true);
   };
 }
