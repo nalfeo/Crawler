@@ -84,39 +84,6 @@ assets:
       kind: sprite-registry
       id: merchants-stained-charm
 
-  - id: padded-hood
-    type: item
-    label: Padded Hood
-    brief: >
-      A stitched leather hood with quilted padding and a scuffed forehead plate.
-      Basic protective headgear sold by the merchant after his questline.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: padded-hood
-
-  - id: reinforced-vest
-    type: item
-    label: Reinforced Vest
-    brief: >
-      A worn leather vest reinforced with riveted scrap-metal plates over the chest.
-      Basic torso armor sold by the merchant after his questline.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: reinforced-vest
-
-  - id: work-boots
-    type: item
-    label: Work Boots
-    brief: >
-      A heavy pair of steel-toe work boots with thick soles and frayed laces.
-      Basic foot armor sold by the merchant after his questline.
-    placeholderInUse: true
-    integration:
-      kind: sprite-registry
-      id: work-boots
-
   - id: floor-key-bronze
     type: item
     label: Bronze Floor Key

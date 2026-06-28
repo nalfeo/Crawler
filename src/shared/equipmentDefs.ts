@@ -22,39 +22,12 @@ export const MERCHANTS_CHARM_DEF: EquipmentItemDef = {
   rarity: 'uncommon',
 };
 
-export const PADDED_HOOD_DEF: EquipmentItemDef = {
-  id: 'padded-hood',
-  name: 'Padded Hood',
-  slots: ['head'],
-  statBonuses: { armor: 1 },
-  rarity: 'common',
-};
-
-export const REINFORCED_VEST_DEF: EquipmentItemDef = {
-  id: 'reinforced-vest',
-  name: 'Reinforced Vest',
-  slots: ['chest'],
-  statBonuses: { armor: 2, constitution: 1 },
-  rarity: 'uncommon',
-};
-
-export const WORK_BOOTS_DEF: EquipmentItemDef = {
-  id: 'work-boots',
-  name: 'Work Boots',
-  slots: ['feet'],
-  statBonuses: { armor: 1, moveSpeed: 0.02 },
-  rarity: 'common',
-};
-
 /** Cost (in gold) of the merchant's charm. */
 export const MERCHANTS_CHARM_COST = 15;
 
 /** itemId → equipment definition for items that can be worn. */
 const EQUIPMENT_BY_ITEM_ID: ReadonlyMap<string, EquipmentItemDef> = new Map([
   [MERCHANTS_CHARM_DEF.id, MERCHANTS_CHARM_DEF],
-  [PADDED_HOOD_DEF.id, PADDED_HOOD_DEF],
-  [REINFORCED_VEST_DEF.id, REINFORCED_VEST_DEF],
-  [WORK_BOOTS_DEF.id, WORK_BOOTS_DEF],
 ]);
 
 /** Equipment definition for an inventory item slug, or undefined if not equippable. */

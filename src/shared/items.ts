@@ -315,27 +315,6 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
   misc('pebble', 'Pebble', 'Smooth, ordinary, and somehow still worth carrying.', C),
-  misc(
-    'padded-hood',
-    'Padded Hood',
-    'A stitched leather hood that softens glancing blows. Equippable.',
-    C,
-    [customTag('Gear')],
-  ),
-  misc(
-    'reinforced-vest',
-    'Reinforced Vest',
-    'A battered vest lined with scrap plating. Equippable.',
-    U,
-    [customTag('Gear')],
-  ),
-  misc(
-    'work-boots',
-    'Work Boots',
-    'Heavy work boots that keep you planted when chaos hits. Equippable.',
-    C,
-    [customTag('Gear')],
-  ),
 ];
 
 // ---------------------------------------------------------------------------
