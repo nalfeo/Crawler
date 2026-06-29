@@ -4,9 +4,10 @@ description: >-
   Drive open GitHub pull requests to a clean squash-merge in the Crawler repo.
   Use when asked to "shepherd" a PR, run a "PR shepherding loop", drive/babysit
   PRs to merge, clear the open-PR queue, or unblock a stuck PR through CI and
-  review. Covers discovering in-scope PRs (open, no active session), launching
-  one child session per PR in parallel, diagnosing and fixing REAL CI failures,
-  resolving review threads, and arming auto-merge per the repo merge policy.
+  review. Covers discovering in-scope PRs (open, no active session, or owner
+  idle >30m), launching one child session per PR in parallel, diagnosing and
+  fixing REAL CI failures, resolving review threads, and arming auto-merge per
+  the repo merge policy.
 ---
 
 # PR Shepherd
@@ -14,6 +15,8 @@ description: >-
 Take one or more open PRs from "open" to "squash-merged into `main`" without hand-holding: discover what is in scope, fix the real blockers (CI failures, unresolved review threads), and let GitHub auto-merge finish the job. **No human review is required to merge this repo** — never blame a "review block" without explicit proof from `gh pr merge` output.
 
 This skill has two modes. Pick based on the request:
+
+- **Refresh behavior (Coordinator shorthand):** if the user says 'refresh', treat it as: repoll open PRs, determine takeover-ready PRs, and immediately launch shepherd sessions for all in-scope PRs in that pass.
 
 - **Coordinator** — "shepherd the open PRs" / "run a shepherding loop". You orchestrate: discover in-scope PRs and launch one child session per PR in parallel, then relay results. **One PR = one child session, always.** Tackle _every_ PR through its own session — including merge-conflict resolution, rebases, and "quick" CI fixes. Do **not** fix PRs in the coordinator session yourself; never check out a PR branch or open a temp worktree to resolve a conflict locally. The only exception is when a child session has tried and genuinely cannot proceed — then take over directly. Resist the temptation to hand-fix the "easy" ones; consistency keeps the loop parallel and lets you keep coordinating.
 - **Shepherd** — "shepherd PR #N" / a child session spawned by the coordinator. You own getting that one PR merged end-to-end.
@@ -44,10 +47,11 @@ This skill has two modes. Pick based on the request:
 
 ## Scope & worktree rules (Mode A)
 
-- **In scope = open PR with no _active_ session on its head branch.** A PR whose owning session is **archived** (`archived: true`, empty `path`) **is in scope**. Determine via `gh pr list` + `list_sessions_and_chats`/`get_session`.
+- **In scope = open PR with no _active_ session on its head branch, or with an owner session idle for >30 minutes.** A PR whose owning session is **archived** (`archived: true`, empty `path`) **is in scope**. Determine via `gh pr list` + `list_sessions_and_chats`/`get_session` (`updated_at` cutoff).
 - **Never `open_pr_session` on a branch already checked out in another live worktree** — it conflicts. Resolve by owner state:
-  - Owner **active** → delegate via `send_session_message` (pass the actionable review comments + CI run IDs). Do not touch its worktree.
-  - Owner **archived / winding down** → take over directly. Edit locked files via the GitHub Contents API (byte-faithful) rather than checking out the branch.
+  - Owner **active and recently updated** (<=30m) → delegate via `send_session_message` (pass the actionable review comments + CI run IDs). Do not touch its worktree.
+  - Owner **active but idle >30m** → take over: open a PR shepherd session and continue directly.
+  - Owner **archived / winding down** → take over: `open_pr_session` for that PR and continue in the child.
   - **No session** → `open_pr_session` and launch a fresh shepherd.
   - Verify with `git -C <main_checkout> worktree list`.
 

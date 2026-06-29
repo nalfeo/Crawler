@@ -8,6 +8,15 @@ Operational detail for the `pr-shepherd` skill. All commands assume the
 
 ## Mode A — Coordinator
 
+### Refresh loop shorthand
+
+When the user says **'refresh'**, run the full coordinator pass in one sweep:
+
+1. Repoll open PRs.
+2. Re-evaluate in-scope ownership (none, archived, or idle >30m).
+3. Launch one shepherd child session per in-scope PR immediately.
+4. Update pr_shepherds rows for all launched PRs.
+
 ### 1. Discover open PRs
 
 ```powershell
@@ -18,22 +27,26 @@ gh pr list --repo nalfeo/Crawler --state open `
 
 ### 2. Determine which PRs are in scope
 
-A PR is **in scope** when no _active_ (non-archived) session is sitting on its
-`headRefName`. Cross-reference:
+A PR is **in scope** when either no _active_ (non-archived) session is sitting
+on its `headRefName`, or the owning session has been idle for more than
+30 minutes. Cross-reference:
 
 - `list_sessions_and_chats` — list every session and its branch.
 - `get_session <id>` — an **archived** session reports `archived: true` and an
   empty `path`. Archived owner ⇒ the PR is in scope (take it over).
+- `get_session <id>` — use `updated_at` to compute idle time.
+  `now - updated_at > 30 minutes` ⇒ the PR is in scope (take it over).
 - Confirm the branch is free in the real checkout before launching:
   `git -C C:\Users\nalfeo\.copilot\repos\Crawler worktree list`
 
 Decision matrix (owner state → action):
 
-| Owner session state         | Action                                                        |
-| --------------------------- | ------------------------------------------------------------- |
-| none                        | `open_pr_session` → launch a fresh shepherd                   |
-| active (holds the worktree) | `send_session_message` to delegate; never touch its worktree  |
-| archived / winding down     | take over directly; edit locked files via GitHub Contents API |
+| Owner session state     | Action                                                       |
+| ----------------------- | ------------------------------------------------------------ |
+| none                    | `open_pr_session` → launch a fresh shepherd                  |
+| active (updated <=30m)  | `send_session_message` to delegate; never touch its worktree |
+| active (idle >30m)      | `open_pr_session` takeover shepherd for that PR              |
+| archived / winding down | `open_pr_session` takeover shepherd for that PR              |
 
 ### 3. Launch one shepherd per in-scope PR (in parallel)
 
