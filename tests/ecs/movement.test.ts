@@ -3,60 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Flying, Position, Velocity } from '../../src/core/components.js';
 import { movementSystem } from '../../src/core/systems/movementSystem.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { FloorMap } from '../../src/core/map/FloorMap.js';
-import { TileMap } from '../../src/core/map/TileMap.js';
-import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { TilePresets, BiomeType } from '../../src/shared/map-types.js';
-import type { MapConfig } from '../../src/shared/map-types.js';
-
-/** Create a 10×10 map with walls on borders and a wall column at x=5. */
-function makeWalledMap(): FloorMap {
-  const config: MapConfig = {
-    widthTiles: 10,
-    heightTiles: 10,
-    tileSizeFt: 32,
-    biome: BiomeType.ARENA,
-    seed: 42,
-    roomWidthRange: [4, 8],
-    roomHeightRange: [4, 8],
-    maxRooms: 1,
-    floorDensity: 0.5,
-  };
-  const tileMap = new TileMap(10, 10);
-  const terrain = new Uint8Array(100);
-
-  for (let y = 0; y < 10; y++) {
-    for (let x = 0; x < 10; x++) {
-      const idx = y * 10 + x;
-      if (x === 0 || x === 9 || y === 0 || y === 9 || x === 5) {
-        tileMap.flags[idx] = TilePresets.WALL;
-      } else {
-        tileMap.flags[idx] = TilePresets.FLOOR;
-      }
-    }
-  }
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 3, y: 3 });
-}
-
-function makeDiagonalCornerMap(): FloorMap {
-  const config: MapConfig = {
-    widthTiles: 5,
-    heightTiles: 5,
-    tileSizeFt: 4,
-    biome: BiomeType.ARENA,
-    seed: 42,
-    roomWidthRange: [3, 5],
-    roomHeightRange: [3, 5],
-    maxRooms: 1,
-    floorDensity: 0.5,
-  };
-  const tileMap = new TileMap(5, 5);
-  const terrain = new Uint8Array(25);
-  tileMap.fill(TilePresets.FLOOR);
-  tileMap.setFlags(2, 1, TilePresets.WALL);
-  tileMap.setFlags(1, 2, TilePresets.WALL);
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
-}
+import { makeWalledMap, makeDiagonalCornerMap } from '../helpers/map-fixtures.js';
 
 describe('movementSystem', () => {
   it('moves an entity by its velocity each frame', () => {

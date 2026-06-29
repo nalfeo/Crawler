@@ -3,15 +3,8 @@ import { TileMap } from '../../src/core/map/TileMap';
 import { RoomGraph } from '../../src/core/map/RoomGraph';
 import { ensureRoomsReachable } from '../../src/core/map/generators/DungeonGenerator';
 import { TileFlags, TilePresets, TerrainType, RoomRole } from '../../src/shared/map-types';
+import { makeAllWallMap as makeMap } from '../helpers/map-fixtures';
 import type { DoorLocation, RoomBounds } from '../../src/shared/map-types';
-
-/** Build an all-wall map of the given size. */
-function makeMap(w: number, h: number): { tileMap: TileMap; terrain: Uint8Array } {
-  const tileMap = new TileMap(w, h);
-  tileMap.flags.fill(TilePresets.WALL);
-  const terrain = new Uint8Array(w * h).fill(TerrainType.STONE_WALL);
-  return { tileMap, terrain };
-}
 
 /** Carve a room's 1-tile-inset interior to floor. */
 function carveRoom(tileMap: TileMap, terrain: Uint8Array, w: number, b: RoomBounds): void {

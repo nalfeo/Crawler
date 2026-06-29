@@ -5,10 +5,11 @@ import { safeRoomSystem, isInSafeContext, isPointInSafeSpace } from '../../src/c
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import { TileMap } from '../../src/core/map/TileMap.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { BiomeType, RoomRole, TilePresets } from '../../src/shared/map-types.js';
+import { BiomeType, RoomRole } from '../../src/shared/map-types.js';
 import type { MapConfig } from '../../src/shared/map-types.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { equip } from '../../src/core/systems/equipmentSystem.js';
 import { MERCHANTS_CHARM_DEF } from '../../src/shared/equipmentDefs.js';
 
@@ -28,34 +29,6 @@ const MAP_CFG: MapConfig = {
   floorDensity: 0.5,
 };
 
-/**
- * Build a minimal FloorMap with:
- *   - a SAFE room at tiles (1,1)–(4,4) (exclusive), centre (feet) ≈ (80, 80)
- *   - a NORMAL room at tiles (10,10)–(14,14), centre (feet) ≈ (384, 384)
- */
-function makeMapWithSafeRoom(): FloorMap {
-  const w = 20;
-  const h = 20;
-  const tileMap = new TileMap(w, h);
-  const terrain = new Uint8Array(w * h);
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      tileMap.flags[y * w + x] = TilePresets.FLOOR;
-    }
-  }
-
-  const graph = new RoomGraph();
-  // Safe room: x=1, y=1, width=4, height=4 → tile centre at (3, 3)
-  const safeId = graph.add({ x: 1, y: 1, width: 4, height: 4 }, [], [], RoomRole.SAFE);
-  // Normal room: x=10, y=10, width=4, height=4
-  graph.add({ x: 10, y: 10, width: 4, height: 4 }, [], [], RoomRole.NORMAL);
-
-  void safeId; // id=0, role set at add
-
-  return new FloorMap(MAP_CFG, tileMap, graph, terrain, { x: 12, y: 12 });
-}
-
 /** Feet centre of the safe room (tile 3,3 → 3*32+16=112, same for y). */
 const SAFE_FT = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
 /** Feet centre of the normal room (tile 12,12 → 12*32+16=400). */
@@ -70,7 +43,7 @@ describe('isPointInSafeSpace', () => {
 
   beforeEach(() => {
     world = createTestWorld();
-    world.floorMap = makeMapWithSafeRoom();
+    world.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
   });
 
   it('returns true when point is inside the safe room', () => {
@@ -105,7 +78,7 @@ describe('safeRoomSystem', () => {
 
   beforeEach(() => {
     world = createTestWorld();
-    world.floorMap = makeMapWithSafeRoom();
+    world.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
     playerEid = spawnPlayer(world, SAFE_FT.x, SAFE_FT.y);
   });
 
@@ -136,7 +109,7 @@ describe('safeRoomSystem', () => {
     world.playerInSafeRoom = true;
     // Create a fresh world with no player
     const emptyWorld = createTestWorld();
-    emptyWorld.floorMap = makeMapWithSafeRoom();
+    emptyWorld.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
     emptyWorld.state = 'playing';
     safeRoomSystem(emptyWorld);
     expect(emptyWorld.playerInSafeRoom).toBe(false);
@@ -246,7 +219,7 @@ describe('safeRoomSystem property tests', () => {
         fc.integer({ min: -2000, max: 2000 }),
         (px, py) => {
           const world = createTestWorld();
-          world.floorMap = makeMapWithSafeRoom();
+          world.floorMap = makeMapWithSafeRoom({ withNormalRoom: true });
           world.state = 'playing';
           spawnPlayer(world, px, py);
           expect(() => safeRoomSystem(world)).not.toThrow();

@@ -22,10 +22,7 @@ import {
 import { WEAPON, WeaponType, TeamId, type WeaponTypeValue } from '../../src/shared/constants.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { FloorMap } from '../../src/core/map/FloorMap.js';
-import { TileMap } from '../../src/core/map/TileMap.js';
-import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { TilePresets, DEFAULT_MAP_CONFIG, TerrainType } from '../../src/shared/map-types.js';
+import { makeOpenFloorMap } from '../helpers/map-fixtures.js';
 
 describe('weaponSystem coverage paths', () => {
   it('keeps cooldown when updating active weapon; clearing weapon silences auto-fire', () => {
@@ -470,22 +467,6 @@ describe('weaponSystem line-of-sight gating', () => {
   // Center point of a tile (feet), matching FloorMap.tileToWorld.
   const cx = (tx: number): number => tx * TILE + TILE / 2;
   const cy = (ty: number): number => ty * TILE + TILE / 2;
-
-  function makeOpenFloorMap(wallColumnX?: number): FloorMap {
-    const widthTiles = 24;
-    const heightTiles = 16;
-    const config = { ...DEFAULT_MAP_CONFIG, widthTiles, heightTiles };
-    const tileMap = new TileMap(widthTiles, heightTiles);
-    tileMap.fill(TilePresets.FLOOR);
-    if (wallColumnX !== undefined) {
-      for (let y = 0; y < heightTiles; y++) {
-        tileMap.setFlags(wallColumnX, y, TilePresets.WALL);
-      }
-    }
-    const terrain = new Uint8Array(widthTiles * heightTiles);
-    terrain.fill(TerrainType.STONE_FLOOR);
-    return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 2, y: 5 });
-  }
 
   it('does not fire a bow at an enemy in the next room behind a wall', () => {
     const world = createTestWorld();

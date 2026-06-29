@@ -9,44 +9,10 @@ import {
 } from '../../src/core/map/flow-field.js';
 import { PATH_TRAVERSAL } from '../../src/core/map/pathfinding.js';
 import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { makePathMap } from '../helpers/map-fixtures.js';
 
 const WIDTH = 12;
 const HEIGHT = 9;
-
-/**
- * Same arena fixture as the pathfinding suite: a solid pillar at x=6 splits the
- * room in two, pierced only by a door at (6,4). Lets us assert the flow field
- * routes through the door identically to A*.
- */
-function makePathMap(doorOpen: boolean): FloorMap {
-  const tileMap = new TileMap(WIDTH, HEIGHT);
-  const terrain = new Uint8Array(WIDTH * HEIGHT);
-
-  const config: MapConfig = {
-    widthTiles: WIDTH,
-    heightTiles: HEIGHT,
-    tileSizeFt: 4,
-    biome: BiomeType.ARENA,
-    seed: 42,
-    roomWidthRange: [4, 8],
-    roomHeightRange: [4, 8],
-    maxRooms: 1,
-    floorDensity: 0.5,
-  };
-
-  for (let y = 0; y < HEIGHT; y += 1) {
-    for (let x = 0; x < WIDTH; x += 1) {
-      const idx = y * WIDTH + x;
-      const isBorder = x === 0 || y === 0 || x === WIDTH - 1 || y === HEIGHT - 1;
-      const isPillar = x === 6 && y >= 1 && y <= HEIGHT - 2 && y !== 4;
-      tileMap.flags[idx] = isBorder || isPillar ? TilePresets.WALL : TilePresets.FLOOR;
-    }
-  }
-
-  tileMap.flags[4 * WIDTH + 6] = doorOpen ? TilePresets.DOOR_OPEN : TilePresets.DOOR_CLOSED;
-
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 2, y: 4 });
-}
 
 /** Walk the gradient from `start`, returning every tile visited up to the goal. */
 function descend(
@@ -98,7 +64,7 @@ function makeOpenMap(extraWalls: ReadonlyArray<readonly [number, number]> = []):
 
 describe('computeFlowField', () => {
   it('marks the goal tile distance 0 and walls as unreachable', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 9, y: 4 });
 
     expect(field.goalX).toBe(9);
@@ -109,7 +75,7 @@ describe('computeFlowField', () => {
   });
 
   it('expands a BFS wavefront where each passable neighbour is one step further', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 9, y: 4 });
 
     expect(distanceAt(field, 8, 4)).toBe(1);
@@ -119,7 +85,7 @@ describe('computeFlowField', () => {
   });
 
   it('produces a gradient that descends through an open door to the goal', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 9, y: 4 });
 
     const path = descend(field, { x: 2, y: 4 });
@@ -129,7 +95,7 @@ describe('computeFlowField', () => {
   });
 
   it('leaves the far side unreachable when the only door is closed', () => {
-    const floorMap = makePathMap(false);
+    const floorMap = makePathMap(false, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 9, y: 4 });
 
     expect(distanceAt(field, 2, 4)).toBe(FLOW_UNREACHABLE);
@@ -137,7 +103,7 @@ describe('computeFlowField', () => {
   });
 
   it('floods across closed structures under flying traversal', () => {
-    const floorMap = makePathMap(false);
+    const floorMap = makePathMap(false, { tileSizeFt: 4 });
     const field = computeFlowField(
       floorMap,
       { x: 9, y: 4 },
@@ -153,7 +119,7 @@ describe('computeFlowField', () => {
   });
 
   it('honours an isTilePassable override the way A* does', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     // Open door in the map, but the override seals (6,4) — the field must route
     // identically to the pathfinder and abandon the left half.
     const field = computeFlowField(
@@ -168,7 +134,7 @@ describe('computeFlowField', () => {
   });
 
   it('returns an all-unreachable field when the goal itself is blocked', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 0, y: 0 });
 
     expect(distanceAt(field, 0, 0)).toBe(FLOW_UNREACHABLE);
@@ -176,7 +142,7 @@ describe('computeFlowField', () => {
   });
 
   it('is deterministic across rebuilds', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const a = computeFlowField(floorMap, { x: 9, y: 4 });
     const b = computeFlowField(floorMap, { x: 9, y: 4 });
 
@@ -186,14 +152,14 @@ describe('computeFlowField', () => {
 
 describe('flowFieldStep', () => {
   it('returns null on the goal tile', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 9, y: 4 });
 
     expect(flowFieldStep(field, 9, 4)).toBeNull();
   });
 
   it('returns null for out-of-bounds and unreachable tiles', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 9, y: 4 });
 
     expect(flowFieldStep(field, -1, 4)).toBeNull();
@@ -202,7 +168,7 @@ describe('flowFieldStep', () => {
   });
 
   it('always steps strictly downhill toward the goal', () => {
-    const floorMap = makePathMap(true);
+    const floorMap = makePathMap(true, { tileSizeFt: 4 });
     const field = computeFlowField(floorMap, { x: 9, y: 4 });
 
     const here = distanceAt(field, 2, 4);

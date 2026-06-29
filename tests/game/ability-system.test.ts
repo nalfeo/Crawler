@@ -3,10 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { SkillHolder, Stats } from '../../src/core/components.js';
 import { spawnEnemy, spawnPlayer } from '../../src/core/helpers.js';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
-import { FloorMap } from '../../src/core/map/FloorMap.js';
-import { TileMap } from '../../src/core/map/TileMap.js';
-import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { makeWalledMap } from '../helpers/map-fixtures.js';
 import { ACTIVE_ABILITY_SLOT_LIMIT } from '../../src/game/abilities/types.js';
 import {
   abilitySystem,
@@ -18,32 +15,6 @@ import {
   statsSystem,
 } from '../../src/game/systems/index.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-
-function makeWalledMap(): FloorMap {
-  const config: MapConfig = {
-    widthTiles: 10,
-    heightTiles: 10,
-    tileSizeFt: 4,
-    biome: BiomeType.ARENA,
-    seed: 42,
-    roomWidthRange: [4, 8],
-    roomHeightRange: [4, 8],
-    maxRooms: 1,
-    floorDensity: 0.5,
-  };
-  const tileMap = new TileMap(10, 10);
-  const terrain = new Uint8Array(100);
-
-  for (let y = 0; y < 10; y++) {
-    for (let x = 0; x < 10; x++) {
-      const idx = y * 10 + x;
-      tileMap.flags[idx] =
-        x === 0 || x === 9 || y === 0 || y === 9 || x === 5 ? TilePresets.WALL : TilePresets.FLOOR;
-    }
-  }
-
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 3, y: 3 });
-}
 
 function setupPlayer() {
   const world = createTestWorld();
@@ -279,7 +250,7 @@ describe('abilitySystem', () => {
 
   it('keeps pulse shield knockback from pushing enemies partially into walls', () => {
     const { world, player } = setupPlayer();
-    world.floorMap = makeWalledMap();
+    world.floorMap = makeWalledMap({ tileSizeFt: 4 });
     world.stores.position.x[player] = 15;
     world.stores.position.y[player] = 12;
     world.featureUnlocks.spells = true;
