@@ -43,7 +43,7 @@ import { loadLabState, saveLabState } from '../lab-persistence.js';
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 const WEAPON_IDS = [...WEAPON_DEFS.keys()];
-const LAB_ID = 'weapons-lab';
+const LAB_ID = 'weapon-lab';
 
 /** Serializable snapshot of all lab state that should survive HMR. */
 interface WeaponsLabSnapshot {
@@ -588,10 +588,10 @@ function createWeaponsLab(canvasHost: HTMLElement, controls: HTMLElement): () =>
   };
 }
 
-registerLab('weapons-lab', {
-  category: 'Items & Equipment' as LabCategory,
-  name: 'Weapons Lab',
+registerLab('weapon-lab', {
+  category: 'Combat' as LabCategory,
+  name: 'Weapon Lab',
   description:
-    'Test all weapon types: melee, ranged, unarmed, magic, thrown, beam, and traps. Switch weapons via the dropdown.',
+    'Stress-test auto-attacks against deterministic enemy spawns. Switch weapons via the dropdown to try every melee, ranged, magic, thrown, beam, and trap implementation (with correct sprites when available).',
   create: createWeaponsLab,
 });
