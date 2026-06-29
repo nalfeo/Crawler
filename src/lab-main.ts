@@ -55,7 +55,6 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'ux-snapshot-lab': '/src/labs/ux-snapshot-lab/index.ts',
   'death-lab': '/src/labs/death-lab/index.ts',
   'abilities-lab': '/src/labs/abilities-lab/index.ts',
-  'parallel-bt': '/src/labs/parallel-bt-lab/index.ts',
   'tile-blend-lab': '/src/labs/tile-blend-lab/index.ts',
   'sprite-tint-lab': '/src/labs/sprite-tint-lab/index.ts',
   'ui-probe-lab': '/src/labs/ui-probe-lab/index.ts',
