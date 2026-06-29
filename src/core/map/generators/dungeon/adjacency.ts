@@ -15,9 +15,9 @@ import { RoomGraph } from '../../RoomGraph';
 /**
  * Derive room adjacency from the final tile state.
  *
- * Flood-fills connected components over CORRIDOR + DOOR terrain and treats every
- * room whose interior is orthogonally adjacent to such a component as a mutual
- * neighbor. This is the source of truth for the RoomGraph adjacency that
+ * Flood-fills connected components over CORRIDOR + DOOR + CAVE_FLOOR terrain and
+ * treats every room whose interior is orthogonally adjacent to such a component
+ * as a mutual neighbor. This is the source of truth for the RoomGraph adjacency that
  * pathfinding, AI, and welcome-sign placement depend on.
  *
  * Called AFTER all tile-modifying passes (cave carving, ensureRoomsReachable,

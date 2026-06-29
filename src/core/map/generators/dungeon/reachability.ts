@@ -18,6 +18,11 @@ import { TileMap } from '../../TileMap';
 import { RoomGraph } from '../../RoomGraph';
 import { getDoorSide } from './doors';
 
+/**
+ * Flood-fill from the player spawn, treating all PASSABLE tiles and DOOR tiles
+ * as walkable. Any passable non-door tile that is NOT reached is converted to a
+ * wall, eliminating isolated floor pockets created by room-shape post-processing.
+ */
 export function cullIsolatedFloorTiles(
   tileMap: TileMap,
   terrain: Uint8Array,
