@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-29",
+  "slug": "pr-shepherd-refresh-takeover",
+  "persona": "Producer",
+  "estimate": 1,
+  "actual": 1,
+  "verdict": "exact",
+  "notes": "Docs-only skill/playbook alignment for refresh-loop takeover rules."
+}
