@@ -163,3 +163,57 @@ assets:
     integration:
       kind: sprite-registry
       id: celestial-ingot
+
+  - id: crimson-mushroom
+    type: item
+    label: 'Crimson Mushroom'
+    brief: 'Crimson Mushroom — a single centered mushroom icon with a plump red spotted cap and a short pale stem. Floor 1 harvestable material. Warm to the touch.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: crimson-mushroom
+
+  - id: azure-mushroom
+    type: item
+    label: 'Azure Mushroom'
+    brief: 'Azure Mushroom — a single centered mushroom icon with a deep blue cap and subtly glowing blue-grey gills beneath. Floor 1 harvestable material. Faintly bioluminescent.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: azure-mushroom
+
+  - id: sunpetal-flower
+    type: item
+    label: 'Sunpetal Flower'
+    brief: 'Sunpetal Flower — a single centered flower icon with bright gold radiating petals and a small amber centre. Floor 1 harvestable material. Blooms without sunlight.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: sunpetal-flower
+
+  - id: moonbloom-flower
+    type: item
+    label: 'Moonbloom'
+    brief: 'Moonbloom — a single centered flower icon with pale violet petals that curl inward and a faintly glowing silver centre. Floor 1 harvestable material. Smells of cold stone.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: moonbloom-flower
+
+  - id: frost-lichen
+    type: item
+    label: 'Frost Lichen'
+    brief: 'Frost Lichen — a single centered lichen icon as a flat silvery-white crusty patch with ice-crystal highlights. Floor 1 harvestable material. Clings to damp walls.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: frost-lichen
+
+  - id: shadow-lichen
+    type: item
+    label: 'Shadow Lichen'
+    brief: 'Shadow Lichen — a single centered lichen icon as a dark grey-blue spreading crust with a slightly velvety texture. Floor 1 harvestable material. Absorbs light.'
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: shadow-lichen

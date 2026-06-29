@@ -17,6 +17,11 @@ export interface FloorBossEncounterState {
   defeated: boolean;
   /** Display name shown in the HUD boss health bar. */
   displayName: string;
+  /**
+   * Loot table ID to use when this boss dies (see LOOT_TABLES in loot-tables.ts).
+   * Undefined falls back to the standard BOSS table.
+   */
+  lootTableId?: string;
 }
 
 export interface FloorObjectiveState {
