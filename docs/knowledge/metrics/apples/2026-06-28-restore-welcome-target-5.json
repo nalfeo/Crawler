@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-28",
+  "slug": "restore-welcome-target-5",
+  "persona": "Producer",
+  "estimated": 1,
+  "actual": 1,
+  "verdict": "exact",
+  "summary": "Reverted requirement-weakening WELCOME_TARGET_HOPS 5->4 from #437; restored target 5 and retuned headless gate seeds to [13,23,42,99]. Added agent rule against silently weakening explicit human requirements.",
+  "notes": "Most cost was probing seeds for comfortable all-weapon clears at target 5; source change minimal."
+}
