@@ -1235,6 +1235,118 @@
       "sensorScore": "6/7",
       "judgeScore": "2",
       "contentHash": "bce10cd514dab77f63a941422f35aacd2f96b2a24d6a43809379f1d2bdb72c94"
+    },
+    "green-slime-baby-v1-var-2": {
+      "briefId": "green-slime-baby-v1",
+      "spriteName": "green-slime-baby-v1-var-2",
+      "assetPath": "generated/green-slime-baby-v1-var-2.png",
+      "approvedAt": "2026-06-27T22:31:47.452Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-TXGuLV/green-slime-baby-v1/2026-06-27T05-31-18-1b9fb77c",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "contentHash": "dd5aabb4324937f80bafd717f4207a6589662fd35f30e378e9704835da1013a3"
+    },
+    "baby-slime-v1-var-1": {
+      "briefId": "baby-slime-v1",
+      "spriteName": "baby-slime-v1-var-1",
+      "assetPath": "generated/baby-slime-v1-var-1.png",
+      "approvedAt": "2026-06-29T06:22:40.421Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-B8vUPA/baby-slime-v1/2026-06-29T06-16-01-73e9b0d1",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 32,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "contentHash": "846c82cfe9c8f9e4cad08cb9e5893250fb02d8fecdc393ec97227a476fe2577a"
+    },
+    "baby-slime-v1-var-8": {
+      "briefId": "baby-slime-v1",
+      "spriteName": "baby-slime-v1-var-8",
+      "assetPath": "generated/baby-slime-v1-var-8.png",
+      "approvedAt": "2026-06-29T06:23:11.523Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-wXX5BG/baby-slime-v1/2026-06-29T06-16-01-73e9b0d1",
+      "variantIndex": 8,
+      "anchor": {
+        "x": 32,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "contentHash": "bd51fd12d56c89376666aa5766e6dd929ac8b5a32f70a7f6c90a6c1a4f25cbd4"
+    },
+    "rat-slime-v1-var-1": {
+      "briefId": "rat-slime-v1",
+      "spriteName": "rat-slime-v1-var-1",
+      "assetPath": "generated/rat-slime-v1-var-1.png",
+      "approvedAt": "2026-06-29T06:24:00.271Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-iCGLoe/rat-slime-v1/2026-06-29T06-19-46-662c0523",
+      "variantIndex": 1,
+      "anchor": {
+        "x": 65,
+        "y": 69,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 65,
+          "y": 69,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 65,
+          "y": 69,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": null,
+      "contentHash": "9fa3e05ce0b77c0ede9af6f62f58e58a1f7cc5052b7d1a202462e826c1e81163"
     }
   }
 }
