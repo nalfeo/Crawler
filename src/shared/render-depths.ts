@@ -21,6 +21,15 @@
 export const UI_DEPTH_CUTOFF = 900;
 
 /**
+ * Depth of the dynamic darkness/light overlay. It must sit ABOVE every
+ * world-space gameplay object — terrain, props, entities (mobs/NPCs/player) and
+ * VFX/objective markers — so the torch falloff dims sprites in shadow, not just
+ * the floor. It stays below boss-spawn telegraph FX (879–881) and the
+ * `UI_DEPTH_CUTOFF`, so the HUD and key telegraphs read through the dark.
+ */
+export const LIGHTING_OVERLAY_DEPTH = 800;
+
+/**
  * Depth buckets for static scene-dressing props. All values are below
  * entity/VFX layers so props always render beneath game entities.
  *
