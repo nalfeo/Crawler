@@ -6,8 +6,8 @@
     "popupText": "New achievement: First Bonk!",
     "unlockCriteria": "Defeat your first enemy on Floor 1.",
     "details": "Unlock when you defeat your first enemy on Floor 1.",
-    "directorFlavor": "\"First Bonk? Nice television.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. First Bonk: You solved the encounter with direct, messy persuasion. Hit the 1 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-first-bonk-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -29,8 +29,8 @@
     "popupText": "New achievement: Gel Exit!",
     "unlockCriteria": "Defeat your first slime.",
     "details": "Unlock when you defeat your first slime.",
-    "directorFlavor": "\"Gel Exit? Nice television.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Gel Exit: Slime containment is now a blunt-force discipline. Crowd liked it.",
+    "iconId": "achv-slime-no-more-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -52,8 +52,8 @@
     "popupText": "New achievement: Rat Retirement!",
     "unlockCriteria": "Defeat your first rat.",
     "details": "Unlock when you defeat your first rat.",
-    "directorFlavor": "\"Rat Retirement? Nice television.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Rat Retirement: Rodent management has entered the theatrical overkill phase. Crowd liked it.",
+    "iconId": "achv-rat-retired-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -75,8 +75,8 @@
     "popupText": "New achievement: Three at Once!",
     "unlockCriteria": "Defeat 3 enemies with one swing.",
     "details": "Unlock when you defeat 3 enemies with one swing.",
-    "directorFlavor": "\"Trigger condition: Defeat 3 enemies with one swing. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Three at Once: You solved the encounter with direct, messy persuasion. Hit the 3 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-triple-swipe-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -91,8 +91,8 @@
     "popupText": "New achievement: Five-Alarm Combo!",
     "unlockCriteria": "Defeat 5 enemies within 4 seconds.",
     "details": "Unlock when you defeat 5 enemies within 4 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat 5 enemies within 4 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Five-Alarm Combo: You converted carnage into a clock-driven sport. Hit the 5/4 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-five-chain-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -107,8 +107,8 @@
     "popupText": "New achievement: Ten Tiny Funerals!",
     "unlockCriteria": "Defeat 10 enemies within 8 seconds.",
     "details": "Unlock when you defeat 10 enemies within 8 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat 10 enemies within 8 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. Ten Tiny Funerals: You converted carnage into a clock-driven sport. Hit the 10/8 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-ten-chain-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -123,8 +123,8 @@
     "popupText": "New achievement: Door Camper!",
     "unlockCriteria": "Defeat 5 enemies near a doorway.",
     "details": "Unlock when you defeat 5 enemies near a doorway.",
-    "directorFlavor": "\"Door Camper? Nice television.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Door Camper: You solved the encounter with direct, messy persuasion. Hit the 5 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-door-camper-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -139,8 +139,8 @@
     "popupText": "New achievement: Hallway Cleaner!",
     "unlockCriteria": "Defeat 12 enemies in hallways on Floor 1.",
     "details": "Unlock when you defeat 12 enemies in hallways on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 12 enemies in hallways on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Hallway Cleaner: You solved the encounter with direct, messy persuasion. Hit the 12/1 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-hallway-cleaner-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -155,8 +155,8 @@
     "popupText": "New achievement: Room Sweeper!",
     "unlockCriteria": "Defeat 20 enemies in one room before leaving it.",
     "details": "Unlock when you defeat 20 enemies in one room before leaving it.",
-    "directorFlavor": "\"Trigger condition: Defeat 20 enemies in one room before leaving it. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Room Sweeper: You solved the encounter with direct, messy persuasion. Hit the 20 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-room-sweeper-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -171,8 +171,8 @@
     "popupText": "New achievement: No Scope-ish!",
     "unlockCriteria": "Defeat an enemy at maximum weapon range.",
     "details": "Unlock when you defeat an enemy at maximum weapon range.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy at maximum weapon range. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. No Scope-ish: You solved the encounter with direct, messy persuasion. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-no-scope-ish-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -187,8 +187,8 @@
     "popupText": "New achievement: Close-Quarters TV!",
     "unlockCriteria": "Defeat an enemy while within 1 foot of it.",
     "details": "Unlock when you defeat an enemy while within 1 foot of it.",
-    "directorFlavor": "\"Close-Quarters TV? Nice television.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Close-Quarters TV: You solved the encounter with direct, messy persuasion. Hit the 1 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-close-quarters-tv-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -203,8 +203,8 @@
     "popupText": "New achievement: Hazard Assist!",
     "unlockCriteria": "Defeat an enemy that was recently hit by a trap.",
     "details": "Unlock when you defeat an enemy that was recently hit by a trap.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy that was recently hit by a trap. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Hazard Assist: You solved the encounter with direct, messy persuasion. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-trap-finisher-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -219,8 +219,8 @@
     "popupText": "New achievement: Lucky Bounce!",
     "unlockCriteria": "Defeat an enemy with a ricochet hit.",
     "details": "Unlock when you defeat an enemy with a ricochet hit.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy with a ricochet hit. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Lucky Bounce: You solved the encounter with direct, messy persuasion. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-lucky-bounce-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -235,8 +235,8 @@
     "popupText": "New achievement: Last Hit Hero!",
     "unlockCriteria": "Defeat an enemy while below 10 HP.",
     "details": "Unlock when you defeat an enemy while below 10 HP.",
-    "directorFlavor": "\"Trigger condition: Defeat an enemy while below 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Last Hit Hero: You solved the encounter with direct, messy persuasion. Hit the 10 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-last-hit-hero-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -251,8 +251,8 @@
     "popupText": "New achievement: Crowd Control!",
     "unlockCriteria": "Defeat 30 total enemies before the Floor 1 boss appears.",
     "details": "Unlock when you defeat 30 total enemies before the Floor 1 boss appears.",
-    "directorFlavor": "\"Trigger condition: Defeat 30 total enemies before the Floor 1 boss appears. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Crowd Control: Boss-fight choreography ended in high-yield disassembly. Hit the 30/1 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-crowd-control-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -279,8 +279,8 @@
     "popupText": "New achievement: Mob Eviction!",
     "unlockCriteria": "Defeat 60 total enemies on Floor 1.",
     "details": "Unlock when you defeat 60 total enemies on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 60 total enemies on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. Mob Eviction: You solved the encounter with direct, messy persuasion. Hit the 60/1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-mob-eviction-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -302,12 +302,12 @@
     "popupText": "New achievement: Ratings Climbing!",
     "unlockCriteria": "Defeat 100 total enemies on Floor 1.",
     "details": "Unlock when you defeat 100 total enemies on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 100 total enemies on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Ratings Climbing: You solved the encounter with direct, messy persuasion. Hit the 100/1 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-ratings-climbing-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -325,8 +325,8 @@
     "popupText": "New achievement: Cleanup Crew!",
     "unlockCriteria": "Defeat the last enemy in a wave within 3 seconds.",
     "details": "Unlock when you defeat the last enemy in a wave within 3 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat the last enemy in a wave within 3 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Cleanup Crew: You converted carnage into a clock-driven sport. Hit the 3 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-clean-up-crew-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -341,8 +341,8 @@
     "popupText": "New achievement: Spell Slap!",
     "unlockCriteria": "Defeat an enemy with a spell.",
     "details": "Unlock when you defeat an enemy with a spell.",
-    "directorFlavor": "\"Spell Slap? Nice television.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Spell Slap: You solved the encounter with direct, messy persuasion. Crowd liked it.",
+    "iconId": "achv-spell-slap-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -357,8 +357,8 @@
     "popupText": "New achievement: Melee Main!",
     "unlockCriteria": "Defeat 25 enemies with melee attacks on Floor 1.",
     "details": "Unlock when you defeat 25 enemies with melee attacks on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Defeat 25 enemies with melee attacks on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-combat-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Melee Main: You solved the encounter with direct, messy persuasion. Hit the 25/1 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-melee-main-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -373,8 +373,8 @@
     "popupText": "New achievement: Tutorial Complete-ish!",
     "unlockCriteria": "Level up any skill for the first time.",
     "details": "Unlock when you level up any skill for the first time.",
-    "directorFlavor": "\"Tutorial Complete-ish? Nice television.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Tutorial Complete-ish: Your skill curve now qualifies as a workplace hazard. Crowd liked it.",
+    "iconId": "achv-skill-first-blood-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -396,8 +396,8 @@
     "popupText": "New achievement: Skill Issue Solved!",
     "unlockCriteria": "Reach skill level 5 on any skill.",
     "details": "Unlock when you reach skill level 5 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 5 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Skill Issue Solved: Your skill curve now qualifies as a workplace hazard. Hit the 5 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-skill-five-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -419,8 +419,8 @@
     "popupText": "New achievement: Double Digits!",
     "unlockCriteria": "Reach skill level 10 on any skill.",
     "details": "Unlock when you reach skill level 10 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 10 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Double Digits: Your skill curve now qualifies as a workplace hazard. Hit the 10 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-skill-ten-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -442,12 +442,12 @@
     "popupText": "New achievement: Fifteen Minutes of Fame!",
     "unlockCriteria": "Reach skill level 15 on any skill.",
     "details": "Unlock when you reach skill level 15 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 15 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Fifteen Minutes of Fame: Your skill curve now qualifies as a workplace hazard. Hit the 15 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-skill-fifteen-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -465,12 +465,12 @@
     "popupText": "New achievement: Cap Curious!",
     "unlockCriteria": "Reach skill level 20 on any skill.",
     "details": "Unlock when you reach skill level 20 on any skill.",
-    "directorFlavor": "\"Trigger condition: Reach skill level 20 on any skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Cap Curious: Your skill curve now qualifies as a workplace hazard. Hit the 20 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-skill-twenty-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -488,8 +488,8 @@
     "popupText": "New achievement: Sword Club 5!",
     "unlockCriteria": "Reach level 5 with a blade skill.",
     "details": "Unlock when you reach level 5 with a blade skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a blade skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. Sword Club 5: Your skill curve now qualifies as a workplace hazard. Hit the 5 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-sword-five-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -504,8 +504,8 @@
     "popupText": "New achievement: Ranged and Dangerous!",
     "unlockCriteria": "Reach level 5 with a ranged skill.",
     "details": "Unlock when you reach level 5 with a ranged skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a ranged skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Ranged and Dangerous: Your skill curve now qualifies as a workplace hazard. Hit the 5 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-ranged-five-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -520,8 +520,8 @@
     "popupText": "New achievement: Wizard Adjacent!",
     "unlockCriteria": "Reach level 5 with a magic skill.",
     "details": "Unlock when you reach level 5 with a magic skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a magic skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Wizard Adjacent: Your skill curve now qualifies as a workplace hazard. Hit the 5 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-magic-five-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -536,8 +536,8 @@
     "popupText": "New achievement: Tank-ish!",
     "unlockCriteria": "Reach level 5 with a defense skill.",
     "details": "Unlock when you reach level 5 with a defense skill.",
-    "directorFlavor": "\"Trigger condition: Reach level 5 with a defense skill. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Tank-ish: Your skill curve now qualifies as a workplace hazard. Hit the 5 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-defense-five-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -552,8 +552,8 @@
     "popupText": "New achievement: Quality of Life!",
     "unlockCriteria": "Reach level 5 with a utility skill.",
     "details": "Unlock when you reach level 5 with a utility skill.",
-    "directorFlavor": "\"Quality of Life? Nice television.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Quality of Life: Your skill curve now qualifies as a workplace hazard. Hit the 5 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-utility-five-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -568,8 +568,8 @@
     "popupText": "New achievement: Dual Specialist!",
     "unlockCriteria": "Get two different skills to level 10 in one Floor 1 run.",
     "details": "Unlock when you get two different skills to level 10 in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Get two different skills to level 10 in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Dual Specialist: Your skill curve now qualifies as a workplace hazard. Hit the 10/1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-dual-specialist-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -584,12 +584,12 @@
     "popupText": "New achievement: Triple Specialist!",
     "unlockCriteria": "Get three different skills to level 10 in one Floor 1 run.",
     "details": "Unlock when you get three different skills to level 10 in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Get three different skills to level 10 in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Triple Specialist: Your skill curve now qualifies as a workplace hazard. Hit the 10/1 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-triple-specialist-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -600,8 +600,8 @@
     "popupText": "New achievement: Milestone Hunter!",
     "unlockCriteria": "Trigger 4 skill milestones in one Floor 1 run.",
     "details": "Unlock when you trigger 4 skill milestones in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Trigger 4 skill milestones in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Milestone Hunter: Your skill curve now qualifies as a workplace hazard. Hit the 4/1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-milestone-hunter-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -616,8 +616,8 @@
     "popupText": "New achievement: Locked In!",
     "unlockCriteria": "Open abilities and assign your first bar setup.",
     "details": "Unlock when you open abilities and assign your first bar setup.",
-    "directorFlavor": "\"Locked In? Nice television.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Locked In: You advanced by weaponizing confidence and poor impulse control. Crowd liked it.",
+    "iconId": "achv-loadout-locked-in-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -632,8 +632,8 @@
     "popupText": "New achievement: Button-Masher Buildcraft!",
     "unlockCriteria": "Change your abilities bar 3 times in a run.",
     "details": "Unlock when you change your abilities bar 3 times in a run.",
-    "directorFlavor": "\"Trigger condition: Change your abilities bar 3 times in a run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Button-Masher Buildcraft: You converted carnage into a clock-driven sport. Hit the 3 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-respec-ritual-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -648,8 +648,8 @@
     "popupText": "New achievement: Mana Miser!",
     "unlockCriteria": "Finish a fight with full mana after casting at least once.",
     "details": "Unlock when you finish a fight with full mana after casting at least once.",
-    "directorFlavor": "\"Trigger condition: Finish a fight with full mana after casting at least once. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. Mana Miser: You wrapped the episode in a hail of bad decisions and victory sparks. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-mana-miser-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -664,8 +664,8 @@
     "popupText": "New achievement: Mana Bender!",
     "unlockCriteria": "Cast 20 spells on Floor 1.",
     "details": "Unlock when you cast 20 spells on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Cast 20 spells on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Mana Bender: You advanced by weaponizing confidence and poor impulse control. Hit the 20/1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-mana-bender-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -680,8 +680,8 @@
     "popupText": "New achievement: Weapon Scholar!",
     "unlockCriteria": "Land hits with 3 different weapon classes in one run.",
     "details": "Unlock when you land hits with 3 different weapon classes in one run.",
-    "directorFlavor": "\"Trigger condition: Land hits with 3 different weapon classes in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Weapon Scholar: You advanced by weaponizing confidence and poor impulse control. Hit the 3 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-weapon-scholar-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -696,8 +696,8 @@
     "popupText": "New achievement: Point Investor!",
     "unlockCriteria": "Spend your first stat point.",
     "details": "Unlock when you spend your first stat point.",
-    "directorFlavor": "\"Point Investor? Nice television.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Point Investor: Those stat points were spent with gleeful irresponsibility. Crowd liked it.",
+    "iconId": "achv-stat-point-spender-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -719,12 +719,12 @@
     "popupText": "New achievement: Core Values!",
     "unlockCriteria": "Invest 15 total stat points in one Floor 1 run.",
     "details": "Unlock when you invest 15 total stat points in one Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Invest 15 total stat points in one Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-skill-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Core Values: Those stat points were spent with gleeful irresponsibility. Hit the 15/1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-maxed-core-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -735,8 +735,8 @@
     "popupText": "New achievement: Mostly Untouched!",
     "unlockCriteria": "Clear one combat room without taking damage.",
     "details": "Unlock when you clear one combat room without taking damage.",
-    "directorFlavor": "\"Trigger condition: Clear one combat room without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Mostly Untouched: You chose the hard mode that alarms producers and thrills viewers. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-ouch-less-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -751,12 +751,12 @@
     "popupText": "New achievement: Untouchable TV!",
     "unlockCriteria": "Finish Floor 1 without taking damage.",
     "details": "Unlock when you finish Floor 1 without taking damage.",
-    "directorFlavor": "\"Trigger condition: Finish Floor 1 without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Untouchable TV: You chose the hard mode that alarms producers and thrills viewers. Hit the 1 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-no-hit-floor1-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "divine"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -767,12 +767,12 @@
     "popupText": "New achievement: One-Digit Ending!",
     "unlockCriteria": "Take the stairs with under 10 HP.",
     "details": "Unlock when you take the stairs with under 10 HP.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with under 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. One-Digit Ending: You bullied progression gates until the stairs begged for mercy. Hit the 10 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-ten-hp-ending-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -783,12 +783,12 @@
     "popupText": "New achievement: Heartbeat Finale!",
     "unlockCriteria": "Take the stairs with under 5 HP.",
     "details": "Unlock when you take the stairs with under 5 HP.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with under 5 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Heartbeat Finale: You bullied progression gates until the stairs begged for mercy. Hit the 5 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-five-hp-ending-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -799,8 +799,8 @@
     "popupText": "New achievement: Medical Drama!",
     "unlockCriteria": "Use a heal while below 15 HP and survive.",
     "details": "Unlock when you use a heal while below 15 HP and survive.",
-    "directorFlavor": "\"Trigger condition: Use a heal while below 15 HP and survive. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Medical Drama: You advanced by weaponizing confidence and poor impulse control. Hit the 15 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-clutch-heal-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -815,8 +815,8 @@
     "popupText": "New achievement: Nervous Pace!",
     "unlockCriteria": "Enter and leave a safe room in under 5 seconds.",
     "details": "Unlock when you enter and leave a safe room in under 5 seconds.",
-    "directorFlavor": "\"Nervous Pace? Nice television.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. Nervous Pace: You located the only room not actively auditioning to kill you. Hit the 5 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-safe-room-sprinter-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -831,8 +831,8 @@
     "popupText": "New achievement: Tea Break!",
     "unlockCriteria": "Spend at least 45 seconds in the safe room.",
     "details": "Unlock when you spend at least 45 seconds in the safe room.",
-    "directorFlavor": "\"Tea Break? Nice television.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Tea Break: You located the only room not actively auditioning to kill you. Hit the 45 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-safe-room-breather-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "directorMessage",
@@ -847,28 +847,28 @@
     "popupText": "New achievement: Buzzer Beater!",
     "unlockCriteria": "Take the stairs with less than 5 seconds left.",
     "details": "Unlock when you take the stairs with less than 5 seconds left.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with less than 5 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Buzzer Beater: You bullied progression gates until the stairs begged for mercy. Hit the 5 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-late-stairs-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "divine"
+      "tier": "rare"
     },
     "unlockRules": []
   },
   {
     "id": "just-in-time",
     "floor": 1,
-    "title": "Just In Time\u2122",
-    "popupText": "New achievement: Just In Time\u2122!",
+    "title": "Just In Time™",
+    "popupText": "New achievement: Just In Time™!",
     "unlockCriteria": "Take the stairs with less than 15 seconds left.",
     "details": "Unlock when you take the stairs with less than 15 seconds left.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with less than 15 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Just In Time™: You bullied progression gates until the stairs begged for mercy. Hit the 15 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-just-in-time-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -879,8 +879,8 @@
     "popupText": "New achievement: Ahead of Schedule!",
     "unlockCriteria": "Take the stairs with over 90 seconds left.",
     "details": "Unlock when you take the stairs with over 90 seconds left.",
-    "directorFlavor": "\"Trigger condition: Take the stairs with over 90 seconds left. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Ahead of Schedule: You bullied progression gates until the stairs begged for mercy. Hit the 90 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-time-rich-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -895,8 +895,8 @@
     "popupText": "New achievement: Camera-Friendly!",
     "unlockCriteria": "Avoid standing still for more than 3 seconds during combat.",
     "details": "Unlock when you avoid standing still for more than 3 seconds during combat.",
-    "directorFlavor": "\"Trigger condition: Avoid standing still for more than 3 seconds during combat. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Camera-Friendly: You converted carnage into a clock-driven sport. Hit the 3 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-camera-friendly-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -911,12 +911,12 @@
     "popupText": "New achievement: Panic Dodge!",
     "unlockCriteria": "Avoid lethal damage by dodging within 1 second of impact.",
     "details": "Unlock when you avoid lethal damage by dodging within 1 second of impact.",
-    "directorFlavor": "\"Trigger condition: Avoid lethal damage by dodging within 1 second of impact. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Panic Dodge: You converted carnage into a clock-driven sport. Hit the 1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-panic-dodge-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -927,8 +927,8 @@
     "popupText": "New achievement: Crowd Surfing!",
     "unlockCriteria": "Move through 20 nearby enemies without dying.",
     "details": "Unlock when you move through 20 nearby enemies without dying.",
-    "directorFlavor": "\"Trigger condition: Move through 20 nearby enemies without dying. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Crowd Surfing: You chose the hard mode that alarms producers and thrills viewers. Hit the 20 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-crowd-surfing-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -943,12 +943,12 @@
     "popupText": "New achievement: Doorframe Duelist!",
     "unlockCriteria": "Defeat an elite while never leaving one doorway area.",
     "details": "Unlock when you defeat an elite while never leaving one doorway area.",
-    "directorFlavor": "\"Trigger condition: Defeat an elite while never leaving one doorway area. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Doorframe Duelist: You chose the hard mode that alarms producers and thrills viewers. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-doorframe-duelist-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -959,12 +959,12 @@
     "popupText": "New achievement: No Potion Policy!",
     "unlockCriteria": "Finish Floor 1 without consuming a healing item.",
     "details": "Unlock when you finish Floor 1 without consuming a healing item.",
-    "directorFlavor": "\"Trigger condition: Finish Floor 1 without consuming a healing item. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. No Potion Policy: You chose the hard mode that alarms producers and thrills viewers. Hit the 1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-no-potion-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -975,12 +975,12 @@
     "popupText": "New achievement: No Shopping Spree!",
     "unlockCriteria": "Finish Floor 1 without opening inventory or equipment screens.",
     "details": "Unlock when you finish Floor 1 without opening inventory or equipment screens.",
-    "directorFlavor": "\"Trigger condition: Finish Floor 1 without opening inventory or equipment screens. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. No Shopping Spree: You chose the hard mode that alarms producers and thrills viewers. Hit the 1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-no-safe-shop-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -991,8 +991,8 @@
     "popupText": "New achievement: Loot Vacuum!",
     "unlockCriteria": "Collect 30 pickups before the Floor 1 boss fight.",
     "details": "Unlock when you collect 30 pickups before the Floor 1 boss fight.",
-    "directorFlavor": "\"Trigger condition: Collect 30 pickups before the Floor 1 boss fight. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Loot Vacuum: Boss-fight choreography ended in high-yield disassembly. Hit the 30/1 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-loot-vacuum-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1007,8 +1007,8 @@
     "popupText": "New achievement: Gem Hoarder!",
     "unlockCriteria": "Collect 50 XP gems in one run.",
     "details": "Unlock when you collect 50 XP gems in one run.",
-    "directorFlavor": "\"Trigger condition: Collect 50 XP gems in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Gem Hoarder: You advanced by weaponizing confidence and poor impulse control. Hit the 50 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-gem-hoarder-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1023,12 +1023,12 @@
     "popupText": "New achievement: Gold Goblin!",
     "unlockCriteria": "Collect 250 gold on Floor 1.",
     "details": "Unlock when you collect 250 gold on Floor 1.",
-    "directorFlavor": "\"Trigger condition: Collect 250 gold on Floor 1. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Gold Goblin: You monetized homicide with admirable efficiency. Hit the 250/1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-gold-goblin-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -1046,8 +1046,8 @@
     "popupText": "New achievement: Broke%!",
     "unlockCriteria": "Take the stairs with less than 30 gold in inventory.",
     "details": "Unlock when you take the stairs with less than 30 gold in inventory.",
-    "directorFlavor": "\"Broke%? Nice television.\" \u2014 The Director",
-    "iconId": "achv-survival-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Broke%: You monetized homicide with admirable efficiency. Hit the 30 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-broke-speedrun-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "directorMessage",
@@ -1070,8 +1070,8 @@
     "popupText": "New achievement: Found the Main Event!",
     "unlockCriteria": "Enter the boss room on Floor 1.",
     "details": "Unlock when you enter the boss room on Floor 1.",
-    "directorFlavor": "\"Found the Main Event? Nice television.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Found the Main Event: Boss-fight choreography ended in high-yield disassembly. Hit the 1 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-boss-found-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1086,8 +1086,8 @@
     "popupText": "New achievement: Opening Statement!",
     "unlockCriteria": "Land the first hit on the boss.",
     "details": "Unlock when you land the first hit on the boss.",
-    "directorFlavor": "\"Trigger condition: Land the first hit on the boss. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Opening Statement: Boss-fight choreography ended in high-yield disassembly. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-boss-first-hit-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1102,12 +1102,12 @@
     "popupText": "New achievement: Grace Under Ratings!",
     "unlockCriteria": "Survive 30 seconds in boss fight without taking damage.",
     "details": "Unlock when you survive 30 seconds in boss fight without taking damage.",
-    "directorFlavor": "\"Trigger condition: Survive 30 seconds in boss fight without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Grace Under Ratings: Boss-fight choreography ended in high-yield disassembly. Hit the 30 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-boss-no-hit-30-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1118,12 +1118,12 @@
     "popupText": "New achievement: Fast Programming!",
     "unlockCriteria": "Defeat the Floor 1 boss in under 10 seconds.",
     "details": "Unlock when you defeat the Floor 1 boss in under 10 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss in under 10 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Fast Programming: Boss-fight choreography ended in high-yield disassembly. Hit the 1/10 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-boss-ten-seconds-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "divine"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1134,12 +1134,12 @@
     "popupText": "New achievement: Quick Episode!",
     "unlockCriteria": "Defeat the Floor 1 boss in under 30 seconds.",
     "details": "Unlock when you defeat the Floor 1 boss in under 30 seconds.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss in under 30 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Quick Episode: Boss-fight choreography ended in high-yield disassembly. Hit the 1/30 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-boss-thirty-seconds-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1150,12 +1150,12 @@
     "popupText": "New achievement: Finale at 1 HP!",
     "unlockCriteria": "Defeat the Floor 1 boss while below 10 HP.",
     "details": "Unlock when you defeat the Floor 1 boss while below 10 HP.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss while below 10 HP. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. Finale at 1 HP: Boss-fight choreography ended in high-yield disassembly. Hit the 1/10 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-boss-finisher-lowhp-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "divine"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1166,12 +1166,12 @@
     "popupText": "New achievement: No Notes!",
     "unlockCriteria": "Defeat the Floor 1 boss without taking damage.",
     "details": "Unlock when you defeat the Floor 1 boss without taking damage.",
-    "directorFlavor": "\"Trigger condition: Defeat the Floor 1 boss without taking damage. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. No Notes: Boss-fight choreography ended in high-yield disassembly. Hit the 1 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-boss-clean-fight-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "divine"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1182,12 +1182,12 @@
     "popupText": "New achievement: Overproduction!",
     "unlockCriteria": "Deal 3x boss max HP total damage during the encounter.",
     "details": "Unlock when you deal 3x boss max HP total damage during the encounter.",
-    "directorFlavor": "\"Trigger condition: Deal 3x boss max HP total damage during the encounter. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Overproduction: Boss-fight choreography ended in high-yield disassembly. Hit the 3 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-boss-overkill-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1198,12 +1198,12 @@
     "popupText": "New achievement: Style Bonus!",
     "unlockCriteria": "Defeat the boss after triggering at least 3 abilities.",
     "details": "Unlock when you defeat the boss after triggering at least 3 abilities.",
-    "directorFlavor": "\"Trigger condition: Defeat the boss after triggering at least 3 abilities. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Style Bonus: Boss-fight choreography ended in high-yield disassembly. Hit the 3 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-boss-with-style-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1214,12 +1214,12 @@
     "popupText": "New achievement: Budget Boss Kill!",
     "unlockCriteria": "Defeat the boss with only common gear equipped.",
     "details": "Unlock when you defeat the boss with only common gear equipped.",
-    "directorFlavor": "\"Trigger condition: Defeat the boss with only common gear equipped. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-boss-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Budget Boss Kill: Boss-fight choreography ended in high-yield disassembly. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-boss-with-basic-gear-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1230,8 +1230,8 @@
     "popupText": "New achievement: Exit Strategy!",
     "unlockCriteria": "Unlock the stairs objective on Floor 1.",
     "details": "Unlock when you unlock the stairs objective on Floor 1.",
-    "directorFlavor": "\"Exit Strategy? Nice television.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Exit Strategy: You bullied progression gates until the stairs begged for mercy. Hit the 1 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-stairs-unlocked-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1252,8 +1252,8 @@
     "popupText": "New achievement: There It Is!",
     "unlockCriteria": "Discover the stairs location.",
     "details": "Unlock when you discover the stairs location.",
-    "directorFlavor": "\"There It Is? Nice television.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. There It Is: You bullied progression gates until the stairs begged for mercy. Crowd liked it.",
+    "iconId": "achv-stairs-discovered-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1275,8 +1275,8 @@
     "popupText": "New achievement: Paperwork Enjoyer!",
     "unlockCriteria": "Accept your first quest.",
     "details": "Unlock when you accept your first quest.",
-    "directorFlavor": "\"Paperwork Enjoyer? Nice television.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Paperwork Enjoyer: You completed paperwork by committing strategic mayhem. Crowd liked it.",
+    "iconId": "achv-quest-accepted-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1298,8 +1298,8 @@
     "popupText": "New achievement: Task Manager!",
     "unlockCriteria": "Complete your first quest.",
     "details": "Unlock when you complete your first quest.",
-    "directorFlavor": "\"Trigger condition: Complete your first quest. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Task Manager: You completed paperwork by committing strategic mayhem. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-quest-completed-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1321,12 +1321,12 @@
     "popupText": "New achievement: Completionist-ish!",
     "unlockCriteria": "Complete all Floor 1 quests in one run.",
     "details": "Unlock when you complete all Floor 1 quests in one run.",
-    "directorFlavor": "\"Trigger condition: Complete all Floor 1 quests in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Completionist-ish: You completed paperwork by committing strategic mayhem. Hit the 1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-all-floor1-quests-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": [
       {
@@ -1350,8 +1350,8 @@
     "popupText": "New achievement: HR Approved!",
     "unlockCriteria": "Discover the safe room.",
     "details": "Unlock when you discover the safe room.",
-    "directorFlavor": "\"HR Approved? Nice television.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. HR Approved: You located the only room not actively auditioning to kill you. Crowd liked it.",
+    "iconId": "achv-safe-room-discovered-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1372,8 +1372,8 @@
     "popupText": "New achievement: Social Build!",
     "unlockCriteria": "Talk to all Floor 1 key NPCs.",
     "details": "Unlock when you talk to all Floor 1 key NPCs.",
-    "directorFlavor": "\"Trigger condition: Talk to all Floor 1 key NPCs. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Social Build: You advanced by weaponizing confidence and poor impulse control. Hit the 1 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-npc-social-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1388,8 +1388,8 @@
     "popupText": "New achievement: Loyal Customer!",
     "unlockCriteria": "Buy your first piece of gear.",
     "details": "Unlock when you buy your first piece of gear.",
-    "directorFlavor": "\"Trigger condition: Buy your first piece of gear. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Loyal Customer: You advanced by weaponizing confidence and poor impulse control. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-merchant-customer-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1410,8 +1410,8 @@
     "popupText": "New achievement: Dressed for Ratings!",
     "unlockCriteria": "Equip all major gear slots once.",
     "details": "Unlock when you equip all major gear slots once.",
-    "directorFlavor": "\"Trigger condition: Equip all major gear slots once. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Dressed for Ratings: You advanced by weaponizing confidence and poor impulse control. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-fully-equipped-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -1426,8 +1426,8 @@
     "popupText": "New achievement: Roll Credits (Floor 1)!",
     "unlockCriteria": "Clear Floor 1 and take the stairs alive.",
     "details": "Unlock when you clear Floor 1 and take the stairs alive.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 and take the stairs alive. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-objective-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Roll Credits (Floor 1): You bullied progression gates until the stairs begged for mercy. Hit the 1 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-floor1-clear-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1449,8 +1449,8 @@
     "popupText": "New achievement: Kaboom!!",
     "unlockCriteria": "Step on your first trap and survive.",
     "details": "Unlock when you step on your first trap and survive.",
-    "directorFlavor": "\"Kaboom!? Nice television.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. Kaboom!: You advanced by weaponizing confidence and poor impulse control. Crowd liked it.",
+    "iconId": "achv-trap-stepper-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1465,8 +1465,8 @@
     "popupText": "New achievement: Frequent Flyer (Traps)!",
     "unlockCriteria": "Trigger 3 traps in one run and survive all of them.",
     "details": "Unlock when you trigger 3 traps in one run and survive all of them.",
-    "directorFlavor": "\"Trigger condition: Trigger 3 traps in one run and survive all of them. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Frequent Flyer (Traps): You advanced by weaponizing confidence and poor impulse control. Hit the 3 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-trap-tourist-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1481,8 +1481,8 @@
     "popupText": "New achievement: Mine Sweepern't!",
     "unlockCriteria": "Trigger a trap and still clear the room.",
     "details": "Unlock when you trigger a trap and still clear the room.",
-    "directorFlavor": "\"Trigger condition: Trigger a trap and still clear the room. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Mine Sweepern't: You wrapped the episode in a hail of bad decisions and victory sparks. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-trap-speedrun-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1497,8 +1497,8 @@
     "popupText": "New achievement: Bait Technician!",
     "unlockCriteria": "Lure 5 enemies through traps in one run.",
     "details": "Unlock when you lure 5 enemies through traps in one run.",
-    "directorFlavor": "\"Trigger condition: Lure 5 enemies through traps in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Bait Technician: You advanced by weaponizing confidence and poor impulse control. Hit the 5 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-trap-bait-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -1513,8 +1513,8 @@
     "popupText": "New achievement: Geometry Major!",
     "unlockCriteria": "Travel 500 feet while hugging room edges.",
     "details": "Unlock when you travel 500 feet while hugging room edges.",
-    "directorFlavor": "\"Geometry Major? Nice television.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Geometry Major: You advanced by weaponizing confidence and poor impulse control. Hit the 500 benchmark and the dungeon noticed. Crowd liked it.",
+    "iconId": "achv-wall-hugger-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1529,8 +1529,8 @@
     "popupText": "New achievement: Zig. Zag. Win.!",
     "unlockCriteria": "Make 50 direction changes during one combat encounter.",
     "details": "Unlock when you make 50 direction changes during one combat encounter.",
-    "directorFlavor": "\"Trigger condition: Make 50 direction changes during one combat encounter. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. Zig. Zag. Win.: You advanced by weaponizing confidence and poor impulse control. Hit the 50 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-zig-zag-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1545,8 +1545,8 @@
     "popupText": "New achievement: No Brake Pedal!",
     "unlockCriteria": "Go 60 seconds without stopping movement during combat.",
     "details": "Unlock when you go 60 seconds without stopping movement during combat.",
-    "directorFlavor": "\"Trigger condition: Go 60 seconds without stopping movement during combat. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. No Brake Pedal: You chose the hard mode that alarms producers and thrills viewers. Hit the 60 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-never-stop-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -1561,8 +1561,8 @@
     "popupText": "New achievement: Door Dancer!",
     "unlockCriteria": "Cross the same doorway 10 times during one fight.",
     "details": "Unlock when you cross the same doorway 10 times during one fight.",
-    "directorFlavor": "\"Trigger condition: Cross the same doorway 10 times during one fight. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Door Dancer: You converted carnage into a clock-driven sport. Hit the 10 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-door-dancer-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1577,8 +1577,8 @@
     "popupText": "New achievement: Corner Clutch!",
     "unlockCriteria": "Survive 20 seconds while boxed near a corner.",
     "details": "Unlock when you survive 20 seconds while boxed near a corner.",
-    "directorFlavor": "\"Trigger condition: Survive 20 seconds while boxed near a corner. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Corner Clutch: You converted carnage into a clock-driven sport. Hit the 20 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-corner-clutch-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
@@ -1593,12 +1593,12 @@
     "popupText": "New achievement: Loot Under Fire!",
     "unlockCriteria": "Collect 8 pickups while enemies are within melee range.",
     "details": "Unlock when you collect 8 pickups while enemies are within melee range.",
-    "directorFlavor": "\"Trigger condition: Collect 8 pickups while enemies are within melee range. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Loot Under Fire: You advanced by weaponizing confidence and poor impulse control. Hit the 8 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-pickup-under-fire-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1609,12 +1609,12 @@
     "popupText": "New achievement: XP Rush!",
     "unlockCriteria": "Gain 3 levels within 60 seconds.",
     "details": "Unlock when you gain 3 levels within 60 seconds.",
-    "directorFlavor": "\"Trigger condition: Gain 3 levels within 60 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Camera one caught this beautifully. XP Rush: You power-leveled like the med bay owes you money. Hit the 3/60 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-xp-rush-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1625,8 +1625,8 @@
     "popupText": "New achievement: Bag Opened!",
     "unlockCriteria": "Open inventory for the first time in a safe room.",
     "details": "Unlock when you open inventory for the first time in a safe room.",
-    "directorFlavor": "\"Bag Opened? Nice television.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Production notes: this was expensive and worth it. Bag Opened: You located the only room not actively auditioning to kill you. Crowd liked it.",
+    "iconId": "achv-inventory-tour-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1641,8 +1641,8 @@
     "popupText": "New achievement: Wardrobe Change!",
     "unlockCriteria": "Open equipment for the first time in a safe room.",
     "details": "Unlock when you open equipment for the first time in a safe room.",
-    "directorFlavor": "\"Wardrobe Change? Nice television.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "The crowd demanded violence; you provided logistics. Wardrobe Change: You located the only room not actively auditioning to kill you. Crowd liked it.",
+    "iconId": "achv-gear-tour-placeholder",
     "difficulty": "basic",
     "reward": {
       "type": "lootBox",
@@ -1657,8 +1657,8 @@
     "popupText": "New achievement: Fashion Kill!",
     "unlockCriteria": "Equip a new item and defeat an enemy within 5 seconds.",
     "details": "Unlock when you equip a new item and defeat an enemy within 5 seconds.",
-    "directorFlavor": "\"Trigger condition: Equip a new item and defeat an enemy within 5 seconds. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Editorial is already cutting the replay package. Fashion Kill: You converted carnage into a clock-driven sport. Hit the 5 benchmark and the dungeon noticed. Ratings jumped, and legal pretended not to notice.",
+    "iconId": "achv-fashion-kill-placeholder",
     "difficulty": "standard",
     "reward": {
       "type": "lootBox",
@@ -1673,12 +1673,12 @@
     "popupText": "New achievement: Starter Weapon Legend!",
     "unlockCriteria": "Clear Floor 1 without changing your starting weapon.",
     "details": "Unlock when you clear Floor 1 without changing your starting weapon.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 without changing your starting weapon. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Great segment timing, questionable ethics, perfect television. Starter Weapon Legend: You chose the hard mode that alarms producers and thrills viewers. Hit the 1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-starter-weapon-clear-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "epic"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1689,12 +1689,12 @@
     "popupText": "New achievement: One-Track Mind!",
     "unlockCriteria": "Clear Floor 1 while leveling only one skill tree.",
     "details": "Unlock when you clear Floor 1 while leveling only one skill tree.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 while leveling only one skill tree. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Somewhere a sponsor just approved a bonus ad buy. One-Track Mind: Your skill curve now qualifies as a workplace hazard. Hit the 1 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-single-skill-run-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1705,12 +1705,12 @@
     "popupText": "New achievement: Glass Cannon TV!",
     "unlockCriteria": "Clear Floor 1 with zero defense upgrades.",
     "details": "Unlock when you clear Floor 1 with zero defense upgrades.",
-    "directorFlavor": "\"Trigger condition: Clear Floor 1 with zero defense upgrades. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Tonight on Floor One: your impulse control fails upward. Glass Cannon TV: You wrapped the episode in a hail of bad decisions and victory sparks. Hit the 1 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-glass-cannon-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "divine"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1721,8 +1721,8 @@
     "popupText": "New achievement: Pacifist-ish!",
     "unlockCriteria": "Reach the boss room with under 20 enemy defeats.",
     "details": "Unlock when you reach the boss room with under 20 enemy defeats.",
-    "directorFlavor": "\"Trigger condition: Reach the boss room with under 20 enemy defeats. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Standards and practices filed a complaint, then watched twice. Pacifist-ish: Boss-fight choreography ended in high-yield disassembly. Hit the 20 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-pacifist-ish-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "directorMessage",
@@ -1737,12 +1737,12 @@
     "popupText": "New achievement: Showboater!",
     "unlockCriteria": "Trigger 5 different achievement categories in one run.",
     "details": "Unlock when you trigger 5 different achievement categories in one run.",
-    "directorFlavor": "\"Trigger condition: Trigger 5 different achievement categories in one run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "This clip tested off the charts with our bloodthirsty focus group. Showboater: You advanced by weaponizing confidence and poor impulse control. Hit the 5 benchmark and the dungeon noticed. Ratings spiked hard, med bay doubled staffing, and legal requested fewer close-ups.",
+    "iconId": "achv-showboater-placeholder",
     "difficulty": "hard",
     "reward": {
       "type": "lootBox",
-      "tier": "legendary"
+      "tier": "rare"
     },
     "unlockRules": []
   },
@@ -1753,12 +1753,12 @@
     "popupText": "New achievement: Floor 1 Grand Tour!",
     "unlockCriteria": "Unlock 25 different achievements in a single Floor 1 run.",
     "details": "Unlock when you unlock 25 different achievements in a single Floor 1 run.",
-    "directorFlavor": "\"Trigger condition: Unlock 25 different achievements in a single Floor 1 run. Keep that pace; the audience is watching every bad decision in high definition.\" \u2014 The Director \"Bigger risk, bigger ratings, bigger crate. If you want premium applause, keep pushing until the floor starts pushing back.\" \u2014 The Director \"This is the kind of stunt that makes interns update the safety waiver mid-broadcast. Beautiful, reckless, and very expensive to insure.\" \u2014 The Director",
-    "iconId": "achv-challenge-placeholder",
+    "directorFlavor": "Live audience reaction: delighted screaming. Floor 1 Grand Tour: You advanced by weaponizing confidence and poor impulse control. Hit the 25/1 benchmark and the dungeon noticed. Ratings exploded, med bay opened overflow, legal sent a memo in all caps, and the Director labeled it premium content.",
+    "iconId": "achv-floor1-grand-tour-placeholder",
     "difficulty": "brutal",
     "reward": {
       "type": "lootBox",
-      "tier": "divine"
+      "tier": "rare"
     },
     "unlockRules": []
   }
