@@ -16,6 +16,16 @@ interface SidecarRunListResponse {
   readonly runs: SidecarRunListEntry[];
 }
 
+export interface LatestRunLookup {
+  readonly briefId: string;
+  readonly runId: string;
+  readonly timestamp: string | null;
+}
+
+interface LatestRunLookupResponse {
+  readonly run: LatestRunLookup | null;
+}
+
 export interface ApproveResponse {
   readonly briefId: string;
   readonly spriteName: string;
@@ -115,6 +125,22 @@ export async function fetchRunSummary(
     throw new Error(`Failed to load run summary (${response.status} ${response.statusText})`);
   }
   return (await response.json()) as Record<string, unknown>;
+}
+
+export async function fetchLatestRunForBriefSince(
+  briefId: string,
+  requestedAt: string,
+  fetcher: typeof fetch = fetch,
+): Promise<LatestRunLookup | null> {
+  const params = new URLSearchParams({ briefId, requestedAt });
+  const response = await fetcher(`${SIDECAR_BASE}/api/workflow/latest-run?${params.toString()}`, {
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to look up latest run (${response.status} ${response.statusText})`);
+  }
+  const payload = (await response.json()) as LatestRunLookupResponse;
+  return payload.run ?? null;
 }
 
 export function extractVariantIndices(summary: Record<string, unknown>): number[] {
