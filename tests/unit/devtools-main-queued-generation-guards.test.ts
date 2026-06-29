@@ -7,7 +7,7 @@ describe('devtools queued generation guards', () => {
 
     expect(source).toContain('const alreadyQueuedNow = queueState.items.some(');
     expect(source).toContain('queueBtn.disabled = true;');
-    expect(source).toContain('if (!Number.isFinite(requestedAt)) {');
+    expect(source).toContain('if (!Number.isFinite(Date.parse(item.generationRequestedAt))) {');
     expect(source).toContain('Queued-run poll failed (will retry)');
     expect(source).toContain("if (selectedAfterGenerate?.stage === 'generating')");
   });
