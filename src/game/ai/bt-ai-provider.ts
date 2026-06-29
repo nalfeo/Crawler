@@ -3624,7 +3624,15 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     const reachFt = Math.max(weapon.range, weapon.aoeRadius);
 
-    if (weapon.weaponType === WeaponType.RANGED) {
+    // Every projectile-firing weapon (RANGED, MAGIC, THROWN, BEAM) kites at a
+    // standoff instead of charging the enemy. Only TRAP — which has no projectile
+    // and is dropped at the player's feet — keeps the generic close-range engage.
+    if (
+      weapon.weaponType === WeaponType.RANGED ||
+      weapon.weaponType === WeaponType.MAGIC ||
+      weapon.weaponType === WeaponType.THROWN ||
+      weapon.weaponType === WeaponType.BEAM
+    ) {
       return this.planRangedEngagement(world, playerX, playerY, target, reachFt);
     }
 
