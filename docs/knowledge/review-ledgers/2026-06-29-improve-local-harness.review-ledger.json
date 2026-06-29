@@ -1,0 +1,67 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-29",
+  "session_slug": "improve-local-harness",
+  "task_title": "Encode apple-scaled review harness skill + pre-PR ledger guard",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "rubber-duck gpt-5.4, approved_with_changes; all 6 concerns adopted (failClosed, strict scope allowlist, added-files ledger discovery, stricter validator, CI/test wiring, exec prereqs)"
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "two independent plans synthesized by opus-4.8 judge into plan.md"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 4,
+          "resolved_count": 4,
+          "clean": false,
+          "notes": "primary code-review agent over HEAD~1..HEAD; findings folded into the multi-model adjudication below"
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "re-review after fixes landed; no remaining concerns"
+        }
+      ]
+    },
+    "multi_model_review": {
+      "clean": true,
+      "adjudicator_model": "gpt-5.4",
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 9,
+          "valid_count": 7,
+          "resolved_count": 7,
+          "clean": false,
+          "notes": "3 code-review agents + security-review (CLEAN). gpt-5.4 (xhigh) adjudicated 9 findings -> 7 valid (git.mjs fail-open merge-base, cli --date traversal, cli bare --apples downgrade, cli parseFlags --flag=value/-- terminator, cli unknown-stage, guard gatherDecision testability, populate-ledger). gemini rubber-duck finding ruled invalid (rubber-duck IS a valid agent_type)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6", "gpt-5.3-codex", "gemini-3.1-pro-preview"],
+          "concerns_count": 0,
+          "valid_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "all adjudicated-valid concerns resolved with regression tests (182 guard+ledger tests green); no remaining concerns"
+        }
+      ]
+    }
+  }
+}

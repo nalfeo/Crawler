@@ -61,7 +61,8 @@ export function mergeBaseWithMain(cwd) {
 export function branchFiles(cwd) {
   return cached('branchfiles', cwd, () => {
     const base = mergeBaseWithMain(cwd);
-    if (!base) return [];
+    if (!base)
+      throw new Error('could not resolve merge-base with main (shallow clone or no main ref)');
     const out = git(cwd, ['diff', '--name-only', `${base}...HEAD`]);
     return out
       .split(/\r?\n/)
@@ -79,7 +80,8 @@ export function branchFiles(cwd) {
 export function branchAddedFiles(cwd) {
   return cached('branchaddedfiles', cwd, () => {
     const base = mergeBaseWithMain(cwd);
-    if (!base) return [];
+    if (!base)
+      throw new Error('could not resolve merge-base with main (shallow clone or no main ref)');
     const out = git(cwd, ['diff', '--name-status', `${base}...HEAD`]);
     return out
       .split(/\r?\n/)
@@ -96,7 +98,8 @@ export function branchAddedFiles(cwd) {
 export function branchCommitSubjects(cwd) {
   return cached('subjects', cwd, () => {
     const base = mergeBaseWithMain(cwd);
-    if (!base) return [];
+    if (!base)
+      throw new Error('could not resolve merge-base with main (shallow clone or no main ref)');
     const out = git(cwd, ['log', '--no-merges', '--format=%s', `${base}..HEAD`]);
     return out
       .split(/\r?\n/)

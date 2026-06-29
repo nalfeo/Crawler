@@ -23,3 +23,19 @@ AZURE_STORAGE_QUEUE_NAME=asset-requests
 AZURE_STORAGE_RUNS_CONTAINER=generated-runs
 SPRITES_ASSET_QUEUE=azure-queue
 SPRITES_RUN_STORE=azure-blob
+
+# --- Azure AI Foundry (ADR 0033, opt-in) -------------------------------------
+# Backend selectors default to 'azure-openai'. Set to 'foundry' to route a
+# provider through an Azure AI Foundry unified-inference endpoint instead, which
+# unlocks the broader model catalog (FLUX/SDXL/Llama/Mistral/DeepSeek + router).
+# SPRITES_PROVIDER=foundry          # image
+# SPRITES_TEXT_PROVIDER=foundry     # variation expansion
+# SPRITES_SYNTH_PROVIDER=foundry    # brief synthesis + brief selector
+# SPRITES_VISION_PROVIDER=foundry   # judge
+FOUNDRY_ENDPOINT=
+FOUNDRY_API_KEY=
+FOUNDRY_API_VERSION=
+FOUNDRY_IMAGE_MODEL=
+FOUNDRY_TEXT_MODEL=
+FOUNDRY_VISION_MODEL=
+FOUNDRY_BRIEF_SELECTOR_MODEL=

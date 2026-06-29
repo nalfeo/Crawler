@@ -6,8 +6,10 @@ description: >-
   the approved art", "open the asset PR", "ship the checked-in sprites", or to
   clear the asset-checkin queue. Covers discovering open asset-checkin issues,
   unioning their pushed art branches into a single batch branch (via
-  `npm run sprites:asset-pr`), opening the PR that closes the source issues, and
-  arming auto-merge per the repo merge policy.
+  `npm run sprites:asset-pr`), opening the PR that closes the source issues,
+  arming auto-merge per the repo merge policy, and — after merge — auditing for
+  placeholders/consumers the new art should be wired into so checked-in sprites
+  don't sit unused.
 ---
 
 # Asset PR
@@ -59,6 +61,21 @@ payload. This skill folds **all** of them into one branch and one PR.
 6. **Confirm closure:** once merged, GitHub closes every `Closes #<n>` issue.
    Spot-check with `gh issue list --label asset-checkin --state open` (should be
    empty, or only issues whose branches failed to fold — see playbook §Recovery).
+7. **Hook the merged art into the game (follow-up — do not skip):**
+   consolidation only ships the files; nothing renders them until a consumer
+   points at the new brief id, so checked-in art will sit unused until it is
+   wired. After the merge, find where it belongs:
+   `npm run sprites:placeholder-audit -- --since main` (the **placeholder-audit**
+   skill). For every "Replaceable now" row — and any verified "related name"
+   suggestion — replace the placeholder in the correct layer:
+   - **Item icons** resolve by `itemId === briefId` (manifest) — usually no code.
+   - **Mobs** point via `spriteId` in `src/shared/mobDefs.ts`.
+   - **Engine entities** (rat / slime / boss) map type → brief id in
+     `ENTITY_GENERATED_SPRITE` in `src/engine/PhaserBridge.ts`.
+     Verify near-identical concepts aren't conflated (e.g. `rat-slime` boss ≠
+     `slime-rat` tutorial boss) and tune render scale for the new PNG size. This is
+     a **separate non-art PR** that runs the full gates — never fold wiring into the
+     art-only batch.
 
 ## Guardrails
 
@@ -69,6 +86,10 @@ payload. This skill folds **all** of them into one branch and one PR.
   re-check-in the lost asset.
 - One batch PR at a time. If a prior batch PR is still open, merge or close it
   before opening another so issues aren't double-counted.
+- **Consolidating ≠ wiring.** The batch PR is art-only by design; nothing renders
+  the new sprites until a consumer references the brief id. Always run a
+  placeholder-audit pass after merge and open a follow-up wiring PR for any match
+  — otherwise approved art ships and is never seen in-game.
 - Do not hand-edit the unioned `manifest.json` / `sprite-catalog.json`; if the
   union looks wrong, fix `mergeManifests` / `mergeCatalogs` in
   `scripts/sprites/asset-issues.ts` and add a unit test.

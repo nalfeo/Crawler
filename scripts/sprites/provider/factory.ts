@@ -6,8 +6,12 @@
  * codebase, and to give tests a clean construct-from-options path that
  * bypasses env entirely.
  *
- * Currently only the Azure OpenAI provider exists. When MAI's image
- * generation endpoint comes online, switch on `SPRITES_PROVIDER` here.
+ * Currently supports two backends: `azure-openai` (default, direct Azure
+ * OpenAI resource) and `foundry` (Azure AI Foundry unified inference; ADR
+ * 0033). Both speak the same OpenAI-compatible REST surface, so the provider
+ * classes are shared — the factory just feeds them different env. Switch on
+ * `SPRITES_PROVIDER` / `SPRITES_TEXT_PROVIDER` / `SPRITES_VISION_PROVIDER` /
+ * `SPRITES_SYNTH_PROVIDER` here.
  */
 
 import { AzureOpenAIImageProvider } from './azure-openai.js';
@@ -42,6 +46,38 @@ export interface CreateProviderOptions {
 
 const DEFAULT_AZURE_API_VERSION = '2025-04-01-preview';
 const DEFAULT_AZURE_DEPLOYMENT = 'gpt-image-1';
+
+/**
+ * Supported content-generation backends (ADR 0033). `azure-openai` hits a
+ * direct Azure OpenAI resource; `foundry` hits an Azure AI Foundry unified
+ * inference endpoint. Both speak the same OpenAI-compatible REST surface, so
+ * the only differences are endpoint, model name, key, and api-version — the
+ * provider classes are identical. `azure-openai` stays the default; `foundry`
+ * is opt-in and reads its own `FOUNDRY_*` env vars.
+ */
+const SUPPORTED_BACKENDS = ['azure-openai', 'foundry'] as const;
+type Backend = (typeof SUPPORTED_BACKENDS)[number];
+
+function resolveBackend(value: string | undefined, varName: string): Backend {
+  const which = (value ?? 'azure-openai').toLowerCase();
+  if ((SUPPORTED_BACKENDS as ReadonlyArray<string>).includes(which)) return which as Backend;
+  throw new Error(
+    `Unknown ${varName} '${which}'. Supported values: ${SUPPORTED_BACKENDS.join(', ')}.`,
+  );
+}
+
+/** Shared Foundry connection fields. Throws if endpoint/key are missing. */
+function foundryConnection(env: Readonly<Record<string, string | undefined>>): {
+  endpoint: string;
+  apiKey: string;
+  apiVersion: string;
+} {
+  return {
+    endpoint: required(env, 'FOUNDRY_ENDPOINT'),
+    apiKey: required(env, 'FOUNDRY_API_KEY'),
+    apiVersion: env.FOUNDRY_API_VERSION ?? DEFAULT_AZURE_API_VERSION,
+  };
+}
 
 /**
  * Resolve the Azure OpenAI **chat** deployment from the environment,
@@ -96,15 +132,12 @@ function warnChatDeploymentFallbackOnce(deployment: string, warn: (message: stri
 
 export function createImageProvider(options: CreateProviderOptions = {}): ImageProvider {
   const env = options.env ?? process.env;
-  const which = (env.SPRITES_PROVIDER ?? 'azure-openai').toLowerCase();
+  const which = resolveBackend(env.SPRITES_PROVIDER, 'SPRITES_PROVIDER');
 
-  if (which === 'azure-openai') {
-    return createAzureProvider(env, options.fetch);
+  if (which === 'foundry') {
+    return createFoundryImageProvider(env, options.fetch);
   }
-  throw new Error(
-    `Unknown SPRITES_PROVIDER '${which}'. Supported values: azure-openai. ` +
-      `(MAI provider is planned — see scripts/sprites/provider/azure-openai.ts TODO.)`,
-  );
+  return createAzureProvider(env, options.fetch);
 }
 
 /**
@@ -122,11 +155,14 @@ export function createTextProvider(options: CreateProviderOptions = {}): TextPro
   const warn = options.warn ?? defaultWarn;
   const which = (env.SPRITES_TEXT_PROVIDER ?? 'azure-openai').toLowerCase();
   if (which === 'none') return null;
+  if (which === 'foundry') {
+    return createFoundryChatProvider(env, options.fetch);
+  }
   if (which === 'azure-openai') {
     return createAzureChatProvider(env, warn, options.fetch);
   }
   throw new Error(
-    `Unknown SPRITES_TEXT_PROVIDER '${which}'. Supported values: azure-openai, none.`,
+    `Unknown SPRITES_TEXT_PROVIDER '${which}'. Supported values: azure-openai, foundry, none.`,
   );
 }
 
@@ -149,11 +185,14 @@ export function createVisionProvider(options: CreateProviderOptions = {}): Visio
   const env = options.env ?? process.env;
   const which = (env.SPRITES_VISION_PROVIDER ?? 'azure-openai').toLowerCase();
   if (which === 'none') return null;
+  if (which === 'foundry') {
+    return createFoundryVisionProvider(env, options.fetch);
+  }
   if (which === 'azure-openai') {
     return createAzureVisionProvider(env, options.fetch);
   }
   throw new Error(
-    `Unknown SPRITES_VISION_PROVIDER '${which}'. Supported values: azure-openai, none.`,
+    `Unknown SPRITES_VISION_PROVIDER '${which}'. Supported values: azure-openai, foundry, none.`,
   );
 }
 
@@ -170,6 +209,62 @@ function createAzureProvider(
     deployment,
     apiKey,
     apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+function createFoundryImageProvider(
+  env: Readonly<Record<string, string | undefined>>,
+  fetchImpl?: typeof fetch,
+): ImageProvider {
+  const conn = foundryConnection(env);
+  const model = env.FOUNDRY_IMAGE_MODEL ?? DEFAULT_AZURE_DEPLOYMENT;
+  return new AzureOpenAIImageProvider({
+    endpoint: conn.endpoint,
+    deployment: model,
+    apiKey: conn.apiKey,
+    apiVersion: conn.apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+/**
+ * Foundry text/synth/vision providers reuse the Azure OpenAI classes —
+ * the OpenAI-compatible REST surface is identical, only the model name and
+ * connection differ. Each returns `null` when its model is unconfigured so
+ * graceful-degrade behaviour matches the azure-openai path.
+ */
+function createFoundryChatProvider(
+  env: Readonly<Record<string, string | undefined>>,
+  fetchImpl?: typeof fetch,
+): TextProvider | null {
+  const model = env.FOUNDRY_TEXT_MODEL;
+  if (!model) return null;
+  const conn = foundryConnection(env);
+  return new AzureOpenAIChatProvider({
+    endpoint: conn.endpoint,
+    deployment: model,
+    apiKey: conn.apiKey,
+    apiVersion: conn.apiVersion,
+    timeoutMs: resolveProviderTimeoutMs(env),
+    ...(fetchImpl ? { fetch: fetchImpl } : {}),
+  });
+}
+
+function createFoundryVisionProvider(
+  env: Readonly<Record<string, string | undefined>>,
+  fetchImpl?: typeof fetch,
+): VisionProvider | null {
+  const model = env.FOUNDRY_VISION_MODEL;
+  if (!model) return null;
+  const conn = foundryConnection(env);
+  return new AzureOpenAIVisionProvider({
+    endpoint: conn.endpoint,
+    deployment: model,
+    apiKey: conn.apiKey,
+    apiVersion: conn.apiVersion,
     timeoutMs: resolveProviderTimeoutMs(env),
     ...(fetchImpl ? { fetch: fetchImpl } : {}),
   });
@@ -209,13 +304,22 @@ function createAzureChatProvider(
 export function createSynthProvider(options: CreateProviderOptions = {}): SynthProvider {
   const env = options.env ?? process.env;
   const warn = options.warn ?? defaultWarn;
-  const which = (
-    env.SPRITES_SYNTH_PROVIDER ??
-    env.SPRITES_TEXT_PROVIDER ??
-    'azure-openai'
-  ).toLowerCase();
-  if (which !== 'azure-openai') {
-    throw new Error(`Unknown SPRITES_SYNTH_PROVIDER '${which}'. Supported values: azure-openai.`);
+  const which = resolveBackend(
+    env.SPRITES_SYNTH_PROVIDER ?? env.SPRITES_TEXT_PROVIDER,
+    'SPRITES_SYNTH_PROVIDER',
+  );
+  if (which === 'foundry') {
+    const conn = foundryConnection(env);
+    const model = required(env, 'FOUNDRY_TEXT_MODEL');
+    return new AzureOpenAISynthProvider({
+      endpoint: conn.endpoint,
+      deployment: model,
+      apiKey: conn.apiKey,
+      apiVersion: conn.apiVersion,
+      providerLabelPrefix: 'foundry',
+      timeoutMs: resolveProviderTimeoutMs(env),
+      ...(options.fetch ? { fetch: options.fetch } : {}),
+    });
   }
   const endpoint = required(env, 'AZURE_OPENAI_ENDPOINT');
   const apiKey = required(env, 'AZURE_OPENAI_API_KEY');
@@ -243,6 +347,28 @@ export function createBriefSelectorProvider(
   options: CreateProviderOptions = {},
 ): BriefSelectorProvider | null {
   const env = options.env ?? process.env;
+  const which = resolveBackend(
+    env.SPRITES_SYNTH_PROVIDER ?? env.SPRITES_TEXT_PROVIDER,
+    'SPRITES_SYNTH_PROVIDER',
+  );
+  if (which === 'foundry') {
+    const selectorModel = env.FOUNDRY_BRIEF_SELECTOR_MODEL;
+    if (!env.FOUNDRY_ENDPOINT || !env.FOUNDRY_API_KEY || !selectorModel) return null;
+    if (selectorModel === env.FOUNDRY_TEXT_MODEL) {
+      throw new Error(
+        `FOUNDRY_BRIEF_SELECTOR_MODEL must differ from the synthesizer model (FOUNDRY_TEXT_MODEL='${selectorModel}').`,
+      );
+    }
+    const conn = foundryConnection(env);
+    return new AzureOpenAIBriefSelectorProvider({
+      endpoint: conn.endpoint,
+      deployment: selectorModel,
+      apiKey: conn.apiKey,
+      apiVersion: conn.apiVersion,
+      timeoutMs: resolveProviderTimeoutMs(env),
+      ...(options.fetch ? { fetch: options.fetch } : {}),
+    });
+  }
   const endpoint = env.AZURE_OPENAI_ENDPOINT;
   const apiKey = env.AZURE_OPENAI_API_KEY;
   const selectorDeployment = env.AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT;

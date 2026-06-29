@@ -74,6 +74,29 @@ helpers — no merge-conflict handling, fully reproducible.
   minutes of unit + lint + format + typecheck.
 - Squash-merge auto-deletes the batch branch; that's fine, it's disposable.
 
+## §Wiring — hook the merged art into the game
+
+The batch PR is art-only by design (fast lane), so it ships PNGs + manifest +
+catalog but **wires nothing**: a sprite renders only once a consumer references
+its brief id. Skipping this leaves approved art checked in but never shown — e.g.
+`rat-v1` / `rat-slime-v1` landed via earlier asset PRs yet rats and the staircase
+boss still drew Kenney placeholders until wired by hand.
+
+After the batch merges:
+
+1. `npm run sprites:placeholder-audit -- --since main` (the **placeholder-audit**
+   skill). Read the **Replaceable now** rows; cross-check **related name**
+   suggestions (heuristic) before trusting them.
+2. Wire each match in the right layer:
+   - item icons: resolve by `itemId === briefId`, usually zero code;
+   - mobs: `spriteId` in `src/shared/mobDefs.ts`;
+   - engine entities (rat/slime/boss): `ENTITY_GENERATED_SPRITE` + render scale in
+     `src/engine/PhaserBridge.ts`.
+3. Distinguish near-identical concepts (`rat-slime` boss ≠ `slime-rat` tutorial
+   boss) and add a before/after unit test for the resolution.
+4. Open it as a **separate non-art PR** (runs the full gates) — never fold wiring
+   into the art-only batch.
+
 ## §Recovery — when something goes wrong
 
 **A source branch was deleted** (e.g. someone pruned `assets/<slug>`):

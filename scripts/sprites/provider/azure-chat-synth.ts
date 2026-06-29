@@ -52,6 +52,12 @@ export interface AzureOpenAISynthProviderOptions {
   /** Injectable fetch implementation; defaults to global fetch. */
   readonly fetch?: typeof fetch;
   /**
+   * Provenance prefix for {@link providerLabel}. Defaults to `azure-openai`;
+   * the factory passes `foundry` when wiring an Azure AI Foundry backend so a
+   * candidate's recorded label reflects which catalog produced it.
+   */
+  readonly providerLabelPrefix?: string;
+  /**
    * Per-request timeout in ms. Defaults to {@link DEFAULT_PROVIDER_TIMEOUT_MS}.
    * Aborts a hung synthesis call instead of leaving `sprites:synth` to hang.
    */
@@ -87,7 +93,7 @@ export class AzureOpenAISynthProvider implements SynthProvider {
     this.maxTokens = opts.maxTokens ?? 1500;
     this.fetchImpl = opts.fetch ?? fetch;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS;
-    this.providerLabel = `azure-openai:${opts.deployment}`;
+    this.providerLabel = `${opts.providerLabelPrefix ?? 'azure-openai'}:${opts.deployment}`;
   }
 
   async synthesizeBrief(request: SynthesizeBriefRequest): Promise<SynthesizeBriefResponse> {

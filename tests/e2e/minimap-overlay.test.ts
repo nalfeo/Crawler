@@ -86,7 +86,12 @@ function gameToScreen(rect: CanvasRect, gx: number, gy: number): { x: number; y:
  * finish its first rendering pass (≥3 s of scene update ticks).
  */
 async function loadLab(page: Page): Promise<void> {
-  await page.goto(LAB_URL, { waitUntil: 'networkidle', timeout: 30_000 });
+  // `commit` (not `networkidle`): Vite keeps a persistent HMR socket open and may
+  // trigger a one-off optimize-deps reload on first lab load, so waiting on
+  // network state is flaky (page.goto would intermittently time out at 30s). We
+  // commit the navigation and gate on the canvas + a fixed settle below instead,
+  // matching the robust pattern in tests/e2e/helpers/ui-probe.ts.
+  await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
   await page.waitForSelector('#lab-canvas canvas', { timeout: 30_000 });
   // Give Phaser time to mount HudUI, call sync(), and bake the terrain
   // RenderTexture.  The 'ux-snapshot-lab' sets visible.fill(1) synchronously,
