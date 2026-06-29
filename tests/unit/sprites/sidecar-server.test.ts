@@ -240,6 +240,35 @@ describe('buildServer routes (inject)', () => {
     expect(body.runs[0].runId).toBe('2026-06-04T12-00-00-deadbeef');
   });
 
+  it('GET /api/workflow/latest-run returns 400 when requestedAt is invalid', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workflow/latest-run?briefId=iron-sword&requestedAt=not-a-date',
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      error: 'bad-request',
+      message: 'requestedAt must be a valid ISO timestamp',
+    });
+  });
+
+  it('GET /api/workflow/latest-run includes runs from the same second as requestedAt', async () => {
+    writeMinimalRun(path.join(root, 'runs'), 'iron-sword', '2026-06-04T12-00-00-feedface');
+    writeMinimalRun(path.join(root, 'runs'), 'cloth-shirt', '2026-06-04T12-00-59-c0ffee00');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workflow/latest-run?briefId=iron-sword&requestedAt=2026-06-04T12:00:00.500Z',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      run: {
+        briefId: 'iron-sword',
+        runId: '2026-06-04T12-00-00-feedface',
+        timestamp: '2026-06-04T12:00:00Z',
+      },
+    });
+  });
+
   it('GET /api/runs/:brief/:run returns the parsed summary.json', async () => {
     const res = await app.inject({
       method: 'GET',

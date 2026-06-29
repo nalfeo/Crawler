@@ -22,6 +22,7 @@ import {
 import { briefKey } from './shared/art-plan-status.js';
 import {
   extractVariantIndices,
+  fetchLatestRunForBriefSince,
   fetchRunSummary,
   listSidecarRuns,
   postApprove,
@@ -5728,12 +5729,7 @@ function render(): void {
           if (!item || item.stage !== 'generating' || !item.generationRequestedAt) {
             return;
           }
-          // Floor to the second to match parseRunIdTimestamp precision.
-          // parseRunIdTimestamp extracts YYYY-MM-DDTHH:MM:SS (no milliseconds),
-          // so same-second runs produced 100-999ms after request would otherwise
-          // fail the >= comparison and never be adopted.
-          const requestedAt = Math.floor(Date.parse(item.generationRequestedAt) / 1000) * 1000;
-          if (!Number.isFinite(requestedAt)) {
+          if (!Number.isFinite(Date.parse(item.generationRequestedAt))) {
             throw new Error(
               `Queued run polling stopped: invalid generationRequestedAt "${item.generationRequestedAt}".`,
             );
@@ -5748,33 +5744,41 @@ function render(): void {
             void checkWorkflowHealth();
           }
           try {
-            const runs = await listSidecarRuns();
-            // Match against the chosen candidate's id (the brief name), not kebabName.
-            // The promote step copies the candidate YAML without rewriting its internal
-            // `name:` field, so generateOne keys the run as `${brief.name}/${runId}`.
             const chosenCandidate = item.candidates.find(
               (c) => c.yamlPath === item.chosenCandidatePath,
             );
-            const expectedBriefIds = new Set<string>(
-              chosenCandidate
-                ? [chosenCandidate.id, item.kebabName]
-                : [item.kebabName, ...item.candidates.map((candidate) => candidate.id)],
-            );
+            // Match against the chosen candidate's id (the brief `name:`), not only
+            // kebabName. The promote step copies YAML without rewriting `name:`.
+            const expectedBriefIds = chosenCandidate
+              ? [chosenCandidate.id, item.kebabName]
+              : [item.kebabName, ...item.candidates.map((candidate) => candidate.id)];
             if (!chosenCandidate) {
               console.warn(
                 `Queue item ${itemId}: chosen candidate path does not match any candidate. ` +
                   `Chosen path: ${item.chosenCandidatePath ?? 'null'}, ` +
                   `available: [${item.candidates.map((c) => c.yamlPath).join(', ')}]. ` +
-                  `Falling back to known brief ids (${Array.from(expectedBriefIds).join(', ')}) for run matching.`,
+                  `Falling back to known brief ids (${expectedBriefIds.join(', ')}) for run matching.`,
               );
             }
-            const match = runs.find((run) => {
-              if (!expectedBriefIds.has(run.briefId) || !run.timestamp) {
-                return false;
+            let match: { briefId: string; runId: string } | null = null;
+            for (const briefId of expectedBriefIds) {
+              if (match) break;
+              try {
+                const latest = await fetchLatestRunForBriefSince(
+                  briefId,
+                  item.generationRequestedAt,
+                );
+                if (latest) {
+                  match = { briefId: latest.briefId, runId: latest.runId };
+                }
+              } catch (lookupError) {
+                const lookupMessage =
+                  lookupError instanceof Error ? lookupError.message : String(lookupError);
+                console.warn(
+                  `Queued-run latest lookup failed for brief ${briefId} (will retry): ${lookupMessage}`,
+                );
               }
-              const runTime = Date.parse(run.timestamp);
-              return Number.isFinite(runTime) && runTime >= requestedAt;
-            });
+            }
             if (match) {
               const summary = (await fetchRunSummary(match.briefId, match.runId)) as {
                 candidates?: RawGenerateCandidate[];
