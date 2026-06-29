@@ -142,13 +142,13 @@ npm run test:guards
 
 This is the CI-wired runner (the `check-format-and-labs` job and
 `scripts/agent/verify.sh` both call it). It runs the guard suite **and** the
-review-ledger validator suite:
+review-ledger validator + CLI suite:
 
 ```sh
 node --test ".github/extensions/copilot-guards/tests/*.test.mjs" "scripts/agent/review/*.test.mjs"
 ```
 
-Pure-function guards, no harness needed. 146 tests cover normalization, individual guards (including `pr-review-ledger` scope classification + ledger decisioning), and dispatcher behavior.
+Pure-function guards, no harness needed. 182 tests across both suites cover normalization, individual guards (including `pr-review-ledger` scope classification, ledger decisioning, and the git-error allow-through), dispatcher behavior, and the review-ledger validator + CLI input hardening.
 
 ---
 
@@ -179,5 +179,5 @@ Pure-function guards, no harness needed. 146 tests cover normalization, individu
 │   ├── pr-preflight.mjs
 │   └── pr-review-ledger.mjs   # validates the review ledger (imports scripts/agent/review/ledger.mjs)
 └── tests/
-    └── *.test.mjs             # 146 tests, node --test
+    └── *.test.mjs             # 150 tests, node --test
 ```

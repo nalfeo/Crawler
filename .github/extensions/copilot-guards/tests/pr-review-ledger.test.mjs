@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import prReviewLedger, { decideLedger, missingLedgerReason } from '../guards/pr-review-ledger.mjs';
+import prReviewLedger, {
+  decideLedger,
+  missingLedgerReason,
+  gatherDecision,
+} from '../guards/pr-review-ledger.mjs';
 import { classifyPath, isSkippablePath, isNonCodeOnlyDiff, codeFiles } from '../lib/pr-scope.mjs';
 
 // ---------------------------------------------------------------------------
@@ -145,6 +149,56 @@ test('decideLedger: ledger-only added but code in diff still requires VALID ledg
     validateFile: () => okResult,
   });
   assert.equal(d.decision, 'allow');
+});
+
+// ---------------------------------------------------------------------------
+// gatherDecision (injectable git fns — covers the failClosed allow-through)
+// ---------------------------------------------------------------------------
+
+test('gatherDecision: git error (e.g. unresolved merge-base) -> allow with context', () => {
+  const d = gatherDecision({
+    cwd: '/repo',
+    branchFilesFn: () => {
+      throw new Error('could not resolve merge-base with main');
+    },
+    branchAddedFilesFn: () => [],
+  });
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, /git error: could not resolve merge-base/);
+  assert.match(d.additionalContext, /Verify the review ledger manually/);
+});
+
+test('gatherDecision: error thrown by branchAddedFilesFn -> allow with context', () => {
+  const d = gatherDecision({
+    cwd: '/repo',
+    branchFilesFn: () => ['src/core/x.ts'],
+    branchAddedFilesFn: () => {
+      throw new Error('boom');
+    },
+  });
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, /git error: boom/);
+});
+
+test('gatherDecision: no error passes through to decideLedger (code, no ledger -> deny)', () => {
+  const d = gatherDecision({
+    cwd: '/repo',
+    branchFilesFn: () => ['src/core/x.ts'],
+    branchAddedFilesFn: () => [],
+  });
+  assert.equal(d.decision, 'deny');
+  assert.match(d.reason, /No review ledger found/);
+});
+
+test('gatherDecision: valid added ledger passes through to allow', () => {
+  const d = gatherDecision({
+    cwd: '/repo',
+    branchFilesFn: () => ['src/core/x.ts', LEDGER],
+    branchAddedFilesFn: () => [LEDGER],
+    validateFile: () => okResult,
+  });
+  assert.equal(d.decision, 'allow');
+  assert.match(d.additionalContext, /valid review ledger/);
 });
 
 // ---------------------------------------------------------------------------

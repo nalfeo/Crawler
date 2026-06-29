@@ -25,7 +25,16 @@ export const LEDGER_PATH_RE =
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
-const ALL_STAGES = ['plan_review', 'dual_plan_synthesis', 'code_review', 'multi_model_review'];
+/** Canonical review-stage names, in tier order. */
+export const STAGE_NAMES = [
+  'plan_review',
+  'dual_plan_synthesis',
+  'code_review',
+  'multi_model_review',
+];
+
+/** YYYY-MM-DD matcher for ledger dates (shared with the CLI). */
+export { DATE_RE };
 
 /**
  * Required review stages for a given apple estimate.
@@ -260,7 +269,7 @@ export function validateLedger(obj) {
   if (!isPlainObject(stages)) {
     errors.push('stages must be an object');
   } else {
-    for (const name of ALL_STAGES) {
+    for (const name of STAGE_NAMES) {
       const required = requiredStages.includes(name);
       const present = stages[name] != null;
       if (required && !present) {
