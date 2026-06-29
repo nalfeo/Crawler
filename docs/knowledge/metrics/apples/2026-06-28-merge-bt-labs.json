@@ -1,0 +1,7 @@
+{
+  "session": "2026-06-28-merge-bt-labs",
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "on",
+  "notes": "Merged the two BT labs (bt-viz, parallel-bt) into one bt-viz superset lab. Straightforward: kept the richer parallel-bt panel, folded in bt-viz state, deleted the dupe, fixed lab-main map. Most time was env setup (npm ci) and headless observe at /lab.html?lab=bt-viz."
+}
