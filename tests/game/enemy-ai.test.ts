@@ -502,6 +502,40 @@ describe('enemyAISystem', () => {
     expect(vx).toBeGreaterThan(0);
   });
 
+  it('falls back to wander when the outward direction from a closed door is blocked', () => {
+    const world = createTestWorld();
+    world.floorMap = createSafeRoomDoorMap();
+    world.floorMap.tileMap.setFlags(3, 2, TilePresets.DOOR_CLOSED);
+    // Wall the tile just outside the door so the outward flee lands in a wall.
+    world.floorMap.tileMap.setFlags(5, 2, TilePresets.WALL);
+    spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
+    world.playerInSafeRoom = true;
+    const enemy = spawnBehaviorEnemy(world, 4 * 4 + 2, 2 * 4 + 2, 20, AI_TYPE.SWARM, 0.25, 50, 0);
+
+    enemyAISystem(world);
+
+    // It must not press +x into the wall; the dispersal path yields to wander.
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    expect(Number.isFinite(vx)).toBe(true);
+    expect(vx).toBeLessThanOrEqual(0.001);
+  });
+
+  it('wanders normally in a safe-room lull when no door is within dispersal range', () => {
+    const world = createTestWorld();
+    world.floorMap = createSafeRoomDoorMap();
+    world.floorMap.tileMap.setFlags(3, 2, TilePresets.DOOR_CLOSED);
+    spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
+    world.playerInSafeRoom = true;
+    // Mob is far from the only door (tile 3,2), so dispersal finds nothing.
+    const enemy = spawnBehaviorEnemy(world, 6 * 4 + 2, 6 * 4 + 2, 20, AI_TYPE.SWARM, 0.25, 50, 0);
+
+    enemyAISystem(world);
+
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Number.isFinite(Math.hypot(vx, vy))).toBe(true);
+  });
+
   it('moves a leaper toward the player at normal speed while out of pounce range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
