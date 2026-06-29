@@ -9,7 +9,7 @@ Use this guide when authoring achievement flavor text and Director-style copy.
 ## Voice target
 
 - Inspired by **Dungeon Crawler Carl** achievement energy plus Crawler's **AI runner / Director** tone.
-- Funny first, sharp second: punchy, darkly playful, occasionally ascerbic.
+- Funny first, sharp second: punchy, darkly playful, occasionally acerbic.
 - Treat dungeon violence as spectacle and sport-commentary, not gore prose.
 - Sound like an ancient showrunner obsessed with engagement metrics and "good TV."
 - Keep lines vivid and specific; avoid generic taunts that could fit any unlock.

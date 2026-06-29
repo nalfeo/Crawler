@@ -9,7 +9,7 @@
 
 - Reworked the full Floor 1 achievement catalog to cap rewards at `rare` or below.
 - Assigned unique placeholder icon IDs to every achievement entry.
-- Rewrote all Director flavor lines to be unique and tied to unlock requirements, with darkly comedic/ascerbic dungeon-show voice.
+- Rewrote all Director flavor lines to be unique and tied to unlock requirements, with darkly comedic/acerbic dungeon-show voice.
 - Added a dedicated flavor authoring instruction and updated AI content persona guidance to explicitly follow it.
 - Kept loot-box art backlog coverage stable for all defined tiers in shared achievement helpers.
 
