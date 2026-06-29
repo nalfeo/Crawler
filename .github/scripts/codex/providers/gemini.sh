@@ -23,13 +23,13 @@ else
     echo "Gemini is not authenticated. Set GEMINI_API_KEY or run 'gemini' once to log in." >&2
     exit 1
   fi
-  # --yolo auto-approves tool calls for unattended runs; model is only passed
-  # when explicitly configured. The prompt is supplied via -p (non-interactive).
-  EXEC_ARGS=(--yolo)
+  # --yolo auto-approves tool calls; --skip-trust avoids the headless trusted-
+  # folder prompt; model is only passed when explicitly configured.
+  EXEC_ARGS=(--yolo --skip-trust)
   if [[ -n "$MODEL" ]]; then
     EXEC_ARGS+=(--model "$MODEL")
   fi
-  "$GEMINI_BIN" "${EXEC_ARGS[@]}" -p "$(cat "$PROMPT_PATH")"
+  "$GEMINI_BIN" "${EXEC_ARGS[@]}" -p "$(cat "$PROMPT_PATH")" </dev/null
 fi
 
 if [[ ! -f "$RESULT_PATH" ]]; then
