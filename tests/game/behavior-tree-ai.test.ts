@@ -10,6 +10,7 @@ import {
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
@@ -373,17 +374,10 @@ describe('BehaviorTreeAI', () => {
   it('treats blocked diagonal corners as obstructed when string-pulling a path', () => {
     const world = createTestWorld({ seed: 7 });
     world.floorMap = makeDiagonalCornerMap();
-    const ai = new BehaviorTreeAI({ seed: 7 }) as unknown as {
-      hasClearLineOfSight: (
-        world: GameWorld,
-        startX: number,
-        startY: number,
-        endX: number,
-        endY: number,
-      ) => boolean;
-    };
 
-    expect(ai.hasClearLineOfSight(world, 6, 6, 10, 10)).toBe(false);
+    // hasClearLineOfSight was extracted from BehaviorTreeAI into ./bt-ai-geometry
+    // as a pure function; assert the same corner-cut rejection through it.
+    expect(hasClearLineOfSight(world.floorMap, 6, 6, 10, 10)).toBe(false);
   });
 
   it('drops a previously collectable gold target once it becomes unreachable', () => {

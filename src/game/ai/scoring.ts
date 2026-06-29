@@ -21,6 +21,8 @@
  * hill-climbing favours efficient play over brute-force attrition.
  */
 import type { RunStats } from './types.js';
+import type { QuestState } from '../../shared/quest-types.js';
+import { QUEST_PROGRESS_SCORE_WEIGHT } from './bt-ai-tuning.js';
 
 /** Contribution of a victory to the total score. Large enough to dominate. */
 const VICTORY_BONUS = 1_000_000;
@@ -103,4 +105,38 @@ export function aggregateScores(breakdowns: ScoreBreakdown[]): {
   const meanGold = breakdowns.reduce((acc, b) => acc + b.totalGold, 0) / n;
 
   return { meanScore, victoryRate, meanXpEfficiency, meanGold };
+}
+
+/**
+ * Pure, near-monotonic "floor progress" score over a set of quests + gold.
+ *
+ * It advances on ANY real quest objective tick (rats killed, items fetched,
+ * talk latches), quest completion, or gold payout, but stays frozen during a
+ * knockback/kite deadlock where the player jitters in place landing no killing
+ * blows — exactly the signal the quest-progress watchdog needs to catch a
+ * deadlock the spatial/HP watchdogs miss.
+ *
+ * Quest score is weighted ({@link QUEST_PROGRESS_SCORE_WEIGHT}) far above gold
+ * so a shop purchase (an objective latches +; gold dips by the price) still
+ * reads as net forward progress, while gold re-anchors the ready-to-buy farming
+ * stage that quest counters alone leave static. Extracted as a free function so
+ * the scoring is unit-testable without constructing a full world.
+ */
+export function computeFloorProgressScore(quests: Iterable<QuestState>, gold: number): number {
+  let questScore = 0;
+  for (const quest of quests) {
+    questScore += 1; // each accepted quest
+    if (quest.status === 'complete') {
+      questScore += 100;
+    }
+    for (const value of Object.values(quest.progress)) {
+      questScore += value; // counter objectives (kills, fetch pickups…)
+    }
+    for (const flag of Object.values(quest.done)) {
+      if (flag) {
+        questScore += 10; // latched multistep objectives
+      }
+    }
+  }
+  return questScore * QUEST_PROGRESS_SCORE_WEIGHT + gold;
 }
