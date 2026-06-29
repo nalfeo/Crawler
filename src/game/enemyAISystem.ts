@@ -1629,16 +1629,14 @@ export function enemyAISystem(world: GameWorld): void {
 
     if (!canDetectPlayer) {
       getSlimeLeapStateMap(world).delete(eid);
-      if (playerHiddenInSafeRoom) {
+      if (playerHiddenInSafeRoom || inAggroRange) {
         applyIdleWander(world, eid, speed, {
           avoidDoors: true,
           playerX,
           playerY,
         });
-      } else if (!inAggroRange) {
-        applyIdleWander(world, eid, speed);
       } else {
-        setVelocity(world, eid, 0, 0);
+        applyIdleWander(world, eid, speed);
       }
       pathStates.delete(eid);
       continue;

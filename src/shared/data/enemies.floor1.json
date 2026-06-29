@@ -32,7 +32,7 @@
   "spawnRadiusMin": 20.0,
   "despawnDistanceFt": 300.0,
   "engageRadiusFt": 90.0,
-  "engageTarget": 6,
+  "engageTarget": 4,
   "maxSpawnsPerTick": 3,
   "roomWaveChance": 0.65,
   "roomWaveMin": 2,

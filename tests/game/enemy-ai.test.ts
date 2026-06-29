@@ -607,15 +607,23 @@ describe('enemyAISystem', () => {
     expect(longestFrozenStreak).toBeGreaterThanOrEqual(15);
   });
 
-  it('keeps room enemies idle until their room door opens', () => {
+  it('keeps room enemies wandering away from closed doors until their room door opens', () => {
     const world = createTestWorld();
     world.floorMap = createOneRoomMapWithDoor(false);
     spawnPlayer(world, 4, 4);
     const enemy = spawnBehaviorEnemy(world, 8, 8, 20, AI_TYPE.CHASE, 0.25, 25, 0);
 
     enemyAISystem(world);
-    expect(world.stores.velocity.x[enemy]).toBeCloseTo(0);
-    expect(world.stores.velocity.y[enemy]).toBeCloseTo(0);
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    const speed = Math.hypot(vx, vy);
+    expect(speed).toBeGreaterThan(0.1);
+    const dirX = vx / speed;
+    const dirY = vy / speed;
+    const lookaheadX = (world.stores.position.x[enemy] ?? 0) + dirX * 2.5;
+    const lookaheadY = (world.stores.position.y[enemy] ?? 0) + dirY * 2.5;
+    const lookaheadTile = world.floorMap.worldToTile(lookaheadX, lookaheadY);
+    expect(world.floorMap.tileMap.isDoor(lookaheadTile.x, lookaheadTile.y)).toBe(false);
 
     world.floorMap.tileMap.openDoor(3, 1);
     enemyAISystem(world);
