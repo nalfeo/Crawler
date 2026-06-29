@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-28",
+  "session": "safe-room-door-mob-dispersal",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4,
+  "notes": "Fixed enemies crowding closed safe-room doors. Root cause: de-aggro idle wander stopped mobs when blocked, so they camped the threshold. Added fleeFromDoorDirection() and a dispersal path in applyIdleWander to steer near-door de-aggro mobs outward at speed*0.7 toward passable non-safe space; single door scan doubles as proximity check. Headless repro: seed 13 maxCrowd 6->0. Reverted earlier doorSystem locking rewrite. Regression test added in enemy-ai.test.ts. Wall-time perf guard load-flaky locally (different combo each run), correctness green."
+}
