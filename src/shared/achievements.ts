@@ -242,12 +242,12 @@ function collectLootBoxBacklogItems(): AchievementArtBacklogItem[] {
     }
   }
 
-  return [...tierToAchievements.entries()].map(([tier, usedByAchievementIds]) => ({
+  return LOOT_BOX_TIERS.map((tier) => ({
     id: `lootBox:${tier}`,
     kind: 'lootBox',
     placeholderId: `loot-box-${tier}-placeholder`,
     description: `Create the ${tier} loot-box icon and open/closed reward reveal variants.`,
-    usedByAchievementIds,
+    usedByAchievementIds: tierToAchievements.get(tier) ?? [],
   }));
 }
 
