@@ -29,7 +29,7 @@ wasn't the bottleneck, navigation was.
   sword 31.9s / bat 88.3s > 30s) under parallel CPU load; **isolated rerun of
   `tests/headless/floor1-completion.test.ts` = 60/60 pass in 127s**. HUD/resolver
   are not in the headless sim path, so no gameplay regression.
-- Observed in lab (`?lab=quest-waypoint-lab`): gold waypoint marker on minimap +
+- Observed in lab (`?lab=questwaypoints-lab`): gold waypoint marker on minimap +
   quest panel tracking "Find the Welcome Office"; arrow hides when target enters
   the viewport. Before: no marker/arrow.
 

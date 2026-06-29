@@ -160,7 +160,7 @@ function createQuestWaypointLab(canvasHost: HTMLElement, controls: HTMLElement):
   };
 }
 
-registerLab('quest-waypoint-lab', {
+registerLab('questwaypoints-lab', {
   category: 'Meta' as LabCategory,
   name: 'Quest Waypoint Lab',
   description: 'Off-screen quest direction arrow + waypoint resolver demo.',

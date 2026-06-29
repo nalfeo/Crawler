@@ -10,7 +10,7 @@ Exercises `getQuestWaypoints` (core) + `HudDirectionArrows` (engine).
 
 ## Use
 
-`npm run lab` → `?lab=quest-waypoint-lab`
+`npm run lab` → `?lab=questwaypoints-lab`
 
 - **Target distance (ft)** — how far the goal is from the player. Drop below
   ~40' to bring it on-screen and watch the arrow disappear.
