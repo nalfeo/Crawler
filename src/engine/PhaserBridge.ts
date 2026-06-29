@@ -435,6 +435,9 @@ const ENTITY_KENNEY_SPRITE: Readonly<Record<string, string>> = {
   enemy_rat: 'enemy.rat',
   enemy_slime: 'enemy.slime',
   enemy_boss: 'enemy.boss',
+  // Staircase Rat Slime falls back to the generic boss sprite when the
+  // generated rat-slime art isn't loaded.
+  enemy_boss_ratslime: 'enemy.boss',
   npc: 'npc.guide',
   gem: 'item.gem',
   proj: 'weapon.arrow',
@@ -462,6 +465,7 @@ const KENNEY_SCALE: Readonly<Record<string, number>> = {
   enemy_rat: 1.4,
   enemy_slime: 1.4,
   enemy_boss: 2.5, // boss is larger
+  enemy_boss_ratslime: 2.5,
   npc: 1.4,
   gem: 1.0,
   proj: 1.0,
@@ -499,12 +503,38 @@ interface ResolvedTexture {
 }
 
 /**
+ * Mapping from entity type to a generated-sprite texture key (the manifest
+ * entry key queued by {@link preloadGeneratedSprites}). When the matching
+ * texture is loaded it takes priority over the Kenney sprite, so approved
+ * custom art replaces the temp CC0 placeholders. Types/keys absent here, or
+ * present but not yet loaded, fall through to the Kenney registry below.
+ */
+const ENTITY_GENERATED_SPRITE: Readonly<Record<string, string>> = {
+  enemy_rat: 'rat-v1-var-3',
+  enemy_boss_ratslime: 'rat-slime-v1-var-1',
+};
+
+/** Render scale for each generated texture (PNGs are 64–128px, not 16px). */
+const GENERATED_SCALE: Readonly<Record<string, number>> = {
+  enemy_rat: 0.4,
+  enemy_boss_ratslime: 0.6,
+};
+
+/**
  * Resolve the texture (and frame) to use for the given entity type.
- * Prefers a Kenney sprite when both the registry mapping and the
- * loaded texture exist; otherwise falls back to the procedural
- * `__cw_*` texture.
+ * Prefers an approved generated sprite, then a Kenney sprite when both
+ * the registry mapping and the loaded texture exist; otherwise falls
+ * back to the procedural `__cw_*` texture.
  */
 function resolveTexture(scene: Phaser.Scene, type: string): ResolvedTexture {
+  const generatedKey = ENTITY_GENERATED_SPRITE[type];
+  if (generatedKey !== undefined && scene.textures?.exists(generatedKey)) {
+    return {
+      key: generatedKey,
+      scale: GENERATED_SCALE[type] ?? 1,
+      fallback: false,
+    };
+  }
   const spriteId = ENTITY_KENNEY_SPRITE[type];
   if (spriteId !== undefined) {
     const sprite = getSprite(spriteId);
@@ -529,6 +559,7 @@ function getProceduralTextureForType(type: string): string {
     case 'npc':
       return TEX_NPC;
     case 'enemy_boss':
+    case 'enemy_boss_ratslime':
       return TEX_ENEMY_BOSS;
     case 'enemy_rat':
       return TEX_ENEMY_RAT;
@@ -738,10 +769,12 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
         const entityType = getEntityType(world, eid);
         let isBoss = false;
+        let bossKey: string | null = null;
         if (entityType === 'enemy' && world.floor1 != null) {
-          for (const battle of world.floor1.objective.bossBattles.values()) {
+          for (const [key, battle] of world.floor1.objective.bossBattles.entries()) {
             if (battle.bossEid === eid) {
               isBoss = true;
+              bossKey = key;
               break;
             }
           }
@@ -749,7 +782,9 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const visualType =
           entityType === 'enemy'
             ? isBoss
-              ? 'enemy_boss'
+              ? bossKey === 'staircase'
+                ? 'enemy_boss_ratslime'
+                : 'enemy_boss'
               : world.stores.sprite.textureId[eid] === 1
                 ? 'enemy_rat'
                 : world.stores.sprite.textureId[eid] === 2

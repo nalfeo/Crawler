@@ -489,6 +489,54 @@ describe('createPhaserBridge', () => {
     expect(images[1]?.textureKey).toBe('__cw_enemy_slime');
   });
 
+  it('uses the generated rat texture when its art is loaded', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const rat = addEntity(world.ecs);
+
+    addComponent(world.ecs, rat, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, rat, Enemy);
+    addComponent(world.ecs, rat, set(Sprite, { textureId: 1, width: 16, height: 16 }));
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(1);
+    expect(images[0]?.textureKey).toBe('rat-v1-var-3');
+  });
+
+  it('uses the generated rat-slime art for the staircase boss, not the slime-rat', () => {
+    const { scene, images } = createSceneStub({ kenneyLoaded: true });
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const staircaseBoss = addEntity(world.ecs);
+    const slimeRatBoss = addEntity(world.ecs);
+
+    addComponent(world.ecs, staircaseBoss, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, staircaseBoss, Enemy);
+    addComponent(world.ecs, staircaseBoss, set(Sprite, { textureId: 2, width: 4, height: 4 }));
+    addComponent(world.ecs, slimeRatBoss, set(Position, { x: 30, y: 10 }));
+    addComponent(world.ecs, slimeRatBoss, Enemy);
+    addComponent(world.ecs, slimeRatBoss, set(Sprite, { textureId: 2, width: 4, height: 4 }));
+
+    world.floor1 = {
+      enemyArchetypes: new Map<number, string>(),
+      objective: {
+        bossBattles: new Map([
+          ['slime-rat', { bossEid: slimeRatBoss }],
+          ['staircase', { bossEid: staircaseBoss }],
+        ]),
+      },
+    } as unknown as NonNullable<typeof world.floor1>;
+
+    bridge.sync(world);
+
+    expect(images).toHaveLength(2);
+    // Staircase Rat Slime gets the generated art; the slime-rat tutorial boss stays generic.
+    expect(images[0]?.textureKey).toBe('rat-slime-v1-var-1');
+    expect(images[1]?.textureKey).toBe('kenney-tiny-dungeon');
+  });
+
   it('renders slime-mini babies smaller than a full slime', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: false });
     const bridge = createPhaserBridge(scene);
