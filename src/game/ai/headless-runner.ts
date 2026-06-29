@@ -19,6 +19,7 @@ import {
 import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
+import { getWeaponDef } from '../../shared/weaponDefs.js';
 import { type AIInputProvider, type RunStats, type LevelUpEvent } from './types.js';
 import { AI_STATE_NAME, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
@@ -134,11 +135,16 @@ export async function runHeadless(
   if (forceWeaponId !== undefined && world.floor1) {
     const idx = world.floor1.starterChoices.indexOf(forceWeaponId);
     if (idx === -1) {
-      throw new Error(
-        `forceWeaponId "${forceWeaponId}" not in starter choices for seed ${mergedConfig.seed}: [${world.floor1.starterChoices.join(', ')}]`,
-      );
+      if (!getWeaponDef(forceWeaponId)) {
+        throw new Error(`Unknown forceWeaponId "${forceWeaponId}"`);
+      }
+      // Keep gameplay starter choices constrained, but allow deterministic
+      // headless runs to force any implemented weapon for gate coverage.
+      world.floor1.starterChoices.push(forceWeaponId);
+      starterWeaponIndex = world.floor1.starterChoices.length - 1;
+    } else {
+      starterWeaponIndex = idx;
     }
-    starterWeaponIndex = idx;
   }
   selectFloor1StarterWeapon(world, starterWeaponIndex);
   const startingWeapon: string =

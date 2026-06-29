@@ -94,7 +94,7 @@ import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
 import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
-import { SeededRandom } from '../shared/random.js';
+import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 
 // Derived constants computed from config at module initialization.
 // The camera/viewport is a render-pixel concept, so convert it to feet at this
@@ -112,6 +112,8 @@ const FLOOR_1_ROOM_WAVE_MIN_PLAYER_DISTANCE_FT = 12;
 const FLOOR_1_GOAL_PREFIX = 'floor1.objective';
 const FLOOR_1_STATIC_SPAWNERS_PER_ARCHETYPE = 2;
 const FLOOR_1_STATIC_SPAWNER_ARCHETYPE_IDS = ['slime-pool', 'rats-nest'] as const;
+const FLOOR_1_MAX_STARTER_CHOICES = 3;
+const FLOOR_1_FALLBACK_STARTER_WEAPON_IDS = ['sword', 'punch'] as const;
 
 // Native footprint of the welcome-sign sprite (board + baked "WELCOME" + arrow),
 // mirrored from the procedural texture in PhaserBridge (48x26 px) so the Sprite
@@ -234,16 +236,47 @@ function getPopulatedRooms(world: GameWorld): Set<number> {
 }
 
 function pickStarterChoices(world: GameWorld): string[] {
-  const pool = [...floor1Config.starterWeapons];
-  const selected: string[] = [];
-  while (pool.length > 0 && selected.length < 3) {
-    const idx = world.rng.nextInt(0, pool.length - 1);
-    const id = pool.splice(idx, 1)[0];
-    if (id !== undefined) {
-      selected.push(id);
+  const seenWeaponIds = new Set<string>();
+  const pool: string[] = [];
+  for (const weaponId of floor1Config.starterWeapons) {
+    if (getWeaponDef(weaponId) === undefined || seenWeaponIds.has(weaponId)) {
+      continue;
+    }
+    seenWeaponIds.add(weaponId);
+    pool.push(weaponId);
+  }
+  if (pool.length > 0) {
+    // Preserve the historical world RNG progression from the old 3-choice picker
+    // so existing deterministic seed gates (headless/tests) stay stable.
+    // Keep legacy RNG advancement (3 draws) so existing deterministic seed-based
+    // headless/integration expectations remain stable after expanding choice count.
+    // TODO(seed-contract): Remove this compatibility shim only when we intentionally
+    // version and re-baseline deterministic seed expectations project-wide.
+    for (let remaining = Math.min(pool.length, 3); remaining > 0; remaining -= 1) {
+      world.rng.nextInt(0, remaining - 1);
+    }
+
+    const starterChoiceRng = new SeededRandom(
+      hashStringToSeed(`${world.seed}:floor1-starter-choices`),
+    );
+    const selected: string[] = [];
+    while (pool.length > 0 && selected.length < FLOOR_1_MAX_STARTER_CHOICES) {
+      const idx = starterChoiceRng.nextInt(0, pool.length - 1);
+      const id = pool.splice(idx, 1)[0];
+      if (id !== undefined) {
+        selected.push(id);
+      }
+    }
+    return selected;
+  }
+  for (const weaponId of FLOOR_1_FALLBACK_STARTER_WEAPON_IDS) {
+    // Return the first known-safe fallback weapon that still exists.
+    const fallbackWeapon = getWeaponDef(weaponId);
+    if (fallbackWeapon) {
+      return [fallbackWeapon.id];
     }
   }
-  return selected;
+  return [];
 }
 
 function centerOfRoom(room: { bounds: { x: number; y: number; width: number; height: number } }): {
@@ -2233,6 +2266,29 @@ export function confirmFloor1StairDescend(world: GameWorld, playerEid: number): 
 // Shopkeeper errand flow
 // ---------------------------------------------------------------------------
 
+export interface ShopkeeperStockItem {
+  readonly itemId: string;
+  readonly cost: number;
+}
+
+const FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID: Readonly<Record<string, string>> = {
+  sword: 'iron-sword',
+  bow: 'frost-bow',
+  'baseball-bat': 'bone-club',
+  pistol: 'plasma-pistol',
+  'throwing-knife': 'rusty-shiv',
+  fireball: 'crystal-wand',
+};
+
+const SHOPKEEPER_POST_QUEST_ITEM_COSTS: Readonly<Record<string, number>> = {
+  'rusty-shiv': 18,
+  'iron-sword': 24,
+  'bone-club': 20,
+  'frost-bow': 26,
+  'plasma-pistol': 30,
+  'crystal-wand': 28,
+};
+
 function findPlayerEid(world: GameWorld): number | undefined {
   return query(world.ecs, [Player])[0];
 }
@@ -2260,6 +2316,49 @@ export function getShopkeeperStage(world: GameWorld): ShopkeeperStage {
     return 'not-met';
   }
   return 'awaiting-prize';
+}
+
+/** Deterministic post-quest merchant inventory (2 extra starter-weapon options). */
+export function getShopkeeperPostQuestStock(world: GameWorld): ShopkeeperStockItem[] {
+  const seen = new Set<string>();
+  const starterPool: string[] = [];
+  for (const weaponId of floor1Config.starterWeapons) {
+    if (
+      seen.has(weaponId) ||
+      getWeaponDef(weaponId) === undefined ||
+      FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID[weaponId] === undefined
+    ) {
+      continue;
+    }
+    seen.add(weaponId);
+    starterPool.push(weaponId);
+  }
+  const selectedAtStart = new Set(world.floor1?.starterChoices ?? []);
+  const remainingWeaponIds = starterPool.filter((weaponId) => !selectedAtStart.has(weaponId));
+  const stockRng = new SeededRandom(
+    hashStringToSeed(`${world.seed}:floor1-shopkeeper-post-quest-stock`),
+  );
+  stockRng.shuffle(remainingWeaponIds);
+
+  const pickedWeaponIds = remainingWeaponIds.slice(0, 2);
+  if (pickedWeaponIds.length < 2) {
+    const fallbackWeaponIds = starterPool.filter((weaponId) => !pickedWeaponIds.includes(weaponId));
+    stockRng.shuffle(fallbackWeaponIds);
+    for (const weaponId of fallbackWeaponIds) {
+      if (pickedWeaponIds.length >= 2) {
+        break;
+      }
+      pickedWeaponIds.push(weaponId);
+    }
+  }
+  return pickedWeaponIds
+    .map((weaponId) => FLOOR_1_STARTER_WEAPON_TO_SHOP_ITEM_ID[weaponId])
+    .filter((itemId): itemId is string => itemId !== undefined)
+    .slice(0, 2)
+    .map((itemId) => ({
+      itemId,
+      cost: SHOPKEEPER_POST_QUEST_ITEM_COSTS[itemId] ?? 20,
+    }));
 }
 
 /** Character level required before the merchant / spell-broker quests unlock. */
@@ -2431,6 +2530,34 @@ export function purchaseShopkeeperEquipment(world: GameWorld, playerEid: number)
   }
   world.playerGold -= SHOPKEEPER_EQUIPMENT_COST;
   addItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID, 1);
+  return true;
+}
+
+/** Buy one item from the post-quest merchant stock. */
+export function purchaseShopkeeperPostQuestItem(
+  world: GameWorld,
+  playerEid: number,
+  itemId: string,
+): boolean {
+  if (world.goalFlags.get('floor1-shop-quest-complete') !== true) {
+    return false;
+  }
+  const bag = world.inventories.get(playerEid);
+  if (!bag) {
+    return false;
+  }
+  if (hasItem(bag, itemId)) {
+    return false;
+  }
+  const stockEntry = getShopkeeperPostQuestStock(world).find((entry) => entry.itemId === itemId);
+  if (!stockEntry || !getItemById(itemId)) {
+    return false;
+  }
+  if (world.playerGold < stockEntry.cost) {
+    return false;
+  }
+  world.playerGold -= stockEntry.cost;
+  addItem(bag, itemId, 1);
   return true;
 }
 
