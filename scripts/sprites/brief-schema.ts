@@ -141,10 +141,10 @@ const sensorOverridesSchema = z
     enemy: z
       .object({
         /**
-         * Intentionally optional so scoring can apply a type-aware default:
-         * omitted `facing` defaults to `any` for `enemy` briefs, while
-         * `character` briefs that reuse this same sensor block default to
-         * `front`.
+         * Shared orientation hint block used by character-facing checks and
+         * prompt generation. Enemy scoring no longer uses orientation-axis
+         * gating, but characters still default to front-facing checks when
+         * `facing` is omitted.
          */
         facing: z.enum(['front', 'any']).optional(),
         toleranceDeg: z.number().min(0).max(45).default(2),
