@@ -48,3 +48,28 @@ Key design points:
 - Implementation is follow-up work (4 phases in ADR). `node_modules` not installed
   in this worktree (`tsx` resolved via npx); run `npm ci` before code phases.
 - ADR README count line is stale (says 45/0001–0028); not reconciled here.
+
+---
+
+## Phase 1 — non-breaking factory wiring (same day)
+
+Estimated: 🍎 x 2 · Actual: 🍎 x 2 · 🎯 Exact · Hello kitties: 3/5 = 0.60 🎀
+
+Implemented the ADR's Phase 1 without behaviour change for existing users:
+
+- `scripts/sprites/provider/factory.ts`: added `SUPPORTED_BACKENDS`,
+  `resolveBackend()`, `foundryConnection()`, and a `foundry` branch in all five
+  factory functions; `azure-openai` remains the default. New
+  `createFoundry{Image,Chat,Vision}Provider` reuse the Azure OpenAI classes
+  (identical OpenAI-compatible REST surface). Synth/selector use foundry models
+  via `required(... FOUNDRY_TEXT_MODEL)` and selector must differ from text.
+- `scripts/sprites/provider/azure-chat-synth.ts`: added `providerLabelPrefix`
+  (default `azure-openai`); foundry path labels candidates `foundry:<model>`.
+- `scripts/azure-env.example`: `FOUNDRY_*` block + `SPRITES_*_PROVIDER=foundry`.
+- `tests/unit/sprites/factory.test.ts`: +7 foundry tests (16 pass total).
+
+Verification: `npm run verify` full suite green (build + headless incl.).
+Pushed to PR #474; title/desc re-synthesised to lead with the feat.
+
+Carry-forward: Phases 2–4 (Foundry resource provisioning, Entra auth, judge
+cutover) remain. azure-openai path untouched; foundry fully opt-in.
