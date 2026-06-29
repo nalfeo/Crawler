@@ -126,3 +126,9 @@ export function evaluateAchievementUnlocksForPhase(
 export function achievementSystem(world: GameWorld): void {
   evaluateAchievementUnlocksForPhase(world, 'tick');
 }
+
+export {
+  isAchievementClaimed,
+  claimAchievementReward,
+  type ClaimAchievementResult,
+} from '../../core/systems/achievementRewards.js';

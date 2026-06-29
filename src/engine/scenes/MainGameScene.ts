@@ -54,6 +54,7 @@ import { createPhaserBridge } from '../PhaserBridge.js';
 import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
+import { createAchievementsUI } from '../AchievementsUI.js';
 import { createGameOverUI } from '../GameOverUI.js';
 import { createLevelUpUI } from '../LevelUpUI.js';
 import {
@@ -304,8 +305,11 @@ export class MainGameScene extends Phaser.Scene {
 
   private keyAbilities?: Phaser.Input.Keyboard.Key;
 
+  private keyAchievements?: Phaser.Input.Keyboard.Key;
+
   private inventoryUI?: ReturnType<typeof createInventoryUI>;
   private equipmentUI?: ReturnType<typeof createEquipmentUI>;
+  private achievementsUI?: ReturnType<typeof createAchievementsUI>;
 
   private gameOverUI?: ReturnType<typeof createGameOverUI>;
 
@@ -389,6 +393,14 @@ export class MainGameScene extends Phaser.Scene {
   private inventoryButton?: Phaser.GameObjects.Text;
 
   private equipButton?: Phaser.GameObjects.Text;
+
+  private achievementsButton?: Phaser.GameObjects.Text;
+
+  /** One-frame latch set by tapping the on-screen achievements button. */
+  private queuedAchievementsToggle = false;
+
+  /** Transient "New achievement" toast, separate from the interaction hint. */
+  private achievementToast?: Phaser.GameObjects.Text;
 
   private offMobileButtonScale?: () => void;
 
@@ -495,12 +507,14 @@ export class MainGameScene extends Phaser.Scene {
     this.keyInventory = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.I);
     this.keyEquip = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.G);
     this.keyAbilities = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+    this.keyAchievements = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.V);
     this.input.keyboard?.on('keydown-E', this.handleKeyboardE, this);
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.handleWindowKeyDown, true);
     }
     this.inventoryUI = createInventoryUI(this);
     this.equipmentUI = createEquipmentUI(this);
+    this.achievementsUI = createAchievementsUI(this);
     this.gameOverUI = createGameOverUI(this, {
       // Both actions reload for now — a title screen / main menu doesn't exist yet.
       // TODO: differentiate onQuit to navigate to a title screen once it's implemented.
@@ -606,6 +620,12 @@ export class MainGameScene extends Phaser.Scene {
       this.inventoryUI = undefined;
       this.equipmentUI?.destroy();
       this.equipmentUI = undefined;
+      this.achievementsUI?.destroy();
+      this.achievementsUI = undefined;
+      this.achievementsButton?.destroy();
+      this.achievementsButton = undefined;
+      this.achievementToast?.destroy();
+      this.achievementToast = undefined;
       this.gameOverUI?.destroy();
       this.gameOverUI = undefined;
       this.levelUpUI?.destroy();
@@ -709,6 +729,10 @@ export class MainGameScene extends Phaser.Scene {
 
   public requestEquipAction(): void {
     this.queuedEquip = true;
+  }
+
+  public requestAchievementsToggle(): void {
+    this.queuedAchievementsToggle = true;
   }
 
   public isInventoryOpen(): boolean {
@@ -974,6 +998,7 @@ export class MainGameScene extends Phaser.Scene {
     // Toggle the on-screen touch buttons in step with the key affordances.
     this.inventoryButton?.setVisible(unlocks.inventory && safeCtx);
     this.equipButton?.setVisible(unlocks.equipment && safeCtx);
+    this.achievementsButton?.setVisible(safeCtx && this.world.achievements.unlockedIds.size > 0);
 
     if (unlocks.inventory && !this.inventoryUnlockNotified) {
       this.inventoryUnlockNotified = true;
@@ -1019,6 +1044,21 @@ export class MainGameScene extends Phaser.Scene {
       this.openAbilitiesConfigModal();
     }
 
+    const achievementsToggleRequested =
+      this.queuedAchievementsToggle ||
+      Boolean(this.keyAchievements && Phaser.Input.Keyboard.JustDown(this.keyAchievements));
+    this.queuedAchievementsToggle = false;
+    const achievementsAvailable = safeCtx && this.world.achievements.unlockedIds.size > 0;
+    if (achievementsAvailable && achievementsToggleRequested) {
+      this.achievementsUI?.toggle(this.world);
+    } else if (this.achievementsUI?.isOpen()) {
+      if (safeCtx) {
+        this.achievementsUI.refresh(this.world);
+      } else {
+        this.achievementsUI.toggle(this.world);
+      }
+    }
+
     this.processAchievementUnlocks();
   }
 
@@ -1033,8 +1073,20 @@ export class MainGameScene extends Phaser.Scene {
       return;
     }
 
-    this.flashHint(achievement.popupText);
-    this.queueDirectorCommentary(achievement.directorFlavor);
+    this.flashAchievementToast(`🏆 New achievement: ${achievement.title}`);
+  }
+
+  /** Achievement reveal toast — own slot/timer so it isn't clobbered by hints. */
+  private flashAchievementToast(message: string): void {
+    if (!this.achievementToast) {
+      return;
+    }
+    this.achievementToast.setText(message).setVisible(true);
+    this.time.delayedCall(2800, () => {
+      if (this.achievementToast?.text === message) {
+        this.achievementToast.setVisible(false);
+      }
+    });
   }
 
   /** Briefly show a transient message in the interaction-hint slot. */
@@ -1205,12 +1257,18 @@ export class MainGameScene extends Phaser.Scene {
     this.equipButton = makeCornerButton(72, '⚔ Gear', () => {
       this.queuedEquip = true;
     });
+    this.achievementsButton = makeCornerButton(128, '🏆 Awards', () => {
+      this.queuedAchievementsToggle = true;
+    });
     const applyMobileButtonScale = (scale: number): void => {
       const buttonScale = Math.min(scale, MOBILE_CORNER_BUTTON_MAX_SCALE);
       this.inventoryButton?.setScale(buttonScale);
       this.equipButton?.setScale(buttonScale);
-      // Keep the second button clear of the (scaled) first button.
-      this.equipButton?.setY(16 + (this.inventoryButton?.height ?? 44) * buttonScale + 8);
+      this.achievementsButton?.setScale(buttonScale);
+      // Keep the second/third buttons clear of the (scaled) first button.
+      const bagH = (this.inventoryButton?.height ?? 44) * buttonScale + 8;
+      this.equipButton?.setY(16 + bagH);
+      this.achievementsButton?.setY(16 + bagH + (this.equipButton?.height ?? 44) * buttonScale + 8);
     };
     applyMobileButtonScale(getUiScale(this));
     this.offMobileButtonScale = onUiScaleChange(this, applyMobileButtonScale);
@@ -1232,6 +1290,22 @@ export class MainGameScene extends Phaser.Scene {
         color: '#fef3c7',
         backgroundColor: '#451a03dd',
         padding: { x: 12, y: 8 },
+        align: 'center',
+        wordWrap: { width: GAME.WIDTH - 80 },
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(1100)
+      .setScrollFactor(0)
+      .setVisible(false);
+
+    this.achievementToast = this.add
+      .text(GAME.WIDTH / 2, 150, '', {
+        fontFamily: 'monospace',
+        fontSize: '16px',
+        fontStyle: 'bold',
+        color: '#fde68a',
+        backgroundColor: '#1f2937ee',
+        padding: { x: 14, y: 10 },
         align: 'center',
         wordWrap: { width: GAME.WIDTH - 80 },
       })

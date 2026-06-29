@@ -16,6 +16,9 @@ declare -A SHARED_LAB_MAP=(
   # DeathTimer is post-death cleanup (counts down before removeEntity),
   # exercised through the health-lab death-flow scenarios.
   [deathtimer]="health-lab"
+  # Achievement reward claim helpers are reveal-only state, exercised by the
+  # achievements-ui-lab (unlock → open reward → marked claimed).
+  [achievementrewards]="achievements-ui-lab"
 )
 
 echo "🔬 Lab Gate Check: Verifying every system has a lab..."

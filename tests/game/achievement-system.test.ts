@@ -4,7 +4,12 @@ import {
   initializeFloor1Scenario,
   confirmFloor1StairDescend,
 } from '../../src/game/floorScenario.js';
-import { achievementSystem } from '../../src/game/systems/achievementSystem.js';
+import {
+  achievementSystem,
+  claimAchievementReward,
+  isAchievementClaimed,
+  unlockAchievement,
+} from '../../src/game/systems/achievementSystem.js';
 import {
   FLOOR1_BOSS_BATTLE_QUEST_ID,
   FLOOR1_BOSS_UNLOCK_QUEST_ID,
@@ -104,5 +109,30 @@ describe('achievementSystem', () => {
     expect(world.achievements.unlockedIds.has('floor1-clear')).toBe(true);
     expect(world.achievements.unlockedIds.has('broke-speedrun')).toBe(true);
     expect(world.floor1?.runSummary?.outcome).toBe('cleared_floor');
+  });
+});
+
+describe('claimAchievementReward', () => {
+  it('opens an unlocked reward exactly once and reports the reward def', () => {
+    const world = createTestWorld({ seed: 42 });
+    unlockAchievement(world, 'first-bonk');
+
+    expect(isAchievementClaimed(world, 'first-bonk')).toBe(false);
+    const result = claimAchievementReward(world, 'first-bonk');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.reward).toEqual({ type: 'lootBox', tier: 'trash' });
+    }
+    expect(isAchievementClaimed(world, 'first-bonk')).toBe(true);
+
+    const second = claimAchievementReward(world, 'first-bonk');
+    expect(second).toEqual({ ok: false, reason: 'alreadyClaimed' });
+  });
+
+  it('refuses to open locked or unknown achievements', () => {
+    const world = createTestWorld({ seed: 42 });
+    expect(claimAchievementReward(world, 'first-bonk')).toEqual({ ok: false, reason: 'locked' });
+    expect(claimAchievementReward(world, 'not-real')).toEqual({ ok: false, reason: 'unknown' });
+    expect(world.achievements.claimedIds.size).toBe(0);
   });
 });
