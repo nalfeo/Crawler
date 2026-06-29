@@ -101,15 +101,15 @@ const REQUIRED_QUEST_IDS = [
  * the 360s budget (bow worst-case ~261–280s):
  *
  * - 13: all-weapon clear; bow ~276s.
- * - 23: all-weapon clear; bow ~261s.
  * - 42: all-weapon clear, generous margin.
  * - 99: all-weapon clear, generous margin.
+ * - 4: all-weapon clear, generous margin.
  *
  * Borderline seeds excluded: 2 (bow 363s, over budget), 8 (sword death),
- * 20 (bow death), and 15/30 (flaky near the budget). Re-verify timings on the
- * current map before adding any seed to the matrix.
+ * 20 (bow death), 23 (bat wall-clock at the perf edge), 15/30 (flaky).
+ * Re-verify timings on the current map before adding any seed to the matrix.
  */
-const WINNING_SEEDS = [13, 23, 42, 99] as const;
+const WINNING_SEEDS = [13, 42, 99, 4] as const;
 
 /**
  * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
