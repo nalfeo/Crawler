@@ -5,14 +5,14 @@ SYSTEMS_DIR="src/core/systems"
 LABS_DIR="src/labs"
 FAILED=0
 
-# Systems covered by a shared lab (e.g., weapons-lab covers all weapon-type systems)
+# Systems covered by a shared lab (e.g., weapon-lab covers all weapon-type systems)
 declare -A SHARED_LAB_MAP=(
-  [beam]="weapons-lab"
-  [meleeswing]="weapons-lab"
-  [trap]="weapons-lab"
-  [aoeonimpact]="weapons-lab"
-  [areadamage]="weapons-lab"
-  [returningprojectile]="weapons-lab"
+  [beam]="weapon-lab"
+  [meleeswing]="weapon-lab"
+  [trap]="weapon-lab"
+  [aoeonimpact]="weapon-lab"
+  [areadamage]="weapon-lab"
+  [returningprojectile]="weapon-lab"
   # DeathTimer is post-death cleanup (counts down before removeEntity),
   # exercised through the health-lab death-flow scenarios.
   [deathtimer]="health-lab"

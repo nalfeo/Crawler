@@ -2,7 +2,7 @@
 
 **Status:** ✅ Implemented  
 **Layer:** `src/core/systems/`  
-**Labs:** `combat-lab`, `damage-lab`, `health-lab`, `knockback-lab`, `deathtimer-lab`, `lifetime-lab`
+**Labs:** `weapon-lab`, `damage-lab`, `health-lab`, `knockback-lab`, `deathtimer-lab`, `lifetime-lab`
 
 ---
 

@@ -11,7 +11,7 @@
  *      index.ts for an import referencing that file by base name
  *
  * Usage:
- *   echo '["src/labs/weapons-lab/index.ts","src/game/weaponSystem.ts"]' \
+ *   echo '["src/labs/weapon-lab/index.ts","src/game/weaponSystem.ts"]' \
  *     | node scripts/agent/pr-lab-links.mjs
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -96,23 +96,23 @@ const SOURCE_PATH_TO_LABS = {
   'src/game/enemyAISystem': ['enemy-ai-lab'],
   'src/game/enemySpawner': ['enemy-ai-lab'],
   // Weapon systems
-  'src/game/weaponSystem': ['weapons-lab', 'combat-lab'],
-  'src/core/systems/beamSystem': ['weapons-lab'],
-  'src/core/systems/meleeSwingSystem': ['weapons-lab'],
-  'src/core/systems/trapSystem': ['weapons-lab'],
-  'src/core/systems/aoeOnImpactSystem': ['weapons-lab'],
-  'src/core/systems/areaDamageSystem': ['weapons-lab', 'combat-lab'],
-  'src/core/systems/returningProjectileSystem': ['weapons-lab'],
-  'src/core/systems/projectileCleanupSystem': ['projectilecleanup-lab', 'weapons-lab'],
+  'src/game/weaponSystem': ['weapon-lab'],
+  'src/core/systems/beamSystem': ['weapon-lab'],
+  'src/core/systems/meleeSwingSystem': ['weapon-lab'],
+  'src/core/systems/trapSystem': ['weapon-lab'],
+  'src/core/systems/aoeOnImpactSystem': ['weapon-lab'],
+  'src/core/systems/areaDamageSystem': ['weapon-lab'],
+  'src/core/systems/returningProjectileSystem': ['weapon-lab'],
+  'src/core/systems/projectileCleanupSystem': ['projectilecleanup-lab', 'weapon-lab'],
   // Movement & input
   'src/core/systems/movementSystem': ['movement-lab'],
   'src/core/systems/playerInputSystem': ['playerinput-lab', 'movement-lab'],
   'src/core/systems/knockbackSystem': ['knockback-lab'],
   'src/engine/controls': ['mobile-controls-lab'],
   // Combat / health
-  'src/core/systems/damageSystem': ['damage-lab', 'combat-lab'],
+  'src/core/systems/damageSystem': ['damage-lab', 'weapon-lab'],
   'src/core/systems/healthSystem': ['health-lab'],
-  'src/core/apply-damage': ['damage-lab', 'combat-lab'],
+  'src/core/apply-damage': ['damage-lab', 'weapon-lab'],
   'src/core/systems/deathTimerSystem': ['deathtimer-lab'],
   // Collision & physics
   'src/core/collision': ['collision-lab'],
@@ -147,9 +147,9 @@ const SOURCE_PATH_TO_LABS = {
   'src/engine/hud': ['hud-lab'],
   // Shared
   'src/shared/sprite-catalog': ['sprite-catalog'],
-  'src/shared/weaponDefs': ['weapons-lab'],
+  'src/shared/weaponDefs': ['weapon-lab'],
   'src/shared/quest-types': ['quest-lab', 'quest-content-lab'],
-  'src/core/components': ['combat-lab', 'movement-lab'],
+  'src/core/components': ['weapon-lab', 'movement-lab'],
 };
 
 // Read changed files from stdin

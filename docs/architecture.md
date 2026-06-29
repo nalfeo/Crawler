@@ -65,7 +65,7 @@ graph TD
     end
 
     subgraph labs["src/labs — Dev sandboxes · Unrestricted imports"]
-        L1[movement-lab · combat-lab · ...]
+        L1[movement-lab · weapon-lab · ...]
     end
 
     shared --> core

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Interactive sandbox for verifying the `damageSystem` formulas, interactions, and edge cases in isolation — without needing full combat-lab infrastructure.
+Interactive sandbox for verifying the `damageSystem` formulas, interactions, and edge cases in isolation — without needing full weapon-lab infrastructure.
 
 ## System Under Test
 
@@ -80,6 +80,6 @@ DPS/
 
 ## Non-goals
 
-- Does NOT test actual ECS entity creation (that's combat-lab's job)
+- Does NOT test actual ECS entity creation (that's weapon-lab's job)
 - Does NOT render Phaser sprites
 - Pure math/formula visualization

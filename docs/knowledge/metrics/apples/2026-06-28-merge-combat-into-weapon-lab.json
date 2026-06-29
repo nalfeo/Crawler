@@ -1,0 +1,10 @@
+{
+  "session": "merge-combat-into-weapon-lab",
+  "date": "2026-06-28",
+  "branch": "nalfeo-merge-combat-into-weapon-lab",
+  "summary": "Delete combat-lab and rename weapons-lab → weapon-lab. Update lab routing, lab-gate, pr-lab-links, and system docs to reference the consolidated lab.",
+  "estimate": "🍎🍎",
+  "actual": "🍎🍎",
+  "verdict": "on-target",
+  "notes": "Straightforward consolidation — combat-lab functionality was already a strict subset of weapons-lab (which uses the real weapon system + sprite registry). Renamed weapons-lab → weapon-lab with category Combat (was Items & Equipment). Sprites already render correctly via the existing weapon system: melee weapons use MeleeSpriteId.SWORD/BAT → 'weapon.sword' / 'weapon.bat' sprites; ranged weapons spawn 'proj' entities that resolve to 'weapon.arrow' sprite. Verified by booting npm run lab and screenshotting weapon-lab — sword swings landing on enemies (HUD: 'Hits: 5 Misses: 1 (83% hit)')."
+}

@@ -2,7 +2,7 @@
 
 **Status:** ✅ Implemented  
 **Layer:** `src/game/weaponSystem.ts` + `src/core/systems/`  
-**Labs:** `weapons-lab`, `combat-lab`, `projectilecleanup-lab`
+**Labs:** `weapon-lab`, `projectilecleanup-lab`
 
 ---
 
