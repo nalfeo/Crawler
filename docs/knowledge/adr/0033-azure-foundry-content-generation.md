@@ -79,7 +79,7 @@ A `router` value lets Foundry's **model router** pick at runtime. `synthProvider
 
 Foundry path is `{FOUNDRY_ENDPOINT}/openai/deployments/{model}/{route}?api-version=…`
 (unchanged route + parse). Phase 1 keeps `api-key` for the smallest diff;
-auth is wrapped so Phase 2 swaps to `Authorization: Bearer` from Entra/Managed
+auth is wrapped so Phase 3 swaps to `Authorization: Bearer` from Entra/Managed
 Identity (`@azure/identity`) — closing the root‑credential gap infra/README flags.
 
 ### 5. CI default stays mock; live calls opt-in only
@@ -111,4 +111,5 @@ deterministic gates only (ADR‑0003); the model router never lands in a gate.
 
 1. Factory `foundry` mode + `FOUNDRY_*` env + mocked tests + this ADR (Proposed→Accepted).
 2. Live image+text on Foundry default; re-baseline sensors/judge.
-3. Entra/MI auth; deprecate `AZURE_OPENAI_*`. 4. Wire model router; record label.
+3. Entra/MI auth; deprecate `AZURE_OPENAI_*`.
+4. Wire model router; record label.

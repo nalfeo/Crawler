@@ -53,7 +53,7 @@ Key design points:
 
 ## Phase 1 — non-breaking factory wiring (same day)
 
-Estimated: 🍎 x 2 · Actual: 🍎 x 2 · 🎯 Exact · Hello kitties: 3/5 = 0.60 🎀
+Estimated: 🍎 x 2 · Actual: 🍎 x 2 · 🎯 Exact · Hello kitties: 2/5 = 0.40 🎀
 
 Implemented the ADR's Phase 1 without behaviour change for existing users:
 
