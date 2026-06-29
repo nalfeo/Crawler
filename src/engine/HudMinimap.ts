@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { query } from 'bitecs';
 import { Enemy, Npc, Position } from '../core/components.js';
 import type { GameWorld } from '../core/world.js';
+import { getQuestWaypoints } from '../core/systems/questWaypoints.js';
 import { RoomRole, type RoomData, TerrainType } from '../shared/map-types.js';
 import type { FloorMap } from '../core/map/FloorMap.js';
 import {
@@ -48,11 +49,13 @@ const DOT_SAFE_ROOM = 0x2dd4bf;
 const DOT_BOSS_ROOM = 0xf59e0b;
 const DOT_SPAWN_ROOM = 0x60a5fa;
 const DOT_STAIRS = 0xf8fafc;
+const DOT_WAYPOINT = 0xfcd34d;
 const DOT_PLAYER_RADIUS = 0.8;
 const DOT_ENEMY_RADIUS = 0.55;
 const DOT_NPC_RADIUS = 0.62;
 const ROOM_MARKER_SIZE = 1.6;
 const STAIRS_MARKER_SIZE = 1.1;
+const WAYPOINT_MARKER_SIZE = 1.8;
 
 /** Terrain colour palette for minimap (same hues as main terrain, darker). */
 const MINI_COLORS: Readonly<Record<number, number>> = {
@@ -522,6 +525,21 @@ export function createHudMinimap(scene: Phaser.Scene): {
       }
     }
 
+    // Quest waypoint — the tracked objective marker. Drawn even in unexplored
+    // tiles so it actively guides the player to the next goal on a big floor.
+    const overlayWaypoint = getQuestWaypoints(world, playerEid)[0];
+    if (overlayWaypoint) {
+      const wpTile = floorMap.worldToTile(overlayWaypoint.x, overlayWaypoint.y);
+      if (
+        wpTile.x >= 0 &&
+        wpTile.y >= 0 &&
+        wpTile.x < floorMap.width &&
+        wpTile.y < floorMap.height
+      ) {
+        drawSquareMarker(dotGraphics, wpTile.x, wpTile.y, DOT_WAYPOINT, WAYPOINT_MARKER_SIZE);
+      }
+    }
+
     const tileFt = floorMap.config.tileSizeFt;
     const enemies = query(world.ecs, [Enemy, Position]);
     for (const eid of enemies) {
@@ -688,6 +706,19 @@ export function createHudMinimap(scene: Phaser.Scene): {
           radarScratch.fillStyle(DOT_STAIRS, 1);
           radarScratch.fillRect(sx - half, sy - half, half * 2, half * 2);
         }
+      }
+    }
+
+    // Quest waypoint blip — primary tracked objective, always shown.
+    const radarWaypoint = getQuestWaypoints(world, playerEid)[0];
+    if (radarWaypoint) {
+      const wpTile = floorMap.worldToTile(radarWaypoint.x, radarWaypoint.y);
+      const wx = localX(wpTile.x + 0.5);
+      const wy = localY(wpTile.y + 0.5);
+      if (inDial(wx, wy)) {
+        const half = WAYPOINT_MARKER_SIZE * scale * 0.5;
+        radarScratch.fillStyle(DOT_WAYPOINT, 1);
+        radarScratch.fillRect(wx - half, wy - half, half * 2, half * 2);
       }
     }
 
