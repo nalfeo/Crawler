@@ -36,6 +36,9 @@ export const STAGE_NAMES = [
 /** YYYY-MM-DD matcher for ledger dates (shared with the CLI). */
 export { DATE_RE };
 
+/** Kebab-case slug matcher for ledger filenames and session identifiers (shared with the CLI). */
+export { SLUG_RE };
+
 /**
  * Required review stages for a given apple estimate.
  *   1     -> code_review

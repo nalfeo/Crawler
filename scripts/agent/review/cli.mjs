@@ -18,6 +18,7 @@ import {
   SCHEMA_VERSION,
   STAGE_NAMES,
   DATE_RE,
+  SLUG_RE,
   requiredStagesForApples,
   validateLedgerFile,
   formatLedgerResult,
@@ -92,7 +93,7 @@ function cmdInit(flags) {
     return 1;
   }
   const slug = typeof flags.slug === 'string' ? flags.slug : '';
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+  if (!SLUG_RE.test(slug)) {
     console.error('init: --slug must be kebab-case (e.g. improve-local-harness)');
     return 1;
   }
