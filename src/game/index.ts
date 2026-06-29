@@ -79,6 +79,11 @@ export {
   queueAbilityTrigger,
   getOrCreateAbilityState,
 } from './systems/abilitySystem.js';
+export {
+  achievementSystem,
+  evaluateAchievementUnlocksForPhase,
+  unlockAchievement,
+} from './systems/achievementSystem.js';
 export { getSkillDefinition, getAllSkillDefinitions } from './skills/registry.js';
 export { getAbilityDefinition, getAllAbilityDefinitions } from './abilities/registry.js';
 export type {

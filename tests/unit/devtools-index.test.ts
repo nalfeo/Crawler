@@ -7,6 +7,7 @@ describe('devtools home index', () => {
       'sprite-generation-workflow',
       'sprite-review',
       'postprocess',
+      'achievements',
     ]);
   });
 

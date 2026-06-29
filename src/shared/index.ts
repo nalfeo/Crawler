@@ -115,3 +115,4 @@ export {
   isEquippableItem,
   getEquippableItemIds,
 } from './equipmentDefs.js';
+export * from './achievements.js';

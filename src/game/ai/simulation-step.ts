@@ -43,6 +43,7 @@ import {
   levelSystem,
   skillSystem,
   abilitySystem,
+  achievementSystem,
 } from '../index.js';
 import type { InputState } from '../../shared/input.js';
 
@@ -148,6 +149,7 @@ export function runSimulationStep(
     floorObjectiveSystem(world);
     floor1EnemyDirectorSystem(world);
     questSystem(world);
+    achievementSystem(world);
   }
 
   for (const sys of options.postSystems ?? []) {

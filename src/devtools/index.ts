@@ -1,5 +1,5 @@
 export interface DevtoolsIndexEntry {
-  id: 'sprite-generation-workflow' | 'sprite-review' | 'postprocess';
+  id: 'sprite-generation-workflow' | 'sprite-review' | 'postprocess' | 'achievements';
   name: string;
   description: string;
 }
@@ -21,5 +21,11 @@ export const DEVTOOLS_INDEX_ENTRIES: readonly DevtoolsIndexEntry[] = [
     name: 'Postprocess debugger',
     description:
       'Inspect pipeline steps, validate sheet slicing, and trace live postprocess output.',
+  },
+  {
+    id: 'achievements',
+    name: 'Achievements editor',
+    description:
+      'View all Floor 1 achievements, edit title/criteria/flavor/reward overrides, and review icon + loot-box art backlog.',
   },
 ] as const;
