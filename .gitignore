@@ -46,3 +46,7 @@ files/guard-telemetry.jsonl
 
 # Basic Memory local index/artifacts (see docs/guides/agent-memory.md)
 **/.basic-memory/
+
+# Codex repair local runtime artifacts (prompt/context/results)
+.github/scripts/codex/runtime/
+.env.codex.local
