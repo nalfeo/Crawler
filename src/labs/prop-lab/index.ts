@@ -188,12 +188,12 @@ registerLab(LAB_ID, {
   name: 'Prop Lab',
   description: 'Visualise prop placement across a BASIC_UNDERGROUND floor',
   category: 'Meta',
-  create(canvasEl: HTMLElement, controlsEl: HTMLElement): (() => void) | void {
-    const canvas = canvasEl as unknown as HTMLCanvasElement;
-    if (!(canvas instanceof HTMLCanvasElement)) {
-      canvasEl.textContent = 'prop-lab requires a <canvas> element';
-      return;
-    }
+  create(canvasHost: HTMLElement, controlsEl: HTMLElement): (() => void) | void {
+    const canvas = document.createElement('canvas');
+    canvas.style.display = 'block';
+    canvas.style.margin = '0 auto';
+    canvas.style.imageRendering = 'pixelated';
+    canvasHost.appendChild(canvas);
 
     const saved = loadLabState<PropLabSettings>(LAB_ID);
     const settings: PropLabSettings = {
@@ -206,8 +206,8 @@ registerLab(LAB_ID, {
       showLightRadii: saved?.showLightRadii ?? true,
     };
 
-    const gui = new GUI({ container: controlsEl as HTMLElement });
-    (controlsEl as ControlsWithGui).__labGui = gui;
+    const gui = (controlsEl as ControlsWithGui).__labGui;
+    if (!(gui instanceof GUI)) throw new Error('Lab runner did not initialize lil-gui.');
 
     let dirty = true;
     let rafId = 0;
@@ -255,7 +255,7 @@ registerLab(LAB_ID, {
 
     return (): void => {
       cancelAnimationFrame(rafId);
-      gui.destroy();
+      canvas.remove();
     };
   },
 });
