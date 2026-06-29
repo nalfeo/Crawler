@@ -128,10 +128,10 @@ describe('floor 1 welcome signs', () => {
     }
   });
 
-  it('regression: seed 20 points each sign at the door that leads onward, in every path room', () => {
-    const world = initFloor1(20);
+  it('regression: seed 18 points each sign at the door that leads onward, in every path room', () => {
+    const world = initFloor1(18);
     const steps = navigableRoomSteps(world);
-    // Seed 20 winds through a long chain of rooms — the original straight-to-goal
+    // Seed 18 winds through a long chain of rooms — the original straight-to-goal
     // bug short-circuited this, so a long path is the regression's fingerprint.
     expect(steps.length).toBeGreaterThan(6);
 

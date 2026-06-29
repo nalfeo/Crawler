@@ -513,13 +513,13 @@ function chooseObjectiveTiles(world: GameWorld): {
     })
     .sort((a, b) => a.distanceSq - b.distanceSq);
 
-  // Welcome office: 3–8 room-graph hops from spawn, targeting ~5 hops.
-  // Among rooms in the valid range, prefer the hop count closest to 5; break
+  // Welcome office: 3–8 room-graph hops from spawn, targeting ~4 hops.
+  // Among rooms in the valid range, prefer the hop count closest to 4; break
   // ties with Euclidean distance (nearest wins, matching prior behaviour).
   // Falls back to the nearest Euclidean room when no room is in the hop range.
   const WELCOME_MIN_HOPS = 3;
   const WELCOME_MAX_HOPS = 8;
-  const WELCOME_TARGET_HOPS = 5;
+  const WELCOME_TARGET_HOPS = 4;
   const welcomeHopCandidates = candidates.filter((e) => {
     const hops = roomHopFromSpawn.get(e.room.id);
     return hops !== undefined && hops >= WELCOME_MIN_HOPS && hops <= WELCOME_MAX_HOPS;
