@@ -193,13 +193,19 @@ gallery lab is the read-only review surface so you can scan them
 without opening each PNG individually.
 
 ```pwsh
-# Loads the same env you used for sprites:run, then starts the sidecar
-# (127.0.0.1:3010) and the Vite lab dev server together. Ctrl-C stops both.
+# Always refresh Azure env in this worktree first (uses az + writes .env.local).
+npm run setup:azure
+
+# Then start the sidecar + Vite lab server. Ctrl-C stops both.
 npm run sprites:gallery
 ```
 
 Then open `http://localhost:3000/lab.html?lab=sprite-gallery`. (The
 sidecar binds 127.0.0.1 only - it is never reachable from the LAN.)
+
+> Policy: sidecar launches are Azure-first by default (`azure-blob` + `azure-queue`).
+> Do not switch to `SPRITES_RUN_STORE=local SPRITES_ASSET_QUEUE=noop` unless a human
+> explicitly requests local/offline mode.
 
 What the gallery shows, per candidate:
 

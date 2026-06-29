@@ -66,6 +66,15 @@ When working in a Copilot worktree session, keep **at most one active dev/lab/de
 2. **Replace cleanly when needed:** if you must relaunch (hung process, wrong mode, wrong flags), stop the existing server process tied to the same session/workspace first, then start the new one.
 3. **Always print the URL on launch:** every successful launch command must output the URL that should be opened (base URL, or specific route URL if relevant).
 
+### Azure-required sidecar policy
+
+When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/sidecar/cli.ts`), treat Azure connectivity as required by default.
+
+1. Run `npm run setup:azure` first in the current worktree to refresh `.env.local` from `az`.
+2. Launch sidecar with default backend selection only (Azure: `azure-blob` + `azure-queue`).
+3. Do **not** switch to local/noop backends unless a human explicitly asks for local/offline mode.
+4. If Azure credentials are missing or invalid, report the blocker and stop instead of silently falling back.
+
 ## Architecture
 
 - **ECS (bitecs 0.4)**: Game logic in `src/core/` — pure functions, no rendering
