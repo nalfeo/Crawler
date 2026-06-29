@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-29",
+  "session": "refactor-cleanup-review",
+  "estimated_apples": 5,
+  "actual_apples": 3,
+  "delta": -2,
+  "verdict": "miss",
+  "hello_kitties": 0.6
+}

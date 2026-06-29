@@ -3,9 +3,7 @@ import { Player, Enemy, Invincible, EffectiveStats, DeathTimer, BloodColor } fro
 import type { CombatEvent } from '../shared/combat-events.js';
 import type { GameWorld } from './world.js';
 import { resolveCrit, resolveDodge } from './combat-rolls.js';
-
-/** Fallback blood colour (red) when an enemy carries no BloodColor component. */
-const DEFAULT_BLOOD_COLOR = 0xcc0000;
+import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
 
 /**
  * Emit a `corpseExplode` combat event for a corpse struck during its

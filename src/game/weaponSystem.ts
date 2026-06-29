@@ -28,6 +28,7 @@ import type { GameWorld } from '../core/world.js';
 import { TeamId, MeleeSpriteId, WEAPON, WeaponType } from '../shared/constants.js';
 import type { WeaponDef } from '../shared/weaponDefs.js';
 import { createLogger } from '../shared/logger.js';
+import { normalize } from '../shared/vec.js';
 
 interface WeaponState {
   lastFireMs: number;
@@ -76,18 +77,7 @@ function getWeaponState(world: GameWorld): WeaponState {
 }
 
 function normalizeVector(x: number, y: number): { x: number; y: number } {
-  const length = Math.hypot(x, y);
-
-  // Callers guard near-zero vectors before invoking this helper.
-  /* c8 ignore next 3 */
-  if (length <= 0.0001) {
-    return { x: 1, y: 0 };
-  }
-
-  return {
-    x: x / length,
-    y: y / length,
-  };
+  return normalize(x, y, 1, 0);
 }
 
 /**

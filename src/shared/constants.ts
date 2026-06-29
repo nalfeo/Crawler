@@ -46,6 +46,9 @@ export const ARENA = {
 
 export const PLAYER_SPEED: number = tuning.player.speed;
 
+/** Fallback blood colour (red) used when an entity/event carries no explicit bloodColor. */
+export const DEFAULT_BLOOD_COLOR = 0xcc0000;
+
 export const WeaponType = {
   MELEE: 0,
   RANGED: 1,

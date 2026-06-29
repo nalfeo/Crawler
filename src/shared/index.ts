@@ -116,3 +116,11 @@ export {
   getEquippableItemIds,
 } from './equipmentDefs.js';
 export * from './achievements.js';
+export {
+  VEC_EPSILON,
+  length,
+  distance,
+  distanceSq,
+  normalize,
+  type NormalizedVector,
+} from './vec.js';
