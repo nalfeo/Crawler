@@ -23,6 +23,7 @@
 
 import type { FloorMap } from './FloorMap.js';
 import { isTileTraversable, PATH_TRAVERSAL, type TilePoint } from './pathfinding.js';
+import { indexToCoords } from './grid-utils.js';
 
 /** Distance marker for tiles the goal sweep never reached (walls, sealed areas). */
 export const FLOW_UNREACHABLE = -1;
@@ -119,8 +120,7 @@ export function computeFlowField(
   while (head < queue.length) {
     const idx = queue[head]!;
     head += 1;
-    const cx = idx % width;
-    const cy = (idx - cx) / width;
+    const [cx, cy] = indexToCoords(idx, width);
     const nextDistance = distance[idx]! + 1;
 
     for (const [dx, dy] of FLOW_DIRECTIONS) {

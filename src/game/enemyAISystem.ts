@@ -18,6 +18,7 @@ import { ENEMY_PROJECTILE, TeamId } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { getWeaponDef } from '../shared/weaponDefs.js';
 import { SeededRandom } from '../shared/random.js';
+import { normalize } from '../shared/vec.js';
 
 export const AI_TYPE = { CHASE: 0, SWARM: 1, RANGED: 2, LEAPER: 3 } as const;
 export { PATH_PERSONA, TRAVERSAL_MODE };
@@ -223,15 +224,6 @@ function setVelocity(world: GameWorld, eid: number, x: number, y: number): void 
     }
   }
   setComponent(world.ecs, eid, Velocity, { x, y });
-}
-
-function normalize(x: number, y: number): { x: number; y: number; length: number } {
-  const length = Math.hypot(x, y);
-  if (length <= EPSILON) {
-    return { x: 0, y: 0, length: 0 };
-  }
-
-  return { x: x / length, y: y / length, length };
 }
 
 function getEnemySpeed(world: GameWorld, eid: number): number {

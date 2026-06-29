@@ -33,6 +33,7 @@ import {
   type RoomData,
 } from '../../shared/map-types.js';
 import type { FloorMap } from './FloorMap.js';
+import { floodFill, indexToCoords } from './grid-utils.js';
 
 /** Roles that are treated as "special" (and therefore sealed) by default. */
 export const DEFAULT_SPECIAL_ROOM_ROLES: readonly RoomRole[] = [RoomRole.SAFE, RoomRole.BOSS_STAIR];
@@ -93,32 +94,12 @@ export function sealRoomPerimeter(floorMap: FloorMap, room: RoomData): SealRoomR
   const spawnIdx = floorMap.playerSpawn.y * w + floorMap.playerSpawn.x;
   // Flood the tiles reachable from the player spawn over passable/door tiles,
   // treating `blocked` indices as walls (models the map after candidate walling).
-  const floodFromSpawn = (blocked: ReadonlySet<number>): Uint8Array => {
-    const visited = new Uint8Array(w * h);
-    if (blocked.has(spawnIdx)) return visited;
-    visited[spawnIdx] = 1;
-    const stack: number[] = [spawnIdx];
-    while (stack.length > 0) {
-      const idx = stack.pop()!;
-      const cx = idx % w;
-      const cy = (idx - cx) / w;
-      for (const [nx, ny] of [
-        [cx + 1, cy],
-        [cx - 1, cy],
-        [cx, cy + 1],
-        [cx, cy - 1],
-      ] as [number, number][]) {
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        const nIdx = ny * w + nx;
-        if (visited[nIdx] || blocked.has(nIdx)) continue;
-        const f = flags[nIdx]!;
-        if ((f & TileFlags.PASSABLE) === 0 && (f & TileFlags.DOOR) === 0) continue;
-        visited[nIdx] = 1;
-        stack.push(nIdx);
-      }
-    }
-    return visited;
-  };
+  const floodFromSpawn = (blocked: ReadonlySet<number>): Uint8Array =>
+    floodFill(spawnIdx, w, h, (idx) => {
+      if (blocked.has(idx)) return false;
+      const f = flags[idx]!;
+      return (f & TileFlags.PASSABLE) !== 0 || (f & TileFlags.DOOR) !== 0;
+    });
 
   const reachableBefore = floodFromSpawn(new Set());
   const walled = new Set<number>();
@@ -145,8 +126,7 @@ export function sealRoomPerimeter(floorMap: FloorMap, room: RoomData): SealRoomR
     } else {
       flags[idx] = TilePresets.DOOR_CLOSED;
       terrain[idx] = TerrainType.DOOR;
-      const dx = idx % w;
-      const dy = (idx - dx) / w;
+      const [dx, dy] = indexToCoords(idx, w);
       addedDoors.push({ x: dx, y: dy, connectsTo: -1 });
     }
   }

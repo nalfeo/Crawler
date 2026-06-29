@@ -38,6 +38,7 @@ import {
 } from './components.js';
 import type { GameWorld } from './world.js';
 import type { WeaponTypeValue } from '../shared/constants.js';
+import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
@@ -73,7 +74,7 @@ export function createEntity(world: GameWorld): number {
 }
 
 /** Default blood colour for any enemy that does not specify one (red). */
-export const DEFAULT_BLOOD_COLOR = 0xcc0000;
+export { DEFAULT_BLOOD_COLOR };
 
 /**
  * Set the BloodColor component from a packed 0xRRGGBB integer.
