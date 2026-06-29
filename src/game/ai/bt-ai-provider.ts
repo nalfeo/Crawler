@@ -15,7 +15,9 @@ import {
   XpGem,
   Gold,
   DroppedItem,
+  Harvestable,
   Npc,
+  HARVEST_RANGE_FT,
   type GameWorld,
 } from '../../core/index.js';
 import type { FloorMap } from '../../core/map/FloorMap.js';
@@ -519,7 +521,7 @@ const NPC_INTERACTION_RADIUS_FT = 12.5;
 // must be within min(engageRadius, this) feet to pre-empt the NPC approach.
 const NPC_APPROACH_THREAT_RADIUS_FT = 8;
 
-type LootKind = 'xp' | 'gold' | 'item';
+type LootKind = 'xp' | 'gold' | 'item' | 'harvest';
 
 interface WorldTarget {
   eid: number;
@@ -1611,6 +1613,29 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
+   * True when the player is parked on a harvestable node (within
+   * {@link HARVEST_RANGE_FT}) so `harvestSystem` is accruing progress this frame.
+   * The harvest is deliberately stationary, so the dwell watchdogs must read it
+   * as progress and re-anchor — otherwise they would abandon/blacklist a node
+   * before its 2.5–4 s timer completes.
+   */
+  private isActivelyHarvesting(world: GameWorld, playerX: number, playerY: number): boolean {
+    const nodes = query(world.ecs, [Harvestable, Position]);
+    const rangeSq = HARVEST_RANGE_FT * HARVEST_RANGE_FT;
+    for (const eid of nodes) {
+      if (eid === undefined) continue;
+      const nx = world.stores.position.x[eid] ?? 0;
+      const ny = world.stores.position.y[eid] ?? 0;
+      const dx = playerX - nx;
+      const dy = playerY - ny;
+      if (dx * dx + dy * dy <= rangeSq) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Watchdog: break out of a COLLECT deadlock against an unreachable loot cluster.
    *
    * A per-target distance watchdog is defeated when the AI rotates between several
@@ -1626,6 +1651,17 @@ export class BehaviorTreeAI implements AIInputProvider {
   private updateCollectWatchdog(world: GameWorld, playerX: number, playerY: number): void {
     if (this.decision.state !== AIState.COLLECT) {
       this.collectDwellActive = false;
+      this.collectDwellFrames = 0;
+      return;
+    }
+
+    // A harvestable takes a few seconds of stationary proximity to gather, so a
+    // legitimately-harvesting AI nets ~zero displacement on purpose. Treat active
+    // harvesting as progress: re-anchor instead of blacklisting the node mid-pull.
+    if (this.isActivelyHarvesting(world, playerX, playerY)) {
+      this.collectDwellActive = true;
+      this.collectDwellAnchorX = playerX;
+      this.collectDwellAnchorY = playerY;
       this.collectDwellFrames = 0;
       return;
     }
@@ -1756,6 +1792,18 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (!this.globalDwellActive) {
       this.globalDwellActive = true;
+      this.globalDwellAnchorX = playerX;
+      this.globalDwellAnchorY = playerY;
+      this.globalDwellFrames = 0;
+      this.globalDwellBestEnemyDist = nearestDist;
+      this.globalDwellBestEnemyHp = nearbyHp;
+      return;
+    }
+
+    // Standing still to harvest a resource node is intentional progress, not a
+    // wedge — re-anchor so the cross-state watchdog never relocates the AI off a
+    // node it is mid-harvest on.
+    if (this.isActivelyHarvesting(world, playerX, playerY)) {
       this.globalDwellAnchorX = playerX;
       this.globalDwellAnchorY = playerY;
       this.globalDwellFrames = 0;
@@ -1965,9 +2013,13 @@ export class BehaviorTreeAI implements AIInputProvider {
     const playerMaxHealth = world.stores.health.max[playerEid] ?? 1;
     const healthPercent = playerHealth / playerMaxHealth;
 
-    // Update stuck detection
+    // Update stuck detection. Standing on a harvestable to gather it nets ~zero
+    // displacement on purpose, so suppress the stuck counter while harvesting —
+    // otherwise the >60f loot-blacklist below would abandon the node mid-gather.
     const dist = Math.hypot(playerX - this.lastPlayerX, playerY - this.lastPlayerY);
-    this.stuckFrames = nextStuckFrames(this.stuckFrames, dist, STUCK_PROGRESS_EPSILON_FT);
+    this.stuckFrames = this.isActivelyHarvesting(world, playerX, playerY)
+      ? 0
+      : nextStuckFrames(this.stuckFrames, dist, STUCK_PROGRESS_EPSILON_FT);
     this.lastPlayerX = playerX;
     this.lastPlayerY = playerY;
 
@@ -3255,6 +3307,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       { kind: 'xp', entities: query(world.ecs, [XpGem, Position]) },
       { kind: 'gold', entities: query(world.ecs, [Gold, Position]) },
       { kind: 'item', entities: query(world.ecs, [DroppedItem, Position]) },
+      { kind: 'harvest', entities: query(world.ecs, [Harvestable, Position]) },
     ];
 
     for (const source of sources) {
@@ -3339,7 +3392,8 @@ export class BehaviorTreeAI implements AIInputProvider {
     const isXp = hasComponent(world.ecs, stickyEid, XpGem);
     const isGold = hasComponent(world.ecs, stickyEid, Gold);
     const isItem = hasComponent(world.ecs, stickyEid, DroppedItem);
-    if (!isXp && !isGold && !isItem) {
+    const isHarvest = hasComponent(world.ecs, stickyEid, Harvestable);
+    if (!isXp && !isGold && !isItem && !isHarvest) {
       return null;
     }
 
@@ -3358,7 +3412,7 @@ export class BehaviorTreeAI implements AIInputProvider {
       x,
       y,
       distance,
-      kind: isXp ? 'xp' : isGold ? 'gold' : 'item',
+      kind: isXp ? 'xp' : isGold ? 'gold' : isItem ? 'item' : 'harvest',
     };
   }
 

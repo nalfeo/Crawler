@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { spawnPlayer } from '../../src/core/helpers.js';
+import { spawnPlayer, spawnHarvestableNode } from '../../src/core/helpers.js';
+import { getItemCount } from '../../src/shared/inventory.js';
+import { HARVESTABLE_DEFS } from '../../src/shared/harvestableDefs.js';
 import { isQuestComplete } from '../../src/core/systems/questSystem.js';
 import { runSimulationStep } from '../../src/game/ai/simulation-step.js';
 import {
@@ -87,5 +89,22 @@ describe('runSimulationStep — level_up must not park the headless Floor 1 sim'
     expect(world.playerLevel.level).toBeGreaterThanOrEqual(2);
     expect(world.state).toBe('playing');
     expect(isQuestComplete(world, FLOOR1_TUTORIAL_QUEST_ID)).toBe(true);
+  });
+});
+
+describe('runSimulationStep — harvestSystem ticks in the headless pipeline', () => {
+  it('completes a harvest while the player stands on the node', () => {
+    const world = createTestWorld({ seed: 42 });
+    const player = spawnPlayer(world, 0, 0);
+    const def = HARVESTABLE_DEFS[0]!;
+
+    // Mushroom def 0 takes 3000ms (~180 steps at 16.67ms); 200 stationary steps clears it.
+    spawnHarvestableNode(world, 0, 0, 0);
+    for (let i = 0; i < 200; i++) {
+      runSimulationStep(world, createInputState(), STEP_MS, FLOOR1_OPTS);
+    }
+
+    const bag = world.inventories.get(player)!;
+    expect(getItemCount(bag, def.itemId)).toBe(1);
   });
 });

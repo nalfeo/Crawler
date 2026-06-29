@@ -18,6 +18,7 @@ import {
   beamSystem,
   trapSystem,
   itemPickupSystem,
+  harvestSystem,
   dropSystem,
   deathTimerSystem,
   spawnAnimSystem,
@@ -114,6 +115,7 @@ export function runSimulationStep(
   beamSystem(world);
   trapSystem(world, collision);
   itemPickupSystem(world, collision);
+  harvestSystem(world);
   dropSystem(world);
   deathTimerSystem(world);
   spawnAnimSystem(world);
