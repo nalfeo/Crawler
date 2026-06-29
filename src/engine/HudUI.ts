@@ -17,6 +17,7 @@ import { createHudMinimap } from './HudMinimap.js';
 import { createHudQuestTracker } from './HudQuestTracker.js';
 import { createHudAbilityBar } from './HudAbilityBar.js';
 import { createHudSkillTracker } from './HudSkillTracker.js';
+import { createHudDirectionArrows } from './HudDirectionArrows.js';
 import { getUiScale, onUiScaleChange } from './ui-scale.js';
 import { GAME } from '../shared/constants.js';
 
@@ -65,6 +66,10 @@ export function createHudUI(scene: Phaser.Scene): {
   // rather than being grouped into a corner container here.
   const minimap = createHudMinimap(scene);
 
+  // Off-screen quest waypoint arrows live full-screen (edge-pinned), so they
+  // own their depth rather than belonging to a scaled corner group.
+  const directionArrows = createHudDirectionArrows(scene);
+
   // Phaser containers render children in insertion order; pixel-ui builders set
   // explicit depths, so sort each group to preserve intended layering.
   for (const group of [bottomLeft, bottomCenter, topCenter, topRight]) {
@@ -99,6 +104,7 @@ export function createHudUI(scene: Phaser.Scene): {
     skillTracker.sync(world, playerEid);
     minimap.sync(world, playerEid);
     questTracker.sync(world, playerEid);
+    directionArrows.sync(world, playerEid);
     abilityBar.sync(world, playerEid);
   }
 
@@ -113,6 +119,7 @@ export function createHudUI(scene: Phaser.Scene): {
     skillTracker.destroy();
     minimap.destroy();
     questTracker.destroy();
+    directionArrows.destroy();
     abilityBar.destroy();
     bottomLeft.destroy();
     bottomCenter.destroy();
