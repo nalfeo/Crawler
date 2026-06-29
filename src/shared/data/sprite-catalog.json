@@ -467,5 +467,57 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:green-slime-baby-v1-var-2",
+    "kind": "sprite",
+    "label": "green-slime-baby-v1-var-2",
+    "description": "Generated sprite from brief: green-slime-baby-v1.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "green-slime-baby-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/green-slime-baby-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:baby-slime-v1-var-1",
+    "kind": "sprite",
+    "label": "baby-slime-v1-var-1",
+    "description": "Generated sprite from brief: baby-slime-v1.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "baby-slime-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/baby-slime-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:baby-slime-v1-var-8",
+    "kind": "sprite",
+    "label": "baby-slime-v1-var-8",
+    "description": "Generated sprite from brief: baby-slime-v1.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "baby-slime-v1-var-8",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/baby-slime-v1-var-8.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:rat-slime-v1-var-1",
+    "kind": "sprite",
+    "label": "rat-slime-v1-var-1",
+    "description": "Generated sprite from brief: rat-slime-v1.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "rat-slime-v1-var-1",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/rat-slime-v1-var-1.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
