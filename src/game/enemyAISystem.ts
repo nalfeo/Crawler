@@ -277,6 +277,57 @@ function isNearDoor(
   return false;
 }
 
+/**
+ * When the player retreats into a safe room the doors reset to closed, breaking
+ * line of sight. Mobs that were pressing the threshold must actively peel away
+ * instead of camping the closed door. This returns a unit vector summing the
+ * outward direction from every nearby door tile, biased away from the player so
+ * the swarm disperses back into the level rather than orbiting the entrance.
+ * Returns a zero vector when no doors are in range.
+ */
+function fleeFromDoorDirection(
+  world: GameWorld,
+  x: number,
+  y: number,
+  playerX: number,
+  playerY: number,
+  radiusTiles = DOOR_AVOID_RADIUS_TILES + 1,
+): { x: number; y: number; length: number } {
+  const floorMap = world.floorMap;
+  if (!floorMap) {
+    return { x: 0, y: 0, length: 0 };
+  }
+  const tileSize = floorMap.config.tileSizeFt;
+  const tile = floorMap.worldToTile(x, y);
+  let sumX = 0;
+  let sumY = 0;
+  let doorCount = 0;
+  for (let dy = -radiusTiles; dy <= radiusTiles; dy += 1) {
+    for (let dx = -radiusTiles; dx <= radiusTiles; dx += 1) {
+      const tx = tile.x + dx;
+      const ty = tile.y + dy;
+      if (!floorMap.tileMap.inBounds(tx, ty) || !floorMap.tileMap.isDoor(tx, ty)) {
+        continue;
+      }
+      const doorX = tx * tileSize + tileSize / 2;
+      const doorY = ty * tileSize + tileSize / 2;
+      const away = normalize(x - doorX, y - doorY);
+      if (away.length > EPSILON) {
+        sumX += away.x;
+        sumY += away.y;
+        doorCount += 1;
+      }
+    }
+  }
+  if (doorCount === 0) {
+    return { x: 0, y: 0, length: 0 };
+  }
+  const awayPlayer = normalize(x - playerX, y - playerY);
+  sumX += awayPlayer.x;
+  sumY += awayPlayer.y;
+  return normalize(sumX, sumY);
+}
+
 function applyIdleWander(
   world: GameWorld,
   eid: number,
@@ -302,6 +353,29 @@ function applyIdleWander(
       (avoidDoors && isNearDoor(world, sampleX, sampleY))
     );
   };
+
+  // De-aggro dispersal: a mob already sitting on a closed safe-room door must
+  // peel away quickly so the swarm doesn't pile at the threshold. Drive it
+  // directly outward from the door (toward passable, non-safe space) before the
+  // usual random wander, which only avoids picking door-adjacent directions and
+  // otherwise stalls a camped mob in place.
+  if (avoidDoors && playerX !== undefined && playerY !== undefined) {
+    const flee = fleeFromDoorDirection(world, px, py, playerX, playerY);
+    if (flee.length > EPSILON) {
+      const floorMap = world.floorMap;
+      const aheadX = px + flee.x * WANDER_LOOKAHEAD_FT;
+      const aheadY = py + flee.y * WANDER_LOOKAHEAD_FT;
+      const clear =
+        floorMap !== null &&
+        floorMap.isPassableAt(aheadX, aheadY) &&
+        !isPointInSafeSpace(world, aheadX, aheadY);
+      if (clear) {
+        wanderMap.delete(eid);
+        setNavigatingVelocity(world, eid, flee.x, flee.y, Math.max(0.025, speed * 0.7));
+        return;
+      }
+    }
+  }
 
   let state = wanderMap.get(eid);
   const shouldPickNewDirection =

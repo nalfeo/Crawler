@@ -483,6 +483,25 @@ describe('enemyAISystem', () => {
     }
   });
 
+  it('moves a mob away from a closed safe-room door instead of camping it', () => {
+    const world = createTestWorld();
+    world.floorMap = createSafeRoomDoorMap();
+    // Close the safe-room door so it has reset to block line of sight.
+    world.floorMap.tileMap.setFlags(3, 2, TilePresets.DOOR_CLOSED);
+    spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
+    world.playerInSafeRoom = true;
+    // Mob sits just outside the door (tile 4,2) — the door is at tile 3,2.
+    const enemy = spawnBehaviorEnemy(world, 4 * 4 + 2, 2 * 4 + 2, 20, AI_TYPE.SWARM, 0.25, 50, 0);
+
+    enemyAISystem(world);
+
+    const vx = world.stores.velocity.x[enemy] ?? 0;
+    const vy = world.stores.velocity.y[enemy] ?? 0;
+    expect(Math.hypot(vx, vy)).toBeGreaterThan(0.1);
+    // It must peel outward (away from the door, toward +x), not press the door.
+    expect(vx).toBeGreaterThan(0);
+  });
+
   it('moves a leaper toward the player at normal speed while out of pounce range', () => {
     const world = createTestWorld();
     spawnPlayer(world, 0, 0);
