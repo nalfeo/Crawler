@@ -23,6 +23,8 @@ import {
   Player,
   Position,
   Projectile,
+  Prop,
+  PropLight,
   Returning,
   Sprite,
   Spawner,
@@ -40,6 +42,12 @@ import { PATH_PERSONA, TRAVERSAL_MODE } from '../shared/enemy-behavior.js';
 import { clearAreaDamageHits } from './systems/areaDamageSystem.js';
 import { clearMeleeSwingHits } from './systems/meleeSwingSystem.js';
 import { getNpcDef, type NpcInstance } from '../shared/npc-types.js';
+import {
+  DECORATION_DEFS,
+  DECORATION_DEF_INDEX,
+  type DecorationDef,
+} from '../shared/decorationDefs.js';
+import { ftToPx } from '../shared/units.js';
 import { type HarvestableDef, HARVESTABLE_DEFS } from '../shared/harvestableDefs.js';
 
 // Re-export applyDamage for backward compatibility
@@ -619,6 +627,59 @@ export function spawnNpc(world: GameWorld, x: number, y: number, defId: string):
     nearbyPlayer: false,
   };
   world.npcs.set(eid, instance);
+
+  return eid;
+}
+
+/**
+ * Spawn a static scene-dressing prop entity at the given world position.
+ *
+ * Creates Position + Sprite + Prop components. If the decoration def has a
+ * `lightEmission` field, a PropLight component is added too. The radius is
+ * converted from feet → render-pixels at this boundary so the engine layer
+ * never has to do it.
+ *
+ * Returns the entity id, or -1 if the defId is not found.
+ */
+export function spawnProp(world: GameWorld, x: number, y: number, defId: string): number {
+  const decorationDef: DecorationDef | undefined = DECORATION_DEFS.get(defId);
+  if (decorationDef === undefined) {
+    return -1;
+  }
+
+  const eid = createEntity(world);
+  const defIdIndex = DECORATION_DEF_INDEX[defId] ?? 0;
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(
+    world.ecs,
+    eid,
+    set(Sprite, { textureId: 0, width: decorationDef.scale, height: decorationDef.scale }),
+  );
+  addComponent(
+    world.ecs,
+    eid,
+    set(Prop, {
+      defIdIndex,
+      isDestructible: decorationDef.isDestructible ? 1 : 0,
+      isDestroyed: 0,
+    }),
+  );
+
+  if (decorationDef.lightEmission !== undefined) {
+    const { radiusFt, intensity, colorHex } = decorationDef.lightEmission;
+    addComponent(
+      world.ecs,
+      eid,
+      set(PropLight, {
+        radiusPx: ftToPx(radiusFt),
+        intensity,
+        colorR: (colorHex >> 16) & 0xff,
+        colorG: (colorHex >> 8) & 0xff,
+        colorB: colorHex & 0xff,
+      }),
+    );
+  }
 
   return eid;
 }

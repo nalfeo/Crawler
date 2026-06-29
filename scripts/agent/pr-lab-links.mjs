@@ -137,6 +137,9 @@ const SOURCE_PATH_TO_LABS = {
   // Entities
   'src/core/systems/npcSystem': ['npc-lab'],
   'src/core/systems/questSystem': ['quest-lab'],
+  // Props / decoration
+  'src/game/systems/propPlacer': ['prop-lab'],
+  'src/shared/decorationDefs': ['prop-lab'],
   // Engine / rendering
   'src/engine/terrain': ['tile-render-lab'],
   'src/engine/sprites/tile': ['tile-render-lab', 'tile-explorer'],

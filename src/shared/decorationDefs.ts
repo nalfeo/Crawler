@@ -8,6 +8,32 @@ import type { BiomeTag } from './biome-tags.js';
 
 export type DepthLayer = 'back' | 'mid' | 'front';
 
+/**
+ * Category tag for prop filtering (used by floor manifests via `allowedCategories`).
+ */
+export type PropCategory = 'rubbish' | 'light-source' | 'structural' | 'organic' | 'tech';
+
+/**
+ * Placement zone controls which terrain tiles are valid candidates for a prop.
+ * The prop placer resolves each zone against `floorMap.terrain` at spawn time.
+ */
+export type PlacementZone =
+  | 'anywhere' // any passable non-special tile (room, corridor, cave)
+  | 'room-only' // STONE_FLOOR tiles that belong to a RoomRole.NORMAL room
+  | 'cave-only' // CAVE_FLOOR tiles only (cave sub-regions)
+  | 'corridor-only' // CORRIDOR tiles only
+  | 'wall-adjacent'; // passable tile with ≥1 adjacent wall tile (for sconces, etc.)
+
+/** Light emission parameters for props that act as secondary light sources. */
+export interface LightEmission {
+  /** Emission radius in feet. */
+  readonly radiusFt: number;
+  /** Intensity 0–1. */
+  readonly intensity: number;
+  /** Packed 0xRRGGBB light colour. */
+  readonly colorHex: number;
+}
+
 export interface DecorationDef {
   readonly id: string;
   readonly name: string;
@@ -15,6 +41,10 @@ export interface DecorationDef {
   readonly spriteId: string;
   /** Biome grouping for floor generation. */
   readonly biomeTag: BiomeTag;
+  /** Semantic category used by floor-manifest allowedCategories filtering. */
+  readonly category: PropCategory;
+  /** Placement zone — which terrain tiles are valid spawn candidates. */
+  readonly placementZone: PlacementZone;
   /** Size multiplier relative to base (1.0 = 100%). */
   readonly scale: number;
   /** Fixed rotation in degrees, or -1 for random. */
@@ -31,10 +61,13 @@ export interface DecorationDef {
   readonly isDestructible: boolean;
   /** Optional loot table ID if destructible. */
   readonly lootTableId?: string;
+  /** Optional light emission — present on props that emit a secondary light source. */
+  readonly lightEmission?: LightEmission;
 }
 
 function def(
-  partial: Partial<DecorationDef> & Pick<DecorationDef, 'id' | 'name' | 'spriteId' | 'biomeTag'>,
+  partial: Partial<DecorationDef> &
+    Pick<DecorationDef, 'id' | 'name' | 'spriteId' | 'biomeTag' | 'category' | 'placementZone'>,
 ): DecorationDef {
   return {
     scale: 1.0,
@@ -57,6 +90,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Torch',
       spriteId: 'deco-torch',
       biomeTag: 'dungeon',
+      category: 'light-source',
+      placementZone: 'wall-adjacent',
       scale: 1.2,
       rotation: 0,
       isAnimated: true,
@@ -72,6 +107,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Stone Pillar',
       spriteId: 'deco-stone-pillar',
       biomeTag: 'dungeon',
+      category: 'structural',
+      placementZone: 'room-only',
       scale: 1.5,
       rotation: 0,
       depthLayer: 'mid',
@@ -87,6 +124,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Barrel',
       spriteId: 'deco-barrel',
       biomeTag: 'dungeon',
+      category: 'structural',
+      placementZone: 'room-only',
       scale: 0.9,
       rotation: 0,
       depthLayer: 'mid',
@@ -102,6 +141,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Rubble Pile',
       spriteId: 'deco-rubble',
       biomeTag: 'dungeon',
+      category: 'rubbish',
+      placementZone: 'anywhere',
       scale: 1.1,
       rotation: -1,
       depthLayer: 'mid',
@@ -115,6 +156,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Hanging Chain',
       spriteId: 'deco-chain',
       biomeTag: 'dungeon',
+      category: 'structural',
+      placementZone: 'wall-adjacent',
       scale: 1.0,
       rotation: 0,
       isAnimated: true,
@@ -132,6 +175,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Vine',
       spriteId: 'deco-vine',
       biomeTag: 'organic',
+      category: 'organic',
+      placementZone: 'cave-only',
       scale: 1.3,
       rotation: -1,
       depthLayer: 'back',
@@ -145,6 +190,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Skull Pile',
       spriteId: 'deco-skull-pile',
       biomeTag: 'organic',
+      category: 'organic',
+      placementZone: 'anywhere',
       scale: 1.1,
       rotation: -1,
       depthLayer: 'mid',
@@ -158,6 +205,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Bone Arch',
       spriteId: 'deco-bone-arch',
       biomeTag: 'organic',
+      category: 'organic',
+      placementZone: 'anywhere',
       scale: 1.5,
       rotation: 0,
       depthLayer: 'mid',
@@ -173,6 +222,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Pustule',
       spriteId: 'deco-pustule',
       biomeTag: 'organic',
+      category: 'organic',
+      placementZone: 'cave-only',
       scale: 0.8,
       rotation: 0,
       isAnimated: true,
@@ -190,6 +241,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Moss Patch',
       spriteId: 'deco-moss',
       biomeTag: 'organic',
+      category: 'organic',
+      placementZone: 'cave-only',
       scale: 1.2,
       rotation: -1,
       depthLayer: 'back',
@@ -205,6 +258,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Light Panel',
       spriteId: 'deco-light-panel',
       biomeTag: 'tech',
+      category: 'light-source',
+      placementZone: 'wall-adjacent',
       scale: 1.0,
       rotation: 0,
       isAnimated: true,
@@ -220,6 +275,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Server Stack',
       spriteId: 'deco-server-stack',
       biomeTag: 'tech',
+      category: 'tech',
+      placementZone: 'room-only',
       scale: 1.2,
       rotation: 0,
       depthLayer: 'mid',
@@ -235,6 +292,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Cable Bundle',
       spriteId: 'deco-cable',
       biomeTag: 'tech',
+      category: 'tech',
+      placementZone: 'anywhere',
       scale: 1.1,
       rotation: -1,
       depthLayer: 'mid',
@@ -248,6 +307,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Hologram',
       spriteId: 'deco-hologram',
       biomeTag: 'tech',
+      category: 'tech',
+      placementZone: 'room-only',
       scale: 1.0,
       rotation: 0,
       isAnimated: true,
@@ -265,6 +326,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Crystal Shard',
       spriteId: 'deco-crystal-shard',
       biomeTag: 'void',
+      category: 'structural',
+      placementZone: 'anywhere',
       scale: 1.1,
       rotation: -1,
       depthLayer: 'mid',
@@ -278,6 +341,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Void Orb',
       spriteId: 'deco-void-orb',
       biomeTag: 'void',
+      category: 'organic',
+      placementZone: 'anywhere',
       scale: 0.9,
       rotation: 0,
       isAnimated: true,
@@ -293,6 +358,8 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Rune Circle',
       spriteId: 'deco-rune-circle',
       biomeTag: 'void',
+      category: 'structural',
+      placementZone: 'anywhere',
       scale: 1.3,
       rotation: 0,
       isAnimated: true,
@@ -308,12 +375,49 @@ export const DECORATION_DEFS: ReadonlyMap<string, DecorationDef> = new Map([
       name: 'Void Tendril',
       spriteId: 'deco-void-tendril',
       biomeTag: 'void',
+      category: 'organic',
+      placementZone: 'anywhere',
       scale: 1.4,
       rotation: -1,
       isAnimated: true,
       animationFrames: 2,
       depthLayer: 'front',
       density: 0.06,
+    }),
+  ],
+
+  // --- DUNGEON (reality-show theme additions) ---
+  [
+    'junk-pile',
+    def({
+      id: 'junk-pile',
+      name: 'Junk Pile',
+      spriteId: 'prop-junk-pile-a',
+      biomeTag: 'dungeon',
+      category: 'rubbish',
+      placementZone: 'anywhere',
+      scale: 1.0,
+      rotation: -1,
+      depthLayer: 'mid',
+      density: 0.12,
+    }),
+  ],
+  [
+    'wall-sconce',
+    def({
+      id: 'wall-sconce',
+      name: 'Wall Sconce',
+      spriteId: 'prop-wall-sconce',
+      biomeTag: 'dungeon',
+      category: 'light-source',
+      placementZone: 'wall-adjacent',
+      scale: 1.0,
+      rotation: 0,
+      isAnimated: true,
+      animationFrames: 3,
+      depthLayer: 'back',
+      density: 0.06,
+      lightEmission: { radiusFt: 20, intensity: 0.7, colorHex: 0xffb347 },
     }),
   ],
 ]);
@@ -325,3 +429,38 @@ export function getDecorationDef(id: string): DecorationDef | undefined {
 export function getDecorationsByBiome(biome: BiomeTag): DecorationDef[] {
   return Array.from(DECORATION_DEFS.values()).filter((d) => d.biomeTag === biome);
 }
+
+/**
+ * Stable integer index for each decoration def. Used for compact ECS storage
+ * (Prop.defIdIndex). Values are explicitly assigned so adding new entries
+ * at the end never changes existing mappings.
+ */
+export const DECORATION_DEF_INDEX: Readonly<Record<string, number>> = Object.freeze({
+  torch: 0,
+  'stone-pillar': 1,
+  barrel: 2,
+  rubble: 3,
+  chain: 4,
+  vine: 5,
+  'skull-pile': 6,
+  'bone-arch': 7,
+  pustule: 8,
+  'moss-patch': 9,
+  'light-panel': 10,
+  'server-stack': 11,
+  'cable-bundle': 12,
+  hologram: 13,
+  'crystal-shard': 14,
+  'void-orb': 15,
+  'rune-circle': 16,
+  'void-tendril': 17,
+  'junk-pile': 18,
+  'wall-sconce': 19,
+});
+
+/** Reverse index: integer → def id. */
+export const DECORATION_INDEX_TO_ID: readonly string[] = Object.freeze(
+  Object.entries(DECORATION_DEF_INDEX)
+    .sort(([, a], [, b]) => a - b)
+    .map(([id]) => id),
+);
