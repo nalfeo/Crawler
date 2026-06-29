@@ -5,23 +5,7 @@ import {
   resolveFrame,
 } from '../../src/engine/sprites/tile-visuals.js';
 import { TerrainType } from '../../src/shared/map-types.js';
-
-// Helper — build a flat terrain array from a 2-D string grid.
-// 'W' = STONE_WALL, '.' = STONE_FLOOR, ' ' = VOID
-function makeMap(rows: string[]): { terrain: Uint8Array; width: number; height: number } {
-  const height = rows.length;
-  const width = rows[0]!.length;
-  const terrain = new Uint8Array(width * height);
-  for (let ty = 0; ty < height; ty++) {
-    for (let tx = 0; tx < width; tx++) {
-      const ch = rows[ty]![tx];
-      if (ch === 'W') terrain[ty * width + tx] = TerrainType.STONE_WALL;
-      else if (ch === '.') terrain[ty * width + tx] = TerrainType.STONE_FLOOR;
-      else terrain[ty * width + tx] = TerrainType.VOID;
-    }
-  }
-  return { terrain, width, height };
-}
+import { makeTerrainGrid as makeMap } from '../helpers/map-fixtures.js';
 
 describe('neighborMask', () => {
   it('returns 0 for an isolated tile (no same-terrain neighbours)', () => {

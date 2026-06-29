@@ -9,36 +9,8 @@ import {
 } from '../../src/core/helpers.js';
 import { collisionSystem } from '../../src/core/systems/collisionSystem.js';
 import { damageSystem } from '../../src/core/systems/damageSystem.js';
-import { FloorMap } from '../../src/core/map/FloorMap.js';
-import { TileMap } from '../../src/core/map/TileMap.js';
-import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-
-const MAP_CFG: MapConfig = {
-  widthTiles: 12,
-  heightTiles: 12,
-  tileSizeFt: 4,
-  biome: BiomeType.DUNGEON,
-  seed: 1,
-  roomWidthRange: [4, 8],
-  roomHeightRange: [4, 8],
-  maxRooms: 2,
-  floorDensity: 0.5,
-};
-
-/** Safe room covering tiles (1,1)–(4,4). */
-function makeSafeRoomMap(): FloorMap {
-  const w = 12;
-  const h = 12;
-  const tileMap = new TileMap(w, h);
-  for (let i = 0; i < w * h; i += 1) {
-    tileMap.flags[i] = TilePresets.FLOOR;
-  }
-  const graph = new RoomGraph();
-  graph.add({ x: 1, y: 1, width: 4, height: 4 }, [], [], RoomRole.SAFE);
-  return new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(w * h), { x: 2, y: 2 });
-}
 
 describe('damageSystem enemy-projectile and safe-space branches', () => {
   it('damages the player and destroys an enemy projectile on hit', () => {
@@ -54,7 +26,13 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
 
   it('destroys an enemy projectile without damage when the player is in a safe space', () => {
     const world = createTestWorld();
-    world.floorMap = makeSafeRoomMap();
+    world.floorMap = makeMapWithSafeRoom({
+      widthTiles: 12,
+      heightTiles: 12,
+      tileSizeFt: 4,
+      maxRooms: 2,
+      spawn: { x: 2, y: 2 },
+    });
     // Tile (2,2) centre -> inside the safe room.
     const player = spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
     const projectile = spawnEnemyProjectile(world, 2 * 4 + 2.25, 2 * 4 + 2, 0, 0, 7);
@@ -85,7 +63,13 @@ describe('damageSystem enemy-projectile and safe-space branches', () => {
 
   it('does not damage the player from enemy contact while in a safe space', () => {
     const world = createTestWorld();
-    world.floorMap = makeSafeRoomMap();
+    world.floorMap = makeMapWithSafeRoom({
+      widthTiles: 12,
+      heightTiles: 12,
+      tileSizeFt: 4,
+      maxRooms: 2,
+      spawn: { x: 2, y: 2 },
+    });
     const player = spawnPlayer(world, 2 * 4 + 2, 2 * 4 + 2);
     spawnEnemy(world, 2 * 4 + 2.25, 2 * 4 + 2, 25);
 

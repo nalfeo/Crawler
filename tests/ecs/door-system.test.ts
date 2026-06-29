@@ -4,46 +4,9 @@ import { createTestWorld } from '../../tests/helpers/world-factory';
 import { spawnPlayer } from '../../src/core/index';
 import { doorSystem } from '../../src/core/systems/doorSystem';
 import { DoorState } from '../../src/core/components';
-import { FloorMap } from '../../src/core/map/FloorMap';
-import { TileMap } from '../../src/core/map/TileMap';
-import { RoomGraph } from '../../src/core/map/RoomGraph';
-import { TilePresets, BiomeType } from '../../src/shared/map-types';
-import type { MapConfig } from '../../src/shared/map-types';
+import { TilePresets } from '../../src/shared/map-types';
+import { makeMapWithDoor } from '../helpers/map-fixtures';
 import type { GameWorld } from '../../src/core/world';
-
-function makeMapWithDoor(): FloorMap {
-  const config: MapConfig = {
-    widthTiles: 10,
-    heightTiles: 10,
-    tileSizeFt: 32,
-    biome: BiomeType.DUNGEON,
-    seed: 42,
-    roomWidthRange: [4, 8],
-    roomHeightRange: [4, 8],
-    maxRooms: 2,
-    floorDensity: 0.5,
-  };
-
-  const tileMap = new TileMap(10, 10);
-  const terrain = new Uint8Array(100);
-
-  // Floor everywhere except border walls
-  for (let y = 0; y < 10; y++) {
-    for (let x = 0; x < 10; x++) {
-      const idx = y * 10 + x;
-      if (x === 0 || x === 9 || y === 0 || y === 9) {
-        tileMap.flags[idx] = TilePresets.WALL;
-      } else {
-        tileMap.flags[idx] = TilePresets.FLOOR;
-      }
-    }
-  }
-
-  // Place a closed door at (5, 5)
-  tileMap.flags[5 * 10 + 5] = TilePresets.DOOR_CLOSED;
-
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 3, y: 3 });
-}
 
 describe('Door System', () => {
   let world: GameWorld;

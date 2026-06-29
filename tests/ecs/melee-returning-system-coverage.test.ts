@@ -22,10 +22,7 @@ import {
 import { returningProjectileSystem } from '../../src/core/systems/returningProjectileSystem.js';
 import { MeleeStyle } from '../../src/shared/constants.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-import { FloorMap } from '../../src/core/map/FloorMap.js';
-import { TileMap } from '../../src/core/map/TileMap.js';
-import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { TilePresets, DEFAULT_MAP_CONFIG, TerrainType } from '../../src/shared/map-types.js';
+import { makeOpenFloorMap } from '../helpers/map-fixtures.js';
 
 function createSlashSwing(world: ReturnType<typeof createTestWorld>, x: number, y: number): number {
   const swing = createEntity(world);
@@ -266,22 +263,6 @@ describe('meleeSwingSystem line-of-sight gating', () => {
   const cx = (tx: number): number => tx * TILE + TILE / 2;
   const cy = (ty: number): number => ty * TILE + TILE / 2;
 
-  function makeFloorMap(wallColumnX?: number): FloorMap {
-    const widthTiles = 24;
-    const heightTiles = 16;
-    const config = { ...DEFAULT_MAP_CONFIG, widthTiles, heightTiles };
-    const tileMap = new TileMap(widthTiles, heightTiles);
-    tileMap.fill(TilePresets.FLOOR);
-    if (wallColumnX !== undefined) {
-      for (let y = 0; y < heightTiles; y++) {
-        tileMap.setFlags(wallColumnX, y, TilePresets.WALL);
-      }
-    }
-    const terrain = new Uint8Array(widthTiles * heightTiles);
-    terrain.fill(TerrainType.STONE_FLOOR);
-    return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 2, y: 5 });
-  }
-
   // A zero-arc SLASH that points straight along +x, so its blade segment sweeps
   // a horizontal line from the owner across several tiles regardless of progress.
   function spawnStraightSwing(
@@ -314,7 +295,7 @@ describe('meleeSwingSystem line-of-sight gating', () => {
 
   it('does not damage an enemy on the far side of a wall', () => {
     const world = createTestWorld();
-    world.floorMap = makeFloorMap(4); // wall column at tile x=4
+    world.floorMap = makeOpenFloorMap(4); // wall column at tile x=4
     const owner = createEntity(world);
     addComponent(world.ecs, owner, set(Position, { x: cx(2), y: cy(5) }));
     addComponent(world.ecs, owner, Player);
@@ -333,7 +314,7 @@ describe('meleeSwingSystem line-of-sight gating', () => {
 
   it('damages an enemy with a clear line of sight', () => {
     const world = createTestWorld();
-    world.floorMap = makeFloorMap(); // no wall
+    world.floorMap = makeOpenFloorMap(); // no wall
     const owner = createEntity(world);
     addComponent(world.ecs, owner, set(Position, { x: cx(2), y: cy(5) }));
     addComponent(world.ecs, owner, Player);
@@ -351,7 +332,7 @@ describe('meleeSwingSystem line-of-sight gating', () => {
 
   it('blocks an enemy swing from striking the player through a wall', () => {
     const world = createTestWorld();
-    world.floorMap = makeFloorMap(4);
+    world.floorMap = makeOpenFloorMap(4);
     const enemyOwner = createEntity(world);
     addComponent(world.ecs, enemyOwner, set(Position, { x: cx(2), y: cy(5) }));
     addComponent(world.ecs, enemyOwner, Enemy);
