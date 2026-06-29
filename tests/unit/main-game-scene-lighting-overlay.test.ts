@@ -1,6 +1,12 @@
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
+import {
+  LIGHTING_OVERLAY_DEPTH,
+  PROP_DEPTH,
+  UI_DEPTH_CUTOFF,
+  WORLD_VFX_DEPTH,
+} from '../../src/shared/render-depths.js';
 
 const source = readFileSync('src/engine/scenes/MainGameScene.ts', 'utf-8');
 const file = ts.createSourceFile(
@@ -109,5 +115,19 @@ describe('MainGameScene lighting overlay behavior', () => {
     expect(resetIndex).toBeGreaterThanOrEqual(0);
     expect(autoQualityIndex).toBeGreaterThanOrEqual(0);
     expect(resetIndex).toBeLessThan(autoQualityIndex);
+  });
+
+  it('draws the darkness overlay above gameplay sprites but below the HUD', () => {
+    // Regression guard: the overlay must sit above props, entities and VFX so
+    // torch falloff dims mobs/NPCs/props — not just the floor — while staying
+    // below the screen-space UI cutoff so the HUD reads through the dark.
+    const maxVfx = Math.max(...Object.values(WORLD_VFX_DEPTH));
+    expect(LIGHTING_OVERLAY_DEPTH).toBeGreaterThan(PROP_DEPTH.front);
+    expect(LIGHTING_OVERLAY_DEPTH).toBeGreaterThan(maxVfx);
+    expect(LIGHTING_OVERLAY_DEPTH).toBeLessThan(UI_DEPTH_CUTOFF);
+  });
+
+  it('renders the light overlay render-texture at LIGHTING_OVERLAY_DEPTH', () => {
+    expect(source).toContain('.setDepth(LIGHTING_OVERLAY_DEPTH)');
   });
 });

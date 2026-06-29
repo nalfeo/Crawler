@@ -35,7 +35,7 @@ import {
   type GameWorld,
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
-import { UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
+import { LIGHTING_OVERLAY_DEPTH, UI_DEPTH_CUTOFF } from '../../shared/render-depths.js';
 import { ftToPx, pxToFt, PIXELS_PER_FOOT } from '../../shared/units.js';
 import { getRenderScale } from '../render-scale.js';
 import {
@@ -1337,7 +1337,7 @@ export class MainGameScene extends Phaser.Scene {
     this.lightOverlayRt = this.add
       .renderTexture(0, 0, ftToPx(floorMap.widthFt), ftToPx(floorMap.heightFt))
       .setOrigin(0, 0)
-      .setDepth(-18);
+      .setDepth(LIGHTING_OVERLAY_DEPTH);
     this.rebuildLightField();
     this.updateDoorOverlay();
     this.updateLightingOverlay(true);
