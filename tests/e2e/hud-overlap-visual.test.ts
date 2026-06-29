@@ -53,7 +53,11 @@ function nonBackgroundRatio(
 }
 
 async function loadHudLab(page: Page): Promise<void> {
-  await page.goto(LAB_URL, { waitUntil: 'networkidle', timeout: 30_000 });
+  // `commit` (not `networkidle`): Vite keeps a persistent HMR socket open and may
+  // trigger a one-off optimize-deps reload on first lab load, so waiting on
+  // network state is flaky. We commit the navigation and gate on the canvas +
+  // `__hudProbe.ready()` below, matching tests/e2e/helpers/ui-probe.ts.
+  await page.goto(LAB_URL, { waitUntil: 'commit', timeout: 45_000 });
   await page.waitForSelector('#lab-canvas canvas', { timeout: 30_000 });
   await page.waitForFunction(
     () => Boolean((window as { __hudProbe?: HudProbeApi }).__hudProbe?.ready()),
