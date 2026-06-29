@@ -14,8 +14,11 @@ case "$PROVIDER" in
   codex)
     bash "$WORKSPACE/.github/scripts/codex/providers/codex.sh" "$PROMPT_PATH"
     ;;
+  gemini)
+    bash "$WORKSPACE/.github/scripts/codex/providers/gemini.sh" "$PROMPT_PATH"
+    ;;
   *)
-    echo "Unknown provider '$PROVIDER'. Set CODEX_PROVIDER=codex or add a provider script." >&2
+    echo "Unknown provider '$PROVIDER'. Set CODEX_PROVIDER=codex|gemini or add a provider script." >&2
     exit 1
     ;;
 esac

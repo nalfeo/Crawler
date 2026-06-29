@@ -11,11 +11,12 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
 
 1. Ensure the workflow file and scripts are present.
 2. Add secrets/variables:
-   - Optional secret: `OPENAI_API_KEY` (for Codex auth if required by your CLI setup)
+   - Optional secret: `OPENAI_API_KEY` (for the `codex` provider)
+   - Optional secret: `GEMINI_API_KEY` (for the `gemini` provider; free AI Studio key works)
    - Optional repo variables:
-     - `CODEX_MODEL` (default: CLI's own default; set to a valid codex model to override)
-     - `CODEX_PROVIDER` (default: `codex`)
-     - `CODEX_BIN` (default: `codex`)
+     - `CODEX_MODEL` (default: CLI's own default; set a valid model to override)
+     - `CODEX_PROVIDER` (default: `codex`; set to `gemini` for the Gemini CLI)
+     - `CODEX_BIN` (default: provider's own bin — `codex` or `gemini`)
      - `CODEX_VALIDATION_COMMANDS` (newline-separated validation commands override)
 3. (Optional) Add `.github/codex-repair.json` for future per-repo settings.
 
@@ -33,8 +34,9 @@ OPENAI_API_KEY=...
 GITHUB_TOKEN=...
 GITHUB_REPOSITORY=nalfeo/Crawler
 CODEX_PROVIDER=codex
-CODEX_MODEL=gpt-5.5
-CODEX_BIN=codex
+CODEX_MODEL=
+CODEX_BIN=
+# For gemini instead: CODEX_PROVIDER=gemini and GEMINI_API_KEY=... (free AI Studio key)
 EOF
 ```
 
@@ -149,11 +151,12 @@ Provider dispatch is in:
 - `.github/scripts/codex/run-provider.sh`
 - Router dispatch helper: `.github/scripts/codex/dispatch-repair.mjs`
 
-Current provider:
+Current providers:
 
-- `codex` -> `.github/scripts/codex/providers/codex.sh`
+- `codex` -> `.github/scripts/codex/providers/codex.sh` (auth: `OPENAI_API_KEY` or `codex login`)
+- `gemini` -> `.github/scripts/codex/providers/gemini.sh` (auth: `GEMINI_API_KEY` or a cached `gemini` OAuth login)
 
-You can swap providers later by adding another provider script and changing `CODEX_PROVIDER`.
+Switch providers by setting `CODEX_PROVIDER` (and the matching secret). Add another provider script for new CLIs.
 
 ## Limitations
 
