@@ -1,5 +1,5 @@
 /**
- * Item definitions — types, rarity, tag system, and the 102-item catalog.
+ * Item definitions — types, rarity, tag system, and the 105-item catalog.
  *
  * Tags drive inventory tabs dynamically. KnownTag covers the canonical five;
  * CustomTag (branded string) lets AI-generated content invent new categories
@@ -69,7 +69,7 @@ export interface ItemDef {
 }
 
 // ---------------------------------------------------------------------------
-// 102-item catalog
+// 105-item catalog
 // ---------------------------------------------------------------------------
 
 const C = ItemRarity.Common;
@@ -197,15 +197,15 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
 
   // ── Weapons (20) ────────────────────────────────────────────────────
   wpn('rusty-shiv', 'Rusty Shiv', 'Tetanus included at no extra charge.', C),
-  wpn('iron-sword', 'Iron Sword', 'Serviceable. Boring. Gets the job done.', C),
+  wpn('iron-sword', 'Sword', 'Serviceable. Boring. Gets the job done.', C),
   wpn('flame-dagger', 'Flame Dagger', 'The blade is warm. Always.', U),
-  wpn('frost-bow', 'Frost Bow', 'Arrows arrive pre-chilled.', U),
+  wpn('frost-bow', 'Bow', 'Reliable and easy to carry.', U),
   wpn('thunder-staff', 'Thunder Staff', 'Crackles ominously during weather reports.', R),
   wpn('void-scythe', 'Void Scythe', 'Cuts through matter and morale alike.', E),
   wpn('star-lance', 'Star Lance', 'Looks like a comet. Hits like one too.', L),
-  wpn('bone-club', 'Bone Club', 'Prehistoric but effective.', C, [customTag('Smelly Stuff')]),
-  wpn('plasma-pistol', 'Plasma Pistol', 'Pew pew. But, like, actually dangerous.', R),
-  wpn('crystal-wand', 'Crystal Wand', 'Channels pure arcane energy.', U),
+  wpn('bone-club', 'Baseball Bat', 'Heavy swing, simple results.', C, [customTag('Smelly Stuff')]),
+  wpn('plasma-pistol', 'Pistol', 'A standard sidearm with no sci-fi extras.', R),
+  wpn('crystal-wand', 'Flare Gun', 'Short-range firepower in a familiar package.', U),
   wpn('toxic-blowgun', 'Toxic Blowgun', "One puff and they're napping.", U),
   wpn('chain-whip', 'Chain Whip', 'Satisfying crack included.', R),
   wpn('obsidian-axe', 'Obsidian Axe', 'So sharp it cuts light.', R),
@@ -315,6 +315,50 @@ export const ITEM_CATALOG: readonly ItemDef[] = [
     [customTag('Smelly Stuff')],
   ),
   misc('pebble', 'Pebble', 'Smooth, ordinary, and somehow still worth carrying.', C),
+
+  // ── Floor 1 harvestable materials ────────────────────────────────────
+  mat(
+    'crimson-mushroom',
+    'Crimson Mushroom',
+    'A plump red cap dusted with white spores. Warm to the touch.',
+    C,
+    [customTag('Flora')],
+  ),
+  mat(
+    'azure-mushroom',
+    'Azure Mushroom',
+    'Deep blue gills that faintly glow in the dark. Handle with curiosity.',
+    U,
+    [customTag('Flora')],
+  ),
+  mat(
+    'sunpetal-flower',
+    'Sunpetal Flower',
+    'Bright gold petals that somehow bloom without any sunlight.',
+    C,
+    [customTag('Flora')],
+  ),
+  mat(
+    'moonbloom-flower',
+    'Moonbloom',
+    'Pale violet petals that unfurl only in darkness. Smells of cold stone.',
+    U,
+    [customTag('Flora')],
+  ),
+  mat(
+    'frost-lichen',
+    'Frost Lichen',
+    'A silvery crust of ice-laced lichen clinging to damp walls.',
+    C,
+    [customTag('Flora')],
+  ),
+  mat(
+    'shadow-lichen',
+    'Shadow Lichen',
+    'Dark grey patches that absorb light and whisper faintly when scraped.',
+    U,
+    [customTag('Flora')],
+  ),
 ];
 
 // ---------------------------------------------------------------------------

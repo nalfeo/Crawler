@@ -217,6 +217,25 @@ export interface RunSummary {
     readonly misses: number;
     readonly bypassed: number;
   } | null;
+  /**
+   * Optional model/deployment IDs attached by orchestrators that perform
+   * additional LLM stages (for example issue-originated synth + brief selection).
+   */
+  readonly modelDeployments?: {
+    readonly synth?: string | null;
+    readonly briefSelector?: string | null;
+    readonly image?: string | null;
+    readonly vision?: string | null;
+  };
+  /**
+   * Optional deterministic sensor telemetry counters for operator dashboards.
+   */
+  readonly sensorTelemetry?: {
+    readonly orientation: {
+      readonly failed: number;
+      readonly total: number;
+    };
+  };
 }
 
 /**

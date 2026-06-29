@@ -5,10 +5,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { NoopAssetQueue } from '../../../scripts/sprites/queue/noop-queue.js';
 import { createAssetQueue } from '../../../scripts/sprites/queue/index.js';
-import type { AssetRequest } from '../../../scripts/sprites/queue/types.js';
+import {
+  normalizeAssetRequest,
+  type BriefPathAssetRequest,
+} from '../../../scripts/sprites/queue/types.js';
 
-function makeRequest(overrides: Partial<AssetRequest> = {}): AssetRequest {
+function makeRequest(overrides: Partial<BriefPathAssetRequest> = {}): BriefPathAssetRequest {
   return {
+    kind: 'brief-path',
     briefId: 'iron-sword',
     briefPath: 'briefs/weapons/iron-sword.yaml',
     requestedBy: 'test',
@@ -47,6 +51,36 @@ describe('NoopAssetQueue', () => {
     await q.enqueue(makeRequest({ briefId: 'skull-mace' }));
     expect(write).toHaveBeenCalledWith(expect.stringContaining('skull-mace'));
     write.mockRestore();
+  });
+});
+
+describe('normalizeAssetRequest', () => {
+  it('accepts legacy brief-path payloads without explicit kind', () => {
+    expect(
+      normalizeAssetRequest({
+        briefId: 'iron-sword',
+        briefPath: 'briefs/weapons/iron-sword.yaml',
+        requestedBy: 'test',
+        requestedAt: '2026-06-10T00:00:00.000Z',
+        priority: 'normal',
+      }),
+    ).toMatchObject({ kind: 'brief-path', briefId: 'iron-sword' });
+  });
+
+  it('accepts issue-request payloads with idempotency fields', () => {
+    expect(
+      normalizeAssetRequest({
+        kind: 'issue-request',
+        issueNumber: 42,
+        name: 'bone-dagger',
+        briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+        fingerprint: 'abc',
+        claimedAt: '2026-06-10T00:00:00.000Z',
+        requestedBy: 'test',
+        requestedAt: '2026-06-10T00:00:00.000Z',
+        priority: 'normal',
+      }),
+    ).toMatchObject({ kind: 'issue-request', issueNumber: 42 });
   });
 });
 

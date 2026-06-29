@@ -14,6 +14,8 @@ describe('createFloor1MainSceneOptions', () => {
     expect(typeof options.spellQuestGiver.getIndicatorState).toBe('function');
     expect(typeof options.shopkeeper.meet).toBe('function');
     expect(typeof options.shopkeeper.getIndicatorState).toBe('function');
+    expect(typeof options.shopkeeper.getPostQuestStock).toBe('function');
+    expect(typeof options.shopkeeper.purchasePostQuestItem).toBe('function');
   });
 
   it('accepts the boss-battle quest when the Spell Broker is met through the scene options', () => {

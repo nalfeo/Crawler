@@ -5,10 +5,13 @@ describe('floor1Config', () => {
   it('should load and validate the manifest-derived floor1 config', () => {
     expect(floor1Config).toBeDefined();
     expect(floor1Config.protagonist).toBe('Rhea Vale');
-    expect(floor1Config.starterWeapons).toHaveLength(3);
+    expect(floor1Config.starterWeapons).toHaveLength(6);
     expect(floor1Config.starterWeapons).toContain('sword');
     expect(floor1Config.starterWeapons).toContain('bow');
     expect(floor1Config.starterWeapons).toContain('baseball-bat');
+    expect(floor1Config.starterWeapons).toContain('pistol');
+    expect(floor1Config.starterWeapons).toContain('throwing-knife');
+    expect(floor1Config.starterWeapons).toContain('fireball');
   });
 
   it('should have valid timer configuration', () => {

@@ -26,9 +26,11 @@ import {
 } from '../helpers.js';
 import type { GameWorld } from '../world.js';
 import {
+  getEnemyDropConfig,
   rollLootTable,
   resolveLootTables,
   LOOT_TABLES,
+  getLootTable,
   type LootDrop,
   type LootTable,
 } from '../../shared/loot-tables.js';
@@ -67,18 +69,34 @@ export interface DropSystemOptions {
 
 /**
  * Resolve which loot tables apply for a given enemy.
- * Currently uses BASIC_MELEE for all enemies + floor-level table.
- * Future: read enemy-type component and area context.
+ * Boss entities (tracked via floor1 objective bossBattles) receive a dedicated
+ * boss-tier loot table instead of the standard BASIC_MELEE + floor bonus.
+ * BOSS_MINOR is used for the mid-floor Slime Rat encounter; BOSS for the final
+ * Rat Slime staircase boss.
  */
 function getEnemyLootTables(
   world: GameWorld,
-  _eid: number,
+  eid: number,
 ): {
   entityTable?: LootTable;
   typeTable?: LootTable;
   areaTable?: LootTable;
   floorTable?: LootTable;
 } {
+  // Detect boss entities by checking the floor 1 boss battle registry.
+  // dropSystem runs before floorObjectiveSystem each frame, so bossEid is still
+  // set when we process the death; it gets nulled out later that same tick.
+  if (world.floor1?.objective?.bossBattles) {
+    for (const battle of world.floor1.objective.bossBattles.values()) {
+      if (battle.bossEid === eid) {
+        // Use the loot table ID stored on the encounter config; fall back to BOSS.
+        const bossTable =
+          (battle.lootTableId ? getLootTable(battle.lootTableId) : undefined) ?? LOOT_TABLES.BOSS;
+        return { typeTable: bossTable };
+      }
+    }
+  }
+
   return {
     typeTable: LOOT_TABLES.BASIC_MELEE,
     floorTable: world.floor === 1 ? LOOT_TABLES.FLOOR_1 : undefined,
@@ -264,6 +282,8 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
 
     const x = position.x[eid] ?? 0;
     const y = position.y[eid] ?? 0;
+    const archetypeId = world.floor1?.enemyArchetypes.get(eid);
+    const allowEnemyDrops = getEnemyDropConfig(archetypeId)?.dropsEnabled ?? true;
     maybeSplitSlime(world, eid, x, y);
     const maxHp = health.max[eid] ?? 0;
     // Overkill tracking: applyDamage clamps HP to 0, so we cannot derive
@@ -327,10 +347,10 @@ export function dropSystem(world: GameWorld, options: DropSystemOptions = {}): v
         tables.floorTable,
       );
       const drops = rollLootTable(entries, world.rng);
-      const isMiniSlime = world.floor1?.enemyArchetypes.get(eid) === 'slime-mini';
-      spawnDrops(world, x, y, drops, allowFloorDrops || isMiniSlime);
+      spawnDrops(world, x, y, drops, allowFloorDrops && allowEnemyDrops);
       logger.info('Processed enemy death drops', {
         eid,
+        archetypeId,
         x,
         y,
         dropCount: drops.length,

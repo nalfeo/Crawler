@@ -399,15 +399,27 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
     });
     try {
       await loadSeededDevtools();
+      // Drain the startup checkWorkflowHealth() async call before interacting.
+      // All /api/** requests are aborted in this suite, so the health check
+      // fails fast and writes "Sidecar unreachable…" to workflowStatus. Without
+      // this drain, the health-check write can race the synchronous "Canceled
+      // Judge" assertion below and overwrite it before waitForFunction polls —
+      // causing a 10 s timeout flake in CI under heavy CPU load.
+      await page.waitForFunction(
+        () => /Sidecar unreachable/.test(document.body.textContent ?? ''),
+        undefined,
+        { timeout: 15_000 },
+      );
       await page.getByRole('button', { name: /^Judge$/ }).click();
       const cancelStep = page.getByRole('button', { name: /^Cancel step$/ });
       await cancelStep.waitFor({ state: 'visible', timeout: 10_000 });
       await cancelStep.click();
-      await page.waitForFunction(
-        () => /Canceled Judge/.test(document.body.textContent ?? ''),
-        undefined,
-        { timeout: 10_000 },
-      );
+      // Wait for the cancel button to become hidden — renderWorkflowSelection() hides
+      // it synchronously inside the click handler, and setWorkflowStatus("Canceled Judge…")
+      // runs immediately after (same synchronous call stack, no async boundary). Once the
+      // button is hidden the status text is guaranteed to be in the DOM.
+      await cancelStep.waitFor({ state: 'hidden', timeout: 10_000 });
+      expect(await page.locator('body').textContent()).toMatch(/Canceled Judge/);
       // Retry is possible: the trigger button is re-enabled and the cancel button
       // hides again now that no step is in flight.
       expect(await page.getByRole('button', { name: /^Judge$/ }).isEnabled()).toBe(true);

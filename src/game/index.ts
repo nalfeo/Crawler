@@ -36,9 +36,11 @@ export {
 } from './floorScenario.js';
 export {
   getShopkeeperStage,
+  getShopkeeperPostQuestStock,
   meetShopkeeper,
   returnShopkeeperPrize,
   purchaseShopkeeperEquipment,
+  purchaseShopkeeperPostQuestItem,
   equipPurchasedGear,
   SHOPKEEPER_EQUIPMENT_COST,
   selectSpellFromBossBattle,

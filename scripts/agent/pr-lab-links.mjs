@@ -118,6 +118,8 @@ const SOURCE_PATH_TO_LABS = {
   'src/core/collision': ['collision-lab'],
   // Inventory & items
   'src/core/systems/itemPickupSystem': ['itempickup-lab'],
+  'src/core/systems/harvestSystem': ['harvest-lab'],
+  'src/shared/harvestableDefs': ['harvest-lab'],
   'src/core/systems/dropSystem': ['drop-lab', 'gore-lab'],
   'src/core/systems/equipmentSystem': ['equipment-lab'],
   'src/game/systems/statsSystem': ['stats-lab', 'stat-lab'],
@@ -135,7 +137,6 @@ const SOURCE_PATH_TO_LABS = {
   // Entities
   'src/core/systems/npcSystem': ['npc-lab'],
   'src/core/systems/questSystem': ['quest-lab'],
-  'src/game/floorScenario': ['floor1-lab'],
   // Engine / rendering
   'src/engine/terrain': ['tile-render-lab'],
   'src/engine/sprites/tile': ['tile-render-lab', 'tile-explorer'],

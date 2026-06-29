@@ -83,6 +83,11 @@ import { LocalRunStore } from '../store/local-store.js';
 import type { RunStore } from '../store/types.js';
 import { createWorkerController, type WorkerController } from './worker-controller.js';
 import {
+  createIssueIngesterController,
+  type IssueIngesterController,
+} from './issue-ingester-controller.js';
+import { createGhAssetRequestIssueApi } from './asset-request-issue-api.js';
+import {
   WORKFLOW_STATE_KEY,
   computeStateEtag,
   etagPreconditionFails,
@@ -140,6 +145,11 @@ export interface SidecarDeps {
    * demand. Inject a fake in tests to assert the worker routes without a loop.
    */
   readonly worker?: WorkerController;
+  /**
+   * Sidecar-local `asset-request` issue ingester. Polls open GitHub issues and
+   * enqueues issue-originated queue jobs with idempotent claims.
+   */
+  readonly issueIngester?: IssueIngesterController;
 }
 
 export interface RunListEntry {
@@ -240,10 +250,19 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       repoRoot: deps.repoRoot,
       ...(deps.env ? { env: deps.env } : {}),
     });
+  const issueIngester: IssueIngesterController =
+    deps.issueIngester ??
+    createIssueIngesterController({
+      queue,
+      store,
+      requestedBy: workflowRequestedBy(deps.env ?? process.env),
+      issues: createGhAssetRequestIssueApi(deps.repoRoot),
+    });
   // Stop the worker loop when Fastify closes (CLI shutdown / test afterEach).
   // Idempotent: a no-op when the worker was never started.
   app.addHook('onClose', async () => {
     await worker.stop();
+    await issueIngester.stop();
   });
 
   // Vite serves the lab from a different loopback port, so allow CORS only
@@ -273,6 +292,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     storeBackend: store.backend,
     queueBackend: queue.backend,
     worker: worker.status(),
+    issueIngester: issueIngester.status(),
   }));
 
   app.get('/api/runs', async () => ({ runs: await listRunsFromStore(store) }));
@@ -1113,6 +1133,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
         const briefId = resolveQueuedBriefId(briefPath);
         const requestedAt = new Date().toISOString();
         await queue.enqueue({
+          kind: 'brief-path',
           briefId,
           briefPath: toRepoRelativePath(deps.repoRoot, briefPath),
           requestedBy: workflowRequestedBy(env),
@@ -1166,6 +1187,15 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
   });
 
   app.get('/api/workflow/worker/status', async () => worker.status());
+
+  app.post('/api/workflow/issues/start', async () => issueIngester.start());
+
+  app.post('/api/workflow/issues/stop', async () => {
+    const status = await issueIngester.stop();
+    return { stopped: true, status };
+  });
+
+  app.get('/api/workflow/issues/status', async () => issueIngester.status());
 
   app.post<{ Body: WorkflowMetadataBody }>('/api/workflow/metadata', async (req, reply) => {
     const body = (req.body ?? {}) as WorkflowMetadataBody;

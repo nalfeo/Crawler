@@ -31,6 +31,7 @@ import type {
   WorkerControllerStatus,
   WorkerStartResult,
 } from '../../../scripts/sprites/sidecar/worker-controller.js';
+import type { IssueIngesterController } from '../../../scripts/sprites/sidecar/issue-ingester-controller.js';
 import type { FastifyInstance } from 'fastify';
 
 function writeMinimalRun(
@@ -211,6 +212,7 @@ describe('buildServer routes (inject)', () => {
     expect(body.runsDir).toContain('runs');
     expect(body.storeBackend).toBe('local');
     expect(body.queueBackend).toBe('noop');
+    expect(body.issueIngester).toMatchObject({ running: false });
   });
 
   it('CORS allows loopback origins only', async () => {
@@ -511,7 +513,7 @@ describe('buildServer routes (inject)', () => {
       path.join(root, 'briefs', 'weapons', 'iron-sword.yaml'),
       'name: internal-iron-sword\n',
     );
-    const enqueued: Array<{ briefId: string; briefPath: string }> = [];
+    const enqueued: Array<{ kind: string; briefId: string; briefPath: string }> = [];
     await app.close();
     app = buildServer({
       repoRoot: root,
@@ -520,7 +522,12 @@ describe('buildServer routes (inject)', () => {
       queue: {
         backend: 'azure-queue',
         enqueue: async (request) => {
-          enqueued.push({ briefId: request.briefId, briefPath: request.briefPath });
+          if (request.kind !== 'brief-path') throw new Error('expected brief-path request');
+          enqueued.push({
+            kind: request.kind,
+            briefId: request.briefId,
+            briefPath: request.briefPath,
+          });
         },
         dequeue: async () => null,
         peek: async () => [],
@@ -540,6 +547,7 @@ describe('buildServer routes (inject)', () => {
     expect(res.json().briefId).toBe('internal-iron-sword');
     expect(enqueued[0]?.briefId).toBe('internal-iron-sword');
     expect(enqueued[0]?.briefPath).toBe('briefs/weapons/iron-sword.yaml');
+    expect(enqueued[0]?.kind).toBe('brief-path');
   });
 
   it('POST /api/workflow/metadata validates provider', async () => {
@@ -1000,7 +1008,12 @@ describe('workflow brief durability (Phase 2 re-materialise / mirror)', () => {
     expect(existsSync(path.join(root, briefRel))).toBe(true);
     // ...and exactly one enqueue happened, pointing at the restored brief.
     expect(enqueued).toHaveLength(1);
-    expect(enqueued[0]?.briefPath).toBe(briefRel);
+    const queued = enqueued[0];
+    expect(queued?.kind).toBe('brief-path');
+    if (!queued || queued.kind !== 'brief-path') {
+      throw new Error('expected brief-path request');
+    }
+    expect(queued.briefPath).toBe(briefRel);
   });
 
   it('generate 404s when the brief is missing from both disk and store', async () => {
@@ -1425,6 +1438,7 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
   let root: string;
   let app: FastifyInstance;
   let worker: WorkerController;
+  let issueIngester: IssueIngesterController;
 
   function makeFakeWorker(backend: 'noop' | 'azure-queue' = 'azure-queue'): WorkerController {
     let running = false;
@@ -1457,6 +1471,38 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
   beforeEach(() => {
     root = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-worker-'));
     worker = makeFakeWorker('azure-queue');
+    issueIngester = {
+      start: () => ({
+        started: true,
+        status: {
+          running: true,
+          startedAt: null,
+          stoppedAt: null,
+          lastPollAt: null,
+          lastError: null,
+          enqueued: 0,
+          skippedDuplicate: 0,
+        },
+      }),
+      stop: async () => ({
+        running: false,
+        startedAt: null,
+        stoppedAt: null,
+        lastPollAt: null,
+        lastError: null,
+        enqueued: 0,
+        skippedDuplicate: 0,
+      }),
+      status: () => ({
+        running: false,
+        startedAt: null,
+        stoppedAt: null,
+        lastPollAt: null,
+        lastError: null,
+        enqueued: 0,
+        skippedDuplicate: 0,
+      }),
+    };
     app = buildServer({
       repoRoot: root,
       runsDir: path.join(root, 'runs'),
@@ -1468,6 +1514,7 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
         peek: async () => [],
       },
       worker,
+      issueIngester,
     });
   });
 
@@ -1511,6 +1558,12 @@ describe('worker control endpoints (/api/workflow/worker/*)', () => {
     const res = await app.inject({ method: 'GET', url: '/api/workflow/worker/status' });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ running: false, backend: 'azure-queue' });
+  });
+
+  it('GET /api/workflow/issues/status returns issue-ingester snapshot', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/workflow/issues/status' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ running: false });
   });
 });
 

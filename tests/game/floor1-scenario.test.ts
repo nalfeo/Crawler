@@ -16,12 +16,14 @@ import {
   floor1EnemyDirectorSystem,
   floorObjectiveSystem,
   getNpcQuestIndicatorState,
+  getShopkeeperPostQuestStock,
   getShopkeeperStage,
   initializeFloor1Scenario,
   meetSpellQuestGiver,
   meetTutorialGoon,
   meetShopkeeper,
   purchaseShopkeeperEquipment,
+  purchaseShopkeeperPostQuestItem,
   returnShopkeeperPrize,
   selectFloor1StarterWeapon,
   selectSpellFromBossBattle,
@@ -49,6 +51,7 @@ import { DEFAULT_FLOOR1_BOSS_REWARD_SPELL_ID } from '../../src/shared/abilities.
 import { AI_TYPE } from '../../src/game/enemyAISystem.js';
 import { floor1EnemyPack } from '../../src/shared/enemy-packs.js';
 import { getSpawnerArchetypeByIndex } from '../../src/game/spawners/registry.js';
+import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 
 describe('floor1Scenario', () => {
   it('initializes Floor 1 into loadout state with deterministic starter choices', () => {
@@ -63,6 +66,9 @@ describe('floor1Scenario', () => {
     expect(world.floor1?.protagonistName).toBe('Rhea Vale');
     expect(world.floor1?.starterChoices).toHaveLength(3);
     expect(new Set(world.floor1?.starterChoices ?? []).size).toBe(3);
+    for (const weaponId of world.floor1?.starterChoices ?? []) {
+      expect(getWeaponDef(weaponId)).toBeDefined();
+    }
   });
 
   it('places the rat-tail fetch item in a different room from the Spell Broker', () => {
@@ -848,6 +854,64 @@ describe('floor1Scenario', () => {
       expect(purchaseShopkeeperEquipment(world, player)).toBe(false);
       expect(hasItem(bag, SHOPKEEPER_EQUIPMENT_ITEM_ID)).toBe(false);
       expect(world.playerGold).toBe(SHOPKEEPER_EQUIPMENT_COST - 1);
+    });
+
+    it('offers 2 deterministic extra starter-weapon options from the starter pool', () => {
+      const worldA = createTestWorld({ seed: 5 });
+      const playerA = spawnPlayer(worldA, 0, 0);
+      initializeFloor1Scenario(worldA, playerA);
+      worldA.goalFlags.set('floor1-shop-quest-complete', true);
+
+      const worldB = createTestWorld({ seed: 5 });
+      const playerB = spawnPlayer(worldB, 0, 0);
+      initializeFloor1Scenario(worldB, playerB);
+      worldB.goalFlags.set('floor1-shop-quest-complete', true);
+
+      const stockA = getShopkeeperPostQuestStock(worldA);
+      const stockB = getShopkeeperPostQuestStock(worldB);
+      expect(stockA).toEqual(stockB);
+      expect(stockA).toHaveLength(2);
+      expect(new Set(stockA.map((entry) => entry.itemId)).size).toBe(2);
+      const starterToItem: Record<string, string> = {
+        sword: 'iron-sword',
+        bow: 'frost-bow',
+        'baseball-bat': 'bone-club',
+        pistol: 'plasma-pistol',
+        'throwing-knife': 'rusty-shiv',
+        fireball: 'crystal-wand',
+      };
+      const starterChoices = new Set(worldA.floor1?.starterChoices ?? []);
+      const expectedItemIds = new Set(
+        (worldA.floor1?.starterWeaponPool ?? [])
+          .filter((weaponId) => !starterChoices.has(weaponId))
+          .map((weaponId) => starterToItem[weaponId])
+          .filter((itemId): itemId is string => Boolean(itemId)),
+      );
+      for (const entry of stockA) {
+        expect(expectedItemIds.has(entry.itemId)).toBe(true);
+      }
+    });
+
+    it('sells post-quest stock items only after the merchant quest is complete', () => {
+      const world = createTestWorld({ seed: 5 });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      const bag = world.inventories.get(player)!;
+      const stock = getShopkeeperPostQuestStock(world);
+      const first = stock[0];
+      if (!first) {
+        throw new Error('Expected post-quest stock item');
+      }
+
+      world.playerGold = 999;
+      expect(purchaseShopkeeperPostQuestItem(world, player, first.itemId)).toBe(false);
+
+      world.goalFlags.set('floor1-shop-quest-complete', true);
+      const goldBefore = world.playerGold;
+      expect(purchaseShopkeeperPostQuestItem(world, player, first.itemId)).toBe(true);
+      expect(hasItem(bag, first.itemId)).toBe(true);
+      expect(world.playerGold).toBe(goldBefore - first.cost);
+      expect(purchaseShopkeeperPostQuestItem(world, player, first.itemId)).toBe(false);
     });
 
     it('does not let the player return a prize they do not hold', () => {
