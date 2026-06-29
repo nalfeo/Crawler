@@ -14,6 +14,7 @@
 
 ## Tools & Workflows
 
+- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session (for a **>3🍎** change, the _synthesized final_ plan). Then run the apple-scaled review harness — separate-model **plan review** (>1🍎), **dual-plan synthesis** (>3🍎), **code-review loop** until no concerns (all changes), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
 - Design and integrate SFX and music with attention to latency, concurrency, and mix clarity.
 - Use pooled playback paths and graceful fallbacks when audio capacity is constrained.
 - Validate reward cues, especially pickup feedback such as the gem-hoover sound, in real gameplay loops.

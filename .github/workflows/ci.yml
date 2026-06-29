@@ -74,6 +74,11 @@ jobs:
       - name: Lab gate check
         run: bash scripts/agent/lab-gate-check.sh
 
+      # copilot-guards + review-ledger validator tests (node:test). These run
+      # nowhere else in CI; this is their merge-gate home.
+      - name: Guard + review-ledger tests
+        run: npm run test:guards
+
       - name: Wait for format check
         run: wait
 

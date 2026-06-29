@@ -11,6 +11,7 @@
     "edit-phaser-in-core": { "disabled": false, "severity": "deny" },
     "edit-repo-md-junk": { "disabled": false, "severity": "deny" },
     "edit-guard-self-protection": { "disabled": false, "severity": "ask" },
-    "pr-preflight": { "disabled": false, "severity": "deny" }
+    "pr-preflight": { "disabled": false, "severity": "deny" },
+    "pr-review-ledger": { "disabled": false, "severity": "deny" }
   }
 }
