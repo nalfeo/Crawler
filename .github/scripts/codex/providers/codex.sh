@@ -19,6 +19,15 @@ if [[ -n "${CODEX_EXEC_COMMAND:-}" ]]; then
   echo "Running custom Codex command"
   bash -lc "$CODEX_EXEC_COMMAND"
 else
+  # Ensure auth: prefer an existing login session; otherwise log in with the API key.
+  if ! "$CODEX_BIN" login status >/dev/null 2>&1; then
+    if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+      printf '%s' "$OPENAI_API_KEY" | "$CODEX_BIN" login --with-api-key
+    else
+      echo "Codex is not logged in and OPENAI_API_KEY is unset. Run 'codex login' or set OPENAI_API_KEY." >&2
+      exit 1
+    fi
+  fi
   # `codex exec` is inherently non-interactive. Sandbox/approval bypass keeps
   # automation unattended; model is only passed when explicitly configured.
   EXEC_ARGS=(exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox)
