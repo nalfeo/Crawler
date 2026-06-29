@@ -113,8 +113,12 @@ if [[ -z "${GITHUB_TOKEN:-}" ]]; then
 fi
 
 if [[ "${CODEX_PROVIDER:-codex}" == 'codex' ]] && [[ -z "${OPENAI_API_KEY:-}" ]] && [[ -z "${CODEX_EXEC_COMMAND:-}" ]]; then
-  echo "OPENAI_API_KEY is required for codex provider (unless CODEX_EXEC_COMMAND handles auth)." >&2
-  exit 1
+  if "${CODEX_BIN:-codex}" login status >/dev/null 2>&1; then
+    echo "No OPENAI_API_KEY set; using existing codex login session."
+  else
+    echo "OPENAI_API_KEY is required for codex provider (or run 'codex login', or set CODEX_EXEC_COMMAND)." >&2
+    exit 1
+  fi
 fi
 
 export PR_NUMBER
@@ -123,7 +127,7 @@ export REPAIR_TRIGGER
 export REPAIR_COMMAND
 export IS_EXPLICIT_COMMAND
 export CODEX_PROVIDER="${CODEX_PROVIDER:-codex}"
-export CODEX_MODEL="${CODEX_MODEL:-gpt-5.5}"
+export CODEX_MODEL="${CODEX_MODEL:-}"
 export CODEX_BIN="${CODEX_BIN:-codex}"
 
 echo "Running local codex repair for PR #$PR_NUMBER on branch $(git rev-parse --abbrev-ref HEAD)"

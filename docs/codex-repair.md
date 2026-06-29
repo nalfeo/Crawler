@@ -13,7 +13,7 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
 2. Add secrets/variables:
    - Optional secret: `OPENAI_API_KEY` (for Codex auth if required by your CLI setup)
    - Optional repo variables:
-     - `CODEX_MODEL` (default: `gpt-5.5`)
+     - `CODEX_MODEL` (default: CLI's own default; set to a valid codex model to override)
      - `CODEX_PROVIDER` (default: `codex`)
      - `CODEX_BIN` (default: `codex`)
      - `CODEX_VALIDATION_COMMANDS` (newline-separated validation commands override)
@@ -55,8 +55,8 @@ What this wrapper does:
 
 ### How Codex auth works
 
-- The default provider script (`.github/scripts/codex/providers/codex.sh`) runs `codex exec ...`.
-- For that provider, auth is expected from `OPENAI_API_KEY` in the environment.
+- The default provider script (`.github/scripts/codex/providers/codex.sh`) runs `codex exec`.
+- For that provider, auth comes from `OPENAI_API_KEY` in the environment **or** a prior `codex login` (ChatGPT) session.
 - If you use `CODEX_EXEC_COMMAND`, auth can be handled by your custom command instead.
 - GitHub API calls (`gather-context`, reporting, thread actions) use `GITHUB_TOKEN`.
 

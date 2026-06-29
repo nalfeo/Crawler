@@ -1,0 +1,8 @@
+{
+  "date": "2026-06-28",
+  "slug": "codex-cli-bootstrap",
+  "estimate": 2,
+  "actual": 2,
+  "verdict": "matched",
+  "notes": "Installed codex CLI 0.142.4, ChatGPT login, live smoke test, set OPENAI_API_KEY secret, fixed provider/wrapper/runner flags (--non-interactive, gpt-5.5)."
+}
