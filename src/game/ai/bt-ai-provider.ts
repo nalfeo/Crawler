@@ -77,7 +77,7 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   retreatDangerRadius: 20,
   scanRadius: 50,
   rangedSafeDistance: 15,
-  opportunisticGrabRadius: 15,
+  opportunisticGrabRadius: 18,
   dodgeWeight: 0.25,
   // Loot-detour pull weight. The opportunistic collect layer only pulls toward
   // loot within 5 ft of the player's forward path (an "on-path detour"), so
@@ -87,11 +87,13 @@ const DEFAULT_CONFIG: Required<AIConfig> = {
   // budget. A modest weight keeps Track A's path dominant so the player just
   // curves toward pickups it passes near.
   collectPullWeight: 0.5,
-  // Enemy-farm pull (drift toward the nearest enemy during idle wander) is kept
-  // OFF by default and on its own weight so re-enabling loot detours never
-  // silently re-enables enemy seeking. Re-enable only after validating the
-  // floor-clear budget across additional headless seeds.
-  farmPullWeight: 0.0,
+  // Enemy-farm pull: drift toward the nearest enemy AHEAD on the player's path
+  // while travelling (explore + quest-objective navigation), so auto-fire starts
+  // sooner on swarm the player walks past. Kept low and forward-biased (see
+  // OpportunisticFarm) so Track A's quest path stays dominant and the pull can
+  // never drag the player off-objective into an off-path fight — the failure
+  // mode that previously forced this to 0.0 and blew the floor-clear budget.
+  farmPullWeight: 0.07,
   debug: false,
 };
 
@@ -454,14 +456,14 @@ const GOLD_FARM_GOLD_SCAN_RADIUS_FT = 100;
 const GOLD_FARM_COLLECT_RADIUS_FT = 32.5;
 
 // --- Opportunistic behavior constants ---
-// Enemy must be within this radius (ft) to count as a dodge threat.
-// Kept small (≈12 ft) so dodge only fires when an enemy is genuinely
-// imminent — a large radius caused the AI to route around enemy pockets
-// during EXPLORE/PROGRESS instead of engaging them.
-const DODGE_THREAT_RADIUS_FT = 12;
+// Enemy must be within this radius (ft) to count as a dodge threat. Sized so the
+// player evades swarm contact while travelling toward quest objectives but not so
+// wide it routes around enemy pockets it should engage.
+const DODGE_THREAT_RADIUS_FT = 14;
 // Minimum closing speed (ft/frame): dot product of enemy velocity with the
-// unit toward-player vector. Higher threshold = only fast chargers trigger dodge.
-const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.1875;
+// unit toward-player vector. Low enough that ordinary chasers (not just sprint
+// chargers) trigger an evasive strafe while the player is navigating.
+const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.15;
 // --- On-path loot detour (OpportunisticCollect) ---
 // Rule (player's words): "if there is loot within 5' of my path and I am not
 // actively fighting or dodging enemies, make the slight detour to grab it."
@@ -477,22 +479,39 @@ const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.1875;
 // that previously forced collectPullWeight to 0.0 and blew the headless
 // floor-clear budget.
 //
-// 5 feet of lateral slack from the path ray. Loot farther to the side than this
-// is not "on my path" and earns no detour.
-const PATH_CORRIDOR_HALF_WIDTH_FT = 5;
+// 9 feet of lateral slack from the path ray. Wide enough that the player scoops
+// up gems/gold/items it strolls past while navigating (the corridor was 5 ft,
+// which left gathering almost dormant), but still narrow enough that the detour
+// stays "slight" and cannot bias the net trajectory toward off-path loot.
+const PATH_CORRIDOR_HALF_WIDTH_FT = 7;
 // Below this heading magnitude the player has no meaningful travel direction
 // (effectively stationary), so the path ray is undefined and the detour is
 // skipped — pickups while standing still are handled by Track A's Collect
 // behavior, not the opportunistic detour.
 const DETOUR_MIN_HEADING_MAGNITUDE = 0.05;
+// --- Opportunistic enemy-farm (forward bias) ---
+// Scan radius (ft) for the on-path enemy-farm pull. An enemy must be within this
+// range AND roughly ahead of the player's heading to draw a pull, so the player
+// drifts onto swarm it is already approaching rather than reversing toward
+// enemies behind it.
+const FARM_FORWARD_SCAN_RADIUS_FT = 28;
+// An enemy counts as "ahead" only when its forward projection covers at least
+// this fraction of the distance to it (cos of the half-angle). Keeps the farm
+// pull inside a forward cone so it never drags the player sideways/backward.
+const FARM_FORWARD_DOT_MIN = 0.35;
+// Opportunistic farming is for surplus time, not survival: suppress the pull when
+// the player is below this health fraction so a hurt runner beelines its objective
+// (and dodges) instead of drifting onto more swarm and getting overwhelmed — the
+// over-engagement death mode the forward bias must never reintroduce.
+const FARM_MIN_HEALTH_FRACTION = 0.6;
 // Opportunistic quest-NPC detour while pathing: if an NPC with a pending quest
 // interaction is seen and visiting it adds only a small path-length penalty,
 // route Progress to that NPC first so interactions are not skipped while
 // traversing toward combat/room objectives. Distances are in feet (the internal
 // spatial unit): allow up to ~20 ft of extra path, or 0.5x the direct distance,
 // whichever is larger.
-const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 20;
-const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.5;
+const QUEST_GIVER_DETOUR_MAX_EXTRA_FT = 26;
+const QUEST_GIVER_DETOUR_MAX_EXTRA_FRACTION = 0.6;
 // An NPC within this radius (ft) of the player counts as "at the interaction
 // point"; beyond it the NPC is only a navigation/detour target.
 const NPC_INTERACTION_RADIUS_FT = 12.5;
@@ -1414,12 +1433,12 @@ export class BehaviorTreeAI implements AIInputProvider {
    * seeking OFF unless explicitly enabled, so turning loot detours back on never
    * silently re-introduces the over-engagement that blew the floor-clear budget.
    *
-   * Critically: this must NOT fire when the EXPLORE state is being used to
-   * navigate toward a specific entity objective (e.g. shopkeeper, gold pile,
-   * boss room) — those are set by the Progress behavior which also sets
-   * `this.decision.state = AIState.EXPLORE` but with `targetEid !== null`.
-   * A farm pull away from the NPC toward the ambient swarm would delay
-   * quest completion indefinitely.
+   * Critically: it only fires while moving (EXPLORE with a heading) and only
+   * pulls toward enemies inside a forward cone ({@link FARM_FORWARD_DOT_MIN}
+   * within {@link FARM_FORWARD_SCAN_RADIUS_FT}). This biases the player onto
+   * swarm it is already approaching during quest-objective navigation without
+   * ever dragging it backward toward ambient enemies — the reversal that
+   * historically blew the floor-clear budget.
    */
   private buildOpportunisticFarm(): BTNode {
     return action('Opportunistic Farm', (ctx) => {
@@ -1427,17 +1446,32 @@ export class BehaviorTreeAI implements AIInputProvider {
       // entirely when the pull would be multiplied to nothing.
       if (this.config.farmPullWeight <= 0) return BTStatus.FAILURE;
 
-      // Only fire when genuinely idle-wandering: EXPLORE state AND no specific
-      // entity target (null targetEid = random frontier tile, not an NPC/item/gold goal)
-      if (this.decision.state !== AIState.EXPLORE || this.decision.targetEid !== null) {
+      // Surplus-time behavior only: a hurt runner skips the farm pull and beelines
+      // its objective so it cannot drift onto more swarm and get overwhelmed.
+      if (ctx.healthPercent < FARM_MIN_HEALTH_FRACTION) return BTStatus.FAILURE;
+
+      // Only fire while traveling (EXPLORE), including EXPLORE used to navigate a
+      // quest objective (targetEid !== null). It must never drag toward swarm
+      // behind the player, so we require an enemy ahead inside a forward cone.
+      if (this.decision.state !== AIState.EXPLORE) return BTStatus.FAILURE;
+
+      // Heading = travel direction toward the current waypoint/objective. No
+      // heading (standing still) ⇒ no forward cone ⇒ leave farming to others.
+      if (this.decision.targetX === null || this.decision.targetY === null) {
         return BTStatus.FAILURE;
       }
+      const hx = this.decision.targetX - ctx.playerX;
+      const hy = this.decision.targetY - ctx.playerY;
+      const hlen = Math.hypot(hx, hy);
+      if (hlen < DETOUR_MIN_HEADING_MAGNITUDE) return BTStatus.FAILURE;
+      const headX = hx / hlen;
+      const headY = hy / hlen;
 
       const nearest = this.findNearestEnemy(
         ctx.world,
         ctx.playerX,
         ctx.playerY,
-        GOLD_FARM_ENEMY_SCAN_RADIUS_FT,
+        FARM_FORWARD_SCAN_RADIUS_FT,
       );
       if (!nearest) return BTStatus.FAILURE;
 
@@ -1445,6 +1479,10 @@ export class BehaviorTreeAI implements AIInputProvider {
       const dy = nearest.y - ctx.playerY;
       const dist = Math.hypot(dx, dy);
       if (dist <= 0) return BTStatus.FAILURE;
+
+      // Forward cone: only pull toward enemies the player is already approaching.
+      const dot = (dx / dist) * headX + (dy / dist) * headY;
+      if (dot < FARM_FORWARD_DOT_MIN) return BTStatus.FAILURE;
 
       this.farmPullX = dx / dist;
       this.farmPullY = dy / dist;
