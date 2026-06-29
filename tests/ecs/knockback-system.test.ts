@@ -3,37 +3,8 @@ import { addComponent, hasComponent, set } from 'bitecs';
 import { knockbackSystem } from '../../src/core/systems/knockbackSystem.js';
 import { Knockback } from '../../src/core/components.js';
 import { spawnEnemy } from '../../src/core/helpers.js';
-import { FloorMap } from '../../src/core/map/FloorMap.js';
-import { TileMap } from '../../src/core/map/TileMap.js';
-import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { BiomeType, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { makeWalledMap } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-
-function makeWalledMap(): FloorMap {
-  const config: MapConfig = {
-    widthTiles: 10,
-    heightTiles: 10,
-    tileSizeFt: 32,
-    biome: BiomeType.ARENA,
-    seed: 42,
-    roomWidthRange: [4, 8],
-    roomHeightRange: [4, 8],
-    maxRooms: 1,
-    floorDensity: 0.5,
-  };
-  const tileMap = new TileMap(10, 10);
-  const terrain = new Uint8Array(100);
-
-  for (let y = 0; y < 10; y++) {
-    for (let x = 0; x < 10; x++) {
-      const idx = y * 10 + x;
-      tileMap.flags[idx] =
-        x === 0 || x === 9 || y === 0 || y === 9 || x === 5 ? TilePresets.WALL : TilePresets.FLOOR;
-    }
-  }
-
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 3, y: 3 });
-}
 
 describe('knockbackSystem', () => {
   it('removes the Knockback component immediately when speed is zero', () => {

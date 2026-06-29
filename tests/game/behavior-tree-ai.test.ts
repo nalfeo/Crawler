@@ -10,6 +10,7 @@ import {
 import { createInputState } from '../../src/shared/input.js';
 import { getWeaponDef } from '../../src/shared/weaponDefs.js';
 import { BehaviorTreeAI } from '../../src/game/ai/bt-ai-provider.js';
+import { hasClearLineOfSight } from '../../src/game/ai/bt-ai-geometry.js';
 import {
   initializeFloor1Scenario,
   meetTutorialGoon,
@@ -19,6 +20,7 @@ import {
 import { setActiveWeapon } from '../../src/game/weaponSystem.js';
 import type { GameWorld } from '../../src/core/world.js';
 import { createTestWorld } from '../helpers/world-factory.js';
+import { makeDiagonalCornerMap } from '../helpers/map-fixtures.js';
 import { FloorMap } from '../../src/core/map/FloorMap.js';
 import type { TilePoint } from '../../src/core/map/pathfinding.js';
 import { RoomGraph } from '../../src/core/map/RoomGraph.js';
@@ -124,26 +126,6 @@ function makeSealedCorridor(
     }
   }
   return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: openRow });
-}
-
-function makeDiagonalCornerMap(): FloorMap {
-  const tileMap = new TileMap(5, 5);
-  const terrain = new Uint8Array(25);
-  const config: MapConfig = {
-    widthTiles: 5,
-    heightTiles: 5,
-    tileSizeFt: 4,
-    biome: BiomeType.ARENA,
-    seed: 1,
-    roomWidthRange: [3, 5],
-    roomHeightRange: [3, 5],
-    maxRooms: 1,
-    floorDensity: 1,
-  };
-  tileMap.fill(TilePresets.FLOOR);
-  tileMap.setFlags(2, 1, TilePresets.WALL);
-  tileMap.setFlags(1, 2, TilePresets.WALL);
-  return new FloorMap(config, tileMap, new RoomGraph(), terrain, { x: 1, y: 1 });
 }
 
 const MIN_DIAGONAL_COMPONENT = 0.15;
@@ -372,18 +354,11 @@ describe('BehaviorTreeAI', () => {
 
   it('treats blocked diagonal corners as obstructed when string-pulling a path', () => {
     const world = createTestWorld({ seed: 7 });
-    world.floorMap = makeDiagonalCornerMap();
-    const ai = new BehaviorTreeAI({ seed: 7 }) as unknown as {
-      hasClearLineOfSight: (
-        world: GameWorld,
-        startX: number,
-        startY: number,
-        endX: number,
-        endY: number,
-      ) => boolean;
-    };
+    world.floorMap = makeDiagonalCornerMap({ seed: 1, floorDensity: 1 });
 
-    expect(ai.hasClearLineOfSight(world, 6, 6, 10, 10)).toBe(false);
+    // hasClearLineOfSight was extracted from BehaviorTreeAI into ./bt-ai-geometry
+    // as a pure function; assert the same corner-cut rejection through it.
+    expect(hasClearLineOfSight(world.floorMap, 6, 6, 10, 10)).toBe(false);
   });
 
   it('drops a previously collectable gold target once it becomes unreachable', () => {

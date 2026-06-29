@@ -7,35 +7,8 @@ import {
   aoeOnImpactPreDamage,
 } from '../../src/core/systems/aoeOnImpactSystem.js';
 import { TeamId } from '../../src/shared/constants.js';
-import { FloorMap } from '../../src/core/map/FloorMap.js';
-import { TileMap } from '../../src/core/map/TileMap.js';
-import { RoomGraph } from '../../src/core/map/RoomGraph.js';
-import { BiomeType, RoomRole, TilePresets, type MapConfig } from '../../src/shared/map-types.js';
+import { makeMapWithSafeRoom } from '../helpers/map-fixtures.js';
 import { createTestWorld } from '../helpers/world-factory.js';
-
-const MAP_CFG: MapConfig = {
-  widthTiles: 20,
-  heightTiles: 20,
-  tileSizeFt: 32,
-  biome: BiomeType.DUNGEON,
-  seed: 1,
-  roomWidthRange: [4, 8],
-  roomHeightRange: [4, 8],
-  maxRooms: 4,
-  floorDensity: 0.5,
-};
-
-function makeMapWithSafeRoom(): FloorMap {
-  const w = 20;
-  const h = 20;
-  const tileMap = new TileMap(w, h);
-  for (let i = 0; i < w * h; i += 1) {
-    tileMap.flags[i] = TilePresets.FLOOR;
-  }
-  const graph = new RoomGraph();
-  graph.add({ x: 1, y: 1, width: 4, height: 4 }, [], [], RoomRole.SAFE);
-  return new FloorMap(MAP_CFG, tileMap, graph, new Uint8Array(w * h), { x: 12, y: 12 });
-}
 
 const SAFE_FT = { x: 3 * 32 + 16, y: 3 * 32 + 16 };
 
