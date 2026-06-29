@@ -22,6 +22,15 @@ Verdict: [🎯 Exact | 📉 Under | 📈 Over | 💥 Miss] — one sentence on w
 
 Hello kitties: N/5 = N.NN 🎀 <!-- actual_apples / 5, two decimal places -->
 
+## Review Harness
+
+<!-- Required for code-touching changes. Name the review-ledger path and the
+     stages you ran per the apple tier (see
+     docs/agent-os/policies/review-harness-policy.md). Example:
+     Ledger: docs/knowledge/review-ledgers/2026-06-29-<slug>.review-ledger.json
+     Stages: plan_review ✅ · dual_plan_synthesis ✅ · code_review ✅ · multi_model_review ✅
+     `npm run review:ledger -- validate <path>` → pass. Or "N/A — docs/art-only". -->
+
 ## What Was Done
 
 <!-- Summary of changes made this session -->

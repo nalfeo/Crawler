@@ -26,7 +26,7 @@ engine god-classes do not, so they are deferred.
 
 Consolidate the duplicated logic into small, tested shared modules: `src/shared/vec.ts`,
 `src/core/map/grid-utils.ts`, `src/game/room-hops.ts`, and a single `DEFAULT_BLOOD_COLOR`
-in `shared/constants.ts`. Rewire call sites to import these; defer floorScenario/bt-ai/engine
+in `src/shared/constants.ts`. Rewire call sites to import these; defer floorScenario/bt-ai/engine
 decompositions to follow-up sessions guarded by e2e/probe coverage.
 
 ## Consequences
