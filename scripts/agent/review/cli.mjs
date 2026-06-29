@@ -16,6 +16,8 @@ import {
   LEDGER_DIR,
   LEDGER_PATH_RE,
   SCHEMA_VERSION,
+  STAGE_NAMES,
+  DATE_RE,
   requiredStagesForApples,
   validateLedgerFile,
   formatLedgerResult,
@@ -24,9 +26,20 @@ import {
 function parseFlags(argv) {
   const flags = {};
   const positional = [];
+  let endOfOptions = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a.startsWith('--')) {
+    if (!endOfOptions && a === '--') {
+      endOfOptions = true;
+      continue;
+    }
+    if (!endOfOptions && a.startsWith('--')) {
+      const eq = a.indexOf('=');
+      if (eq !== -1) {
+        // --flag=value form: lets values legitimately begin with '--'.
+        flags[a.slice(2, eq)] = a.slice(eq + 1);
+        continue;
+      }
       const key = a.slice(2);
       const next = argv[i + 1];
       if (next === undefined || next.startsWith('--')) {
@@ -69,6 +82,10 @@ function writeJson(path, obj) {
 }
 
 function cmdInit(flags) {
+  if (typeof flags.apples !== 'string') {
+    console.error('init: --apples requires a value (integer 1..5)');
+    return 1;
+  }
   const apples = Number(flags.apples);
   if (!Number.isInteger(apples) || apples < 1 || apples > 5) {
     console.error('init: --apples must be an integer 1..5');
@@ -84,7 +101,15 @@ function cmdInit(flags) {
     console.error('init: --title is required');
     return 1;
   }
-  const date = typeof flags.date === 'string' ? flags.date : new Date().toISOString().slice(0, 10);
+  let date;
+  if (flags.date === undefined) {
+    date = new Date().toISOString().slice(0, 10);
+  } else if (typeof flags.date === 'string' && DATE_RE.test(flags.date)) {
+    date = flags.date;
+  } else {
+    console.error('init: --date must be a YYYY-MM-DD string');
+    return 1;
+  }
   const required = requiredStagesForApples(apples);
   const stages = {};
   for (const s of required) stages[s] = scaffoldStage(s);
@@ -110,6 +135,10 @@ function cmdStage(positional, flags) {
   const [path, stageName] = positional;
   if (!path || !stageName) {
     console.error("stage: usage: stage <ledgerPath> <stageName> --json '{...}'");
+    return 1;
+  }
+  if (!STAGE_NAMES.includes(stageName)) {
+    console.error(`stage: unknown stage '${stageName}'. Valid stages: ${STAGE_NAMES.join(', ')}`);
     return 1;
   }
   if (typeof flags.json !== 'string') {

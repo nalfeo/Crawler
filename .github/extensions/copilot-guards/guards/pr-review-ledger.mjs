@@ -93,6 +93,37 @@ function decideLedger(files, addedFiles, opts = {}) {
   };
 }
 
+/**
+ * Gather branch file lists (via injectable git fns) and decide. The git
+ * helpers are injectable so the documented "git error -> allow with context"
+ * branch can be tested without a degenerate repo.
+ *
+ * @param {{cwd?:string, branchFilesFn?:(cwd:string)=>string[], branchAddedFilesFn?:(cwd:string)=>string[], validateFile?:(p:string)=>{ok:boolean,summary:string,errors:string[]}}} [opts]
+ * @returns {{decision:'allow'|'deny'|'skip', reason?:string, additionalContext?:string}}
+ */
+function gatherDecision(opts = {}) {
+  const cwd = opts.cwd || '.';
+  const branchFilesFn = opts.branchFilesFn || branchFiles;
+  const branchAddedFilesFn = opts.branchAddedFilesFn || branchAddedFiles;
+
+  let files;
+  let addedFiles;
+  try {
+    files = branchFilesFn(cwd);
+    addedFiles = branchAddedFilesFn(cwd);
+  } catch (err) {
+    // Intentional allow-through: without git (shallow clone, unresolved
+    // merge-base, detached state) we cannot compute scope. Surface it so a
+    // human verifies the review ledger manually.
+    return {
+      decision: 'allow',
+      additionalContext: `pr-review-ledger: skipped (git error: ${err.message}). Verify the review ledger manually.`,
+    };
+  }
+
+  return decideLedger(files, addedFiles, { cwd, validateFile: opts.validateFile });
+}
+
 export default {
   id: 'pr-review-ledger',
   category: 'pr',
@@ -101,24 +132,8 @@ export default {
     return toolName === 'create_pull_request';
   },
   async check(toolArgs, ctx) {
-    const cwd = ctx?.cwd || process.cwd();
-
-    let files;
-    let addedFiles;
-    try {
-      files = branchFiles(cwd);
-      addedFiles = branchAddedFiles(cwd);
-    } catch (err) {
-      // Intentional allow-through: without git we cannot compute scope. Surface
-      // it so a human verifies the review ledger manually.
-      return {
-        decision: 'allow',
-        additionalContext: `pr-review-ledger: skipped (git error: ${err.message}). Verify the review ledger manually.`,
-      };
-    }
-
-    return decideLedger(files, addedFiles, { cwd });
+    return gatherDecision({ cwd: ctx?.cwd || process.cwd() });
   },
 };
 
-export { decideLedger, missingLedgerReason };
+export { decideLedger, missingLedgerReason, gatherDecision };
