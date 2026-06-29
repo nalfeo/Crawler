@@ -44,6 +44,8 @@
 | Fast verify            | `npm run verify:fast`              |
 | Full verify            | `npm run verify`                   |
 | Full verify + coverage | `VERIFY_COVERAGE=1 npm run verify` |
+| Guard + ledger tests   | `npm run test:guards`              |
+| Review ledger          | `npm run review:ledger`            |
 | Docs loop (local)      | `npm run docs:check`               |
 | Security loop          | `npm run security:check`           |
 | Health loop            | `npm run health:check`             |
@@ -123,6 +125,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 11. **PR title/description synthesis**: When creating or updating a PR title/description — including after any feedback turns — always synthesize the _entire_ session's work. Read the existing PR title/description first (via `gh pr view`), then write a holistic title and description that covers every change on the branch, not just the most recent task. Never replace the primary purpose of the PR with a secondary or follow-up concern. The title must reflect the dominant feature/fix; secondary changes belong as bullet points in the description.
 12. **Never weaken explicit human requirements without asking**: Do NOT cut corners by quietly relaxing, disabling, or disregarding an explicit, user-stated requirement for a session — including the feature's own defining parameter — just to make a gate/test pass. This holds in every mode, **including autopilot**. If the only way you can see to get green is to weaken the requirement, STOP and ask the human first (state the trade-off and options); fix the test/gate around the requirement, not the requirement around the test.
 13. **Never bend gameplay to pass seeds; gate on win-RATE, not cherry-picked seeds**: Do not tune game balance to rescue specific pre-existing seed runs, and do not add shortcuts/cheats that hold map structure fixed just to avoid recomputing success/failure rates. **Target: 90%+ of Floor 1 seeds should easily reach a win condition.** If a broad seed sweep shows materially less, treat it as a likely **AI-runner bug or extreme gameplay regression** and fix the root cause — never hand-pick a handful of comfortable seeds to make the gate green.
+14. **Apple-scaled review harness before PR**: Every code-touching change runs the review harness scaled to its apple estimate and records it in a **review ledger** (`docs/knowledge/review-ledgers/<date>-<slug>.review-ledger.json`). >1🍎 → separate-model **plan review**; >3🍎 → **dual-plan synthesis** (2 models + judge) **and** **multi-model review** with adjudication; **all** → a **code-review loop until no concerns**. The `pr-review-ledger` guard hard-denies `create_pull_request` without a valid ledger for the tier (docs/art/deps-only diffs are exempt). Author it with the [`review-harness` skill](.github/skills/review-harness/SKILL.md); never weaken a stage to go green (see rule #12). Canonical: [`docs/agent-os/policies/review-harness-policy.md`](docs/agent-os/policies/review-harness-policy.md).
 
 > Several of these rules are now **hard-enforced** at the tool-call boundary by
 > the `copilot-guards` extension. See

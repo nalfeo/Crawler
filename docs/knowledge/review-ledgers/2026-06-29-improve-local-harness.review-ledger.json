@@ -1,0 +1,31 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-29",
+  "session_slug": "improve-local-harness",
+  "task_title": "Encode apple-scaled review harness skill + pre-PR ledger guard",
+  "estimated_apples": 4,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 6,
+      "resolved_count": 6,
+      "notes": "rubber-duck gpt-5.4, approved_with_changes; all 6 concerns adopted (failClosed, strict scope allowlist, added-files ledger discovery, stricter validator, CI/test wiring, exec prereqs)"
+    },
+    "dual_plan_synthesis": {
+      "completed": true,
+      "plan_models": ["gpt-5.5", "gemini-3.1-pro-preview"],
+      "judge_model": "claude-opus-4.8",
+      "notes": "two independent plans synthesized by opus-4.8 judge into plan.md"
+    },
+    "code_review": {
+      "clean": false,
+      "rounds": []
+    },
+    "multi_model_review": {
+      "clean": false,
+      "adjudicator_model": "",
+      "rounds": []
+    }
+  }
+}

@@ -1,0 +1,177 @@
+#!/usr/bin/env node
+/* global console */
+// CLI for the apple-scaled review ledger. Thin wrapper around ledger.mjs.
+//
+//   npm run review:ledger -- init --apples 4 --slug my-change --title "My change"
+//   npm run review:ledger -- stage <path> code_review --json '{"clean":true,"rounds":[...]}'
+//   npm run review:ledger -- validate [path]
+//
+// `validate` exits non-zero when the ledger is incomplete for its declared
+// apple tier — the same check the pr-review-ledger guard enforces before PR.
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import process from 'node:process';
+import {
+  LEDGER_DIR,
+  LEDGER_PATH_RE,
+  SCHEMA_VERSION,
+  requiredStagesForApples,
+  validateLedgerFile,
+  formatLedgerResult,
+} from './ledger.mjs';
+
+function parseFlags(argv) {
+  const flags = {};
+  const positional = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      const key = a.slice(2);
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith('--')) {
+        flags[key] = true;
+      } else {
+        flags[key] = next;
+        i++;
+      }
+    } else {
+      positional.push(a);
+    }
+  }
+  return { flags, positional };
+}
+
+function scaffoldStage(name) {
+  switch (name) {
+    case 'plan_review':
+      return {
+        completed: false,
+        reviewer_model: '',
+        concerns_count: 0,
+        resolved_count: 0,
+        notes: '',
+      };
+    case 'dual_plan_synthesis':
+      return { completed: false, plan_models: ['', ''], judge_model: '', notes: '' };
+    case 'code_review':
+      return { clean: false, rounds: [] };
+    case 'multi_model_review':
+      return { clean: false, adjudicator_model: '', rounds: [] };
+    default:
+      return {};
+  }
+}
+
+function writeJson(path, obj) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(obj, null, 2)}\n`, 'utf-8');
+}
+
+function cmdInit(flags) {
+  const apples = Number(flags.apples);
+  if (!Number.isInteger(apples) || apples < 1 || apples > 5) {
+    console.error('init: --apples must be an integer 1..5');
+    return 1;
+  }
+  const slug = typeof flags.slug === 'string' ? flags.slug : '';
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+    console.error('init: --slug must be kebab-case (e.g. improve-local-harness)');
+    return 1;
+  }
+  const title = typeof flags.title === 'string' ? flags.title : '';
+  if (!title.trim()) {
+    console.error('init: --title is required');
+    return 1;
+  }
+  const date = typeof flags.date === 'string' ? flags.date : new Date().toISOString().slice(0, 10);
+  const required = requiredStagesForApples(apples);
+  const stages = {};
+  for (const s of required) stages[s] = scaffoldStage(s);
+  const ledger = {
+    schema_version: SCHEMA_VERSION,
+    date,
+    session_slug: slug,
+    task_title: title,
+    estimated_apples: apples,
+    stages,
+  };
+  const path = join(LEDGER_DIR, `${date}-${slug}.review-ledger.json`);
+  if (existsSync(path) && !flags.force) {
+    console.error(`init: ${path} already exists (use --force to overwrite)`);
+    return 1;
+  }
+  writeJson(path, ledger);
+  console.log(`Created ${path} (apples=${apples}, required stages: ${required.join(', ')})`);
+  return 0;
+}
+
+function cmdStage(positional, flags) {
+  const [path, stageName] = positional;
+  if (!path || !stageName) {
+    console.error("stage: usage: stage <ledgerPath> <stageName> --json '{...}'");
+    return 1;
+  }
+  if (typeof flags.json !== 'string') {
+    console.error("stage: --json '<patch>' is required");
+    return 1;
+  }
+  let patch;
+  try {
+    patch = JSON.parse(flags.json);
+  } catch (err) {
+    console.error(`stage: --json is not valid JSON: ${err.message}`);
+    return 1;
+  }
+  if (!existsSync(path)) {
+    console.error(`stage: ${path} does not exist (run init first)`);
+    return 1;
+  }
+  const ledger = JSON.parse(readFileSync(path, 'utf-8'));
+  ledger.stages = ledger.stages || {};
+  ledger.stages[stageName] = { ...(ledger.stages[stageName] || {}), ...patch };
+  writeJson(path, ledger);
+  console.log(`Updated ${stageName} in ${path}`);
+  return 0;
+}
+
+function discoverNewest() {
+  if (!existsSync(LEDGER_DIR)) return null;
+  const matches = readdirSync(LEDGER_DIR)
+    .map((f) => `${LEDGER_DIR}/${f}`)
+    .filter((p) => LEDGER_PATH_RE.test(p))
+    .sort();
+  return matches.length ? matches[matches.length - 1] : null;
+}
+
+function cmdValidate(positional) {
+  const path = positional[0] || discoverNewest();
+  if (!path) {
+    console.error(`validate: no ledger path given and none found in ${LEDGER_DIR}/`);
+    return 1;
+  }
+  const result = validateLedgerFile(path);
+  console.log(formatLedgerResult(result, path));
+  return result.ok ? 0 : 1;
+}
+
+function main() {
+  const [, , sub, ...rest] = process.argv;
+  const { flags, positional } = parseFlags(rest);
+  switch (sub) {
+    case 'init':
+      return cmdInit(flags);
+    case 'stage':
+      return cmdStage(positional, flags);
+    case 'validate':
+      return cmdValidate(positional);
+    default:
+      console.error('Usage: review:ledger <init|stage|validate> [...]');
+      console.error('  init     --apples N --slug S --title T [--date YYYY-MM-DD] [--force]');
+      console.error("  stage    <path> <stageName> --json '{...}'");
+      console.error('  validate [path]');
+      return 1;
+  }
+}
+
+process.exit(main());

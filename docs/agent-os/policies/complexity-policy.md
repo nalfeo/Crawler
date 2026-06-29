@@ -51,6 +51,25 @@ Record the same estimate in the `## Apples` section of your handoff file when yo
 
 ---
 
+## Review Harness Trigger
+
+The apple estimate you declare also selects how much **pre-PR review** the change
+must receive. This is enforced: the `pr-review-ledger` guard hard-denies
+`create_pull_request` for a code-touching change without a valid **review ledger**
+for its tier.
+
+| Apples | Required review stages (recorded in the ledger)                         |
+| ------ | ----------------------------------------------------------------------- |
+| 1🍎    | code review (loop until clean)                                          |
+| 2–3🍎  | + separate-model **plan review** before coding                          |
+| 4–5🍎  | + **dual-plan synthesis** (2 models + judge) and **multi-model review** |
+
+Run the harness with the [`review-harness` skill](../../../.github/skills/review-harness/SKILL.md);
+the full rules, ledger format, and bypass live in
+[`review-harness-policy.md`](review-harness-policy.md).
+
+---
+
 ## Calibration Scoring (at Handoff)
 
 At the end of every session, score the **actual** apples and compute the verdict:

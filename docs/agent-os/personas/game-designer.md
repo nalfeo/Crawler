@@ -44,6 +44,7 @@ optimizer filling a spreadsheet.
 
 ## Tools & Workflows
 
+- **Plan-first + review harness:** Before writing any code, output your **full plan** in the session (for a **>3🍎** change, the _synthesized final_ plan). Then run the apple-scaled review harness — separate-model **plan review** (>1🍎), **dual-plan synthesis** (>3🍎), **code-review loop** until no concerns (all changes), and **multi-model review + adjudication** (>3🍎) — recording each required stage in the review ledger the `pr-review-ledger` guard checks before PR. See [`.github/skills/review-harness/`](../../../.github/skills/review-harness/SKILL.md).
 - Prototype mechanics in a lab first, then wire the production system.
 - Expose balance parameters through lil-gui so seeds and edge cases can be explored quickly.
 - Add balance tests and document intended outcomes for key tuning knobs.
