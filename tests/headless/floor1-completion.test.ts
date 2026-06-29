@@ -96,18 +96,19 @@ const REQUIRED_QUEST_IDS = [
  * this list to seeds verified to clear on *all three* weapons within the budget
  * — see the file header for how to verify and add more.
  *
- * Verified 2026-06-26 against the 240×140 floor map. Worst-case weapon
- * game-time per seed in parens — all comfortably under the 360s budget:
+ * Verified 2026-06-28 against the 240×140 floor map (after welcome-room hop /
+ * shop-placement changes shifted layouts). Worst-case weapon game-time per seed
+ * in parens — all comfortably under the 360s budget:
  *
  * - 15: canonical all-weapon clear; sword (~240s), bow (~262s), bat (~249s).
  * - 3: all-weapon clear; sword (~241s), bow (~263s), bat (~234s).
- * - 7: all-weapon clear; sword (~274s), bow (~267s), bat (~325s).
- * - 5: all-weapon clear; sword (~240s), bow (~305s), bat (~240s).
+ * - 13: all-weapon clear; sword (~258s), bow (~276s), bat (~272s).
+ * - 23: all-weapon clear; sword (~256s), bow (~261s), bat (~250s).
  *
  * Seed 10 was a verified all-weapon clear on the previous 120×70 map;
  * re-verify before adding it to the matrix on the current 240×140 map.
  */
-const WINNING_SEEDS = [15, 3, 7, 5] as const;
+const WINNING_SEEDS = [15, 3, 13, 23] as const;
 
 /**
  * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
