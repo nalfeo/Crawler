@@ -54,6 +54,14 @@ write a handoff + apple metric and report the final merge commit back.
 > **was created server-side**. Verify with `list_sessions_and_chats` before
 > retrying — a blind retry says "Session already exists".
 
+**One PR = one child session, always.** Every blocker belongs to the shepherd,
+not the coordinator: merge-conflict resolution, rebases onto `main`, and "quick"
+CI fixes all go to the PR's own session. Do **not** check out a PR branch, open
+a temp worktree, or edit locked files via the Contents API to hand-fix an
+"easy" one — that breaks parallelism and pulls you out of the coordinator role.
+The single exception is a child that has tried and genuinely cannot proceed
+(documented as `shepherding-self`); only then take over directly.
+
 ### 4. Track progress in SQL
 
 ```sql
