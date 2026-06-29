@@ -1,0 +1,10 @@
+{
+  "date": "2026-06-28",
+  "slug": "anti-shortcut-rules-winrate",
+  "persona": "Producer",
+  "estimated": 3,
+  "actual": 2,
+  "verdict": "under",
+  "summary": "Added rules against weakening human requirements and cheating seeds; measured Floor 1 sword win rate at 75% (30/40), below the 90% bar. Root-cause fix deferred to a dedicated session.",
+  "notes": "Sweep flagged ~367s timeout cluster + L0 stuck seeds, pointing at AI-nav/traversal regression vs welcome distance."
+}
