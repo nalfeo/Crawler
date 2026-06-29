@@ -98,7 +98,7 @@ const STATUS_COLORS: Readonly<Record<FloorArtStatus, string>> = {
 };
 
 // @ts-expect-error Vite provides import.meta.glob at runtime.
-const planSources = import.meta.glob('../plans/floor-art/*.art.yaml', {
+const planSources = import.meta.glob('../plans/**/*.art.yaml', {
   query: '?raw',
   import: 'default',
   eager: true,
@@ -1123,7 +1123,7 @@ function render(): void {
   if (plans.length === 0) {
     shell.append(
       el('p', {
-        text: 'No Sprite Generation Workflow plans found under plans/floor-art/*.art.yaml.',
+        text: 'No Sprite Generation Workflow plans found under plans/**/*.art.yaml.',
         style: { color: '#fca5a5' },
       }),
     );

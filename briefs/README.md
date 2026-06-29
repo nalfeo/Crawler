@@ -8,14 +8,27 @@ slicing, post-processing, sensor scoring, selection — is determined by the
 brief.
 
 For cross-asset planning (for example, a full floor theme like "rat-themed
-dungeon"), use art-plan files under `plans/floor-art/*.art.yaml` and run:
+dungeon"), use art-plan files under `plans/**/*.art.yaml`, grouped by theme
+(e.g. `plans/floor-art/`, `plans/item-icons/`, `plans/bestiary/`,
+`plans/characters/`, `plans/props/`), and run:
 
 ```bash
 npm run sprites:asset-plan -- --plan plans/floor-art/rat-themed-dungeon-floor.art.yaml
 ```
 
 The tracker reports per-asset lifecycle status (planned, brief-ready,
-approved, integrated) and unresolved placeholders.
+approved, integrated) and unresolved placeholders. The devtools Sprite
+Generation Workflow tool discovers every plan under `plans/**/*.art.yaml`.
+
+### Bestiary & cast backlog
+
+Enemies and characters that still render placeholders are tracked by theme:
+
+| Plan file                              | Covers                                     |
+| -------------------------------------- | ------------------------------------------ |
+| `bestiary/core-bestiary.art.yaml`      | All `MOB_DEFS` mobs (no generated art yet) |
+| `bestiary/stand-in-enemies.art.yaml`   | Registry enemies on temp CC0 frames        |
+| `characters/contestants-cast.art.yaml` | Player + guide NPC on temp CC0 frames      |
 
 ### Item-icon backlog
 
