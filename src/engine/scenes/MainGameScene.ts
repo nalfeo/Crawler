@@ -1,37 +1,14 @@
 import { entityExists, query } from 'bitecs';
 import Phaser from 'phaser';
 import {
-  aoeOnImpactPostDamage,
-  aoeOnImpactPreDamage,
-  areaDamageSystem,
-  beamSystem,
-  collisionSystem,
   createGameWorld,
-  damageSystem,
-  deathTimerSystem,
-  doorSystem,
-  dropSystem,
   Enemy,
   fovSystem,
-  harvestSystem,
-  healthSystem,
   isInSafeContext,
-  itemPickupSystem,
-  knockbackSystem,
-  lifetimeSystem,
-  meleeSwingSystem,
-  movementSystem,
-  npcSystem,
-  playerInputSystem,
   Position,
   Prop,
   PropLight,
-  projectileCleanupSystem,
-  returningProjectileSystem,
-  safeRoomSystem,
-  spawnAnimSystem,
   spawnPlayer,
-  trapSystem,
   type GameWorld,
 } from '../../core/index.js';
 import { CAMERA, GAME, safeRoomCameraZoom } from '../../shared/constants.js';
@@ -51,6 +28,15 @@ import { createModalPickerUI } from '../ModalPickerUI.js';
 import { createDialogueBox, type DialogueBox } from '../DialogueBox.js';
 import { getUiScale, onUiScaleChange } from '../ui-scale.js';
 import { createPhaserBridge } from '../PhaserBridge.js';
+import { runSimulationStep } from '../sim/simulation-step.js';
+import {
+  areLightingRectsEqual,
+  formatAbilityTrigger,
+  getFloorRunOutcome,
+  getLightingViewRect,
+  resolveDialogueLines,
+  resolveNpcQuestIndicatorState,
+} from './main-game-scene-helpers.js';
 import { createHudUI } from '../HudUI.js';
 import { createInventoryUI } from '../InventoryUI.js';
 import { createEquipmentUI } from '../EquipmentUI.js';
@@ -60,7 +46,6 @@ import { createLevelUpUI } from '../LevelUpUI.js';
 import {
   blurLightField,
   buildDirtyRectFromCircles,
-  buildDirtyRectFromPixelBounds,
   chooseAutoStepPx,
   clampLightingStepPx,
   computeLightField,
@@ -80,17 +65,7 @@ import { PRIMARY_STATS, type PrimaryStatId } from '../../shared/stats.js';
 import { createLogger } from '../../shared/logger.js';
 import { getItemById } from '../../shared/items.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
-import {
-  getNpcDef,
-  selectTutorialGoonDialogue,
-  SHOPKEEPER_DONE_DIALOGUE,
-  SHOPKEEPER_EQUIP_HINT_DIALOGUE,
-  SHOPKEEPER_LOCKED_DIALOGUE,
-  SHOPKEEPER_RETURN_DIALOGUE,
-  SHOPKEEPER_SHOP_DIALOGUE,
-  SPELL_QUEST_GIVER_LOCKED_DIALOGUE,
-} from '../../shared/npc-types.js';
-import { FLOOR1_LEAVE_FLOOR_QUEST_ID } from '../../shared/quest-types.js';
+import { getNpcDef } from '../../shared/npc-types.js';
 import type { ShopkeeperStage, NpcQuestIndicatorState } from '../../shared/quest-types.js';
 import type { SessionRecorder } from '../../shared/session-recorder-types.js';
 import { getAchievementById } from '../../shared/achievements.js';
@@ -107,7 +82,6 @@ const LEVEL_UP_AUTO_HOLD_FRAMES = 24;
 const DIRECTOR_LABEL_TEXT = 'DIRECTOR';
 /** Duration each temporary commentary line stays visible (ms). */
 const DIRECTOR_COMMENTARY_MS = 3600;
-const LIGHTING_VIEW_BUFFER_PX = 64;
 const MOBILE_CORNER_BUTTON_MAX_SCALE = 1.4;
 const INTERACTION_HINT_MAX_SCALE = 1.25;
 const INTERACTION_HINT_BOTTOM_MARGIN = 12;
@@ -897,47 +871,27 @@ export class MainGameScene extends Phaser.Scene {
         this.inputCapture.poll(this.inputState);
       }
 
-      playerInputSystem(this.world, this.inputState);
-      for (const sys of this.options.preSystems ?? []) {
-        sys(this.world);
-      }
-
-      if (this.simulationPaused && this.pendingSimulationSteps > 0) {
-        // Each loop iteration runs exactly one sim step, so consume one pending
-        // step here. `steps` is still 0 at this point (it increments at the end
-        // of the loop), so decrementing by `steps` would never drain the queue:
-        // pendingSimulationSteps would stay > 0 forever, the paused early-return
-        // guard above would never re-arm, and the scene would step every frame —
-        // making the AI runner lab's Pause/Advance-frame controls do nothing.
-        this.pendingSimulationSteps = Math.max(0, this.pendingSimulationSteps - 1);
-        this.accumulator = 0;
-      }
-      movementSystem(this.world);
-      returningProjectileSystem(this.world);
-      const collision = collisionSystem(this.world);
-      aoeOnImpactPreDamage(this.world);
-      damageSystem(this.world, collision);
-      aoeOnImpactPostDamage(this.world);
-      areaDamageSystem(this.world, collision);
-      meleeSwingSystem(this.world);
-      knockbackSystem(this.world);
-      beamSystem(this.world);
-      trapSystem(this.world, collision);
-      itemPickupSystem(this.world, collision);
-      harvestSystem(this.world);
-      dropSystem(this.world);
-      deathTimerSystem(this.world);
-      spawnAnimSystem(this.world);
-      healthSystem(this.world);
-      lifetimeSystem(this.world);
-      projectileCleanupSystem(this.world);
-      doorSystem(this.world);
-      fovSystem(this.world);
-      safeRoomSystem(this.world);
-      npcSystem(this.world);
-      for (const sys of this.options.postSystems ?? []) {
-        sys(this.world);
-      }
+      // The ordered ECS system pipeline lives in `runSimulationStep` (one
+      // src/engine module). Call order + arguments are identical to the former
+      // inline body; the paused single-step drain stays at its exact original
+      // seam (between preSystems and movementSystem) via the `afterInput` hook.
+      runSimulationStep(this.world, this.inputState, {
+        preSystems: this.options.preSystems,
+        postSystems: this.options.postSystems,
+        afterInput: () => {
+          if (this.simulationPaused && this.pendingSimulationSteps > 0) {
+            // Each loop iteration runs exactly one sim step, so consume one
+            // pending step here. `steps` is still 0 at this point (it increments
+            // at the end of the loop), so decrementing by `steps` would never
+            // drain the queue: pendingSimulationSteps would stay > 0 forever, the
+            // paused early-return guard above would never re-arm, and the scene
+            // would step every frame — making the AI runner lab's Pause/Advance-
+            // frame controls do nothing.
+            this.pendingSimulationSteps = Math.max(0, this.pendingSimulationSteps - 1);
+            this.accumulator = 0;
+          }
+        },
+      });
 
       this.accumulator -= GAME.DELTA_MS;
       steps += 1;
@@ -1465,10 +1419,10 @@ export class MainGameScene extends Phaser.Scene {
     const field = this.lightField;
     if (!floorMap || !rt || !field || this.playerEid < 0) return;
 
-    const viewRect = this.getLightingViewRect(field);
+    const viewRect = getLightingViewRect(field, this.cameras.main.worldView);
     const viewRectUnchanged =
       this.lightingLastViewRect !== undefined &&
-      this.areLightingRectsEqual(this.lightingLastViewRect, viewRect);
+      areLightingRectsEqual(this.lightingLastViewRect, viewRect);
     const shouldSkip =
       !force &&
       !this.lightingDirty &&
@@ -1577,21 +1531,6 @@ export class MainGameScene extends Phaser.Scene {
     } else {
       this.lightingOverBudgetFrames = 0;
     }
-  }
-
-  private getLightingViewRect(field: LightField): LightFieldDirtyRect {
-    const worldView = this.cameras.main.worldView;
-    return buildDirtyRectFromPixelBounds(
-      field,
-      worldView.x - LIGHTING_VIEW_BUFFER_PX,
-      worldView.y - LIGHTING_VIEW_BUFFER_PX,
-      worldView.right + LIGHTING_VIEW_BUFFER_PX,
-      worldView.bottom + LIGHTING_VIEW_BUFFER_PX,
-    );
-  }
-
-  private areLightingRectsEqual(a: LightFieldDirtyRect, b: LightFieldDirtyRect): boolean {
-    return a.minX === b.minX && a.minY === b.minY && a.maxX === b.maxX && a.maxY === b.maxY;
   }
 
   private ensureUiCamera(): void {
@@ -1757,15 +1696,6 @@ export class MainGameScene extends Phaser.Scene {
     );
   }
 
-  private formatAbilityTrigger(abilityId: string): string {
-    const triggerText: Record<string, string> = {
-      fireball: 'Auto: hits the nearest enemy, favoring clusters',
-      heal: 'Auto: casts when HP deficit warrants it',
-      'pulse-shield': 'Auto: casts at low HP when surrounded',
-    };
-    return triggerText[abilityId] ?? 'Auto trigger';
-  }
-
   private openAbilitiesConfigModal(): void {
     if (!this.modalPicker || this.world.state !== 'playing' || this.modalPicker.isOpen()) {
       return;
@@ -1821,7 +1751,7 @@ export class MainGameScene extends Phaser.Scene {
         label: equipped ? `${label} (Equipped)` : label,
         description: `${meta?.description ?? 'Configured ability'} • ${
           meta ? `${meta.mpCost} MP • ${meta.cooldownSec}s CD` : 'Spell'
-        } • ${this.formatAbilityTrigger(abilityId)}`,
+        } • ${formatAbilityTrigger(abilityId)}`,
       };
     });
 
@@ -2004,24 +1934,15 @@ export class MainGameScene extends Phaser.Scene {
     this.updateNpcQuestIndicators();
   }
 
-  private resolveNpcQuestIndicatorState(defId: string): NpcQuestIndicatorState {
-    if (defId === 'tutorial-goon') {
-      return this.options.tutorialGoon?.getIndicatorState?.(this.world) ?? 'none';
-    }
-    if (defId === 'shopkeeper') {
-      return this.options.shopkeeper?.getIndicatorState?.(this.world) ?? 'none';
-    }
-    if (defId === 'spell-quest-giver') {
-      return this.options.spellQuestGiver?.getIndicatorState?.(this.world) ?? 'none';
-    }
-    return 'none';
-  }
-
   private updateNpcQuestIndicators(): void {
     const liveNpcEids = new Set<number>();
     const bobOffset = Math.sin(this.world.elapsedMs / 240) * 3;
     for (const [eid, instance] of this.world.npcs.entries()) {
-      const indicatorState = this.resolveNpcQuestIndicatorState(instance.defId);
+      const indicatorState = resolveNpcQuestIndicatorState(
+        instance.defId,
+        this.world,
+        this.options,
+      );
       const indicator = this.npcQuestIndicators.get(eid);
       if (indicatorState === 'none') {
         indicator?.destroy();
@@ -2147,7 +2068,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private showFloorCompletionScreenIfNeeded(): void {
-    const outcome = this.getFloorRunOutcome();
+    const outcome = getFloorRunOutcome(this.world);
     if (!outcome || !this.shouldShowFloorCompletionMessage()) {
       return;
     }
@@ -2172,15 +2093,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   private shouldShowFloorCompletionMessage(): boolean {
-    return this.getFloorRunOutcome() !== null && !this.floorCompletionMessageShown;
-  }
-
-  private getFloorRunOutcome(): 'cleared_floor' | 'failed_timeout' | null {
-    const outcome = this.world.floor1?.runSummary?.outcome;
-    if (outcome === 'cleared_floor' || outcome === 'failed_timeout') {
-      return outcome;
-    }
-    return null;
+    return getFloorRunOutcome(this.world) !== null && !this.floorCompletionMessageShown;
   }
 
   /**
@@ -2195,7 +2108,7 @@ export class MainGameScene extends Phaser.Scene {
     if (
       this.world.state !== 'game_over' ||
       this.deathScreenShown ||
-      this.getFloorRunOutcome() !== null
+      getFloorRunOutcome(this.world) !== null
     ) {
       return;
     }
@@ -2286,7 +2199,11 @@ export class MainGameScene extends Phaser.Scene {
         this.dialogueBox?.hide();
       } else {
         const def = getNpcDef(instance.defId);
-        const activeDialogue = this.resolveDialogueLines(instance.defId);
+        const activeDialogue = resolveDialogueLines(instance.defId, this.world, {
+          shopkeeper: this.options.shopkeeper,
+          spellQuestGiver: this.options.spellQuestGiver,
+          shopkeeperJustReturned: this.shopkeeperJustReturned,
+        });
         this.interactionHint?.setVisible(false);
         this.dialogueBox?.setCloseVisible(true);
 
@@ -2342,7 +2259,11 @@ export class MainGameScene extends Phaser.Scene {
               return;
             }
           }
-          const activeDialogue = this.resolveDialogueLines(instance.defId);
+          const activeDialogue = resolveDialogueLines(instance.defId, this.world, {
+            shopkeeper: this.options.shopkeeper,
+            spellQuestGiver: this.options.spellQuestGiver,
+            shopkeeperJustReturned: this.shopkeeperJustReturned,
+          });
           if (def && activeDialogue.length > 0) {
             this.conversationNpcEid = nearNpcEid;
             if (instance.defId === 'tutorial-goon' && this.options.tutorialGoon) {
@@ -2398,45 +2319,6 @@ export class MainGameScene extends Phaser.Scene {
         this.dialogueBox?.setBodyVisible(false);
       }
     }
-  }
-
-  private resolveDialogueLines(defId: string): string[] {
-    const objective = this.world.floor1?.objective;
-    if (defId === 'tutorial-goon') {
-      const goonLines = selectTutorialGoonDialogue({
-        bossDefeated: objective?.bossBattles.get('staircase')?.defeated === true,
-        leaveFloorAccepted: this.world.questLog.has(FLOOR1_LEAVE_FLOOR_QUEST_ID),
-        goonGrindComplete: this.world.goalFlags.get('floor1-goon-quest-complete') === true,
-        merchantErrandComplete: this.world.goalFlags.get('floor1-shop-quest-complete') === true,
-        spellBrokerComplete: this.world.goalFlags.get('floor1-boss-battle-complete') === true,
-      });
-      if (goonLines) {
-        return [...goonLines];
-      }
-    }
-    if (defId === 'shopkeeper' && this.options.shopkeeper) {
-      if (this.options.shopkeeper.isLocked?.(this.world)) {
-        return [...SHOPKEEPER_LOCKED_DIALOGUE];
-      }
-      const stage = this.options.shopkeeper.getStage(this.world);
-      if (stage === 'complete') {
-        return [...SHOPKEEPER_DONE_DIALOGUE];
-      }
-      if (stage === 'awaiting-equip') {
-        return [...SHOPKEEPER_EQUIP_HINT_DIALOGUE];
-      }
-      if (stage === 'ready-to-buy') {
-        return this.shopkeeperJustReturned
-          ? [...SHOPKEEPER_RETURN_DIALOGUE]
-          : [...SHOPKEEPER_SHOP_DIALOGUE];
-      }
-      // not-met / awaiting-prize: the merchant's initial fetch request.
-    }
-    if (defId === 'spell-quest-giver' && this.options.spellQuestGiver?.isLocked?.(this.world)) {
-      return [...SPELL_QUEST_GIVER_LOCKED_DIALOGUE];
-    }
-    const def = getNpcDef(defId);
-    return def?.dialogue.map((line) => line.text) ?? [];
   }
 
   /**
