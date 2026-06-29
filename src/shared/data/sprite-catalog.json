@@ -519,5 +519,31 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:rat-v1-var-3",
+    "kind": "sprite",
+    "label": "rat-v1-var-3",
+    "description": "Generated sprite from brief: rat-v1.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "rat-v1-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/rat-v1-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:rat-v1-var-9",
+    "kind": "sprite",
+    "label": "rat-v1-var-9",
+    "description": "Generated sprite from brief: rat-v1.",
+    "tags": ["enemy", "generated", "pipeline-approved"],
+    "spriteId": "rat-v1-var-9",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/rat-v1-var-9.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
