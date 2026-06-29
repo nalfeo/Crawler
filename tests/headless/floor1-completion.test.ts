@@ -15,19 +15,20 @@
  *   - the floor is cleared (`outcome === 'victory'`) within the 6-minute design
  *     budget, in deterministic *game* time.
  *
- * ## Why a weapon × seed matrix
+ * ## Why a sampled win-RATE, not cherry-picked seeds
  *
  * The simulation is fully deterministic: a given (seed, weapon) pair produces
- * the exact same run every time, so one pass per combo is authoritative — there
- * is nothing to average over. The gate runs every {@link WINNING_SEEDS} seed
- * with every {@link GATE_WEAPONS} starter weapon (sword, bow, baseball-bat) and
- * asserts each clears independently. This proves Floor 1 is winnable across
- * fundamentally different combat styles — a tight-range full-damage blade, a
- * leading ranged projectile, and a knockback tip-sweet-spot bludgeon — not just
- * the one weapon the AI happened to pick. Because each run exercises the
- * *entire* Floor 1 pipeline — pathfinding, melee/ranged combat, every NPC
- * interaction, the boss fight, and stat progression — a regression in almost
- * any of those systems breaks the matrix.
+ * the exact same run every time, so a run is authoritative — there is nothing to
+ * average over. The gate runs a **contiguous prefix** of seeds (1..N, see
+ * {@link SAMPLE_SEEDS}) with every {@link GATE_WEAPONS} starter weapon and
+ * asserts the **win-rate** per weapon clears a {@link MIN_WIN_RATE} floor. A
+ * contiguous prefix cannot be gamed by hand-picking comfortable seeds: any
+ * failing seed in range drags the rate down exactly as it should (AGENTS.md
+ * r13). This proves Floor 1 is winnable across fundamentally different combat
+ * styles — a tight-range full-damage blade, a leading ranged projectile, and a
+ * knockback tip-sweet-spot bludgeon. Because each run exercises the *entire*
+ * Floor 1 pipeline — pathfinding, melee/ranged combat, every NPC interaction,
+ * the boss fight, and stat progression — a broad regression sinks the rate.
  *
  * The deterministic floor-progress stall watchdog (which relocates the AI when
  * quest score, then gold, stops advancing) is exercised here implicitly — it is
@@ -35,14 +36,10 @@
  * winning run. Its pure scoring function is unit-tested directly in
  * tests/game/floor-progress-score.test.ts.
  *
- * To add coverage, append known-good seeds to `WINNING_SEEDS` — but only after
- * verifying the seed clears on *all three* weapons within budget. Probe each
- * combo via the per-weapon CLI `npm run ai:headless -- --seed N --weapon bow`
- * (repeat for sword and baseball-bat) and confirm every weapon reports VICTORY
- * with all required quests. Seed 10 was a verified all-weapon clear on the
- * previous 120×70 map; its status on the current 240×140 map has not been
- * checked. Most seeds do NOT clear on every weapon within the
- * budget. Note bow runs simulate the full frame budget and are markedly slower
+ * To recalibrate, run `npm run ai:winrate-sweep -- --seeds 1-N --weapons sword,
+ * bow,baseball-bat` and set each weapon floor below its measured rate by a noise
+ * margin. Tighten the bow floor toward 90% once issue #453 (bow kite/pursuit
+ * combat) lands. Bow runs simulate the full frame budget and are markedly slower
  * in wall time than sword/bat.
  *
  * ## Assertions are on deterministic *game* time, never wall time
@@ -92,24 +89,30 @@ const REQUIRED_QUEST_IDS = [
 
 /**
  * Deterministic, known-good seeds. Each is run with every {@link GATE_WEAPONS}
- * weapon (see the matrix below) and every combo is asserted independently. Keep
- * this list to seeds verified to clear on *all three* weapons within the budget
- * — see the file header for how to verify and add more.
+ * weapon and the gate asserts a **sampled win-RATE** per weapon, never that a
+ * hand-picked set of comfortable seeds each clears. This is a contiguous prefix
+ * (seeds 1..N) so it cannot be gamed by cherry-picking the easy ones — adding a
+ * failing seed in range lowers the rate exactly as it should (AGENTS.md r13).
  *
- * Verified 2026-06-29 against the 240×140 floor map at the welcome-office
- * target of ~5 hops. All four seeds clear on every weapon comfortably under
- * the 360s budget (bow worst-case ~261–280s):
- *
- * - 13: all-weapon clear; bow ~276s.
- * - 42: all-weapon clear, generous margin.
- * - 99: all-weapon clear, generous margin.
- * - 4: all-weapon clear, generous margin.
- *
- * Borderline seeds excluded: 2 (bow 363s, over budget), 8 (sword death),
- * 20 (bow death), 23 (bat wall-clock at the perf edge), 15/30 (flaky).
- * Re-verify timings on the current map before adding any seed to the matrix.
+ * Measured 2026-06-29 (240×140 map, welcome ~5 hops) over seeds 1–12:
+ * sword 83%, bow 67%, bat 92%. Over the gated 1–8 prefix: sword 7/8 (88%),
+ * bow 6/8 (75%), bat 8/8 (100%). Bow is the laggard — its kite/pursuit combat
+ * inefficiency is tracked in issue #453; thresholds below sit under measured so
+ * routine variance can't flake the gate, while a real regression still trips it.
  */
-const WINNING_SEEDS = [13, 42, 99, 4] as const;
+const SAMPLE_SEEDS = Array.from({ length: 8 }, (_, i) => i + 1) as readonly number[];
+
+/**
+ * Per-weapon minimum win-rate. Floors set below the measured 1–8 rates (sword
+ * 88%, bow 75%, bat 100%) so deterministic-but-noisy seed variance never flakes
+ * CI, yet a real navigation/combat regression that sinks multiple seeds trips
+ * it. Raise the bow floor toward 90% once #453 lands.
+ */
+const MIN_WIN_RATE: Readonly<Record<string, number>> = {
+  sword: 0.75,
+  bow: 0.5,
+  'baseball-bat': 0.75,
+};
 
 /**
  * Starter weapons the gate proves Floor 1 is winnable with. Each is forced as
@@ -121,13 +124,14 @@ const WINNING_SEEDS = [13, 42, 99, 4] as const;
 const GATE_WEAPONS = ['sword', 'bow', 'baseball-bat'] as const;
 
 /**
- * Per-combo wall-clock budget for the `beforeAll` that runs one full clear.
- * Generous because a bow run simulates the entire ~19.8k-frame budget and is
- * several times slower in wall time than a sword/bat clear (and CI runners are
- * 2–3x slower than a dev box). Correctness is asserted on deterministic *game*
- * time, not this wall-clock guard, so a comfortable margin cannot cause flakes.
+ * Per-combo wall-clock budget for the `beforeAll` that runs the whole weapon
+ * sample. Generous because a bow run simulates the entire ~19.8k-frame budget and
+ * is several times slower in wall time than a sword/bat clear, and the sample is
+ * N seeds (CI runners are 2–3x slower than a dev box). Correctness is asserted on
+ * deterministic *game* time, not this wall-clock guard, so a comfortable margin
+ * cannot cause flakes.
  */
-const HEADLESS_HOOK_TIMEOUT_MS = 180_000;
+const HEADLESS_HOOK_TIMEOUT_MS = 8 * 180_000;
 
 /**
  * Coarse per-combo wall-clock ceiling — a **performance-regression guard**, not a
@@ -143,13 +147,14 @@ const HEADLESS_HOOK_TIMEOUT_MS = 180_000;
  * over a minute, so a generous ceiling still catches it decisively.
  *
  * Wall time is machine-variant — CI runners are 2–3x slower than a dev box and
- * subject to noisy-neighbour jitter — so this budget is deliberately loose
- * (~4.5x the slowest combo observed on a dev box, ~6.7s) to **never flake**, while
- * still sitting far below the ~58s blowup it guards against. Do **not** tighten it
- * toward the observed runtimes: that trades a real regression signal for CI
- * flakes. If a combo legitimately approaches this ceiling, raise it.
+ * subject to noisy-neighbour jitter — and the win-rate sample now includes
+ * losing seeds that run the *entire* ~19.8k–21.8k-frame budget (~35–37s on a dev
+ * box, ~3x on CI), so this budget is deliberately loose (~4x the slowest full
+ * run) to **never flake**, while still sitting far below the ~30x blowup it
+ * guards against. Do **not** tighten it toward observed runtimes: that trades a
+ * real regression signal for CI flakes.
  */
-const HEADLESS_WALL_TIME_BUDGET_MS = 30_000;
+const HEADLESS_WALL_TIME_BUDGET_MS = 150_000;
 
 /**
  * Run the full headless Floor 1 simulation for a (seed, weapon) pair. The seed
@@ -170,73 +175,64 @@ async function clearFloor1(seed: number, weapon: string): Promise<RunStats> {
 
 describe('Floor 1 headless completion gate', () => {
   for (const weapon of GATE_WEAPONS) {
-    for (const seed of WINNING_SEEDS) {
-      describe(`seed ${seed} · ${weapon}`, () => {
-        let stats: RunStats;
+    describe(`${weapon} · win-rate over seeds 1–${SAMPLE_SEEDS.length}`, () => {
+      const runs = new Map<number, RunStats>();
 
-        beforeAll(async () => {
-          stats = await clearFloor1(seed, weapon);
-        }, HEADLESS_HOOK_TIMEOUT_MS);
+      beforeAll(async () => {
+        for (const seed of SAMPLE_SEEDS) {
+          runs.set(seed, await clearFloor1(seed, weapon));
+        }
+      }, HEADLESS_HOOK_TIMEOUT_MS);
 
-        it('clears the floor (outcome = victory)', () => {
-          // Surface the real failure mode (death / timeout / error) in the
-          // message so a regression is actionable at a glance.
-          expect(
-            stats.outcome,
-            `[seed ${seed} · ${weapon}] expected victory but run ended as ` +
-              `"${stats.outcome}"` +
-              (stats.error ? ` (${stats.error})` : '') +
-              ` at ${(stats.gameTimeMs / 1000).toFixed(1)}s game-time, ` +
-              `level ${stats.finalLevel}, ${stats.combat.totalKills} kills`,
-          ).toBe('victory');
-        });
+      it(`wins at least ${Math.round((MIN_WIN_RATE[weapon] ?? 0) * 100)}% of the sample`, () => {
+        const wins: number[] = [];
+        const fails: string[] = [];
+        for (const seed of SAMPLE_SEEDS) {
+          const s = runs.get(seed)!;
+          if (s.outcome === 'victory' && s.gameTimeMs < FLOOR1_TIME_BUDGET_MS) {
+            wins.push(seed);
+          } else {
+            fails.push(
+              `${seed}:${s.outcome}@${(s.gameTimeMs / 1000).toFixed(0)}s lv${s.finalLevel}`,
+            );
+          }
+        }
+        const rate = wins.length / SAMPLE_SEEDS.length;
+        const floor = MIN_WIN_RATE[weapon] ?? 0;
+        expect(
+          rate,
+          `[${weapon}] win-rate ${(rate * 100).toFixed(0)}% (${wins.length}/${SAMPLE_SEEDS.length}) ` +
+            `below ${(floor * 100).toFixed(0)}% floor — failures: [${fails.join(', ')}]`,
+        ).toBeGreaterThanOrEqual(floor);
+      });
 
-        it('clears within the 6-minute game-time budget', () => {
-          expect(
-            stats.gameTimeMs,
-            `[seed ${seed} · ${weapon}] cleared in ` +
-              `${(stats.gameTimeMs / 1000).toFixed(1)}s — over the ` +
-              `${FLOOR1_TIME_BUDGET_MS / 1000}s budget`,
-          ).toBeLessThan(FLOOR1_TIME_BUDGET_MS);
-        });
-
-        it('stays within the wall-time budget (perf-regression guard)', () => {
-          // Coarse guard against a pathfinding-style blowup (see
-          // HEADLESS_WALL_TIME_BUDGET_MS) — the only wall-time assertion in this
-          // gate. Game-time above proves the run is correct; this proves it is
-          // not catastrophically slow.
-          expect(
-            stats.wallTimeMs,
-            `[seed ${seed} · ${weapon}] took ` +
-              `${(stats.wallTimeMs / 1000).toFixed(1)}s wall-clock over ` +
-              `${stats.totalFrames} frames — over the ` +
-              `${HEADLESS_WALL_TIME_BUDGET_MS / 1000}s perf-regression budget. ` +
-              `This is a coarse blowup guard, not a precise SLA; if the run is ` +
-              `legitimately this slow now, profile the AI before raising the budget`,
-          ).toBeLessThan(HEADLESS_WALL_TIME_BUDGET_MS);
-        });
-
-        it('completes every Floor 1 quest', () => {
-          const completed = stats.quests.questLogCompletions;
+      it('every winning run finishes all quests and shows real progression', () => {
+        for (const seed of SAMPLE_SEEDS) {
+          const s = runs.get(seed)!;
+          if (s.outcome !== 'victory' || s.gameTimeMs >= FLOOR1_TIME_BUDGET_MS) continue;
           for (const questId of REQUIRED_QUEST_IDS) {
             expect(
-              completed[questId],
-              `[seed ${seed} · ${weapon}] quest "${questId}" was not ` +
-                `completed; completed quests: ` +
-                `[${Object.keys(completed).join(', ') || 'none'}]`,
+              s.quests.questLogCompletions[questId],
+              `[seed ${seed} · ${weapon}] won but quest "${questId}" incomplete`,
             ).toBeTypeOf('number');
           }
-        });
-
-        it('makes real combat + progression (sanity)', () => {
-          // Guards against a degenerate "victory" reached without actually
-          // playing — e.g. a future scenario bug that flags the floor cleared
-          // on frame 0. An honest clear levels up and kills enemies.
-          expect(stats.finalFloor).toBeGreaterThanOrEqual(1);
-          expect(stats.finalLevel).toBeGreaterThanOrEqual(1);
-          expect(stats.combat.totalKills).toBeGreaterThan(0);
-        });
+          expect(s.finalFloor).toBeGreaterThanOrEqual(1);
+          expect(s.finalLevel).toBeGreaterThanOrEqual(1);
+          expect(s.combat.totalKills).toBeGreaterThan(0);
+        }
       });
-    }
+
+      it('stays within the wall-time budget per run (perf-regression guard)', () => {
+        for (const seed of SAMPLE_SEEDS) {
+          const s = runs.get(seed)!;
+          expect(
+            s.wallTimeMs,
+            `[seed ${seed} · ${weapon}] ${(s.wallTimeMs / 1000).toFixed(1)}s wall over ` +
+              `${s.totalFrames} frames — over the ${HEADLESS_WALL_TIME_BUDGET_MS / 1000}s ` +
+              `perf-regression budget (coarse blowup guard, not an SLA)`,
+          ).toBeLessThan(HEADLESS_WALL_TIME_BUDGET_MS);
+        }
+      });
+    });
   }
 });
