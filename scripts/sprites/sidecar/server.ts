@@ -1628,6 +1628,9 @@ async function findLatestRunForBriefSince(
   briefId: string,
   requestedAtMs: number,
 ): Promise<{ briefId: string; runId: string; timestamp: string | null } | null> {
+  // runId timestamps are second-precision; floor requestedAt to the same
+  // precision so same-second runs are eligible matches.
+  const requestedAtSecondMs = Math.floor(requestedAtMs / 1000) * 1000;
   const prefix = `${briefId}/`;
   const keys = await store.list(prefix);
   const summaryKeys = keys.filter((key) => {
@@ -1645,7 +1648,7 @@ async function findLatestRunForBriefSince(
     const timestamp = parseRunIdTimestamp(runId);
     if (!timestamp) continue;
     const runTime = Date.parse(timestamp);
-    if (!Number.isFinite(runTime) || runTime < requestedAtMs) continue;
+    if (!Number.isFinite(runTime) || runTime < requestedAtSecondMs) continue;
     if (!latest || runId > latest.runId) {
       latest = { briefId, runId, timestamp };
     }
