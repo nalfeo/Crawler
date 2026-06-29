@@ -618,7 +618,9 @@ function dispatchAttack(
         fireRangedAttack(world, player, zeroDamageDef, deflectDirectionForMiss(world, dir));
         break;
       case WeaponType.MAGIC:
-        fireRangedAttack(world, player, zeroDamageDef, deflectDirectionForMiss(world, dir));
+        // Spell whiffs still cast the spell's own AoE projectile (not a stray
+        // arrow); the deflected direction makes it sail wide for zero damage.
+        fireMagicAttack(world, player, zeroDamageDef, deflectDirectionForMiss(world, dir));
         break;
       case WeaponType.THROWN:
         fireThrownAttack(world, player, zeroDamageDef, deflectDirectionForMiss(world, dir));

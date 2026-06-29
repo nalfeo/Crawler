@@ -908,6 +908,35 @@ describe('BehaviorTreeAI', () => {
     expect(decision.targetX!).toBeLessThan(0);
   });
 
+  it('kites with a magic weapon instead of charging onto the enemy', () => {
+    // Regression: MAGIC (fireball, range 32ft) used to fall through to the generic
+    // "engage at distance" branch and walk straight onto the enemy. It must now
+    // kite at the ranged standoff like bows/pistols. Standoff =
+    // max(4.5, min(32 × 0.5, 6)) = 6ft, so a distant enemy is approached only to
+    // ~6ft and a close one is orbited away.
+    const distantWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(distantWorld, 0, 0);
+    spawnEnemy(distantWorld, 30, 0, 20);
+    setActiveWeapon(distantWorld, getWeaponDef('fireball')!);
+    const distantAi = new BehaviorTreeAI({ seed: 7 });
+    distantAi.poll(createInputState(), distantWorld);
+    const distant = distantAi.getDecision();
+    expect(distant.reason).toContain('Closing to ranged standoff');
+    expect(distant.targetX!).toBeGreaterThan(0);
+    expect(distant.targetX!).toBeLessThan(30);
+    expect(distant.targetX!).toBeCloseTo(30 - 6, 0);
+
+    const closeWorld = createTestWorld({ seed: 7 });
+    spawnPlayer(closeWorld, 0, 0);
+    spawnEnemy(closeWorld, 3.75, 0, 20);
+    setActiveWeapon(closeWorld, getWeaponDef('fireball')!);
+    const closeAi = new BehaviorTreeAI({ seed: 7 });
+    closeAi.poll(createInputState(), closeWorld);
+    const close = closeAi.getDecision();
+    expect(close.reason).toContain('Ranged orbit');
+    expect(close.targetX!).toBeLessThan(0);
+  });
+
   // Regression guard for the BFS path-resolver refactor (PR #324). The goal-tile
   // resolver flood-fills `dist` once and reads it via `dist[y * width + x]`. A goal
   // from FloorMap.worldToTile is NOT clamped to the map, so an out-of-bounds goal
