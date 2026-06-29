@@ -106,6 +106,129 @@ describe('floor1Scenario', () => {
     }
   });
 
+  it('places the welcome office 3–8 room-graph hops from spawn, averaging ~5', () => {
+    // BFS hop count from spawnRoom to the welcome office room, traversing room
+    // neighbors (same traversal used by the placement algorithm).
+    const hopCount = (world: ReturnType<typeof createTestWorld>): number => {
+      const map = world.floorMap!;
+      const objective = world.floor1!.objective;
+      const tile = map.worldToTile(objective.welcomeOfficePos.x, objective.welcomeOfficePos.y);
+      const welcomeRoomId = map.roomGraph.getRoomAt(tile.x, tile.y);
+      const startRoomId = map.spawnRoom?.id;
+      if (startRoomId === undefined || welcomeRoomId < 0) return -1;
+      if (startRoomId === welcomeRoomId) return 0;
+      const queue: number[] = [startRoomId];
+      let head = 0;
+      const dist = new Map<number, number>([[startRoomId, 0]]);
+      while (head < queue.length) {
+        const curr = queue[head++]!;
+        const room = map.roomGraph.get(curr);
+        for (const n of room?.neighbors ?? []) {
+          if (!dist.has(n)) {
+            dist.set(n, dist.get(curr)! + 1);
+            if (n === welcomeRoomId) return dist.get(n)!;
+            queue.push(n);
+          }
+        }
+      }
+      return -1;
+    };
+
+    const seeds = [42, 7, 99, 123, 2024, 1, 14, 321, 999, 500];
+    const hops: number[] = [];
+    for (const seed of seeds) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+      const h = hopCount(world);
+      expect(h, `seed ${seed}: expected 3–8 hops, got ${h}`).toBeGreaterThanOrEqual(3);
+      expect(h, `seed ${seed}: expected 3–8 hops, got ${h}`).toBeLessThanOrEqual(8);
+      hops.push(h);
+    }
+    const avg = hops.reduce((s, h) => s + h, 0) / hops.length;
+    expect(avg).toBeGreaterThanOrEqual(4);
+    expect(avg).toBeLessThanOrEqual(6);
+  });
+
+  it('places the shop ≥ 3 hops from welcome and further from spawn than welcome', () => {
+    // BFS hop count between two room ids on the room graph.
+    const roomHopsBetween = (
+      map: ReturnType<typeof createTestWorld>['floorMap'],
+      fromId: number,
+      toId: number,
+    ): number => {
+      if (!map || fromId === toId) return 0;
+      const queue: number[] = [fromId];
+      let head = 0;
+      const dist = new Map<number, number>([[fromId, 0]]);
+      while (head < queue.length) {
+        const curr = queue[head++]!;
+        const room = map.roomGraph.get(curr);
+        for (const n of room?.neighbors ?? []) {
+          if (!dist.has(n)) {
+            dist.set(n, dist.get(curr)! + 1);
+            if (n === toId) return dist.get(n)!;
+            queue.push(n);
+          }
+        }
+      }
+      return -1;
+    };
+
+    const centerDistSq = (
+      map: ReturnType<typeof createTestWorld>['floorMap'],
+      pos: { x: number; y: number },
+    ) => {
+      if (!map) return 0;
+      const spawnTile = map.playerSpawn;
+      const tile = map.worldToTile(pos.x, pos.y);
+      const dx = tile.x - spawnTile.x;
+      const dy = tile.y - spawnTile.y;
+      return dx * dx + dy * dy;
+    };
+
+    const seeds = [42, 7, 99, 123, 2024, 1, 14, 321, 999, 500];
+    for (const seed of seeds) {
+      const world = createTestWorld({ seed });
+      const player = spawnPlayer(world, 0, 0);
+      initializeFloor1Scenario(world, player);
+
+      const map = world.floorMap!;
+      const objective = world.floor1!.objective;
+
+      const welcomeTile = map.worldToTile(
+        objective.welcomeOfficePos.x,
+        objective.welcomeOfficePos.y,
+      );
+      const shopTile = map.worldToTile(objective.shopRoomPos.x, objective.shopRoomPos.y);
+      const welcomeRoomId = map.roomGraph.getRoomAt(welcomeTile.x, welcomeTile.y);
+      const shopRoomId = map.roomGraph.getRoomAt(shopTile.x, shopTile.y);
+
+      // Shop must be in a different room from welcome.
+      expect(shopRoomId, `seed ${seed}: shop must be in a different room from welcome`).not.toBe(
+        welcomeRoomId,
+      );
+
+      // Shop must be ≥ 3 hops from welcome room (or the map is too small to enforce it).
+      const hopsShopFromWelcome = roomHopsBetween(map, welcomeRoomId, shopRoomId);
+      if (hopsShopFromWelcome >= 0) {
+        expect(
+          hopsShopFromWelcome,
+          `seed ${seed}: shop must be ≥ 3 hops from welcome, got ${hopsShopFromWelcome}`,
+        ).toBeGreaterThanOrEqual(3);
+      }
+
+      // Shop must be further from spawn than welcome (or equal distance is acceptable
+      // only when no farther room exists — i.e., the map is too small).
+      const shopDist = centerDistSq(map, objective.shopRoomPos);
+      const welcomeDist = centerDistSq(map, objective.welcomeOfficePos);
+      expect(
+        shopDist,
+        `seed ${seed}: shop must be further from spawn than welcome`,
+      ).toBeGreaterThanOrEqual(welcomeDist);
+    }
+  });
+
   it('keeps every room interior reachable from spawn across seeds (no sealed rooms)', () => {
     // Regression: rot-js's Uniform generator occasionally emits a disconnected
     // room that cullIsolatedFloorTiles would wall off. On Floor 1 the affected
