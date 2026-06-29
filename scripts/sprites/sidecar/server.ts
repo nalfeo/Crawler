@@ -80,7 +80,7 @@ import { isSizeVariant, SIZE_VARIANTS, type SizeVariant } from '../size-variants
 import { loadBrief, type LoadedBrief } from '../load-brief.js';
 import { parseSpriteCatalog } from '../../../src/shared/sprite-catalog.js';
 import { LocalRunStore } from '../store/local-store.js';
-import type { RunStore } from '../store/types.js';
+import { StoreNotFoundError, type RunStore } from '../store/types.js';
 import { createWorkerController, type WorkerController } from './worker-controller.js';
 import {
   createIssueIngesterController,
@@ -206,6 +206,11 @@ interface WorkflowMetadataBody {
 
 interface WorkflowStateBody {
   readonly state?: unknown;
+}
+
+interface LatestRunQuery {
+  readonly briefId?: unknown;
+  readonly requestedAt?: unknown;
 }
 
 interface RunPostprocessBody {
@@ -595,6 +600,7 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
           body: { error: err.kind, message: err.message },
         };
       }
+
       throw err;
     }
     if (typeof summary.briefPath !== 'string') {
@@ -813,7 +819,9 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
     let entry: ManifestEntry;
     try {
       hydrated =
-        store.backend === 'local' ? null : await hydrateRunDirFromStore(store, briefId, runId);
+        store.backend === 'local'
+          ? null
+          : await hydrateRunDirForApproveFromStore(store, briefId, runId, variantIndex);
       const runDir = hydrated?.runDir ?? safeJoin(deps.runsDir, [briefId, runId]);
       if (runDir === null) {
         reply.code(403);
@@ -1197,6 +1205,26 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
 
   app.get('/api/workflow/issues/status', async () => issueIngester.status());
 
+  app.get<{ Querystring: LatestRunQuery }>('/api/workflow/latest-run', async (req, reply) => {
+    const briefIdRaw = req.query.briefId;
+    const requestedAtRaw = req.query.requestedAt;
+    if (typeof briefIdRaw !== 'string' || briefIdRaw.trim() === '') {
+      reply.code(400);
+      return { error: 'bad-request', message: 'briefId must be a non-empty string' };
+    }
+    if (typeof requestedAtRaw !== 'string' || requestedAtRaw.trim() === '') {
+      reply.code(400);
+      return { error: 'bad-request', message: 'requestedAt must be a non-empty ISO timestamp' };
+    }
+    const requestedAtMs = Date.parse(requestedAtRaw);
+    if (!Number.isFinite(requestedAtMs)) {
+      reply.code(400);
+      return { error: 'bad-request', message: 'requestedAt must be a valid ISO timestamp' };
+    }
+    const latest = await findLatestRunForBriefSince(store, briefIdRaw.trim(), requestedAtMs);
+    return { run: latest };
+  });
+
   app.post<{ Body: WorkflowMetadataBody }>('/api/workflow/metadata', async (req, reply) => {
     const body = (req.body ?? {}) as WorkflowMetadataBody;
     const providerMode = (body.provider ?? 'auto') as MetadataProviderMode;
@@ -1531,14 +1559,27 @@ interface HydratedRunDir {
   cleanup(): void;
 }
 
-async function hydrateRunDirFromStore(
+async function hydrateRunDirForApproveFromStore(
   store: RunStore,
   briefId: string,
   runId: string,
+  variantIndex: number,
 ): Promise<HydratedRunDir | null> {
   const prefix = `${briefId}/${runId}/`;
-  const keys = await store.list(prefix);
-  if (keys.length === 0) {
+  const summaryKey = `${prefix}summary.json`;
+  const paddedIndex = String(variantIndex).padStart(2, '0');
+  const candidateKeys = [
+    summaryKey,
+    `${prefix}processed/${paddedIndex}.png`,
+    `${prefix}processed/${paddedIndex}.anchor.json`,
+    `${prefix}processed/${paddedIndex}.anchor.cog.json`,
+  ];
+  const runKeys = await store.list(prefix);
+  if (runKeys.length === 0) {
+    return null;
+  }
+  const available = new Set(runKeys);
+  if (!available.has(summaryKey)) {
     return null;
   }
   const tempRoot = mkdtempSync(path.join(tmpdir(), 'crawler-sidecar-run-'));
@@ -1549,7 +1590,10 @@ async function hydrateRunDirFromStore(
   }
   try {
     mkdirSync(runDir, { recursive: true });
-    for (const key of keys) {
+    for (const key of candidateKeys) {
+      if (!available.has(key)) {
+        continue;
+      }
       const rel = key.slice(prefix.length);
       if (rel === '') continue;
       const target = safeStoreJoin(runDir, rel);
@@ -1557,7 +1601,15 @@ async function hydrateRunDirFromStore(
         continue;
       }
       mkdirSync(path.dirname(target), { recursive: true });
-      writeFileSync(target, await store.get(key));
+      try {
+        writeFileSync(target, await store.get(key));
+      } catch (err) {
+        if (!(err instanceof StoreNotFoundError)) {
+          throw err;
+        }
+        // Optional run files (processed PNG/anchors) may be absent. approveVariant
+        // maps that to a user-facing `processed-missing` error.
+      }
     }
   } catch (err) {
     rmSync(tempRoot, { recursive: true, force: true });
@@ -1569,6 +1621,36 @@ async function hydrateRunDirFromStore(
       rmSync(tempRoot, { recursive: true, force: true });
     },
   };
+}
+
+async function findLatestRunForBriefSince(
+  store: RunStore,
+  briefId: string,
+  requestedAtMs: number,
+): Promise<{ briefId: string; runId: string; timestamp: string | null } | null> {
+  const prefix = `${briefId}/`;
+  const keys = await store.list(prefix);
+  const summaryKeys = keys.filter((key) => {
+    const parts = key.split('/');
+    return parts.length === 3 && parts[0] === briefId && parts[2] === 'summary.json';
+  });
+  let latest: {
+    briefId: string;
+    runId: string;
+    timestamp: string | null;
+  } | null = null;
+  for (const key of summaryKeys) {
+    const parts = key.split('/');
+    const runId = parts[1]!;
+    const timestamp = parseRunIdTimestamp(runId);
+    if (!timestamp) continue;
+    const runTime = Date.parse(timestamp);
+    if (!Number.isFinite(runTime) || runTime < requestedAtMs) continue;
+    if (!latest || runId > latest.runId) {
+      latest = { briefId, runId, timestamp };
+    }
+  }
+  return latest;
 }
 
 function workflowRequestedBy(env: NodeJS.ProcessEnv): string {
