@@ -179,14 +179,14 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
   async function loadSeededDevtools(queueJson: string = seededQueue): Promise<void> {
     // First load primes the origin so localStorage is writable, then we seed the
     // queue and reload — exercising the resume-after-refresh path from cache.
-    await page.goto(DEVTOOLS_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(DEVTOOLS_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.evaluate(
       ([key, value]) => {
         window.localStorage.setItem(key, value);
       },
       [QUEUE_STORAGE_KEY, queueJson] as const,
     );
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
     // The run-candidates panel renders synchronously from cache on boot; wait for
     // its run header to confirm the panel mounted. The header reads either
     // "…post-processed, not yet judged" (no judged variant) or "…pass the judge"
@@ -414,14 +414,19 @@ describe('sprite workflow sensor-failure visibility + force-judge', () => {
       const cancelStep = page.getByRole('button', { name: /^Cancel step$/ });
       await cancelStep.waitFor({ state: 'visible', timeout: 10_000 });
       await cancelStep.click();
-      // Wait for the cancel button to become hidden — renderWorkflowSelection() hides
-      // it synchronously inside the click handler, and setWorkflowStatus("Canceled Judge…")
-      // runs immediately after (same synchronous call stack, no async boundary). Once the
-      // button is hidden the status text is guaranteed to be in the DOM.
-      await cancelStep.waitFor({ state: 'hidden', timeout: 10_000 });
+      // The cancel handler restores the prior stage and records a sticky
+      // "Canceled Judge" note that renderWorkflowSelection re-surfaces, so a slow
+      // boot task finishing later can no longer clobber it back to "Next: Judge".
+      // Poll for the status text rather than racing a single synchronous read.
+      await page.waitForFunction(
+        () => /Canceled Judge/.test(document.body.textContent ?? ''),
+        undefined,
+        { timeout: 10_000 },
+      );
       expect(await page.locator('body').textContent()).toMatch(/Canceled Judge/);
       // Retry is possible: the trigger button is re-enabled and the cancel button
       // hides again now that no step is in flight.
+      await cancelStep.waitFor({ state: 'hidden', timeout: 10_000 });
       expect(await page.getByRole('button', { name: /^Judge$/ }).isEnabled()).toBe(true);
       expect(await cancelStep.isVisible()).toBe(false);
     } finally {

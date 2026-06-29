@@ -2147,6 +2147,11 @@ function render(): void {
   // the user to re-click that button to requeue. Cleared when the step is
   // retried, cancelled, or succeeds.
   const lastFailedStep = new Map<string, 'postprocess' | 'judge'>();
+  // Which step was last cancelled for an item. Kept sticky (like lastFailedStep)
+  // so the "Canceled X — click X to retry" status survives any later re-render
+  // (e.g. a slow boot task finishing after the cancel and re-deriving "Next: X").
+  // Cleared when the step is retried or succeeds.
+  const lastCanceledStep = new Map<string, 'postprocess' | 'judge'>();
   // Poll-attempt counters for the queued path, surfaced in the live progress
   // line. Ephemeral: cleared when generation ends or is cancelled, and reset
   // (not persisted) on reload when polling auto-resumes.
@@ -2742,6 +2747,13 @@ function render(): void {
       } else {
         setWorkflowStatus(`Error: ${item.lastError}`, '#fca5a5');
       }
+    } else if (lastCanceledStep.has(item.id)) {
+      const canceled = lastCanceledStep.get(item.id);
+      const label = canceled === 'postprocess' ? 'PostProcess' : 'Judge';
+      setWorkflowStatus(
+        `Canceled ${label}. Nothing was changed — click ${label} to retry.`,
+        '#fcd34d',
+      );
     } else if (item.metadataSummary && item.stage === 'done') {
       setWorkflowStatus(item.metadataSummary, '#bef264');
     } else if (item.approvalSummary && item.stage === 'approved') {
@@ -5530,6 +5542,7 @@ function render(): void {
     if (opts.resetApproval) {
       patch.approvedAssetPath = null;
     }
+    lastCanceledStep.delete(itemId);
     queueState = queueUpdateItem(queueState, itemId, patch);
     writeQueueState();
     debugTarget = candidates[0]
@@ -5565,6 +5578,7 @@ function render(): void {
     inFlightSteps.set(item.id, { kind: 'postprocess', abort, priorStage });
     queueState = queueUpdateItem(queueState, item.id, { stage: 'postprocessing', lastError: null });
     lastFailedStep.delete(item.id);
+    lastCanceledStep.delete(item.id);
     writeQueueState();
     renderQueue();
     renderWorkflowSelection();
@@ -5636,6 +5650,7 @@ function render(): void {
     inFlightSteps.set(item.id, { kind: 'judge', abort, priorStage });
     queueState = queueUpdateItem(queueState, item.id, { stage: 'judging', lastError: null });
     lastFailedStep.delete(item.id);
+    lastCanceledStep.delete(item.id);
     writeQueueState();
     renderQueue();
     renderWorkflowSelection();
@@ -5953,20 +5968,18 @@ function render(): void {
     const step = item ? inFlightSteps.get(item.id) : null;
     if (!item || !step) return;
     step.abort.abort();
-    const label = step.kind === 'postprocess' ? 'PostProcess' : 'Judge';
     inFlightSteps.delete(item.id);
     lastFailedStep.delete(item.id);
+    lastCanceledStep.set(item.id, step.kind);
     queueState = queueUpdateItem(queueState, item.id, {
       stage: step.priorStage,
       lastError: null,
     });
     writeQueueState();
     renderQueue();
+    // renderWorkflowSelection surfaces the sticky lastCanceledStep note, so the
+    // "Canceled X" status survives any later re-render (e.g. a slow boot task).
     renderWorkflowSelection();
-    setWorkflowStatus(
-      `Canceled ${label}. Nothing was changed — click ${label} to retry.`,
-      '#fcd34d',
-    );
   });
 
   // Publish every locally-approved asset that differs from origin/main: push an
