@@ -112,11 +112,17 @@ if [[ -z "${GITHUB_TOKEN:-}" ]]; then
   exit 1
 fi
 
-if [[ "${CODEX_PROVIDER:-codex}" == 'codex' ]] && [[ -z "${OPENAI_API_KEY:-}" ]] && [[ -z "${CODEX_EXEC_COMMAND:-}" ]]; then
-  if "${CODEX_BIN:-codex}" login status >/dev/null 2>&1; then
-    echo "No OPENAI_API_KEY set; using existing codex login session."
-  else
-    echo "OPENAI_API_KEY is required for codex provider (or run 'codex login', or set CODEX_EXEC_COMMAND)." >&2
+PROVIDER="${CODEX_PROVIDER:-codex}"
+if [[ -z "${CODEX_EXEC_COMMAND:-}" ]]; then
+  if [[ "$PROVIDER" == 'codex' ]] && [[ -z "${OPENAI_API_KEY:-}" ]]; then
+    if "${CODEX_BIN:-codex}" login status >/dev/null 2>&1; then
+      echo "No OPENAI_API_KEY set; using existing codex login session."
+    else
+      echo "OPENAI_API_KEY is required for codex provider (or run 'codex login', or set CODEX_EXEC_COMMAND)." >&2
+      exit 1
+    fi
+  elif [[ "$PROVIDER" == 'gemini' ]] && [[ -z "${GEMINI_API_KEY:-}" ]] && [[ ! -f "$HOME/.gemini/oauth_creds.json" ]]; then
+    echo "GEMINI_API_KEY is required for gemini provider (or run 'gemini' once to log in, or set CODEX_EXEC_COMMAND)." >&2
     exit 1
   fi
 fi
@@ -128,7 +134,7 @@ export REPAIR_COMMAND
 export IS_EXPLICIT_COMMAND
 export CODEX_PROVIDER="${CODEX_PROVIDER:-codex}"
 export CODEX_MODEL="${CODEX_MODEL:-}"
-export CODEX_BIN="${CODEX_BIN:-codex}"
+export CODEX_BIN="${CODEX_BIN:-}"
 
 echo "Running local codex repair for PR #$PR_NUMBER on branch $(git rev-parse --abbrev-ref HEAD)"
 node .github/scripts/codex/gather-context.mjs
