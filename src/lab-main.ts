@@ -64,6 +64,7 @@ const LAB_MODULE_PATHS: Readonly<Record<string, string>> = {
   'spawnanim-lab': '/src/labs/spawnanim-lab/index.ts',
   'render-scale-lab': '/src/labs/render-scale-lab/index.ts',
   'prop-lab': '/src/labs/prop-lab/index.ts',
+  'achievements-ui-lab': '/src/labs/achievements-ui-lab/index.ts',
 };
 
 function humanizeLabId(labId: string): string {

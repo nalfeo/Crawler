@@ -155,6 +155,8 @@ export interface GameWorld {
     unlockedIds: Set<string>;
     /** Newly unlocked IDs waiting to be surfaced by UI. */
     pendingUnlockIds: string[];
+    /** Achievement IDs whose reward has been opened/claimed this run. */
+    claimedIds: Set<string>;
   };
   /** Player's current MP (mana points). */
   playerMp: number;
@@ -296,6 +298,7 @@ export function createGameWorld(options: CreateWorldOptions = {}): GameWorld {
     achievements: {
       unlockedIds: new Set(),
       pendingUnlockIds: [],
+      claimedIds: new Set(),
     },
     playerMp: 100,
     playerMaxMp: 100,
