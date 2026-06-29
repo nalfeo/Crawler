@@ -1,0 +1,90 @@
+id: core-bestiary
+title: Core Bestiary — Mob Roster
+summary: >
+  Art breakdown for every enemy in MOB_DEFS (src/shared/mobDefs.ts). Each mob
+  still points at a procedural mob-* sprite with no generated art, so every
+  entry tracks as needs-art-placeholder until a real sheet is authored and
+  approved. Reality-show dungeon theme: grimy contestants-turned-monsters
+  filmed for the audience. There is no sprite-registry/item-catalog wiring for
+  mob-* ids yet, so these are intentionally left without an integration target.
+assets:
+  - id: zombie
+    type: enemy
+    label: Zombie
+    brief: >
+      Shambling common grunt, small frame, slow chase AI. Decayed contestant
+      look — torn jumpsuit, sagging posture, heavy red gore on hit. Reads as
+      low threat in a swarm. 16x16 px.
+    placeholderInUse: true
+
+  - id: skeleton
+    type: enemy
+    label: Skeleton
+    brief: >
+      Brittle melee grunt, small frame, faster than the zombie. Bleached bones
+      over scraps of cloth, minimal gore. Silhouette should pop against dark
+      dungeon floors. 16x16 px.
+    placeholderInUse: true
+
+  - id: goblin
+    type: enemy
+    label: Goblin
+    brief: >
+      Quick mixed-AI skirmisher, small frame. Wiry, knobbly, junk-armored. High
+      knockback feel, mid gore. Distinct from skeleton so threat reads at a
+      glance. 16x16 px.
+    placeholderInUse: true
+
+  - id: reaver
+    type: enemy
+    label: Reaver
+    brief: >
+      Rare medium ranged attacker. Lean armored raider with a salvaged firearm
+      or sling; one ability slot. Heavy gore factor. Should read as a priority
+      target. 16x16 px.
+    placeholderInUse: true
+
+  - id: wraith
+    type: enemy
+    label: Wraith
+    brief: >
+      Rare medium caster, fast and floaty mixed AI, two ability slots. Pale
+      spectral robe, near-zero gore, faint emissive trail. Distinct ghostly
+      silhouette. 16x16 px.
+    placeholderInUse: true
+
+  - id: goliath
+    type: enemy
+    label: Goliath
+    brief: >
+      Elite large bruiser, slow melee, high HP. Hulking armored frame that
+      dominates the tile, mid gore, heavy footfalls. Boss-adjacent readability.
+      24x24 px.
+    placeholderInUse: true
+
+  - id: mage-lord
+    type: enemy
+    label: Mage Lord
+    brief: >
+      Elite large ranged caster, three ability slots. Ornate broadcast-cult
+      regalia with a glowing focus; low gore. Clearly the spellcaster among
+      elites. 24x24 px.
+    placeholderInUse: true
+
+  - id: slime-rat
+    type: enemy
+    label: Slime Rat (Tutorial Boss)
+    brief: >
+      Floor-1 tutorial boss, boss-size melee. Bloated rat fused with green
+      slime; green ichor (bloodColor 0x22aa44), low gore. Must read as a
+      first boss at a glance. 32x32 px.
+    placeholderInUse: true
+
+  - id: directors-proxy
+    type: enemy
+    label: The Director's Proxy
+    brief: >
+      Legendary final boss, boss-size mixed AI, five ability slots, no gore.
+      Camera-headed showrunner avatar wrapped in cables and broadcast gear.
+      Must dominate the arena and feel set-piece-final. 32x32 px.
+    placeholderInUse: true

@@ -1,0 +1,74 @@
+id: stand-in-enemies
+title: Stand-in Enemies — Temp CC0 Registry Sprites
+summary: >
+  Enemies currently rendered from temporary CC0 Kenney frames in the engine
+  sprite registry (src/engine/sprites/registry.ts). They render today but need
+  authored, on-theme art so the cast reads as the reality-show dungeon roster
+  rather than borrowed Tiny Dungeon frames. Each integration target is the
+  existing registry id, so a real sprite drops in without code changes.
+assets:
+  - id: stand-in-slime
+    type: enemy
+    label: Slime
+    brief: >
+      Basic blob enemy replacing the teal Tiny Dungeon slime. Gloopy, low
+      contour, wobble-ready silhouette; toxic green sheen. 16x16 px.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.slime
+
+  - id: stand-in-goblin
+    type: enemy
+    label: Goblin (sprite)
+    brief: >
+      Small skirmisher replacing the ghost frame stand-in. Wiry junk-armored
+      goblin, readable at 16x16, distinct from the bestiary boss roster.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.goblin
+
+  - id: stand-in-orc
+    type: enemy
+    label: Orc
+    brief: >
+      Mid melee bruiser replacing the brawler frame. Broad-shouldered tusked
+      thug with salvaged plate; aggressive forward lean. 16x16 px.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.orc
+
+  - id: stand-in-boss
+    type: enemy
+    label: Boss (bat-beast)
+    brief: >
+      Floor mini-boss replacing the bat-beast frame. Hulking winged silhouette
+      that fills the tile; menacing readability over swarms. 24x24 px.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.boss
+
+  - id: stand-in-brigand
+    type: enemy
+    label: Brigand
+    brief: >
+      Brown-cloaked humanoid raider currently on a roguelike CC0 frame. Hooded
+      cutthroat with a short blade; neutral-threat melee read. 16x16 px.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.brigand
+
+  - id: stand-in-ghost
+    type: enemy
+    label: Ghost
+    brief: >
+      Pale spectral floater currently on a roguelike CC0 frame. Translucent,
+      drifting, near-zero gore; legible against dark and lit tiles. 16x16 px.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: enemy.ghost

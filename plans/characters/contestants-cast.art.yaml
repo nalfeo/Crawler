@@ -1,0 +1,32 @@
+id: contestants-cast
+title: Contestants & Cast — Player and NPCs
+summary: >
+  The human cast of the reality-show dungeon. Both the playable contestant and
+  the on-floor guide NPC currently render from temporary CC0 Tiny Dungeon
+  frames in the engine sprite registry. They need authored, on-theme character
+  art. Integration targets are the existing registry ids, so approved sprites
+  drop in without code changes.
+assets:
+  - id: player-contestant
+    type: character
+    label: Player Contestant
+    brief: >
+      The playable contestant replacing the Tiny Dungeon knight frame. Scrappy
+      reality-show competitor in a numbered jumpsuit with improvised gear;
+      neutral readable silhouette for all four facings. 16x16 px.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: player
+
+  - id: guide-npc
+    type: character
+    label: Guide NPC
+    brief: >
+      Floor guide replacing the Tiny Dungeon princess frame. Friendly
+      production-crew handler with a lanyard and clipboard; clearly non-hostile
+      and distinct from contestants. 16x16 px.
+    placeholderInUse: true
+    integration:
+      kind: sprite-registry
+      id: npc.guide
