@@ -1,0 +1,96 @@
+import { addComponent, set } from 'bitecs';
+import {
+  DroppedItem,
+  Gold,
+  Owner,
+  Position,
+  Sprite,
+  Team,
+  Weapon,
+  Weight,
+  XpGem,
+} from '../components.js';
+import type { GameWorld } from '../world.js';
+import type { WeaponTypeValue } from '../../shared/constants.js';
+import { createEntity } from './entity-core.js';
+
+export function spawnXpGem(
+  world: GameWorld,
+  x: number,
+  y: number,
+  value: number,
+  weight = 1,
+): number {
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(XpGem, { value }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
+
+  return eid;
+}
+
+export function spawnGold(
+  world: GameWorld,
+  x: number,
+  y: number,
+  value: number,
+  weight = 1,
+): number {
+  const eid = createEntity(world);
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(Gold, { value }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1, height: 1 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
+
+  return eid;
+}
+
+export function spawnDroppedItem(
+  world: GameWorld,
+  x: number,
+  y: number,
+  itemIndex: number,
+  weight = 5,
+): number {
+  const eid = createEntity(world);
+  const sanitizedItemIndex = Math.max(0, Math.min(0xffff, Math.floor(itemIndex)));
+
+  addComponent(world.ecs, eid, set(Position, { x, y }));
+  addComponent(world.ecs, eid, set(DroppedItem, { itemIndex: sanitizedItemIndex }));
+  addComponent(world.ecs, eid, set(Sprite, { textureId: 0, width: 1.25, height: 1.25 }));
+  addComponent(world.ecs, eid, set(Weight, { value: weight }));
+
+  return eid;
+}
+
+/** Spawn a weapon entity attached to an owner. */
+export function spawnWeapon(
+  world: GameWorld,
+  ownerEid: number,
+  weaponType: WeaponTypeValue,
+  baseDamage: number,
+  cooldownMs: number,
+  range: number,
+  projectileSpeed: number,
+  teamId: number,
+): number {
+  const eid = createEntity(world);
+  addComponent(
+    world.ecs,
+    eid,
+    set(Weapon, {
+      weaponType,
+      baseDamage,
+      cooldownMs,
+      lastFireMs: -cooldownMs,
+      range,
+      projectileSpeed,
+    }),
+  );
+  addComponent(world.ecs, eid, set(Owner, { eid: ownerEid }));
+  addComponent(world.ecs, eid, set(Team, { id: teamId }));
+  return eid;
+}
