@@ -3,6 +3,7 @@ import {
   spawnBehaviorEnemy,
   spawnEnemy,
   spawnGold,
+  spawnHarvestableNode,
   spawnPlayer,
   spawnXpGem,
 } from '../../src/core/helpers.js';
@@ -1002,6 +1003,54 @@ describe('BehaviorTreeAI', () => {
       expect(state.resolveGoalMemoEpoch).toBe(-1);
       expect(state.navEpoch).toBe(0);
       expect(state.navSignature).toBeNull();
+    });
+  });
+
+  describe('harvestable gathering', () => {
+    it('targets a nearby harvestable node when nothing else competes', () => {
+      const world = createTestWorld({ seed: 7 });
+      spawnPlayer(world, 0, 0);
+      const node = spawnHarvestableNode(world, 6, 0, 0);
+
+      const ai = new BehaviorTreeAI({ seed: 7 });
+      ai.poll(createInputState(), world);
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.COLLECT);
+      expect(decision.targetEid).toBe(node);
+      expect(decision.reason).toContain('harvest');
+    });
+
+    it('does not abandon a node while standing on it past the dwell window', () => {
+      const world = createTestWorld({ seed: 7 });
+      spawnPlayer(world, 0, 0);
+      // Player parked exactly on the node: harvestSystem accrues progress while it
+      // nets zero displacement. The dwell watchdog (180f) must read that as
+      // progress and keep the target, not blacklist it.
+      const node = spawnHarvestableNode(world, 0, 0, 0);
+
+      const ai = new BehaviorTreeAI({ seed: 7 });
+      const input = createInputState();
+      for (let i = 0; i < 240; i++) {
+        ai.poll(input, world);
+      }
+
+      const decision = ai.getDecision();
+      expect(decision.state).toBe(AIState.COLLECT);
+      expect(decision.targetEid).toBe(node);
+    });
+
+    it('prioritises engaging an enemy over harvesting', () => {
+      const world = createTestWorld({ seed: 7 });
+      spawnPlayer(world, 0, 0);
+      spawnHarvestableNode(world, 6, 0, 0);
+      spawnEnemy(world, 5, 0, 20);
+      setActiveWeapon(world, getWeaponDef('sword')!);
+
+      const ai = new BehaviorTreeAI({ seed: 7 });
+      ai.poll(createInputState(), world);
+
+      expect(ai.getDecision().state).toBe(AIState.ENGAGE);
     });
   });
 });
