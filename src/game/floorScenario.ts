@@ -49,6 +49,7 @@ import {
 } from '../core/helpers.js';
 import { setGoalFlag, setDoorLockConfig } from '../core/door-lock.js';
 import { AI_TYPE } from './enemyAISystem.js';
+import { roomHopDistances } from './room-hops.js';
 import { getItemById, getItemIndex } from '../shared/items.js';
 import { GAME, PLAYER_SPEED } from '../shared/constants.js';
 import { pxToFt } from '../shared/units.js';
@@ -471,32 +472,14 @@ function chooseObjectiveTiles(world: GameWorld): {
   const roomsReachableWithoutBossRoom = new Set<RoomData>();
   // Hop distance from the spawn room to each reachable room (excluding the boss
   // stair path). Used to constrain welcome-room placement to 3–8 hops from spawn.
-  const roomHopFromSpawn = new Map<number, number>();
-  {
-    const bfsQueue: number[] = [];
-    let bfsHead = 0;
-    const bfsVisited = new Set<number>();
-    const startRoomId = floorMap.spawnRoom?.id;
-    if (startRoomId !== undefined) {
-      bfsQueue.push(startRoomId);
-      bfsVisited.add(startRoomId);
-      roomHopFromSpawn.set(startRoomId, 0);
-      while (bfsHead < bfsQueue.length) {
-        const currId = bfsQueue[bfsHead++]!;
-        const currRoom = floorMap.roomGraph.get(currId);
-        const currHop = roomHopFromSpawn.get(currId) ?? 0;
-        if (currRoom) {
-          roomsReachableWithoutBossRoom.add(currRoom);
-          for (const neighborId of currRoom.neighbors) {
-            if (!bfsVisited.has(neighborId) && neighborId !== bossStairRoomId) {
-              bfsVisited.add(neighborId);
-              bfsQueue.push(neighborId);
-              roomHopFromSpawn.set(neighborId, currHop + 1);
-            }
-          }
-        }
-      }
-    }
+  const roomHopFromSpawn = roomHopDistances(
+    floorMap.roomGraph,
+    floorMap.spawnRoom?.id,
+    bossStairRoomId,
+  );
+  for (const roomId of roomHopFromSpawn.keys()) {
+    const room = floorMap.roomGraph.get(roomId);
+    if (room) roomsReachableWithoutBossRoom.add(room);
   }
 
   const candidates = floorMap.rooms
@@ -538,26 +521,9 @@ function chooseObjectiveTiles(world: GameWorld): {
       : candidates[0];
   // BFS hop distances from the welcome room — used to enforce the shop
   // placement constraint that the shop must be ≥ 3 hops from welcome.
-  const roomHopFromWelcome = new Map<number, number>();
-  if (welcomeEntry) {
-    const welcomeRoomId = welcomeEntry.room.id;
-    const wBfsQueue: number[] = [welcomeRoomId];
-    let wBfsHead = 0;
-    roomHopFromWelcome.set(welcomeRoomId, 0);
-    while (wBfsHead < wBfsQueue.length) {
-      const currId = wBfsQueue[wBfsHead++]!;
-      const currRoom = floorMap.roomGraph.get(currId);
-      const currHop = roomHopFromWelcome.get(currId) ?? 0;
-      if (currRoom) {
-        for (const neighborId of currRoom.neighbors) {
-          if (!roomHopFromWelcome.has(neighborId)) {
-            roomHopFromWelcome.set(neighborId, currHop + 1);
-            wBfsQueue.push(neighborId);
-          }
-        }
-      }
-    }
-  }
+  const roomHopFromWelcome = welcomeEntry
+    ? roomHopDistances(floorMap.roomGraph, welcomeEntry.room.id)
+    : new Map<number, number>();
 
   // Shop placement rules (applied in priority order, relaxed progressively):
   //   1. At least 3 room-graph hops from the welcome room — requires genuine

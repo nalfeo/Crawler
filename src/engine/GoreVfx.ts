@@ -14,6 +14,7 @@ import type { CombatEvent } from '../shared/combat-events.js';
 import { ftToPx } from '../shared/units.js';
 import type { GameWorld } from '../core/world.js';
 import { WORLD_VFX_DEPTH } from '../shared/render-depths.js';
+import { DEFAULT_BLOOD_COLOR } from '../shared/constants.js';
 
 const PARTICLE_LIFETIME_MS = 500;
 const HIT_BASE_PARTICLES = 4;
@@ -22,8 +23,6 @@ const PARTICLE_SPEED = 120;
 const PARTICLE_SIZE_MIN = 2;
 const PARTICLE_SIZE_MAX = 6;
 
-/** Base red blood colour used when an event carries no explicit bloodColor. */
-const DEFAULT_BLOOD_COLOR = 0xcc0000;
 /** Fallback red blood palette when no bloodColor is supplied. */
 const DEFAULT_BLOOD_COLORS = [DEFAULT_BLOOD_COLOR, 0xaa0000, 0x880000, 0x660000, 0x990000];
 
