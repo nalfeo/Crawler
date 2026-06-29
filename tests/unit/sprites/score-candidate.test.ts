@@ -155,7 +155,7 @@ describe('scoreCandidate', () => {
     expect(sensors).not.toContain('silhouette-orientation-axis');
   });
 
-  it('enemy briefs derive anchors from center of mass and stay front-facing', () => {
+  it('enemy briefs derive anchors from center of mass without orientation gating', () => {
     const body = buildProcessedFixture(16, 16, rectPixels(6, 4, 9, 11));
     const brief = makeBrief({
       type: 'enemy',
@@ -167,12 +167,11 @@ describe('scoreCandidate', () => {
     });
     const card = scoreCandidate(body, brief, PALETTE);
     expect(card.breakdown.map((r) => r.sensor)).toContain('anchor-center-of-mass');
-    expect(card.breakdown.map((r) => r.sensor)).toContain('silhouette-orientation-axis');
-    expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(true);
+    expect(card.breakdown.map((r) => r.sensor)).not.toContain('silhouette-orientation-axis');
     expect(card.derivedAnchor).toEqual({ x: 7, y: 7 });
   });
 
-  it('enemy briefs reject angled silhouettes', () => {
+  it('enemy briefs ignore orientation-axis even when facing is front', () => {
     const brief = makeBrief({
       type: 'enemy',
       anchor: { x: 8, y: 8 },
@@ -180,17 +179,6 @@ describe('scoreCandidate', () => {
         enemy: { facing: 'front' },
         anchor: { mode: 'center-of-mass' },
       } as Brief['sensors'],
-    });
-    const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
-    const card = scoreCandidate(processed, brief, PALETTE);
-    expect(card.breakdown.find((r) => r.sensor === 'silhouette-orientation-axis')?.ok).toBe(false);
-  });
-
-  it('enemy briefs default facing to any (no orientation-axis gate unless requested)', () => {
-    const brief = makeBrief({
-      type: 'enemy',
-      anchor: { x: 8, y: 8 },
-      sensors: { anchor: { mode: 'center-of-mass' } } as Brief['sensors'],
     });
     const processed = postprocess(buildGoodSwordFixture(), brief, PALETTE);
     const card = scoreCandidate(processed, brief, PALETTE);

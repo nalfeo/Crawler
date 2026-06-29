@@ -108,8 +108,8 @@ export function scoreCandidate(
     })) {
       breakdown.push(result);
     }
-  } else if (brief.type === 'enemy' || brief.type === 'character') {
-    const facing = brief.sensors.enemy?.facing ?? (brief.type === 'character' ? 'front' : 'any');
+  } else if (brief.type === 'character') {
+    const facing = brief.sensors.enemy?.facing ?? 'front';
     const toleranceDeg = brief.sensors.enemy?.toleranceDeg;
     if (facing === 'front') {
       breakdown.push(
