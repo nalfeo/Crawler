@@ -23,6 +23,9 @@ import {
   movementSystem,
   npcSystem,
   playerInputSystem,
+  Position,
+  Prop,
+  PropLight,
   projectileCleanupSystem,
   returningProjectileSystem,
   safeRoomSystem,
@@ -1403,6 +1406,20 @@ export class MainGameScene extends Phaser.Scene {
           ) ?? viewRect);
 
     const t0 = performance.now();
+
+    // Build light source list: player torch first, then any PropLight entities.
+    const lightSources: { x: number; y: number; radiusPx: number; intensity: number }[] = [
+      { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
+    ];
+    for (const propEid of query(this.world.ecs, [Prop, PropLight, Position])) {
+      lightSources.push({
+        x: ftToPx(this.world.stores.position.x[propEid] ?? 0),
+        y: ftToPx(this.world.stores.position.y[propEid] ?? 0),
+        radiusPx: this.world.stores.propLight.radiusPx[propEid] ?? 0,
+        intensity: this.world.stores.propLight.intensity[propEid] ?? 0,
+      });
+    }
+
     computeLightField({
       // The light field is expressed in render pixels; the FloorMap reasons in
       // feet (the single internal spatial unit). Bridge the two here — pixels
@@ -1414,7 +1431,7 @@ export class MainGameScene extends Phaser.Scene {
           floorMap.hasLineOfSight(pxToFt(x0), pxToFt(y0), pxToFt(x1), pxToFt(y1)),
       },
       field,
-      source: { x: px, y: py, radiusPx: radius, intensity: this.lighting.sourceIntensity },
+      sources: lightSources,
       ambient: this.lighting.ambient,
       falloffExponent: this.lighting.falloffExponent,
       dirtyRect,

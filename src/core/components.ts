@@ -94,6 +94,10 @@ export const Weight = {};
  * Used by GoreVfx to tint hit splatter and death pools. Defaults to red (0xcc0000).
  */
 export const BloodColor = {};
+/** Static scene-dressing prop (barrel, torch, junk pile, etc.). */
+export const Prop = {};
+/** Secondary light source attached to a Prop entity (e.g. wall sconce). */
+export const PropLight = {};
 /**
  * Marks an entity as a harvestable resource node (mushroom, flower, lichen, etc.).
  * The player must stand within HARVEST_RANGE_FT for durationMs to collect the item.
@@ -339,6 +343,26 @@ export function createComponentStores(maxEntities = DEFAULT_MAX_ENTITIES) {
       wisdom: new Float32Array(maxEntities),
       charisma: new Float32Array(maxEntities),
       luck: new Float32Array(maxEntities),
+    },
+    prop: {
+      /** Index into DECORATION_DEF_INDEX for the originating DecorationDef. */
+      defIdIndex: new Uint16Array(maxEntities),
+      /** 1 if the prop can be destroyed on contact; 0 otherwise. */
+      isDestructible: new Uint8Array(maxEntities),
+      /** 1 once the prop has been destroyed; 0 while intact. */
+      isDestroyed: new Uint8Array(maxEntities),
+    },
+    propLight: {
+      /** Emission radius in render pixels. */
+      radiusPx: new Float32Array(maxEntities),
+      /** Light intensity 0–1. */
+      intensity: new Float32Array(maxEntities),
+      /** Red channel 0–255. */
+      colorR: new Uint8Array(maxEntities),
+      /** Green channel 0–255. */
+      colorG: new Uint8Array(maxEntities),
+      /** Blue channel 0–255. */
+      colorB: new Uint8Array(maxEntities),
     },
   };
 }

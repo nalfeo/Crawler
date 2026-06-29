@@ -92,6 +92,7 @@ import { floor1Config } from '../shared/floor-config.js';
 import { floor1EnemyPack, pickEnemyArchetype } from '../shared/enemy-packs.js';
 import { floor1Manifest } from '../shared/floor-manifest.js';
 import type { NpcPlacementDef } from '../shared/npc-placements.js';
+import { placePropsForFloor } from './systems/propPlacer.js';
 import { getSpawnerArchetype, getSpawnerArchetypeIndex } from './spawners/registry.js';
 import { hashStringToSeed, SeededRandom } from '../shared/random.js';
 
@@ -977,6 +978,11 @@ export function initializeFloor1Scenario(world: GameWorld, playerEid: number): v
 
   // Welcome wayfinding signs are planted further down, after NPCs spawn, so a
   // sign can detect and avoid landing on top of an NPC (see placeWelcomeSigns).
+
+  // Place ambient props using the floor manifest config (if present).
+  if (floor1Manifest.props !== undefined) {
+    placePropsForFloor(world, floorMap, floor1Manifest.props, world.rng);
+  }
 
   world.floor1 = {
     protagonistName: floor1Config.protagonist,

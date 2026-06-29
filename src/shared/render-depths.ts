@@ -21,6 +21,20 @@
 export const UI_DEPTH_CUTOFF = 900;
 
 /**
+ * Depth buckets for static scene-dressing props. All values are below
+ * entity/VFX layers so props always render beneath game entities.
+ *
+ * - `back`  — floor decorations painted behind everything (e.g. moss patches).
+ * - `mid`   — mid-layer props at ground level (barrels, rubble).
+ * - `front` — props that overlap ground entities slightly (chains, sconces).
+ */
+export const PROP_DEPTH = {
+  back: 2,
+  mid: 3,
+  front: 4,
+} as const;
+
+/**
  * Depths for world-space VFX layers. All values are well below `UI_DEPTH_CUTOFF`
  * so `refreshCameraMasks()` keeps them on the world camera. Relative ordering
  * controls which VFX draws on top (gore < combat text < debug path).

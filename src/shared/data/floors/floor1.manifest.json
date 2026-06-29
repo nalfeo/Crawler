@@ -83,5 +83,10 @@
       "isMerchant": true,
       "questId": "floor1-shopkeeper-errand"
     }
-  ]
+  ],
+  "props": {
+    "biomeTag": "dungeon",
+    "densityMultiplier": 1.0,
+    "allowedCategories": ["rubbish", "light-source"]
+  }
 }
