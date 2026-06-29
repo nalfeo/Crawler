@@ -32,7 +32,7 @@ hundreds of inbound references.
 ### Adding a new ADR
 
 1. Copy `TEMPLATE.md` to `NNNN-your-slug.md`, where `NNNN` is **the next unused
-   number** (currently **0029**).
+   number** (currently **0034**).
 2. Fill in `## Status`, `## Date`, `## Estimated Complexity`, `## Context`,
    `## Decision`, `## Consequences`.
 3. Always **link by slug**, never by bare number, so collisions stay
@@ -109,6 +109,7 @@ hundreds of inbound references.
 - [Generate stores the raw sheet only (Option B)](0024-generate-stores-raw-sheet-only.md)
 - [Devtools sprite workflow — 7-stage restructure](0025-workflow-7-stage-restructure.md)
 - [Multi-variant generated sprites](0028-generated-sprite-variants.md) — identity, selection, approval, and check-in.
+- [Migrate content generation to Azure AI Foundry](0033-azure-foundry-content-generation.md) — broaden model access behind the existing provider seam.
 
 ### Rendering, HUD & VFX
 
@@ -175,3 +176,4 @@ Rows sharing a number are distinct decisions (see the [identity policy](#numberi
 | 0026 | [Door-Pointing Welcome-Sign Wayfinding](0026-welcome-sign-wayfinding.md)                                                        | Accepted | 2026-06-27 |
 | 0027 | [Explode Corpses Into Sprite Shards When Hit During Death-Linger](0027-corpse-explosion-on-hit.md)                              | Accepted | 2026-06-27 |
 | 0028 | [Multi-Variant Generated Sprites](0028-generated-sprite-variants.md)                                                            | Accepted | 2026-06-26 |
+| 0033 | [Migrate Content Generation to Azure AI Foundry](0033-azure-foundry-content-generation.md)                                      | Proposed | 2026-06-29 |

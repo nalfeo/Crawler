@@ -17,13 +17,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   __resetChatDeploymentFallbackWarnings,
   createBriefSelectorProvider,
+  createImageProvider,
   createSynthProvider,
   createTextProvider,
+  createVisionProvider,
 } from '../../../scripts/sprites/provider/factory.js';
 
 const BASE_ENV = {
   AZURE_OPENAI_ENDPOINT: 'https://example.openai.azure.com',
   AZURE_OPENAI_API_KEY: 'k',
+} as const;
+
+const FOUNDRY_ENV = {
+  FOUNDRY_ENDPOINT: 'https://example.services.ai.azure.com',
+  FOUNDRY_API_KEY: 'fk',
 } as const;
 
 afterEach(() => {
@@ -123,5 +130,69 @@ describe('createSynthProvider — chat deployment fallback', () => {
       /AZURE_OPENAI_CHAT_DEPLOYMENT.*AZURE_OPENAI_VISION_DEPLOYMENT/s,
     );
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe('foundry backend (ADR 0033)', () => {
+  it('createImageProvider builds from FOUNDRY_* when SPRITES_PROVIDER=foundry', () => {
+    const p = createImageProvider({
+      env: { ...FOUNDRY_ENV, SPRITES_PROVIDER: 'foundry', FOUNDRY_IMAGE_MODEL: 'FLUX.1' },
+    });
+    expect(p).not.toBeNull();
+  });
+
+  it('createImageProvider throws when foundry connection is incomplete', () => {
+    expect(() =>
+      createImageProvider({ env: { SPRITES_PROVIDER: 'foundry', FOUNDRY_IMAGE_MODEL: 'FLUX.1' } }),
+    ).toThrow(/FOUNDRY_ENDPOINT/);
+  });
+
+  it('createTextProvider builds a foundry chat provider when FOUNDRY_TEXT_MODEL is set', () => {
+    const p = createTextProvider({
+      env: {
+        ...FOUNDRY_ENV,
+        SPRITES_TEXT_PROVIDER: 'foundry',
+        FOUNDRY_TEXT_MODEL: 'Llama-3.3-70B',
+      },
+    });
+    expect(p).not.toBeNull();
+  });
+
+  it('createTextProvider returns null when foundry text model is unconfigured', () => {
+    expect(
+      createTextProvider({ env: { ...FOUNDRY_ENV, SPRITES_TEXT_PROVIDER: 'foundry' } }),
+    ).toBeNull();
+  });
+
+  it('createVisionProvider returns null when foundry vision model is unconfigured', () => {
+    expect(
+      createVisionProvider({ env: { ...FOUNDRY_ENV, SPRITES_VISION_PROVIDER: 'foundry' } }),
+    ).toBeNull();
+  });
+
+  it('createSynthProvider labels candidates with the foundry prefix', () => {
+    const p = createSynthProvider({
+      env: { ...FOUNDRY_ENV, SPRITES_SYNTH_PROVIDER: 'foundry', FOUNDRY_TEXT_MODEL: 'Mistral' },
+    });
+    expect(p.providerLabel).toBe('foundry:Mistral');
+  });
+
+  it('createBriefSelectorProvider throws when selector model equals synth model', () => {
+    expect(() =>
+      createBriefSelectorProvider({
+        env: {
+          ...FOUNDRY_ENV,
+          SPRITES_SYNTH_PROVIDER: 'foundry',
+          FOUNDRY_TEXT_MODEL: 'same',
+          FOUNDRY_BRIEF_SELECTOR_MODEL: 'same',
+        },
+      }),
+    ).toThrow(/must differ/);
+  });
+
+  it('rejects an unknown backend value', () => {
+    expect(() => createImageProvider({ env: { SPRITES_PROVIDER: 'bedrock' } })).toThrow(
+      /Unknown SPRITES_PROVIDER/,
+    );
   });
 });
