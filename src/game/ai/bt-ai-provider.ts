@@ -1613,19 +1613,6 @@ export class BehaviorTreeAI implements AIInputProvider {
   }
 
   /**
-   * Watchdog: break out of a COLLECT deadlock against an unreachable loot cluster.
-   *
-   * A per-target distance watchdog is defeated when the AI rotates between several
-   * mutually-unreachable gems clustered at e.g. a safe-room boundary: each target
-   * switch resets the per-target counter before it can fire, and per-frame stuck
-   * detection is fooled by wiggle (net displacement stays a few ft while the player
-   * oscillates). So we track the player's NET displacement while it is continuously
-   * in COLLECT. If the player never escapes a small dwell circle for
-   * {@link COLLECT_DWELL_FRAMES}, the whole nearby cluster is unreachable — blacklist
-   * every pile inside {@link COLLECT_DWELL_CLUSTER_RADIUS_FT} so the tree drops
-   * through COLLECT to Hunt/Explore and makes real progress.
-   */
-  /**
    * True when the player is parked on a harvestable node (within
    * {@link HARVEST_RANGE_FT}) so `harvestSystem` is accruing progress this frame.
    * The harvest is deliberately stationary, so the dwell watchdogs must read it
@@ -1648,6 +1635,19 @@ export class BehaviorTreeAI implements AIInputProvider {
     return false;
   }
 
+  /**
+   * Watchdog: break out of a COLLECT deadlock against an unreachable loot cluster.
+   *
+   * A per-target distance watchdog is defeated when the AI rotates between several
+   * mutually-unreachable gems clustered at e.g. a safe-room boundary: each target
+   * switch resets the per-target counter before it can fire, and per-frame stuck
+   * detection is fooled by wiggle (net displacement stays a few ft while the player
+   * oscillates). So we track the player's NET displacement while it is continuously
+   * in COLLECT. If the player never escapes a small dwell circle for
+   * {@link COLLECT_DWELL_FRAMES}, the whole nearby cluster is unreachable — blacklist
+   * every pile inside {@link COLLECT_DWELL_CLUSTER_RADIUS_FT} so the tree drops
+   * through COLLECT to Hunt/Explore and makes real progress.
+   */
   private updateCollectWatchdog(world: GameWorld, playerX: number, playerY: number): void {
     if (this.decision.state !== AIState.COLLECT) {
       this.collectDwellActive = false;
