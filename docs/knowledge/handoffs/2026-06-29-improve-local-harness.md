@@ -155,3 +155,54 @@ Guard telemetry artifact: `files/guard-telemetry.jsonl`
 - Lean JSON ledger + JS validator as the single source of truth (no `ajv`).
 - See ADR-adjacent reasoning captured in `plan.md` and the
   `docs/agent-os/policies/review-harness-policy.md` policy.
+
+## Retrospective
+
+### Lessons Learned
+
+- The session **workspace directory name** (`nalfeo-upgraded-pancake`) and the
+  **git branch name** (`nalfeo-improve-local-harness`, set via `rename_branch`)
+  differ. `git push` and `create_pull_request` operate on the actual git branch
+  (`git branch --show-current`), not the directory name. Confirm the real branch
+  name and that it is pushed to origin before opening a PR.
+- `create_pull_request` does **not** auto-push; the branch must already exist on
+  origin. A `422 invalid` there means "head branch not found on remote," **not**
+  a guard rejection — guards run client-side _before_ the GitHub API call (my
+  `pr-review-ledger` guard had already allowed the PR).
+- Local `main` had drifted ahead of the branch's true fork point, but
+  `git merge-base HEAD main` still resolves the correct common ancestor. Review
+  and diff with `git show HEAD` / `HEAD~1..HEAD`, not against local `main`.
+- PowerShell has **no heredoc** — `git commit -F - <<'EOF'` fails. Write the
+  message to a temp file and use `git commit -F <file>`.
+- `lint-staged` runs Prettier on commit and re-stages; Prettier normalizes
+  single-quoted strings to double quotes, so subsequent string edits must match
+  the **on-disk, post-format** form or `edit` won't find the `old_str`.
+
+### Mistakes Made
+
+- **Two wasted PR/push round-trips** from assuming the workspace-dir name was the
+  branch name: `create_pull_request` 422'd, then `git push origin nalfeo-upgraded-pancake`
+  failed with "src refspec does not match any." The fix was one `git branch
+--show-current` check I should have run first. Early signal: a 422 with no guard
+  output ⇒ check the remote/branch, not the diff.
+- `cli.test.mjs` initially used `new URL(...)`, which tripped `no-undef` under the
+  `scripts/**` ESLint config (no `URL` global). Switched to
+  `path.dirname(fileURLToPath(import.meta.url))`.
+- The first implementation pass left `lib/git.mjs` **failing open** (returning
+  `[]` on a null merge-base) — a real correctness hole that only the multi-model
+  review caught. A guard that silently returns "no files" would have skipped
+  enforcement on a shallow clone.
+
+### Opportunities for Future Improvement
+
+- **Auto-stamp** the `code_review` / `multi_model_review` ledger rounds directly
+  from `task`-tool agent results, removing manual ledger authoring and reducing
+  the risk of the self-reported artifact drifting from what actually ran.
+- The guard validates ledger **completeness, not truthfulness**. A future
+  enhancement could cross-check claimed model ids / concern counts against a
+  machine-readable review-run log.
+- `docs-check-readme-commands` reports 29 non-blocking findings (pre-existing
+  command-table drift between `package.json` and the docs tables) — worth a
+  dedicated cleanup pass.
+- Have the session tooling reconcile (or prominently surface) the workspace-dir
+  name vs. the real branch name to prevent the push/PR confusion above.

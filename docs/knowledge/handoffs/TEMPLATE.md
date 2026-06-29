@@ -61,3 +61,25 @@ Hello kitties: N/5 = N.NN 🎀 <!-- actual_apples / 5, two decimal places -->
 ## Key Decisions Made
 
 <!-- Any architectural or design decisions made -->
+
+## Retrospective
+
+<!-- Required. An honest retrospective so the next agent compounds on this
+     session instead of repeating it. "None" is rarely the right answer for
+     any subsection — be specific. -->
+
+### Lessons Learned
+
+<!-- What did you learn that a future agent should know? Environment quirks,
+     non-obvious gotchas, approaches that worked well. -->
+
+### Mistakes Made
+
+<!-- Honest accounting of wrong turns, dead ends, or errors — even ones you
+     recovered from. Include what the early signal was, so the next agent
+     catches it sooner. -->
+
+### Opportunities for Future Improvement
+
+<!-- Process, tooling, or codebase improvements surfaced by this work that were
+     out of scope here but are worth a future session. -->
