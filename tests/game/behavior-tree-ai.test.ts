@@ -556,6 +556,42 @@ describe('BehaviorTreeAI', () => {
       expect(Math.hypot(dbg.dodgeX, dbg.dodgeY)).toBeGreaterThan(0);
     });
 
+    it('sidesteps a stationary enemy parked on the beeline instead of charging through', () => {
+      // Regression: a still/idle enemy never "closes", so the old dodge ignored it
+      // and the player bulldozed straight into body contact. A blocker dead ahead
+      // and inside the contact band must now draw a perpendicular sidestep.
+      const s = pollQuestNavHeading(42);
+      const enemy = spawnEnemy(s.world, s.px + s.ux * 4, s.py + s.uy * 4, 20);
+      s.world.stores.velocity.x[enemy] = 0;
+      s.world.stores.velocity.y[enemy] = 0;
+
+      s.ai.poll(s.input, s.world);
+
+      expect(s.ai.getDecision().state).toBe(AIState.EXPLORE);
+      const dbg = s.ai.getOpportunisticDebug();
+      const mag = Math.hypot(dbg.dodgeX, dbg.dodgeY);
+      expect(mag).toBeGreaterThan(0); // sidestep fired despite zero closing speed
+      // Lateral, not a head-on push into the blocker: dodge does not point at it.
+      const towardEnemyX = s.world.stores.position.x[enemy]! - s.px;
+      const towardEnemyY = s.world.stores.position.y[enemy]! - s.py;
+      const teLen = Math.hypot(towardEnemyX, towardEnemyY) || 1;
+      const intoEnemy = (dbg.dodgeX * towardEnemyX + dbg.dodgeY * towardEnemyY) / (mag * teLen);
+      expect(Math.abs(intoEnemy)).toBeLessThan(0.8);
+    });
+
+    it('does not dodge a stationary enemy that is behind the travel heading', () => {
+      const s = pollQuestNavHeading(42);
+      const enemy = spawnEnemy(s.world, s.px - s.ux * 4, s.py - s.uy * 4, 20);
+      s.world.stores.velocity.x[enemy] = 0;
+      s.world.stores.velocity.y[enemy] = 0;
+
+      s.ai.poll(s.input, s.world);
+
+      const dbg = s.ai.getOpportunisticDebug();
+      expect(dbg.dodgeX).toBe(0);
+      expect(dbg.dodgeY).toBe(0);
+    });
+
     it('farms enemies ahead on the quest path, never behind, and only when weighted', () => {
       // Enemy ~12 ft AHEAD on the quest-nav heading → forward-cone pull fires.
       const ahead = pollQuestNavHeading(42);

@@ -466,6 +466,14 @@ const DODGE_THREAT_RADIUS_FT = 14;
 // unit toward-player vector. Low enough that ordinary chasers (not just sprint
 // chargers) trigger an evasive strafe while the player is navigating.
 const DODGE_CLOSING_SPEED_FT_PER_FRAME = 0.15;
+// Path-blocking sidestep: even a stationary/slow enemy parked directly on the
+// beeline to an objective must be stepped around, not bulldozed through. An
+// enemy within this body-contact radius AND roughly ahead of the travel heading
+// (forward dot ≥ DODGE_BLOCK_AHEAD_DOT) triggers a perpendicular sidestep toward
+// the open side, regardless of its closing speed. Sized just outside body
+// contact (player 1.5ft + swarm 1.5ft = 3ft) so the curve starts before overlap.
+const DODGE_BLOCK_RADIUS_FT = 6;
+const DODGE_BLOCK_AHEAD_DOT = 0.4;
 // --- On-path loot detour (OpportunisticCollect) ---
 // Rule (player's words): "if there is loot within 5' of my path and I am not
 // actively fighting or dodging enemies, make the slight detour to grab it."
@@ -1354,14 +1362,20 @@ export class BehaviorTreeAI implements AIInputProvider {
 
   /**
    * OpportunisticDodge: inject a perpendicular strafe impulse when an enemy
-   * is closing fast toward the player.
+   * is closing fast toward the player — OR is parked directly in its path.
    *
    * For each enemy within `DODGE_THREAT_RADIUS_FT`, we compute the dot product
    * of its velocity with the toward-player unit vector. If the closing speed
    * exceeds `DODGE_CLOSING_SPEED_FT_PER_FRAME`, we pick the perpendicular that
    * keeps the kite orbit sign and write it into `this.dodgeVecX/Y`.
    *
-   * Only the closest closing enemy drives the dodge so the vector is stable.
+   * Path-blocking sidestep: a stationary/slow enemy that sits within
+   * `DODGE_BLOCK_RADIUS_FT` and roughly ahead of the travel heading would never
+   * "close" yet the player would walk straight into it (the bulldozing seen on
+   * quest beelines). Such an enemy triggers a perpendicular sidestep toward the
+   * open side so the player curves around instead of trading body contact.
+   *
+   * Only the closest qualifying enemy drives the dodge so the vector is stable.
    */
   private buildOpportunisticDodge(): BTNode {
     return action('Opportunistic Dodge', (ctx) => {
@@ -1376,6 +1390,28 @@ export class BehaviorTreeAI implements AIInputProvider {
         this.decision.state === AIState.INTERACT
       ) {
         return BTStatus.FAILURE;
+      }
+
+      // Travel heading for the path-blocking sidestep: prefer the vector to the
+      // current Track A target, falling back to the previous-frame smoothed
+      // output. With no meaningful heading there is no path to be blocked, so the
+      // blocking branch is skipped (closing-speed dodge still runs).
+      let headX = 0;
+      let headY = 0;
+      if (this.decision.targetX !== null && this.decision.targetY !== null) {
+        headX = this.decision.targetX - ctx.playerX;
+        headY = this.decision.targetY - ctx.playerY;
+      }
+      let headMag = Math.hypot(headX, headY);
+      if (headMag < DETOUR_MIN_HEADING_MAGNITUDE) {
+        headX = this.smoothMoveX;
+        headY = this.smoothMoveY;
+        headMag = Math.hypot(headX, headY);
+      }
+      const hasHeading = headMag >= DETOUR_MIN_HEADING_MAGNITUDE;
+      if (hasHeading) {
+        headX /= headMag;
+        headY /= headMag;
       }
 
       const enemies = query(ctx.world.ecs, [Enemy, Position, Velocity, Health]);
@@ -1401,10 +1437,21 @@ export class BehaviorTreeAI implements AIInputProvider {
         const toPlayerY = (ctx.playerY - ey) / (dist || 1);
         // Closing speed = component of enemy velocity in the toward-player direction
         const closingSpeed = vx * toPlayerX + vy * toPlayerY;
-        if (closingSpeed < DODGE_CLOSING_SPEED_FT_PER_FRAME) continue;
+        const closing = closingSpeed >= DODGE_CLOSING_SPEED_FT_PER_FRAME;
 
-        if (dist < closestThreatDist) {
-          closestThreatDist = dist;
+        // Blocking = enemy parked just ahead on the travel path (forward cone),
+        // close enough that the player would bulldoze into body contact.
+        const ahead =
+          hasHeading &&
+          dist <= DODGE_BLOCK_RADIUS_FT &&
+          ((ex - ctx.playerX) * headX + (ey - ctx.playerY) * headY) / (dist || 1) >=
+            DODGE_BLOCK_AHEAD_DOT;
+
+        if (!closing && !ahead) continue;
+        if (dist >= closestThreatDist) continue;
+        closestThreatDist = dist;
+
+        if (closing) {
           // Perpendicular to enemy velocity: rotate 90° in orbit direction
           const speed = Math.hypot(vx, vy);
           if (speed > 0) {
@@ -1413,8 +1460,15 @@ export class BehaviorTreeAI implements AIInputProvider {
             bestDodgeX = (-vy / speed) * this.kiteOrbitSign;
             bestDodgeY = (vx / speed) * this.kiteOrbitSign;
           }
-          found = true;
+        } else {
+          // Sidestep perpendicular to the heading, toward whichever side the
+          // enemy is NOT on, so the player curves around the obstacle.
+          const cross = headX * (ey - ctx.playerY) - headY * (ex - ctx.playerX);
+          const sign = cross > 0 ? -1 : 1;
+          bestDodgeX = -headY * sign;
+          bestDodgeY = headX * sign;
         }
+        found = true;
       }
 
       if (!found) return BTStatus.FAILURE;
