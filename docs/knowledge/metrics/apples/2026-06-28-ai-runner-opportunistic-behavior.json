@@ -1,0 +1,7 @@
+{
+  "session": "2026-06-28-ai-runner-opportunistic-behavior",
+  "estimate": 3,
+  "actual": 3,
+  "verdict": "on",
+  "notes": "Enabling the dormant farm pull + widening collect/dodge/detour was simple, but the forward-cone rewrite over-engaged squishy seeds (sword 77→53%, seed-13 gate death). Needed a health gate + several sweep/headless dial-back cycles to land opportunistic-but-safe constants that keep the floor1 gate 12/12 green."
+}

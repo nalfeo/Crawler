@@ -555,36 +555,32 @@ describe('BehaviorTreeAI', () => {
       expect(Math.hypot(dbg.dodgeX, dbg.dodgeY)).toBeGreaterThan(0);
     });
 
-    it('keeps the enemy-farm pull dormant unless explicitly weighted', () => {
-      const buildWanderWorld = (): { world: GameWorld; cx: number; cy: number } => {
-        const world = createTestWorld({ seed: 5 });
-        world.floorMap = makeOpenRoom(60, 60);
-        const cx = 120;
-        const cy = 120;
-        spawnPlayer(world, cx, cy);
-        // Lone enemy 75 ft away: beyond the 50 ft Track A scan (so the AI just
-        // idle-wanders, EXPLORE + null target) but within the 150 ft farm scan.
-        spawnEnemy(world, cx + 75, cy, 20);
-        return { world, cx, cy };
-      };
+    it('farms enemies ahead on the quest path, never behind, and only when weighted', () => {
+      // Enemy ~12 ft AHEAD on the quest-nav heading → forward-cone pull fires.
+      const ahead = pollQuestNavHeading(42);
+      spawnEnemy(ahead.world, ahead.px + ahead.ux * 12, ahead.py + ahead.uy * 12, 20);
+      ahead.ai.poll(ahead.input, ahead.world);
+      expect(ahead.ai.getDecision().state).toBe(AIState.EXPLORE);
+      const aheadDbg = ahead.ai.getOpportunisticDebug();
+      expect(Math.hypot(aheadDbg.farmX, aheadDbg.farmY)).toBeGreaterThan(0);
+      expect(aheadDbg.farmX * ahead.ux + aheadDbg.farmY * ahead.uy).toBeGreaterThan(0);
 
-      const idle = buildWanderWorld();
-      const idleAi = new BehaviorTreeAI({ seed: 5 });
-      idleAi.poll(createInputState(), idle.world);
-      expect(idleAi.getDecision().state).toBe(AIState.EXPLORE);
-      // Default farmPullWeight = 0 → the enemy-farm layer never fires.
-      const dormant = idleAi.getOpportunisticDebug();
-      expect(dormant.farmX).toBe(0);
-      expect(dormant.farmY).toBe(0);
+      // Same enemy BEHIND the heading → outside the forward cone → no pull.
+      const behind = pollQuestNavHeading(42);
+      spawnEnemy(behind.world, behind.px - behind.ux * 12, behind.py - behind.uy * 12, 20);
+      behind.ai.poll(behind.input, behind.world);
+      const behindDbg = behind.ai.getOpportunisticDebug();
+      expect(behindDbg.farmX).toBe(0);
+      expect(behindDbg.farmY).toBe(0);
 
-      // Same scenario with a non-zero farm weight DOES drift toward the enemy.
-      const active = buildWanderWorld();
-      const farmAi = new BehaviorTreeAI({ seed: 5, farmPullWeight: 1 });
-      farmAi.poll(createInputState(), active.world);
-      expect(farmAi.getDecision().state).toBe(AIState.EXPLORE);
-      const farmDbg = farmAi.getOpportunisticDebug();
-      expect(Math.hypot(farmDbg.farmX, farmDbg.farmY)).toBeGreaterThan(0);
-      expect(farmDbg.farmX).toBeGreaterThan(0);
+      // farmPullWeight = 0 keeps the layer fully dormant even with prey ahead.
+      const off = pollQuestNavHeading(42);
+      const offAi = new BehaviorTreeAI({ seed: 42, farmPullWeight: 0 });
+      spawnEnemy(off.world, off.px + off.ux * 12, off.py + off.uy * 12, 20);
+      offAi.poll(off.input, off.world);
+      const offDbg = offAi.getOpportunisticDebug();
+      expect(offDbg.farmX).toBe(0);
+      expect(offDbg.farmY).toBe(0);
     });
   });
 
