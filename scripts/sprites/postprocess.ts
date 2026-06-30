@@ -33,6 +33,7 @@
 
 import { PNG } from 'pngjs';
 import type { Brief, PaletteColors, RgbTriple } from './brief-schema.js';
+import { resizeSpriteStrategy } from './size-variants.js';
 
 interface RgbaImage {
   readonly width: number;
@@ -146,7 +147,7 @@ export function postprocessWithTrace(
     image,
     brief.size.width,
     brief.size.height,
-    resizeStrategyForBrief(brief.size.width, brief.size.height),
+    resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height),
   );
   image = fitResize.image;
   pushStep(
@@ -722,16 +723,6 @@ function fitWithinNearest(
     fittedWidth,
     fittedHeight,
   };
-}
-
-function resizeStrategyForBrief(
-  width: number,
-  height: number,
-): 'fit' | 'width' | 'height' | 'cover' {
-  if (width >= height * 2) return 'width';
-  if (height >= width * 2) return 'height';
-  if (width === height && width >= 128) return 'cover';
-  return 'fit';
 }
 
 /**

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
 import { variantCount } from './brief-schema.js';
+import { resizeSpriteStrategy } from './size-variants.js';
 
 /**
  * Pure prompt builders for the sprite generation pipeline.
@@ -198,20 +199,21 @@ function outputSizeBlock(brief: Brief): string {
   const width = brief.size.width;
   const height = brief.size.height;
   const aspect = aspectOf(width, height);
+  const strategy = resizeSpriteStrategy(brief.type, width, height);
   const lines: string[] = ['## Output size'];
-  if (brief.type === 'tile') {
+  if (strategy === 'fit' && brief.type === 'tile') {
     lines.push(
       `- Each finished tile resolves to exactly ${width}x${height} pixels after post-processing.`,
     );
-  } else if (width >= height * 2) {
+  } else if (strategy === 'width') {
     lines.push(
       `- Target final frame is ${width}x${height} with width as the main occupancy axis; post-processing may expand height beyond ${height}px to preserve silhouette fill.`,
     );
-  } else if (height >= width * 2) {
+  } else if (strategy === 'height') {
     lines.push(
       `- Target final frame is ${width}x${height} with height as the main occupancy axis; post-processing may expand width beyond ${width}px to preserve silhouette fill.`,
     );
-  } else if (width === height && width >= 128) {
+  } else if (strategy === 'cover') {
     lines.push(
       `- Target final frame is ${width}x${height}; post-processing may expand one axis to preserve large-sprite occupancy without letterboxing.`,
     );

@@ -49,6 +49,32 @@ export const SIZE_VARIANT_MULTIPLIERS: Readonly<Record<SizeVariant, SizeMultipli
   large: { width: 2, height: 2 },
 };
 
+/**
+ * Resize strategy for post-processing a sprite whose brief declares the given
+ * sprite type and output dimensions. Tiles always use `'fit'` (exact frame);
+ * non-tile variants use axis-priority strategies so the dominant axis is fully
+ * occupied rather than letterboxed:
+ *
+ *   wide   (w >= 2*h) → 'width'  — lock width, allow height growth
+ *   tall   (h >= 2*w) → 'height' — lock height, allow width growth
+ *   large  (square, w===h, >=128) → 'cover' — max occupancy, expand secondary axis
+ *   other             → 'fit'    — nearest-fit inside frame (original behavior)
+ *
+ * Exported so `postprocess.ts`, `sensors/common.ts`, and `build-prompt.ts`
+ * all derive the same answer from the same source of truth.
+ */
+export function resizeSpriteStrategy(
+  type: string,
+  width: number,
+  height: number,
+): 'fit' | 'width' | 'height' | 'cover' {
+  if (type === 'tile') return 'fit';
+  if (width >= height * 2) return 'width';
+  if (height >= width * 2) return 'height';
+  if (width === height && width >= 128) return 'cover';
+  return 'fit';
+}
+
 export function isSizeVariant(value: unknown): value is SizeVariant {
   return typeof value === 'string' && (SIZE_VARIANTS as readonly string[]).includes(value);
 }

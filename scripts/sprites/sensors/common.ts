@@ -19,6 +19,7 @@
 
 import { PNG } from 'pngjs';
 import type { Brief, PaletteColors, RgbTriple } from '../brief-schema.js';
+import { resizeSpriteStrategy } from '../size-variants.js';
 
 export type Pixel = { x: number; y: number };
 
@@ -56,8 +57,8 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
   if (brief.postprocessing?.trimAndFit) {
     return ok(sensor);
   }
-  const isDoubleWide = brief.size.width >= brief.size.height * 2;
-  if (isDoubleWide) {
+  const strategy = resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height);
+  if (strategy === 'width') {
     if (image.width !== brief.size.width) {
       return fail(
         sensor,
@@ -66,8 +67,7 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
     }
     return ok(sensor);
   }
-  const isDoubleTall = brief.size.height >= brief.size.width * 2;
-  if (isDoubleTall) {
+  if (strategy === 'height') {
     if (image.height !== brief.size.height) {
       return fail(
         sensor,
@@ -76,8 +76,7 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
     }
     return ok(sensor);
   }
-  const isLargeSquare = brief.size.width === brief.size.height && brief.size.width >= 128;
-  if (isLargeSquare) {
+  if (strategy === 'cover') {
     if (image.width < brief.size.width || image.height < brief.size.height) {
       return fail(
         sensor,
