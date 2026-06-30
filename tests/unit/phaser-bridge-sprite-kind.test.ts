@@ -21,10 +21,12 @@ import {
 } from '../../src/core/components.js';
 import { set } from '../../src/core/world.js';
 import { TeamId } from '../../src/shared/constants.js';
+import { buildGeneratedSpriteRegistry } from '../../src/shared/generated-assets.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../src/shared/spawn-anim.js';
 import {
   computeEnemyScale,
   enemyVariantFromTextureId,
+  pickGeneratedEnemyTextureKey,
   resolveRenderKind,
 } from '../../src/engine/phaser-bridge/sprite-kind.js';
 import { createTestWorld } from '../helpers/world-factory.js';
@@ -185,6 +187,77 @@ describe('enemyVariantFromTextureId', () => {
   });
 });
 
+describe('pickGeneratedEnemyTextureKey', () => {
+  const registry = buildGeneratedSpriteRegistry({
+    version: 1,
+    entries: {
+      'slime-v1-var-2': {
+        briefId: 'slime-v1',
+        spriteName: 'slime-v1-var-2',
+        assetPath: 'generated/slime-v1-var-2.png',
+        approvedAt: '2026-06-30T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 2,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+      'slime-v1-var-9': {
+        briefId: 'slime-v1',
+        spriteName: 'slime-v1-var-9',
+        assetPath: 'generated/slime-v1-var-9.png',
+        approvedAt: '2026-06-30T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 9,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+      'baby-slime-v1-var-1': {
+        briefId: 'baby-slime-v1',
+        spriteName: 'baby-slime-v1-var-1',
+        assetPath: 'generated/baby-slime-v1-var-1.png',
+        approvedAt: '2026-06-30T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 1,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+      'baby-slime-v1-var-8': {
+        briefId: 'baby-slime-v1',
+        spriteName: 'baby-slime-v1-var-8',
+        assetPath: 'generated/baby-slime-v1-var-8.png',
+        approvedAt: '2026-06-30T00:00:00.000Z',
+        sourceRun: 'test',
+        variantIndex: 8,
+        anchor: null,
+        sensorScore: '7/8',
+        judgeScore: '2',
+      },
+    },
+  });
+
+  it('uses the stored roll to pick among multiple variants for a broad enemy family', () => {
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.1)).toBe('slime-v1-var-2');
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95)).toBe('slime-v1-var-9');
+  });
+
+  it('lets a specific appearance key override the broad enemy family', () => {
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.1, 'slime-mini')).toBe(
+      'baby-slime-v1-var-1',
+    );
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_slime', 0.95, 'slime-mini')).toBe(
+      'baby-slime-v1-var-8',
+    );
+  });
+
+  it('returns null when the registry or mapping is missing', () => {
+    expect(pickGeneratedEnemyTextureKey(null, 'enemy_slime', 0.2)).toBeNull();
+    expect(pickGeneratedEnemyTextureKey(registry, 'enemy_boss', 0.2, 'slime-rat')).toBeNull();
+  });
+});
+
 /** Minimal floor-1 sidecar shape the scale helper reads from (archetype map). */
 function withFloorArchetype(world: TestWorld, eid: number, archetype: string): void {
   world.floor1 = {
@@ -210,6 +283,20 @@ describe('computeEnemyScale — baseline', () => {
     addComponent(world.ecs, eid, set(Sprite, { textureId: 2, width: 0.5, height: 0.5 }));
 
     expect(computeEnemyScale(world, eid, 2)).toEqual({ scaleX: 2, scaleY: 2 });
+  });
+
+  it('multiplies the base scale by the stored spawn-time size scale', () => {
+    const world = createTestWorld();
+    const eid = addEntity(world.ecs);
+    addComponent(
+      world.ecs,
+      eid,
+      set(Sprite, { textureId: 2, width: 3, height: 3, sizeScale: 1.08, variantRoll: 0.5 }),
+    );
+
+    const { scaleX, scaleY } = computeEnemyScale(world, eid, 2);
+    expect(scaleX).toBeCloseTo(2 * 1.08, 5);
+    expect(scaleY).toBeCloseTo(2 * 1.08, 5);
   });
 });
 

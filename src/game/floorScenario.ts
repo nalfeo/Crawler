@@ -44,6 +44,7 @@ import {
   spawnDroppedItem,
   spawnHarvestableNode,
   spawnSpawner,
+  setEnemyAppearanceKey,
   setBloodColor,
   DEFAULT_BLOOD_COLOR,
 } from '../core/helpers.js';
@@ -1514,6 +1515,7 @@ function spawnFloor1StairBoss(world: GameWorld): number {
     width: floor1Config.bossVariants!.ratSlime.spriteWidth,
     height: floor1Config.bossVariants!.ratSlime.spriteHeight,
   });
+  setEnemyAppearanceKey(world, eid, 'rat-slime');
 
   // ratSlime stair boss is primarily a slime creature.
   setBloodColor(world, eid, BLOOD_COLOR_SLIME);
@@ -1775,6 +1777,7 @@ function spawnAmbientArchetype(world: GameWorld, x: number, y: number): number {
     width: archetype.spriteWidth,
     height: archetype.spriteHeight,
   });
+  setEnemyAppearanceKey(world, eid, archetype.id);
   // Slimes bleed green, rats bleed red.
   setBloodColor(world, eid, archetype.id === 'slime' ? BLOOD_COLOR_SLIME : BLOOD_COLOR_RAT);
   world.floor1!.enemyArchetypes.set(eid, archetype.id);

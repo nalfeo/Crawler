@@ -17,7 +17,32 @@ import {
 import type { GameWorld } from '../world.js';
 import { DEFAULT_BLOOD_COLOR } from '../../shared/constants.js';
 import { PATH_PERSONA, TRAVERSAL_MODE } from '../../shared/enemy-behavior.js';
+import { hashStringToSeed, SeededRandom } from '../../shared/random.js';
 import { createEntity, setBloodColor } from './entity-core.js';
+
+const ENEMY_SIZE_SCALE_MIN = 0.9;
+const ENEMY_SIZE_SCALE_MAX = 1.1;
+
+function initializeEnemyAppearance(world: GameWorld, eid: number): void {
+  const seed = hashStringToSeed(
+    `enemy-appearance:${world.seed}:${eid}:${world.frameCount}:${world.elapsedMs}:` +
+      `${world.stores.position.x[eid] ?? 0}:${world.stores.position.y[eid] ?? 0}`,
+  );
+  const appearanceRng = new SeededRandom(seed);
+  const sizeScale =
+    ENEMY_SIZE_SCALE_MIN + appearanceRng.next() * (ENEMY_SIZE_SCALE_MAX - ENEMY_SIZE_SCALE_MIN);
+  world.stores.sprite.variantRoll[eid] = appearanceRng.next();
+  world.stores.sprite.sizeScale[eid] = sizeScale;
+  world.stores.weight.value[eid] = Math.max(1, (world.stores.weight.value[eid] ?? 120) * sizeScale);
+}
+
+export function setEnemyAppearanceKey(world: GameWorld, eid: number, key: string): void {
+  if (key.length === 0) {
+    world.enemyAppearanceKeys.delete(eid);
+    return;
+  }
+  world.enemyAppearanceKeys.set(eid, key);
+}
 
 export function spawnPlayer(world: GameWorld, x: number, y: number, weight = 180): number {
   const eid = createEntity(world);
@@ -51,6 +76,7 @@ export function spawnEnemy(
   addComponent(world.ecs, eid, set(Weight, { value: weight }));
   addComponent(world.ecs, eid, Enemy);
   setBloodColor(world, eid, bloodColorHex);
+  initializeEnemyAppearance(world, eid);
 
   return eid;
 }
@@ -102,6 +128,7 @@ export function spawnBehaviorEnemy(
     addComponent(world.ecs, eid, Flying);
   }
   setBloodColor(world, eid, options?.bloodColor ?? DEFAULT_BLOOD_COLOR);
+  initializeEnemyAppearance(world, eid);
 
   return eid;
 }

@@ -52,13 +52,18 @@ describe('spawnEnemy', () => {
   it('creates an enemy with default red blood', () => {
     const world = createTestWorld();
     const eid = spawnEnemy(world, -2.5, 5.625, 60);
+    const sizeScale = world.stores.sprite.sizeScale[eid]!;
 
     expect(hasComponent(world.ecs, eid, Enemy)).toBe(true);
     expect(hasComponent(world.ecs, eid, Sprite)).toBe(true);
     expect(world.stores.health.current[eid]).toBe(60);
     expect(world.stores.health.max[eid]).toBe(60);
     expect(world.stores.sprite.width[eid]).toBe(2);
-    expect(world.stores.weight.value[eid]).toBe(120);
+    expect(sizeScale).toBeGreaterThanOrEqual(0.9);
+    expect(sizeScale).toBeLessThanOrEqual(1.1);
+    expect(world.stores.sprite.variantRoll[eid]).toBeGreaterThanOrEqual(0);
+    expect(world.stores.sprite.variantRoll[eid]!).toBeLessThan(1);
+    expect(world.stores.weight.value[eid]).toBeCloseTo(120 * sizeScale, 4);
     expect(world.stores.bloodColor.r[eid]).toBe(0xcc);
     expect(world.stores.bloodColor.g[eid]).toBe(0);
     expect(world.stores.bloodColor.b[eid]).toBe(0);
@@ -77,6 +82,7 @@ describe('spawnBehaviorEnemy', () => {
   it('stores behavior data and defaults', () => {
     const world = createTestWorld();
     const eid = spawnBehaviorEnemy(world, 3.75, -1.25, 45, 2, 1.5, 220, 160);
+    const sizeScale = world.stores.sprite.sizeScale[eid]!;
 
     expect(hasComponent(world.ecs, eid, Enemy)).toBe(true);
     expect(hasComponent(world.ecs, eid, EnemyBehavior)).toBe(true);
@@ -87,7 +93,9 @@ describe('spawnBehaviorEnemy', () => {
     expect(world.stores.enemyBehavior.attackRange[eid]).toBe(160);
     expect(world.stores.enemyBehavior.flankDistance[eid]).toBe(12);
     expect(world.stores.enemyBehavior.pathRefreshFrames[eid]).toBe(10);
-    expect(world.stores.weight.value[eid]).toBe(120);
+    expect(sizeScale).toBeGreaterThanOrEqual(0.9);
+    expect(sizeScale).toBeLessThanOrEqual(1.1);
+    expect(world.stores.weight.value[eid]).toBeCloseTo(120 * sizeScale, 4);
   });
 
   it('adds the Flying tag for flying traversal and applies option overrides', () => {
@@ -103,7 +111,7 @@ describe('spawnBehaviorEnemy', () => {
     expect(world.stores.enemyBehavior.traversalMode[eid]).toBe(TRAVERSAL_MODE.FLYING);
     expect(world.stores.enemyBehavior.flankDistance[eid]).toBe(7);
     expect(world.stores.enemyBehavior.pathRefreshFrames[eid]).toBe(4);
-    expect(world.stores.weight.value[eid]).toBe(90);
+    expect(world.stores.weight.value[eid]).toBeCloseTo(90 * world.stores.sprite.sizeScale[eid]!, 4);
   });
 
   it('adds Flying when isFlying is set even on ground traversal', () => {
