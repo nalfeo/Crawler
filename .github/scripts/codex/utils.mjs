@@ -74,6 +74,61 @@ export async function githubRequest(
   return response.text();
 }
 
+function parseNextPageUrl(linkHeader) {
+  if (!linkHeader) {
+    return null;
+  }
+  for (const part of linkHeader.split(',')) {
+    const match = part.match(/<([^>]+)>;\s*rel="next"/);
+    if (match) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * GET a paginated GitHub list endpoint, following the `Link: rel="next"` header
+ * until exhausted (or `maxPages` is reached, as a runaway guard). `extract` pulls
+ * the array out of each page payload — identity for bare-array responses (e.g.
+ * issue comments), or `(page) => page.check_runs` for the check-runs envelope.
+ * Returns the concatenated items across all pages.
+ */
+export async function githubPaginate(urlPath, { extract = (page) => page, maxPages = 50 } = {}) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
+    throw new Error('GITHUB_TOKEN is required');
+  }
+
+  const apiBase = getEnv('GITHUB_API_URL', 'https://api.github.com');
+  let url = urlPath.startsWith('http') ? urlPath : apiBase + urlPath;
+  const items = [];
+
+  for (let page = 0; url && page < maxPages; page += 1) {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error('GitHub API GET ' + url + ' failed (' + response.status + '): ' + text);
+    }
+
+    const pageItems = extract(await response.json());
+    if (Array.isArray(pageItems)) {
+      items.push(...pageItems);
+    }
+
+    url = parseNextPageUrl(response.headers.get('link'));
+  }
+
+  return items;
+}
+
 export async function githubGraphql(query, variables = {}, { token } = {}) {
   const authToken = token || process.env.GITHUB_TOKEN;
   if (!authToken) {

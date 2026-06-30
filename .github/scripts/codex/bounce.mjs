@@ -1,10 +1,4 @@
-import {
-  evaluateRepairComplexity,
-  getEnv,
-  getRepairBudgets,
-  githubGraphql,
-  githubRequest,
-} from './utils.mjs';
+import { getEnv, githubGraphql, githubPaginate, githubRequest } from './utils.mjs';
 
 const repository = getEnv('GITHUB_REPOSITORY', '');
 const [owner, repo] = repository.split('/');
@@ -146,7 +140,7 @@ mutation($assignableId: ID!, $actorIds: [ID!]!) {
 }
 
 async function upsertComment(body) {
-  const comments = await githubRequest(
+  const comments = await githubPaginate(
     `/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`,
   );
   const existing = comments.find(
@@ -170,31 +164,31 @@ async function upsertComment(body) {
 
 const pr = await githubRequest(`/repos/${owner}/${repo}/pulls/${prNumber}`);
 
-let failingChecks = 0;
-try {
-  const checkRuns = await githubRequest(
-    `/repos/${owner}/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`,
-  );
-  failingChecks = (checkRuns?.check_runs || []).filter(
-    (check) => check.conclusion === 'failure',
-  ).length;
-} catch {
-  // best-effort: leave failingChecks at its default of 0
-}
+// Metrics and budgets are threaded through from event-parse.mjs (the single
+// source of truth that actually decided the bounce) rather than re-measured
+// here, so the comment's "Measured vs budget" table can never contradict the
+// stated bounce reason.
+const metric = (name) => {
+  const value = Number.parseInt(getEnv(name, ''), 10);
+  return Number.isFinite(value) ? value : undefined;
+};
+const metrics = {
+  changedFiles: metric('BOUNCE_FILES'),
+  diffLines: metric('BOUNCE_LINES'),
+  failingChecks: metric('BOUNCE_FAILING_CHECKS'),
+};
+const budgets = {
+  maxChangedFiles: metric('BOUNCE_BUDGET_FILES'),
+  maxDiffLines: metric('BOUNCE_BUDGET_LINES'),
+  maxFailingChecks: metric('BOUNCE_BUDGET_FAILING'),
+};
 
-const budgets = getRepairBudgets();
-const complexity = evaluateRepairComplexity(
-  {
-    changedFiles: pr.changed_files,
-    additions: pr.additions,
-    deletions: pr.deletions,
-    failingChecks,
-  },
-  budgets,
-);
-
-const reasons =
-  complexity.reasons.length > 0 ? complexity.reasons : bounceReason ? [bounceReason] : [];
+const reasons = bounceReason
+  ? bounceReason
+      .split(';')
+      .map((reason) => reason.trim())
+      .filter(Boolean)
+  : [];
 
 const labelAdded = await addLabel();
 const assignResult = await assignCopilot(pr.node_id);
@@ -202,6 +196,18 @@ const assignResult = await assignCopilot(pr.node_id);
 const nextSteps = assignResult.assigned
   ? '- ✅ Assigned **@Copilot** (coding agent) to take over this PR.'
   : `- ⚠️ Could not auto-assign Copilot (${assignResult.reason}). Please assign the Copilot coding agent manually.`;
+
+const measuredRow = (labelText, value, budget) => {
+  if (value === undefined) {
+    return null;
+  }
+  return `- ${labelText}: ${value}${budget === undefined ? '' : ` (budget ${budget})`}`;
+};
+const measuredRows = [
+  measuredRow('Changed files', metrics.changedFiles, budgets.maxChangedFiles),
+  measuredRow('Changed lines', metrics.diffLines, budgets.maxDiffLines),
+  measuredRow('Failing checks', metrics.failingChecks, budgets.maxFailingChecks),
+].filter(Boolean);
 
 const body = [
   COMMENT_MARKER,
@@ -213,11 +219,9 @@ const body = [
   ...(reasons.length > 0
     ? reasons.map((reason) => `- ${reason}`)
     : ['- Exceeded auto-heal complexity budget.']),
-  '',
-  '**Measured vs budget (auto runs only):**',
-  `- Changed files: ${complexity.metrics.changedFiles} (budget ${budgets.maxChangedFiles})`,
-  `- Changed lines: ${complexity.metrics.diffLines} (budget ${budgets.maxDiffLines})`,
-  `- Failing checks: ${complexity.metrics.failingChecks} (budget ${budgets.maxFailingChecks})`,
+  ...(measuredRows.length > 0
+    ? ['', '**Measured vs budget (auto runs only):**', ...measuredRows]
+    : []),
   '',
   '**Handoff:**',
   nextSteps,
@@ -232,5 +236,5 @@ const body = [
 await upsertComment(body);
 
 process.stdout.write(
-  `bounced pr=#${prNumber} files=${complexity.metrics.changedFiles} lines=${complexity.metrics.diffLines} failing=${complexity.metrics.failingChecks} copilot_assigned=${assignResult.assigned} label_added=${labelAdded}\n`,
+  `bounced pr=#${prNumber} files=${metrics.changedFiles ?? '?'} lines=${metrics.diffLines ?? '?'} failing=${metrics.failingChecks ?? '?'} copilot_assigned=${assignResult.assigned} label_added=${labelAdded}\n`,
 );

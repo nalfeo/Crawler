@@ -72,6 +72,12 @@ jobs:
         if: steps.parse.outputs.bounced == 'true'
         env:
           BOUNCE_REASON: ${{ steps.parse.outputs.bounce_reason }}
+          BOUNCE_FILES: ${{ steps.parse.outputs.bounce_files }}
+          BOUNCE_LINES: ${{ steps.parse.outputs.bounce_lines }}
+          BOUNCE_FAILING_CHECKS: ${{ steps.parse.outputs.bounce_failing_checks }}
+          BOUNCE_BUDGET_FILES: ${{ steps.parse.outputs.bounce_budget_files }}
+          BOUNCE_BUDGET_LINES: ${{ steps.parse.outputs.bounce_budget_lines }}
+          BOUNCE_BUDGET_FAILING: ${{ steps.parse.outputs.bounce_budget_failing }}
           CODEX_ASSIGN_TOKEN: ${{ secrets.CODEX_ASSIGN_TOKEN }}
         run: |
           echo "Bouncing repair: ${{ steps.parse.outputs.bounce_reason }}"

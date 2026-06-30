@@ -3,6 +3,7 @@ import {
   evaluateRepairComplexity,
   getEnv,
   getRepairBudgets,
+  githubPaginate,
   githubRequest,
   parseStatusStateFromBody,
   readJsonFile,
@@ -227,12 +228,11 @@ if (!explicit) {
   if (budgets.enabled) {
     let failingChecks = 0;
     try {
-      const checkRuns = await githubRequest(
+      const checkRuns = await githubPaginate(
         `/repos/${owner}/${repo}/commits/${headSha}/check-runs?per_page=100`,
+        { extract: (page) => page.check_runs },
       );
-      failingChecks = (checkRuns?.check_runs || []).filter(
-        (check) => check.conclusion === 'failure',
-      ).length;
+      failingChecks = checkRuns.filter((check) => check.conclusion === 'failure').length;
     } catch {
       // best-effort: leave failingChecks at its default of 0
     }
@@ -251,6 +251,12 @@ if (!explicit) {
       setOutput('should_run', 'false');
       setOutput('bounced', 'true');
       setOutput('bounce_reason', complexity.reasons.join('; '));
+      setOutput('bounce_files', complexity.metrics.changedFiles);
+      setOutput('bounce_lines', complexity.metrics.diffLines);
+      setOutput('bounce_failing_checks', complexity.metrics.failingChecks);
+      setOutput('bounce_budget_files', budgets.maxChangedFiles);
+      setOutput('bounce_budget_lines', budgets.maxDiffLines);
+      setOutput('bounce_budget_failing', budgets.maxFailingChecks);
       setOutput('skip_reason', `bounced to human: ${complexity.reasons.join('; ')}`);
       setOutput('pr_number', pr.number);
       setOutput('pr_branch', pr.head.ref || '');
