@@ -12,37 +12,37 @@
 
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { parse as parseYaml } from 'yaml';
-import type { SpriteType } from './brief-schema.js';
+import { SPRITE_TYPES } from './brief-schema.js';
 import { z } from 'zod';
+
+type SpriteType = (typeof SPRITE_TYPES)[number];
 
 /**
  * Module configuration: metadata and parameters for a processing step.
  */
-const moduleConfigSchema = z
-  .object({
-    description: z.string().optional(),
-    type: z.string(),
-    enabled: z.boolean().default(true),
-    enabledForTypes: z.array(z.string()).optional(),
-    params: z.record(z.unknown()).default({}),
-  })
-  .strict();
+const moduleConfigSchema = z.object({
+  description: z.string().optional(),
+  type: z.string(),
+  enabled: z.boolean().default(true),
+  enabledForTypes: z.array(z.string()).optional(),
+  params: z.record(z.string(), z.unknown()).default({}),
+});
+
+export type ModuleConfig = z.infer<typeof moduleConfigSchema>;
 
 /**
  * Pipeline template: modules and their execution order.
  */
-const pipelineTemplateSchema = z
-  .object({
-    extends: z.string().optional(),
-    name: z.string(),
-    description: z.string().optional(),
-    modules: z.record(moduleConfigSchema).default({}),
-    pipeline: z.array(z.string()).default([]),
-  })
-  .strict();
+const pipelineTemplateSchema = z.object({
+  extends: z.string().optional(),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  modules: z.record(z.string(), moduleConfigSchema).optional(),
+  pipeline: z.array(z.string()).optional(),
+});
 
-export type ModuleConfig = z.infer<typeof moduleConfigSchema>;
 export type PipelineTemplate = z.infer<typeof pipelineTemplateSchema>;
 
 /**
@@ -60,7 +60,7 @@ export interface ResolvedPipeline {
  */
 function loadTemplateYaml(filePath: string): PipelineTemplate {
   const content = readFileSync(filePath, 'utf8');
-  const parsed = parseYaml(content);
+  const parsed = parseYaml(content) as unknown;
   return pipelineTemplateSchema.parse(parsed);
 }
 
@@ -70,7 +70,7 @@ function loadTemplateYaml(filePath: string): PipelineTemplate {
  */
 function resolveTemplate(spriteType: SpriteType, templatesDir?: string): ResolvedPipeline {
   const actualTemplatesDir =
-    templatesDir ?? resolve(new URL(import.meta.url).pathname, '..', 'templates');
+    templatesDir ?? resolve(dirname(fileURLToPath(import.meta.url)), 'templates');
   const templateFile = resolve(actualTemplatesDir, `${spriteType}.yml`);
   return resolveTemplateRec(templateFile, actualTemplatesDir, new Set());
 }
@@ -87,33 +87,51 @@ function resolveTemplateRec(
   visited.add(filePath);
 
   const template = loadTemplateYaml(filePath);
+  const templateModules = template.modules ?? {};
+  const templatePipeline = template.pipeline ?? [];
 
   // If this template extends another, load and merge the parent
-  let merged: PipelineTemplate = { ...template };
   if (template.extends) {
     const parentFile = resolve(dirname(filePath), template.extends);
     const parent = resolveTemplateRec(parentFile, templatesDir, visited);
 
     // Merge modules: parent modules + overrides from this template
     const mergedModules: Record<string, ModuleConfig> = { ...parent.modules };
-    for (const [key, moduleConfig] of Object.entries(template.modules)) {
-      mergedModules[key] = { ...mergedModules[key], ...moduleConfig };
+    for (const [key, moduleConfig] of Object.entries(templateModules)) {
+      if (moduleConfig) {
+        // Merge parent config with this template's override
+        const parentConfig = mergedModules[key];
+        if (parentConfig) {
+          mergedModules[key] = {
+            type: moduleConfig.type ?? parentConfig.type,
+            enabled:
+              moduleConfig.enabled !== undefined ? moduleConfig.enabled : parentConfig.enabled,
+            params: { ...parentConfig.params, ...(moduleConfig.params ?? {}) },
+            description: moduleConfig.description ?? parentConfig.description,
+            enabledForTypes: moduleConfig.enabledForTypes ?? parentConfig.enabledForTypes,
+          };
+        } else {
+          mergedModules[key] = moduleConfig;
+        }
+      }
     }
 
     // Use parent pipeline if not overridden
-    merged = {
-      ...parent,
-      ...template,
+    const finalPipeline = templatePipeline.length > 0 ? templatePipeline : parent.pipeline;
+
+    return {
+      name: template.name || parent.name || 'postprocess-pipeline',
+      description: template.description ?? parent.description,
       modules: mergedModules,
-      pipeline: template.pipeline.length > 0 ? template.pipeline : parent.pipeline,
+      pipeline: finalPipeline,
     };
   }
 
   return {
-    name: merged.name,
-    description: merged.description,
-    modules: merged.modules,
-    pipeline: merged.pipeline,
+    name: template.name || 'postprocess-pipeline',
+    description: template.description,
+    modules: templateModules,
+    pipeline: templatePipeline,
   };
 }
 
@@ -150,20 +168,20 @@ export function getActiveModules(
   pipeline: ResolvedPipeline,
   spriteType: SpriteType,
 ): Array<{ name: string; config: ModuleConfig }> {
-  return pipeline.pipeline
-    .map((moduleName) => ({
-      name: moduleName,
-      config: pipeline.modules[moduleName],
-    }))
-    .filter(({ config }) => {
-      // Skip if module is globally disabled
-      if (!config.enabled) return false;
+  const result: Array<{ name: string; config: ModuleConfig }> = [];
+  for (const moduleName of pipeline.pipeline) {
+    const config = pipeline.modules[moduleName];
+    if (!config) continue;
 
-      // Skip if module is only enabled for specific types and this isn't one
-      if (config.enabledForTypes && !config.enabledForTypes.includes(spriteType)) {
-        return false;
-      }
+    // Skip if module is globally disabled
+    if (!config.enabled) continue;
 
-      return true;
-    });
+    // Skip if module is only enabled for specific types and this isn't one
+    if (config.enabledForTypes && !config.enabledForTypes.includes(spriteType)) {
+      continue;
+    }
+
+    result.push({ name: moduleName, config });
+  }
+  return result;
 }
