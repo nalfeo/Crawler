@@ -12,10 +12,10 @@
         {
           "round": 1,
           "models": ["claude-haiku-4.5"],
-          "concerns_count": 0,
-          "resolved_count": 0,
+          "concerns_count": 1,
+          "resolved_count": 1,
           "clean": true,
-          "summary": "Single-file constant adjustment with all tests passing. No concerns found: spawn distance constants properly named, calculation is deterministic using SeededRandom, change is well-isolated, and maintains compatibility with existing melee immunity logic."
+          "summary": "Single-file constant adjustment with all tests passing. One concern identified and resolved: constant naming had to align with project convention (MIN/MAX bounds vs min/delta). Fixed by changing MINI_SLIME_SPAWN_MAX_DIST from 2.0 to 3.5 and updating formula to (MAX - MIN) pattern."
         }
       ]
     }
