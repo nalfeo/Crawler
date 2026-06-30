@@ -24,7 +24,7 @@ const CONFIG_RE = /^src\/shared\/data\/(entity-sprite-mappings|sprite-catalog)\.
 // Any .md or .txt file outside src/ is docs — markdown/plaintext cannot contain
 // game logic. src/** is caught first by SRC_NEVER_RE, so this safely matches
 // paths like .github/instructions/*.md, .specify/specs/*.md, etc.
-const ANY_MD_TXT_RE = /\.(md|txt)$/i;
+const ANY_MD_TXT_RE = /\.(md|txt)$/;
 
 // src/** is NEVER skippable EXCEPT for whitelisted config files (defense in depth).
 const SRC_NEVER_RE = /^src\//;
@@ -67,4 +67,13 @@ export function codeFiles(files) {
   return files.map(normalize).filter((f) => classifyPath(f) === 'code');
 }
 
-export { DOCS_RE, ROOT_DOC_RE, ART_RE, DEPS_RE, CONFIG_RE, CONFIG_ALLOWLIST_RE, SRC_NEVER_RE, ANY_MD_TXT_RE };
+export {
+  DOCS_RE,
+  ROOT_DOC_RE,
+  ART_RE,
+  DEPS_RE,
+  CONFIG_RE,
+  CONFIG_ALLOWLIST_RE,
+  SRC_NEVER_RE,
+  ANY_MD_TXT_RE,
+};
