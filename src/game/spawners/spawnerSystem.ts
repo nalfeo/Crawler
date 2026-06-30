@@ -26,12 +26,14 @@ import {
   Health,
   Owner,
   Position,
+  SpawnAnim,
   Spawner,
   Sprite,
 } from '../../core/components.js';
 import { setEnemyAppearanceKey, spawnBehaviorEnemy } from '../../core/helpers.js';
 import type { GameWorld } from '../../core/world.js';
 import { createLogger } from '../../shared/logger.js';
+import { pushVfxEvent } from '../../shared/vfx-events.js';
 import { getSpawnerArchetypeByIndex, pickFromPool } from './registry.js';
 import type { MobTemplate, SpawnMode } from './types.js';
 
@@ -40,8 +42,20 @@ const logger = createLogger('game:spawner');
 /** Children appear in a ring this many feet from the spawner's centre. */
 const CHILD_SPAWN_RADIUS_MIN = 2;
 const CHILD_SPAWN_RADIUS_MAX = 5;
+const SPAWNER_CHILD_SPAWN_ANIM_MS = 240;
+const SPAWNER_PULSE_COLOR = 0x9be15d;
 
 const SPAWN_MODE = { PASSIVE: 0, DEFENSIVE: 1 } as const;
+
+function emitSpawnerPulse(world: GameWorld, x: number, y: number, intensity: number): void {
+  pushVfxEvent(world.vfxEvents, {
+    kind: 'spawnerPulse',
+    x,
+    y,
+    color: SPAWNER_PULSE_COLOR,
+    intensity: Math.max(0.8, intensity),
+  });
+}
 
 /** Count living, non-dying children owned by a given spawner. */
 function countAliveChildren(world: GameWorld, spawnerEid: number): number {
@@ -102,6 +116,14 @@ function spawnChild(
     height: mob.spriteHeight,
   });
   setEnemyAppearanceKey(world, eid, mob.id);
+  addComponent(
+    world.ecs,
+    eid,
+    set(SpawnAnim, {
+      remainingMs: SPAWNER_CHILD_SPAWN_ANIM_MS,
+      totalMs: SPAWNER_CHILD_SPAWN_ANIM_MS,
+    }),
+  );
 
   if (mob.contactDamage > 0) {
     addComponent(
@@ -128,14 +150,20 @@ function resolveDeathFinale(
 ): void {
   const def = getSpawnerArchetypeByIndex(defIndex);
   if (def === undefined) return;
+  let spawned = 0;
 
   for (const group of def.onDeath) {
     for (let i = 0; i < group.count; i += 1) {
       const mob = pickFromPool(group.pool, world.rng.next());
       if (mob !== undefined) {
         spawnChild(world, spawnerEid, x, y, mob, false);
+        spawned += 1;
       }
     }
+  }
+
+  if (spawned > 0) {
+    emitSpawnerPulse(world, x, y, 1 + spawned / 5);
   }
 
   logger.info('Spawner death finale emitted', { eid: spawnerEid, archetype: def.id });
@@ -182,12 +210,17 @@ export function spawnerSystem(world: GameWorld): void {
     const room = mode.maxAlive - alive;
     if (room > 0) {
       const pulse = Math.min(mode.perPulse, room);
+      let spawned = 0;
       for (let i = 0; i < pulse; i += 1) {
         const mob = pickFromPool(mode.pool, world.rng.next());
         if (mob !== undefined) {
           spawnChild(world, eid, x, y, mob, true);
           spawner.spawnedTotal[eid] = (spawner.spawnedTotal[eid] ?? 0) + 1;
+          spawned += 1;
         }
+      }
+      if (spawned > 0) {
+        emitSpawnerPulse(world, x, y, 1 + (spawned - 1) * 0.2);
       }
     }
 

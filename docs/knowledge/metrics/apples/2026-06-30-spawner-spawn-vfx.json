@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-30",
+  "slug": "spawner-spawn-vfx",
+  "task": "Add spawn telegraph VFX and child wiggle for spawner waves",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "verdict": "exact",
+  "notes": "Cross-layer gameplay feedback change that reused existing VFX and SpawnAnim pipelines; review surfaced only focused test-hardening follow-ups."
+}

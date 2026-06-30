@@ -16,6 +16,7 @@
 export type VfxEffectKind =
   | 'pickupSparkle'
   | 'levelUpBurst'
+  | 'spawnerPulse'
   | 'hitSpark'
   | 'critBurst'
   | 'deathPop'
