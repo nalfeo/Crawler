@@ -60,6 +60,7 @@
     "verify:fast": "bash scripts/agent/verify-fast.sh",
     "verify:flash": "vitest run --changed --project unit --reporter=dot",
     "verify": "bash scripts/agent/verify.sh",
+    "verify:pr-prereqs": "node scripts/agent/review/pr-prereq-check.mjs",
     "verify:coverage": "vitest run --project unit --coverage",
     "review:ledger": "node scripts/agent/review/cli.mjs",
     "verify:core": "npm run typecheck:src && npm run lint:core && vitest run tests/ecs tests/property --reporter=dot",

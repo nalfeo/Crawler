@@ -72,7 +72,9 @@ The exact stage schemas and validator rules live in
 ## Enforcement
 
 The `pr-review-ledger` guard (`.github/extensions/copilot-guards/guards/pr-review-ledger.mjs`)
-runs on `create_pull_request`:
+runs on `create_pull_request`, and local `npm run verify` now runs
+`npm run verify:pr-prereqs` to surface the same ledger/preflight blockers earlier
+in the execution-complete loop:
 
 1. Computes the branch diff. A docs/art/deps-only diff is **skipped**.
 2. For a code-touching diff, it looks for a review ledger **added on this branch**

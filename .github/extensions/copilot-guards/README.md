@@ -34,6 +34,10 @@ Loaded automatically because it lives under `.github/extensions/`.
 | Forbidden paths  | Hard-deny on `.env*`, `*.pem`, `*.key`, `id_rsa*`, `.copilot/`, `session-state/`, `generated/`, `*.log`, `node_modules/`. |
 | Cross-system ADR | Hard deny when the diff spans 2+ of `src/core`, `src/engine`, `src/game` without an ADR in the branch.                    |
 
+For earlier feedback in the local completion loop (without waiting for
+`create_pull_request`), run `npm run verify:pr-prereqs` (included in
+`npm run verify`).
+
 ### `pr-review-ledger` in detail
 
 Enforces the apple-scaled review harness (see
