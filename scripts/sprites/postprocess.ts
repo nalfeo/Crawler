@@ -21,8 +21,9 @@
  *   - No randomness (no Math.random; if you need ties broken, break them
  *     deterministically on index).
  *   - No environment reads (no process.env).
- *   - No filesystem access. The function takes the raw PNG bytes and returns
- *     the encoded result.
+ *   - No network access or environment-driven behavior.
+ *   - Pipeline templates are loaded from disk via a cached resolver; image
+ *     processing itself remains pure for a given raw PNG + brief + palette.
  *
  * Note on signature: the spec writes `(rawPng, brief) => Buffer`, but the brief
  * carries a palette *id*, not the resolved color list. To keep this function
@@ -35,6 +36,10 @@ import { PNG } from 'pngjs';
 import type { Brief, PaletteColors, RgbTriple } from './brief-schema.js';
 import { getPipelineForType, getActiveModules } from './template-pipeline.js';
 import { postprocessModules } from './postprocess-modules.js';
+import {
+  BACKGROUND_B_COLOR_TOLERANCE_SQ,
+  BACKGROUND_B_FRINGE_TOLERANCE_SQ,
+} from './postprocess-constants.js';
 
 interface RgbaImage {
   readonly width: number;
@@ -125,6 +130,12 @@ export function postprocessWithTrace(
       if (options.background.fringeToleranceSq !== undefined) {
         moduleParams.fringeToleranceSq = options.background.fringeToleranceSq;
       }
+    }
+    if (
+      (config.type === 'enclosed-region-cleanup' || config.type === 'background-rekey') &&
+      options.background?.fringeToleranceSq !== undefined
+    ) {
+      moduleParams.fringeToleranceSq = options.background.fringeToleranceSq;
     }
     if (config.type === 'speckle-cleanup' && options.speckle) {
       if (options.speckle.minChannel !== undefined) {
@@ -259,8 +270,7 @@ function encodePng(image: RgbaImage): Buffer {
  */
 export const BACKGROUND_COLOR_TOLERANCE_SQ = 32 * 32; // squared Euclidean RGB tolerance
 export const BACKGROUND_FRINGE_TOLERANCE_SQ = 56 * 56; // post-flood edge cleanup tolerance
-export const BACKGROUND_B_COLOR_TOLERANCE_SQ = 4000; // fringe-clean default flood-fill tolerance
-export const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 12000; // fringe-clean default cleanup tolerance
+export { BACKGROUND_B_COLOR_TOLERANCE_SQ, BACKGROUND_B_FRINGE_TOLERANCE_SQ };
 /**
  * Minimum pixel area for an enclosed background-coloured region to be cleared.
  *

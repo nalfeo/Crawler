@@ -20,15 +20,17 @@ import {
   fitWithinNearest,
   scaleToMinDimension,
 } from './postprocess.js';
+import { resizeSpriteStrategy } from './size-variants.js';
+import {
+  BACKGROUND_B_COLOR_TOLERANCE_SQ,
+  BACKGROUND_B_FRINGE_TOLERANCE_SQ,
+} from './postprocess-constants.js';
 
 interface RgbaImage {
   readonly width: number;
   readonly height: number;
   readonly data: Uint8Array;
 }
-
-const BACKGROUND_B_COLOR_TOLERANCE_SQ = 3 * 255 * 255 * 0.2; // ~15 per channel
-const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 3 * 255 * 255 * 0.06; // ~5 per channel
 
 function normalizeTolerance(userValue: number | undefined, defaultValue: number): number {
   if (userValue === undefined) return defaultValue;
@@ -120,7 +122,12 @@ export const postprocessModules: Record<string, ModuleHandler> = {
 
   'resize-nearest': (image, _params, ctx) => {
     const { width: targetW, height: targetH } = ctx.brief.size;
-    const fitResize = fitWithinNearest(image, targetW, targetH);
+    const fitResize = fitWithinNearest(
+      image,
+      targetW,
+      targetH,
+      resizeSpriteStrategy(ctx.brief.type, targetW, targetH),
+    );
 
     ctx.pushStep(
       'resize-nearest',

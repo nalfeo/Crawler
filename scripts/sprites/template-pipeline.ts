@@ -18,6 +18,7 @@ import { SPRITE_TYPES } from './brief-schema.js';
 import { z } from 'zod';
 
 type SpriteType = (typeof SPRITE_TYPES)[number];
+const defaultTemplatesDir = resolve(dirname(fileURLToPath(import.meta.url)), 'templates');
 
 /**
  * Module override patch as authored in templates. Child templates can provide
@@ -77,8 +78,7 @@ function loadTemplateYaml(filePath: string): PipelineTemplate {
  * If the template has an `extends` key, load and merge the parent first.
  */
 function resolveTemplate(spriteType: SpriteType, templatesDir?: string): ResolvedPipeline {
-  const actualTemplatesDir =
-    templatesDir ?? resolve(dirname(fileURLToPath(import.meta.url)), 'templates');
+  const actualTemplatesDir = templatesDir ?? defaultTemplatesDir;
   const templateFile = resolve(actualTemplatesDir, `${spriteType}.yml`);
   return resolveTemplateRec(templateFile, actualTemplatesDir, new Set());
 }
@@ -157,18 +157,20 @@ function resolveModuleConfig(
  * Get the resolved pipeline for a sprite type.
  * Caches results to avoid re-parsing on every call.
  */
-const pipelineCache = new Map<SpriteType, ResolvedPipeline>();
+const pipelineCache = new Map<string, ResolvedPipeline>();
 
 export function getPipelineForType(
   spriteType: SpriteType,
   templatesDir?: string,
 ): ResolvedPipeline {
-  if (pipelineCache.has(spriteType)) {
-    return pipelineCache.get(spriteType)!;
+  const actualTemplatesDir = templatesDir ?? defaultTemplatesDir;
+  const cacheKey = `${actualTemplatesDir}::${spriteType}`;
+  if (pipelineCache.has(cacheKey)) {
+    return pipelineCache.get(cacheKey)!;
   }
 
-  const resolved = resolveTemplate(spriteType, templatesDir);
-  pipelineCache.set(spriteType, resolved);
+  const resolved = resolveTemplate(spriteType, actualTemplatesDir);
+  pipelineCache.set(cacheKey, resolved);
   return resolved;
 }
 
