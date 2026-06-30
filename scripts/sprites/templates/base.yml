@@ -1,0 +1,90 @@
+# Base post-processing pipeline template
+#
+# Defines the core pipeline that all sprite types inherit from.
+# Sprite-type templates override module parameters or disable specific steps.
+#
+# Modules are executed in order. Each module is a pure function:
+#   (image, brief, options) => { image, steps }
+#
+# Step naming convention: modules use step IDs like 'background-removal',
+# 'transparent-trim', etc., which appear in the trace UI and audit logs.
+
+name: base-postprocess-pipeline
+description: Default post-processing pipeline with full background/trim/resize support
+
+# Define reusable module configurations.
+# These become the building blocks for pipelines.
+modules:
+  background-removal:
+    description: 4-corner flood fill to remove background.
+    type: background-removal
+    enabled: true
+    params: {}
+
+  enclosed-regions:
+    description: Clean enclosed background islands (character/enemy only).
+    type: enclosed-region-cleanup
+    enabled: true
+    enabledForTypes: [enemy, character]
+    params: {}
+
+  transparent-trim:
+    description: Crop to opaque bounding box, re-pad with proportional margin.
+    type: transparent-trim
+    enabled: true
+    params:
+      marginFraction: 0.06
+      minMarginPx: 1
+
+  resize:
+    description: Nearest-neighbor fit to brief.size.width x brief.size.height.
+    type: resize-nearest
+    enabled: true
+    params: {}
+
+  background-rekey:
+    description: Re-run background removal post-resize to clean re-exposed fringe.
+    type: background-rekey
+    enabled: true
+    params: {}
+
+  speckle-cleanup:
+    description: Replace isolated near-white pixels with neighboring opaque color.
+    type: speckle-cleanup
+    enabled: true
+    params:
+      mode: edge-drop
+      minChannel: 245
+      maxOpaqueNeighbors: 8
+      dropEdgeOrphans: true
+
+  palette-quantize:
+    description: Quantize to strict palette (if brief.postprocessing.paletteMode is 'strict').
+    type: palette-quantize
+    enabled: true
+    params: {}
+
+  alpha-threshold:
+    description: Hard-threshold alpha channel (0 or 255).
+    type: alpha-threshold
+    enabled: true
+    params: {}
+
+  trim-and-fit:
+    description: Trim transparent edges and scale to minDimension (if brief.postprocessing.trimAndFit).
+    type: trim-and-fit
+    enabled: true
+    params:
+      minDimension: 64
+
+# Pipeline: sequence of modules to execute for this template.
+pipeline:
+  - background-removal
+  - enclosed-regions
+  - transparent-trim
+  - resize
+  - background-rekey
+  - speckle-cleanup
+  - palette-quantize
+  - alpha-threshold
+  - trim-and-fit
