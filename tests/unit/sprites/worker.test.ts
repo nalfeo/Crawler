@@ -316,4 +316,40 @@ describe('runWorker', () => {
     expect(mockIssuePipeline).toHaveBeenCalledOnce();
     expect(ack).toHaveBeenCalledOnce();
   });
+
+  it('acks and skips a rejected issue-originated job before pipeline execution', async () => {
+    const ack = vi.fn().mockResolvedValue(undefined);
+    const request: AssetRequest = {
+      kind: 'issue-request',
+      issueNumber: 100,
+      name: 'bone-dagger',
+      briefSentence: 'A chipped bone dagger with twine-wrapped handle.',
+      fingerprint: 'reject-me',
+      claimedAt: new Date().toISOString(),
+      requestedBy: 'test',
+      requestedAt: new Date().toISOString(),
+      priority: 'normal',
+    };
+    const controller = new AbortController();
+    const queue = makeQueue([makeMessage(request, ack), null]);
+    await runWorker({
+      queue,
+      store: makeStore(),
+      repoRoot: '/repo',
+      provider: stubProvider,
+      textProvider: null,
+      synthProvider: {} as never,
+      briefSelectorProvider: {} as never,
+      issueApi: { comment: async () => {} },
+      shouldSkipIssueRequest: async (r) =>
+        r.kind === 'issue-request' && r.fingerprint === 'reject-me',
+      signal: controller.signal,
+      pollIntervalMs: 0,
+      onStatus: (s) => {
+        if (s.type === 'skipped') controller.abort();
+      },
+    });
+    expect(ack).toHaveBeenCalledOnce();
+    expect(mockIssuePipeline).not.toHaveBeenCalled();
+  });
 });

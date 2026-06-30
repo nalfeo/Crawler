@@ -63,12 +63,19 @@ export interface WorkerOptions {
    * each state transition. Useful for logging and tests.
    */
   readonly onStatus?: (status: WorkerStatus) => void;
+  /**
+   * Optional guard for issue-originated jobs. When it resolves true, the worker
+   * acks the message without generation (for example, permanently rejected
+   * requests that were queued before the rejection marker was written).
+   */
+  readonly shouldSkipIssueRequest?: (request: IssueAssetRequest) => Promise<boolean>;
 }
 
 /** Possible worker state transitions reported via `onStatus`. */
 export type WorkerStatus =
   | { readonly type: 'idle' }
   | { readonly type: 'processing'; readonly briefId: string }
+  | { readonly type: 'skipped'; readonly briefId: string; readonly reason: 'rejected' }
   | {
       readonly type: 'done';
       readonly briefId: string;
@@ -101,6 +108,19 @@ export async function runWorker(options: WorkerOptions): Promise<void> {
     }
 
     const { request } = msg;
+    if (
+      request.kind === 'issue-request' &&
+      options.shouldSkipIssueRequest &&
+      (await options.shouldSkipIssueRequest(request))
+    ) {
+      await msg.ack();
+      onStatus?.({
+        type: 'skipped',
+        briefId: describeRequest(request),
+        reason: 'rejected',
+      });
+      continue;
+    }
     onStatus?.({ type: 'processing', briefId: describeRequest(request) });
 
     try {
