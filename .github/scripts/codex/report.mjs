@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   getEnv,
   githubGraphql,
+  githubPaginate,
   githubRequest,
   parseBoolean,
   parseStatusStateFromBody,
@@ -59,10 +60,11 @@ const validation = fs.existsSync(validationPath)
   : { commands: [], results: [], all_passed: validationSucceeded };
 
 const pr = await githubRequest(`/repos/${owner}/${repo}/pulls/${prNumber}`);
-const checksPayload = await githubRequest(
+const checkRuns = await githubPaginate(
   `/repos/${owner}/${repo}/commits/${pr.head.sha}/check-runs?per_page=100`,
+  { extract: (page) => page.check_runs },
 );
-const failingChecks = (checksPayload?.check_runs || []).filter(
+const failingChecks = checkRuns.filter(
   (check) => check.conclusion === 'failure' || check.status !== 'completed',
 );
 
@@ -146,7 +148,7 @@ for (const threadReply of result.thread_responses || []) {
   }
 }
 
-const comments = await githubRequest(
+const comments = await githubPaginate(
   `/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`,
 );
 const existingStatus = comments.find(

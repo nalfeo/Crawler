@@ -89,3 +89,12 @@ test('githubPaginate surfaces a non-ok response as an error', async () => {
   global.fetch = async () => makeResponse({ body: {}, ok: false, status: 403, text: 'forbidden' });
   await assert.rejects(() => githubPaginate('/x'), /failed \(403\)/);
 });
+
+test('githubPaginate skips a non-array extract result instead of throwing', async () => {
+  process.env.GITHUB_TOKEN = 'test-token';
+  // A wrapped payload paginated without an extract that returns the inner array
+  // (or a key that is missing) yields a non-array — it must be skipped, not crash.
+  mockFetchSequence([{ body: { check_runs: [{ id: 1 }] }, link: null }]);
+  const items = await githubPaginate('/x');
+  assert.deepEqual(items, []);
+});

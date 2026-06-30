@@ -59,7 +59,7 @@ async function fetchHeadCommitMessage(sha) {
 }
 
 async function fetchCodexStatusState(prNumber) {
-  const comments = await githubRequest(
+  const comments = await githubPaginate(
     `/repos/${owner}/${repo}/issues/${prNumber}/comments?per_page=100`,
   );
   const codexStatus = comments.find(
