@@ -14,6 +14,7 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
    - Optional secret: `OPENAI_API_KEY` (for the `codex` provider)
    - Optional secret: `GEMINI_API_KEY` (for the `gemini` provider; free AI Studio key works)
    - Optional secret: `AZURE_OPENAI_API_KEY` (for the `azure` provider; billed to your Azure subscription)
+   - Optional secret for Copilot auto-assignment on a bounce: `CODEX_ASSIGN_TOKEN` — a **user** PAT (fine-grained with **Pull requests: write** + **Issues: write**, or classic with `repo` scope). A user token is **required** to assign the Copilot coding agent: GitHub rejects agent assignment from both the default Actions `GITHUB_TOKEN` and **GitHub App installation tokens** ("Assigning agents is not supported with GitHub App installation tokens. Use a user token instead"). Without it, a bounce still comments + labels and asks for a manual assignment.
    - Optional repo variables:
      - `CODEX_MODEL` (default: CLI's own default; set a valid model to override — for `azure` this is the **deployment** name, e.g. `gpt-4o`)
      - `CODEX_PROVIDER` (default: `codex`; set to `gemini` or `azure`)
@@ -22,6 +23,12 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
      - `AZURE_OPENAI_API_VERSION` (for the `azure` provider; default `2025-04-01-preview`)
      - `CODEX_ROUTER_ENABLED` (auto-trigger kill switch; the event router only runs when set to `'true'`. Leave unset/`false` for manual-testing-only — the runner's `workflow_dispatch` path is unaffected)
      - `CODEX_VALIDATION_COMMANDS` (newline-separated validation commands override)
+     - Cost guardrail (bounce) — see [Cost guardrail](#cost-guardrail-bounce-oversized-repairs-to-a-human):
+       - `CODEX_BOUNCE_ENABLED` (default `true`; set `false` to disable bouncing)
+       - `CODEX_BOUNCE_MAX_CHANGED_FILES` (default `20`; `-1` disables this dimension)
+       - `CODEX_BOUNCE_MAX_DIFF_LINES` (default `1500`; additions + deletions; `-1` disables)
+       - `CODEX_BOUNCE_MAX_FAILING_CHECKS` (default `6`; `-1` disables)
+       - `CODEX_BOUNCE_LABEL` (default `auto-heal-bounced`)
 3. (Optional) Add `.github/codex-repair.json` for future per-repo settings.
 
 ## Local auth + wrapper run (PR-synced sessions)
@@ -111,6 +118,45 @@ What this wrapper does:
 - Uses PR-scoped concurrency.
 - Tracks attempts/failure streak in a persistent status comment.
 - Auto-repair pauses when thresholds are exceeded.
+
+## Cost guardrail: bounce oversized repairs to a human
+
+The agentic repair loop re-sends the gathered prompt every turn, so cost scales with
+PR size. To avoid spending tokens on PRs that are too large/complex to fix
+automatically, the eligibility step (`event-parse.mjs`) runs a **pre-flight complexity
+check before any checkout/install/model call** — so a bounce costs ~zero tokens and
+near-zero CI minutes.
+
+For **auto** (non-explicit) **runner** executions (`workflow_dispatch`) only, the PR is
+**bounced to a human** when any budget is exceeded. The router always dispatches; the
+runner owns the bounce comment/label handoff:
+
+- changed files > `CODEX_BOUNCE_MAX_CHANGED_FILES` (default 20)
+- diff lines (additions + deletions) > `CODEX_BOUNCE_MAX_DIFF_LINES` (default 1500)
+- failing checks > `CODEX_BOUNCE_MAX_FAILING_CHECKS` (default 6)
+
+On a bounce, `bounce.mjs` (idempotent, best-effort):
+
+1. posts/updates a sticky `<!-- codex-bounce -->` comment explaining why and the
+   measured-vs-budget numbers,
+2. adds the `CODEX_BOUNCE_LABEL` label (`auto-heal-bounced`), and
+3. auto-assigns the **Copilot coding agent** (`copilot-swe-agent`) to the PR via
+   GraphQL `replaceActorsForAssignable`. (Assigning Copilot to a _pull request_
+   requires GraphQL — the REST assignees endpoint returns 201 but silently drops
+   the Copilot bot on PRs; REST only works for issues, e.g. `coverage-gap-copilot.yml`.)
+   Assigning an agent requires a **user** token: GitHub rejects it from the default
+   Actions `GITHUB_TOKEN` _and_ from **GitHub App installation tokens** ("Assigning
+   agents is not supported with GitHub App installation tokens. Use a user token
+   instead"). So the bounce uses a `CODEX_ASSIGN_TOKEN` PAT (with Copilot access).
+   Without it — or if the assignment is rejected — the comment says to assign
+   `@Copilot` manually.
+
+The job still finishes **green** on a bounce (it's an intended outcome, not a failure),
+and the status/report comment is skipped so the bounce comment is the only one.
+
+**Escape hatches:** explicit runs (`/codex …` or `workflow_dispatch` with
+`explicit=true`) **bypass** the budget entirely. Set `CODEX_BOUNCE_ENABLED=false` to
+disable bouncing, or set any individual budget to `-1` to disable just that dimension.
 
 ## Context gathered for Codex
 

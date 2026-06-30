@@ -74,9 +74,64 @@ export async function githubRequest(
   return response.text();
 }
 
-export async function githubGraphql(query, variables = {}) {
+function parseNextPageUrl(linkHeader) {
+  if (!linkHeader) {
+    return null;
+  }
+  for (const part of linkHeader.split(',')) {
+    const match = part.match(/<([^>]+)>;\s*rel="next"/);
+    if (match) {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * GET a paginated GitHub list endpoint, following the `Link: rel="next"` header
+ * until exhausted (or `maxPages` is reached, as a runaway guard). `extract` pulls
+ * the array out of each page payload — identity for bare-array responses (e.g.
+ * issue comments), or `(page) => page.check_runs` for the check-runs envelope.
+ * Returns the concatenated items across all pages.
+ */
+export async function githubPaginate(urlPath, { extract = (page) => page, maxPages = 50 } = {}) {
   const token = process.env.GITHUB_TOKEN;
   if (!token) {
+    throw new Error('GITHUB_TOKEN is required');
+  }
+
+  const apiBase = getEnv('GITHUB_API_URL', 'https://api.github.com');
+  let url = urlPath.startsWith('http') ? urlPath : apiBase + urlPath;
+  const items = [];
+
+  for (let page = 0; url && page < maxPages; page += 1) {
+    const response = await fetch(url, {
+      headers: {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error('GitHub API GET ' + url + ' failed (' + response.status + '): ' + text);
+    }
+
+    const pageItems = extract(await response.json());
+    if (Array.isArray(pageItems)) {
+      items.push(...pageItems);
+    }
+
+    url = parseNextPageUrl(response.headers.get('link'));
+  }
+
+  return items;
+}
+
+export async function githubGraphql(query, variables = {}, { token } = {}) {
+  const authToken = token || process.env.GITHUB_TOKEN;
+  if (!authToken) {
     throw new Error('GITHUB_TOKEN is required');
   }
 
@@ -84,7 +139,7 @@ export async function githubGraphql(query, variables = {}) {
   const response = await fetch(apiBase + '/graphql', {
     method: 'POST',
     headers: {
-      Authorization: 'Bearer ' + token,
+      Authorization: 'Bearer ' + authToken,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json',
@@ -120,4 +175,53 @@ export function parseStatusStateFromBody(body) {
 
 export function isExplicitCommand(command) {
   return typeof command === 'string' && command.startsWith('/codex');
+}
+
+function parseIntEnv(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? '').trim(), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/**
+ * Cost guardrail budgets for the auto-healer. Auto (non-explicit) repairs that
+ * exceed any budget are bounced to a human instead of spending model tokens.
+ * Set a budget to a negative number to disable that individual dimension, or
+ * set CODEX_BOUNCE_ENABLED=false to disable bouncing entirely.
+ */
+export function getRepairBudgets(env = process.env) {
+  return {
+    enabled: parseBoolean(env.CODEX_BOUNCE_ENABLED, true),
+    maxChangedFiles: parseIntEnv(env.CODEX_BOUNCE_MAX_CHANGED_FILES, 20),
+    maxDiffLines: parseIntEnv(env.CODEX_BOUNCE_MAX_DIFF_LINES, 1500),
+    maxFailingChecks: parseIntEnv(env.CODEX_BOUNCE_MAX_FAILING_CHECKS, 6),
+  };
+}
+
+/**
+ * Pure complexity/cost evaluation. Given cheap pre-flight metrics (PR diff size,
+ * changed-file count, failing-check count) and budgets, decide whether the
+ * repair is too expensive/complex for the auto-healer and should be bounced.
+ */
+export function evaluateRepairComplexity(metrics = {}, budgets = getRepairBudgets()) {
+  const changedFiles = Number(metrics.changedFiles || 0);
+  const diffLines = Number(metrics.additions || 0) + Number(metrics.deletions || 0);
+  const failingChecks = Number(metrics.failingChecks || 0);
+
+  const reasons = [];
+  if (budgets.maxChangedFiles >= 0 && changedFiles > budgets.maxChangedFiles) {
+    reasons.push(`${changedFiles} changed files exceeds budget of ${budgets.maxChangedFiles}`);
+  }
+  if (budgets.maxDiffLines >= 0 && diffLines > budgets.maxDiffLines) {
+    reasons.push(`${diffLines} changed lines exceeds budget of ${budgets.maxDiffLines}`);
+  }
+  if (budgets.maxFailingChecks >= 0 && failingChecks > budgets.maxFailingChecks) {
+    reasons.push(`${failingChecks} failing checks exceeds budget of ${budgets.maxFailingChecks}`);
+  }
+
+  return {
+    tooComplex: Boolean(budgets.enabled) && reasons.length > 0,
+    reasons,
+    metrics: { changedFiles, diffLines, failingChecks },
+    budgets,
+  };
 }

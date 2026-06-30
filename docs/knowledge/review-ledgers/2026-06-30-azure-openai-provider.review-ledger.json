@@ -2,8 +2,8 @@
   "schema_version": "review-ledger/v1",
   "date": "2026-06-30",
   "session_slug": "azure-openai-provider",
-  "task_title": "Add Azure OpenAI provider to codex-repair pipeline",
-  "estimated_apples": 2,
+  "task_title": "Codex-repair pipeline: Azure OpenAI provider, gpt-5.3-codex upgrade, and cost-cap bounce gate",
+  "estimated_apples": 3,
   "stages": {
     "plan_review": {
       "completed": true,
@@ -18,9 +18,26 @@
         {
           "round": 1,
           "models": ["claude-sonnet-4.6"],
+          "concerns_count": 3,
+          "resolved_count": 3,
+          "clean": false,
+          "notes": "single-page check-runs fetch (maxFailingChecks bypassable), bounce.mjs re-evaluated complexity (table vs reason mismatch), upsertComment scanned only first 100 comments (duplicate sticky comments). Fixed via githubPaginate + threading event-parse metrics through env (65aca40)."
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false,
+          "notes": "fetchCodexStatusState + report.mjs status-comment lookup still single-page -> auto-repair attempt limiter bypassable on >100-comment PRs. Paginated both + report.mjs check-runs summary; added non-array extract test (e18d067)."
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
           "concerns_count": 0,
           "resolved_count": 0,
-          "clean": true
+          "clean": true,
+          "notes": "Confirmed round-2 limiter fixes correct; check-runs filter semantics unchanged; gather-context per_page caps intentionally un-paginated (prompt-token bounding); holistic pass over all 14 files found no new issues. No concerns."
         }
       ]
     }
