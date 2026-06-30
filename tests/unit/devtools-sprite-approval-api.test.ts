@@ -117,6 +117,7 @@ describe('devtools sprite approval api', () => {
               chosenIndex: 2,
               candidateCount: 4,
               hasJudge: true,
+              promotionState: 'not-promoted',
             },
           ],
         }),
@@ -124,7 +125,7 @@ describe('devtools sprite approval api', () => {
       ),
     );
 
-    const runs = await listSidecarRuns(fetcher as unknown as typeof fetch);
+    const runs = await listSidecarRuns({}, fetcher as unknown as typeof fetch);
     expect(runs).toHaveLength(1);
     expect(runs[0]?.briefId).toBe('iron-sword');
   });

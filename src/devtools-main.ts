@@ -236,6 +236,23 @@ interface SidecarSheetsResponse {
   files: string[];
 }
 
+interface AssetRequestManifestEntry {
+  key: string;
+  issueNumber: number;
+  fingerprint: string;
+  name: string;
+  briefSentence: string;
+  state: 'pending' | 'claimed' | 'rejected';
+  claimedAt: string | null;
+  rejectedAt: string | null;
+  rejectionReason: string | null;
+  isOpen: boolean;
+}
+
+interface AssetRequestManifestResponse {
+  entries: AssetRequestManifestEntry[];
+}
+
 interface SliceBboxEntry {
   index: number;
   row: number;
@@ -1643,6 +1660,27 @@ function render(): void {
     text: 'Reload from Azure:',
     style: { fontSize: '11px', color: '#94a3b8' },
   });
+  const reloadStateFilter = el('select', {
+    title: 'Filter runs by whether they were promoted into checked-in generated content.',
+    style: {
+      padding: '6px 8px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+      fontSize: '11px',
+    },
+  }) as HTMLSelectElement;
+  for (const [value, label] of [
+    ['all', 'All runs'],
+    ['not-promoted', 'Needs review/action'],
+    ['promoted', 'Already promoted'],
+  ] as const) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    reloadStateFilter.append(opt);
+  }
   const reloadSelect = el('select', {
     style: {
       flex: '1 1 320px',
@@ -1685,11 +1723,34 @@ function render(): void {
     text: '',
     style: { fontSize: '11px', color: '#64748b' },
   });
-  reloadRow.append(reloadLabel, reloadSelect, reloadRefreshBtn, reloadLoadBtn, reloadStatus);
+  const clearStoreBtn = el('button', {
+    text: 'Clear Azure state',
+    title: 'Delete generated runs + workflow state in the sidecar store for this workspace.',
+    style: {
+      padding: '6px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(248,113,113,0.5)',
+      background: '#3f1d1d',
+      color: '#fecaca',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
+  reloadRow.append(
+    reloadLabel,
+    reloadStateFilter,
+    reloadSelect,
+    reloadRefreshBtn,
+    reloadLoadBtn,
+    clearStoreBtn,
+    reloadStatus,
+  );
   const refreshAzureRuns = async (): Promise<void> => {
     reloadStatus.textContent = 'Loading…';
     try {
-      const runs = await listSidecarRuns();
+      const runs = await listSidecarRuns({
+        promoted: reloadStateFilter.value as 'all' | 'promoted' | 'not-promoted',
+      });
       azureRunChoices = runs;
       reloadSelect.replaceChildren();
       if (runs.length === 0) {
@@ -1704,7 +1765,11 @@ function render(): void {
         const opt = document.createElement('option');
         opt.value = String(i);
         const ts = run.timestamp ? new Date(run.timestamp).toLocaleString() : 'unknown time';
-        opt.textContent = `${run.briefId} · ${run.runId}${run.hasJudge ? ' · judged' : ''} · ${ts}`;
+        const promoted = run.promotionState === 'promoted' ? 'promoted' : 'needs promotion';
+        opt.textContent =
+          `${run.briefId} · ${run.runId}` +
+          `${run.hasJudge ? ' · judged' : ''}` +
+          ` · ${promoted} · ${ts}`;
         reloadSelect.append(opt);
       });
       reloadStatus.textContent = `${runs.length} run(s).`;
@@ -1713,6 +1778,9 @@ function render(): void {
     }
   };
   reloadRefreshBtn.addEventListener('click', () => {
+    void refreshAzureRuns();
+  });
+  reloadStateFilter.addEventListener('change', () => {
     void refreshAzureRuns();
   });
   reloadLoadBtn.addEventListener('click', () => {
@@ -1758,6 +1826,219 @@ function render(): void {
         setButtonBusy(reloadLoadBtn, false, 'Load sheet', 'Loading…');
       }
     })();
+  });
+  clearStoreBtn.addEventListener('click', () => {
+    void (async () => {
+      const ok = window.confirm(
+        'Clear generated runs + workflow state from the sidecar store? This permanently abandons pending/reloadable work for this workspace.',
+      );
+      if (!ok) return;
+      setButtonBusy(clearStoreBtn, true, 'Clear Azure state', 'Clearing…');
+      try {
+        const result = await fetchJson<{ ok: true; deletedCount: number }>(
+          `${SIDECAR_BASE}/api/workflow/store/clear`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scope: 'all' }),
+          },
+        );
+        queueState = queueClear(queueState);
+        writeQueueState();
+        debugTarget = null;
+        renderPostprocessDebugger();
+        renderQueue();
+        renderWorkflowSelection();
+        writeWorkflowState();
+        reloadStatus.textContent = `Cleared ${result.deletedCount} stored artifact(s).`;
+        setWorkflowStatus('Cleared sidecar store state. Queue reset to empty.', '#fcd34d');
+        await refreshAzureRuns();
+      } catch (error) {
+        reloadStatus.textContent = `Clear failed: ${error instanceof Error ? error.message : String(error)}`;
+      } finally {
+        setButtonBusy(clearStoreBtn, false, 'Clear Azure state', 'Clearing…');
+      }
+    })();
+  });
+
+  const requestManifestSection = el('div', {
+    style: {
+      display: 'grid',
+      gap: '8px',
+      marginBottom: '10px',
+      padding: '8px',
+      borderRadius: '8px',
+      border: '1px solid rgba(148,163,184,0.25)',
+      background: '#0f172a',
+    },
+  });
+  const requestManifestHeader = el('div', {
+    style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' },
+  });
+  requestManifestHeader.append(
+    el('span', { text: 'Asset request manifest:', style: { fontSize: '11px', color: '#94a3b8' } }),
+  );
+  const requestManifestSelect = el('select', {
+    style: {
+      padding: '6px 8px',
+      borderRadius: '8px',
+      border: '1px solid rgba(229,231,235,0.3)',
+      background: '#111827',
+      color: '#e5e7eb',
+      fontSize: '11px',
+    },
+  }) as HTMLSelectElement;
+  for (const [value, label] of [
+    ['', 'Select manifest view…'],
+    ['pending', 'Needs action'],
+    ['claimed', 'Claimed / in progress'],
+    ['rejected', 'Rejected'],
+    ['all', 'All requests'],
+  ] as const) {
+    const opt = document.createElement('option');
+    opt.value = value;
+    opt.textContent = label;
+    requestManifestSelect.append(opt);
+  }
+  const requestManifestRefreshBtn = el('button', {
+    text: '↻ Requests',
+    style: {
+      padding: '6px 10px',
+      borderRadius: '8px',
+      border: '1px solid rgba(56,189,248,0.5)',
+      background: '#0c4a6e',
+      color: '#e0f2fe',
+      cursor: 'pointer',
+      fontSize: '11px',
+    },
+  }) as HTMLButtonElement;
+  const requestManifestStatus = el('span', {
+    text: 'Choose a manifest view to load requests.',
+    style: { fontSize: '11px', color: '#64748b' },
+  });
+  requestManifestHeader.append(
+    requestManifestSelect,
+    requestManifestRefreshBtn,
+    requestManifestStatus,
+  );
+  const requestManifestTableWrap = el('div', {
+    style: {
+      display: 'none',
+      border: '1px solid rgba(148,163,184,0.2)',
+      borderRadius: '8px',
+      overflow: 'auto',
+      maxHeight: '220px',
+      background: '#020617',
+    },
+  });
+  const requestManifestTable = el('table', { className: 'asset-table' });
+  const requestManifestHead = document.createElement('thead');
+  const requestManifestHeadRow = document.createElement('tr');
+  for (const heading of ['Issue', 'Name', 'Brief', 'Status', 'Updated', 'Actions']) {
+    requestManifestHeadRow.append(el('th', { text: heading }));
+  }
+  requestManifestHead.append(requestManifestHeadRow);
+  const requestManifestBody = document.createElement('tbody');
+  requestManifestTable.append(requestManifestHead, requestManifestBody);
+  requestManifestTableWrap.append(requestManifestTable);
+  requestManifestSection.append(requestManifestHeader, requestManifestTableWrap);
+  const loadAssetRequestManifest = async (): Promise<void> => {
+    const selected = requestManifestSelect.value;
+    if (selected === '') {
+      requestManifestTableWrap.style.display = 'none';
+      requestManifestBody.replaceChildren();
+      requestManifestStatus.textContent = 'Choose a manifest view to load requests.';
+      return;
+    }
+    requestManifestStatus.textContent = 'Loading requests…';
+    requestManifestTableWrap.style.display = 'block';
+    try {
+      const payload = await fetchJson<AssetRequestManifestResponse>(
+        `${SIDECAR_BASE}/api/workflow/asset-requests?state=${encodeURIComponent(selected)}`,
+      );
+      requestManifestBody.replaceChildren();
+      for (const entry of payload.entries ?? []) {
+        const row = document.createElement('tr');
+        const updatedAt = entry.rejectedAt ?? entry.claimedAt;
+        const issueLink = el('a', {
+          text: `#${entry.issueNumber}`,
+          style: { color: '#93c5fd', textDecoration: 'underline' },
+        });
+        issueLink.href = `https://github.com/nalfeo/Crawler/issues/${entry.issueNumber}`;
+        issueLink.target = '_blank';
+        issueLink.rel = 'noopener noreferrer';
+        const actionsCell = document.createElement('td');
+        if (entry.state !== 'rejected') {
+          const rejectBtn = el('button', {
+            text: 'Reject',
+            style: {
+              padding: '3px 7px',
+              borderRadius: '6px',
+              border: '1px solid rgba(248,113,113,0.5)',
+              background: '#3f1d1d',
+              color: '#fecaca',
+              cursor: 'pointer',
+              fontSize: '11px',
+            },
+          }) as HTMLButtonElement;
+          rejectBtn.addEventListener('click', () => {
+            void (async () => {
+              const reasonRaw = window.prompt(
+                `Reject request #${entry.issueNumber} permanently? Optional reason:`,
+                entry.rejectionReason ?? '',
+              );
+              if (reasonRaw === null) return;
+              setButtonBusy(rejectBtn, true, 'Reject', 'Rejecting…');
+              try {
+                await fetchJson<{ ok: true }>(
+                  `${SIDECAR_BASE}/api/workflow/asset-requests/reject`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      issueNumber: entry.issueNumber,
+                      fingerprint: entry.fingerprint,
+                      ...(reasonRaw.trim() ? { reason: reasonRaw.trim() } : {}),
+                    }),
+                  },
+                );
+                await loadAssetRequestManifest();
+              } catch (error) {
+                requestManifestStatus.textContent = `Reject failed: ${error instanceof Error ? error.message : String(error)}`;
+              } finally {
+                setButtonBusy(rejectBtn, false, 'Reject', 'Rejecting…');
+              }
+            })();
+          });
+          actionsCell.append(rejectBtn);
+        } else {
+          actionsCell.textContent = entry.rejectionReason
+            ? `Reason: ${entry.rejectionReason}`
+            : '—';
+        }
+        const issueCell = document.createElement('td');
+        issueCell.append(issueLink);
+        row.append(
+          issueCell,
+          el('td', { text: entry.name || '—' }),
+          el('td', { text: entry.briefSentence || '—' }),
+          el('td', { text: `${entry.state}${entry.isOpen ? '' : ' (closed)'}` }),
+          el('td', { text: updatedAt ? new Date(updatedAt).toLocaleString() : '—' }),
+          actionsCell,
+        );
+        requestManifestBody.append(row);
+      }
+      requestManifestStatus.textContent = `${payload.entries?.length ?? 0} request(s).`;
+    } catch (error) {
+      requestManifestStatus.textContent = `Failed: ${error instanceof Error ? error.message : String(error)}`;
+      requestManifestBody.replaceChildren();
+    }
+  };
+  requestManifestSelect.addEventListener('change', () => {
+    void loadAssetRequestManifest();
+  });
+  requestManifestRefreshBtn.addEventListener('click', () => {
+    void loadAssetRequestManifest();
   });
 
   workflowButtons.append(
@@ -1836,6 +2117,7 @@ function render(): void {
     composerRow,
     queueBar,
     reloadRow,
+    requestManifestSection,
     activeItemLabel,
     stepperHost,
     workflowButtons,

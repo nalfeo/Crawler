@@ -1,0 +1,42 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "azure-sheet-triage-controls",
+  "task_title": "Add Azure sheet triage controls",
+  "estimated_apples": 3,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 2,
+      "resolved_count": 2,
+      "notes": "Addressed blocking/medium concerns around promotion parsing, reject durability, lock scope, and clear lifecycle coordination."
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 2,
+          "resolved_count": 2,
+          "clean": false
+        },
+        {
+          "round": 2,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": false
+        },
+        {
+          "round": 3,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

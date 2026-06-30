@@ -10,6 +10,7 @@ export interface SidecarRunListEntry {
   readonly chosenIndex: number | null;
   readonly candidateCount: number | null;
   readonly hasJudge: boolean;
+  readonly promotionState: 'promoted' | 'not-promoted';
 }
 
 interface SidecarRunListResponse {
@@ -108,9 +109,16 @@ function runApproveUrl(briefId: string, runId: string): string {
 }
 
 export async function listSidecarRuns(
+  options: { promoted?: 'all' | 'promoted' | 'not-promoted' } = {},
   fetcher: typeof fetch = fetch,
 ): Promise<SidecarRunListEntry[]> {
-  const response = await fetcher(`${SIDECAR_BASE}/api/runs`, { cache: 'no-store' });
+  const params = new URLSearchParams();
+  if (options.promoted && options.promoted !== 'all') {
+    params.set('promoted', options.promoted);
+  }
+  const url =
+    params.size > 0 ? `${SIDECAR_BASE}/api/runs?${params.toString()}` : `${SIDECAR_BASE}/api/runs`;
+  const response = await fetcher(url, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Failed to load sidecar runs (${response.status} ${response.statusText})`);
   }

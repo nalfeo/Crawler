@@ -128,6 +128,7 @@ describe('createWorkerController', () => {
     });
     expect(options).toHaveLength(1);
     expect(options[0]).toMatchObject({ repoRoot: '/repo', provider: stubImageProvider });
+    expect(options[0]?.shouldSkipIssueRequest).toBeTypeOf('function');
     // pollIntervalMs is forwarded only when provided.
     expect(options[0]?.pollIntervalMs).toBe(0);
   });
