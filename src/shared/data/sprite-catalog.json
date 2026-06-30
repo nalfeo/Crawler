@@ -545,5 +545,57 @@
     "frame": 0,
     "col": 0,
     "row": 0
+  },
+  {
+    "id": "generated:slime-v1-var-2",
+    "kind": "sprite",
+    "label": "slime-v1-var-2",
+    "description": "Generated sprite from brief: slime-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "slime-v1-var-2",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/slime-v1-var-2.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:slime-v1-var-3",
+    "kind": "sprite",
+    "label": "slime-v1-var-3",
+    "description": "Generated sprite from brief: slime-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "slime-v1-var-3",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/slime-v1-var-3.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:slime-v1-var-9",
+    "kind": "sprite",
+    "label": "slime-v1-var-9",
+    "description": "Generated sprite from brief: slime-v1.",
+    "tags": ["generated", "pipeline-approved"],
+    "spriteId": "slime-v1-var-9",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/slime-v1-var-9.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
+  },
+  {
+    "id": "generated:baseball-bat-v1-var-0",
+    "kind": "sprite",
+    "label": "baseball-bat-v1-var-0",
+    "description": "Generated sprite from brief: baseball-bat-v1.",
+    "tags": ["weapon", "generated", "pipeline-approved"],
+    "spriteId": "baseball-bat-v1-var-0",
+    "sheetKey": "generated-manifest",
+    "assetPath": "generated/baseball-bat-v1-var-0.png",
+    "frame": 0,
+    "col": 0,
+    "row": 0
   }
 ]
