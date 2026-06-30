@@ -20,6 +20,7 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
      - `CODEX_BIN` (default: provider's own bin — `codex` or `gemini`; `azure` reuses `codex`)
      - `AZURE_OPENAI_ENDPOINT` (for the `azure` provider, e.g. `https://<resource>.openai.azure.com`)
      - `AZURE_OPENAI_API_VERSION` (for the `azure` provider; default `2025-04-01-preview`)
+     - `CODEX_ROUTER_ENABLED` (auto-trigger kill switch; the event router only runs when set to `'true'`. Leave unset/`false` for manual-testing-only — the runner's `workflow_dispatch` path is unaffected)
      - `CODEX_VALIDATION_COMMANDS` (newline-separated validation commands override)
 3. (Optional) Add `.github/codex-repair.json` for future per-repo settings.
 
@@ -89,6 +90,9 @@ What this wrapper does:
 ## Security model
 
 - Uses a two-stage router/worker pattern: privileged event handlers route to `workflow_dispatch`, and only the dispatched run checks out and executes PR code.
+- Auto-routing is **disabled in-repo by default**: the router job only runs when the repo variable `CODEX_ROUTER_ENABLED == 'true'`, so re-enabling the workflow in the GitHub UI is not by itself enough to start auto-repair.
+- The runner short-circuits ineligible `workflow_dispatch` runs (fork/draft/codex-authored head/attempt limits) **before** checkout, dependency install, or provider execution, so the PR branch and model credentials are never exposed on an ineligible run.
+- Model-provider credentials (`OPENAI_API_KEY`, `GEMINI_API_KEY`, `AZURE_OPENAI_API_KEY`) are injected at **step scope** on the provider step only — not job-wide — so install/context steps never see them.
 - Uses least-privilege workflow permissions:
   - `contents: write`
   - `pull-requests: write`

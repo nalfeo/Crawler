@@ -45,9 +45,6 @@ jobs:
     timeout-minutes: 45
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
       AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT || '' }}
       AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || '' }}
       CODEX_MODEL: ${{ vars.CODEX_MODEL || '' }}
@@ -65,6 +62,13 @@ jobs:
       - name: Resolve PR metadata
         id: parse
         run: node .github/scripts/codex/event-parse.mjs
+
+      - name: Enforce repair eligibility
+        if: steps.parse.outputs.should_run != 'true'
+        run: |
+          echo "Repair not eligible: ${{ steps.parse.outputs.skip_reason }}"
+          echo "Refusing to run before checkout/install/provider (keeps secrets and the PR branch out of ineligible runs)."
+          exit 1
 
       - name: Checkout PR branch
         uses: actions/checkout@v4
@@ -94,6 +98,9 @@ jobs:
       - name: Run Codex provider
         id: codex
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
           CODEX_PROMPT_PATH: ${{ github.workspace }}/.github/scripts/codex/runtime/prompt.md
           CODEX_RESULT_PATH: ${{ github.workspace }}/.github/scripts/codex/runtime/codex-result.json
         run: bash .github/scripts/codex/run-provider.sh
