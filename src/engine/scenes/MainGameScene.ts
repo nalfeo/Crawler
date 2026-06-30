@@ -1470,9 +1470,11 @@ export class MainGameScene extends Phaser.Scene {
       // The light field is expressed in render pixels; the FloorMap reasons in
       // feet (the single internal spatial unit). Bridge the two here — pixels
       // are an engine-only concept, so the conversion stays at this boundary.
+      // Use sub-tile (quarter-tile) resolution for isVisible so the fog-of-war
+      // boundary follows shadow edges at half-tile granularity.
       map: {
-        pixelToTile: (mx, my) => floorMap.worldToTile(pxToFt(mx), pxToFt(my)),
-        isVisible: (tx, ty) => floorMap.isVisible(tx, ty),
+        pixelToTile: (mx, my) => floorMap.worldToSubTile(pxToFt(mx), pxToFt(my)),
+        isVisible: (hx, hy) => floorMap.isVisibleSubtile(hx, hy),
         hasLineOfSight: (x0, y0, x1, y1) =>
           floorMap.hasLineOfSight(pxToFt(x0), pxToFt(y0), pxToFt(x1), pxToFt(y1)),
       },

@@ -649,8 +649,8 @@ export function createPhaserBridge(scene: Phaser.Scene): {
         const img = visual.obj;
         let isVisible = true;
         if (entityType === 'enemy' && world.floorMap) {
-          // worldToTile expects feet; x/y here are pixels, so use the raw
-          // feet position store directly for the tile/FOV lookup.
+          // Use tile-level visibility (any quarter lit) to stay consistent with
+          // weaponSystem and AI perception — avoids "invisible but targetable" paradox.
           const tile = world.floorMap.worldToTile(position.x[eid] ?? 0, position.y[eid] ?? 0);
           isVisible = world.floorMap.isVisible(tile.x, tile.y);
           if (!isVisible && world.debugFlags.showAllRooms) {

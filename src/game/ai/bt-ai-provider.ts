@@ -3114,15 +3114,20 @@ export class BehaviorTreeAI implements AIInputProvider {
     if (!floorMap) {
       return;
     }
-    const visible = floorMap.visible;
-    if (!this.exploredSeen || this.exploredSeen.length !== visible.length) {
-      this.exploredSeen = new Uint8Array(visible.length);
+    const W = floorMap.width;
+    const H = floorMap.height;
+    const tileCount = W * H;
+    if (!this.exploredSeen || this.exploredSeen.length !== tileCount) {
+      this.exploredSeen = new Uint8Array(tileCount);
     }
     const seen = this.exploredSeen;
-    for (let i = 0; i < visible.length; i += 1) {
-      if (visible[i]) {
-        seen[i] = 1;
-        this.hasPerceptionData = true;
+    for (let ty = 0; ty < H; ty++) {
+      for (let tx = 0; tx < W; tx++) {
+        const i = ty * W + tx;
+        if (!seen[i] && floorMap.isVisible(tx, ty)) {
+          seen[i] = 1;
+          this.hasPerceptionData = true;
+        }
       }
     }
   }
@@ -3141,7 +3146,7 @@ export class BehaviorTreeAI implements AIInputProvider {
     }
     if (!this.hasPerceptionData) return true;
     const idx = tile.y * floorMap.width + tile.x;
-    if (floorMap.visible[idx]) return true;
+    if (floorMap.isVisible(tile.x, tile.y)) return true;
     return this.exploredSeen?.[idx] === 1;
   }
 

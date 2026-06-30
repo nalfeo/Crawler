@@ -144,4 +144,40 @@ describe('FOV System', () => {
     expect(() => fovSystem(world)).not.toThrow();
     expect(floorMap.isVisible(1, 1)).toBe(true);
   });
+
+  it('should mark quarter-tiles visible at sub-tile granularity', () => {
+    const floorMap = makeSmallMap();
+    world.floorMap = floorMap;
+
+    // Player at tile (10, 10); tileSizeFt = 32, so halfTile = 16.
+    // worldToSubTile(320, 320) → (20, 20), the TL quadrant of tile (10,10).
+    const eid = addEntity(world.ecs);
+    addComponent(world.ecs, eid, set(Position, { x: 320, y: 320 }));
+    addComponent(world.ecs, eid, Player);
+
+    fovSystem(world);
+
+    // The visible array has 4 entries per tile.
+    expect(floorMap.visible.length).toBe(floorMap.subWidth * floorMap.subHeight);
+
+    // isVisibleSubtile checks raw sub-tile coords.
+    // Player origin sub-tile (20,20) must be visible.
+    expect(floorMap.isVisibleSubtile(20, 20)).toBe(true);
+
+    // isVisibleAt using world position maps to the same sub-tile.
+    expect(floorMap.isVisibleAt(320, 320)).toBe(true);
+    // A world position of (336, 320) → hx = floor(336/16) = 21 (still tile 10)
+    expect(floorMap.isVisibleAt(336, 320)).toBe(true);
+
+    // Sub-tiles of a far-away tile should not be visible (close to map edge wall)
+    expect(floorMap.isVisibleSubtile(0, 0)).toBe(false);
+  });
+
+  it('visible bitmap is quarter-tile sized (4× tile count)', () => {
+    const floorMap = makeSmallMap();
+    const tileCount = floorMap.width * floorMap.height;
+    expect(floorMap.visible.length).toBe(tileCount * 4);
+    expect(floorMap.subWidth).toBe(floorMap.width * 2);
+    expect(floorMap.subHeight).toBe(floorMap.height * 2);
+  });
 });
