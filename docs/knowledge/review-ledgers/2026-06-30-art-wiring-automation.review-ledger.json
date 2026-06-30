@@ -1,0 +1,39 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "art-wiring-automation",
+  "task_title": "Automate wiring patch generation for art ingester",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-haiku-4.5",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Pure logic module + CLI wrapper maintains architectural separation. ConceptMapping strategy sound. Entity type inference limitation acknowledged (covers 6 sprite IDs, documented for future expansion).",
+      "model": "claude-haiku-4.5",
+      "timestamp": "2026-06-30T08:50:52Z",
+      "summary": "Approved: Approach verified, architecture sound, testable design.",
+      "concerns": []
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "model": "claude-haiku-4.5",
+          "models": ["claude-haiku-4.5"],
+          "timestamp": "2026-06-30T08:50:52Z",
+          "clean": true,
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "verdict": "approve",
+          "summary": "All 6 unit tests passing. Typecheck and lint clean. Pure logic with no side effects. CLI wrapper has proper error handling. No regressions. Ready for merge."
+        }
+      ],
+      "model": "claude-haiku-4.5",
+      "timestamp": "2026-06-30T08:50:52Z",
+      "summary": "Code review approved: no concerns.",
+      "concerns": []
+    }
+  }
+}
