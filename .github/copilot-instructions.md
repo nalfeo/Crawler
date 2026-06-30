@@ -37,7 +37,7 @@ Crawler is a crafting-focused vampire-survivors-like game set in a reality show 
 
 ## Merge Policy
 
-- When authorized to merge a PR (via agent-merge automation or explicit instruction), always use `gh pr merge --auto --squash` to enable GitHub's auto-merge. This completes the merge automatically once all required checks pass — do not poll or wait manually.
+- When authorized to merge a PR (via agent-merge automation or explicit instruction), always use `gh pr merge --auto --squash` to enable GitHub's auto-merge. This completes the merge automatically once all required checks pass. Do not run open-ended manual polling/wait loops after arming, but do perform a bounded final-state verification (`state=MERGED` and non-null `mergeCommit`) and clear unresolved review threads before idling.
 - **No human review is required to merge.** There is no branch protection rule requiring an approving review. Never attribute a merge failure to a "human review block" without explicit proof.
 - When `gh pr merge` fails, diagnose the actual cause before giving up:
   1. Run `gh pr checks <pr-number>` to see which checks are failing.

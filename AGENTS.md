@@ -136,7 +136,7 @@ When launching sprite sidecar workflows (`sprites:gallery` or `scripts/sprites/s
 
 ## Merge Policy
 
-- When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass — do not poll or wait manually.
+- When authorized to merge a PR, always use `gh pr merge --auto --squash`. This enables GitHub's auto-merge and completes once all required checks pass. Do not run open-ended manual polling/wait loops after arming, but do perform a bounded final-state verification (`state=MERGED` and non-null `mergeCommit`) and clear unresolved review threads before idling.
 - **No human review is required to merge.** Branch protection does NOT require an approving review. Never attribute a merge failure to a "human review block" without explicit proof from `gh pr merge` output.
 - When `gh pr merge` fails, diagnose the actual cause before giving up:
   1. Run `gh pr checks <pr-number>` to see which checks are failing.

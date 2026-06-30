@@ -132,7 +132,11 @@ required checks report green on the latest head.
 - **`mergeStateStatus: BLOCKED` right after arming auto-merge** — usually the
   required `ci` workflow hasn't reported on the **latest** head yet (it triggers
   on `pull_request: [main]`; a fresh `synchronize` push kicks it), or a review
-  thread is unresolved. Not a review block.
+  thread is unresolved. **CRITICAL: Check for unresolved conversation threads FIRST
+  — Copilot review threads are the #1 auto-merge blocker.** Unresolved threads
+  (especially from `copilot-pull-request-reviewer`) will silently block auto-merge
+  even when all CI checks pass. Resolve the thread → re-arm auto-merge → merge
+  completes immediately.
 
 ---
 
@@ -151,6 +155,41 @@ gh api graphql -F query="@$env:TEMP\resolve.graphql" -F threadId=<node-id>
 ```
 
 `resolveReviewThread(input:{threadId:$threadId}){ thread { isResolved } }`.
+
+### Auto-merge verification: verify merge completes, don't assume
+
+**CRITICAL:** Do not go idle immediately after arming `--auto --squash`. Shepherds
+must **verify the merge actually completes** with `state === "MERGED"` and
+`mergeCommit !== null`. If auto-merge appears stuck, use this diagnosis recipe:
+
+```powershell
+# 1. Check for unresolved conversation threads FIRST (Copilot review threads are #1 blocker)
+gh pr view <n> --json reviews | jq '.reviews[] | select(.state == "COMMENTED")'
+
+# If any Copilot review is COMMENTED and has unresolved threads:
+#   - Get thread node IDs: gh api graphql -f query='query { repository(...) { pullRequest(...) { reviewThreads(first:50) { nodes { id, isResolved } } } } }'
+#   - Resolve each: gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"PRRT_..."}) { thread { isResolved } } }'
+#   - Re-arm auto-merge: gh pr merge <n> --auto --squash
+#   - Wait and verify merge completes
+
+# 2. Verify merge completed
+gh pr view <n> --json state,mergeCommit,mergeStateStatus
+# Expected: state="MERGED" + mergeCommit.oid=<sha> (not null)
+```
+
+**Why:** GitHub's auto-merge automation can stall silently when unresolved review
+threads exist. The merge will not proceed until threads are resolved **even if**
+all CI checks pass. This is the #1 reason shepherds have mistakenly gone idle,
+thinking "CI will handle it" — they didn't check for blocking threads first.
+
+**Shepherd responsibility:**
+
+1. Arm auto-merge with `gh pr merge <n> --auto --squash`
+2. Poll up to 2 min: check `gh pr view <n> --json state,mergeStateStatus,mergeCommit`
+3. If `mergeStateStatus` is still `BLOCKED` after 60s, check for unresolved review threads (GraphQL query above)
+4. If threads found: resolve them, re-arm auto-merge
+5. Verify merge completes: `state === "MERGED"` + `mergeCommit !== null`
+6. Only then go idle (report merge commit SHA to creator)
 
 ### Edit a file on a branch you can't check out (Contents API, byte-faithful)
 
