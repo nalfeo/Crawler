@@ -137,6 +137,9 @@ export function postprocessWithTrace(
         moduleParams.dropEdgeOrphans = options.speckle.dropEdgeOrphans;
       }
     }
+    if (config.type === 'speckle-cleanup' && options.modules?.speckleMode !== undefined) {
+      moduleParams.mode = options.modules.speckleMode;
+    }
 
     image = handler(image, moduleParams, {
       brief,

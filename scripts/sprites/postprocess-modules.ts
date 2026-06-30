@@ -32,8 +32,9 @@ const BACKGROUND_B_FRINGE_TOLERANCE_SQ = 3 * 255 * 255 * 0.06; // ~5 per channel
 
 function normalizeTolerance(userValue: number | undefined, defaultValue: number): number {
   if (userValue === undefined) return defaultValue;
-  if (userValue < 0) return 0;
-  return userValue;
+  if (!Number.isFinite(userValue)) return defaultValue;
+  const normalized = Math.round(userValue);
+  return normalized >= 0 ? normalized : defaultValue;
 }
 
 /**
@@ -106,7 +107,7 @@ export const postprocessModules: Record<string, ModuleHandler> = {
       const marginFraction_ = marginFraction > 0 ? marginFraction : Math.max(1, minMarginPx);
       const marginPx = Math.max(
         minMarginPx,
-        Math.floor(Math.max(tightlyTrimmed.width, tightlyTrimmed.height) * marginFraction_),
+        Math.round(Math.max(tightlyTrimmed.width, tightlyTrimmed.height) * marginFraction_),
       );
       const result = trimTransparentEdges(tightlyTrimmed, marginPx);
       ctx.pushStep('transparent-trim', `Transparent trim (${marginPx}px margin)`, result);
@@ -157,10 +158,17 @@ export const postprocessModules: Record<string, ModuleHandler> = {
       return image;
     }
 
+    const dropEdgeOrphans =
+      mode === 'edge-drop'
+        ? true
+        : mode === 'preserve-orphans'
+          ? false
+          : (params.dropEdgeOrphans as boolean);
+
     const result = removeIsolatedNearWhiteSpeckles(image, {
       minChannel: (params.minChannel as number) ?? 245,
       maxOpaqueNeighbors: (params.maxOpaqueNeighbors as number) ?? 8,
-      dropEdgeOrphans: mode === 'edge-drop' ? true : (params.dropEdgeOrphans as boolean),
+      dropEdgeOrphans,
     });
 
     ctx.pushStep('speckle-cleanup', `Speckle cleanup (${mode})`, result);

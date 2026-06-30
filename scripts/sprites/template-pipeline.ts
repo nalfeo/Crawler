@@ -20,17 +20,25 @@ import { z } from 'zod';
 type SpriteType = (typeof SPRITE_TYPES)[number];
 
 /**
- * Module configuration: metadata and parameters for a processing step.
+ * Module override patch as authored in templates. Child templates can provide
+ * partial overrides (for example only `enabled: false`).
  */
-const moduleConfigSchema = z.object({
+const modulePatchSchema = z.object({
   description: z.string().optional(),
-  type: z.string(),
-  enabled: z.boolean().default(true),
+  type: z.string().optional(),
+  enabled: z.boolean().optional(),
   enabledForTypes: z.array(z.string()).optional(),
-  params: z.record(z.string(), z.unknown()).default({}),
+  params: z.record(z.string(), z.unknown()).optional(),
 });
+type ModulePatch = z.infer<typeof modulePatchSchema>;
 
-export type ModuleConfig = z.infer<typeof moduleConfigSchema>;
+export interface ModuleConfig {
+  readonly description?: string;
+  readonly type: string;
+  readonly enabled: boolean;
+  readonly enabledForTypes?: ReadonlyArray<string>;
+  readonly params: Readonly<Record<string, unknown>>;
+}
 
 /**
  * Pipeline template: modules and their execution order.
@@ -39,7 +47,7 @@ const pipelineTemplateSchema = z.object({
   extends: z.string().optional(),
   name: z.string().optional(),
   description: z.string().optional(),
-  modules: z.record(z.string(), moduleConfigSchema).optional(),
+  modules: z.record(z.string(), modulePatchSchema).optional(),
   pipeline: z.array(z.string()).optional(),
 });
 
@@ -97,23 +105,9 @@ function resolveTemplateRec(
 
     // Merge modules: parent modules + overrides from this template
     const mergedModules: Record<string, ModuleConfig> = { ...parent.modules };
-    for (const [key, moduleConfig] of Object.entries(templateModules)) {
-      if (moduleConfig) {
-        // Merge parent config with this template's override
-        const parentConfig = mergedModules[key];
-        if (parentConfig) {
-          mergedModules[key] = {
-            type: moduleConfig.type ?? parentConfig.type,
-            enabled:
-              moduleConfig.enabled !== undefined ? moduleConfig.enabled : parentConfig.enabled,
-            params: { ...parentConfig.params, ...(moduleConfig.params ?? {}) },
-            description: moduleConfig.description ?? parentConfig.description,
-            enabledForTypes: moduleConfig.enabledForTypes ?? parentConfig.enabledForTypes,
-          };
-        } else {
-          mergedModules[key] = moduleConfig;
-        }
-      }
+    for (const [key, modulePatch] of Object.entries(templateModules)) {
+      const parentConfig = mergedModules[key];
+      mergedModules[key] = resolveModuleConfig(key, modulePatch, parentConfig);
     }
 
     // Use parent pipeline if not overridden
@@ -130,8 +124,32 @@ function resolveTemplateRec(
   return {
     name: template.name || 'postprocess-pipeline',
     description: template.description,
-    modules: templateModules,
+    modules: Object.fromEntries(
+      Object.entries(templateModules).map(([key, modulePatch]) => [
+        key,
+        resolveModuleConfig(key, modulePatch),
+      ]),
+    ),
     pipeline: templatePipeline,
+  };
+}
+
+function resolveModuleConfig(
+  moduleName: string,
+  modulePatch: ModulePatch,
+  parent?: ModuleConfig,
+): ModuleConfig {
+  const type = modulePatch.type ?? parent?.type;
+  if (!type) {
+    throw new Error(`Module "${moduleName}" is missing required "type"`);
+  }
+
+  return {
+    type,
+    enabled: modulePatch.enabled ?? parent?.enabled ?? true,
+    params: { ...(parent?.params ?? {}), ...(modulePatch.params ?? {}) },
+    description: modulePatch.description ?? parent?.description,
+    enabledForTypes: modulePatch.enabledForTypes ?? parent?.enabledForTypes,
   };
 }
 
