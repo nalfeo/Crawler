@@ -13,10 +13,13 @@ It executes a CLI-based coding agent (Codex by default) and can be extended to o
 2. Add secrets/variables:
    - Optional secret: `OPENAI_API_KEY` (for the `codex` provider)
    - Optional secret: `GEMINI_API_KEY` (for the `gemini` provider; free AI Studio key works)
+   - Optional secret: `AZURE_OPENAI_API_KEY` (for the `azure` provider; billed to your Azure subscription)
    - Optional repo variables:
-     - `CODEX_MODEL` (default: CLI's own default; set a valid model to override)
-     - `CODEX_PROVIDER` (default: `codex`; set to `gemini` for the Gemini CLI)
-     - `CODEX_BIN` (default: provider's own bin — `codex` or `gemini`)
+     - `CODEX_MODEL` (default: CLI's own default; set a valid model to override — for `azure` this is the **deployment** name, e.g. `gpt-4o`)
+     - `CODEX_PROVIDER` (default: `codex`; set to `gemini` or `azure`)
+     - `CODEX_BIN` (default: provider's own bin — `codex` or `gemini`; `azure` reuses `codex`)
+     - `AZURE_OPENAI_ENDPOINT` (for the `azure` provider, e.g. `https://<resource>.openai.azure.com`)
+     - `AZURE_OPENAI_API_VERSION` (for the `azure` provider; default `2025-04-01-preview`)
      - `CODEX_VALIDATION_COMMANDS` (newline-separated validation commands override)
 3. (Optional) Add `.github/codex-repair.json` for future per-repo settings.
 
@@ -37,6 +40,14 @@ CODEX_PROVIDER=codex
 CODEX_MODEL=
 CODEX_BIN=
 # For gemini instead: CODEX_PROVIDER=gemini and GEMINI_API_KEY=... (free AI Studio key)
+# For Azure OpenAI instead (billed to your Azure subscription):
+#   CODEX_PROVIDER=azure
+#   AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com
+#   CODEX_MODEL=<deployment-name>            # e.g. gpt-4o
+#   AZURE_OPENAI_API_KEY=...                 # OR omit and use az login (see below)
+#   # Keyless local runs: leave AZURE_OPENAI_API_KEY unset and instead set
+#   #   AZURE_OPENAI_RESOURCE=<resource> and AZURE_OPENAI_RESOURCE_GROUP=<rg>
+#   #   with an active `az login`; the key is fetched at runtime, never stored.
 EOF
 ```
 
@@ -155,6 +166,7 @@ Current providers:
 
 - `codex` -> `.github/scripts/codex/providers/codex.sh` (auth: `OPENAI_API_KEY` or `codex login`)
 - `gemini` -> `.github/scripts/codex/providers/gemini.sh` (auth: `GEMINI_API_KEY` or a cached `gemini` OAuth login)
+- `azure` -> `.github/scripts/codex/providers/azure.sh` (Azure OpenAI via the Codex CLI's custom model provider; auth: `AZURE_OPENAI_API_KEY`, or `AZURE_OPENAI_RESOURCE` + `AZURE_OPENAI_RESOURCE_GROUP` with an active `az login`. Requires `AZURE_OPENAI_ENDPOINT`; `CODEX_MODEL` is the deployment name)
 
 Switch providers by setting `CODEX_PROVIDER` (and the matching secret). Add another provider script for new CLIs.
 

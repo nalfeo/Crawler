@@ -17,8 +17,11 @@ case "$PROVIDER" in
   gemini)
     bash "$WORKSPACE/.github/scripts/codex/providers/gemini.sh" "$PROMPT_PATH"
     ;;
+  azure)
+    bash "$WORKSPACE/.github/scripts/codex/providers/azure.sh" "$PROMPT_PATH"
+    ;;
   *)
-    echo "Unknown provider '$PROVIDER'. Set CODEX_PROVIDER=codex|gemini or add a provider script." >&2
+    echo "Unknown provider '$PROVIDER'. Set CODEX_PROVIDER=codex|gemini|azure or add a provider script." >&2
     exit 1
     ;;
 esac

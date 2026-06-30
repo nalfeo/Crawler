@@ -47,6 +47,9 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      AZURE_OPENAI_API_KEY: ${{ secrets.AZURE_OPENAI_API_KEY }}
+      AZURE_OPENAI_ENDPOINT: ${{ vars.AZURE_OPENAI_ENDPOINT || '' }}
+      AZURE_OPENAI_API_VERSION: ${{ vars.AZURE_OPENAI_API_VERSION || '' }}
       CODEX_MODEL: ${{ vars.CODEX_MODEL || '' }}
       CODEX_PROVIDER: ${{ vars.CODEX_PROVIDER || 'codex' }}
       CODEX_BIN: ${{ vars.CODEX_BIN || '' }}
@@ -78,7 +81,7 @@ jobs:
         run: npm ci
 
       - name: Install Codex CLI
-        if: env.CODEX_PROVIDER == 'codex'
+        if: env.CODEX_PROVIDER == 'codex' || env.CODEX_PROVIDER == 'azure'
         run: npm install -g @openai/codex@latest
 
       - name: Install Gemini CLI

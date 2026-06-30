@@ -124,6 +124,16 @@ if [[ -z "${CODEX_EXEC_COMMAND:-}" ]]; then
   elif [[ "$PROVIDER" == 'gemini' ]] && [[ -z "${GEMINI_API_KEY:-}" ]] && [[ ! -f "$HOME/.gemini/oauth_creds.json" ]]; then
     echo "GEMINI_API_KEY is required for gemini provider (or run 'gemini' once to log in, or set CODEX_EXEC_COMMAND)." >&2
     exit 1
+  elif [[ "$PROVIDER" == 'azure' ]]; then
+    if [[ -z "${AZURE_OPENAI_ENDPOINT:-}" ]]; then
+      echo "AZURE_OPENAI_ENDPOINT is required for azure provider (e.g. https://<resource>.openai.azure.com)." >&2
+      exit 1
+    fi
+    if [[ -z "${AZURE_OPENAI_API_KEY:-}" ]] && \
+       ! { command -v az >/dev/null 2>&1 && [[ -n "${AZURE_OPENAI_RESOURCE:-}" && -n "${AZURE_OPENAI_RESOURCE_GROUP:-}" ]]; }; then
+      echo "azure provider needs AZURE_OPENAI_API_KEY, or AZURE_OPENAI_RESOURCE + AZURE_OPENAI_RESOURCE_GROUP with an active 'az login'." >&2
+      exit 1
+    fi
   fi
 fi
 
