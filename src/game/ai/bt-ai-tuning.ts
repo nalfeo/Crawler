@@ -9,10 +9,11 @@
  *
  * @see bt-ai-provider.ts
  */
-import type { AIConfig } from './types.js';
+import { RUNNER_PERSONA, type AIConfig } from './types.js';
 
 export const DEFAULT_CONFIG: Required<AIConfig> = {
   seed: 12345,
+  runnerPersona: RUNNER_PERSONA.SPEEDY,
   aggression: 1,
   retreatThreshold: 0.15,
   retreatDangerRadius: 20,

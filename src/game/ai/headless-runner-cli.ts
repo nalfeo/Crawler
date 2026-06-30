@@ -12,6 +12,8 @@ import { writeFileSync } from 'node:fs';
 import { BehaviorTreeAI } from './bt-ai-provider.js';
 import { runHeadless } from './headless-runner.js';
 import { eventsToJsonl, summarizeEvents, type SimEvent } from './event-log.js';
+import { parseRunnerPersona } from './personas.js';
+import { RUNNER_PERSONA, type RunnerPersonaValue } from './types.js';
 
 interface CLIArgs {
   seed: number;
@@ -25,6 +27,7 @@ interface CLIArgs {
   eventSummary: string | null;
   sampleInterval: number;
   weapon: string | null;
+  persona: RunnerPersonaValue;
 }
 
 function parseArgs(): CLIArgs {
@@ -40,6 +43,7 @@ function parseArgs(): CLIArgs {
     eventSummary: null,
     sampleInterval: 15,
     weapon: null,
+    persona: RUNNER_PERSONA.SPEEDY,
   };
 
   for (let i = 2; i < process.argv.length; i++) {
@@ -75,6 +79,9 @@ function parseArgs(): CLIArgs {
     } else if (arg === '--weapon' && next) {
       args.weapon = next;
       i++;
+    } else if (arg === '--persona' && next) {
+      args.persona = parseRunnerPersona(next) ?? RUNNER_PERSONA.SPEEDY;
+      i++;
     } else if (arg === '--debug') {
       args.debug = true;
     }
@@ -100,6 +107,7 @@ Options:
   --event-log <path>      Write per-frame telemetry as JSONL to <path>
   --event-summary <path>  Write wasted-time summary JSON to <path>
   --sample-interval <n>   Frames between telemetry samples (default: 15)
+  --persona <id>          Runner persona: speedy | balanced | greedy (default: speedy)
   --debug                 Enable verbose logging
   --help, -h              Show this help message
 
@@ -126,6 +134,7 @@ async function main(): Promise<void> {
 
   console.log('🤖 Starting headless AI run...');
   console.log(`Seed: ${args.seed}`);
+  console.log(`Persona: ${args.persona}`);
   console.log(`Max frames: ${args.maxFrames}`);
   console.log(`Max time: ${args.maxTimeMs}ms`);
   if (args.weapon !== null) {
@@ -135,6 +144,7 @@ async function main(): Promise<void> {
 
   const ai = new BehaviorTreeAI({
     seed: args.seed,
+    runnerPersona: args.persona,
     aggression: args.aggression,
     debug: args.debug,
   });
@@ -149,6 +159,7 @@ async function main(): Promise<void> {
     progressInterval: args.progress,
     debug: args.debug,
     eventSampleInterval: args.sampleInterval,
+    runnerPersona: args.persona,
     ...(args.weapon !== null ? { forceWeaponId: args.weapon } : {}),
     ...(recording
       ? {

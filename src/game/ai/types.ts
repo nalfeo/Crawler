@@ -6,6 +6,14 @@
 import type { GameWorld } from '../../core/world.js';
 import type { InputState } from '../../shared/input.js';
 
+export const RUNNER_PERSONA = {
+  SPEEDY: 'speedy',
+  BALANCED: 'balanced',
+  GREEDY: 'greedy',
+} as const;
+
+export type RunnerPersonaValue = (typeof RUNNER_PERSONA)[keyof typeof RUNNER_PERSONA];
+
 /**
  * AI behavioral state machine states.
  */
@@ -45,6 +53,8 @@ export interface AIDecision {
 export interface AIConfig {
   /** RNG seed for deterministic behavior (uses world.rng if not provided) */
   seed?: number;
+  /** High-level player-runner persona preset (speedy | balanced | greedy). */
+  runnerPersona?: RunnerPersonaValue;
   /** Aggression level: 0=very passive, 1=balanced, 2=very aggressive */
   aggression?: number;
   /** Retreat threshold: health percentage to trigger retreat (0-1) */

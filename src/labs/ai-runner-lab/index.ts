@@ -18,6 +18,7 @@ import {
   computeAutoStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
+import { RUNNER_PERSONA, type RunnerPersonaValue } from '../../game/ai/types.js';
 import {
   acceptQuest,
   questSystem,
@@ -52,8 +53,14 @@ import { buildSmoothedOverlayPath, OVERLAY_LINE_OF_SIGHT_SAMPLE_PX } from './pat
 
 const LAB_ID = 'ai-runner-lab';
 const INITIAL_SEED = 42;
+const INITIAL_RUNNER_PERSONA: RunnerPersonaValue = RUNNER_PERSONA.BALANCED;
 const SPEED_OPTIONS = [1, 4, 16] as const;
 const INVENTORY_PREVIEW_TICKS = 4;
+const RUNNER_PERSONA_LABELS: Readonly<Record<RunnerPersonaValue, string>> = {
+  [RUNNER_PERSONA.SPEEDY]: 'Speedy',
+  [RUNNER_PERSONA.BALANCED]: 'Balanced',
+  [RUNNER_PERSONA.GREEDY]: 'Greedy',
+};
 type ControlsWithGui = HTMLElement & { __labGui?: GUI };
 
 interface AiRunnerLabState {
@@ -184,8 +191,10 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
   const panelRoot = document.createElement('div');
   controls.append(panelRoot);
   let currentSeed = INITIAL_SEED;
+  let runnerPersona: RunnerPersonaValue = INITIAL_RUNNER_PERSONA;
   let ai = new BehaviorTreeAI({
     seed: currentSeed,
+    runnerPersona,
     aggression: 1,
     retreatThreshold: 0.15,
     debug: true,
@@ -279,7 +288,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (playerEid === undefined) {
       return;
     }
-    autoFloor1ProgressionSystem(world, playerEid);
+    autoFloor1ProgressionSystem(world, playerEid, { runnerPersona });
   };
   const baseSceneOptions = createFloor1MainSceneOptions();
   const recorderControls = createSessionRecorderControls({
@@ -632,6 +641,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     sceneOptions.worldSeed = currentSeed;
     ai = new BehaviorTreeAI({
       seed: currentSeed,
+      runnerPersona,
       aggression: 1,
       retreatThreshold: 0.15,
       debug: true,
@@ -1023,6 +1033,14 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
             <button id="ai-seed-apply" type="button" style="padding:4px 8px; cursor:pointer;">Apply</button>
             <button id="ai-seed-random" type="button" style="padding:4px 8px; cursor:pointer;">🎲 Randomize</button>
           </div>
+          <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
+            <label for="ai-persona-select"><strong>Persona:</strong></label>
+            <select id="ai-persona-select" style="padding:4px; background:#151530; color:#ddd; border:1px solid #333; border-radius:3px;">
+              <option value="${RUNNER_PERSONA.SPEEDY}">${RUNNER_PERSONA_LABELS[RUNNER_PERSONA.SPEEDY]}</option>
+              <option value="${RUNNER_PERSONA.BALANCED}">${RUNNER_PERSONA_LABELS[RUNNER_PERSONA.BALANCED]}</option>
+              <option value="${RUNNER_PERSONA.GREEDY}">${RUNNER_PERSONA_LABELS[RUNNER_PERSONA.GREEDY]}</option>
+            </select>
+          </div>
           <div id="ai-runner-status">Paused</div>
           <div id="ai-runner-debug">polls: 0</div>
           <div style="display:flex; gap:8px; margin:12px 0; flex-wrap:wrap;">
@@ -1218,6 +1236,19 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     }
 
     const seedInput = document.getElementById('ai-seed-input') as HTMLInputElement | null;
+    const personaSelect = document.getElementById('ai-persona-select') as HTMLSelectElement | null;
+    if (personaSelect) {
+      personaSelect.value = runnerPersona;
+      personaSelect.onchange = () => {
+        const nextPersona = personaSelect.value as RunnerPersonaValue;
+        if (nextPersona === runnerPersona) {
+          return;
+        }
+        runnerPersona = nextPersona;
+        reseed(currentSeed);
+        renderControls();
+      };
+    }
     const applySeed = (nextSeed: number): void => {
       reseed(nextSeed);
       renderControls();

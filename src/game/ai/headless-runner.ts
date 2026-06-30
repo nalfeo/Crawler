@@ -20,7 +20,13 @@ import { createInputState } from '../../shared/input.js';
 import { GAME } from '../../shared/constants.js';
 import { createLogger } from '../../shared/logger.js';
 import { getWeaponDef } from '../../shared/weaponDefs.js';
-import { type AIInputProvider, type RunStats, type LevelUpEvent } from './types.js';
+import {
+  RUNNER_PERSONA,
+  type AIInputProvider,
+  type RunStats,
+  type LevelUpEvent,
+  type RunnerPersonaValue,
+} from './types.js';
 import { AI_STATE_NAME, type SimEvent } from './event-log.js';
 import { runSimulationStep, type SimulationOptions } from './simulation-step.js';
 import { initializeFloor1Scenario, selectFloor1StarterWeapon } from '../index.js';
@@ -77,6 +83,8 @@ export interface HeadlessRunnerConfig {
    * present in the pool the run throws immediately.
    */
   forceWeaponId?: string;
+  /** Runner persona preset that controls stair-descend timing policy. */
+  runnerPersona?: RunnerPersonaValue;
   /**
    * Frames of zero floor-progress (no quest objective tick, completion, or gold
    * gain) before the run is declared `'stalled'` and terminated early with a
@@ -92,7 +100,10 @@ export interface HeadlessRunnerConfig {
 }
 
 const DEFAULT_CONFIG: Required<
-  Omit<HeadlessRunnerConfig, 'simulationOptions' | 'recordEvent' | 'forceWeaponId'>
+  Omit<
+    HeadlessRunnerConfig,
+    'simulationOptions' | 'recordEvent' | 'forceWeaponId' | 'runnerPersona'
+  >
 > = {
   seed: 12345,
   maxFrames: 100_000, // ~27 min at 60 FPS
@@ -288,7 +299,9 @@ export async function runHeadless(
         ...config.simulationOptions,
         enableFloor1: true,
       });
-      autoFloor1ProgressionSystem(world, playerEid);
+      autoFloor1ProgressionSystem(world, playerEid, {
+        runnerPersona: config.runnerPersona ?? RUNNER_PERSONA.SPEEDY,
+      });
       autoAllocateStatPoints(world, playerEid);
 
       frameCount++;

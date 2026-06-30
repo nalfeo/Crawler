@@ -13,7 +13,7 @@
  * forever on the boss-reward spell modal it has no way to dismiss.
  */
 import type { GameWorld } from '../../core/index.js';
-import { AIState, type AIInputProvider } from './types.js';
+import { AIState, type AIInputProvider, type RunnerPersonaValue } from './types.js';
 import {
   confirmFloor1StairDescend,
   equipPurchasedGear,
@@ -26,6 +26,7 @@ import {
   spendPoints,
 } from '../index.js';
 import type { PrimaryStatId } from '../../shared/stats.js';
+import { shouldDescendAtStairs } from './personas.js';
 
 /** Frames between auto NPC-talk attempts (debounce repeated `meet*` calls). */
 export const NPC_INTERACTION_COOLDOWN = 30; // frames
@@ -77,7 +78,15 @@ export function autoNpcInteractionSystem(
   return lastInteractionFrame;
 }
 
-export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number): void {
+export interface AutoFloor1ProgressionOptions {
+  readonly runnerPersona?: RunnerPersonaValue;
+}
+
+export function autoFloor1ProgressionSystem(
+  world: GameWorld,
+  playerEid: number,
+  options: AutoFloor1ProgressionOptions = {},
+): void {
   if (!world.floor1) {
     return;
   }
@@ -120,7 +129,10 @@ export function autoFloor1ProgressionSystem(world: GameWorld, playerEid: number)
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
-  if (Math.hypot(dx, dy) <= objective.markerRadiusFt) {
+  if (
+    Math.hypot(dx, dy) <= objective.markerRadiusFt &&
+    shouldDescendAtStairs(options.runnerPersona, objective.deadlineMs - world.elapsedMs)
+  ) {
     confirmFloor1StairDescend(world, playerEid);
   }
 }
