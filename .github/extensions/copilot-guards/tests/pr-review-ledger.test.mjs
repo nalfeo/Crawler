@@ -47,8 +47,8 @@ test('classifyPath: code (everything else)', () => {
 test('classifyPath: config (whitelisted src/shared/data config files)', () => {
   assert.equal(classifyPath('src/shared/data/entity-sprite-mappings.json'), 'config');
   assert.equal(classifyPath('src/shared/data/sprite-catalog.json'), 'config');
-  assert.equal(classifyPath('src/shared/data/tuning.json'), 'config');
-  // Non-whitelisted src/shared/data files are still code
+  // Non-whitelisted src/shared/data files are still code (including tuning.json for gameplay)
+  assert.equal(classifyPath('src/shared/data/tuning.json'), 'code');
   assert.equal(classifyPath('src/shared/data/enemies.floor1.json'), 'code');
   assert.equal(classifyPath('src/shared/data/weapons.json'), 'code');
 });
