@@ -1,0 +1,7 @@
+# Enemy post-processing pipeline template
+#
+# Enemies include enclosed-region cleanup (for eyes, mouths, etc.).
+
+extends: base.yml
+name: enemy-postprocess-pipeline
+description: Pipeline for enemies - includes enclosed-region cleanup

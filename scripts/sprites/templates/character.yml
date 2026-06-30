@@ -1,0 +1,7 @@
+# Character post-processing pipeline template
+#
+# Characters include enclosed-region cleanup (for eyes, mouths, etc.).
+
+extends: base.yml
+name: character-postprocess-pipeline
+description: Pipeline for characters - includes enclosed-region cleanup

@@ -1,0 +1,3 @@
+# Default templates for other sprite types (inherit base with no overrides)
+
+extends: base.yml
