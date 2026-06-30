@@ -223,7 +223,9 @@ if (!explicit && shouldStopAuto(state)) {
   process.exit(0);
 }
 
-if (!explicit) {
+const shouldEvaluateBounce = !explicit && eventName === 'workflow_dispatch';
+
+if (shouldEvaluateBounce) {
   const budgets = getRepairBudgets();
   if (budgets.enabled) {
     let failingChecks = 0;

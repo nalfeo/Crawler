@@ -127,8 +127,9 @@ automatically, the eligibility step (`event-parse.mjs`) runs a **pre-flight comp
 check before any checkout/install/model call** — so a bounce costs ~zero tokens and
 near-zero CI minutes.
 
-For **auto** (non-explicit) runs only, the PR is **bounced to a human** when any budget
-is exceeded:
+For **auto** (non-explicit) **runner** executions (`workflow_dispatch`) only, the PR is
+**bounced to a human** when any budget is exceeded. The router always dispatches; the
+runner owns the bounce comment/label handoff:
 
 - changed files > `CODEX_BOUNCE_MAX_CHANGED_FILES` (default 20)
 - diff lines (additions + deletions) > `CODEX_BOUNCE_MAX_DIFF_LINES` (default 1500)
