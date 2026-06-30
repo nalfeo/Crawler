@@ -44,6 +44,7 @@ const PLAYER_HURT_THROTTLE_MS = 120;
 const COLOR_HIT_SPARK = 0xfff1a8;
 const COLOR_CRIT_SPARK = 0xff8800;
 const COLOR_LEVEL_UP = 0xffd166;
+const COLOR_SPAWNER_PULSE = 0x9be15d;
 const COLOR_PLAYER_HURT = { r: 220, g: 40, b: 40 } as const;
 
 export function createEffectsVfx(scene: Phaser.Scene): {
@@ -166,6 +167,17 @@ export function createEffectsVfx(scene: Phaser.Scene): {
     }
   }
 
+  function spawnerPulse(x: number, y: number, color: number, intensity: number): void {
+    const depth = WORLD_VFX_DEPTH.spawnerPulse;
+    const clampedIntensity = Math.max(0.8, Math.min(2.2, intensity));
+    spawnRing(x, y, color, 7, 1.8 * clampedIntensity, depth, RING_LIFETIME_MS, 0.45);
+    spawnRing(x, y, 0xffffff, 5, 1.3 * clampedIntensity, depth, SPARK_LIFETIME_MS, 0.5);
+    const sparks = Math.round(5 * clampedIntensity);
+    for (let i = 0; i < sparks; i++) {
+      spawnSpark(x, y, color, depth, 82);
+    }
+  }
+
   function hitSpark(x: number, y: number, color: number, count: number, depth: number): void {
     spawnRing(x, y, color, 4, 1.4, depth, SPARK_LIFETIME_MS, 0.5);
     for (let i = 0; i < count; i++) {
@@ -206,6 +218,9 @@ export function createEffectsVfx(scene: Phaser.Scene): {
         break;
       case 'levelUpBurst':
         levelUpBurst(x, y, event.color ?? COLOR_LEVEL_UP, event.intensity ?? 1);
+        break;
+      case 'spawnerPulse':
+        spawnerPulse(x, y, event.color ?? COLOR_SPAWNER_PULSE, event.intensity ?? 1);
         break;
       case 'hitSpark':
         hitSpark(x, y, event.color ?? COLOR_HIT_SPARK, HIT_SPARK_COUNT, WORLD_VFX_DEPTH.hitSpark);

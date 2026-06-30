@@ -5,6 +5,7 @@ import {
   Enemy,
   EnemyBehavior,
   Owner,
+  SpawnAnim,
   Spawner,
   Velocity,
 } from '../../src/core/components.js';
@@ -108,9 +109,25 @@ describe('spawnerSystem — passive mode', () => {
 
     expect(world.stores.owner.eid[child]).toBe(nest);
     expect(hasComponent(world.ecs, child, Damage)).toBe(true);
+    expect(hasComponent(world.ecs, child, SpawnAnim)).toBe(true);
     expect(world.stores.damage.amount[child]).toBeGreaterThan(0);
     // Children are mobile (steered by enemyAISystem), unlike the nest.
     expect(hasComponent(world.ecs, child, EnemyBehavior)).toBe(true);
+  });
+
+  it('emits a spawnerPulse VFX event when a pulse spawns children', () => {
+    const world = createTestWorld();
+    makeNest(world, 100, 100);
+
+    spawnerSystem(world);
+
+    expect(world.vfxEvents).toContainEqual(
+      expect.objectContaining({
+        kind: 'spawnerPulse',
+        x: 100,
+        y: 100,
+      }),
+    );
   });
 
   it('refills as children die, holding the cap', () => {
@@ -135,6 +152,22 @@ describe('spawnerSystem — passive mode', () => {
       (e) => (world.stores.health.current[e] ?? 0) > 0,
     );
     expect(living.length).toBe(RATS_NEST.passive.maxAlive);
+  });
+
+  it('does not emit a spawnerPulse when the timer fires but the spawner is already capped', () => {
+    const world = createTestWorld();
+    makeNest(world);
+
+    for (let i = 0; i < 20; i += 1) {
+      spawnerSystem(world);
+      world.elapsedMs += RATS_NEST.passive.intervalMs;
+    }
+    expect(childCount(world)).toBe(RATS_NEST.passive.maxAlive);
+
+    const pulsesBefore = world.vfxEvents.length;
+    spawnerSystem(world);
+
+    expect(world.vfxEvents).toHaveLength(pulsesBefore);
   });
 });
 
@@ -191,6 +224,19 @@ describe('spawnerSystem — on death', () => {
     const afterFirst = query(world.ecs, [Enemy]).length;
     expect(afterFirst - before).toBe(expectedFinale);
     expect(world.stores.spawner.deathResolved[nest]).toBe(1);
+    expect(world.vfxEvents).toContainEqual(
+      expect.objectContaining({
+        kind: 'spawnerPulse',
+        x: 100,
+        y: 100,
+      }),
+    );
+
+    const finale = query(world.ecs, [Enemy]).filter((e) => e !== nest);
+    expect(finale.length).toBeGreaterThan(0);
+    for (const child of finale) {
+      expect(hasComponent(world.ecs, child, SpawnAnim)).toBe(true);
+    }
 
     // A dead spawner must not keep spawning on subsequent ticks.
     spawnerSystem(world);

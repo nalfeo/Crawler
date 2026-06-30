@@ -57,6 +57,8 @@ export const WORLD_VFX_DEPTH = {
   deathPop: 11,
   /** Weapon impact spark / crit burst (EffectsVfx). */
   hitSpark: 12,
+  /** Spawner pulse burst when a nest/pool emits children (EffectsVfx). */
+  spawnerPulse: 14,
   /** Pickup collect sparkle — gem / gold / item (EffectsVfx). */
   pickupSparkle: 15,
   /** Level-up celebratory burst (EffectsVfx). */
