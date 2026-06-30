@@ -43,6 +43,7 @@ export interface WiringPlan {
 /** Mapping of concept to new generated sprite brief ID. */
 interface ConceptMapping {
   readonly newBriefId: string;
+  readonly newTextureKey: string;
   readonly audit: ConceptAudit;
 }
 
@@ -57,17 +58,21 @@ export function generateWiringPlan(report: PlaceholderAuditReport): WiringPlan {
   const needsWiring: ConceptAudit[] = [];
   const manifestOnly: ConceptAudit[] = [];
 
-  // Build a mapping of concept → new brief ID for quick lookup.
+  // Build a mapping of concept -> newest generated asset for quick lookup.
   const conceptMapping = new Map<string, ConceptMapping>();
   for (const audit of report.replaceable) {
     // Pick the newest real asset (sorted by spriteName, which includes versioning).
     const newest = audit.realAssets[audit.realAssets.length - 1];
     if (newest) {
-      conceptMapping.set(audit.concept, { newBriefId: newest.briefId, audit });
+      conceptMapping.set(audit.concept, {
+        newBriefId: newest.briefId,
+        newTextureKey: newest.spriteName,
+        audit,
+      });
     }
   }
 
-  // Categorize replaceable placeholders.
+  // Categorizes replaceable placeholders.
   for (const audit of report.replaceable) {
     const hasMobDef = audit.placeholders.some((p) => p.kind === 'mob-def');
     const hasSpriteRegistry = audit.placeholders.some((p) => p.kind === 'sprite-registry');
@@ -107,41 +112,11 @@ function generateMobDefPatches(
   needsWiring: readonly ConceptAudit[],
   conceptMapping: Map<string, ConceptMapping>,
 ): CodePatch[] {
-  const patches: CodePatch[] = [];
-
-  for (const audit of needsWiring) {
-    for (const placeholder of audit.placeholders) {
-      if (placeholder.kind !== 'mob-def') continue;
-
-      const mapping = conceptMapping.get(audit.concept);
-      if (!mapping) continue;
-
-      const mobId = placeholder.id;
-      const newBriefId = mapping.newBriefId;
-
-      // Pattern: `spriteId: 'mob-placeholder',` in a mob def
-      // We need to update it to: `spriteId: '<newBriefId>',`
-      // But we can't do a simple replace without context.
-      // Instead, we'll search for the mob's definition and replace the spriteId line.
-
-      // For now, we'll emit a patch that replaces the spriteId line in the specific mob.
-      // This assumes the mob is defined as an object property.
-
-      const description = `Replace mob "${mobId}" spriteId from 'mob-placeholder' to '${newBriefId}'`;
-      const oldPattern = `spriteId: 'mob-placeholder', // ${mobId}`;
-      const newPattern = `spriteId: '${newBriefId}', // ${mobId}`;
-
-      // Try a more general pattern first.
-      patches.push({
-        filePath: 'src/shared/mobDefs.ts',
-        description,
-        oldText: oldPattern,
-        newText: newPattern,
-      });
-    }
-  }
-
-  return patches;
+  void needsWiring;
+  void conceptMapping;
+  // Mob defs require block-aware anchoring in src/shared/mobDefs.ts. Until we have
+  // an AST/block-aware patch generator, avoid emitting brittle replace patches.
+  return [];
 }
 
 /**
@@ -162,15 +137,18 @@ function generateEntitySpritePatches(
       if (!mapping) continue;
 
       const spriteId = placeholder.id; // e.g., 'enemy.rat'
-      const newBriefId = mapping.newBriefId;
+      const newTextureKey = mapping.newTextureKey;
 
-      // Heuristic: infer entity type from spriteId.
+      // Only emit replacement patches for sprite IDs with existing generated mappings.
       const entityType = inferEntityTypeFromSprite(spriteId);
       if (!entityType) continue;
 
-      const description = `Update ENTITY_GENERATED_SPRITE[${entityType}] to '${newBriefId}'`;
-      const oldPattern = `  ${entityType}: '${inferCurrentBriefId(spriteId)}',`;
-      const newPattern = `  ${entityType}: '${newBriefId}',`;
+      const currentTextureKey = inferCurrentTextureKey(spriteId);
+      if (!currentTextureKey) continue;
+
+      const description = `Update ENTITY_GENERATED_SPRITE[${entityType}] to '${newTextureKey}'`;
+      const oldPattern = `  ${entityType}: '${currentTextureKey}',`;
+      const newPattern = `  ${entityType}: '${newTextureKey}',`;
 
       patches.push({
         filePath: 'src/engine/PhaserBridge.ts',
@@ -191,11 +169,6 @@ function generateEntitySpritePatches(
 function inferEntityTypeFromSprite(spriteId: string): string | null {
   if (spriteId === 'enemy.rat') return 'enemy_rat';
   if (spriteId === 'enemy.slime') return 'enemy_slime';
-  if (spriteId === 'enemy.boss') return 'enemy_boss';
-  if (spriteId === 'enemy.orc') return 'enemy';
-  if (spriteId === 'player') return 'player';
-  if (spriteId === 'npc.guide') return 'npc';
-  // Add more mappings as needed.
   return null;
 }
 
@@ -203,14 +176,11 @@ function inferEntityTypeFromSprite(spriteId: string): string | null {
  * Infer the current (placeholder or old) brief ID from a sprite registry ID.
  * Used to generate the old-text pattern in patches.
  */
-function inferCurrentBriefId(spriteId: string): string {
-  // This is a heuristic; in practice, we'd need to scan the actual file
-  // or maintain this mapping. For now, return a placeholder pattern.
+function inferCurrentTextureKey(spriteId: string): string | null {
+  // Keep this aligned with ENTITY_GENERATED_SPRITE in src/engine/PhaserBridge.ts.
   if (spriteId === 'enemy.rat') return 'rat-v1-var-3';
   if (spriteId === 'enemy.slime') return 'slime-v1-var-2';
-  if (spriteId === 'enemy.boss') return 'enemy.boss'; // fallback
-  if (spriteId === 'player') return 'player';
-  return spriteId;
+  return null;
 }
 
 /**

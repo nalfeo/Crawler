@@ -74,19 +74,18 @@ describe('generateWiringPlan', () => {
     expect(plan.needsWiring).toHaveLength(0);
   });
 
-  it('generates a mob-def patch when a mob uses mob-placeholder', () => {
+  it('skips mob-def patches until block-aware anchoring is implemented', () => {
     const report = auditReport([conceptAudit('slime', 'mob-def', 'slime-mob', 'slime-v1')]);
     const plan = generateWiringPlan(report);
-    expect(plan.patches).toHaveLength(1);
-    expect(plan.patches[0]!.description).toContain('slime-mob');
-    expect(plan.patches[0]!.newText).toContain('slime-v1');
+    expect(plan.patches).toHaveLength(0);
     expect(plan.needsWiring).toHaveLength(1);
   });
 
-  it('generates a sprite registry patch when a sprite registry uses temp art', () => {
+  it('generates sprite-registry patches using manifest texture keys', () => {
     const report = auditReport([conceptAudit('rat', 'sprite-registry', 'enemy.rat', 'rat-v1')]);
     const plan = generateWiringPlan(report);
-    expect(plan.patches.length).toBeGreaterThan(0);
+    expect(plan.patches).toHaveLength(1);
+    expect(plan.patches[0]?.newText).toContain('rat-v1-var-0');
     expect(plan.needsWiring).toHaveLength(1);
   });
 
