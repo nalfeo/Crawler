@@ -1,0 +1,23 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "baby-slime-spawn-dist",
+  "task_title": "Increase baby slime spawn distance",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "completed": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-haiku-4.5"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "summary": "Single-file constant adjustment with all tests passing. No concerns found: spawn distance constants properly named, calculation is deterministic using SeededRandom, change is well-isolated, and maintains compatibility with existing melee immunity logic."
+        }
+      ]
+    }
+  }
+}

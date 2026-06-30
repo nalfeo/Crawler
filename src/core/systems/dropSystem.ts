@@ -68,10 +68,10 @@ const MINI_SLIME_MIN_SIZE_FT = 0.125;
  */
 const MINI_SLIME_SPAWN_MIN_DIST = 1.5;
 /**
- * Maximum spawn distance range for baby slimes (feet).
- * Increased from 1.5 to 2.0 for greater separation and more explosive feel.
+ * Maximum spawn distance for baby slimes (feet).
+ * Increased from 2.0 to 3.5 so babies are ejected further from parent body for greater separation.
  */
-const MINI_SLIME_SPAWN_MAX_DIST = 2.0;
+const MINI_SLIME_SPAWN_MAX_DIST = 3.5;
 
 export interface DropSystemOptions {
   readonly spawnLoot?: boolean;
@@ -222,7 +222,9 @@ function maybeSplitSlime(world: GameWorld, eid: number, x: number, y: number): v
 
   for (let i = 0; i < MINI_SLIME_COUNT; i += 1) {
     const angle = world.rng.next() * Math.PI * 2;
-    const distance = MINI_SLIME_SPAWN_MIN_DIST + world.rng.next() * MINI_SLIME_SPAWN_MAX_DIST;
+    const distance =
+      MINI_SLIME_SPAWN_MIN_DIST +
+      world.rng.next() * (MINI_SLIME_SPAWN_MAX_DIST - MINI_SLIME_SPAWN_MIN_DIST);
     const miniEid = spawnBehaviorEnemy(
       world,
       x + Math.cos(angle) * distance,
