@@ -33,6 +33,7 @@
 
 import { PNG } from 'pngjs';
 import type { Brief, PaletteColors, RgbTriple } from './brief-schema.js';
+import { resizeSpriteStrategy } from './size-variants.js';
 
 interface RgbaImage {
   readonly width: number;
@@ -142,7 +143,12 @@ export function postprocessWithTrace(
     pushStep('transparent-trim', 'Transparent trim (skipped, empty)', image);
   }
 
-  const fitResize = fitWithinNearest(image, brief.size.width, brief.size.height);
+  const fitResize = fitWithinNearest(
+    image,
+    brief.size.width,
+    brief.size.height,
+    resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height),
+  );
   image = fitResize.image;
   pushStep(
     'resize-nearest',
@@ -664,6 +670,7 @@ function fitWithinNearest(
   image: RgbaImage,
   boxW: number,
   boxH: number,
+  strategy: 'fit' | 'width' | 'height' | 'cover' = 'fit',
 ): { image: RgbaImage; fittedWidth: number; fittedHeight: number } {
   const { width: srcW, height: srcH } = image;
   if (srcW <= 0 || srcH <= 0) {
@@ -673,17 +680,38 @@ function fitWithinNearest(
       fittedHeight: 0,
     };
   }
-  const scale = Math.min(boxW / srcW, boxH / srcH);
-  const fittedWidth = Math.max(1, Math.min(boxW, Math.round(srcW * scale)));
-  const fittedHeight = Math.max(1, Math.min(boxH, Math.round(srcH * scale)));
+  const scale =
+    strategy === 'width'
+      ? boxW / srcW
+      : strategy === 'height'
+        ? boxH / srcH
+        : strategy === 'cover'
+          ? Math.max(boxW / srcW, boxH / srcH)
+          : Math.min(boxW / srcW, boxH / srcH);
+  const fittedWidth =
+    strategy === 'width'
+      ? boxW
+      : Math.max(
+          1,
+          strategy === 'fit' ? Math.min(boxW, Math.round(srcW * scale)) : Math.round(srcW * scale),
+        );
+  const fittedHeight =
+    strategy === 'height'
+      ? boxH
+      : Math.max(
+          1,
+          strategy === 'fit' ? Math.min(boxH, Math.round(srcH * scale)) : Math.round(srcH * scale),
+        );
   const scaled = upscaleNearest(image, fittedWidth, fittedHeight);
-  const out = new Uint8Array(boxW * boxH * 4);
-  const offsetX = Math.floor((boxW - fittedWidth) / 2);
-  const offsetY = Math.floor((boxH - fittedHeight) / 2);
+  const outW = strategy === 'height' || strategy === 'cover' ? Math.max(boxW, fittedWidth) : boxW;
+  const outH = strategy === 'width' || strategy === 'cover' ? Math.max(boxH, fittedHeight) : boxH;
+  const out = new Uint8Array(outW * outH * 4);
+  const offsetX = Math.floor((outW - fittedWidth) / 2);
+  const offsetY = Math.floor((outH - fittedHeight) / 2);
   for (let y = 0; y < fittedHeight; y++) {
     for (let x = 0; x < fittedWidth; x++) {
       const srcIdx = (y * fittedWidth + x) * 4;
-      const dstIdx = ((offsetY + y) * boxW + (offsetX + x)) * 4;
+      const dstIdx = ((offsetY + y) * outW + (offsetX + x)) * 4;
       out[dstIdx] = scaled.data[srcIdx] ?? 0;
       out[dstIdx + 1] = scaled.data[srcIdx + 1] ?? 0;
       out[dstIdx + 2] = scaled.data[srcIdx + 2] ?? 0;
@@ -691,7 +719,7 @@ function fitWithinNearest(
     }
   }
   return {
-    image: { width: boxW, height: boxH, data: out },
+    image: { width: outW, height: outH, data: out },
     fittedWidth,
     fittedHeight,
   };

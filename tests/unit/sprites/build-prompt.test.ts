@@ -359,7 +359,9 @@ describe('output size block', () => {
       generation: { sheet: { rows: 4, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
-    expect(out).toContain('Each finished sprite resolves to exactly 128x64 pixels');
+    expect(out).toContain(
+      'Target final frame is 128x64 with width as the main occupancy axis; post-processing may expand height beyond 64px to preserve silhouette fill.',
+    );
     expect(out).toContain('landscape (wider than tall) at a 2:1 aspect ratio');
     expect(out).toContain('span roughly 448-480 source pixels wide and 224-240 source pixels tall');
     expect(out).toContain('Within each 512x256 source cell');
@@ -376,7 +378,9 @@ describe('output size block', () => {
       generation: { sheet: { rows: 2, cols: 4, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
-    expect(out).toContain('Each finished sprite resolves to exactly 64x128 pixels');
+    expect(out).toContain(
+      'Target final frame is 64x128 with height as the main occupancy axis; post-processing may expand width beyond 64px to preserve silhouette fill.',
+    );
     expect(out).toContain('portrait (taller than wide) at a 1:2 aspect ratio');
     expect(out).toContain('span roughly 224-240 source pixels wide and 448-480 source pixels tall');
     expect(out).toContain('Within each 256x512 source cell');
@@ -390,7 +394,9 @@ describe('output size block', () => {
       generation: { sheet: { rows: 2, cols: 2, emptyCells: [], nativeCanvas: 1024 } },
     } as Partial<Brief>);
     const out = buildPrompt(brief, FAKE_STYLE_GUIDE);
-    expect(out).toContain('Each finished sprite resolves to exactly 128x128 pixels');
+    expect(out).toContain(
+      'Target final frame is 128x128; post-processing may expand one axis to preserve large-sprite occupancy without letterboxing.',
+    );
     expect(out).toContain(
       'Draw each subject at a 1:1 (square) proportion, centered within its square 512x512 source cell.',
     );
