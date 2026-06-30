@@ -7,7 +7,7 @@
 3. Check `docs/knowledge/handoffs/` for recent session context
 4. Load durable facts: call the memory MCP `read_graph` (or `search_nodes`) and skim `docs/knowledge/memory/` — see `docs/guides/agent-memory.md`
 5. Run `bash scripts/agent/verify-fast.sh` after every meaningful change
-6. Run `bash scripts/agent/verify.sh` before committing
+6. Run `bash scripts/agent/verify.sh` before committing (includes `verify:pr-prereqs`, so review-harness + other PR prerequisites fail early instead of waiting for `create_pull_request`)
 7. Write a handoff file before ending your session
 8. If `files/guard-telemetry.jsonl` exists, paste `npx tsx scripts/agent/docs/guard-telemetry.ts --handoff-section` into the handoff
 
@@ -43,6 +43,7 @@
 | Sprite metadata        | `npm run sprites:metadata`         |
 | Fast verify            | `npm run verify:fast`              |
 | Full verify            | `npm run verify`                   |
+| PR prereq check        | `npm run verify:pr-prereqs`        |
 | Full verify + coverage | `VERIFY_COVERAGE=1 npm run verify` |
 | Guard + ledger tests   | `npm run test:guards`              |
 | Review ledger          | `npm run review:ledger`            |

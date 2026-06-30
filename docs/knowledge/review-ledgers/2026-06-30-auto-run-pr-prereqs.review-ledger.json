@@ -1,0 +1,27 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "auto-run-pr-prereqs",
+  "task_title": "Auto-run PR prerequisites in verify gate",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "claude-haiku-4.5",
+      "concerns_count": 0,
+      "resolved_count": 0,
+      "notes": "Validated refactoring strategy and early-gate design"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "clean": true,
+          "models": ["claude-haiku-4.5"],
+          "concerns_count": 0,
+          "resolved_count": 0
+        }
+      ]
+    }
+  }
+}
