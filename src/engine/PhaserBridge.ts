@@ -964,7 +964,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             );
             const barX = x - barWidth / 2;
             const barY = y + displayHeight / 2 + MOB_HEALTH_BAR_Y_GAP_PX;
-            const fillWidth = Math.max(1, Math.round(barWidth * pct));
+            const fillWidth = Math.max(0, Math.round(barWidth * pct));
             const fillColor =
               pct > 0.5
                 ? BOSS_BAR_COLORS.high
@@ -982,8 +982,10 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             bar.clear();
             bar.fillStyle(0x111827, 0.9);
             bar.fillRect(barX - 1, barY - 1, barWidth + 2, MOB_HEALTH_BAR_HEIGHT_PX + 2);
-            bar.fillStyle(fillColor, 1);
-            bar.fillRect(barX, barY, fillWidth, MOB_HEALTH_BAR_HEIGHT_PX);
+            if (fillWidth > 0) {
+              bar.fillStyle(fillColor, 1);
+              bar.fillRect(barX, barY, fillWidth, MOB_HEALTH_BAR_HEIGHT_PX);
+            }
             bar.lineStyle(1, 0x000000, 1);
             bar.strokeRect(barX - 1, barY - 1, barWidth + 2, MOB_HEALTH_BAR_HEIGHT_PX + 2);
           }
