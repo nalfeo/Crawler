@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-30",
+  "session": "asset-checked-in-state",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "delta": 0,
+  "verdict": "exact",
+  "hello_kitties": 0.4
+}

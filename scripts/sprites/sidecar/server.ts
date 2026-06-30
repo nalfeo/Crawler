@@ -887,6 +887,8 @@ export function buildServer(deps: SidecarDeps): FastifyInstance {
       return {
         branch: result.branch,
         issueUrl: result.issueUrl,
+        issueTitle: result.plan.issueTitle,
+        issueBody: result.plan.issueBody,
         assets: result.plan.assets,
       };
     } catch (err) {

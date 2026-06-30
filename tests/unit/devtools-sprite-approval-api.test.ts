@@ -142,6 +142,8 @@ describe('devtools sprite check-in api', () => {
     const payload = {
       branch: 'assets/checkin-2026-06-08-abc123',
       issueUrl: 'https://github.com/nalfeo/Crawler/issues/42',
+      issueTitle: 'Asset check-in: 1 approved asset (checkin-20260608-190815-abc123)',
+      issueBody: '## Asset check-in\n\nFiled from devtools.\n',
       assets: [
         {
           assetPath: 'generated/slime-king-var-1.png',

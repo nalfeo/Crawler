@@ -33,8 +33,8 @@ export function isSizeVariant(value: unknown): value is SizeVariant {
  * Lifecycle stages for a single queue item. `*-ing` stages are transient
  * "busy" states held while a sidecar request is in flight. The flow is
  * Synthesize → Choose → Generate (raw sheet only) → PostProcess → Judge →
- * Approve → Tag; brief promotion folds into the Choose→Generate transition, so
- * there is no standalone Promote stage.
+ * Approve → (optional) Check in → Tag; brief promotion folds into the
+ * Choose→Generate transition, so there is no standalone Promote stage.
  */
 export const WORKFLOW_STAGES = [
   'draft',
@@ -47,6 +47,7 @@ export const WORKFLOW_STAGES = [
   'judging',
   'variants',
   'approved',
+  'checked-in',
   'tagging',
   'done',
 ] as const;
@@ -75,6 +76,7 @@ const STAGE_ACTIVE_STEP: Readonly<Record<WorkflowStage, number>> = {
   judging: 4,
   variants: 5,
   approved: 6,
+  'checked-in': 6,
   tagging: 6,
   done: 7,
 };
@@ -187,6 +189,11 @@ export interface QueueItem {
   generationStartedAt: string | null;
   approvedAssetPath: string | null;
   approvalSummary: string | null;
+  checkinBranch: string | null;
+  checkinIssueUrl: string | null;
+  checkinIssueTitle: string | null;
+  checkinIssueBody: string | null;
+  checkinSummary: string | null;
   metadataSummary: string | null;
   lastError: string | null;
 }
@@ -253,6 +260,11 @@ function makeItem(
     generationStartedAt: null,
     approvedAssetPath: null,
     approvalSummary: null,
+    checkinBranch: null,
+    checkinIssueUrl: null,
+    checkinIssueTitle: null,
+    checkinIssueBody: null,
+    checkinSummary: null,
     metadataSummary: null,
     lastError: null,
   };
@@ -360,6 +372,7 @@ export function primaryActionLabel(stage: WorkflowStage): string | null {
     case 'postprocessed':
       return 'Judge';
     case 'approved':
+    case 'checked-in':
       return 'Tag (generate metadata)';
     default:
       return null;
@@ -393,6 +406,11 @@ export interface ApprovedItemPatch {
   readonly stage: 'approved';
   readonly approvedAssetPath: string;
   readonly approvalSummary: string;
+  readonly checkinBranch: null;
+  readonly checkinIssueUrl: null;
+  readonly checkinIssueTitle: null;
+  readonly checkinIssueBody: null;
+  readonly checkinSummary: null;
   readonly generationRequestedAt: null;
   readonly lastError: null;
 }
@@ -426,6 +444,11 @@ export function approvedItemPatch(info: ApprovedVariantInfo): ApprovedItemPatch 
     stage: 'approved',
     approvedAssetPath: info.assetPath,
     approvalSummary,
+    checkinBranch: null,
+    checkinIssueUrl: null,
+    checkinIssueTitle: null,
+    checkinIssueBody: null,
+    checkinSummary: null,
     generationRequestedAt: null,
     lastError: null,
   };
@@ -457,6 +480,11 @@ export function restartToBriefPatch(item: QueueItem): Partial<QueueItem> {
     generationStartedAt: null,
     approvedAssetPath: null,
     approvalSummary: null,
+    checkinBranch: null,
+    checkinIssueUrl: null,
+    checkinIssueTitle: null,
+    checkinIssueBody: null,
+    checkinSummary: null,
     metadataSummary: null,
     lastError: null,
   };
@@ -481,6 +509,11 @@ export function restartToSheetPatch(item: QueueItem): Partial<QueueItem> {
     generationStartedAt: null,
     approvedAssetPath: null,
     approvalSummary: null,
+    checkinBranch: null,
+    checkinIssueUrl: null,
+    checkinIssueTitle: null,
+    checkinIssueBody: null,
+    checkinSummary: null,
     metadataSummary: null,
     lastError: null,
   };
@@ -740,6 +773,11 @@ function sanitizeItem(value: unknown): QueueItem | null {
       typeof raw.generationStartedAt === 'string' ? raw.generationStartedAt : null,
     approvedAssetPath: typeof raw.approvedAssetPath === 'string' ? raw.approvedAssetPath : null,
     approvalSummary: typeof raw.approvalSummary === 'string' ? raw.approvalSummary : null,
+    checkinBranch: typeof raw.checkinBranch === 'string' ? raw.checkinBranch : null,
+    checkinIssueUrl: typeof raw.checkinIssueUrl === 'string' ? raw.checkinIssueUrl : null,
+    checkinIssueTitle: typeof raw.checkinIssueTitle === 'string' ? raw.checkinIssueTitle : null,
+    checkinIssueBody: typeof raw.checkinIssueBody === 'string' ? raw.checkinIssueBody : null,
+    checkinSummary: typeof raw.checkinSummary === 'string' ? raw.checkinSummary : null,
     metadataSummary: typeof raw.metadataSummary === 'string' ? raw.metadataSummary : null,
     lastError: typeof raw.lastError === 'string' ? raw.lastError : null,
   };
@@ -787,8 +825,12 @@ export function recoverInterruptedItem(item: QueueItem): QueueItem {
         stage: item.run && item.run.candidates.length > 0 ? 'postprocessed' : 'sheet',
       };
     case 'tagging':
-      // Tagging runs after approval; land back on approved so it can re-tag.
-      return { ...item, stage: 'approved' };
+      // Tagging runs after approval/check-in; land back on whichever stable
+      // pre-tag state existed so the item does not lose check-in state on refresh.
+      return {
+        ...item,
+        stage: item.metadataSummary ? 'done' : item.checkinIssueUrl ? 'checked-in' : 'approved',
+      };
     default:
       return item;
   }
