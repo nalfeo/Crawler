@@ -1,7 +1,11 @@
 /**
  * FOV System — computes player field-of-view each frame.
  *
- * Uses rot-js RecursiveShadowcasting against the FloorMap's tile flags.
+ * Uses rot-js RecursiveShadowcasting at **quarter-tile (2×) resolution**.
+ * Each tile is divided into a 2×2 grid of sub-tiles; the FOV algorithm runs
+ * on this finer grid so the visibility boundary follows shadow edges to
+ * within half a tile rather than a full tile.
+ *
  * Result is stored on FloorMap's visibility bitmap for O(1) queries
  * by other systems (enemy AI, rendering fog-of-war).
  */
@@ -25,23 +29,28 @@ export function fovSystem(world: GameWorld): void {
   const px = world.stores.position.x[playerEid] ?? 0;
   const py = world.stores.position.y[playerEid] ?? 0;
 
-  // Convert world position (feet) to tile coordinates
-  const tile = floorMap.worldToTile(px, py);
+  // Convert world position (feet) to quarter-tile coordinates.
+  const origin = floorMap.worldToSubTile(px, py);
 
   // Clear previous visibility
   floorMap.clearVisibility();
 
-  // Compute FOV using recursive shadowcasting
-  const lightPasses = floorMap.tileMap.createLightPassesCallback();
+  // lightPasses operates in sub-tile space; map back to the underlying tile
+  // for the transparency check (walls/floors are still tile-granularity).
+  const lightPasses = (hx: number, hy: number): boolean =>
+    floorMap.tileMap.isTransparent(hx >> 1, hy >> 1);
+
+  // Compute FOV using recursive shadowcasting at 2× tile resolution.
+  // Doubling the radius keeps the effective vision range in feet unchanged.
   const fov = new FOV.RecursiveShadowcasting(lightPasses);
 
   fov.compute(
-    tile.x,
-    tile.y,
-    DEFAULT_FOV_RADIUS,
-    (_x: number, _y: number, _r: number, visibility: number) => {
+    origin.x,
+    origin.y,
+    DEFAULT_FOV_RADIUS * 2,
+    (_hx: number, _hy: number, _r: number, visibility: number) => {
       if (visibility > 0) {
-        floorMap.setVisible(_x, _y);
+        floorMap.setVisible(_hx, _hy);
       }
     },
   );

@@ -568,7 +568,8 @@ describe('createPhaserBridge', () => {
     const floorMap = createBridgeTestMap();
     world.floorMap = floorMap;
     floorMap.clearVisibility();
-    floorMap.setVisible(2, 2);
+    // Enemy at tile (2,2); tileSizeFt=32. Set TL sub-tile of tile (2,2): hx=4, hy=4.
+    floorMap.setVisible(4, 4);
     const enemyVisible = addEntity(world.ecs);
     const enemyHidden = addEntity(world.ecs);
 

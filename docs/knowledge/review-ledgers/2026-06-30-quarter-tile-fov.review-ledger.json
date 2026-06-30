@@ -1,0 +1,30 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "quarter-tile-fov",
+  "task_title": "Quarter-tile FOV resolution",
+  "estimated_apples": 2,
+  "stages": {
+    "plan_review": {
+      "completed": true,
+      "reviewer_model": "gpt-5.4",
+      "concerns_count": 5,
+      "resolved_count": 5,
+      "notes": "",
+      "model": "gpt-5.4",
+      "verdict": "approved_with_changes"
+    },
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
+    }
+  }
+}

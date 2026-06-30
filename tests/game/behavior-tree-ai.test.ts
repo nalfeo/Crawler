@@ -743,15 +743,16 @@ describe('BehaviorTreeAI', () => {
     const floorMap = world.floorMap;
     const playerTile = floorMap.worldToTile(10, 10);
     const hiddenTile = floorMap.worldToTile(18, 10);
-    floorMap.visible[playerTile.y * floorMap.width + playerTile.x] = 1;
-    floorMap.visible[hiddenTile.y * floorMap.width + hiddenTile.x] = 0;
+    // Use setVisible with sub-tile coords (TL quadrant = tile * 2).
+    floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    // hiddenTile starts with all sub-tiles = 0 (dark), no action needed.
 
     const ai = new BehaviorTreeAI({ seed: 19 });
     ai.poll(createInputState(), world);
     expect(ai.getDecision().targetEid).not.toBe(hiddenEnemy);
 
     // Once the enemy appears in FOV/minimap-known tiles, it becomes a valid target.
-    floorMap.visible[hiddenTile.y * floorMap.width + hiddenTile.x] = 1;
+    floorMap.setVisible(hiddenTile.x * 2, hiddenTile.y * 2);
     ai.poll(createInputState(), world);
     expect(ai.getDecision().targetEid).toBe(hiddenEnemy);
   });
@@ -765,7 +766,6 @@ describe('BehaviorTreeAI', () => {
     const hiddenEnemy = spawnEnemy(world, 18, 10, 20);
     const floorMap = world.floorMap;
     const playerTile = floorMap.worldToTile(10, 10);
-    const hiddenTile = floorMap.worldToTile(18, 10);
 
     // Before FOV initialization: no visibility set yet (permissive mode)
     const ai = new BehaviorTreeAI({ seed: 25 });
@@ -773,9 +773,10 @@ describe('BehaviorTreeAI', () => {
     // In permissive mode (no FOV data yet), hidden enemy is accessible
     expect(ai.getDecision().targetEid).toBe(hiddenEnemy);
 
-    // After FOV initialization with visibility bitmap (restrictive mode)
-    floorMap.visible[playerTile.y * floorMap.width + playerTile.x] = 1;
-    floorMap.visible[hiddenTile.y * floorMap.width + hiddenTile.x] = 0;
+    // After FOV initialization with visibility bitmap (restrictive mode).
+    // Set the player tile visible (triggers hasPerceptionData = true).
+    floorMap.setVisible(playerTile.x * 2, playerTile.y * 2);
+    // hiddenTile stays dark (all sub-tiles = 0 by default).
 
     ai.poll(createInputState(), world);
     // Now that FOV is initialized, hidden enemy should NOT be targeted

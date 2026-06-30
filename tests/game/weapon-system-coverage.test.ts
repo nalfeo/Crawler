@@ -506,9 +506,9 @@ describe('weaponSystem line-of-sight gating', () => {
     world.floorMap = floor;
     spawnPlayer(world, cx(2), cy(5));
     spawnEnemy(world, cx(8), cy(5), 50);
-    // Mark the enemy tile visible, as the FOV shadowcaster would when the player
-    // can actually see it — the isVisible fast-path should allow the shot.
-    floor.setVisible(8, 5);
+    // Mark the enemy tile visible at sub-tile resolution (tileSizeFt=4, halfTile=2).
+    // Tile (8,5) TL sub-tile: hx=8*2=16, hy=5*2=10.
+    floor.setVisible(16, 10);
     const bow = getWeaponDef('bow')!;
     setActiveWeapon(world, bow);
     world.elapsedMs = bow.cooldownMs;

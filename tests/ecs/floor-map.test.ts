@@ -76,16 +76,18 @@ describe('FloorMap', () => {
       expect(floor.isVisible(5, 5)).toBe(false);
     });
 
-    it('should mark tiles as visible', () => {
+    it('should mark quarter-tiles visible and expose them via isVisible', () => {
       const floor = createSmallFloorMap();
-      floor.setVisible(5, 5);
+      // Tile (5,5) has sub-tiles at hx ∈ {10,11}, hy ∈ {10,11}.
+      // Setting any one sub-tile should make isVisible(5,5) return true.
+      floor.setVisible(10, 10);
       expect(floor.isVisible(5, 5)).toBe(true);
       expect(floor.isVisible(0, 0)).toBe(false);
     });
 
     it('should clear visibility', () => {
       const floor = createSmallFloorMap();
-      floor.setVisible(5, 5);
+      floor.setVisible(10, 10);
       floor.clearVisibility();
       expect(floor.isVisible(5, 5)).toBe(false);
     });
@@ -94,6 +96,32 @@ describe('FloorMap', () => {
       const floor = createSmallFloorMap();
       expect(floor.isVisible(-1, 0)).toBe(false);
       floor.setVisible(-1, 0); // should not throw
+    });
+
+    it('isVisibleSubtile checks exact quarter-tile', () => {
+      const floor = createSmallFloorMap();
+      floor.setVisible(10, 10);
+      expect(floor.isVisibleSubtile(10, 10)).toBe(true);
+      expect(floor.isVisibleSubtile(11, 10)).toBe(false);
+      expect(floor.isVisibleSubtile(10, 11)).toBe(false);
+    });
+
+    it('isVisibleAt resolves world position to quarter-tile (tileSizeFt=4, halfTile=2)', () => {
+      const floor = createSmallFloorMap();
+      // tileSizeFt = 4; halfTile = 2.
+      // Tile (5,5) world centre ≈ (22, 22) ft.
+      // worldToSubTile(20, 20) → hx=floor(20/2)=10, hy=10.
+      floor.setVisible(10, 10);
+      expect(floor.isVisibleAt(20, 20)).toBe(true);
+      // Adjacent quarter (hx=11): world x ∈ [22, 24) → not set → false.
+      expect(floor.isVisibleAt(22, 20)).toBe(false);
+    });
+
+    it('visible bitmap is 4× the tile count', () => {
+      const floor = createSmallFloorMap();
+      expect(floor.visible.length).toBe(floor.width * floor.height * 4);
+      expect(floor.subWidth).toBe(floor.width * 2);
+      expect(floor.subHeight).toBe(floor.height * 2);
     });
   });
 

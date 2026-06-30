@@ -945,9 +945,10 @@ export function createHudMinimap(scene: Phaser.Scene): {
     }
 
     const visited = visitedTiles!;
+    const W = floorMap.width;
     const newIndices: number[] = [];
     for (let i = 0; i < visited.length; i += 1) {
-      if (!visited[i] && floorMap.visible[i]) {
+      if (!visited[i] && floorMap.isVisible(i % W, Math.floor(i / W))) {
         visited[i] = 1;
         newIndices.push(i);
       }
