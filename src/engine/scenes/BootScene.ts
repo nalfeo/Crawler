@@ -10,6 +10,7 @@ import {
 import { emptyGeneratedSpriteRegistry } from '../../shared/generated-assets.js';
 
 const logger = createLogger('engine:boot-scene');
+const GENERATED_SPRITE_LOAD_TIMEOUT_MS = 15000;
 const CRITICAL_SHEET_KEYS = new Set([
   'kenney-tiny-dungeon',
   'kenney-tiny-town',
@@ -19,6 +20,7 @@ const CRITICAL_SHEET_KEYS = new Set([
 
 export class BootScene extends Phaser.Scene {
   static readonly KEY = 'BootScene';
+  private startedMainGame = false;
 
   constructor() {
     super({ key: BootScene.KEY });
@@ -74,14 +76,14 @@ export class BootScene extends Phaser.Scene {
 
       if (registry.size === 0 || !this.load) {
         logger.info('No generated sprites to load; starting game now');
-        this.scene.start(MainGameScene.KEY);
+        this.startMainGame();
         return;
       }
 
       const queued = preloadGeneratedSprites(this.load, registry);
       if (queued.length === 0) {
         logger.info('No sprites queued; starting game now');
-        this.scene.start(MainGameScene.KEY);
+        this.startMainGame();
         return;
       }
 
@@ -90,25 +92,49 @@ export class BootScene extends Phaser.Scene {
       });
 
       // Wait for all generated sprite loads to complete, then start the game.
-      // The critical sheets should already be loaded by this point (from preload).
-      // We're starting a new load cycle just for the generated sprites.
-      const loadCompleted = new Promise<void>((resolve) => {
-        this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      // If the load cycle stalls, continue after a timeout so boot cannot hang.
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const onComplete = (): void => {
           logger.info('Generated sprites loaded; starting main game scene', {
             count: queued.length,
           });
+          finalize();
+        };
+        const finalize = (): void => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          this.load.off(Phaser.Loader.Events.COMPLETE, onComplete);
+          clearTimeout(timeoutId);
           resolve();
-        });
-      });
+        };
 
-      this.load.start();
-      await loadCompleted;
-      this.scene.start(MainGameScene.KEY);
+        this.load.on(Phaser.Loader.Events.COMPLETE, onComplete);
+        const timeoutId = setTimeout(() => {
+          logger.warn('Generated sprite load timed out; starting game with built-in sprites', {
+            count: queued.length,
+            timeoutMs: GENERATED_SPRITE_LOAD_TIMEOUT_MS,
+          });
+          finalize();
+        }, GENERATED_SPRITE_LOAD_TIMEOUT_MS);
+        this.load.start();
+      });
+      this.startMainGame();
     } catch (err) {
       logger.warn('Generated sprite load failed; continuing with built-in sprites', {
         error: err instanceof Error ? err.message : String(err),
       });
-      this.scene.start(MainGameScene.KEY);
+      this.startMainGame();
     }
+  }
+
+  private startMainGame(): void {
+    if (this.startedMainGame) {
+      return;
+    }
+    this.startedMainGame = true;
+    this.scene.start(MainGameScene.KEY);
   }
 }
