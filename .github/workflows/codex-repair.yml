@@ -26,7 +26,11 @@ concurrency:
 
 jobs:
   route:
-    if: ${{ github.actor != 'github-actions[bot]' }}
+    # Auto-routing is disabled in-repo by default: it only runs when the repo
+    # variable CODEX_ROUTER_ENABLED is explicitly set to 'true'. This encodes the
+    # "manual testing only, no auto-trigger" posture in code, so re-enabling the
+    # workflow in the GitHub UI alone is not enough to start auto-repair.
+    if: ${{ github.actor != 'github-actions[bot]' && vars.CODEX_ROUTER_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
