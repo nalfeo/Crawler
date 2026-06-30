@@ -144,12 +144,14 @@ interface ResolvedTexture {
  */
 const ENTITY_GENERATED_SPRITE: Readonly<Record<string, string>> = {
   enemy_rat: 'rat-v1-var-3',
+  enemy_slime: 'slime-v1-var-2',
   enemy_boss_ratslime: 'rat-slime-v1-var-1',
 };
 
 /** Render scale for each generated texture (PNGs are 64–128px, not 16px). */
 const GENERATED_SCALE: Readonly<Record<string, number>> = {
   enemy_rat: 0.4,
+  enemy_slime: 0.4,
   enemy_boss_ratslime: 0.6,
 };
 
