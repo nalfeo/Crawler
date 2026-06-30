@@ -61,35 +61,54 @@ export class BootScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.scene.start(MainGameScene.KEY);
-    void this.warmGeneratedSprites();
+    // Fetch and queue generated sprites, then start the main game scene once
+    // the sprites are loaded. This ensures approved custom art is available
+    // before MainGameScene renders any entities.
+    void this.loadGeneratedSpritesAndStartGame();
   }
 
-  private async warmGeneratedSprites(): Promise<void> {
+  private async loadGeneratedSpritesAndStartGame(): Promise<void> {
     try {
       const registry = await fetchGeneratedSpriteRegistry();
       this.game.registry.set(GENERATED_SPRITE_REGISTRY_KEY, registry);
 
       if (registry.size === 0 || !this.load) {
-        logger.info('No generated sprites to warm after startup');
+        logger.info('No generated sprites to load; starting game now');
+        this.scene.start(MainGameScene.KEY);
         return;
       }
 
       const queued = preloadGeneratedSprites(this.load, registry);
       if (queued.length === 0) {
+        logger.info('No sprites queued; starting game now');
+        this.scene.start(MainGameScene.KEY);
         return;
       }
 
-      this.load.once(Phaser.Loader.Events.COMPLETE, () => {
-        logger.info('Generated sprite warm load complete', {
-          count: queued.length,
+      logger.info('Waiting for generated sprites to load before starting main game', {
+        count: queued.length,
+      });
+
+      // Wait for all generated sprite loads to complete, then start the game.
+      // The critical sheets should already be loaded by this point (from preload).
+      // We're starting a new load cycle just for the generated sprites.
+      const loadCompleted = new Promise<void>((resolve) => {
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+          logger.info('Generated sprites loaded; starting main game scene', {
+            count: queued.length,
+          });
+          resolve();
         });
       });
+
       this.load.start();
+      await loadCompleted;
+      this.scene.start(MainGameScene.KEY);
     } catch (err) {
-      logger.warn('Generated sprite warm load errored; continuing with built-in sprites', {
+      logger.warn('Generated sprite load failed; continuing with built-in sprites', {
         error: err instanceof Error ? err.message : String(err),
       });
+      this.scene.start(MainGameScene.KEY);
     }
   }
 }
