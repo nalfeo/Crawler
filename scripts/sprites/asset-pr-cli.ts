@@ -93,7 +93,12 @@ export async function main(argv: ReadonlyArray<string>, cwd: string): Promise<nu
       `Opened consolidation PR for ${result.plan.assets.length} asset(s) ` +
         `from ${result.plan.issueNumbers.length} issue(s).\n` +
         `  branch: ${result.plan.batchBranch}\n` +
-        `  PR:     ${result.prUrl}\n`,
+        `  PR:     ${result.prUrl}\n` +
+        `\nNext steps:\n` +
+        `  1. Verify the PR is art-only and merge it.\n` +
+        `  2. After merge, generate wiring for placeholders:\n` +
+        `     npm run sprites:generate-wiring -- --since main\n` +
+        `  3. Review and apply the wiring patches if needed.\n`,
     );
     return 0;
   } catch (err) {
