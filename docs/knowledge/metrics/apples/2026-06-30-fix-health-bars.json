@@ -1,0 +1,9 @@
+{
+  "date": "2026-06-30",
+  "slug": "fix-health-bars",
+  "task": "Tighten mob health bar spacing/thickness and codify UX visual validation",
+  "estimated_apples": 2,
+  "actual_apples": 2,
+  "verdict": "exact",
+  "notes": "Small engine constant tuning plus regression geometry test, headless visual evidence, and policy docs update via stacked subsession."
+}
