@@ -156,6 +156,34 @@
       "judgeScore": "4",
       "contentHash": "bd51fd12d56c89376666aa5766e6dd929ac8b5a32f70a7f6c90a6c1a4f25cbd4"
     },
+    "baseball-bat-v1-var-0": {
+      "briefId": "baseball-bat-v1",
+      "spriteName": "baseball-bat-v1-var-0",
+      "assetPath": "generated/baseball-bat-v1-var-0.png",
+      "approvedAt": "2026-06-30T04:56:20.684Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-hEShZy/baseball-bat-v1/2026-06-30T04-48-35-ed6fbb42",
+      "variantIndex": 0,
+      "anchor": {
+        "x": 31,
+        "y": 60,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 60,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 28,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "8/8",
+      "judgeScore": "2",
+      "contentHash": "85bbc108b1c0e32f647d63fd4dd906d0979501e562d4477f125910614614fb49"
+    },
     "bent-pipe-v1-var-1": {
       "briefId": "bent-pipe-v1",
       "spriteName": "bent-pipe-v1-var-1",
@@ -636,6 +664,34 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
+    },
+    "green-slime-baby-v1-var-2": {
+      "briefId": "green-slime-baby-v1",
+      "spriteName": "green-slime-baby-v1-var-2",
+      "assetPath": "generated/green-slime-baby-v1-var-2.png",
+      "approvedAt": "2026-06-27T22:31:47.452Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-TXGuLV/green-slime-baby-v1/2026-06-27T05-31-18-1b9fb77c",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "6/7",
+      "judgeScore": "4",
+      "contentHash": "dd5aabb4324937f80bafd717f4207a6589662fd35f30e378e9704835da1013a3"
     },
     "hardite-plank-placeholder": {
       "briefId": "hardite-plank",
@@ -1189,6 +1245,90 @@
       "judgeScore": "2",
       "contentHash": "15c2b665285ffb7e7f9c91329f14b66a5643a65271f9b32e6e74200074430404"
     },
+    "slime-v1-var-2": {
+      "briefId": "slime-v1",
+      "spriteName": "slime-v1-var-2",
+      "assetPath": "generated/slime-v1-var-2.png",
+      "approvedAt": "2026-06-30T04:52:37.779Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-G7VXZb/slime-v1/2026-06-29T06-55-41-19312380",
+      "variantIndex": 2,
+      "anchor": {
+        "x": 31,
+        "y": 34,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 34,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "2",
+      "contentHash": "7c0f09d9305b1a9ebcfe3796eaa9f49d9e15c3ff5327762b763dfc5b3b8c6e2e"
+    },
+    "slime-v1-var-3": {
+      "briefId": "slime-v1",
+      "spriteName": "slime-v1-var-3",
+      "assetPath": "generated/slime-v1-var-3.png",
+      "approvedAt": "2026-06-30T04:52:30.498Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Z8qGii/slime-v1/2026-06-29T06-55-41-19312380",
+      "variantIndex": 3,
+      "anchor": {
+        "x": 31,
+        "y": 33,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 31,
+          "y": 33,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "3",
+      "contentHash": "4ba25a68c5395feba6cdbbfc821b9c34d4e10e36ee1e84566d5ddd28933072cf"
+    },
+    "slime-v1-var-9": {
+      "briefId": "slime-v1",
+      "spriteName": "slime-v1-var-9",
+      "assetPath": "generated/slime-v1-var-9.png",
+      "approvedAt": "2026-06-30T04:52:32.629Z",
+      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-R0u7tU/slime-v1/2026-06-29T06-55-41-19312380",
+      "variantIndex": 9,
+      "anchor": {
+        "x": 32,
+        "y": 32,
+        "source": "derived"
+      },
+      "anchors": {
+        "hold": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        },
+        "centerOfGravity": {
+          "x": 32,
+          "y": 32,
+          "source": "derived"
+        }
+      },
+      "sensorScore": "7/8",
+      "judgeScore": "4",
+      "contentHash": "e0d8f8971de41cf94f17c99512624c5bd0e171870d9e51a71832485deba2381a"
+    },
     "sling-of-shame-placeholder": {
       "briefId": "sling-of-shame",
       "spriteName": "sling-of-shame",
@@ -1375,146 +1515,6 @@
       "anchor": null,
       "sensorScore": "placeholder",
       "judgeScore": null
-    },
-    "green-slime-baby-v1-var-2": {
-      "briefId": "green-slime-baby-v1",
-      "spriteName": "green-slime-baby-v1-var-2",
-      "assetPath": "generated/green-slime-baby-v1-var-2.png",
-      "approvedAt": "2026-06-27T22:31:47.452Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-TXGuLV/green-slime-baby-v1/2026-06-27T05-31-18-1b9fb77c",
-      "variantIndex": 2,
-      "anchor": {
-        "x": 31,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "6/7",
-      "judgeScore": "4",
-      "contentHash": "dd5aabb4324937f80bafd717f4207a6589662fd35f30e378e9704835da1013a3"
-    },
-    "slime-v1-var-2": {
-      "briefId": "slime-v1",
-      "spriteName": "slime-v1-var-2",
-      "assetPath": "generated/slime-v1-var-2.png",
-      "approvedAt": "2026-06-30T04:52:37.779Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-G7VXZb/slime-v1/2026-06-29T06-55-41-19312380",
-      "variantIndex": 2,
-      "anchor": {
-        "x": 31,
-        "y": 34,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 34,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 34,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/8",
-      "judgeScore": "2",
-      "contentHash": "7c0f09d9305b1a9ebcfe3796eaa9f49d9e15c3ff5327762b763dfc5b3b8c6e2e"
-    },
-    "slime-v1-var-3": {
-      "briefId": "slime-v1",
-      "spriteName": "slime-v1-var-3",
-      "assetPath": "generated/slime-v1-var-3.png",
-      "approvedAt": "2026-06-30T04:52:30.498Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-Z8qGii/slime-v1/2026-06-29T06-55-41-19312380",
-      "variantIndex": 3,
-      "anchor": {
-        "x": 31,
-        "y": 33,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 33,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/8",
-      "judgeScore": "3",
-      "contentHash": "4ba25a68c5395feba6cdbbfc821b9c34d4e10e36ee1e84566d5ddd28933072cf"
-    },
-    "slime-v1-var-9": {
-      "briefId": "slime-v1",
-      "spriteName": "slime-v1-var-9",
-      "assetPath": "generated/slime-v1-var-9.png",
-      "approvedAt": "2026-06-30T04:52:32.629Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-R0u7tU/slime-v1/2026-06-29T06-55-41-19312380",
-      "variantIndex": 9,
-      "anchor": {
-        "x": 32,
-        "y": 32,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 32,
-          "y": 32,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 32,
-          "y": 32,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "7/8",
-      "judgeScore": "4",
-      "contentHash": "e0d8f8971de41cf94f17c99512624c5bd0e171870d9e51a71832485deba2381a"
-    },
-    "baseball-bat-v1-var-0": {
-      "briefId": "baseball-bat-v1",
-      "spriteName": "baseball-bat-v1-var-0",
-      "assetPath": "generated/baseball-bat-v1-var-0.png",
-      "approvedAt": "2026-06-30T04:56:20.684Z",
-      "sourceRun": "../../../../../AppData/Local/Temp/crawler-sidecar-run-hEShZy/baseball-bat-v1/2026-06-30T04-48-35-ed6fbb42",
-      "variantIndex": 0,
-      "anchor": {
-        "x": 31,
-        "y": 60,
-        "source": "derived"
-      },
-      "anchors": {
-        "hold": {
-          "x": 31,
-          "y": 60,
-          "source": "derived"
-        },
-        "centerOfGravity": {
-          "x": 31,
-          "y": 28,
-          "source": "derived"
-        }
-      },
-      "sensorScore": "8/8",
-      "judgeScore": "2",
-      "contentHash": "85bbc108b1c0e32f647d63fd4dd906d0979501e562d4477f125910614614fb49"
     }
   }
 }
