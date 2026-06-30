@@ -80,7 +80,11 @@ function parseArgs(): CLIArgs {
       args.weapon = next;
       i++;
     } else if (arg === '--persona' && next) {
-      args.persona = parseRunnerPersona(next) ?? RUNNER_PERSONA.SPEEDY;
+      const parsedPersona = parseRunnerPersona(next);
+      if (parsedPersona === null) {
+        console.warn(`Unknown persona "${next}", defaulting to "${RUNNER_PERSONA.SPEEDY}".`);
+      }
+      args.persona = parsedPersona ?? RUNNER_PERSONA.SPEEDY;
       i++;
     } else if (arg === '--debug') {
       args.debug = true;

@@ -18,6 +18,7 @@ import {
   computeAutoStatAllocation,
 } from '../../game/ai/auto-progression.js';
 import type { SerializedBTNode } from '../../game/ai/behavior-tree.js';
+import { parseRunnerPersona } from '../../game/ai/personas.js';
 import { RUNNER_PERSONA, type RunnerPersonaValue } from '../../game/ai/types.js';
 import {
   acceptQuest,
@@ -1240,7 +1241,7 @@ function createAiRunnerLab(canvas: HTMLElement, controls: HTMLElement): () => vo
     if (personaSelect) {
       personaSelect.value = runnerPersona;
       personaSelect.onchange = () => {
-        const nextPersona = personaSelect.value as RunnerPersonaValue;
+        const nextPersona = parseRunnerPersona(personaSelect.value) ?? INITIAL_RUNNER_PERSONA;
         if (nextPersona === runnerPersona) {
           return;
         }

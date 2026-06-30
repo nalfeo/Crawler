@@ -129,9 +129,11 @@ export function autoFloor1ProgressionSystem(
   const playerY = world.stores.position.y[playerEid] ?? 0;
   const dx = playerX - objective.staircasePos.x;
   const dy = playerY - objective.staircasePos.y;
+  const timeRemainingMs = objective.deadlineMs - world.elapsedMs;
+  const descentTimeRemainingMs = Number.isFinite(timeRemainingMs) ? timeRemainingMs : Infinity;
   if (
     Math.hypot(dx, dy) <= objective.markerRadiusFt &&
-    shouldDescendAtStairs(options.runnerPersona, objective.deadlineMs - world.elapsedMs)
+    shouldDescendAtStairs(options.runnerPersona, descentTimeRemainingMs)
   ) {
     confirmFloor1StairDescend(world, playerEid);
   }

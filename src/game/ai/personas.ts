@@ -23,6 +23,7 @@ const RUNNER_PERSONA_PROFILES: Record<RunnerPersonaValue, RunnerPersonaProfile> 
     label: 'Balanced',
     description: 'Balances clear speed with extra combat/loot value when safe.',
     farmAfterStairUnlock: true,
+    // Farm for up to ~1 minute after staircase unlock, then exit safely.
     stairDescendWindowMs: 60_000,
     aiConfigOverrides: {
       aggression: 1,
@@ -37,6 +38,7 @@ const RUNNER_PERSONA_PROFILES: Record<RunnerPersonaValue, RunnerPersonaProfile> 
     label: 'Greedy',
     description: 'Expert farmer maximizing kills, XP, and gold before exiting safely.',
     farmAfterStairUnlock: true,
+    // Push farming longer and only descend in the final ~20 seconds.
     stairDescendWindowMs: 20_000,
     aiConfigOverrides: {
       aggression: 1.2,
@@ -77,6 +79,11 @@ export function applyRunnerPersonaToConfig(config: AIConfig): AIConfig {
   };
 }
 
+/**
+ * Whether a runner should descend immediately when standing on the staircase
+ * marker. `null`/`undefined` personas intentionally resolve to `speedy` to keep
+ * legacy immediate-exit behavior for older call sites.
+ */
 export function shouldDescendAtStairs(
   persona: RunnerPersonaValue | null | undefined,
   timeRemainingMs: number,

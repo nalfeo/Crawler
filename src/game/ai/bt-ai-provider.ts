@@ -50,11 +50,7 @@ import {
   SHOPKEEPER_FETCH_ITEM_ID,
 } from '../../shared/quest-types.js';
 import { AIState, type AIInputProvider, type AIDecision, type AIConfig } from './types.js';
-import {
-  applyRunnerPersonaToConfig,
-  getRunnerPersonaProfile,
-  shouldDescendAtStairs,
-} from './personas.js';
+import { applyRunnerPersonaToConfig, getRunnerPersonaProfile } from './personas.js';
 import {
   BehaviorTree,
   BTStatus,
@@ -2858,9 +2854,10 @@ export class BehaviorTreeAI implements AIInputProvider {
 
     if (objective.staircaseUnlocked && !objective.staircaseDiscovered) {
       const persona = getRunnerPersonaProfile(this.config.runnerPersona);
+      const timeRemainingMs = objective.deadlineMs - world.elapsedMs;
       const shouldDescend =
         objective.staircaseSpawned &&
-        shouldDescendAtStairs(this.config.runnerPersona, objective.deadlineMs - world.elapsedMs);
+        (!Number.isFinite(timeRemainingMs) || timeRemainingMs <= persona.stairDescendWindowMs);
 
       if (!shouldDescend && persona.farmAfterStairUnlock) {
         const prey = this.findNearestEnemy(world, playerX, playerY, GOLD_FARM_ENEMY_SCAN_RADIUS_FT);
