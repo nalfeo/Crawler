@@ -49,10 +49,12 @@ const HANDOFF_DATED_RE =
   /^docs[\\/]knowledge[\\/]handoffs[\\/]\d{4}-\d{2}-\d{2}-[a-z0-9][\w-]*\.md$/;
 
 // Files we treat as "trivial" for handoff-required purposes.
-// Any .md file is trivial — markdown cannot change game logic, so md-only
-// sessions don't need a session handoff.
+// Any .md file outside src/ is trivial — markdown cannot change game logic, so
+// md-only sessions don't need a session handoff. src/**/*.md is explicitly
+// excluded (use negative lookahead) because code directories could hold design
+// notes that accompany real code changes.
 const TRIVIAL_PATH_RE =
-  /^(docs[\\/]|README\.md$|CHANGELOG\.md$|\.github[\\/](workflows|dependabot)|package(-lock)?\.json$|pnpm-lock\.yaml$|yarn\.lock$|.+\.md$)/;
+  /^(docs[\\/]|README\.md$|CHANGELOG\.md$|\.github[\\/](workflows|dependabot)|package(-lock)?\.json$|pnpm-lock\.yaml$|yarn\.lock$|(?!src[\\/]).+\.md$)/;
 
 function extractTitle(args) {
   if (!args) return '';

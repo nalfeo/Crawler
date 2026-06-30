@@ -56,11 +56,14 @@ test('TRIVIAL_PATH_RE classifies docs-only diffs', () => {
   assert.match('package-lock.json', TRIVIAL_PATH_RE);
   assert.match('package.json', TRIVIAL_PATH_RE);
   assert.match('.github/workflows/ci.yml', TRIVIAL_PATH_RE);
-  // any .md file is trivial — markdown cannot hold game logic
+  // any .md file outside src/ is trivial — markdown cannot hold game logic
   assert.match('.github/copilot-instructions.md', TRIVIAL_PATH_RE);
   assert.match('.github/skills/review-harness/SKILL.md', TRIVIAL_PATH_RE);
   assert.match('.specify/specs/floor-1.md', TRIVIAL_PATH_RE);
+  // src/**/*.md is NOT trivial — it lives alongside real code
   assert.doesNotMatch('src/core/foo.ts', TRIVIAL_PATH_RE);
+  assert.doesNotMatch('src/core/NOTES.md', TRIVIAL_PATH_RE);
+  assert.doesNotMatch('src/shared/README.md', TRIVIAL_PATH_RE);
 });
 
 test('checkHandoff allows trivial diffs without handoff', () => {
