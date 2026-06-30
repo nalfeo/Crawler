@@ -100,16 +100,15 @@ describe('createSynthProvider — chat deployment fallback', () => {
   });
 
   describe('createBriefSelectorProvider', () => {
-    it('throws when selector deployment matches synth deployment', () => {
-      expect(() =>
-        createBriefSelectorProvider({
-          env: {
-            ...BASE_ENV,
-            AZURE_OPENAI_CHAT_DEPLOYMENT: 'same-deploy',
-            AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: 'same-deploy',
-          },
-        }),
-      ).toThrow(/must differ/);
+    it('allows selector deployment to match synth deployment', () => {
+      const provider = createBriefSelectorProvider({
+        env: {
+          ...BASE_ENV,
+          AZURE_OPENAI_CHAT_DEPLOYMENT: 'same-deploy',
+          AZURE_OPENAI_BRIEF_SELECTOR_DEPLOYMENT: 'same-deploy',
+        },
+      });
+      expect(provider).not.toBeNull();
     });
   });
 
