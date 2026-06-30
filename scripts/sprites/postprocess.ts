@@ -96,6 +96,7 @@ export function postprocessWithTrace(
 
   let image = decodePng(rawPng);
   const backgroundSource = image;
+  const isTile = brief.type === 'tile';
   const defaultBackgroundColorToleranceSq = BACKGROUND_B_COLOR_TOLERANCE_SQ;
   const backgroundColorToleranceSq = normalizeTolerance(
     options.background?.colorToleranceSq,
@@ -105,12 +106,16 @@ export function postprocessWithTrace(
     options.background?.fringeToleranceSq,
     BACKGROUND_B_FRINGE_TOLERANCE_SQ,
   );
-  image = removeBackgroundB(image, {
-    colorToleranceSq: backgroundColorToleranceSq,
-    fringeToleranceSq: backgroundFringeToleranceSq,
-    clearEnclosedIslands: false,
-  });
-  pushStep('background-removal', 'Background removal', image);
+  if (isTile) {
+    pushStep('background-removal-skipped', 'Background removal (skipped, tile)', image);
+  } else {
+    image = removeBackgroundB(image, {
+      colorToleranceSq: backgroundColorToleranceSq,
+      fringeToleranceSq: backgroundFringeToleranceSq,
+      clearEnclosedIslands: false,
+    });
+    pushStep('background-removal', 'Background removal', image);
+  }
   const enclosedRegionMode: EnclosedBackgroundMode =
     options.modules?.enclosedBackgroundMode ?? 'enabled';
   const shouldRunEnclosedBackgroundCleanup =
@@ -134,37 +139,49 @@ export function postprocessWithTrace(
   // fringe. The same crop runs for every sprite type so the resize no longer
   // needs its own internal re-trim. `tightlyTrimmed` is already the tight crop,
   // so we pad it directly rather than re-scanning the full-resolution source.
-  const tightlyTrimmed = trimTransparentEdges(image);
-  if (tightlyTrimmed.width > 0 && tightlyTrimmed.height > 0) {
-    const marginPx = subjectTrimMarginPx(tightlyTrimmed.width, tightlyTrimmed.height);
-    image = trimTransparentEdges(tightlyTrimmed, marginPx);
-    pushStep('transparent-trim', `Transparent trim (${marginPx}px margin)`, image);
+  if (isTile) {
+    pushStep('transparent-trim-skipped', 'Transparent trim (skipped, tile edge-to-edge)', image);
   } else {
-    pushStep('transparent-trim', 'Transparent trim (skipped, empty)', image);
+    const tightlyTrimmed = trimTransparentEdges(image);
+    if (tightlyTrimmed.width > 0 && tightlyTrimmed.height > 0) {
+      const marginPx = subjectTrimMarginPx(tightlyTrimmed.width, tightlyTrimmed.height);
+      image = trimTransparentEdges(tightlyTrimmed, marginPx);
+      pushStep('transparent-trim', `Transparent trim (${marginPx}px margin)`, image);
+    } else {
+      pushStep('transparent-trim', 'Transparent trim (skipped, empty)', image);
+    }
   }
 
-  const fitResize = fitWithinNearest(
-    image,
-    brief.size.width,
-    brief.size.height,
-    resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height),
-  );
-  image = fitResize.image;
-  pushStep(
-    'resize-nearest',
-    `Resize (nearest-fit, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${image.width}x${image.height})`,
-    image,
-  );
+  if (isTile) {
+    pushStep('resize-nearest-skipped', 'Resize (skipped, tile edge-to-edge)', image);
+  } else {
+    const fitResize = fitWithinNearest(
+      image,
+      brief.size.width,
+      brief.size.height,
+      resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height),
+    );
+    image = fitResize.image;
+    pushStep(
+      'resize-nearest',
+      `Resize (nearest-fit, ${fitResize.fittedWidth}x${fitResize.fittedHeight} in ${image.width}x${image.height})`,
+      image,
+    );
+  }
 
   // Re-run background removal after the resize. Stretching the trimmed subject
   // with nearest-neighbor sampling can re-expose background-coloured (pink)
   // fringe pixels; re-key against the ORIGINAL background colours to clear them
   // without eating the now transparent-padded canvas's dark foreground.
-  image = removeReintroducedBackground(image, backgroundSource, {
-    fringeToleranceSq: backgroundFringeToleranceSq,
-    clearEnclosedIslands: shouldRunEnclosedBackgroundCleanup,
-  });
-  pushStep('background-rekey', 'Background re-removal (post-resize)', image);
+  if (isTile) {
+    pushStep('background-rekey-skipped', 'Background re-removal (skipped, tile)', image);
+  } else {
+    image = removeReintroducedBackground(image, backgroundSource, {
+      fringeToleranceSq: backgroundFringeToleranceSq,
+      clearEnclosedIslands: shouldRunEnclosedBackgroundCleanup,
+    });
+    pushStep('background-rekey', 'Background re-removal (post-resize)', image);
+  }
 
   const speckleMode = options.modules?.speckleMode ?? 'edge-drop';
   if (speckleMode !== 'disabled') {
