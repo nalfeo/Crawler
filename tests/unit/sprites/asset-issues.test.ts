@@ -32,6 +32,8 @@ describe('parseAssetIssueBody', () => {
     const payload = parseAssetIssueBody(plan.issueBody);
     expect(payload).toEqual({
       version: 1,
+      state: 'checked-in',
+      filedAt: NOW.toISOString(),
       branch: 'assets/s',
       baseBranch: 'main',
       assets: [asset()],

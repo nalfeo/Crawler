@@ -71,11 +71,14 @@ export interface CheckinAsset {
 
 /**
  * Successful `/api/checkin` payload: the pushed `assets/<slug>` branch, the URL
- * of the filed `asset-checkin` tracking issue, and the assets it covers.
+ * of the filed `asset-checkin` tracking issue, the filed issue contents, and
+ * the assets it covers.
  */
 export interface CheckinResponse {
   readonly branch: string;
   readonly issueUrl: string;
+  readonly issueTitle: string;
+  readonly issueBody: string;
   readonly assets: readonly CheckinAsset[];
 }
 

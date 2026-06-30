@@ -2495,6 +2495,7 @@ function render(): void {
     judging: { text: 'Judging…', color: '#a78bfa' },
     variants: { text: 'Pick winner', color: '#fbbf24' },
     approved: { text: 'Approved', color: '#a78bfa' },
+    'checked-in': { text: 'Checked in', color: '#34d399' },
     tagging: { text: 'Tagging…', color: '#a78bfa' },
     done: { text: 'Done ✓', color: '#bef264' },
   };
@@ -2717,7 +2718,8 @@ function render(): void {
       runHasSensorFailures(item.run);
     forceJudgeBtn.style.display = showForceJudge ? '' : 'none';
     forceJudgeBtn.disabled = busy || !showForceJudge;
-    metadataBtn.disabled = busy || !(item.stage === 'approved' || item.stage === 'done');
+    metadataBtn.disabled =
+      busy || !(item.stage === 'approved' || item.stage === 'checked-in' || item.stage === 'done');
     removeItemBtn.disabled = false;
     // Restart points: Brief is offered once the item has moved past the initial
     // draft (there is something to rewind); Sheet is offered whenever a
@@ -2757,6 +2759,8 @@ function render(): void {
       );
     } else if (item.metadataSummary && item.stage === 'done') {
       setWorkflowStatus(item.metadataSummary, '#bef264');
+    } else if (item.checkinSummary && item.stage === 'checked-in') {
+      setWorkflowStatus(item.checkinSummary, '#86efac');
     } else if (item.approvalSummary && item.stage === 'approved') {
       setWorkflowStatus(item.approvalSummary, '#bef264');
     } else if (nextAction) {
@@ -5225,6 +5229,12 @@ function render(): void {
         run: null,
         generationRequestedAt: null,
         approvedAssetPath: null,
+        approvalSummary: null,
+        checkinBranch: null,
+        checkinIssueUrl: null,
+        checkinIssueTitle: null,
+        checkinIssueBody: null,
+        checkinSummary: null,
         metadataSummary: null,
         lastError: null,
       });
@@ -5542,6 +5552,13 @@ function render(): void {
     };
     if (opts.resetApproval) {
       patch.approvedAssetPath = null;
+      patch.approvalSummary = null;
+      patch.checkinBranch = null;
+      patch.checkinIssueUrl = null;
+      patch.checkinIssueTitle = null;
+      patch.checkinIssueBody = null;
+      patch.checkinSummary = null;
+      patch.metadataSummary = null;
     }
     lastCanceledStep.delete(itemId);
     queueState = queueUpdateItem(queueState, itemId, patch);
@@ -5885,6 +5902,13 @@ function render(): void {
           generationRequestedAt: result.requestedAt,
           run: null,
           approvedAssetPath: null,
+          approvalSummary: null,
+          checkinBranch: null,
+          checkinIssueUrl: null,
+          checkinIssueTitle: null,
+          checkinIssueBody: null,
+          checkinSummary: null,
+          metadataSummary: null,
           lastError: null,
         });
         writeQueueState();
@@ -6003,6 +6027,41 @@ function render(): void {
     try {
       const result = await postCheckin();
       const count = result.assets.length;
+      const normalizeCheckedAssetPath = (assetPath: string): string =>
+        assetPath.startsWith('public/assets/')
+          ? assetPath.slice('public/assets/'.length)
+          : assetPath;
+      const checkedAssetPaths = new Set(
+        result.assets.map((asset) => normalizeCheckedAssetPath(asset.assetPath)),
+      );
+      const updatedItems = queueState.items.map((item) => {
+        if (item.approvedAssetPath === null) {
+          return item;
+        }
+        const normalizedApprovedPath = normalizeCheckedAssetPath(item.approvedAssetPath);
+        if (!checkedAssetPaths.has(normalizedApprovedPath)) {
+          return item;
+        }
+        const summary =
+          `Checked in ${normalizedApprovedPath} on ${result.branch}. ` +
+          `Filed issue: ${result.issueUrl}.`;
+        return {
+          ...item,
+          stage: item.stage === 'approved' ? ('checked-in' as const) : item.stage,
+          checkinBranch: result.branch,
+          checkinIssueUrl: result.issueUrl,
+          checkinIssueTitle: result.issueTitle,
+          checkinIssueBody: result.issueBody,
+          checkinSummary: summary,
+          lastError: null,
+        };
+      });
+      if (updatedItems.some((item, index) => item !== queueState.items[index])) {
+        queueState = { ...queueState, items: updatedItems };
+        writeQueueState();
+        renderQueue();
+        renderWorkflowSelection();
+      }
       const link = el('a', {
         text: 'View asset-checkin issue ↗',
         style: { color: '#93c5fd', textDecoration: 'underline' },
@@ -6074,6 +6133,7 @@ function render(): void {
       setWorkflowStatus('Add and approve an item first.', '#fca5a5');
       return;
     }
+    const priorStage = item.stage;
     queueState = queueUpdateItem(queueState, item.id, { stage: 'tagging', lastError: null });
     writeQueueState();
     renderQueue();
@@ -6107,7 +6167,7 @@ function render(): void {
       void recompute();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      queueState = queueUpdateItem(queueState, item.id, { stage: 'approved', lastError: message });
+      queueState = queueUpdateItem(queueState, item.id, { stage: priorStage, lastError: message });
       writeQueueState();
       renderQueue();
       renderWorkflowSelection();

@@ -239,8 +239,32 @@ describe('recoverInterruptedItem', () => {
     expect(recoverInterruptedItem(item).stage).toBe('postprocessed');
   });
 
-  it('reverts tagging to approved', () => {
+  it('reverts tagging to approved when no check-in metadata exists', () => {
     expect(recoverInterruptedItem(itemAt({ stage: 'tagging' })).stage).toBe('approved');
+  });
+
+  it('reverts tagging to checked-in when check-in metadata exists', () => {
+    expect(
+      recoverInterruptedItem(
+        itemAt({
+          stage: 'tagging',
+          checkinBranch: 'assets/checkin-abc123',
+          checkinIssueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+        }),
+      ).stage,
+    ).toBe('checked-in');
+  });
+
+  it('reverts tagging to done when metadata already existed', () => {
+    expect(
+      recoverInterruptedItem(
+        itemAt({
+          stage: 'tagging',
+          metadataSummary: 'Tagged via auto: processed=1, changed=1, rejected=0',
+          checkinIssueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+        }),
+      ).stage,
+    ).toBe('done');
   });
 
   it('leaves stable stages untouched', () => {
@@ -251,6 +275,7 @@ describe('recoverInterruptedItem', () => {
       'postprocessed',
       'variants',
       'approved',
+      'checked-in',
       'done',
     ] as const) {
       const item = itemAt({ stage });
@@ -343,6 +368,7 @@ describe('stage helpers', () => {
     expect(stageActiveStep('judging')).toBe(4);
     expect(stageActiveStep('variants')).toBe(5);
     expect(stageActiveStep('approved')).toBe(6);
+    expect(stageActiveStep('checked-in')).toBe(6);
     expect(stageActiveStep('tagging')).toBe(6);
     expect(stageActiveStep('done')).toBe(7);
   });
@@ -388,6 +414,7 @@ describe('stage helpers', () => {
     expect(primaryActionLabel('sheet')).toBe('PostProcess');
     expect(primaryActionLabel('postprocessed')).toBe('Judge');
     expect(primaryActionLabel('approved')).toBe('Tag (generate metadata)');
+    expect(primaryActionLabel('checked-in')).toBe('Tag (generate metadata)');
     expect(primaryActionLabel('synthesizing')).toBeNull();
     expect(primaryActionLabel('generating')).toBeNull();
     expect(primaryActionLabel('variants')).toBeNull();
@@ -408,6 +435,11 @@ describe('approvedItemPatch', () => {
     expect(patch.approvedAssetPath).toBe('generated/green-slime-baby-v1-var-2.png');
     expect(patch.generationRequestedAt).toBeNull();
     expect(patch.lastError).toBeNull();
+    expect(patch.checkinBranch).toBeNull();
+    expect(patch.checkinIssueUrl).toBeNull();
+    expect(patch.checkinIssueTitle).toBeNull();
+    expect(patch.checkinIssueBody).toBeNull();
+    expect(patch.checkinSummary).toBeNull();
     expect(patch.approvalSummary).toBe(
       'Approved green-slime-baby-v1 variant 2 -> generated/green-slime-baby-v1-var-2.png ' +
         '(6/7, judge 4). Now Tag to add catalog metadata.',
@@ -701,6 +733,11 @@ describe('restartToBriefPatch', () => {
       briefPath: 'briefs/skull-mace.yaml',
       run,
       approvedAssetPath: 'public/assets/generated/skull-mace.png',
+      checkinIssueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+      checkinIssueTitle: 'Asset check-in: skull-mace',
+      checkinIssueBody: '## Asset check-in\n...',
+      checkinBranch: 'assets/checkin-abc123',
+      checkinSummary: 'Checked in public/assets/generated/skull-mace.png',
     });
     const patch = restartToBriefPatch(getItem(state, 'item-1')!);
     expect(patch.stage).toBe('draft');
@@ -709,6 +746,11 @@ describe('restartToBriefPatch', () => {
     expect(patch.chosenCandidatePath).toBeNull();
     expect(patch.briefPath).toBeNull();
     expect(patch.approvedAssetPath).toBeNull();
+    expect(patch.checkinIssueUrl).toBeNull();
+    expect(patch.checkinIssueTitle).toBeNull();
+    expect(patch.checkinIssueBody).toBeNull();
+    expect(patch.checkinBranch).toBeNull();
+    expect(patch.checkinSummary).toBeNull();
     // Operator identity/direction is intentionally NOT touched.
     expect('name' in patch).toBe(false);
     expect('brief' in patch).toBe(false);
@@ -732,6 +774,11 @@ describe('restartToSheetPatch', () => {
       stage: 'approved',
       run,
       approvedAssetPath: 'public/assets/generated/skull-mace.png',
+      checkinIssueUrl: 'https://github.com/nalfeo/Crawler/issues/99',
+      checkinIssueTitle: 'Asset check-in: skull-mace',
+      checkinIssueBody: '## Asset check-in\n...',
+      checkinBranch: 'assets/checkin-abc123',
+      checkinSummary: 'Checked in public/assets/generated/skull-mace.png',
       metadataSummary: 'tagged',
     });
     const patch = restartToSheetPatch(getItem(state, 'item-1')!);
@@ -739,6 +786,11 @@ describe('restartToSheetPatch', () => {
     // The expensive AI sheet is preserved (not part of the patch).
     expect('run' in patch).toBe(false);
     expect(patch.approvedAssetPath).toBeNull();
+    expect(patch.checkinIssueUrl).toBeNull();
+    expect(patch.checkinIssueTitle).toBeNull();
+    expect(patch.checkinIssueBody).toBeNull();
+    expect(patch.checkinBranch).toBeNull();
+    expect(patch.checkinSummary).toBeNull();
     expect(patch.metadataSummary).toBeNull();
   });
 
