@@ -27,7 +27,6 @@ import {
 import {
   computeEnemyScale,
   enemyVariantFromTextureId,
-  generatedBriefIdForEnemy,
   pickGeneratedEnemyTextureKey,
   resolveRenderKind,
   SLIME_FULL_SPRITE_WIDTH,
@@ -75,6 +74,16 @@ interface ResolvedTexture {
   fallback: boolean;
 }
 
+interface GeneratedTextureCacheEntry {
+  texture: ResolvedTexture | null;
+}
+
+const generatedTextureCacheByScene = new WeakMap<
+  Phaser.Scene,
+  Map<string, GeneratedTextureCacheEntry>
+>();
+const generatedTextureCacheBoundManagers = new WeakSet<object>();
+
 function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistry | null {
   const registry = scene.game?.registry?.get?.(GENERATED_SPRITE_REGISTRY_KEY);
   if (
@@ -87,6 +96,24 @@ function getGeneratedSpriteRegistry(scene: Phaser.Scene): GeneratedSpriteRegistr
   return null;
 }
 
+function getGeneratedTextureCache(scene: Phaser.Scene): Map<string, GeneratedTextureCacheEntry> {
+  let cache = generatedTextureCacheByScene.get(scene);
+  if (cache === undefined) {
+    cache = new Map<string, GeneratedTextureCacheEntry>();
+    generatedTextureCacheByScene.set(scene, cache);
+  }
+  const textures = scene.textures as Phaser.Textures.TextureManager | undefined;
+  if (textures !== undefined && !generatedTextureCacheBoundManagers.has(textures)) {
+    const clearCache = (): void => {
+      cache.clear();
+    };
+    textures.on?.('addtexture', clearCache);
+    textures.on?.('removetexture', clearCache);
+    generatedTextureCacheBoundManagers.add(textures);
+  }
+  return cache;
+}
+
 /**
  * Resolve the texture (and frame) to use for the given entity type.
  * Prefers an approved generated sprite, then a Kenney sprite when both
@@ -97,9 +124,16 @@ function resolveTexture(
   scene: Phaser.Scene,
   type: string,
   options?: { appearanceKey?: string; variantRoll?: number },
+  generatedTextureCache?: Map<string, GeneratedTextureCacheEntry>,
 ): ResolvedTexture {
   const config = RENDER_KIND_CONFIGS[type];
-  const generated = resolveGeneratedTexture(scene, type, config?.generated, options);
+  const generated = resolveGeneratedTexture(
+    scene,
+    type,
+    config?.generated,
+    options,
+    generatedTextureCache,
+  );
   if (generated !== null) {
     return {
       key: generated.key,
@@ -127,7 +161,8 @@ function resolveGeneratedTexture(
   type: string,
   generated: EntitySpriteMappings['renderKinds'][string]['generated'] | undefined,
   options?: { appearanceKey?: string; variantRoll?: number },
-): { key: string; scale: number } | null {
+  generatedTextureCache?: Map<string, GeneratedTextureCacheEntry>,
+): ResolvedTexture | null {
   if (generated === undefined || scene.textures === undefined) {
     return null;
   }
@@ -139,15 +174,30 @@ function resolveGeneratedTexture(
     options?.appearanceKey,
   );
   if (registryKey !== null && scene.textures.exists(registryKey)) {
-    return { key: registryKey, scale: generated.scale };
+    return { key: registryKey, scale: generated.scale, fallback: false };
+  }
+
+  const cache = generatedTextureCache ?? getGeneratedTextureCache(scene);
+  const cacheKey = `${type}:${options?.appearanceKey ?? ''}`;
+  const cached = cache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached.texture;
   }
 
   if (scene.textures.exists(generated.pinnedTextureKey)) {
-    return { key: generated.pinnedTextureKey, scale: generated.scale };
+    const texture = {
+      key: generated.pinnedTextureKey,
+      scale: generated.scale,
+      fallback: false,
+    };
+    cache.set(cacheKey, { texture });
+    return texture;
   }
 
   if (scene.textures.exists(generated.briefId)) {
-    return { key: generated.briefId, scale: generated.scale };
+    const texture = { key: generated.briefId, scale: generated.scale, fallback: false };
+    cache.set(cacheKey, { texture });
+    return texture;
   }
 
   const textureKeys = scene.textures.getTextureKeys?.();
@@ -170,7 +220,12 @@ function resolveGeneratedTexture(
     selectedVariant = variantIndex;
     selectedKey = key;
   }
-  return selectedKey === undefined ? null : { key: selectedKey, scale: generated.scale };
+  const texture =
+    selectedKey === undefined
+      ? null
+      : { key: selectedKey, scale: generated.scale, fallback: false };
+  cache.set(cacheKey, { texture });
+  return texture;
 }
 
 function getProceduralTextureForType(type: string): string {
@@ -243,25 +298,16 @@ export function createPhaserBridge(scene: Phaser.Scene): {
     sync(world: GameWorld, renderElapsedMs = world.elapsedMs, interpAlpha = 0): void {
       const entities = query(world.ecs, [Sprite, Position]);
       const activeEntities = new Set<number>();
-      const preferredTextureCache = new Map<string, ResolvedTexture>();
+      const generatedTextureCache = getGeneratedTextureCache(scene);
+      const resolveSceneTexture = (
+        type: string,
+        options?: { appearanceKey?: string; variantRoll?: number },
+      ): ResolvedTexture => resolveTexture(scene, type, options, generatedTextureCache);
       const resolvePreferredTexture = (
         type: string,
         options?: { appearanceKey?: string; variantRoll?: number },
       ): ResolvedTexture => {
-        const registry = getGeneratedSpriteRegistry(scene);
-        const briefId = generatedBriefIdForEnemy(type, options?.appearanceKey);
-        const hasGeneratedVariants =
-          briefId !== undefined && registry !== null && registry.variants(briefId).length > 0;
-        const cacheKey = `${type}:${options?.appearanceKey ?? ''}:${
-          hasGeneratedVariants ? (options?.variantRoll ?? '') : ''
-        }`;
-        const cached = preferredTextureCache.get(cacheKey);
-        if (cached !== undefined) {
-          return cached;
-        }
-        const resolved = resolveTexture(scene, type, options);
-        preferredTextureCache.set(cacheKey, resolved);
-        return resolved;
+        return resolveSceneTexture(type, options);
       };
       const { position, velocity, lineDamage, trap, areaDamage, lifetime, meleeSwing } =
         world.stores;
@@ -288,7 +334,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             scale = visual.obj.scaleX || visual.baseScale;
             tint = visual.obj.isTinted ? visual.obj.tintTopLeft : undefined;
           } else {
-            const tex = resolveTexture(scene, enemyVariantFromTextureId(event.spriteTextureId), {
+            const tex = resolveSceneTexture(enemyVariantFromTextureId(event.spriteTextureId), {
               appearanceKey: event.spriteAppearanceKey,
               variantRoll: event.spriteVariantRoll,
             });
@@ -564,7 +610,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           if (visual) {
             visual.obj.destroy();
           }
-          const resolved = resolveTexture(scene, visualType, {
+          const resolved = resolveSceneTexture(visualType, {
             appearanceKey,
             variantRoll: world.stores.sprite.variantRoll[eid],
           });
@@ -631,7 +677,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
           corpseDecay = computeCorpseDecay(remainingMs, visual.deathTotalMs);
 
           if (!deathMarker) {
-            const tex = resolveTexture(scene, 'dead_skull');
+            const tex = resolveSceneTexture('dead_skull');
             deathMarker = scene.add.image(x, y - DEAD_SKULL_Y_OFFSET, tex.key, tex.frame);
             deathMarkers.set(eid, deathMarker);
           }
@@ -735,8 +781,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
               }
             } else {
               // Full circle AoE — use image
-              const currentTex = resolveTexture(
-                scene,
+              const currentTex = resolveSceneTexture(
                 entityType === 'enemy_aoe' ? 'melee' : 'aoe_proj',
               );
               let scale = (radius * 2) / (currentTex.scale > 1 ? 16 : 66);
@@ -745,7 +790,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
 
               // Use explosion texture for trap-spawned AoEs (short duration)
               const explosionType = entityType === 'enemy_aoe' ? 'enemy_explosion' : 'explosion';
-              const explosionTex = resolveTexture(scene, explosionType);
+              const explosionTex = resolveSceneTexture(explosionType);
               if (remaining <= 100 && img.texture.key !== explosionTex.key) {
                 img.setTexture(explosionTex.key, explosionTex.frame);
                 // Recalculate scale based on new texture
@@ -768,7 +813,7 @@ export function createPhaserBridge(scene: Phaser.Scene): {
             // Switch texture based on arm state
             const armAt = trap.armAtMs[eid] ?? 0;
             const isArmed = renderElapsedMs >= armAt;
-            const tex = resolveTexture(scene, isArmed ? 'trap_armed' : 'trap_arming');
+            const tex = resolveSceneTexture(isArmed ? 'trap_armed' : 'trap_arming');
             img.setTexture(tex.key, tex.frame);
 
             // Pulse when armed

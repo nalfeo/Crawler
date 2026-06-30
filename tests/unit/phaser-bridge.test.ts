@@ -429,6 +429,44 @@ describe('createPhaserBridge', () => {
     expect(images[0]?.scaleX).toBeCloseTo(0.4, 6);
   });
 
+  it('reuses the generated-family fallback scan across enemies and syncs until textures change', () => {
+    const images: MockImage[] = [];
+    const available = new Set(['kenney-tiny-dungeon', 'slime-v1-var-42']);
+    const getTextureKeys = vi.fn(() => Array.from(available));
+    const scene = {
+      add: {
+        image: vi.fn((x = 0, y = 0, textureKey = '', frame?: number) => {
+          const mockImage = new MockImage(x, y, textureKey, frame);
+          images.push(mockImage);
+          return mockImage as unknown as Phaser.GameObjects.Image;
+        }),
+      },
+      textures: {
+        exists: (key: string) => available.has(key),
+        getTextureKeys,
+      },
+    } as unknown as Phaser.Scene;
+    const bridge = createPhaserBridge(scene);
+    const world = createTestWorld();
+    const first = addEntity(world.ecs);
+    const second = addEntity(world.ecs);
+
+    addComponent(world.ecs, first, set(Position, { x: 10, y: 10 }));
+    addComponent(world.ecs, first, Enemy);
+    addComponent(world.ecs, first, set(Sprite, { textureId: 2, width: 3, height: 3 }));
+    addComponent(world.ecs, second, set(Position, { x: 30, y: 10 }));
+    addComponent(world.ecs, second, Enemy);
+    addComponent(world.ecs, second, set(Sprite, { textureId: 2, width: 3, height: 3 }));
+
+    bridge.sync(world);
+    bridge.sync(world);
+
+    expect(getTextureKeys).toHaveBeenCalledTimes(1);
+    expect(images).toHaveLength(2);
+    expect(images[0]?.textureKey).toBe('slime-v1-var-42');
+    expect(images[1]?.textureKey).toBe('slime-v1-var-42');
+  });
+
   it('uses the stored spawn-time roll to pick a loaded generated slime variant', () => {
     const { scene, images } = createSceneStub({ kenneyLoaded: true });
     (scene.game as unknown) = {
