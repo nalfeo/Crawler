@@ -1,0 +1,22 @@
+{
+  "schema_version": "review-ledger/v1",
+  "date": "2026-06-30",
+  "session_slug": "config-driven-sprites",
+  "task_title": "Make entity-sprite mappings config-driven with reduced PR overhead",
+  "estimated_apples": 1,
+  "stages": {
+    "code_review": {
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 0,
+          "resolved_count": 0,
+          "clean": true,
+          "notes": "pure refactor moving hardcoded mappings to config; no behavior changes; all existing tests pass; guard tests added and pass"
+        }
+      ]
+    }
+  }
+}

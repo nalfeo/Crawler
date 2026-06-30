@@ -1,0 +1,12 @@
+{
+  "enemies": {
+    "enemy_rat": {
+      "textureId": 1,
+      "description": "Junk rat critter variant"
+    },
+    "enemy_slime": {
+      "textureId": 2,
+      "description": "Slime enemy variant"
+    }
+  }
+}
