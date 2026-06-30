@@ -19,6 +19,7 @@
 
 import { PNG } from 'pngjs';
 import type { Brief, PaletteColors, RgbTriple } from '../brief-schema.js';
+import { resizeSpriteStrategy } from '../size-variants.js';
 
 export type Pixel = { x: number; y: number };
 
@@ -54,6 +55,34 @@ export function dimensionsExact(image: RgbaImage, brief: Brief): SensorResult {
   const sensor = 'dimensions-exact';
   // When trimAndFit is enabled, output dimensions are dynamic — skip this sensor.
   if (brief.postprocessing?.trimAndFit) {
+    return ok(sensor);
+  }
+  const strategy = resizeSpriteStrategy(brief.type, brief.size.width, brief.size.height);
+  if (strategy === 'width') {
+    if (image.width !== brief.size.width) {
+      return fail(
+        sensor,
+        `expected width ${brief.size.width} for double-wide sprite, got ${image.width}x${image.height}`,
+      );
+    }
+    return ok(sensor);
+  }
+  if (strategy === 'height') {
+    if (image.height !== brief.size.height) {
+      return fail(
+        sensor,
+        `expected height ${brief.size.height} for tall sprite, got ${image.width}x${image.height}`,
+      );
+    }
+    return ok(sensor);
+  }
+  if (strategy === 'cover') {
+    if (image.width < brief.size.width || image.height < brief.size.height) {
+      return fail(
+        sensor,
+        `expected at least ${brief.size.width}x${brief.size.height} for large sprite occupancy, got ${image.width}x${image.height}`,
+      );
+    }
     return ok(sensor);
   }
   if (image.width !== brief.size.width || image.height !== brief.size.height) {

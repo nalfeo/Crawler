@@ -2,19 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { PNG } from 'pngjs';
 import { briefSchema, type Brief, type PaletteColors } from '../../scripts/sprites/brief-schema.js';
 import { postprocess } from '../../scripts/sprites/postprocess.js';
+import { decodeSprite, dimensionsExact } from '../../scripts/sprites/sensors/common.js';
+import { scoreCandidate } from '../../scripts/sprites/score-candidate.js';
 
 const PALETTE: PaletteColors = [
   [0, 0, 0],
   [255, 255, 255],
 ];
 
-function makeBrief(): Brief {
+function makeBrief(
+  size: { width: number; height: number } = { width: 6, height: 6 },
+  anchor: { x: number; y: number } = { x: 3, y: 5 },
+): Brief {
   return briefSchema.parse({
     type: 'enemy',
     name: 'resize-fit-test',
-    size: { width: 6, height: 6 },
+    size,
     palette: { id: 'kenney-roguelike' },
-    anchor: { x: 3, y: 5 },
+    anchor,
     tags: ['test'],
     prompt: 'test',
     references: [
@@ -78,8 +83,42 @@ function makeOffCenterFixture(): Buffer {
   return PNG.sync.write(png);
 }
 
+function makeTallFixture(): Buffer {
+  const png = new PNG({ width: 4, height: 8 });
+  for (let y = 0; y < 8; y++) {
+    for (let x = 0; x < 4; x++) {
+      const idx = (y * 4 + x) * 4;
+      png.data[idx] = 80;
+      png.data[idx + 1] = 140;
+      png.data[idx + 2] = 220;
+      png.data[idx + 3] = 255;
+    }
+  }
+  const corners: ReadonlyArray<[number, number]> = [
+    [0, 0],
+    [3, 0],
+    [0, 7],
+    [3, 7],
+  ];
+  for (const [x, y] of corners) {
+    const idx = (y * 4 + x) * 4;
+    png.data[idx] = 255;
+    png.data[idx + 1] = 0;
+    png.data[idx + 2] = 255;
+    png.data[idx + 3] = 0;
+  }
+  return PNG.sync.write(png);
+}
+
 function alphaAt(png: PNG, x: number, y: number): number {
   return png.data[(y * png.width + x) * 4 + 3] ?? 0;
+}
+
+function expectSensorOk(processed: Buffer, brief: Brief, sensor: string): void {
+  const card = scoreCandidate(processed, brief, PALETTE);
+  const result = card.breakdown.find((entry) => entry.sensor === sensor);
+  expect(result).toBeDefined();
+  expect(result).toMatchObject({ ok: true, sensor });
 }
 
 describe('postprocess resize fit', () => {
@@ -111,5 +150,47 @@ describe('postprocess resize fit', () => {
     // Center columns carry the subject.
     expect(alphaAt(out, 2, 2)).toBe(255);
     expect(alphaAt(out, 3, 3)).toBe(255);
+  });
+
+  it('scales double-wide briefs width-first even when output becomes taller', () => {
+    const brief = makeBrief({ width: 12, height: 6 }, { x: 6, y: 3 });
+    const processed = postprocess(makeTallFixture(), brief, PALETTE);
+    const out = PNG.sync.read(processed);
+
+    expect(out.width).toBe(12);
+    expect(out.height).toBeGreaterThan(6);
+    expect(dimensionsExact(decodeSprite(processed), brief)).toEqual({
+      ok: true,
+      sensor: 'dimensions-exact',
+    });
+    expectSensorOk(processed, brief, 'anchor-opaque');
+  });
+
+  it('scales tall briefs height-first even when output becomes wider', () => {
+    const brief = makeBrief({ width: 6, height: 12 }, { x: 3, y: 6 });
+    const processed = postprocess(makeWideFixture(), brief, PALETTE);
+    const out = PNG.sync.read(processed);
+
+    expect(out.height).toBe(12);
+    expect(out.width).toBeGreaterThan(6);
+    expect(dimensionsExact(decodeSprite(processed), brief)).toEqual({
+      ok: true,
+      sensor: 'dimensions-exact',
+    });
+    expectSensorOk(processed, brief, 'anchor-opaque');
+  });
+
+  it('scales large square briefs to keep strong 128x128 occupancy', () => {
+    const brief = makeBrief({ width: 128, height: 128 }, { x: 64, y: 64 });
+    const processed = postprocess(makeWideFixture(), brief, PALETTE);
+    const out = PNG.sync.read(processed);
+
+    expect(out.width).toBeGreaterThanOrEqual(128);
+    expect(out.height).toBeGreaterThanOrEqual(128);
+    expect(dimensionsExact(decodeSprite(processed), brief)).toEqual({
+      ok: true,
+      sensor: 'dimensions-exact',
+    });
+    expectSensorOk(processed, brief, 'anchor-opaque');
   });
 });

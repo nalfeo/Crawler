@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Brief } from './brief-schema.js';
 import { variantCount } from './brief-schema.js';
+import { resizeSpriteStrategy } from './size-variants.js';
 
 /**
  * Pure prompt builders for the sprite generation pipeline.
@@ -186,21 +187,41 @@ function sourceFootprint(brief: Brief): {
 }
 
 /**
- * Tell the model the exact final pixel dimensions and, for non-square
- * variants, the proportion to draw. The post-processor fits the trimmed
- * subject into the brief's W×H box preserving aspect, so a subject drawn at
- * the wrong proportion would letterbox; this block keeps wide/tall/large
- * subjects shaped correctly. Tiles fill their frame edge-to-edge and so get a
- * simpler footprint-free variant.
+ * Tell the model the target final dimensions and, for non-square variants, the
+ * proportion to draw. Most sprites resolve to exactly the brief W×H. Axis-
+ * priority variants (wide/tall and large square occupancy targets) can expand
+ * the secondary axis in postprocess to keep silhouette occupancy high, so the
+ * prompt calls that out explicitly.
+ *
+ * Tiles fill their frame edge-to-edge and keep an exact footprint.
  */
 function outputSizeBlock(brief: Brief): string {
   const width = brief.size.width;
   const height = brief.size.height;
   const aspect = aspectOf(width, height);
+  const strategy = resizeSpriteStrategy(brief.type, width, height);
   const lines: string[] = ['## Output size'];
-  lines.push(
-    `- Each finished sprite resolves to exactly ${width}x${height} pixels after post-processing.`,
-  );
+  if (strategy === 'fit' && brief.type === 'tile') {
+    lines.push(
+      `- Each finished tile resolves to exactly ${width}x${height} pixels after post-processing.`,
+    );
+  } else if (strategy === 'width') {
+    lines.push(
+      `- Target final frame is ${width}x${height} with width as the main occupancy axis; post-processing may expand height beyond ${height}px to preserve silhouette fill.`,
+    );
+  } else if (strategy === 'height') {
+    lines.push(
+      `- Target final frame is ${width}x${height} with height as the main occupancy axis; post-processing may expand width beyond ${width}px to preserve silhouette fill.`,
+    );
+  } else if (strategy === 'cover') {
+    lines.push(
+      `- Target final frame is ${width}x${height}; post-processing may expand one axis to preserve large-sprite occupancy without letterboxing.`,
+    );
+  } else {
+    lines.push(
+      `- Each finished sprite resolves to exactly ${width}x${height} pixels after post-processing.`,
+    );
+  }
 
   if (brief.type === 'tile') {
     lines.push(
