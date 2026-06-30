@@ -18,7 +18,7 @@ const DOCS_RE = /^docs\//;
 const ROOT_DOC_RE = /^[^/]+\.(md|txt)$/; // README.md, CHANGELOG.md, LICENSE.txt, ...
 const ART_RE = /^(public\/assets|briefs|data\/palettes)\//;
 const DEPS_RE = /^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock)$/;
-const CONFIG_RE = /^src\/shared\/data\/(entity-sprite-mappings|sprite-catalog|tuning|)\.(json)$/;
+const CONFIG_RE = /^src\/shared\/data\/(entity-sprite-mappings|sprite-catalog)\.(json)$/;
 
 // src/** is NEVER skippable EXCEPT for whitelisted config files (defense in depth).
 const SRC_NEVER_RE = /^src\//;

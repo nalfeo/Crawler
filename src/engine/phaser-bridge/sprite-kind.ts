@@ -22,7 +22,7 @@ import type { GameWorld } from '../../core/world.js';
 import { TeamId } from '../../shared/constants.js';
 import { computeSpawnPopScale, spawnAnimProgress } from '../../shared/spawn-anim.js';
 import type { EntitySpriteMappings } from '../../shared/data/entity-sprite-mappings.js';
-import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json' with { type: 'json' };
+import ENTITY_SPRITE_MAPPINGS from '../../shared/data/entity-sprite-mappings.json';
 
 /**
  * Pure entity → render-kind resolution for {@link createPhaserBridge}.
