@@ -1,4 +1,10 @@
-import { evaluateRepairComplexity, getEnv, getRepairBudgets, githubRequest } from './utils.mjs';
+import {
+  evaluateRepairComplexity,
+  getEnv,
+  getRepairBudgets,
+  githubGraphql,
+  githubRequest,
+} from './utils.mjs';
 
 const repository = getEnv('GITHUB_REPOSITORY', '');
 const [owner, repo] = repository.split('/');
@@ -47,43 +53,78 @@ async function addLabel() {
   }
 }
 
-async function assignCopilot() {
-  const copilotLogin = 'copilot-swe-agent';
+async function assignCopilot(assignableId) {
+  // Assigning the Copilot coding agent to a PULL REQUEST requires GraphQL
+  // (replaceActorsForAssignable) — the REST assignees endpoint returns 201 but
+  // silently drops the Copilot bot on PRs (verified empirically; REST only works
+  // for issues, e.g. coverage-gap-copilot.yml). The default Actions GITHUB_TOKEN
+  // can't assign Copilot at all, so this uses the user-acting assign token
+  // (GitHub App installation token, or a CODEX_ASSIGN_TOKEN PAT fallback).
+  const query = `
+query($owner: String!, $repo: String!, $number: Int!) {
+  repository(owner: $owner, name: $repo) {
+    suggestedActors(capabilities: [CAN_BE_ASSIGNED], first: 100) {
+      nodes {
+        login
+        __typename
+        ... on Bot { id }
+        ... on User { id }
+      }
+    }
+    pullRequest(number: $number) {
+      assignees(first: 20) {
+        nodes { id login }
+      }
+    }
+  }
+}`;
 
-  // Use the simple REST assignees endpoint with the (App or PAT) assign token —
-  // the same approach proven in coverage-gap-copilot.yml. The default Actions
-  // GITHUB_TOKEN is a bot identity GitHub ignores for the Copilot trigger, so a
-  // user-acting token (GitHub App installation token, or a PAT) is required.
+  let copilot;
+  let existingAssigneeIds;
   try {
-    await githubRequest(`/repos/${owner}/${repo}/issues/${prNumber}/assignees`, {
-      method: 'POST',
-      body: { assignees: [copilotLogin] },
-      token: assignToken || undefined,
-    });
+    const data = await githubGraphql(
+      query,
+      { owner, repo, number: prNumber },
+      { token: assignToken || undefined },
+    );
+    const actors = data.repository?.suggestedActors?.nodes || [];
+    copilot = actors.find(
+      (actor) =>
+        (actor.login || '').toLowerCase() === 'copilot-swe-agent' ||
+        (actor.__typename === 'Bot' && (actor.login || '').toLowerCase().includes('copilot')),
+    );
+    existingAssigneeIds = (data.repository?.pullRequest?.assignees?.nodes || [])
+      .map((node) => node.id)
+      .filter(Boolean);
   } catch (error) {
-    return { assigned: false, reason: `assignment failed: ${error.message}` };
+    return { assigned: false, reason: `lookup failed: ${error.message}` };
   }
 
-  // addAssignees silently drops logins that aren't assignable for the token, so
-  // confirm Copilot actually stuck before reporting success.
-  try {
-    const issue = await githubRequest(`/repos/${owner}/${repo}/issues/${prNumber}`, {
-      token: assignToken || undefined,
-    });
-    const assigned = (issue.assignees || []).some(
-      (actor) => (actor.login || '').toLowerCase() === copilotLogin,
-    );
-    if (assigned) {
-      return { assigned: true, reason: '' };
-    }
+  if (!copilot?.id) {
     return {
       assigned: false,
       reason: assignToken
-        ? 'Copilot was not accepted as an assignee (the assign token may lack Copilot rights)'
-        : 'no assign token available — the default Actions token cannot assign the Copilot coding agent',
+        ? 'Copilot is not assignable for the assign token (the GitHub App may lack the needed permission; set a CODEX_ASSIGN_TOKEN PAT as a fallback)'
+        : 'no assign token available — the default Actions token cannot assign the Copilot coding agent (configure the GitHub App or a CODEX_ASSIGN_TOKEN PAT)',
     };
+  }
+
+  const actorIds = Array.from(new Set([...existingAssigneeIds, copilot.id]));
+  const mutation = `
+mutation($assignableId: ID!, $actorIds: [ID!]!) {
+  replaceActorsForAssignable(input: { assignableId: $assignableId, actorIds: $actorIds }) {
+    assignable {
+      ... on PullRequest {
+        assignees(first: 20) { nodes { login } }
+      }
+    }
+  }
+}`;
+  try {
+    await githubGraphql(mutation, { assignableId, actorIds }, { token: assignToken || undefined });
+    return { assigned: true, reason: '' };
   } catch (error) {
-    return { assigned: false, reason: `assignment check failed: ${error.message}` };
+    return { assigned: false, reason: `assignment failed: ${error.message}` };
   }
 }
 
@@ -139,7 +180,7 @@ const reasons =
   complexity.reasons.length > 0 ? complexity.reasons : bounceReason ? [bounceReason] : [];
 
 const labelAdded = await addLabel();
-const assignResult = await assignCopilot();
+const assignResult = await assignCopilot(pr.node_id);
 
 const nextSteps = assignResult.assigned
   ? '- ✅ Assigned **@Copilot** (coding agent) to take over this PR.'

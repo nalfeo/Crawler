@@ -36,10 +36,10 @@ export function loadRepoConfig(workspace) {
 
 export async function githubRequest(
   urlPath,
-  { method = 'GET', body, accept = 'application/vnd.github+json', token } = {},
+  { method = 'GET', body, accept = 'application/vnd.github+json' } = {},
 ) {
-  const authToken = token || process.env.GITHUB_TOKEN;
-  if (!authToken) {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) {
     throw new Error('GITHUB_TOKEN is required');
   }
 
@@ -47,7 +47,7 @@ export async function githubRequest(
   const response = await fetch(apiBase + urlPath, {
     method,
     headers: {
-      Authorization: 'Bearer ' + authToken,
+      Authorization: 'Bearer ' + token,
       Accept: accept,
       'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json',

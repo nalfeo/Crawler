@@ -142,13 +142,15 @@ On a bounce, `bounce.mjs` (idempotent, best-effort):
 1. posts/updates a sticky `<!-- codex-bounce -->` comment explaining why and the
    measured-vs-budget numbers,
 2. adds the `CODEX_BOUNCE_LABEL` label (`auto-heal-bounced`), and
-3. auto-assigns the **Copilot coding agent** (`copilot-swe-agent`) via the REST
-   assignees endpoint, then verifies the assignment stuck. The default Actions
-   `GITHUB_TOKEN` **cannot** assign Copilot (GitHub ignores bot-identity assignment
-   for the Copilot trigger), so the workflow mints a user-acting **GitHub App
-   installation token** (`APP_ID` / `APP_PRIVATE_KEY`) for this step — the same
-   mechanism `coverage-gap-copilot.yml` uses. An optional `CODEX_ASSIGN_TOKEN` PAT
-   is used as a fallback when the App isn't configured. With neither — or if the
+3. auto-assigns the **Copilot coding agent** (`copilot-swe-agent`) to the PR via
+   GraphQL `replaceActorsForAssignable`. (Assigning Copilot to a _pull request_
+   requires GraphQL — the REST assignees endpoint returns 201 but silently drops
+   the Copilot bot on PRs; REST only works for issues, e.g. `coverage-gap-copilot.yml`.)
+   The default Actions `GITHUB_TOKEN` **cannot** assign Copilot (GitHub ignores
+   bot-identity assignment for the Copilot trigger), so the workflow mints a
+   user-acting **GitHub App installation token** (`APP_ID` / `APP_PRIVATE_KEY`) for
+   the bounce step. An optional `CODEX_ASSIGN_TOKEN` PAT is used as a fallback when
+   the App isn't configured (or lacks the permission). With neither — or if the
    assignment is rejected — the comment says to assign `@Copilot` manually.
 
 The job still finishes **green** on a bounce (it's an intended outcome, not a failure),
