@@ -13,8 +13,16 @@
       "notes": "All 4 concerns addressed: (1) added perception gating to pickRetreatTarget/relocateFromStall/sumNearbyEnemyHp, (2) safe-room override now checks same safe room, (3) ahead detection clarified, (4) added FOV transition test"
     },
     "code_review": {
-      "clean": false,
-      "rounds": []
+      "clean": true,
+      "rounds": [
+        {
+          "round": 1,
+          "models": ["claude-sonnet-4.6"],
+          "concerns_count": 1,
+          "resolved_count": 1,
+          "clean": true
+        }
+      ]
     }
   }
 }
